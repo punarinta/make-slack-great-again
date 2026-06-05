@@ -1,0 +1,161 @@
+/* MSGA — Slack aubergine theme
+   Applied globally via QApplication::setStyleSheet() at startup.
+   Widget object names set in MainWindow::buildUi(). */
+
+/* ── Tooltips ──────────────────────────────────────────────────── */
+QToolTip {
+    background-color: #1D1C1D;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+/* ── Workspace sidebar ─────────────────────────────────────────── */
+QWidget#workspaceSidebar {
+    background-color: #3F0E40;
+}
+
+/* ── Frameless window frame ─────────────────────────────────────── */
+QWidget#windowFrame {
+    background: #F5F5F5;
+}
+
+/* ── Title bar ─────────────────────────────────────────────────── */
+QWidget#titleBar {
+    background-color: #E8E8E8;
+}
+
+QPushButton#titleBarPin {
+    background: transparent;
+    color: #505050;
+    font-size: 11px;
+    border: none;
+    border-radius: 0;
+}
+QPushButton#titleBarPin:hover {
+    background: #C8C8C8;
+    color: #1D1C1D;
+}
+QPushButton#titleBarPin:pressed {
+    background: #BBBBBB;
+}
+
+QPushButton#titleBarPinActive {
+    background: transparent;
+    color: #C0392B;
+    font-size: 11px;
+    border: none;
+    border-radius: 0;
+}
+QPushButton#titleBarPinActive:hover {
+    background: #C8C8C8;
+    color: #922B21;
+}
+QPushButton#titleBarPinActive:pressed {
+    background: #BBBBBB;
+}
+
+QPushButton#titleBarMin,
+QPushButton#titleBarMax {
+    background: transparent;
+    color: #505050;
+    font-size: 11px;
+    border: none;
+    border-radius: 0;
+}
+QPushButton#titleBarMin:hover,
+QPushButton#titleBarMax:hover {
+    background: #C8C8C8;
+    color: #1D1C1D;
+}
+QPushButton#titleBarMin:pressed,
+QPushButton#titleBarMax:pressed {
+    background: #BBBBBB;
+}
+
+QPushButton#titleBarClose {
+    background: transparent;
+    color: #505050;
+    font-size: 11px;
+    border: none;
+    border-radius: 0;
+}
+QPushButton#titleBarClose:hover {
+    background: #C0392B;
+    color: #FFFFFF;
+}
+QPushButton#titleBarClose:pressed {
+    background: #922B21;
+    color: #FFFFFF;
+}
+
+/* ── Conversation panel ────────────────────────────────────────── */
+QWidget#convPanel {
+    background-color: #350D36;
+}
+
+/* ── Conversation list ─────────────────────────────────────────── */
+QListWidget#convList {
+    background-color: transparent;
+    color: #CFC3CF;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    padding: 4px 0;
+}
+
+QListWidget#convList::item {
+    padding: 5px 12px;
+    border-radius: 4px;
+    margin: 1px 8px;
+}
+
+QListWidget#convList::item:hover {
+    background-color: #522653;
+    color: #FFFFFF;
+}
+
+QListWidget#convList::item:selected {
+    background-color: #1164A3;
+    color: #FFFFFF;
+}
+
+/* ── Workspace icon ────────────────────────────────────────────── */
+QLabel#workspaceIcon {
+    background-color: #4A154B;
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px;
+}
+
+/* ── Message area ──────────────────────────────────────────────── */
+QWidget#messageArea {
+    background-color: #FFFFFF;
+}
+
+QLabel#messageAreaLabel {
+    color: #97979E;
+    font-size: 16px;
+}
+
+/* ── Scroll bars (dark panels) ─────────────────────────────────── */
+QListWidget#convList QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+    margin: 0;
+}
+
+QListWidget#convList QScrollBar::handle:vertical {
+    background: #6B2F6C;
+    border-radius: 3px;
+    min-height: 24px;
+}
+
+QListWidget#convList QScrollBar::add-line:vertical,
+QListWidget#convList QScrollBar::sub-line:vertical {
+    height: 0;
+}

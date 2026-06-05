@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Vladimir Osipov
+#pragma once
+
+#include "backend/domain.h"
+#include "rpl/lifetime.h"
+
+#include <QAbstractScrollArea>
+#include <QVariantAnimation>
+#include <QSet>
+#include <QHash>
+#include <QPixmap>
+#include <QNetworkAccessManager>
+
+#include <memory>
+#include <vector>
+
+class QTextDocument;
+class Session;
+class PopupTooltip;
+
+// Per-attachment rendered doc (lazy, like the main textDoc).
+struct AttachDoc {
+    mutable std::unique_ptr<QTextDocument> textDoc;
+    mutable int docWidth  = 0;
+    mutable int docHeight = 0;
+};
+
+// Data + lazily-computed layout for a single message.
+// textDoc is mutable so ensureDocLayout() can work from a const context.
+struct MessageItem {
+    Message msg;
+    mutable std::unique_ptr<QTextDocument> textDoc;
+    mutable int docWidth  = 0;  // viewport width at which textDoc was laid out
+    mutable int docHeight = 0;  // cached pixel height of textDoc
+    mutable std::vector<AttachDoc> attachDocs; // one per msg.attachments entry
+    mutable bool fileImgsRequested = false;    // true once download has been triggered
+};
+
+// Zero-widget virtual message list.
+// Stores MessageItems, paints only visible rows in a single QPainter pass.
+// No QLabel/QWidget per message — scales to thousands of rows without stutter.
+class MessageListWidget : public QAbstractScrollArea {
+    Q_OBJECT
+public:
+    explicit MessageListWidget(Session *session, QWidget *parent = nullptr);
+
+    void openConversation(ConversationId conv, const QString &convName = {}, const QString &description = {});
+    // Open a thread view: loads conversations.replies and filters events accordingly.
+    void openThread(ConversationId conv, Ts rootTs);
+    void clear();
+    void setSession(Session *session);
+
+signals:
+    // Emitted in channel mode when user clicks the "N replies" bar on a thread root.
+    void threadClicked(ConversationId conv, Ts rootTs);
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+    void scrollContentsBy(int dx, int dy) override;
+    void resizeEvent(QResizeEvent *event) override;
+
+private:
+    // Viewport event handlers (called from eventFilter)
+    void doPaint(QPaintEvent *event);
+    void doMousePress(QMouseEvent *event);
+    void doMouseMove(QMouseEvent *event);
+    void doMouseRelease(QMouseEvent *event);
+    void doMouseLeave();
+    bool isOnScrollThumb(int vpY) const;
+
+    // Data model
+    void appendMessage(const Message &msg);
+    int  findByTs(const Ts &ts) const;  // linear scan, fine for <500 visible
+    void handleEvent(const Event &e);
+    // Merge freshly-loaded network messages into the existing item list.
+    void mergeNetworkMessages(const std::vector<Message> &incoming);
+    // Apply _pendingRestorePos / _scrollToBottomPending if set.
+    void applyPendingScroll();
+    // Load older messages using the stored pagination cursor.
+    void loadOlderMessages();
+
+    // Layout
+    void rebuildLayout();
+    int  rowHeight(int index) const;
+    bool isCollapsed(int index) const; // true if same author within 5 min of previous
+    void ensureDocLayout(const MessageItem &item) const;
+    int  textAreaWidth() const;
+
+    // Painting
+    void paintRow(QPainter &p, int index, int rowTop) const;
+    void paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const;
+    void paintReactions(QPainter &p, const MessageItem &item,
+                        int left, int top, int width) const;
+    void paintReplyBar(QPainter &p, const MessageItem &item,
+                       int left, int top, int width) const;
+    void paintAttachments(QPainter &p, const MessageItem &item,
+                          int left, int top, int width, int index) const;
+    void paintFileImages(QPainter &p, const MessageItem &item,
+                         int left, int top, int width) const;
+    void paintFileChips(QPainter &p, const MessageItem &item,
+                        int left, int top, int width) const;
+    void paintHoverToolbar(QPainter &p, int index, int rowTop, int rowH) const;
+    void paintIntro(QPainter &p, int top) const;
+    void paintDateSep(QPainter &p, int top, int vw, const Ts &ts) const;
+
+    int  introHeight() const;
+    bool needsDateSep(int index) const;
+
+    // Download any missing images for visible rows (called from doPaint).
+    void triggerMissingDownloads();
+    // Download any missing user avatars for visible rows (called from doPaint).
+    void triggerMissingAvatarDownloads();
+
+    // Mouse: returns the href under the given viewport point, or empty.
+    QString anchorAt(const QPoint &viewportPos) const;
+    // Returns pointer to the non-image File chip under viewportPos, or nullptr.
+    const File *fileChipAt(const QPoint &viewportPos) const;
+    // Returns index of the message whose reply bar is at viewportPos, or -1.
+    int replyBarIndexAt(const QPoint &viewportPos) const;
+    // Returns which toolbar button (0-2) is under pos for the hovered row, or -1.
+    int toolbarButtonAt(const QPoint &viewportPos) const;
+    // Rect of toolbar button i for the given row top/height, in viewport coords.
+    QRect toolbarButtonRect(int btn, int rowTop, int rowH) const;
+
+    // Layout constants (all in logical pixels)
+    static constexpr int kPadH        = 16; // horizontal margin on both sides
+    static constexpr int kPadV        =  8; // vertical padding top/bottom of each row
+    static constexpr int kAvSize      = 36; // avatar square size
+    static constexpr int kAvGap       = 10; // gap between avatar and text column
+    static constexpr int kHdrH        = 20; // height of the name+timestamp header line
+    static constexpr int kHdrGap      =  4; // gap between header and message body
+    static constexpr int kRowGap      =  0; // no gap — spacing is entirely in kPadV
+    static constexpr int kPadVCollapsed = 3; // vertical padding for collapsed (same-author) rows
+    static constexpr int kReactH      = 22; // height of the reactions strip
+    static constexpr int kReplyBarH   = 22; // height of the "N replies" bar on thread roots
+    static constexpr int kReplyBarGap =  4; // gap above the reply bar
+    static constexpr int kAttachGap   =  4; // gap above each attachment
+    static constexpr int kAttachBarW  =  3; // width of attachment color bar
+    static constexpr int kAttachBarGap=  8; // gap between bar and attachment text
+    static constexpr int kImgMaxW      = 400; // max inline image width
+    static constexpr int kImgMaxH      = 300; // max inline image height
+    static constexpr int kImgGap       =   6; // gap above each inline image
+    static constexpr int kImgNameH     =  14; // height of the filename label above each image
+    static constexpr int kFileChipH    =  52; // height of each non-image file chip
+    static constexpr int kFileChipGap  =   6; // gap before each chip (between chips, or above first)
+    static constexpr int kFileChipIconW=  48; // width of the colored type-icon area
+    static constexpr int kFileChipMaxW = 380; // max chip width (won't span full viewport)
+    static constexpr int kFileChipPadX =  12; // gap between icon right edge and text
+
+    // Hover toolbar
+    static constexpr int kToolbarBtnSize = 28; // icon button square size
+    static constexpr int kToolbarPadH    =  8; // horizontal inner padding of toolbar card
+    static constexpr int kToolbarPadV    =  6; // vertical inner padding
+    static constexpr int kToolbarGap     =  4; // gap between buttons
+    static constexpr int kToolbarRadius  =  8; // card corner radius
+    static constexpr int kToolbarRight   = 12; // right margin from viewport edge
+
+    // Scrollbar overlay
+    static constexpr int kScrollW      =  4; // scrollbar thumb width
+
+    // Date separator
+    static constexpr int kSepH         = 32; // total height of date separator band
+
+    // Conversation intro header (painted before first message)
+    static constexpr int kIntroPadTop  = 32; // space above the name line
+    static constexpr int kIntroNameH   = 30; // height of the big name line
+    static constexpr int kIntroGap     =  8; // gap between name and description
+    static constexpr int kIntroDescH   = 18; // height of description line
+    static constexpr int kIntroPadBot  = 24; // space below description before first message
+
+    Session               *_session;
+    ConversationId         _currentConv;
+    bool                   _isThreadMode = false;
+    Ts                     _threadRootTs;
+    QString                _convName;
+    QString                _convDescription;
+    bool                   _showIntro = false;
+    std::vector<MessageItem> _items;
+    std::vector<int>       _tops;    // document-space top of each row
+    int                    _totalH = 0;
+
+    // Smooth scroll
+    QVariantAnimation _scrollAnim;
+    void smoothScrollTo(int target);
+
+    // Image cache: URL → scaled QPixmap (populated by async downloads)
+    mutable QHash<QString,QPixmap> _imageCache;
+    // Avatar cache: avatarUrl → QPixmap; empty sentinel = in-flight.
+    mutable QHash<QString,QPixmap> _avatarCache;
+    QNetworkAccessManager         *_avatarNam = nullptr;
+
+    // New-message highlight: ts → elapsed ms since arrival (driven by _highlightTimer)
+    QSet<QString>      _newMsgTs;
+    QVariantAnimation  _highlightAnim;
+
+    bool _scrollToBottomPending = false;
+    int  _pendingRestorePos     = -1;   // >= 0: restore this position after layout
+    QHash<QString, int> _savedScrollPos; // conv.value → last scroll position
+
+    int  _hoveredRow     = -1;  // index of the row the mouse is over, or -1
+    int  _hoveredToolBtn = -1;  // 0=emoji, 1=forward, 2=more; -1=none
+
+    bool _sbDragging        = false;
+    int  _sbDragStartY      = 0;
+    int  _sbDragStartScroll = 0;
+
+    PopupTooltip *_tooltip = nullptr;
+
+    std::optional<QString> _olderCursor;   // set when more pages exist above
+    bool                   _loadingOlder = false;
+
+    rpl::lifetime _loadLifetime;
+    rpl::lifetime _olderLoadLifetime;
+    rpl::lifetime _eventLifetime;
+};

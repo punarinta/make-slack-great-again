@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026  Vladimir Osipov
+#include "session.h"
+#include "backend/backend.h"
+#include "cache/workspace_cache.h"
+
+#include <QDateTime>
+
+Session::Session(std::unique_ptr<Backend> backend, const QString &teamId)
+    : _backend(std::move(backend))
+    , _cache(std::make_unique<WorkspaceCache>(teamId))
+{}
+
+Session::~Session() = default;
+
+void Session::start() {
+    // Serve cached data immediately so the UI has something to show before
+    // the network responds.
+    {
+        auto convs = _cache->loadConversations();
+        if (!convs.empty()) _conversations = std::move(convs);
+        auto users = _cache->loadUsers();
+        if (!users.empty()) _users = std::move(users);
+    }
+
+    _backend->connectRealtime();
+
+    _backend->loadMe()
+        | rpl::on_next([this](UserId id) {
+            setMe(std::move(id));
+        }, _lifetime);
+
+    // Load custom emoji map once.
+    _backend->loadEmojiList()
+        | rpl::on_next([this](QHash<QString,QString> map) {
+            _emojiMap = std::move(map);
+        }, _lifetime);
+
+    // Load conversations; update cache on arrival.
+    _backend->loadConversations()
+        | rpl::on_next([this](std::vector<Conversation> convs) {
+            _cache->saveConversations(convs);
+            _conversations = std::move(convs);
+        }, _lifetime);
+
+    // Load users; update cache on arrival.
+    _backend->loadUsers()
+        | rpl::on_next([this](std::vector<User> users) {
+            _cache->saveUsers(users);
+            _users = std::move(users);
+        }, _lifetime);
+
+    // Wire the backend event firehose through our hub so Session can
+    // intercept and patch state before forwarding to the UI.
+    _backend->events()
+        | rpl::on_next([this](Event e) {
+            // Patch in-memory state then forward.
+            if (auto *ev = std::get_if<EvPresenceChanged>(&e)) {
+                auto users = _users.current();
+                for (auto &u : users) {
+                    if (u.id == ev->user) { u.isActive = ev->active; break; }
+                }
+                _users = std::move(users);
+            } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {
+                auto convs = _conversations.current();
+                for (auto &c : convs) {
+                    if (c.id == ev->conv) {
+                        c.lastRead = ev->lastRead;
+                        c.unread   = ev->unread;
+                        break;
+                    }
+                }
+                _conversations = std::move(convs);
+            } else if (auto *ev = std::get_if<EvMessageNew>(&e)) {
+                const bool ownMessage = !_meUserId.value.isEmpty()
+                                        && ev->msg.author == _meUserId;
+                if (!ownMessage && ev->conv != _readingConv) {
+                    auto convs = _conversations.current();
+                    for (auto &c : convs) {
+                        if (c.id == ev->conv) { c.unread++; break; }
+                    }
+                    _conversations = std::move(convs);
+                }
+            }
+            _eventHub.fire(std::move(e));
+        }, _lifetime);
+}
+
+rpl::producer<std::vector<Conversation>> Session::conversations() const {
+    return _conversations.value();
+}
+
+rpl::producer<std::vector<User>> Session::users() const {
+    return _users.value();
+}
+
+rpl::producer<Event> Session::events() const {
+    return _eventHub.events();
+}
+
+rpl::producer<AuthState> Session::authState() const {
+    return _backend->authState();
+}
+
+const User *Session::findUser(UserId id) const {
+    for (const auto &u : _users.current()) {
+        if (u.id == id) return &u;
+    }
+    return nullptr;
+}
+
+const Conversation *Session::findConversation(ConversationId id) const {
+    for (const auto &c : _conversations.current()) {
+        if (c.id == id) return &c;
+    }
+    return nullptr;
+}
+
+void Session::sendMessage(ConversationId conv, const QString &text,
+                           std::optional<Ts> threadRoot) {
+    qint64 msec = QDateTime::currentMSecsSinceEpoch();
+    Ts fakeTs = QString("%1.%2")
+        .arg(msec / 1000)
+        .arg((msec % 1000) * 1000, 6, 10, QChar('0'));
+
+    Message optimistic;
+    optimistic.ts         = fakeTs;
+    optimistic.author     = _meUserId;
+    optimistic.text       = TextWithEntities{text, {}};
+    optimistic.threadRoot = threadRoot;
+
+    _eventHub.fire(EvMessageNew{conv, optimistic});
+
+    OutgoingMessage out;
+    out.text       = optimistic.text;
+    out.threadRoot = threadRoot;
+    _backend->sendMessage(conv, std::move(out));
+}
+
+Backend *Session::backend() const {
+    return _backend.get();
+}
+
+void Session::uploadFile(ConversationId conv, const QString &filePath) {
+    _backend->uploadFile(conv, filePath);
+}
+
+void Session::searchMessages(const QString &query,
+                              std::function<void(std::vector<SearchResult>)> callback) {
+    _backend->searchMessages(query)
+        | rpl::on_next([cb = std::move(callback)](std::vector<SearchResult> results) {
+            cb(std::move(results));
+        }, _lifetime);
+}
+
+void Session::downloadFile(const QString &url,
+                            std::function<void(QByteArray)> onData,
+                            std::function<void(QString)>    onError) {
+    _backend->downloadFile(url, std::move(onData), std::move(onError));
+}
+
+std::vector<Message> Session::cachedMessages(ConversationId conv) const {
+    return _cache->loadMessages(conv);
+}
+
+void Session::cacheMessages(ConversationId conv, const std::vector<Message> &msgs) {
+    _cache->saveMessages(conv, msgs);
+}
+
+void Session::saveLastConv(ConversationId conv, const QString &displayName) {
+    _cache->saveLastConv(conv, displayName);
+}
+
+std::pair<ConversationId, QString> Session::loadLastConv() const {
+    return _cache->loadLastConv();
+}
+
+void Session::cacheImage(const QString &url, const QByteArray &data) {
+    _cache->saveImage(url, data);
+}
+
+QByteArray Session::cachedImage(const QString &url) const {
+    return _cache->loadImage(url);
+}
+
+void Session::requestPresence(UserId userId) {
+    _backend->loadPresence(userId)
+        | rpl::on_next([this, userId](bool active) {
+            // Update user cache and fire event so all listeners see the new state.
+            auto users = _users.current();
+            for (auto &u : users) {
+                if (u.id == userId) { u.isActive = active; break; }
+            }
+            _users = std::move(users);
+            _eventHub.fire(EvPresenceChanged{ userId, active });
+        }, _lifetime);
+}
+
+void Session::setReading(ConversationId conv) {
+    _readingConv = conv;
+    if (conv.value.isEmpty()) return;
+
+    // Optimistically zero the badge.
+    auto convs = _conversations.current();
+    for (auto &c : convs) {
+        if (c.id == conv) { c.unread = 0; break; }
+    }
+    _conversations = std::move(convs);
+}
