@@ -4,7 +4,13 @@ A fast native Slack client built in C++ with Qt6 with performance optimizations.
 
 ## 1. Use a prebuilt version
 
-Download the latest prebuilt binary for Linux 64-bit from [msga.app](https://msga.app/). Windows and macOS builds are coming later, after the the dev version is more or less stable and I switch to it for daily use instead of the official client.
+Download the latest prebuilt binary from [msga.app](https://msga.app/):
+
+- [Linux x86-64](https://msga.app/download/msga-linux-x86_64) (any distribution)
+- [macOS Apple Silicon](https://msga.app/download/msga-macos-arm64.dmg)
+- Windows — coming soon
+
+A Windows build is planned once the client is stable enough for daily use.
 
 ## 2. Build your own version
 
