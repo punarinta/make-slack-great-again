@@ -2,13 +2,17 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include <QColor>
+#include <QList>
+#include <QPair>
+#include <QString>
 #include <QWidget>
 
+class QAbstractButton;
 class QFrame;
 class QTextEdit;
 class QPushButton;
 class QToolButton;
-class QWidget;
 
 // Slack-style composer: formatting toolbar + text area + bottom action bar.
 // Enter sends; Shift+Enter inserts a newline.
@@ -32,6 +36,7 @@ private:
     void updateSendState();
     void adjustEditorHeight();
     void setFocused(bool focused);
+    void recolorIcons(const QColor &color);
     void applyInlineFormat(const QString &marker);
 
     QFrame      *_box     = nullptr;
@@ -39,4 +44,7 @@ private:
     QTextEdit   *_edit    = nullptr;
     QPushButton *_sendBtn = nullptr;
     QPushButton *_dropBtn = nullptr;
+
+    // Each colorable toolbar/bottom-bar icon button paired with its SVG path.
+    QList<QPair<QAbstractButton*, QString>> _iconBtns;
 };

@@ -263,10 +263,10 @@ void WorkspaceSwitcher::mouseMoveEvent(QMouseEvent *e) {
 
     if (h == -2) {
         const QRect r = addButtonRect();
-        _tooltip->showAbove("Add workspace", QRect(mapToGlobal(r.topLeft()), r.size()));
+        _tooltip->showAbove(tr("Add workspace"), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else if (h == -3) {
         const QRect r = gearButtonRect();
-        _tooltip->showAbove("Settings", QRect(mapToGlobal(r.topLeft()), r.size()));
+        _tooltip->showAbove(tr("Settings"), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else {
         _tooltip->hide();
     }

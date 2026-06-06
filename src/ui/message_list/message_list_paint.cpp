@@ -118,7 +118,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
 
         if (item.msg.edited) {
             const int tsW = tsFm.horizontalAdvance(tsText);
-            p.drawText(textLeft + nameW + 8 + tsW + 6, headerBaseline, "(edited)");
+            p.drawText(textLeft + nameW + 8 + tsW + 6, headerBaseline, tr("(edited)"));
         }
     }
 
@@ -379,7 +379,7 @@ void MessageListWidget::paintFileImages(QPainter &p,
             p.setBrush(QColor("#F5F5F5"));
             p.drawRect(QRect(left, y, phW, phH));
             p.setPen(QColor("#888"));
-            p.drawText(QRect(left, y, phW, phH), Qt::AlignCenter, "Loading image…");
+            p.drawText(QRect(left, y, phW, phH), Qt::AlignCenter, tr("Loading image…"));
             p.restore();
             y += phH;
         }
@@ -634,8 +634,8 @@ void MessageListWidget::paintReplyBar(QPainter &p,
     const QRect bar(left, top, width, kReplyBarH);
 
     const QString label = count == 1
-        ? QStringLiteral("1 reply")
-        : QString::number(count) + QStringLiteral(" replies");
+        ? tr("1 reply")
+        : tr("%1 replies").arg(count);
 
     p.save();
     QFont f = QApplication::font();

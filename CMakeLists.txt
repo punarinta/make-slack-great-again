@@ -20,6 +20,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg)
+find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
 
 include(FetchContent)
 
@@ -118,6 +119,13 @@ target_link_libraries(msga PRIVATE
     Qt6::Svg
     Microsoft.GSL::GSL
 )
+
+if(Qt6LinguistTools_FOUND)
+    qt_add_translations(msga
+        TS_FILES translations/msga_en.ts
+        RESOURCE_PREFIX "/translations"
+    )
+endif()
 
 option(MSGA_BUILD_TESTS "Build unit tests" OFF)
 if(MSGA_BUILD_TESTS)

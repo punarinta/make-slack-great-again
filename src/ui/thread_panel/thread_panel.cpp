@@ -34,7 +34,7 @@ ThreadPanel::ThreadPanel(QWidget *parent)
     headerLayout->setContentsMargins(16, 0, 8, 0);
     headerLayout->setSpacing(8);
 
-    _header = new QLabel("Thread", header);
+    _header = new QLabel(tr("Thread"), header);
     _header->setStyleSheet("font-weight: bold; font-size: 15px; color: #1D1C1D;");
     headerLayout->addWidget(_header, 1);
 
@@ -73,7 +73,7 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     _rootTs = rootTs;
     _msgList->openThread(conv, rootTs);
     _composer->setEnabled(true);
-    _composer->setPlaceholderText("Reply in thread…");
+    _composer->setPlaceholderText(tr("Reply in thread…"));
 }
 
 void ThreadPanel::close() {

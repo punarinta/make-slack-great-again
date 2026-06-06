@@ -3,6 +3,7 @@
 #include "message_render.h"
 #include "session/session.h"
 
+#include <QCoreApplication>
 #include <QHash>
 #include <QDateTime>
 
@@ -58,8 +59,8 @@ QString formatDateLabel(const Ts &ts) {
     const QDate date = tsToDate(ts);
     if (!date.isValid()) return {};
     const QDate today = QDate::currentDate();
-    if (date == today) return "Today";
-    if (date == today.addDays(-1)) return "Yesterday";
+    if (date == today) return QCoreApplication::translate("MsgRender", "Today");
+    if (date == today.addDays(-1)) return QCoreApplication::translate("MsgRender", "Yesterday");
     if (date.year() == today.year()) return date.toString("MMMM d");
     return date.toString("MMMM d, yyyy");
 }

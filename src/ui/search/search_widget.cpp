@@ -55,7 +55,7 @@ SearchWidget::SearchWidget(QWidget *parent)
     hRow->addWidget(icon);
 
     _queryEdit = new QLineEdit(header);
-    _queryEdit->setPlaceholderText("Search messages…");
+    _queryEdit->setPlaceholderText(tr("Search messages…"));
     _queryEdit->setStyleSheet(
         "QLineEdit {"
         "  border: 1px solid #CCC;"
@@ -114,7 +114,7 @@ void SearchWidget::runSearch(const QString &query) {
     _resultList->clear();
     _results.clear();
 
-    auto *loadingItem = new QListWidgetItem("Searching…");
+    auto *loadingItem = new QListWidgetItem(tr("Searching…"));
     loadingItem->setForeground(QColor("#888"));
     _resultList->addItem(loadingItem);
 
@@ -128,7 +128,7 @@ void SearchWidget::runSearch(const QString &query) {
 void SearchWidget::populateResults(const std::vector<SearchResult> &results) {
     _resultList->clear();
     if (results.empty()) {
-        auto *item = new QListWidgetItem("No results found.");
+        auto *item = new QListWidgetItem(tr("No results found."));
         item->setForeground(QColor("#888"));
         _resultList->addItem(item);
         return;

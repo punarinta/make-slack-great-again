@@ -140,7 +140,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
     titleLayout->addWidget(title);
     titleLayout->addWidget(tagline);
 
-    auto *loginBtn = new QPushButton("Log in to workspace", inner);
+    auto *loginBtn = new QPushButton(tr("Log in to workspace"), inner);
     loginBtn->setFixedHeight(40);
     loginBtn->setCursor(Qt::PointingHandCursor);
     loginBtn->setStyleSheet(
@@ -242,7 +242,7 @@ QWidget *MainWindow::buildMainPage() {
     _starBtn->setFixedSize(28, 28);
     _starBtn->setFlat(true);
     _starBtn->setCursor(Qt::PointingHandCursor);
-    _starBtn->setToolTip("Star conversation");
+    _starBtn->setToolTip(tr("Star conversation"));
     _starBtn->setIconSize(QSize(15, 15));
     _starBtn->setStyleSheet(
         "QPushButton { border-radius: 4px; }"
@@ -255,7 +255,7 @@ QWidget *MainWindow::buildMainPage() {
     searchBtn->setFixedSize(32, 32);
     searchBtn->setFlat(true);
     searchBtn->setCursor(Qt::PointingHandCursor);
-    searchBtn->setToolTip("Search messages");
+    searchBtn->setToolTip(tr("Search messages"));
     searchBtn->setIconSize(QSize(16, 16));
     searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), QColor("#616061")));
     searchBtn->setStyleSheet(
@@ -438,10 +438,10 @@ void MainWindow::showLoggedOut() {
 bool MainWindow::runLoginFlow() {
     const auto appCfg = TokenStore::loadApp();
     if (appCfg.clientId.isEmpty()) {
-        QMessageBox::critical(this, "Missing credentials",
-            "App credentials are not configured.\n\n"
-            "Copy credentials.cmake.example to credentials.cmake, "
-            "fill in your Slack app credentials, and rebuild.");
+        QMessageBox::critical(this, tr("Missing credentials"),
+            tr("App credentials are not configured.\n\n"
+               "Copy credentials.cmake.example to credentials.cmake, "
+               "fill in your Slack app credentials, and rebuild."));
         return false;
     }
 
@@ -459,7 +459,7 @@ bool MainWindow::runLoginFlow() {
     });
     QObject::connect(&flow, &OAuthFlow::failed,
                      [&](const QString &reason) {
-        QMessageBox::critical(this, "Login failed", reason);
+        QMessageBox::critical(this, tr("Login failed"), reason);
         loop.quit();
     });
 
@@ -529,14 +529,14 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
     const auto *sender = _sessionOwner->findUser(ev.msg.author);
     const QString senderName = sender
         ? (sender->displayName.isEmpty() ? sender->name : sender->displayName)
-        : "Someone";
+        : tr("Someone");
 
     QString title, body;
     if (conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)) {
         title = senderName;
         body  = ev.msg.text.text;
     } else {
-        const QString convName = conv ? ("#" + conv->name) : "a channel";
+        const QString convName = conv ? ("#" + conv->name) : tr("a channel");
         title = convName;
         body  = senderName + ": " + ev.msg.text.text;
     }
@@ -590,8 +590,8 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
     auto *menu = new ContextMenu(this);
     menu->addItem(
         creds.teamName.isEmpty()
-            ? "Log out"
-            : QString("Log out from %1").arg(creds.teamName),
+            ? tr("Log out")
+            : tr("Log out from %1").arg(creds.teamName),
         [this, teamId] { logoutWorkspace(teamId); },
         /*destructive=*/true
     );
@@ -621,13 +621,13 @@ void MainWindow::setupTray() {
     }
 
     menu->addSeparator();
-    menu->addAction("Show", this, [this] {
+    menu->addAction(tr("Show"), this, [this] {
         show();
         raise();
         activateWindow();
     });
     menu->addSeparator();
-    menu->addAction("Quit", qApp, &QApplication::quit);
+    menu->addAction(tr("Quit"), qApp, &QApplication::quit);
     _trayIcon->setContextMenu(menu);
 
     connect(_trayIcon, &QSystemTrayIcon::activated,
@@ -746,7 +746,7 @@ void MainWindow::openConversation(int row) {
     if (conv) {
         if (isDm) {
             if (!name.isEmpty())
-                description = "This is the beginning of your direct message history with " + name + ".";
+                description = tr("This is the beginning of your direct message history with %1.").arg(name);
         } else if (!conv->description.isEmpty()) {
             description = conv->description;
         }
@@ -756,7 +756,7 @@ void MainWindow::openConversation(int row) {
     _messageList->openConversation(_currentConvId, displayName, description);
     _composer->setEnabled(true);
     _composer->setPlaceholderText(
-        displayName.isEmpty() ? "Message" : QString("Message %1").arg(displayName));
+        displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName));
 
     _sessionOwner->saveLastConv(_currentConvId, displayName);
     updateHeaderForConv(_currentConvId);

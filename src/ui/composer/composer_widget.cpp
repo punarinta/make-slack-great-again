@@ -22,17 +22,9 @@ static constexpr int kMinEditHeight = 40;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// No stylesheet set here — the toolbar parent stylesheet drives all colors.
-static QToolButton *makeToolBtn(const QString &svgPath, const QString &tooltip, QWidget *parent) {
-    auto *btn = new QToolButton(parent);
-    btn->setToolTip(tooltip);
-    btn->setFixedSize(26, 24);
-    btn->setIconSize(QSize(14, 14));
-    btn->setIcon(svgIcon(svgPath, QSize(14, 14), QColor("#888888")));
-    btn->setCursor(Qt::PointingHandCursor);
-    btn->setFocusPolicy(Qt::NoFocus);
-    return btn;
-}
+static constexpr QSize kToolIconSize{18, 18};
+static const QColor kIconColorNormal{"#888888"};
+static const QColor kIconColorFocused{"#505050"};
 
 static QFrame *makeVSep(QWidget *parent) {
     auto *sep = new QFrame(parent);
@@ -66,18 +58,31 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     _toolbar->setFixedHeight(32);
     auto *tbLayout = new QHBoxLayout(_toolbar);
     tbLayout->setContentsMargins(8, 3, 8, 3);
-    tbLayout->setSpacing(1);
+    tbLayout->setSpacing(5);
 
-    auto *boldBtn   = makeToolBtn(":/ui/bold.svg",          "Bold (*text*)",          _toolbar);
-    auto *italicBtn = makeToolBtn(":/ui/italic.svg",        "Italic (_text_)",        _toolbar);
-    auto *underBtn  = makeToolBtn(":/ui/underline.svg",     "Underline",              _toolbar);
-    auto *strikeBtn = makeToolBtn(":/ui/strikethrough.svg", "Strikethrough (~text~)", _toolbar);
-    auto *linkBtn   = makeToolBtn(":/ui/link.svg",          "Link",                   _toolbar);
-    auto *olBtn     = makeToolBtn(":/ui/list-ordered.svg",  "Ordered list",           _toolbar);
-    auto *ulBtn     = makeToolBtn(":/ui/list.svg",          "Bullet list",            _toolbar);
-    auto *bqBtn     = makeToolBtn(":/ui/quote.svg",         "Blockquote",             _toolbar);
-    auto *codeBtn   = makeToolBtn(":/ui/code.svg",          "Inline code (`code`)",   _toolbar);
-    auto *snipBtn   = makeToolBtn(":/ui/braces.svg",        "Code block",             _toolbar);
+    // Creates a toolbar icon button and registers it for recoloring on focus.
+    auto makeToolBtn = [&](const QString &svgPath, const QString &tooltip) {
+        auto *btn = new QToolButton(_toolbar);
+        btn->setToolTip(tooltip);
+        btn->setFixedSize(26, 26);
+        btn->setIconSize(kToolIconSize);
+        btn->setIcon(svgIcon(svgPath, kToolIconSize, kIconColorNormal));
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setFocusPolicy(Qt::NoFocus);
+        _iconBtns.append({btn, svgPath});
+        return btn;
+    };
+
+    auto *boldBtn   = makeToolBtn(":/ui/bold.svg",          tr("Bold (*text*)"));
+    auto *italicBtn = makeToolBtn(":/ui/italic.svg",        tr("Italic (_text_)"));
+    auto *underBtn  = makeToolBtn(":/ui/underline.svg",     tr("Underline"));
+    auto *strikeBtn = makeToolBtn(":/ui/strikethrough.svg", tr("Strikethrough (~text~)"));
+    auto *linkBtn   = makeToolBtn(":/ui/link.svg",          tr("Link"));
+    auto *olBtn     = makeToolBtn(":/ui/list-ordered.svg",  tr("Ordered list"));
+    auto *ulBtn     = makeToolBtn(":/ui/list.svg",          tr("Bullet list"));
+    auto *bqBtn     = makeToolBtn(":/ui/quote.svg",         tr("Blockquote"));
+    auto *codeBtn   = makeToolBtn(":/ui/code.svg",          tr("Inline code (`code`)"));
+    auto *snipBtn   = makeToolBtn(":/ui/braces.svg",        tr("Code block"));
 
     tbLayout->addWidget(boldBtn);
     tbLayout->addWidget(italicBtn);
@@ -98,7 +103,7 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     // ── Text input ────────────────────────────────────────────────────────────
     _edit = new QTextEdit(_box);
     _edit->setObjectName("composerEdit");
-    _edit->setPlaceholderText("Message #channel");
+    _edit->setPlaceholderText(tr("Message #channel"));
     _edit->setMinimumHeight(kMinEditHeight);
     _edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     _edit->setAcceptRichText(false);
@@ -127,11 +132,12 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     bbLayout->setContentsMargins(8, 3, 4, 3);
     bbLayout->setSpacing(4);
 
+    static constexpr QSize kAttachIconSize{19, 19};
     auto *attachBtn = new QToolButton(bottomBar);
-    attachBtn->setToolTip("Attach file");
+    attachBtn->setToolTip(tr("Attach file"));
     attachBtn->setFixedSize(26, 26);
-    attachBtn->setIconSize(QSize(15, 15));
-    attachBtn->setIcon(svgIcon(":/ui/paperclip.svg", QSize(15, 15), QColor("#616061")));
+    attachBtn->setIconSize(kAttachIconSize);
+    attachBtn->setIcon(svgIcon(":/ui/paperclip.svg", kAttachIconSize, kIconColorNormal));
     attachBtn->setCursor(Qt::PointingHandCursor);
     attachBtn->setFocusPolicy(Qt::NoFocus);
     attachBtn->setStyleSheet(
@@ -143,13 +149,14 @@ ComposerWidget::ComposerWidget(QWidget *parent)
         "QToolButton:hover   { background: #E8E8E8; }"
         "QToolButton:pressed { background: #E0E0E0; }"
     );
+    _iconBtns.append({attachBtn, ":/ui/paperclip.svg"});
     connect(attachBtn, &QToolButton::clicked, this, [this] {
-        const QString path = QFileDialog::getOpenFileName(this, "Attach File");
+        const QString path = QFileDialog::getOpenFileName(this, tr("Attach File"));
         if (!path.isEmpty()) emit uploadRequested(path);
     });
 
-    auto *emojiBtn   = makeToolBtn(":/ui/smile.svg",   "Emoji",   bottomBar);
-    auto *mentionBtn = makeToolBtn(":/ui/at-sign.svg", "Mention", bottomBar);
+    auto *emojiBtn   = makeToolBtn(":/ui/smile.svg",   tr("Emoji"));
+    auto *mentionBtn = makeToolBtn(":/ui/at-sign.svg", tr("Mention"));
     const QString bottomBtnStyle =
         "QToolButton { border: none; border-radius: 3px; background: transparent; }"
         "QToolButton:hover { background: #E8E8E8; }";
@@ -163,15 +170,15 @@ ComposerWidget::ComposerWidget(QWidget *parent)
 
     _sendBtn = new QPushButton(bottomBar);
     _sendBtn->setFixedSize(32, 26);
-    _sendBtn->setIconSize(QSize(14, 14));
-    _sendBtn->setToolTip("Send message (Enter)");
+    _sendBtn->setIconSize(QSize(18, 18));
+    _sendBtn->setToolTip(tr("Send message (Enter)"));
     _sendBtn->setCursor(Qt::PointingHandCursor);
     _sendBtn->setFocusPolicy(Qt::NoFocus);
 
     _dropBtn = new QPushButton(bottomBar);
     _dropBtn->setFixedSize(18, 26);
-    _dropBtn->setIconSize(QSize(10, 10));
-    _dropBtn->setToolTip("Schedule send");
+    _dropBtn->setIconSize(QSize(13, 13));
+    _dropBtn->setToolTip(tr("Schedule send"));
     _dropBtn->setCursor(Qt::PointingHandCursor);
     _dropBtn->setFocusPolicy(Qt::NoFocus);
 
@@ -191,8 +198,8 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     connect(_sendBtn, &QPushButton::clicked, this, &ComposerWidget::trySend);
     connect(_dropBtn, &QPushButton::clicked, this, [this] {
         auto *menu = new QMenu(this);
-        menu->addAction("Monday at 09:00");
-        menu->addAction("Custom time…");
+        menu->addAction(tr("Monday at 09:00"));
+        menu->addAction(tr("Custom time…"));
         menu->exec(QCursor::pos());
     });
 
@@ -208,7 +215,13 @@ void ComposerWidget::setPlaceholderText(const QString &text) {
 
 // ── Private ───────────────────────────────────────────────────────────────────
 
+void ComposerWidget::recolorIcons(const QColor &color) {
+    for (auto &[btn, path] : _iconBtns)
+        btn->setIcon(svgIcon(path, btn->iconSize(), color));
+}
+
 void ComposerWidget::setFocused(bool focused) {
+    recolorIcons(focused ? kIconColorFocused : kIconColorNormal);
     const QString borderColor = focused ? "#999999" : "#DDDDDD";
     _box->setStyleSheet(QString(
         "QFrame#composerBox {"
@@ -247,9 +260,9 @@ void ComposerWidget::resizeEvent(QResizeEvent *event) {
 void ComposerWidget::updateSendState() {
     const bool active = !_edit->toPlainText().trimmed().isEmpty();
 
-    _sendBtn->setIcon(svgIcon(":/ui/send.svg", QSize(14, 14),
+    _sendBtn->setIcon(svgIcon(":/ui/send.svg", QSize(18, 18),
                                active ? Qt::white : QColor("#CCCCCC")));
-    _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(10, 10),
+    _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(13, 13),
                                active ? Qt::white : QColor("#CCCCCC")));
 
     const QString sendStyle = active

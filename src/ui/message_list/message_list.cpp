@@ -593,10 +593,10 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
     // Toolbar button clicks
     const int btn = toolbarButtonAt(event->pos());
     if (btn == 0) {
-        QMessageBox::information(this, "Add reaction", "Not implemented");
+        QMessageBox::information(this, tr("Add reaction"), tr("Not implemented"));
         return;
     } else if (btn == 1) {
-        QMessageBox::information(this, "Forward message", "Not implemented");
+        QMessageBox::information(this, tr("Forward message"), tr("Not implemented"));
         return;
     } else if (btn == 2 && _hoveredRow >= 0) {
         // "More actions" — show the styled context menu
@@ -608,34 +608,34 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         const QPoint globalPos = viewport()->mapToGlobal(moreRect.bottomLeft());
 
         auto *menu = new ContextMenu(this);
-        menu->addItem("Edit message",   "E",      [this, ts = msg.ts] {
+        menu->addItem(tr("Edit message"),   "E",      [this, ts = msg.ts] {
             Q_UNUSED(ts)
-            QMessageBox::information(this, "Edit message", "Not implemented");
+            QMessageBox::information(this, tr("Edit message"), tr("Not implemented"));
         });
         menu->addSeparator();
-        menu->addItem("Mark unread",    "U",      [this] {
-            QMessageBox::information(this, "Mark unread", "Not implemented");
+        menu->addItem(tr("Mark unread"),    "U",      [this] {
+            QMessageBox::information(this, tr("Mark unread"), tr("Not implemented"));
         });
-        menu->addItem("Remind me",      {},       [this] {
-            QMessageBox::information(this, "Remind me", "Not implemented");
+        menu->addItem(tr("Remind me"),      {},       [this] {
+            QMessageBox::information(this, tr("Remind me"), tr("Not implemented"));
         }, false, /*submenu=*/true);
-        menu->addItem("Turn off notifications for replies", {}, [this] {
-            QMessageBox::information(this, "Turn off notifications", "Not implemented");
+        menu->addItem(tr("Turn off notifications for replies"), {}, [this] {
+            QMessageBox::information(this, tr("Turn off notifications"), tr("Not implemented"));
         });
         menu->addSeparator();
-        menu->addItem("Copy link",      "L",      [this] {
-            QMessageBox::information(this, "Copy link", "Not implemented");
+        menu->addItem(tr("Copy link"),      "L",      [this] {
+            QMessageBox::information(this, tr("Copy link"), tr("Not implemented"));
         });
-        menu->addItem("Copy message",   "Ctrl+C", [this, text = msg.text.text] {
+        menu->addItem(tr("Copy message"),   "Ctrl+C", [this, text = msg.text.text] {
             QApplication::clipboard()->setText(text);
         });
         menu->addSeparator();
-        menu->addItem("Pin to channel", "P",      [this] {
-            QMessageBox::information(this, "Pin to channel", "Not implemented");
+        menu->addItem(tr("Pin to channel"), "P",      [this] {
+            QMessageBox::information(this, tr("Pin to channel"), tr("Not implemented"));
         });
         menu->addSeparator();
-        menu->addItem("Delete message…", "delete", [this] {
-            QMessageBox::information(this, "Delete message", "Not implemented");
+        menu->addItem(tr("Delete message…"), "delete", [this] {
+            QMessageBox::information(this, tr("Delete message"), tr("Not implemented"));
         }, /*destructive=*/true);
         menu->popup(globalPos);
         return;
@@ -762,13 +762,13 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     // Tooltip for the hovered toolbar button
     if (newHoveredBtn >= 0) {
-        static const char *kTips[] = { "Add reaction", "Forward message", "More actions" };
+        static const QString kTips[] = { tr("Add reaction"), tr("Forward message"), tr("More actions") };
         const int rowTop  = _tops[_hoveredRow] - scrollY;
         const int rh      = rowHeight(_hoveredRow);
         const int sep6    = needsDateSep(_hoveredRow) ? kSepH : 0;
         const QRect btnLocal = toolbarButtonRect(newHoveredBtn, rowTop + sep6, rh - sep6);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
-        _tooltip->showAbove(QString::fromUtf8(kTips[newHoveredBtn]), btnGlobal);
+        _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
     } else {
         _tooltip->hide();
     }

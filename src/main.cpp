@@ -5,7 +5,9 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QLocale>
 #include <QTextStream>
+#include <QTranslator>
 
 static void loadStyleSheet(QApplication &app) {
     QFile f(":/style.qss");
@@ -33,6 +35,13 @@ int main(int argc, char *argv[]) {
     SingleInstance singleInstance;
     if (!singleInstance.init(urlArg))
         return 0;
+
+    QTranslator translator;
+    const QString locale = QLocale::system().name(); // e.g. "fr_FR"
+    const bool loaded = translator.load(":/translations/msga_" + locale)
+                     || translator.load(":/translations/msga_" + locale.section('_', 0, 0));
+    if (loaded)
+        app.installTranslator(&translator);
 
     loadStyleSheet(app);
 

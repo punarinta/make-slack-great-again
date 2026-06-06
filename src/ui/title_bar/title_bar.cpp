@@ -165,7 +165,7 @@ void TitleBar::changeEvent(QEvent *e) {
 bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
     if (watched == _pinBtn) {
         if (e->type() == QEvent::Enter) {
-            const QString text = _pinned ? "Unpin window" : "Pin window on top";
+            const QString text = _pinned ? tr("Unpin window") : tr("Pin window on top");
             _tooltip->showAbove(text, QRect(_pinBtn->mapToGlobal(QPoint(0, 0)), _pinBtn->size()));
         } else if (e->type() == QEvent::Leave) {
             _tooltip->hide();

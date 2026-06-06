@@ -78,7 +78,7 @@ void SettingsDialog::buildPanel() {
     auto *hlay = new QHBoxLayout(header);
     hlay->setContentsMargins(20, 0, 12, 0);
 
-    auto *titleLabel = new QLabel("Settings", header);
+    auto *titleLabel = new QLabel(tr("Settings"), header);
     titleLabel->setStyleSheet(
         "font-size: 15px; font-weight: 600; color: #1D1C1D;"
         "background: transparent; border: none;");
@@ -133,8 +133,8 @@ void SettingsDialog::buildPanel() {
         "  background: #EBEBEB;"
         "}"
     );
-    _tabs->addItem("Notifications");
-    _tabs->addItem("Storage");
+    _tabs->addItem(tr("Notifications"));
+    _tabs->addItem(tr("Storage"));
     _tabs->setCurrentRow(0);
     blay->addWidget(_tabs);
 
@@ -150,15 +150,15 @@ void SettingsDialog::buildPanel() {
     nlay->setContentsMargins(24, 20, 24, 20);
     nlay->setSpacing(16);
 
-    auto *notifHeading = new QLabel("Notifications", notifPage);
+    auto *notifHeading = new QLabel(tr("Notifications"), notifPage);
     notifHeading->setStyleSheet("font-size: 14px; font-weight: 600; color: #1D1C1D;");
     nlay->addWidget(notifHeading);
 
-    _notifEnabled = new QCheckBox("Enable desktop notifications", notifPage);
+    _notifEnabled = new QCheckBox(tr("Enable desktop notifications"), notifPage);
     _notifEnabled->setStyleSheet("font-size: 13px; color: #1D1C1D;");
     nlay->addWidget(_notifEnabled);
 
-    auto *levelBox = new QGroupBox("Notify me about", notifPage);
+    auto *levelBox = new QGroupBox(tr("Notify me about"), notifPage);
     levelBox->setStyleSheet(
         "QGroupBox { font-size: 12px; color: #616061; border: none; margin-top: 4px; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 0; }");
@@ -166,8 +166,8 @@ void SettingsDialog::buildPanel() {
     levelLayout->setSpacing(6);
     levelLayout->setContentsMargins(0, 12, 0, 0);
 
-    _notifAll      = new QRadioButton("All new messages", levelBox);
-    _notifMentions = new QRadioButton("Direct messages and mentions only", levelBox);
+    _notifAll      = new QRadioButton(tr("All new messages"), levelBox);
+    _notifMentions = new QRadioButton(tr("Direct messages and mentions only"), levelBox);
     _notifAll->setStyleSheet("font-size: 13px; color: #1D1C1D;");
     _notifMentions->setStyleSheet("font-size: 13px; color: #1D1C1D;");
 
@@ -179,7 +179,7 @@ void SettingsDialog::buildPanel() {
     levelLayout->addWidget(_notifMentions);
     nlay->addWidget(levelBox);
 
-    _notifSound = new QCheckBox("Play a sound for notifications", notifPage);
+    _notifSound = new QCheckBox(tr("Play a sound for notifications"), notifPage);
     _notifSound->setStyleSheet("font-size: 13px; color: #1D1C1D;");
     nlay->addWidget(_notifSound);
 
@@ -195,7 +195,7 @@ void SettingsDialog::buildPanel() {
 
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
-    auto *saveBtn = new QPushButton("Save", notifPage);
+    auto *saveBtn = new QPushButton(tr("Save"), notifPage);
     saveBtn->setFixedHeight(34);
     saveBtn->setMinimumWidth(80);
     saveBtn->setCursor(Qt::PointingHandCursor);
@@ -222,12 +222,12 @@ void SettingsDialog::buildPanel() {
     slay->setContentsMargins(24, 20, 24, 20);
     slay->setSpacing(16);
 
-    auto *storageHeading = new QLabel("Storage", storagePage);
+    auto *storageHeading = new QLabel(tr("Storage"), storagePage);
     storageHeading->setStyleSheet("font-size: 14px; font-weight: 600; color: #1D1C1D;");
     slay->addWidget(storageHeading);
 
     auto *sizeRow = new QHBoxLayout;
-    auto *sizePrefixLabel = new QLabel("Cache size:", storagePage);
+    auto *sizePrefixLabel = new QLabel(tr("Cache size:"), storagePage);
     sizePrefixLabel->setStyleSheet("font-size: 13px; color: #616061;");
     sizeRow->addWidget(sizePrefixLabel);
 
@@ -238,8 +238,8 @@ void SettingsDialog::buildPanel() {
     slay->addLayout(sizeRow);
 
     auto *cacheDesc = new QLabel(
-        "Conversations, user names, message history, and image thumbnails\n"
-        "stored locally to speed up startup.",
+        tr("Conversations, user names, message history, and image thumbnails\n"
+           "stored locally to speed up startup."),
         storagePage);
     cacheDesc->setStyleSheet("font-size: 12px; color: #616061;");
     cacheDesc->setWordWrap(true);
@@ -249,7 +249,7 @@ void SettingsDialog::buildPanel() {
 
     auto *clearRow = new QHBoxLayout;
     clearRow->addStretch();
-    auto *clearBtn = new QPushButton("Clear Cache", storagePage);
+    auto *clearBtn = new QPushButton(tr("Clear Cache"), storagePage);
     clearBtn->setFixedHeight(34);
     clearBtn->setMinimumWidth(110);
     clearBtn->setCursor(Qt::PointingHandCursor);
