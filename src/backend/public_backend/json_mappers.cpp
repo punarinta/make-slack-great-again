@@ -24,6 +24,7 @@ User toUser(const QJsonObject &o) {
         .isBot         = o.value("is_bot").toBool(),
         .isActive      = false, // filled by presence poll
         .isDeactivated = o.value("deleted").toBool(),
+        .isAdmin       = o.value("is_admin").toBool() || o.value("is_owner").toBool(),
     };
 }
 

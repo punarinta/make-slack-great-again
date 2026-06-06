@@ -786,6 +786,7 @@ void MessageListWidget::openEmojiPickerForRow(int row, const QPoint &globalPos) 
 
 void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint &globalPos) {
     const bool isOwnMessage = _session && (msg.author == _session->meUserId());
+    const bool canDelete    = isOwnMessage || (_session && _session->meIsAdmin());
     const QString linkUrl   = firstLinkInMessage(msg);
 
     auto *menu = new ContextMenu(this);
@@ -835,9 +836,8 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         emit forwardMessageRequested(msg);
     }, false, false, ":/ui/share-2.svg");
 
-    menu->addSeparator();
-
-    if (isOwnMessage) {
+    if (canDelete) {
+        menu->addSeparator();
         menu->addItem(tr("Delete message…"), "Del", [this, msg] {
             auto *dlg = new DeleteMessageDialog(msg, _session, window());
             dlg->setAttribute(Qt::WA_DeleteOnClose);

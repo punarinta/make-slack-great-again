@@ -29,6 +29,9 @@ void Session::start() {
     _backend->loadMe()
         | rpl::on_next([this](UserId id) {
             setMe(std::move(id));
+            // Users may already be loaded (from cache); pick up admin flag immediately.
+            if (const User *u = findUser(_meUserId))
+                _meIsAdmin = u->isAdmin;
         }, _lifetime);
 
     // Load custom emoji map once.
@@ -49,6 +52,11 @@ void Session::start() {
         | rpl::on_next([this](std::vector<User> users) {
             _cache->saveUsers(users);
             _users = std::move(users);
+            // Update admin flag now that the full user list is available.
+            if (!_meUserId.value.isEmpty()) {
+                if (const User *u = findUser(_meUserId))
+                    _meIsAdmin = u->isAdmin;
+            }
         }, _lifetime);
 
     // Wire the backend event firehose through our hub so Session can

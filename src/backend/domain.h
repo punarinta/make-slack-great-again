@@ -52,6 +52,7 @@ struct User {
     bool    isBot         = false;
     bool    isActive      = false; // presence; polled on public path
     bool    isDeactivated = false; // Slack "deleted" flag
+    bool    isAdmin       = false; // is_admin || is_owner from users.list
     bool operator==(const User &) const = default;
 };
 
