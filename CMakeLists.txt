@@ -54,7 +54,7 @@ if(NOT lib_base_POPULATED)
     FetchContent_Populate(lib_base)
 endif()
 
-add_executable(msga
+add_executable(msga MACOSX_BUNDLE
     src/main.cpp
     src/base_stubs.cpp
 

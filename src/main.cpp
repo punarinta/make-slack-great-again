@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QFileOpenEvent>
 #include <QLocale>
 #include <QTextStream>
 #include <QTranslator>
@@ -48,6 +49,38 @@ int main(int argc, char *argv[]) {
     MainWindow window;
     QObject::connect(&singleInstance, &SingleInstance::uriReceived,
                      &window, &MainWindow::handleOAuthUri);
+
+    // On macOS, already-running apps receive URLs via QFileOpenEvent (Apple Events),
+    // not as command-line arguments. Install a filter on QApplication to catch them.
+    class UrlEventFilter : public QObject {
+    public:
+        UrlEventFilter(MainWindow *w, QObject *parent) : QObject(parent), _window(w) {}
+        bool eventFilter(QObject *, QEvent *ev) override {
+            if (ev->type() == QEvent::FileOpen) {
+                const QUrl url = static_cast<QFileOpenEvent *>(ev)->url();
+                if (url.scheme() == "msga")
+                    QMetaObject::invokeMethod(_window, "handleOAuthUri",
+                                             Qt::QueuedConnection,
+                                             Q_ARG(QUrl, url));
+            }
+            return false;
+        }
+    private:
+        MainWindow *_window;
+    };
+    app.installEventFilter(new UrlEventFilter(&window, &app));
+
+    // On macOS, clicking the dock icon when the window is hidden sends
+    // ApplicationActivate. Re-show the window in that case.
+    QObject::connect(&app, &QApplication::applicationStateChanged,
+                     &window, [&window](Qt::ApplicationState state) {
+        if (state == Qt::ApplicationActive && !window.isVisible()) {
+            window.show();
+            window.raise();
+            window.activateWindow();
+        }
+    });
+
     window.show();
     window.raise();
     window.activateWindow();
