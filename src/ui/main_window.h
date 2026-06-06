@@ -109,4 +109,10 @@ private:
     QPushButton         *_starBtn           = nullptr;
     HeaderAvatarWidget  *_headerAvatar      = nullptr;
     QNetworkAccessManager *_headerNam       = nullptr;
+
+    // Manual resize state (non-Wayland)
+    Qt::Edges _resizeEdges      = {};
+    QPoint    _resizeDragStart;
+    QRect     _resizeWinAtDrag;
+    bool      _resizeHoverCursor = false;
 };

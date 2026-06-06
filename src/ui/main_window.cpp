@@ -60,7 +60,7 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1200, 800);
     buildUi();
     updateRoundedMask();
-
+    qApp->installEventFilter(this);
 
     setupTray();
 
@@ -76,7 +76,6 @@ void MainWindow::buildUi() {
     _frame = new QWidget(this);
     _frame->setObjectName("windowFrame");
     _frame->setMouseTracking(true);
-    _frame->installEventFilter(this);
 
     _frameLayout = new QVBoxLayout(_frame);
     _frameLayout->setContentsMargins(0, 0, 0, 0);
@@ -674,21 +673,71 @@ static Qt::CursorShape cursorForEdges(Qt::Edges edges) {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
-    if (obj == _frame && !isMaximized() && !isFullScreen()) {
-        if (e->type() == QEvent::MouseButtonPress) {
-            auto *me = static_cast<QMouseEvent *>(e);
-            if (me->button() == Qt::LeftButton) {
-                const Qt::Edges edges = resizeEdgesAt(me->pos(), _frame->size());
-                if (edges) {
-                    if (auto *h = windowHandle()) h->startSystemResize(edges);
+    if (!isMaximized() && !isFullScreen()) {
+        auto *w = qobject_cast<QWidget *>(obj);
+        if (w && w->window() == this) {
+            if (e->type() == QEvent::MouseButtonPress) {
+                auto *me = static_cast<QMouseEvent *>(e);
+                if (me->button() == Qt::LeftButton && !_resizeEdges) {
+                    const QPoint fp = _frame->mapFromGlobal(me->globalPosition().toPoint());
+                    const Qt::Edges edges = resizeEdgesAt(fp, _frame->size());
+                    if (edges) {
+                        if (_resizeHoverCursor) {
+                            QGuiApplication::restoreOverrideCursor();
+                            _resizeHoverCursor = false;
+                        }
+                        if (QGuiApplication::platformName() == "wayland") {
+                            if (auto *h = windowHandle()) h->startSystemResize(edges);
+                        } else {
+                            _resizeEdges     = edges;
+                            _resizeDragStart = me->globalPosition().toPoint();
+                            _resizeWinAtDrag = geometry();
+                            _frame->grabMouse(cursorForEdges(edges));
+                        }
+                        return true;
+                    }
+                }
+            } else if (e->type() == QEvent::MouseMove) {
+                auto *me = static_cast<QMouseEvent *>(e);
+                if (_resizeEdges) {
+                    const QPoint delta = me->globalPosition().toPoint() - _resizeDragStart;
+                    QRect r = _resizeWinAtDrag;
+                    if (_resizeEdges & Qt::LeftEdge)   r.setLeft(  r.left()   + delta.x());
+                    if (_resizeEdges & Qt::RightEdge)  r.setRight( r.right()  + delta.x());
+                    if (_resizeEdges & Qt::TopEdge)    r.setTop(   r.top()    + delta.y());
+                    if (_resizeEdges & Qt::BottomEdge) r.setBottom(r.bottom() + delta.y());
+                    const QSize minS = minimumSize();
+                    if (r.width()  < minS.width())
+                        (_resizeEdges & Qt::LeftEdge) ? r.setLeft(r.right() - minS.width())   : r.setRight( r.left()  + minS.width());
+                    if (r.height() < minS.height())
+                        (_resizeEdges & Qt::TopEdge)  ? r.setTop( r.bottom()- minS.height())  : r.setBottom(r.top()   + minS.height());
+                    setGeometry(r);
                     return true;
                 }
+                const QPoint fp = _frame->mapFromGlobal(me->globalPosition().toPoint());
+                const Qt::Edges edges = resizeEdgesAt(fp, _frame->size());
+                if (edges) {
+                    if (_resizeHoverCursor)
+                        QGuiApplication::changeOverrideCursor(cursorForEdges(edges));
+                    else {
+                        QGuiApplication::setOverrideCursor(cursorForEdges(edges));
+                        _resizeHoverCursor = true;
+                    }
+                } else if (_resizeHoverCursor) {
+                    QGuiApplication::restoreOverrideCursor();
+                    _resizeHoverCursor = false;
+                }
+            } else if (e->type() == QEvent::MouseButtonRelease) {
+                auto *me = static_cast<QMouseEvent *>(e);
+                if (me->button() == Qt::LeftButton && _resizeEdges) {
+                    _resizeEdges = {};
+                    _frame->releaseMouse();
+                    return true;
+                }
+            } else if (e->type() == QEvent::Leave && obj == _frame && _resizeHoverCursor) {
+                QGuiApplication::restoreOverrideCursor();
+                _resizeHoverCursor = false;
             }
-        } else if (e->type() == QEvent::MouseMove) {
-            auto *me = static_cast<QMouseEvent *>(e);
-            _frame->setCursor(cursorForEdges(resizeEdgesAt(me->pos(), _frame->size())));
-        } else if (e->type() == QEvent::Leave) {
-            _frame->setCursor(Qt::ArrowCursor);
         }
     }
     return QMainWindow::eventFilter(obj, e);
