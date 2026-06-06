@@ -10,7 +10,7 @@
 #include <QVariantAnimation>
 #include <vector>
 
-class QNetworkAccessManager;
+class ImageCache;
 
 // Per-user info cached from setUsers().
 struct UserInfo {
@@ -24,7 +24,7 @@ struct UserInfo {
 class ConvListWidget : public QAbstractScrollArea {
     Q_OBJECT
 public:
-    explicit ConvListWidget(QWidget *parent = nullptr);
+    explicit ConvListWidget(ImageCache *imgCache, QWidget *parent = nullptr);
 
     void setConversations(std::vector<Conversation> convs);
     // Call with the full user list so DM names and avatars can be resolved.
@@ -71,9 +71,7 @@ private:
     std::vector<Conversation>        _convs;
     // userId → {displayName, avatarUrl}, rebuilt on setUsers().
     QHash<QString, UserInfo>         _userInfos;
-    // avatarUrl → scaled pixmap; empty QPixmap = in-flight sentinel.
-    mutable QHash<QString, QPixmap>  _avatarCache;
-    QNetworkAccessManager           *_nam = nullptr;
+    ImageCache                       *_imgCache = nullptr;
 
     int  _hovered  = -1;
     int  _selected = -1;

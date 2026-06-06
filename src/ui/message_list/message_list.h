@@ -10,13 +10,13 @@
 #include <QSet>
 #include <QHash>
 #include <QPixmap>
-#include <QNetworkAccessManager>
 
 #include <memory>
 #include <vector>
 
 class QTextDocument;
 class Session;
+class ImageCache;
 class PopupTooltip;
 class EmojiPickerPopup;
 
@@ -45,7 +45,7 @@ struct MessageItem {
 class MessageListWidget : public QAbstractScrollArea {
     Q_OBJECT
 public:
-    explicit MessageListWidget(Session *session, QWidget *parent = nullptr);
+    explicit MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent = nullptr);
 
     void openConversation(ConversationId conv, const QString &convName = {}, const QString &description = {});
     // Open a thread view: loads conversations.replies and filters events accordingly.
@@ -76,6 +76,19 @@ private:
     void doMouseMove(QMouseEvent *event);
     void doMouseRelease(QMouseEvent *event);
     void doMouseLeave();
+
+    // doMousePress sub-handlers — each returns true if it consumed the event.
+    bool tryHandleScrollbarPress(const QPoint &pos);
+    bool tryHandleToolbarPress(const QPoint &pos);
+    bool tryHandleReactionPress(const QPoint &pos);
+    bool tryHandleDismissPress(const QPoint &pos);
+    bool tryHandleReplyBarPress(const QPoint &pos);
+    bool tryHandleLinkPress(const QPoint &pos);
+    bool tryHandleFileChipPress(const QPoint &pos);
+
+    // Toolbar sub-actions called from tryHandleToolbarPress.
+    void openEmojiPickerForRow(int row, const QPoint &globalPos);
+    void showMessageContextMenu(const Message &msg, const QPoint &globalPos);
     bool isOnScrollThumb(int vpY) const;
 
     // Data model
@@ -213,11 +226,11 @@ private:
     QVariantAnimation _scrollAnim;
     void smoothScrollTo(int target);
 
-    // Image cache: URL → scaled QPixmap (populated by async downloads)
-    mutable QHash<QString,QPixmap> _imageCache;
-    // Avatar cache: avatarUrl → QPixmap; empty sentinel = in-flight.
-    mutable QHash<QString,QPixmap> _avatarCache;
-    QNetworkAccessManager         *_avatarNam = nullptr;
+    // Public-URL images (avatars, attachment previews, favicons) — owned by the caller,
+    // shared across widgets. Emits loaded() when a download completes.
+    ImageCache                    *_imgCache  = nullptr;
+    // Auth-required file image downloads (Slack CDN, private URLs via session token).
+    mutable QHash<QString,QPixmap> _fileImages;
 
     // New-message highlight: ts → elapsed ms since arrival (driven by _highlightTimer)
     QSet<QString>      _newMsgTs;

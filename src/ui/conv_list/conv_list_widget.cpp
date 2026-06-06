@@ -3,6 +3,7 @@
 #include "conv_list_widget.h"
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
+#include "ui/image_cache.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -12,13 +13,10 @@
 #include <QWheelEvent>
 #include <QFontMetrics>
 #include <QApplication>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 
-ConvListWidget::ConvListWidget(QWidget *parent)
+ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     : QAbstractScrollArea(parent)
-    , _nam(new QNetworkAccessManager(this))
+    , _imgCache(imgCache)
 {
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -38,6 +36,10 @@ ConvListWidget::ConvListWidget(QWidget *parent)
         _selT   = 1.0;
         _selFrom = -1;
     });
+
+    if (_imgCache) {
+        connect(_imgCache, &ImageCache::loaded, this, [this]{ viewport()->update(); });
+    }
 }
 
 // Returns true if s looks like a raw Slack user ID (e.g. "U0A1B2C3D").
@@ -259,6 +261,7 @@ void ConvListWidget::updateScrollRange() {
 // ── Avatar downloads ──────────────────────────────────────────────────────────
 
 void ConvListWidget::triggerMissingAvatarDownloads() {
+    if (!_imgCache) return;
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
     const int first   = scrollY / kRowH;
@@ -271,29 +274,16 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
         const auto infoIt = _userInfos.constFind(conv.dmUser->value);
         if (infoIt == _userInfos.constEnd()) continue;
         const QString &url = infoIt->avatarUrl;
-        if (url.isEmpty() || _avatarCache.contains(url)) continue;
-
-        _avatarCache.insert(url, {}); // sentinel — prevents double download
-        auto *reply = _nam->get(QNetworkRequest(QUrl(url)));
-        connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
-            reply->deleteLater();
-            if (reply->error() == QNetworkReply::NoError) {
-                QPixmap px;
-                if (px.loadFromData(reply->readAll()) && !px.isNull())
-                    _avatarCache[url] = px;
-            }
-            viewport()->update();
-        });
+        if (!url.isEmpty())
+            _imgCache->get(url); // triggers download if not cached
     }
 }
 
 void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &userId) const {
     const auto infoIt = _userInfos.constFind(userId);
     const QString url = (infoIt != _userInfos.constEnd()) ? infoIt->avatarUrl : QString{};
-    const auto cacheIt = _avatarCache.constFind(url);
-    const bool hasPixmap = !url.isEmpty()
-                           && cacheIt != _avatarCache.constEnd()
-                           && !cacheIt->isNull();
+    const QPixmap cached = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap{};
+    const bool hasPixmap = !cached.isNull();
 
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
@@ -303,7 +293,7 @@ void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &user
         clip.addRoundedRect(QRectF(rect), kAvatarRadius, kAvatarRadius);
         p.setClipPath(clip);
         const qreal dpr = p.device()->devicePixelRatioF();
-        QPixmap scaled = cacheIt->scaled(
+        QPixmap scaled = cached.scaled(
             rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
         scaled.setDevicePixelRatio(dpr);
         p.drawPixmap(rect, scaled);

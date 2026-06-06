@@ -5,6 +5,7 @@
 #include "session/session.h"
 #include "backend/backend.h"
 #include "ui/theme.h"
+#include "ui/image_cache.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
@@ -25,8 +26,6 @@
 #include <QDesktopServices>
 #include <QClipboard>
 #include <QMessageBox>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QUrl>
 #include <QTimer>
 #include <QCursor>
@@ -36,10 +35,10 @@
 
 // ── MessageListWidget ─────────────────────────────────────────────────────────
 
-MessageListWidget::MessageListWidget(Session *session, QWidget *parent)
+MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent)
     : QAbstractScrollArea(parent)
     , _session(session)
-    , _avatarNam(new QNetworkAccessManager(this))
+    , _imgCache(imgCache)
 {
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -71,6 +70,17 @@ MessageListWidget::MessageListWidget(Session *session, QWidget *parent)
         _newMsgTs.clear();
         viewport()->update();
     });
+
+    if (_imgCache) {
+        connect(_imgCache, &ImageCache::loaded, this, [this] {
+            const bool wasAtBottom =
+                verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+            rebuildLayout();
+            if (wasAtBottom)
+                verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+            viewport()->update();
+        });
+    }
 }
 
 void MessageListWidget::smoothScrollTo(int target) {
@@ -211,12 +221,12 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
             for (const auto &f : item.msg.files) {
                 if (!f.isImage()) continue;
                 const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-                if (_imageCache.contains(url)) continue;
+                if (_fileImages.contains(url)) continue;
                 const auto data = _session->cachedImage(url);
                 if (data.isEmpty()) continue;
                 QPixmap px;
                 if (px.loadFromData(data) && !px.isNull())
-                    _imageCache[url] = px;
+                    _fileImages[url] = px;
             }
         }
         return true;
@@ -516,8 +526,8 @@ int MessageListWidget::rowHeight(int index) const {
         anyImgFiles = true;
         const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
         const int imgGap = hasContentAboveImages ? kImgGap : 0;
-        auto it = _imageCache.find(imgUrl);
-        if (it != _imageCache.end() && !it->isNull()) {
+        auto it = _fileImages.constFind(imgUrl);
+        if (it != _fileImages.constEnd() && !it->isNull()) {
             const auto &px = it.value();
             const double scale = std::min(1.0,
                 std::min((double)kImgMaxW / px.width(),
@@ -576,12 +586,12 @@ void MessageListWidget::rebuildLayout() {
 
 int MessageListWidget::attachImageH(const Attachment &att) const {
     const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
-    if (imgUrl.isEmpty()) return 0;
-    auto it = _imageCache.constFind(imgUrl);
-    if (it == _imageCache.constEnd() || it->isNull()) return 0;
+    if (imgUrl.isEmpty() || !_imgCache) return 0;
+    const QPixmap px = _imgCache->get(imgUrl);
+    if (px.isNull()) return 0;
     const double scale = std::min(1.0,
-        std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height()));
-    return kImgGap + (int)(it->height() * scale);
+        std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height()));
+    return kImgGap + (int)(px.height() * scale);
 }
 
 int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
@@ -731,209 +741,210 @@ static QString firstLinkInMessage(const Message &msg) {
 
 void MessageListWidget::doMousePress(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton) return;
+    if (tryHandleScrollbarPress(event->pos())) return;
+    if (tryHandleToolbarPress(event->pos())) return;
+    if (tryHandleReactionPress(event->pos())) return;
+    if (tryHandleDismissPress(event->pos())) return;
+    if (tryHandleReplyBarPress(event->pos())) return;
+    if (tryHandleLinkPress(event->pos())) return;
+    tryHandleFileChipPress(event->pos());
+}
 
-    // Scrollbar thumb drag
+bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
-    if (event->pos().x() >= sbHitX && isOnScrollThumb(event->pos().y())) {
-        _sbDragging        = true;
-        _sbDragStartY      = event->pos().y();
-        _sbDragStartScroll = verticalScrollBar()->value();
-        viewport()->setCursor(Qt::SizeVerCursor);
-        return;
-    }
+    if (pos.x() < sbHitX || !isOnScrollThumb(pos.y())) return false;
+    _sbDragging        = true;
+    _sbDragStartY      = pos.y();
+    _sbDragStartScroll = verticalScrollBar()->value();
+    viewport()->setCursor(Qt::SizeVerCursor);
+    return true;
+}
 
-    // Toolbar button clicks
-    const int btn = toolbarButtonAt(event->pos());
-    if (btn == 0 && _hoveredRow >= 0) {
-        // "Add reaction" — show emoji picker above the button
-        const auto &msg = _items[_hoveredRow].msg;
-        const int scrollY = verticalScrollBar()->value();
-        const int rowTop  = _tops[_hoveredRow] - scrollY;
-        const int rh      = rowHeight(_hoveredRow);
-        const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
-        const QRect btnRect = toolbarButtonRect(0, rowTop + sep, rh - sep);
-        const QPoint globalPos = viewport()->mapToGlobal(btnRect.bottomLeft());
-        _emojiPicker->open(globalPos);
-        const Ts ts = msg.ts;
-        const ConversationId conv = _currentConv;
-        connect(_emojiPicker, &EmojiPickerPopup::emojiSelected,
-                this, [this, ts, conv](const QString &name) {
-            if (!_session) return;
-            _session->backend()->addReaction(conv, ts, name);
-            // Optimistic: add reaction locally so it appears immediately.
-            const int idx = findByTs(ts);
-            if (idx >= 0) {
-                const UserId me = _session->meUserId();
-                auto &reactions = _items[idx].msg.reactions;
-                bool found = false;
-                for (auto &r : reactions) {
-                    if (r.name == name) {
-                        if (std::find(r.users.begin(), r.users.end(), me) == r.users.end()) {
-                            r.count++;
-                            r.users.push_back(me);
-                        }
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) reactions.push_back({name, 1, {me}});
-                rebuildLayout();
-                viewport()->update();
-            }
-        }, Qt::SingleShotConnection);
-        return;
-    } else if (btn == 1 && _hoveredRow >= 0) {
-        // "Forward message"
-        emit forwardMessageRequested(_items[_hoveredRow].msg);
-        return;
-    } else if (btn == 2 && _hoveredRow >= 0) {
-        // "More actions" — show the styled context menu
-        const auto &msg = _items[_hoveredRow].msg;
-        const int scrollY = verticalScrollBar()->value();
-        const int rowTop  = _tops[_hoveredRow] - scrollY;
-        const int rh      = rowHeight(_hoveredRow);
-        const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
-        const QRect moreRect = toolbarButtonRect(2, rowTop + sep, rh - sep);
-        const QPoint globalPos = viewport()->mapToGlobal(moreRect.bottomLeft());
+bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
+    const int btn = toolbarButtonAt(pos);
+    if (btn < 0 || _hoveredRow < 0) return false;
 
-        const bool isOwnMessage = _session && (msg.author == _session->meUserId());
-        const QString linkUrl = firstLinkInMessage(msg);
+    const auto &msg   = _items[_hoveredRow].msg;
+    const int scrollY = verticalScrollBar()->value();
+    const int rowTop  = _tops[_hoveredRow] - scrollY;
+    const int rh      = rowHeight(_hoveredRow);
+    const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
+    const QRect btnRect   = toolbarButtonRect(btn, rowTop + sep, rh - sep);
+    const QPoint globalPos = viewport()->mapToGlobal(btnRect.bottomLeft());
 
-        auto *menu = new ContextMenu(this);
+    if (btn == 0)
+        openEmojiPickerForRow(_hoveredRow, globalPos);
+    else if (btn == 1)
+        emit forwardMessageRequested(msg);
+    else if (btn == 2)
+        showMessageContextMenu(msg, globalPos);
+    return true;
+}
 
-        if (isOwnMessage) {
-            menu->addItem(tr("Edit message"), "E", [this, ts = msg.ts,
-                                                    raw = msg.rawText,
-                                                    files = msg.files] {
-                emit editMessageRequested(ts, raw, files);
-            }, false, false, ":/ui/edit-3.svg");
-            menu->addSeparator();
-        }
-
-        if (!linkUrl.isEmpty()) {
-            menu->addItem(tr("Copy link"), "L", [linkUrl] {
-                Clipboard::setText(linkUrl);
-            }, false, false, ":/ui/link.svg");
-        }
-
-        menu->addItem(tr("Copy message"), "Ctrl+C", [text = msg.text.text] {
-            Clipboard::setText(text);
-        }, false, false, ":/ui/copy.svg");
-
-        menu->addSeparator();
-
-        // Pin / Unpin
-        if (msg.pinned) {
-            menu->addItem(tr("Unpin from channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
-                if (_session) _session->backend()->unpinMessage(conv, ts);
-                // Optimistic UI update
-                const int idx = findByTs(ts);
-                if (idx >= 0) { _items[idx].msg.pinned = false; viewport()->update(); }
-            }, false, false, ":/ui/pin-off.svg");
-        } else {
-            menu->addItem(tr("Pin to channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
-                if (_session) _session->backend()->pinMessage(conv, ts);
-                // Optimistic UI update
-                const int idx = findByTs(ts);
-                if (idx >= 0) {
-                    _items[idx].msg.pinned = true;
-                    _items[idx].msg.pinnedBy = _session->meUserId();
-                    viewport()->update();
-                }
-            }, false, false, ":/ui/pin.svg");
-        }
-
-        menu->addSeparator();
-
-        menu->addItem(tr("Forward message"), {}, [this, msg] {
-            emit forwardMessageRequested(msg);
-        }, false, false, ":/ui/share-2.svg");
-
-        menu->addSeparator();
-
-        if (isOwnMessage) {
-            menu->addItem(tr("Delete message…"), "Del", [this, msg] {
-                auto *dlg = new DeleteMessageDialog(msg, _session, window());
-                dlg->setAttribute(Qt::WA_DeleteOnClose);
-                connect(dlg, &QDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
-                    if (_session) _session->backend()->deleteMessage(conv, ts);
-                });
-                dlg->exec();
-            }, /*destructive=*/true, false, ":/ui/trash-2.svg");
-        }
-
-        menu->popup(globalPos);
-        return;
-    }
-
-    // Reaction chip click — toggle or add
-    const auto [reactMsgIdx, reactIdx] = reactionAt(event->pos());
-    if (reactMsgIdx >= 0 && _session) {
-        const QString emojiName = _items[reactMsgIdx].msg.reactions[reactIdx].name;
-        const Ts reactTs = _items[reactMsgIdx].msg.ts;
-        auto &reactions = _items[reactMsgIdx].msg.reactions;
-        const UserId me = _session->meUserId();
-        const bool already = std::any_of(reactions[reactIdx].users.begin(),
-                                         reactions[reactIdx].users.end(),
-                                         [&me](const UserId &u){ return u == me; });
-        if (already) {
-            _session->backend()->removeReaction(_currentConv, reactTs, emojiName);
-            for (auto it = reactions.begin(); it != reactions.end(); ++it) {
-                if (it->name == emojiName) {
-                    it->count = std::max(0, it->count - 1);
-                    it->users.erase(std::remove(it->users.begin(), it->users.end(), me),
-                                    it->users.end());
-                    if (it->count == 0) reactions.erase(it);
-                    break;
-                }
-            }
-        } else {
-            _session->backend()->addReaction(_currentConv, reactTs, emojiName);
+void MessageListWidget::openEmojiPickerForRow(int row, const QPoint &globalPos) {
+    const Ts ts          = _items[row].msg.ts;
+    const ConversationId conv = _currentConv;
+    _emojiPicker->open(globalPos);
+    connect(_emojiPicker, &EmojiPickerPopup::emojiSelected,
+            this, [this, ts, conv](const QString &name) {
+        if (!_session) return;
+        _session->backend()->addReaction(conv, ts, name);
+        // Optimistic: add reaction locally so it appears immediately.
+        const int idx = findByTs(ts);
+        if (idx >= 0) {
+            const UserId me = _session->meUserId();
+            auto &reactions = _items[idx].msg.reactions;
             bool found = false;
-            for (auto &rx : reactions) {
-                if (rx.name == emojiName) {
-                    rx.count++;
-                    rx.users.push_back(me);
+            for (auto &r : reactions) {
+                if (r.name == name) {
+                    if (std::find(r.users.begin(), r.users.end(), me) == r.users.end()) {
+                        r.count++;
+                        r.users.push_back(me);
+                    }
                     found = true;
                     break;
                 }
             }
-            if (!found) reactions.push_back({emojiName, 1, {me}});
+            if (!found) reactions.push_back({name, 1, {me}});
+            rebuildLayout();
+            viewport()->update();
         }
-        rebuildLayout();
-        viewport()->update();
-        return;
+    }, Qt::SingleShotConnection);
+}
+
+void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint &globalPos) {
+    const bool isOwnMessage = _session && (msg.author == _session->meUserId());
+    const QString linkUrl   = firstLinkInMessage(msg);
+
+    auto *menu = new ContextMenu(this);
+
+    if (isOwnMessage) {
+        menu->addItem(tr("Edit message"), "E", [this, ts = msg.ts,
+                                                raw = msg.rawText,
+                                                files = msg.files] {
+            emit editMessageRequested(ts, raw, files);
+        }, false, false, ":/ui/edit-3.svg");
+        menu->addSeparator();
     }
 
-    // Dismiss attachment click
-    const auto [dMsgIdx, dAi] = dismissButtonAt(event->pos());
-    if (dMsgIdx >= 0) {
-        const auto &ts = _items[dMsgIdx].msg.ts;
-        _dismissedAttachments.insert(ts + "/" + QString::number(dAi));
-        rebuildLayout();
-        viewport()->update();
-        return;
+    if (!linkUrl.isEmpty()) {
+        menu->addItem(tr("Copy link"), "L", [linkUrl] {
+            Clipboard::setText(linkUrl);
+        }, false, false, ":/ui/link.svg");
     }
 
-    // Reply bar click → open thread panel
-    const int replyIdx = replyBarIndexAt(event->pos());
-    if (replyIdx >= 0) {
-        emit threadClicked(_currentConv, _items[replyIdx].msg.ts);
-        return;
+    menu->addItem(tr("Copy message"), "Ctrl+C", [text = msg.text.text] {
+        Clipboard::setText(text);
+    }, false, false, ":/ui/copy.svg");
+
+    menu->addSeparator();
+
+    if (msg.pinned) {
+        menu->addItem(tr("Unpin from channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
+            if (_session) _session->backend()->unpinMessage(conv, ts);
+            const int idx = findByTs(ts);
+            if (idx >= 0) { _items[idx].msg.pinned = false; viewport()->update(); }
+        }, false, false, ":/ui/pin-off.svg");
+    } else {
+        menu->addItem(tr("Pin to channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
+            if (_session) _session->backend()->pinMessage(conv, ts);
+            const int idx = findByTs(ts);
+            if (idx >= 0) {
+                _items[idx].msg.pinned = true;
+                _items[idx].msg.pinnedBy = _session->meUserId();
+                viewport()->update();
+            }
+        }, false, false, ":/ui/pin.svg");
     }
 
-    const QString anchor = anchorAt(event->pos());
-    if (!anchor.isEmpty()) {
-        QDesktopServices::openUrl(QUrl(anchor));
-        return;
+    menu->addSeparator();
+
+    menu->addItem(tr("Forward message"), {}, [this, msg] {
+        emit forwardMessageRequested(msg);
+    }, false, false, ":/ui/share-2.svg");
+
+    menu->addSeparator();
+
+    if (isOwnMessage) {
+        menu->addItem(tr("Delete message…"), "Del", [this, msg] {
+            auto *dlg = new DeleteMessageDialog(msg, _session, window());
+            dlg->setAttribute(Qt::WA_DeleteOnClose);
+            connect(dlg, &QDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
+                if (_session) _session->backend()->deleteMessage(conv, ts);
+            });
+            dlg->exec();
+        }, /*destructive=*/true, false, ":/ui/trash-2.svg");
     }
 
-    const File *f = fileChipAt(event->pos());
-    if (f) {
-        const QString url = f->permalink.isEmpty() ? f->urlPrivate : f->permalink;
-        if (!url.isEmpty())
-            QDesktopServices::openUrl(QUrl(url));
+    menu->popup(globalPos);
+}
+
+bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
+    const auto [reactMsgIdx, reactIdx] = reactionAt(pos);
+    if (reactMsgIdx < 0 || !_session) return false;
+
+    const QString emojiName = _items[reactMsgIdx].msg.reactions[reactIdx].name;
+    const Ts reactTs        = _items[reactMsgIdx].msg.ts;
+    auto &reactions         = _items[reactMsgIdx].msg.reactions;
+    const UserId me         = _session->meUserId();
+    const bool already      = std::any_of(reactions[reactIdx].users.begin(),
+                                          reactions[reactIdx].users.end(),
+                                          [&me](const UserId &u){ return u == me; });
+    if (already) {
+        _session->backend()->removeReaction(_currentConv, reactTs, emojiName);
+        for (auto it = reactions.begin(); it != reactions.end(); ++it) {
+            if (it->name == emojiName) {
+                it->count = std::max(0, it->count - 1);
+                it->users.erase(std::remove(it->users.begin(), it->users.end(), me),
+                                it->users.end());
+                if (it->count == 0) reactions.erase(it);
+                break;
+            }
+        }
+    } else {
+        _session->backend()->addReaction(_currentConv, reactTs, emojiName);
+        bool found = false;
+        for (auto &rx : reactions) {
+            if (rx.name == emojiName) { rx.count++; rx.users.push_back(me); found = true; break; }
+        }
+        if (!found) reactions.push_back({emojiName, 1, {me}});
     }
+    rebuildLayout();
+    viewport()->update();
+    return true;
+}
+
+bool MessageListWidget::tryHandleDismissPress(const QPoint &pos) {
+    const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
+    if (dMsgIdx < 0) return false;
+    const auto &ts = _items[dMsgIdx].msg.ts;
+    _dismissedAttachments.insert(ts + "/" + QString::number(dAi));
+    rebuildLayout();
+    viewport()->update();
+    return true;
+}
+
+bool MessageListWidget::tryHandleReplyBarPress(const QPoint &pos) {
+    const int replyIdx = replyBarIndexAt(pos);
+    if (replyIdx < 0) return false;
+    emit threadClicked(_currentConv, _items[replyIdx].msg.ts);
+    return true;
+}
+
+bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
+    const QString anchor = anchorAt(pos);
+    if (anchor.isEmpty()) return false;
+    QDesktopServices::openUrl(QUrl(anchor));
+    return true;
+}
+
+bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
+    const File *f = fileChipAt(pos);
+    if (!f) return false;
+    const QString url = f->permalink.isEmpty() ? f->urlPrivate : f->permalink;
+    if (!url.isEmpty())
+        QDesktopServices::openUrl(QUrl(url));
+    return true;
 }
 
 void MessageListWidget::doMouseLeave() {

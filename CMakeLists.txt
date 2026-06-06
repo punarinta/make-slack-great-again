@@ -83,6 +83,7 @@ add_executable(msga MACOSX_BUNDLE
     src/session/session.cpp
 
     # UI
+    src/ui/image_cache.cpp
     src/ui/main_window.cpp
     src/ui/title_bar/title_bar.cpp
     src/ui/message_list/message_list.cpp

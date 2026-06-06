@@ -49,7 +49,7 @@ ThreadPanel::ThreadPanel(QWidget *parent)
     headerLayout->addWidget(closeBtn);
     layout->addWidget(header);
 
-    _msgList = new MessageListWidget(nullptr, this);
+    _msgList = new MessageListWidget(nullptr, nullptr, this);
     layout->addWidget(_msgList, 1);
 
     _composer = new ComposerWidget(this);

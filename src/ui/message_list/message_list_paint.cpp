@@ -5,6 +5,7 @@
 #include "session/session.h"
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
+#include "ui/image_cache.h"
 #include "util/emoji_font.h"
 
 #include <QPainter>
@@ -13,9 +14,6 @@
 #include <QScrollBar>
 #include <QTextDocument>
 #include <QApplication>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
@@ -178,8 +176,8 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
             anyImg = true;
             const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
             const int imgGap = hasAbove ? kImgGap : 0;
-            auto it = _imageCache.find(imgUrl);
-            if (it != _imageCache.end() && !it->isNull()) {
+            auto it = _fileImages.constFind(imgUrl);
+            if (it != _fileImages.constEnd() && !it->isNull()) {
                 const auto &px = it.value();
                 const double scale = std::min(1.0,
                     std::min((double)kImgMaxW / px.width(),
@@ -241,7 +239,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
 // ── Avatar / presence ─────────────────────────────────────────────────────────
 
 void MessageListWidget::triggerMissingAvatarDownloads() {
-    if (!_session) return;
+    if (!_session || !_imgCache) return;
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
 
@@ -252,20 +250,7 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
 
         auto *user = _session->findUser(_items[i].msg.author);
         if (!user || user->avatarUrl.isEmpty()) continue;
-        const QString &url = user->avatarUrl;
-        if (_avatarCache.contains(url)) continue;
-
-        _avatarCache.insert(url, {}); // sentinel
-        auto *reply = _avatarNam->get(QNetworkRequest(QUrl(url)));
-        connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
-            reply->deleteLater();
-            if (reply->error() == QNetworkReply::NoError) {
-                QPixmap px;
-                if (px.loadFromData(reply->readAll()) && !px.isNull())
-                    _avatarCache[url] = px;
-            }
-            viewport()->update();
-        });
+        _imgCache->get(user->avatarUrl); // triggers download if not cached
     }
 }
 
@@ -276,16 +261,16 @@ void MessageListWidget::paintAvatar(QPainter &p,
     auto *user = _session->findUser(item.msg.author);
 
     // Try to draw a real photo if cached.
-    if (user && !user->avatarUrl.isEmpty()) {
-        const auto cacheIt = _avatarCache.constFind(user->avatarUrl);
-        if (cacheIt != _avatarCache.constEnd() && !cacheIt->isNull()) {
+    if (user && !user->avatarUrl.isEmpty() && _imgCache) {
+        const QPixmap cached = _imgCache->get(user->avatarUrl);
+        if (!cached.isNull()) {
             p.save();
             p.setRenderHint(QPainter::Antialiasing);
             QPainterPath clip;
             clip.addRoundedRect(QRectF(rect), 4, 4);
             p.setClipPath(clip);
             const qreal dpr = p.device()->devicePixelRatioF();
-            QPixmap scaled = cacheIt->scaled(
+            QPixmap scaled = cached.scaled(
                 rect.size() * dpr,
                 Qt::KeepAspectRatioByExpanding,
                 Qt::SmoothTransformation);
@@ -366,18 +351,18 @@ void MessageListWidget::paintAttachments(QPainter &p,
         // Favicon: draw 16×16 to the left of the title, only if it loaded successfully.
         // We indent the text doc by 20px horizontally so the text starts right of the icon.
         int textIndent = 0;
-        if (!att.faviconUrl.isEmpty()) {
-            const auto fit = _imageCache.constFind(att.faviconUrl);
-            if (fit != _imageCache.constEnd() && !fit->isNull()) {
+        if (!att.faviconUrl.isEmpty() && _imgCache) {
+            const QPixmap fav = _imgCache->get(att.faviconUrl);
+            if (!fav.isNull()) {
                 textIndent = 20;
                 const int faviconSide = 16;
                 p.save();
                 p.setRenderHint(QPainter::SmoothPixmapTransform);
                 const qreal dpr = p.device()->devicePixelRatioF();
-                QPixmap fav = fit->scaled(QSize(faviconSide, faviconSide) * dpr,
-                                          Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                fav.setDevicePixelRatio(dpr);
-                p.drawPixmap(textX, y + 2, fav);
+                QPixmap favScaled = fav.scaled(QSize(faviconSide, faviconSide) * dpr,
+                                               Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                favScaled.setDevicePixelRatio(dpr);
+                p.drawPixmap(textX, y + 2, favScaled);
                 p.restore();
             }
         }
@@ -391,17 +376,17 @@ void MessageListWidget::paintAttachments(QPainter &p,
         }
 
         // Preview image (thumbUrl preferred over imageUrl)
-        if (imgH > 0) {
+        if (imgH > 0 && _imgCache) {
             const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
-            const auto it = _imageCache.constFind(imgUrl);
-            if (it != _imageCache.constEnd() && !it->isNull()) {
+            const QPixmap img = _imgCache->get(imgUrl);
+            if (!img.isNull()) {
                 const double scale = std::min(1.0,
-                    std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height()));
-                const int iw = (int)(it->width()  * scale);
-                const int ih = (int)(it->height() * scale);
+                    std::min((double)kImgMaxW / img.width(), (double)kImgMaxH / img.height()));
+                const int iw = (int)(img.width()  * scale);
+                const int ih = (int)(img.height() * scale);
                 p.save();
                 p.setRenderHint(QPainter::SmoothPixmapTransform);
-                p.drawPixmap(QRect(textX, y + docH + kImgGap, iw, ih), *it);
+                p.drawPixmap(QRect(textX, y + docH + kImgGap, iw, ih), img);
                 p.restore();
             }
         }
@@ -422,7 +407,7 @@ void MessageListWidget::paintFileImages(QPainter &p,
         if (!f.isImage()) continue;
         const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
 
-        auto it = _imageCache.find(imgUrl);
+        const auto it = _fileImages.constFind(imgUrl);
         if (hasAbove) y += kImgGap;
 
         // Filename label
@@ -438,7 +423,7 @@ void MessageListWidget::paintFileImages(QPainter &p,
         }
         y += kImgNameH;
 
-        if (it != _imageCache.end() && !it->isNull()) {
+        if (it != _fileImages.constEnd() && !it->isNull()) {
             const auto &px = it.value();
             const double scale = std::min(1.0,
                 std::min((double)kImgMaxW / px.width(),
@@ -484,42 +469,41 @@ void MessageListWidget::triggerMissingDownloads() {
 
         auto &item = _items[i];
 
-        // File image downloads (auth required → via session)
+        // File image downloads (auth required → via Session::downloadFile).
+        // Results stored in _fileImages (separate from public-URL _imgCache).
         if (!item.fileImgsRequested) {
             bool needsDownload = false;
             for (const auto &f : item.msg.files) {
                 if (!f.isImage()) continue;
                 const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-                if (!_imageCache.contains(url)) { needsDownload = true; break; }
+                if (!_fileImages.contains(url)) { needsDownload = true; break; }
             }
             if (needsDownload) {
                 item.fileImgsRequested = true;
                 for (const auto &f : item.msg.files) {
                     if (!f.isImage()) continue;
                     const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-                    if (_imageCache.contains(url)) continue;
+                    if (_fileImages.contains(url)) continue;
 
-                    if (_session) {
-                        const auto cached = _session->cachedImage(url);
-                        if (!cached.isEmpty()) {
-                            QPixmap px;
-                            if (px.loadFromData(cached) && !px.isNull()) {
-                                _imageCache[url] = px;
-                                rebuildLayout();
-                                viewport()->update();
-                                continue;
-                            }
+                    const auto cached = _session->cachedImage(url);
+                    if (!cached.isEmpty()) {
+                        QPixmap px;
+                        if (px.loadFromData(cached) && !px.isNull()) {
+                            _fileImages[url] = px;
+                            rebuildLayout();
+                            viewport()->update();
+                            continue;
                         }
                     }
 
-                    _imageCache[url] = QPixmap();
+                    _fileImages[url] = QPixmap(); // in-flight sentinel
                     _session->downloadFile(url, [this, url](QByteArray data) {
                         if (_session) _session->cacheImage(url, data);
                         const bool wasAtBottom =
                             verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
                         QPixmap px;
                         px.loadFromData(data);
-                        _imageCache[url] = px;
+                        _fileImages[url] = px;
                         rebuildLayout();
                         if (wasAtBottom)
                             verticalScrollBar()->setValue(verticalScrollBar()->maximum());
@@ -529,54 +513,20 @@ void MessageListWidget::triggerMissingDownloads() {
             }
         }
 
-        // Attachment preview images and favicons (public URLs → via _avatarNam)
-        if (!item.attachImgsRequested) {
+        // Attachment preview images and favicons (public CDN URLs → via shared ImageCache).
+        if (!item.attachImgsRequested && _imgCache) {
             bool needsAttach = false;
             for (const auto &att : item.msg.attachments) {
                 const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
-                if (!imgUrl.isEmpty() && !_imageCache.contains(imgUrl)) { needsAttach = true; break; }
-                if (!att.faviconUrl.isEmpty() && !_imageCache.contains(att.faviconUrl)) { needsAttach = true; break; }
+                if (!imgUrl.isEmpty())  { needsAttach = true; break; }
+                if (!att.faviconUrl.isEmpty()) { needsAttach = true; break; }
             }
             if (needsAttach) {
                 item.attachImgsRequested = true;
                 for (const auto &att : item.msg.attachments) {
-                    // Preview image
                     const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
-                    if (!imgUrl.isEmpty() && !_imageCache.contains(imgUrl)) {
-                        _imageCache[imgUrl] = QPixmap();
-                        auto *reply = _avatarNam->get(QNetworkRequest(QUrl(imgUrl)));
-                        connect(reply, &QNetworkReply::finished, this, [this, reply, imgUrl]() {
-                            reply->deleteLater();
-                            if (reply->error() == QNetworkReply::NoError) {
-                                QPixmap px;
-                                if (px.loadFromData(reply->readAll()) && !px.isNull()) {
-                                    const bool wasAtBottom =
-                                        verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                                    _imageCache[imgUrl] = px;
-                                    rebuildLayout();
-                                    if (wasAtBottom)
-                                        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-                                    viewport()->update();
-                                }
-                            }
-                        });
-                    }
-                    // Favicon (no layout change needed — serviceH is already set)
-                    if (!att.faviconUrl.isEmpty() && !_imageCache.contains(att.faviconUrl)) {
-                        const QString favUrl = att.faviconUrl;
-                        _imageCache[favUrl] = QPixmap();
-                        auto *reply = _avatarNam->get(QNetworkRequest(QUrl(favUrl)));
-                        connect(reply, &QNetworkReply::finished, this, [this, reply, favUrl]() {
-                            reply->deleteLater();
-                            if (reply->error() == QNetworkReply::NoError) {
-                                QPixmap px;
-                                if (px.loadFromData(reply->readAll()) && !px.isNull()) {
-                                    _imageCache[favUrl] = px;
-                                    viewport()->update();
-                                }
-                            }
-                        });
-                    }
+                    if (!imgUrl.isEmpty())      _imgCache->get(imgUrl);
+                    if (!att.faviconUrl.isEmpty()) _imgCache->get(att.faviconUrl);
                 }
             }
         }
@@ -770,8 +720,8 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
             if (!f.isImage()) continue;
             anyImg = true;
             const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-            auto it = _imageCache.constFind(url);
-            if (it != _imageCache.constEnd() && !it->isNull()) {
+            auto it = _fileImages.constFind(url);
+            if (it != _fileImages.constEnd() && !it->isNull()) {
                 const auto &px = it.value();
                 const double scale = std::min(1.0,
                     std::min((double)kImgMaxW / px.width(),
@@ -889,8 +839,8 @@ std::pair<int,int> MessageListWidget::reactionAt(const QPoint &viewportPos) cons
             const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
             y += hasAbove ? kImgGap : 0;
             y += kImgNameH;
-            auto it = _imageCache.constFind(url);
-            if (it != _imageCache.constEnd() && !it->isNull()) {
+            auto it = _fileImages.constFind(url);
+            if (it != _fileImages.constEnd() && !it->isNull()) {
                 const double sc = std::min(1.0,
                     std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height()));
                 y += (int)(it->height() * sc);

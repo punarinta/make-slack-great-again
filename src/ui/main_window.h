@@ -12,12 +12,12 @@
 #include <QVBoxLayout>
 #include <QSystemTrayIcon>
 #include <QPushButton>
-#include <QNetworkAccessManager>
 #include <QUrl>
 #include <memory>
 
 class Session;
 class OAuthFlow;
+class ImageCache;
 class MessageListWidget;
 class ComposerWidget;
 class ConvListWidget;
@@ -46,6 +46,11 @@ private:
     void     buildUi();
     QWidget *buildLoggedOutPage();
     QWidget *buildMainPage();    // session-agnostic; built lazily
+
+    // buildMainPage sub-builders — each sets the corresponding member variable(s).
+    QWidget *buildWorkspaceSwitcher(QWidget *parent);
+    QWidget *buildConvPanel(QWidget *parent);
+    QWidget *buildRightPanel(QWidget *parent);
 
     // Session lifecycle
     void startSession(const QString &teamId);
@@ -94,6 +99,7 @@ private:
     SettingsDialog      *_settingsDialog = nullptr;
     QWidget             *_convPanel      = nullptr;
     ConvListWidget      *_convList       = nullptr;
+    QLabel              *_convNameLabel  = nullptr;
     QSplitter           *_msgSplitter    = nullptr;
     MessageListWidget   *_messageList    = nullptr;
     ComposerWidget      *_composer       = nullptr;
@@ -107,10 +113,10 @@ private:
 
     QHash<QString, QString>     _drafts; // convId.value → unsent draft text
 
+    ImageCache          *_imgCache          = nullptr;
     QSystemTrayIcon     *_trayIcon          = nullptr;
     QPushButton         *_starBtn           = nullptr;
     HeaderAvatarWidget  *_headerAvatar      = nullptr;
-    QNetworkAccessManager *_headerNam       = nullptr;
 
     // Manual resize state (non-Wayland)
     Qt::Edges _resizeEdges      = {};

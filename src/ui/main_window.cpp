@@ -3,6 +3,7 @@
 #include "main_window.h"
 #include "theme.h"
 #include "header_avatar_widget.h"
+#include "image_cache.h"
 #include "title_bar/title_bar.h"
 #include "message_list/message_list.h"
 #include "composer/composer_widget.h"
@@ -42,10 +43,8 @@
 #include <QBitmap>
 #include <QPainter>
 #include <QPainterPath>
-#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QSettings>
 
 static constexpr int kResizeBorder = 6;
 
@@ -172,19 +171,27 @@ QWidget *MainWindow::buildLoggedOutPage() {
 }
 
 QWidget *MainWindow::buildMainPage() {
+    _imgCache = new ImageCache(this);
+
     auto *page = new QWidget;
     auto *root = new QHBoxLayout(page);
     root->setSpacing(0);
     root->setContentsMargins(0, 0, 0, 0);
 
-    // ── Workspace switcher (leftmost column) ──────────────────────
-    _switcher = new WorkspaceSwitcher(page);
+    root->addWidget(buildWorkspaceSwitcher(page));
+    root->addWidget(buildConvPanel(page));
+    root->addWidget(buildRightPanel(page), 1);
+
+    return page;
+}
+
+QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
+    _switcher = new WorkspaceSwitcher(parent);
     _switcher->setObjectName("workspaceSidebar");
     connect(_switcher, &WorkspaceSwitcher::workspaceClicked,
             this, &MainWindow::switchToWorkspace);
     connect(_switcher, &WorkspaceSwitcher::addWorkspaceClicked, this, [this] {
-        if (runLoginFlow())
-            startSession(_activeTeamId);
+        if (runLoginFlow()) startSession(_activeTeamId);
     });
     connect(_switcher, &WorkspaceSwitcher::workspaceRightClicked,
             this, &MainWindow::showWorkspaceMenu);
@@ -192,9 +199,11 @@ QWidget *MainWindow::buildMainPage() {
     _settingsDialog = new SettingsDialog(_stack);
     connect(_switcher, &WorkspaceSwitcher::settingsClicked,
             _settingsDialog, &SettingsDialog::open);
+    return _switcher;
+}
 
-    // ── Conversation panel ────────────────────────────────────────
-    _convPanel = new QWidget(page);
+QWidget *MainWindow::buildConvPanel(QWidget *parent) {
+    _convPanel = new QWidget(parent);
     _convPanel->setObjectName("convPanel");
     _convPanel->setFixedWidth(240);
 
@@ -202,20 +211,22 @@ QWidget *MainWindow::buildMainPage() {
     convLayout->setContentsMargins(0, 0, 0, 0);
     convLayout->setSpacing(0);
 
-    _convList = new ConvListWidget(_convPanel);
+    _convList = new ConvListWidget(_imgCache, _convPanel);
     _convList->setObjectName("convList");
     convLayout->addWidget(_convList);
 
     connect(_convList, &ConvListWidget::conversationSelected,
             this, &MainWindow::openConversation);
+    return _convPanel;
+}
 
-    // ── Right panel: header bar + content stack + composer ───────────
-    auto *rightPanel  = new QWidget(page);
+QWidget *MainWindow::buildRightPanel(QWidget *parent) {
+    auto *rightPanel  = new QWidget(parent);
     auto *rightLayout = new QVBoxLayout(rightPanel);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
 
-    // Header bar: conversation name + search button
+    // ── Header bar: avatar, conv name, star, search ───────────────────
     auto *msgHeader = new QWidget(rightPanel);
     msgHeader->setObjectName("msgHeader");
     msgHeader->setFixedHeight(48);
@@ -228,17 +239,15 @@ QWidget *MainWindow::buildMainPage() {
     msgHeaderLayout->setContentsMargins(16, 0, 8, 0);
     msgHeaderLayout->setSpacing(6);
 
-    // Avatar with presence dot (only visible for DM conversations)
     _headerAvatar = new HeaderAvatarWidget(msgHeader);
     _headerAvatar->setVisible(false);
     msgHeaderLayout->addWidget(_headerAvatar);
 
-    auto *convNameLabel = new QLabel("", msgHeader);
-    convNameLabel->setObjectName("convNameLabel");
-    convNameLabel->setStyleSheet("font-weight: bold; font-size: 15px; color: #1D1C1D;");
-    msgHeaderLayout->addWidget(convNameLabel, 1);
+    _convNameLabel = new QLabel("", msgHeader);
+    _convNameLabel->setObjectName("convNameLabel");
+    _convNameLabel->setStyleSheet("font-weight: bold; font-size: 15px; color: #1D1C1D;");
+    msgHeaderLayout->addWidget(_convNameLabel, 1);
 
-    // Star/unstar button
     _starBtn = new QPushButton(msgHeader);
     _starBtn->setFixedSize(28, 28);
     _starBtn->setFlat(true);
@@ -265,23 +274,21 @@ QWidget *MainWindow::buildMainPage() {
     msgHeaderLayout->addWidget(searchBtn);
     rightLayout->addWidget(msgHeader);
 
-    // Horizontal splitter: channel view (left) + thread panel (right, hidden until opened)
+    // ── Content splitter: message area (left) + thread panel (right) ──
     _msgSplitter = new QSplitter(Qt::Horizontal, rightPanel);
     _msgSplitter->setHandleWidth(1);
     _msgSplitter->setChildrenCollapsible(false);
     rightLayout->addWidget(_msgSplitter, 1);
 
-    // ── Left side: content stack (msg list / search) + channel composer ──
     auto *msgArea   = new QWidget(_msgSplitter);
     auto *msgLayout = new QVBoxLayout(msgArea);
     msgLayout->setContentsMargins(0, 0, 0, 0);
     msgLayout->setSpacing(0);
 
-    // Content stack: message list OR search panel
     auto *contentStack = new QStackedWidget(msgArea);
     msgLayout->addWidget(contentStack, 1);
 
-    _messageList = new MessageListWidget(nullptr, contentStack);
+    _messageList = new MessageListWidget(nullptr, _imgCache, contentStack);
     contentStack->addWidget(_messageList);
 
     _searchWidget = new SearchWidget(contentStack);
@@ -293,14 +300,13 @@ QWidget *MainWindow::buildMainPage() {
 
     _msgSplitter->addWidget(msgArea);
 
-    // ── Right side: thread panel (hidden by default) ──
     _threadPanel = new ThreadPanel(_msgSplitter);
     _threadPanel->setVisible(false);
     _msgSplitter->addWidget(_threadPanel);
     _msgSplitter->setStretchFactor(0, 1);
     _msgSplitter->setStretchFactor(1, 0);
 
-    // Show/hide search
+    // ── Signal wiring ─────────────────────────────────────────────────
     connect(searchBtn, &QPushButton::clicked, this, [this, contentStack] {
         if (contentStack->currentWidget() == _searchWidget)
             contentStack->setCurrentIndex(0);
@@ -311,17 +317,15 @@ QWidget *MainWindow::buildMainPage() {
         contentStack->setCurrentIndex(0);
     });
     connect(_searchWidget, &SearchWidget::resultSelected,
-            this, [this, convNameLabel](ConversationId conv, Ts /*ts*/) {
+            this, [this](ConversationId conv, Ts /*ts*/) {
         const int row = _convList->rowForId(conv);
         if (row >= 0) openConversation(row);
     });
 
-    // Thread panel open/close
     connect(_messageList, &MessageListWidget::threadClicked,
             this, [this](ConversationId conv, Ts rootTs) {
         _threadPanel->setVisible(true);
         _threadPanel->openThread(conv, rootTs);
-        // Give thread panel ~360px on first open; user can resize after that.
         if (_msgSplitter->sizes().at(1) < 100) {
             const int total = _msgSplitter->width();
             _msgSplitter->setSizes({total - 360, 360});
@@ -336,7 +340,6 @@ QWidget *MainWindow::buildMainPage() {
             this, [this](const Ts &ts, const QString &rawText, const std::vector<File> &files) {
         _composer->enterEditMode(ts, rawText, files);
     });
-
     connect(_messageList, &MessageListWidget::forwardMessageRequested,
             this, [this](const Message &msg) {
         if (!_sessionOwner) return;
@@ -368,16 +371,14 @@ QWidget *MainWindow::buildMainPage() {
         if (_sessionOwner && !_currentConvId.value.isEmpty())
             _sessionOwner->editMessage(_currentConvId, ts, newText);
     });
-    connect(_composer, &ComposerWidget::editLastRequested,
-            this, [this] {
+    connect(_composer, &ComposerWidget::editLastRequested, this, [this] {
         if (!_sessionOwner || !_messageList) return;
         const auto msg = _messageList->lastOwnMessage(_sessionOwner->meUserId());
         if (!msg) return;
         const QString text = msg->rawText.isEmpty() ? msg->text.text : msg->rawText;
         _composer->enterEditMode(msg->ts, text, msg->files);
     });
-    connect(_composer, &ComposerWidget::typingStarted,
-            this, [this] {
+    connect(_composer, &ComposerWidget::typingStarted, this, [this] {
         if (_sessionOwner && !_currentConvId.value.isEmpty())
             _sessionOwner->sendTyping(_currentConvId);
     });
@@ -387,22 +388,18 @@ QWidget *MainWindow::buildMainPage() {
             _sessionOwner->scheduleMessage(_currentConvId, text, postAt);
     });
 
-    // Keep convNameLabel and header state in sync with the opened conversation
     connect(_convList, &ConvListWidget::conversationSelected,
-            this, [this, convNameLabel](int row) {
+            this, [this](int row) {
         const ConversationId id = _convList->conversationId(row);
         if (id.value.isEmpty()) return;
-        const auto *conv = _sessionOwner
-            ? _sessionOwner->findConversation(id)
-            : nullptr;
+        const auto *conv = _sessionOwner ? _sessionOwner->findConversation(id) : nullptr;
         if (!conv) return;
         const QString name = _convList->resolvedName(row);
         const bool isDm = conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim;
-        convNameLabel->setText(isDm ? name : name.isEmpty() ? "" : "#" + name);
+        _convNameLabel->setText(isDm ? name : name.isEmpty() ? "" : "#" + name);
         updateHeaderForConv(id);
     });
 
-    // Star button toggle
     connect(_starBtn, &QPushButton::clicked, this, [this] {
         if (_currentConvId.value.isEmpty()) return;
         QSettings s("msga", "msga");
@@ -412,11 +409,7 @@ QWidget *MainWindow::buildMainPage() {
         updateStarBtn(nowStarred);
     });
 
-    root->addWidget(_switcher);
-    root->addWidget(_convPanel);
-    root->addWidget(rightPanel, 1);
-
-    return page;
+    return rightPanel;
 }
 
 // ── Session lifecycle ─────────────────────────────────────────────────────────
@@ -904,21 +897,22 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             const auto *u = _sessionOwner->findUser(*conversation->dmUser);
             if (u) {
                 _headerAvatar->setPresence(u->isActive);
-                // Fetch live presence — `isActive` starts false (not loaded by users.list).
                 _sessionOwner->requestPresence(*conversation->dmUser);
-                if (!u->avatarUrl.isEmpty()) {
-                    if (!_headerNam) _headerNam = new QNetworkAccessManager(this);
-                    const QString url = u->avatarUrl;
-                    auto *reply = _headerNam->get(QNetworkRequest(QUrl(url)));
-                    connect(reply, &QNetworkReply::finished, this, [this, reply, conv] {
-                        reply->deleteLater();
-                        if (conv != _currentConvId) return;
-                        if (reply->error() == QNetworkReply::NoError) {
-                            QPixmap px;
-                            if (px.loadFromData(reply->readAll()) && !px.isNull())
-                                if (_headerAvatar) _headerAvatar->setPixmap(px);
-                        }
-                    });
+                if (!u->avatarUrl.isEmpty() && _imgCache) {
+                    const QPixmap cached = _imgCache->get(u->avatarUrl);
+                    if (!cached.isNull()) {
+                        _headerAvatar->setPixmap(cached);
+                    } else {
+                        // Not yet in cache — subscribe once and apply when it arrives.
+                        const QString url = u->avatarUrl;
+                        connect(_imgCache, &ImageCache::loaded,
+                                this, [this, url, conv](const QString &loadedUrl) {
+                            if (loadedUrl != url || conv != _currentConvId) return;
+                            const QPixmap px = _imgCache->get(url);
+                            if (!px.isNull() && _headerAvatar)
+                                _headerAvatar->setPixmap(px);
+                        }, Qt::SingleShotConnection);
+                    }
                 }
             }
         }
