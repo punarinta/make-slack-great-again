@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "emoji_picker_popup.h"
 #include "session/session.h"
+#include "util/emoji_font.h"
 
 #include <QVBoxLayout>
 #include <QGridLayout>
@@ -15,18 +16,6 @@
 
 // Compact emoji dataset: name → unicode character.
 // Categories: faces, people, animals, food, travel, objects, symbols.
-static QFont makeEmojiFont() {
-    QFont f;
-    f.setPixelSize(20);
-#if defined(Q_OS_WIN)
-    f.setFamily("Segoe UI Emoji");
-#elif defined(Q_OS_MAC)
-    f.setFamily("Apple Color Emoji");
-#else
-    f.setFamilies({"Noto Color Emoji", "Noto Emoji"});
-#endif
-    return f;
-}
 
 static const QList<QPair<QString,QString>> kBaseEmoji {
     // Faces & emotions
@@ -223,7 +212,7 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
     }
 
     // Base Unicode emoji — rendered via platform color emoji font.
-    static const QFont kEmojiFont = makeEmojiFont();
+    static const QFont kEmojiFont = emojiFont(20);
     for (const auto &[name, ch] : std::as_const(kBaseEmoji)) {
         if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive)) continue;
         auto *btn = makeBtn(name);

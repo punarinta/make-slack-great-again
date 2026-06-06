@@ -16,9 +16,11 @@
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
+#include "forward_dialog/forward_dialog.h"
 
 #include "ui/icon_utils.h"
 
+#include <QDialog>
 #include <QEvent>
 #include <QCloseEvent>
 #include <QHBoxLayout>
@@ -328,6 +330,27 @@ QWidget *MainWindow::buildMainPage() {
     connect(_threadPanel, &ThreadPanel::closeRequested, this, [this] {
         _threadPanel->close();
         _threadPanel->setVisible(false);
+    });
+
+    connect(_messageList, &MessageListWidget::editMessageRequested,
+            this, [this](const Ts &ts, const QString &rawText, const std::vector<File> &files) {
+        _composer->enterEditMode(ts, rawText, files);
+    });
+
+    connect(_messageList, &MessageListWidget::forwardMessageRequested,
+            this, [this](const Message &msg) {
+        if (!_sessionOwner) return;
+        auto *dlg = new ForwardDialog(msg, _sessionOwner.get(), this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dlg, &QDialog::accepted, this, [this, dlg, msg] {
+            const ConversationId target = dlg->targetConv();
+            if (target.value.isEmpty()) return;
+            const QString comment = dlg->comment();
+            const QString fwd = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+            const QString full = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
+            _sessionOwner->sendMessage(target, full);
+        });
+        dlg->open();
     });
 
     connect(_composer, &ComposerWidget::sendRequested,

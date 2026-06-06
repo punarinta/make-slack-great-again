@@ -264,6 +264,24 @@ void PublicBackend::scheduleMessage(ConversationId conv, OutgoingMessage msg, qi
     });
 }
 
+void PublicBackend::pinMessage(ConversationId conv, Ts ts) {
+    QUrlQuery params;
+    params.addQueryItem("channel",   conv.value);
+    params.addQueryItem("timestamp", ts);
+    _api->call("pins.add", params, {}, [](QString e){
+        qWarning() << "pinMessage error:" << e;
+    });
+}
+
+void PublicBackend::unpinMessage(ConversationId conv, Ts ts) {
+    QUrlQuery params;
+    params.addQueryItem("channel",   conv.value);
+    params.addQueryItem("timestamp", ts);
+    _api->call("pins.remove", params, {}, [](QString e){
+        qWarning() << "unpinMessage error:" << e;
+    });
+}
+
 rpl::producer<Event> PublicBackend::events() const {
     return _events.events();
 }

@@ -162,6 +162,8 @@ struct Message {
     std::vector<File>         files;         // Phase 3
     std::vector<Block>        blocks;        // Phase 3
     std::vector<Attachment>   attachments;   // Phase 3
+    bool                      pinned  = false;  // true if pinned to channel
+    UserId                    pinnedBy;          // user who pinned it
     bool operator==(const Message &) const = default;
 };
 

@@ -31,5 +31,11 @@
         <file alias="ui/x.svg">../gfx/ui/x.svg</file>
         <file alias="ui/pin.svg">../gfx/ui/pin.svg</file>
         <file alias="ui/pin-off.svg">../gfx/ui/pin-off.svg</file>
+        <file alias="ui/forward.svg">../gfx/ui/forward.svg</file>
+        <file alias="ui/more-horizontal.svg">../gfx/ui/more-horizontal.svg</file>
+        <file alias="ui/copy.svg">../gfx/ui/copy.svg</file>
+        <file alias="ui/edit-3.svg">../gfx/ui/edit-3.svg</file>
+        <file alias="ui/trash-2.svg">../gfx/ui/trash-2.svg</file>
+        <file alias="ui/share-2.svg">../gfx/ui/share-2.svg</file>
     </qresource>
 </RCC>

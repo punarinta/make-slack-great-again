@@ -44,6 +44,10 @@ public:
     // Send a message at a future Unix timestamp (chat.scheduleMessage).
     virtual void scheduleMessage(ConversationId, OutgoingMessage, qint64 postAt) {}
 
+    // Pin / unpin a message in a channel (pins.add / pins.remove).
+    virtual void pinMessage(ConversationId, Ts) {}
+    virtual void unpinMessage(ConversationId, Ts) {}
+
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;
     virtual rpl::producer<QHash<QString,QString>>    loadEmojiList() = 0;

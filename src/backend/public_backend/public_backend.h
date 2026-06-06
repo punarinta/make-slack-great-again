@@ -37,6 +37,9 @@ public:
     void sendTyping(ConversationId) override;
     void scheduleMessage(ConversationId, OutgoingMessage, qint64 postAt) override;
 
+    void pinMessage(ConversationId, Ts) override;
+    void unpinMessage(ConversationId, Ts) override;
+
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString,QString>>    loadEmojiList() override;
     void uploadFile(ConversationId, const QString &filePath) override;

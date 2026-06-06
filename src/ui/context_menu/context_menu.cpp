@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "context_menu.h"
+#include "ui/icon_utils.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -21,18 +22,37 @@ ContextMenu::ContextMenu(QWidget *parent)
     setMouseTracking(true);
 }
 
+static QPixmap loadMenuIcon(const QString &path) {
+    if (path.isEmpty()) return {};
+    const qreal dpr = qGuiApp ? qGuiApp->devicePixelRatio() : 1.0;
+    return svgPixmapPhys(path, QSize(ContextMenu::kIconSize, ContextMenu::kIconSize),
+                         QColor("#454245"), dpr);
+}
+
 void ContextMenu::addItem(const QString &text,
                           std::function<void()> action,
-                          bool destructive)
+                          bool destructive, const QString &iconPath)
 {
-    _items.push_back({text, {}, false, std::move(action), destructive, false});
+    Item it;
+    it.text = text;
+    it.action = std::move(action);
+    it.destructive = destructive;
+    it.icon = loadMenuIcon(iconPath);
+    _items.push_back(std::move(it));
 }
 
 void ContextMenu::addItem(const QString &text, const QString &shortcut,
                           std::function<void()> action, bool destructive,
-                          bool submenu)
+                          bool submenu, const QString &iconPath)
 {
-    _items.push_back({text, shortcut, submenu, std::move(action), destructive, false});
+    Item it;
+    it.text = text;
+    it.shortcut = shortcut;
+    it.submenu = submenu;
+    it.action = std::move(action);
+    it.destructive = destructive;
+    it.icon = loadMenuIcon(iconPath);
+    _items.push_back(std::move(it));
 }
 
 void ContextMenu::addSeparator() {
@@ -80,7 +100,8 @@ void ContextMenu::updateGeometry(const QPoint &globalPos) {
     int w = kMinW;
     for (const auto &it : _items) {
         if (it.separator) continue;
-        int itemW = fm.horizontalAdvance(it.text) + 2 * kPadH;
+        const int iconW = it.icon.isNull() ? 0 : (kIconSize + kIconGap);
+        int itemW = kPadH + iconW + fm.horizontalAdvance(it.text) + kPadH;
         if (!it.shortcut.isEmpty())
             itemW += kShortcutGap + sfm.horizontalAdvance(it.shortcut) + kPadH;
         if (it.submenu)
@@ -205,14 +226,22 @@ void ContextMenu::paintEvent(QPaintEvent *) {
                        Qt::AlignVCenter | Qt::AlignRight, "›");
         }
 
+        // Icon
+        const int iconW  = _items[i].icon.isNull() ? 0 : (kIconSize + kIconGap);
+        const int textX0 = ir.left() + kPadH;
+        if (!_items[i].icon.isNull()) {
+            const int iconY = ir.top() + (ir.height() - kIconSize) / 2;
+            p.drawPixmap(QRect(textX0, iconY, kIconSize, kIconSize), _items[i].icon);
+        }
+
         // Label
         p.setFont(baseFont);
         p.setPen(textColor);
-        const int availW = ir.width() - 2 * kPadH
-            - (!_items[i].shortcut.isEmpty()
-                   ? kShortcutGap + sfm.horizontalAdvance(_items[i].shortcut)
-                   : (_items[i].submenu ? kShortcutGap + sfm.horizontalAdvance("›") : 0));
-        p.drawText(QRect(ir.left() + kPadH, ir.top(), availW, ir.height()),
+        const int rightHintW = !_items[i].shortcut.isEmpty()
+            ? kShortcutGap + sfm.horizontalAdvance(_items[i].shortcut)
+            : (_items[i].submenu ? kShortcutGap + sfm.horizontalAdvance("›") : 0);
+        const int availW = ir.width() - kPadH - iconW - kPadH - rightHintW;
+        p.drawText(QRect(textX0 + iconW, ir.top(), availW, ir.height()),
                    Qt::AlignVCenter | Qt::AlignLeft,
                    fm.elidedText(_items[i].text, Qt::ElideRight, availW));
     }
@@ -257,6 +286,25 @@ void ContextMenu::leaveEvent(QEvent *) {
 }
 
 void ContextMenu::keyPressEvent(QKeyEvent *e) {
-    if (e->key() == Qt::Key_Escape) close();
-    else QWidget::keyPressEvent(e);
+    if (e->key() == Qt::Key_Escape) { close(); return; }
+
+    for (const auto &item : _items) {
+        if (item.separator || item.shortcut.isEmpty() || !item.action) continue;
+        const QKeySequence seq(item.shortcut);
+        if (seq.isEmpty()) continue;
+        const QKeyCombination combo = seq[0];
+        const Qt::KeyboardModifiers reqMod  = combo.keyboardModifiers();
+        const Qt::KeyboardModifiers presMod = e->modifiers();
+        // Modifier-free shortcuts (e.g. "E", "Del") are case-insensitive — ignore Shift.
+        const bool modOk = reqMod == Qt::NoModifier
+            ? (presMod & ~Qt::ShiftModifier) == Qt::NoModifier
+            : presMod == reqMod;
+        if (modOk && e->key() == combo.key()) {
+            close();
+            item.action();
+            return;
+        }
+    }
+
+    QWidget::keyPressEvent(e);
 }

@@ -7,6 +7,9 @@
 #include "ui/theme.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/emoji_picker/emoji_picker_popup.h"
+#include "ui/delete_message_dialog/delete_message_dialog.h"
+#include "util/clipboard.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -43,7 +46,8 @@ MessageListWidget::MessageListWidget(Session *session, QWidget *parent)
     viewport()->setAttribute(Qt::WA_OpaquePaintEvent);
     viewport()->installEventFilter(this);
 
-    _tooltip = new PopupTooltip(this);
+    _tooltip     = new PopupTooltip(this);
+    _emojiPicker = new EmojiPickerPopup(this);
 
     // Smooth scroll
     _scrollAnim.setDuration(220);
@@ -155,6 +159,7 @@ void MessageListWidget::setSession(Session *session) {
     clear();
     _currentConv = {};
     _session = session;
+    if (_emojiPicker) _emojiPicker->setSession(session);
 }
 
 void MessageListWidget::openConversation(ConversationId conv, const QString &convName, const QString &description) {
@@ -538,11 +543,13 @@ int MessageListWidget::rowHeight(int index) const {
     const int replyBarH  = (!_isThreadMode && item.msg.replyCount > 0)
                            ? (kReplyBarGap + kReplyBarH) : 0;
     const int headerH    = collapsed ? 0 : (kHdrH + kHdrGap);
+    const int pinnedH    = item.msg.pinned ? 18 : 0;
+    // pinnedH is a banner drawn before padV — kept separate from contentH.
     const int contentH   = headerH + item.docHeight + extraH + reactionH;
     const int sepH       = needsDateSep(index) ? kSepH : 0;
     if (collapsed)
-        return sepH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH;
-    return sepH + kPadV + std::max(kAvSize, contentH) + kPadV + replyBarH;
+        return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH;
+    return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadV + replyBarH;
 }
 
 void MessageListWidget::rebuildLayout() {
@@ -577,9 +584,10 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
         ensureDocLayout(item);
 
         const int sepH2 = needsDateSep(i) ? kSepH : 0;
+        const int pinnedH = item.msg.pinned ? 18 : 0;
         const int textTop = isCollapsed(i)
-            ? rowTop + sepH2 + kPadVCollapsed
-            : rowTop + sepH2 + kPadV + kHdrH;
+            ? rowTop + sepH2 + kPadVCollapsed + pinnedH
+            : rowTop + sepH2 + kPadV + pinnedH + kHdrH;
         const QPointF local(viewportPos.x() - textLeft, docY - textTop);
         if (local.x() < 0 || local.y() < 0 || local.y() > item.docHeight) return {};
 
@@ -605,7 +613,8 @@ std::pair<int,int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos)
         const bool collapsed = isCollapsed(i);
         const int padV = collapsed ? kPadVCollapsed : kPadV;
         const int sep = needsDateSep(i) ? kSepH : 0;
-        int y = rowTop + sep + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+        const int pinnedH = item.msg.pinned ? 18 : 0;
+        int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
             y += kAttachGap;
@@ -630,8 +639,9 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
     const bool collapsed = isCollapsed(msgIdx);
     const int padV = collapsed ? kPadVCollapsed : kPadV;
     const int sep = needsDateSep(msgIdx) ? kSepH : 0;
+    const int pinnedH = item.msg.pinned ? 18 : 0;
     const int rowTop = _tops[msgIdx] - scrollY;
-    int y = rowTop + sep + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+    int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
     for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
         y += kAttachGap;
@@ -640,6 +650,15 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
                 return QRect(btnX, y, kDismissW, kDismissW);
             y += item.attachDocs[ai].docHeight;
         }
+    }
+    return {};
+}
+
+// Returns the first link URL in the message text entities, or empty string.
+static QString firstLinkInMessage(const Message &msg) {
+    for (const auto &ent : msg.text.entities) {
+        if (ent.type == EntityType::Link && !ent.data.isEmpty())
+            return ent.data;
     }
     return {};
 }
@@ -659,11 +678,47 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
 
     // Toolbar button clicks
     const int btn = toolbarButtonAt(event->pos());
-    if (btn == 0) {
-        QMessageBox::information(this, tr("Add reaction"), tr("Not implemented"));
+    if (btn == 0 && _hoveredRow >= 0) {
+        // "Add reaction" — show emoji picker above the button
+        const auto &msg = _items[_hoveredRow].msg;
+        const int scrollY = verticalScrollBar()->value();
+        const int rowTop  = _tops[_hoveredRow] - scrollY;
+        const int rh      = rowHeight(_hoveredRow);
+        const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
+        const QRect btnRect = toolbarButtonRect(0, rowTop + sep, rh - sep);
+        const QPoint globalPos = viewport()->mapToGlobal(btnRect.bottomLeft());
+        _emojiPicker->open(globalPos);
+        const Ts ts = msg.ts;
+        const ConversationId conv = _currentConv;
+        connect(_emojiPicker, &EmojiPickerPopup::emojiSelected,
+                this, [this, ts, conv](const QString &name) {
+            if (!_session) return;
+            _session->backend()->addReaction(conv, ts, name);
+            // Optimistic: add reaction locally so it appears immediately.
+            const int idx = findByTs(ts);
+            if (idx >= 0) {
+                const UserId me = _session->meUserId();
+                auto &reactions = _items[idx].msg.reactions;
+                bool found = false;
+                for (auto &r : reactions) {
+                    if (r.name == name) {
+                        if (std::find(r.users.begin(), r.users.end(), me) == r.users.end()) {
+                            r.count++;
+                            r.users.push_back(me);
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) reactions.push_back({name, 1, {me}});
+                rebuildLayout();
+                viewport()->update();
+            }
+        }, Qt::SingleShotConnection);
         return;
-    } else if (btn == 1) {
-        QMessageBox::information(this, tr("Forward message"), tr("Not implemented"));
+    } else if (btn == 1 && _hoveredRow >= 0) {
+        // "Forward message"
+        emit forwardMessageRequested(_items[_hoveredRow].msg);
         return;
     } else if (btn == 2 && _hoveredRow >= 0) {
         // "More actions" — show the styled context menu
@@ -671,40 +726,116 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         const int scrollY = verticalScrollBar()->value();
         const int rowTop  = _tops[_hoveredRow] - scrollY;
         const int rh      = rowHeight(_hoveredRow);
-        const QRect moreRect = toolbarButtonRect(2, rowTop, rh);
+        const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
+        const QRect moreRect = toolbarButtonRect(2, rowTop + sep, rh - sep);
         const QPoint globalPos = viewport()->mapToGlobal(moreRect.bottomLeft());
 
+        const bool isOwnMessage = _session && (msg.author == _session->meUserId());
+        const QString linkUrl = firstLinkInMessage(msg);
+
         auto *menu = new ContextMenu(this);
-        menu->addItem(tr("Edit message"),   "E",      [this, ts = msg.ts] {
-            Q_UNUSED(ts)
-            QMessageBox::information(this, tr("Edit message"), tr("Not implemented"));
-        });
+
+        if (isOwnMessage) {
+            menu->addItem(tr("Edit message"), "E", [this, ts = msg.ts,
+                                                    raw = msg.rawText,
+                                                    files = msg.files] {
+                emit editMessageRequested(ts, raw, files);
+            }, false, false, ":/ui/edit-3.svg");
+            menu->addSeparator();
+        }
+
+        if (!linkUrl.isEmpty()) {
+            menu->addItem(tr("Copy link"), "L", [linkUrl] {
+                Clipboard::setText(linkUrl);
+            }, false, false, ":/ui/link.svg");
+        }
+
+        menu->addItem(tr("Copy message"), "Ctrl+C", [text = msg.text.text] {
+            Clipboard::setText(text);
+        }, false, false, ":/ui/copy.svg");
+
         menu->addSeparator();
-        menu->addItem(tr("Mark unread"),    "U",      [this] {
-            QMessageBox::information(this, tr("Mark unread"), tr("Not implemented"));
-        });
-        menu->addItem(tr("Remind me"),      {},       [this] {
-            QMessageBox::information(this, tr("Remind me"), tr("Not implemented"));
-        }, false, /*submenu=*/true);
-        menu->addItem(tr("Turn off notifications for replies"), {}, [this] {
-            QMessageBox::information(this, tr("Turn off notifications"), tr("Not implemented"));
-        });
+
+        // Pin / Unpin
+        if (msg.pinned) {
+            menu->addItem(tr("Unpin from channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
+                if (_session) _session->backend()->unpinMessage(conv, ts);
+                // Optimistic UI update
+                const int idx = findByTs(ts);
+                if (idx >= 0) { _items[idx].msg.pinned = false; viewport()->update(); }
+            }, false, false, ":/ui/pin-off.svg");
+        } else {
+            menu->addItem(tr("Pin to channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
+                if (_session) _session->backend()->pinMessage(conv, ts);
+                // Optimistic UI update
+                const int idx = findByTs(ts);
+                if (idx >= 0) {
+                    _items[idx].msg.pinned = true;
+                    _items[idx].msg.pinnedBy = _session->meUserId();
+                    viewport()->update();
+                }
+            }, false, false, ":/ui/pin.svg");
+        }
+
         menu->addSeparator();
-        menu->addItem(tr("Copy link"),      "L",      [this] {
-            QMessageBox::information(this, tr("Copy link"), tr("Not implemented"));
-        });
-        menu->addItem(tr("Copy message"),   "Ctrl+C", [this, text = msg.text.text] {
-            QApplication::clipboard()->setText(text);
-        });
+
+        menu->addItem(tr("Forward message"), {}, [this, msg] {
+            emit forwardMessageRequested(msg);
+        }, false, false, ":/ui/share-2.svg");
+
         menu->addSeparator();
-        menu->addItem(tr("Pin to channel"), "P",      [this] {
-            QMessageBox::information(this, tr("Pin to channel"), tr("Not implemented"));
-        });
-        menu->addSeparator();
-        menu->addItem(tr("Delete message…"), "delete", [this] {
-            QMessageBox::information(this, tr("Delete message"), tr("Not implemented"));
-        }, /*destructive=*/true);
+
+        if (isOwnMessage) {
+            menu->addItem(tr("Delete message…"), "Del", [this, msg] {
+                auto *dlg = new DeleteMessageDialog(msg, _session, window());
+                dlg->setAttribute(Qt::WA_DeleteOnClose);
+                connect(dlg, &QDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
+                    if (_session) _session->backend()->deleteMessage(conv, ts);
+                });
+                dlg->exec();
+            }, /*destructive=*/true, false, ":/ui/trash-2.svg");
+        }
+
         menu->popup(globalPos);
+        return;
+    }
+
+    // Reaction chip click — toggle or add
+    const auto [reactMsgIdx, reactIdx] = reactionAt(event->pos());
+    if (reactMsgIdx >= 0 && _session) {
+        const QString emojiName = _items[reactMsgIdx].msg.reactions[reactIdx].name;
+        const Ts reactTs = _items[reactMsgIdx].msg.ts;
+        auto &reactions = _items[reactMsgIdx].msg.reactions;
+        const UserId me = _session->meUserId();
+        const bool already = std::any_of(reactions[reactIdx].users.begin(),
+                                         reactions[reactIdx].users.end(),
+                                         [&me](const UserId &u){ return u == me; });
+        if (already) {
+            _session->backend()->removeReaction(_currentConv, reactTs, emojiName);
+            for (auto it = reactions.begin(); it != reactions.end(); ++it) {
+                if (it->name == emojiName) {
+                    it->count = std::max(0, it->count - 1);
+                    it->users.erase(std::remove(it->users.begin(), it->users.end(), me),
+                                    it->users.end());
+                    if (it->count == 0) reactions.erase(it);
+                    break;
+                }
+            }
+        } else {
+            _session->backend()->addReaction(_currentConv, reactTs, emojiName);
+            bool found = false;
+            for (auto &rx : reactions) {
+                if (rx.name == emojiName) {
+                    rx.count++;
+                    rx.users.push_back(me);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) reactions.push_back({emojiName, 1, {me}});
+        }
+        rebuildLayout();
+        viewport()->update();
         return;
     }
 
@@ -841,8 +972,9 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
             const bool collA = isCollapsed(newHoveredRow);
             const int padVA  = collA ? kPadVCollapsed : kPadV;
             const int sepA   = needsDateSep(newHoveredRow) ? kSepH : 0;
+            const int pinHA  = item.msg.pinned ? 18 : 0;
             const int rtA    = _tops[newHoveredRow] - scrollY;
-            int ay = rtA + sepA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
+            int ay = rtA + sepA + pinHA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
             for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
                 ay += kAttachGap;
                 if (!isDismissed(item.msg.ts, ai)) {
@@ -891,8 +1023,9 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const QString anchor = anchorAt(pos);
     const auto [dMI, dAI] = dismissButtonAt(pos);
     const bool overDismiss = dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
+    const auto [rMI, rRI] = reactionAt(pos);
     const bool overLink  = !anchor.isEmpty() || fileChipAt(pos) || replyBarIndexAt(pos) >= 0
-                           || overDismiss;
+                           || overDismiss || rMI >= 0;
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     if (overScroll)

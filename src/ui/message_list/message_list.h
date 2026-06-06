@@ -18,6 +18,7 @@
 class QTextDocument;
 class Session;
 class PopupTooltip;
+class EmojiPickerPopup;
 
 // Per-attachment rendered doc (lazy, like the main textDoc).
 struct AttachDoc {
@@ -57,6 +58,10 @@ public:
 signals:
     // Emitted in channel mode when user clicks the "N replies" bar on a thread root.
     void threadClicked(ConversationId conv, Ts rootTs);
+    // Emitted when "Edit message" is chosen; caller should call composer->enterEditMode().
+    void editMessageRequested(Ts ts, QString rawText, std::vector<File> files);
+    // Emitted when "Forward message" is chosen.
+    void forwardMessageRequested(Message msg);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -125,6 +130,9 @@ private:
     int toolbarButtonAt(const QPoint &viewportPos) const;
     // Rect of toolbar button i for the given row top/height, in viewport coords.
     QRect toolbarButtonRect(int btn, int rowTop, int rowH) const;
+
+    // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
+    std::pair<int,int> reactionAt(const QPoint &viewportPos) const;
 
     // Dismiss button for link-preview attachments.
     // Returns {msgIdx, attachIdx} if pos is on a dismiss "×" button, else {-1,-1}.
@@ -226,7 +234,8 @@ private:
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
 
-    PopupTooltip *_tooltip = nullptr;
+    PopupTooltip      *_tooltip      = nullptr;
+    EmojiPickerPopup  *_emojiPicker  = nullptr;
 
     std::optional<QString> _olderCursor;   // set when more pages exist above
     bool                   _loadingOlder = false;

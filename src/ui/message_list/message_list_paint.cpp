@@ -4,6 +4,8 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "ui/theme.h"
+#include "ui/icon_utils.h"
+#include "util/emoji_font.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -75,7 +77,6 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
     const int textLeft  = kPadH + kAvSize + kAvGap;
     const int textWidth = vw - textLeft - kPadH;
     const int padV      = collapsed ? kPadVCollapsed : kPadV;
-    const int contTop   = msgTop + padV;
     const int rh        = rowHeight(index);
     const int msgH      = rh - sepH;
 
@@ -89,6 +90,35 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
         QColor highlight(0x14, 0x85, 0x67, static_cast<int>(alpha * 40));
         p.fillRect(QRect(0, msgTop, vw, msgH), highlight);
     }
+
+    // ── Pinned banner — sits at the very top of the message, before padding ──
+    const int pinnedBannerH = item.msg.pinned ? 18 : 0;
+    if (item.msg.pinned) {
+        const QRect bannerRect(0, msgTop, vw, pinnedBannerH);
+        p.fillRect(bannerRect, QColor(0xFF, 0xEB, 0x3B, 60)); // subtle yellow tint
+
+        // Pin icon
+        static const QPixmap kPinPx = svgPixmap(":/ui/pin.svg", QSize(12, 12), QColor("#888"));
+        if (!kPinPx.isNull())
+            p.drawPixmap(kPadH, msgTop + (pinnedBannerH - 12) / 2, kPinPx);
+
+        // "Pinned by <name>" label
+        const auto *pinner = _session ? _session->findUser(item.msg.pinnedBy) : nullptr;
+        const QString label = pinner
+            ? tr("Pinned by %1").arg(pinner->displayName)
+            : tr("Pinned");
+        QFont pinFont = QApplication::font();
+        pinFont.setPointSizeF(pinFont.pointSizeF() * 0.78);
+        p.save();
+        p.setFont(pinFont);
+        p.setPen(QColor("#888888"));
+        p.drawText(kPadH + 16, msgTop, vw - kPadH - 16, pinnedBannerH,
+                   Qt::AlignVCenter | Qt::AlignLeft, label);
+        p.restore();
+    }
+
+    // Content starts below banner, then padV
+    const int contTop = msgTop + pinnedBannerH + padV;
 
     if (!collapsed) {
         // Avatar
@@ -464,28 +494,65 @@ void MessageListWidget::triggerMissingDownloads() {
 
 // ── Reactions ─────────────────────────────────────────────────────────────────
 
+// Chip sizing: color emoji fonts report advance width ≈ 2× pixelSize, so we use
+// a fixed slot for the glyph and measure only the count with the regular font.
+static constexpr int kReactPad  = 6;   // horizontal padding inside chip
+static constexpr int kEmojiSlot = 15;  // fixed pixel budget for one emoji glyph
+
+static int reactChipW(const QString &countStr) {
+    static const QFont kCntFont = []{ QFont f = QApplication::font();
+                                      f.setPointSizeF(f.pointSizeF() * 0.82); return f; }();
+    return kReactPad + kEmojiSlot + QFontMetrics(kCntFont).horizontalAdvance(countStr) + kReactPad;
+}
+
 void MessageListWidget::paintReactions(QPainter &p,
                                        const MessageItem &item,
                                        int left, int top, int width) const
 {
     p.save();
-    p.setFont(QApplication::font());
-    const QFontMetrics fm(p.font());
+    p.setRenderHint(QPainter::Antialiasing);
+
+    static const QFont kEmojiF = emojiFont(14);
+    static const QFont kCountF = []{ QFont f = QApplication::font();
+                                     f.setPointSizeF(f.pointSizeF() * 0.82); return f; }();
+    const int chipH = kReactH;
     int x = left;
 
+    const UserId me = _session ? _session->meUserId() : UserId{};
+
     for (const auto &r : item.msg.reactions) {
-        const QString text = MsgRender::resolveEmoji(r.name) + "  " + QString::number(r.count);
-        const int chipW = fm.horizontalAdvance(text) + 16;
-        const int chipH = kReactH;
+        const QString emojiStr = MsgRender::resolveEmoji(r.name);
+        const QString countStr = " " + QString::number(r.count);
+        const int chipW = reactChipW(countStr);
         if (x + chipW > left + width) break;
 
-        const QRect chip(x, top, chipW, chipH);
-        p.setPen(QColor("#DDDDDD"));
-        p.setBrush(QColor("#F0F0F0"));
-        p.drawRoundedRect(chip, chipH / 2, chipH / 2);
+        const bool mine = std::any_of(r.users.begin(), r.users.end(),
+                                      [&me](const UserId &u){ return u == me; });
 
-        p.setPen(Theme::kTextPrimary);
-        p.drawText(chip, Qt::AlignCenter, text);
+        const QRect chip(x, top, chipW, chipH);
+        if (mine) {
+            p.setPen(QColor("#1264A3"));
+            p.setBrush(QColor("#D9ECFF"));
+        } else {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor("#F0F0F0"));
+        }
+        p.drawRoundedRect(QRectF(chip).adjusted(0.5, 0.5, -0.5, -0.5), chipH / 2.0, chipH / 2.0);
+
+        const QColor textCol = mine ? QColor("#1264A3") : Theme::kTextPrimary;
+
+        // Emoji — drawn in fixed left slot
+        p.setFont(kEmojiF);
+        p.setPen(textCol);
+        p.drawText(QRect(chip.x() + kReactPad, chip.y(), kEmojiSlot, chipH),
+                   Qt::AlignVCenter | Qt::AlignLeft, emojiStr);
+
+        // Count — drawn right after emoji slot
+        p.setFont(kCountF);
+        p.setPen(textCol);
+        p.drawText(QRect(chip.x() + kReactPad + kEmojiSlot, chip.y() - 1,
+                         chipW - kReactPad - kEmojiSlot, chipH),
+                   Qt::AlignVCenter | Qt::AlignLeft, countStr);
 
         x += chipW + 4;
     }
@@ -601,7 +668,8 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         const bool collapsed = isCollapsed(i);
         const int padV = collapsed ? kPadVCollapsed : kPadV;
         const int sep2 = needsDateSep(i) ? kSepH : 0;
-        int chipY = rowTop + sep2 + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+        const int pinnedH2 = item.msg.pinned ? 18 : 0;
+        int chipY = rowTop + sep2 + padV + pinnedH2 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
         for (const auto &ad : item.attachDocs)
             chipY += kAttachGap + ad.docHeight;
 
@@ -681,7 +749,8 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
         const bool collapsed = isCollapsed(i);
         const int padV = collapsed ? kPadVCollapsed : kPadV;
         const int sep3 = needsDateSep(i) ? kSepH : 0;
-        int y = rowTop + sep3 + padV + (collapsed ? 0 : kHdrH + kHdrGap) + _items[i].docHeight;
+        const int pinnedH3 = _items[i].msg.pinned ? 18 : 0;
+        int y = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) + _items[i].docHeight;
         for (const auto &ad : _items[i].attachDocs)
             y += kAttachGap + ad.docHeight;
 
@@ -692,6 +761,80 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
             return i;
     }
     return -1;
+}
+
+// ── Reaction hit-test ─────────────────────────────────────────────────────────
+
+std::pair<int,int> MessageListWidget::reactionAt(const QPoint &viewportPos) const {
+    const int scrollY  = verticalScrollBar()->value();
+    const int textLeft = kPadH + kAvSize + kAvGap;
+    const int textWidth = viewport()->width() - textLeft - kPadH;
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        if (_items[i].msg.reactions.empty()) continue;
+        const int rowTop = _tops[i] - scrollY;
+        const int rh     = rowHeight(i);
+        if (rowTop > viewportPos.y()) break;
+        if (rowTop + rh <= viewportPos.y()) continue;
+
+        ensureDocLayout(_items[i]);
+        const auto &item = _items[i];
+        const bool collapsed = isCollapsed(i);
+        const int padV   = collapsed ? kPadVCollapsed : kPadV;
+        const int sep    = needsDateSep(i) ? kSepH : 0;
+        const int pinH   = item.msg.pinned ? 18 : 0;
+
+        int y = rowTop + sep + pinH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+
+        for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+            if (!isDismissed(item.msg.ts, ai))
+                y += kAttachGap + item.attachDocs[ai].docHeight;
+        }
+
+        // File images
+        const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
+        for (const auto &f : item.msg.files) {
+            if (!f.isImage()) continue;
+            const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+            y += hasAbove ? kImgGap : 0;
+            y += kImgNameH;
+            auto it = _imageCache.constFind(url);
+            if (it != _imageCache.constEnd() && !it->isNull()) {
+                const double sc = std::min(1.0,
+                    std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height()));
+                y += (int)(it->height() * sc);
+            } else {
+                y += 24;
+            }
+        }
+
+        // Non-image file chips
+        bool anyImg = false;
+        for (const auto &f : item.msg.files) if (f.isImage()) { anyImg = true; break; }
+        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+        bool firstChip = true;
+        for (const auto &f : item.msg.files) {
+            if (f.isImage()) continue;
+            if (!firstChip || hasAboveChips) y += kFileChipGap;
+            firstChip = false;
+            y += kFileChipH;
+        }
+
+        const int reactTop = y + 2;
+        if (viewportPos.y() < reactTop || viewportPos.y() >= reactTop + kReactH) continue;
+
+        // Check which chip — sizes must match paintReactions exactly
+        int x = textLeft;
+        for (int j = 0; j < (int)item.msg.reactions.size(); ++j) {
+            const QString countStr = " " + QString::number(item.msg.reactions[j].count);
+            const int chipW = reactChipW(countStr);
+            if (x + chipW > textLeft + textWidth) break;
+            if (viewportPos.x() >= x && viewportPos.x() < x + chipW)
+                return {i, j};
+            x += chipW + 4;
+        }
+    }
+    return {-1, -1};
 }
 
 // ── Hover toolbar ─────────────────────────────────────────────────────────────
@@ -749,12 +892,13 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     p.setPen(QColor(0, 0, 0, 18));
     p.drawRoundedRect(cardRect, kToolbarRadius, kToolbarRadius);
 
-    // Icon symbols (Unicode stand-ins sized to fit the button)
-    // 0: emoji, 1: forward, 2: more (⋯)
-    static const char *kIcons[] = { "☺", "↪", "⋯" };
-
-    QFont iconFont = QApplication::font();
-    iconFont.setPointSizeF(iconFont.pointSizeF() * 1.1);
+    // SVG icons: 0=emoji (smile), 1=forward, 2=more-horizontal
+    static const QSize kIconSz(16, 16);
+    static const QColor kIconColor("#454245");
+    static const QPixmap kPxSmile   = svgPixmap(":/ui/smile.svg",          kIconSz, kIconColor);
+    static const QPixmap kPxForward = svgPixmap(":/ui/forward.svg",        kIconSz, kIconColor);
+    static const QPixmap kPxMore    = svgPixmap(":/ui/more-horizontal.svg", kIconSz, kIconColor);
+    static const QPixmap *kIcons[]  = { &kPxSmile, &kPxForward, &kPxMore };
 
     for (int b = 0; b < nButtons; ++b) {
         const QRect br = toolbarButtonRect(b, msgTop, rowH - sep);
@@ -766,9 +910,11 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
             p.drawRoundedRect(QRectF(br).adjusted(1, 1, -1, -1), 5, 5);
         }
 
-        p.setFont(iconFont);
-        p.setPen(QColor("#454245"));
-        p.drawText(br, Qt::AlignCenter, QString::fromUtf8(kIcons[b]));
+        if (!kIcons[b]->isNull()) {
+            const int ix = br.left() + (br.width()  - kIconSz.width())  / 2;
+            const int iy = br.top()  + (br.height() - kIconSz.height()) / 2;
+            p.drawPixmap(ix, iy, *kIcons[b]);
+        }
     }
     p.restore();
     (void)index;
