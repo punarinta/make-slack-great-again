@@ -252,6 +252,7 @@ Attachment toAttachment(const QJsonObject &o) {
         .text       = MrkdwnParser::parse(o.value("text").toString()),
         .imageUrl   = o.value("image_url").toString(),
         .thumbUrl   = o.value("thumb_url").toString(),
+        .faviconUrl = o.value("service_icon").toString(),
         .footer     = o.value("footer").toString(),
     };
 }

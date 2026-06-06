@@ -122,7 +122,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
 
     if (!collapsed) {
         // Avatar
-        paintAvatar(p, item, QRect(kPadH, contTop, kAvSize, kAvSize));
+        paintAvatar(p, item, QRect(kPadH, contTop + 2, kAvSize, kAvSize));
 
         // ── Header: name + timestamp ──────────────────────────────────
         auto *user = _session->findUser(item.msg.author);
@@ -165,7 +165,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
     paintAttachments(p, item, textLeft, contentY, textWidth, index);
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
         if (isDismissed(item.msg.ts, ai)) continue;
-        contentY += kAttachGap + item.attachDocs[ai].docHeight;
+        contentY += kAttachGap + attachTotalH(item, ai);
     }
 
     // ── Inline file images ───────────────────────────────────────────
@@ -324,14 +324,19 @@ void MessageListWidget::paintAttachments(QPainter &p,
                                           int index) const
 {
     const auto &attachments = item.msg.attachments;
+    const int textX = left + kAttachBarW + kAttachBarGap;
+    const int textW = width - kAttachBarW - kAttachBarGap;
     int y = top;
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
         if (isDismissed(item.msg.ts, ai)) continue;
 
         const auto &att = attachments[ai];
         const auto &ad  = item.attachDocs[ai];
-        const int  h    = ad.docHeight;
         y += kAttachGap;
+
+        const int docH   = ad.docHeight;
+        const int imgH   = attachImageH(att);
+        const int totalH = docH + imgH;
 
         // Dismiss "×" button — only visible when this specific attachment is hovered
         if (_hoveredAttach.first == index && _hoveredAttach.second == ai) {
@@ -346,7 +351,7 @@ void MessageListWidget::paintAttachments(QPainter &p,
             p.restore();
         }
 
-        // Colored left bar
+        // Colored left bar (full attachment height)
         QColor barColor("#AAAAAA");
         if (!att.color.isEmpty()) {
             QColor c(att.color.startsWith('#') ? att.color : "#" + att.color);
@@ -355,19 +360,53 @@ void MessageListWidget::paintAttachments(QPainter &p,
         p.save();
         p.setPen(Qt::NoPen);
         p.setBrush(barColor);
-        p.drawRect(QRect(left, y, kAttachBarW, h));
+        p.drawRect(QRect(left, y, kAttachBarW, totalH > 0 ? totalH : docH));
         p.restore();
 
+        // Favicon: draw 16×16 to the left of the title, only if it loaded successfully.
+        // We indent the text doc by 20px horizontally so the text starts right of the icon.
+        int textIndent = 0;
+        if (!att.faviconUrl.isEmpty()) {
+            const auto fit = _imageCache.constFind(att.faviconUrl);
+            if (fit != _imageCache.constEnd() && !fit->isNull()) {
+                textIndent = 20;
+                const int faviconSide = 16;
+                p.save();
+                p.setRenderHint(QPainter::SmoothPixmapTransform);
+                const qreal dpr = p.device()->devicePixelRatioF();
+                QPixmap fav = fit->scaled(QSize(faviconSide, faviconSide) * dpr,
+                                          Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                fav.setDevicePixelRatio(dpr);
+                p.drawPixmap(textX, y + 2, fav);
+                p.restore();
+            }
+        }
+
         // Attachment text doc
-        if (ad.textDoc && h > 0) {
-            const int textX = left + kAttachBarW + kAttachBarGap;
+        if (ad.textDoc && docH > 0) {
             p.save();
-            p.translate(textX, y);
-            ad.textDoc->drawContents(&p, QRectF(0, 0, width - kAttachBarW - kAttachBarGap, h));
+            p.translate(textX + textIndent, y);
+            ad.textDoc->drawContents(&p, QRectF(0, 0, textW - textIndent, docH));
             p.restore();
         }
 
-        y += h;
+        // Preview image (thumbUrl preferred over imageUrl)
+        if (imgH > 0) {
+            const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+            const auto it = _imageCache.constFind(imgUrl);
+            if (it != _imageCache.constEnd() && !it->isNull()) {
+                const double scale = std::min(1.0,
+                    std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height()));
+                const int iw = (int)(it->width()  * scale);
+                const int ih = (int)(it->height() * scale);
+                p.save();
+                p.setRenderHint(QPainter::SmoothPixmapTransform);
+                p.drawPixmap(QRect(textX, y + docH + kImgGap, iw, ih), *it);
+                p.restore();
+            }
+        }
+
+        y += totalH;
     }
 }
 
@@ -444,50 +483,102 @@ void MessageListWidget::triggerMissingDownloads() {
         if (rowTop + rowHeight(i) < 0) continue;
 
         auto &item = _items[i];
-        if (item.fileImgsRequested) continue;
 
-        bool needsDownload = false;
-        for (const auto &f : item.msg.files) {
-            if (!f.isImage()) continue;
-            const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-            if (!_imageCache.contains(url)) { needsDownload = true; break; }
-        }
-        if (!needsDownload) continue;
+        // File image downloads (auth required → via session)
+        if (!item.fileImgsRequested) {
+            bool needsDownload = false;
+            for (const auto &f : item.msg.files) {
+                if (!f.isImage()) continue;
+                const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+                if (!_imageCache.contains(url)) { needsDownload = true; break; }
+            }
+            if (needsDownload) {
+                item.fileImgsRequested = true;
+                for (const auto &f : item.msg.files) {
+                    if (!f.isImage()) continue;
+                    const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+                    if (_imageCache.contains(url)) continue;
 
-        item.fileImgsRequested = true;
-        for (const auto &f : item.msg.files) {
-            if (!f.isImage()) continue;
-            const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-            if (_imageCache.contains(url)) continue;
+                    if (_session) {
+                        const auto cached = _session->cachedImage(url);
+                        if (!cached.isEmpty()) {
+                            QPixmap px;
+                            if (px.loadFromData(cached) && !px.isNull()) {
+                                _imageCache[url] = px;
+                                rebuildLayout();
+                                viewport()->update();
+                                continue;
+                            }
+                        }
+                    }
 
-            // Try disk cache before hitting the network.
-            if (_session) {
-                const auto cached = _session->cachedImage(url);
-                if (!cached.isEmpty()) {
-                    QPixmap px;
-                    if (px.loadFromData(cached) && !px.isNull()) {
+                    _imageCache[url] = QPixmap();
+                    _session->downloadFile(url, [this, url](QByteArray data) {
+                        if (_session) _session->cacheImage(url, data);
+                        const bool wasAtBottom =
+                            verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+                        QPixmap px;
+                        px.loadFromData(data);
                         _imageCache[url] = px;
                         rebuildLayout();
+                        if (wasAtBottom)
+                            verticalScrollBar()->setValue(verticalScrollBar()->maximum());
                         viewport()->update();
-                        continue;
+                    });
+                }
+            }
+        }
+
+        // Attachment preview images and favicons (public URLs → via _avatarNam)
+        if (!item.attachImgsRequested) {
+            bool needsAttach = false;
+            for (const auto &att : item.msg.attachments) {
+                const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+                if (!imgUrl.isEmpty() && !_imageCache.contains(imgUrl)) { needsAttach = true; break; }
+                if (!att.faviconUrl.isEmpty() && !_imageCache.contains(att.faviconUrl)) { needsAttach = true; break; }
+            }
+            if (needsAttach) {
+                item.attachImgsRequested = true;
+                for (const auto &att : item.msg.attachments) {
+                    // Preview image
+                    const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+                    if (!imgUrl.isEmpty() && !_imageCache.contains(imgUrl)) {
+                        _imageCache[imgUrl] = QPixmap();
+                        auto *reply = _avatarNam->get(QNetworkRequest(QUrl(imgUrl)));
+                        connect(reply, &QNetworkReply::finished, this, [this, reply, imgUrl]() {
+                            reply->deleteLater();
+                            if (reply->error() == QNetworkReply::NoError) {
+                                QPixmap px;
+                                if (px.loadFromData(reply->readAll()) && !px.isNull()) {
+                                    const bool wasAtBottom =
+                                        verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+                                    _imageCache[imgUrl] = px;
+                                    rebuildLayout();
+                                    if (wasAtBottom)
+                                        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+                                    viewport()->update();
+                                }
+                            }
+                        });
+                    }
+                    // Favicon (no layout change needed — serviceH is already set)
+                    if (!att.faviconUrl.isEmpty() && !_imageCache.contains(att.faviconUrl)) {
+                        const QString favUrl = att.faviconUrl;
+                        _imageCache[favUrl] = QPixmap();
+                        auto *reply = _avatarNam->get(QNetworkRequest(QUrl(favUrl)));
+                        connect(reply, &QNetworkReply::finished, this, [this, reply, favUrl]() {
+                            reply->deleteLater();
+                            if (reply->error() == QNetworkReply::NoError) {
+                                QPixmap px;
+                                if (px.loadFromData(reply->readAll()) && !px.isNull()) {
+                                    _imageCache[favUrl] = px;
+                                    viewport()->update();
+                                }
+                            }
+                        });
                     }
                 }
             }
-
-            _imageCache[url] = QPixmap(); // mark as in-progress
-            _session->downloadFile(url,
-                [this, url](QByteArray data) {
-                    if (_session) _session->cacheImage(url, data);
-                    const bool wasAtBottom =
-                        verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                    QPixmap px;
-                    px.loadFromData(data);
-                    _imageCache[url] = px;
-                    rebuildLayout();
-                    if (wasAtBottom)
-                        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-                    viewport()->update();
-                });
         }
     }
 }
@@ -670,8 +761,8 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         const int sep2 = needsDateSep(i) ? kSepH : 0;
         const int pinnedH2 = item.msg.pinned ? 18 : 0;
         int chipY = rowTop + sep2 + padV + pinnedH2 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
-        for (const auto &ad : item.attachDocs)
-            chipY += kAttachGap + ad.docHeight;
+        for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai)
+            chipY += kAttachGap + attachTotalH(item, ai);
 
         const bool hasAbove0 = item.docHeight > 0 || !item.attachDocs.empty();
         bool anyImg = false;
@@ -751,8 +842,8 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
         const int sep3 = needsDateSep(i) ? kSepH : 0;
         const int pinnedH3 = _items[i].msg.pinned ? 18 : 0;
         int y = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) + _items[i].docHeight;
-        for (const auto &ad : _items[i].attachDocs)
-            y += kAttachGap + ad.docHeight;
+        for (int ai = 0; ai < (int)_items[i].attachDocs.size(); ++ai)
+            y += kAttachGap + attachTotalH(_items[i], ai);
 
         if (!_items[i].msg.reactions.empty()) y += kReactH + 2;
         y += kReplyBarGap;
@@ -788,7 +879,7 @@ std::pair<int,int> MessageListWidget::reactionAt(const QPoint &viewportPos) cons
 
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
             if (!isDismissed(item.msg.ts, ai))
-                y += kAttachGap + item.attachDocs[ai].docHeight;
+                y += kAttachGap + attachTotalH(item, ai);
         }
 
         // File images

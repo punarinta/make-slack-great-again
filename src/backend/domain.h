@@ -143,6 +143,7 @@ struct Attachment {
     TextWithEntities text;
     QString          imageUrl;
     QString          thumbUrl;
+    QString          faviconUrl;  // service_icon URL (favicon for link previews)
     QString          footer;
     bool operator==(const Attachment &) const = default;
 };

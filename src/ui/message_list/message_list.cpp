@@ -17,6 +17,9 @@
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QTextDocument>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextCharFormat>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
 #include <QDesktopServices>
@@ -149,6 +152,8 @@ void MessageListWidget::clear() {
     _tops.clear();
     _totalH = 0;
     _showIntro = false;
+    _hoveredLinkUrl.clear();
+    _hoveredLinkRow = -1;
     _convName.clear();
     _convDescription.clear();
     verticalScrollBar()->setRange(0, 0);
@@ -500,7 +505,7 @@ int MessageListWidget::rowHeight(int index) const {
     // Attachment heights (skip client-dismissed ones)
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
         if (isDismissed(item.msg.ts, ai)) continue;
-        extraH += kAttachGap + std::max(item.attachDocs[ai].docHeight, 0);
+        extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
     }
 
     // Inline file image heights
@@ -567,11 +572,47 @@ void MessageListWidget::rebuildLayout() {
     verticalScrollBar()->setPageStep(vh);
 }
 
+// ── Attachment height helpers ─────────────────────────────────────────────────
+
+int MessageListWidget::attachImageH(const Attachment &att) const {
+    const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+    if (imgUrl.isEmpty()) return 0;
+    auto it = _imageCache.constFind(imgUrl);
+    if (it == _imageCache.constEnd() || it->isNull()) return 0;
+    const double scale = std::min(1.0,
+        std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height()));
+    return kImgGap + (int)(it->height() * scale);
+}
+
+int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
+    return item.attachDocs[ai].docHeight + attachImageH(item.msg.attachments[ai]);
+}
+
+// Walk all text fragments in a QTextDocument and set underline on those whose
+// anchor href matches url.
+static void setDocLinkUnderline(QTextDocument *doc, const QString &url, bool underline) {
+    if (!doc || url.isEmpty()) return;
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            QTextFragment frag = it.fragment();
+            if (!frag.isValid()) continue;
+            QTextCharFormat fmt = frag.charFormat();
+            if (!fmt.isAnchor() || fmt.anchorHref() != url) continue;
+            QTextCursor cur(doc);
+            cur.setPosition(frag.position());
+            cur.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            QTextCharFormat newFmt = fmt;
+            newFmt.setFontUnderline(underline);
+            cur.setCharFormat(newFmt);
+        }
+    }
+}
+
 // ── Mouse handling ────────────────────────────────────────────────────────────
 
 QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
-    const int scrollY = verticalScrollBar()->value();
-    const int docY    = viewportPos.y() + scrollY;
+    const int scrollY  = verticalScrollBar()->value();
+    const int docY     = viewportPos.y() + scrollY;
     const int textLeft = kPadH + kAvSize + kAvGap;
 
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
@@ -583,15 +624,40 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
         const auto &item = _items[i];
         ensureDocLayout(item);
 
-        const int sepH2 = needsDateSep(i) ? kSepH : 0;
-        const int pinnedH = item.msg.pinned ? 18 : 0;
-        const int textTop = isCollapsed(i)
-            ? rowTop + sepH2 + kPadVCollapsed + pinnedH
-            : rowTop + sepH2 + kPadV + pinnedH + kHdrH;
-        const QPointF local(viewportPos.x() - textLeft, docY - textTop);
-        if (local.x() < 0 || local.y() < 0 || local.y() > item.docHeight) return {};
+        const bool coll    = isCollapsed(i);
+        const int  padV    = coll ? kPadVCollapsed : kPadV;
+        const int  sepH2   = needsDateSep(i) ? kSepH : 0;
+        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  textTop = rowTop + sepH2 + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
 
-        return item.textDoc->documentLayout()->anchorAt(local);
+        // Check main message text doc
+        {
+            const QPointF local(viewportPos.x() - textLeft, docY - textTop);
+            if (local.x() >= 0 && local.y() >= 0 && local.y() <= item.docHeight && item.textDoc) {
+                const QString href = item.textDoc->documentLayout()->anchorAt(local);
+                if (!href.isEmpty()) return href;
+            }
+        }
+
+        // Check attachment text docs
+        const int attTextX = textLeft + kAttachBarW + kAttachBarGap;
+        const int attW     = textAreaWidth() - kAttachBarW - kAttachBarGap;
+        int ay = textTop + item.docHeight;
+        for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+            if (isDismissed(item.msg.ts, ai)) continue;
+            ay += kAttachGap;
+            const auto &ad      = item.attachDocs[ai];
+            const int attTextTop = ay;
+            if (docY >= attTextTop && docY < attTextTop + ad.docHeight && ad.textDoc) {
+                const QPointF local(viewportPos.x() - attTextX, docY - attTextTop);
+                if (local.x() >= 0 && local.x() < attW) {
+                    const QString href = ad.textDoc->documentLayout()->anchorAt(local);
+                    if (!href.isEmpty()) return href;
+                }
+            }
+            ay += attachTotalH(item, ai);
+        }
+        return {};
     }
     return {};
 }
@@ -621,7 +687,7 @@ std::pair<int,int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos)
             if (!isDismissed(item.msg.ts, ai)) {
                 if (QRect(btnX, y, kDismissW, kDismissW).contains(viewportPos))
                     return {i, ai};
-                y += item.attachDocs[ai].docHeight;
+                y += attachTotalH(item, ai);
             }
         }
     }
@@ -648,7 +714,7 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
         if (!isDismissed(item.msg.ts, ai)) {
             if (ai == attachIdx)
                 return QRect(btnX, y, kDismissW, kDismissW);
-            y += item.attachDocs[ai].docHeight;
+            y += attachTotalH(item, ai);
         }
     }
     return {};
@@ -877,6 +943,17 @@ void MessageListWidget::doMouseLeave() {
         return;
 
     _tooltip->hide();
+
+    if (!_hoveredLinkUrl.isEmpty()) {
+        if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
+            setDocLinkUnderline(_items[_hoveredLinkRow].textDoc.get(), _hoveredLinkUrl, false);
+            for (auto &ad : _items[_hoveredLinkRow].attachDocs)
+                setDocLinkUnderline(ad.textDoc.get(), _hoveredLinkUrl, false);
+        }
+        _hoveredLinkUrl.clear();
+        _hoveredLinkRow = -1;
+    }
+
     if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1) {
         _hoveredRow     = -1;
         _hoveredToolBtn = -1;
@@ -978,7 +1055,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
             for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
                 ay += kAttachGap;
                 if (!isDismissed(item.msg.ts, ai)) {
-                    const int ah = item.attachDocs[ai].docHeight;
+                    const int ah = attachTotalH(item, ai);
                     if (pos.y() >= ay && pos.y() < ay + ah) {
                         newHoveredAttach = {newHoveredRow, ai};
                         break;
@@ -997,7 +1074,27 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         viewport()->update();
     }
 
-    // Tooltip for the hovered toolbar button or dismiss button
+    // Compute anchor once and reuse for link hover, tooltip, and cursor
+    const QString anchor = anchorAt(pos);
+
+    // Update link hover underline
+    if (anchor != _hoveredLinkUrl) {
+        if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
+            setDocLinkUnderline(_items[_hoveredLinkRow].textDoc.get(), _hoveredLinkUrl, false);
+            for (auto &ad : _items[_hoveredLinkRow].attachDocs)
+                setDocLinkUnderline(ad.textDoc.get(), _hoveredLinkUrl, false);
+        }
+        _hoveredLinkUrl = anchor;
+        _hoveredLinkRow = newHoveredRow;
+        if (!anchor.isEmpty() && newHoveredRow >= 0) {
+            setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
+            for (auto &ad : _items[newHoveredRow].attachDocs)
+                setDocLinkUnderline(ad.textDoc.get(), anchor, true);
+        }
+        viewport()->update();
+    }
+
+    // Tooltip
     if (newHoveredBtn >= 0) {
         static const QString kTips[] = { tr("Add reaction"), tr("Forward message"), tr("More actions") };
         const int rowTop  = _tops[_hoveredRow] - scrollY;
@@ -1006,6 +1103,10 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect btnLocal = toolbarButtonRect(newHoveredBtn, rowTop + sep6, rh - sep6);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
+    } else if (!anchor.isEmpty()) {
+        // Show the URL near the cursor
+        const QPoint gPos = viewport()->mapToGlobal(pos);
+        _tooltip->showAbove(anchor, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
     } else {
         const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
         const bool attachHovered = _hoveredAttach.first == dMsgIdx && _hoveredAttach.second == dAi
@@ -1020,7 +1121,6 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     }
 
     // Cursor
-    const QString anchor = anchorAt(pos);
     const auto [dMI, dAI] = dismissButtonAt(pos);
     const bool overDismiss = dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
     const auto [rMI, rRI] = reactionAt(pos);

@@ -171,7 +171,7 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
                     + inner.replace("\n", "<br>") +
                     "</td></tr></table>"; break;
         case EntityType::Link:
-            html += "<a href='" + e.data.toHtmlEscaped() + "' style='color:#1264A3'>"
+            html += "<a href='" + e.data.toHtmlEscaped() + "' style='color:#1264A3;text-decoration:none'>"
                     + inner + "</a>"; break;
         case EntityType::UserMention: {
             const QString label = session
@@ -233,14 +233,14 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     if (!att.title.isEmpty()) {
         if (!att.titleLink.isEmpty())
             html += "<p style='margin:0;font-weight:bold'><a href='"
-                 + att.titleLink.toHtmlEscaped() + "' style='color:#1264A3'>"
+                 + att.titleLink.toHtmlEscaped() + "' style='color:#1264A3;text-decoration:none'>"
                  + att.title.toHtmlEscaped() + "</a></p>";
         else
             html += "<p style='margin:0;font-weight:bold'>"
                  + att.title.toHtmlEscaped() + "</p>";
     }
     if (!att.text.text.isEmpty())
-        html += "<p style='margin:0'>" + toHtml(att.text, session) + "</p>";
+        html += "<p style='margin:2px 0 0'>" + toHtml(att.text, session) + "</p>";
     if (!att.footer.isEmpty())
         html += "<p style='margin:2px 0 0;font-size:0.8em;color:#888'>"
              + att.footer.toHtmlEscaped() + "</p>";

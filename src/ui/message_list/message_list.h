@@ -34,8 +34,9 @@ struct MessageItem {
     mutable std::unique_ptr<QTextDocument> textDoc;
     mutable int docWidth  = 0;  // viewport width at which textDoc was laid out
     mutable int docHeight = 0;  // cached pixel height of textDoc
-    mutable std::vector<AttachDoc> attachDocs; // one per msg.attachments entry
-    mutable bool fileImgsRequested = false;    // true once download has been triggered
+    mutable std::vector<AttachDoc> attachDocs;       // one per msg.attachments entry
+    mutable bool fileImgsRequested   = false;         // true once file image download has been triggered
+    mutable bool attachImgsRequested = false;         // true once attachment image/favicon download triggered
 };
 
 // Zero-widget virtual message list.
@@ -122,6 +123,10 @@ private:
 
     // Mouse: returns the href under the given viewport point, or empty.
     QString anchorAt(const QPoint &viewportPos) const;
+    // Attachment height helpers
+    int attachImageH(const Attachment &att) const;    // preview image height (includes kImgGap), 0 if none
+    int attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
+
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
     const File *fileChipAt(const QPoint &viewportPos) const;
     // Returns index of the message whose reply bar is at viewportPos, or -1.
@@ -226,6 +231,8 @@ private:
     int  _hoveredToolBtn = -1;  // 0=emoji, 1=forward, 2=more; -1=none
     // {msgIdx, attachIdx} of the attachment preview the cursor is over, else {-1,-1}
     std::pair<int,int> _hoveredAttach = {-1, -1};
+    QString _hoveredLinkUrl;     // URL of the link currently under the mouse cursor
+    int     _hoveredLinkRow = -1; // row index owning that link (-1 if none)
 
     bool _sbDragging        = false;
     int  _sbDragStartY      = 0;
