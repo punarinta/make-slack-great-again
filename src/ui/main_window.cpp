@@ -667,10 +667,13 @@ void MainWindow::setupTray() {
     }
 
     menu->addSeparator();
-    menu->addAction(tr("Show"), this, [this] {
+    menu->addAction(tr("Settings"), this, [this] {
         show();
         raise();
         activateWindow();
+        QMetaObject::invokeMethod(this, [this] {
+            _settingsDialog->open();
+        }, Qt::QueuedConnection);
     });
     menu->addSeparator();
     menu->addAction(tr("Quit"), qApp, &QApplication::quit);
