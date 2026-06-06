@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "search_widget.h"
 #include "session/session.h"
+#include "ui/icon_utils.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -47,8 +48,10 @@ SearchWidget::SearchWidget(QWidget *parent)
     hRow->setContentsMargins(12, 8, 8, 8);
     hRow->setSpacing(8);
 
-    auto *icon = new QLabel("🔍", header);
-    icon->setFixedWidth(20);
+    auto *icon = new QLabel(header);
+    icon->setFixedSize(20, 20);
+    icon->setPixmap(svgPixmap(":/ui/search.svg", QSize(16, 16), QColor("#888888")));
+    icon->setAlignment(Qt::AlignCenter);
     hRow->addWidget(icon);
 
     _queryEdit = new QLineEdit(header);
@@ -67,11 +70,15 @@ SearchWidget::SearchWidget(QWidget *parent)
     });
     hRow->addWidget(_queryEdit, 1);
 
-    auto *closeBtn = new QPushButton("✕", header);
+    auto *closeBtn = new QPushButton(header);
     closeBtn->setFixedSize(24, 24);
     closeBtn->setFlat(true);
     closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setStyleSheet("QPushButton { color: #888; font-size: 14px; }");
+    closeBtn->setIconSize(QSize(14, 14));
+    closeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(14, 14), QColor("#888888")));
+    closeBtn->setStyleSheet(
+        "QPushButton { border-radius: 4px; }"
+        "QPushButton:hover { background: #E8E8E8; }");
     connect(closeBtn, &QPushButton::clicked, this, &SearchWidget::closeRequested);
     hRow->addWidget(closeBtn);
 

@@ -4,5 +4,32 @@
         <file alias="icon.png">../gfx/icon_256.png</file>
         <file alias="icon.svg">../gfx/icon.svg</file>
         <file alias="icon_tray.svg">../gfx/icon_tray.svg</file>
+        <!-- Window controls (MDI — https://pictogrammers.com/library/mdi/) -->
+        <file alias="ui/wc-minimize.svg">../gfx/ui/wc-minimize.svg</file>
+        <file alias="ui/wc-maximize.svg">../gfx/ui/wc-maximize.svg</file>
+        <file alias="ui/wc-restore.svg">../gfx/ui/wc-restore.svg</file>
+        <file alias="ui/wc-close.svg">../gfx/ui/wc-close.svg</file>
+        <!-- App icons (Lucide — https://lucide.dev/) -->
+        <file alias="ui/search.svg">../gfx/ui/search.svg</file>
+        <file alias="ui/star.svg">../gfx/ui/star.svg</file>
+        <file alias="ui/send.svg">../gfx/ui/send.svg</file>
+        <file alias="ui/paperclip.svg">../gfx/ui/paperclip.svg</file>
+        <file alias="ui/smile.svg">../gfx/ui/smile.svg</file>
+        <file alias="ui/at-sign.svg">../gfx/ui/at-sign.svg</file>
+        <file alias="ui/bold.svg">../gfx/ui/bold.svg</file>
+        <file alias="ui/italic.svg">../gfx/ui/italic.svg</file>
+        <file alias="ui/underline.svg">../gfx/ui/underline.svg</file>
+        <file alias="ui/strikethrough.svg">../gfx/ui/strikethrough.svg</file>
+        <file alias="ui/link.svg">../gfx/ui/link.svg</file>
+        <file alias="ui/list-ordered.svg">../gfx/ui/list-ordered.svg</file>
+        <file alias="ui/list.svg">../gfx/ui/list.svg</file>
+        <file alias="ui/quote.svg">../gfx/ui/quote.svg</file>
+        <file alias="ui/code.svg">../gfx/ui/code.svg</file>
+        <file alias="ui/braces.svg">../gfx/ui/braces.svg</file>
+        <file alias="ui/chevron-down.svg">../gfx/ui/chevron-down.svg</file>
+        <file alias="ui/settings-2.svg">../gfx/ui/settings-2.svg</file>
+        <file alias="ui/x.svg">../gfx/ui/x.svg</file>
+        <file alias="ui/pin.svg">../gfx/ui/pin.svg</file>
+        <file alias="ui/pin-off.svg">../gfx/ui/pin-off.svg</file>
     </qresource>
 </RCC>

@@ -17,6 +17,8 @@
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
 
+#include "ui/icon_utils.h"
+
 #include <QEvent>
 #include <QCloseEvent>
 #include <QHBoxLayout>
@@ -58,6 +60,7 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1200, 800);
     buildUi();
     updateRoundedMask();
+
 
     setupTray();
 
@@ -235,25 +238,28 @@ QWidget *MainWindow::buildMainPage() {
     msgHeaderLayout->addWidget(convNameLabel, 1);
 
     // Star/unstar button
-    _starBtn = new QPushButton("☆", msgHeader); // ☆
+    _starBtn = new QPushButton(msgHeader);
     _starBtn->setFixedSize(28, 28);
     _starBtn->setFlat(true);
     _starBtn->setCursor(Qt::PointingHandCursor);
     _starBtn->setToolTip("Star conversation");
+    _starBtn->setIconSize(QSize(15, 15));
     _starBtn->setStyleSheet(
-        "QPushButton { font-size: 16px; border-radius: 4px; }"
+        "QPushButton { border-radius: 4px; }"
         "QPushButton:hover { background: #F0F0F0; }");
     _starBtn->setVisible(false);
     msgHeaderLayout->addWidget(_starBtn);
     msgHeaderLayout->addSpacing(2);
 
-    auto *searchBtn = new QPushButton("🔍", msgHeader);
+    auto *searchBtn = new QPushButton(msgHeader);
     searchBtn->setFixedSize(32, 32);
     searchBtn->setFlat(true);
     searchBtn->setCursor(Qt::PointingHandCursor);
     searchBtn->setToolTip("Search messages");
+    searchBtn->setIconSize(QSize(16, 16));
+    searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), QColor("#616061")));
     searchBtn->setStyleSheet(
-        "QPushButton { font-size: 15px; border-radius: 4px; }"
+        "QPushButton { border-radius: 4px; }"
         "QPushButton:hover { background: #F0F0F0; }");
     msgHeaderLayout->addWidget(searchBtn);
     rightLayout->addWidget(msgHeader);
@@ -709,6 +715,7 @@ void MainWindow::resizeEvent(QResizeEvent *e) {
     updateRoundedMask();
 }
 
+
 void MainWindow::changeEvent(QEvent *e) {
     if (e->type() == QEvent::WindowStateChange)
         updateRoundedMask();
@@ -757,13 +764,8 @@ void MainWindow::openConversation(int row) {
 
 void MainWindow::updateStarBtn(bool starred) {
     if (!_starBtn) return;
-    _starBtn->setText(starred ? "★" : "☆");
-    _starBtn->setStyleSheet(
-        starred
-        ? "QPushButton { font-size:16px; border-radius:4px; color:#C6920A; }"
-          "QPushButton:hover { background:#F0F0F0; }"
-        : "QPushButton { font-size:16px; border-radius:4px; color:#888; }"
-          "QPushButton:hover { background:#F0F0F0; }");
+    _starBtn->setIcon(svgIcon(":/ui/star.svg", QSize(15, 15),
+                               starred ? QColor("#C6920A") : QColor("#888888")));
 }
 
 void MainWindow::updateHeaderForConv(const ConversationId &conv) {

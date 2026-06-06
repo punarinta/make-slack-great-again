@@ -13,6 +13,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QSvgRenderer>
 #include <cmath>
 
 WorkspaceSwitcher::WorkspaceSwitcher(QWidget *parent)
@@ -70,9 +71,9 @@ void WorkspaceSwitcher::loadIcons() {
     }
 }
 
-// ── Gear icon helper ──────────────────────────────────────────────────────────
+// ── Settings icon helper ──────────────────────────────────────────────────────
 
-static void paintGear(QPainter &p, const QRectF &r, bool hovered) {
+static void paintSettings(QPainter &p, const QRectF &r, bool hovered) {
     // Circle background (same visual style as + button)
     const QColor fill(255, 255, 255, hovered ? 55 : 22);
     const QColor border(255, 255, 255, hovered ? 180 : 90);
@@ -81,40 +82,25 @@ static void paintGear(QPainter &p, const QRectF &r, bool hovered) {
     const qreal rad = r.height() / 2.0;
     p.drawRoundedRect(QRectF(r).adjusted(0.75, 0.75, -0.75, -0.75), rad, rad);
 
-    // Gear silhouette: 8 square teeth, punched hub
-    const QPointF c   = r.center();
-    const qreal R     = r.width() * 0.27;
-    const qreal Ri    = R * 0.68;
-    const qreal Rh    = R * 0.30;
-    const int   N     = 8;
-    const qreal toOuter = M_PI / (N * 3.0);
-    const qreal toInner = M_PI / (N * 2.2);
+    static QSvgRenderer renderer(QString(":/ui/settings-2.svg"));
+    if (!renderer.isValid()) return;
 
-    auto pt = [&](qreal radius, qreal a) {
-        return c + QPointF(radius * std::cos(a), radius * std::sin(a));
-    };
+    const QColor iconColor = hovered ? QColor(245, 240, 245) : QColor(180, 165, 180);
+    const qreal  dim  = r.width() * 0.52;
+    const QRectF ir(r.x() + (r.width()  - dim) / 2.0,
+                    r.y() + (r.height() - dim) / 2.0, dim, dim);
 
-    QPainterPath gear;
-    for (int i = 0; i < N; ++i) {
-        const qreal a = -M_PI / 2.0 + 2.0 * M_PI * i / N;
-        const QPointF pts[4] = {
-            pt(Ri, a - toInner), pt(R, a - toOuter),
-            pt(R,  a + toOuter), pt(Ri, a + toInner),
-        };
-        if (i == 0) gear.moveTo(pts[0]);
-        else        gear.lineTo(pts[0]);
-        gear.lineTo(pts[1]);
-        gear.lineTo(pts[2]);
-        gear.lineTo(pts[3]);
-    }
-    gear.closeSubpath();
+    const int sz = qMax(1, qRound(dim));
+    QPixmap px(sz, sz);
+    px.fill(Qt::transparent);
+    QPainter pp(&px);
+    pp.setRenderHint(QPainter::Antialiasing);
+    renderer.render(&pp, QRectF(0, 0, sz, sz));
+    pp.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    pp.fillRect(0, 0, sz, sz, iconColor);
+    pp.end();
 
-    QPainterPath hub;
-    hub.addEllipse(c, Rh, Rh);
-
-    p.setBrush(hovered ? QColor(245, 240, 245) : QColor(180, 165, 180));
-    p.setPen(Qt::NoPen);
-    p.drawPath(gear.subtracted(hub));
+    p.drawPixmap(ir, px, QRectF(px.rect()));
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -239,8 +225,8 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
     p.drawLine(QPointF(c.x() - arm, c.y()), QPointF(c.x() + arm, c.y()));
     p.drawLine(QPointF(c.x(), c.y() - arm), QPointF(c.x(), c.y() + arm));
 
-    // Gear / settings button (bottom of column)
-    paintGear(p, QRectF(gearButtonRect()), _hovered == -3);
+    // Settings button (bottom of column)
+    paintSettings(p, QRectF(gearButtonRect()), _hovered == -3);
 }
 
 // ── Mouse ─────────────────────────────────────────────────────────────────────

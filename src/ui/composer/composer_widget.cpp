@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "composer_widget.h"
+#include "ui/icon_utils.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -22,13 +23,14 @@ static constexpr int kMinEditHeight = 40;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // No stylesheet set here — the toolbar parent stylesheet drives all colors.
-static QToolButton *makeToolBtn(const QString &label, const QString &tooltip, QWidget *parent) {
+static QToolButton *makeToolBtn(const QString &svgPath, const QString &tooltip, QWidget *parent) {
     auto *btn = new QToolButton(parent);
-    btn->setText(label);
     btn->setToolTip(tooltip);
     btn->setFixedSize(26, 24);
+    btn->setIconSize(QSize(14, 14));
+    btn->setIcon(svgIcon(svgPath, QSize(14, 14), QColor("#888888")));
     btn->setCursor(Qt::PointingHandCursor);
-    btn->setFocusPolicy(Qt::NoFocus); // don't steal focus from the editor
+    btn->setFocusPolicy(Qt::NoFocus);
     return btn;
 }
 
@@ -66,22 +68,16 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     tbLayout->setContentsMargins(8, 3, 8, 3);
     tbLayout->setSpacing(1);
 
-    auto *boldBtn   = makeToolBtn("B",  "Bold (*text*)",          _toolbar);
-    auto *italicBtn = makeToolBtn("I",  "Italic (_text_)",        _toolbar);
-    auto *underBtn  = makeToolBtn("U",  "Underline",              _toolbar);
-    auto *strikeBtn = makeToolBtn("S",  "Strikethrough (~text~)", _toolbar);
-    auto *linkBtn   = makeToolBtn("⊞", "Link",                   _toolbar);
-    auto *olBtn     = makeToolBtn("1.", "Ordered list",           _toolbar);
-    auto *ulBtn     = makeToolBtn("•",  "Bullet list",            _toolbar);
-    auto *bqBtn     = makeToolBtn("|",  "Blockquote",             _toolbar);
-    auto *codeBtn   = makeToolBtn("<>", "Inline code (`code`)",   _toolbar);
-    auto *snipBtn   = makeToolBtn("{}","Code block",              _toolbar);
-
-    // Font decorations go via QFont so they survive stylesheet color updates
-    { QFont f = boldBtn->font();   f.setBold(true);      boldBtn->setFont(f); }
-    { QFont f = italicBtn->font(); f.setItalic(true);    italicBtn->setFont(f); }
-    { QFont f = underBtn->font();  f.setUnderline(true); underBtn->setFont(f); }
-    { QFont f = strikeBtn->font(); f.setStrikeOut(true); strikeBtn->setFont(f); }
+    auto *boldBtn   = makeToolBtn(":/ui/bold.svg",          "Bold (*text*)",          _toolbar);
+    auto *italicBtn = makeToolBtn(":/ui/italic.svg",        "Italic (_text_)",        _toolbar);
+    auto *underBtn  = makeToolBtn(":/ui/underline.svg",     "Underline",              _toolbar);
+    auto *strikeBtn = makeToolBtn(":/ui/strikethrough.svg", "Strikethrough (~text~)", _toolbar);
+    auto *linkBtn   = makeToolBtn(":/ui/link.svg",          "Link",                   _toolbar);
+    auto *olBtn     = makeToolBtn(":/ui/list-ordered.svg",  "Ordered list",           _toolbar);
+    auto *ulBtn     = makeToolBtn(":/ui/list.svg",          "Bullet list",            _toolbar);
+    auto *bqBtn     = makeToolBtn(":/ui/quote.svg",         "Blockquote",             _toolbar);
+    auto *codeBtn   = makeToolBtn(":/ui/code.svg",          "Inline code (`code`)",   _toolbar);
+    auto *snipBtn   = makeToolBtn(":/ui/braces.svg",        "Code block",             _toolbar);
 
     tbLayout->addWidget(boldBtn);
     tbLayout->addWidget(italicBtn);
@@ -132,20 +128,19 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     bbLayout->setSpacing(4);
 
     auto *attachBtn = new QToolButton(bottomBar);
-    attachBtn->setText("+");
     attachBtn->setToolTip("Attach file");
     attachBtn->setFixedSize(26, 26);
+    attachBtn->setIconSize(QSize(15, 15));
+    attachBtn->setIcon(svgIcon(":/ui/paperclip.svg", QSize(15, 15), QColor("#616061")));
     attachBtn->setCursor(Qt::PointingHandCursor);
     attachBtn->setFocusPolicy(Qt::NoFocus);
     attachBtn->setStyleSheet(
         "QToolButton {"
-        "  border: 1px solid #CCCCCC;"
-        "  border-radius: 13px;"
-        "  color: #616061;"
-        "  font-size: 16px; font-weight: bold;"
+        "  border: none;"
+        "  border-radius: 4px;"
         "  background: transparent;"
         "}"
-        "QToolButton:hover   { background: #F0F0F0; border-color: #999; }"
+        "QToolButton:hover   { background: #E8E8E8; }"
         "QToolButton:pressed { background: #E0E0E0; }"
     );
     connect(attachBtn, &QToolButton::clicked, this, [this] {
@@ -153,13 +148,13 @@ ComposerWidget::ComposerWidget(QWidget *parent)
         if (!path.isEmpty()) emit uploadRequested(path);
     });
 
-    auto *emojiBtn   = makeToolBtn("☺", "Emoji",   bottomBar);
-    auto *mentionBtn = makeToolBtn("@", "Mention", bottomBar);
-    emojiBtn->setStyleSheet(
-        "QToolButton { border: none; border-radius: 3px; color: #616061; font-size: 12px; background: transparent; }"
-        "QToolButton:hover { background: #E8E8E8; color: #1D1C1D; }"
-    );
-    mentionBtn->setStyleSheet(emojiBtn->styleSheet());
+    auto *emojiBtn   = makeToolBtn(":/ui/smile.svg",   "Emoji",   bottomBar);
+    auto *mentionBtn = makeToolBtn(":/ui/at-sign.svg", "Mention", bottomBar);
+    const QString bottomBtnStyle =
+        "QToolButton { border: none; border-radius: 3px; background: transparent; }"
+        "QToolButton:hover { background: #E8E8E8; }";
+    emojiBtn->setStyleSheet(bottomBtnStyle);
+    mentionBtn->setStyleSheet(bottomBtnStyle);
 
     bbLayout->addWidget(attachBtn);
     bbLayout->addWidget(emojiBtn);
@@ -167,15 +162,15 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     bbLayout->addStretch();
 
     _sendBtn = new QPushButton(bottomBar);
-    _sendBtn->setText("▶");
     _sendBtn->setFixedSize(32, 26);
+    _sendBtn->setIconSize(QSize(14, 14));
     _sendBtn->setToolTip("Send message (Enter)");
     _sendBtn->setCursor(Qt::PointingHandCursor);
     _sendBtn->setFocusPolicy(Qt::NoFocus);
 
     _dropBtn = new QPushButton(bottomBar);
-    _dropBtn->setText("∨");
     _dropBtn->setFixedSize(18, 26);
+    _dropBtn->setIconSize(QSize(10, 10));
     _dropBtn->setToolTip("Schedule send");
     _dropBtn->setCursor(Qt::PointingHandCursor);
     _dropBtn->setFocusPolicy(Qt::NoFocus);
@@ -222,19 +217,18 @@ void ComposerWidget::setFocused(bool focused) {
         "  background: #FFFFFF;"
         "}").arg(borderColor));
 
-    const QString iconColor = focused ? "#1D1C1D" : "#888888";
-    _toolbar->setStyleSheet(QString(
+    _toolbar->setStyleSheet(
         "QWidget#composerToolbar {"
         "  background: #F5F5F5;"
         "  border-radius: 7px 7px 0 0;"
         "}"
         "QWidget#composerToolbar QToolButton {"
         "  border: none; border-radius: 3px;"
-        "  color: %1; font-size: 12px; background: transparent;"
+        "  background: transparent;"
         "}"
-        "QWidget#composerToolbar QToolButton:hover   { background: #E0E0E0; color: #1D1C1D; }"
+        "QWidget#composerToolbar QToolButton:hover   { background: #E0E0E0; }"
         "QWidget#composerToolbar QToolButton:pressed { background: #D0D0D0; }"
-    ).arg(iconColor));
+    );
 }
 
 void ComposerWidget::adjustEditorHeight() {
@@ -253,32 +247,37 @@ void ComposerWidget::resizeEvent(QResizeEvent *event) {
 void ComposerWidget::updateSendState() {
     const bool active = !_edit->toPlainText().trimmed().isEmpty();
 
+    _sendBtn->setIcon(svgIcon(":/ui/send.svg", QSize(14, 14),
+                               active ? Qt::white : QColor("#CCCCCC")));
+    _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(10, 10),
+                               active ? Qt::white : QColor("#CCCCCC")));
+
     const QString sendStyle = active
         ? "QPushButton {"
-          "  background: #007A5A; color: white; border: none;"
-          "  border-radius: 4px 0 0 4px; font-size: 12px;"
+          "  background: #007A5A; border: none;"
+          "  border-radius: 4px 0 0 4px;"
           "}"
           "QPushButton:hover   { background: #148567; }"
           "QPushButton:pressed { background: #005E45; }"
         : "QPushButton {"
-          "  background: transparent; color: #CCCCCC; border: none;"
-          "  border-radius: 4px 0 0 4px; font-size: 12px;"
+          "  background: transparent; border: none;"
+          "  border-radius: 4px 0 0 4px;"
           "}"
-          "QPushButton:hover { background: #F0F0F0; color: #999; }";
+          "QPushButton:hover { background: #F0F0F0; }";
 
     const QString dropStyle = active
         ? "QPushButton {"
-          "  background: #007A5A; color: white; border: none;"
+          "  background: #007A5A; border: none;"
           "  border-left: 1px solid #148567;"
-          "  border-radius: 0 4px 4px 0; font-size: 9px;"
+          "  border-radius: 0 4px 4px 0;"
           "}"
           "QPushButton:hover   { background: #148567; }"
           "QPushButton:pressed { background: #005E45; }"
         : "QPushButton {"
-          "  background: transparent; color: #CCCCCC; border: none;"
-          "  border-radius: 0 4px 4px 0; font-size: 9px;"
+          "  background: transparent; border: none;"
+          "  border-radius: 0 4px 4px 0;"
           "}"
-          "QPushButton:hover { background: #F0F0F0; color: #999; }";
+          "QPushButton:hover { background: #F0F0F0; }";
 
     _sendBtn->setStyleSheet(sendStyle);
     _dropBtn->setStyleSheet(dropStyle);

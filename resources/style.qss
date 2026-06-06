@@ -28,68 +28,35 @@ QWidget#titleBar {
     background-color: #E8E8E8;
 }
 
-QPushButton#titleBarPin {
-    background: transparent;
-    color: #505050;
-    font-size: 11px;
-    border: none;
-    border-radius: 0;
-}
-QPushButton#titleBarPin:hover {
-    background: #C8C8C8;
-    color: #1D1C1D;
-}
-QPushButton#titleBarPin:pressed {
-    background: #BBBBBB;
-}
-
-QPushButton#titleBarPinActive {
-    background: transparent;
-    color: #C0392B;
-    font-size: 11px;
-    border: none;
-    border-radius: 0;
-}
-QPushButton#titleBarPinActive:hover {
-    background: #C8C8C8;
-    color: #922B21;
-}
-QPushButton#titleBarPinActive:pressed {
-    background: #BBBBBB;
-}
-
+QPushButton#titleBarPin,
+QPushButton#titleBarPinActive,
 QPushButton#titleBarMin,
-QPushButton#titleBarMax {
+QPushButton#titleBarMax,
+QPushButton#titleBarClose {
     background: transparent;
-    color: #505050;
-    font-size: 11px;
     border: none;
     border-radius: 0;
 }
+
+QPushButton#titleBarPin:hover,
+QPushButton#titleBarPinActive:hover,
 QPushButton#titleBarMin:hover,
 QPushButton#titleBarMax:hover {
     background: #C8C8C8;
-    color: #1D1C1D;
 }
+
+QPushButton#titleBarPin:pressed,
+QPushButton#titleBarPinActive:pressed,
 QPushButton#titleBarMin:pressed,
 QPushButton#titleBarMax:pressed {
     background: #BBBBBB;
 }
 
-QPushButton#titleBarClose {
-    background: transparent;
-    color: #505050;
-    font-size: 11px;
-    border: none;
-    border-radius: 0;
-}
 QPushButton#titleBarClose:hover {
     background: #C0392B;
-    color: #FFFFFF;
 }
 QPushButton#titleBarClose:pressed {
     background: #922B21;
-    color: #FFFFFF;
 }
 
 /* ── Conversation panel ────────────────────────────────────────── */
