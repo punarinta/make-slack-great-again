@@ -4,8 +4,8 @@
 
 #include "backend/domain.h"
 #include "rpl/lifetime.h"
+#include "ui/virtual_list/virtual_list_widget.h"
 
-#include <QAbstractScrollArea>
 #include <QVariantAnimation>
 #include <QSet>
 #include <QHash>
@@ -39,10 +39,19 @@ struct MessageItem {
     mutable bool attachImgsRequested = false;         // true once attachment image/favicon download triggered
 };
 
+// Aggregates the constant viewport geometry computed at the start of every paint/hit-test.
+struct PaintContext {
+    int vw;        // viewport()->width()
+    int scrollY;   // verticalScrollBar()->value()
+    int vh;        // viewport()->height()
+    int textLeft;  // kPadH + kAvSize + kAvGap
+    int textWidth; // vw - textLeft - kPadH
+};
+
 // Zero-widget virtual message list.
 // Stores MessageItems, paints only visible rows in a single QPainter pass.
 // No QLabel/QWidget per message — scales to thousands of rows without stutter.
-class MessageListWidget : public QAbstractScrollArea {
+class MessageListWidget : public VirtualListWidget {
     Q_OBJECT
 public:
     explicit MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent = nullptr);
@@ -65,7 +74,6 @@ signals:
     void forwardMessageRequested(Message msg);
 
 protected:
-    bool eventFilter(QObject *obj, QEvent *event) override;
     void scrollContentsBy(int dx, int dy) override;
     void resizeEvent(QResizeEvent *event) override;
 
@@ -89,7 +97,8 @@ private:
     // Toolbar sub-actions called from tryHandleToolbarPress.
     void openEmojiPickerForRow(int row, const QPoint &globalPos);
     void showMessageContextMenu(const Message &msg, const QPoint &globalPos);
-    bool isOnScrollThumb(int vpY) const;
+    bool isOnScrollThumb(int vpY) const; // delegates to VirtualListWidget with _totalH
+    PaintContext makePaintContext() const;
 
     // Data model
     void appendMessage(const Message &msg);
@@ -110,18 +119,18 @@ private:
     int  textAreaWidth() const;
 
     // Painting
-    void paintRow(QPainter &p, int index, int rowTop) const;
+    void paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx) const;
     void paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const;
     void paintReactions(QPainter &p, const MessageItem &item,
-                        int left, int top, int width) const;
+                        const PaintContext &ctx, int top) const;
     void paintReplyBar(QPainter &p, const MessageItem &item,
-                       int left, int top, int width) const;
+                       const PaintContext &ctx, int top) const;
     void paintAttachments(QPainter &p, const MessageItem &item,
-                          int left, int top, int width, int index) const;
+                          const PaintContext &ctx, int top, int index) const;
     void paintFileImages(QPainter &p, const MessageItem &item,
-                         int left, int top, int width) const;
+                         const PaintContext &ctx, int top) const;
     void paintFileChips(QPainter &p, const MessageItem &item,
-                        int left, int top, int width) const;
+                        const PaintContext &ctx, int top) const;
     void paintHoverToolbar(QPainter &p, int index, int rowTop, int rowH) const;
     void paintIntro(QPainter &p, int top) const;
     void paintDateSep(QPainter &p, int top, int vw, const Ts &ts) const;
@@ -198,9 +207,6 @@ private:
     static constexpr int kDismissW   = 18; // dismiss button size (square)
     static constexpr int kDismissGap =  4; // gap between dismiss button and attachment left edge
 
-    // Scrollbar overlay
-    static constexpr int kScrollW      =  4; // scrollbar thumb width
-
     // Date separator
     static constexpr int kSepH         = 32; // total height of date separator band
 
@@ -246,10 +252,6 @@ private:
     std::pair<int,int> _hoveredAttach = {-1, -1};
     QString _hoveredLinkUrl;     // URL of the link currently under the mouse cursor
     int     _hoveredLinkRow = -1; // row index owning that link (-1 if none)
-
-    bool _sbDragging        = false;
-    int  _sbDragStartY      = 0;
-    int  _sbDragStartScroll = 0;
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;

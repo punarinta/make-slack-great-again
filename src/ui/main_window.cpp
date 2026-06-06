@@ -274,6 +274,20 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     msgHeaderLayout->addWidget(searchBtn);
     rightLayout->addWidget(msgHeader);
 
+    // ── Error banner — shown briefly when a background network error fires ──
+    _errorBanner = new QLabel(rightPanel);
+    _errorBanner->setObjectName("errorBanner");
+    _errorBanner->setStyleSheet(
+        "QLabel#errorBanner {"
+        "  background: #C0392B;"
+        "  color: #FFFFFF;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "}");
+    _errorBanner->setAlignment(Qt::AlignCenter);
+    _errorBanner->hide();
+    rightLayout->addWidget(_errorBanner);
+
     // ── Content splitter: message area (left) + thread panel (right) ──
     _msgSplitter = new QSplitter(Qt::Horizontal, rightPanel);
     _msgSplitter->setHandleWidth(1);
@@ -540,6 +554,18 @@ void MainWindow::connectToSession() {
                 }
             }
         }, _sessionLifetime);
+
+    _sessionOwner->errors()
+        | rpl::on_next([this](QString msg) {
+            showNetworkError(msg);
+        }, _sessionLifetime);
+}
+
+void MainWindow::showNetworkError(const QString &message) {
+    if (!_errorBanner) return;
+    _errorBanner->setText(message);
+    _errorBanner->show();
+    QTimer::singleShot(5000, _errorBanner, &QWidget::hide);
 }
 
 void MainWindow::maybeNotify(const EvMessageNew &ev) {

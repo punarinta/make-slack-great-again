@@ -14,7 +14,6 @@
 
 class QAbstractButton;
 class QFrame;
-class QLabel;
 class QScrollArea;
 class QTextEdit;
 class QPushButton;
@@ -24,6 +23,9 @@ class PopupTooltip;
 class EmojiPickerPopup;
 class MentionCompleter;
 class MentionPopup;
+class FormattingToolbar;
+class AttachmentStrip;
+class EditModeBanner;
 
 // Slack-style composer: formatting toolbar + text area + bottom action bar.
 // Enter sends; Shift+Enter inserts a newline.
@@ -78,34 +80,27 @@ private:
     void updateSendState();
     void adjustEditorHeight();
     void setFocused(bool focused);
-    void recolorIcons(const QColor &color);
+    void recolorBottomBarIcons(const QColor &color);
     void applyInlineFormat(const QString &marker);
     void prefixSelectedLines(const QString &prefix, bool ordered = false);
     void applyBlockFormat(const QString &fence);
     void openAttachDialog();
     void openLinkDialog(const QPoint &toolbarGlobalPos);
-    void rebuildFileStrip();
-    void addFileChip(QWidget *container, const QString &path, bool readOnly);
-    void addExistingFileChip(QWidget *container, const File &file);
     void checkMentionPopup();
 
-    QFrame      *_box      = nullptr;
-    QWidget     *_toolbar  = nullptr;
-    QTextEdit   *_edit     = nullptr;
-    QPushButton *_sendBtn   = nullptr;
-    QPushButton *_dropBtn   = nullptr; // schedule-send dropdown
-    QWidget     *_sendGroup = nullptr; // pill container for send+drop
-    QWidget     *_linkPopup  = nullptr; // LinkPopup instance, created lazily
-    QWidget     *_editBanner = nullptr; // amber strip shown during edit mode
-    QLabel      *_editLabel  = nullptr; // "Editing message" text inside the banner
-    Ts           _editingTs;            // non-empty when in edit mode
+    QFrame            *_box          = nullptr;
+    FormattingToolbar *_formattingTb = nullptr;
+    EditModeBanner    *_editBanner   = nullptr;
+    AttachmentStrip   *_attachStrip  = nullptr;
+    QTextEdit         *_edit         = nullptr;
+    QPushButton       *_sendBtn      = nullptr;
+    QPushButton       *_dropBtn      = nullptr; // schedule-send dropdown
+    QWidget           *_sendGroup    = nullptr; // pill container for send+drop
+    QWidget           *_linkPopup    = nullptr; // LinkPopup instance, created lazily
+    Ts                 _editingTs;              // non-empty when in edit mode
 
-    // File attachment strip (shown when files are pending or in edit mode with files)
-    QScrollArea *_fileScroll  = nullptr;
-    QWidget     *_fileStrip   = nullptr; // container inside the scroll area
-
-    QStringList        _pendingFiles;      // local paths of files to upload on send
-    std::vector<File>  _editModeFiles;     // existing files shown read-only in edit mode
+    QStringList        _pendingFiles;   // local paths of files to upload on send
+    std::vector<File>  _editModeFiles;  // existing files shown read-only in edit mode
 
     PopupTooltip                           *_tooltip      = nullptr;
     EmojiPickerPopup                       *_emojiPicker  = nullptr;
@@ -114,8 +109,8 @@ private:
     Session                                *_session      = nullptr;
     ConvKind                                _convKind     = ConvKind::PublicChannel;
     int                                     _atTriggerStart = -1;
-    QHash<QWidget*, QString>                _tooltipBtns;
-    QList<QPair<QAbstractButton*, QString>> _iconBtns;
+    QHash<QWidget*, QString>                _tooltipBtns;           // bottom-bar buttons
+    QList<QPair<QAbstractButton*, QString>> _iconBtns;              // bottom-bar icon buttons
 
     // Typing indicator debounce: fires typingStarted() at most once per 3 s while typing
     QTimer _typingTimer;

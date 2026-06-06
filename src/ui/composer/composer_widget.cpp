@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "composer_widget.h"
+#include "formatting_toolbar.h"
+#include "attachment_strip.h"
+#include "edit_mode_banner.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
 #include "mention_completer.h"
 #include "ui/mention_popup/mention_popup.h"
@@ -280,109 +283,43 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     boxLayout->setSpacing(0);
 
     // ── Formatting toolbar ────────────────────────────────────────────────────
-    _toolbar = new QWidget(_box);
-    _toolbar->setObjectName("composerToolbar");
-    _toolbar->setFixedHeight(32);
-    auto *tbLayout = new QHBoxLayout(_toolbar);
-    tbLayout->setContentsMargins(8, 3, 8, 3);
-    tbLayout->setSpacing(5);
+    _formattingTb = new FormattingToolbar(_box);
+    boxLayout->addWidget(_formattingTb);
 
-    auto makeToolBtn = [&](const QString &svgPath, const QString &tooltipText) {
-        auto *btn = new QToolButton(_toolbar);
-        btn->setFixedSize(26, 26);
-        btn->setIconSize(kToolIconSize);
-        btn->setIcon(svgIcon(svgPath, kToolIconSize, kIconColorNormal));
-        btn->setCursor(Qt::PointingHandCursor);
-        btn->setFocusPolicy(Qt::NoFocus);
-        btn->setAttribute(Qt::WA_Hover);
-        btn->installEventFilter(this);
-        _iconBtns.append({btn, svgPath});
-        _tooltipBtns[btn] = tooltipText;
-        return btn;
-    };
-
-    auto *boldBtn      = makeToolBtn(":/ui/bold.svg",          tip(tr("Bold"),         "Ctrl+B"));
-    auto *italicBtn    = makeToolBtn(":/ui/italic.svg",        tip(tr("Italic"),       "Ctrl+I"));
-    auto *underlineBtn = makeToolBtn(":/ui/underline.svg",     tip(tr("Underline"),    "Ctrl+U"));
-    auto *strikeBtn    = makeToolBtn(":/ui/strikethrough.svg", tip(tr("Strikethrough"),"Ctrl+Shift+X"));
-    auto *linkBtn   = makeToolBtn(":/ui/link.svg",          tip(tr("Link"),         "Ctrl+Shift+U"));
-    auto *olBtn     = makeToolBtn(":/ui/list-ordered.svg",  tip(tr("Ordered list"), "Ctrl+Shift+7"));
-    auto *ulBtn     = makeToolBtn(":/ui/list.svg",          tip(tr("Bullet list"),  "Ctrl+Shift+8"));
-    auto *bqBtn     = makeToolBtn(":/ui/quote.svg",         tip(tr("Blockquote"),   "Ctrl+Shift+9"));
-    auto *codeBtn   = makeToolBtn(":/ui/code.svg",          tip(tr("Inline code"),  "Ctrl+Shift+C"));
-    auto *snipBtn   = makeToolBtn(":/ui/braces.svg",        tip(tr("Code block"),   "Ctrl+Alt+Shift+C"));
-
-    tbLayout->addWidget(boldBtn);
-    tbLayout->addWidget(italicBtn);
-    tbLayout->addWidget(underlineBtn);
-    tbLayout->addWidget(strikeBtn);
-    tbLayout->addWidget(makeVSep(_toolbar));
-    tbLayout->addWidget(linkBtn);
-    tbLayout->addWidget(olBtn);
-    tbLayout->addWidget(ulBtn);
-    tbLayout->addWidget(makeVSep(_toolbar));
-    tbLayout->addWidget(bqBtn);
-    tbLayout->addWidget(codeBtn);
-    tbLayout->addWidget(snipBtn);
-    tbLayout->addStretch();
-
-    boxLayout->addWidget(_toolbar);
+    connect(_formattingTb, &FormattingToolbar::boldClicked,
+            this, [this] { applyInlineFormat("*");  });
+    connect(_formattingTb, &FormattingToolbar::italicClicked,
+            this, [this] { applyInlineFormat("_");  });
+    connect(_formattingTb, &FormattingToolbar::underlineClicked,
+            this, [this] { applyInlineFormat("__"); });
+    connect(_formattingTb, &FormattingToolbar::strikeClicked,
+            this, [this] { applyInlineFormat("~");  });
+    connect(_formattingTb, &FormattingToolbar::inlineCodeClicked,
+            this, [this] { applyInlineFormat("`");  });
+    connect(_formattingTb, &FormattingToolbar::codeBlockClicked,
+            this, [this] { applyBlockFormat("```"); });
+    connect(_formattingTb, &FormattingToolbar::orderedListClicked,
+            this, [this] { prefixSelectedLines("", true); });
+    connect(_formattingTb, &FormattingToolbar::bulletListClicked,
+            this, [this] { prefixSelectedLines("- ");     });
+    connect(_formattingTb, &FormattingToolbar::blockquoteClicked,
+            this, [this] { prefixSelectedLines("> ");     });
+    connect(_formattingTb, &FormattingToolbar::linkClicked,
+            this, &ComposerWidget::openLinkDialog);
 
     // ── Edit-mode banner ──────────────────────────────────────────────────────
-    _editBanner = new QWidget(_box);
-    _editBanner->setObjectName("editBanner");
-    _editBanner->setFixedHeight(30);
-    _editBanner->setStyleSheet(
-        "QWidget#editBanner {"
-        "  background: #FFF8EE;"
-        "  border-left: 3px solid #E8A917;"
-        "  border-bottom: 1px solid #F0DFA0;"
-        "}"
-        "QLabel { border: none; background: transparent;"
-        "  font-size: 12px; color: #7A5800; font-weight: 600; }"
-        "QToolButton { border: none; border-radius: 3px; background: transparent; }"
-        "QToolButton:hover { background: #F5D98C; }"
-    );
-    {
-        auto *bl = new QHBoxLayout(_editBanner);
-        bl->setContentsMargins(10, 0, 4, 0);
-        bl->setSpacing(4);
-        _editLabel = new QLabel(tr("Editing message"), _editBanner);
-        auto *cancelEditBtn = new QToolButton(_editBanner);
-        cancelEditBtn->setFixedSize(20, 20);
-        cancelEditBtn->setIconSize(QSize(12, 12));
-        cancelEditBtn->setIcon(svgIcon(":/ui/x.svg", QSize(12, 12), QColor("#7A5800")));
-        cancelEditBtn->setFocusPolicy(Qt::NoFocus);
-        cancelEditBtn->setCursor(Qt::PointingHandCursor);
-        connect(cancelEditBtn, &QToolButton::clicked, this, &ComposerWidget::exitEditMode);
-        bl->addWidget(_editLabel, 1);
-        bl->addWidget(cancelEditBtn);
-    }
-    _editBanner->hide();
+    _editBanner = new EditModeBanner(_box);
+    connect(_editBanner, &EditModeBanner::cancelClicked,
+            this, &ComposerWidget::exitEditMode);
+    boxLayout->addWidget(_editBanner); // hidden by default; shown in enterEditMode
 
     // ── File attachment strip ─────────────────────────────────────────────────
-    _fileScroll = new QScrollArea(_box);
-    _fileScroll->setObjectName("fileScrollArea");
-    _fileScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    _fileScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    _fileScroll->setFixedHeight(84);
-    _fileScroll->setFrameShape(QFrame::NoFrame);
-    _fileScroll->setStyleSheet(
-        "QScrollArea#fileScrollArea { background: transparent; border: none; }"
-        "QScrollArea#fileScrollArea > QWidget { background: transparent; }");
-    _fileScroll->hide();
-
-    _fileStrip = new QWidget;
-    _fileStrip->setObjectName("fileStrip");
-    _fileStrip->setStyleSheet("QWidget#fileStrip { background: transparent; }");
-    auto *stripLayout = new QHBoxLayout(_fileStrip);
-    stripLayout->setContentsMargins(8, 6, 8, 6);
-    stripLayout->setSpacing(8);
-    stripLayout->addStretch();
-
-    _fileScroll->setWidget(_fileStrip);
-    _fileScroll->setWidgetResizable(true);
-    boxLayout->addWidget(_fileScroll);
+    _attachStrip = new AttachmentStrip(_box);
+    connect(_attachStrip, &AttachmentStrip::removeRequested, this, [this](const QString &path) {
+        _pendingFiles.removeAll(path);
+        _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    });
+    boxLayout->addWidget(_attachStrip);
 
     // ── Text input ────────────────────────────────────────────────────────────
     _edit = new QTextEdit(_box);
@@ -493,21 +430,6 @@ ComposerWidget::ComposerWidget(QWidget *parent)
     boxLayout->addWidget(bottomBar);
     outerLayout->addWidget(_box);
 
-    // ── Formatting toolbar actions ────────────────────────────────────────────
-    connect(boldBtn,      &QToolButton::clicked, this, [this] { applyInlineFormat("*");  });
-    connect(italicBtn,   &QToolButton::clicked, this, [this] { applyInlineFormat("_");  });
-    connect(underlineBtn,&QToolButton::clicked, this, [this] { applyInlineFormat("__"); });
-    connect(strikeBtn, &QToolButton::clicked, this, [this] { applyInlineFormat("~"); });
-    connect(codeBtn,   &QToolButton::clicked, this, [this] { applyInlineFormat("`"); });
-    connect(snipBtn,   &QToolButton::clicked, this, [this] { applyBlockFormat("```"); });
-    connect(olBtn,     &QToolButton::clicked, this, [this] { prefixSelectedLines("", true); });
-    connect(ulBtn,     &QToolButton::clicked, this, [this] { prefixSelectedLines("- "); });
-    connect(bqBtn,     &QToolButton::clicked, this, [this] { prefixSelectedLines("> "); });
-    connect(linkBtn,   &QToolButton::clicked, this, [this, linkBtn] {
-        const QPoint pos = linkBtn->mapToGlobal(QPoint(0, linkBtn->height() + 4));
-        openLinkDialog(pos);
-    });
-
     // ── Bottom bar actions ────────────────────────────────────────────────────
     connect(_sendBtn, &QPushButton::clicked, this, &ComposerWidget::trySend);
 
@@ -607,147 +529,25 @@ void ComposerWidget::checkMentionPopup() {
 void ComposerWidget::addPendingFile(const QString &filePath) {
     if (!_pendingFiles.contains(filePath))
         _pendingFiles.append(filePath);
-    rebuildFileStrip();
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
 }
 
 void ComposerWidget::clearPendingFiles() {
     _pendingFiles.clear();
     _editModeFiles.clear();
-    rebuildFileStrip();
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
 }
 
-// ── Private ───────────────────────────────────────────────────────────────────
 
-void ComposerWidget::rebuildFileStrip() {
-    // Remove all existing chips (everything except the trailing stretch)
-    auto *lay = qobject_cast<QHBoxLayout *>(_fileStrip->layout());
-    while (lay->count() > 1)
-        delete lay->takeAt(0)->widget();
-
-    const bool hasFiles = !_pendingFiles.isEmpty() || !_editModeFiles.empty();
-
-    if (!hasFiles) {
-        _fileScroll->hide();
-        return;
-    }
-
-    // Add pending file chips (with remove button)
-    for (const QString &path : std::as_const(_pendingFiles))
-        addFileChip(_fileStrip, path, /*readOnly=*/false);
-
-    // Add existing (edit mode) file chips (read-only)
-    for (const auto &f : _editModeFiles)
-        addExistingFileChip(_fileStrip, f);
-
-    _fileScroll->show();
-    _fileStrip->adjustSize();
-}
-
-void ComposerWidget::addFileChip(QWidget *container, const QString &path, bool readOnly) {
-    const QFileInfo fi(path);
-    const QString name = fi.fileName();
-    const qint64 size  = fi.size();
-
-    auto *chip = new QFrame(container);
-    chip->setObjectName("fileChip");
-    chip->setFixedSize(160, 70);
-    chip->setStyleSheet(
-        "QFrame#fileChip {"
-        "  background: #F8F8F8;"
-        "  border: 1px solid #E0E0E0;"
-        "  border-radius: 8px;"
-        "}"
-    );
-
-    auto *chipLayout = new QVBoxLayout(chip);
-    chipLayout->setContentsMargins(8, 6, 8, 6);
-    chipLayout->setSpacing(2);
-
-    auto *nameLabel = new QLabel(chip);
-    nameLabel->setText(name.length() > 18
-        ? name.left(15) + "…" + fi.suffix()
-        : name);
-    nameLabel->setStyleSheet("font-size:11px; color:#1D1C1D; font-weight:600; border:none;");
-    nameLabel->setWordWrap(false);
-
-    auto fmtSize = [](qint64 b) -> QString {
-        if (b < 1024) return QString::number(b) + " B";
-        if (b < 1024*1024) return QString::number(b/1024) + " KB";
-        return QString::number(b/(1024*1024)) + " MB";
-    };
-
-    auto *sizeLabel = new QLabel(fmtSize(size), chip);
-    sizeLabel->setStyleSheet("font-size:10px; color:#888; border:none;");
-
-    chipLayout->addWidget(nameLabel);
-    chipLayout->addWidget(sizeLabel);
-    chipLayout->addStretch();
-
-    if (!readOnly) {
-        auto *removeBtn = new QToolButton(chip);
-        removeBtn->setFixedSize(16, 16);
-        removeBtn->setIconSize(QSize(10, 10));
-        removeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(10, 10), QColor("#888")));
-        removeBtn->setFocusPolicy(Qt::NoFocus);
-        removeBtn->setCursor(Qt::PointingHandCursor);
-        removeBtn->setStyleSheet(
-            "QToolButton { border:none; border-radius:8px; background:#E0E0E0; }"
-            "QToolButton:hover { background:#CCCCCC; }");
-        removeBtn->setParent(chip);
-        removeBtn->move(chip->width() - 20, 4);
-        removeBtn->raise();
-        const QString pathCopy = path;
-        connect(removeBtn, &QToolButton::clicked, this, [this, pathCopy] {
-            _pendingFiles.removeAll(pathCopy);
-            rebuildFileStrip();
-        });
-    }
-
-    auto *lay = qobject_cast<QHBoxLayout *>(container->layout());
-    lay->insertWidget(lay->count() - 1, chip); // insert before stretch
-}
-
-void ComposerWidget::addExistingFileChip(QWidget *container, const File &file) {
-    auto *chip = new QFrame(container);
-    chip->setObjectName("fileChipRO");
-    chip->setFixedSize(160, 70);
-    chip->setStyleSheet(
-        "QFrame#fileChipRO {"
-        "  background: #F0F0F0;"
-        "  border: 1px solid #E0E0E0;"
-        "  border-radius: 8px;"
-        "}"
-    );
-
-    auto *chipLayout = new QVBoxLayout(chip);
-    chipLayout->setContentsMargins(8, 6, 8, 6);
-    chipLayout->setSpacing(2);
-
-    auto *nameLabel = new QLabel(chip);
-    const QString name = file.name;
-    nameLabel->setText(name.length() > 18
-        ? name.left(15) + "…" + QFileInfo(name).suffix()
-        : name);
-    nameLabel->setStyleSheet("font-size:11px; color:#616061; font-weight:600; border:none;");
-
-    auto *typeLabel = new QLabel(file.prettyType.isEmpty() ? file.mimeType : file.prettyType, chip);
-    typeLabel->setStyleSheet("font-size:10px; color:#888; border:none;");
-
-    chipLayout->addWidget(nameLabel);
-    chipLayout->addWidget(typeLabel);
-    chipLayout->addStretch();
-
-    auto *lay = qobject_cast<QHBoxLayout *>(container->layout());
-    lay->insertWidget(lay->count() - 1, chip);
-}
-
-void ComposerWidget::recolorIcons(const QColor &color) {
+void ComposerWidget::recolorBottomBarIcons(const QColor &color) {
     for (auto &[btn, path] : _iconBtns)
         btn->setIcon(svgIcon(path, btn->iconSize(), color));
 }
 
 void ComposerWidget::setFocused(bool focused) {
-    recolorIcons(focused ? kIconColorFocused : kIconColorNormal);
+    const QColor iconColor = focused ? kIconColorFocused : kIconColorNormal;
+    recolorBottomBarIcons(iconColor);
+    _formattingTb->recolor(iconColor);
     const QString borderColor = focused ? "#999999" : "#DDDDDD";
     _box->setStyleSheet(QString(
         "QFrame#composerBox {"
@@ -760,19 +560,6 @@ void ComposerWidget::setFocused(bool focused) {
     const QColor dropColor = _edit->toPlainText().trimmed().isEmpty()
         ? QColor("#CCCCCC") : Qt::white;
     _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), dropColor));
-
-    _toolbar->setStyleSheet(
-        "QWidget#composerToolbar {"
-        "  background: #F5F5F5;"
-        "  border-radius: 7px 7px 0 0;"
-        "}"
-        "QWidget#composerToolbar QToolButton {"
-        "  border: none; border-radius: 3px;"
-        "  background: transparent;"
-        "}"
-        "QWidget#composerToolbar QToolButton:hover   { background: #E0E0E0; }"
-        "QWidget#composerToolbar QToolButton:pressed { background: #D0D0D0; }"
-    );
 }
 
 void ComposerWidget::adjustEditorHeight() {
@@ -928,8 +715,8 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                 case Qt::Key_8:         prefixSelectedLines("- ");       return true;
                 case Qt::Key_9:         prefixSelectedLines("> ");       return true;
                 case Qt::Key_U: {
-                    const QPoint p = _toolbar->mapToGlobal(
-                        QPoint(_toolbar->width() / 4, _toolbar->height() + 4));
+                    const QPoint p = _formattingTb->mapToGlobal(
+                        QPoint(_formattingTb->width() / 4, _formattingTb->height() + 4));
                     openLinkDialog(p);
                     return true;
                 }
@@ -1076,7 +863,7 @@ void ComposerWidget::trySend() {
     for (const QString &f : std::as_const(_pendingFiles))
         emit uploadRequested(f);
     _pendingFiles.clear();
-    rebuildFileStrip();
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
 
     if (!_editingTs.isEmpty()) {
         const Ts ts = _editingTs;
@@ -1111,7 +898,7 @@ void ComposerWidget::trySchedule() {
     popup->open(pos, [this, text](qint64 unixTs) {
         _edit->clear();
         _pendingFiles.clear();
-        rebuildFileStrip();
+        _attachStrip->rebuild(_pendingFiles, _editModeFiles);
         emit scheduleRequested(text, unixTs);
     });
 }
@@ -1182,13 +969,10 @@ void ComposerWidget::enterEditMode(const Ts &ts, const QString &existingText,
     cursor.movePosition(QTextCursor::End);
     _edit->setTextCursor(cursor);
 
-    auto *lay = qobject_cast<QVBoxLayout *>(_box->layout());
-    lay->insertWidget(1, _editBanner);
     _editBanner->setVisible(true);
 
-    // Show existing files read-only
     _editModeFiles = existingFiles;
-    rebuildFileStrip();
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
 
     _edit->setFocus();
 }
@@ -1198,12 +982,10 @@ void ComposerWidget::exitEditMode() {
     _editingTs.clear();
     _edit->clear();
 
-    auto *lay = qobject_cast<QVBoxLayout *>(_box->layout());
-    lay->removeWidget(_editBanner);
     _editBanner->setVisible(false);
 
     _editModeFiles.clear();
-    rebuildFileStrip();
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
 }
 
 // ── Draft support ─────────────────────────────────────────────────────────────

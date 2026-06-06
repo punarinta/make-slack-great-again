@@ -18,6 +18,20 @@
 #include <algorithm>
 #include <cmath>
 
+// ── PaintContext ──────────────────────────────────────────────────────────────
+
+PaintContext MessageListWidget::makePaintContext() const {
+    const int vw       = viewport()->width();
+    const int textLeft = kPadH + kAvSize + kAvGap;
+    return PaintContext{
+        vw,
+        verticalScrollBar()->value(),
+        viewport()->height(),
+        textLeft,
+        vw - textLeft - kPadH,
+    };
+}
+
 // ── Paint entry point ─────────────────────────────────────────────────────────
 
 void MessageListWidget::doPaint(QPaintEvent *event) {
@@ -28,8 +42,9 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     p.setRenderHint(QPainter::Antialiasing);
     p.fillRect(event->rect(), Theme::kMessageBg);
 
-    const int scrollY = verticalScrollBar()->value();
-    const int vh      = viewport()->height();
+    const PaintContext ctx = makePaintContext();
+    const int scrollY = ctx.scrollY;
+    const int vh      = ctx.vh;
 
     // Intro header (channel/DM name + description before first message)
     if (_showIntro) {
@@ -44,23 +59,14 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
         const int rh     = rowHeight(i);
         if (rowTop + rh < 0) continue;
         if (rowTop > vh) break;
-        paintRow(p, i, rowTop);
+        paintRow(p, i, rowTop, ctx);
     }
 
     // Thin Telegram-style scrollbar overlay
-    if (_totalH > vh) {
-        const int thumbH = std::max(20, vh * vh / _totalH);
-        const int thumbY = (_totalH - vh > 0)
-            ? scrollY * (vh - thumbH) / (_totalH - vh) : 0;
-        const int sbX = viewport()->width() - kScrollW - 2;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, 80));
-        p.drawRoundedRect(sbX, thumbY, kScrollW, thumbH,
-                          kScrollW / 2.0, kScrollW / 2.0);
-    }
+    paintScrollThumb(p, _totalH, QColor(0, 0, 0, 80));
 }
 
-void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
+void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx) const {
     const auto &item = _items[index];
     ensureDocLayout(item);
     const bool collapsed = isCollapsed(index);
@@ -68,12 +74,12 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
     // Paint date separator at the top of the row if needed, then shift content down.
     const int sepH = needsDateSep(index) ? kSepH : 0;
     if (sepH > 0)
-        paintDateSep(p, rowTop, viewport()->width(), item.msg.ts);
+        paintDateSep(p, rowTop, ctx.vw, item.msg.ts);
     const int msgTop = rowTop + sepH;
 
-    const int vw        = viewport()->width();
-    const int textLeft  = kPadH + kAvSize + kAvGap;
-    const int textWidth = vw - textLeft - kPadH;
+    const int vw        = ctx.vw;
+    const int textLeft  = ctx.textLeft;
+    const int textWidth = ctx.textWidth;
     const int padV      = collapsed ? kPadVCollapsed : kPadV;
     const int rh        = rowHeight(index);
     const int msgH      = rh - sepH;
@@ -160,14 +166,14 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
     contentY += item.docHeight;
 
     // ── Attachments ──────────────────────────────────────────────────
-    paintAttachments(p, item, textLeft, contentY, textWidth, index);
+    paintAttachments(p, item, ctx, contentY, index);
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
         if (isDismissed(item.msg.ts, ai)) continue;
         contentY += kAttachGap + attachTotalH(item, ai);
     }
 
     // ── Inline file images ───────────────────────────────────────────
-    paintFileImages(p, item, textLeft, contentY, textWidth);
+    paintFileImages(p, item, ctx, contentY);
     {
         const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
         bool anyImg = false;
@@ -191,7 +197,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
     }
 
     // ── Non-image file chips ─────────────────────────────────────────
-    paintFileChips(p, item, textLeft, contentY, textWidth);
+    paintFileChips(p, item, ctx, contentY);
     {
         bool anyImg = false;
         for (const auto &f : item.msg.files) if (f.isImage()) { anyImg = true; break; }
@@ -207,14 +213,14 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
 
     // ── Reactions ────────────────────────────────────────────────────
     if (!item.msg.reactions.empty())
-        paintReactions(p, item, textLeft, contentY + 2, textWidth);
+        paintReactions(p, item, ctx, contentY + 2);
 
     // ── Reply bar (thread-root messages in channel view) ─────────────
     if (!_isThreadMode && item.msg.replyCount > 0) {
         int replyBarTop = contentY;
         if (!item.msg.reactions.empty()) replyBarTop += kReactH + 2;
         replyBarTop += kReplyBarGap;
-        paintReplyBar(p, item, textLeft, replyBarTop, textWidth);
+        paintReplyBar(p, item, ctx, replyBarTop);
     }
 
     // ── Collapsed-row timestamp (shown on hover) ──────────────────────
@@ -305,10 +311,12 @@ void MessageListWidget::paintAvatar(QPainter &p,
 
 void MessageListWidget::paintAttachments(QPainter &p,
                                           const MessageItem &item,
-                                          int left, int top, int width,
-                                          int index) const
+                                          const PaintContext &ctx,
+                                          int top, int index) const
 {
     const auto &attachments = item.msg.attachments;
+    const int left  = ctx.textLeft;
+    const int width = ctx.textWidth;
     const int textX = left + kAttachBarW + kAttachBarGap;
     const int textW = width - kAttachBarW - kAttachBarGap;
     int y = top;
@@ -399,8 +407,10 @@ void MessageListWidget::paintAttachments(QPainter &p,
 
 void MessageListWidget::paintFileImages(QPainter &p,
                                          const MessageItem &item,
-                                         int left, int top, int width) const
+                                         const PaintContext &ctx, int top) const
 {
+    const int left  = ctx.textLeft;
+    const int width = ctx.textWidth;
     int y = top;
     const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
     for (const auto &f : item.msg.files) {
@@ -548,8 +558,10 @@ static int reactChipW(const QString &countStr) {
 
 void MessageListWidget::paintReactions(QPainter &p,
                                        const MessageItem &item,
-                                       int left, int top, int width) const
+                                       const PaintContext &ctx, int top) const
 {
+    const int left  = ctx.textLeft;
+    const int width = ctx.textWidth;
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
 
@@ -604,8 +616,10 @@ void MessageListWidget::paintReactions(QPainter &p,
 
 void MessageListWidget::paintFileChips(QPainter &p,
                                        const MessageItem &item,
-                                       int left, int top, int width) const
+                                       const PaintContext &ctx, int top) const
 {
+    const int left  = ctx.textLeft;
+    const int width = ctx.textWidth;
     bool anyImg = false;
     for (const auto &f : item.msg.files) if (f.isImage()) { anyImg = true; break; }
     const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
@@ -687,10 +701,10 @@ void MessageListWidget::paintFileChips(QPainter &p,
 }
 
 const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
-    const int scrollY  = verticalScrollBar()->value();
-    const int vw       = viewport()->width();
-    const int textLeft = kPadH + kAvSize + kAvGap;
-    const int textWidth = vw - textLeft - kPadH;
+    const PaintContext ctx = makePaintContext();
+    const int scrollY   = ctx.scrollY;
+    const int textLeft  = ctx.textLeft;
+    const int textWidth = ctx.textWidth;
 
     for (int i = 0; i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i] - scrollY;
@@ -752,12 +766,12 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
 
 void MessageListWidget::paintReplyBar(QPainter &p,
                                       const MessageItem &item,
-                                      int left, int top, int width) const
+                                      const PaintContext &ctx, int top) const
 {
     const int count = item.msg.replyCount;
     if (count <= 0) return;
 
-    const QRect bar(left, top, width, kReplyBarH);
+    const QRect bar(ctx.textLeft, top, ctx.textWidth, kReplyBarH);
 
     const QString label = count == 1
         ? tr("1 reply")
@@ -775,9 +789,10 @@ void MessageListWidget::paintReplyBar(QPainter &p,
 
 int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
     if (_isThreadMode) return -1;
-    const int scrollY  = verticalScrollBar()->value();
-    const int textLeft = kPadH + kAvSize + kAvGap;
-    const int textWidth = viewport()->width() - textLeft - kPadH;
+    const PaintContext ctx = makePaintContext();
+    const int scrollY   = ctx.scrollY;
+    const int textLeft  = ctx.textLeft;
+    const int textWidth = ctx.textWidth;
 
     for (int i = 0; i < (int)_items.size(); ++i) {
         if (_items[i].msg.replyCount <= 0) continue;
@@ -807,9 +822,10 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
 // ── Reaction hit-test ─────────────────────────────────────────────────────────
 
 std::pair<int,int> MessageListWidget::reactionAt(const QPoint &viewportPos) const {
-    const int scrollY  = verticalScrollBar()->value();
-    const int textLeft = kPadH + kAvSize + kAvGap;
-    const int textWidth = viewport()->width() - textLeft - kPadH;
+    const PaintContext ctx = makePaintContext();
+    const int scrollY   = ctx.scrollY;
+    const int textLeft  = ctx.textLeft;
+    const int textWidth = ctx.textWidth;
 
     for (int i = 0; i < (int)_items.size(); ++i) {
         if (_items[i].msg.reactions.empty()) continue;

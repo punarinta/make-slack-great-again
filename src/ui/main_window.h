@@ -73,6 +73,9 @@ private:
     void setupTray();
     void maybeNotify(const EvMessageNew &ev);
 
+    // Error banner — shown briefly when a network error occurs with no UI handler.
+    void showNetworkError(const QString &message);
+
     // Event handlers
     bool eventFilter(QObject *o, QEvent *e) override;
     void changeEvent(QEvent *e) override;
@@ -114,6 +117,7 @@ private:
     QHash<QString, QString>     _drafts; // convId.value → unsent draft text
 
     ImageCache          *_imgCache          = nullptr;
+    QLabel              *_errorBanner       = nullptr;
     QSystemTrayIcon     *_trayIcon          = nullptr;
     QPushButton         *_starBtn           = nullptr;
     HeaderAvatarWidget  *_headerAvatar      = nullptr;

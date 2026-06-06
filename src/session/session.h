@@ -33,6 +33,9 @@ public:
     rpl::producer<std::vector<User>>         users() const;
     rpl::producer<Event>                     events() const;
     rpl::producer<AuthState>                 authState() const;
+    // Fires with a human-readable message whenever a network operation fails
+    // without a caller-provided error handler. Subscribe in the UI to show errors.
+    rpl::producer<QString>                   errors() const;
 
     // Send a message (optionally as a thread reply) and optimistically insert it.
     void sendMessage(ConversationId conv, const QString &text,
@@ -95,6 +98,7 @@ private:
     rpl::variable<std::vector<Conversation>> _conversations;
     rpl::variable<std::vector<User>>         _users;
     rpl::event_stream<Event>                 _eventHub;
+    rpl::event_stream<QString>               _errorHub;
 
     UserId              _meUserId;    // set via setMe() once auth.test result is known
     ConversationId      _readingConv; // currently open conversation

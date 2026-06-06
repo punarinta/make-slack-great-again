@@ -3,8 +3,8 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "ui/virtual_list/virtual_list_widget.h"
 
-#include <QAbstractScrollArea>
 #include <QHash>
 #include <QPixmap>
 #include <QVariantAnimation>
@@ -21,7 +21,7 @@ struct UserInfo {
 
 // Virtual-painted conversation list with animated hover and selection.
 // Zero QWidgets per row — scales to thousands of conversations.
-class ConvListWidget : public QAbstractScrollArea {
+class ConvListWidget : public VirtualListWidget {
     Q_OBJECT
 public:
     explicit ConvListWidget(ImageCache *imgCache, QWidget *parent = nullptr);
@@ -43,17 +43,14 @@ signals:
     void conversationSelected(int index);
 
 protected:
-    bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
 
-private:
-    void doPaint(QPaintEvent *e);
-    void doMouseMove(QMouseEvent *e);
-    void doMousePress(QMouseEvent *e);
-    void doMouseRelease(QMouseEvent *e);
-    void doLeave(QEvent *e);
-    bool isOnScrollThumb(int vpY) const;
+    void doPaint(QPaintEvent *e) override;
+    void doMouseMove(QMouseEvent *e) override;
+    void doMousePress(QMouseEvent *e) override;
+    void doMouseRelease(QMouseEvent *e) override;
+    void doMouseLeave() override;
 
     int  rowAt(int viewportY) const;    // -1 if none
     void setHovered(int row);
@@ -76,10 +73,6 @@ private:
     int  _hovered  = -1;
     int  _selected = -1;
 
-    bool _sbDragging        = false;
-    int  _sbDragStartY      = 0;
-    int  _sbDragStartScroll = 0;
-
     // Selection slide animation: 0.0 = start of slide, 1.0 = settled
     QVariantAnimation _selAnim;
     int  _selFrom = -1;
@@ -91,5 +84,4 @@ private:
     static constexpr int kAvatarSize  = 28;  // size of user avatar square
     static constexpr int kAvatarRadius=  5;  // corner radius
     static constexpr int kAvatarGap   =  8;  // gap between avatar and name
-    static constexpr int kScrollW     =  4;  // scrollbar thumb width
 };

@@ -15,16 +15,10 @@
 #include <QApplication>
 
 ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
-    : QAbstractScrollArea(parent)
+    : VirtualListWidget(parent)
     , _imgCache(imgCache)
 {
-    setFrameShape(QFrame::NoFrame);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    viewport()->setMouseTracking(true);
-    viewport()->setAttribute(Qt::WA_OpaquePaintEvent);
     viewport()->setCursor(Qt::PointingHandCursor);
-    viewport()->installEventFilter(this);
 
     _selAnim.setDuration(140);
     _selAnim.setEasingCurve(QEasingCurve::OutCubic);
@@ -120,32 +114,6 @@ QString ConvListWidget::resolvedName(int row) const {
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
-bool ConvListWidget::eventFilter(QObject *obj, QEvent *event) {
-    if (obj == viewport()) {
-        switch (event->type()) {
-        case QEvent::Paint:
-            doPaint(static_cast<QPaintEvent *>(event));
-            return true;
-        case QEvent::MouseMove:
-            doMouseMove(static_cast<QMouseEvent *>(event));
-            return true;
-        case QEvent::MouseButtonPress:
-            doMousePress(static_cast<QMouseEvent *>(event));
-            return true;
-        case QEvent::MouseButtonRelease:
-            doMouseRelease(static_cast<QMouseEvent *>(event));
-            return true;
-        case QEvent::Leave:
-        case QEvent::HoverLeave:
-            doLeave(event);
-            return true;
-        default:
-            break;
-        }
-    }
-    return QAbstractScrollArea::eventFilter(obj, event);
-}
-
 void ConvListWidget::resizeEvent(QResizeEvent *event) {
     QAbstractScrollArea::resizeEvent(event);
     updateScrollRange();
@@ -191,21 +159,12 @@ void ConvListWidget::setSelected(int row) {
     emit conversationSelected(row);
 }
 
-bool ConvListWidget::isOnScrollThumb(int vpY) const {
-    const int total = static_cast<int>(_convs.size()) * kRowH;
-    const int vh    = viewport()->height();
-    if (total <= vh) return false;
-    const int scrollY = verticalScrollBar()->value();
-    const int thumbH  = std::max(20, vh * vh / total);
-    const int thumbY  = scrollY * (vh - thumbH) / (total - vh);
-    return vpY >= thumbY && vpY < thumbY + thumbH;
-}
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
+    const int total = static_cast<int>(_convs.size()) * kRowH;
     if (_sbDragging) {
-        const int total = static_cast<int>(_convs.size()) * kRowH;
-        const int vh    = viewport()->height();
-        const int thumbH    = std::max(20, vh * vh / total);
+        const int vh         = viewport()->height();
+        const int thumbH     = std::max(20, vh * vh / total);
         const int trackRange = vh - thumbH;
         if (trackRange > 0) {
             const int newScroll = _sbDragStartScroll
@@ -216,7 +175,7 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
         return;
     }
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
-    if (e->pos().x() >= sbHitX && isOnScrollThumb(e->pos().y()))
+    if (e->pos().x() >= sbHitX && VirtualListWidget::isOnScrollThumb(e->pos().y(), total))
         viewport()->setCursor(Qt::SizeVerCursor);
     else
         viewport()->setCursor(Qt::PointingHandCursor);
@@ -225,8 +184,9 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
 
 void ConvListWidget::doMousePress(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton) return;
+    const int total  = static_cast<int>(_convs.size()) * kRowH;
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
-    if (e->pos().x() >= sbHitX && isOnScrollThumb(e->pos().y())) {
+    if (e->pos().x() >= sbHitX && VirtualListWidget::isOnScrollThumb(e->pos().y(), total)) {
         _sbDragging        = true;
         _sbDragStartY      = e->pos().y();
         _sbDragStartScroll = verticalScrollBar()->value();
@@ -245,7 +205,7 @@ void ConvListWidget::doMouseRelease(QMouseEvent *e) {
     }
 }
 
-void ConvListWidget::doLeave(QEvent *) {
+void ConvListWidget::doMouseLeave() {
     setHovered(-1);
 }
 
@@ -337,17 +297,7 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
     triggerMissingAvatarDownloads();
 
     // Thin Telegram-style scrollbar overlay
-    const int total = static_cast<int>(_convs.size()) * kRowH;
-    if (total > vh) {
-        const int thumbH = std::max(20, vh * vh / total);
-        const int thumbY = (total - vh > 0)
-            ? scrollY * (vh - thumbH) / (total - vh) : 0;
-        const int sbX = viewport()->width() - kScrollW - 2;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(255, 255, 255, 100));
-        p.drawRoundedRect(sbX, thumbY, kScrollW, thumbH,
-                          kScrollW / 2.0, kScrollW / 2.0);
-    }
+    paintScrollThumb(p, static_cast<int>(_convs.size()) * kRowH, QColor(255, 255, 255, 100));
 }
 
 void ConvListWidget::paintRow(QPainter &p, int i, int y) const {

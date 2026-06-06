@@ -83,6 +83,7 @@ add_executable(msga MACOSX_BUNDLE
     src/session/session.cpp
 
     # UI
+    src/ui/virtual_list/virtual_list_widget.cpp
     src/ui/image_cache.cpp
     src/ui/main_window.cpp
     src/ui/title_bar/title_bar.cpp
@@ -90,6 +91,9 @@ add_executable(msga MACOSX_BUNDLE
     src/ui/message_list/message_list_paint.cpp
     src/ui/message_list/message_render.cpp
     src/ui/conv_list/conv_list_widget.cpp
+    src/ui/composer/formatting_toolbar.cpp
+    src/ui/composer/attachment_strip.cpp
+    src/ui/composer/edit_mode_banner.cpp
     src/ui/composer/composer_widget.cpp
     src/ui/emoji_picker/emoji_picker_popup.cpp
     src/ui/composer/mention_completer.cpp

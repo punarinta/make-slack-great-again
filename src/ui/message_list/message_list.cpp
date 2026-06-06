@@ -36,17 +36,11 @@
 // ── MessageListWidget ─────────────────────────────────────────────────────────
 
 MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent)
-    : QAbstractScrollArea(parent)
+    : VirtualListWidget(parent)
     , _session(session)
     , _imgCache(imgCache)
 {
-    setFrameShape(QFrame::NoFrame);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     verticalScrollBar()->setSingleStep(20);
-    viewport()->setMouseTracking(true);
-    viewport()->setAttribute(Qt::WA_OpaquePaintEvent);
-    viewport()->installEventFilter(this);
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
@@ -89,31 +83,6 @@ void MessageListWidget::smoothScrollTo(int target) {
     _scrollAnim.setStartValue(verticalScrollBar()->value());
     _scrollAnim.setEndValue(target);
     _scrollAnim.start();
-}
-
-bool MessageListWidget::eventFilter(QObject *obj, QEvent *event) {
-    if (obj == viewport()) {
-        switch (event->type()) {
-        case QEvent::Paint:
-            doPaint(static_cast<QPaintEvent *>(event));
-            return true;
-        case QEvent::MouseButtonPress:
-            doMousePress(static_cast<QMouseEvent *>(event));
-            return true;
-        case QEvent::MouseButtonRelease:
-            doMouseRelease(static_cast<QMouseEvent *>(event));
-            return true;
-        case QEvent::MouseMove:
-            doMouseMove(static_cast<QMouseEvent *>(event));
-            return true;
-        case QEvent::Leave:
-            doMouseLeave();
-            return false;
-        default:
-            break;
-        }
-    }
-    return QAbstractScrollArea::eventFilter(obj, event);
 }
 
 void MessageListWidget::scrollContentsBy(int /*dx*/, int /*dy*/) {
@@ -621,9 +590,10 @@ static void setDocLinkUnderline(QTextDocument *doc, const QString &url, bool und
 // ── Mouse handling ────────────────────────────────────────────────────────────
 
 QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
-    const int scrollY  = verticalScrollBar()->value();
+    const PaintContext ctx = makePaintContext();
+    const int scrollY  = ctx.scrollY;
     const int docY     = viewportPos.y() + scrollY;
-    const int textLeft = kPadH + kAvSize + kAvGap;
+    const int textLeft = ctx.textLeft;
 
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
         const int rowTop = _tops[i];
@@ -673,9 +643,10 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
 }
 
 std::pair<int,int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos) const {
-    const int scrollY = verticalScrollBar()->value();
-    const int textLeft = kPadH + kAvSize + kAvGap;
-    const int btnX = textLeft - kDismissGap - kDismissW;
+    const PaintContext ctx = makePaintContext();
+    const int scrollY  = ctx.scrollY;
+    const int textLeft = ctx.textLeft;
+    const int btnX     = textLeft - kDismissGap - kDismissW;
 
     for (int i = 0; i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i] - scrollY;
@@ -709,9 +680,10 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
     const auto &item = _items[msgIdx];
     ensureDocLayout(item);
 
-    const int scrollY = verticalScrollBar()->value();
-    const int textLeft = kPadH + kAvSize + kAvGap;
-    const int btnX = textLeft - kDismissGap - kDismissW;
+    const PaintContext ctx = makePaintContext();
+    const int scrollY  = ctx.scrollY;
+    const int textLeft = ctx.textLeft;
+    const int btnX     = textLeft - kDismissGap - kDismissW;
     const bool collapsed = isCollapsed(msgIdx);
     const int padV = collapsed ? kPadVCollapsed : kPadV;
     const int sep = needsDateSep(msgIdx) ? kSepH : 0;
@@ -974,12 +946,7 @@ void MessageListWidget::doMouseLeave() {
 }
 
 bool MessageListWidget::isOnScrollThumb(int vpY) const {
-    const int vh = viewport()->height();
-    if (_totalH <= vh) return false;
-    const int scrollY = verticalScrollBar()->value();
-    const int thumbH  = std::max(20, vh * vh / _totalH);
-    const int thumbY  = scrollY * (vh - thumbH) / (_totalH - vh);
-    return vpY >= thumbY && vpY < thumbY + thumbH;
+    return VirtualListWidget::isOnScrollThumb(vpY, _totalH);
 }
 
 void MessageListWidget::doMouseRelease(QMouseEvent *event) {

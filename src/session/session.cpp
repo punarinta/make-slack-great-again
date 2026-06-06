@@ -189,9 +189,16 @@ void Session::searchMessages(const QString &query,
         }, _lifetime);
 }
 
+rpl::producer<QString> Session::errors() const {
+    return _errorHub.events();
+}
+
 void Session::downloadFile(const QString &url,
                             std::function<void(QByteArray)> onData,
                             std::function<void(QString)>    onError) {
+    if (!onError) {
+        onError = [this](const QString &err) { _errorHub.fire_copy(err); };
+    }
     _backend->downloadFile(url, std::move(onData), std::move(onError));
 }
 
