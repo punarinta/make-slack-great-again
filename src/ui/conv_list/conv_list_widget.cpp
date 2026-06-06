@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "conv_list_widget.h"
 #include "ui/theme.h"
+#include "ui/icon_utils.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -412,15 +413,11 @@ void ConvListWidget::paintRow(QPainter &p, int i, int y) const {
         const int badgeW = conv.unread > 9 ? 28 : conv.unread > 0 ? 20 : 0;
         int prefixW = 0;
         if (conv.kind == ConvKind::PrivateChannel) {
-            QFont lockFont = font;
-            lockFont.setBold(false);
-            lockFont.setPointSizeF(lockFont.pointSizeF() * 1.4);
-            const QFontMetrics lfm(lockFont);
-            const int lockY = y + (kRowH - lfm.height()) / 2 + lfm.ascent();
-            p.setFont(lockFont);
-            p.drawText(kPadH, lockY, "\U0001F512");
-            p.setFont(font);
-            prefixW = lfm.horizontalAdvance("\U0001F512") + 6;
+            static const QPixmap kLockDim    = svgPixmap(":/ui/lock.svg", QSize(14, 14), Theme::kTextOnDarkDim);
+            static const QPixmap kLockBright = svgPixmap(":/ui/lock.svg", QSize(14, 14), Theme::kTextOnDark);
+            const QPixmap &lockPx = (isSelected || isUnread) ? kLockBright : kLockDim;
+            p.drawPixmap(kPadH, y + (kRowH - 14) / 2, lockPx);
+            prefixW = 14 + 6;
         } else {
             p.drawText(kPadH, textY, "#");
             prefixW = fm.horizontalAdvance("#") + 6;
