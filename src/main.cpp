@@ -40,6 +40,8 @@ int main(int argc, char *argv[]) {
     QObject::connect(&singleInstance, &SingleInstance::uriReceived,
                      &window, &MainWindow::handleOAuthUri);
     window.show();
+    window.raise();
+    window.activateWindow();
 
     return app.exec();
 }
