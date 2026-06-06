@@ -133,8 +133,10 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop) const {
 
     // ── Attachments ──────────────────────────────────────────────────
     paintAttachments(p, item, textLeft, contentY, textWidth, index);
-    for (const auto &ad : item.attachDocs)
-        contentY += kAttachGap + ad.docHeight;
+    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+        if (isDismissed(item.msg.ts, ai)) continue;
+        contentY += kAttachGap + item.attachDocs[ai].docHeight;
+    }
 
     // ── Inline file images ───────────────────────────────────────────
     paintFileImages(p, item, textLeft, contentY, textWidth);
@@ -289,15 +291,30 @@ void MessageListWidget::paintAvatar(QPainter &p,
 void MessageListWidget::paintAttachments(QPainter &p,
                                           const MessageItem &item,
                                           int left, int top, int width,
-                                          int /*index*/) const
+                                          int index) const
 {
     const auto &attachments = item.msg.attachments;
     int y = top;
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
+        if (isDismissed(item.msg.ts, ai)) continue;
+
         const auto &att = attachments[ai];
         const auto &ad  = item.attachDocs[ai];
         const int  h    = ad.docHeight;
         y += kAttachGap;
+
+        // Dismiss "×" button — only visible when this specific attachment is hovered
+        if (_hoveredAttach.first == index && _hoveredAttach.second == ai) {
+            const int btnX = left - kDismissGap - kDismissW;
+            const QRect btnRect(btnX, y, kDismissW, kDismissW);
+            p.save();
+            QFont xFont = QApplication::font();
+            xFont.setPointSizeF(xFont.pointSizeF() * 1.15);
+            p.setFont(xFont);
+            p.setPen(QColor("#888888"));
+            p.drawText(btnRect, Qt::AlignCenter, "\xC3\x97"); // UTF-8 × (U+00D7)
+            p.restore();
+        }
 
         // Colored left bar
         QColor barColor("#AAAAAA");

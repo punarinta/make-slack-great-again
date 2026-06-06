@@ -4,99 +4,127 @@
 <context>
     <name>ComposerWidget</name>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="76"/>
-        <source>Bold (*text*)</source>
-        <translation>Bold (*text*)</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="148"/>
+        <source>Bold</source>
+        <translation>Bold</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="77"/>
-        <source>Italic (_text_)</source>
-        <translation>Italic (_text_)</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="149"/>
+        <source>Italic</source>
+        <translation>Italic</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="78"/>
-        <source>Underline</source>
-        <translation>Underline</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="150"/>
+        <source>Strikethrough</source>
+        <translation>Strikethrough</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="79"/>
-        <source>Strikethrough (~text~)</source>
-        <translation>Strikethrough (~text~)</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="80"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="151"/>
         <source>Link</source>
         <translation>Link</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="81"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="152"/>
         <source>Ordered list</source>
         <translation>Ordered list</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="82"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="153"/>
         <source>Bullet list</source>
         <translation>Bullet list</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="83"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="154"/>
         <source>Blockquote</source>
         <translation>Blockquote</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="84"/>
-        <source>Inline code (`code`)</source>
-        <translation>Inline code (`code`)</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="155"/>
+        <source>Inline code</source>
+        <translation>Inline code</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="85"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="156"/>
         <source>Code block</source>
         <translation>Code block</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="106"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="170"/>
         <source>Message #channel</source>
         <translation>Message #channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="137"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="191"/>
         <source>Attach file</source>
         <translation>Attach file</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="154"/>
-        <source>Attach File</source>
-        <translation>Attach File</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="158"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="205"/>
         <source>Emoji</source>
         <translation>Emoji</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="159"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="206"/>
         <source>Mention</source>
         <translation>Mention</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="174"/>
-        <source>Send message (Enter)</source>
-        <translation>Send message (Enter)</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="220"/>
+        <source>Send message</source>
+        <translation>Send message</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="181"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="342"/>
+        <source>Attach File</source>
+        <translation>Attach File</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="350"/>
+        <source>URL</source>
+        <translation>URL</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="351"/>
+        <source>Display text</source>
+        <translation>Display text</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="352"/>
+        <source>Insert</source>
+        <translation>Insert</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="353"/>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1"/>
+        <source>Editing message</source>
+        <translation>Editing message</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1"/>
         <source>Schedule send</source>
         <translation>Schedule send</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="201"/>
-        <source>Monday at 09:00</source>
-        <translation>Monday at 09:00</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1"/>
+        <source>Send at</source>
+        <translation>Send at</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="202"/>
-        <source>Custom time…</source>
-        <translation>Custom time…</translation>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1"/>
+        <source>Schedule</source>
+        <translation>Schedule</translation>
+    </message>
+</context>
+<context>
+    <name>EmojiPickerPopup</name>
+    <message>
+        <location filename="../src/ui/composer/emoji_picker_popup.cpp" line="1"/>
+        <source>Search emoji…</source>
+        <translation>Search emoji…</translation>
     </message>
 </context>
 <context>

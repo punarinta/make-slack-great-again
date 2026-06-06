@@ -105,6 +105,8 @@ private:
     ConversationId              _pendingNotifConv;
     rpl::lifetime               _sessionLifetime;
 
+    QHash<QString, QString>     _drafts; // convId.value → unsent draft text
+
     QSystemTrayIcon     *_trayIcon          = nullptr;
     QPushButton         *_starBtn           = nullptr;
     HeaderAvatarWidget  *_headerAvatar      = nullptr;

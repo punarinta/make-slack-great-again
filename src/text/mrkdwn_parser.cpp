@@ -38,6 +38,16 @@ static int findClose(const QString &src, int start, QChar delim) {
     return -1;
 }
 
+// Find position after a doubled closing delimiter (e.g. __ for underline).
+static int findDoubleClose(const QString &src, int start, QChar delim) {
+    for (int i = start; i + 1 < src.size(); ++i) {
+        if (src[i] == delim && src[i+1] == delim)
+            return i + 2;
+        if (src[i] == '\n') return -1;
+    }
+    return -1;
+}
+
 // Try to consume a fenced code block starting at pos (pos points just after the opening ```).
 // Returns the closing position after the closing ```, or -1.
 static int findCodeFenceClose(const QString &src, int pos) {
@@ -93,6 +103,18 @@ TextWithEntities parse(const QString &mrkdwn) {
                 // Recurse-parse inner for nested marks? Keep flat for now.
                 b.appendPlain(mrkdwn.mid(i+1, close-1 - (i+1)));
                 b.addSpan(EntityType::Bold, entityStart);
+                i = close;
+                continue;
+            }
+        }
+
+        // ── Underline __text__ (must be checked before single _ italic) ──
+        if (c == '_' && i+1 < n && mrkdwn[i+1] == '_') {
+            int close = findDoubleClose(mrkdwn, i+2, '_');
+            if (close != -1) {
+                int entityStart = b.text.size();
+                b.appendPlain(mrkdwn.mid(i+2, close-2 - (i+2)));
+                b.addSpan(EntityType::Underline, entityStart);
                 i = close;
                 continue;
             }
@@ -206,6 +228,9 @@ TextWithEntities parse(const QString &mrkdwn) {
         // ── Blockquote (> at line start) ──
         // Consume all consecutive >-prefixed lines as a single Blockquote entity.
         if (c == '>' && (i == 0 || mrkdwn[i-1] == '\n')) {
+            // Drop all preceding \n: the block-level table element provides its own line break.
+            while (!b.text.isEmpty() && b.text.back() == '\n')
+                b.text.chop(1);
             int entityStart = b.text.size();
             bool first = true;
             while (i < n && mrkdwn[i] == '>') {
@@ -221,6 +246,7 @@ TextWithEntities parse(const QString &mrkdwn) {
                 if (i >= n || mrkdwn[i] != '>') break;
             }
             b.addSpan(EntityType::Blockquote, entityStart);
+            b.appendPlain('\n'); // ensure visual line break after blockquote
             continue;
         }
 

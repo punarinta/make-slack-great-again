@@ -97,7 +97,8 @@ TEST_CASE("emoji :name:", "[mrkdwn]") {
 
 TEST_CASE("single-line blockquote", "[mrkdwn]") {
     auto r = MrkdwnParser::parse("> hello");
-    CHECK(r.text == "hello");
+    // Parser appends \n after blockquote span to ensure visual line-break in HTML.
+    CHECK(r.text == "hello\n");
     REQUIRE(r.entities.size() == 1);
     CHECK(r.entities[0].type == EntityType::Blockquote);
     CHECK(r.entities[0].offset == 0);
@@ -106,7 +107,7 @@ TEST_CASE("single-line blockquote", "[mrkdwn]") {
 
 TEST_CASE("multi-line blockquote", "[mrkdwn]") {
     auto r = MrkdwnParser::parse("> line1\n> line2");
-    CHECK(r.text == "line1\nline2");
+    CHECK(r.text == "line1\nline2\n");
     REQUIRE(r.entities.size() == 1);
     CHECK(r.entities[0].type == EntityType::Blockquote);
     CHECK(r.entities[0].offset == 0);

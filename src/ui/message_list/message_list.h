@@ -51,6 +51,9 @@ public:
     void clear();
     void setSession(Session *session);
 
+    // Returns the most recent non-system message authored by `me`, or nullopt.
+    std::optional<Message> lastOwnMessage(UserId me) const;
+
 signals:
     // Emitted in channel mode when user clicks the "N replies" bar on a thread root.
     void threadClicked(ConversationId conv, Ts rootTs);
@@ -123,6 +126,15 @@ private:
     // Rect of toolbar button i for the given row top/height, in viewport coords.
     QRect toolbarButtonRect(int btn, int rowTop, int rowH) const;
 
+    // Dismiss button for link-preview attachments.
+    // Returns {msgIdx, attachIdx} if pos is on a dismiss "×" button, else {-1,-1}.
+    std::pair<int,int> dismissButtonAt(const QPoint &viewportPos) const;
+    // Returns the viewport rect of dismiss button (msgIdx, attachIdx), or null rect.
+    QRect dismissButtonVpRect(int msgIdx, int attachIdx) const;
+    bool isDismissed(const Ts &ts, int ai) const {
+        return _dismissedAttachments.contains(ts + "/" + QString::number(ai));
+    }
+
     // Layout constants (all in logical pixels)
     static constexpr int kPadH        = 16; // horizontal margin on both sides
     static constexpr int kPadV        =  8; // vertical padding top/bottom of each row
@@ -155,6 +167,10 @@ private:
     static constexpr int kToolbarGap     =  4; // gap between buttons
     static constexpr int kToolbarRadius  =  8; // card corner radius
     static constexpr int kToolbarRight   = 12; // right margin from viewport edge
+
+    // Dismiss button for attachments (link previews)
+    static constexpr int kDismissW   = 18; // dismiss button size (square)
+    static constexpr int kDismissGap =  4; // gap between dismiss button and attachment left edge
 
     // Scrollbar overlay
     static constexpr int kScrollW      =  4; // scrollbar thumb width
@@ -200,10 +216,15 @@ private:
 
     int  _hoveredRow     = -1;  // index of the row the mouse is over, or -1
     int  _hoveredToolBtn = -1;  // 0=emoji, 1=forward, 2=more; -1=none
+    // {msgIdx, attachIdx} of the attachment preview the cursor is over, else {-1,-1}
+    std::pair<int,int> _hoveredAttach = {-1, -1};
 
     bool _sbDragging        = false;
     int  _sbDragStartY      = 0;
     int  _sbDragStartScroll = 0;
+
+    // Client-side dismissed link previews: key is ts + "/" + attachIndex.
+    QSet<QString> _dismissedAttachments;
 
     PopupTooltip *_tooltip = nullptr;
 

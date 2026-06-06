@@ -11,6 +11,7 @@
 #include "rpl/lifetime.h"
 
 #include <QHash>
+#include <QList>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -36,6 +37,15 @@ public:
     // Send a message (optionally as a thread reply) and optimistically insert it.
     void sendMessage(ConversationId conv, const QString &text,
                      std::optional<Ts> threadRoot = {});
+
+    // Edit an existing message.
+    void editMessage(ConversationId conv, Ts ts, const QString &newText);
+
+    // Notify server the user is typing. Internally rate-limited (one call per 3 s).
+    void sendTyping(ConversationId conv);
+
+    // Schedule a message to be sent at a future Unix timestamp.
+    void scheduleMessage(ConversationId conv, const QString &text, qint64 postAt);
 
     // --- Phase 3 ---
     void uploadFile(ConversationId conv, const QString &filePath);
@@ -72,6 +82,10 @@ public:
     const User*         findUser(UserId) const;
     const Conversation* findConversation(ConversationId) const;
 
+    // Synchronous snapshot accessors (for autocomplete, etc.)
+    const std::vector<User>&         currentUsers() const;
+    const std::vector<Conversation>& currentConversations() const;
+
     Backend* backend() const;
 
 private:
@@ -85,5 +99,6 @@ private:
     UserId              _meUserId;    // set via setMe() once auth.test result is known
     ConversationId      _readingConv; // currently open conversation
     QHash<QString,QString> _emojiMap;
+    QHash<QString, QList<QString>> _pendingOptimisticTs; // conv.value → queue of fake ts values
     rpl::lifetime       _lifetime;
 };

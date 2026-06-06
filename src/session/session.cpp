@@ -3,6 +3,7 @@
 #include "session.h"
 #include "backend/backend.h"
 #include "cache/workspace_cache.h"
+#include "text/mrkdwn_parser.h"
 
 #include <QDateTime>
 
@@ -81,6 +82,15 @@ void Session::start() {
                     }
                     _conversations = std::move(convs);
                 }
+                // Remove the matching optimistic copy so the real message
+                // replaces it instead of appearing as a duplicate.
+                if (ownMessage) {
+                    auto it = _pendingOptimisticTs.find(ev->conv.value);
+                    if (it != _pendingOptimisticTs.end() && !it->isEmpty()) {
+                        const QString fakeTs = it->takeFirst();
+                        _eventHub.fire(EvMessageDeleted{ev->conv, fakeTs});
+                    }
+                }
             }
             _eventHub.fire(std::move(e));
         }, _lifetime);
@@ -116,6 +126,14 @@ const Conversation *Session::findConversation(ConversationId id) const {
     return nullptr;
 }
 
+const std::vector<User>& Session::currentUsers() const {
+    return _users.current();
+}
+
+const std::vector<Conversation>& Session::currentConversations() const {
+    return _conversations.current();
+}
+
 void Session::sendMessage(ConversationId conv, const QString &text,
                            std::optional<Ts> threadRoot) {
     qint64 msec = QDateTime::currentMSecsSinceEpoch();
@@ -126,19 +144,37 @@ void Session::sendMessage(ConversationId conv, const QString &text,
     Message optimistic;
     optimistic.ts         = fakeTs;
     optimistic.author     = _meUserId;
-    optimistic.text       = TextWithEntities{text, {}};
+    optimistic.text       = MrkdwnParser::parse(text);
+    optimistic.rawText    = text;
     optimistic.threadRoot = threadRoot;
 
     _eventHub.fire(EvMessageNew{conv, optimistic});
 
+    _pendingOptimisticTs[conv.value].append(fakeTs);
+
     OutgoingMessage out;
     out.text       = optimistic.text;
+    out.rawText    = text;
     out.threadRoot = threadRoot;
     _backend->sendMessage(conv, std::move(out));
 }
 
 Backend *Session::backend() const {
     return _backend.get();
+}
+
+void Session::editMessage(ConversationId conv, Ts ts, const QString &newText) {
+    _backend->editMessage(conv, ts, TextWithEntities{newText, {}});
+}
+
+void Session::sendTyping(ConversationId conv) {
+    _backend->sendTyping(conv);
+}
+
+void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 postAt) {
+    OutgoingMessage out;
+    out.text = MrkdwnParser::parse(text);
+    _backend->scheduleMessage(conv, std::move(out), postAt);
 }
 
 void Session::uploadFile(ConversationId conv, const QString &filePath) {

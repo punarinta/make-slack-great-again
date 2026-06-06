@@ -30,6 +30,18 @@ function(add_msga_qt_test target)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
+# Widget test helper: needs QApplication + Qt6::Widgets.
+function(add_msga_widget_test target)
+    add_executable(${target} ${ARGN})
+    set_target_properties(${target} PROPERTIES AUTOMOC ON)
+    target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
+    target_link_libraries(${target} PRIVATE
+        Catch2::Catch2
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Svg
+        Microsoft.GSL::GSL)
+    add_test(NAME ${target} COMMAND ${target})
+endfunction()
+
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -61,5 +73,20 @@ add_msga_qt_test(test_session
     test_session.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+
+add_msga_widget_test(test_composer
+    test_composer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/mention_completer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )

@@ -340,6 +340,29 @@ QWidget *MainWindow::buildMainPage() {
         if (_sessionOwner && !_currentConvId.value.isEmpty())
             _sessionOwner->uploadFile(_currentConvId, filePath);
     });
+    connect(_composer, &ComposerWidget::editRequested,
+            this, [this](const Ts &ts, const QString &newText) {
+        if (_sessionOwner && !_currentConvId.value.isEmpty())
+            _sessionOwner->editMessage(_currentConvId, ts, newText);
+    });
+    connect(_composer, &ComposerWidget::editLastRequested,
+            this, [this] {
+        if (!_sessionOwner || !_messageList) return;
+        const auto msg = _messageList->lastOwnMessage(_sessionOwner->meUserId());
+        if (!msg) return;
+        const QString text = msg->rawText.isEmpty() ? msg->text.text : msg->rawText;
+        _composer->enterEditMode(msg->ts, text, msg->files);
+    });
+    connect(_composer, &ComposerWidget::typingStarted,
+            this, [this] {
+        if (_sessionOwner && !_currentConvId.value.isEmpty())
+            _sessionOwner->sendTyping(_currentConvId);
+    });
+    connect(_composer, &ComposerWidget::scheduleRequested,
+            this, [this](const QString &text, qint64 postAt) {
+        if (_sessionOwner && !_currentConvId.value.isEmpty())
+            _sessionOwner->scheduleMessage(_currentConvId, text, postAt);
+    });
 
     // Keep convNameLabel and header state in sync with the opened conversation
     connect(_convList, &ConvListWidget::conversationSelected,
@@ -399,6 +422,7 @@ void MainWindow::startSession(const QString &teamId) {
     _sessionOwner = std::make_unique<Session>(std::move(backend), teamId);
     _messageList->setSession(_sessionOwner.get());
     if (_searchWidget) _searchWidget->setSession(_sessionOwner.get());
+    if (_composer) _composer->setSession(_sessionOwner.get());
     if (_threadPanel) {
         _threadPanel->setSession(_sessionOwner.get());
         _threadPanel->close();
@@ -782,6 +806,17 @@ void MainWindow::populateConversations(const std::vector<Conversation> &convs) {
 
 void MainWindow::openConversation(int row) {
     if (!_sessionOwner) return;
+
+    // Save draft / exit edit mode for the outgoing conversation.
+    if (!_currentConvId.value.isEmpty() && _composer) {
+        _composer->exitEditMode();
+        const QString draft = _composer->currentText();
+        if (draft.isEmpty())
+            _drafts.remove(_currentConvId.value);
+        else
+            _drafts[_currentConvId.value] = draft;
+    }
+
     _currentConvId = _convList->conversationId(row);
     if (_currentConvId.value.isEmpty()) return;
 
@@ -804,8 +839,12 @@ void MainWindow::openConversation(int row) {
     _sessionOwner->setReading(_currentConvId);
     _messageList->openConversation(_currentConvId, displayName, description);
     _composer->setEnabled(true);
+    _composer->setConvKind(conv ? conv->kind : ConvKind::PublicChannel);
     _composer->setPlaceholderText(
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName));
+
+    // Restore any unsent draft for this conversation.
+    _composer->setText(_drafts.value(_currentConvId.value));
 
     _sessionOwner->saveLastConv(_currentConvId, displayName);
     updateHeaderForConv(_currentConvId);

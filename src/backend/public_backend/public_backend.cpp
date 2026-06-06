@@ -192,7 +192,7 @@ rpl::producer<MessagePage> PublicBackend::loadThread(
 void PublicBackend::sendMessage(ConversationId conv, OutgoingMessage msg) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("text",    msg.text.text);
+    params.addQueryItem("text",    msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
     if (msg.threadRoot)
         params.addQueryItem("thread_ts", *msg.threadRoot);
     _api->call("chat.postMessage", params, {}, [](QString e){
@@ -245,6 +245,22 @@ void PublicBackend::markRead(ConversationId conv, Ts ts) {
     params.addQueryItem("ts",      ts);
     _api->call("conversations.mark", params, {}, [](QString e){
         qWarning() << "markRead error:" << e;
+    });
+}
+
+void PublicBackend::sendTyping(ConversationId) {
+    // users.typing was removed from the Slack Web API; no-op.
+}
+
+void PublicBackend::scheduleMessage(ConversationId conv, OutgoingMessage msg, qint64 postAt) {
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    params.addQueryItem("text",    msg.text.text);
+    params.addQueryItem("post_at", QString::number(postAt));
+    if (msg.threadRoot)
+        params.addQueryItem("thread_ts", *msg.threadRoot);
+    _api->call("chat.scheduleMessage", params, {}, [](QString e){
+        qWarning() << "scheduleMessage error:" << e;
     });
 }
 

@@ -103,19 +103,26 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
             html += "<b>" + inner + "</b>"; break;
         case EntityType::Italic:
             html += "<i>" + inner + "</i>"; break;
+        case EntityType::Underline:
+            html += "<u>" + inner + "</u>"; break;
         case EntityType::Strike:
             html += "<s>" + inner + "</s>"; break;
         case EntityType::Code:
-            html += "<code style='background:#F4F4F4;padding:1px 3px;border-radius:3px;"
-                    "font-family:monospace'>" + inner + "</code>"; break;
+            html += "<span style='background:#FDF0F0;color:#C0392B;font-family:monospace;"
+                    "font-size:0.88em;padding:1px 3px;border-radius:3px'>"
+                    + inner + "</span>"; break;
         case EntityType::Pre:
-            html += "<pre style='background:#F4F4F4;padding:8px;border-radius:4px;"
-                    "font-family:monospace;white-space:pre-wrap;margin:4px 0'>"
+            html += "<pre style='background:#F4F4F4;padding:6px 10px;border-radius:4px;"
+                    "font-family:monospace;font-size:0.88em;white-space:pre-wrap;margin:4px 0'>"
                     + inner + "</pre>"; break;
         case EntityType::Blockquote:
-            html += "<div style='border-left:3px solid #CCC;padding-left:8px;"
-                    "margin:2px 0;color:#666'>"
-                    + inner.replace("\n", "<br>") + "</div>"; break;
+            // Use a table so the gray left bar renders reliably in Qt's HTML subset.
+            html += "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:0 0 8px 0'>"
+                    "<tr>"
+                    "<td width='3' bgcolor='#CCCCCC' style='padding:0;border-radius:2px'></td>"
+                    "<td style='padding:2px 0 2px 10px;color:#555555'>"
+                    + inner.replace("\n", "<br>") +
+                    "</td></tr></table>"; break;
         case EntityType::Link:
             html += "<a href='" + e.data.toHtmlEscaped() + "' style='color:#1264A3'>"
                     + inner + "</a>"; break;

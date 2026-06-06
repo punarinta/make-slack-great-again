@@ -34,6 +34,8 @@ public:
     void addReaction(ConversationId, Ts, QString emoji) override;
     void removeReaction(ConversationId, Ts, QString emoji) override;
     void markRead(ConversationId, Ts) override;
+    void sendTyping(ConversationId) override;
+    void scheduleMessage(ConversationId, OutgoingMessage, qint64 postAt) override;
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString,QString>>    loadEmojiList() override;

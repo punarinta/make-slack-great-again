@@ -77,7 +77,7 @@ struct Reaction {
 // --- Text with inline markup ---
 
 enum class EntityType {
-    Bold, Italic, Strike, Code, Pre,
+    Bold, Italic, Underline, Strike, Code, Pre,
     Blockquote,     // block-level; data unused
     Link,           // data = URL
     UserMention,    // data = UserId::value
@@ -155,6 +155,7 @@ struct Message {
     int                       replyCount = 0; // >0 on thread root messages
     UserId                    author;
     TextWithEntities          text;
+    QString                   rawText;  // original mrkdwn from Slack; used for edit pre-fill
     std::vector<Reaction>     reactions;
     bool                      edited  = false;
     std::optional<QString>    subtype; // "bot_message", "channel_join", etc.
@@ -172,6 +173,7 @@ struct MessagePage {
 
 struct OutgoingMessage {
     TextWithEntities        text;
+    QString                 rawText;    // original mrkdwn source; sent verbatim to chat.postMessage
     std::optional<Ts>       threadRoot;
 };
 

@@ -90,6 +90,9 @@ add_executable(msga
     src/ui/message_list/message_render.cpp
     src/ui/conv_list/conv_list_widget.cpp
     src/ui/composer/composer_widget.cpp
+    src/ui/emoji_picker/emoji_picker_popup.cpp
+    src/ui/composer/mention_completer.cpp
+    src/ui/mention_popup/mention_popup.cpp
     src/ui/context_menu/context_menu.cpp
     src/ui/popup_tooltip/popup_tooltip.cpp
     src/ui/workspace_switcher/workspace_switcher.cpp

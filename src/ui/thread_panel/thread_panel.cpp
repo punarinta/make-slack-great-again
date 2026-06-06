@@ -61,11 +61,30 @@ ThreadPanel::ThreadPanel(QWidget *parent)
         if (_session && !_conv.value.isEmpty() && !_rootTs.isEmpty())
             _session->sendMessage(_conv, text, _rootTs);
     });
+    connect(_composer, &ComposerWidget::editRequested,
+            this, [this](const Ts &ts, const QString &newText) {
+        if (_session && !_conv.value.isEmpty())
+            _session->editMessage(_conv, ts, newText);
+    });
+    connect(_composer, &ComposerWidget::editLastRequested,
+            this, [this] {
+        if (!_session || !_msgList) return;
+        const auto msg = _msgList->lastOwnMessage(_session->meUserId());
+        if (!msg) return;
+        const QString text = msg->rawText.isEmpty() ? msg->text.text : msg->rawText;
+        _composer->enterEditMode(msg->ts, text, msg->files);
+    });
+    connect(_composer, &ComposerWidget::typingStarted,
+            this, [this] {
+        if (_session && !_conv.value.isEmpty())
+            _session->sendTyping(_conv);
+    });
 }
 
 void ThreadPanel::setSession(Session *session) {
     _session = session;
     _msgList->setSession(session);
+    _composer->setSession(session);
 }
 
 void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {

@@ -2,17 +2,28 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include "backend/domain.h"
+
 #include <QColor>
+#include <QHash>
 #include <QList>
 #include <QPair>
 #include <QString>
+#include <QTimer>
 #include <QWidget>
 
 class QAbstractButton;
 class QFrame;
+class QLabel;
+class QScrollArea;
 class QTextEdit;
 class QPushButton;
 class QToolButton;
+class Session;
+class PopupTooltip;
+class EmojiPickerPopup;
+class MentionCompleter;
+class MentionPopup;
 
 // Slack-style composer: formatting toolbar + text area + bottom action bar.
 // Enter sends; Shift+Enter inserts a newline.
@@ -23,9 +34,39 @@ public:
 
     void setPlaceholderText(const QString &text);
 
+    // Provide a session for autocomplete and emoji; can be called at any time.
+    void setSession(Session *session);
+
+    // Tell the composer the current conversation kind so it can decide whether
+    // to show @channel/@here aliases in the mention popup.
+    void setConvKind(ConvKind kind);
+
+    // Edit mode: pre-populate the editor with an existing message for editing.
+    // exitEditMode() is a no-op if not currently in edit mode.
+    void enterEditMode(const Ts &ts, const QString &existingText,
+                       const std::vector<File> &existingFiles = {});
+    void exitEditMode();
+
+    // Draft support: read/write the editor's plain text directly.
+    QString currentText() const;
+    void    setText(const QString &text);
+
+    // Pending file list (files queued for upload when the message is sent).
+    const QStringList& pendingFiles() const { return _pendingFiles; }
+    void addPendingFile(const QString &filePath);
+    void clearPendingFiles();
+
 signals:
     void sendRequested(const QString &text);
     void uploadRequested(const QString &filePath);
+    // Emitted instead of sendRequested when in edit mode.
+    void editRequested(const Ts &ts, const QString &newText);
+    // Emitted when ↑ is pressed in an empty editor; caller should call enterEditMode().
+    void editLastRequested();
+    // Emitted when user schedules a message: text + Unix timestamp.
+    void scheduleRequested(const QString &text, qint64 postAt);
+    // Emitted on first keypress after a 3-second silence; used for typing indicator.
+    void typingStarted();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -33,18 +74,50 @@ protected:
 
 private:
     void trySend();
+    void trySchedule();
     void updateSendState();
     void adjustEditorHeight();
     void setFocused(bool focused);
     void recolorIcons(const QColor &color);
     void applyInlineFormat(const QString &marker);
+    void prefixSelectedLines(const QString &prefix, bool ordered = false);
+    void applyBlockFormat(const QString &fence);
+    void openAttachDialog();
+    void openLinkDialog(const QPoint &toolbarGlobalPos);
+    void rebuildFileStrip();
+    void addFileChip(QWidget *container, const QString &path, bool readOnly);
+    void addExistingFileChip(QWidget *container, const File &file);
+    void checkMentionPopup();
 
-    QFrame      *_box     = nullptr;
-    QWidget     *_toolbar = nullptr;
-    QTextEdit   *_edit    = nullptr;
-    QPushButton *_sendBtn = nullptr;
-    QPushButton *_dropBtn = nullptr;
+    QFrame      *_box      = nullptr;
+    QWidget     *_toolbar  = nullptr;
+    QTextEdit   *_edit     = nullptr;
+    QPushButton *_sendBtn   = nullptr;
+    QPushButton *_dropBtn   = nullptr; // schedule-send dropdown
+    QWidget     *_sendGroup = nullptr; // pill container for send+drop
+    QWidget     *_linkPopup  = nullptr; // LinkPopup instance, created lazily
+    QWidget     *_editBanner = nullptr; // amber strip shown during edit mode
+    QLabel      *_editLabel  = nullptr; // "Editing message" text inside the banner
+    Ts           _editingTs;            // non-empty when in edit mode
 
-    // Each colorable toolbar/bottom-bar icon button paired with its SVG path.
+    // File attachment strip (shown when files are pending or in edit mode with files)
+    QScrollArea *_fileScroll  = nullptr;
+    QWidget     *_fileStrip   = nullptr; // container inside the scroll area
+
+    QStringList        _pendingFiles;      // local paths of files to upload on send
+    std::vector<File>  _editModeFiles;     // existing files shown read-only in edit mode
+
+    PopupTooltip                           *_tooltip      = nullptr;
+    EmojiPickerPopup                       *_emojiPicker  = nullptr;
+    MentionCompleter                       *_mentionComp  = nullptr;
+    MentionPopup                           *_mentionPopup = nullptr;
+    Session                                *_session      = nullptr;
+    ConvKind                                _convKind     = ConvKind::PublicChannel;
+    int                                     _atTriggerStart = -1;
+    QHash<QWidget*, QString>                _tooltipBtns;
     QList<QPair<QAbstractButton*, QString>> _iconBtns;
+
+    // Typing indicator debounce: fires typingStarted() at most once per 3 s while typing
+    QTimer _typingTimer;
+    bool   _typingPending = false;
 };

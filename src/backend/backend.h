@@ -39,6 +39,10 @@ public:
     virtual void addReaction(ConversationId, Ts, QString emoji) = 0;
     virtual void removeReaction(ConversationId, Ts, QString emoji) = 0;
     virtual void markRead(ConversationId, Ts) = 0;
+    // Notify the server the current user is typing. No-op if not supported.
+    virtual void sendTyping(ConversationId) {}
+    // Send a message at a future Unix timestamp (chat.scheduleMessage).
+    virtual void scheduleMessage(ConversationId, OutgoingMessage, qint64 postAt) {}
 
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;

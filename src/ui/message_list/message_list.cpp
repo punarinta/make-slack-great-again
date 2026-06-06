@@ -126,6 +126,15 @@ void MessageListWidget::resizeEvent(QResizeEvent *event) {
 
 // ── Data model ────────────────────────────────────────────────────────────────
 
+std::optional<Message> MessageListWidget::lastOwnMessage(UserId me) const {
+    for (int i = static_cast<int>(_items.size()) - 1; i >= 0; --i) {
+        const auto &msg = _items[i].msg;
+        if (msg.author == me && !msg.subtype)
+            return msg;
+    }
+    return {};
+}
+
 void MessageListWidget::clear() {
     _loadLifetime       = rpl::lifetime();
     _olderLoadLifetime  = rpl::lifetime();
@@ -483,9 +492,11 @@ int MessageListWidget::rowHeight(int index) const {
 
     int extraH = 0;
 
-    // Attachment heights
-    for (const auto &ad : item.attachDocs)
-        extraH += kAttachGap + std::max(ad.docHeight, 0);
+    // Attachment heights (skip client-dismissed ones)
+    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+        if (isDismissed(item.msg.ts, ai)) continue;
+        extraH += kAttachGap + std::max(item.attachDocs[ai].docHeight, 0);
+    }
 
     // Inline file image heights
     const bool hasContentAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
@@ -577,6 +588,62 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
     return {};
 }
 
+std::pair<int,int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos) const {
+    const int scrollY = verticalScrollBar()->value();
+    const int textLeft = kPadH + kAvSize + kAvGap;
+    const int btnX = textLeft - kDismissGap - kDismissW;
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        const int rowTop = _tops[i] - scrollY;
+        if (rowTop > viewportPos.y()) break;
+        if (rowTop + rowHeight(i) <= viewportPos.y()) continue;
+
+        const auto &item = _items[i];
+        if (item.msg.attachments.empty()) continue;
+        ensureDocLayout(item);
+
+        const bool collapsed = isCollapsed(i);
+        const int padV = collapsed ? kPadVCollapsed : kPadV;
+        const int sep = needsDateSep(i) ? kSepH : 0;
+        int y = rowTop + sep + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+
+        for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
+            y += kAttachGap;
+            if (!isDismissed(item.msg.ts, ai)) {
+                if (QRect(btnX, y, kDismissW, kDismissW).contains(viewportPos))
+                    return {i, ai};
+                y += item.attachDocs[ai].docHeight;
+            }
+        }
+    }
+    return {-1, -1};
+}
+
+QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
+    if (msgIdx < 0 || msgIdx >= (int)_items.size()) return {};
+    const auto &item = _items[msgIdx];
+    ensureDocLayout(item);
+
+    const int scrollY = verticalScrollBar()->value();
+    const int textLeft = kPadH + kAvSize + kAvGap;
+    const int btnX = textLeft - kDismissGap - kDismissW;
+    const bool collapsed = isCollapsed(msgIdx);
+    const int padV = collapsed ? kPadVCollapsed : kPadV;
+    const int sep = needsDateSep(msgIdx) ? kSepH : 0;
+    const int rowTop = _tops[msgIdx] - scrollY;
+    int y = rowTop + sep + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+
+    for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
+        y += kAttachGap;
+        if (!isDismissed(item.msg.ts, ai)) {
+            if (ai == attachIdx)
+                return QRect(btnX, y, kDismissW, kDismissW);
+            y += item.attachDocs[ai].docHeight;
+        }
+    }
+    return {};
+}
+
 void MessageListWidget::doMousePress(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton) return;
 
@@ -641,6 +708,16 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         return;
     }
 
+    // Dismiss attachment click
+    const auto [dMsgIdx, dAi] = dismissButtonAt(event->pos());
+    if (dMsgIdx >= 0) {
+        const auto &ts = _items[dMsgIdx].msg.ts;
+        _dismissedAttachments.insert(ts + "/" + QString::number(dAi));
+        rebuildLayout();
+        viewport()->update();
+        return;
+    }
+
     // Reply bar click → open thread panel
     const int replyIdx = replyBarIndexAt(event->pos());
     if (replyIdx >= 0) {
@@ -669,9 +746,10 @@ void MessageListWidget::doMouseLeave() {
         return;
 
     _tooltip->hide();
-    if (_hoveredRow != -1 || _hoveredToolBtn != -1) {
+    if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1) {
         _hoveredRow     = -1;
         _hoveredToolBtn = -1;
+        _hoveredAttach  = {-1, -1};
         viewport()->update();
     }
 }
@@ -754,13 +832,40 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
     }
 
-    if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn) {
+    // Detect which attachment preview (if any) the cursor is over.
+    std::pair<int,int> newHoveredAttach = {-1, -1};
+    if (newHoveredRow >= 0) {
+        const auto &item = _items[newHoveredRow];
+        if (!item.msg.attachments.empty()) {
+            ensureDocLayout(item);
+            const bool collA = isCollapsed(newHoveredRow);
+            const int padVA  = collA ? kPadVCollapsed : kPadV;
+            const int sepA   = needsDateSep(newHoveredRow) ? kSepH : 0;
+            const int rtA    = _tops[newHoveredRow] - scrollY;
+            int ay = rtA + sepA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
+            for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+                ay += kAttachGap;
+                if (!isDismissed(item.msg.ts, ai)) {
+                    const int ah = item.attachDocs[ai].docHeight;
+                    if (pos.y() >= ay && pos.y() < ay + ah) {
+                        newHoveredAttach = {newHoveredRow, ai};
+                        break;
+                    }
+                    ay += ah;
+                }
+            }
+        }
+    }
+
+    if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn
+            || newHoveredAttach != _hoveredAttach) {
         _hoveredRow     = newHoveredRow;
         _hoveredToolBtn = newHoveredBtn;
+        _hoveredAttach  = newHoveredAttach;
         viewport()->update();
     }
 
-    // Tooltip for the hovered toolbar button
+    // Tooltip for the hovered toolbar button or dismiss button
     if (newHoveredBtn >= 0) {
         static const QString kTips[] = { tr("Add reaction"), tr("Forward message"), tr("More actions") };
         const int rowTop  = _tops[_hoveredRow] - scrollY;
@@ -770,12 +875,24 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
     } else {
-        _tooltip->hide();
+        const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
+        const bool attachHovered = _hoveredAttach.first == dMsgIdx && _hoveredAttach.second == dAi
+                                   && dMsgIdx >= 0;
+        if (attachHovered) {
+            const QRect btnLocal = dismissButtonVpRect(dMsgIdx, dAi);
+            const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
+            _tooltip->showAbove(tr("Remove preview"), btnGlobal);
+        } else {
+            _tooltip->hide();
+        }
     }
 
     // Cursor
     const QString anchor = anchorAt(pos);
-    const bool overLink  = !anchor.isEmpty() || fileChipAt(pos) || replyBarIndexAt(pos) >= 0;
+    const auto [dMI, dAI] = dismissButtonAt(pos);
+    const bool overDismiss = dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
+    const bool overLink  = !anchor.isEmpty() || fileChipAt(pos) || replyBarIndexAt(pos) >= 0
+                           || overDismiss;
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     if (overScroll)

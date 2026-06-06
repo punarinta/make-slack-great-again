@@ -291,6 +291,7 @@ Message toMessage(const QJsonObject &o) {
         .author      = UserId{ msg.value("user").toString(
                                msg.value("bot_id").toString()) },
         .text        = MrkdwnParser::parse(msg.value("text").toString()),
+        .rawText     = msg.value("text").toString(),
         .reactions   = parseReactions(msg.value("reactions").toArray()),
         .edited      = msg.contains("edited"),
         .subtype     = msg.contains("subtype")
