@@ -7,6 +7,10 @@ foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP)
         set(${_var} "")
     endif()
 endforeach()
+if(NOT DEFINED MSGA_VERSION)
+    set(MSGA_VERSION 0)
+endif()
+string(TIMESTAMP MSGA_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ" UTC)
 configure_file(
     "${CMAKE_SOURCE_DIR}/src/app_credentials.h.in"
     "${CMAKE_BINARY_DIR}/app_credentials.h"
@@ -90,6 +94,7 @@ add_executable(msga MACOSX_BUNDLE
     src/ui/image_cache.cpp
     src/ui/main_window.cpp
     src/ui/title_bar/title_bar.cpp
+    src/ui/loading_indicator/loading_indicator.cpp
     src/ui/message_list/message_list.cpp
     src/ui/message_list/message_list_paint.cpp
     src/ui/message_list/message_render.cpp
@@ -111,6 +116,8 @@ add_executable(msga MACOSX_BUNDLE
     src/ui/delete_message_dialog/delete_message_dialog.cpp
     src/ui/conv_selector/conv_selector_widget.cpp
     src/ui/forward_dialog/forward_dialog.cpp
+    src/ui/update_checker/update_checker.cpp
+    src/ui/update_bar/update_bar.cpp
 
     # Qt resources
     resources/resources.qrc

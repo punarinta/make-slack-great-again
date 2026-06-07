@@ -14,6 +14,8 @@ class QListWidget;
 class QStackedWidget;
 class QCheckBox;
 class QRadioButton;
+class QPushButton;
+class UpdateChecker;
 
 class SettingsDialog : public QWidget {
     Q_OBJECT
@@ -21,6 +23,7 @@ public:
     explicit SettingsDialog(QWidget *parent);
 
     void open();
+    void setUpdateChecker(UpdateChecker *checker);
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -38,6 +41,8 @@ private:
     void loadNotifications();
     void refreshCacheSize();
     void clearCache();
+    void refreshLastChecked();
+    void refreshUpdateStatus();
     void updatePanelGeometry();
     Dir  edgeAt(const QPoint &pos) const;
     static Qt::CursorShape cursorFor(Dir d);
@@ -54,6 +59,12 @@ private:
 
     // Storage controls
     QLabel         *_cacheSize     = nullptr;
+
+    // System / update controls
+    UpdateChecker  *_updateChecker  = nullptr;
+    QLabel         *_updateStatus   = nullptr;
+    QLabel         *_lastChecked    = nullptr;
+    QPushButton    *_checkBtn       = nullptr;
 
     Dir    _resizeDir  = Dir::None;
     QPoint _dragStart;

@@ -3,17 +3,26 @@
 #pragma once
 
 #include "backend/backend.h"
+#include "auth/token_store.h"
 #include "network/web_api_client.h"
 #include "rpl/variable.h"
 #include "rpl/event_stream.h"
+
+#include <QNetworkAccessManager>
+#include <functional>
+#include <vector>
 
 class SocketModeRealtime;
 
 // Real Slack backend using the public API + Socket Mode.
 // xappToken is optional; if empty, connectRealtime() is a no-op.
+// appCfg and creds.refreshToken are used for transparent token refresh when
+// the workspace has token rotation enabled.
 class PublicBackend : public Backend {
 public:
-    explicit PublicBackend(const QString &xoxpToken, const QString &xappToken = {});
+    explicit PublicBackend(const TokenStore::Credentials &creds,
+                           const TokenStore::AppConfig   &appCfg,
+                           const QString                 &xappToken = {});
     ~PublicBackend() override;
 
     rpl::producer<AuthState>               authState() const override;
@@ -52,9 +61,21 @@ public:
     rpl::producer<Event> events() const override;
 
 private:
+    void setupTokenRefresh(const TokenStore::Credentials &creds,
+                           const TokenStore::AppConfig   &appCfg);
+    void doRefresh(const TokenStore::AppConfig &appCfg,
+                   std::function<void(bool)>    done);
+
     QString            _xappToken;
+    QString            _teamId;
+    QString            _refreshToken;
     WebApiClient      *_api;
+    WebApiClient      *_historyApi; // dedicated client for loadHistory/loadThread
     SocketModeRealtime *_realtime = nullptr;
+
+    // Token refresh deduplication
+    bool _refreshInProgress = false;
+    std::vector<std::function<void(bool)>> _refreshWaiters;
 
     rpl::variable<AuthState>  _authState{ AuthState::LoggedIn };
     rpl::event_stream<Event>  _events;

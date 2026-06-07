@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "settings_dialog.h"
+#include "ui/update_checker/update_checker.h"
+#include "app_credentials.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -20,6 +22,8 @@
 #include <QGroupBox>
 #include <QDirIterator>
 #include <QStandardPaths>
+#include <QCoreApplication>
+#include <QDateTime>
 
 static constexpr int kPanelW    = 700;
 static constexpr int kPanelH    = 540;
@@ -41,6 +45,8 @@ SettingsDialog::SettingsDialog(QWidget *parent)
 void SettingsDialog::open() {
     loadNotifications();
     refreshCacheSize();
+    refreshLastChecked();
+    refreshUpdateStatus();
     setGeometry(parentWidget()->rect());
     updatePanelGeometry();
     show();
@@ -135,6 +141,7 @@ void SettingsDialog::buildPanel() {
     );
     _tabs->addItem(tr("Notifications"));
     _tabs->addItem(tr("Storage"));
+    _tabs->addItem(tr("System"));
     _tabs->setCurrentRow(0);
     blay->addWidget(_tabs);
 
@@ -266,6 +273,64 @@ void SettingsDialog::buildPanel() {
     slay->addLayout(clearRow);
 
     _stack->addWidget(storagePage);
+
+    // ── System page ───────────────────────────────────────────────────
+    auto *sysPage = new QWidget;
+    auto *sylay = new QVBoxLayout(sysPage);
+    sylay->setContentsMargins(24, 20, 24, 20);
+    sylay->setSpacing(16);
+
+    auto *sysHeading = new QLabel(tr("System"), sysPage);
+    sysHeading->setStyleSheet("font-size: 14px; font-weight: 600; color: #1D1C1D;");
+    sylay->addWidget(sysHeading);
+
+    // Version info
+    const QString buildTs = QString(AppCredentials::buildTimestamp)
+                                .replace('T', ' ').chopped(1); // drop trailing Z
+    auto *verLabel = new QLabel(
+        tr("Version %1, built %2").arg(AppCredentials::version).arg(buildTs), sysPage);
+    verLabel->setStyleSheet("font-size: 13px; color: #616061;");
+    sylay->addWidget(verLabel);
+
+    // Update section
+    auto *updBox = new QGroupBox(tr("Updates"), sysPage);
+    updBox->setStyleSheet(
+        "QGroupBox { font-size: 12px; color: #616061; border: none; margin-top: 4px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 0; }");
+    auto *updLayout = new QVBoxLayout(updBox);
+    updLayout->setSpacing(8);
+    updLayout->setContentsMargins(0, 12, 0, 0);
+
+    auto *checkRow = new QHBoxLayout;
+    _checkBtn = new QPushButton(tr("Check for updates"), updBox);
+    _checkBtn->setFixedHeight(30);
+    _checkBtn->setCursor(Qt::PointingHandCursor);
+    _checkBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: #F0F0F0; color: #1D1C1D; border: none;"
+        "  border-radius: 4px; font-size: 13px; padding: 0 14px;"
+        "}"
+        "QPushButton:hover   { background: #E4E4E4; }"
+        "QPushButton:pressed { background: #D8D8D8; }"
+        "QPushButton:disabled { color: #AAAAAA; }"
+    );
+    checkRow->addWidget(_checkBtn);
+    checkRow->addStretch();
+    updLayout->addLayout(checkRow);
+
+    _updateStatus = new QLabel("", updBox);
+    _updateStatus->setStyleSheet("font-size: 12px; color: #616061;");
+    _updateStatus->setWordWrap(true);
+    updLayout->addWidget(_updateStatus);
+
+    _lastChecked = new QLabel("", updBox);
+    _lastChecked->setStyleSheet("font-size: 11px; color: #999999;");
+    updLayout->addWidget(_lastChecked);
+
+    sylay->addWidget(updBox);
+    sylay->addStretch();
+
+    _stack->addWidget(sysPage);
     root->addWidget(body, 1);
 
     updatePanelGeometry();
@@ -319,6 +384,75 @@ void SettingsDialog::clearCache() {
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache";
     QDir(cacheDir).removeRecursively();
     refreshCacheSize();
+}
+
+static QString timeAgo(qint64 epochSecs) {
+    auto t = [](const char *s) {
+        return QCoreApplication::translate("SettingsDialog", s);
+    };
+    if (epochSecs <= 0) return t("Never checked");
+    const qint64 ago = QDateTime::currentSecsSinceEpoch() - epochSecs;
+    if (ago < 60)    return t("Just now");
+    if (ago < 3600)  return t("%1 min ago").arg(ago / 60);
+    if (ago < 86400) return t("%1 h ago").arg(ago / 3600);
+    return t("%1 days ago").arg(ago / 86400);
+}
+
+void SettingsDialog::refreshLastChecked() {
+    if (!_lastChecked) return;
+    const qint64 ts = QSettings("msga", "msga").value("updates/lastChecked", 0).toLongLong();
+    _lastChecked->setText(tr("Last checked: %1").arg(timeAgo(ts)));
+}
+
+void SettingsDialog::refreshUpdateStatus() {
+    if (!_updateStatus || !_checkBtn) return;
+    if (!_updateChecker) {
+        _checkBtn->setEnabled(false);
+        _updateStatus->setText(tr("Update checks not available."));
+        return;
+    }
+    if (_updateChecker->isChecking()) {
+        _checkBtn->setEnabled(false);
+        _updateStatus->setText(tr("Checking for updates…"));
+    } else if (_updateChecker->stagedVersion() > AppCredentials::version) {
+        _checkBtn->setEnabled(true);
+        _updateStatus->setText(tr("Update downloaded — restart the app to apply."));
+    } else {
+        _checkBtn->setEnabled(true);
+        _updateStatus->clear();
+    }
+}
+
+void SettingsDialog::setUpdateChecker(UpdateChecker *checker) {
+    _updateChecker = checker;
+
+    connect(_checkBtn, &QPushButton::clicked, checker, &UpdateChecker::checkNow);
+
+    connect(checker, &UpdateChecker::checkStarted, this, [this] {
+        _checkBtn->setEnabled(false);
+        _updateStatus->setText(tr("Checking for updates…"));
+    });
+    connect(checker, &UpdateChecker::upToDate, this, [this] {
+        _checkBtn->setEnabled(true);
+        _updateStatus->setText(tr("msga is up to date."));
+        refreshLastChecked();
+    });
+    connect(checker, &UpdateChecker::updateAvailable, this, [this](int v) {
+        _updateStatus->setText(tr("Version %1 available — downloading…").arg(v));
+    });
+    connect(checker, &UpdateChecker::downloadProgress, this, [this](int pct) {
+        _updateStatus->setText(tr("Downloading update… %1%").arg(pct));
+    });
+    connect(checker, &UpdateChecker::downloadReady, this, [this](const QString &) {
+        _checkBtn->setEnabled(true);
+        _updateStatus->setText(tr("Update downloaded — restart the app to apply."));
+        refreshLastChecked();
+    });
+    connect(checker, &UpdateChecker::checkFailed, this, [this](const QString &msg) {
+        _checkBtn->setEnabled(true);
+        _updateStatus->setText(tr("Check failed: %1").arg(msg));
+        refreshLastChecked();
+    });
 }
 
 void SettingsDialog::updatePanelGeometry() {

@@ -23,8 +23,17 @@ public:
     void setToken(const QString &token);
     [[nodiscard]] bool hasToken() const;
 
+    // Pre-warm the TLS connection so the first API call skips the handshake.
+    void preWarm(const QString &host);
+
     using OnSuccess = std::function<void(QJsonObject)>;
     using OnError   = std::function<void(QString)>;
+
+    // Called when the server returns token_expired.  The handler must obtain a
+    // new token, call setToken(), then invoke the supplied done(success) callback
+    // to resume (true) or abort (false) the queue.
+    using OnTokenExpired = std::function<void(std::function<void(bool)>)>;
+    void setOnTokenExpired(OnTokenExpired fn);
 
     // Single-call: fires onSuccess with the full response object.
     void call(const QString &method,
@@ -76,5 +85,6 @@ private:
     QString  _token;
     QQueue<PendingCall> _queue;
     bool _inflight  = false;
-    bool _throttled = false; // true while waiting out a Retry-After
+    bool _throttled = false; // true while waiting out a Retry-After or token refresh
+    OnTokenExpired _onTokenExpired;
 };

@@ -43,6 +43,11 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     p.setRenderHint(QPainter::Antialiasing);
     p.fillRect(event->rect(), Theme::kMessageBg);
 
+    if ((_loading || _waiting) && _items.empty()) {
+        _loadingAnim.paint(p, viewport()->rect());
+        return;
+    }
+
     const PaintContext ctx = makePaintContext();
     const int scrollY = ctx.scrollY;
     const int vh      = ctx.vh;

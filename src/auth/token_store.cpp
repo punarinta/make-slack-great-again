@@ -27,9 +27,10 @@ void TokenStore::saveWorkspace(const Credentials &c) {
     auto ids = s.value(QStringLiteral("workspaces")).toStringList();
     if (!ids.contains(c.teamId)) ids.append(c.teamId);
     s.setValue(QStringLiteral("workspaces"), ids);
-    s.setValue(QStringLiteral("workspace/%1/xoxp").arg(c.teamId),    c.xoxp);
-    s.setValue(QStringLiteral("workspace/%1/name").arg(c.teamId),    c.teamName);
-    s.setValue(QStringLiteral("workspace/%1/iconUrl").arg(c.teamId), c.iconUrl);
+    s.setValue(QStringLiteral("workspace/%1/xoxp").arg(c.teamId),         c.xoxp);
+    s.setValue(QStringLiteral("workspace/%1/name").arg(c.teamId),         c.teamName);
+    s.setValue(QStringLiteral("workspace/%1/iconUrl").arg(c.teamId),      c.iconUrl);
+    s.setValue(QStringLiteral("workspace/%1/refreshToken").arg(c.teamId), c.refreshToken);
 }
 
 TokenStore::Credentials TokenStore::loadWorkspace(const QString &teamId) {
@@ -39,6 +40,7 @@ TokenStore::Credentials TokenStore::loadWorkspace(const QString &teamId) {
         teamId,
         s.value(QStringLiteral("workspace/%1/name").arg(teamId)).toString(),
         s.value(QStringLiteral("workspace/%1/iconUrl").arg(teamId)).toString(),
+        s.value(QStringLiteral("workspace/%1/refreshToken").arg(teamId)).toString(),
     };
 }
 

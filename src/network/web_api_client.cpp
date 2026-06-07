@@ -17,6 +17,11 @@ WebApiClient::WebApiClient(QObject *parent)
 
 void WebApiClient::setToken(const QString &token) { _token = token; }
 bool WebApiClient::hasToken() const { return !_token.isEmpty(); }
+void WebApiClient::setOnTokenExpired(OnTokenExpired fn) { _onTokenExpired = std::move(fn); }
+
+void WebApiClient::preWarm(const QString &host) {
+    _nam->connectToHostEncrypted(host, 443);
+}
 
 void WebApiClient::call(const QString &method, QUrlQuery params,
                         OnSuccess onSuccess, OnError onError) {
@@ -184,8 +189,26 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
     if (!obj.value("ok").toBool()) {
         auto err = obj.value("error").toString("unknown");
         qWarning() << "WebApiClient Slack error:" << err << "on" << c.method;
-        if (c.onError) c.onError(err);
-        tryNext();
+        if (err == "token_expired" && _onTokenExpired) {
+            qDebug() << "WebApiClient: token_expired on" << c.method << "— pausing queue, re-queuing call";
+            _throttled = true;
+            _queue.prepend(c);
+            _onTokenExpired([this](bool success) {
+                _throttled = false;
+                if (success) {
+                    tryNext();
+                } else {
+                    // Drain queue with errors so callers aren't stuck
+                    while (!_queue.isEmpty()) {
+                        auto failed = _queue.dequeue();
+                        if (failed.onError) failed.onError("token_expired");
+                    }
+                }
+            });
+        } else {
+            if (c.onError) c.onError(err);
+            tryNext();
+        }
         return;
     }
 

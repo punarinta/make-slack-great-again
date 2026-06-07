@@ -4,6 +4,7 @@
 
 #include "backend/domain.h"
 #include "rpl/lifetime.h"
+#include "ui/loading_indicator/loading_indicator.h"
 #include "ui/virtual_list/virtual_list_widget.h"
 
 #include <QVariantAnimation>
@@ -62,10 +63,18 @@ public:
     void clear();
     void setSession(Session *session);
 
+    // Show/hide a full-area loading spinner independent of conversation state.
+    // Used while the conversation list itself is loading (before any conv can be opened).
+    void setWaiting(bool waiting);
+
     // Returns the most recent non-system message authored by `me`, or nullopt.
     std::optional<Message> lastOwnMessage(UserId me) const;
 
 signals:
+    // Fired once when the first page of content for the current conversation is
+    // ready to display — immediately if loaded from cache, otherwise when the
+    // first network response arrives.
+    void initialPageLoaded();
     // Emitted in channel mode when user clicks the "N replies" bar on a thread root.
     void threadClicked(ConversationId conv, Ts rootTs);
     // Emitted when "Edit message" is chosen; caller should call composer->enterEditMode().
@@ -264,6 +273,9 @@ private:
 
     std::optional<QString> _olderCursor;   // set when more pages exist above
     bool                   _loadingOlder = false;
+    bool                   _loading      = false; // true while waiting for the initial page
+    bool                   _waiting      = false; // true while the conv list itself hasn't loaded
+    LoadingIndicator       _loadingAnim;
 
     rpl::lifetime _loadLifetime;
     rpl::lifetime _olderLoadLifetime;

@@ -28,6 +28,8 @@ class TitleBar;
 class ThreadPanel;
 class HeaderAvatarWidget;
 class QSplitter;
+class UpdateBar;
+class UpdateChecker;
 
 class QCloseEvent;
 
@@ -76,6 +78,9 @@ private:
     // Error banner — shown briefly when a network error occurs with no UI handler.
     void showNetworkError(const QString &message);
 
+    // Update
+    void applyUpdateAndRestart(const QString &stagedPath);
+
     // Event handlers
     bool eventFilter(QObject *o, QEvent *e) override;
     void changeEvent(QEvent *e) override;
@@ -90,9 +95,11 @@ private:
     OAuthFlow *_activeFlow = nullptr; // non-owning; valid only while runLoginFlow() blocks
 
     // Window frame
-    TitleBar    *_titleBar    = nullptr;
-    QWidget     *_frame       = nullptr;   // central widget; hosts titleBar + _stack
-    QVBoxLayout *_frameLayout = nullptr;
+    TitleBar      *_titleBar      = nullptr;
+    UpdateBar     *_updateBar     = nullptr;
+    UpdateChecker *_updateChecker = nullptr;
+    QWidget       *_frame         = nullptr;   // central widget; hosts titleBar + _stack
+    QVBoxLayout   *_frameLayout   = nullptr;
 
     QStackedWidget      *_stack         = nullptr;
     QWidget             *_loggedOutPage = nullptr;
@@ -103,6 +110,7 @@ private:
     QWidget             *_convPanel      = nullptr;
     ConvListWidget      *_convList       = nullptr;
     QLabel              *_convNameLabel  = nullptr;
+    QWidget             *_msgHeader     = nullptr;
     QSplitter           *_msgSplitter    = nullptr;
     MessageListWidget   *_messageList    = nullptr;
     ComposerWidget      *_composer       = nullptr;

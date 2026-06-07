@@ -3,23 +3,126 @@
 #include "public_backend.h"
 #include "json_mappers.h"
 #include "socket_mode_realtime.h"
+#include "auth/token_store.h"
 
 #include <QUrlQuery>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonDocument>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QDebug>
 
-PublicBackend::PublicBackend(const QString &xoxpToken, const QString &xappToken)
+PublicBackend::PublicBackend(const TokenStore::Credentials &creds,
+                              const TokenStore::AppConfig   &appCfg,
+                              const QString                 &xappToken)
     : _xappToken(xappToken)
+    , _teamId(creds.teamId)
+    , _refreshToken(creds.refreshToken)
     , _api(new WebApiClient(nullptr))
+    , _historyApi(new WebApiClient(nullptr))
 {
-    _api->setToken(xoxpToken);
+    _api->setToken(creds.xoxp);
+    _historyApi->setToken(creds.xoxp);
+    // Pre-warm TLS so the first API calls skip the handshake latency.
+    _api->preWarm("slack.com");
+    _historyApi->preWarm("slack.com");
+
+    // Always install the handler so token_expired triggers logout/refresh even
+    // when the stored token has no companion refresh token yet.
+    setupTokenRefresh(creds, appCfg);
+}
+
+void PublicBackend::setupTokenRefresh(const TokenStore::Credentials &creds,
+                                       const TokenStore::AppConfig   &appCfg) {
+    // Shared handler: both clients call this; deduplication ensures only one
+    // in-flight refresh request even if both fire simultaneously.
+    auto handler = [this, appCfg](std::function<void(bool)> done) {
+        qDebug() << "[TokenRefresh] token_expired received; refreshInProgress=" << _refreshInProgress
+                 << "refreshToken present=" << !_refreshToken.isEmpty();
+        _refreshWaiters.push_back(std::move(done));
+        if (_refreshInProgress) { qDebug() << "[TokenRefresh] refresh already in flight, queuing"; return; }
+        _refreshInProgress = true;
+        doRefresh(appCfg, [this](bool success) {
+            qDebug() << "[TokenRefresh] doRefresh completed, success=" << success;
+            _refreshInProgress = false;
+            auto waiters = std::move(_refreshWaiters);
+            for (auto &w : waiters) w(success);
+            if (!success)
+                _authState.force_assign(AuthState::NotLoggedIn);
+        });
+    };
+    _api->setOnTokenExpired(handler);
+    _historyApi->setOnTokenExpired(handler);
+    Q_UNUSED(creds)
+}
+
+void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg,
+                               std::function<void(bool)>    done) {
+    if (_refreshToken.isEmpty()) {
+        qDebug() << "[TokenRefresh] no refresh token stored — forcing logout";
+        done(false);
+        return;
+    }
+    qDebug() << "[TokenRefresh] posting oauth.v2.exchange for team" << _teamId;
+
+    auto *nam = new QNetworkAccessManager(_api); // _api owns it → cleaned up with backend
+    QNetworkRequest req(QUrl(QStringLiteral("https://slack.com/api/oauth.v2.exchange")));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    QUrlQuery body;
+    body.addQueryItem("grant_type",     "refresh_token");
+    body.addQueryItem("client_id",      appCfg.clientId);
+    body.addQueryItem("client_secret",  appCfg.clientSecret);
+    body.addQueryItem("refresh_token",  _refreshToken);
+    auto *reply = nam->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
+
+    QObject::connect(reply, &QNetworkReply::finished, _api, [this, reply, nam, done]() mutable {
+        reply->deleteLater();
+        nam->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "[TokenRefresh] network error:" << reply->errorString();
+            done(false);
+            return;
+        }
+        const auto raw = reply->readAll();
+        auto obj = QJsonDocument::fromJson(raw).object();
+        qDebug() << "[TokenRefresh] exchange response:" << raw;
+        if (!obj.value("ok").toBool()) {
+            qWarning() << "[TokenRefresh] Slack error:" << obj.value("error").toString();
+            done(false);
+            return;
+        }
+        const QString newToken   = obj.value("access_token").toString();
+        const QString newRefresh = obj.value("refresh_token").toString();
+        qDebug() << "[TokenRefresh] new access_token prefix:"
+                 << newToken.left(20) << "... refresh_token present=" << !newRefresh.isEmpty();
+        if (newToken.isEmpty()) {
+            qWarning() << "[TokenRefresh] empty access_token in successful response";
+            done(false);
+            return;
+        }
+
+        // Update in-memory tokens on both clients
+        _api->setToken(newToken);
+        _historyApi->setToken(newToken);
+        _refreshToken = newRefresh.isEmpty() ? _refreshToken : newRefresh;
+
+        // Persist the new credentials
+        auto saved = TokenStore::loadWorkspace(_teamId);
+        saved.xoxp         = newToken;
+        saved.refreshToken = _refreshToken;
+        TokenStore::saveWorkspace(saved);
+
+        qDebug() << "Token refreshed successfully for team" << _teamId;
+        done(true);
+    });
 }
 
 PublicBackend::~PublicBackend() {
     delete _realtime;
+    delete _historyApi;
     delete _api;
 }
 
@@ -138,7 +241,7 @@ rpl::producer<MessagePage> PublicBackend::loadHistory(
         params.addQueryItem("limit", "50");
         if (cursor) params.addQueryItem("cursor", *cursor);
 
-        _api->call("conversations.history", params,
+        _historyApi->call("conversations.history", params,
             [consumer](QJsonObject resp) mutable {
                 MessagePage page;
                 page.messages = JsonMappers::toMessages(resp.value("messages").toArray());
@@ -167,7 +270,7 @@ rpl::producer<MessagePage> PublicBackend::loadThread(
         params.addQueryItem("limit",   "50");
         if (cursor) params.addQueryItem("cursor", *cursor);
 
-        _api->call("conversations.replies", params,
+        _historyApi->call("conversations.replies", params,
             [consumer](QJsonObject resp) mutable {
                 MessagePage page;
                 // conversations.replies returns oldest-first; no reversal needed.

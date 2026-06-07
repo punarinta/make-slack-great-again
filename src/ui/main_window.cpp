@@ -18,6 +18,9 @@
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
 #include "forward_dialog/forward_dialog.h"
+#include "update_checker/update_checker.h"
+#include "update_bar/update_bar.h"
+#include "app_credentials.h"
 
 #include "ui/icon_utils.h"
 
@@ -45,6 +48,10 @@
 #include <QPainterPath>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QFile>
+#include <QProcess>
+#include <QTimer>
+#include <QDesktopServices>
 
 static constexpr int kResizeBorder = 6;
 
@@ -85,10 +92,31 @@ void MainWindow::buildUi() {
     _titleBar = new TitleBar(_frame);
     _frameLayout->addWidget(_titleBar);
 
-    _stack = new QStackedWidget(_frame);
-    _frameLayout->addWidget(_stack, 1);
+    _updateBar = new UpdateBar(_frame);
+    _frameLayout->addWidget(_updateBar);
+
+    // Horizontal body: switcher rail always present, stack fills the rest.
+    // _stack must be created before buildWorkspaceSwitcher (SettingsDialog parents to it).
+    auto *body = new QWidget(_frame);
+    auto *bodyLayout = new QHBoxLayout(body);
+    bodyLayout->setContentsMargins(0, 0, 0, 0);
+    bodyLayout->setSpacing(0);
+    _frameLayout->addWidget(body, 1);
+
+    _stack = new QStackedWidget(body);
+    bodyLayout->addWidget(buildWorkspaceSwitcher(body));
+    bodyLayout->addWidget(_stack, 1);
 
     setCentralWidget(_frame);
+
+    _updateChecker = new UpdateChecker(this);
+    if (_updateChecker->stagedVersion() > AppCredentials::version)
+        _updateBar->showUpdateReady(_updateChecker->stagedPath());
+    connect(_updateChecker, &UpdateChecker::downloadReady,
+            _updateBar,     &UpdateBar::showUpdateReady);
+    connect(_updateBar, &UpdateBar::restartRequested,
+            this,       &MainWindow::applyUpdateAndRestart);
+    QTimer::singleShot(5000, _updateChecker, &UpdateChecker::checkInBackground);
 
     _loggedOutPage = buildLoggedOutPage();
     _stack->addWidget(_loggedOutPage);
@@ -178,7 +206,6 @@ QWidget *MainWindow::buildMainPage() {
     root->setSpacing(0);
     root->setContentsMargins(0, 0, 0, 0);
 
-    root->addWidget(buildWorkspaceSwitcher(page));
     root->addWidget(buildConvPanel(page));
     root->addWidget(buildRightPanel(page), 1);
 
@@ -197,6 +224,7 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
             this, &MainWindow::showWorkspaceMenu);
 
     _settingsDialog = new SettingsDialog(_stack);
+    _settingsDialog->setUpdateChecker(_updateChecker);
     connect(_switcher, &WorkspaceSwitcher::settingsClicked,
             _settingsDialog, &SettingsDialog::open);
     return _switcher;
@@ -272,6 +300,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         "QPushButton { border-radius: 4px; }"
         "QPushButton:hover { background: #F0F0F0; }");
     msgHeaderLayout->addWidget(searchBtn);
+    _msgHeader = msgHeader;
     rightLayout->addWidget(msgHeader);
 
     // ── Error banner — shown briefly when a background network error fires ──
@@ -442,13 +471,15 @@ void MainWindow::startSession(const QString &teamId) {
     _sessionOwner.reset();
     _currentConvId = {};
     _composer->setEnabled(false);
+    _composer->hide();
+    if (_msgHeader) _msgHeader->hide();
 
     // Create new session
     const auto creds  = TokenStore::loadWorkspace(teamId);
     const auto appCfg = TokenStore::loadApp();
     const QString xapp = qEnvironmentVariable("SLACK_XAPP_TOKEN", appCfg.xapp);
 
-    auto backend = std::make_unique<PublicBackend>(creds.xoxp, xapp);
+    auto backend = std::make_unique<PublicBackend>(creds, appCfg, xapp);
     _sessionOwner = std::make_unique<Session>(std::move(backend), teamId);
     _messageList->setSession(_sessionOwner.get());
     if (_searchWidget) _searchWidget->setSession(_sessionOwner.get());
@@ -470,6 +501,15 @@ void MainWindow::startSession(const QString &teamId) {
     // start() loads cache into _conversations/_users before connectToSession()
     // subscribes, so the first emission already carries cached data.
     _sessionOwner->start();
+
+    // First load with no cache: hide the conv column and show a spinner in the
+    // message area until conversations arrive from the network.
+    if (_convPanel && _messageList) {
+        const bool hasCached = !_sessionOwner->currentConversations().empty();
+        _convPanel->setVisible(hasCached);
+        _messageList->setWaiting(!hasCached);
+    }
+
     connectToSession();
     _stack->setCurrentWidget(_mainPage);
 }
@@ -485,6 +525,7 @@ void MainWindow::showLoggedOut() {
     _activeTeamId.clear();
     _currentConvId = {};
     if (_titleBar) _titleBar->setTitle({});
+    refreshSwitcher(); // switcher is always visible — deselect the active entry
     _stack->setCurrentWidget(_loggedOutPage);
 }
 
@@ -528,9 +569,22 @@ void MainWindow::handleOAuthUri(const QUrl &uri) {
 }
 
 void MainWindow::connectToSession() {
+    // If the backend can't refresh the token (no refresh token, or refresh fails),
+    // it sets authState → LoggedOut so we show the login screen instead of hanging.
+    _sessionOwner->authState()
+        | rpl::on_next([this](AuthState state) {
+            if (state == AuthState::NotLoggedIn)
+                showLoggedOut();
+        }, _sessionLifetime);
+
     _sessionOwner->conversations()
         | rpl::on_next([this](std::vector<Conversation> convs) {
             populateConversations(convs);
+            // Reveal the conv column the moment real data arrives.
+            if (!convs.empty() && _convPanel && !_convPanel->isVisible()) {
+                if (_messageList) _messageList->setWaiting(false);
+                _convPanel->show();
+            }
             // On first populate (no conversation open yet), jump to the last
             // conversation the user had open in the previous session.
             if (_currentConvId.value.isEmpty())
@@ -575,6 +629,24 @@ void MainWindow::showNetworkError(const QString &message) {
     _errorBanner->setText(message);
     _errorBanner->show();
     QTimer::singleShot(5000, _errorBanner, &QWidget::hide);
+}
+
+void MainWindow::applyUpdateAndRestart(const QString &staged) {
+#if defined(Q_OS_LINUX)
+    const QString target = QCoreApplication::applicationFilePath();
+    if (!QFile::rename(staged, target)) {
+        showNetworkError(tr("Could not replace binary — check file permissions."));
+        return;
+    }
+    _updateChecker->clearStaged();
+    QProcess::startDetached(target, QCoreApplication::arguments());
+    QCoreApplication::quit();
+#elif defined(Q_OS_MACOS)
+    _updateChecker->clearStaged();
+    QDesktopServices::openUrl(QUrl::fromLocalFile(staged));
+#else
+    Q_UNUSED(staged)
+#endif
 }
 
 void MainWindow::maybeNotify(const EvMessageNew &ev) {
@@ -890,6 +962,8 @@ void MainWindow::openConversation(int row) {
         }
     }
 
+    const bool hasCachedMsgs = !_sessionOwner->cachedMessages(_currentConvId).empty();
+
     _sessionOwner->setReading(_currentConvId);
     _messageList->openConversation(_currentConvId, displayName, description);
     _composer->setEnabled(true);
@@ -899,6 +973,22 @@ void MainWindow::openConversation(int row) {
 
     // Restore any unsent draft for this conversation.
     _composer->setText(_drafts.value(_currentConvId.value));
+
+    if (hasCachedMsgs) {
+        if (_msgHeader) _msgHeader->show();
+        _composer->show();
+    } else {
+        // Messages are loading; keep header and composer hidden until the first
+        // page is ready so the user doesn't see chrome around an empty chat area.
+        if (_msgHeader) _msgHeader->hide();
+        _composer->hide();
+        connect(_messageList, &MessageListWidget::initialPageLoaded,
+                this, [this, convId = _currentConvId] {
+            if (_currentConvId != convId) return;
+            if (_msgHeader) _msgHeader->show();
+            if (_composer)  _composer->show();
+        }, Qt::SingleShotConnection);
+    }
 
     _sessionOwner->saveLastConv(_currentConvId, displayName);
     updateHeaderForConv(_currentConvId);

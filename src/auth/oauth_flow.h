@@ -31,7 +31,8 @@ signals:
 
 private:
     void exchangeCode(const QString &code);
-    void fetchTeamInfo(const QString &xoxp, const QString &teamId, const QString &teamName);
+    void fetchTeamInfo(const QString &xoxp, const QString &refreshToken,
+                       const QString &teamId, const QString &teamName);
 
     static QStringList userScopes();
 

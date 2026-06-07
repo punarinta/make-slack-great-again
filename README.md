@@ -95,6 +95,7 @@ Copy `credentials.cmake.example` to `credentials.cmake` in the project root and 
 set(MSGA_CLIENT_ID     "your-client-id")
 set(MSGA_CLIENT_SECRET "your-client-secret")
 set(MSGA_XAPP          "xapp-1-...")
+set(MSGA_VERSION       1)   # increment on each public release
 ```
 
 `credentials.cmake` is gitignored and never committed. Rebuild after editing it — the values are compiled in.

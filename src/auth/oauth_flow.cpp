@@ -100,12 +100,14 @@ void OAuthFlow::exchangeCode(const QString &code) {
         auto team = obj.value("team").toObject();
         fetchTeamInfo(
             user.value("access_token").toString(),
+            user.value("refresh_token").toString(), // non-empty when token rotation enabled
             team.value("id").toString(),
             team.value("name").toString());
     });
 }
 
 void OAuthFlow::fetchTeamInfo(const QString &xoxp,
+                               const QString &refreshToken,
                                const QString &teamId,
                                const QString &teamName)
 {
@@ -115,7 +117,7 @@ void OAuthFlow::fetchTeamInfo(const QString &xoxp,
                      QStringLiteral("Bearer %1").arg(xoxp).toUtf8());
     auto *reply = nam->get(req);
     connect(reply, &QNetworkReply::finished,
-            this, [this, reply, nam, xoxp, teamId, teamName] {
+            this, [this, reply, nam, xoxp, refreshToken, teamId, teamName] {
         reply->deleteLater();
         nam->deleteLater();
         QString iconUrl;
@@ -125,6 +127,6 @@ void OAuthFlow::fetchTeamInfo(const QString &xoxp,
                             .value("icon").toObject();
             iconUrl = icon.value("image_88").toString();
         }
-        emit done(TokenStore::Credentials{xoxp, teamId, teamName, iconUrl});
+        emit done(TokenStore::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken});
     });
 }

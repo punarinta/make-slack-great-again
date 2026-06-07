@@ -65,6 +65,8 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
         viewport()->update();
     });
 
+    _loadingAnim.setUpdateCallback([this] { viewport()->update(); });
+
     if (_imgCache) {
         connect(_imgCache, &ImageCache::loaded, this, [this] {
             const bool wasAtBottom =
@@ -122,6 +124,8 @@ std::optional<Message> MessageListWidget::lastOwnMessage(UserId me) const {
 }
 
 void MessageListWidget::clear() {
+    _loading = false;
+    _loadingAnim.stop();
     _loadLifetime       = rpl::lifetime();
     _olderLoadLifetime  = rpl::lifetime();
     _eventLifetime      = rpl::lifetime();
@@ -136,6 +140,16 @@ void MessageListWidget::clear() {
     _convName.clear();
     _convDescription.clear();
     verticalScrollBar()->setRange(0, 0);
+    viewport()->update();
+}
+
+void MessageListWidget::setWaiting(bool waiting) {
+    _waiting = waiting;
+    if (waiting) {
+        if (!_loadingAnim.isRunning()) _loadingAnim.start();
+    } else {
+        if (!_loading) _loadingAnim.stop();
+    }
     viewport()->update();
 }
 
@@ -202,11 +216,15 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
     }();
 
     if (hasCached) {
+        emit initialPageLoaded();
         // Apply scroll position after layout settles (next event-loop tick).
         QTimer::singleShot(0, this, [this, conv] {
             if (_currentConv != conv) return;
             applyPendingScroll();
         });
+    } else {
+        _loading = true;
+        _loadingAnim.start();
     }
 
     // Fetch fresh data from the network; merge it into whatever is already shown.
@@ -214,6 +232,8 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
         | rpl::on_next([this, conv, hasCached](MessagePage page) {
             if (_currentConv != conv) return;
 
+            _loading = false;
+            _loadingAnim.stop();
             _olderCursor = page.olderCursor;
 
             // Always cache the authoritative network result.
@@ -240,6 +260,7 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
             } else {
                 // No cached data was shown — normal first-load path.
                 for (const auto &msg : page.messages) appendMessage(msg);
+                emit initialPageLoaded();
                 QTimer::singleShot(0, this, [this, conv] {
                     if (_currentConv != conv) return;
                     applyPendingScroll();
@@ -306,6 +327,8 @@ void MessageListWidget::loadOlderMessages() {
 }
 
 void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
+    _loading = false;
+    _loadingAnim.stop();
     _loadLifetime  = rpl::lifetime();
     _eventLifetime = rpl::lifetime();
     _items.clear();
@@ -323,11 +346,16 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
 
     if (!_session) return;
 
+    _loading = true;
+    _loadingAnim.start();
+
     _session->events()
         | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
     _session->backend()->loadThread(conv, rootTs, std::nullopt)
         | rpl::on_next([this](MessagePage page) {
+            _loading = false;
+            _loadingAnim.stop();
             _olderCursor = page.olderCursor;
             for (const auto &msg : page.messages)
                 appendMessage(msg);
