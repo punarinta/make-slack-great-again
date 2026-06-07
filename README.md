@@ -95,12 +95,19 @@ Copy `credentials.cmake.example` to `credentials.cmake` in the project root and 
 set(MSGA_CLIENT_ID     "your-client-id")
 set(MSGA_CLIENT_SECRET "your-client-secret")
 set(MSGA_XAPP          "xapp-1-...")
-set(MSGA_VERSION       1)   # increment on each public release
+set(MSGA_VERSION       1)
 ```
 
 `credentials.cmake` is gitignored and never committed. Rebuild after editing it — the values are compiled in.
 
-### 7. Build and run
+### 7. Configure build environment
+
+```sh
+./scripts/configure-linux.sh    # for Linux
+./scripts/configure-mac.sh      # for macOS
+```
+
+### 8. Build and run
 
 ```sh
 ./scripts/build.sh
