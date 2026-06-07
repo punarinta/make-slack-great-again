@@ -287,6 +287,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     // ── Header bar: avatar, conv name, star, search ───────────────────
     auto *msgHeader = new QWidget(rightPanel);
     msgHeader->setObjectName("msgHeader");
+    msgHeader->setAttribute(Qt::WA_StyledBackground);
     msgHeader->setFixedHeight(48);
     auto *msgHeaderLayout = new QHBoxLayout(msgHeader);
     msgHeaderLayout->setContentsMargins(16, 0, 8, 0);
@@ -321,6 +322,13 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     msgHeaderLayout->addWidget(searchBtn);
     _msgHeader = msgHeader;
     rightLayout->addWidget(msgHeader);
+
+    _headerDivider = new QWidget(rightPanel);
+    _headerDivider->setFixedHeight(1);
+    _headerDivider->setAttribute(Qt::WA_StyledBackground);
+    _headerDivider->setStyleSheet(QString("background: %1;").arg(Th::qss(Th::c().divider.def)));
+    _headerDivider->hide();
+    rightLayout->addWidget(_headerDivider);
 
     // ── Error banner — shown briefly when a background network error fires ──
     _errorBanner = new QLabel(rightPanel);
@@ -511,12 +519,17 @@ void MainWindow::applyTheme() {
 
     const auto &th = Th::c();
 
+    _frame->setStyleSheet(
+        QString("QWidget#windowFrame { background: %1; }").arg(Th::qss(th.surface.content))
+    );
+
     if (_msgHeader) {
-        _msgHeader->setStyleSheet(QString("QWidget#msgHeader {"
-                                          "  background: %1;"
-                                          "  border-bottom: 1px solid %2;"
-                                          "}")
-                                      .arg(Th::qss(th.surface.raised), Th::qss(th.divider.def)));
+        _msgHeader->setStyleSheet(
+            QString("QWidget#msgHeader { background: %1; }").arg(Th::qss(th.surface.raised))
+        );
+    }
+    if (_headerDivider) {
+        _headerDivider->setStyleSheet(QString("background: %1;").arg(Th::qss(th.divider.def)));
     }
     if (_convNameLabel) {
         _convNameLabel->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
@@ -573,6 +586,8 @@ void MainWindow::startSession(const QString &teamId) {
     _composer->hide();
     if (_msgHeader)
         _msgHeader->hide();
+    if (_headerDivider)
+        _headerDivider->hide();
     if (_contentStack && _messageList)
         _contentStack->setCurrentWidget(_messageList);
 
@@ -1191,12 +1206,16 @@ void MainWindow::openConversation(int row) {
     if (hasCachedMsgs) {
         if (_msgHeader)
             _msgHeader->show();
+        if (_headerDivider)
+            _headerDivider->show();
         _composer->show();
     } else {
         // Messages are loading; keep header and composer hidden until the first
         // page is ready so the user doesn't see chrome around an empty chat area.
         if (_msgHeader)
             _msgHeader->hide();
+        if (_headerDivider)
+            _headerDivider->hide();
         _composer->hide();
         connect(
             _messageList,
@@ -1207,6 +1226,8 @@ void MainWindow::openConversation(int row) {
                     return;
                 if (_msgHeader)
                     _msgHeader->show();
+                if (_headerDivider)
+                    _headerDivider->show();
                 if (_composer)
                     _composer->show();
             },

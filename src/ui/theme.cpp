@@ -138,7 +138,8 @@ const Theme kSlackDark = {
         },
     .titleBar =
         {
-            .controlDefault = QColor("#505050"),
+            .bg             = QColor("#3F0E40"),
+            .controlDefault = QColor("#CFC3CF"),
             .controlClose   = QColor("#C0392B"),
         },
     .loader =

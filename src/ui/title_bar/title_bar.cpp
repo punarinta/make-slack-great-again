@@ -66,6 +66,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     connect(_closeBtn, &QPushButton::clicked, this, [this] { window()->close(); });
     layout->addWidget(_closeBtn);
 
+    applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &TitleBar::applyTheme);
     connect(
         &ThemeManager::instance(), &ThemeManager::themeChanged, this, qOverload<>(&TitleBar::update)
@@ -75,6 +76,8 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
 void TitleBar::setTitle(const QString &) {}
 
 void TitleBar::applyTheme() {
+    setStyleSheet(QString("QWidget#titleBar { background: %1; }").arg(Th::qss(Th::c().titleBar.bg))
+    );
     _minBtn->setIcon(svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
     );
     updateMaxButton();

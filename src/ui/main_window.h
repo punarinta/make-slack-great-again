@@ -116,6 +116,7 @@ private:
     ConvListWidget    *_convList       = nullptr;
     QLabel            *_convNameLabel  = nullptr;
     QWidget           *_msgHeader      = nullptr;
+    QWidget           *_headerDivider  = nullptr;
     QSplitter         *_msgSplitter    = nullptr;
     QStackedWidget    *_contentStack   = nullptr;
     MessageListWidget *_messageList    = nullptr;
