@@ -689,8 +689,13 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, lockPx);
             prefixW = 14 + 6;
         } else {
-            p.drawText(leftX, textY, "#");
-            prefixW = fm.horizontalAdvance("#") + 6;
+            static const QPixmap kHashDim =
+                svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().text.onDarkDim);
+            static const QPixmap kHashBright =
+                svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().text.onDark);
+            const QPixmap &hashPx = (isSelected || isUnread) ? kHashBright : kHashDim;
+            p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
+            prefixW = 14 + 6;
         }
         const int     maxW = viewport()->width() - leftX - prefixW - badgeW - 8;
         const QString name = fm.elidedText(conv.name, Qt::ElideRight, maxW);
