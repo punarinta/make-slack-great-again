@@ -105,12 +105,14 @@ void MainWindow::buildUi() {
     _frameLayout->addWidget(body, 1);
 
     _stack = new QStackedWidget(body);
+
+    _updateChecker = new UpdateChecker(this);
+
     bodyLayout->addWidget(buildWorkspaceSwitcher(body));
     bodyLayout->addWidget(_stack, 1);
 
     setCentralWidget(_frame);
 
-    _updateChecker = new UpdateChecker(this);
     if (_updateChecker->stagedVersion() > AppCredentials::version)
         _updateBar->showUpdateReady(_updateChecker->stagedPath());
     connect(_updateChecker, &UpdateChecker::downloadReady,
