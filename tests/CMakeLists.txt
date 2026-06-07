@@ -86,12 +86,16 @@ add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
 add_msga_widget_test(test_composer
     test_composer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/mention_completer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
@@ -99,6 +103,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
