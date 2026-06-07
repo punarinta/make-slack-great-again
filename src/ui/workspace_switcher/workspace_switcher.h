@@ -19,12 +19,14 @@ public:
         QString teamId;
         QString name;
         QString iconUrl;
+        int     unread = 0;
     };
 
     explicit WorkspaceSwitcher(QWidget *parent = nullptr);
 
     void setWorkspaces(const std::vector<Entry> &entries);
     void setActive(const QString &teamId);
+    void setUnread(const QString &teamId, int count);
 
 signals:
     void workspaceClicked(const QString &teamId);

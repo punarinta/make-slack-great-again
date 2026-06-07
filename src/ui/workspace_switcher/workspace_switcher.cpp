@@ -27,10 +27,15 @@ WorkspaceSwitcher::WorkspaceSwitcher(QWidget *parent)
 }
 
 void WorkspaceSwitcher::setWorkspaces(const std::vector<Entry> &entries) {
-    _entries.clear();
-    _entries.reserve(entries.size());
-    for (const auto &e : entries)
-        _entries.push_back({e, {}});
+    std::vector<EntryPrivate> next;
+    next.reserve(entries.size());
+    for (const auto &e : entries) {
+        QPixmap existing;
+        for (const auto &old : _entries)
+            if (old.info.teamId == e.teamId) { existing = old.icon; break; }
+        next.push_back({e, std::move(existing)});
+    }
+    _entries = std::move(next);
     loadIcons();
     update();
 }
@@ -39,6 +44,16 @@ void WorkspaceSwitcher::setActive(const QString &teamId) {
     if (_activeId == teamId) return;
     _activeId = teamId;
     update();
+}
+
+void WorkspaceSwitcher::setUnread(const QString &teamId, int count) {
+    for (auto &ep : _entries) {
+        if (ep.info.teamId != teamId) continue;
+        if (ep.info.unread == count) return;
+        ep.info.unread = count;
+        update();
+        return;
+    }
 }
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
@@ -202,6 +217,28 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
             const qreal inset = 0.75;
             p.drawRoundedRect(QRectF(r).adjusted(inset, inset, -inset, -inset),
                               kRadius - inset, kRadius - inset);
+        }
+
+        // Unread notification badge (top-right corner of the avatar bubble)
+        if (ep.info.unread > 0) {
+            const QString text = ep.info.unread > 99 ? QStringLiteral("99+")
+                                                     : QString::number(ep.info.unread);
+            QFont bf = font();
+            bf.setPixelSize(9);
+            bf.setBold(true);
+            const QFontMetrics fm(bf);
+            const int badgeH = 14;
+            const int badgeW = qMax(badgeH, fm.horizontalAdvance(text) + 6);
+            const int bx     = r.right() - badgeW + 3;
+            const int by     = r.top() - 3;
+            const QRectF br(bx, by, badgeW, badgeH);
+
+            p.setBrush(Theme::kUnreadBadge);
+            p.setPen(QPen(Theme::kSidebarBg, 1.5));
+            p.drawRoundedRect(br.adjusted(0.75, 0.75, -0.75, -0.75), badgeH / 2.0, badgeH / 2.0);
+            p.setFont(bf);
+            p.setPen(Qt::white);
+            p.drawText(br.toRect(), Qt::AlignCenter, text);
         }
     }
 

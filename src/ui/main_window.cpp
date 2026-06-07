@@ -479,6 +479,8 @@ void MainWindow::startSession(const QString &teamId) {
     _sessionLifetime = rpl::lifetime();
     _sessionOwner.reset();
     _currentConvId = {};
+    _totalUnread = 0;
+    updateTrayIcon();
     _composer->setEnabled(false);
     _composer->hide();
     if (_msgHeader) _msgHeader->hide();
@@ -534,6 +536,8 @@ void MainWindow::showLoggedOut() {
     _sessionOwner.reset();
     _activeTeamId.clear();
     _currentConvId = {};
+    _totalUnread = 0;
+    updateTrayIcon();
     if (_titleBar) _titleBar->setTitle({});
     refreshSwitcher(); // switcher is always visible — deselect the active entry
     _stack->setCurrentWidget(_loggedOutPage);
@@ -590,6 +594,7 @@ void MainWindow::connectToSession() {
     _sessionOwner->conversations()
         | rpl::on_next([this](std::vector<Conversation> convs) {
             populateConversations(convs);
+            updateUnreadBadges(convs);
             // Reveal the conv column the moment real data arrives.
             if (!convs.empty() && _convPanel && !_convPanel->isVisible()) {
                 if (_messageList) _messageList->setWaiting(false);
@@ -707,6 +712,40 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
 
     _pendingNotifConv = ev.conv;
     _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+}
+
+void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
+    int total = 0;
+    for (const auto &c : convs)
+        total += c.unread;
+    if (total == _totalUnread) return;
+    _totalUnread = total;
+    if (_switcher)
+        _switcher->setUnread(_activeTeamId, _totalUnread);
+    updateTrayIcon();
+}
+
+void MainWindow::updateTrayIcon() {
+    if (!_trayIcon) return;
+    if (_totalUnread <= 0) {
+        _trayIcon->setIcon(QIcon(":/icon_tray.svg"));
+        return;
+    }
+    // Compose base icon + red notification dot at top-right corner
+    const int sz = 128;
+    QSvgRenderer renderer(QString(":/icon_tray.svg"));
+    QPixmap px(sz, sz);
+    px.fill(Qt::transparent);
+    QPainter p(&px);
+    p.setRenderHint(QPainter::Antialiasing);
+    if (renderer.isValid())
+        renderer.render(&p, QRectF(0, 0, sz, sz));
+    const int d = 36;
+    p.setBrush(Theme::kUnreadBadge);
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(sz - d, 0, d, d);
+    p.end();
+    _trayIcon->setIcon(QIcon(px));
 }
 
 // ── Workspace management ──────────────────────────────────────────────────────

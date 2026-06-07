@@ -75,6 +75,8 @@ private:
     // Tray
     void setupTray();
     void maybeNotify(const EvMessageNew &ev);
+    void updateUnreadBadges(const std::vector<Conversation> &convs);
+    void updateTrayIcon();
 
     // Error banner — shown briefly when a network error occurs with no UI handler.
     void showNetworkError(const QString &message);
@@ -123,6 +125,7 @@ private:
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;
     ConversationId              _pendingNotifConv;
+    int                         _totalUnread = 0;
     rpl::lifetime               _sessionLifetime;
 
     QHash<QString, QString>     _drafts; // convId.value → unsent draft text
