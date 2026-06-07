@@ -111,5 +111,6 @@ set(MSGA_VERSION       1)
 
 ```sh
 ./scripts/build.sh
-./build/msga
+./build/msga                            # for Linux
+./build/msga.app/Contents/MacOS/msga    # for macOS
 ```
