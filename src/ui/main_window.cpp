@@ -203,6 +203,13 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
 QWidget *MainWindow::buildMainPage() {
     _imgCache = new ImageCache(this);
+    _imgCache->setDiskCache(
+        [this](const QString &url) -> QByteArray {
+            return _sessionOwner ? _sessionOwner->cachedImage(url) : QByteArray{};
+        },
+        [this](const QString &url, const QByteArray &data) {
+            if (_sessionOwner) _sessionOwner->cacheImage(url, data);
+        });
 
     auto *page = new QWidget;
     auto *root = new QHBoxLayout(page);

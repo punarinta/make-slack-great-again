@@ -227,3 +227,49 @@ TEST_CASE_METHOD(CacheFixture, "saveImage with empty data writes nothing", "[cac
     cache.saveImage(url, QByteArray{});
     CHECK(cache.loadImage(url).isEmpty());
 }
+
+// ── Bots ──────────────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(CacheFixture, "loadBots returns empty when no file", "[cache][bot]") {
+    CHECK(cache.loadBots().empty());
+}
+
+TEST_CASE_METHOD(CacheFixture, "bots round-trip preserves name and avatar", "[cache][bot]") {
+    QHash<QString, User> bots;
+    bots["B001"] = User{
+        UserId{"B001"}, "jenkins", "Jenkins CI",
+        "https://cdn.example.com/jenkins_72.png",
+        /*isBot=*/true,
+    };
+    bots["B002"] = User{
+        UserId{"B002"}, "deploy-bot", "Deploy Bot", "",
+        /*isBot=*/true,
+    };
+
+    cache.saveBots(bots);
+    const auto loaded = cache.loadBots();
+
+    REQUIRE(loaded.size() == 2);
+    REQUIRE(loaded.contains("B001"));
+    CHECK(loaded["B001"].displayName == "Jenkins CI");
+    CHECK(loaded["B001"].avatarUrl   == "https://cdn.example.com/jenkins_72.png");
+    CHECK(loaded["B001"].isBot       == true);
+    REQUIRE(loaded.contains("B002"));
+    CHECK(loaded["B002"].displayName == "Deploy Bot");
+    CHECK(loaded["B002"].avatarUrl.isEmpty());
+}
+
+TEST_CASE_METHOD(CacheFixture, "saveBots with empty map writes nothing to load", "[cache][bot]") {
+    cache.saveBots({});
+    CHECK(cache.loadBots().empty());
+}
+
+TEST_CASE_METHOD(CacheFixture, "loadBots skips entries with empty id", "[cache][bot]") {
+    // Write one valid and one id-less entry directly, then verify only valid one loads.
+    QHash<QString, User> bots;
+    bots["B001"] = User{UserId{"B001"}, "bot1", "Bot One", "", true};
+    cache.saveBots(bots);
+    const auto loaded = cache.loadBots();
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded.contains("B001"));
+}

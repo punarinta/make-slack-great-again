@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include <functional>
 #include <QHash>
 #include <QObject>
 #include <QPixmap>
@@ -23,6 +24,13 @@ public:
     // download is in-flight return null immediately and wait for the loaded() signal.
     QPixmap get(const QString &url);
 
+    // Wire a persistent backing store: load is called before any network fetch;
+    // save is called after each successful download so the bytes survive restarts.
+    // Passing empty functions disables the backing store.
+    void setDiskCache(
+        std::function<QByteArray(const QString &)>               load,
+        std::function<void(const QString &, const QByteArray &)> save);
+
 signals:
     void loaded(const QString &url);
 
@@ -34,4 +42,7 @@ private:
 
     QHash<QString, Entry>  _cache;
     QNetworkAccessManager *_nam;
+
+    std::function<QByteArray(const QString &)>               _diskLoad;
+    std::function<void(const QString &, const QByteArray &)> _diskSave;
 };

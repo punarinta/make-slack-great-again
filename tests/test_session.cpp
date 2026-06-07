@@ -11,6 +11,7 @@
 
 #include "session/session.h"
 #include "backend/backend.h"
+#include "cache/workspace_cache.h"
 #include "rpl/producer.h"
 #include "rpl/variable.h"
 
@@ -39,6 +40,10 @@ struct StubBackend : Backend {
     bool   presenceResult = false;
     struct SentMessage { ConversationId conv; OutgoingMessage msg; };
     std::vector<SentMessage> sentMessages;
+
+    User          botInfoResult;   // returned by loadBotInfo; empty id = not found
+    int           botInfoCallCount = 0;
+    QList<QString> botInfoRequested;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
     Capabilities capabilities()          const override { return {}; }
@@ -83,6 +88,17 @@ struct StubBackend : Backend {
                       std::function<void(QString)>) override {}
 
     rpl::producer<Event> events() const override { return _events.events(); }
+
+    rpl::producer<User> loadBotInfo(UserId botId) override {
+        botInfoCallCount++;
+        botInfoRequested.append(botId.value);
+        User result = botInfoResult;
+        return [result](auto consumer) mutable {
+            if (!result.id.value.isEmpty()) consumer.put_next(std::move(result));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
 
     void fireEvent(Event e) { _events.fire(std::move(e)); }
 };
@@ -314,4 +330,101 @@ TEST_CASE_METHOD(SessionFixture, "cacheImage/cachedImage round-trip", "[session]
     const QByteArray data = "PNG_DATA";
     session->cacheImage(url, data);
     CHECK(session->cachedImage(url) == data);
+}
+
+// ── fetchBotIfNeeded ──────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded resolves unknown bot via loadBotInfo", "[session][bot]") {
+    stub->botInfoResult = User{UserId{"B001"}, "jenkins", "Jenkins CI",
+                               "https://cdn.example.com/jenkins_72.png", true};
+    session->fetchBotIfNeeded(UserId{"B001"});
+    CHECK(stub->botInfoCallCount == 1);
+    const auto *u = session->findUser(UserId{"B001"});
+    REQUIRE(u != nullptr);
+    CHECK(u->displayName == "Jenkins CI");
+    CHECK(u->avatarUrl   == "https://cdn.example.com/jenkins_72.png");
+}
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded is no-op for non-B prefixed id", "[session][bot]") {
+    session->fetchBotIfNeeded(UserId{"U999"});
+    CHECK(stub->botInfoCallCount == 0);
+    CHECK(session->findUser(UserId{"U999"}) == nullptr);
+}
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded does not issue duplicate requests", "[session][bot]") {
+    stub->botInfoResult = User{UserId{"B002"}, "deploy-bot", "Deploy Bot", "", true};
+    session->fetchBotIfNeeded(UserId{"B002"});
+    session->fetchBotIfNeeded(UserId{"B002"});
+    session->fetchBotIfNeeded(UserId{"B002"});
+    CHECK(stub->botInfoCallCount == 1);
+}
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded skips already-known bot", "[session][bot]") {
+    stub->botInfoResult = User{UserId{"B003"}, "bot3", "Bot Three", "", true};
+    session->fetchBotIfNeeded(UserId{"B003"});
+    REQUIRE(stub->botInfoCallCount == 1);
+    // Second call — bot is now in _botUsers, should not trigger another request.
+    session->fetchBotIfNeeded(UserId{"B003"});
+    CHECK(stub->botInfoCallCount == 1);
+}
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded fires botInfoLoaded on success", "[session][bot]") {
+    stub->botInfoResult = User{UserId{"B004"}, "notifier", "Notifier", "", true};
+    std::vector<UserId> fired;
+    rpl::lifetime lt;
+    session->botInfoLoaded() | rpl::on_next([&fired](UserId id) {
+        fired.push_back(id);
+    }, lt);
+    session->fetchBotIfNeeded(UserId{"B004"});
+    REQUIRE(fired.size() == 1);
+    CHECK(fired[0] == UserId{"B004"});
+}
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded does not fire botInfoLoaded when backend returns empty", "[session][bot]") {
+    stub->botInfoResult = User{}; // empty id — simulates 404 / not found
+    std::vector<UserId> fired;
+    rpl::lifetime lt;
+    session->botInfoLoaded() | rpl::on_next([&fired](UserId id) {
+        fired.push_back(id);
+    }, lt);
+    session->fetchBotIfNeeded(UserId{"B005"});
+    CHECK(fired.empty());
+    CHECK(session->findUser(UserId{"B005"}) == nullptr);
+}
+
+TEST_CASE_METHOD(SessionFixture, "start() restores bots from cache so findUser works immediately", "[session][bot]") {
+    // Pre-populate the cache with a bot from a previous session.
+    {
+        WorkspaceCache cache(teamId);
+        QHash<QString, User> bots;
+        bots["B099"] = User{UserId{"B099"}, "ci-bot", "CI Bot",
+                            "https://cdn.example.com/ci_72.png", true};
+        cache.saveBots(bots);
+    }
+
+    // Start a fresh session against the same team — bot should be visible immediately.
+    auto backend2 = std::make_unique<StubBackend>();
+    backend2->_meId  = UserId{"U1"};
+    backend2->_convs = std::vector<Conversation>{kGeneral};
+    backend2->_users = std::vector<User>{kAlice};
+    Session session2(std::move(backend2), teamId);
+    session2.start();
+
+    const auto *u = session2.findUser(UserId{"B099"});
+    REQUIRE(u != nullptr);
+    CHECK(u->displayName == "CI Bot");
+    CHECK(u->avatarUrl   == "https://cdn.example.com/ci_72.png");
+}
+
+TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded persists new bot to cache", "[session][bot]") {
+    stub->botInfoResult = User{UserId{"B100"}, "release-bot", "Release Bot",
+                               "https://cdn.example.com/release_72.png", true};
+    session->fetchBotIfNeeded(UserId{"B100"});
+
+    // Read the cache directly to verify the bot was written.
+    WorkspaceCache cache(teamId);
+    const auto bots = cache.loadBots();
+    REQUIRE(bots.contains("B100"));
+    CHECK(bots["B100"].displayName == "Release Bot");
+    CHECK(bots["B100"].avatarUrl   == "https://cdn.example.com/release_72.png");
 }

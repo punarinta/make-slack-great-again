@@ -22,6 +22,7 @@ void Session::start() {
         if (!convs.empty()) _conversations = std::move(convs);
         auto users = _cache->loadUsers();
         if (!users.empty()) _users = std::move(users);
+        _botUsers = _cache->loadBots();
     }
 
     _backend->connectRealtime();
@@ -156,6 +157,7 @@ void Session::fetchBotIfNeeded(UserId botId) {
             _pendingBotFetches.remove(botId.value);
             if (!u.id.value.isEmpty()) {
                 _botUsers[u.id.value] = std::move(u);
+                _cache->saveBots(_botUsers);
                 _botInfoHub.fire_copy(botId);
             }
         }, _lifetime);

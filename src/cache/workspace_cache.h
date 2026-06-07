@@ -7,6 +7,7 @@
 
 #include "backend/domain.h"
 
+#include <QHash>
 #include <QJsonDocument>
 #include <QString>
 #include <utility>
@@ -21,6 +22,9 @@ public:
 
     void saveUsers(const std::vector<User> &users);
     std::vector<User> loadUsers() const;
+
+    void saveBots(const QHash<QString, User> &bots);
+    QHash<QString, User> loadBots() const;
 
     // Persists the newest kMaxMessages messages for a conversation.
     void saveMessages(const ConversationId &conv, const std::vector<Message> &msgs);
@@ -41,6 +45,7 @@ private:
 
     QString convPath() const;
     QString usersPath() const;
+    QString botsPath() const;
     QString msgsPath(const ConversationId &conv) const;
     QString metaPath() const;
     QString imgPath(const QString &url) const;  // url → hashed filename

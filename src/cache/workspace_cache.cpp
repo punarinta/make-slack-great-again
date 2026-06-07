@@ -248,6 +248,7 @@ WorkspaceCache::WorkspaceCache(const QString &teamId) {
 
 QString WorkspaceCache::convPath()  const { return _dir + "/conversations.json"; }
 QString WorkspaceCache::usersPath() const { return _dir + "/users.json"; }
+QString WorkspaceCache::botsPath()  const { return _dir + "/bots.json"; }
 QString WorkspaceCache::msgsPath(const ConversationId &conv) const {
     return _dir + "/messages/" + conv.value + ".json";
 }
@@ -305,6 +306,26 @@ std::vector<User> WorkspaceCache::loadUsers() const {
     std::vector<User> result;
     for (const auto &v : doc.array())
         result.push_back(userFromJson(v.toObject()));
+    return result;
+}
+
+void WorkspaceCache::saveBots(const QHash<QString, User> &bots) {
+    QJsonArray arr;
+    for (const auto &u : bots) arr.append(toJson(u));
+    writeJson(botsPath(), QJsonDocument(arr));
+}
+
+QHash<QString, User> WorkspaceCache::loadBots() const {
+    const auto data = readFile(botsPath());
+    if (data.isEmpty()) return {};
+    const auto doc = QJsonDocument::fromJson(data);
+    if (!doc.isArray()) return {};
+    QHash<QString, User> result;
+    for (const auto &v : doc.array()) {
+        auto u = userFromJson(v.toObject());
+        if (!u.id.value.isEmpty())
+            result[u.id.value] = std::move(u);
+    }
     return result;
 }
 
