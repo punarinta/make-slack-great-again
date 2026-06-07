@@ -111,11 +111,16 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
 
     QRectF body;
     if (_rightOf) {
-        body = QRectF(kShadow + kArrowH, kShadow, width() - kShadow - kArrowH - kShadow, height() - 2 * kShadow);
+        body = QRectF(
+            kShadow + kArrowH,
+            kShadow,
+            width() - kShadow - kArrowH - kShadow,
+            height() - 2 * kShadow
+        );
     } else {
         const int bodyH = height() - kShadow - kArrowH - kShadow;
-        body = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
-                      : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
+        body            = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
+                                 : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
     }
 
     // Light drop shadow around the body only

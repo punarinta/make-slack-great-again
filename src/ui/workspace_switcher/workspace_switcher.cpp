@@ -336,5 +336,3 @@ void WorkspaceSwitcher::leaveEvent(QEvent *) {
     _hovered = -99;
     update();
 }
-
-
