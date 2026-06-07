@@ -18,3 +18,14 @@ inline QFont emojiFont(int pixelSize = 20) {
 #endif
     return f;
 }
+
+// Returns a CSS font-family string for use in Qt HTML (QTextDocument inline styles).
+inline QString emojiFontFamily() {
+#if defined(Q_OS_WIN)
+    return QStringLiteral("Segoe UI Emoji");
+#elif defined(Q_OS_MAC)
+    return QStringLiteral("Apple Color Emoji");
+#else
+    return QStringLiteral("Noto Color Emoji, Noto Emoji");
+#endif
+}

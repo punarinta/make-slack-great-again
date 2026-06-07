@@ -3,6 +3,7 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "text/mrkdwn_parser.h"
+#include "util/emoji_font.h"
 
 #include <QCoreApplication>
 #include <QHash>
@@ -188,8 +189,11 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
         case EntityType::HereCommand:
         case EntityType::ChannelCommand:
             html += "<span style='color:#E01E5A;font-weight:bold'>" + inner + "</span>"; break;
-        case EntityType::Emoji:
-            html += resolveEmoji(e.data).toHtmlEscaped(); break;
+        case EntityType::Emoji: {
+            static const QString kEmojiSpanOpen =
+                "<span style='font-family:" + emojiFontFamily() + "'>";
+            html += kEmojiSpanOpen + resolveEmoji(e.data).toHtmlEscaped() + "</span>"; break;
+        }
         }
         pos = e.offset + e.length;
     }
