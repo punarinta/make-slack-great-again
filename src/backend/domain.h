@@ -158,6 +158,8 @@ struct Message {
     Ts                        ts;
     std::optional<Ts>         threadRoot; // set when message is in a thread (reply)
     int                       replyCount = 0; // >0 on thread root messages
+    std::vector<UserId>       replyUsers;     // participants (up to 5, from reply_users)
+    std::optional<Ts>         latestReply;    // ts of the most recent reply
     UserId                    author;
     TextWithEntities          text;
     QString                   rawText;  // original mrkdwn from Slack; used for edit pre-fill

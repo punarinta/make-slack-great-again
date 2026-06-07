@@ -296,6 +296,15 @@ Message toMessage(const QJsonObject &o) {
                        ? std::optional<Ts>(msg.value("thread_ts").toString())
                        : std::nullopt,
         .replyCount  = msg.value("reply_count").toInt(),
+        .replyUsers  = [&]{
+            std::vector<UserId> v;
+            for (const auto &u : msg.value("reply_users").toArray())
+                v.push_back(UserId{u.toString()});
+            return v;
+        }(),
+        .latestReply = msg.contains("latest_reply")
+                       ? std::optional<Ts>(msg.value("latest_reply").toString())
+                       : std::nullopt,
         .author      = UserId{ msg.value("user").toString(
                                msg.value("bot_id").toString()) },
         .text        = MrkdwnParser::parse(msg.value("text").toString()),

@@ -937,10 +937,12 @@ void MessageListWidget::doMouseLeave() {
         _hoveredLinkRow = -1;
     }
 
-    if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1) {
-        _hoveredRow     = -1;
-        _hoveredToolBtn = -1;
-        _hoveredAttach  = {-1, -1};
+    if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1
+            || _hoveredReplyRow != -1) {
+        _hoveredRow      = -1;
+        _hoveredToolBtn  = -1;
+        _hoveredAttach   = {-1, -1};
+        _hoveredReplyRow = -1;
         viewport()->update();
     }
 }
@@ -1044,11 +1046,15 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
     }
 
+    const int newHoveredReplyRow = replyBarIndexAt(pos);
+
     if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn
-            || newHoveredAttach != _hoveredAttach) {
-        _hoveredRow     = newHoveredRow;
-        _hoveredToolBtn = newHoveredBtn;
-        _hoveredAttach  = newHoveredAttach;
+            || newHoveredAttach != _hoveredAttach
+            || newHoveredReplyRow != _hoveredReplyRow) {
+        _hoveredRow      = newHoveredRow;
+        _hoveredToolBtn  = newHoveredBtn;
+        _hoveredAttach   = newHoveredAttach;
+        _hoveredReplyRow = newHoveredReplyRow;
         viewport()->update();
     }
 

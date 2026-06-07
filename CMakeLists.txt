@@ -76,6 +76,9 @@ add_executable(msga MACOSX_BUNDLE
     # Text
     src/text/mrkdwn_parser.cpp
 
+    # Utilities
+    src/util/relative_time.cpp
+
     # Cache
     src/cache/workspace_cache.cpp
 

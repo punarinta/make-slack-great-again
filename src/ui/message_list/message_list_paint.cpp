@@ -7,6 +7,7 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "util/emoji_font.h"
+#include "util/relative_time.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -220,7 +221,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         int replyBarTop = contentY;
         if (!item.msg.reactions.empty()) replyBarTop += kReactH + 2;
         replyBarTop += kReplyBarGap;
-        paintReplyBar(p, item, ctx, replyBarTop);
+        paintReplyBar(p, item, ctx, replyBarTop, index);
     }
 
     // ── Collapsed-row timestamp (shown on hover) ──────────────────────
@@ -255,8 +256,14 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
         if (top + rowHeight(i) < 0) continue;
 
         auto *user = _session->findUser(_items[i].msg.author);
-        if (!user || user->avatarUrl.isEmpty()) continue;
-        _imgCache->get(user->avatarUrl); // triggers download if not cached
+        if (user && !user->avatarUrl.isEmpty())
+            _imgCache->get(user->avatarUrl);
+
+        for (const auto &uid : _items[i].msg.replyUsers) {
+            auto *ru = _session->findUser(uid);
+            if (ru && !ru->avatarUrl.isEmpty())
+                _imgCache->get(ru->avatarUrl);
+        }
     }
 }
 
@@ -764,26 +771,133 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
 
 // ── Reply bar ─────────────────────────────────────────────────────────────────
 
+
+static void paintCircularAvatar(QPainter &p, const QPixmap &px, const QRect &rect,
+                                 const QString &fallbackInitial, const QColor &bgColor) {
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    QPainterPath clip;
+    clip.addEllipse(QRectF(rect));
+    p.setClipPath(clip);
+
+    if (!px.isNull()) {
+        const qreal dpr = p.device()->devicePixelRatioF();
+        QPixmap scaled = px.scaled(rect.size() * dpr,
+                                   Qt::KeepAspectRatioByExpanding,
+                                   Qt::SmoothTransformation);
+        scaled.setDevicePixelRatio(dpr);
+        p.drawPixmap(rect, scaled);
+    } else {
+        p.setPen(Qt::NoPen);
+        p.setBrush(bgColor);
+        p.drawEllipse(rect);
+        p.setPen(Qt::white);
+        QFont f = QApplication::font();
+        f.setBold(true);
+        f.setPointSizeF(f.pointSizeF() * 0.75);
+        p.setFont(f);
+        const QChar ch = fallbackInitial.isEmpty() ? QChar('?') : fallbackInitial[0].toUpper();
+        p.drawText(rect, Qt::AlignCenter, ch);
+    }
+    p.restore();
+}
+
 void MessageListWidget::paintReplyBar(QPainter &p,
                                       const MessageItem &item,
-                                      const PaintContext &ctx, int top) const
+                                      const PaintContext &ctx, int top, int index) const
 {
     const int count = item.msg.replyCount;
     if (count <= 0) return;
 
-    const QRect bar(ctx.textLeft, top, ctx.textWidth, kReplyBarH);
+    const bool hovered  = (index == _hoveredReplyRow);
+    const int  barW     = ctx.textWidth / 2;
+    const QRect bar(ctx.textLeft, top, barW, kReplyBarH);
 
-    const QString label = count == 1
-        ? tr("1 reply")
-        : tr("%1 replies").arg(count);
+    // ── Background / border on hover ─────────────────────────────────────────
+    if (hovered) {
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor("#D1D5DB"), 1));
+        p.setBrush(QColor("#F8F8F8"));
+        p.drawRoundedRect(QRectF(bar).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
+        p.restore();
+    }
 
+    // Fixed inset so content never shifts between normal and hover states
+    static constexpr int kInnerPad = 6;
+    int x = bar.left() + kInnerPad;
+    const int avY = bar.top() + (kReplyBarH - kThreadAvSize) / 2;
+    const QColor ringColor = hovered ? QColor("#F8F8F8") : QColor(Qt::white);
+
+    // ── Avatars ───────────────────────────────────────────────────────────────
+    const int maxAv = std::min((int)item.msg.replyUsers.size(), 5);
+    for (int i = 0; i < maxAv; ++i) {
+        const UserId &uid = item.msg.replyUsers[i];
+        auto *user = _session ? _session->findUser(uid) : nullptr;
+        QPixmap px;
+        QString initial;
+        QColor  bg;
+        if (user) {
+            initial = user->displayName;
+            if (!user->avatarUrl.isEmpty() && _imgCache)
+                px = _imgCache->get(user->avatarUrl);
+        } else {
+            initial = uid.value;
+        }
+        const QChar ch = initial.isEmpty() ? QChar('?') : initial[0];
+        bg = QColor::fromHsl(ch.unicode() * 37 % 360, 130, 100);
+
+        const QRect avRect(x + i * (kThreadAvSize - kThreadAvOver), avY,
+                           kThreadAvSize, kThreadAvSize);
+
+        // Ring separator between overlapping avatars matches the background
+        if (i > 0) {
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(ringColor);
+            p.drawEllipse(avRect.adjusted(-2, -2, 2, 2));
+            p.restore();
+        }
+        paintCircularAvatar(p, px, avRect, initial, bg);
+    }
+
+    if (maxAv > 0)
+        x += maxAv * (kThreadAvSize - kThreadAvOver) + kThreadAvOver + 6;
+
+    // ── Text ──────────────────────────────────────────────────────────────────
     p.save();
-    QFont f = QApplication::font();
-    f.setBold(true);
-    f.setPointSizeF(f.pointSizeF() * 0.88);
-    p.setFont(f);
+    QFont boldF = QApplication::font();
+    boldF.setBold(true);
+    boldF.setPointSizeF(boldF.pointSizeF() * 0.88);
+    p.setFont(boldF);
     p.setPen(QColor("#1164A3"));
-    p.drawText(bar, Qt::AlignVCenter | Qt::AlignLeft, label);
+
+    const QString countLabel = count == 1 ? tr("1 reply") : tr("%1 replies").arg(count);
+    const int countW = p.fontMetrics().horizontalAdvance(countLabel);
+    p.drawText(x, bar.top(), countW, kReplyBarH, Qt::AlignVCenter | Qt::AlignLeft, countLabel);
+    x += countW + 6;
+
+    QFont normF = QApplication::font();
+    normF.setPointSizeF(normF.pointSizeF() * 0.88);
+    p.setFont(normF);
+    p.setPen(QColor("#616061"));
+
+    if (hovered) {
+        p.drawText(x, bar.top(), bar.right() - x - kInnerPad - 16, kReplyBarH,
+                   Qt::AlignVCenter | Qt::AlignLeft, tr("View thread"));
+        p.drawText(bar.right() - kInnerPad - 14, bar.top(), 14, kReplyBarH,
+                   Qt::AlignVCenter | Qt::AlignRight, "›");
+    } else {
+        QString sub;
+        if (item.msg.latestReply) {
+            const QString rel = relativeTime(*item.msg.latestReply);
+            sub = rel.isEmpty() ? tr("Last reply") : tr("Last reply %1").arg(rel);
+        }
+        if (!sub.isEmpty())
+            p.drawText(x, bar.top(), bar.right() - x, kReplyBarH,
+                       Qt::AlignVCenter | Qt::AlignLeft, sub);
+    }
     p.restore();
 }
 
@@ -813,7 +927,7 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
         if (!_items[i].msg.reactions.empty()) y += kReactH + 2;
         y += kReplyBarGap;
 
-        if (QRect(textLeft, y, textWidth, kReplyBarH).contains(viewportPos))
+        if (QRect(textLeft, y, textWidth / 2, kReplyBarH).contains(viewportPos))
             return i;
     }
     return -1;

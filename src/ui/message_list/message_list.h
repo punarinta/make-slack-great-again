@@ -124,7 +124,7 @@ private:
     void paintReactions(QPainter &p, const MessageItem &item,
                         const PaintContext &ctx, int top) const;
     void paintReplyBar(QPainter &p, const MessageItem &item,
-                       const PaintContext &ctx, int top) const;
+                       const PaintContext &ctx, int top, int index) const;
     void paintAttachments(QPainter &p, const MessageItem &item,
                           const PaintContext &ctx, int top, int index) const;
     void paintFileImages(QPainter &p, const MessageItem &item,
@@ -180,8 +180,10 @@ private:
     static constexpr int kRowGap      =  0; // no gap — spacing is entirely in kPadV
     static constexpr int kPadVCollapsed = 3; // vertical padding for collapsed (same-author) rows
     static constexpr int kReactH      = 22; // height of the reactions strip
-    static constexpr int kReplyBarH   = 22; // height of the "N replies" bar on thread roots
-    static constexpr int kReplyBarGap =  4; // gap above the reply bar
+    static constexpr int kReplyBarH      = 36; // height of the thread-participants bar
+    static constexpr int kReplyBarGap    =  6; // gap above the reply bar
+    static constexpr int kThreadAvSize   = 22; // small circular avatar size in reply bar
+    static constexpr int kThreadAvOver   =  6; // overlap between consecutive avatars
     static constexpr int kAttachGap   =  4; // gap above each attachment
     static constexpr int kAttachBarW  =  3; // width of attachment color bar
     static constexpr int kAttachBarGap=  8; // gap between bar and attachment text
@@ -251,7 +253,8 @@ private:
     // {msgIdx, attachIdx} of the attachment preview the cursor is over, else {-1,-1}
     std::pair<int,int> _hoveredAttach = {-1, -1};
     QString _hoveredLinkUrl;     // URL of the link currently under the mouse cursor
-    int     _hoveredLinkRow = -1; // row index owning that link (-1 if none)
+    int     _hoveredLinkRow  = -1; // row index owning that link (-1 if none)
+    int     _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
