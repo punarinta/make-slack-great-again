@@ -51,6 +51,14 @@ struct PaintContext {
     int textWidth; // vw - textLeft - kPadH
 };
 
+// Character position inside a painted message (used for text-selection hit testing).
+struct TextPos {
+    int  row    = -1; // index into _items (-1 = invalid)
+    int  offset = 0;  // character offset within that message's QTextDocument
+    bool operator==(const TextPos &o) const { return row == o.row && offset == o.offset; }
+    bool operator!=(const TextPos &o) const { return !(*this == o); }
+};
+
 // Zero-widget virtual message list.
 // Stores MessageItems, paints only visible rows in a single QPainter pass.
 // No QLabel/QWidget per message — scales to thousands of rows without stutter.
@@ -62,6 +70,9 @@ public:
     void openConversation(
         ConversationId conv, const QString &convName = {}, const QString &description = {}
     );
+    // Update only the display name / description shown in the intro header without
+    // reloading history (used when user data arrives after the conversation was opened).
+    void updateConvName(const QString &convName, const QString &description);
     // Open a thread view: loads conversations.replies and filters events accordingly.
     void openThread(ConversationId conv, Ts rootTs);
     void clear();
@@ -89,6 +100,7 @@ signals:
 protected:
     void scrollContentsBy(int dx, int dy) override;
     void resizeEvent(QResizeEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     // Viewport event handlers (called from eventFilter)
@@ -177,6 +189,12 @@ private:
     // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
     std::pair<int, int> reactionAt(const QPoint &viewportPos) const;
 
+    // Text selection
+    TextPos textHitTest(const QPoint &viewportPos) const;
+    void    clearSelection();
+    bool    hasSelection() const;
+    QString selectedText() const;
+
     // Dismiss button for link-preview attachments.
     // Returns {msgIdx, attachIdx} if pos is on a dismiss "×" button, else {-1,-1}.
     std::pair<int, int> dismissButtonAt(const QPoint &viewportPos) const;
@@ -264,6 +282,11 @@ private:
     bool                _scrollToBottomPending = false;
     int                 _pendingRestorePos     = -1; // >= 0: restore this position after layout
     QHash<QString, int> _savedScrollPos;             // conv.value → last scroll position
+
+    // Text selection state
+    TextPos _selAnchor;           // where the drag started
+    TextPos _selFocus;            // current drag end
+    bool    _selDragging = false; // true while LMB is held and dragging a selection
 
     int                 _hoveredRow     = -1; // index of the row the mouse is over, or -1
     int                 _hoveredToolBtn = -1; // 0=emoji, 1=forward, 2=more; -1=none

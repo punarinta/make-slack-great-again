@@ -39,6 +39,7 @@
 MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent)
     : VirtualListWidget(parent), _session(session), _imgCache(imgCache) {
     verticalScrollBar()->setSingleStep(20);
+    setFocusPolicy(Qt::ClickFocus);
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
@@ -145,6 +146,9 @@ void MessageListWidget::clear() {
     _hoveredLinkRow = -1;
     _convName.clear();
     _convDescription.clear();
+    _selAnchor   = {};
+    _selFocus    = {};
+    _selDragging = false;
     verticalScrollBar()->setRange(0, 0);
     viewport()->update();
 }
@@ -305,6 +309,13 @@ void MessageListWidget::openConversation(
         );
 }
 
+void MessageListWidget::updateConvName(const QString &convName, const QString &description) {
+    _convName        = convName;
+    _convDescription = description;
+    rebuildLayout();
+    viewport()->update();
+}
+
 void MessageListWidget::applyPendingScroll() {
     if (textAreaWidth() <= 0 || _items.empty())
         return;
@@ -344,6 +355,12 @@ void MessageListWidget::loadOlderMessages() {
 
                                   if (page.messages.empty())
                                       return;
+
+                                  // Inserting older messages at the top shifts row indices —
+                                  // drop any in-progress selection to avoid stale positions.
+                                  _selAnchor   = {};
+                                  _selFocus    = {};
+                                  _selDragging = false;
 
                                   // Record the pre-insert total height and current scroll so we can
                                   // shift the scrollbar down by exactly the height added at the
@@ -818,6 +835,10 @@ static QString firstLinkInMessage(const Message &msg) {
 void MessageListWidget::doMousePress(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
+
+    // Clear any existing selection; it may be re-established below if the press lands on text.
+    clearSelection();
+
     if (tryHandleScrollbarPress(event->pos()))
         return;
     if (tryHandleToolbarPress(event->pos()))
@@ -830,6 +851,17 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         return;
     if (tryHandleLinkPress(event->pos()))
         return;
+
+    // Start text-selection drag if the click lands inside a message body.
+    const TextPos tp = textHitTest(event->pos());
+    if (tp.row >= 0) {
+        _selAnchor   = tp;
+        _selFocus    = tp;
+        _selDragging = true;
+        viewport()->update();
+        return;
+    }
+
     tryHandleFileChipPress(event->pos());
 }
 
@@ -1133,12 +1165,121 @@ bool MessageListWidget::isOnScrollThumb(int vpY) const {
     return VirtualListWidget::isOnScrollThumb(vpY, _totalH);
 }
 
+// ── Text selection ────────────────────────────────────────────────────────────
+
+TextPos MessageListWidget::textHitTest(const QPoint &viewportPos) const {
+    if (_items.empty() || _tops.empty())
+        return {};
+    const PaintContext ctx      = makePaintContext();
+    const int          scrollY  = ctx.scrollY;
+    const int          docY     = viewportPos.y() + scrollY;
+    const int          textLeft = ctx.textLeft;
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        const int rowTop = _tops[i];
+        const int rh     = rowHeight(i);
+        if (docY < rowTop)
+            break;
+        if (docY > rowTop + rh)
+            continue;
+
+        const auto &item = _items[i];
+        ensureDocLayout(item);
+        if (!item.textDoc || item.docHeight <= 0)
+            continue;
+
+        const bool coll    = isCollapsed(i);
+        const int  padV    = coll ? kPadVCollapsed : kPadV;
+        const int  sepH    = needsDateSep(i) ? kSepH : 0;
+        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  textTop = rowTop + sepH + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+
+        const QPointF local(viewportPos.x() - textLeft, docY - textTop);
+        if (local.y() < 0 || local.y() > item.docHeight)
+            continue;
+        const QPointF clamped(std::max(0.0, local.x()), local.y());
+        const int     hit = item.textDoc->documentLayout()->hitTest(clamped, Qt::FuzzyHit);
+        if (hit >= 0)
+            return {i, hit};
+    }
+    return {};
+}
+
+void MessageListWidget::clearSelection() {
+    if (_selAnchor.row != -1 || _selFocus.row != -1 || _selDragging) {
+        _selAnchor   = {};
+        _selFocus    = {};
+        _selDragging = false;
+        viewport()->update();
+    }
+}
+
+bool MessageListWidget::hasSelection() const {
+    return _selAnchor.row >= 0 && _selFocus.row >= 0 && _selAnchor != _selFocus;
+}
+
+QString MessageListWidget::selectedText() const {
+    if (!hasSelection())
+        return {};
+
+    int aRow = _selAnchor.row, aOff = _selAnchor.offset;
+    int fRow = _selFocus.row, fOff = _selFocus.offset;
+    if (aRow > fRow || (aRow == fRow && aOff > fOff)) {
+        std::swap(aRow, fRow);
+        std::swap(aOff, fOff);
+    }
+
+    QStringList parts;
+    for (int i = aRow; i <= fRow && i < (int)_items.size(); ++i) {
+        const auto &item = _items[i];
+        ensureDocLayout(item);
+        if (!item.textDoc)
+            continue;
+        const int from = (i == aRow) ? aOff : 0;
+        const int to   = (i == fRow) ? fOff : item.textDoc->characterCount();
+        if (from >= to)
+            continue;
+        QTextCursor cur(item.textDoc.get());
+        cur.setPosition(from);
+        cur.setPosition(to, QTextCursor::KeepAnchor);
+        QString text = cur.selectedText();
+        text.replace(QChar::ParagraphSeparator, '\n');
+        if (!text.isEmpty())
+            parts.append(text);
+    }
+    return parts.join('\n');
+}
+
+void MessageListWidget::keyPressEvent(QKeyEvent *event) {
+    if (event->matches(QKeySequence::Copy) && hasSelection()) {
+        Clipboard::setText(selectedText());
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && hasSelection()) {
+        clearSelection();
+        event->accept();
+        return;
+    }
+    QAbstractScrollArea::keyPressEvent(event);
+}
+
 void MessageListWidget::doMouseRelease(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
     if (_sbDragging) {
         _sbDragging = false;
         viewport()->setCursor(Qt::ArrowCursor);
+        return;
+    }
+    if (_selDragging) {
+        _selDragging = false;
+        // If the cursor never moved off the anchor position, treat as a plain click — no selection.
+        if (_selAnchor == _selFocus) {
+            _selAnchor = {};
+            _selFocus  = {};
+        }
+        viewport()->update();
     }
 }
 
@@ -1152,6 +1293,16 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
                                   (event->pos().y() - _sbDragStartY) * (_totalH - vh) / trackRange;
             verticalScrollBar()->setValue(std::clamp(newScroll, 0, verticalScrollBar()->maximum()));
         }
+        return;
+    }
+
+    if (_selDragging) {
+        const TextPos tp = textHitTest(event->pos());
+        if (tp.row >= 0 && tp != _selFocus) {
+            _selFocus = tp;
+            viewport()->update();
+        }
+        viewport()->setCursor(Qt::IBeamCursor);
         return;
     }
 
@@ -1301,10 +1452,15 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
                           overDismiss || rMI >= 0;
     const int  sbHitX     = viewport()->width() - kScrollW - 2 - 6;
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
+    const bool overText   = !overLink && textHitTest(pos).row >= 0;
     if (overScroll)
         viewport()->setCursor(Qt::SizeVerCursor);
+    else if (overLink)
+        viewport()->setCursor(Qt::PointingHandCursor);
+    else if (overText)
+        viewport()->setCursor(Qt::IBeamCursor);
     else
-        viewport()->setCursor(overLink ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        viewport()->setCursor(Qt::ArrowCursor);
 }
 
 // ── Live event handling ───────────────────────────────────────────────────────

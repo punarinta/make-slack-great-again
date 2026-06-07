@@ -212,24 +212,28 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         // Compute normalized selection for this row.
         if (_selAnchor.row >= 0 && _selFocus.row >= 0) {
             int aRow = _selAnchor.row, aOff = _selAnchor.offset;
-            int fRow = _selFocus.row,  fOff = _selFocus.offset;
+            int fRow = _selFocus.row, fOff = _selFocus.offset;
             if (aRow > fRow || (aRow == fRow && aOff > fOff)) {
                 std::swap(aRow, fRow);
                 std::swap(aOff, fOff);
             }
             int selFrom = -1, selTo = -1;
             if (index == aRow && index == fRow) {
-                selFrom = aOff; selTo = fOff;
+                selFrom = aOff;
+                selTo   = fOff;
             } else if (index == aRow) {
-                selFrom = aOff; selTo = item.textDoc->characterCount();
+                selFrom = aOff;
+                selTo   = item.textDoc->characterCount();
             } else if (index == fRow) {
-                selFrom = 0;    selTo = fOff;
+                selFrom = 0;
+                selTo   = fOff;
             } else if (index > aRow && index < fRow) {
-                selFrom = 0;    selTo = item.textDoc->characterCount();
+                selFrom = 0;
+                selTo   = item.textDoc->characterCount();
             }
             if (selFrom >= 0 && selTo > selFrom) {
                 QAbstractTextDocumentLayout::Selection sel;
-                QTextCursor cur(item.textDoc.get());
+                QTextCursor                            cur(item.textDoc.get());
                 cur.setPosition(selFrom);
                 cur.setPosition(selTo, QTextCursor::KeepAnchor);
                 sel.cursor = cur;

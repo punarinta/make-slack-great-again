@@ -755,8 +755,7 @@ void MainWindow::connectToSession() {
                                     );
                                 if (_composer)
                                     _composer->setPlaceholderText(
-                                        name.isEmpty() ? tr("Message")
-                                                       : tr("Message %1").arg(name)
+                                        name.isEmpty() ? tr("Message") : tr("Message %1").arg(name)
                                     );
                             }
                             updateHeaderForConv(_currentConvId);
