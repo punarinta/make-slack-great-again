@@ -699,6 +699,21 @@ static void setDocLinkUnderline(QTextDocument *doc, const QString &url, bool und
     }
 }
 
+// Collect the plain text of all fragments in doc whose href matches url.
+static QString collectLinkText(QTextDocument *doc, const QString &url) {
+    if (!doc || url.isEmpty())
+        return {};
+    QString text;
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (frag.isValid() && frag.charFormat().anchorHref() == url)
+                text += frag.text();
+        }
+    }
+    return text;
+}
+
 // ── Mouse handling ────────────────────────────────────────────────────────────
 
 QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
@@ -1427,9 +1442,25 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
     } else if (!anchor.isEmpty()) {
-        // Show the URL near the cursor
-        const QPoint gPos = viewport()->mapToGlobal(pos);
-        _tooltip->showAbove(anchor, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
+        // Collect link display text; skip tooltip when it is identical to the URL.
+        QString linkText;
+        if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
+            const auto &item = _items[_hoveredLinkRow];
+            linkText         = collectLinkText(item.textDoc.get(), anchor);
+            if (linkText.isEmpty()) {
+                for (const auto &ad : item.attachDocs) {
+                    linkText = collectLinkText(ad.textDoc.get(), anchor);
+                    if (!linkText.isEmpty())
+                        break;
+                }
+            }
+        }
+        if (linkText != anchor) {
+            const QPoint gPos = viewport()->mapToGlobal(pos);
+            _tooltip->showAbove(anchor, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
+        } else {
+            _tooltip->hide();
+        }
     } else {
         const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
         const bool attachHovered =
