@@ -10,8 +10,6 @@
 #include <QPainterPath>
 #include <QPaintEvent>
 #include <QMouseEvent>
-#include <QHelpEvent>
-#include <QToolTip>
 #include <QSvgRenderer>
 #include <cmath>
 
@@ -317,7 +315,10 @@ void WorkspaceSwitcher::mouseMoveEvent(QMouseEvent *e) {
         update();
     }
 
-    if (h == -2) {
+    if (h >= 0 && h < static_cast<int>(_entries.size())) {
+        const QRect r = entryRect(h);
+        _tooltip->showAbove(_entries[h].info.name, QRect(mapToGlobal(r.topLeft()), r.size()));
+    } else if (h == -2) {
         const QRect r = addButtonRect();
         _tooltip->showAbove(tr("Add workspace"), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else if (h == -3) {
@@ -336,15 +337,4 @@ void WorkspaceSwitcher::leaveEvent(QEvent *) {
     update();
 }
 
-bool WorkspaceSwitcher::event(QEvent *e) {
-    if (e->type() == QEvent::ToolTip) {
-        auto     *he  = static_cast<QHelpEvent *>(e);
-        const int hit = hitTest(he->pos());
-        if (hit >= 0 && hit < static_cast<int>(_entries.size()))
-            QToolTip::showText(he->globalPos(), _entries[hit].info.name, this);
-        else
-            QToolTip::hideText();
-        return true;
-    }
-    return QWidget::event(e);
-}
+

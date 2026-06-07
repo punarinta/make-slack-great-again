@@ -40,7 +40,6 @@ protected:
     void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void leaveEvent(QEvent *e) override;
-    bool event(QEvent *e) override;
 
 private:
     struct EntryPrivate {

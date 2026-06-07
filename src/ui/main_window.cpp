@@ -736,12 +736,29 @@ void MainWindow::connectToSession() {
                     _convList->setUsers(users);
                     _convList->setMe(_sessionOwner->meUserId());
                     // Re-apply header for current DM conv now that user names are resolved.
-                    if (!_currentConvId.value.isEmpty() && _convNameLabel) {
+                    if (!_currentConvId.value.isEmpty()) {
                         const auto *conv = _sessionOwner->findConversation(_currentConvId);
                         if (conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)) {
                             const int row = _convList->rowForId(_currentConvId);
-                            if (row >= 0)
-                                _convNameLabel->setText(_convList->resolvedName(row));
+                            if (row >= 0) {
+                                const QString name = _convList->resolvedName(row);
+                                if (_convNameLabel)
+                                    _convNameLabel->setText(name);
+                                // Also update the message list intro and composer placeholder,
+                                // which were set from the (still-unresolved) user ID on open.
+                                if (_messageList)
+                                    _messageList->updateConvName(
+                                        name,
+                                        tr("This is the beginning of your direct message history "
+                                           "with %1.")
+                                            .arg(name)
+                                    );
+                                if (_composer)
+                                    _composer->setPlaceholderText(
+                                        name.isEmpty() ? tr("Message")
+                                                       : tr("Message %1").arg(name)
+                                    );
+                            }
                             updateHeaderForConv(_currentConvId);
                         }
                     }
