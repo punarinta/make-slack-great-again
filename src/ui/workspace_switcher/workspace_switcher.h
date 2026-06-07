@@ -57,8 +57,9 @@ private:
 
     std::vector<EntryPrivate> _entries;
     QString                   _activeId;
-    int                       _hovered = -99;
-    int                       _pressed = -99;
+    int                       _hovered              = -99;
+    int                       _pressed              = -99;
+    bool                      _cursorOverrideActive = false;
 
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr;

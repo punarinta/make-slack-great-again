@@ -6,6 +6,7 @@
 #include "ui/image_cache.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 
+#include <QGuiApplication>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
@@ -308,10 +309,17 @@ void WorkspaceSwitcher::mouseReleaseEvent(QMouseEvent *e) {
 }
 
 void WorkspaceSwitcher::mouseMoveEvent(QMouseEvent *e) {
-    const int h = hitTest(e->pos());
+    const int  h         = hitTest(e->pos());
+    const bool clickable = (h != -99);
+    if (clickable && !_cursorOverrideActive) {
+        QGuiApplication::setOverrideCursor(Qt::PointingHandCursor);
+        _cursorOverrideActive = true;
+    } else if (!clickable && _cursorOverrideActive) {
+        QGuiApplication::restoreOverrideCursor();
+        _cursorOverrideActive = false;
+    }
     if (h != _hovered) {
         _hovered = h;
-        setCursor((h >= -3 && h != -99) ? Qt::PointingHandCursor : Qt::ArrowCursor);
         update();
     }
 
@@ -331,6 +339,10 @@ void WorkspaceSwitcher::mouseMoveEvent(QMouseEvent *e) {
 
 void WorkspaceSwitcher::leaveEvent(QEvent *) {
     _tooltip->hide();
+    if (_cursorOverrideActive) {
+        QGuiApplication::restoreOverrideCursor();
+        _cursorOverrideActive = false;
+    }
     if (_hovered == -99)
         return;
     _hovered = -99;
