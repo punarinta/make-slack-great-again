@@ -141,7 +141,28 @@ const User *Session::findUser(UserId id) const {
     for (const auto &u : _users.current()) {
         if (u.id == id) return &u;
     }
+    auto it = _botUsers.constFind(id.value);
+    if (it != _botUsers.constEnd()) return &*it;
     return nullptr;
+}
+
+void Session::fetchBotIfNeeded(UserId botId) {
+    if (botId.value.isEmpty() || !botId.value.startsWith('B')) return;
+    if (findUser(botId)) return;
+    if (_pendingBotFetches.contains(botId.value)) return;
+    _pendingBotFetches.insert(botId.value);
+    _backend->loadBotInfo(botId)
+        | rpl::on_next([this, botId](User u) {
+            _pendingBotFetches.remove(botId.value);
+            if (!u.id.value.isEmpty()) {
+                _botUsers[u.id.value] = std::move(u);
+                _botInfoHub.fire_copy(botId);
+            }
+        }, _lifetime);
+}
+
+rpl::producer<UserId> Session::botInfoLoaded() const {
+    return _botInfoHub.events();
 }
 
 const Conversation *Session::findConversation(ConversationId id) const {

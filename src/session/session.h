@@ -12,6 +12,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QSet>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -72,6 +73,12 @@ public:
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
 
+    // Fetch name + avatar for a bot by bot_id if not already cached; no-op if known.
+    void fetchBotIfNeeded(UserId botId);
+
+    // Fires the bot_id whenever a bot's info arrives from the network.
+    rpl::producer<UserId> botInfoLoaded() const;
+
     // --- Persistent cache ---
     std::vector<Message>               cachedMessages(ConversationId conv) const;
     void                               cacheMessages(ConversationId conv,
@@ -106,5 +113,8 @@ private:
     ConversationId      _readingConv; // currently open conversation
     QHash<QString,QString> _emojiMap;
     QHash<QString, QList<QString>> _pendingOptimisticTs; // conv.value → queue of fake ts values
+    QHash<QString, User> _botUsers;           // bot_id → User; for bots not in users.list
+    QSet<QString>        _pendingBotFetches;  // bot_ids with an in-flight bots.info request
+    rpl::event_stream<UserId> _botInfoHub;
     rpl::lifetime       _lifetime;
 };

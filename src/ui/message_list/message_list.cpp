@@ -187,6 +187,12 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
     _session->events()
         | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
+    _session->botInfoLoaded()
+        | rpl::on_next([this](UserId) {
+            rebuildLayout();
+            viewport()->update();
+        }, _eventLifetime);
+
     // Reset scroll intent — stale state from a previous conversation must not leak.
     _scrollToBottomPending = false;
     _pendingRestorePos     = -1;
@@ -414,6 +420,8 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
 }
 
 void MessageListWidget::appendMessage(const Message &msg) {
+    if (_session && msg.author.value.startsWith('B'))
+        _session->fetchBotIfNeeded(msg.author);
     MessageItem item;
     item.msg = msg;
     _items.push_back(std::move(item));

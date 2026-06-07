@@ -159,7 +159,9 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
 
         // ── Header: name + timestamp ──────────────────────────────────
         auto *user = _session->findUser(item.msg.author);
-        const QString name = user ? user->displayName : item.msg.author.value;
+        const QString name = user ? user->displayName
+                           : (!item.msg.botName.isEmpty() ? item.msg.botName
+                                                          : item.msg.author.value);
 
         QFont nameFont = QApplication::font();
         nameFont.setBold(true);
@@ -286,6 +288,8 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
         auto *user = _session->findUser(_items[i].msg.author);
         if (user && !user->avatarUrl.isEmpty())
             _imgCache->get(user->avatarUrl);
+        else if (!_items[i].msg.botAvatarUrl.isEmpty())
+            _imgCache->get(_items[i].msg.botAvatarUrl);
 
         for (const auto &uid : _items[i].msg.replyUsers) {
             auto *ru = _session->findUser(uid);
@@ -301,9 +305,14 @@ void MessageListWidget::paintAvatar(QPainter &p,
 {
     auto *user = _session->findUser(item.msg.author);
 
+    // Resolve avatar URL: user profile first, then bot_profile / icon_url.
+    const QString avatarUrl = (user && !user->avatarUrl.isEmpty())
+        ? user->avatarUrl
+        : item.msg.botAvatarUrl;
+
     // Try to draw a real photo if cached.
-    if (user && !user->avatarUrl.isEmpty() && _imgCache) {
-        const QPixmap cached = _imgCache->get(user->avatarUrl);
+    if (!avatarUrl.isEmpty() && _imgCache) {
+        const QPixmap cached = _imgCache->get(avatarUrl);
         if (!cached.isNull()) {
             p.save();
             p.setRenderHint(QPainter::Antialiasing);
@@ -323,7 +332,9 @@ void MessageListWidget::paintAvatar(QPainter &p,
     }
 
     // Fallback: colored square with initial letter.
-    const QString initial = user ? user->displayName : item.msg.author.value;
+    const QString initial = user ? user->displayName
+                          : (!item.msg.botName.isEmpty() ? item.msg.botName
+                                                         : item.msg.author.value);
     const QChar ch = initial.isEmpty() ? QChar('?') : initial[0];
     const int hue  = ch.unicode() * 37 % 360;
 

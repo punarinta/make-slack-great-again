@@ -119,6 +119,11 @@ static QJsonObject toJson(const Attachment &a) {
     o["iu"] = a.imageUrl;
     o["tu"] = a.thumbUrl;
     o["fo"] = a.footer;
+    if (!a.blocks.empty()) {
+        QJsonArray arr;
+        for (const auto &b : a.blocks) arr.append(toJson(b));
+        o["bl"] = arr;
+    }
     return o;
 }
 static Attachment attachmentFromJson(const QJsonObject &o) {
@@ -133,6 +138,7 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
     a.imageUrl   = o["iu"].toString();
     a.thumbUrl   = o["tu"].toString();
     a.footer     = o["fo"].toString();
+    for (const auto &v : o["bl"].toArray()) a.blocks.push_back(blockFromJson(v.toObject()));
     return a;
 }
 
@@ -141,6 +147,8 @@ static QJsonObject toJson(const Message &m) {
     o["ts"] = m.ts;
     if (m.threadRoot)  o["tr"] = *m.threadRoot;
     o["au"] = m.author.value;
+    if (!m.botName.isEmpty())      o["bn"] = m.botName;
+    if (!m.botAvatarUrl.isEmpty()) o["ba"] = m.botAvatarUrl;
     o["tx"] = toJson(m.text);
     o["ed"] = m.edited;
     if (m.subtype)     o["st"] = *m.subtype;
@@ -168,10 +176,12 @@ static QJsonObject toJson(const Message &m) {
 }
 static Message messageFromJson(const QJsonObject &o) {
     Message m;
-    m.ts     = o["ts"].toString();
+    m.ts           = o["ts"].toString();
     if (o.contains("tr")) m.threadRoot = o["tr"].toString();
-    m.author = UserId{o["au"].toString()};
-    m.text   = tweFromJson(o["tx"].toObject());
+    m.author       = UserId{o["au"].toString()};
+    m.botName      = o["bn"].toString();
+    m.botAvatarUrl = o["ba"].toString();
+    m.text         = tweFromJson(o["tx"].toObject());
     m.edited = o["ed"].toBool();
     if (o.contains("st")) m.subtype = o["st"].toString();
     for (const auto &v : o["re"].toArray()) m.reactions.push_back(reactionFromJson(v.toObject()));

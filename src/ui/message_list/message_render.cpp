@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "message_render.h"
 #include "session/session.h"
+#include "text/mrkdwn_parser.h"
 
 #include <QCoreApplication>
 #include <QHash>
@@ -244,6 +245,29 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     if (!att.footer.isEmpty())
         html += "<p style='margin:2px 0 0;font-size:0.8em;color:#888'>"
              + att.footer.toHtmlEscaped() + "</p>";
+
+    // Render Block Kit blocks embedded in the attachment (modern bot format).
+    if (html.isEmpty() && !att.blocks.empty()) {
+        for (const auto &blk : att.blocks) {
+            if (blk.typeStr == "divider") {
+                html += "<hr style='border:0;border-top:1px solid #DDD;margin:4px 0'>";
+            } else if (blk.typeStr == "header") {
+                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>"
+                     + toHtml(blk.text, session) + "</p>";
+            } else if (blk.typeStr == "image") {
+                if (!blk.altText.isEmpty())
+                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>"
+                         + blk.altText.toHtmlEscaped() + "</p>";
+            } else if (!blk.text.text.isEmpty()) {
+                html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
+            }
+        }
+    }
+
+    // Last-resort fallback: parse as mrkdwn so any <url> links become clickable.
+    if (html.isEmpty() && !att.fallback.isEmpty())
+        html += "<p style='margin:2px 0 0'>" + toHtml(MrkdwnParser::parse(att.fallback), session) + "</p>";
+
     return html;
 }
 

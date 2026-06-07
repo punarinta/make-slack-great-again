@@ -29,6 +29,11 @@ public:
     virtual rpl::producer<std::vector<User>>         loadUsers() = 0;
     // Fetch current presence for one user; emits true=active/false=away then completes.
     virtual rpl::producer<bool>                      loadPresence(UserId) = 0;
+    // Fetch display name + avatar for a bot by its bot_id (e.g. "B4URAF31U").
+    // Default no-op for backends that don't support this.
+    virtual rpl::producer<User> loadBotInfo(UserId /*botId*/) {
+        return [](auto consumer) { consumer.put_done(); return rpl::lifetime(); };
+    }
     virtual rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) = 0;
     virtual rpl::producer<MessagePage> loadThread(ConversationId, Ts root, std::optional<QString> cursor) = 0;
 

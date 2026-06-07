@@ -232,6 +232,34 @@ rpl::producer<bool> PublicBackend::loadPresence(UserId userId) {
     };
 }
 
+rpl::producer<User> PublicBackend::loadBotInfo(UserId botId) {
+    return [this, botId](auto consumer) mutable {
+        QUrlQuery params;
+        params.addQueryItem("bot", botId.value);
+        _api->call("bots.info", params,
+            [consumer](QJsonObject resp) mutable {
+                const auto bot   = resp.value("bot").toObject();
+                const auto icons = bot.value("icons").toObject();
+                User u;
+                u.id          = UserId{bot.value("id").toString()};
+                u.name        = bot.value("name").toString();
+                u.displayName = bot.value("name").toString();
+                u.avatarUrl   = icons.value("image_72").toString(
+                                icons.value("image_48").toString(
+                                icons.value("image_36").toString()));
+                u.isBot       = true;
+                consumer.put_next(std::move(u));
+                consumer.put_done();
+            },
+            [consumer](QString err) mutable {
+                qWarning() << "loadBotInfo error:" << err;
+                consumer.put_done();
+            }
+        );
+        return rpl::lifetime();
+    };
+}
+
 rpl::producer<MessagePage> PublicBackend::loadHistory(
     ConversationId conv, std::optional<QString> cursor)
 {

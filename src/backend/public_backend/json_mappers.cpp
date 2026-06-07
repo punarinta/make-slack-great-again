@@ -249,6 +249,9 @@ Block toBlock(const QJsonObject &o) {
 }
 
 Attachment toAttachment(const QJsonObject &o) {
+    std::vector<Block> blocks;
+    for (const auto &bv : o.value("blocks").toArray())
+        blocks.push_back(toBlock(bv.toObject()));
     return Attachment{
         .fallback   = o.value("fallback").toString(),
         .color      = o.value("color").toString(),
@@ -261,6 +264,7 @@ Attachment toAttachment(const QJsonObject &o) {
         .thumbUrl   = o.value("thumb_url").toString(),
         .faviconUrl = o.value("service_icon").toString(),
         .footer     = o.value("footer").toString(),
+        .blocks     = std::move(blocks),
     };
 }
 
@@ -290,6 +294,22 @@ Message toMessage(const QJsonObject &o) {
     for (const auto &av : msg.value("attachments").toArray())
         attachments.push_back(toAttachment(av.toObject()));
 
+    // Extract bot display name and avatar from username / bot_profile / icon_url.
+    QString botName;
+    QString botAvatarUrl;
+    if (msg.contains("bot_id")) {
+        botName = msg.value("username").toString();
+        const auto botProfile = msg.value("bot_profile").toObject();
+        if (botName.isEmpty())
+            botName = botProfile.value("name").toString();
+        const auto icons = botProfile.value("icons").toObject();
+        botAvatarUrl = icons.value("image_72").toString(
+                       icons.value("image_48").toString(
+                       icons.value("image_36").toString()));
+        if (botAvatarUrl.isEmpty())
+            botAvatarUrl = msg.value("icon_url").toString();
+    }
+
     return Message{
         .ts          = msg.value("ts").toString(),
         .threadRoot  = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
@@ -307,6 +327,8 @@ Message toMessage(const QJsonObject &o) {
                        : std::nullopt,
         .author      = UserId{ msg.value("user").toString(
                                msg.value("bot_id").toString()) },
+        .botName      = botName,
+        .botAvatarUrl = botAvatarUrl,
         .text        = MrkdwnParser::parse(msg.value("text").toString()),
         .rawText     = msg.value("text").toString(),
         .reactions   = parseReactions(msg.value("reactions").toArray()),

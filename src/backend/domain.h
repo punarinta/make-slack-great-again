@@ -149,6 +149,7 @@ struct Attachment {
     QString          thumbUrl;
     QString          faviconUrl;  // service_icon URL (favicon for link previews)
     QString          footer;
+    std::vector<Block> blocks;   // Block Kit blocks embedded in this attachment
     bool operator==(const Attachment &) const = default;
 };
 
@@ -161,6 +162,8 @@ struct Message {
     std::vector<UserId>       replyUsers;     // participants (up to 5, from reply_users)
     std::optional<Ts>         latestReply;    // ts of the most recent reply
     UserId                    author;
+    QString                   botName;      // display name for bot_message (from username field)
+    QString                   botAvatarUrl; // avatar URL for bot_message (from bot_profile or icon_url)
     TextWithEntities          text;
     QString                   rawText;  // original mrkdwn from Slack; used for edit pre-fill
     std::vector<Reaction>     reactions;
