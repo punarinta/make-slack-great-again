@@ -17,6 +17,9 @@ struct UserInfo {
     QString displayName;
     QString avatarUrl;
     bool    isDeactivated = false;
+    bool    isActive      = false;
+    bool    dndEnabled    = false;
+    QString statusEmoji;  // resolved emoji name without colons, e.g. "palm_tree"
 };
 
 // Virtual-painted conversation list with animated hover and selection.
@@ -27,8 +30,10 @@ public:
     explicit ConvListWidget(ImageCache *imgCache, QWidget *parent = nullptr);
 
     void setConversations(std::vector<Conversation> convs);
-    // Call with the full user list so DM names and avatars can be resolved.
+    // Call with the full user list so DM names, avatars, and status can be resolved.
     void setUsers(const std::vector<User> &users);
+    // Set the current user's ID so the "you" label can be shown on self DMs.
+    void setMe(UserId id) { _meUserId = std::move(id); viewport()->update(); }
     // Resolved display name for a row (DMs → user displayName, channels → conv.name).
     QString resolvedName(int row) const;
     int  selectedIndex() const { return _selected; }
@@ -62,13 +67,14 @@ protected:
 
     // Avatar helpers — trigger is non-const (starts downloads), draw is const.
     void triggerMissingAvatarDownloads();
-    void drawUserAvatar(QPainter &p, QRect rect, const QString &userId) const;
+    void drawUserAvatar(QPainter &p, QRect rect, const QString &userId, QColor bgColor) const;
 
     std::vector<Conversation>        _allConvs; // unfiltered; source of truth
     std::vector<Conversation>        _convs;
-    // userId → {displayName, avatarUrl}, rebuilt on setUsers().
+    // userId → {displayName, avatarUrl, ...}, rebuilt on setUsers().
     QHash<QString, UserInfo>         _userInfos;
     ImageCache                       *_imgCache = nullptr;
+    UserId                           _meUserId;
 
     int  _hovered  = -1;
     int  _selected = -1;

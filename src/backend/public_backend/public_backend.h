@@ -47,6 +47,8 @@ public:
                       std::function<void(QByteArray)> onData,
                       std::function<void(QString)>    onError = {}) override;
 
+    void subscribePresence(std::vector<UserId> userIds) override;
+
     rpl::producer<Event> events() const override;
 
 private:

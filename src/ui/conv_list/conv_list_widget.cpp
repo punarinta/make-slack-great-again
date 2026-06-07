@@ -4,6 +4,9 @@
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/user_avatar.h"
+#include "ui/message_list/message_render.h"
+#include "util/emoji_font.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -61,9 +64,12 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
     _userInfos.reserve(users.size());
     for (const auto &u : users) {
         _userInfos.insert(u.id.value, {
-            u.displayName.isEmpty() ? u.name : u.displayName,
-            u.avatarUrl,
-            u.isDeactivated,
+            .displayName  = u.displayName.isEmpty() ? u.name : u.displayName,
+            .avatarUrl    = u.avatarUrl,
+            .isDeactivated= u.isDeactivated,
+            .isActive     = u.isActive,
+            .dndEnabled   = u.dndEnabled,
+            .statusEmoji  = u.statusEmoji,
         });
     }
     rebuildFilteredConvs();
@@ -239,41 +245,18 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
     }
 }
 
-void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &userId) const {
+void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &userId,
+                                    QColor bgColor) const {
     const auto infoIt = _userInfos.constFind(userId);
-    const QString url = (infoIt != _userInfos.constEnd()) ? infoIt->avatarUrl : QString{};
-    const QPixmap cached = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap{};
-    const bool hasPixmap = !cached.isNull();
-
-    p.save();
-    p.setRenderHint(QPainter::Antialiasing);
-
-    if (hasPixmap) {
-        QPainterPath clip;
-        clip.addRoundedRect(QRectF(rect), kAvatarRadius, kAvatarRadius);
-        p.setClipPath(clip);
-        const qreal dpr = p.device()->devicePixelRatioF();
-        QPixmap scaled = cached.scaled(
-            rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-        scaled.setDevicePixelRatio(dpr);
-        p.drawPixmap(rect, scaled);
-    } else {
-        // Placeholder: rounded-rect with first initial in white
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0x8B8B8B));
-        p.drawRoundedRect(rect, kAvatarRadius, kAvatarRadius);
-        p.setPen(Qt::white);
-        QFont f = QApplication::font();
-        f.setBold(true);
-        f.setPointSizeF(rect.height() * 0.38);
-        p.setFont(f);
-        const QString initial = (infoIt != _userInfos.constEnd() && !infoIt->displayName.isEmpty())
-            ? infoIt->displayName.left(1).toUpper()
-            : "?";
-        p.drawText(rect, Qt::AlignCenter, initial);
-    }
-
-    p.restore();
+    const QString url  = (infoIt != _userInfos.constEnd()) ? infoIt->avatarUrl : QString{};
+    const QPixmap pixmap = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap{};
+    const QString initial = (infoIt != _userInfos.constEnd() && !infoIt->displayName.isEmpty())
+                            ? infoIt->displayName.left(1) : QString{"?"};
+    const UserAvatar::State state = (infoIt != _userInfos.constEnd())
+        ? UserAvatar::State{infoIt->isActive, infoIt->dndEnabled}
+        : UserAvatar::State{};
+    UserAvatar::paint(p, rect, pixmap, initial, state, kAvatarRadius,
+                      p.device()->devicePixelRatioF(), bgColor);
 }
 
 // ── Painting ──────────────────────────────────────────────────────────────────
@@ -305,18 +288,20 @@ void ConvListWidget::paintRow(QPainter &p, int i, int y) const {
     const QRect row(0, y, viewport()->width(), kRowH);
 
     // ── Background ────────────────────────────────────────────────────
+    QColor rowBg = Theme::kConvPanelBg;
     if (i == _selected) {
         const QColor base = (i == _hovered) ? Theme::kHoverItem : Theme::kConvPanelBg;
         const QColor sel  = Theme::kSelectedItem;
         auto lerp = [](int a, int b, double t) {
             return static_cast<int>(a + (b - a) * t);
         };
-        const QColor bg(lerp(base.red(),   sel.red(),   _selT),
-                        lerp(base.green(), sel.green(), _selT),
-                        lerp(base.blue(),  sel.blue(),  _selT));
-        p.fillRect(row, bg);
+        rowBg = QColor(lerp(base.red(),   sel.red(),   _selT),
+                       lerp(base.green(), sel.green(), _selT),
+                       lerp(base.blue(),  sel.blue(),  _selT));
+        p.fillRect(row, rowBg);
     } else if (i == _hovered) {
-        p.fillRect(row, Theme::kHoverItem);
+        rowBg = Theme::kHoverItem;
+        p.fillRect(row, rowBg);
     }
 
     QFont font = QApplication::font();
@@ -336,18 +321,67 @@ void ConvListWidget::paintRow(QPainter &p, int i, int y) const {
     const bool isDm = (conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim);
 
     if (isDm && conv.dmUser) {
-        // Draw circular user avatar
-        const int avY   = y + (kRowH - kAvatarSize) / 2;
+        // Draw user avatar with presence/DND indicator
+        const int avY = y + (kRowH - kAvatarSize) / 2;
         drawUserAvatar(p, QRect(kPadH, avY, kAvatarSize, kAvatarSize),
-                       conv.dmUser->value);
+                       conv.dmUser->value, rowBg);
 
-        // Name after avatar
-        const int nameX = kPadH + kAvatarSize + kAvatarGap;
+        // Gather per-user extras: status emoji and "you" label
+        const auto infoIt = _userInfos.constFind(conv.dmUser->value);
+        const QString emoji = (infoIt != _userInfos.constEnd())
+                              ? MsgRender::resolveEmoji(infoIt->statusEmoji) : QString{};
+        const bool isMe = !_meUserId.value.isEmpty() && conv.dmUser == _meUserId;
+
+        const int nameX  = kPadH + kAvatarSize + kAvatarGap;
         const int badgeW = conv.unread > 9 ? 28 : conv.unread > 0 ? 20 : 0;
-        const int maxW = viewport()->width() - nameX - badgeW - 8;
+
+        // Measure the suffix width: [space+emoji] + [space+"you"]
+        int suffixW = 0;
+        QString emojiGlyph;
+        if (!emoji.isEmpty() && !infoIt->statusEmoji.isEmpty()) {
+            emojiGlyph = emoji;
+            QFont ef = emojiFont(static_cast<int>(font.pixelSize() > 0
+                                                  ? font.pixelSize()
+                                                  : QFontMetrics(font).height()));
+            suffixW += QFontMetrics(ef).horizontalAdvance(emojiGlyph) + 4;
+        }
+        int youW = 0;
+        if (isMe) {
+            QFont df = font;
+            df.setWeight(QFont::Normal);
+            df.setPointSizeF(df.pointSizeF() * 0.88);
+            youW = QFontMetrics(df).horizontalAdvance(tr("you")) + 6;
+            suffixW += youW;
+        }
+
+        const int maxW  = viewport()->width() - nameX - suffixW - badgeW - 8;
         const QString name = fm.elidedText(resolvedName(i), Qt::ElideRight, maxW);
         p.setPen(textColor);
         p.drawText(nameX, textY, name);
+        int curX = nameX + fm.horizontalAdvance(name);
+
+        // Status emoji
+        if (!emojiGlyph.isEmpty()) {
+            curX += 4;
+            const int emojiPx = static_cast<int>(font.pixelSize() > 0
+                                                 ? font.pixelSize()
+                                                 : QFontMetrics(font).height());
+            p.setFont(emojiFont(emojiPx));
+            p.setPen(textColor);
+            p.drawText(curX, textY, emojiGlyph);
+            curX += QFontMetrics(p.font()).horizontalAdvance(emojiGlyph);
+        }
+
+        // "you" label
+        if (isMe) {
+            curX += 4;
+            QFont df = font;
+            df.setWeight(QFont::Normal);
+            df.setPointSizeF(df.pointSizeF() * 0.88);
+            p.setFont(df);
+            p.setPen(Theme::kTextOnDarkDim);
+            p.drawText(curX, textY, tr("you"));
+        }
     } else {
         // Channel: text prefix (#, lock)
         const int badgeW = conv.unread > 9 ? 28 : conv.unread > 0 ? 20 : 0;

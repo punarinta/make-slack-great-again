@@ -26,6 +26,10 @@ public:
     void start();
     void stop();
 
+    // Subscribe to presence events for the given user IDs.
+    // The subscription is sent immediately if connected, or queued for the next connect.
+    void subscribePresence(QStringList userIds);
+
 private slots:
     void onConnected();
     void onDisconnected();
@@ -36,6 +40,7 @@ private:
     void connectWs(const QUrl &url);
     void ack(const QString &envelopeId);
     void scheduleReconnect();
+    void sendPresenceSub();
     std::optional<Event> normalizeSlackEvent(const QJsonObject &event);
 
     QString                  _xappToken;
@@ -44,4 +49,5 @@ private:
     QWebSocket               *_ws         = nullptr;
     bool                      _stopped    = false;
     int                       _reconnectMs = 1000; // exponential backoff, max 30s
+    QStringList               _presenceIds;        // users to track; re-sent on every connect
 };

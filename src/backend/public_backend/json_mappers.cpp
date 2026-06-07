@@ -16,6 +16,10 @@ User toUser(const QJsonObject &o) {
     const auto displayName = !dn.isEmpty() ? dn
                            : !rn.isEmpty() ? rn
                            : o.value("name").toString();
+    // Strip enclosing colons from status_emoji: ":palm_tree:" → "palm_tree"
+    auto rawEmoji = profile.value("status_emoji").toString();
+    if (rawEmoji.startsWith(':')) rawEmoji = rawEmoji.mid(1);
+    if (rawEmoji.endsWith(':'))   rawEmoji.chop(1);
     return User{
         .id            = UserId{ o.value("id").toString() },
         .name          = o.value("name").toString(),
@@ -25,6 +29,8 @@ User toUser(const QJsonObject &o) {
         .isActive      = false, // filled by presence poll
         .isDeactivated = o.value("deleted").toBool(),
         .isAdmin       = o.value("is_admin").toBool() || o.value("is_owner").toBool(),
+        .statusEmoji   = rawEmoji,
+        .statusText    = profile.value("status_text").toString(),
     };
 }
 

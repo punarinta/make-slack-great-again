@@ -5,6 +5,7 @@
 
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
@@ -86,8 +87,25 @@ void SocketModeRealtime::scheduleReconnect() {
 
 // ── WebSocket event handlers ──────────────────────────────────────────────────
 
+void SocketModeRealtime::subscribePresence(QStringList userIds) {
+    _presenceIds = std::move(userIds);
+    sendPresenceSub();
+}
+
+void SocketModeRealtime::sendPresenceSub() {
+    if (!_ws || _ws->state() != QAbstractSocket::ConnectedState || _presenceIds.isEmpty())
+        return;
+    QJsonArray ids;
+    for (const auto &id : _presenceIds) ids.append(id);
+    _ws->sendTextMessage(QJsonDocument(QJsonObject{
+        {"type", "presence_sub"},
+        {"ids",  ids}
+    }).toJson(QJsonDocument::Compact));
+}
+
 void SocketModeRealtime::onConnected() {
     qDebug() << "Socket Mode: connected";
+    sendPresenceSub();
 }
 
 void SocketModeRealtime::onDisconnected() {
@@ -195,6 +213,13 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
         return EvPresenceChanged{
             UserId{ev.value("user").toString()},
             ev.value("presence").toString() == "active"
+        };
+    }
+
+    if (type == "dnd_updated_user") {
+        return EvDndChanged{
+            UserId{ev.value("user").toString()},
+            ev.value("dnd_status").toObject().value("dnd_enabled").toBool()
         };
     }
 

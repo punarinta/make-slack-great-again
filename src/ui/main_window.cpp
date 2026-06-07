@@ -539,7 +539,10 @@ void MainWindow::connectToSession() {
 
     _sessionOwner->users()
         | rpl::on_next([this](std::vector<User> users) {
-            if (_convList) _convList->setUsers(users);
+            if (_convList) {
+                _convList->setUsers(users);
+                _convList->setMe(_sessionOwner->meUserId());
+            }
         }, _sessionLifetime);
 
     _sessionOwner->events()
@@ -551,6 +554,12 @@ void MainWindow::connectToSession() {
                     const auto *conv = _sessionOwner->findConversation(_currentConvId);
                     if (conv && conv->dmUser && *conv->dmUser == ev->user)
                         _headerAvatar->setPresence(ev->active);
+                }
+            } else if (const auto *ev = std::get_if<EvDndChanged>(&e)) {
+                if (_headerAvatar && _headerAvatar->isVisible()) {
+                    const auto *conv = _sessionOwner->findConversation(_currentConvId);
+                    if (conv && conv->dmUser && *conv->dmUser == ev->user)
+                        _headerAvatar->setDnd(ev->dndEnabled);
                 }
             }
         }, _sessionLifetime);
@@ -923,6 +932,8 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             const auto *u = _sessionOwner->findUser(*conversation->dmUser);
             if (u) {
                 _headerAvatar->setPresence(u->isActive);
+                _headerAvatar->setDnd(u->dndEnabled);
+                _headerAvatar->setDisplayName(u->displayName.isEmpty() ? u->name : u->displayName);
                 _sessionOwner->requestPresence(*conversation->dmUser);
                 if (!u->avatarUrl.isEmpty() && _imgCache) {
                     const QPixmap cached = _imgCache->get(u->avatarUrl);

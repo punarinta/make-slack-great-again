@@ -53,6 +53,9 @@ struct User {
     bool    isActive      = false; // presence; polled on public path
     bool    isDeactivated = false; // Slack "deleted" flag
     bool    isAdmin       = false; // is_admin || is_owner from users.list
+    bool    dndEnabled    = false; // do-not-disturb; updated via dnd_updated_user event
+    QString statusEmoji;           // Slack emoji name without colons, e.g. "palm_tree"
+    QString statusText;            // user status text, e.g. "On vacation"
     bool operator==(const User &) const = default;
 };
 
@@ -191,6 +194,7 @@ struct EvReactionRemoved{ ConversationId conv; Ts ts; QString name; UserId user;
 struct EvConvMarked     { ConversationId conv; Ts lastRead; int unread; };
 struct EvTyping         { ConversationId conv; UserId user; };
 struct EvPresenceChanged{ UserId user; bool active; };
+struct EvDndChanged     { UserId user; bool dndEnabled; };
 struct EvChannelCreated { Conversation conv; };
 struct EvMemberJoined   { ConversationId conv; UserId user; };
 
@@ -212,6 +216,7 @@ using Event = std::variant<
     EvConvMarked,
     EvTyping,
     EvPresenceChanged,
+    EvDndChanged,
     EvChannelCreated,
     EvMemberJoined
 >;

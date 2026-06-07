@@ -282,6 +282,14 @@ void PublicBackend::unpinMessage(ConversationId conv, Ts ts) {
     });
 }
 
+void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
+    if (!_realtime) return;
+    QStringList ids;
+    ids.reserve(static_cast<qsizetype>(userIds.size()));
+    for (const auto &u : userIds) ids.append(u.value);
+    _realtime->subscribePresence(std::move(ids));
+}
+
 rpl::producer<Event> PublicBackend::events() const {
     return _events.events();
 }

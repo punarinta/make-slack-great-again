@@ -57,6 +57,17 @@ void Session::start() {
                 if (const User *u = findUser(_meUserId))
                     _meIsAdmin = u->isAdmin;
             }
+            // Subscribe to real-time presence events for all non-bot users.
+            std::vector<UserId> ids;
+            for (const auto &u : _users.current())
+                if (!u.isBot && !u.isDeactivated) ids.push_back(u.id);
+            _backend->subscribePresence(std::move(ids));
+
+            // Poll current presence for every DM conversation partner so the
+            // list shows the right indicator without waiting for the first change.
+            for (const auto &conv : _conversations.current())
+                if (conv.dmUser && !conv.dmUser->value.isEmpty())
+                    requestPresence(*conv.dmUser);
         }, _lifetime);
 
     // Wire the backend event firehose through our hub so Session can
@@ -68,6 +79,12 @@ void Session::start() {
                 auto users = _users.current();
                 for (auto &u : users) {
                     if (u.id == ev->user) { u.isActive = ev->active; break; }
+                }
+                _users = std::move(users);
+            } else if (auto *ev = std::get_if<EvDndChanged>(&e)) {
+                auto users = _users.current();
+                for (auto &u : users) {
+                    if (u.id == ev->user) { u.dndEnabled = ev->dndEnabled; break; }
                 }
                 _users = std::move(users);
             } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {

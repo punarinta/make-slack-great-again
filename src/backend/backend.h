@@ -57,6 +57,10 @@ public:
                               std::function<void(QByteArray)> onData,
                               std::function<void(QString)>    onError = {}) = 0;
 
+    // Subscribe to presence_change events for the given users via Socket Mode.
+    // No-op on backends that don't support live presence.
+    virtual void subscribePresence(std::vector<UserId> /*userIds*/) {}
+
     // --- Unified normalized event firehose ---
     // Both Socket Mode and internal-ws frames are normalized to Event here.
     // The Session and UI never know which transport produced an event.
