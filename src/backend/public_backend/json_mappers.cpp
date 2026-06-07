@@ -11,10 +11,13 @@ namespace JsonMappers {
 User toUser(const QJsonObject &o) {
     auto profile = o.value("profile").toObject();
     // display_name / real_name are often "" (empty string, not null) → must check after toString()
-    const auto dn = profile.value("display_name").toString().trimmed();
+    // Prefer real_name: enterprise workspaces often auto-provision display_name from
+    // AD/LDAP as a username slug (e.g. "john.doe.dept") while real_name holds the
+    // human-readable full name ("John Doe").
     const auto rn = profile.value("real_name").toString().trimmed();
-    const auto displayName = !dn.isEmpty() ? dn
-                           : !rn.isEmpty() ? rn
+    const auto dn = profile.value("display_name").toString().trimmed();
+    const auto displayName = !rn.isEmpty() ? rn
+                           : !dn.isEmpty() ? dn
                            : o.value("name").toString();
     // Strip enclosing colons from status_emoji: ":palm_tree:" → "palm_tree"
     auto rawEmoji = profile.value("status_emoji").toString();

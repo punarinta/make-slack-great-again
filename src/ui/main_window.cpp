@@ -635,6 +635,16 @@ void MainWindow::connectToSession() {
             if (_convList) {
                 _convList->setUsers(users);
                 _convList->setMe(_sessionOwner->meUserId());
+                // Re-apply header for current DM conv now that user names are resolved.
+                if (!_currentConvId.value.isEmpty() && _convNameLabel) {
+                    const auto *conv = _sessionOwner->findConversation(_currentConvId);
+                    if (conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)) {
+                        const int row = _convList->rowForId(_currentConvId);
+                        if (row >= 0)
+                            _convNameLabel->setText(_convList->resolvedName(row));
+                        updateHeaderForConv(_currentConvId);
+                    }
+                }
             }
         }, _sessionLifetime);
 

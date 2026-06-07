@@ -16,7 +16,7 @@ static QJsonArray arr(const char *json) {
 
 // ── toUser ──────────────────────────────────────────────────────────────────
 
-TEST_CASE("toUser full profile", "[mappers][user]") {
+TEST_CASE("toUser full profile — real_name preferred over display_name", "[mappers][user]") {
     auto u = JsonMappers::toUser(obj(R"({
         "id": "U123", "name": "alice.smith",
         "is_bot": false, "deleted": false,
@@ -28,18 +28,28 @@ TEST_CASE("toUser full profile", "[mappers][user]") {
     })"));
     CHECK(u.id == UserId{"U123"});
     CHECK(u.name == "alice.smith");
-    CHECK(u.displayName == "Alice");
+    CHECK(u.displayName == "Alice Smith");
     CHECK(u.avatarUrl == "https://img.example.com/av.jpg");
     CHECK(!u.isBot);
     CHECK(!u.isDeactivated);
 }
 
-TEST_CASE("toUser display_name empty falls back to real_name", "[mappers][user]") {
+TEST_CASE("toUser enterprise slug: real_name wins over AD-provisioned display_name", "[mappers][user]") {
+    // Enterprise workspaces often auto-provision display_name from AD as a username
+    // slug (e.g. "john.doe.dept") while real_name holds the human-readable full name.
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U1", "name": "john.doe.eng",
+        "profile": {"display_name": "john.doe.eng", "real_name": "John Doe", "image_72": ""}
+    })"));
+    CHECK(u.displayName == "John Doe");
+}
+
+TEST_CASE("toUser real_name empty falls back to display_name", "[mappers][user]") {
     auto u = JsonMappers::toUser(obj(R"({
         "id": "U1", "name": "u1",
-        "profile": {"display_name": "  ", "real_name": "Real Name", "image_72": ""}
+        "profile": {"display_name": "Nickname", "real_name": "  ", "image_72": ""}
     })"));
-    CHECK(u.displayName == "Real Name");
+    CHECK(u.displayName == "Nickname");
 }
 
 TEST_CASE("toUser both names empty falls back to name field", "[mappers][user]") {
