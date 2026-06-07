@@ -11,88 +11,105 @@
 const QString WebApiClient::kBaseUrl = "https://slack.com/api/";
 
 WebApiClient::WebApiClient(QObject *parent)
-    : QObject(parent)
-    , _nam(new QNetworkAccessManager(this))
-{}
+    : QObject(parent), _nam(new QNetworkAccessManager(this)) {}
 
-void WebApiClient::setToken(const QString &token) { _token = token; }
-bool WebApiClient::hasToken() const { return !_token.isEmpty(); }
-void WebApiClient::setOnTokenExpired(OnTokenExpired fn) { _onTokenExpired = std::move(fn); }
+void WebApiClient::setToken(const QString &token) {
+    _token = token;
+}
+bool WebApiClient::hasToken() const {
+    return !_token.isEmpty();
+}
+void WebApiClient::setOnTokenExpired(OnTokenExpired fn) {
+    _onTokenExpired = std::move(fn);
+}
 
 void WebApiClient::preWarm(const QString &host) {
     _nam->connectToHostEncrypted(host, 443);
 }
 
-void WebApiClient::call(const QString &method, QUrlQuery params,
-                        OnSuccess onSuccess, OnError onError) {
-    enqueue({ method, std::move(params), {}, std::move(onSuccess), std::move(onError) });
+void WebApiClient::call(
+    const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError
+) {
+    enqueue({method, std::move(params), {}, std::move(onSuccess), std::move(onError)});
 }
 
-void WebApiClient::postJson(const QString &method, const QJsonObject &body,
-                             OnSuccess onSuccess, OnError onError) {
-    enqueue({ method, {}, body, std::move(onSuccess), std::move(onError) });
+void WebApiClient::postJson(
+    const QString &method, const QJsonObject &body, OnSuccess onSuccess, OnError onError
+) {
+    enqueue({method, {}, body, std::move(onSuccess), std::move(onError)});
 }
 
-void WebApiClient::rawPut(const QUrl &url, const QByteArray &data,
-                           std::function<void()> onDone, OnError onError) {
+void WebApiClient::rawPut(
+    const QUrl &url, const QByteArray &data, std::function<void()> onDone, OnError onError
+) {
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setAttribute(
+        QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
+    );
     auto *reply = _nam->put(req, data);
     connect(reply, &QNetworkReply::finished, this, [reply, onDone, onError]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            if (onError) onError(reply->errorString());
+            if (onError)
+                onError(reply->errorString());
         } else {
-            if (onDone) onDone();
+            if (onDone)
+                onDone();
         }
     });
 }
 
-void WebApiClient::downloadUrl(const QUrl &url,
-                                std::function<void(QByteArray)> onData,
-                                OnError onError) {
+void WebApiClient::downloadUrl(
+    const QUrl &url, std::function<void(QByteArray)> onData, OnError onError
+) {
     QNetworkRequest req(url);
     req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setAttribute(
+        QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
+    );
     auto *reply = _nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, onData, onError]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            if (onError) onError(reply->errorString());
+            if (onError)
+                onError(reply->errorString());
         } else {
-            if (onData) onData(reply->readAll());
+            if (onData)
+                onData(reply->readAll());
         }
     });
 }
 
-void WebApiClient::paginate(const QString &method, const QString &arrayKey,
-                             QUrlQuery params,
-                             std::function<void(QJsonArray)> onPage,
-                             std::function<void()> onDone,
-                             OnError onError) {
+void WebApiClient::paginate(
+    const QString                  &method,
+    const QString                  &arrayKey,
+    QUrlQuery                       params,
+    std::function<void(QJsonArray)> onPage,
+    std::function<void()>           onDone,
+    OnError                         onError
+) {
     if (!params.hasQueryItem("limit"))
         params.addQueryItem("limit", "200");
 
     struct Ctx {
-        WebApiClient *self;
-        QString       method;
-        QString       arrayKey;
-        QUrlQuery     params;
+        WebApiClient                   *self;
+        QString                         method;
+        QString                         arrayKey;
+        QUrlQuery                       params;
         std::function<void(QJsonArray)> onPage;
         std::function<void()>           onDone;
         OnError                         onError;
         std::function<void(QUrlQuery)>  loadPage;
     };
     auto ctx = std::make_shared<Ctx>(Ctx{
-        this, method, arrayKey, params,
-        std::move(onPage), std::move(onDone), std::move(onError)
+        this, method, arrayKey, params, std::move(onPage), std::move(onDone), std::move(onError)
     });
 
     ctx->loadPage = [ctx](QUrlQuery p) {
-        ctx->self->call(ctx->method, p,
+        ctx->self->call(
+            ctx->method,
+            p,
             [ctx](QJsonObject resp) {
                 if (!resp.value("ok").toBool()) {
                     ctx->loadPage = {};
@@ -104,9 +121,8 @@ void WebApiClient::paginate(const QString &method, const QString &arrayKey,
                 if (!arr.isEmpty())
                     ctx->onPage(arr);
 
-                auto cursor = resp.value("response_metadata")
-                                  .toObject()
-                                  .value("next_cursor").toString();
+                auto cursor =
+                    resp.value("response_metadata").toObject().value("next_cursor").toString();
                 if (!cursor.isEmpty()) {
                     auto next = ctx->params;
                     next.removeQueryItem("cursor");
@@ -129,17 +145,19 @@ void WebApiClient::enqueue(PendingCall c) {
 }
 
 void WebApiClient::tryNext() {
-    if (_inflight || _throttled || _queue.isEmpty()) return;
+    if (_inflight || _throttled || _queue.isEmpty())
+        return;
     _inflight = true;
     execute(_queue.dequeue());
 }
 
 void WebApiClient::execute(const PendingCall &c) {
-    QUrl url(kBaseUrl + c.method);
+    QUrl            url(kBaseUrl + c.method);
     QNetworkRequest req;
     req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                     QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setAttribute(
+        QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
+    );
 
     QNetworkReply *reply = nullptr;
     if (!c.jsonBody.isEmpty()) {
@@ -155,8 +173,9 @@ void WebApiClient::execute(const PendingCall &c) {
         reply = _nam->get(req);
     }
 
-    connect(reply, &QNetworkReply::finished,
-            this, [this, reply, c]() mutable { handleReply(reply, std::move(c)); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, c]() mutable {
+        handleReply(reply, std::move(c));
+    });
 }
 
 void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
@@ -165,7 +184,7 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
 
     if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 429) {
         int retryAfter = reply->rawHeader("Retry-After").toInt();
-        retryAfter = qMax(retryAfter, 1);
+        retryAfter     = qMax(retryAfter, 1);
         qDebug() << "WebApiClient: rate-limited, retrying in" << retryAfter << "s";
         _throttled = true;
         _queue.prepend(c); // put back at front
@@ -178,7 +197,8 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
 
     if (reply->error() != QNetworkReply::NoError) {
         qWarning() << "WebApiClient error:" << reply->errorString();
-        if (c.onError) c.onError(reply->errorString());
+        if (c.onError)
+            c.onError(reply->errorString());
         tryNext();
         return;
     }
@@ -190,7 +210,8 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
         auto err = obj.value("error").toString("unknown");
         qWarning() << "WebApiClient Slack error:" << err << "on" << c.method;
         if (err == "token_expired" && _onTokenExpired) {
-            qDebug() << "WebApiClient: token_expired on" << c.method << "— pausing queue, re-queuing call";
+            qDebug() << "WebApiClient: token_expired on" << c.method
+                     << "— pausing queue, re-queuing call";
             _throttled = true;
             _queue.prepend(c);
             _onTokenExpired([this](bool success) {
@@ -201,17 +222,20 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
                     // Drain queue with errors so callers aren't stuck
                     while (!_queue.isEmpty()) {
                         auto failed = _queue.dequeue();
-                        if (failed.onError) failed.onError("token_expired");
+                        if (failed.onError)
+                            failed.onError("token_expired");
                     }
                 }
             });
         } else {
-            if (c.onError) c.onError(err);
+            if (c.onError)
+                c.onError(err);
             tryNext();
         }
         return;
     }
 
-    if (c.onSuccess) c.onSuccess(obj);
+    if (c.onSuccess)
+        c.onSuccess(obj);
     tryNext();
 }

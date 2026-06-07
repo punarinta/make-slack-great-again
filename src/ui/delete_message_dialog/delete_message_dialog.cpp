@@ -11,11 +11,8 @@
 #include <QTextBrowser>
 #include <QVBoxLayout>
 
-DeleteMessageDialog::DeleteMessageDialog(const Message &msg,
-                                         Session *session,
-                                         QWidget *parent)
-    : AppDialog(tr("Delete message"), parent)
-{
+DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, QWidget *parent)
+    : AppDialog(tr("Delete message"), parent) {
     auto *cl = contentLayout();
 
     auto *warnLabel = new QLabel(tr("This action cannot be undone."));
@@ -25,26 +22,24 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg,
     // ── Message preview card ───────────────────────────────────────────
     auto *card = new QFrame;
     card->setObjectName("msgCard");
-    card->setStyleSheet(
-        "QFrame#msgCard {"
-        "  border: 1px solid #E0E0E0;"
-        "  border-radius: 6px;"
-        "  background: #FAFAFA;"
-        "}"
-    );
+    card->setStyleSheet("QFrame#msgCard {"
+                        "  border: 1px solid #E0E0E0;"
+                        "  border-radius: 6px;"
+                        "  background: #FAFAFA;"
+                        "}");
     auto *cardLay = new QVBoxLayout(card);
     cardLay->setContentsMargins(12, 10, 12, 10);
     cardLay->setSpacing(4);
 
     if (session) {
-        const auto *user = session->findUser(msg.author);
+        const auto   *user = session->findUser(msg.author);
         const QString name = user ? user->displayName : msg.author.value;
 
         auto *headerRow = new QHBoxLayout;
         headerRow->setSpacing(8);
 
         auto *nameLabel = new QLabel(name.toHtmlEscaped(), card);
-        QFont nameFnt = nameLabel->font();
+        QFont nameFnt   = nameLabel->font();
         nameFnt.setBold(true);
         nameLabel->setFont(nameFnt);
 
@@ -79,18 +74,14 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg,
     btnRow->addStretch();
 
     auto *cancelBtn = new QPushButton(tr("Cancel"));
-    cancelBtn->setStyleSheet(
-        "QPushButton { border: 1px solid #CCC; border-radius: 4px;"
-        " padding: 6px 18px; background: white; }"
-        "QPushButton:hover { background: #F5F5F5; }"
-    );
+    cancelBtn->setStyleSheet("QPushButton { border: 1px solid #CCC; border-radius: 4px;"
+                             " padding: 6px 18px; background: white; }"
+                             "QPushButton:hover { background: #F5F5F5; }");
 
     auto *deleteBtn = new QPushButton(tr("Delete"));
-    deleteBtn->setStyleSheet(
-        "QPushButton { background: #E01E5A; color: white; border: none;"
-        " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
-        "QPushButton:hover { background: #C0184F; }"
-    );
+    deleteBtn->setStyleSheet("QPushButton { background: #E01E5A; color: white; border: none;"
+                             " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
+                             "QPushButton:hover { background: #C0184F; }");
 
     btnRow->addWidget(cancelBtn);
     btnRow->addWidget(deleteBtn);

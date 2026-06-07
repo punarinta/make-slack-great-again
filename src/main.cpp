@@ -37,18 +37,19 @@ int main(int argc, char *argv[]) {
     if (!singleInstance.init(urlArg))
         return 0;
 
-    QTranslator translator;
+    QTranslator   translator;
     const QString locale = QLocale::system().name(); // e.g. "fr_FR"
-    const bool loaded = translator.load(":/translations/msga_" + locale)
-                     || translator.load(":/translations/msga_" + locale.section('_', 0, 0));
+    const bool    loaded = translator.load(":/translations/msga_" + locale) ||
+                        translator.load(":/translations/msga_" + locale.section('_', 0, 0));
     if (loaded)
         app.installTranslator(&translator);
 
     loadStyleSheet(app);
 
     MainWindow window;
-    QObject::connect(&singleInstance, &SingleInstance::uriReceived,
-                     &window, &MainWindow::handleOAuthUri);
+    QObject::connect(
+        &singleInstance, &SingleInstance::uriReceived, &window, &MainWindow::handleOAuthUri
+    );
 
     // On macOS, already-running apps receive URLs via QFileOpenEvent (Apple Events),
     // not as command-line arguments. Install a filter on QApplication to catch them.
@@ -59,12 +60,13 @@ int main(int argc, char *argv[]) {
             if (ev->type() == QEvent::FileOpen) {
                 const QUrl url = static_cast<QFileOpenEvent *>(ev)->url();
                 if (url.scheme() == "msga")
-                    QMetaObject::invokeMethod(_window, "handleOAuthUri",
-                                             Qt::QueuedConnection,
-                                             Q_ARG(QUrl, url));
+                    QMetaObject::invokeMethod(
+                        _window, "handleOAuthUri", Qt::QueuedConnection, Q_ARG(QUrl, url)
+                    );
             }
             return false;
         }
+
     private:
         MainWindow *_window;
     };
@@ -72,14 +74,18 @@ int main(int argc, char *argv[]) {
 
     // On macOS, clicking the dock icon when the window is hidden sends
     // ApplicationActivate. Re-show the window in that case.
-    QObject::connect(&app, &QApplication::applicationStateChanged,
-                     &window, [&window](Qt::ApplicationState state) {
-        if (state == Qt::ApplicationActive && !window.isVisible()) {
-            window.show();
-            window.raise();
-            window.activateWindow();
+    QObject::connect(
+        &app,
+        &QApplication::applicationStateChanged,
+        &window,
+        [&window](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive && !window.isVisible()) {
+                window.show();
+                window.raise();
+                window.activateWindow();
+            }
         }
-    });
+    );
 
     window.show();
     window.raise();

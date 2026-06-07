@@ -15,13 +15,17 @@ constexpr int kMaxVisible = 8;
 constexpr int kWidth      = 300;
 constexpr int kMargins    = 4;
 
-struct AliasInfo { const char *name; const char *insert; const char *desc; };
-constexpr AliasInfo kAliases[] = {
-    { "@channel",  "@channel",  QT_TR_NOOP("Notify everyone in this channel")   },
-    { "@everyone", "@everyone", QT_TR_NOOP("Notify everyone in your workspace") },
-    { "@here",     "@here",     QT_TR_NOOP("Notify every online member here")   },
+struct AliasInfo {
+    const char *name;
+    const char *insert;
+    const char *desc;
 };
-}
+constexpr AliasInfo kAliases[] = {
+    {"@channel", "@channel", QT_TR_NOOP("Notify everyone in this channel")},
+    {"@everyone", "@everyone", QT_TR_NOOP("Notify everyone in your workspace")},
+    {"@here", "@here", QT_TR_NOOP("Notify every online member here")},
+};
+} // namespace
 
 // ── Internal row widget — no Q_OBJECT, click via std::function ───────────────
 
@@ -30,9 +34,7 @@ public:
     std::function<void()> onClick;
     std::function<void()> onHover;
 
-    MentionRow(const QString &name, const QString &desc, QWidget *parent)
-        : QWidget(parent)
-    {
+    MentionRow(const QString &name, const QString &desc, QWidget *parent) : QWidget(parent) {
         setAttribute(Qt::WA_StyledBackground, true);
         setFixedHeight(kRowH);
         setCursor(Qt::PointingHandCursor);
@@ -57,10 +59,14 @@ public:
     void setSelected(bool s) { applyStyle(s); }
 
 protected:
-    void enterEvent(QEnterEvent *) override { if (onHover) onHover(); }
+    void enterEvent(QEnterEvent *) override {
+        if (onHover)
+            onHover();
+    }
 
     void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && onClick) onClick();
+        if (e->button() == Qt::LeftButton && onClick)
+            onClick();
         QWidget::mousePressEvent(e);
     }
 
@@ -71,31 +77,31 @@ private:
     void applyStyle(bool sel) {
         if (sel) {
             setStyleSheet("background:#1264A3; border-radius:4px;");
-            if (_nameL) _nameL->setStyleSheet("font-size:13px; color:#FFFFFF; background:transparent;");
-            if (_descL) _descL->setStyleSheet("font-size:12px; color:#FFFFFF; background:transparent;");
+            if (_nameL)
+                _nameL->setStyleSheet("font-size:13px; color:#FFFFFF; background:transparent;");
+            if (_descL)
+                _descL->setStyleSheet("font-size:12px; color:#FFFFFF; background:transparent;");
         } else {
             setStyleSheet("background:transparent;");
-            if (_nameL) _nameL->setStyleSheet("font-size:13px; color:#1D1C1D; background:transparent;");
-            if (_descL) _descL->setStyleSheet("font-size:12px; color:#888888; background:transparent;");
+            if (_nameL)
+                _nameL->setStyleSheet("font-size:13px; color:#1D1C1D; background:transparent;");
+            if (_descL)
+                _descL->setStyleSheet("font-size:12px; color:#888888; background:transparent;");
         }
     }
 };
 
 // ── MentionPopup ──────────────────────────────────────────────────────────────
 
-MentionPopup::MentionPopup(QWidget *parent)
-    : QFrame(parent)
-{
+MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
     // Plain child widget of the container — no separate window, no focus events.
     setAttribute(Qt::WA_StyledBackground, true);
     setObjectName("mentionPopup");
-    setStyleSheet(
-        "QFrame#mentionPopup {"
-        "  background:#FFFFFF;"
-        "  border:1px solid #D1D1D1;"
-        "  border-radius:6px;"
-        "}"
-    );
+    setStyleSheet("QFrame#mentionPopup {"
+                  "  background:#FFFFFF;"
+                  "  border:1px solid #D1D1D1;"
+                  "  border-radius:6px;"
+                  "}");
     setFixedWidth(kWidth);
 
     auto *outer = new QVBoxLayout(this);
@@ -122,11 +128,16 @@ MentionPopup::MentionPopup(QWidget *parent)
     hide();
 }
 
-void MentionPopup::setSession(Session *s) { _session = s; }
+void MentionPopup::setSession(Session *s) {
+    _session = s;
+}
 
 void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm) {
     rebuild(query, isDm);
-    if (_rows.isEmpty()) { hide(); return; }
+    if (_rows.isEmpty()) {
+        hide();
+        return;
+    }
 
     const int visible = qMin(_rows.size(), kMaxVisible);
     // height = visible rows + spacing between them + top/bottom margins
@@ -152,7 +163,8 @@ void MentionPopup::dismiss() {
 }
 
 bool MentionPopup::handleKey(int key) {
-    if (!isVisible() || _rows.isEmpty()) return false;
+    if (!isVisible() || _rows.isEmpty())
+        return false;
     switch (key) {
     case Qt::Key_Escape:
         dismiss();
@@ -182,9 +194,12 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
     const QString q = query.toLower();
 
     auto addRow = [&](const QString &name, const QString &insert, const QString &desc = {}) {
-        auto *row = new MentionRow(name, desc, _content);
+        auto     *row = new MentionRow(name, desc, _content);
         const int idx = _rows.size();
-        row->onClick = [this, idx] { _sel = idx; confirm(); };
+        row->onClick  = [this, idx] {
+            _sel = idx;
+            confirm();
+        };
         row->onHover = [this, idx] { selectRow(idx); };
         _vbox->addWidget(row);
         _rows.append(row);
@@ -203,13 +218,16 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
     // Users from session
     if (_session) {
         const auto &users = _session->currentUsers();
-        int added = 0;
+        int         added = 0;
         for (const auto &u : users) {
-            if (u.isDeactivated) continue;
+            if (u.isDeactivated)
+                continue;
             const QString disp = u.displayName.isEmpty() ? u.name : u.displayName;
-            if (!q.isEmpty() && !disp.contains(q, Qt::CaseInsensitive)) continue;
+            if (!q.isEmpty() && !disp.contains(q, Qt::CaseInsensitive))
+                continue;
             addRow("@" + disp, "<@" + u.id.value + ">");
-            if (++added >= 50) break;
+            if (++added >= 50)
+                break;
         }
     }
 
@@ -218,7 +236,8 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
 }
 
 void MentionPopup::selectRow(int idx) {
-    if (_rows.isEmpty()) return;
+    if (_rows.isEmpty())
+        return;
     if (_sel >= 0 && _sel < _rows.size())
         static_cast<MentionRow *>(_rows[_sel])->setSelected(false);
     _sel = qBound(0, idx, _rows.size() - 1);
@@ -227,7 +246,10 @@ void MentionPopup::selectRow(int idx) {
 }
 
 void MentionPopup::confirm() {
-    if (_sel < 0 || _sel >= _inserts.size()) { dismiss(); return; }
+    if (_sel < 0 || _sel >= _inserts.size()) {
+        dismiss();
+        return;
+    }
     const QString text = _inserts[_sel];
     dismiss();
     emit selected(text);

@@ -32,9 +32,7 @@ static constexpr char kManifest[] = "";
 #endif
 
 UpdateChecker::UpdateChecker(QObject *parent)
-    : QObject(parent)
-    , _nam(new QNetworkAccessManager(this))
-{
+    : QObject(parent), _nam(new QNetworkAccessManager(this)) {
     QSettings s("msga", "msga");
     _staged        = s.value("updates/stagedPath").toString();
     _stagedVersion = s.value("updates/stagedVersion", 0).toInt();
@@ -59,13 +57,13 @@ QString UpdateChecker::stagePath() {
     // Same directory as the running binary → rename(2) is atomic on the same FS.
     return QCoreApplication::applicationFilePath() + ".new";
 #else
-    return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)
-           + "/" + kBinary;
+    return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + "/" + kBinary;
 #endif
 }
 
 void UpdateChecker::checkInBackground() {
-    if (_checking) return;
+    if (_checking)
+        return;
     // Already have a usable staged update — just surface it again.
     if (_stagedVersion > AppCredentials::version && !_staged.isEmpty()) {
         emit downloadReady(_staged);
@@ -75,7 +73,8 @@ void UpdateChecker::checkInBackground() {
 }
 
 void UpdateChecker::checkNow() {
-    if (_checking) return;
+    if (_checking)
+        return;
     emit checkStarted();
     fetch(/*silent=*/false);
 }
@@ -87,7 +86,7 @@ void UpdateChecker::fetch(bool silent) {
             emit checkFailed(tr("Automatic updates are not supported on this platform."));
         return;
     }
-    _checking = true;
+    _checking   = true;
     auto *reply = _nam->get(QNetworkRequest(QUrl(url)));
     connect(reply, &QNetworkReply::finished, this, [this, reply, silent] {
         reply->deleteLater();
@@ -98,18 +97,19 @@ void UpdateChecker::fetch(bool silent) {
 
 void UpdateChecker::onManifestDone(QNetworkReply *reply, bool silent) {
     if (reply->error() != QNetworkReply::NoError) {
-        if (!silent) emit checkFailed(reply->errorString());
+        if (!silent)
+            emit checkFailed(reply->errorString());
         return;
     }
-    const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
-    const int remote = obj["version"].toInt();
+    const QJsonObject obj    = QJsonDocument::fromJson(reply->readAll()).object();
+    const int         remote = obj["version"].toInt();
     if (remote <= 0) {
-        if (!silent) emit checkFailed(tr("Could not parse version manifest."));
+        if (!silent)
+            emit checkFailed(tr("Could not parse version manifest."));
         return;
     }
 
-    QSettings("msga", "msga").setValue("updates/lastChecked",
-        QDateTime::currentSecsSinceEpoch());
+    QSettings("msga", "msga").setValue("updates/lastChecked", QDateTime::currentSecsSinceEpoch());
 
     if (remote <= AppCredentials::version) {
         emit upToDate();
@@ -136,16 +136,14 @@ void UpdateChecker::startDownload(int newVersion) {
     }
 
     auto *reply = _nam->get(QNetworkRequest(QUrl(binaryUrl())));
-    connect(reply, &QNetworkReply::downloadProgress,
-            this, [this](qint64 recv, qint64 total) {
+    connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 recv, qint64 total) {
         if (total > 0)
             emit downloadProgress(int(recv * 100 / total));
     });
     connect(reply, &QNetworkReply::readyRead, file, [reply, file] {
         file->write(reply->readAll());
     });
-    connect(reply, &QNetworkReply::finished, this,
-            [this, reply, file, newVersion] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, file, newVersion] {
         file->flush();
         file->close();
         file->deleteLater();
@@ -163,16 +161,17 @@ void UpdateChecker::onDownloadDone(QNetworkReply *reply, int newVersion) {
     }
 
 #if defined(Q_OS_LINUX)
-    QFile::setPermissions(dest,
-        QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
-        QFile::ReadGroup | QFile::ExeGroup |
-        QFile::ReadOther | QFile::ExeOther);
+    QFile::setPermissions(
+        dest,
+        QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ReadGroup |
+            QFile::ExeGroup | QFile::ReadOther | QFile::ExeOther
+    );
 #endif
 
     _staged        = dest;
     _stagedVersion = newVersion;
     QSettings s("msga", "msga");
-    s.setValue("updates/stagedPath",    _staged);
+    s.setValue("updates/stagedPath", _staged);
     s.setValue("updates/stagedVersion", _stagedVersion);
     emit downloadReady(_staged);
 }

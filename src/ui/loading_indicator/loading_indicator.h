@@ -37,9 +37,9 @@ private:
     int                   _step = 0;
     std::function<void()> _onUpdate;
 
-    static constexpr int kDiameter  = 52;
-    static constexpr int kStroke    = 7;
-    static constexpr int kGapDeg    = 3;   // degrees of visual gap on each end of a segment
+    static constexpr int kDiameter   = 52;
+    static constexpr int kStroke     = 7;
+    static constexpr int kGapDeg     = 3; // degrees of visual gap on each end of a segment
     static constexpr int kIntervalMs = 160;
     static const std::array<QColor, 4> kColors;
 };

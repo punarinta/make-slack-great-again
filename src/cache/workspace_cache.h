@@ -17,17 +17,17 @@ class WorkspaceCache {
 public:
     explicit WorkspaceCache(const QString &teamId);
 
-    void saveConversations(const std::vector<Conversation> &convs);
+    void                      saveConversations(const std::vector<Conversation> &convs);
     std::vector<Conversation> loadConversations() const;
 
-    void saveUsers(const std::vector<User> &users);
+    void              saveUsers(const std::vector<User> &users);
     std::vector<User> loadUsers() const;
 
-    void saveBots(const QHash<QString, User> &bots);
+    void                 saveBots(const QHash<QString, User> &bots);
     QHash<QString, User> loadBots() const;
 
     // Persists the newest kMaxMessages messages for a conversation.
-    void saveMessages(const ConversationId &conv, const std::vector<Message> &msgs);
+    void                 saveMessages(const ConversationId &conv, const std::vector<Message> &msgs);
     std::vector<Message> loadMessages(const ConversationId &conv) const;
 
     void saveLastConv(const ConversationId &conv, const QString &displayName);
@@ -48,9 +48,9 @@ private:
     QString botsPath() const;
     QString msgsPath(const ConversationId &conv) const;
     QString metaPath() const;
-    QString imgPath(const QString &url) const;  // url → hashed filename
+    QString imgPath(const QString &url) const; // url → hashed filename
 
-    static QByteArray    readFile(const QString &path);
-    static bool          writeFile(const QString &path, const QByteArray &data);
-    static bool          writeJson(const QString &path, const QJsonDocument &doc);
+    static QByteArray readFile(const QString &path);
+    static bool       writeFile(const QString &path, const QByteArray &data);
+    static bool       writeJson(const QString &path, const QJsonDocument &doc);
 };

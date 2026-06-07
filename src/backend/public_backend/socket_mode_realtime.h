@@ -18,9 +18,8 @@ class SocketModeRealtime : public QObject {
     Q_OBJECT
 public:
     explicit SocketModeRealtime(
-        QString xappToken,
-        rpl::event_stream<Event> *events,
-        QObject *parent = nullptr);
+        QString xappToken, rpl::event_stream<Event> *events, QObject *parent = nullptr
+    );
     ~SocketModeRealtime() override;
 
     void start();
@@ -36,18 +35,18 @@ private slots:
     void onTextMessage(const QString &text);
 
 private:
-    void openAndConnect();
-    void connectWs(const QUrl &url);
-    void ack(const QString &envelopeId);
-    void scheduleReconnect();
-    void sendPresenceSub();
+    void                 openAndConnect();
+    void                 connectWs(const QUrl &url);
+    void                 ack(const QString &envelopeId);
+    void                 scheduleReconnect();
+    void                 sendPresenceSub();
     std::optional<Event> normalizeSlackEvent(const QJsonObject &event);
 
-    QString                  _xappToken;
-    rpl::event_stream<Event> *_events;   // non-owning
+    QString                   _xappToken;
+    rpl::event_stream<Event> *_events; // non-owning
     QNetworkAccessManager    *_nam;
-    QWebSocket               *_ws         = nullptr;
-    bool                      _stopped    = false;
+    QWebSocket               *_ws          = nullptr;
+    bool                      _stopped     = false;
     int                       _reconnectMs = 1000; // exponential backoff, max 30s
     QStringList               _presenceIds;        // users to track; re-sent on every connect
 };

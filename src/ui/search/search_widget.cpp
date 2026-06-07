@@ -17,18 +17,16 @@
 namespace {
 
 QString formatTs(const Ts &ts) {
-    bool ok = false;
+    bool   ok   = false;
     double secs = ts.toDouble(&ok);
-    if (!ok) return ts;
-    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs))
-               .toString("MMM d, h:mm AP");
+    if (!ok)
+        return ts;
+    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs)).toString("MMM d, h:mm AP");
 }
 
 } // namespace
 
-SearchWidget::SearchWidget(QWidget *parent)
-    : QWidget(parent)
-{
+SearchWidget::SearchWidget(QWidget *parent) : QWidget(parent) {
     setObjectName("searchWidget");
 
     auto *layout = new QVBoxLayout(this);
@@ -38,12 +36,10 @@ SearchWidget::SearchWidget(QWidget *parent)
     // Header row: search input + close button
     auto *header = new QWidget(this);
     header->setObjectName("searchHeader");
-    header->setStyleSheet(
-        "QWidget#searchHeader {"
-        "  background: #F8F8F8;"
-        "  border-bottom: 1px solid #E0E0E0;"
-        "}"
-    );
+    header->setStyleSheet("QWidget#searchHeader {"
+                          "  background: #F8F8F8;"
+                          "  border-bottom: 1px solid #E0E0E0;"
+                          "}");
     auto *hRow = new QHBoxLayout(header);
     hRow->setContentsMargins(12, 8, 8, 8);
     hRow->setSpacing(8);
@@ -56,15 +52,13 @@ SearchWidget::SearchWidget(QWidget *parent)
 
     _queryEdit = new QLineEdit(header);
     _queryEdit->setPlaceholderText(tr("Search messages…"));
-    _queryEdit->setStyleSheet(
-        "QLineEdit {"
-        "  border: 1px solid #CCC;"
-        "  border-radius: 4px;"
-        "  padding: 4px 8px;"
-        "  font-size: 14px;"
-        "}"
-        "QLineEdit:focus { border-color: #1164A3; }"
-    );
+    _queryEdit->setStyleSheet("QLineEdit {"
+                              "  border: 1px solid #CCC;"
+                              "  border-radius: 4px;"
+                              "  padding: 4px 8px;"
+                              "  font-size: 14px;"
+                              "}"
+                              "QLineEdit:focus { border-color: #1164A3; }");
     connect(_queryEdit, &QLineEdit::returnPressed, this, [this] {
         runSearch(_queryEdit->text().trimmed());
     });
@@ -76,9 +70,8 @@ SearchWidget::SearchWidget(QWidget *parent)
     closeBtn->setCursor(Qt::PointingHandCursor);
     closeBtn->setIconSize(QSize(14, 14));
     closeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(14, 14), QColor("#888888")));
-    closeBtn->setStyleSheet(
-        "QPushButton { border-radius: 4px; }"
-        "QPushButton:hover { background: #E8E8E8; }");
+    closeBtn->setStyleSheet("QPushButton { border-radius: 4px; }"
+                            "QPushButton:hover { background: #E8E8E8; }");
     connect(closeBtn, &QPushButton::clicked, this, &SearchWidget::closeRequested);
     hRow->addWidget(closeBtn);
 
@@ -93,8 +86,7 @@ SearchWidget::SearchWidget(QWidget *parent)
         "QListWidget::item:hover { background: #F5F5F5; }"
         "QListWidget::item:selected { background: #E8F0FA; }"
     );
-    connect(_resultList, &QListWidget::itemDoubleClicked,
-            this, [this](QListWidgetItem *item) {
+    connect(_resultList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
         const int idx = item->data(Qt::UserRole).toInt();
         if (idx >= 0 && idx < (int)_results.size())
             emit resultSelected(_results[idx].conv, _results[idx].msg.ts);
@@ -110,7 +102,8 @@ void SearchWidget::setSession(Session *session) {
 }
 
 void SearchWidget::runSearch(const QString &query) {
-    if (!_session || query.isEmpty()) return;
+    if (!_session || query.isEmpty())
+        return;
     _resultList->clear();
     _results.clear();
 
@@ -138,8 +131,7 @@ void SearchWidget::populateResults(const std::vector<SearchResult> &results) {
         const auto &r = results[i];
 
         // "#channel  h:mm AM  • message preview"
-        const QString convLabel = r.convName.isEmpty()
-            ? r.conv.value : "#" + r.convName;
+        const QString convLabel = r.convName.isEmpty() ? r.conv.value : "#" + r.convName;
         const QString tsLabel   = formatTs(r.msg.ts);
         const QString preview   = r.msg.text.text.left(120).replace('\n', ' ');
 

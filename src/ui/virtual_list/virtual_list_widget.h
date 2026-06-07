@@ -17,10 +17,10 @@ protected:
     explicit VirtualListWidget(QWidget *parent = nullptr);
 
     virtual void doPaint(QPaintEvent *event) = 0;
-    virtual void doMousePress(QMouseEvent *event)   { Q_UNUSED(event) }
-    virtual void doMouseMove(QMouseEvent *event)    { Q_UNUSED(event) }
+    virtual void doMousePress(QMouseEvent *event) { Q_UNUSED(event) }
+    virtual void doMouseMove(QMouseEvent *event) { Q_UNUSED(event) }
     virtual void doMouseRelease(QMouseEvent *event) { Q_UNUSED(event) }
-    virtual void doMouseLeave()                     {}
+    virtual void doMouseLeave() {}
 
     // Returns true if vpY falls within the scrollbar thumb.
     // totalH — total document height in pixels.

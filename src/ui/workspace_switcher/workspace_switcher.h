@@ -48,18 +48,18 @@ private:
         QPixmap icon;
     };
 
-    int   hitTest(const QPoint &pos) const;   // >=0 entry, -2 add button, -3 gear, -99 miss
-    QRect entryRect(int i) const;
-    QRect addButtonRect() const;
-    QRect gearButtonRect() const;
+    int     hitTest(const QPoint &pos) const; // >=0 entry, -2 add button, -3 gear, -99 miss
+    QRect   entryRect(int i) const;
+    QRect   addButtonRect() const;
+    QRect   gearButtonRect() const;
     void    loadIcons();
     QPixmap scaleIcon(const QPixmap &src) const;
     QColor  bubbleColor(const QString &teamId) const;
 
     std::vector<EntryPrivate> _entries;
-    QString _activeId;
-    int     _hovered = -99;
-    int     _pressed = -99;
+    QString                   _activeId;
+    int                       _hovered = -99;
+    int                       _pressed = -99;
 
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr;

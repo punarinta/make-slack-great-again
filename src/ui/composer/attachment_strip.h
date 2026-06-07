@@ -28,8 +28,8 @@ private:
     void addPendingChip(const QString &path);
     void addReadOnlyChip(const File &file);
 
-    QScrollArea *_scroll = nullptr;
-    QWidget     *_strip  = nullptr;
-    QStringList  _pending;
+    QScrollArea      *_scroll = nullptr;
+    QWidget          *_strip  = nullptr;
+    QStringList       _pending;
     std::vector<File> _readOnly;
 };

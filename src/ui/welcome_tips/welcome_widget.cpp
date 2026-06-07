@@ -14,16 +14,15 @@ namespace {
 
 // ── Visual constants ──────────────────────────────────────────────────────────
 
-const char *kChipStyle =
-    "QLabel {"
-    "  background-color: #F3F3F4;"
-    "  border: 1px solid #D4D3D3;"
-    "  border-bottom: 2px solid #BBBBBB;"
-    "  border-radius: 5px;"
-    "  padding: 3px 9px;"
-    "  font-size: 12px;"
-    "  color: #333333;"
-    "}";
+const char *kChipStyle = "QLabel {"
+                         "  background-color: #F3F3F4;"
+                         "  border: 1px solid #D4D3D3;"
+                         "  border-bottom: 2px solid #BBBBBB;"
+                         "  border-radius: 5px;"
+                         "  padding: 3px 9px;"
+                         "  font-size: 12px;"
+                         "  color: #333333;"
+                         "}";
 
 // ── Platform key labels ───────────────────────────────────────────────────────
 
@@ -62,13 +61,14 @@ void addRow(QVBoxLayout *vbox, const QString &action, const QStringList &keys) {
     hl->setSpacing(5);
 
     auto *actionLbl = new QLabel(action, row);
-    actionLbl->setStyleSheet(QString("font-size: 14px; color: %1;")
-                             .arg(Theme::kTextPrimary.name()));
+    actionLbl->setStyleSheet(QString("font-size: 14px; color: %1;").arg(Theme::kTextPrimary.name())
+    );
     hl->addWidget(actionLbl);
     hl->addStretch(1);
 
     for (int i = 0; i < keys.size(); ++i) {
-        if (i > 0) hl->addWidget(plusLabel(row));
+        if (i > 0)
+            hl->addWidget(plusLabel(row));
         hl->addWidget(keyChip(keys.at(i), row));
     }
 
@@ -80,54 +80,39 @@ void addRow(QVBoxLayout *vbox, const QString &action, const QStringList &keys) {
 void buildRows(QVBoxLayout *vbox) {
     const QString up = QString(QChar(0x2191)); // ↑
 
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Send message"),
-        { "Enter" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "New line in message"),
-        { kShift, "Enter" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Edit last message"),
-        { up });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Bold"),
-        { kMod, "B" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Italic"),
-        { kMod, "I" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Strikethrough"),
-        { kMod, kShift, "X" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Inline code"),
-        { kMod, kShift, "C" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Attach file"),
-        { kMod, "O" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Emoji picker"),
-        { kMod, kShift, "\\" });
-    addRow(vbox,
-        QCoreApplication::translate("WelcomeWidget", "Cancel / exit edit"),
-        { "Esc" });
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Send message"), {"Enter"});
+    addRow(
+        vbox, QCoreApplication::translate("WelcomeWidget", "New line in message"), {kShift, "Enter"}
+    );
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Edit last message"), {up});
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Bold"), {kMod, "B"});
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Italic"), {kMod, "I"});
+    addRow(
+        vbox, QCoreApplication::translate("WelcomeWidget", "Strikethrough"), {kMod, kShift, "X"}
+    );
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Inline code"), {kMod, kShift, "C"});
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Attach file"), {kMod, "O"});
+    addRow(
+        vbox, QCoreApplication::translate("WelcomeWidget", "Emoji picker"), {kMod, kShift, "\\"}
+    );
+    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Cancel / exit edit"), {"Esc"});
 }
 
 } // namespace
 
 // ── WelcomeWidget ─────────────────────────────────────────────────────────────
 
-WelcomeWidget::WelcomeWidget(QWidget *parent)
-    : QWidget(parent)
-{
-    _content = new QWidget(this);
+WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
+    _content   = new QWidget(this);
     auto *vbox = new QVBoxLayout(_content);
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(0);
 
     // Title
     auto *title = new QLabel(tr("Keyboard shortcuts"), _content);
-    title->setStyleSheet(QString("font-size: 15px; color: %1; font-weight: 500;")
-                         .arg(Theme::kTextSecondary.name()));
+    title->setStyleSheet(
+        QString("font-size: 15px; color: %1; font-weight: 500;").arg(Theme::kTextSecondary.name())
+    );
     vbox->addWidget(title);
 
     vbox->addSpacing(14);
@@ -156,21 +141,22 @@ void WelcomeWidget::showEvent(QShowEvent *e) {
 }
 
 void WelcomeWidget::repositionContent() {
-    if (!_content) return;
+    if (!_content)
+        return;
 
-    const int hMargin = 48;
+    const int hMargin  = 48;
     const int contentW = qMax(300, qMin(420, width() - 2 * hMargin));
     _content->setFixedWidth(contentW);
 
     const int contentH = _content->sizeHint().height();
-    const int x = (width() - contentW) / 2;
+    const int x        = (width() - contentW) / 2;
 
-    int y;
+    int      y;
     QWidget *win = window();
     if (win && win != this) {
         const int winH       = win->height();
         const int myTopInWin = mapTo(win, QPoint(0, 0)).y();
-        y = (winH - contentH) / 2 - myTopInWin;
+        y                    = (winH - contentH) / 2 - myTopInWin;
     } else {
         y = (height() - contentH) / 2;
     }

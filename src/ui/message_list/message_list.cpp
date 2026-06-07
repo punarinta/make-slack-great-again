@@ -36,10 +36,7 @@
 // ── MessageListWidget ─────────────────────────────────────────────────────────
 
 MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent)
-    : VirtualListWidget(parent)
-    , _session(session)
-    , _imgCache(imgCache)
-{
+    : VirtualListWidget(parent), _session(session), _imgCache(imgCache) {
     verticalScrollBar()->setSingleStep(20);
 
     _tooltip     = new PopupTooltip(this);
@@ -80,7 +77,8 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 }
 
 void MessageListWidget::smoothScrollTo(int target) {
-    if (target == verticalScrollBar()->value()) return;
+    if (target == verticalScrollBar()->value())
+        return;
     _scrollAnim.stop();
     _scrollAnim.setStartValue(verticalScrollBar()->value());
     _scrollAnim.setEndValue(target);
@@ -96,15 +94,15 @@ void MessageListWidget::scrollContentsBy(int /*dx*/, int /*dy*/) {
 void MessageListWidget::resizeEvent(QResizeEvent *event) {
     QAbstractScrollArea::resizeEvent(event);
     for (auto &item : _items) {
-        item.docWidth = 0;  // invalidate so docs re-layout at new width
+        item.docWidth = 0; // invalidate so docs re-layout at new width
         for (auto &ad : item.attachDocs)
             ad.docWidth = 0;
     }
     rebuildLayout();
-    if (_items.empty()) return;
+    if (_items.empty())
+        return;
     if (_pendingRestorePos >= 0) {
-        verticalScrollBar()->setValue(
-            std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
+        verticalScrollBar()->setValue(std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
         _pendingRestorePos = -1;
     } else if (_scrollToBottomPending) {
         verticalScrollBar()->setValue(verticalScrollBar()->maximum());
@@ -126,14 +124,14 @@ std::optional<Message> MessageListWidget::lastOwnMessage(UserId me) const {
 void MessageListWidget::clear() {
     _loading = false;
     _loadingAnim.stop();
-    _loadLifetime       = rpl::lifetime();
-    _olderLoadLifetime  = rpl::lifetime();
-    _eventLifetime      = rpl::lifetime();
-    _olderCursor        = std::nullopt;
-    _loadingOlder       = false;
+    _loadLifetime      = rpl::lifetime();
+    _olderLoadLifetime = rpl::lifetime();
+    _eventLifetime     = rpl::lifetime();
+    _olderCursor       = std::nullopt;
+    _loadingOlder      = false;
     _items.clear();
     _tops.clear();
-    _totalH = 0;
+    _totalH    = 0;
     _showIntro = false;
     _hoveredLinkUrl.clear();
     _hoveredLinkRow = -1;
@@ -151,7 +149,8 @@ void MessageListWidget::setWaiting(bool waiting) {
             _loadingAnim.start();
         }
     } else {
-        if (!_loading) _loadingAnim.stop();
+        if (!_loading)
+            _loadingAnim.stop();
     }
     viewport()->update();
 }
@@ -159,16 +158,20 @@ void MessageListWidget::setWaiting(bool waiting) {
 void MessageListWidget::setSession(Session *session) {
     clear();
     _currentConv = {};
-    _session = session;
-    if (_emojiPicker) _emojiPicker->setSession(session);
+    _session     = session;
+    if (_emojiPicker)
+        _emojiPicker->setSession(session);
 }
 
-void MessageListWidget::openConversation(ConversationId conv, const QString &convName, const QString &description) {
+void MessageListWidget::openConversation(
+    ConversationId conv, const QString &convName, const QString &description
+) {
     // Persist messages of the conversation we're leaving before discarding them.
     if (!_currentConv.value.isEmpty() && _session && !_items.empty()) {
         std::vector<Message> msgs;
         msgs.reserve(_items.size());
-        for (const auto &item : _items) msgs.push_back(item.msg);
+        for (const auto &item : _items)
+            msgs.push_back(item.msg);
         _session->cacheMessages(_currentConv, msgs);
     }
 
@@ -177,21 +180,22 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
         _savedScrollPos[_currentConv.value] = verticalScrollBar()->value();
 
     clear();
-    _currentConv      = conv;
-    _isThreadMode     = false;
-    _threadRootTs     = {};
-    _convName         = convName;
-    _convDescription  = description;
-    _showIntro        = true;
+    _currentConv     = conv;
+    _isThreadMode    = false;
+    _threadRootTs    = {};
+    _convName        = convName;
+    _convDescription = description;
+    _showIntro       = true;
 
-    _session->events()
-        | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
+    _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
-    _session->botInfoLoaded()
-        | rpl::on_next([this](UserId) {
-            rebuildLayout();
-            viewport()->update();
-        }, _eventLifetime);
+    _session->botInfoLoaded() | rpl::on_next(
+                                    [this](UserId) {
+                                        rebuildLayout();
+                                        viewport()->update();
+                                    },
+                                    _eventLifetime
+                                );
 
     // Reset scroll intent — stale state from a previous conversation must not leak.
     _scrollToBottomPending = false;
@@ -204,18 +208,24 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
 
     // Pre-populate from cache for instant display while network loads.
     const bool hasCached = [&] {
-        if (!_session) return false;
+        if (!_session)
+            return false;
         const auto cached = _session->cachedMessages(conv);
-        if (cached.empty()) return false;
-        for (const auto &msg : cached) appendMessage(msg);
+        if (cached.empty())
+            return false;
+        for (const auto &msg : cached)
+            appendMessage(msg);
         // Pre-warm the image pixel cache from disk so images appear without download.
         for (const auto &item : _items) {
             for (const auto &f : item.msg.files) {
-                if (!f.isImage()) continue;
+                if (!f.isImage())
+                    continue;
                 const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-                if (_fileImages.contains(url)) continue;
+                if (_fileImages.contains(url))
+                    continue;
                 const auto data = _session->cachedImage(url);
-                if (data.isEmpty()) continue;
+                if (data.isEmpty())
+                    continue;
                 QPixmap px;
                 if (px.loadFromData(data) && !px.isNull())
                     _fileImages[url] = px;
@@ -228,7 +238,8 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
         emit initialPageLoaded();
         // Apply scroll position after layout settles (next event-loop tick).
         QTimer::singleShot(0, this, [this, conv] {
-            if (_currentConv != conv) return;
+            if (_currentConv != conv)
+                return;
             applyPendingScroll();
         });
     } else {
@@ -238,53 +249,59 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
     }
 
     // Fetch fresh data from the network; merge it into whatever is already shown.
-    _session->backend()->loadHistory(conv, std::nullopt)
-        | rpl::on_next([this, conv, hasCached](MessagePage page) {
-            if (_currentConv != conv) return;
+    _session->backend()->loadHistory(conv, std::nullopt) |
+        rpl::on_next(
+            [this, conv, hasCached](MessagePage page) {
+                if (_currentConv != conv)
+                    return;
 
-            _loading = false;
-            _loadingAnim.stop();
-            _olderCursor = page.olderCursor;
+                _loading = false;
+                _loadingAnim.stop();
+                _olderCursor = page.olderCursor;
 
-            // Always cache the authoritative network result.
-            if (_session) {
-                std::vector<Message> msgs(page.messages.begin(), page.messages.end());
-                _session->cacheMessages(conv, msgs);
-            }
-
-            if (hasCached && !page.messages.empty()) {
-                // Merge: network data may differ slightly (edits, reactions) but is
-                // mostly the same as the cached view, so the update is imperceptible.
-                const bool wasAtBottom =
-                    verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                mergeNetworkMessages(page.messages);
-                if (wasAtBottom || _scrollToBottomPending) {
-                    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-                    _scrollToBottomPending = false;
+                // Always cache the authoritative network result.
+                if (_session) {
+                    std::vector<Message> msgs(page.messages.begin(), page.messages.end());
+                    _session->cacheMessages(conv, msgs);
                 }
-                if (_pendingRestorePos >= 0) {
-                    verticalScrollBar()->setValue(
-                        std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
-                    _pendingRestorePos = -1;
-                }
-            } else {
-                // No cached data was shown — normal first-load path.
-                for (const auto &msg : page.messages) appendMessage(msg);
-                emit initialPageLoaded();
-                QTimer::singleShot(0, this, [this, conv] {
-                    if (_currentConv != conv) return;
-                    applyPendingScroll();
-                });
-            }
-        }, _loadLifetime);
 
+                if (hasCached && !page.messages.empty()) {
+                    // Merge: network data may differ slightly (edits, reactions) but is
+                    // mostly the same as the cached view, so the update is imperceptible.
+                    const bool wasAtBottom =
+                        verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+                    mergeNetworkMessages(page.messages);
+                    if (wasAtBottom || _scrollToBottomPending) {
+                        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+                        _scrollToBottomPending = false;
+                    }
+                    if (_pendingRestorePos >= 0) {
+                        verticalScrollBar()->setValue(
+                            std::min(_pendingRestorePos, verticalScrollBar()->maximum())
+                        );
+                        _pendingRestorePos = -1;
+                    }
+                } else {
+                    // No cached data was shown — normal first-load path.
+                    for (const auto &msg : page.messages)
+                        appendMessage(msg);
+                    emit initialPageLoaded();
+                    QTimer::singleShot(0, this, [this, conv] {
+                        if (_currentConv != conv)
+                            return;
+                        applyPendingScroll();
+                    });
+                }
+            },
+            _loadLifetime
+        );
 }
 
 void MessageListWidget::applyPendingScroll() {
-    if (textAreaWidth() <= 0 || _items.empty()) return;
+    if (textAreaWidth() <= 0 || _items.empty())
+        return;
     if (_pendingRestorePos >= 0) {
-        verticalScrollBar()->setValue(
-            std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
+        verticalScrollBar()->setValue(std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
         _pendingRestorePos     = -1;
         _scrollToBottomPending = false;
     } else if (_scrollToBottomPending) {
@@ -297,43 +314,45 @@ void MessageListWidget::loadOlderMessages() {
     if (_loadingOlder || !_olderCursor.has_value() || !_session || _currentConv.value.isEmpty())
         return;
 
-    _loadingOlder = true;
+    _loadingOlder      = true;
     _olderLoadLifetime = rpl::lifetime();
 
-    const auto conv   = _currentConv;
-    const QString cur = *_olderCursor;
-    _olderCursor = std::nullopt;
+    const auto    conv = _currentConv;
+    const QString cur  = *_olderCursor;
+    _olderCursor       = std::nullopt;
 
-    auto producer = _isThreadMode
-        ? _session->backend()->loadThread(conv, _threadRootTs, cur)
-        : _session->backend()->loadHistory(conv, cur);
+    auto producer = _isThreadMode ? _session->backend()->loadThread(conv, _threadRootTs, cur)
+                                  : _session->backend()->loadHistory(conv, cur);
 
-    std::move(producer)
-        | rpl::on_next([this, conv](MessagePage page) {
-            if (_currentConv != conv) {
-                _loadingOlder = false;
-                return;
-            }
+    std::move(producer) | rpl::on_next(
+                              [this, conv](MessagePage page) {
+                                  if (_currentConv != conv) {
+                                      _loadingOlder = false;
+                                      return;
+                                  }
 
-            _olderCursor  = page.olderCursor;
-            _loadingOlder = false;
+                                  _olderCursor  = page.olderCursor;
+                                  _loadingOlder = false;
 
-            if (page.messages.empty()) return;
+                                  if (page.messages.empty())
+                                      return;
 
-            // Record the pre-insert total height and current scroll so we can
-            // shift the scrollbar down by exactly the height added at the top,
-            // keeping the visible content from jumping.
-            const int prevTotalH = _totalH;
-            const int scrollY    = verticalScrollBar()->value();
+                                  // Record the pre-insert total height and current scroll so we can
+                                  // shift the scrollbar down by exactly the height added at the
+                                  // top, keeping the visible content from jumping.
+                                  const int prevTotalH = _totalH;
+                                  const int scrollY    = verticalScrollBar()->value();
 
-            mergeNetworkMessages(page.messages);
+                                  mergeNetworkMessages(page.messages);
 
-            const int delta = _totalH - prevTotalH;
-            if (delta > 0) {
-                _scrollAnim.stop();
-                verticalScrollBar()->setValue(scrollY + delta);
-            }
-        }, _olderLoadLifetime);
+                                  const int delta = _totalH - prevTotalH;
+                                  if (delta > 0) {
+                                      _scrollAnim.stop();
+                                      verticalScrollBar()->setValue(scrollY + delta);
+                                  }
+                              },
+                              _olderLoadLifetime
+                          );
 }
 
 void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
@@ -347,31 +366,34 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     verticalScrollBar()->setRange(0, 0);
     viewport()->update();
 
-    _currentConv      = conv;
-    _isThreadMode     = true;
-    _threadRootTs     = rootTs;
-    _showIntro        = false;
+    _currentConv           = conv;
+    _isThreadMode          = true;
+    _threadRootTs          = rootTs;
+    _showIntro             = false;
     _scrollToBottomPending = true;
     _pendingRestorePos     = -1;
 
-    if (!_session) return;
+    if (!_session)
+        return;
 
     _loading = true;
     _loadingElapsedTimer.start();
     _loadingAnim.start();
 
-    _session->events()
-        | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
+    _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
-    _session->backend()->loadThread(conv, rootTs, std::nullopt)
-        | rpl::on_next([this](MessagePage page) {
-            _loading = false;
-            _loadingAnim.stop();
-            _olderCursor = page.olderCursor;
-            for (const auto &msg : page.messages)
-                appendMessage(msg);
-            QTimer::singleShot(0, this, [this] { applyPendingScroll(); });
-        }, _loadLifetime);
+    _session->backend()->loadThread(conv, rootTs, std::nullopt) |
+        rpl::on_next(
+            [this](MessagePage page) {
+                _loading = false;
+                _loadingAnim.stop();
+                _olderCursor = page.olderCursor;
+                for (const auto &msg : page.messages)
+                    appendMessage(msg);
+                QTimer::singleShot(0, this, [this] { applyPendingScroll(); });
+            },
+            _loadLifetime
+        );
 }
 
 void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incoming) {
@@ -381,7 +403,7 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
     for (int i = 0; i < static_cast<int>(_items.size()); ++i)
         tsIdx[_items[i].msg.ts] = i;
 
-    bool changed = false;
+    bool                 changed = false;
     std::vector<Message> toInsert;
 
     for (const auto &msg : incoming) {
@@ -394,7 +416,7 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
                 item.docWidth = 0;
                 item.attachDocs.clear();
                 item.fileImgsRequested = false;
-                changed = true;
+                changed                = true;
             }
         } else {
             toInsert.push_back(msg);
@@ -403,10 +425,13 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
     }
 
     for (const auto &msg : toInsert) {
-        const double ts = msg.ts.toDouble();
-        int insertAt = static_cast<int>(_items.size());
+        const double ts       = msg.ts.toDouble();
+        int          insertAt = static_cast<int>(_items.size());
         for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-            if (_items[i].msg.ts.toDouble() > ts) { insertAt = i; break; }
+            if (_items[i].msg.ts.toDouble() > ts) {
+                insertAt = i;
+                break;
+            }
         }
         MessageItem item;
         item.msg = msg;
@@ -431,22 +456,27 @@ void MessageListWidget::appendMessage(const Message &msg) {
 
 int MessageListWidget::findByTs(const Ts &ts) const {
     for (int i = 0; i < static_cast<int>(_items.size()); ++i)
-        if (_items[i].msg.ts == ts) return i;
+        if (_items[i].msg.ts == ts)
+            return i;
     return -1;
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 int MessageListWidget::introHeight() const {
-    if (!_showIntro) return 0;
+    if (!_showIntro)
+        return 0;
     int h = kIntroPadTop + kIntroNameH + kIntroPadBot;
-    if (!_convDescription.isEmpty()) h += kIntroGap + kIntroDescH;
+    if (!_convDescription.isEmpty())
+        h += kIntroGap + kIntroDescH;
     return h;
 }
 
 bool MessageListWidget::needsDateSep(int index) const {
-    if (index < 0 || index >= (int)_items.size()) return false;
-    if (index == 0) return true;
+    if (index < 0 || index >= (int)_items.size())
+        return false;
+    if (index == 0)
+        return true;
     const QDate d0 = MsgRender::tsToDate(_items[index - 1].msg.ts);
     const QDate d1 = MsgRender::tsToDate(_items[index].msg.ts);
     return d0 != d1;
@@ -458,7 +488,8 @@ int MessageListWidget::textAreaWidth() const {
 
 void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
     const int w = textAreaWidth();
-    if (w <= 0) return;
+    if (w <= 0)
+        return;
 
     // Main text doc
     if (!item.textDoc) {
@@ -474,8 +505,8 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
         item.textDoc->setTextWidth(w);
         item.docWidth  = w;
         item.docHeight = item.textDoc->isEmpty()
-            ? 0
-            : static_cast<int>(std::ceil(item.textDoc->size().height()));
+                             ? 0
+                             : static_cast<int>(std::ceil(item.textDoc->size().height()));
     }
 
     // Attachment docs (one per attachment)
@@ -491,7 +522,8 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
             ad.textDoc->setDefaultFont(QApplication::font());
             ad.textDoc->setDocumentMargin(0);
             const auto html = MsgRender::buildAttachHtml(attachments[ai], _session);
-            if (!html.isEmpty()) ad.textDoc->setHtml(html);
+            if (!html.isEmpty())
+                ad.textDoc->setHtml(html);
         }
         if (ad.docWidth != attW) {
             ad.textDoc->setTextWidth(attW > 0 ? attW : 1);
@@ -502,52 +534,59 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
 }
 
 bool MessageListWidget::isCollapsed(int index) const {
-    if (index <= 0) return false;
-    const auto &prev = _items[index-1].msg;
+    if (index <= 0)
+        return false;
+    const auto &prev = _items[index - 1].msg;
     const auto &curr = _items[index].msg;
-    if (prev.author != curr.author) return false;
-    if (prev.replyCount > 0) return false; // thread roots break the run
-    if (curr.replyCount > 0) return false;
-    bool ok1, ok2;
+    if (prev.author != curr.author)
+        return false;
+    if (prev.replyCount > 0)
+        return false; // thread roots break the run
+    if (curr.replyCount > 0)
+        return false;
+    bool   ok1, ok2;
     double t1 = prev.ts.toDouble(&ok1);
     double t2 = curr.ts.toDouble(&ok2);
-    if (!ok1 || !ok2) return false;
+    if (!ok1 || !ok2)
+        return false;
     return (t2 - t1) < 300.0; // collapse if within 5 minutes
 }
 
 int MessageListWidget::rowHeight(int index) const {
     ensureDocLayout(_items[index]);
-    const auto &item = _items[index];
-    const bool collapsed = isCollapsed(index);
+    const auto &item      = _items[index];
+    const bool  collapsed = isCollapsed(index);
 
     int extraH = 0;
 
     // Attachment heights (skip client-dismissed ones)
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-        if (isDismissed(item.msg.ts, ai)) continue;
+        if (isDismissed(item.msg.ts, ai))
+            continue;
         extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
     }
 
     // Inline file image heights
     const bool hasContentAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
-    bool anyImgFiles = false;
+    bool       anyImgFiles           = false;
     for (const auto &f : item.msg.files) {
-        if (!f.isImage()) continue;
-        anyImgFiles = true;
+        if (!f.isImage())
+            continue;
+        anyImgFiles          = true;
         const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-        const int imgGap = hasContentAboveImages ? kImgGap : 0;
-        auto it = _fileImages.constFind(imgUrl);
+        const int     imgGap = hasContentAboveImages ? kImgGap : 0;
+        auto          it     = _fileImages.constFind(imgUrl);
         if (it != _fileImages.constEnd() && !it->isNull()) {
-            const auto &px = it.value();
-            const double scale = std::min(1.0,
-                std::min((double)kImgMaxW / px.width(),
-                         (double)kImgMaxH / px.height()));
+            const auto  &px    = it.value();
+            const double scale = std::min(
+                1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height())
+            );
             extraH += imgGap + kImgNameH + static_cast<int>(px.height() * scale);
         } else if (f.imageWidth > 0 && f.imageHeight > 0) {
             // Use known file dimensions so layout doesn't jump when the image loads.
-            const double scale = std::min(1.0,
-                std::min((double)kImgMaxW / f.imageWidth,
-                         (double)kImgMaxH / f.imageHeight));
+            const double scale = std::min(
+                1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
+            );
             extraH += imgGap + kImgNameH + static_cast<int>(f.imageHeight * scale);
         } else {
             extraH += imgGap + kImgNameH + 24; // unknown size — small placeholder
@@ -556,22 +595,24 @@ int MessageListWidget::rowHeight(int index) const {
 
     // Non-image file chips
     const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
-    bool firstChip = true;
+    bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
-        if (f.isImage()) continue;
-        if (!firstChip || hasAboveChips) extraH += kFileChipGap;
+        if (f.isImage())
+            continue;
+        if (!firstChip || hasAboveChips)
+            extraH += kFileChipGap;
         firstChip = false;
         extraH += kFileChipH;
     }
 
-    const int reactionH  = item.msg.reactions.empty() ? 0 : (kReactH + 2);
-    const int replyBarH  = (!_isThreadMode && item.msg.replyCount > 0)
-                           ? (kReplyBarGap + kReplyBarH) : 0;
-    const int headerH    = collapsed ? 0 : (kHdrH + kHdrGap);
-    const int pinnedH    = item.msg.pinned ? 18 : 0;
+    const int reactionH = item.msg.reactions.empty() ? 0 : (kReactH + 2);
+    const int replyBarH =
+        (!_isThreadMode && item.msg.replyCount > 0) ? (kReplyBarGap + kReplyBarH) : 0;
+    const int headerH  = collapsed ? 0 : (kHdrH + kHdrGap);
+    const int pinnedH  = item.msg.pinned ? 18 : 0;
     // pinnedH is a banner drawn before padV — kept separate from contentH.
-    const int contentH   = headerH + item.docHeight + extraH + reactionH;
-    const int sepH       = needsDateSep(index) ? kSepH : 0;
+    const int contentH = headerH + item.docHeight + extraH + reactionH;
+    const int sepH     = needsDateSep(index) ? kSepH : 0;
     if (collapsed)
         return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH;
     return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadV + replyBarH;
@@ -580,7 +621,7 @@ int MessageListWidget::rowHeight(int index) const {
 void MessageListWidget::rebuildLayout() {
     _tops.resize(_items.size());
     const int ih = introHeight();
-    int y = ih + kPadV;
+    int       y  = ih + kPadV;
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
         _tops[i] = y;
         y += rowHeight(i) + kRowGap;
@@ -596,11 +637,13 @@ void MessageListWidget::rebuildLayout() {
 
 int MessageListWidget::attachImageH(const Attachment &att) const {
     const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
-    if (imgUrl.isEmpty() || !_imgCache) return 0;
+    if (imgUrl.isEmpty() || !_imgCache)
+        return 0;
     const QPixmap px = _imgCache->get(imgUrl);
-    if (px.isNull()) return 0;
-    const double scale = std::min(1.0,
-        std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height()));
+    if (px.isNull())
+        return 0;
+    const double scale =
+        std::min(1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height()));
     return kImgGap + (int)(px.height() * scale);
 }
 
@@ -611,13 +654,16 @@ int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
 // Walk all text fragments in a QTextDocument and set underline on those whose
 // anchor href matches url.
 static void setDocLinkUnderline(QTextDocument *doc, const QString &url, bool underline) {
-    if (!doc || url.isEmpty()) return;
+    if (!doc || url.isEmpty())
+        return;
     for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
         for (auto it = block.begin(); !it.atEnd(); ++it) {
             QTextFragment frag = it.fragment();
-            if (!frag.isValid()) continue;
+            if (!frag.isValid())
+                continue;
             QTextCharFormat fmt = frag.charFormat();
-            if (!fmt.isAnchor() || fmt.anchorHref() != url) continue;
+            if (!fmt.isAnchor() || fmt.anchorHref() != url)
+                continue;
             QTextCursor cur(doc);
             cur.setPosition(frag.position());
             cur.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
@@ -631,16 +677,18 @@ static void setDocLinkUnderline(QTextDocument *doc, const QString &url, bool und
 // ── Mouse handling ────────────────────────────────────────────────────────────
 
 QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
-    const PaintContext ctx = makePaintContext();
-    const int scrollY  = ctx.scrollY;
-    const int docY     = viewportPos.y() + scrollY;
-    const int textLeft = ctx.textLeft;
+    const PaintContext ctx      = makePaintContext();
+    const int          scrollY  = ctx.scrollY;
+    const int          docY     = viewportPos.y() + scrollY;
+    const int          textLeft = ctx.textLeft;
 
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
         const int rowTop = _tops[i];
         const int rh     = rowHeight(i);
-        if (docY < rowTop) break;
-        if (docY > rowTop + rh) continue;
+        if (docY < rowTop)
+            break;
+        if (docY > rowTop + rh)
+            continue;
 
         const auto &item = _items[i];
         ensureDocLayout(item);
@@ -656,24 +704,27 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
             const QPointF local(viewportPos.x() - textLeft, docY - textTop);
             if (local.x() >= 0 && local.y() >= 0 && local.y() <= item.docHeight && item.textDoc) {
                 const QString href = item.textDoc->documentLayout()->anchorAt(local);
-                if (!href.isEmpty()) return href;
+                if (!href.isEmpty())
+                    return href;
             }
         }
 
         // Check attachment text docs
         const int attTextX = textLeft + kAttachBarW + kAttachBarGap;
         const int attW     = textAreaWidth() - kAttachBarW - kAttachBarGap;
-        int ay = textTop + item.docHeight;
+        int       ay       = textTop + item.docHeight;
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
-            if (isDismissed(item.msg.ts, ai)) continue;
+            if (isDismissed(item.msg.ts, ai))
+                continue;
             ay += kAttachGap;
-            const auto &ad      = item.attachDocs[ai];
-            const int attTextTop = ay;
+            const auto &ad         = item.attachDocs[ai];
+            const int   attTextTop = ay;
             if (docY >= attTextTop && docY < attTextTop + ad.docHeight && ad.textDoc) {
                 const QPointF local(viewportPos.x() - attTextX, docY - attTextTop);
                 if (local.x() >= 0 && local.x() < attW) {
                     const QString href = ad.textDoc->documentLayout()->anchorAt(local);
-                    if (!href.isEmpty()) return href;
+                    if (!href.isEmpty())
+                        return href;
                 }
             }
             ay += attachTotalH(item, ai);
@@ -683,25 +734,28 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
     return {};
 }
 
-std::pair<int,int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos) const {
-    const PaintContext ctx = makePaintContext();
-    const int scrollY  = ctx.scrollY;
-    const int textLeft = ctx.textLeft;
-    const int btnX     = textLeft - kDismissGap - kDismissW;
+std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos) const {
+    const PaintContext ctx      = makePaintContext();
+    const int          scrollY  = ctx.scrollY;
+    const int          textLeft = ctx.textLeft;
+    const int          btnX     = textLeft - kDismissGap - kDismissW;
 
     for (int i = 0; i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i] - scrollY;
-        if (rowTop > viewportPos.y()) break;
-        if (rowTop + rowHeight(i) <= viewportPos.y()) continue;
+        if (rowTop > viewportPos.y())
+            break;
+        if (rowTop + rowHeight(i) <= viewportPos.y())
+            continue;
 
         const auto &item = _items[i];
-        if (item.msg.attachments.empty()) continue;
+        if (item.msg.attachments.empty())
+            continue;
         ensureDocLayout(item);
 
         const bool collapsed = isCollapsed(i);
-        const int padV = collapsed ? kPadVCollapsed : kPadV;
-        const int sep = needsDateSep(i) ? kSepH : 0;
-        const int pinnedH = item.msg.pinned ? 18 : 0;
+        const int  padV      = collapsed ? kPadVCollapsed : kPadV;
+        const int  sep       = needsDateSep(i) ? kSepH : 0;
+        const int  pinnedH   = item.msg.pinned ? 18 : 0;
         int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
@@ -717,19 +771,20 @@ std::pair<int,int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos)
 }
 
 QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
-    if (msgIdx < 0 || msgIdx >= (int)_items.size()) return {};
+    if (msgIdx < 0 || msgIdx >= (int)_items.size())
+        return {};
     const auto &item = _items[msgIdx];
     ensureDocLayout(item);
 
-    const PaintContext ctx = makePaintContext();
-    const int scrollY  = ctx.scrollY;
-    const int textLeft = ctx.textLeft;
-    const int btnX     = textLeft - kDismissGap - kDismissW;
-    const bool collapsed = isCollapsed(msgIdx);
-    const int padV = collapsed ? kPadVCollapsed : kPadV;
-    const int sep = needsDateSep(msgIdx) ? kSepH : 0;
-    const int pinnedH = item.msg.pinned ? 18 : 0;
-    const int rowTop = _tops[msgIdx] - scrollY;
+    const PaintContext ctx       = makePaintContext();
+    const int          scrollY   = ctx.scrollY;
+    const int          textLeft  = ctx.textLeft;
+    const int          btnX      = textLeft - kDismissGap - kDismissW;
+    const bool         collapsed = isCollapsed(msgIdx);
+    const int          padV      = collapsed ? kPadVCollapsed : kPadV;
+    const int          sep       = needsDateSep(msgIdx) ? kSepH : 0;
+    const int          pinnedH   = item.msg.pinned ? 18 : 0;
+    const int          rowTop    = _tops[msgIdx] - scrollY;
     int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
     for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
@@ -753,19 +808,27 @@ static QString firstLinkInMessage(const Message &msg) {
 }
 
 void MessageListWidget::doMousePress(QMouseEvent *event) {
-    if (event->button() != Qt::LeftButton) return;
-    if (tryHandleScrollbarPress(event->pos())) return;
-    if (tryHandleToolbarPress(event->pos())) return;
-    if (tryHandleReactionPress(event->pos())) return;
-    if (tryHandleDismissPress(event->pos())) return;
-    if (tryHandleReplyBarPress(event->pos())) return;
-    if (tryHandleLinkPress(event->pos())) return;
+    if (event->button() != Qt::LeftButton)
+        return;
+    if (tryHandleScrollbarPress(event->pos()))
+        return;
+    if (tryHandleToolbarPress(event->pos()))
+        return;
+    if (tryHandleReactionPress(event->pos()))
+        return;
+    if (tryHandleDismissPress(event->pos()))
+        return;
+    if (tryHandleReplyBarPress(event->pos()))
+        return;
+    if (tryHandleLinkPress(event->pos()))
+        return;
     tryHandleFileChipPress(event->pos());
 }
 
 bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
-    if (pos.x() < sbHitX || !isOnScrollThumb(pos.y())) return false;
+    if (pos.x() < sbHitX || !isOnScrollThumb(pos.y()))
+        return false;
     _sbDragging        = true;
     _sbDragStartY      = pos.y();
     _sbDragStartScroll = verticalScrollBar()->value();
@@ -775,14 +838,15 @@ bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {
 
 bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
     const int btn = toolbarButtonAt(pos);
-    if (btn < 0 || _hoveredRow < 0) return false;
+    if (btn < 0 || _hoveredRow < 0)
+        return false;
 
-    const auto &msg   = _items[_hoveredRow].msg;
-    const int scrollY = verticalScrollBar()->value();
-    const int rowTop  = _tops[_hoveredRow] - scrollY;
-    const int rh      = rowHeight(_hoveredRow);
-    const int sep     = needsDateSep(_hoveredRow) ? kSepH : 0;
-    const QRect btnRect   = toolbarButtonRect(btn, rowTop + sep, rh - sep);
+    const auto  &msg       = _items[_hoveredRow].msg;
+    const int    scrollY   = verticalScrollBar()->value();
+    const int    rowTop    = _tops[_hoveredRow] - scrollY;
+    const int    rh        = rowHeight(_hoveredRow);
+    const int    sep       = needsDateSep(_hoveredRow) ? kSepH : 0;
+    const QRect  btnRect   = toolbarButtonRect(btn, rowTop + sep, rh - sep);
     const QPoint globalPos = viewport()->mapToGlobal(btnRect.bottomLeft());
 
     if (btn == 0)
@@ -795,98 +859,152 @@ bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
 }
 
 void MessageListWidget::openEmojiPickerForRow(int row, const QPoint &globalPos) {
-    const Ts ts          = _items[row].msg.ts;
+    const Ts             ts   = _items[row].msg.ts;
     const ConversationId conv = _currentConv;
     _emojiPicker->open(globalPos);
-    connect(_emojiPicker, &EmojiPickerPopup::emojiSelected,
-            this, [this, ts, conv](const QString &name) {
-        if (!_session) return;
-        _session->backend()->addReaction(conv, ts, name);
-        // Optimistic: add reaction locally so it appears immediately.
-        const int idx = findByTs(ts);
-        if (idx >= 0) {
-            const UserId me = _session->meUserId();
-            auto &reactions = _items[idx].msg.reactions;
-            bool found = false;
-            for (auto &r : reactions) {
-                if (r.name == name) {
-                    if (std::find(r.users.begin(), r.users.end(), me) == r.users.end()) {
-                        r.count++;
-                        r.users.push_back(me);
+    connect(
+        _emojiPicker,
+        &EmojiPickerPopup::emojiSelected,
+        this,
+        [this, ts, conv](const QString &name) {
+            if (!_session)
+                return;
+            _session->backend()->addReaction(conv, ts, name);
+            // Optimistic: add reaction locally so it appears immediately.
+            const int idx = findByTs(ts);
+            if (idx >= 0) {
+                const UserId me        = _session->meUserId();
+                auto        &reactions = _items[idx].msg.reactions;
+                bool         found     = false;
+                for (auto &r : reactions) {
+                    if (r.name == name) {
+                        if (std::find(r.users.begin(), r.users.end(), me) == r.users.end()) {
+                            r.count++;
+                            r.users.push_back(me);
+                        }
+                        found = true;
+                        break;
                     }
-                    found = true;
-                    break;
                 }
+                if (!found)
+                    reactions.push_back({name, 1, {me}});
+                rebuildLayout();
+                viewport()->update();
             }
-            if (!found) reactions.push_back({name, 1, {me}});
-            rebuildLayout();
-            viewport()->update();
-        }
-    }, Qt::SingleShotConnection);
+        },
+        Qt::SingleShotConnection
+    );
 }
 
 void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint &globalPos) {
-    const bool isOwnMessage = _session && (msg.author == _session->meUserId());
-    const bool canDelete    = isOwnMessage || (_session && _session->meIsAdmin());
-    const QString linkUrl   = firstLinkInMessage(msg);
+    const bool    isOwnMessage = _session && (msg.author == _session->meUserId());
+    const bool    canDelete    = isOwnMessage || (_session && _session->meIsAdmin());
+    const QString linkUrl      = firstLinkInMessage(msg);
 
     auto *menu = new ContextMenu(this);
 
     if (isOwnMessage) {
-        menu->addItem(tr("Edit message"), "E", [this, ts = msg.ts,
-                                                raw = msg.rawText,
-                                                files = msg.files] {
-            emit editMessageRequested(ts, raw, files);
-        }, false, false, ":/ui/edit-3.svg");
+        menu->addItem(
+            tr("Edit message"),
+            "E",
+            [this, ts = msg.ts, raw = msg.rawText, files = msg.files] {
+                emit editMessageRequested(ts, raw, files);
+            },
+            false,
+            false,
+            ":/ui/edit-3.svg"
+        );
         menu->addSeparator();
     }
 
     if (!linkUrl.isEmpty()) {
-        menu->addItem(tr("Copy link"), "L", [linkUrl] {
-            Clipboard::setText(linkUrl);
-        }, false, false, ":/ui/link.svg");
+        menu->addItem(
+            tr("Copy link"),
+            "L",
+            [linkUrl] { Clipboard::setText(linkUrl); },
+            false,
+            false,
+            ":/ui/link.svg"
+        );
     }
 
-    menu->addItem(tr("Copy message"), "Ctrl+C", [text = msg.text.text] {
-        Clipboard::setText(text);
-    }, false, false, ":/ui/copy.svg");
+    menu->addItem(
+        tr("Copy message"),
+        "Ctrl+C",
+        [text = msg.text.text] { Clipboard::setText(text); },
+        false,
+        false,
+        ":/ui/copy.svg"
+    );
 
     menu->addSeparator();
 
     if (msg.pinned) {
-        menu->addItem(tr("Unpin from channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
-            if (_session) _session->backend()->unpinMessage(conv, ts);
-            const int idx = findByTs(ts);
-            if (idx >= 0) { _items[idx].msg.pinned = false; viewport()->update(); }
-        }, false, false, ":/ui/pin-off.svg");
+        menu->addItem(
+            tr("Unpin from channel"),
+            "P",
+            [this, ts = msg.ts, conv = _currentConv] {
+                if (_session)
+                    _session->backend()->unpinMessage(conv, ts);
+                const int idx = findByTs(ts);
+                if (idx >= 0) {
+                    _items[idx].msg.pinned = false;
+                    viewport()->update();
+                }
+            },
+            false,
+            false,
+            ":/ui/pin-off.svg"
+        );
     } else {
-        menu->addItem(tr("Pin to channel"), "P", [this, ts = msg.ts, conv = _currentConv] {
-            if (_session) _session->backend()->pinMessage(conv, ts);
-            const int idx = findByTs(ts);
-            if (idx >= 0) {
-                _items[idx].msg.pinned = true;
-                _items[idx].msg.pinnedBy = _session->meUserId();
-                viewport()->update();
-            }
-        }, false, false, ":/ui/pin.svg");
+        menu->addItem(
+            tr("Pin to channel"),
+            "P",
+            [this, ts = msg.ts, conv = _currentConv] {
+                if (_session)
+                    _session->backend()->pinMessage(conv, ts);
+                const int idx = findByTs(ts);
+                if (idx >= 0) {
+                    _items[idx].msg.pinned   = true;
+                    _items[idx].msg.pinnedBy = _session->meUserId();
+                    viewport()->update();
+                }
+            },
+            false,
+            false,
+            ":/ui/pin.svg"
+        );
     }
 
     menu->addSeparator();
 
-    menu->addItem(tr("Forward message"), {}, [this, msg] {
-        emit forwardMessageRequested(msg);
-    }, false, false, ":/ui/share-2.svg");
+    menu->addItem(
+        tr("Forward message"),
+        {},
+        [this, msg] { emit forwardMessageRequested(msg); },
+        false,
+        false,
+        ":/ui/share-2.svg"
+    );
 
     if (canDelete) {
         menu->addSeparator();
-        menu->addItem(tr("Delete message…"), "Del", [this, msg] {
-            auto *dlg = new DeleteMessageDialog(msg, _session, window());
-            dlg->setAttribute(Qt::WA_DeleteOnClose);
-            connect(dlg, &QDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
-                if (_session) _session->backend()->deleteMessage(conv, ts);
-            });
-            dlg->exec();
-        }, /*destructive=*/true, false, ":/ui/trash-2.svg");
+        menu->addItem(
+            tr("Delete message…"),
+            "Del",
+            [this, msg] {
+                auto *dlg = new DeleteMessageDialog(msg, _session, window());
+                dlg->setAttribute(Qt::WA_DeleteOnClose);
+                connect(dlg, &QDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
+                    if (_session)
+                        _session->backend()->deleteMessage(conv, ts);
+                });
+                dlg->exec();
+            },
+            /*destructive=*/true,
+            false,
+            ":/ui/trash-2.svg"
+        );
     }
 
     menu->popup(globalPos);
@@ -894,23 +1012,28 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
 
 bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
     const auto [reactMsgIdx, reactIdx] = reactionAt(pos);
-    if (reactMsgIdx < 0 || !_session) return false;
+    if (reactMsgIdx < 0 || !_session)
+        return false;
 
     const QString emojiName = _items[reactMsgIdx].msg.reactions[reactIdx].name;
-    const Ts reactTs        = _items[reactMsgIdx].msg.ts;
-    auto &reactions         = _items[reactMsgIdx].msg.reactions;
-    const UserId me         = _session->meUserId();
-    const bool already      = std::any_of(reactions[reactIdx].users.begin(),
-                                          reactions[reactIdx].users.end(),
-                                          [&me](const UserId &u){ return u == me; });
+    const Ts      reactTs   = _items[reactMsgIdx].msg.ts;
+    auto         &reactions = _items[reactMsgIdx].msg.reactions;
+    const UserId  me        = _session->meUserId();
+    const bool    already   = std::any_of(
+        reactions[reactIdx].users.begin(),
+        reactions[reactIdx].users.end(),
+        [&me](const UserId &u) { return u == me; }
+    );
     if (already) {
         _session->backend()->removeReaction(_currentConv, reactTs, emojiName);
         for (auto it = reactions.begin(); it != reactions.end(); ++it) {
             if (it->name == emojiName) {
                 it->count = std::max(0, it->count - 1);
-                it->users.erase(std::remove(it->users.begin(), it->users.end(), me),
-                                it->users.end());
-                if (it->count == 0) reactions.erase(it);
+                it->users.erase(
+                    std::remove(it->users.begin(), it->users.end(), me), it->users.end()
+                );
+                if (it->count == 0)
+                    reactions.erase(it);
                 break;
             }
         }
@@ -918,9 +1041,15 @@ bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
         _session->backend()->addReaction(_currentConv, reactTs, emojiName);
         bool found = false;
         for (auto &rx : reactions) {
-            if (rx.name == emojiName) { rx.count++; rx.users.push_back(me); found = true; break; }
+            if (rx.name == emojiName) {
+                rx.count++;
+                rx.users.push_back(me);
+                found = true;
+                break;
+            }
         }
-        if (!found) reactions.push_back({emojiName, 1, {me}});
+        if (!found)
+            reactions.push_back({emojiName, 1, {me}});
     }
     rebuildLayout();
     viewport()->update();
@@ -929,7 +1058,8 @@ bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
 
 bool MessageListWidget::tryHandleDismissPress(const QPoint &pos) {
     const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
-    if (dMsgIdx < 0) return false;
+    if (dMsgIdx < 0)
+        return false;
     const auto &ts = _items[dMsgIdx].msg.ts;
     _dismissedAttachments.insert(ts + "/" + QString::number(dAi));
     rebuildLayout();
@@ -939,21 +1069,24 @@ bool MessageListWidget::tryHandleDismissPress(const QPoint &pos) {
 
 bool MessageListWidget::tryHandleReplyBarPress(const QPoint &pos) {
     const int replyIdx = replyBarIndexAt(pos);
-    if (replyIdx < 0) return false;
+    if (replyIdx < 0)
+        return false;
     emit threadClicked(_currentConv, _items[replyIdx].msg.ts);
     return true;
 }
 
 bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
     const QString anchor = anchorAt(pos);
-    if (anchor.isEmpty()) return false;
+    if (anchor.isEmpty())
+        return false;
     QDesktopServices::openUrl(QUrl(anchor));
     return true;
 }
 
 bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
     const File *f = fileChipAt(pos);
-    if (!f) return false;
+    if (!f)
+        return false;
     const QString url = f->permalink.isEmpty() ? f->urlPrivate : f->permalink;
     if (!url.isEmpty())
         QDesktopServices::openUrl(QUrl(url));
@@ -978,8 +1111,8 @@ void MessageListWidget::doMouseLeave() {
         _hoveredLinkRow = -1;
     }
 
-    if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1
-            || _hoveredReplyRow != -1) {
+    if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1 ||
+        _hoveredReplyRow != -1) {
         _hoveredRow      = -1;
         _hoveredToolBtn  = -1;
         _hoveredAttach   = {-1, -1};
@@ -993,7 +1126,8 @@ bool MessageListWidget::isOnScrollThumb(int vpY) const {
 }
 
 void MessageListWidget::doMouseRelease(QMouseEvent *event) {
-    if (event->button() != Qt::LeftButton) return;
+    if (event->button() != Qt::LeftButton)
+        return;
     if (_sbDragging) {
         _sbDragging = false;
         viewport()->setCursor(Qt::ArrowCursor);
@@ -1006,16 +1140,15 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const int thumbH     = std::max(20, vh * vh / _totalH);
         const int trackRange = vh - thumbH;
         if (trackRange > 0) {
-            const int newScroll = _sbDragStartScroll
-                + (event->pos().y() - _sbDragStartY) * (_totalH - vh) / trackRange;
-            verticalScrollBar()->setValue(
-                std::clamp(newScroll, 0, verticalScrollBar()->maximum()));
+            const int newScroll = _sbDragStartScroll +
+                                  (event->pos().y() - _sbDragStartY) * (_totalH - vh) / trackRange;
+            verticalScrollBar()->setValue(std::clamp(newScroll, 0, verticalScrollBar()->maximum()));
         }
         return;
     }
 
-    const QPoint pos = event->pos();
-    const int scrollY = verticalScrollBar()->value();
+    const QPoint pos     = event->pos();
+    const int    scrollY = verticalScrollBar()->value();
 
     const int vw    = viewport()->width();
     const int cardW = kToolbarPadH * 2 + 3 * kToolbarBtnSize + 2 * kToolbarGap;
@@ -1027,10 +1160,10 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // the moment the cursor enters the card's upper half.
     int newHoveredRow = -1;
     if (_hoveredRow >= 0) {
-        const int rowTop = _tops[_hoveredRow] - scrollY;
-        const int rh     = rowHeight(_hoveredRow);
-        const bool inRow  = pos.y() >= rowTop && pos.y() < rowTop + rh;
-        const int sep4   = needsDateSep(_hoveredRow) ? kSepH : 0;
+        const int   rowTop = _tops[_hoveredRow] - scrollY;
+        const int   rh     = rowHeight(_hoveredRow);
+        const bool  inRow  = pos.y() >= rowTop && pos.y() < rowTop + rh;
+        const int   sep4   = needsDateSep(_hoveredRow) ? kSepH : 0;
         const QRect card(vw - kToolbarRight - cardW, (rowTop + sep4) - cardH / 2, cardW, cardH);
         if (inRow || card.contains(pos))
             newHoveredRow = _hoveredRow;
@@ -1041,8 +1174,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         for (int i = 0; i < (int)_items.size(); ++i) {
             const int rowTop = _tops[i] - scrollY;
             const int rh     = rowHeight(i);
-            if (rowTop > pos.y()) break;
-            if (pos.y() < rowTop + rh) { newHoveredRow = i; break; }
+            if (rowTop > pos.y())
+                break;
+            if (pos.y() < rowTop + rh) {
+                newHoveredRow = i;
+                break;
+            }
         }
     }
 
@@ -1062,16 +1199,16 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     }
 
     // Detect which attachment preview (if any) the cursor is over.
-    std::pair<int,int> newHoveredAttach = {-1, -1};
+    std::pair<int, int> newHoveredAttach = {-1, -1};
     if (newHoveredRow >= 0) {
         const auto &item = _items[newHoveredRow];
         if (!item.msg.attachments.empty()) {
             ensureDocLayout(item);
             const bool collA = isCollapsed(newHoveredRow);
-            const int padVA  = collA ? kPadVCollapsed : kPadV;
-            const int sepA   = needsDateSep(newHoveredRow) ? kSepH : 0;
-            const int pinHA  = item.msg.pinned ? 18 : 0;
-            const int rtA    = _tops[newHoveredRow] - scrollY;
+            const int  padVA = collA ? kPadVCollapsed : kPadV;
+            const int  sepA  = needsDateSep(newHoveredRow) ? kSepH : 0;
+            const int  pinHA = item.msg.pinned ? 18 : 0;
+            const int  rtA   = _tops[newHoveredRow] - scrollY;
             int ay = rtA + sepA + pinHA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
             for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
                 ay += kAttachGap;
@@ -1089,9 +1226,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     const int newHoveredReplyRow = replyBarIndexAt(pos);
 
-    if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn
-            || newHoveredAttach != _hoveredAttach
-            || newHoveredReplyRow != _hoveredReplyRow) {
+    if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn ||
+        newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow) {
         _hoveredRow      = newHoveredRow;
         _hoveredToolBtn  = newHoveredBtn;
         _hoveredAttach   = newHoveredAttach;
@@ -1104,7 +1240,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     // Update link hover underline
     if (anchor != _hoveredLinkUrl) {
-        if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
+        if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 &&
+            _hoveredLinkRow < (int)_items.size()) {
             setDocLinkUnderline(_items[_hoveredLinkRow].textDoc.get(), _hoveredLinkUrl, false);
             for (auto &ad : _items[_hoveredLinkRow].attachDocs)
                 setDocLinkUnderline(ad.textDoc.get(), _hoveredLinkUrl, false);
@@ -1121,10 +1258,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     // Tooltip
     if (newHoveredBtn >= 0) {
-        static const QString kTips[] = { tr("Add reaction"), tr("Forward message"), tr("More actions") };
-        const int rowTop  = _tops[_hoveredRow] - scrollY;
-        const int rh      = rowHeight(_hoveredRow);
-        const int sep6    = needsDateSep(_hoveredRow) ? kSepH : 0;
+        static const QString kTips[] = {
+            tr("Add reaction"), tr("Forward message"), tr("More actions")
+        };
+        const int   rowTop   = _tops[_hoveredRow] - scrollY;
+        const int   rh       = rowHeight(_hoveredRow);
+        const int   sep6     = needsDateSep(_hoveredRow) ? kSepH : 0;
         const QRect btnLocal = toolbarButtonRect(newHoveredBtn, rowTop + sep6, rh - sep6);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
@@ -1134,8 +1273,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         _tooltip->showAbove(anchor, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
     } else {
         const auto [dMsgIdx, dAi] = dismissButtonAt(pos);
-        const bool attachHovered = _hoveredAttach.first == dMsgIdx && _hoveredAttach.second == dAi
-                                   && dMsgIdx >= 0;
+        const bool attachHovered =
+            _hoveredAttach.first == dMsgIdx && _hoveredAttach.second == dAi && dMsgIdx >= 0;
         if (attachHovered) {
             const QRect btnLocal = dismissButtonVpRect(dMsgIdx, dAi);
             const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
@@ -1147,11 +1286,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     // Cursor
     const auto [dMI, dAI] = dismissButtonAt(pos);
-    const bool overDismiss = dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
+    const bool overDismiss =
+        dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
     const auto [rMI, rRI] = reactionAt(pos);
-    const bool overLink  = !anchor.isEmpty() || fileChipAt(pos) || replyBarIndexAt(pos) >= 0
-                           || overDismiss || rMI >= 0;
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const bool overLink   = !anchor.isEmpty() || fileChipAt(pos) || replyBarIndexAt(pos) >= 0 ||
+                          overDismiss || rMI >= 0;
+    const int  sbHitX     = viewport()->width() - kScrollW - 2 - 6;
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     if (overScroll)
         viewport()->setCursor(Qt::SizeVerCursor);
@@ -1162,17 +1302,18 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 // ── Live event handling ───────────────────────────────────────────────────────
 
 void MessageListWidget::handleEvent(const Event &e) {
-    const bool wasAtBottom =
-        verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+    const bool wasAtBottom = verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
 
     if (auto *ev = std::get_if<EvMessageNew>(&e)) {
-        if (ev->conv != _currentConv) return;
+        if (ev->conv != _currentConv)
+            return;
         if (_isThreadMode) {
             // In thread mode, only show messages belonging to this thread.
-            const bool isRoot  = ev->msg.ts == _threadRootTs;
-            const bool isReply = ev->msg.threadRoot.has_value()
-                                 && *ev->msg.threadRoot == _threadRootTs;
-            if (!isRoot && !isReply) return;
+            const bool isRoot = ev->msg.ts == _threadRootTs;
+            const bool isReply =
+                ev->msg.threadRoot.has_value() && *ev->msg.threadRoot == _threadRootTs;
+            if (!isRoot && !isReply)
+                return;
         } else if (ev->msg.threadRoot.has_value()) {
             // In channel mode, thread replies don't appear in the main list —
             // bump the reply count on the root message instead.
@@ -1198,11 +1339,13 @@ void MessageListWidget::handleEvent(const Event &e) {
             });
 
     } else if (auto *ev = std::get_if<EvMessageChanged>(&e)) {
-        if (ev->conv != _currentConv) return;
+        if (ev->conv != _currentConv)
+            return;
         const int i = findByTs(ev->msg.ts);
-        if (i < 0) return;
-        _items[i].msg      = ev->msg;
-        _items[i].textDoc.reset();  // invalidate rendered docs
+        if (i < 0)
+            return;
+        _items[i].msg = ev->msg;
+        _items[i].textDoc.reset(); // invalidate rendered docs
         _items[i].docWidth = 0;
         _items[i].attachDocs.clear();
         _items[i].fileImgsRequested = false;
@@ -1210,19 +1353,23 @@ void MessageListWidget::handleEvent(const Event &e) {
         viewport()->update();
 
     } else if (auto *ev = std::get_if<EvMessageDeleted>(&e)) {
-        if (ev->conv != _currentConv) return;
+        if (ev->conv != _currentConv)
+            return;
         const int i = findByTs(ev->ts);
-        if (i < 0) return;
+        if (i < 0)
+            return;
         _items.erase(_items.begin() + i);
         rebuildLayout();
         viewport()->update();
 
     } else if (auto *ev = std::get_if<EvReactionAdded>(&e)) {
-        if (ev->conv != _currentConv) return;
+        if (ev->conv != _currentConv)
+            return;
         const int i = findByTs(ev->ts);
-        if (i < 0) return;
+        if (i < 0)
+            return;
         auto &reactions = _items[i].msg.reactions;
-        bool found = false;
+        bool  found     = false;
         for (auto &r : reactions) {
             if (r.name == ev->name) {
                 r.count++;
@@ -1231,23 +1378,25 @@ void MessageListWidget::handleEvent(const Event &e) {
                 break;
             }
         }
-        if (!found) reactions.push_back({ev->name, 1, {ev->user}});
+        if (!found)
+            reactions.push_back({ev->name, 1, {ev->user}});
         rebuildLayout();
         viewport()->update();
 
     } else if (auto *ev = std::get_if<EvReactionRemoved>(&e)) {
-        if (ev->conv != _currentConv) return;
+        if (ev->conv != _currentConv)
+            return;
         const int i = findByTs(ev->ts);
-        if (i < 0) return;
+        if (i < 0)
+            return;
         auto &reactions = _items[i].msg.reactions;
         for (auto rit = reactions.begin(); rit != reactions.end(); ++rit) {
             if (rit->name == ev->name) {
-                rit->count = std::max(0, rit->count - 1);
+                rit->count  = std::max(0, rit->count - 1);
                 auto &users = rit->users;
-                users.erase(
-                    std::remove(users.begin(), users.end(), ev->user),
-                    users.end());
-                if (rit->count == 0) reactions.erase(rit);
+                users.erase(std::remove(users.begin(), users.end(), ev->user), users.end());
+                if (rit->count == 0)
+                    reactions.erase(rit);
                 break;
             }
         }

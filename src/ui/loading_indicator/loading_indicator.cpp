@@ -9,17 +9,18 @@
 
 // Brand colors matching the four logo segments.
 const std::array<QColor, 4> LoadingIndicator::kColors = {
-    QColor(0xed, 0xae, 0x2f),  // amber
-    QColor(0x2f, 0xb2, 0x7c),  // green
-    QColor(0x38, 0xbc, 0xed),  // blue
-    QColor(0xdc, 0x1a, 0x59),  // red
+    QColor(0xed, 0xae, 0x2f), // amber
+    QColor(0x2f, 0xb2, 0x7c), // green
+    QColor(0x38, 0xbc, 0xed), // blue
+    QColor(0xdc, 0x1a, 0x59), // red
 };
 
 LoadingIndicator::LoadingIndicator() {
     _timer.setTimerType(Qt::CoarseTimer);
     QObject::connect(&_timer, &QTimer::timeout, [this] {
         _step = (_step + 1) % 4;
-        if (_onUpdate) _onUpdate();
+        if (_onUpdate)
+            _onUpdate();
     });
 }
 
@@ -34,12 +35,14 @@ void LoadingIndicator::setUpdateCallback(std::function<void()> cb) {
 void LoadingIndicator::start() {
     _step = 0;
     _timer.start(kIntervalMs);
-    if (_onUpdate) _onUpdate();
+    if (_onUpdate)
+        _onUpdate();
 }
 
 void LoadingIndicator::stop() {
     _timer.stop();
-    if (_onUpdate) _onUpdate();
+    if (_onUpdate)
+        _onUpdate();
 }
 
 bool LoadingIndicator::isRunning() const {
@@ -47,19 +50,22 @@ bool LoadingIndicator::isRunning() const {
 }
 
 void LoadingIndicator::paint(QPainter &p, const QRect &rect) const {
-    const int cx = rect.x() + rect.width() / 2;
-    const int cy = rect.y() + rect.height() / 2;
+    const int cx   = rect.x() + rect.width() / 2;
+    const int cy   = rect.y() + rect.height() / 2;
     const int half = kDiameter / 2;
 
-    const QRectF arc(cx - half + kStroke / 2.0,
-                     cy - half + kStroke / 2.0,
-                     kDiameter - kStroke,
-                     kDiameter - kStroke);
+    const QRectF arc(
+        cx - half + kStroke / 2.0,
+        cy - half + kStroke / 2.0,
+        kDiameter - kStroke,
+        kDiameter - kStroke
+    );
 
     // Each segment spans 90°, minus a small gap on each end.
     // Segments go clockwise from 12 o'clock (Qt: positive y up → 90° is top).
     // Qt arc convention: 0° = 3 o'clock, positive = counter-clockwise.
-    // For clockwise segments starting at top: startAngle = 90 - i*90 - kGapDeg, span = -(90 - 2*kGapDeg).
+    // For clockwise segments starting at top: startAngle = 90 - i*90 - kGapDeg, span = -(90 -
+    // 2*kGapDeg).
     const int sweep = -(90 - 2 * kGapDeg) * 16;
 
     QPen pen;
@@ -81,9 +87,7 @@ void LoadingIndicator::paint(QPainter &p, const QRect &rect) const {
 
 // ── LoadingIndicatorWidget ────────────────────────────────────────────────────
 
-LoadingIndicatorWidget::LoadingIndicatorWidget(QWidget *parent)
-    : QWidget(parent)
-{
+LoadingIndicatorWidget::LoadingIndicatorWidget(QWidget *parent) : QWidget(parent) {
     _anim.setUpdateCallback([this] { update(); });
 }
 

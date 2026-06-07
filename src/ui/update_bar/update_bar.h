@@ -20,7 +20,7 @@ signals:
     void restartRequested(const QString &stagedPath);
 
 private:
-    QLabel      *_label  = nullptr;
-    QPushButton *_btn    = nullptr;
+    QLabel      *_label = nullptr;
+    QPushButton *_btn   = nullptr;
     QString      _staged;
 };

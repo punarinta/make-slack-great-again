@@ -43,21 +43,21 @@ private:
     void showChip();
     void showSearch();
 
-    Session *_session;
+    Session       *_session;
     ConversationId _selectedId;
-    QString _selectedName;
+    QString        _selectedName;
 
     // Input frame (always visible)
-    QFrame     *_inputFrame  = nullptr;
-    QLineEdit  *_searchEdit  = nullptr;
+    QFrame    *_inputFrame = nullptr;
+    QLineEdit *_searchEdit = nullptr;
 
     // Chip shown when selection made (inside _inputFrame)
-    QWidget    *_chip        = nullptr;
-    QLabel     *_chipLabel   = nullptr;
-    QPushButton*_chipClear   = nullptr;
+    QWidget     *_chip      = nullptr;
+    QLabel      *_chipLabel = nullptr;
+    QPushButton *_chipClear = nullptr;
 
     // Dropdown — parented to window() so it overlays siblings
-    QFrame     *_dropdown    = nullptr;
-    QListWidget*_dropList    = nullptr;
+    QFrame                     *_dropdown = nullptr;
+    QListWidget                *_dropList = nullptr;
     std::vector<ConversationId> _listIds;
 };

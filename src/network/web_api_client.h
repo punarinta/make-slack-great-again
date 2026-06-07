@@ -20,7 +20,7 @@ public:
 
     explicit WebApiClient(QObject *parent = nullptr);
 
-    void setToken(const QString &token);
+    void               setToken(const QString &token);
     [[nodiscard]] bool hasToken() const;
 
     // Pre-warm the TLS connection so the first API call skips the handshake.
@@ -36,36 +36,34 @@ public:
     void setOnTokenExpired(OnTokenExpired fn);
 
     // Single-call: fires onSuccess with the full response object.
-    void call(const QString &method,
-              QUrlQuery     params,
-              OnSuccess     onSuccess,
-              OnError       onError = {});
+    void call(const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError = {});
 
     // Paginated load: fires onPage for each page's array items, then onDone.
     // Follows next_cursor until exhausted.
-    void paginate(const QString &method,
-                  const QString &arrayKey,
-                  QUrlQuery      params,
-                  std::function<void(QJsonArray)> onPage,
-                  std::function<void()>            onDone,
-                  OnError                          onError = {});
+    void paginate(
+        const QString                  &method,
+        const QString                  &arrayKey,
+        QUrlQuery                       params,
+        std::function<void(QJsonArray)> onPage,
+        std::function<void()>           onDone,
+        OnError                         onError = {}
+    );
 
     // POST a Slack API method with a JSON body (for calls that take JSON, e.g.
     // files.completeUploadExternal). Goes through the rate-limit queue.
-    void postJson(const QString &method, const QJsonObject &body,
-                  OnSuccess onSuccess, OnError onError = {});
+    void postJson(
+        const QString &method, const QJsonObject &body, OnSuccess onSuccess, OnError onError = {}
+    );
 
     // Raw PUT to an external URL (e.g. Slack file upload S3 URL). No auth header.
     // Bypasses the API queue.
-    void rawPut(const QUrl &url, const QByteArray &data,
-                std::function<void()> onDone,
-                OnError onError = {});
+    void rawPut(
+        const QUrl &url, const QByteArray &data, std::function<void()> onDone, OnError onError = {}
+    );
 
     // GET an arbitrary URL with the auth token set. For downloading private files.
     // Bypasses the API queue.
-    void downloadUrl(const QUrl &url,
-                     std::function<void(QByteArray)> onData,
-                     OnError onError = {});
+    void downloadUrl(const QUrl &url, std::function<void(QByteArray)> onData, OnError onError = {});
 
 private:
     struct PendingCall {
@@ -82,9 +80,9 @@ private:
     void handleReply(QNetworkReply *reply, PendingCall c);
 
     QNetworkAccessManager *_nam;
-    QString  _token;
-    QQueue<PendingCall> _queue;
-    bool _inflight  = false;
-    bool _throttled = false; // true while waiting out a Retry-After or token refresh
+    QString                _token;
+    QQueue<PendingCall>    _queue;
+    bool                   _inflight = false;
+    bool           _throttled = false; // true while waiting out a Retry-After or token refresh
     OnTokenExpired _onTokenExpired;
 };

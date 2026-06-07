@@ -7,9 +7,7 @@
 #include <QMouseEvent>
 #include <QScrollBar>
 
-VirtualListWidget::VirtualListWidget(QWidget *parent)
-    : QAbstractScrollArea(parent)
-{
+VirtualListWidget::VirtualListWidget(QWidget *parent) : QAbstractScrollArea(parent) {
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -46,7 +44,8 @@ bool VirtualListWidget::eventFilter(QObject *obj, QEvent *event) {
 
 bool VirtualListWidget::isOnScrollThumb(int vpY, int totalH) const {
     const int vh = viewport()->height();
-    if (totalH <= vh) return false;
+    if (totalH <= vh)
+        return false;
     const int scrollY = verticalScrollBar()->value();
     const int thumbH  = std::max(20, vh * vh / totalH);
     const int thumbY  = scrollY * (vh - thumbH) / (totalH - vh);
@@ -55,7 +54,8 @@ bool VirtualListWidget::isOnScrollThumb(int vpY, int totalH) const {
 
 void VirtualListWidget::paintScrollThumb(QPainter &p, int totalH, const QColor &color) const {
     const int vh = viewport()->height();
-    if (totalH <= vh) return;
+    if (totalH <= vh)
+        return;
     const int scrollY = verticalScrollBar()->value();
     const int thumbH  = std::max(20, vh * vh / totalH);
     const int thumbY  = (totalH - vh > 0) ? scrollY * (vh - thumbH) / (totalH - vh) : 0;

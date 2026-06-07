@@ -11,8 +11,8 @@ struct Credentials {
     QString xoxp;
     QString teamId;
     QString teamName;
-    QString iconUrl;        // 88px workspace icon URL, may be empty
-    QString refreshToken;   // non-empty when workspace has token rotation enabled
+    QString iconUrl;      // 88px workspace icon URL, may be empty
+    QString refreshToken; // non-empty when workspace has token rotation enabled
 };
 
 // ── Multi-workspace ───────────────────────────────────────────────────────────
@@ -25,10 +25,10 @@ QString     activeWorkspaceId();
 void        setActiveWorkspace(const QString &teamId);
 
 // ── Legacy wrappers (operate on active workspace) ─────────────────────────────
-bool        hasToken();            // = hasAnyWorkspace()
-Credentials load();               // = loadWorkspace(activeWorkspaceId())
-void        save(const Credentials &);  // = saveWorkspace + setActive
-void        clear();              // = removeWorkspace(activeWorkspaceId())
+bool        hasToken();                // = hasAnyWorkspace()
+Credentials load();                    // = loadWorkspace(activeWorkspaceId())
+void        save(const Credentials &); // = saveWorkspace + setActive
+void        clear();                   // = removeWorkspace(activeWorkspaceId())
 
 // ── App registration (credentials compiled in via credentials.cmake) ──────────
 struct AppConfig {

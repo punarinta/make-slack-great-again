@@ -11,9 +11,7 @@
 #include <algorithm>
 
 PopupTooltip::PopupTooltip(QWidget *parent)
-    : QWidget(parent,
-              Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint)
-{
+    : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
     setFocusPolicy(Qt::NoFocus);
@@ -33,12 +31,12 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
-    QScreen *s = QGuiApplication::screenAt(targetGlobalRect.center());
+    QScreen    *s     = QGuiApplication::screenAt(targetGlobalRect.center());
     const QRect avail = s ? s->availableGeometry() : QRect();
 
     // Prefer above; fall back to below if there isn't enough room
     const int neededAbove = kShadow + bodyH + kArrowH + kGap;
-    _below = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
+    _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
 
     int wx, wy;
     if (_below) {
@@ -71,20 +69,20 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    const int bodyH = height() - kShadow - kArrowH - kShadow;
+    const int    bodyH = height() - kShadow - kArrowH - kShadow;
     // When below, the arrow sits above the body; when above, it sits below.
-    const QRectF body = _below
-        ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
-        : QRectF(kShadow, kShadow,            width() - 2 * kShadow, bodyH);
-    const qreal cx = _arrowX;
+    const QRectF body  = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
+                                : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
+    const qreal  cx    = _arrowX;
 
     // Light drop shadow around the body only
     for (int i = kShadow; i >= 2; --i) {
         const int alpha = (kShadow - i) * 3;
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(0, 0, 0, alpha));
-        p.drawRoundedRect(body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5),
-                          kRadius + i, kRadius + i);
+        p.drawRoundedRect(
+            body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
+        );
     }
 
     // Fill body
@@ -98,16 +96,14 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
         // Tip points up toward the target above
         const qreal baseY = body.top();
         const qreal tipY  = kShadow;
-        arrow << QPointF(cx - kArrowW, baseY + 3)
-              << QPointF(cx + kArrowW, baseY + 3)
-              << QPointF(cx,           tipY);
+        arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
+              << QPointF(cx, tipY);
     } else {
         // Tip points down toward the target below
         const qreal baseY = body.bottom();
         const qreal tipY  = baseY + kArrowH;
-        arrow << QPointF(cx - kArrowW, baseY - 3)
-              << QPointF(cx + kArrowW, baseY - 3)
-              << QPointF(cx,           tipY);
+        arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
+              << QPointF(cx, tipY);
     }
     p.drawPolygon(arrow);
 
@@ -116,7 +112,14 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
     f.setWeight(QFont::Weight(500));
     p.setFont(f);
     p.setPen(Qt::white);
-    p.drawText(QRectF(body.left() + kPadH, body.top() + kPadV,
-                      body.width() - 2 * kPadH, body.height() - 2 * kPadV),
-               Qt::AlignCenter, _text);
+    p.drawText(
+        QRectF(
+            body.left() + kPadH,
+            body.top() + kPadV,
+            body.width() - 2 * kPadH,
+            body.height() - 2 * kPadV
+        ),
+        Qt::AlignCenter,
+        _text
+    );
 }

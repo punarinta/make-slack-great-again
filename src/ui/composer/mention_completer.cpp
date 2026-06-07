@@ -10,16 +10,13 @@
 static constexpr int kMaxRows = 8;
 
 MentionCompleter::MentionCompleter(QWidget *parent)
-    : QFrame(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint)
-{
+    : QFrame(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
     setObjectName("mentionCompleter");
-    setStyleSheet(
-        "QFrame#mentionCompleter {"
-        "  background: #FFFFFF;"
-        "  border: 1px solid #D1D1D1;"
-        "  border-radius: 6px;"
-        "}"
-    );
+    setStyleSheet("QFrame#mentionCompleter {"
+                  "  background: #FFFFFF;"
+                  "  border: 1px solid #D1D1D1;"
+                  "  border-radius: 6px;"
+                  "}");
     _layout = new QVBoxLayout(this);
     _layout->setContentsMargins(4, 4, 4, 4);
     _layout->setSpacing(1);
@@ -27,7 +24,7 @@ MentionCompleter::MentionCompleter(QWidget *parent)
 }
 
 void MentionCompleter::show(const QPoint &globalPos, const QList<Item> &items, Callback cb) {
-    _cb = std::move(cb);
+    _cb  = std::move(cb);
     _sel = 0;
     rebuild(items);
 
@@ -46,8 +43,12 @@ void MentionCompleter::dismiss() {
 }
 
 bool MentionCompleter::handleKey(int key) {
-    if (!isVisible()) return false;
-    if (key == Qt::Key_Escape) { dismiss(); return true; }
+    if (!isVisible())
+        return false;
+    if (key == Qt::Key_Escape) {
+        dismiss();
+        return true;
+    }
     if (key == Qt::Key_Up) {
         selectRow((_sel - 1 + _rows.size()) % _rows.size());
         return true;
@@ -80,18 +81,16 @@ void MentionCompleter::rebuild(const QList<Item> &items) {
         row->setFocusPolicy(Qt::NoFocus);
         row->setCursor(Qt::PointingHandCursor);
         row->setText(_items[i].display);
-        row->setStyleSheet(
-            "QPushButton {"
-            "  text-align: left;"
-            "  padding: 4px 10px;"
-            "  font-size: 13px;"
-            "  color: #1D1C1D;"
-            "  background: transparent;"
-            "  border: none;"
-            "  border-radius: 4px;"
-            "}"
-            "QPushButton:hover { background: #F0F0F0; }"
-        );
+        row->setStyleSheet("QPushButton {"
+                           "  text-align: left;"
+                           "  padding: 4px 10px;"
+                           "  font-size: 13px;"
+                           "  color: #1D1C1D;"
+                           "  background: transparent;"
+                           "  border: none;"
+                           "  border-radius: 4px;"
+                           "}"
+                           "QPushButton:hover { background: #F0F0F0; }");
         const int idx = i;
         connect(row, &QPushButton::clicked, this, [this, idx] {
             _sel = idx;
@@ -105,33 +104,34 @@ void MentionCompleter::rebuild(const QList<Item> &items) {
 }
 
 void MentionCompleter::selectRow(int row) {
-    if (_rows.isEmpty()) return;
+    if (_rows.isEmpty())
+        return;
     // Deselect old
     if (_sel >= 0 && _sel < _rows.size()) {
-        _rows[_sel]->setStyleSheet(
-            "QPushButton {"
-            "  text-align: left; padding: 4px 10px;"
-            "  font-size: 13px; color: #1D1C1D;"
-            "  background: transparent; border: none; border-radius: 4px;"
-            "}"
-            "QPushButton:hover { background: #F0F0F0; }"
-        );
+        _rows[_sel]->setStyleSheet("QPushButton {"
+                                   "  text-align: left; padding: 4px 10px;"
+                                   "  font-size: 13px; color: #1D1C1D;"
+                                   "  background: transparent; border: none; border-radius: 4px;"
+                                   "}"
+                                   "QPushButton:hover { background: #F0F0F0; }");
     }
     _sel = row;
     if (_sel >= 0 && _sel < _rows.size()) {
-        _rows[_sel]->setStyleSheet(
-            "QPushButton {"
-            "  text-align: left; padding: 4px 10px;"
-            "  font-size: 13px; color: #1D1C1D;"
-            "  background: #E8F5F0; border: none; border-radius: 4px;"
-            "}"
-        );
+        _rows[_sel]->setStyleSheet("QPushButton {"
+                                   "  text-align: left; padding: 4px 10px;"
+                                   "  font-size: 13px; color: #1D1C1D;"
+                                   "  background: #E8F5F0; border: none; border-radius: 4px;"
+                                   "}");
     }
 }
 
 void MentionCompleter::confirm() {
-    if (_sel < 0 || _sel >= _items.size()) { dismiss(); return; }
+    if (_sel < 0 || _sel >= _items.size()) {
+        dismiss();
+        return;
+    }
     const QString insert = _items[_sel].insert;
     dismiss();
-    if (_cb) _cb(insert);
+    if (_cb)
+        _cb(insert);
 }

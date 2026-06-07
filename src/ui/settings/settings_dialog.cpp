@@ -33,9 +33,7 @@ static constexpr int kPanelMinW = 480;
 static constexpr int kPanelMinH = 360;
 static constexpr int kEdge      = 7;
 
-SettingsDialog::SettingsDialog(QWidget *parent)
-    : QWidget(parent)
-{
+SettingsDialog::SettingsDialog(QWidget *parent) : QWidget(parent) {
     setAutoFillBackground(false);
     setMouseTracking(true);
     setGeometry(parent->rect());
@@ -63,13 +61,11 @@ void SettingsDialog::buildPanel() {
     _panel->setObjectName("settingsPanel");
     _panel->setMinimumSize(kPanelMinW, kPanelMinH);
     _panel->resize(kPanelW, kPanelH);
-    _panel->setStyleSheet(
-        "QFrame#settingsPanel {"
-        "  background: #FFFFFF;"
-        "  border-radius: 8px;"
-        "  border: 1px solid #D0D0D0;"
-        "}"
-    );
+    _panel->setStyleSheet("QFrame#settingsPanel {"
+                          "  background: #FFFFFF;"
+                          "  border-radius: 8px;"
+                          "  border: 1px solid #D0D0D0;"
+                          "}");
 
     auto *root = new QVBoxLayout(_panel);
     root->setContentsMargins(0, 0, 0, 0);
@@ -78,33 +74,28 @@ void SettingsDialog::buildPanel() {
     // ── Header ────────────────────────────────────────────────────────
     auto *header = new QWidget(_panel);
     header->setFixedHeight(48);
-    header->setStyleSheet(
-        "background: #F8F8F8;"
-        "border-bottom: 1px solid #E4E4E4;"
-        "border-top-left-radius: 8px;"
-        "border-top-right-radius: 8px;"
-    );
+    header->setStyleSheet("background: #F8F8F8;"
+                          "border-bottom: 1px solid #E4E4E4;"
+                          "border-top-left-radius: 8px;"
+                          "border-top-right-radius: 8px;");
     auto *hlay = new QHBoxLayout(header);
     hlay->setContentsMargins(20, 0, 12, 0);
 
     auto *titleLabel = new QLabel(tr("Settings"), header);
-    titleLabel->setStyleSheet(
-        "font-size: 15px; font-weight: 600; color: #1D1C1D;"
-        "background: transparent; border: none;");
+    titleLabel->setStyleSheet("font-size: 15px; font-weight: 600; color: #1D1C1D;"
+                              "background: transparent; border: none;");
     hlay->addWidget(titleLabel);
     hlay->addStretch();
 
     auto *closeBtn = new QPushButton("\xC3\x97", header);
     closeBtn->setFixedSize(28, 28);
     closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setStyleSheet(
-        "QPushButton {"
-        "  background: transparent; color: #616061; border: none;"
-        "  border-radius: 4px; font-size: 16px;"
-        "}"
-        "QPushButton:hover   { background: #EEEEEE; color: #1D1C1D; }"
-        "QPushButton:pressed { background: #E0E0E0; }"
-    );
+    closeBtn->setStyleSheet("QPushButton {"
+                            "  background: transparent; color: #616061; border: none;"
+                            "  border-radius: 4px; font-size: 16px;"
+                            "}"
+                            "QPushButton:hover   { background: #EEEEEE; color: #1D1C1D; }"
+                            "QPushButton:pressed { background: #E0E0E0; }");
     connect(closeBtn, &QPushButton::clicked, this, &SettingsDialog::hide);
     hlay->addWidget(closeBtn);
     root->addWidget(header);
@@ -118,30 +109,28 @@ void SettingsDialog::buildPanel() {
     _tabs = new QListWidget(body);
     _tabs->setFixedWidth(175);
     _tabs->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    _tabs->setStyleSheet(
-        "QListWidget {"
-        "  background: #F4F4F4;"
-        "  border: none;"
-        "  border-right: 1px solid #E4E4E4;"
-        "  border-bottom-left-radius: 8px;"
-        "  outline: none;"
-        "  padding: 8px 0;"
-        "}"
-        "QListWidget::item {"
-        "  padding: 9px 14px;"
-        "  color: #1D1C1D;"
-        "  font-size: 13px;"
-        "  border-radius: 4px;"
-        "  margin: 1px 6px;"
-        "}"
-        "QListWidget::item:selected {"
-        "  background: #E0E0E0;"
-        "  color: #1D1C1D;"
-        "}"
-        "QListWidget::item:hover:!selected {"
-        "  background: #EBEBEB;"
-        "}"
-    );
+    _tabs->setStyleSheet("QListWidget {"
+                         "  background: #F4F4F4;"
+                         "  border: none;"
+                         "  border-right: 1px solid #E4E4E4;"
+                         "  border-bottom-left-radius: 8px;"
+                         "  outline: none;"
+                         "  padding: 8px 0;"
+                         "}"
+                         "QListWidget::item {"
+                         "  padding: 9px 14px;"
+                         "  color: #1D1C1D;"
+                         "  font-size: 13px;"
+                         "  border-radius: 4px;"
+                         "  margin: 1px 6px;"
+                         "}"
+                         "QListWidget::item:selected {"
+                         "  background: #E0E0E0;"
+                         "  color: #1D1C1D;"
+                         "}"
+                         "QListWidget::item:hover:!selected {"
+                         "  background: #EBEBEB;"
+                         "}");
     _tabs->addItem(tr("Appearance"));
     _tabs->addItem(tr("Notifications"));
     _tabs->addItem(tr("Storage"));
@@ -152,12 +141,11 @@ void SettingsDialog::buildPanel() {
     _stack = new QStackedWidget(body);
     blay->addWidget(_stack, 1);
 
-    connect(_tabs, &QListWidget::currentRowChanged,
-            _stack, &QStackedWidget::setCurrentIndex);
+    connect(_tabs, &QListWidget::currentRowChanged, _stack, &QStackedWidget::setCurrentIndex);
 
     // ── Appearance page ───────────────────────────────────────────────
     auto *appearPage = new QWidget;
-    auto *alay = new QVBoxLayout(appearPage);
+    auto *alay       = new QVBoxLayout(appearPage);
     alay->setContentsMargins(24, 20, 24, 20);
     alay->setSpacing(16);
 
@@ -168,12 +156,13 @@ void SettingsDialog::buildPanel() {
     auto *sidebarBox = new QGroupBox(tr("Conversations sidebar"), appearPage);
     sidebarBox->setStyleSheet(
         "QGroupBox { font-size: 12px; color: #616061; border: none; margin-top: 4px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 0; }");
+        "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+    );
     auto *sidebarLayout = new QVBoxLayout(sidebarBox);
     sidebarLayout->setSpacing(8);
     sidebarLayout->setContentsMargins(0, 12, 0, 0);
 
-    auto *daysRow = new QHBoxLayout;
+    auto *daysRow    = new QHBoxLayout;
     auto *daysPrefix = new QLabel(tr("Show conversations active in the last"), sidebarBox);
     daysPrefix->setStyleSheet("font-size: 13px; color: #1D1C1D;");
     daysRow->addWidget(daysPrefix);
@@ -196,7 +185,8 @@ void SettingsDialog::buildPanel() {
     auto *daysDesc = new QLabel(
         tr("Conversations with no activity in this period are hidden\n"
            "under an \"N more...\" row at the bottom of each section."),
-        sidebarBox);
+        sidebarBox
+    );
     daysDesc->setStyleSheet("font-size: 12px; color: #616061;");
     daysDesc->setWordWrap(true);
     sidebarLayout->addWidget(daysDesc);
@@ -229,7 +219,7 @@ void SettingsDialog::buildPanel() {
 
     // ── Notifications page ────────────────────────────────────────────
     auto *notifPage = new QWidget;
-    auto *nlay = new QVBoxLayout(notifPage);
+    auto *nlay      = new QVBoxLayout(notifPage);
     nlay->setContentsMargins(24, 20, 24, 20);
     nlay->setSpacing(16);
 
@@ -244,7 +234,8 @@ void SettingsDialog::buildPanel() {
     auto *levelBox = new QGroupBox(tr("Notify me about"), notifPage);
     levelBox->setStyleSheet(
         "QGroupBox { font-size: 12px; color: #616061; border: none; margin-top: 4px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 0; }");
+        "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+    );
     auto *levelLayout = new QVBoxLayout(levelBox);
     levelLayout->setSpacing(6);
     levelLayout->setContentsMargins(0, 12, 0, 0);
@@ -255,7 +246,7 @@ void SettingsDialog::buildPanel() {
     _notifMentions->setStyleSheet("font-size: 13px; color: #1D1C1D;");
 
     auto *group = new QButtonGroup(levelBox);
-    group->addButton(_notifAll,      0);
+    group->addButton(_notifAll, 0);
     group->addButton(_notifMentions, 1);
 
     levelLayout->addWidget(_notifAll);
@@ -301,7 +292,7 @@ void SettingsDialog::buildPanel() {
 
     // ── Storage page ──────────────────────────────────────────────────
     auto *storagePage = new QWidget;
-    auto *slay = new QVBoxLayout(storagePage);
+    auto *slay        = new QVBoxLayout(storagePage);
     slay->setContentsMargins(24, 20, 24, 20);
     slay->setSpacing(16);
 
@@ -309,7 +300,7 @@ void SettingsDialog::buildPanel() {
     storageHeading->setStyleSheet("font-size: 14px; font-weight: 600; color: #1D1C1D;");
     slay->addWidget(storageHeading);
 
-    auto *sizeRow = new QHBoxLayout;
+    auto *sizeRow         = new QHBoxLayout;
     auto *sizePrefixLabel = new QLabel(tr("Cache size:"), storagePage);
     sizePrefixLabel->setStyleSheet("font-size: 13px; color: #616061;");
     sizeRow->addWidget(sizePrefixLabel);
@@ -323,7 +314,8 @@ void SettingsDialog::buildPanel() {
     auto *cacheDesc = new QLabel(
         tr("Conversations, user names, message history, and image thumbnails\n"
            "stored locally to speed up startup."),
-        storagePage);
+        storagePage
+    );
     cacheDesc->setStyleSheet("font-size: 12px; color: #616061;");
     cacheDesc->setWordWrap(true);
     slay->addWidget(cacheDesc);
@@ -360,7 +352,8 @@ void SettingsDialog::buildPanel() {
     auto *stateDesc = new QLabel(
         tr("Sidebar visit history used to decide which conversations are shown.\n"
            "Clear this to let the app re-analyse activity from scratch on next load."),
-        storagePage);
+        storagePage
+    );
     stateDesc->setStyleSheet("font-size: 12px; color: #616061;");
     stateDesc->setWordWrap(true);
     slay->addWidget(stateDesc);
@@ -389,7 +382,7 @@ void SettingsDialog::buildPanel() {
 
     // ── System page ───────────────────────────────────────────────────
     auto *sysPage = new QWidget;
-    auto *sylay = new QVBoxLayout(sysPage);
+    auto *sylay   = new QVBoxLayout(sysPage);
     sylay->setContentsMargins(24, 20, 24, 20);
     sylay->setSpacing(16);
 
@@ -398,10 +391,10 @@ void SettingsDialog::buildPanel() {
     sylay->addWidget(sysHeading);
 
     // Version info
-    const QString buildTs = QString(AppCredentials::buildTimestamp)
-                                .replace('T', ' ').chopped(1); // drop trailing Z
-    auto *verLabel = new QLabel(
-        tr("Version %1, built %2").arg(AppCredentials::version).arg(buildTs), sysPage);
+    const QString buildTs =
+        QString(AppCredentials::buildTimestamp).replace('T', ' ').chopped(1); // drop trailing Z
+    auto *verLabel =
+        new QLabel(tr("Version %1, built %2").arg(AppCredentials::version).arg(buildTs), sysPage);
     verLabel->setStyleSheet("font-size: 13px; color: #616061;");
     sylay->addWidget(verLabel);
 
@@ -409,24 +402,23 @@ void SettingsDialog::buildPanel() {
     auto *updBox = new QGroupBox(tr("Updates"), sysPage);
     updBox->setStyleSheet(
         "QGroupBox { font-size: 12px; color: #616061; border: none; margin-top: 4px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 0; }");
+        "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+    );
     auto *updLayout = new QVBoxLayout(updBox);
     updLayout->setSpacing(8);
     updLayout->setContentsMargins(0, 12, 0, 0);
 
     auto *checkRow = new QHBoxLayout;
-    _checkBtn = new QPushButton(tr("Check for updates"), updBox);
+    _checkBtn      = new QPushButton(tr("Check for updates"), updBox);
     _checkBtn->setFixedHeight(30);
     _checkBtn->setCursor(Qt::PointingHandCursor);
-    _checkBtn->setStyleSheet(
-        "QPushButton {"
-        "  background: #F0F0F0; color: #1D1C1D; border: none;"
-        "  border-radius: 4px; font-size: 13px; padding: 0 14px;"
-        "}"
-        "QPushButton:hover   { background: #E4E4E4; }"
-        "QPushButton:pressed { background: #D8D8D8; }"
-        "QPushButton:disabled { color: #AAAAAA; }"
-    );
+    _checkBtn->setStyleSheet("QPushButton {"
+                             "  background: #F0F0F0; color: #1D1C1D; border: none;"
+                             "  border-radius: 4px; font-size: 13px; padding: 0 14px;"
+                             "}"
+                             "QPushButton:hover   { background: #E4E4E4; }"
+                             "QPushButton:pressed { background: #D8D8D8; }"
+                             "QPushButton:disabled { color: #AAAAAA; }");
     checkRow->addWidget(_checkBtn);
     checkRow->addStretch();
     updLayout->addLayout(checkRow);
@@ -451,9 +443,9 @@ void SettingsDialog::buildPanel() {
 
 void SettingsDialog::loadNotifications() {
     QSettings s("msga", "msga");
-    _notifEnabled->setChecked( s.value("notifications/enabled",  false).toBool());
-    _notifSound->setChecked(   s.value("notifications/sound",    true).toBool());
-    const int level =          s.value("notifications/level",    1).toInt();
+    _notifEnabled->setChecked(s.value("notifications/enabled", false).toBool());
+    _notifSound->setChecked(s.value("notifications/sound", true).toBool());
+    const int level = s.value("notifications/level", 1).toInt();
     (level == 0 ? _notifAll : _notifMentions)->setChecked(true);
     // Sync enabled state of child controls
     const bool on = _notifEnabled->isChecked();
@@ -464,8 +456,8 @@ void SettingsDialog::loadNotifications() {
 void SettingsDialog::saveNotifications() {
     QSettings s("msga", "msga");
     s.setValue("notifications/enabled", _notifEnabled->isChecked());
-    s.setValue("notifications/sound",   _notifSound->isChecked());
-    s.setValue("notifications/level",   _notifAll->isChecked() ? 0 : 1);
+    s.setValue("notifications/sound", _notifSound->isChecked());
+    s.setValue("notifications/level", _notifAll->isChecked() ? 0 : 1);
 }
 
 void SettingsDialog::loadAppearance() {
@@ -488,7 +480,7 @@ static QString formatBytes(qint64 bytes) {
 }
 
 static qint64 dirSizeBytes(const QString &path) {
-    qint64 total = 0;
+    qint64       total = 0;
     QDirIterator it(path, QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         it.next();
@@ -516,25 +508,29 @@ void SettingsDialog::clearState() {
 }
 
 static QString timeAgo(qint64 epochSecs) {
-    auto t = [](const char *s) {
-        return QCoreApplication::translate("SettingsDialog", s);
-    };
-    if (epochSecs <= 0) return t("Never checked");
+    auto t = [](const char *s) { return QCoreApplication::translate("SettingsDialog", s); };
+    if (epochSecs <= 0)
+        return t("Never checked");
     const qint64 ago = QDateTime::currentSecsSinceEpoch() - epochSecs;
-    if (ago < 60)    return t("Just now");
-    if (ago < 3600)  return t("%1 min ago").arg(ago / 60);
-    if (ago < 86400) return t("%1 h ago").arg(ago / 3600);
+    if (ago < 60)
+        return t("Just now");
+    if (ago < 3600)
+        return t("%1 min ago").arg(ago / 60);
+    if (ago < 86400)
+        return t("%1 h ago").arg(ago / 3600);
     return t("%1 days ago").arg(ago / 86400);
 }
 
 void SettingsDialog::refreshLastChecked() {
-    if (!_lastChecked) return;
+    if (!_lastChecked)
+        return;
     const qint64 ts = QSettings("msga", "msga").value("updates/lastChecked", 0).toLongLong();
     _lastChecked->setText(tr("Last checked: %1").arg(timeAgo(ts)));
 }
 
 void SettingsDialog::refreshUpdateStatus() {
-    if (!_updateStatus || !_checkBtn) return;
+    if (!_updateStatus || !_checkBtn)
+        return;
     if (!_updateChecker) {
         _checkBtn->setEnabled(false);
         _updateStatus->setText(tr("Update checks not available."));
@@ -585,7 +581,8 @@ void SettingsDialog::setUpdateChecker(UpdateChecker *checker) {
 }
 
 void SettingsDialog::updatePanelGeometry() {
-    if (!_panel) return;
+    if (!_panel)
+        return;
     const QSize ps = _panel->size();
     _panel->move((width() - ps.width()) / 2, (height() - ps.height()) / 2);
 }
@@ -593,34 +590,52 @@ void SettingsDialog::updatePanelGeometry() {
 // ── Edge detection & resize helpers ──────────────────────────────────────────
 
 SettingsDialog::Dir SettingsDialog::edgeAt(const QPoint &p) const {
-    if (!_panel) return Dir::None;
+    if (!_panel)
+        return Dir::None;
     const QRect r = _panel->geometry();
     if (!r.adjusted(-kEdge, -kEdge, kEdge, kEdge).contains(p) || r.contains(p))
         return Dir::None;
 
-    const bool n = p.y() < r.top()    + kEdge;
+    const bool n = p.y() < r.top() + kEdge;
     const bool s = p.y() > r.bottom() - kEdge;
-    const bool w = p.x() < r.left()   + kEdge;
-    const bool e = p.x() > r.right()  - kEdge;
+    const bool w = p.x() < r.left() + kEdge;
+    const bool e = p.x() > r.right() - kEdge;
 
-    if (n && w) return Dir::NW;
-    if (n && e) return Dir::NE;
-    if (s && w) return Dir::SW;
-    if (s && e) return Dir::SE;
-    if (n)      return Dir::N;
-    if (s)      return Dir::S;
-    if (w)      return Dir::W;
-    if (e)      return Dir::E;
+    if (n && w)
+        return Dir::NW;
+    if (n && e)
+        return Dir::NE;
+    if (s && w)
+        return Dir::SW;
+    if (s && e)
+        return Dir::SE;
+    if (n)
+        return Dir::N;
+    if (s)
+        return Dir::S;
+    if (w)
+        return Dir::W;
+    if (e)
+        return Dir::E;
     return Dir::None;
 }
 
 Qt::CursorShape SettingsDialog::cursorFor(Dir d) {
     switch (d) {
-    case Dir::N:  case Dir::S:  return Qt::SizeVerCursor;
-    case Dir::E:  case Dir::W:  return Qt::SizeHorCursor;
-    case Dir::NE: case Dir::SW: return Qt::SizeBDiagCursor;
-    case Dir::NW: case Dir::SE: return Qt::SizeFDiagCursor;
-    default:                    return Qt::ArrowCursor;
+    case Dir::N:
+    case Dir::S:
+        return Qt::SizeVerCursor;
+    case Dir::E:
+    case Dir::W:
+        return Qt::SizeHorCursor;
+    case Dir::NE:
+    case Dir::SW:
+        return Qt::SizeBDiagCursor;
+    case Dir::NW:
+    case Dir::SE:
+        return Qt::SizeFDiagCursor;
+    default:
+        return Qt::ArrowCursor;
     }
 }
 
@@ -632,9 +647,11 @@ void SettingsDialog::paintEvent(QPaintEvent *) {
 }
 
 void SettingsDialog::mousePressEvent(QMouseEvent *e) {
-    if (e->button() != Qt::LeftButton) return;
+    if (e->button() != Qt::LeftButton)
+        return;
     const Dir dir = edgeAt(e->pos());
-    if (dir == Dir::None) return;
+    if (dir == Dir::None)
+        return;
     _resizeDir   = dir;
     _dragStart   = e->pos();
     _panelAtDrag = _panel->geometry();
@@ -644,34 +661,57 @@ void SettingsDialog::mousePressEvent(QMouseEvent *e) {
 void SettingsDialog::mouseMoveEvent(QMouseEvent *e) {
     if (_resizeDir != Dir::None) {
         const QPoint delta = e->pos() - _dragStart;
-        QRect r = _panelAtDrag;
+        QRect        r     = _panelAtDrag;
 
         switch (_resizeDir) {
-        case Dir::E:  r.setRight( r.right()  + delta.x()); break;
-        case Dir::W:  r.setLeft(  r.left()   + delta.x()); break;
-        case Dir::S:  r.setBottom(r.bottom() + delta.y()); break;
-        case Dir::N:  r.setTop(   r.top()    + delta.y()); break;
-        case Dir::SE: r.setRight( r.right()  + delta.x());
-                      r.setBottom(r.bottom() + delta.y()); break;
-        case Dir::SW: r.setLeft(  r.left()   + delta.x());
-                      r.setBottom(r.bottom() + delta.y()); break;
-        case Dir::NE: r.setRight( r.right()  + delta.x());
-                      r.setTop(   r.top()    + delta.y()); break;
-        case Dir::NW: r.setLeft(  r.left()   + delta.x());
-                      r.setTop(   r.top()    + delta.y()); break;
-        default: break;
+        case Dir::E:
+            r.setRight(r.right() + delta.x());
+            break;
+        case Dir::W:
+            r.setLeft(r.left() + delta.x());
+            break;
+        case Dir::S:
+            r.setBottom(r.bottom() + delta.y());
+            break;
+        case Dir::N:
+            r.setTop(r.top() + delta.y());
+            break;
+        case Dir::SE:
+            r.setRight(r.right() + delta.x());
+            r.setBottom(r.bottom() + delta.y());
+            break;
+        case Dir::SW:
+            r.setLeft(r.left() + delta.x());
+            r.setBottom(r.bottom() + delta.y());
+            break;
+        case Dir::NE:
+            r.setRight(r.right() + delta.x());
+            r.setTop(r.top() + delta.y());
+            break;
+        case Dir::NW:
+            r.setLeft(r.left() + delta.x());
+            r.setTop(r.top() + delta.y());
+            break;
+        default:
+            break;
         }
 
         const QSize minS = _panel->minimumSize();
         if (r.width() < minS.width()) {
-            const bool movingLeft = (_resizeDir == Dir::W || _resizeDir == Dir::NW || _resizeDir == Dir::SW);
-            if (movingLeft) r.setLeft(r.right()   - minS.width());
-            else            r.setRight(r.left()   + minS.width());
+            const bool movingLeft =
+                (_resizeDir == Dir::W || _resizeDir == Dir::NW || _resizeDir == Dir::SW);
+            if (movingLeft)
+                r.setLeft(r.right() - minS.width());
+            else
+                r.setRight(r.left() + minS.width());
         }
         if (r.height() < minS.height()) {
-            const bool movingTop = (_resizeDir == Dir::N || _resizeDir == Dir::NW || _resizeDir == Dir::NE);
-            if (movingTop) r.setTop(r.bottom()    - minS.height());
-            else           r.setBottom(r.top()    + minS.height());
+            const bool movingTop =
+                (_resizeDir == Dir::N || _resizeDir == Dir::NW || _resizeDir == Dir::NE);
+            if (movingTop)
+                r.setTop(r.bottom() - minS.height());
+            else
+                r.setBottom(r.top() + minS.height());
         }
 
         _panel->setGeometry(r);

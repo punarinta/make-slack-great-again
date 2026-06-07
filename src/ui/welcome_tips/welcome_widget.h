@@ -13,6 +13,6 @@ protected:
     void showEvent(QShowEvent *e) override;
 
 private:
-    void repositionContent();
+    void     repositionContent();
     QWidget *_content = nullptr;
 };

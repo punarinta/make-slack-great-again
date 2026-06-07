@@ -29,7 +29,8 @@ public:
     // Passing empty functions disables the backing store.
     void setDiskCache(
         std::function<QByteArray(const QString &)>               load,
-        std::function<void(const QString &, const QByteArray &)> save);
+        std::function<void(const QString &, const QByteArray &)> save
+    );
 
 signals:
     void loaded(const QString &url);

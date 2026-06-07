@@ -19,7 +19,7 @@ struct UserInfo {
     bool    isDeactivated = false;
     bool    isActive      = false;
     bool    dndEnabled    = false;
-    QString statusEmoji;  // resolved emoji name without colons, e.g. "palm_tree"
+    QString statusEmoji; // resolved emoji name without colons, e.g. "palm_tree"
 };
 
 // Visual row kinds in the conversation list.
@@ -28,9 +28,10 @@ enum class RowKind { SectionHeader, Conv, AddChannels, ShowMore };
 // Maps a visual row index to its content.
 struct RowItem {
     RowKind kind;
-    int     convIdx   = -1;  // index into _convs, valid when kind == Conv
-    int     sectionId = -1;  // 0 = Channels, 1 = Direct messages; valid for SectionHeader/AddChannels/ShowMore
-    int     count     =  0;  // for ShowMore: number of hidden items
+    int     convIdx = -1; // index into _convs, valid when kind == Conv
+    int     sectionId =
+        -1; // 0 = Channels, 1 = Direct messages; valid for SectionHeader/AddChannels/ShowMore
+    int count = 0; // for ShowMore: number of hidden items
 };
 
 // Virtual-painted conversation list with section grouping and collapse/expand.
@@ -44,16 +45,19 @@ public:
     // Call with the full user list so DM names, avatars, and status can be resolved.
     void setUsers(const std::vector<User> &users);
     // Set the current user's ID so the "you" label can be shown on self DMs.
-    void setMe(UserId id) { _meUserId = std::move(id); viewport()->update(); }
+    void setMe(UserId id) {
+        _meUserId = std::move(id);
+        viewport()->update();
+    }
     // Resolved display name for a visual row (DMs → user displayName, channels → conv.name).
-    QString resolvedName(int row) const;
-    int  selectedIndex() const { return _selected; }
+    QString        resolvedName(int row) const;
+    int            selectedIndex() const { return _selected; }
     // Resolved ConversationId for a visual row (-1 safe: returns empty id).
     ConversationId conversationId(int row) const;
     // Visual row for a given id; -1 if not found or section is collapsed.
-    int rowForId(ConversationId id) const;
+    int            rowForId(ConversationId id) const;
     // Programmatically select a row; emits conversationSelected.
-    void selectRow(int row);
+    void           selectRow(int row);
 
     // Set how many days of activity qualify a conversation as "relevant" (shown inline).
     // Conversations outside this window appear under "N more..." until expanded.
@@ -77,9 +81,9 @@ protected:
     void doMouseRelease(QMouseEvent *e) override;
     void doMouseLeave() override;
 
-    int  rowAt(int viewportY) const;    // -1 if none
+    int  rowAt(int viewportY) const; // -1 if none
     void setHovered(int row);
-    void setSelected(int row);          // emits conversationSelected (no-op for non-Conv rows)
+    void setSelected(int row); // emits conversationSelected (no-op for non-Conv rows)
     void paintRow(QPainter &p, int row, int y) const;
     void paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
     void paintAddChannelsRow(QPainter &p, int row, int y) const;
@@ -94,42 +98,44 @@ protected:
     void triggerMissingAvatarDownloads();
     void drawUserAvatar(QPainter &p, QRect rect, const QString &userId, QColor bgColor) const;
 
-    std::vector<Conversation>        _allConvs; // unfiltered; source of truth
-    std::vector<Conversation>        _convs;    // filtered convs
-    std::vector<RowItem>             _rows;     // visual row list (includes headers/actions)
+    std::vector<Conversation> _allConvs; // unfiltered; source of truth
+    std::vector<Conversation> _convs;    // filtered convs
+    std::vector<RowItem>      _rows;     // visual row list (includes headers/actions)
     // userId → {displayName, avatarUrl, ...}, rebuilt on setUsers().
-    QHash<QString, UserInfo>         _userInfos;
+    QHash<QString, UserInfo>  _userInfos;
     // convId.value → Unix epoch sec of last time the user opened that conversation in this app.
     // Persisted to QSettings so recency survives restarts.
-    QHash<QString, qint64>           _visitedAt;
+    QHash<QString, qint64>    _visitedAt;
 
-    void loadVisitedAt();
-    void saveVisitedAt();
-    ImageCache                       *_imgCache = nullptr;
-    UserId                           _meUserId;
+    void        loadVisitedAt();
+    void        saveVisitedAt();
+    ImageCache *_imgCache = nullptr;
+    UserId      _meUserId;
 
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;
     bool _showAllChannels   = false; // true after user clicks "N more channels"
     bool _showAllDms        = false; // true after user clicks "N more DMs"
 
-    int  _hovered  = -1;
-    int  _selected = -1;
+    int            _hovered  = -1;
+    int            _selected = -1;
     ConversationId _selectedId; // survives rebuildRows() calls
 
     // Selection slide animation: 0.0 = start of slide, 1.0 = settled
     QVariantAnimation _selAnim;
-    int  _selFrom = -1;
-    double _selT  = 1.0;
+    int               _selFrom = -1;
+    double            _selT    = 1.0;
 
-    static constexpr int  kRowH        = 36;  // height of every row (uniform)
-    static constexpr int  kPadH        = 12;  // horizontal left padding
-    static constexpr int  kPadV        =  8;  // vertical padding inside row
-    static constexpr int  kAvatarSize  = 28;  // size of user avatar square
-    static constexpr int  kAvatarRadius=  5;  // corner radius
-    static constexpr int  kAvatarGap   =  8;  // gap between avatar and name
-    static constexpr int  kIconSize    = 14;  // section / prefix icon size
-    static constexpr int  kGroupIndent = kIconSize + 6; // child-row indent (aligns with section label)
-    int _relevantDays = 14; // configurable via setRelevantDays(); default matches kDefaultRelevantDays
+    static constexpr int kRowH         = 36; // height of every row (uniform)
+    static constexpr int kPadH         = 12; // horizontal left padding
+    static constexpr int kPadV         = 8;  // vertical padding inside row
+    static constexpr int kAvatarSize   = 28; // size of user avatar square
+    static constexpr int kAvatarRadius = 5;  // corner radius
+    static constexpr int kAvatarGap    = 8;  // gap between avatar and name
+    static constexpr int kIconSize     = 14; // section / prefix icon size
+    static constexpr int kGroupIndent =
+        kIconSize + 6; // child-row indent (aligns with section label)
+    int _relevantDays =
+        14; // configurable via setRelevantDays(); default matches kDefaultRelevantDays
     static constexpr int kDefaultRelevantDays = 14;
 };

@@ -27,6 +27,8 @@ APT_PACKAGES=(
     qt6-l10n-tools    # lupdate/lrelease binaries — compiles .ts translation files
     qt6-tools-dev     # Qt6LinguistTools CMake config — needed for find_package(Qt6 LinguistTools)
     libgl-dev         # OpenGL headers required by Qt Widgets
+    clang-format      # formatting — matches .clang-format config
+    clazy             # Qt-aware linting — provides clazy and clazy-standalone
 )
 
 to_install=()
@@ -60,6 +62,9 @@ else
         "Install a newer version from https://cmake.org/download/ or the Kitware APT PPA:" \
         "  https://apt.kitware.com/"
 fi
+
+git config core.hooksPath .githooks
+ok "git hooks (.githooks/pre-commit)"
 
 echo ""
 echo "All dependencies satisfied. Configure the project with:"

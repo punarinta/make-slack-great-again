@@ -68,9 +68,26 @@ else
     die "cmake $cmake_ver is too old — need >= ${CMAKE_MIN_MAJOR}.${CMAKE_MIN_MINOR}. Run: brew upgrade cmake"
 fi
 
+# Linting tools — clang-format ships with Xcode CLT; clazy requires brew.
+if command -v clang-format &>/dev/null 2>&1; then
+    ok "clang-format"
+else
+    miss "clang-format — install via: brew install clang-format"
+fi
+for tool in clazy clazy-standalone; do
+    if command -v "$tool" &>/dev/null 2>&1; then
+        ok "$tool"
+    else
+        miss "$tool — install via: brew install clazy"
+    fi
+done
+
 # Qt is not on the default PATH because Homebrew intentionally leaves it keg-only
 # to avoid shadowing macOS system frameworks. Pass its prefix to cmake explicitly.
 QT_PREFIX=$(brew --prefix qt)
+
+git config core.hooksPath .githooks
+ok "git hooks (.githooks/pre-commit)"
 
 echo ""
 echo "All dependencies satisfied. Configure the project with:"

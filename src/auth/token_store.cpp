@@ -4,17 +4,21 @@
 #include "app_credentials.h"
 #include <QSettings>
 
-static QSettings settings() { return QSettings("msga", "msga"); }
+static QSettings settings() {
+    return QSettings("msga", "msga");
+}
 
 static void migrate(QSettings &s) {
-    if (s.contains("workspaces") || !s.contains("auth/xoxp")) return;
+    if (s.contains("workspaces") || !s.contains("auth/xoxp"))
+        return;
     const QString xoxp   = s.value("auth/xoxp").toString();
     const QString teamId = s.value("auth/team_id").toString();
     const QString name   = s.value("auth/team_name").toString();
-    if (xoxp.isEmpty()) return;
+    if (xoxp.isEmpty())
+        return;
     const QString id = teamId.isEmpty() ? QStringLiteral("legacy") : teamId;
-    s.setValue(QStringLiteral("workspace/%1/xoxp").arg(id),    xoxp);
-    s.setValue(QStringLiteral("workspace/%1/name").arg(id),    name);
+    s.setValue(QStringLiteral("workspace/%1/xoxp").arg(id), xoxp);
+    s.setValue(QStringLiteral("workspace/%1/name").arg(id), name);
     s.setValue(QStringLiteral("workspace/%1/iconUrl").arg(id), QString());
     s.setValue(QStringLiteral("workspaces"), QStringList{id});
     s.setValue(QStringLiteral("active"), id);
@@ -25,11 +29,12 @@ void TokenStore::saveWorkspace(const Credentials &c) {
     auto s = settings();
     migrate(s);
     auto ids = s.value(QStringLiteral("workspaces")).toStringList();
-    if (!ids.contains(c.teamId)) ids.append(c.teamId);
+    if (!ids.contains(c.teamId))
+        ids.append(c.teamId);
     s.setValue(QStringLiteral("workspaces"), ids);
-    s.setValue(QStringLiteral("workspace/%1/xoxp").arg(c.teamId),         c.xoxp);
-    s.setValue(QStringLiteral("workspace/%1/name").arg(c.teamId),         c.teamName);
-    s.setValue(QStringLiteral("workspace/%1/iconUrl").arg(c.teamId),      c.iconUrl);
+    s.setValue(QStringLiteral("workspace/%1/xoxp").arg(c.teamId), c.xoxp);
+    s.setValue(QStringLiteral("workspace/%1/name").arg(c.teamId), c.teamName);
+    s.setValue(QStringLiteral("workspace/%1/iconUrl").arg(c.teamId), c.iconUrl);
     s.setValue(QStringLiteral("workspace/%1/refreshToken").arg(c.teamId), c.refreshToken);
 }
 
@@ -61,7 +66,9 @@ QStringList TokenStore::workspaceIds() {
     return s.value(QStringLiteral("workspaces")).toStringList();
 }
 
-bool TokenStore::hasAnyWorkspace() { return !workspaceIds().isEmpty(); }
+bool TokenStore::hasAnyWorkspace() {
+    return !workspaceIds().isEmpty();
+}
 
 QString TokenStore::activeWorkspaceId() {
     auto s = settings();
@@ -73,7 +80,9 @@ void TokenStore::setActiveWorkspace(const QString &teamId) {
     settings().setValue(QStringLiteral("active"), teamId);
 }
 
-bool TokenStore::hasToken() { return hasAnyWorkspace(); }
+bool TokenStore::hasToken() {
+    return hasAnyWorkspace();
+}
 
 TokenStore::Credentials TokenStore::load() {
     return loadWorkspace(activeWorkspaceId());
@@ -86,7 +95,8 @@ void TokenStore::save(const Credentials &c) {
 
 void TokenStore::clear() {
     const auto id = activeWorkspaceId();
-    if (!id.isEmpty()) removeWorkspace(id);
+    if (!id.isEmpty())
+        removeWorkspace(id);
 }
 
 TokenStore::AppConfig TokenStore::loadApp() {

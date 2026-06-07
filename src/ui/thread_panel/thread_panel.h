@@ -27,13 +27,13 @@ signals:
     void closeRequested();
 
 private:
-    Session            *_session  = nullptr;
-    ConversationId      _conv;
-    Ts                  _rootTs;
+    Session       *_session = nullptr;
+    ConversationId _conv;
+    Ts             _rootTs;
 
-    QLabel             *_header   = nullptr;
-    MessageListWidget  *_msgList  = nullptr;
-    ComposerWidget     *_composer = nullptr;
+    QLabel            *_header   = nullptr;
+    MessageListWidget *_msgList  = nullptr;
+    ComposerWidget    *_composer = nullptr;
 
-    rpl::lifetime       _lifetime;
+    rpl::lifetime _lifetime;
 };

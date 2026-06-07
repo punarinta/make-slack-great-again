@@ -18,9 +18,7 @@
 static constexpr int kDropMaxH = 200;
 
 ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
-    : QWidget(parent)
-    , _session(session)
-{
+    : QWidget(parent), _session(session) {
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
@@ -29,16 +27,14 @@ ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
     _inputFrame = new QFrame(this);
     _inputFrame->setObjectName("convInput");
     _inputFrame->setFixedHeight(36);
-    _inputFrame->setStyleSheet(
-        "QFrame#convInput {"
-        "  border: 1px solid #CCCCCC;"
-        "  border-radius: 4px;"
-        "  background: white;"
-        "}"
-        "QFrame#convInput:focus-within {"
-        "  border-color: #007A5A;"
-        "}"
-    );
+    _inputFrame->setStyleSheet("QFrame#convInput {"
+                               "  border: 1px solid #CCCCCC;"
+                               "  border-radius: 4px;"
+                               "  background: white;"
+                               "}"
+                               "QFrame#convInput:focus-within {"
+                               "  border-color: #007A5A;"
+                               "}");
 
     auto *inputLay = new QHBoxLayout(_inputFrame);
     inputLay->setContentsMargins(8, 0, 8, 0);
@@ -52,17 +48,15 @@ ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
     inputLay->addWidget(_searchEdit);
 
     // Chip row (shown when item selected)
-    _chip = new QWidget(_inputFrame);
+    _chip         = new QWidget(_inputFrame);
     auto *chipLay = new QHBoxLayout(_chip);
     chipLay->setContentsMargins(0, 0, 0, 0);
     chipLay->setSpacing(4);
 
     _chipLabel = new QLabel(_chip);
-    _chipLabel->setStyleSheet(
-        "QLabel { background: #E8F5FA; color: #1164A3;"
-        " border-radius: 12px; padding: 2px 8px;"
-        " font-weight: bold; }"
-    );
+    _chipLabel->setStyleSheet("QLabel { background: #E8F5FA; color: #1164A3;"
+                              " border-radius: 12px; padding: 2px 8px;"
+                              " font-weight: bold; }");
 
     _chipClear = new QPushButton("×", _chip);
     _chipClear->setFixedSize(18, 18);
@@ -100,32 +94,29 @@ ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
             selectRow(_dropList->currentRow());
     });
 
-    connect(_chipClear, &QPushButton::clicked, this, [this] {
-        clearSelection();
-    });
+    connect(_chipClear, &QPushButton::clicked, this, [this] { clearSelection(); });
 
     qApp->installEventFilter(this);
 }
 
 ConvSelectorWidget::~ConvSelectorWidget() {
     qApp->removeEventFilter(this);
-    if (_dropdown) _dropdown->deleteLater();
+    if (_dropdown)
+        _dropdown->deleteLater();
 }
 
 // ── Dropdown management ───────────────────────────────────────────────────────
 
 void ConvSelectorWidget::openDropdown() {
     if (!_dropdown) {
-        _dropdown = new QFrame(window(), Qt::Tool | Qt::FramelessWindowHint
-                               | Qt::NoDropShadowWindowHint);
+        _dropdown =
+            new QFrame(window(), Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
         _dropdown->setObjectName("convDropdown");
-        _dropdown->setStyleSheet(
-            "QFrame#convDropdown {"
-            "  background: white;"
-            "  border: 1px solid #CCCCCC;"
-            "  border-radius: 4px;"
-            "}"
-        );
+        _dropdown->setStyleSheet("QFrame#convDropdown {"
+                                 "  background: white;"
+                                 "  border: 1px solid #CCCCCC;"
+                                 "  border-radius: 4px;"
+                                 "}");
 
         auto *lay = new QVBoxLayout(_dropdown);
         lay->setContentsMargins(0, 2, 0, 2);
@@ -154,31 +145,35 @@ void ConvSelectorWidget::openDropdown() {
 }
 
 void ConvSelectorWidget::closeDropdown() {
-    if (_dropdown) _dropdown->hide();
+    if (_dropdown)
+        _dropdown->hide();
 }
 
 void ConvSelectorWidget::positionDropdown() {
-    if (!_dropdown) return;
+    if (!_dropdown)
+        return;
 
     const QPoint globalPos = _inputFrame->mapToGlobal(QPoint(0, _inputFrame->height()));
-    const int w = _inputFrame->width();
-    const int itemH = _dropList->sizeHintForRow(0);
-    const int count = std::min(_dropList->count(), 6);
-    const int listH = count > 0 ? std::min(kDropMaxH, itemH * count + 4) : 40;
+    const int    w         = _inputFrame->width();
+    const int    itemH     = _dropList->sizeHintForRow(0);
+    const int    count     = std::min(_dropList->count(), 6);
+    const int    listH     = count > 0 ? std::min(kDropMaxH, itemH * count + 4) : 40;
     _dropdown->setGeometry(globalPos.x(), globalPos.y(), w, listH);
 }
 
 void ConvSelectorWidget::rebuildList(const QString &filter) {
-    if (!_dropList) return;
+    if (!_dropList)
+        return;
     _dropList->clear();
     _listIds.clear();
-    if (!_session) return;
+    if (!_session)
+        return;
 
     for (const auto &conv : _session->currentConversations()) {
         QString label;
         if (conv.kind == ConvKind::Im) {
             const auto *u = conv.dmUser ? _session->findUser(*conv.dmUser) : nullptr;
-            label = u ? u->displayName : conv.name;
+            label         = u ? u->displayName : conv.name;
         } else {
             label = "#" + conv.name;
         }
@@ -191,7 +186,8 @@ void ConvSelectorWidget::rebuildList(const QString &filter) {
 }
 
 void ConvSelectorWidget::selectRow(int row) {
-    if (row < 0 || row >= (int)_listIds.size()) return;
+    if (row < 0 || row >= (int)_listIds.size())
+        return;
     _selectedId   = _listIds[row];
     _selectedName = _dropList->item(row)->text();
     closeDropdown();
@@ -223,10 +219,10 @@ void ConvSelectorWidget::showSearch() {
 
 bool ConvSelectorWidget::eventFilter(QObject *, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress && _dropdown && _dropdown->isVisible()) {
-        const auto *me = static_cast<const QMouseEvent *>(event);
+        const auto  *me   = static_cast<const QMouseEvent *>(event);
         const QPoint gpos = me->globalPosition().toPoint();
-        if (!_dropdown->geometry().contains(gpos) && !_inputFrame->geometry().contains(
-                _inputFrame->mapFromGlobal(gpos))) {
+        if (!_dropdown->geometry().contains(gpos) &&
+            !_inputFrame->geometry().contains(_inputFrame->mapFromGlobal(gpos))) {
             closeDropdown();
         }
     }

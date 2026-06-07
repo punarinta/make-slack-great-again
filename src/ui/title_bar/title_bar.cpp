@@ -18,9 +18,7 @@
 
 static constexpr QSize kBtnIconSize{12, 12};
 
-TitleBar::TitleBar(QWidget *parent)
-    : QWidget(parent)
-{
+TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(22);
     setObjectName("titleBar");
     setAttribute(Qt::WA_StyledBackground);
@@ -67,13 +65,12 @@ TitleBar::TitleBar(QWidget *parent)
     layout->addWidget(_closeBtn);
 }
 
-void TitleBar::setTitle(const QString &) {
-}
+void TitleBar::setTitle(const QString &) {}
 
 void TitleBar::updateMaxButton() {
-    if (!_maxBtn || !window()) return;
-    const QString svg = window()->isMaximized()
-        ? ":/ui/wc-restore.svg" : ":/ui/wc-maximize.svg";
+    if (!_maxBtn || !window())
+        return;
+    const QString svg = window()->isMaximized() ? ":/ui/wc-restore.svg" : ":/ui/wc-maximize.svg";
     _maxBtn->setIcon(svgIcon(svg, kBtnIconSize, QColor("#505050")));
 }
 
@@ -85,7 +82,7 @@ void TitleBar::mousePressEvent(QMouseEvent *e) {
                 h->startSystemMove();
             }
         } else {
-            _dragging = true;
+            _dragging   = true;
             _dragOffset = e->globalPosition().toPoint() - window()->pos();
         }
         e->accept();
@@ -105,7 +102,7 @@ void TitleBar::mouseMoveEvent(QMouseEvent *e) {
 
 void TitleBar::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton && (_dragging || _systemMovePending)) {
-        _dragging = false;
+        _dragging          = false;
         _systemMovePending = false;
         QTimer::singleShot(0, this, [this]() { refreshHoverState(); });
         e->accept();
@@ -130,16 +127,16 @@ void TitleBar::mouseReleaseEvent(QMouseEvent *e) {
 // macOS / Windows: QCursor::setPos() works, same as X11.
 void TitleBar::refreshHoverState() {
     if (QGuiApplication::platformName() == "wayland") {
-        const QPoint gp  = QCursor::pos();
-        const QPoint lp  = window()->mapFromGlobal(gp);
-        QWidget *w = window()->childAt(lp);
-        if (!w) return;
+        const QPoint gp = QCursor::pos();
+        const QPoint lp = window()->mapFromGlobal(gp);
+        QWidget     *w  = window()->childAt(lp);
+        if (!w)
+            return;
         const QPointF clp = w->mapFromGlobal(gp).toPointF();
         const QPointF fgp = gp.toPointF();
-        QEnterEvent enter(clp, lp.toPointF(), fgp);
+        QEnterEvent   enter(clp, lp.toPointF(), fgp);
         QApplication::sendEvent(w, &enter);
-        QMouseEvent move(QEvent::MouseMove, clp, fgp,
-                         Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QMouseEvent move(QEvent::MouseMove, clp, fgp, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
         QApplication::sendEvent(w, &move);
     } else {
         const QPoint p = QCursor::pos();
@@ -181,8 +178,8 @@ bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
 }
 
 void TitleBar::togglePin() {
-    _pinned = !_pinned;
-    auto *w = window();
+    _pinned               = !_pinned;
+    auto           *w     = window();
     Qt::WindowFlags flags = w->windowFlags();
     if (_pinned)
         flags |= Qt::WindowStaysOnTopHint;
@@ -194,7 +191,8 @@ void TitleBar::togglePin() {
 }
 
 void TitleBar::updatePinButton() {
-    if (!_pinBtn) return;
+    if (!_pinBtn)
+        return;
     if (_pinned) {
         _pinBtn->setIcon(svgIcon(":/ui/pin.svg", kBtnIconSize, QColor("#C0392B")));
         _pinBtn->setObjectName("titleBarPinActive");

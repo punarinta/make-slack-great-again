@@ -14,14 +14,10 @@
 #include <algorithm>
 
 SocketModeRealtime::SocketModeRealtime(
-    QString xappToken,
-    rpl::event_stream<Event> *events,
-    QObject *parent)
-    : QObject(parent)
-    , _xappToken(std::move(xappToken))
-    , _events(events)
-    , _nam(new QNetworkAccessManager(this))
-{}
+    QString xappToken, rpl::event_stream<Event> *events, QObject *parent
+)
+    : QObject(parent), _xappToken(std::move(xappToken)), _events(events),
+      _nam(new QNetworkAccessManager(this)) {}
 
 SocketModeRealtime::~SocketModeRealtime() {
     stop();
@@ -45,13 +41,13 @@ void SocketModeRealtime::stop() {
 void SocketModeRealtime::openAndConnect() {
     QNetworkRequest req(QUrl("https://slack.com/api/apps.connections.open"));
     req.setRawHeader("Authorization", ("Bearer " + _xappToken).toUtf8());
-    req.setHeader(QNetworkRequest::ContentTypeHeader,
-                  "application/x-www-form-urlencoded");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
     auto *reply = _nam->post(req, QByteArray{});
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         reply->deleteLater();
-        if (_stopped) return;
+        if (_stopped)
+            return;
 
         const auto obj = QJsonDocument::fromJson(reply->readAll()).object();
         if (!obj.value("ok").toBool()) {
@@ -71,16 +67,17 @@ void SocketModeRealtime::connectWs(const QUrl &url) {
         _ws->deleteLater();
     }
     _ws = new QWebSocket(QString{}, QWebSocketProtocol::VersionLatest, this);
-    connect(_ws, &QWebSocket::connected,            this, &SocketModeRealtime::onConnected);
-    connect(_ws, &QWebSocket::disconnected,         this, &SocketModeRealtime::onDisconnected);
-    connect(_ws, &QWebSocket::textMessageReceived,  this, &SocketModeRealtime::onTextMessage);
+    connect(_ws, &QWebSocket::connected, this, &SocketModeRealtime::onConnected);
+    connect(_ws, &QWebSocket::disconnected, this, &SocketModeRealtime::onDisconnected);
+    connect(_ws, &QWebSocket::textMessageReceived, this, &SocketModeRealtime::onTextMessage);
     _ws->open(url);
 }
 
 void SocketModeRealtime::scheduleReconnect() {
     qDebug() << "Socket Mode: reconnecting in" << _reconnectMs << "ms";
     QTimer::singleShot(_reconnectMs, this, [this] {
-        if (!_stopped) openAndConnect();
+        if (!_stopped)
+            openAndConnect();
     });
     _reconnectMs = std::min(_reconnectMs * 2, 30000);
 }
@@ -96,11 +93,10 @@ void SocketModeRealtime::sendPresenceSub() {
     if (!_ws || _ws->state() != QAbstractSocket::ConnectedState || _presenceIds.isEmpty())
         return;
     QJsonArray ids;
-    for (const auto &id : _presenceIds) ids.append(id);
-    _ws->sendTextMessage(QJsonDocument(QJsonObject{
-        {"type", "presence_sub"},
-        {"ids",  ids}
-    }).toJson(QJsonDocument::Compact));
+    for (const auto &id : _presenceIds)
+        ids.append(id);
+    _ws->sendTextMessage(QJsonDocument(QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
+    ).toJson(QJsonDocument::Compact));
 }
 
 void SocketModeRealtime::onConnected() {
@@ -110,7 +106,8 @@ void SocketModeRealtime::onConnected() {
 
 void SocketModeRealtime::onDisconnected() {
     qDebug() << "Socket Mode: disconnected";
-    if (!_stopped) scheduleReconnect();
+    if (!_stopped)
+        scheduleReconnect();
 }
 
 void SocketModeRealtime::onTextMessage(const QString &text) {
@@ -155,8 +152,7 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
     if (type == "message") {
         if (subtype == "message_deleted") {
             return EvMessageDeleted{
-                ConversationId{ev.value("channel").toString()},
-                ev.value("deleted_ts").toString()
+                ConversationId{ev.value("channel").toString()}, ev.value("deleted_ts").toString()
             };
         }
         if (subtype == "message_changed" || subtype == "message_replied") {
@@ -167,8 +163,7 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
         }
         // Plain message or bot_message
         return EvMessageNew{
-            ConversationId{ev.value("channel").toString()},
-            JsonMappers::toMessage(ev)
+            ConversationId{ev.value("channel").toString()}, JsonMappers::toMessage(ev)
         };
     }
 
@@ -193,8 +188,8 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
     }
 
     // channel_marked, group_marked, im_marked, mpim_marked all have the same shape
-    if (type == "channel_marked" || type == "group_marked" ||
-        type == "im_marked"      || type == "mpim_marked") {
+    if (type == "channel_marked" || type == "group_marked" || type == "im_marked" ||
+        type == "mpim_marked") {
         return EvConvMarked{
             ConversationId{ev.value("channel").toString()},
             ev.value("ts").toString(),
@@ -205,15 +200,13 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
 
     if (type == "user_typing") {
         return EvTyping{
-            ConversationId{ev.value("channel").toString()},
-            UserId{ev.value("user").toString()}
+            ConversationId{ev.value("channel").toString()}, UserId{ev.value("user").toString()}
         };
     }
 
     if (type == "presence_change") {
         return EvPresenceChanged{
-            UserId{ev.value("user").toString()},
-            ev.value("presence").toString() == "active"
+            UserId{ev.value("user").toString()}, ev.value("presence").toString() == "active"
         };
     }
 
@@ -225,15 +218,12 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
     }
 
     if (type == "channel_created") {
-        return EvChannelCreated{
-            JsonMappers::toConversation(ev.value("channel").toObject())
-        };
+        return EvChannelCreated{JsonMappers::toConversation(ev.value("channel").toObject())};
     }
 
     if (type == "member_joined_channel") {
         return EvMemberJoined{
-            ConversationId{ev.value("channel").toString()},
-            UserId{ev.value("user").toString()}
+            ConversationId{ev.value("channel").toString()}, UserId{ev.value("user").toString()}
         };
     }
 

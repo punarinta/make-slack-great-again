@@ -33,14 +33,13 @@ bool SingleInstance::init(const QString &urlArg) {
     _server = new QLocalServer(this);
     _server->setSocketOptions(QLocalServer::UserAccessOption);
     if (_server->listen(name))
-        connect(_server, &QLocalServer::newConnection,
-                this, &SingleInstance::onNewConnection);
+        connect(_server, &QLocalServer::newConnection, this, &SingleInstance::onNewConnection);
     // If listen() fails we still run; we just can't receive redirects from future instances.
 
     if (!urlArg.isEmpty())
-        QMetaObject::invokeMethod(this, [this, urlArg] {
-            emit uriReceived(QUrl(urlArg));
-        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this, [this, urlArg] { emit uriReceived(QUrl(urlArg)); }, Qt::QueuedConnection
+        );
 
     return true;
 }
@@ -49,7 +48,7 @@ void SingleInstance::onNewConnection() {
     while (_server->hasPendingConnections()) {
         auto *sock = _server->nextPendingConnection();
         connect(sock, &QLocalSocket::readyRead, this, [this, sock] {
-            QString url;
+            QString     url;
             QDataStream ds(sock);
             ds >> url;
             sock->deleteLater();

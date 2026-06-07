@@ -43,43 +43,43 @@ protected:
 private:
     enum class Dir { None, N, NE, E, SE, S, SW, W, NW };
 
-    void buildPanel();
-    void saveNotifications();
-    void loadNotifications();
-    void saveAppearance();
-    void loadAppearance();
-    void refreshCacheSize();
-    void clearCache();
-    void clearState();
-    void refreshLastChecked();
-    void refreshUpdateStatus();
-    void updatePanelGeometry();
-    Dir  edgeAt(const QPoint &pos) const;
+    void                   buildPanel();
+    void                   saveNotifications();
+    void                   loadNotifications();
+    void                   saveAppearance();
+    void                   loadAppearance();
+    void                   refreshCacheSize();
+    void                   clearCache();
+    void                   clearState();
+    void                   refreshLastChecked();
+    void                   refreshUpdateStatus();
+    void                   updatePanelGeometry();
+    Dir                    edgeAt(const QPoint &pos) const;
     static Qt::CursorShape cursorFor(Dir d);
 
-    QFrame         *_panel   = nullptr;
-    QListWidget    *_tabs    = nullptr;
-    QStackedWidget *_stack   = nullptr;
+    QFrame         *_panel = nullptr;
+    QListWidget    *_tabs  = nullptr;
+    QStackedWidget *_stack = nullptr;
 
     // Notification controls
-    QCheckBox      *_notifEnabled  = nullptr;
-    QRadioButton   *_notifAll      = nullptr;
-    QRadioButton   *_notifMentions = nullptr;
-    QCheckBox      *_notifSound    = nullptr;
+    QCheckBox    *_notifEnabled  = nullptr;
+    QRadioButton *_notifAll      = nullptr;
+    QRadioButton *_notifMentions = nullptr;
+    QCheckBox    *_notifSound    = nullptr;
 
     // Appearance controls
-    QSpinBox       *_relevantDays  = nullptr;
+    QSpinBox *_relevantDays = nullptr;
 
     // Storage controls
-    QLabel         *_cacheSize     = nullptr;
+    QLabel *_cacheSize = nullptr;
 
     // System / update controls
-    UpdateChecker  *_updateChecker  = nullptr;
-    QLabel         *_updateStatus   = nullptr;
-    QLabel         *_lastChecked    = nullptr;
-    QPushButton    *_checkBtn       = nullptr;
+    UpdateChecker *_updateChecker = nullptr;
+    QLabel        *_updateStatus  = nullptr;
+    QLabel        *_lastChecked   = nullptr;
+    QPushButton   *_checkBtn      = nullptr;
 
-    Dir    _resizeDir  = Dir::None;
+    Dir    _resizeDir = Dir::None;
     QPoint _dragStart;
     QRect  _panelAtDrag;
 };

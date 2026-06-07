@@ -27,9 +27,9 @@ private:
     void runSearch(const QString &query);
     void populateResults(const std::vector<SearchResult> &results);
 
-    Session       *_session    = nullptr;
-    QLineEdit     *_queryEdit  = nullptr;
-    QListWidget   *_resultList = nullptr;
+    Session     *_session    = nullptr;
+    QLineEdit   *_queryEdit  = nullptr;
+    QListWidget *_resultList = nullptr;
 
     std::vector<SearchResult> _results;
 };

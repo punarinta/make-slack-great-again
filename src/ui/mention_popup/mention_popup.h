@@ -35,11 +35,11 @@ private:
     void selectRow(int idx);
     void confirm();
 
-    QScrollArea    *_scroll  = nullptr;
-    QWidget        *_content = nullptr;
-    QVBoxLayout    *_vbox    = nullptr;
-    Session        *_session = nullptr;
-    QList<QWidget*> _rows;
-    QList<QString>  _inserts;
-    int             _sel = 0;
+    QScrollArea     *_scroll  = nullptr;
+    QWidget         *_content = nullptr;
+    QVBoxLayout     *_vbox    = nullptr;
+    Session         *_session = nullptr;
+    QList<QWidget *> _rows;
+    QList<QString>   _inserts;
+    int              _sel = 0;
 };

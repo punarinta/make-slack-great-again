@@ -12,7 +12,7 @@ class Session;
 class DeleteMessageDialog : public AppDialog {
     Q_OBJECT
 public:
-    explicit DeleteMessageDialog(const Message &msg,
-                                 Session *session = nullptr,
-                                 QWidget *parent  = nullptr);
+    explicit DeleteMessageDialog(
+        const Message &msg, Session *session = nullptr, QWidget *parent = nullptr
+    );
 };

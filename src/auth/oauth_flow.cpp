@@ -18,21 +18,34 @@ OAuthFlow::OAuthFlow(const TokenStore::AppConfig &app, QObject *parent)
 
 QStringList OAuthFlow::userScopes() {
     return {
-        "channels:history", "groups:history", "im:history", "mpim:history",
-        "channels:read",    "groups:read",    "im:read",    "mpim:read",
-        "users:read",       "team:read",      "emoji:read", "reactions:read",
-        "files:read",       "users.profile:read", "search:read",
-        "chat:write",       "reactions:write",    "files:write",
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+        "channels:read",
+        "groups:read",
+        "im:read",
+        "mpim:read",
+        "users:read",
+        "team:read",
+        "emoji:read",
+        "reactions:read",
+        "files:read",
+        "users.profile:read",
+        "search:read",
+        "chat:write",
+        "reactions:write",
+        "files:write",
     };
 }
 
 void OAuthFlow::start() {
     // PKCE: 32 random bytes → base64url (43 chars, within RFC 7636's 43–128 range)
     QByteArray verifierBytes(32, '\0');
-    QRandomGenerator::global()->fillRange(
-        reinterpret_cast<quint32 *>(verifierBytes.data()), 8);
+    QRandomGenerator::global()->fillRange(reinterpret_cast<quint32 *>(verifierBytes.data()), 8);
     _codeVerifier = QString::fromLatin1(
-        verifierBytes.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+        verifierBytes.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)
+    );
 
     const QByteArray challenge =
         QCryptographicHash::hash(_codeVerifier.toLatin1(), QCryptographicHash::Sha256)
@@ -40,13 +53,13 @@ void OAuthFlow::start() {
 
     _state = QString::number(QRandomGenerator::global()->generate64(), 16);
 
-    QUrl url("https://slack.com/oauth/v2/authorize");
+    QUrl      url("https://slack.com/oauth/v2/authorize");
     QUrlQuery q;
-    q.addQueryItem("client_id",             _app.clientId);
-    q.addQueryItem("user_scope",            userScopes().join(','));
-    q.addQueryItem("redirect_uri",          kOAuthRedirectUri);
-    q.addQueryItem("state",                 _state);
-    q.addQueryItem("code_challenge",        QString::fromLatin1(challenge));
+    q.addQueryItem("client_id", _app.clientId);
+    q.addQueryItem("user_scope", userScopes().join(','));
+    q.addQueryItem("redirect_uri", kOAuthRedirectUri);
+    q.addQueryItem("state", _state);
+    q.addQueryItem("code_challenge", QString::fromLatin1(challenge));
     q.addQueryItem("code_challenge_method", "S256");
     url.setQuery(q);
 
@@ -72,16 +85,15 @@ void OAuthFlow::handleUri(const QUrl &uri) {
 
 void OAuthFlow::exchangeCode(const QString &code) {
     QUrlQuery params;
-    params.addQueryItem("client_id",     _app.clientId);
+    params.addQueryItem("client_id", _app.clientId);
     params.addQueryItem("client_secret", _app.clientSecret);
-    params.addQueryItem("code",          code);
-    params.addQueryItem("redirect_uri",  kOAuthRedirectUri);
+    params.addQueryItem("code", code);
+    params.addQueryItem("redirect_uri", kOAuthRedirectUri);
     params.addQueryItem("code_verifier", _codeVerifier); // PKCE
 
-    auto *nam = new QNetworkAccessManager(this);
+    auto           *nam = new QNetworkAccessManager(this);
     QNetworkRequest req(QUrl("https://slack.com/api/oauth.v2.access"));
-    req.setHeader(QNetworkRequest::ContentTypeHeader,
-                  "application/x-www-form-urlencoded");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
     auto *reply = nam->post(req, params.toString(QUrl::FullyEncoded).toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply, nam] {
@@ -102,31 +114,32 @@ void OAuthFlow::exchangeCode(const QString &code) {
             user.value("access_token").toString(),
             user.value("refresh_token").toString(), // non-empty when token rotation enabled
             team.value("id").toString(),
-            team.value("name").toString());
+            team.value("name").toString()
+        );
     });
 }
 
-void OAuthFlow::fetchTeamInfo(const QString &xoxp,
-                               const QString &refreshToken,
-                               const QString &teamId,
-                               const QString &teamName)
-{
-    auto *nam = new QNetworkAccessManager(this);
+void OAuthFlow::fetchTeamInfo(
+    const QString &xoxp, const QString &refreshToken, const QString &teamId, const QString &teamName
+) {
+    auto           *nam = new QNetworkAccessManager(this);
     QNetworkRequest req(QUrl("https://slack.com/api/team.info"));
-    req.setRawHeader("Authorization",
-                     QStringLiteral("Bearer %1").arg(xoxp).toUtf8());
+    req.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(xoxp).toUtf8());
     auto *reply = nam->get(req);
-    connect(reply, &QNetworkReply::finished,
-            this, [this, reply, nam, xoxp, refreshToken, teamId, teamName] {
-        reply->deleteLater();
-        nam->deleteLater();
-        QString iconUrl;
-        if (reply->error() == QNetworkReply::NoError) {
-            auto root = QJsonDocument::fromJson(reply->readAll()).object();
-            auto icon = root.value("team").toObject()
-                            .value("icon").toObject();
-            iconUrl = icon.value("image_88").toString();
+    connect(
+        reply,
+        &QNetworkReply::finished,
+        this,
+        [this, reply, nam, xoxp, refreshToken, teamId, teamName] {
+            reply->deleteLater();
+            nam->deleteLater();
+            QString iconUrl;
+            if (reply->error() == QNetworkReply::NoError) {
+                auto root = QJsonDocument::fromJson(reply->readAll()).object();
+                auto icon = root.value("team").toObject().value("icon").toObject();
+                iconUrl   = icon.value("image_88").toString();
+            }
+            emit done(TokenStore::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken});
         }
-        emit done(TokenStore::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken});
-    });
+    );
 }

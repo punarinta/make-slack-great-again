@@ -15,15 +15,13 @@
 #include <QNetworkRequest>
 #include <QDebug>
 
-PublicBackend::PublicBackend(const TokenStore::Credentials &creds,
-                              const TokenStore::AppConfig   &appCfg,
-                              const QString                 &xappToken)
-    : _xappToken(xappToken)
-    , _teamId(creds.teamId)
-    , _refreshToken(creds.refreshToken)
-    , _api(new WebApiClient(nullptr))
-    , _historyApi(new WebApiClient(nullptr))
-{
+PublicBackend::PublicBackend(
+    const TokenStore::Credentials &creds,
+    const TokenStore::AppConfig   &appCfg,
+    const QString                 &xappToken
+)
+    : _xappToken(xappToken), _teamId(creds.teamId), _refreshToken(creds.refreshToken),
+      _api(new WebApiClient(nullptr)), _historyApi(new WebApiClient(nullptr)) {
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
     // Pre-warm TLS so the first API calls skip the handshake latency.
@@ -35,21 +33,26 @@ PublicBackend::PublicBackend(const TokenStore::Credentials &creds,
     setupTokenRefresh(creds, appCfg);
 }
 
-void PublicBackend::setupTokenRefresh(const TokenStore::Credentials &creds,
-                                       const TokenStore::AppConfig   &appCfg) {
+void PublicBackend::setupTokenRefresh(
+    const TokenStore::Credentials &creds, const TokenStore::AppConfig &appCfg
+) {
     // Shared handler: both clients call this; deduplication ensures only one
     // in-flight refresh request even if both fire simultaneously.
     auto handler = [this, appCfg](std::function<void(bool)> done) {
-        qDebug() << "[TokenRefresh] token_expired received; refreshInProgress=" << _refreshInProgress
-                 << "refreshToken present=" << !_refreshToken.isEmpty();
+        qDebug() << "[TokenRefresh] token_expired received; refreshInProgress="
+                 << _refreshInProgress << "refreshToken present=" << !_refreshToken.isEmpty();
         _refreshWaiters.push_back(std::move(done));
-        if (_refreshInProgress) { qDebug() << "[TokenRefresh] refresh already in flight, queuing"; return; }
+        if (_refreshInProgress) {
+            qDebug() << "[TokenRefresh] refresh already in flight, queuing";
+            return;
+        }
         _refreshInProgress = true;
         doRefresh(appCfg, [this](bool success) {
             qDebug() << "[TokenRefresh] doRefresh completed, success=" << success;
             _refreshInProgress = false;
-            auto waiters = std::move(_refreshWaiters);
-            for (auto &w : waiters) w(success);
+            auto waiters       = std::move(_refreshWaiters);
+            for (auto &w : waiters)
+                w(success);
             if (!success)
                 _authState.force_assign(AuthState::NotLoggedIn);
         });
@@ -59,8 +62,7 @@ void PublicBackend::setupTokenRefresh(const TokenStore::Credentials &creds,
     Q_UNUSED(creds)
 }
 
-void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg,
-                               std::function<void(bool)>    done) {
+void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg, std::function<void(bool)> done) {
     if (_refreshToken.isEmpty()) {
         qDebug() << "[TokenRefresh] no refresh token stored — forcing logout";
         done(false);
@@ -72,10 +74,10 @@ void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg,
     QNetworkRequest req(QUrl(QStringLiteral("https://slack.com/api/oauth.v2.exchange")));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     QUrlQuery body;
-    body.addQueryItem("grant_type",     "refresh_token");
-    body.addQueryItem("client_id",      appCfg.clientId);
-    body.addQueryItem("client_secret",  appCfg.clientSecret);
-    body.addQueryItem("refresh_token",  _refreshToken);
+    body.addQueryItem("grant_type", "refresh_token");
+    body.addQueryItem("client_id", appCfg.clientId);
+    body.addQueryItem("client_secret", appCfg.clientSecret);
+    body.addQueryItem("refresh_token", _refreshToken);
     auto *reply = nam->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
 
     QObject::connect(reply, &QNetworkReply::finished, _api, [this, reply, nam, done]() mutable {
@@ -87,7 +89,7 @@ void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg,
             return;
         }
         const auto raw = reply->readAll();
-        auto obj = QJsonDocument::fromJson(raw).object();
+        auto       obj = QJsonDocument::fromJson(raw).object();
         qDebug() << "[TokenRefresh] exchange response:" << raw;
         if (!obj.value("ok").toBool()) {
             qWarning() << "[TokenRefresh] Slack error:" << obj.value("error").toString();
@@ -96,8 +98,8 @@ void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg,
         }
         const QString newToken   = obj.value("access_token").toString();
         const QString newRefresh = obj.value("refresh_token").toString();
-        qDebug() << "[TokenRefresh] new access_token prefix:"
-                 << newToken.left(20) << "... refresh_token present=" << !newRefresh.isEmpty();
+        qDebug() << "[TokenRefresh] new access_token prefix:" << newToken.left(20)
+                 << "... refresh_token present=" << !newRefresh.isEmpty();
         if (newToken.isEmpty()) {
             qWarning() << "[TokenRefresh] empty access_token in successful response";
             done(false);
@@ -110,7 +112,7 @@ void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg,
         _refreshToken = newRefresh.isEmpty() ? _refreshToken : newRefresh;
 
         // Persist the new credentials
-        auto saved = TokenStore::loadWorkspace(_teamId);
+        auto saved         = TokenStore::loadWorkspace(_teamId);
         saved.xoxp         = newToken;
         saved.refreshToken = _refreshToken;
         TokenStore::saveWorkspace(saved);
@@ -135,7 +137,8 @@ Capabilities PublicBackend::capabilities() const {
 }
 
 void PublicBackend::connectRealtime() {
-    if (_xappToken.isEmpty() || _realtime) return;
+    if (_xappToken.isEmpty() || _realtime)
+        return;
     _realtime = new SocketModeRealtime(_xappToken, &_events);
     _realtime->start();
 }
@@ -152,7 +155,9 @@ void PublicBackend::disconnectRealtime() {
 
 rpl::producer<UserId> PublicBackend::loadMe() {
     return [this](auto consumer) mutable {
-        _api->call("auth.test", QUrlQuery{},
+        _api->call(
+            "auth.test",
+            QUrlQuery{},
             [consumer](QJsonObject resp) mutable {
                 consumer.put_next(UserId{resp.value("user_id").toString()});
                 consumer.put_done();
@@ -166,16 +171,18 @@ rpl::producer<UserId> PublicBackend::loadMe() {
     };
 }
 
-
 rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
     return [this](auto consumer) mutable {
-        auto accum = std::make_shared<std::vector<Conversation>>();
+        auto      accum = std::make_shared<std::vector<Conversation>>();
         QUrlQuery params;
         params.addQueryItem("types", "public_channel,private_channel,im,mpim");
         params.addQueryItem("exclude_archived", "true");
         params.addQueryItem("include_all_metadata", "true");
 
-        _api->paginate("users.conversations", "channels", params,
+        _api->paginate(
+            "users.conversations",
+            "channels",
+            params,
             [accum](QJsonArray page) {
                 auto batch = JsonMappers::toConversations(page);
                 accum->insert(accum->end(), batch.begin(), batch.end());
@@ -196,7 +203,10 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
 rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
     return [this](auto consumer) mutable {
         auto accum = std::make_shared<std::vector<User>>();
-        _api->paginate("users.list", "members", QUrlQuery{},
+        _api->paginate(
+            "users.list",
+            "members",
+            QUrlQuery{},
             [accum](QJsonArray page) {
                 auto batch = JsonMappers::toUsers(page);
                 accum->insert(accum->end(), batch.begin(), batch.end());
@@ -218,7 +228,9 @@ rpl::producer<bool> PublicBackend::loadPresence(UserId userId) {
     return [this, userId](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("user", userId.value);
-        _api->call("users.getPresence", params,
+        _api->call(
+            "users.getPresence",
+            params,
             [consumer](QJsonObject resp) mutable {
                 bool active = resp.value("presence").toString() == "active";
                 consumer.put_next(std::move(active));
@@ -237,18 +249,22 @@ rpl::producer<User> PublicBackend::loadBotInfo(UserId botId) {
     return [this, botId](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("bot", botId.value);
-        _api->call("bots.info", params,
+        _api->call(
+            "bots.info",
+            params,
             [consumer](QJsonObject resp) mutable {
                 const auto bot   = resp.value("bot").toObject();
                 const auto icons = bot.value("icons").toObject();
-                User u;
+                User       u;
                 u.id          = UserId{bot.value("id").toString()};
                 u.name        = bot.value("name").toString();
                 u.displayName = bot.value("name").toString();
-                u.avatarUrl   = icons.value("image_72").toString(
-                                icons.value("image_48").toString(
-                                icons.value("image_36").toString()));
-                u.isBot       = true;
+                u.avatarUrl =
+                    icons.value("image_72")
+                        .toString(
+                            icons.value("image_48").toString(icons.value("image_36").toString())
+                        );
+                u.isBot = true;
                 consumer.put_next(std::move(u));
                 consumer.put_done();
             },
@@ -261,22 +277,25 @@ rpl::producer<User> PublicBackend::loadBotInfo(UserId botId) {
     };
 }
 
-rpl::producer<MessagePage> PublicBackend::loadHistory(
-    ConversationId conv, std::optional<QString> cursor)
-{
+rpl::producer<MessagePage>
+PublicBackend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
     return [this, conv, cursor](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("channel", conv.value);
         params.addQueryItem("limit", "50");
-        if (cursor) params.addQueryItem("cursor", *cursor);
+        if (cursor)
+            params.addQueryItem("cursor", *cursor);
 
-        _historyApi->call("conversations.history", params,
+        _historyApi->call(
+            "conversations.history",
+            params,
             [consumer](QJsonObject resp) mutable {
                 MessagePage page;
                 page.messages = JsonMappers::toMessages(resp.value("messages").toArray());
-                auto meta = resp.value("response_metadata").toObject();
-                auto next = meta.value("next_cursor").toString();
-                if (!next.isEmpty()) page.olderCursor = next;
+                auto meta     = resp.value("response_metadata").toObject();
+                auto next     = meta.value("next_cursor").toString();
+                if (!next.isEmpty())
+                    page.olderCursor = next;
                 consumer.put_next(std::move(page));
                 consumer.put_done();
             },
@@ -289,24 +308,27 @@ rpl::producer<MessagePage> PublicBackend::loadHistory(
     };
 }
 
-rpl::producer<MessagePage> PublicBackend::loadThread(
-    ConversationId conv, Ts root, std::optional<QString> cursor)
-{
+rpl::producer<MessagePage>
+PublicBackend::loadThread(ConversationId conv, Ts root, std::optional<QString> cursor) {
     return [this, conv, root, cursor](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("channel", conv.value);
-        params.addQueryItem("ts",      root);
-        params.addQueryItem("limit",   "50");
-        if (cursor) params.addQueryItem("cursor", *cursor);
+        params.addQueryItem("ts", root);
+        params.addQueryItem("limit", "50");
+        if (cursor)
+            params.addQueryItem("cursor", *cursor);
 
-        _historyApi->call("conversations.replies", params,
+        _historyApi->call(
+            "conversations.replies",
+            params,
             [consumer](QJsonObject resp) mutable {
                 MessagePage page;
                 // conversations.replies returns oldest-first; no reversal needed.
                 page.messages = JsonMappers::toMessages(resp.value("messages").toArray(), false);
-                auto meta = resp.value("response_metadata").toObject();
-                auto next = meta.value("next_cursor").toString();
-                if (!next.isEmpty()) page.olderCursor = next;
+                auto meta     = resp.value("response_metadata").toObject();
+                auto next     = meta.value("next_cursor").toString();
+                if (!next.isEmpty())
+                    page.olderCursor = next;
                 consumer.put_next(std::move(page));
                 consumer.put_done();
             },
@@ -324,10 +346,10 @@ rpl::producer<MessagePage> PublicBackend::loadThread(
 void PublicBackend::sendMessage(ConversationId conv, OutgoingMessage msg) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("text",    msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
+    params.addQueryItem("text", msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
     if (msg.threadRoot)
         params.addQueryItem("thread_ts", *msg.threadRoot);
-    _api->call("chat.postMessage", params, {}, [](QString e){
+    _api->call("chat.postMessage", params, {}, [](QString e) {
         qWarning() << "sendMessage error:" << e;
     });
 }
@@ -335,9 +357,9 @@ void PublicBackend::sendMessage(ConversationId conv, OutgoingMessage msg) {
 void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities text) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("ts",      ts);
-    params.addQueryItem("text",    text.text);
-    _api->call("chat.update", params, {}, [](QString e){
+    params.addQueryItem("ts", ts);
+    params.addQueryItem("text", text.text);
+    _api->call("chat.update", params, {}, [](QString e) {
         qWarning() << "editMessage error:" << e;
     });
 }
@@ -345,28 +367,28 @@ void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities tex
 void PublicBackend::deleteMessage(ConversationId conv, Ts ts) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("ts",      ts);
-    _api->call("chat.delete", params, {}, [](QString e){
+    params.addQueryItem("ts", ts);
+    _api->call("chat.delete", params, {}, [](QString e) {
         qWarning() << "deleteMessage error:" << e;
     });
 }
 
 void PublicBackend::addReaction(ConversationId conv, Ts ts, QString emoji) {
     QUrlQuery params;
-    params.addQueryItem("channel",   conv.value);
+    params.addQueryItem("channel", conv.value);
     params.addQueryItem("timestamp", ts);
-    params.addQueryItem("name",      emoji);
-    _api->call("reactions.add", params, {}, [](QString e){
+    params.addQueryItem("name", emoji);
+    _api->call("reactions.add", params, {}, [](QString e) {
         qWarning() << "addReaction error:" << e;
     });
 }
 
 void PublicBackend::removeReaction(ConversationId conv, Ts ts, QString emoji) {
     QUrlQuery params;
-    params.addQueryItem("channel",   conv.value);
+    params.addQueryItem("channel", conv.value);
     params.addQueryItem("timestamp", ts);
-    params.addQueryItem("name",      emoji);
-    _api->call("reactions.remove", params, {}, [](QString e){
+    params.addQueryItem("name", emoji);
+    _api->call("reactions.remove", params, {}, [](QString e) {
         qWarning() << "removeReaction error:" << e;
     });
 }
@@ -374,8 +396,8 @@ void PublicBackend::removeReaction(ConversationId conv, Ts ts, QString emoji) {
 void PublicBackend::markRead(ConversationId conv, Ts ts) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("ts",      ts);
-    _api->call("conversations.mark", params, {}, [](QString e){
+    params.addQueryItem("ts", ts);
+    _api->call("conversations.mark", params, {}, [](QString e) {
         qWarning() << "markRead error:" << e;
     });
 }
@@ -387,38 +409,38 @@ void PublicBackend::sendTyping(ConversationId) {
 void PublicBackend::scheduleMessage(ConversationId conv, OutgoingMessage msg, qint64 postAt) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
-    params.addQueryItem("text",    msg.text.text);
+    params.addQueryItem("text", msg.text.text);
     params.addQueryItem("post_at", QString::number(postAt));
     if (msg.threadRoot)
         params.addQueryItem("thread_ts", *msg.threadRoot);
-    _api->call("chat.scheduleMessage", params, {}, [](QString e){
+    _api->call("chat.scheduleMessage", params, {}, [](QString e) {
         qWarning() << "scheduleMessage error:" << e;
     });
 }
 
 void PublicBackend::pinMessage(ConversationId conv, Ts ts) {
     QUrlQuery params;
-    params.addQueryItem("channel",   conv.value);
+    params.addQueryItem("channel", conv.value);
     params.addQueryItem("timestamp", ts);
-    _api->call("pins.add", params, {}, [](QString e){
-        qWarning() << "pinMessage error:" << e;
-    });
+    _api->call("pins.add", params, {}, [](QString e) { qWarning() << "pinMessage error:" << e; });
 }
 
 void PublicBackend::unpinMessage(ConversationId conv, Ts ts) {
     QUrlQuery params;
-    params.addQueryItem("channel",   conv.value);
+    params.addQueryItem("channel", conv.value);
     params.addQueryItem("timestamp", ts);
-    _api->call("pins.remove", params, {}, [](QString e){
+    _api->call("pins.remove", params, {}, [](QString e) {
         qWarning() << "unpinMessage error:" << e;
     });
 }
 
 void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
-    if (!_realtime) return;
+    if (!_realtime)
+        return;
     QStringList ids;
     ids.reserve(static_cast<qsizetype>(userIds.size()));
-    for (const auto &u : userIds) ids.append(u.value);
+    for (const auto &u : userIds)
+        ids.append(u.value);
     _realtime->subscribePresence(std::move(ids));
 }
 
@@ -434,7 +456,9 @@ rpl::producer<std::vector<SearchResult>> PublicBackend::searchMessages(const QSt
         params.addQueryItem("query", query);
         params.addQueryItem("count", "20");
 
-        _api->call("search.messages", params,
+        _api->call(
+            "search.messages",
+            params,
             [consumer](QJsonObject resp) mutable {
                 auto msgs = resp.value("messages").toObject().value("matches").toArray();
                 consumer.put_next(JsonMappers::toSearchResults(msgs));
@@ -449,12 +473,14 @@ rpl::producer<std::vector<SearchResult>> PublicBackend::searchMessages(const QSt
     };
 }
 
-rpl::producer<QHash<QString,QString>> PublicBackend::loadEmojiList() {
+rpl::producer<QHash<QString, QString>> PublicBackend::loadEmojiList() {
     return [this](auto consumer) mutable {
-        _api->call("emoji.list", QUrlQuery{},
+        _api->call(
+            "emoji.list",
+            QUrlQuery{},
             [consumer](QJsonObject resp) mutable {
-                QHash<QString,QString> map;
-                const auto emoji = resp.value("emoji").toObject();
+                QHash<QString, QString> map;
+                const auto              emoji = resp.value("emoji").toObject();
                 for (auto it = emoji.begin(); it != emoji.end(); ++it)
                     map.insert(it.key(), it.value().toString());
                 consumer.put_next(std::move(map));
@@ -482,28 +508,34 @@ void PublicBackend::uploadFile(ConversationId conv, const QString &filePath) {
     // Step 1: get upload URL
     QUrlQuery params;
     params.addQueryItem("filename", filename);
-    params.addQueryItem("length",   QString::number(length));
-    params.addQueryItem("channel",  conv.value);
+    params.addQueryItem("length", QString::number(length));
+    params.addQueryItem("channel", conv.value);
 
-    _api->call("files.getUploadURLExternal", params,
+    _api->call(
+        "files.getUploadURLExternal",
+        params,
         [this, conv, filename, data](QJsonObject resp) mutable {
             const QString uploadUrl = resp.value("upload_url").toString();
             const QString fileId    = resp.value("file_id").toString();
 
             // Step 2: PUT data to upload URL (S3 — no auth header)
-            _api->rawPut(QUrl(uploadUrl), data,
+            _api->rawPut(
+                QUrl(uploadUrl),
+                data,
                 [this, conv, filename, fileId]() mutable {
                     // Step 3: complete the upload
                     QJsonObject body;
                     body["channel_id"] = conv.value;
-                    QJsonArray filesArr;
+                    QJsonArray  filesArr;
                     QJsonObject fileEntry;
                     fileEntry["id"]    = fileId;
                     fileEntry["title"] = filename;
                     filesArr.append(fileEntry);
                     body["files"] = filesArr;
 
-                    _api->postJson("files.completeUploadExternal", body,
+                    _api->postJson(
+                        "files.completeUploadExternal",
+                        body,
                         [](QJsonObject) { /* success */ },
                         [](QString err) { qWarning() << "completeUploadExternal error:" << err; }
                     );
@@ -515,8 +547,8 @@ void PublicBackend::uploadFile(ConversationId conv, const QString &filePath) {
     );
 }
 
-void PublicBackend::downloadFile(const QString &url,
-                                  std::function<void(QByteArray)> onData,
-                                  std::function<void(QString)>    onError) {
+void PublicBackend::downloadFile(
+    const QString &url, std::function<void(QByteArray)> onData, std::function<void(QString)> onError
+) {
     _api->downloadUrl(QUrl(url), std::move(onData), std::move(onError));
 }

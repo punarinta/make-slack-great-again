@@ -45,8 +45,9 @@ public:
 
     // Edit mode: pre-populate the editor with an existing message for editing.
     // exitEditMode() is a no-op if not currently in edit mode.
-    void enterEditMode(const Ts &ts, const QString &existingText,
-                       const std::vector<File> &existingFiles = {});
+    void enterEditMode(
+        const Ts &ts, const QString &existingText, const std::vector<File> &existingFiles = {}
+    );
     void exitEditMode();
 
     // Draft support: read/write the editor's plain text directly.
@@ -54,9 +55,9 @@ public:
     void    setText(const QString &text);
 
     // Pending file list (files queued for upload when the message is sent).
-    const QStringList& pendingFiles() const { return _pendingFiles; }
-    void addPendingFile(const QString &filePath);
-    void clearPendingFiles();
+    const QStringList &pendingFiles() const { return _pendingFiles; }
+    void               addPendingFile(const QString &filePath);
+    void               clearPendingFiles();
 
 signals:
     void sendRequested(const QString &text);
@@ -99,18 +100,18 @@ private:
     QWidget           *_linkPopup    = nullptr; // LinkPopup instance, created lazily
     Ts                 _editingTs;              // non-empty when in edit mode
 
-    QStringList        _pendingFiles;   // local paths of files to upload on send
-    std::vector<File>  _editModeFiles;  // existing files shown read-only in edit mode
+    QStringList       _pendingFiles;  // local paths of files to upload on send
+    std::vector<File> _editModeFiles; // existing files shown read-only in edit mode
 
-    PopupTooltip                           *_tooltip      = nullptr;
-    EmojiPickerPopup                       *_emojiPicker  = nullptr;
-    MentionCompleter                       *_mentionComp  = nullptr;
-    MentionPopup                           *_mentionPopup = nullptr;
-    Session                                *_session      = nullptr;
-    ConvKind                                _convKind     = ConvKind::PublicChannel;
-    int                                     _atTriggerStart = -1;
-    QHash<QWidget*, QString>                _tooltipBtns;           // bottom-bar buttons
-    QList<QPair<QAbstractButton*, QString>> _iconBtns;              // bottom-bar icon buttons
+    PopupTooltip                            *_tooltip        = nullptr;
+    EmojiPickerPopup                        *_emojiPicker    = nullptr;
+    MentionCompleter                        *_mentionComp    = nullptr;
+    MentionPopup                            *_mentionPopup   = nullptr;
+    Session                                 *_session        = nullptr;
+    ConvKind                                 _convKind       = ConvKind::PublicChannel;
+    int                                      _atTriggerStart = -1;
+    QHash<QWidget *, QString>                _tooltipBtns; // bottom-bar buttons
+    QList<QPair<QAbstractButton *, QString>> _iconBtns;    // bottom-bar icon buttons
 
     // Typing indicator debounce: fires typingStarted() at most once per 3 s while typing
     QTimer _typingTimer;

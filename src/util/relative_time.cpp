@@ -29,7 +29,7 @@ QString relativeTime(qint64 unixSecs) {
 }
 
 QString relativeTime(const QString &slackTs) {
-    bool ok = false;
+    bool         ok   = false;
     const qint64 secs = static_cast<qint64>(slackTs.toDouble(&ok));
     return ok ? relativeTime(secs) : QString{};
 }

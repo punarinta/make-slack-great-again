@@ -23,7 +23,10 @@ public:
 
     // Show the completer anchored above anchorGlobalRect with the given suggestions.
     // Each item: display string, and the text to insert on confirmation.
-    struct Item { QString display; QString insert; };
+    struct Item {
+        QString display;
+        QString insert;
+    };
     void show(const QPoint &globalPos, const QList<Item> &items, Callback cb);
     void dismiss();
 
@@ -38,9 +41,9 @@ private:
     void selectRow(int row);
     void confirm();
 
-    QVBoxLayout    *_layout  = nullptr;
-    QList<Item>     _items;
-    int             _sel     = 0;
-    Callback        _cb;
-    QList<QWidget*> _rows;
+    QVBoxLayout     *_layout = nullptr;
+    QList<Item>      _items;
+    int              _sel = 0;
+    Callback         _cb;
+    QList<QWidget *> _rows;
 };

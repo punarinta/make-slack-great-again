@@ -10,12 +10,9 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 
-ThreadPanel::ThreadPanel(QWidget *parent)
-    : QWidget(parent)
-{
+ThreadPanel::ThreadPanel(QWidget *parent) : QWidget(parent) {
     setObjectName("threadPanel");
-    setStyleSheet(
-        "QWidget#threadPanel { border-left: 1px solid #E8E8E8; background: #FFFFFF; }");
+    setStyleSheet("QWidget#threadPanel { border-left: 1px solid #E8E8E8; background: #FFFFFF; }");
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -25,11 +22,10 @@ ThreadPanel::ThreadPanel(QWidget *parent)
     auto *header = new QWidget(this);
     header->setObjectName("threadHeader");
     header->setFixedHeight(48);
-    header->setStyleSheet(
-        "QWidget#threadHeader {"
-        "  background: #F5F5F5;"
-        "  border-bottom: 1px solid #E8E8E8;"
-        "}");
+    header->setStyleSheet("QWidget#threadHeader {"
+                          "  background: #F5F5F5;"
+                          "  border-bottom: 1px solid #E8E8E8;"
+                          "}");
     auto *headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(16, 0, 8, 0);
     headerLayout->setSpacing(8);
@@ -42,9 +38,8 @@ ThreadPanel::ThreadPanel(QWidget *parent)
     closeBtn->setFixedSize(32, 32);
     closeBtn->setFlat(true);
     closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setStyleSheet(
-        "QPushButton { font-size: 14px; border-radius: 4px; }"
-        "QPushButton:hover { background: #E8E8E8; }");
+    closeBtn->setStyleSheet("QPushButton { font-size: 14px; border-radius: 4px; }"
+                            "QPushButton:hover { background: #E8E8E8; }");
     connect(closeBtn, &QPushButton::clicked, this, &ThreadPanel::closeRequested);
     headerLayout->addWidget(closeBtn);
     layout->addWidget(header);
@@ -56,26 +51,29 @@ ThreadPanel::ThreadPanel(QWidget *parent)
     _composer->setEnabled(false);
     layout->addWidget(_composer);
 
-    connect(_composer, &ComposerWidget::sendRequested,
-            this, [this](const QString &text) {
+    connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
         if (_session && !_conv.value.isEmpty() && !_rootTs.isEmpty())
             _session->sendMessage(_conv, text, _rootTs);
     });
-    connect(_composer, &ComposerWidget::editRequested,
-            this, [this](const Ts &ts, const QString &newText) {
-        if (_session && !_conv.value.isEmpty())
-            _session->editMessage(_conv, ts, newText);
-    });
-    connect(_composer, &ComposerWidget::editLastRequested,
-            this, [this] {
-        if (!_session || !_msgList) return;
+    connect(
+        _composer,
+        &ComposerWidget::editRequested,
+        this,
+        [this](const Ts &ts, const QString &newText) {
+            if (_session && !_conv.value.isEmpty())
+                _session->editMessage(_conv, ts, newText);
+        }
+    );
+    connect(_composer, &ComposerWidget::editLastRequested, this, [this] {
+        if (!_session || !_msgList)
+            return;
         const auto msg = _msgList->lastOwnMessage(_session->meUserId());
-        if (!msg) return;
+        if (!msg)
+            return;
         const QString text = msg->rawText.isEmpty() ? msg->text.text : msg->rawText;
         _composer->enterEditMode(msg->ts, text, msg->files);
     });
-    connect(_composer, &ComposerWidget::typingStarted,
-            this, [this] {
+    connect(_composer, &ComposerWidget::typingStarted, this, [this] {
         if (_session && !_conv.value.isEmpty())
             _session->sendTyping(_conv);
     });

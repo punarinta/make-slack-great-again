@@ -17,7 +17,8 @@ static QJsonObject toJson(const TextEntity &e) {
     o["t"] = static_cast<int>(e.type);
     o["o"] = e.offset;
     o["l"] = e.length;
-    if (!e.data.isEmpty()) o["d"] = e.data;
+    if (!e.data.isEmpty())
+        o["d"] = e.data;
     return o;
 }
 static TextEntity entityFromJson(const QJsonObject &o) {
@@ -34,7 +35,8 @@ static QJsonObject toJson(const TextWithEntities &t) {
     o["x"] = t.text;
     if (!t.entities.empty()) {
         QJsonArray arr;
-        for (const auto &e : t.entities) arr.append(toJson(e));
+        for (const auto &e : t.entities)
+            arr.append(toJson(e));
         o["e"] = arr;
     }
     return o;
@@ -52,7 +54,8 @@ static QJsonObject toJson(const Reaction &r) {
     o["n"] = r.name;
     o["c"] = r.count;
     QJsonArray users;
-    for (const auto &u : r.users) users.append(u.value);
+    for (const auto &u : r.users)
+        users.append(u.value);
     o["u"] = users;
     return o;
 }
@@ -94,8 +97,10 @@ static QJsonObject toJson(const Block &b) {
     QJsonObject o;
     o["ty"] = b.typeStr;
     o["tx"] = toJson(b.text);
-    if (!b.imageUrl.isEmpty()) o["iu"] = b.imageUrl;
-    if (!b.altText.isEmpty())  o["at"] = b.altText;
+    if (!b.imageUrl.isEmpty())
+        o["iu"] = b.imageUrl;
+    if (!b.altText.isEmpty())
+        o["at"] = b.altText;
     return o;
 }
 static Block blockFromJson(const QJsonObject &o) {
@@ -121,7 +126,8 @@ static QJsonObject toJson(const Attachment &a) {
     o["fo"] = a.footer;
     if (!a.blocks.empty()) {
         QJsonArray arr;
-        for (const auto &b : a.blocks) arr.append(toJson(b));
+        for (const auto &b : a.blocks)
+            arr.append(toJson(b));
         o["bl"] = arr;
     }
     return o;
@@ -138,56 +144,71 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
     a.imageUrl   = o["iu"].toString();
     a.thumbUrl   = o["tu"].toString();
     a.footer     = o["fo"].toString();
-    for (const auto &v : o["bl"].toArray()) a.blocks.push_back(blockFromJson(v.toObject()));
+    for (const auto &v : o["bl"].toArray())
+        a.blocks.push_back(blockFromJson(v.toObject()));
     return a;
 }
 
 static QJsonObject toJson(const Message &m) {
     QJsonObject o;
     o["ts"] = m.ts;
-    if (m.threadRoot)  o["tr"] = *m.threadRoot;
+    if (m.threadRoot)
+        o["tr"] = *m.threadRoot;
     o["au"] = m.author.value;
-    if (!m.botName.isEmpty())      o["bn"] = m.botName;
-    if (!m.botAvatarUrl.isEmpty()) o["ba"] = m.botAvatarUrl;
+    if (!m.botName.isEmpty())
+        o["bn"] = m.botName;
+    if (!m.botAvatarUrl.isEmpty())
+        o["ba"] = m.botAvatarUrl;
     o["tx"] = toJson(m.text);
     o["ed"] = m.edited;
-    if (m.subtype)     o["st"] = *m.subtype;
+    if (m.subtype)
+        o["st"] = *m.subtype;
     if (!m.reactions.empty()) {
         QJsonArray arr;
-        for (const auto &r : m.reactions) arr.append(toJson(r));
+        for (const auto &r : m.reactions)
+            arr.append(toJson(r));
         o["re"] = arr;
     }
     if (!m.files.empty()) {
         QJsonArray arr;
-        for (const auto &f : m.files) arr.append(toJson(f));
+        for (const auto &f : m.files)
+            arr.append(toJson(f));
         o["fi"] = arr;
     }
     if (!m.blocks.empty()) {
         QJsonArray arr;
-        for (const auto &b : m.blocks) arr.append(toJson(b));
+        for (const auto &b : m.blocks)
+            arr.append(toJson(b));
         o["bl"] = arr;
     }
     if (!m.attachments.empty()) {
         QJsonArray arr;
-        for (const auto &a : m.attachments) arr.append(toJson(a));
+        for (const auto &a : m.attachments)
+            arr.append(toJson(a));
         o["at"] = arr;
     }
     return o;
 }
 static Message messageFromJson(const QJsonObject &o) {
     Message m;
-    m.ts           = o["ts"].toString();
-    if (o.contains("tr")) m.threadRoot = o["tr"].toString();
+    m.ts = o["ts"].toString();
+    if (o.contains("tr"))
+        m.threadRoot = o["tr"].toString();
     m.author       = UserId{o["au"].toString()};
     m.botName      = o["bn"].toString();
     m.botAvatarUrl = o["ba"].toString();
     m.text         = tweFromJson(o["tx"].toObject());
-    m.edited = o["ed"].toBool();
-    if (o.contains("st")) m.subtype = o["st"].toString();
-    for (const auto &v : o["re"].toArray()) m.reactions.push_back(reactionFromJson(v.toObject()));
-    for (const auto &v : o["fi"].toArray()) m.files.push_back(fileFromJson(v.toObject()));
-    for (const auto &v : o["bl"].toArray()) m.blocks.push_back(blockFromJson(v.toObject()));
-    for (const auto &v : o["at"].toArray()) m.attachments.push_back(attachmentFromJson(v.toObject()));
+    m.edited       = o["ed"].toBool();
+    if (o.contains("st"))
+        m.subtype = o["st"].toString();
+    for (const auto &v : o["re"].toArray())
+        m.reactions.push_back(reactionFromJson(v.toObject()));
+    for (const auto &v : o["fi"].toArray())
+        m.files.push_back(fileFromJson(v.toObject()));
+    for (const auto &v : o["bl"].toArray())
+        m.blocks.push_back(blockFromJson(v.toObject()));
+    for (const auto &v : o["at"].toArray())
+        m.attachments.push_back(attachmentFromJson(v.toObject()));
     return m;
 }
 
@@ -221,10 +242,13 @@ static QJsonObject toJson(const Conversation &c) {
     o["na"] = c.name;
     o["mb"] = c.isMember;
     o["lr"] = c.lastRead;
-    if (!c.latestTs.isEmpty()) o["lt"] = c.latestTs;
+    if (!c.latestTs.isEmpty())
+        o["lt"] = c.latestTs;
     o["un"] = c.unread;
-    if (c.dmUser)  o["dm"] = c.dmUser->value;
-    if (c.isMuted) o["mu"] = true;
+    if (c.dmUser)
+        o["dm"] = c.dmUser->value;
+    if (c.isMuted)
+        o["mu"] = true;
     return o;
 }
 static Conversation convFromJson(const QJsonObject &o) {
@@ -232,12 +256,14 @@ static Conversation convFromJson(const QJsonObject &o) {
     c.id       = ConversationId{o["id"].toString()};
     c.kind     = static_cast<ConvKind>(o["ki"].toInt());
     c.name     = o["na"].toString();
-    c.isMember  = o["mb"].toBool();
-    c.lastRead  = o["lr"].toString();
-    c.latestTs  = o["lt"].toString();
-    c.unread    = o["un"].toInt();
-    if (o.contains("dm")) c.dmUser  = UserId{o["dm"].toString()};
-    if (o.contains("mu")) c.isMuted = o["mu"].toBool();
+    c.isMember = o["mb"].toBool();
+    c.lastRead = o["lr"].toString();
+    c.latestTs = o["lt"].toString();
+    c.unread   = o["un"].toInt();
+    if (o.contains("dm"))
+        c.dmUser = UserId{o["dm"].toString()};
+    if (o.contains("mu"))
+        c.isMuted = o["mu"].toBool();
     return c;
 }
 
@@ -245,18 +271,26 @@ static Conversation convFromJson(const QJsonObject &o) {
 
 WorkspaceCache::WorkspaceCache(const QString &teamId) {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    _dir = base + "/cache/" + teamId;
+    _dir               = base + "/cache/" + teamId;
     QDir().mkpath(_dir + "/messages");
     QDir().mkpath(_dir + "/images");
 }
 
-QString WorkspaceCache::convPath()  const { return _dir + "/conversations.json"; }
-QString WorkspaceCache::usersPath() const { return _dir + "/users.json"; }
-QString WorkspaceCache::botsPath()  const { return _dir + "/bots.json"; }
+QString WorkspaceCache::convPath() const {
+    return _dir + "/conversations.json";
+}
+QString WorkspaceCache::usersPath() const {
+    return _dir + "/users.json";
+}
+QString WorkspaceCache::botsPath() const {
+    return _dir + "/bots.json";
+}
 QString WorkspaceCache::msgsPath(const ConversationId &conv) const {
     return _dir + "/messages/" + conv.value + ".json";
 }
-QString WorkspaceCache::metaPath()  const { return _dir + "/meta.json"; }
+QString WorkspaceCache::metaPath() const {
+    return _dir + "/meta.json";
+}
 QString WorkspaceCache::imgPath(const QString &url) const {
     const auto hash = QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Md5).toHex();
     return _dir + "/images/" + hash;
@@ -264,13 +298,15 @@ QString WorkspaceCache::imgPath(const QString &url) const {
 
 QByteArray WorkspaceCache::readFile(const QString &path) {
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return {};
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
     return f.readAll();
 }
 
 bool WorkspaceCache::writeFile(const QString &path, const QByteArray &data) {
     QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
     f.write(data);
     return true;
 }
@@ -281,15 +317,18 @@ bool WorkspaceCache::writeJson(const QString &path, const QJsonDocument &doc) {
 
 void WorkspaceCache::saveConversations(const std::vector<Conversation> &convs) {
     QJsonArray arr;
-    for (const auto &c : convs) arr.append(toJson(c));
+    for (const auto &c : convs)
+        arr.append(toJson(c));
     writeJson(convPath(), QJsonDocument(arr));
 }
 
 std::vector<Conversation> WorkspaceCache::loadConversations() const {
     const auto data = readFile(convPath());
-    if (data.isEmpty()) return {};
+    if (data.isEmpty())
+        return {};
     const auto doc = QJsonDocument::fromJson(data);
-    if (!doc.isArray()) return {};
+    if (!doc.isArray())
+        return {};
     std::vector<Conversation> result;
     for (const auto &v : doc.array())
         result.push_back(convFromJson(v.toObject()));
@@ -298,15 +337,18 @@ std::vector<Conversation> WorkspaceCache::loadConversations() const {
 
 void WorkspaceCache::saveUsers(const std::vector<User> &users) {
     QJsonArray arr;
-    for (const auto &u : users) arr.append(toJson(u));
+    for (const auto &u : users)
+        arr.append(toJson(u));
     writeJson(usersPath(), QJsonDocument(arr));
 }
 
 std::vector<User> WorkspaceCache::loadUsers() const {
     const auto data = readFile(usersPath());
-    if (data.isEmpty()) return {};
+    if (data.isEmpty())
+        return {};
     const auto doc = QJsonDocument::fromJson(data);
-    if (!doc.isArray()) return {};
+    if (!doc.isArray())
+        return {};
     std::vector<User> result;
     for (const auto &v : doc.array())
         result.push_back(userFromJson(v.toObject()));
@@ -315,15 +357,18 @@ std::vector<User> WorkspaceCache::loadUsers() const {
 
 void WorkspaceCache::saveBots(const QHash<QString, User> &bots) {
     QJsonArray arr;
-    for (const auto &u : bots) arr.append(toJson(u));
+    for (const auto &u : bots)
+        arr.append(toJson(u));
     writeJson(botsPath(), QJsonDocument(arr));
 }
 
 QHash<QString, User> WorkspaceCache::loadBots() const {
     const auto data = readFile(botsPath());
-    if (data.isEmpty()) return {};
+    if (data.isEmpty())
+        return {};
     const auto doc = QJsonDocument::fromJson(data);
-    if (!doc.isArray()) return {};
+    if (!doc.isArray())
+        return {};
     QHash<QString, User> result;
     for (const auto &v : doc.array()) {
         auto u = userFromJson(v.toObject());
@@ -333,10 +378,9 @@ QHash<QString, User> WorkspaceCache::loadBots() const {
     return result;
 }
 
-void WorkspaceCache::saveMessages(const ConversationId &conv,
-                                   const std::vector<Message> &msgs) {
-    const int total = static_cast<int>(msgs.size());
-    const int start = std::max(0, total - kMaxMessages);
+void WorkspaceCache::saveMessages(const ConversationId &conv, const std::vector<Message> &msgs) {
+    const int  total = static_cast<int>(msgs.size());
+    const int  start = std::max(0, total - kMaxMessages);
     QJsonArray arr;
     for (int i = start; i < total; ++i)
         arr.append(toJson(msgs[i]));
@@ -345,17 +389,18 @@ void WorkspaceCache::saveMessages(const ConversationId &conv,
 
 std::vector<Message> WorkspaceCache::loadMessages(const ConversationId &conv) const {
     const auto data = readFile(msgsPath(conv));
-    if (data.isEmpty()) return {};
+    if (data.isEmpty())
+        return {};
     const auto doc = QJsonDocument::fromJson(data);
-    if (!doc.isArray()) return {};
+    if (!doc.isArray())
+        return {};
     std::vector<Message> result;
     for (const auto &v : doc.array())
         result.push_back(messageFromJson(v.toObject()));
     return result;
 }
 
-void WorkspaceCache::saveLastConv(const ConversationId &conv,
-                                   const QString &displayName) {
+void WorkspaceCache::saveLastConv(const ConversationId &conv, const QString &displayName) {
     QJsonObject o;
     o["conv"] = conv.value;
     o["name"] = displayName;
@@ -364,15 +409,18 @@ void WorkspaceCache::saveLastConv(const ConversationId &conv,
 
 std::pair<ConversationId, QString> WorkspaceCache::loadLastConv() const {
     const auto data = readFile(metaPath());
-    if (data.isEmpty()) return {};
+    if (data.isEmpty())
+        return {};
     const auto doc = QJsonDocument::fromJson(data);
-    if (!doc.isObject()) return {};
+    if (!doc.isObject())
+        return {};
     const auto o = doc.object();
     return {ConversationId{o["conv"].toString()}, o["name"].toString()};
 }
 
 void WorkspaceCache::saveImage(const QString &url, const QByteArray &data) {
-    if (data.isEmpty()) return;
+    if (data.isEmpty())
+        return;
     writeFile(imgPath(url), data);
 }
 

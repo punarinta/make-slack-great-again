@@ -9,25 +9,26 @@
 namespace JsonMappers {
 
 User toUser(const QJsonObject &o) {
-    auto profile = o.value("profile").toObject();
+    auto       profile     = o.value("profile").toObject();
     // display_name / real_name are often "" (empty string, not null) → must check after toString()
     // Prefer real_name: enterprise workspaces often auto-provision display_name from
     // AD/LDAP as a username slug (e.g. "john.doe.dept") while real_name holds the
     // human-readable full name ("John Doe").
-    const auto rn = profile.value("real_name").toString().trimmed();
-    const auto dn = profile.value("display_name").toString().trimmed();
-    const auto displayName = !rn.isEmpty() ? rn
-                           : !dn.isEmpty() ? dn
-                           : o.value("name").toString();
+    const auto rn          = profile.value("real_name").toString().trimmed();
+    const auto dn          = profile.value("display_name").toString().trimmed();
+    const auto displayName = !rn.isEmpty() ? rn : !dn.isEmpty() ? dn : o.value("name").toString();
     // Strip enclosing colons: ":palm_tree:" → "palm_tree"
     // Also strip skin-tone modifier suffix: ":baby::skin-tone-3:" → "baby"
-    auto rawEmoji = profile.value("status_emoji").toString();
-    if (rawEmoji.startsWith(':')) rawEmoji = rawEmoji.mid(1);
-    if (rawEmoji.endsWith(':'))   rawEmoji.chop(1);
+    auto       rawEmoji    = profile.value("status_emoji").toString();
+    if (rawEmoji.startsWith(':'))
+        rawEmoji = rawEmoji.mid(1);
+    if (rawEmoji.endsWith(':'))
+        rawEmoji.chop(1);
     const int skinToneSep = rawEmoji.indexOf("::");
-    if (skinToneSep != -1)        rawEmoji = rawEmoji.left(skinToneSep);
+    if (skinToneSep != -1)
+        rawEmoji = rawEmoji.left(skinToneSep);
     return User{
-        .id            = UserId{ o.value("id").toString() },
+        .id            = UserId{o.value("id").toString()},
         .name          = o.value("name").toString(),
         .displayName   = displayName,
         .avatarUrl     = profile.value("image_72").toString(),
@@ -41,19 +42,22 @@ User toUser(const QJsonObject &o) {
 }
 
 Conversation toConversation(const QJsonObject &o) {
-    const auto typeStr = o.value("is_im").toBool()   ? "im"
-                       : o.value("is_mpim").toBool() ? "mpim"
-                       : o.value("is_private").toBool() ? "private_channel"
-                       : "public_channel";
+    const auto typeStr = o.value("is_im").toBool()        ? "im"
+                         : o.value("is_mpim").toBool()    ? "mpim"
+                         : o.value("is_private").toBool() ? "private_channel"
+                                                          : "public_channel";
 
     ConvKind kind = ConvKind::PublicChannel;
-    if      (typeStr == "im")             kind = ConvKind::Im;
-    else if (typeStr == "mpim")           kind = ConvKind::Mpim;
-    else if (typeStr == "private_channel")kind = ConvKind::PrivateChannel;
+    if (typeStr == "im")
+        kind = ConvKind::Im;
+    else if (typeStr == "mpim")
+        kind = ConvKind::Mpim;
+    else if (typeStr == "private_channel")
+        kind = ConvKind::PrivateChannel;
 
     std::optional<UserId> dmUser;
     if (kind == ConvKind::Im)
-        dmUser = UserId{ o.value("user").toString() };
+        dmUser = UserId{o.value("user").toString()};
 
     const auto topic   = o.value("topic").toObject().value("value").toString().trimmed();
     const auto purpose = o.value("purpose").toObject().value("value").toString().trimmed();
@@ -62,8 +66,10 @@ Conversation toConversation(const QJsonObject &o) {
     const QString lastRead = o.value("last_read").toString();
     const QString latestTs = [&]() -> QString {
         const auto v = o.value("latest");
-        if (v.isObject()) return v.toObject().value("ts").toString();
-        if (v.isString()) return v.toString(); // DMs return ts directly
+        if (v.isObject())
+            return v.toObject().value("ts").toString();
+        if (v.isString())
+            return v.toString(); // DMs return ts directly
         return {};
     }();
 
@@ -71,38 +77,35 @@ Conversation toConversation(const QJsonObject &o) {
     // latestTs > lastRead is a reliable fallback: Slack timestamps are zero-padded
     // fixed-width strings so lexicographic comparison is identical to numeric.
     const int rawUnread = o.value("unread_count").toInt();
-    const int unread = rawUnread > 0 ? rawUnread
-                     : (!latestTs.isEmpty() && !lastRead.isEmpty() && latestTs > lastRead) ? 1
-                     : 0;
+    const int unread    = rawUnread > 0 ? rawUnread
+                          : (!latestTs.isEmpty() && !lastRead.isEmpty() && latestTs > lastRead) ? 1
+                                                                                                : 0;
 
     return Conversation{
-        .id          = ConversationId{ o.value("id").toString() },
-        .kind        = kind,
-        .name        = o.value("name").toString(
-                           o.value("user").toString()), // Im: use user id as fallback
-        .description = !topic.isEmpty() ? topic : purpose,
-        .isMember    = o.value("is_member").toBool(true),
-        .lastRead    = lastRead,
-        .latestTs    = latestTs,
-        .unread      = unread,
-        .mentionCount= o.value("mention_count").toInt(),
-        .dmUser      = dmUser,
-        .isMuted     = o.value("is_muted").toBool(),
+        .id   = ConversationId{o.value("id").toString()},
+        .kind = kind,
+        .name = o.value("name").toString(o.value("user").toString()), // Im: use user id as fallback
+        .description  = !topic.isEmpty() ? topic : purpose,
+        .isMember     = o.value("is_member").toBool(true),
+        .lastRead     = lastRead,
+        .latestTs     = latestTs,
+        .unread       = unread,
+        .mentionCount = o.value("mention_count").toInt(),
+        .dmUser       = dmUser,
+        .isMuted      = o.value("is_muted").toBool(),
     };
 }
 
 static std::vector<Reaction> parseReactions(const QJsonArray &arr) {
     std::vector<Reaction> out;
     for (auto v : arr) {
-        auto r = v.toObject();
+        auto                r = v.toObject();
         std::vector<UserId> users;
         for (auto u : r.value("users").toArray())
-            users.push_back(UserId{ u.toString() });
-        out.push_back(Reaction{
-            r.value("name").toString(),
-            r.value("count").toInt(),
-            std::move(users)
-        });
+            users.push_back(UserId{u.toString()});
+        out.push_back(
+            Reaction{r.value("name").toString(), r.value("count").toInt(), std::move(users)}
+        );
     }
     return out;
 }
@@ -159,12 +162,14 @@ static void richInlineToTWE(const QJsonObject &el, Builder &b) {
             b.entities.push_back({EntityType::HereCommand, start, (int)b.text.size() - start, {}});
         } else {
             b.text += "@" + range;
-            b.entities.push_back({EntityType::ChannelCommand, start, (int)b.text.size() - start, {}});
+            b.entities.push_back({EntityType::ChannelCommand, start, (int)b.text.size() - start, {}}
+            );
         }
     } else {
         // Unknown inline type — emit raw text if present
         const auto text = el.value("text").toString();
-        if (!text.isEmpty()) b.text += text;
+        if (!text.isEmpty())
+            b.text += text;
     }
 }
 
@@ -178,11 +183,13 @@ static TextWithEntities richTextToTWE(const QJsonObject &block) {
 
         if (stype == "rich_text_preformatted") {
             const int start = b.text.size();
-            for (const auto &ev : elems) richInlineToTWE(ev.toObject(), b);
+            for (const auto &ev : elems)
+                richInlineToTWE(ev.toObject(), b);
             b.entities.push_back({EntityType::Pre, start, (int)b.text.size() - start, {}});
         } else if (stype == "rich_text_quote") {
             const int start = b.text.size();
-            for (const auto &ev : elems) richInlineToTWE(ev.toObject(), b);
+            for (const auto &ev : elems)
+                richInlineToTWE(ev.toObject(), b);
             b.entities.push_back({EntityType::Blockquote, start, (int)b.text.size() - start, {}});
         } else if (stype == "rich_text_list") {
             const auto style   = section.value("style").toString(); // "bullet" or "ordered"
@@ -200,13 +207,16 @@ static TextWithEntities richTextToTWE(const QJsonObject &block) {
             }
         } else {
             // rich_text_section (most common) — just parse inline elements
-            for (const auto &ev : elems) richInlineToTWE(ev.toObject(), b);
-            if (!b.text.endsWith('\n')) b.text += "\n";
+            for (const auto &ev : elems)
+                richInlineToTWE(ev.toObject(), b);
+            if (!b.text.endsWith('\n'))
+                b.text += "\n";
         }
     }
     // Trim trailing newline
-    while (b.text.endsWith('\n')) b.text.chop(1);
-    return TextWithEntities{ b.text, b.entities };
+    while (b.text.endsWith('\n'))
+        b.text.chop(1);
+    return TextWithEntities{b.text, b.entities};
 }
 
 File toFile(const QJsonObject &o) {
@@ -228,7 +238,8 @@ File toFile(const QJsonObject &o) {
 static TextWithEntities parseTextObj(const QJsonObject &o) {
     const auto type = o.value("type").toString();
     const auto text = o.value("text").toString();
-    if (type == "mrkdwn") return MrkdwnParser::parse(text);
+    if (type == "mrkdwn")
+        return MrkdwnParser::parse(text);
     return TextWithEntities{text, {}};
 }
 
@@ -250,10 +261,11 @@ Block toBlock(const QJsonObject &o) {
         // Context blocks have an "elements" array; concatenate text elements.
         Builder cb;
         for (const auto &ev : o.value("elements").toArray()) {
-            const auto el = ev.toObject();
+            const auto el    = ev.toObject();
             const auto etype = el.value("type").toString();
             if (etype == "mrkdwn" || etype == "plain_text") {
-                if (!cb.text.isEmpty()) cb.text += "  ";
+                if (!cb.text.isEmpty())
+                    cb.text += "  ";
                 cb.text += el.value("text").toString();
             }
         }
@@ -262,10 +274,11 @@ Block toBlock(const QJsonObject &o) {
         // Just show action block text for now; full interactivity in Phase 4.
         Builder ab;
         for (const auto &ev : o.value("elements").toArray()) {
-            const auto el = ev.toObject();
+            const auto el    = ev.toObject();
             const auto label = el.value("text").toObject().value("text").toString();
             if (!label.isEmpty()) {
-                if (!ab.text.isEmpty()) ab.text += "  ";
+                if (!ab.text.isEmpty())
+                    ab.text += "  ";
                 ab.text += "[" + label + "]";
             }
         }
@@ -296,7 +309,7 @@ Attachment toAttachment(const QJsonObject &o) {
 
 SearchResult toSearchResult(const QJsonObject &o) {
     return SearchResult{
-        .conv     = ConversationId{ o.value("channel").toObject().value("id").toString() },
+        .conv     = ConversationId{o.value("channel").toObject().value("id").toString()},
         .convName = o.value("channel").toObject().value("name").toString(),
         .msg      = toMessage(o),
     };
@@ -324,46 +337,45 @@ Message toMessage(const QJsonObject &o) {
     QString botName;
     QString botAvatarUrl;
     if (msg.contains("bot_id")) {
-        botName = msg.value("username").toString();
+        botName               = msg.value("username").toString();
         const auto botProfile = msg.value("bot_profile").toObject();
         if (botName.isEmpty())
             botName = botProfile.value("name").toString();
         const auto icons = botProfile.value("icons").toObject();
-        botAvatarUrl = icons.value("image_72").toString(
-                       icons.value("image_48").toString(
-                       icons.value("image_36").toString()));
+        botAvatarUrl =
+            icons.value("image_72")
+                .toString(icons.value("image_48").toString(icons.value("image_36").toString()));
         if (botAvatarUrl.isEmpty())
             botAvatarUrl = msg.value("icon_url").toString();
     }
 
     return Message{
-        .ts          = msg.value("ts").toString(),
-        .threadRoot  = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
-                       ? std::optional<Ts>(msg.value("thread_ts").toString())
-                       : std::nullopt,
-        .replyCount  = msg.value("reply_count").toInt(),
-        .replyUsers  = [&]{
-            std::vector<UserId> v;
-            for (const auto &u : msg.value("reply_users").toArray())
-                v.push_back(UserId{u.toString()});
-            return v;
-        }(),
-        .latestReply = msg.contains("latest_reply")
-                       ? std::optional<Ts>(msg.value("latest_reply").toString())
-                       : std::nullopt,
-        .author      = UserId{ msg.value("user").toString(
-                               msg.value("bot_id").toString()) },
+        .ts         = msg.value("ts").toString(),
+        .threadRoot = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
+                          ? std::optional<Ts>(msg.value("thread_ts").toString())
+                          : std::nullopt,
+        .replyCount = msg.value("reply_count").toInt(),
+        .replyUsers =
+            [&] {
+                std::vector<UserId> v;
+                for (const auto &u : msg.value("reply_users").toArray())
+                    v.push_back(UserId{u.toString()});
+                return v;
+            }(),
+        .latestReply  = msg.contains("latest_reply")
+                            ? std::optional<Ts>(msg.value("latest_reply").toString())
+                            : std::nullopt,
+        .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
         .botName      = botName,
         .botAvatarUrl = botAvatarUrl,
-        .text        = MrkdwnParser::parse(msg.value("text").toString()),
-        .rawText     = msg.value("text").toString(),
-        .reactions   = parseReactions(msg.value("reactions").toArray()),
-        .edited      = msg.contains("edited"),
-        .subtype     = msg.contains("subtype")
-                       ? std::optional<QString>(msg.value("subtype").toString())
-                       : std::nullopt,
-        .files       = std::move(files),
-        .blocks      = std::move(blocks),
+        .text         = MrkdwnParser::parse(msg.value("text").toString()),
+        .rawText      = msg.value("text").toString(),
+        .reactions    = parseReactions(msg.value("reactions").toArray()),
+        .edited       = msg.contains("edited"),
+        .subtype = msg.contains("subtype") ? std::optional<QString>(msg.value("subtype").toString())
+                                           : std::nullopt,
+        .files   = std::move(files),
+        .blocks  = std::move(blocks),
         .attachments = std::move(attachments),
     };
 }
@@ -373,7 +385,8 @@ std::vector<User> toUsers(const QJsonArray &a) {
     out.reserve(a.size());
     for (auto v : a) {
         auto u = toUser(v.toObject());
-        if (!u.id.value.isEmpty()) out.push_back(std::move(u));
+        if (!u.id.value.isEmpty())
+            out.push_back(std::move(u));
     }
     return out;
 }
@@ -383,7 +396,8 @@ std::vector<Conversation> toConversations(const QJsonArray &a) {
     out.reserve(a.size());
     for (auto v : a) {
         auto c = toConversation(v.toObject());
-        if (!c.id.value.isEmpty()) out.push_back(std::move(c));
+        if (!c.id.value.isEmpty())
+            out.push_back(std::move(c));
     }
     return out;
 }
@@ -403,7 +417,8 @@ std::vector<SearchResult> toSearchResults(const QJsonArray &a) {
     out.reserve(a.size());
     for (auto v : a) {
         auto r = toSearchResult(v.toObject());
-        if (!r.conv.value.isEmpty()) out.push_back(std::move(r));
+        if (!r.conv.value.isEmpty())
+            out.push_back(std::move(r));
     }
     return out;
 }

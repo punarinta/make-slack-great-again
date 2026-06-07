@@ -16,33 +16,39 @@ QString resolveEmoji(const QString &name) {
 }
 
 QString formatTs(const Ts &ts) {
-    bool ok = false;
+    bool   ok   = false;
     double secs = ts.toDouble(&ok);
-    if (!ok) return ts;
-    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs))
-               .toString("h:mm AP");
+    if (!ok)
+        return ts;
+    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs)).toString("h:mm AP");
 }
 
 QDate tsToDate(const Ts &ts) {
-    bool ok;
+    bool   ok;
     double secs = ts.toDouble(&ok);
-    if (!ok) return {};
+    if (!ok)
+        return {};
     return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs)).date();
 }
 
 QString formatDateLabel(const Ts &ts) {
     const QDate date = tsToDate(ts);
-    if (!date.isValid()) return {};
+    if (!date.isValid())
+        return {};
     const QDate today = QDate::currentDate();
-    if (date == today) return QCoreApplication::translate("MsgRender", "Today");
-    if (date == today.addDays(-1)) return QCoreApplication::translate("MsgRender", "Yesterday");
-    if (date.year() == today.year()) return date.toString("MMMM d");
+    if (date == today)
+        return QCoreApplication::translate("MsgRender", "Today");
+    if (date == today.addDays(-1))
+        return QCoreApplication::translate("MsgRender", "Yesterday");
+    if (date.year() == today.year())
+        return date.toString("MMMM d");
     return date.toString("MMMM d, yyyy");
 }
 
 // Resolve a UserMention entity's display name via entity.data (the user ID).
 static QString resolveMentionImpl(const QString &userId, const Session *session) {
-    if (!session) return "@" + userId;
+    if (!session)
+        return "@" + userId;
     const auto *u = session->findUser(UserId{userId});
     return u ? ("@" + u->displayName) : ("@" + userId);
 }
@@ -58,15 +64,13 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
     }
 
     QString html;
-    int pos = 0;
-    auto sorted = twe.entities;
+    int     pos    = 0;
+    auto    sorted = twe.entities;
     std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
         return a.offset < b.offset;
     });
 
-    auto escapeAndBr = [](const QString &s) {
-        return s.toHtmlEscaped().replace("\n", "<br>");
-    };
+    auto escapeAndBr = [](const QString &s) { return s.toHtmlEscaped().replace("\n", "<br>"); };
 
     for (const auto &e : sorted) {
         if (e.offset > pos)
@@ -75,50 +79,61 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
         auto inner    = rawInner.toHtmlEscaped();
         switch (e.type) {
         case EntityType::Bold:
-            html += "<b>" + inner + "</b>"; break;
+            html += "<b>" + inner + "</b>";
+            break;
         case EntityType::Italic:
-            html += "<i>" + inner + "</i>"; break;
+            html += "<i>" + inner + "</i>";
+            break;
         case EntityType::Underline:
-            html += "<u>" + inner + "</u>"; break;
+            html += "<u>" + inner + "</u>";
+            break;
         case EntityType::Strike:
-            html += "<s>" + inner + "</s>"; break;
+            html += "<s>" + inner + "</s>";
+            break;
         case EntityType::Code:
             html += "<span style='background:#FDF0F0;color:#C0392B;font-family:monospace;"
-                    "font-size:0.88em;padding:1px 3px;border-radius:3px'>"
-                    + inner + "</span>"; break;
+                    "font-size:0.88em;padding:1px 3px;border-radius:3px'>" +
+                    inner + "</span>";
+            break;
         case EntityType::Pre:
             html += "<pre style='background:#F4F4F4;padding:6px 10px;border-radius:4px;"
-                    "font-family:monospace;font-size:0.88em;white-space:pre-wrap;margin:4px 0'>"
-                    + inner + "</pre>"; break;
+                    "font-family:monospace;font-size:0.88em;white-space:pre-wrap;margin:4px 0'>" +
+                    inner + "</pre>";
+            break;
         case EntityType::Blockquote:
             // Use a table so the gray left bar renders reliably in Qt's HTML subset.
-            html += "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:0 0 8px 0'>"
-                    "<tr>"
-                    "<td width='3' bgcolor='#CCCCCC' style='padding:0;border-radius:2px'></td>"
-                    "<td style='padding:2px 0 2px 10px;color:#555555'>"
-                    + inner.replace("\n", "<br>") +
-                    "</td></tr></table>"; break;
+            html +=
+                "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:0 0 8px 0'>"
+                "<tr>"
+                "<td width='3' bgcolor='#CCCCCC' style='padding:0;border-radius:2px'></td>"
+                "<td style='padding:2px 0 2px 10px;color:#555555'>" +
+                inner.replace("\n", "<br>") + "</td></tr></table>";
+            break;
         case EntityType::Link:
-            html += "<a href='" + e.data.toHtmlEscaped() + "' style='color:#1264A3;text-decoration:none'>"
-                    + inner + "</a>"; break;
+            html += "<a href='" + e.data.toHtmlEscaped() +
+                    "' style='color:#1264A3;text-decoration:none'>" + inner + "</a>";
+            break;
         case EntityType::UserMention: {
-            const QString label = session
-                ? resolveMentionImpl(e.data, session)
-                : rawInner;
+            const QString label = session ? resolveMentionImpl(e.data, session) : rawInner;
             html += "<span style='color:#1164A3;background:#E8F5FA;"
-                    "border-radius:3px;padding:0 2px'>"
-                    + label.toHtmlEscaped() + "</span>"; break;
+                    "border-radius:3px;padding:0 2px'>" +
+                    label.toHtmlEscaped() + "</span>";
+            break;
         }
         case EntityType::ChannelMention:
             html += "<span style='color:#1164A3;background:#E8F5FA;"
-                    "border-radius:3px;padding:0 2px'>" + inner + "</span>"; break;
+                    "border-radius:3px;padding:0 2px'>" +
+                    inner + "</span>";
+            break;
         case EntityType::HereCommand:
         case EntityType::ChannelCommand:
-            html += "<span style='color:#E01E5A;font-weight:bold'>" + inner + "</span>"; break;
+            html += "<span style='color:#E01E5A;font-weight:bold'>" + inner + "</span>";
+            break;
         case EntityType::Emoji: {
             static const QString kEmojiSpanOpen =
                 "<span style='font-family:" + emojiFontFamily() + "'>";
-            html += kEmojiSpanOpen + resolveEmoji(e.data).toHtmlEscaped() + "</span>"; break;
+            html += kEmojiSpanOpen + resolveEmoji(e.data).toHtmlEscaped() + "</span>";
+            break;
         }
         }
         pos = e.offset + e.length;
@@ -136,16 +151,15 @@ QString buildMsgHtml(const Message &msg, const Session *session) {
             if (blk.typeStr == "divider") {
                 html += "<hr style='border:0;border-top:1px solid #DDD;margin:4px 0'>";
             } else if (blk.typeStr == "header") {
-                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>"
-                     + toHtml(blk.text, session) + "</p>";
+                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
+                        toHtml(blk.text, session) + "</p>";
             } else if (blk.typeStr == "image") {
                 // Painted separately; show alt text as italic placeholder
                 if (!blk.altText.isEmpty())
-                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>"
-                         + blk.altText.toHtmlEscaped() + "</p>";
+                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>" +
+                            blk.altText.toHtmlEscaped() + "</p>";
             } else if (!blk.text.text.isEmpty()) {
-                html += "<p style='margin:2px 0'>"
-                     + toHtml(blk.text, session) + "</p>";
+                html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
             }
         }
         return html.isEmpty() ? toHtml(msg.text, session) : html;
@@ -159,22 +173,22 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     if (!att.pretext.isEmpty())
         html += "<p style='margin:0 0 2px'>" + att.pretext.toHtmlEscaped() + "</p>";
     if (!att.authorName.isEmpty())
-        html += "<p style='margin:0;font-size:0.85em;color:#888'>"
-             + att.authorName.toHtmlEscaped() + "</p>";
+        html += "<p style='margin:0;font-size:0.85em;color:#888'>" +
+                att.authorName.toHtmlEscaped() + "</p>";
     if (!att.title.isEmpty()) {
         if (!att.titleLink.isEmpty())
-            html += "<p style='margin:0;font-weight:bold'><a href='"
-                 + att.titleLink.toHtmlEscaped() + "' style='color:#1264A3;text-decoration:none'>"
-                 + att.title.toHtmlEscaped() + "</a></p>";
+            html += "<p style='margin:0;font-weight:bold'><a href='" +
+                    att.titleLink.toHtmlEscaped() +
+                    "' style='color:#1264A3;text-decoration:none'>" + att.title.toHtmlEscaped() +
+                    "</a></p>";
         else
-            html += "<p style='margin:0;font-weight:bold'>"
-                 + att.title.toHtmlEscaped() + "</p>";
+            html += "<p style='margin:0;font-weight:bold'>" + att.title.toHtmlEscaped() + "</p>";
     }
     if (!att.text.text.isEmpty())
         html += "<p style='margin:2px 0 0'>" + toHtml(att.text, session) + "</p>";
     if (!att.footer.isEmpty())
-        html += "<p style='margin:2px 0 0;font-size:0.8em;color:#888'>"
-             + att.footer.toHtmlEscaped() + "</p>";
+        html += "<p style='margin:2px 0 0;font-size:0.8em;color:#888'>" +
+                att.footer.toHtmlEscaped() + "</p>";
 
     // Render Block Kit blocks embedded in the attachment (modern bot format).
     if (html.isEmpty() && !att.blocks.empty()) {
@@ -182,12 +196,12 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
             if (blk.typeStr == "divider") {
                 html += "<hr style='border:0;border-top:1px solid #DDD;margin:4px 0'>";
             } else if (blk.typeStr == "header") {
-                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>"
-                     + toHtml(blk.text, session) + "</p>";
+                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
+                        toHtml(blk.text, session) + "</p>";
             } else if (blk.typeStr == "image") {
                 if (!blk.altText.isEmpty())
-                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>"
-                         + blk.altText.toHtmlEscaped() + "</p>";
+                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>" +
+                            blk.altText.toHtmlEscaped() + "</p>";
             } else if (!blk.text.text.isEmpty()) {
                 html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
             }
@@ -196,24 +210,31 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
 
     // Last-resort fallback: parse as mrkdwn so any <url> links become clickable.
     if (html.isEmpty() && !att.fallback.isEmpty())
-        html += "<p style='margin:2px 0 0'>" + toHtml(MrkdwnParser::parse(att.fallback), session) + "</p>";
+        html += "<p style='margin:2px 0 0'>" + toHtml(MrkdwnParser::parse(att.fallback), session) +
+                "</p>";
 
     return html;
 }
 
 QColor fileTypeColor(const File &f) {
     const QString mt = f.mimeType.toLower();
-    if (mt.contains("pdf"))                                       return QColor("#E44D4D");
-    if (mt.contains("word") || mt.contains("document"))           return QColor("#2B579A");
-    if (mt.contains("excel") || mt.contains("spreadsheet"))       return QColor("#217346");
-    if (mt.contains("powerpoint") || mt.contains("presentation")) return QColor("#D24726");
-    if (mt.startsWith("video/"))                                  return QColor("#7B2D8B");
-    if (mt.startsWith("audio/"))                                  return QColor("#1E7A6E");
-    if (mt.contains("zip") || mt.contains("x-tar")
-     || mt.contains("gzip") || mt.contains("x-7z")
-     || mt.contains("x-rar"))                                     return QColor("#8B6914");
-    if (mt.startsWith("text/") || mt.contains("json")
-     || mt.contains("xml"))                                       return QColor("#555555");
+    if (mt.contains("pdf"))
+        return QColor("#E44D4D");
+    if (mt.contains("word") || mt.contains("document"))
+        return QColor("#2B579A");
+    if (mt.contains("excel") || mt.contains("spreadsheet"))
+        return QColor("#217346");
+    if (mt.contains("powerpoint") || mt.contains("presentation"))
+        return QColor("#D24726");
+    if (mt.startsWith("video/"))
+        return QColor("#7B2D8B");
+    if (mt.startsWith("audio/"))
+        return QColor("#1E7A6E");
+    if (mt.contains("zip") || mt.contains("x-tar") || mt.contains("gzip") || mt.contains("x-7z") ||
+        mt.contains("x-rar"))
+        return QColor("#8B6914");
+    if (mt.startsWith("text/") || mt.contains("json") || mt.contains("xml"))
+        return QColor("#555555");
     return QColor("#888888");
 }
 
@@ -230,9 +251,12 @@ QString fileIconLabel(const File &f) {
 }
 
 QString formatFileSize(qint64 bytes) {
-    if (bytes <= 0)        return {};
-    if (bytes < 1024)      return QString("%1 B").arg(bytes);
-    if (bytes < 1024*1024) return QString("%1 KB").arg(bytes / 1024);
+    if (bytes <= 0)
+        return {};
+    if (bytes < 1024)
+        return QString("%1 B").arg(bytes);
+    if (bytes < 1024 * 1024)
+        return QString("%1 KB").arg(bytes / 1024);
     const double mb = bytes / (1024.0 * 1024.0);
     return QString("%1 MB").arg(mb, 0, 'f', mb < 10 ? 1 : 0);
 }

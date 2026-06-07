@@ -10,19 +10,14 @@ namespace MrkdwnParser {
 // Offsets in TextEntity refer to positions in the *output* plain text, not the mrkdwn.
 
 struct Builder {
-    QString              text;
+    QString                 text;
     std::vector<TextEntity> entities;
 
     void appendPlain(QChar c) { text.append(c); }
     void appendPlain(const QString &s) { text.append(s); }
 
     void addSpan(EntityType type, int start, const QString &data = {}) {
-        entities.push_back(TextEntity{
-            type,
-            start,
-            static_cast<int>(text.size()) - start,
-            data
-        });
+        entities.push_back(TextEntity{type, start, static_cast<int>(text.size()) - start, data});
     }
 };
 
@@ -30,10 +25,11 @@ struct Builder {
 // Returns the closing pos+1 if matched, -1 otherwise.
 static int findClose(const QString &src, int start, QChar delim) {
     for (int i = start; i < src.size(); ++i) {
-        if (src[i] == delim && (i == 0 || src[i-1] != '\\'))
+        if (src[i] == delim && (i == 0 || src[i - 1] != '\\'))
             return i + 1;
         // Don't cross newlines for inline marks
-        if (src[i] == '\n') return -1;
+        if (src[i] == '\n')
+            return -1;
     }
     return -1;
 }
@@ -41,9 +37,10 @@ static int findClose(const QString &src, int start, QChar delim) {
 // Find position after a doubled closing delimiter (e.g. __ for underline).
 static int findDoubleClose(const QString &src, int start, QChar delim) {
     for (int i = start; i + 1 < src.size(); ++i) {
-        if (src[i] == delim && src[i+1] == delim)
+        if (src[i] == delim && src[i + 1] == delim)
             return i + 2;
-        if (src[i] == '\n') return -1;
+        if (src[i] == '\n')
+            return -1;
     }
     return -1;
 }
@@ -52,7 +49,7 @@ static int findDoubleClose(const QString &src, int start, QChar delim) {
 // Returns the closing position after the closing ```, or -1.
 static int findCodeFenceClose(const QString &src, int pos) {
     while (pos < src.size() - 2) {
-        if (src[pos] == '`' && src[pos+1] == '`' && src[pos+2] == '`')
+        if (src[pos] == '`' && src[pos + 1] == '`' && src[pos + 2] == '`')
             return pos + 3;
         ++pos;
     }
@@ -60,19 +57,20 @@ static int findCodeFenceClose(const QString &src, int pos) {
 }
 
 TextWithEntities parse(const QString &mrkdwn) {
-    Builder b;
-    int i = 0;
+    Builder   b;
+    int       i = 0;
     const int n = mrkdwn.size();
 
     while (i < n) {
         QChar c = mrkdwn[i];
 
         // ── Code fence ``` ──
-        if (c == '`' && i+2 < n && mrkdwn[i+1] == '`' && mrkdwn[i+2] == '`') {
+        if (c == '`' && i + 2 < n && mrkdwn[i + 1] == '`' && mrkdwn[i + 2] == '`') {
             int contentStart = i + 3;
             // Skip optional language hint on same line
-            int lineEnd = mrkdwn.indexOf('\n', contentStart);
-            if (lineEnd != -1 && lineEnd < n) contentStart = lineEnd + 1;
+            int lineEnd      = mrkdwn.indexOf('\n', contentStart);
+            if (lineEnd != -1 && lineEnd < n)
+                contentStart = lineEnd + 1;
             int closePos = findCodeFenceClose(mrkdwn, contentStart);
             if (closePos != -1) {
                 int entityStart = b.text.size();
@@ -85,10 +83,10 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Inline code ` ──
         if (c == '`') {
-            int close = findClose(mrkdwn, i+1, '`');
+            int close = findClose(mrkdwn, i + 1, '`');
             if (close != -1) {
                 int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i+1, close-1 - (i+1)));
+                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
                 b.addSpan(EntityType::Code, entityStart);
                 i = close;
                 continue;
@@ -97,11 +95,11 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Bold *text* ──
         if (c == '*') {
-            int close = findClose(mrkdwn, i+1, '*');
+            int close = findClose(mrkdwn, i + 1, '*');
             if (close != -1) {
                 int entityStart = b.text.size();
                 // Recurse-parse inner for nested marks? Keep flat for now.
-                b.appendPlain(mrkdwn.mid(i+1, close-1 - (i+1)));
+                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
                 b.addSpan(EntityType::Bold, entityStart);
                 i = close;
                 continue;
@@ -109,11 +107,11 @@ TextWithEntities parse(const QString &mrkdwn) {
         }
 
         // ── Underline __text__ (must be checked before single _ italic) ──
-        if (c == '_' && i+1 < n && mrkdwn[i+1] == '_') {
-            int close = findDoubleClose(mrkdwn, i+2, '_');
+        if (c == '_' && i + 1 < n && mrkdwn[i + 1] == '_') {
+            int close = findDoubleClose(mrkdwn, i + 2, '_');
             if (close != -1) {
                 int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i+2, close-2 - (i+2)));
+                b.appendPlain(mrkdwn.mid(i + 2, close - 2 - (i + 2)));
                 b.addSpan(EntityType::Underline, entityStart);
                 i = close;
                 continue;
@@ -122,10 +120,10 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Italic _text_ ──
         if (c == '_') {
-            int close = findClose(mrkdwn, i+1, '_');
+            int close = findClose(mrkdwn, i + 1, '_');
             if (close != -1) {
                 int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i+1, close-1 - (i+1)));
+                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
                 b.addSpan(EntityType::Italic, entityStart);
                 i = close;
                 continue;
@@ -134,10 +132,10 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Strikethrough ~text~ ──
         if (c == '~') {
-            int close = findClose(mrkdwn, i+1, '~');
+            int close = findClose(mrkdwn, i + 1, '~');
             if (close != -1) {
                 int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i+1, close-1 - (i+1)));
+                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
                 b.addSpan(EntityType::Strike, entityStart);
                 i = close;
                 continue;
@@ -146,17 +144,17 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Angular bracket constructs <…> ──
         if (c == '<') {
-            int close = mrkdwn.indexOf('>', i+1);
+            int close = mrkdwn.indexOf('>', i + 1);
             if (close != -1) {
-                auto inner = mrkdwn.mid(i+1, close - i - 1);
-                i = close + 1;
+                auto inner = mrkdwn.mid(i + 1, close - i - 1);
+                i          = close + 1;
 
                 // User mention: <@UXXXXX> or <@UXXXXX|name>
                 if (inner.startsWith('@')) {
-                    auto parts = inner.mid(1).split('|');
-                    auto uid = parts[0];
-                    auto label = parts.size() > 1 ? parts[1] : ("@" + uid);
-                    int entityStart = b.text.size();
+                    auto parts       = inner.mid(1).split('|');
+                    auto uid         = parts[0];
+                    auto label       = parts.size() > 1 ? parts[1] : ("@" + uid);
+                    int  entityStart = b.text.size();
                     b.appendPlain(label);
                     b.addSpan(EntityType::UserMention, entityStart, uid);
                     continue;
@@ -164,10 +162,10 @@ TextWithEntities parse(const QString &mrkdwn) {
 
                 // Channel mention: <#CXXXXX|name>
                 if (inner.startsWith('#')) {
-                    auto parts = inner.mid(1).split('|');
-                    auto cid  = parts[0];
-                    auto name = parts.size() > 1 ? parts[1] : cid;
-                    int entityStart = b.text.size();
+                    auto parts       = inner.mid(1).split('|');
+                    auto cid         = parts[0];
+                    auto name        = parts.size() > 1 ? parts[1] : cid;
+                    int  entityStart = b.text.size();
                     b.appendPlain("#" + name);
                     b.addSpan(EntityType::ChannelMention, entityStart, cid);
                     continue;
@@ -188,7 +186,7 @@ TextWithEntities parse(const QString &mrkdwn) {
                         // subteam or unknown: show as @name
                         auto parts = cmd.split('|');
                         auto label = parts.size() > 1 ? parts.last() : cmd;
-                        int s = b.text.size();
+                        int  s     = b.text.size();
                         b.appendPlain("@" + label);
                         b.addSpan(EntityType::HereCommand, s, cmd);
                     }
@@ -197,10 +195,10 @@ TextWithEntities parse(const QString &mrkdwn) {
 
                 // Link: <url|label> or <url>
                 {
-                    auto parts = inner.split('|');
-                    auto url   = parts[0];
-                    auto label = parts.size() > 1 ? parts[1] : url;
-                    int entityStart = b.text.size();
+                    auto parts       = inner.split('|');
+                    auto url         = parts[0];
+                    auto label       = parts.size() > 1 ? parts[1] : url;
+                    int  entityStart = b.text.size();
                     b.appendPlain(label);
                     b.addSpan(EntityType::Link, entityStart, url);
                     continue;
@@ -210,9 +208,9 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Emoji :name: ──
         if (c == ':') {
-            int close = mrkdwn.indexOf(':', i+1);
-            if (close != -1 && close > i+1) {
-                auto name = mrkdwn.mid(i+1, close - i - 1);
+            int close = mrkdwn.indexOf(':', i + 1);
+            if (close != -1 && close > i + 1) {
+                auto                      name = mrkdwn.mid(i + 1, close - i - 1);
                 // Validate: emoji names are [a-z0-9_+-]+
                 static QRegularExpression validEmoji("^[a-zA-Z0-9_+\\-]+$");
                 if (validEmoji.match(name).hasMatch()) {
@@ -227,23 +225,27 @@ TextWithEntities parse(const QString &mrkdwn) {
 
         // ── Blockquote (> at line start) ──
         // Consume all consecutive >-prefixed lines as a single Blockquote entity.
-        if (c == '>' && (i == 0 || mrkdwn[i-1] == '\n')) {
+        if (c == '>' && (i == 0 || mrkdwn[i - 1] == '\n')) {
             // Drop all preceding \n: the block-level table element provides its own line break.
             while (!b.text.isEmpty() && b.text.back() == '\n')
                 b.text.chop(1);
-            int entityStart = b.text.size();
-            bool first = true;
+            int  entityStart = b.text.size();
+            bool first       = true;
             while (i < n && mrkdwn[i] == '>') {
-                if (!first) b.appendPlain('\n');
+                if (!first)
+                    b.appendPlain('\n');
                 first = false;
                 ++i; // skip '>'
-                if (i < n && mrkdwn[i] == ' ') ++i; // skip optional space
+                if (i < n && mrkdwn[i] == ' ')
+                    ++i; // skip optional space
                 // Collect content until end of line
                 while (i < n && mrkdwn[i] != '\n')
                     b.appendPlain(mrkdwn[i++]);
-                if (i < n) ++i; // skip '\n'
+                if (i < n)
+                    ++i; // skip '\n'
                 // Check if next non-empty line continues the quote
-                if (i >= n || mrkdwn[i] != '>') break;
+                if (i >= n || mrkdwn[i] != '>')
+                    break;
             }
             b.addSpan(EntityType::Blockquote, entityStart);
             b.appendPlain('\n'); // ensure visual line break after blockquote
@@ -254,7 +256,7 @@ TextWithEntities parse(const QString &mrkdwn) {
         ++i;
     }
 
-    return TextWithEntities{ b.text, b.entities };
+    return TextWithEntities{b.text, b.entities};
 }
 
 } // namespace MrkdwnParser

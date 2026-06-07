@@ -22,7 +22,7 @@ public:
     QString        comment() const;
 
 private:
-    ConvSelectorWidget *_selector  = nullptr;
-    ComposerWidget     *_composer  = nullptr;
-    QPushButton        *_fwdBtn    = nullptr;
+    ConvSelectorWidget *_selector = nullptr;
+    ComposerWidget     *_composer = nullptr;
+    QPushButton        *_fwdBtn   = nullptr;
 };

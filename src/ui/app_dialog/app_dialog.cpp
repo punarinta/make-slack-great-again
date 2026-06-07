@@ -13,17 +13,15 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-static constexpr int kCardMinW  = 480;
-static constexpr int kCardMaxW  = 560;
-static constexpr int kCardPadH  =  28; // left / right padding inside card
-static constexpr int kCardPadT  =  24; // top padding
-static constexpr int kCardPadB  =  24; // bottom padding
-static constexpr int kRadius    =  12; // card corner radius
+static constexpr int kCardMinW = 480;
+static constexpr int kCardMaxW = 560;
+static constexpr int kCardPadH = 28; // left / right padding inside card
+static constexpr int kCardPadT = 24; // top padding
+static constexpr int kCardPadB = 24; // bottom padding
+static constexpr int kRadius   = 12; // card corner radius
 
 AppDialog::AppDialog(const QString &title, QWidget *parent)
-    : QDialog(parent,
-              Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint)
-{
+    : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint) {
     setAttribute(Qt::WA_TranslucentBackground);
     setModal(true);
 
@@ -50,7 +48,7 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     headerRow->setSpacing(12);
 
     auto *titleLabel = new QLabel(title, _card);
-    QFont tf = titleLabel->font();
+    QFont tf         = titleLabel->font();
     tf.setBold(true);
     tf.setPointSizeF(tf.pointSizeF() * 1.45);
     titleLabel->setFont(tf);
@@ -66,16 +64,14 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     QFont cf = closeBtn->font();
     cf.setPointSizeF(cf.pointSizeF() * 1.1);
     closeBtn->setFont(cf);
-    closeBtn->setStyleSheet(
-        "QPushButton {"
-        "  border: none; border-radius: 16px;"
-        "  color: #888; background: transparent;"
-        "}"
-        "QPushButton:hover { background: #F0F0F0; color: #333; }"
-    );
+    closeBtn->setStyleSheet("QPushButton {"
+                            "  border: none; border-radius: 16px;"
+                            "  color: #888; background: transparent;"
+                            "}"
+                            "QPushButton:hover { background: #F0F0F0; color: #333; }");
 
     headerRow->addWidget(titleLabel, 1, Qt::AlignVCenter);
-    headerRow->addWidget(closeBtn,   0, Qt::AlignTop);
+    headerRow->addWidget(closeBtn, 0, Qt::AlignTop);
     cardLayout->addLayout(headerRow);
     cardLayout->addSpacing(20);
 
@@ -98,13 +94,11 @@ void AppDialog::updateCard() {
 
     // Let Qt calculate the preferred height from the current content.
     _card->adjustSize();
-    const int cardH = std::min(_card->sizeHint().height(),
-                               std::max(200, height() - 80));
+    const int cardH = std::min(_card->sizeHint().height(), std::max(200, height() - 80));
     _card->resize(cardW, cardH);
 
     // Centre in the overlay.
-    _card->move((width()  - cardW) / 2,
-                (height() - cardH) / 2);
+    _card->move((width() - cardW) / 2, (height() - cardH) / 2);
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────

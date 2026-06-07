@@ -21,7 +21,8 @@ SearchResult toSearchResult(const QJsonObject &);
 // Batch helpers
 std::vector<User>         toUsers(const QJsonArray &);
 std::vector<Conversation> toConversations(const QJsonArray &);
-// reverseOrder=true for conversations.history (newest-first); false for conversations.replies (oldest-first).
+// reverseOrder=true for conversations.history (newest-first); false for conversations.replies
+// (oldest-first).
 std::vector<Message>      toMessages(const QJsonArray &, bool reverseOrder = true);
 std::vector<SearchResult> toSearchResults(const QJsonArray &);
 

@@ -31,13 +31,13 @@ private:
     void updatePinButton();
     void refreshHoverState();
 
-    QLabel        *_titleLabel        = nullptr;
-    QPushButton   *_maxBtn            = nullptr;
-    QPushButton   *_closeBtn          = nullptr;
-    QPushButton   *_pinBtn            = nullptr;
-    PopupTooltip  *_tooltip           = nullptr;
-    bool           _pinned            = false;
-    bool           _dragging          = false;  // manual drag (non-Wayland)
-    bool           _systemMovePending = false;  // startSystemMove() in flight (Wayland)
-    QPoint         _dragOffset;
+    QLabel       *_titleLabel        = nullptr;
+    QPushButton  *_maxBtn            = nullptr;
+    QPushButton  *_closeBtn          = nullptr;
+    QPushButton  *_pinBtn            = nullptr;
+    PopupTooltip *_tooltip           = nullptr;
+    bool          _pinned            = false;
+    bool          _dragging          = false; // manual drag (non-Wayland)
+    bool          _systemMovePending = false; // startSystemMove() in flight (Wayland)
+    QPoint        _dragOffset;
 };

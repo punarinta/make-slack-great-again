@@ -22,6 +22,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(MSGA_CLAZY "Add 'clazy' target for Qt-aware static analysis" OFF)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg)
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
@@ -155,4 +158,18 @@ option(MSGA_BUILD_TESTS "Build unit tests" OFF)
 if(MSGA_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(MSGA_CLAZY)
+    find_program(CLAZY_STANDALONE NAMES clazy-standalone REQUIRED)
+    file(GLOB_RECURSE _msga_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
+    add_custom_target(clazy
+        COMMAND ${CLAZY_STANDALONE}
+            -checks=level1
+            -p ${CMAKE_BINARY_DIR}
+            ${_msga_sources}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running clazy (level1)..."
+        VERBATIM
+    )
 endif()

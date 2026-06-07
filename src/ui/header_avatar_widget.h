@@ -15,9 +15,18 @@ public:
     explicit HeaderAvatarWidget(QWidget *parent = nullptr) : QWidget(parent) {
         setFixedSize(36, 36);
     }
-    void setPixmap(const QPixmap &px) { _pixmap = px; update(); }
-    void setPresence(bool active)     { _state.isActive = active; update(); }
-    void setDnd(bool dnd)             { _state.dndEnabled = dnd; update(); }
+    void setPixmap(const QPixmap &px) {
+        _pixmap = px;
+        update();
+    }
+    void setPresence(bool active) {
+        _state.isActive = active;
+        update();
+    }
+    void setDnd(bool dnd) {
+        _state.dndEnabled = dnd;
+        update();
+    }
     void clearAvatar() {
         _pixmap = {};
         _state  = {};
@@ -26,19 +35,29 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
+        QPainter      p(this);
         const QString initial = _displayName.isEmpty() ? QString{} : _displayName.left(1);
-        UserAvatar::paint(p, QRect(0, 0, 28, 28), _pixmap, initial, _state,
-                          /*cornerRadius=*/4, devicePixelRatioF(),
-                          /*borderColor=*/Qt::white);
+        UserAvatar::paint(
+            p,
+            QRect(0, 0, 28, 28),
+            _pixmap,
+            initial,
+            _state,
+            /*cornerRadius=*/4,
+            devicePixelRatioF(),
+            /*borderColor=*/Qt::white
+        );
     }
 
 public:
     // Optional: set display name so the placeholder initial letter is correct.
-    void setDisplayName(const QString &name) { _displayName = name; update(); }
+    void setDisplayName(const QString &name) {
+        _displayName = name;
+        update();
+    }
 
 private:
-    QPixmap         _pixmap;
+    QPixmap           _pixmap;
     UserAvatar::State _state;
-    QString         _displayName;
+    QString           _displayName;
 };

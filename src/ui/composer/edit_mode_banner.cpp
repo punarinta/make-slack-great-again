@@ -7,22 +7,18 @@
 #include <QLabel>
 #include <QToolButton>
 
-EditModeBanner::EditModeBanner(QWidget *parent)
-    : QWidget(parent)
-{
+EditModeBanner::EditModeBanner(QWidget *parent) : QWidget(parent) {
     setObjectName("editBanner");
     setFixedHeight(30);
-    setStyleSheet(
-        "QWidget#editBanner {"
-        "  background: #FFF8EE;"
-        "  border-left: 3px solid #E8A917;"
-        "  border-bottom: 1px solid #F0DFA0;"
-        "}"
-        "QLabel { border: none; background: transparent;"
-        "  font-size: 12px; color: #7A5800; font-weight: 600; }"
-        "QToolButton { border: none; border-radius: 3px; background: transparent; }"
-        "QToolButton:hover { background: #F5D98C; }"
-    );
+    setStyleSheet("QWidget#editBanner {"
+                  "  background: #FFF8EE;"
+                  "  border-left: 3px solid #E8A917;"
+                  "  border-bottom: 1px solid #F0DFA0;"
+                  "}"
+                  "QLabel { border: none; background: transparent;"
+                  "  font-size: 12px; color: #7A5800; font-weight: 600; }"
+                  "QToolButton { border: none; border-radius: 3px; background: transparent; }"
+                  "QToolButton:hover { background: #F5D98C; }");
 
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(10, 0, 4, 0);

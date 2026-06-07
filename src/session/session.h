@@ -39,8 +39,7 @@ public:
     rpl::producer<QString>                   errors() const;
 
     // Send a message (optionally as a thread reply) and optimistically insert it.
-    void sendMessage(ConversationId conv, const QString &text,
-                     std::optional<Ts> threadRoot = {});
+    void sendMessage(ConversationId conv, const QString &text, std::optional<Ts> threadRoot = {});
 
     // Edit an existing message.
     void editMessage(ConversationId conv, Ts ts, const QString &newText);
@@ -53,18 +52,20 @@ public:
 
     // --- Phase 3 ---
     void uploadFile(ConversationId conv, const QString &filePath);
-    void searchMessages(const QString &query,
-                        std::function<void(std::vector<SearchResult>)> callback);
-    void downloadFile(const QString &url,
-                      std::function<void(QByteArray)> onData,
-                      std::function<void(QString)>    onError = {});
+    void
+    searchMessages(const QString &query, std::function<void(std::vector<SearchResult>)> callback);
+    void downloadFile(
+        const QString                  &url,
+        std::function<void(QByteArray)> onData,
+        std::function<void(QString)>    onError = {}
+    );
 
     // Custom emoji map: name → URL (custom) or "alias:name" (alias). Empty until loaded.
-    const QHash<QString,QString>& emojiMap() const { return _emojiMap; }
+    const QHash<QString, QString> &emojiMap() const { return _emojiMap; }
 
     // Called once the current user's ID is known (e.g., from auth.test).
-    void setMe(UserId id) { _meUserId = std::move(id); }
-    UserId meUserId()  const { return _meUserId; }
+    void   setMe(UserId id) { _meUserId = std::move(id); }
+    UserId meUserId() const { return _meUserId; }
     bool   meIsAdmin() const { return _meIsAdmin; }
 
     // Call when the user opens a conversation — zeroes its unread count and marks it read on Slack.
@@ -80,27 +81,25 @@ public:
     rpl::producer<UserId> botInfoLoaded() const;
 
     // --- Persistent cache ---
-    std::vector<Message>               cachedMessages(ConversationId conv) const;
-    void                               cacheMessages(ConversationId conv,
-                                                     const std::vector<Message> &msgs);
-    void                               saveLastConv(ConversationId conv,
-                                                    const QString &displayName);
+    std::vector<Message> cachedMessages(ConversationId conv) const;
+    void                 cacheMessages(ConversationId conv, const std::vector<Message> &msgs);
+    void                 saveLastConv(ConversationId conv, const QString &displayName);
     std::pair<ConversationId, QString> loadLastConv() const;
 
     void       cacheImage(const QString &url, const QByteArray &data);
     QByteArray cachedImage(const QString &url) const;
 
-    const User*         findUser(UserId) const;
-    const Conversation* findConversation(ConversationId) const;
+    const User         *findUser(UserId) const;
+    const Conversation *findConversation(ConversationId) const;
 
     // Synchronous snapshot accessors (for autocomplete, etc.)
-    const std::vector<User>&         currentUsers() const;
-    const std::vector<Conversation>& currentConversations() const;
+    const std::vector<User>         &currentUsers() const;
+    const std::vector<Conversation> &currentConversations() const;
 
-    Backend* backend() const;
+    Backend *backend() const;
 
 private:
-    std::unique_ptr<Backend>      _backend;
+    std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
 
     rpl::variable<std::vector<Conversation>> _conversations;
@@ -108,13 +107,13 @@ private:
     rpl::event_stream<Event>                 _eventHub;
     rpl::event_stream<QString>               _errorHub;
 
-    UserId              _meUserId;    // set via setMe() once auth.test result is known
-    bool                _meIsAdmin = false; // is_admin || is_owner from auth.test
-    ConversationId      _readingConv; // currently open conversation
-    QHash<QString,QString> _emojiMap;
+    UserId                         _meUserId; // set via setMe() once auth.test result is known
+    bool                           _meIsAdmin = false; // is_admin || is_owner from auth.test
+    ConversationId                 _readingConv;       // currently open conversation
+    QHash<QString, QString>        _emojiMap;
     QHash<QString, QList<QString>> _pendingOptimisticTs; // conv.value → queue of fake ts values
-    QHash<QString, User> _botUsers;           // bot_id → User; for bots not in users.list
-    QSet<QString>        _pendingBotFetches;  // bot_ids with an in-flight bots.info request
+    QHash<QString, User>           _botUsers;     // bot_id → User; for bots not in users.list
+    QSet<QString>             _pendingBotFetches; // bot_ids with an in-flight bots.info request
     rpl::event_stream<UserId> _botInfoHub;
-    rpl::lifetime       _lifetime;
+    rpl::lifetime             _lifetime;
 };

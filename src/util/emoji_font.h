@@ -5,7 +5,8 @@
 #include <QFont>
 
 // Returns a font suitable for rendering Unicode emoji at the given pixel size.
-// Uses the platform-native color emoji font (Noto Color Emoji / Apple Color Emoji / Segoe UI Emoji).
+// Uses the platform-native color emoji font (Noto Color Emoji / Apple Color Emoji / Segoe UI
+// Emoji).
 inline QFont emojiFont(int pixelSize = 20) {
     QFont f;
     f.setPixelSize(pixelSize);

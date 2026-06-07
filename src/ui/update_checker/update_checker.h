@@ -17,11 +17,11 @@ class UpdateChecker : public QObject {
 public:
     explicit UpdateChecker(QObject *parent = nullptr);
 
-    void checkInBackground();   // silent; no-ops on failure / no network
-    void checkNow();            // explicit check; always emits a terminal signal
+    void checkInBackground(); // silent; no-ops on failure / no network
+    void checkNow();          // explicit check; always emits a terminal signal
     bool isChecking() const { return _checking; }
 
-    QString stagedPath()    const { return _staged; }
+    QString stagedPath() const { return _staged; }
     int     stagedVersion() const { return _stagedVersion; }
     void    clearStaged();
 

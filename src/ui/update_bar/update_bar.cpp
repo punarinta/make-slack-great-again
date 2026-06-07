@@ -6,9 +6,7 @@
 #include <QPushButton>
 #include <QHBoxLayout>
 
-UpdateBar::UpdateBar(QWidget *parent)
-    : QWidget(parent)
-{
+UpdateBar::UpdateBar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(32);
     setStyleSheet("background: #007A5A;");
 
@@ -23,18 +21,14 @@ UpdateBar::UpdateBar(QWidget *parent)
     _btn = new QPushButton(this);
     _btn->setFixedHeight(22);
     _btn->setCursor(Qt::PointingHandCursor);
-    _btn->setStyleSheet(
-        "QPushButton {"
-        "  background: rgba(255,255,255,0.20); color: white;"
-        "  border: 1px solid rgba(255,255,255,0.35); border-radius: 3px;"
-        "  font-size: 12px; font-weight: 600; padding: 0 10px;"
-        "}"
-        "QPushButton:hover   { background: rgba(255,255,255,0.30); }"
-        "QPushButton:pressed { background: rgba(255,255,255,0.15); }"
-    );
-    connect(_btn, &QPushButton::clicked, this, [this] {
-        emit restartRequested(_staged);
-    });
+    _btn->setStyleSheet("QPushButton {"
+                        "  background: rgba(255,255,255,0.20); color: white;"
+                        "  border: 1px solid rgba(255,255,255,0.35); border-radius: 3px;"
+                        "  font-size: 12px; font-weight: 600; padding: 0 10px;"
+                        "}"
+                        "QPushButton:hover   { background: rgba(255,255,255,0.30); }"
+                        "QPushButton:pressed { background: rgba(255,255,255,0.15); }");
+    connect(_btn, &QPushButton::clicked, this, [this] { emit restartRequested(_staged); });
     lay->addWidget(_btn);
 
     hide();

@@ -5,38 +5,52 @@
 namespace {
 
 TextWithEntities plainText(const QString &text) {
-    return TextWithEntities{ text, {} };
+    return TextWithEntities{text, {}};
 }
 
 Message makeMessage(const QString &ts, const QString &userId, const QString &text) {
     return Message{
         .ts     = ts,
-        .author = UserId{ userId },
+        .author = UserId{userId},
         .text   = plainText(text),
     };
 }
 
 } // namespace
 
-FakeBackend::FakeBackend()
-    : _authState(AuthState::LoggedIn)
-{
+FakeBackend::FakeBackend() : _authState(AuthState::LoggedIn) {
     _conversations = std::vector<Conversation>{
-        { .id=ConversationId{"C001"}, .kind=ConvKind::PublicChannel,  .name="general",
-          .isMember=true, .lastRead="0", .unread=0 },
-        { .id=ConversationId{"C002"}, .kind=ConvKind::PublicChannel,  .name="random",
-          .isMember=true, .lastRead="0", .unread=2 },
-        { .id=ConversationId{"C003"}, .kind=ConvKind::PrivateChannel, .name="secret",
-          .isMember=true, .lastRead="0", .unread=0 },
-        { .id=ConversationId{"D001"}, .kind=ConvKind::Im,             .name="alice-dm",
-          .isMember=true, .lastRead="0", .unread=1,
-          .dmUser=std::optional<UserId>(UserId{"U002"}) },
+        {.id       = ConversationId{"C001"},
+         .kind     = ConvKind::PublicChannel,
+         .name     = "general",
+         .isMember = true,
+         .lastRead = "0",
+         .unread   = 0},
+        {.id       = ConversationId{"C002"},
+         .kind     = ConvKind::PublicChannel,
+         .name     = "random",
+         .isMember = true,
+         .lastRead = "0",
+         .unread   = 2},
+        {.id       = ConversationId{"C003"},
+         .kind     = ConvKind::PrivateChannel,
+         .name     = "secret",
+         .isMember = true,
+         .lastRead = "0",
+         .unread   = 0},
+        {.id       = ConversationId{"D001"},
+         .kind     = ConvKind::Im,
+         .name     = "alice-dm",
+         .isMember = true,
+         .lastRead = "0",
+         .unread   = 1,
+         .dmUser   = std::optional<UserId>(UserId{"U002"})},
     };
 
     _users = std::vector<User>{
-        { UserId{"U001"}, "bob",   "Bob Builder",  "", false, true  },
-        { UserId{"U002"}, "alice", "Alice Wonder", "", false, false },
-        { UserId{"U003"}, "bot",   "HelperBot",    "", true,  false },
+        {UserId{"U001"}, "bob", "Bob Builder", "", false, true},
+        {UserId{"U002"}, "alice", "Alice Wonder", "", false, false},
+        {UserId{"U003"}, "bot", "HelperBot", "", true, false},
     };
 
     _history["C001"] = {
@@ -59,7 +73,7 @@ Capabilities FakeBackend::capabilities() const {
     return Capabilities{}; // public-path defaults: no typing, no live presence
 }
 
-void FakeBackend::connectRealtime()    {}
+void FakeBackend::connectRealtime() {}
 void FakeBackend::disconnectRealtime() {}
 
 rpl::producer<UserId> FakeBackend::loadMe() {
@@ -78,27 +92,24 @@ rpl::producer<bool> FakeBackend::loadPresence(UserId) {
     return rpl::variable<bool>(false).value();
 }
 
-rpl::producer<MessagePage> FakeBackend::loadHistory(
-    ConversationId conv, std::optional<QString> /*cursor*/)
-{
-    auto it = _history.find(conv.value);
+rpl::producer<MessagePage>
+FakeBackend::loadHistory(ConversationId conv, std::optional<QString> /*cursor*/) {
+    auto it   = _history.find(conv.value);
     auto msgs = (it != _history.end()) ? it->second : std::vector<Message>{};
-    auto page = MessagePage{ std::move(msgs), std::nullopt };
+    auto page = MessagePage{std::move(msgs), std::nullopt};
     return rpl::variable<MessagePage>(std::move(page)).value();
 }
 
-rpl::producer<MessagePage> FakeBackend::loadThread(
-    ConversationId, Ts, std::optional<QString>)
-{
+rpl::producer<MessagePage> FakeBackend::loadThread(ConversationId, Ts, std::optional<QString>) {
     return rpl::variable<MessagePage>(MessagePage{}).value();
 }
 
-void FakeBackend::sendMessage(ConversationId, OutgoingMessage)    {}
+void FakeBackend::sendMessage(ConversationId, OutgoingMessage) {}
 void FakeBackend::editMessage(ConversationId, Ts, TextWithEntities) {}
-void FakeBackend::deleteMessage(ConversationId, Ts)               {}
-void FakeBackend::addReaction(ConversationId, Ts, QString)        {}
-void FakeBackend::removeReaction(ConversationId, Ts, QString)     {}
-void FakeBackend::markRead(ConversationId, Ts)                    {}
+void FakeBackend::deleteMessage(ConversationId, Ts) {}
+void FakeBackend::addReaction(ConversationId, Ts, QString) {}
+void FakeBackend::removeReaction(ConversationId, Ts, QString) {}
+void FakeBackend::markRead(ConversationId, Ts) {}
 
 rpl::producer<Event> FakeBackend::events() const {
     return _events.events();
@@ -112,6 +123,6 @@ rpl::producer<std::vector<SearchResult>> FakeBackend::searchMessages(const QStri
     return rpl::variable<std::vector<SearchResult>>({}).value();
 }
 
-rpl::producer<QHash<QString,QString>> FakeBackend::loadEmojiList() {
-    return rpl::variable<QHash<QString,QString>>({}).value();
+rpl::producer<QHash<QString, QString>> FakeBackend::loadEmojiList() {
+    return rpl::variable<QHash<QString, QString>>({}).value();
 }

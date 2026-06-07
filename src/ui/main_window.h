@@ -48,7 +48,7 @@ private:
     // UI construction (called once)
     void     buildUi();
     QWidget *buildLoggedOutPage();
-    QWidget *buildMainPage();    // session-agnostic; built lazily
+    QWidget *buildMainPage(); // session-agnostic; built lazily
 
     // buildMainPage sub-builders — each sets the corresponding member variable(s).
     QWidget *buildWorkspaceSwitcher(QWidget *parent);
@@ -94,33 +94,33 @@ private:
     void openConversation(int row);
 
     std::unique_ptr<Session> _sessionOwner;
-    QString    _activeTeamId;
+    QString                  _activeTeamId;
     OAuthFlow *_activeFlow = nullptr; // non-owning; valid only while runLoginFlow() blocks
 
     // Window frame
     TitleBar      *_titleBar      = nullptr;
     UpdateBar     *_updateBar     = nullptr;
     UpdateChecker *_updateChecker = nullptr;
-    QWidget       *_frame         = nullptr;   // central widget; hosts titleBar + _stack
+    QWidget       *_frame         = nullptr; // central widget; hosts titleBar + _stack
     QVBoxLayout   *_frameLayout   = nullptr;
 
-    QStackedWidget      *_stack         = nullptr;
-    QWidget             *_loggedOutPage = nullptr;
-    QWidget             *_mainPage      = nullptr;   // built lazily
+    QStackedWidget *_stack         = nullptr;
+    QWidget        *_loggedOutPage = nullptr;
+    QWidget        *_mainPage      = nullptr; // built lazily
 
-    WorkspaceSwitcher   *_switcher       = nullptr;
-    SettingsDialog      *_settingsDialog = nullptr;
-    QWidget             *_convPanel      = nullptr;
-    ConvListWidget      *_convList       = nullptr;
-    QLabel              *_convNameLabel  = nullptr;
-    QWidget             *_msgHeader     = nullptr;
-    QSplitter           *_msgSplitter    = nullptr;
-    QStackedWidget      *_contentStack    = nullptr;
-    MessageListWidget   *_messageList    = nullptr;
-    ComposerWidget      *_composer       = nullptr;
-    SearchWidget        *_searchWidget   = nullptr;
-    WelcomeWidget       *_welcomeTips    = nullptr;
-    ThreadPanel         *_threadPanel    = nullptr;
+    WorkspaceSwitcher *_switcher       = nullptr;
+    SettingsDialog    *_settingsDialog = nullptr;
+    QWidget           *_convPanel      = nullptr;
+    ConvListWidget    *_convList       = nullptr;
+    QLabel            *_convNameLabel  = nullptr;
+    QWidget           *_msgHeader      = nullptr;
+    QSplitter         *_msgSplitter    = nullptr;
+    QStackedWidget    *_contentStack   = nullptr;
+    MessageListWidget *_messageList    = nullptr;
+    ComposerWidget    *_composer       = nullptr;
+    SearchWidget      *_searchWidget   = nullptr;
+    WelcomeWidget     *_welcomeTips    = nullptr;
+    ThreadPanel       *_threadPanel    = nullptr;
 
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;
@@ -129,16 +129,16 @@ private:
     int                         _totalMentions = 0; // DM unreads + channel @mentions
     rpl::lifetime               _sessionLifetime;
 
-    QHash<QString, QString>     _drafts; // convId.value → unsent draft text
+    QHash<QString, QString> _drafts; // convId.value → unsent draft text
 
-    ImageCache          *_imgCache          = nullptr;
-    QLabel              *_errorBanner       = nullptr;
-    QSystemTrayIcon     *_trayIcon          = nullptr;
-    QPushButton         *_starBtn           = nullptr;
-    HeaderAvatarWidget  *_headerAvatar      = nullptr;
+    ImageCache         *_imgCache     = nullptr;
+    QLabel             *_errorBanner  = nullptr;
+    QSystemTrayIcon    *_trayIcon     = nullptr;
+    QPushButton        *_starBtn      = nullptr;
+    HeaderAvatarWidget *_headerAvatar = nullptr;
 
     // Manual resize state (non-Wayland)
-    Qt::Edges _resizeEdges      = {};
+    Qt::Edges _resizeEdges = {};
     QPoint    _resizeDragStart;
     QRect     _resizeWinAtDrag;
     bool      _resizeHoverCursor = false;

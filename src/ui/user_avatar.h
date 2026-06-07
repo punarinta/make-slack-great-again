@@ -33,11 +33,16 @@ struct State {
 //   dpr           device pixel ratio (p.device()->devicePixelRatioF())
 //   borderColor   thin ring drawn around the dot; pass Qt::transparent for no ring.
 //                 Should match the container background (creates the "floating dot" look).
-inline void paint(QPainter &p, QRect rect, const QPixmap &pixmap,
-                  const QString &initial, const State &state,
-                  int cornerRadius, qreal dpr,
-                  QColor borderColor = Qt::transparent)
-{
+inline void paint(
+    QPainter      &p,
+    QRect          rect,
+    const QPixmap &pixmap,
+    const QString &initial,
+    const State   &state,
+    int            cornerRadius,
+    qreal          dpr,
+    QColor         borderColor = Qt::transparent
+) {
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
 
@@ -47,7 +52,8 @@ inline void paint(QPainter &p, QRect rect, const QPixmap &pixmap,
         clip.addRoundedRect(QRectF(rect), cornerRadius, cornerRadius);
         p.setClipPath(clip);
         QPixmap scaled = pixmap.scaled(
-            rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
+        );
         scaled.setDevicePixelRatio(dpr);
         p.drawPixmap(rect, scaled);
         p.setClipping(false);
@@ -67,7 +73,7 @@ inline void paint(QPainter &p, QRect rect, const QPixmap &pixmap,
 
     // ── Presence / DND dot ─────────────────────────────────────────────
     constexpr int dotD = 10;
-    const QRect dot(rect.right() - dotD + 3, rect.bottom() - dotD + 3, dotD, dotD);
+    const QRect   dot(rect.right() - dotD + 3, rect.bottom() - dotD + 3, dotD, dotD);
 
     // Border ring — matches container background, creating the "cut-out" look.
     if (borderColor.alpha() > 0) {
