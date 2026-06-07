@@ -24,6 +24,7 @@ class ConvListWidget;
 class WorkspaceSwitcher;
 class SettingsDialog;
 class SearchWidget;
+class WelcomeWidget;
 class TitleBar;
 class ThreadPanel;
 class HeaderAvatarWidget;
@@ -112,9 +113,11 @@ private:
     QLabel              *_convNameLabel  = nullptr;
     QWidget             *_msgHeader     = nullptr;
     QSplitter           *_msgSplitter    = nullptr;
+    QStackedWidget      *_contentStack    = nullptr;
     MessageListWidget   *_messageList    = nullptr;
     ComposerWidget      *_composer       = nullptr;
     SearchWidget        *_searchWidget   = nullptr;
+    WelcomeWidget       *_welcomeTips    = nullptr;
     ThreadPanel         *_threadPanel    = nullptr;
 
     std::vector<ConversationId> _convIds;

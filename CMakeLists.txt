@@ -112,6 +112,7 @@ add_executable(msga MACOSX_BUNDLE
     src/ui/settings/settings_dialog.cpp
     src/ui/search/search_widget.cpp
     src/ui/thread_panel/thread_panel.cpp
+    src/ui/welcome_tips/welcome_widget.cpp
     src/ui/app_dialog/app_dialog.cpp
     src/ui/delete_message_dialog/delete_message_dialog.cpp
     src/ui/conv_selector/conv_selector_widget.cpp

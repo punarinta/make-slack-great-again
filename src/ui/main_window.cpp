@@ -17,6 +17,7 @@
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
+#include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
 #include "update_checker/update_checker.h"
 #include "update_bar/update_bar.h"
@@ -328,14 +329,18 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     msgLayout->setContentsMargins(0, 0, 0, 0);
     msgLayout->setSpacing(0);
 
-    auto *contentStack = new QStackedWidget(msgArea);
-    msgLayout->addWidget(contentStack, 1);
+    _contentStack = new QStackedWidget(msgArea);
+    msgLayout->addWidget(_contentStack, 1);
 
-    _messageList = new MessageListWidget(nullptr, _imgCache, contentStack);
-    contentStack->addWidget(_messageList);
+    _messageList = new MessageListWidget(nullptr, _imgCache, _contentStack);
+    _contentStack->addWidget(_messageList);
 
-    _searchWidget = new SearchWidget(contentStack);
-    contentStack->addWidget(_searchWidget);
+    _searchWidget = new SearchWidget(_contentStack);
+    _contentStack->addWidget(_searchWidget);
+
+    _welcomeTips = new WelcomeWidget(_contentStack);
+    _contentStack->addWidget(_welcomeTips);
+    _contentStack->setCurrentWidget(_welcomeTips);
 
     _composer = new ComposerWidget(msgArea);
     _composer->setEnabled(false);
@@ -350,14 +355,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgSplitter->setStretchFactor(1, 0);
 
     // ── Signal wiring ─────────────────────────────────────────────────
-    connect(searchBtn, &QPushButton::clicked, this, [this, contentStack] {
-        if (contentStack->currentWidget() == _searchWidget)
-            contentStack->setCurrentIndex(0);
+    connect(searchBtn, &QPushButton::clicked, this, [this] {
+        if (_contentStack->currentWidget() == _searchWidget)
+            _contentStack->setCurrentWidget(
+                _currentConvId.value.isEmpty() ? (QWidget *)_welcomeTips : (QWidget *)_messageList);
         else
-            contentStack->setCurrentWidget(_searchWidget);
+            _contentStack->setCurrentWidget(_searchWidget);
     });
-    connect(_searchWidget, &SearchWidget::closeRequested, this, [contentStack] {
-        contentStack->setCurrentIndex(0);
+    connect(_searchWidget, &SearchWidget::closeRequested, this, [this] {
+        _contentStack->setCurrentWidget(
+            _currentConvId.value.isEmpty() ? (QWidget *)_welcomeTips : (QWidget *)_messageList);
     });
     connect(_searchWidget, &SearchWidget::resultSelected,
             this, [this](ConversationId conv, Ts /*ts*/) {
@@ -473,6 +480,7 @@ void MainWindow::startSession(const QString &teamId) {
     _composer->setEnabled(false);
     _composer->hide();
     if (_msgHeader) _msgHeader->hide();
+    if (_contentStack && _messageList) _contentStack->setCurrentWidget(_messageList);
 
     // Create new session
     const auto creds  = TokenStore::loadWorkspace(teamId);
@@ -587,8 +595,15 @@ void MainWindow::connectToSession() {
             }
             // On first populate (no conversation open yet), jump to the last
             // conversation the user had open in the previous session.
-            if (_currentConvId.value.isEmpty())
+            if (_currentConvId.value.isEmpty()) {
                 restoreLastConv();
+                // If still no conversation after restore attempt, show tips now
+                // that the list is ready (not during initial loading spinner).
+                if (_currentConvId.value.isEmpty()
+                        && _convPanel && _convPanel->isVisible()
+                        && _contentStack && _welcomeTips)
+                    _contentStack->setCurrentWidget(_welcomeTips);
+            }
         }, _sessionLifetime);
 
     _sessionOwner->users()
@@ -965,6 +980,7 @@ void MainWindow::openConversation(int row) {
     const bool hasCachedMsgs = !_sessionOwner->cachedMessages(_currentConvId).empty();
 
     _sessionOwner->setReading(_currentConvId);
+    if (_contentStack) _contentStack->setCurrentWidget(_messageList);
     _messageList->openConversation(_currentConvId, displayName, description);
     _composer->setEnabled(true);
     _composer->setConvKind(conv ? conv->kind : ConvKind::PublicChannel);

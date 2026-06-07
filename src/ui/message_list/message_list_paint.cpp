@@ -45,6 +45,29 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
 
     if ((_loading || _waiting) && _items.empty()) {
         _loadingAnim.paint(p, viewport()->rect());
+
+        if (_loadingElapsedTimer.isValid()) {
+            const qint64 ms = _loadingElapsedTimer.elapsed();
+            QString hint;
+            if (ms >= 15000)
+                hint = tr("Oh my gosh, I really apologize, but your company is a reaaaly active Slack user. Still loading...");
+            else if (ms >= 5000)
+                hint = tr("Oh, you must have a lot of co-workers and messages! Still loading...");
+            else if (ms >= 1000)
+                hint = tr("Loading your stuff...");
+
+            if (!hint.isEmpty()) {
+                QFont f = QApplication::font();
+                f.setPointSizeF(f.pointSizeF() * 1.15);
+                p.setFont(f);
+                p.setPen(Theme::kTextSecondary);
+                const QRect vr  = viewport()->rect();
+                const int textTop = vr.center().y() + 26 + 24; // spinner radius + gap
+                const QRect textRect(vr.left() + 32, textTop, vr.width() - 64, 80);
+                p.drawText(textRect, Qt::AlignTop | Qt::AlignHCenter | Qt::TextWordWrap, hint);
+            }
+        }
+
         return;
     }
 

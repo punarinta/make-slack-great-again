@@ -146,7 +146,10 @@ void MessageListWidget::clear() {
 void MessageListWidget::setWaiting(bool waiting) {
     _waiting = waiting;
     if (waiting) {
-        if (!_loadingAnim.isRunning()) _loadingAnim.start();
+        if (!_loadingAnim.isRunning()) {
+            _loadingElapsedTimer.start();
+            _loadingAnim.start();
+        }
     } else {
         if (!_loading) _loadingAnim.stop();
     }
@@ -224,6 +227,7 @@ void MessageListWidget::openConversation(ConversationId conv, const QString &con
         });
     } else {
         _loading = true;
+        _loadingElapsedTimer.start();
         _loadingAnim.start();
     }
 
@@ -347,6 +351,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     if (!_session) return;
 
     _loading = true;
+    _loadingElapsedTimer.start();
     _loadingAnim.start();
 
     _session->events()

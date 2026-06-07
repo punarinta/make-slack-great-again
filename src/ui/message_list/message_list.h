@@ -7,6 +7,7 @@
 #include "ui/loading_indicator/loading_indicator.h"
 #include "ui/virtual_list/virtual_list_widget.h"
 
+#include <QElapsedTimer>
 #include <QVariantAnimation>
 #include <QSet>
 #include <QHash>
@@ -276,6 +277,7 @@ private:
     bool                   _loading      = false; // true while waiting for the initial page
     bool                   _waiting      = false; // true while the conv list itself hasn't loaded
     LoadingIndicator       _loadingAnim;
+    QElapsedTimer          _loadingElapsedTimer;
 
     rpl::lifetime _loadLifetime;
     rpl::lifetime _olderLoadLifetime;
