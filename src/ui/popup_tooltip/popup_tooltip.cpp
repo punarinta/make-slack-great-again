@@ -21,7 +21,8 @@ PopupTooltip::PopupTooltip(QWidget *parent)
 }
 
 void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect) {
-    _text = text;
+    _text    = text;
+    _rightOf = false;
 
     QFont f = QApplication::font();
     f.setWeight(QFont::Weight(500));
@@ -68,15 +69,54 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
     update();
 }
 
+void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRect) {
+    _text    = text;
+    _below   = false;
+    _rightOf = true;
+
+    QFont f = QApplication::font();
+    f.setWeight(QFont::Weight(500));
+    const QFontMetrics fm(f);
+
+    const int bodyW   = fm.horizontalAdvance(text) + 2 * kPadH;
+    const int bodyH   = fm.height() + 2 * kPadV;
+    const int widgetW = kShadow + kArrowH + bodyW + kShadow;
+    const int widgetH = bodyH + 2 * kShadow;
+
+    const int arrowTipGY = targetGlobalRect.center().y();
+
+    QScreen    *s     = QGuiApplication::screenAt(targetGlobalRect.center());
+    const QRect avail = s ? s->availableGeometry() : QRect();
+
+    int wx = targetGlobalRect.right() + kGap - kShadow;
+    int wy = arrowTipGY - widgetH / 2;
+
+    if (avail.isValid()) {
+        wx = std::min(wx, avail.right() - widgetW);
+        wy = std::max(avail.top(), std::min(wy, avail.bottom() - widgetH));
+    }
+
+    _arrowY = std::clamp(arrowTipGY - wy, kShadow + kArrowW, widgetH - kShadow - kArrowW);
+
+    setFixedSize(widgetW, widgetH);
+    move(wx, wy);
+    show();
+    raise();
+    update();
+}
+
 void PopupTooltip::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    const int    bodyH = height() - kShadow - kArrowH - kShadow;
-    // When below, the arrow sits above the body; when above, it sits below.
-    const QRectF body  = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
-                                : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
-    const qreal  cx    = _arrowX;
+    QRectF body;
+    if (_rightOf) {
+        body = QRectF(kShadow + kArrowH, kShadow, width() - kShadow - kArrowH - kShadow, height() - 2 * kShadow);
+    } else {
+        const int bodyH = height() - kShadow - kArrowH - kShadow;
+        body = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
+                      : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
+    }
 
     // Light drop shadow around the body only
     for (int i = kShadow; i >= 2; --i) {
@@ -95,18 +135,26 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
 
     // Arrow — base overlaps body by 3px to cover antialiased edge seam
     QPolygonF arrow;
-    if (_below) {
-        // Tip points up toward the target above
-        const qreal baseY = body.top();
-        const qreal tipY  = kShadow;
-        arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
-              << QPointF(cx, tipY);
+    if (_rightOf) {
+        // Tip points left toward the target
+        const qreal baseX = body.left();
+        const qreal tipX  = kShadow;
+        const qreal cy    = _arrowY;
+        arrow << QPointF(baseX + 3, cy - kArrowW) << QPointF(baseX + 3, cy + kArrowW)
+              << QPointF(tipX, cy);
     } else {
-        // Tip points down toward the target below
-        const qreal baseY = body.bottom();
-        const qreal tipY  = baseY + kArrowH;
-        arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
-              << QPointF(cx, tipY);
+        const qreal cx = _arrowX;
+        if (_below) {
+            const qreal baseY = body.top();
+            const qreal tipY  = kShadow;
+            arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
+                  << QPointF(cx, tipY);
+        } else {
+            const qreal baseY = body.bottom();
+            const qreal tipY  = baseY + kArrowH;
+            arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
+                  << QPointF(cx, tipY);
+        }
     }
     p.drawPolygon(arrow);
 

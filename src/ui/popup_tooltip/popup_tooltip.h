@@ -12,14 +12,17 @@ class PopupTooltip : public QWidget {
 public:
     explicit PopupTooltip(QWidget *parent = nullptr);
     void showAbove(const QString &text, const QRect &targetGlobalRect);
+    void showRightOf(const QString &text, const QRect &targetGlobalRect);
 
 protected:
     void paintEvent(QPaintEvent *e) override;
 
 private:
     QString _text;
-    int     _arrowX = 0;     // arrow-tip x in widget coords, set after screen clamp
-    bool    _below  = false; // true when tooltip is shown below the target
+    int     _arrowX  = 0;     // arrow-tip x in widget coords (above/below modes)
+    int     _arrowY  = 0;     // arrow-tip y in widget coords (rightOf mode)
+    bool    _below   = false; // true when tooltip is shown below the target
+    bool    _rightOf = false; // true when tooltip is shown to the right of the target
 
     static constexpr int kPadH   = 10;
     static constexpr int kPadV   = 5;
