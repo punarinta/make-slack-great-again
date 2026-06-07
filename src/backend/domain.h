@@ -66,7 +66,9 @@ struct Conversation {
     QString              description; // channel topic/purpose; empty for DMs
     bool                 isMember = false;
     Ts                   lastRead;
-    int                  unread   = 0;
+    Ts                   latestTs;  // ts of most recent message (from conversations.list "latest.ts")
+    int                  unread       = 0;
+    int                  mentionCount = 0; // @mentions in channels; for DMs treat all unread as mentions
     std::optional<UserId> dmUser; // set for Im conversations
     bool                 isMuted  = false;
     bool operator==(const Conversation &) const = default;
@@ -197,7 +199,7 @@ struct EvMessageChanged { ConversationId conv; Message msg; };
 struct EvMessageDeleted { ConversationId conv; Ts ts; };
 struct EvReactionAdded  { ConversationId conv; Ts ts; QString name; UserId user; };
 struct EvReactionRemoved{ ConversationId conv; Ts ts; QString name; UserId user; };
-struct EvConvMarked     { ConversationId conv; Ts lastRead; int unread; };
+struct EvConvMarked     { ConversationId conv; Ts lastRead; int unread; int mentionCount = 0; };
 struct EvTyping         { ConversationId conv; UserId user; };
 struct EvPresenceChanged{ UserId user; bool active; };
 struct EvDndChanged     { UserId user; bool dndEnabled; };

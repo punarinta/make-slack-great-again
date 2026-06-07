@@ -30,6 +30,7 @@
         <file alias="ui/chevron-right.svg">../gfx/ui/chevron-right.svg</file>
         <file alias="ui/hash.svg">../gfx/ui/hash.svg</file>
         <file alias="ui/message-square.svg">../gfx/ui/message-square.svg</file>
+        <file alias="ui/messages-square.svg">../gfx/ui/messages-square.svg</file>
         <file alias="ui/settings-2.svg">../gfx/ui/settings-2.svg</file>
         <file alias="ui/x.svg">../gfx/ui/x.svg</file>
         <file alias="ui/pin.svg">../gfx/ui/pin.svg</file>

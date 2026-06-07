@@ -16,11 +16,17 @@
 #include <QWheelEvent>
 #include <QFontMetrics>
 #include <QApplication>
+#include <QDateTime>
+#include <QSettings>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include "ui/context_menu/context_menu.h"
 
 ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     : VirtualListWidget(parent)
     , _imgCache(imgCache)
 {
+    loadVisitedAt();
     viewport()->setCursor(Qt::PointingHandCursor);
 
     _selAnim.setDuration(140);
@@ -37,6 +43,39 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     if (_imgCache) {
         connect(_imgCache, &ImageCache::loaded, this, [this]{ viewport()->update(); });
     }
+}
+
+void ConvListWidget::setRelevantDays(int days) {
+    _relevantDays = std::max(1, days);
+    rebuildRows();
+}
+
+void ConvListWidget::resetVisitedAt() {
+    _visitedAt.clear();
+    // rebuildRows() will auto-seed from current API data (latestTs / unread),
+    // giving a clean first-launch experience without restarting.
+    rebuildRows();
+}
+
+void ConvListWidget::loadVisitedAt() {
+    const QByteArray raw =
+        QSettings("msga", "msga").value("conv/visitedAt").toString().toUtf8();
+    const QJsonObject obj = QJsonDocument::fromJson(raw).object();
+    for (auto it = obj.begin(); it != obj.end(); ++it)
+        _visitedAt[it.key()] = it.value().toVariant().toLongLong();
+}
+
+void ConvListWidget::saveVisitedAt() {
+    // Prune entries older than 2× the window so the store doesn't grow forever.
+    const qint64 horizon = QDateTime::currentSecsSinceEpoch()
+                           - _relevantDays * qint64(86400) * 2;
+    QJsonObject obj;
+    for (auto it = _visitedAt.begin(); it != _visitedAt.end(); ++it) {
+        if (it.value() >= horizon)
+            obj[it.key()] = it.value();
+    }
+    QSettings("msga", "msga").setValue("conv/visitedAt",
+        QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
 // Returns true if s looks like a raw Slack user ID (e.g. "U0A1B2C3D").
@@ -84,9 +123,9 @@ void ConvListWidget::rebuildFilteredConvs() {
                 if (it->isDeactivated) continue;
                 if (it->displayName == "deactivateduser") continue;
                 if (isRawSlackId(it->displayName)) continue;
-            } else if (isRawSlackId(conv.name)) {
-                continue;
             }
+            // User info not yet loaded — let the DM through; it will re-filter
+            // correctly once setUsers() is called.
         }
         _convs.push_back(conv);
     }
@@ -96,13 +135,49 @@ void ConvListWidget::rebuildFilteredConvs() {
 void ConvListWidget::rebuildRows() {
     _rows.clear();
 
+    const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
+    const qint64 cutoff = nowSec - _relevantDays * qint64(86400);
+
+    // Stamp conversations with unread messages so they stay visible for the full window.
+    bool seedChanged = false;
+    for (const auto &c : _convs) {
+        if (c.unread > 0 && _visitedAt.value(c.id.value, 0) < cutoff) {
+            _visitedAt[c.id.value] = nowSec;
+            seedChanged = true;
+        }
+    }
+    if (seedChanged) saveVisitedAt();
+
+    // A conversation is relevant if:
+    //   - it has unread messages, OR
+    //   - it is currently selected, OR
+    //   - the user visited it within the window (_visitedAt stamp >= cutoff), OR
+    //   - it has never been stamped at all (new/unknown channel shown by default until
+    //     the background info-fetch populates its stamp from last_read).
+    auto isRelevant = [&](const Conversation &c) -> bool {
+        if (c.unread > 0)        return true;
+        if (c.id == _selectedId) return true;
+        const qint64 stamp = _visitedAt.value(c.id.value, -1);
+        if (stamp < 0)           return true;  // never stamped → show by default
+        return stamp >= cutoff;
+    };
+
+    std::vector<int> visCh, hidCh, visDm, hidDm;
+    for (int i = 0; i < (int)_convs.size(); ++i) {
+        const auto &c = _convs[i];
+        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+        (isDm ? (isRelevant(c) ? visDm : hidDm)
+              : (isRelevant(c) ? visCh : hidCh)).push_back(i);
+    }
     // ── Channels section ─────────────────────────────────────────────
     _rows.push_back({RowKind::SectionHeader, -1, 0});
     if (!_channelsCollapsed) {
-        for (int i = 0; i < (int)_convs.size(); ++i) {
-            const ConvKind k = _convs[i].kind;
-            if (k == ConvKind::Im || k == ConvKind::Mpim) continue;
-            _rows.push_back({RowKind::Conv, i, -1});
+        for (int i : visCh) _rows.push_back({RowKind::Conv, i, -1});
+        if (!hidCh.empty()) {
+            if (_showAllChannels)
+                for (int i : hidCh) _rows.push_back({RowKind::Conv, i, -1});
+            else
+                _rows.push_back({RowKind::ShowMore, -1, 0, (int)hidCh.size()});
         }
         _rows.push_back({RowKind::AddChannels, -1, 0});
     }
@@ -110,10 +185,12 @@ void ConvListWidget::rebuildRows() {
     // ── Direct messages section ───────────────────────────────────────
     _rows.push_back({RowKind::SectionHeader, -1, 1});
     if (!_dmsCollapsed) {
-        for (int i = 0; i < (int)_convs.size(); ++i) {
-            const ConvKind k = _convs[i].kind;
-            if (k != ConvKind::Im && k != ConvKind::Mpim) continue;
-            _rows.push_back({RowKind::Conv, i, -1});
+        for (int i : visDm) _rows.push_back({RowKind::Conv, i, -1});
+        if (!hidDm.empty()) {
+            if (_showAllDms)
+                for (int i : hidDm) _rows.push_back({RowKind::Conv, i, -1});
+            else
+                _rows.push_back({RowKind::ShowMore, -1, 1, (int)hidDm.size()});
         }
     }
 
@@ -207,6 +284,9 @@ void ConvListWidget::setSelected(int row) {
     _selT     = 0.0;
     _selected = row;
     _selectedId = _convs[_rows[row].convIdx].id;
+    // Record visit so this conversation stays visible in future sessions.
+    _visitedAt[_selectedId.value] = QDateTime::currentSecsSinceEpoch();
+    saveVisitedAt();
     _selAnim.stop();
     _selAnim.setStartValue(0.0);
     _selAnim.setEndValue(1.0);
@@ -261,8 +341,17 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     case RowKind::Conv:
         setSelected(row);
         break;
-    case RowKind::AddChannels:
-        emit addChannelsClicked();
+    case RowKind::AddChannels: {
+        auto *menu = new ContextMenu(viewport());
+        menu->addItem(tr("Find a channel"),   [this]{ emit findChannelRequested();   });
+        menu->addItem(tr("Create a channel"), [this]{ emit createChannelRequested(); });
+        menu->popup(e->globalPosition().toPoint());
+        break;
+    }
+    case RowKind::ShowMore:
+        if (ri.sectionId == 0) _showAllChannels = true;
+        else                   _showAllDms      = true;
+        rebuildRows();
         break;
     }
 }
@@ -359,7 +448,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     static const QPixmap kChevDownDim  = svgPixmap(":/ui/chevron-down.svg",  QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
     static const QPixmap kChevRightDim = svgPixmap(":/ui/chevron-right.svg", QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
     static const QPixmap kHashDim      = svgPixmap(":/ui/hash.svg",          QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
-    static const QPixmap kMsgDim       = svgPixmap(":/ui/message-square.svg",QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
+    static const QPixmap kMsgDim       = svgPixmap(":/ui/messages-square.svg",QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
 
     const QColor color = Theme::kTextOnDarkDim;
 
@@ -404,6 +493,28 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     p.drawText(leftX + prefixW, textY, tr("Add channels"));
 }
 
+void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int sectionId, int count) const {
+    const bool hovered = (row == _hovered);
+    if (hovered)
+        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Theme::kHoverItem);
+
+    const QColor color = hovered ? Theme::kTextOnDark : Theme::kTextOnDarkDim;
+
+    QFont font = QApplication::font();
+    font.setWeight(QFont::Normal);
+    p.setFont(font);
+    p.setPen(color);
+
+    const QFontMetrics fm(font);
+    const int textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
+    const int leftX = kPadH + kGroupIndent;
+
+    const QString label = (sectionId == 0)
+        ? tr("%1 more %2").arg(count).arg(count == 1 ? tr("channel") : tr("channels"))
+        : tr("%1 more %2").arg(count).arg(count == 1 ? tr("DM") : tr("DMs"));
+    p.drawText(leftX, textY, label);
+}
+
 void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const auto &ri = _rows[row];
 
@@ -413,6 +524,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     }
     if (ri.kind == RowKind::AddChannels) {
         paintAddChannelsRow(p, row, y);
+        return;
+    }
+    if (ri.kind == RowKind::ShowMore) {
+        paintShowMoreRow(p, row, y, ri.sectionId, ri.count);
         return;
     }
 
@@ -431,7 +546,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         rowBg = QColor(lerp(base.red(),   sel.red(),   _selT),
                        lerp(base.green(), sel.green(), _selT),
                        lerp(base.blue(),  sel.blue(),  _selT));
-        p.fillRect(rowRect, rowBg);
+        // Rounded pill inset from edges, not full-width
+        p.setPen(Qt::NoPen);
+        p.setBrush(rowBg);
+        p.drawRoundedRect(rowRect.adjusted(8, 2, -8, -2), 6, 6);
     } else if (row == _hovered) {
         rowBg = Theme::kHoverItem;
         p.fillRect(rowRect, rowBg);
@@ -440,7 +558,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     QFont font = QApplication::font();
     const bool isUnread   = conv.unread > 0;
     const bool isSelected = (row == _selected);
-    font.setWeight((isUnread || isSelected) ? QFont::DemiBold : QFont::Normal);
+    font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
     p.setFont(font);
 
     const QColor textColor = (isSelected || isUnread)
@@ -452,6 +570,11 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const int textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
 
     const bool isDm = (conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim);
+    // DMs treat all unreads as high-priority; channels only when there are @mentions.
+    const bool isHighPriority = isDm || conv.mentionCount > 0;
+    const int badgeW = conv.unread == 0 ? 0
+                     : isHighPriority ? (conv.unread > 9 ? 28 : 20)
+                     : 14;
 
     const int leftX = kPadH + kGroupIndent;
     if (isDm && conv.dmUser) {
@@ -465,7 +588,6 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         const bool isMe = !_meUserId.value.isEmpty() && conv.dmUser == _meUserId;
 
         const int nameX  = leftX + kAvatarSize + kAvatarGap;
-        const int badgeW = conv.unread > 9 ? 28 : conv.unread > 0 ? 20 : 0;
 
         int suffixW = 0;
         QString emojiGlyph;
@@ -512,7 +634,6 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p.drawText(curX, textY, tr("you"));
         }
     } else {
-        const int badgeW = conv.unread > 9 ? 28 : conv.unread > 0 ? 20 : 0;
         int prefixW = 0;
         if (conv.kind == ConvKind::PrivateChannel) {
             static const QPixmap kLockDim    = svgPixmap(":/ui/lock.svg", QSize(14, 14), Theme::kTextOnDarkDim);
@@ -529,22 +650,33 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.drawText(leftX + prefixW, textY, name);
     }
 
-    // ── Unread badge ──────────────────────────────────────────────────
+    // ── Unread indicator ──────────────────────────────────────────────
     if (conv.unread > 0) {
-        const QString badge = conv.unread > 99 ? "99+" : QString::number(conv.unread);
-        QFont bf = font;
-        bf.setPointSizeF(bf.pointSizeF() * 0.78);
-        bf.setBold(true);
-        p.setFont(bf);
-        const QFontMetrics bfm(bf);
-        const int bw = bfm.horizontalAdvance(badge) + 10;
-        const int bh = bfm.height() + 4;
-        const int bx = viewport()->width() - bw - 8;
-        const int by = y + (kRowH - bh) / 2;
-        p.setPen(Qt::NoPen);
-        p.setBrush(Theme::kUnreadBadge);
-        p.drawRoundedRect(QRect(bx, by, bw, bh), bh / 2, bh / 2);
-        p.setPen(Qt::white);
-        p.drawText(QRect(bx, by, bw, bh), Qt::AlignCenter, badge);
+        if (isHighPriority) {
+            // Red numbered badge for DMs and @mentions
+            const QString badge = conv.unread > 99 ? "99+" : QString::number(conv.unread);
+            QFont bf = font;
+            bf.setPointSizeF(bf.pointSizeF() * 0.78);
+            bf.setBold(true);
+            p.setFont(bf);
+            const QFontMetrics bfm(bf);
+            const int bw = bfm.horizontalAdvance(badge) + 10;
+            const int bh = bfm.height() + 4;
+            const int bx = viewport()->width() - bw - 8;
+            const int by = y + (kRowH - bh) / 2;
+            p.setPen(Qt::NoPen);
+            p.setBrush(Theme::kMentionBadge);
+            p.drawRoundedRect(QRect(bx, by, bw, bh), bh / 2, bh / 2);
+            p.setPen(Qt::white);
+            p.drawText(QRect(bx, by, bw, bh), Qt::AlignCenter, badge);
+        } else {
+            // Small dim dot for regular channel unreads (bold text already signals activity)
+            const int dotD = 8;
+            const int bx = viewport()->width() - dotD - 10;
+            const int by = y + (kRowH - dotD) / 2;
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 255, 255, 160));
+            p.drawEllipse(bx, by, dotD, dotD);
+        }
     }
 }

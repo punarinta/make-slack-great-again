@@ -92,8 +92,9 @@ void Session::start() {
                 auto convs = _conversations.current();
                 for (auto &c : convs) {
                     if (c.id == ev->conv) {
-                        c.lastRead = ev->lastRead;
-                        c.unread   = ev->unread;
+                        c.lastRead    = ev->lastRead;
+                        c.unread      = ev->unread;
+                        c.mentionCount= ev->mentionCount;
                         break;
                     }
                 }
@@ -105,7 +106,13 @@ void Session::start() {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {
                         if (c.id == ev->conv) {
-                            if (!c.isMuted) c.unread++;
+                            if (!c.isMuted) {
+                                c.unread++;
+                                const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+                                const bool isMention = !_meUserId.value.isEmpty()
+                                    && ev->msg.rawText.contains("<@" + _meUserId.value + ">");
+                                if (isDm || isMention) c.mentionCount++;
+                            }
                             break;
                         }
                     }

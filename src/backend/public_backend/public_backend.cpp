@@ -173,8 +173,9 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
         QUrlQuery params;
         params.addQueryItem("types", "public_channel,private_channel,im,mpim");
         params.addQueryItem("exclude_archived", "true");
+        params.addQueryItem("include_all_metadata", "true");
 
-        _api->paginate("conversations.list", "channels", params,
+        _api->paginate("users.conversations", "channels", params,
             [accum](QJsonArray page) {
                 auto batch = JsonMappers::toConversations(page);
                 accum->insert(accum->end(), batch.begin(), batch.end());

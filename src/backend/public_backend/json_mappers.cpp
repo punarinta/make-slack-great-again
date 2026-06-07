@@ -52,6 +52,23 @@ Conversation toConversation(const QJsonObject &o) {
     const auto topic   = o.value("topic").toObject().value("value").toString().trimmed();
     const auto purpose = o.value("purpose").toObject().value("value").toString().trimmed();
 
+    // Compute timestamps locally so we can use both in the unread fallback below.
+    const QString lastRead = o.value("last_read").toString();
+    const QString latestTs = [&]() -> QString {
+        const auto v = o.value("latest");
+        if (v.isObject()) return v.toObject().value("ts").toString();
+        if (v.isString()) return v.toString(); // DMs return ts directly
+        return {};
+    }();
+
+    // unread_count is not always populated by the API (often 0 for public channels).
+    // latestTs > lastRead is a reliable fallback: Slack timestamps are zero-padded
+    // fixed-width strings so lexicographic comparison is identical to numeric.
+    const int rawUnread = o.value("unread_count").toInt();
+    const int unread = rawUnread > 0 ? rawUnread
+                     : (!latestTs.isEmpty() && !lastRead.isEmpty() && latestTs > lastRead) ? 1
+                     : 0;
+
     return Conversation{
         .id          = ConversationId{ o.value("id").toString() },
         .kind        = kind,
@@ -59,8 +76,10 @@ Conversation toConversation(const QJsonObject &o) {
                            o.value("user").toString()), // Im: use user id as fallback
         .description = !topic.isEmpty() ? topic : purpose,
         .isMember    = o.value("is_member").toBool(true),
-        .lastRead    = o.value("last_read").toString(),
-        .unread      = o.value("unread_count").toInt(),
+        .lastRead    = lastRead,
+        .latestTs    = latestTs,
+        .unread      = unread,
+        .mentionCount= o.value("mention_count").toInt(),
         .dmUser      = dmUser,
         .isMuted     = o.value("is_muted").toBool(),
     };

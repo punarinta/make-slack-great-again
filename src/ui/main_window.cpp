@@ -219,6 +219,13 @@ QWidget *MainWindow::buildMainPage() {
     root->addWidget(buildConvPanel(page));
     root->addWidget(buildRightPanel(page), 1);
 
+    // Apply stored appearance setting and keep conv list in sync when settings are saved.
+    _convList->setRelevantDays(QSettings("msga", "msga").value("appearance/relevantDays", 14).toInt());
+    connect(_settingsDialog, &SettingsDialog::appearanceChanged,
+            _convList,       &ConvListWidget::setRelevantDays);
+    connect(_settingsDialog, &SettingsDialog::stateCleared,
+            _convList,       &ConvListWidget::resetVisitedAt);
+
     return page;
 }
 
@@ -486,7 +493,8 @@ void MainWindow::startSession(const QString &teamId) {
     _sessionLifetime = rpl::lifetime();
     _sessionOwner.reset();
     _currentConvId = {};
-    _totalUnread = 0;
+    _totalUnread   = 0;
+    _totalMentions = 0;
     updateTrayIcon();
     _composer->setEnabled(false);
     _composer->hide();
@@ -543,7 +551,8 @@ void MainWindow::showLoggedOut() {
     _sessionOwner.reset();
     _activeTeamId.clear();
     _currentConvId = {};
-    _totalUnread = 0;
+    _totalUnread   = 0;
+    _totalMentions = 0;
     updateTrayIcon();
     if (_titleBar) _titleBar->setTitle({});
     refreshSwitcher(); // switcher is always visible — deselect the active entry
@@ -724,11 +733,16 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
 }
 
 void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
-    int total = 0;
-    for (const auto &c : convs)
-        if (!c.isMuted) total += c.unread;
-    if (total == _totalUnread) return;
-    _totalUnread = total;
+    int total = 0, mentions = 0;
+    for (const auto &c : convs) {
+        if (c.isMuted) continue;
+        total += c.unread;
+        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+        mentions += isDm ? c.unread : c.mentionCount;
+    }
+    if (total == _totalUnread && mentions == _totalMentions) return;
+    _totalUnread   = total;
+    _totalMentions = mentions;
     if (_switcher)
         _switcher->setUnread(_activeTeamId, _totalUnread);
     updateTrayIcon();
@@ -750,7 +764,7 @@ void MainWindow::updateTrayIcon() {
     if (renderer.isValid())
         renderer.render(&p, QRectF(0, 0, sz, sz));
     const int d = 36;
-    p.setBrush(Theme::kUnreadBadge);
+    p.setBrush(_totalMentions > 0 ? Theme::kMentionBadge : QColor(180, 180, 180));
     p.setPen(Qt::NoPen);
     p.drawEllipse(sz - d, 0, d, d);
     p.end();

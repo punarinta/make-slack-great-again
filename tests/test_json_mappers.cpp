@@ -118,6 +118,89 @@ TEST_CASE("toConversation IM sets kind and dmUser", "[mappers][conv]") {
     CHECK(c.dmUser->value == "U456");
 }
 
+TEST_CASE("toConversation unread uses unread_count when non-zero", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "busy",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "last_read": "100.000000",
+        "latest": {"ts": "200.000000"},
+        "unread_count": 5
+    })"));
+    CHECK(c.unread == 5);
+}
+
+TEST_CASE("toConversation unread falls back to 1 when latestTs > lastRead and count is 0", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "channel",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "last_read": "100.000000",
+        "latest": {"ts": "200.000000"},
+        "unread_count": 0
+    })"));
+    CHECK(c.unread == 1);
+}
+
+TEST_CASE("toConversation unread is 0 when latestTs <= lastRead", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "read-channel",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "last_read": "200.000000",
+        "latest": {"ts": "200.000000"},
+        "unread_count": 0
+    })"));
+    CHECK(c.unread == 0);
+}
+
+TEST_CASE("toConversation unread is 0 when latestTs missing", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "empty",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "last_read": "100.000000",
+        "unread_count": 0
+    })"));
+    CHECK(c.unread == 0);
+}
+
+TEST_CASE("toConversation unread is 0 when lastRead missing", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "fresh",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "latest": {"ts": "200.000000"},
+        "unread_count": 0
+    })"));
+    CHECK(c.unread == 0);
+}
+
+TEST_CASE("toConversation latestTs from IM string shape triggers fallback", "[mappers][conv][unread]") {
+    // DMs return latest as a bare ts string, not an object
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "D1", "is_im": true, "is_mpim": false, "is_private": false,
+        "user": "U1",
+        "last_read": "100.000000",
+        "latest": "200.000000",
+        "unread_count": 0
+    })"));
+    CHECK(c.unread == 1);
+}
+
+TEST_CASE("toConversation mentionCount is mapped", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "mentions",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "unread_count": 3, "mention_count": 2
+    })"));
+    CHECK(c.unread        == 3);
+    CHECK(c.mentionCount  == 2);
+}
+
+TEST_CASE("toConversation mentionCount defaults to 0 when absent", "[mappers][conv][unread]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "no-mentions",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(c.mentionCount == 0);
+}
+
 // ── toMessage ────────────────────────────────────────────────────────────────
 
 TEST_CASE("toMessage basic fields", "[mappers][message]") {

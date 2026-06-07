@@ -20,6 +20,8 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QGroupBox>
+#include <QSpinBox>
+#include <algorithm>
 #include <QDirIterator>
 #include <QStandardPaths>
 #include <QCoreApplication>
@@ -43,6 +45,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
 }
 
 void SettingsDialog::open() {
+    loadAppearance();
     loadNotifications();
     refreshCacheSize();
     refreshLastChecked();
@@ -139,6 +142,7 @@ void SettingsDialog::buildPanel() {
         "  background: #EBEBEB;"
         "}"
     );
+    _tabs->addItem(tr("Appearance"));
     _tabs->addItem(tr("Notifications"));
     _tabs->addItem(tr("Storage"));
     _tabs->addItem(tr("System"));
@@ -150,6 +154,78 @@ void SettingsDialog::buildPanel() {
 
     connect(_tabs, &QListWidget::currentRowChanged,
             _stack, &QStackedWidget::setCurrentIndex);
+
+    // ── Appearance page ───────────────────────────────────────────────
+    auto *appearPage = new QWidget;
+    auto *alay = new QVBoxLayout(appearPage);
+    alay->setContentsMargins(24, 20, 24, 20);
+    alay->setSpacing(16);
+
+    auto *appearHeading = new QLabel(tr("Appearance"), appearPage);
+    appearHeading->setStyleSheet("font-size: 14px; font-weight: 600; color: #1D1C1D;");
+    alay->addWidget(appearHeading);
+
+    auto *sidebarBox = new QGroupBox(tr("Conversations sidebar"), appearPage);
+    sidebarBox->setStyleSheet(
+        "QGroupBox { font-size: 12px; color: #616061; border: none; margin-top: 4px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 0; }");
+    auto *sidebarLayout = new QVBoxLayout(sidebarBox);
+    sidebarLayout->setSpacing(8);
+    sidebarLayout->setContentsMargins(0, 12, 0, 0);
+
+    auto *daysRow = new QHBoxLayout;
+    auto *daysPrefix = new QLabel(tr("Show conversations active in the last"), sidebarBox);
+    daysPrefix->setStyleSheet("font-size: 13px; color: #1D1C1D;");
+    daysRow->addWidget(daysPrefix);
+
+    _relevantDays = new QSpinBox(sidebarBox);
+    _relevantDays->setRange(1, 365);
+    _relevantDays->setSuffix(tr(" days"));
+    _relevantDays->setFixedWidth(90);
+    _relevantDays->setStyleSheet(
+        "QSpinBox {"
+        "  font-size: 13px; color: #1D1C1D;"
+        "  border: 1px solid #D0D0D0; border-radius: 4px; padding: 3px 6px;"
+        "}"
+        "QSpinBox:focus { border-color: #1164A3; }"
+    );
+    daysRow->addWidget(_relevantDays);
+    daysRow->addStretch();
+    sidebarLayout->addLayout(daysRow);
+
+    auto *daysDesc = new QLabel(
+        tr("Conversations with no activity in this period are hidden\n"
+           "under an \"N more...\" row at the bottom of each section."),
+        sidebarBox);
+    daysDesc->setStyleSheet("font-size: 12px; color: #616061;");
+    daysDesc->setWordWrap(true);
+    sidebarLayout->addWidget(daysDesc);
+
+    alay->addWidget(sidebarBox);
+    alay->addStretch();
+
+    auto *aBtnRow = new QHBoxLayout;
+    aBtnRow->addStretch();
+    auto *aSaveBtn = new QPushButton(tr("Save"), appearPage);
+    aSaveBtn->setFixedHeight(34);
+    aSaveBtn->setMinimumWidth(80);
+    aSaveBtn->setCursor(Qt::PointingHandCursor);
+    aSaveBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: #007A5A; color: white; border: none;"
+        "  border-radius: 4px; font-size: 13px; font-weight: 600; padding: 0 16px;"
+        "}"
+        "QPushButton:hover   { background: #148567; }"
+        "QPushButton:pressed { background: #005E45; }"
+    );
+    connect(aSaveBtn, &QPushButton::clicked, this, [this] {
+        saveAppearance();
+        hide();
+    });
+    aBtnRow->addWidget(aSaveBtn);
+    alay->addLayout(aBtnRow);
+
+    _stack->addWidget(appearPage);
 
     // ── Notifications page ────────────────────────────────────────────
     auto *notifPage = new QWidget;
@@ -252,15 +328,13 @@ void SettingsDialog::buildPanel() {
     cacheDesc->setWordWrap(true);
     slay->addWidget(cacheDesc);
 
-    slay->addStretch();
-
-    auto *clearRow = new QHBoxLayout;
-    clearRow->addStretch();
-    auto *clearBtn = new QPushButton(tr("Clear Cache"), storagePage);
-    clearBtn->setFixedHeight(34);
-    clearBtn->setMinimumWidth(110);
-    clearBtn->setCursor(Qt::PointingHandCursor);
-    clearBtn->setStyleSheet(
+    auto *clearCacheRow = new QHBoxLayout;
+    clearCacheRow->addStretch();
+    auto *clearCacheBtn = new QPushButton(tr("Clear Cache"), storagePage);
+    clearCacheBtn->setFixedHeight(34);
+    clearCacheBtn->setMinimumWidth(110);
+    clearCacheBtn->setCursor(Qt::PointingHandCursor);
+    clearCacheBtn->setStyleSheet(
         "QPushButton {"
         "  background: #CC0000; color: white; border: none;"
         "  border-radius: 4px; font-size: 13px; font-weight: 600; padding: 0 16px;"
@@ -268,9 +342,48 @@ void SettingsDialog::buildPanel() {
         "QPushButton:hover   { background: #E00000; }"
         "QPushButton:pressed { background: #AA0000; }"
     );
-    connect(clearBtn, &QPushButton::clicked, this, &SettingsDialog::clearCache);
-    clearRow->addWidget(clearBtn);
-    slay->addLayout(clearRow);
+    connect(clearCacheBtn, &QPushButton::clicked, this, &SettingsDialog::clearCache);
+    clearCacheRow->addWidget(clearCacheBtn);
+    slay->addLayout(clearCacheRow);
+
+    // Separator
+    auto *sep = new QFrame(storagePage);
+    sep->setFrameShape(QFrame::HLine);
+    sep->setStyleSheet("color: #E4E4E4;");
+    slay->addWidget(sep);
+
+    // ── App state section ─────────────────────────────────────────────
+    auto *stateHeading = new QLabel(tr("App state"), storagePage);
+    stateHeading->setStyleSheet("font-size: 13px; font-weight: 600; color: #1D1C1D;");
+    slay->addWidget(stateHeading);
+
+    auto *stateDesc = new QLabel(
+        tr("Sidebar visit history used to decide which conversations are shown.\n"
+           "Clear this to let the app re-analyse activity from scratch on next load."),
+        storagePage);
+    stateDesc->setStyleSheet("font-size: 12px; color: #616061;");
+    stateDesc->setWordWrap(true);
+    slay->addWidget(stateDesc);
+
+    auto *clearStateRow = new QHBoxLayout;
+    clearStateRow->addStretch();
+    auto *clearStateBtn = new QPushButton(tr("Clear State"), storagePage);
+    clearStateBtn->setFixedHeight(34);
+    clearStateBtn->setMinimumWidth(110);
+    clearStateBtn->setCursor(Qt::PointingHandCursor);
+    clearStateBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: #CC0000; color: white; border: none;"
+        "  border-radius: 4px; font-size: 13px; font-weight: 600; padding: 0 16px;"
+        "}"
+        "QPushButton:hover   { background: #E00000; }"
+        "QPushButton:pressed { background: #AA0000; }"
+    );
+    connect(clearStateBtn, &QPushButton::clicked, this, &SettingsDialog::clearState);
+    clearStateRow->addWidget(clearStateBtn);
+    slay->addLayout(clearStateRow);
+
+    slay->addStretch();
 
     _stack->addWidget(storagePage);
 
@@ -355,6 +468,17 @@ void SettingsDialog::saveNotifications() {
     s.setValue("notifications/level",   _notifAll->isChecked() ? 0 : 1);
 }
 
+void SettingsDialog::loadAppearance() {
+    const int days = QSettings("msga", "msga").value("appearance/relevantDays", 14).toInt();
+    _relevantDays->setValue(std::max(1, days));
+}
+
+void SettingsDialog::saveAppearance() {
+    const int days = _relevantDays->value();
+    QSettings("msga", "msga").setValue("appearance/relevantDays", days);
+    emit appearanceChanged(days);
+}
+
 static QString formatBytes(qint64 bytes) {
     if (bytes < 1024)
         return QString("%1 B").arg(bytes);
@@ -384,6 +508,11 @@ void SettingsDialog::clearCache() {
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache";
     QDir(cacheDir).removeRecursively();
     refreshCacheSize();
+}
+
+void SettingsDialog::clearState() {
+    QSettings("msga", "msga").remove("conv/visitedAt");
+    emit stateCleared();
 }
 
 static QString timeAgo(qint64 epochSecs) {

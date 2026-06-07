@@ -114,12 +114,20 @@ static const User kBob = User{
     /*isBot=*/false, /*isActive=*/true, /*isDeactivated=*/false
 };
 static const Conversation kGeneral = Conversation{
-    ConversationId{"C1"}, ConvKind::PublicChannel, "general",
-    /*desc=*/"", /*isMember=*/true, /*lastRead=*/"0", /*unread=*/2
+    .id       = ConversationId{"C1"},
+    .kind     = ConvKind::PublicChannel,
+    .name     = "general",
+    .isMember = true,
+    .lastRead = "0",
+    .unread   = 2,
 };
 static const Conversation kRandom = Conversation{
-    ConversationId{"C2"}, ConvKind::PublicChannel, "random",
-    /*desc=*/"", /*isMember=*/true, /*lastRead=*/"0", /*unread=*/0
+    .id       = ConversationId{"C2"},
+    .kind     = ConvKind::PublicChannel,
+    .name     = "random",
+    .isMember = true,
+    .lastRead = "0",
+    .unread   = 0,
 };
 
 struct SessionFixture {

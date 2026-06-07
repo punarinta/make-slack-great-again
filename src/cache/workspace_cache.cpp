@@ -221,6 +221,7 @@ static QJsonObject toJson(const Conversation &c) {
     o["na"] = c.name;
     o["mb"] = c.isMember;
     o["lr"] = c.lastRead;
+    if (!c.latestTs.isEmpty()) o["lt"] = c.latestTs;
     o["un"] = c.unread;
     if (c.dmUser)  o["dm"] = c.dmUser->value;
     if (c.isMuted) o["mu"] = true;
@@ -231,9 +232,10 @@ static Conversation convFromJson(const QJsonObject &o) {
     c.id       = ConversationId{o["id"].toString()};
     c.kind     = static_cast<ConvKind>(o["ki"].toInt());
     c.name     = o["na"].toString();
-    c.isMember = o["mb"].toBool();
-    c.lastRead = o["lr"].toString();
-    c.unread   = o["un"].toInt();
+    c.isMember  = o["mb"].toBool();
+    c.lastRead  = o["lr"].toString();
+    c.latestTs  = o["lt"].toString();
+    c.unread    = o["un"].toInt();
     if (o.contains("dm")) c.dmUser  = UserId{o["dm"].toString()};
     if (o.contains("mu")) c.isMuted = o["mu"].toBool();
     return c;

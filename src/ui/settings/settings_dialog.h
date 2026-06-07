@@ -15,6 +15,7 @@ class QStackedWidget;
 class QCheckBox;
 class QRadioButton;
 class QPushButton;
+class QSpinBox;
 class UpdateChecker;
 
 class SettingsDialog : public QWidget {
@@ -24,6 +25,12 @@ public:
 
     void open();
     void setUpdateChecker(UpdateChecker *checker);
+
+signals:
+    // Emitted when appearance settings are saved; carries the new relevantDays value.
+    void appearanceChanged(int relevantDays);
+    // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
+    void stateCleared();
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -39,8 +46,11 @@ private:
     void buildPanel();
     void saveNotifications();
     void loadNotifications();
+    void saveAppearance();
+    void loadAppearance();
     void refreshCacheSize();
     void clearCache();
+    void clearState();
     void refreshLastChecked();
     void refreshUpdateStatus();
     void updatePanelGeometry();
@@ -56,6 +66,9 @@ private:
     QRadioButton   *_notifAll      = nullptr;
     QRadioButton   *_notifMentions = nullptr;
     QCheckBox      *_notifSound    = nullptr;
+
+    // Appearance controls
+    QSpinBox       *_relevantDays  = nullptr;
 
     // Storage controls
     QLabel         *_cacheSize     = nullptr;

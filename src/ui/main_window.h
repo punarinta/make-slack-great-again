@@ -125,7 +125,8 @@ private:
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;
     ConversationId              _pendingNotifConv;
-    int                         _totalUnread = 0;
+    int                         _totalUnread   = 0;
+    int                         _totalMentions = 0; // DM unreads + channel @mentions
     rpl::lifetime               _sessionLifetime;
 
     QHash<QString, QString>     _drafts; // convId.value → unsent draft text

@@ -198,7 +198,8 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
         return EvConvMarked{
             ConversationId{ev.value("channel").toString()},
             ev.value("ts").toString(),
-            ev.value("unread_count_display").toInt()
+            ev.value("unread_count_display").toInt(),
+            ev.value("mention_count_display").toInt()
         };
     }
 

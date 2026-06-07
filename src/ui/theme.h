@@ -22,7 +22,7 @@ inline const QColor kTextPrimary     { "#1D1C1D" };
 inline const QColor kTextSecondary   { "#616061" };
 
 // Interactive
-inline const QColor kSelectedItem    { "#1164A3" }; // active conversation
+inline const QColor kSelectedItem    { "#7D5D7E" }; // active conversation pill (~35% white over panel bg)
 inline const QColor kUnreadBadge     { "#E01E5A" }; // unread count badge
 inline const QColor kMentionBadge    { "#CD2553" }; // @mention badge
 
