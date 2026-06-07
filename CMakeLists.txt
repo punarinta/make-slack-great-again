@@ -81,6 +81,7 @@ add_executable(msga MACOSX_BUNDLE
     src/text/mrkdwn_parser.cpp
 
     # Utilities
+    src/util/emoji.cpp
     src/util/relative_time.cpp
 
     # Cache

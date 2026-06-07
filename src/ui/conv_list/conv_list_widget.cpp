@@ -6,6 +6,7 @@
 #include "ui/image_cache.h"
 #include "ui/user_avatar.h"
 #include "ui/message_list/message_render.h"
+#include "util/emoji.h"
 #include "util/emoji_font.h"
 
 #include <QPainter>
@@ -103,7 +104,7 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
     _userInfos.reserve(users.size());
     for (const auto &u : users) {
         _userInfos.insert(u.id.value, {
-            .displayName  = u.displayName.isEmpty() ? u.name : u.displayName,
+            .displayName  = Emoji::expandCodes(u.displayName.isEmpty() ? u.name : u.displayName),
             .avatarUrl    = u.avatarUrl,
             .isDeactivated= u.isDeactivated,
             .isActive     = u.isActive,
@@ -238,7 +239,7 @@ QString ConvListWidget::resolvedName(int row) const {
         if (it != _userInfos.constEnd() && !it->displayName.isEmpty())
             return it->displayName;
     }
-    return conv.name;
+    return Emoji::expandCodes(conv.name);
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────

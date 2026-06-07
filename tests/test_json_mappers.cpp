@@ -75,6 +75,49 @@ TEST_CASE("toUser deleted flag maps to isDeactivated", "[mappers][user]") {
     CHECK(u.isDeactivated);
 }
 
+TEST_CASE("toUser status_emoji simple — colons stripped", "[mappers][user][status]") {
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U1", "name": "u1",
+        "profile": {"display_name": "Alice", "real_name": "", "image_72": "",
+                    "status_emoji": ":palm_tree:", "status_text": "On vacation"}
+    })"));
+    CHECK(u.statusEmoji == "palm_tree");
+    CHECK(u.statusText  == "On vacation");
+}
+
+TEST_CASE("toUser status_emoji absent — empty string", "[mappers][user][status]") {
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U1", "name": "u1",
+        "profile": {"display_name": "Alice", "real_name": "", "image_72": ""}
+    })"));
+    CHECK(u.statusEmoji.isEmpty());
+    CHECK(u.statusText.isEmpty());
+}
+
+TEST_CASE("toUser status_emoji skin-tone modifier stripped — sidebar regression", "[mappers][user][status]") {
+    // Slack encodes a skin-toned emoji as ":baby::skin-tone-3:". After stripping
+    // outer colons we get "baby::skin-tone-3". The skin-tone suffix must be removed
+    // so that the base name "baby" resolves to the 👶 glyph instead of falling back
+    // to the literal string ":baby::skin-tone-3:" which squeezes the user name out
+    // of the conv-list row entirely.
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U1", "name": "u1",
+        "profile": {"display_name": "Petter", "real_name": "", "image_72": "",
+                    "status_emoji": ":baby::skin-tone-3:", "status_text": ""}
+    })"));
+    CHECK(u.statusEmoji == "baby");
+}
+
+TEST_CASE("toUser status_emoji without colons stored as-is", "[mappers][user][status]") {
+    // Some clients omit the surrounding colons.
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U1", "name": "u1",
+        "profile": {"display_name": "Bob", "real_name": "", "image_72": "",
+                    "status_emoji": "wave", "status_text": ""}
+    })"));
+    CHECK(u.statusEmoji == "wave");
+}
+
 // ── toConversation ───────────────────────────────────────────────────────────
 
 TEST_CASE("toConversation public channel", "[mappers][conv]") {

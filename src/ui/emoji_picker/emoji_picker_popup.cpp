@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "emoji_picker_popup.h"
 #include "session/session.h"
+#include "util/emoji.h"
 #include "util/emoji_font.h"
 
 #include <QVBoxLayout>
@@ -14,77 +15,45 @@
 #include <QPixmap>
 #include <QPointer>
 
-// Compact emoji dataset: name → unicode character.
-// Categories: faces, people, animals, food, travel, objects, symbols.
-
-static const QList<QPair<QString,QString>> kBaseEmoji {
+// Ordered list of emoji names for grid display — resolved via Emoji::fromName.
+static const QStringList kBaseEmojiNames {
     // Faces & emotions
-    {"smile",           "😊"}, {"grin",            "😁"}, {"laughing",        "😆"},
-    {"joy",             "😂"}, {"rofl",            "🤣"}, {"sweat_smile",     "😅"},
-    {"wink",            "😉"}, {"heart_eyes",      "😍"}, {"kissing_heart",   "😘"},
-    {"stuck_out_tongue","😛"}, {"thinking_face",   "🤔"}, {"raised_eyebrow",  "🤨"},
-    {"neutral_face",    "😐"}, {"expressionless",  "😑"}, {"zipper_mouth",    "🤐"},
-    {"grimacing",       "😬"}, {"sob",             "😭"}, {"tired_face",      "😫"},
-    {"sleepy",          "😪"}, {"mask",            "😷"}, {"sunglasses",      "😎"},
-    {"nerd_face",       "🤓"}, {"monocle_face",    "🧐"}, {"confused",        "😕"},
-    {"worried",         "😟"}, {"angry",           "😠"}, {"rage",            "😡"},
-    {"skull",           "💀"}, {"ghost",           "👻"}, {"alien",           "👽"},
-    {"poop",            "💩"}, {"clown_face",      "🤡"}, {"partying_face",   "🥳"},
+    "smile","grin","laughing","joy","rofl","sweat_smile",
+    "wink","heart_eyes","kissing_heart","stuck_out_tongue","thinking_face","raised_eyebrow",
+    "neutral_face","expressionless","zipper_mouth","grimacing","sob","tired_face",
+    "sleepy","mask","sunglasses","nerd_face","monocle_face","confused",
+    "worried","angry","rage","skull","ghost","alien","poop","clown_face","partying_face",
     // Hands & people
-    {"wave",            "👋"}, {"raised_hand",     "✋"}, {"ok_hand",         "👌"},
-    {"thumbsup",        "👍"}, {"thumbsdown",      "👎"}, {"clap",            "👏"},
-    {"pray",            "🙏"}, {"point_right",     "👉"}, {"point_left",      "👈"},
-    {"point_up",        "☝️"}, {"point_down",      "👇"}, {"muscle",          "💪"},
-    {"handshake",       "🤝"}, {"writing_hand",    "✍️"}, {"selfie",          "🤳"},
+    "wave","raised_hand","ok_hand","thumbsup","thumbsdown","clap",
+    "pray","point_right","point_left","point_up","point_down","muscle",
+    "handshake","writing_hand","selfie",
     // Hearts & symbols
-    {"heart",           "❤️"}, {"orange_heart",    "🧡"}, {"yellow_heart",    "💛"},
-    {"green_heart",     "💚"}, {"blue_heart",      "💙"}, {"purple_heart",    "💜"},
-    {"broken_heart",    "💔"}, {"sparkling_heart", "💖"}, {"two_hearts",      "💕"},
-    {"100",             "💯"}, {"tada",            "🎉"}, {"fire",            "🔥"},
-    {"star",            "⭐"}, {"star2",           "🌟"}, {"sparkles",        "✨"},
-    {"zap",             "⚡"}, {"boom",            "💥"}, {"eyes",            "👀"},
+    "heart","orange_heart","yellow_heart","green_heart","blue_heart","purple_heart",
+    "broken_heart","sparkling_heart","two_hearts",
+    "100","tada","fire","star","star2","sparkles","zap","boom","eyes","warning",
     // Animals
-    {"dog",             "🐶"}, {"cat",             "🐱"}, {"mouse",           "🐭"},
-    {"hamster",         "🐹"}, {"rabbit",          "🐰"}, {"fox_face",        "🦊"},
-    {"bear",            "🐻"}, {"panda_face",      "🐼"}, {"koala",           "🐨"},
-    {"tiger",           "🐯"}, {"lion",            "🦁"}, {"cow",             "🐮"},
-    {"pig",             "🐷"}, {"frog",            "🐸"}, {"monkey_face",     "🐵"},
-    {"chicken",         "🐔"}, {"penguin",         "🐧"}, {"bird",            "🐦"},
-    {"hatching_chick",  "🐣"}, {"eagle",           "🦅"}, {"owl",             "🦉"},
-    {"snake",           "🐍"}, {"turtle",          "🐢"}, {"lizard",          "🦎"},
-    {"whale",           "🐳"}, {"dolphin",         "🐬"}, {"shark",           "🦈"},
-    {"octopus",         "🐙"}, {"bee",             "🐝"}, {"butterfly",       "🦋"},
+    "dog","cat","mouse","hamster","rabbit","fox_face","bear","panda_face","koala",
+    "tiger","lion","cow","pig","frog","monkey_face","chicken","penguin","bird",
+    "hatching_chick","eagle","owl","snake","turtle","lizard",
+    "whale","dolphin","shark","octopus","bee","butterfly",
+    "palm_tree","deciduous_tree","evergreen_tree","cactus","sunflower","rose",
     // Food
-    {"apple",           "🍎"}, {"banana",          "🍌"}, {"watermelon",      "🍉"},
-    {"grapes",          "🍇"}, {"strawberry",      "🍓"}, {"pizza",           "🍕"},
-    {"hamburger",       "🍔"}, {"fries",           "🍟"}, {"hot_dog",         "🌭"},
-    {"taco",            "🌮"}, {"burrito",         "🌯"}, {"sushi",           "🍣"},
-    {"ramen",           "🍜"}, {"spaghetti",       "🍝"}, {"rice",            "🍚"},
-    {"bread",           "🍞"}, {"croissant",       "🥐"}, {"cake",            "🎂"},
-    {"cupcake",         "🧁"}, {"cookie",          "🍪"}, {"chocolate_bar",   "🍫"},
-    {"candy",           "🍬"}, {"lollipop",        "🍭"}, {"ice_cream",       "🍦"},
-    {"coffee",          "☕"}, {"tea",             "🍵"}, {"beer",            "🍺"},
+    "apple","banana","watermelon","grapes","strawberry","pizza","hamburger","fries",
+    "hot_dog","taco","burrito","sushi","ramen","spaghetti","rice","bread","croissant",
+    "cake","cupcake","cookie","chocolate_bar","candy","lollipop","ice_cream",
+    "coffee","tea","beer",
     // Travel & places
-    {"rocket",          "🚀"}, {"airplane",        "✈️"}, {"car",             "🚗"},
-    {"bus",             "🚌"}, {"train",           "🚂"}, {"bicycle",         "🚲"},
-    {"boat",            "⛵"}, {"house",           "🏠"}, {"office",          "🏢"},
-    {"school",          "🏫"}, {"hospital",        "🏥"}, {"bank",            "🏦"},
-    {"sunrise",         "🌅"}, {"city_sunset",     "🌆"}, {"night_with_stars","🌃"},
-    {"earth_americas",  "🌎"}, {"earth_africa",    "🌍"}, {"earth_asia",      "🌏"},
+    "rocket","airplane","car","bus","train","bicycle","boat","house","office",
+    "school","hospital","bank","sunrise","city_sunset","night_with_stars",
+    "earth_americas","earth_africa","earth_asia",
     // Objects & misc
-    {"computer",        "💻"}, {"desktop_computer","🖥️"}, {"keyboard",        "⌨️"},
-    {"phone",           "📱"}, {"telephone",       "☎️"}, {"email",           "📧"},
-    {"memo",            "📝"}, {"pencil",          "✏️"}, {"paperclip",       "📎"},
-    {"scissors",        "✂️"}, {"lock",            "🔒"}, {"key",             "🔑"},
-    {"hammer",          "🔨"}, {"wrench",          "🔧"}, {"gear",            "⚙️"},
-    {"bulb",            "💡"}, {"flashlight",      "🔦"}, {"books",           "📚"},
-    {"money_bag",       "💰"}, {"credit_card",     "💳"}, {"chart",           "📈"},
-    {"trophy",          "🏆"}, {"medal",           "🏅"}, {"gift",            "🎁"},
-    {"balloon",         "🎈"}, {"confetti",        "🎊"}, {"musical_note",    "🎵"},
-    {"headphones",      "🎧"}, {"microphone",      "🎤"}, {"camera",          "📷"},
-    {"hourglass",       "⏳"}, {"clock",           "🕐"}, {"calendar",        "📅"},
-    {"checkmark",       "✅"}, {"x",               "❌"}, {"warning",         "⚠️"},
-    {"information",     "ℹ️"}, {"question",        "❓"}, {"exclamation",     "❗"},
+    "computer","desktop_computer","keyboard","phone","telephone","email",
+    "memo","pencil","paperclip","scissors","lock","key",
+    "hammer","wrench","gear","bulb","flashlight","books",
+    "moneybag","credit_card","chart","trophy","medal","gift",
+    "balloon","confetti_ball","musical_note","headphones","microphone","camera",
+    "hourglass_flowing_sand","clock1","calendar","x","question","exclamation",
+    "bell","information_source","white_check_mark","warning",
 };
 
 EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
@@ -213,8 +182,10 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
 
     // Base Unicode emoji — rendered via platform color emoji font.
     static const QFont kEmojiFont = emojiFont(20);
-    for (const auto &[name, ch] : std::as_const(kBaseEmoji)) {
+    for (const QString &name : std::as_const(kBaseEmojiNames)) {
         if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive)) continue;
+        const QString ch = Emoji::fromName(name);
+        if (ch.startsWith(':')) continue; // skip unknown names
         auto *btn = makeBtn(name);
         btn->setFont(kEmojiFont);
         btn->setText(ch);

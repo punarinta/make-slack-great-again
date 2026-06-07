@@ -42,6 +42,11 @@ function(add_msga_widget_test target)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
+add_msga_test(test_emoji
+    test_emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+)
+
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp

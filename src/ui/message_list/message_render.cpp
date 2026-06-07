@@ -3,90 +3,16 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "text/mrkdwn_parser.h"
+#include "util/emoji.h"
 #include "util/emoji_font.h"
 
 #include <QCoreApplication>
-#include <QHash>
 #include <QDateTime>
 
 namespace MsgRender {
 
-// Maps common Slack emoji short-names to their Unicode characters.
-// Falls back to ":name:" for unknown names.
 QString resolveEmoji(const QString &name) {
-    static const QHash<QString,QString> kTable = {
-        // ── Aliases & Slack-specific names ────────────────────────────
-        {"+1","👍"},{"thumbsup","👍"},{"-1","👎"},{"thumbsdown","👎"},
-        {"simple_smile","🙂"},{"slightly_smiling_face","🙂"},
-        {"blush","😊"},{"hearts","❤️"},{"heavy_exclamation_mark","❗"},
-        {"white_check_mark","✅"},{"raised_hands","🙌"},{"zany_face","🤪"},
-        {"exploding_head","🤯"},{"face_palm","🤦"},{"shrug","🤷"},
-        {"v","✌️"},{"speech_balloon","💬"},{"loudspeaker","📢"},
-        {"no_bell","🔕"},{"mag","🔍"},{"iphone","📱"},
-        {"chart_with_upwards_trend","📈"},{"chart_with_downwards_trend","📉"},
-        {"dollar","💵"},{"rotating_light","🚨"},
-        {"white_circle","⚪"},{"red_circle","🔴"},{"green_circle","🟢"},
-        {"zzz","💤"},{"clock1","🕐"},{"hourglass","⌛"},{"moneybag","💰"},
-        {"mailbox","📫"},{"unlock","🔓"},{"link","🔗"},
-        // ── Faces & emotions ──────────────────────────────────────────
-        {"smile","😊"},{"grin","😁"},{"laughing","😆"},
-        {"joy","😂"},{"rofl","🤣"},{"sweat_smile","😅"},
-        {"wink","😉"},{"heart_eyes","😍"},{"kissing_heart","😘"},
-        {"stuck_out_tongue","😛"},{"thinking_face","🤔"},{"raised_eyebrow","🤨"},
-        {"neutral_face","😐"},{"expressionless","😑"},{"zipper_mouth","🤐"},
-        {"grimacing","😬"},{"sob","😭"},{"tired_face","😫"},
-        {"sleepy","😪"},{"mask","😷"},{"sunglasses","😎"},
-        {"nerd_face","🤓"},{"monocle_face","🧐"},{"confused","😕"},
-        {"worried","😟"},{"angry","😠"},{"rage","😡"},
-        {"skull","💀"},{"ghost","👻"},{"alien","👽"},
-        {"poop","💩"},{"clown_face","🤡"},{"partying_face","🥳"},
-        // ── Hands & people ────────────────────────────────────────────
-        {"wave","👋"},{"raised_hand","✋"},{"ok_hand","👌"},
-        {"thumbsup","👍"},{"thumbsdown","👎"},{"clap","👏"},
-        {"pray","🙏"},{"point_right","👉"},{"point_left","👈"},
-        {"point_up","☝️"},{"point_down","👇"},{"muscle","💪"},
-        {"handshake","🤝"},{"writing_hand","✍️"},{"selfie","🤳"},
-        // ── Hearts & symbols ──────────────────────────────────────────
-        {"heart","❤️"},{"orange_heart","🧡"},{"yellow_heart","💛"},
-        {"green_heart","💚"},{"blue_heart","💙"},{"purple_heart","💜"},
-        {"broken_heart","💔"},{"sparkling_heart","💖"},{"two_hearts","💕"},
-        {"100","💯"},{"tada","🎉"},{"fire","🔥"},
-        {"star","⭐"},{"star2","🌟"},{"sparkles","✨"},
-        {"zap","⚡"},{"boom","💥"},{"eyes","👀"},
-        {"warning","⚠️"},
-        // ── Animals ───────────────────────────────────────────────────
-        {"dog","🐶"},{"cat","🐱"},{"mouse","🐭"},
-        {"hamster","🐹"},{"rabbit","🐰"},{"fox_face","🦊"},
-        {"bear","🐻"},{"panda_face","🐼"},{"koala","🐨"},
-        {"tiger","🐯"},{"lion","🦁"},{"cow","🐮"},
-        {"pig","🐷"},{"frog","🐸"},{"monkey_face","🐵"},
-        {"chicken","🐔"},{"penguin","🐧"},{"bird","🐦"},
-        {"hatching_chick","🐣"},{"eagle","🦅"},{"owl","🦉"},
-        {"snake","🐍"},{"turtle","🐢"},{"bee","🐝"},{"butterfly","🦋"},
-        // ── Food ──────────────────────────────────────────────────────
-        {"apple","🍎"},{"watermelon","🍉"},{"grapes","🍇"},
-        {"strawberry","🍓"},{"pizza","🍕"},{"hamburger","🍔"},
-        {"hot_dog","🌭"},{"taco","🌮"},{"sushi","🍣"},
-        {"ramen","🍜"},{"cake","🎂"},{"coffee","☕"},{"beer","🍺"},
-        // ── Travel & places ───────────────────────────────────────────
-        {"rocket","🚀"},{"airplane","✈️"},{"car","🚗"},
-        {"bus","🚌"},{"train","🚂"},{"bicycle","🚲"},
-        {"boat","⛵"},{"house","🏠"},
-        {"earth_americas","🌎"},{"earth_africa","🌍"},{"earth_asia","🌏"},
-        // ── Objects & misc ────────────────────────────────────────────
-        {"computer","💻"},{"keyboard","⌨️"},
-        {"email","📧"},{"memo","📝"},{"pencil","✏️"},{"paperclip","📎"},
-        {"scissors","✂️"},{"lock","🔒"},{"key","🔑"},
-        {"hammer","🔨"},{"wrench","🔧"},{"gear","⚙️"},
-        {"bulb","💡"},{"books","📚"},
-        {"trophy","🏆"},{"medal","🏅"},{"gift","🎁"},
-        {"balloon","🎈"},{"musical_note","🎵"},
-        {"headphones","🎧"},{"microphone","🎤"},{"camera","📷"},
-        {"calendar","📅"},
-        {"x","❌"},{"question","❓"},{"bell","🔔"},
-    };
-    const auto it = kTable.constFind(name);
-    return it != kTable.constEnd() ? *it : (":" + name + ":");
+    return Emoji::fromName(name);
 }
 
 QString formatTs(const Ts &ts) {

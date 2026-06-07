@@ -19,10 +19,13 @@ User toUser(const QJsonObject &o) {
     const auto displayName = !rn.isEmpty() ? rn
                            : !dn.isEmpty() ? dn
                            : o.value("name").toString();
-    // Strip enclosing colons from status_emoji: ":palm_tree:" → "palm_tree"
+    // Strip enclosing colons: ":palm_tree:" → "palm_tree"
+    // Also strip skin-tone modifier suffix: ":baby::skin-tone-3:" → "baby"
     auto rawEmoji = profile.value("status_emoji").toString();
     if (rawEmoji.startsWith(':')) rawEmoji = rawEmoji.mid(1);
     if (rawEmoji.endsWith(':'))   rawEmoji.chop(1);
+    const int skinToneSep = rawEmoji.indexOf("::");
+    if (skinToneSep != -1)        rawEmoji = rawEmoji.left(skinToneSep);
     return User{
         .id            = UserId{ o.value("id").toString() },
         .name          = o.value("name").toString(),
