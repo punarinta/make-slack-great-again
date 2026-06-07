@@ -22,7 +22,17 @@ struct UserInfo {
     QString statusEmoji;  // resolved emoji name without colons, e.g. "palm_tree"
 };
 
-// Virtual-painted conversation list with animated hover and selection.
+// Visual row kinds in the conversation list.
+enum class RowKind { SectionHeader, Conv, AddChannels };
+
+// Maps a visual row index to its content.
+struct RowItem {
+    RowKind kind;
+    int     convIdx   = -1;  // index into _convs, valid when kind == Conv
+    int     sectionId = -1;  // 0 = Channels, 1 = Direct messages; valid for SectionHeader/AddChannels
+};
+
+// Virtual-painted conversation list with section grouping and collapse/expand.
 // Zero QWidgets per row — scales to thousands of conversations.
 class ConvListWidget : public VirtualListWidget {
     Q_OBJECT
@@ -34,18 +44,19 @@ public:
     void setUsers(const std::vector<User> &users);
     // Set the current user's ID so the "you" label can be shown on self DMs.
     void setMe(UserId id) { _meUserId = std::move(id); viewport()->update(); }
-    // Resolved display name for a row (DMs → user displayName, channels → conv.name).
+    // Resolved display name for a visual row (DMs → user displayName, channels → conv.name).
     QString resolvedName(int row) const;
     int  selectedIndex() const { return _selected; }
-    // Resolved ConversationId for a filtered-list row (-1 safe: returns empty id).
+    // Resolved ConversationId for a visual row (-1 safe: returns empty id).
     ConversationId conversationId(int row) const;
-    // Row in the filtered list for a given id; -1 if not found or filtered out.
+    // Visual row for a given id; -1 if not found or section is collapsed.
     int rowForId(ConversationId id) const;
     // Programmatically select a row; emits conversationSelected.
     void selectRow(int row);
 
 signals:
-    void conversationSelected(int index);
+    void conversationSelected(int row);
+    void addChannelsClicked();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -59,35 +70,46 @@ protected:
 
     int  rowAt(int viewportY) const;    // -1 if none
     void setHovered(int row);
-    void setSelected(int row);          // emits conversationSelected
-    void paintRow(QPainter &p, int i, int y) const;
+    void setSelected(int row);          // emits conversationSelected (no-op for non-Conv rows)
+    void paintRow(QPainter &p, int row, int y) const;
+    void paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
+    void paintAddChannelsRow(QPainter &p, int row, int y) const;
     void updateScrollRange();
     // Rebuild _convs from _allConvs, filtering deactivated / raw-ID DM users.
     void rebuildFilteredConvs();
+    // Rebuild _rows from _convs according to current section collapse state.
+    void rebuildRows();
 
     // Avatar helpers — trigger is non-const (starts downloads), draw is const.
     void triggerMissingAvatarDownloads();
     void drawUserAvatar(QPainter &p, QRect rect, const QString &userId, QColor bgColor) const;
 
     std::vector<Conversation>        _allConvs; // unfiltered; source of truth
-    std::vector<Conversation>        _convs;
+    std::vector<Conversation>        _convs;    // filtered convs
+    std::vector<RowItem>             _rows;     // visual row list (includes headers/actions)
     // userId → {displayName, avatarUrl, ...}, rebuilt on setUsers().
     QHash<QString, UserInfo>         _userInfos;
     ImageCache                       *_imgCache = nullptr;
     UserId                           _meUserId;
 
+    bool _channelsCollapsed = false;
+    bool _dmsCollapsed      = false;
+
     int  _hovered  = -1;
     int  _selected = -1;
+    ConversationId _selectedId; // survives rebuildRows() calls
 
     // Selection slide animation: 0.0 = start of slide, 1.0 = settled
     QVariantAnimation _selAnim;
     int  _selFrom = -1;
     double _selT  = 1.0;
 
-    static constexpr int kRowH        = 40;  // height of each row in logical px
+    static constexpr int kRowH        = 36;  // height of every row (uniform)
     static constexpr int kPadH        = 12;  // horizontal left padding
     static constexpr int kPadV        =  8;  // vertical padding inside row
     static constexpr int kAvatarSize  = 28;  // size of user avatar square
     static constexpr int kAvatarRadius=  5;  // corner radius
     static constexpr int kAvatarGap   =  8;  // gap between avatar and name
+    static constexpr int kIconSize    = 14;  // section / prefix icon size
+    static constexpr int kGroupIndent = kIconSize + 6; // child-row indent (aligns with section label)
 };
