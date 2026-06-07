@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "emoji_picker_popup.h"
 #include "session/session.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
 
@@ -218,22 +220,6 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint) {
     setObjectName("emojiPicker");
     setFixedSize(300, 340);
-    setStyleSheet("QFrame#emojiPicker {"
-                  "  background: #FFFFFF;"
-                  "  border: 1px solid #D1D1D1;"
-                  "  border-radius: 8px;"
-                  "}"
-                  "QLineEdit {"
-                  "  border: 1px solid #D1D1D1;"
-                  "  border-radius: 4px;"
-                  "  padding: 4px 8px;"
-                  "  font-size: 13px;"
-                  "  color: #1D1C1D;"
-                  "  background: #FFFFFF;"
-                  "}"
-                  "QLineEdit:focus { border-color: #007A5A; }"
-                  "QScrollArea { border: none; background: transparent; }"
-                  "QScrollArea > QWidget > QWidget { background: transparent; }");
 
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(8, 8, 8, 8);
@@ -258,6 +244,37 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     connect(_search, &QLineEdit::textChanged, this, [this](const QString &text) {
         buildGrid(text.trimmed());
     });
+
+    applyTheme();
+    connect(
+        &ThemeManager::instance(), &ThemeManager::themeChanged, this, &EmojiPickerPopup::applyTheme
+    );
+}
+
+void EmojiPickerPopup::applyTheme() {
+    setStyleSheet(QString("QFrame#emojiPicker {"
+                          "  background: %1;"
+                          "  border: 1px solid %2;"
+                          "  border-radius: 8px;"
+                          "}"
+                          "QLineEdit {"
+                          "  border: 1px solid %2;"
+                          "  border-radius: 4px;"
+                          "  padding: 4px 8px;"
+                          "  font-size: %5px;"
+                          "  color: %3;"
+                          "  background: %1;"
+                          "}"
+                          "QLineEdit:focus { border-color: %4; }"
+                          "QScrollArea { border: none; background: transparent; }"
+                          "QScrollArea > QWidget > QWidget { background: transparent; }")
+                      .arg(
+                          Th::qss(Th::c().surface.raised),
+                          Th::qss(Th::c().divider.strong),
+                          Th::qss(Th::c().text.primary),
+                          Th::qss(Th::c().accent.def)
+                      )
+                      .arg(Th::c().fonts.md));
 }
 
 void EmojiPickerPopup::setSession(Session *session) {
@@ -286,9 +303,10 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
     const int cols = 8;
     int       col = 0, row = 0;
 
-    static const QString kBtnStyle =
-        "QToolButton { border: none; border-radius: 4px; background: transparent; }"
-        "QToolButton:hover { background: #F0F0F0; }";
+    const QString kBtnStyle =
+        QString("QToolButton { border: none; border-radius: 4px; background: transparent; }"
+                "QToolButton:hover { background: %1; }")
+            .arg(Th::qss(Th::c().surface.highlight));
 
     auto makeBtn = [&](const QString &name) -> QToolButton * {
         auto *btn = new QToolButton(_grid);

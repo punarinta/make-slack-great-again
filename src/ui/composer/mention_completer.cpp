@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "mention_completer.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QVBoxLayout>
 #include <QLabel>
@@ -12,15 +14,22 @@ static constexpr int kMaxRows = 8;
 MentionCompleter::MentionCompleter(QWidget *parent)
     : QFrame(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
     setObjectName("mentionCompleter");
-    setStyleSheet("QFrame#mentionCompleter {"
-                  "  background: #FFFFFF;"
-                  "  border: 1px solid #D1D1D1;"
-                  "  border-radius: 6px;"
-                  "}");
     _layout = new QVBoxLayout(this);
     _layout->setContentsMargins(4, 4, 4, 4);
     _layout->setSpacing(1);
     hide();
+
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
+}
+
+void MentionCompleter::applyTheme() {
+    setStyleSheet(QString("QFrame#mentionCompleter {"
+                          "  background: %1;"
+                          "  border: 1px solid %2;"
+                          "  border-radius: 6px;"
+                          "}")
+                      .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)));
 }
 
 void MentionCompleter::show(const QPoint &globalPos, const QList<Item> &items, Callback cb) {
@@ -81,16 +90,20 @@ void MentionCompleter::rebuild(const QList<Item> &items) {
         row->setFocusPolicy(Qt::NoFocus);
         row->setCursor(Qt::PointingHandCursor);
         row->setText(_items[i].display);
-        row->setStyleSheet("QPushButton {"
-                           "  text-align: left;"
-                           "  padding: 4px 10px;"
-                           "  font-size: 13px;"
-                           "  color: #1D1C1D;"
-                           "  background: transparent;"
-                           "  border: none;"
-                           "  border-radius: 4px;"
-                           "}"
-                           "QPushButton:hover { background: #F0F0F0; }");
+        row->setStyleSheet(
+            QString("QPushButton {"
+                    "  text-align: left;"
+                    "  padding: 4px 10px;"
+                    "  font-size: %3px;"
+                    "  color: %1;"
+                    "  background: transparent;"
+                    "  border: none;"
+                    "  border-radius: 4px;"
+                    "}"
+                    "QPushButton:hover { background: %2; }")
+                .arg(Th::qss(Th::c().text.primary), Th::qss(Th::c().surface.highlight))
+                .arg(Th::c().fonts.md)
+        );
         const int idx = i;
         connect(row, &QPushButton::clicked, this, [this, idx] {
             _sel = idx;
@@ -108,20 +121,28 @@ void MentionCompleter::selectRow(int row) {
         return;
     // Deselect old
     if (_sel >= 0 && _sel < _rows.size()) {
-        _rows[_sel]->setStyleSheet("QPushButton {"
-                                   "  text-align: left; padding: 4px 10px;"
-                                   "  font-size: 13px; color: #1D1C1D;"
-                                   "  background: transparent; border: none; border-radius: 4px;"
-                                   "}"
-                                   "QPushButton:hover { background: #F0F0F0; }");
+        _rows[_sel]->setStyleSheet(
+            QString("QPushButton {"
+                    "  text-align: left; padding: 4px 10px;"
+                    "  font-size: %3px; color: %1;"
+                    "  background: transparent; border: none; border-radius: 4px;"
+                    "}"
+                    "QPushButton:hover { background: %2; }")
+                .arg(Th::qss(Th::c().text.primary), Th::qss(Th::c().surface.highlight))
+                .arg(Th::c().fonts.md)
+        );
     }
     _sel = row;
     if (_sel >= 0 && _sel < _rows.size()) {
-        _rows[_sel]->setStyleSheet("QPushButton {"
-                                   "  text-align: left; padding: 4px 10px;"
-                                   "  font-size: 13px; color: #1D1C1D;"
-                                   "  background: #E8F5F0; border: none; border-radius: 4px;"
-                                   "}");
+        _rows[_sel]->setStyleSheet(
+            QString("QPushButton {"
+                    "  text-align: left; padding: 4px 10px;"
+                    "  font-size: %3px; color: %1;"
+                    "  background: %2; border: none; border-radius: 4px;"
+                    "}")
+                .arg(Th::qss(Th::c().text.primary), Th::qss(Th::c().accent.subtleBg))
+                .arg(Th::c().fonts.md)
+        );
     }
 }
 

@@ -34,6 +34,7 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
+    void applyTheme();
     void openDropdown();
     void closeDropdown();
     void positionDropdown();

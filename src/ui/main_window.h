@@ -55,6 +55,8 @@ private:
     QWidget *buildConvPanel(QWidget *parent);
     QWidget *buildRightPanel(QWidget *parent);
 
+    void applyTheme();
+
     // Session lifecycle
     void startSession(const QString &teamId);
     void switchToWorkspace(const QString &teamId);

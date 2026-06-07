@@ -3,6 +3,8 @@
 #include "title_bar.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/icon_utils.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QApplication>
 #include <QCursor>
@@ -38,7 +40,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
         btn->setFlat(true);
         btn->setCursor(Qt::ArrowCursor);
         btn->setIconSize(kBtnIconSize);
-        btn->setIcon(svgIcon(svgPath, kBtnIconSize, QColor("#505050")));
+        btn->setIcon(svgIcon(svgPath, kBtnIconSize, Th::c().titleBar.controlDefault));
         return btn;
     };
 
@@ -49,9 +51,9 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
         layout->addWidget(_pinBtn);
     }
 
-    auto *minBtn = makeBtn(":/ui/wc-minimize.svg", "titleBarMin");
-    connect(minBtn, &QPushButton::clicked, this, [this] { window()->showMinimized(); });
-    layout->addWidget(minBtn);
+    _minBtn = makeBtn(":/ui/wc-minimize.svg", "titleBarMin");
+    connect(_minBtn, &QPushButton::clicked, this, [this] { window()->showMinimized(); });
+    layout->addWidget(_minBtn);
 
     _maxBtn = makeBtn(":/ui/wc-maximize.svg", "titleBarMax");
     connect(_maxBtn, &QPushButton::clicked, this, [this] {
@@ -63,15 +65,30 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     _closeBtn->installEventFilter(this);
     connect(_closeBtn, &QPushButton::clicked, this, [this] { window()->close(); });
     layout->addWidget(_closeBtn);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &TitleBar::applyTheme);
+    connect(
+        &ThemeManager::instance(), &ThemeManager::themeChanged, this, qOverload<>(&TitleBar::update)
+    );
 }
 
 void TitleBar::setTitle(const QString &) {}
+
+void TitleBar::applyTheme() {
+    _minBtn->setIcon(svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
+    );
+    updateMaxButton();
+    updatePinButton();
+    // _closeBtn default icon is managed by eventFilter (enter/leave);
+    // reset it to the default state here so it tracks the new theme.
+    _closeBtn->setIcon(svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlDefault));
+}
 
 void TitleBar::updateMaxButton() {
     if (!_maxBtn || !window())
         return;
     const QString svg = window()->isMaximized() ? ":/ui/wc-restore.svg" : ":/ui/wc-maximize.svg";
-    _maxBtn->setIcon(svgIcon(svg, kBtnIconSize, QColor("#505050")));
+    _maxBtn->setIcon(svgIcon(svg, kBtnIconSize, Th::c().titleBar.controlDefault));
 }
 
 void TitleBar::mousePressEvent(QMouseEvent *e) {
@@ -170,9 +187,13 @@ bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
     }
     if (watched == _closeBtn) {
         if (e->type() == QEvent::Enter)
-            _closeBtn->setIcon(svgIcon(":/ui/wc-close.svg", kBtnIconSize, Qt::white));
+            _closeBtn->setIcon(
+                svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlClose)
+            );
         else if (e->type() == QEvent::Leave)
-            _closeBtn->setIcon(svgIcon(":/ui/wc-close.svg", kBtnIconSize, QColor("#505050")));
+            _closeBtn->setIcon(
+                svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
+            );
     }
     return QWidget::eventFilter(watched, e);
 }
@@ -194,10 +215,11 @@ void TitleBar::updatePinButton() {
     if (!_pinBtn)
         return;
     if (_pinned) {
-        _pinBtn->setIcon(svgIcon(":/ui/pin.svg", kBtnIconSize, QColor("#C0392B")));
+        _pinBtn->setIcon(svgIcon(":/ui/pin.svg", kBtnIconSize, Th::c().titleBar.controlClose));
         _pinBtn->setObjectName("titleBarPinActive");
     } else {
-        _pinBtn->setIcon(svgIcon(":/ui/pin-off.svg", kBtnIconSize, QColor("#505050")));
+        _pinBtn->setIcon(svgIcon(":/ui/pin-off.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
+        );
         _pinBtn->setObjectName("titleBarPin");
     }
     _pinBtn->style()->unpolish(_pinBtn);

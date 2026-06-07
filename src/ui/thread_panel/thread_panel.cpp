@@ -3,6 +3,8 @@
 #include "thread_panel.h"
 #include "ui/message_list/message_list.h"
 #include "ui/composer/composer_widget.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include "session/session.h"
 
 #include <QLabel>
@@ -12,37 +14,32 @@
 
 ThreadPanel::ThreadPanel(QWidget *parent) : QWidget(parent) {
     setObjectName("threadPanel");
-    setStyleSheet("QWidget#threadPanel { border-left: 1px solid #E8E8E8; background: #FFFFFF; }");
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     // Header bar
-    auto *header = new QWidget(this);
-    header->setObjectName("threadHeader");
-    header->setFixedHeight(48);
-    header->setStyleSheet("QWidget#threadHeader {"
-                          "  background: #F5F5F5;"
-                          "  border-bottom: 1px solid #E8E8E8;"
-                          "}");
-    auto *headerLayout = new QHBoxLayout(header);
+    _headerWidget = new QWidget(this);
+    _headerWidget->setObjectName("threadHeader");
+    _headerWidget->setFixedHeight(48);
+    auto *headerLayout = new QHBoxLayout(_headerWidget);
     headerLayout->setContentsMargins(16, 0, 8, 0);
     headerLayout->setSpacing(8);
 
-    _header = new QLabel(tr("Thread"), header);
-    _header->setStyleSheet("font-weight: bold; font-size: 15px; color: #1D1C1D;");
+    _header = new QLabel(tr("Thread"), _headerWidget);
     headerLayout->addWidget(_header, 1);
 
-    auto *closeBtn = new QPushButton("✕", header);
-    closeBtn->setFixedSize(32, 32);
-    closeBtn->setFlat(true);
-    closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setStyleSheet("QPushButton { font-size: 14px; border-radius: 4px; }"
-                            "QPushButton:hover { background: #E8E8E8; }");
-    connect(closeBtn, &QPushButton::clicked, this, &ThreadPanel::closeRequested);
-    headerLayout->addWidget(closeBtn);
-    layout->addWidget(header);
+    _closeBtn = new QPushButton("✕", _headerWidget);
+    _closeBtn->setFixedSize(32, 32);
+    _closeBtn->setFlat(true);
+    _closeBtn->setCursor(Qt::PointingHandCursor);
+    connect(_closeBtn, &QPushButton::clicked, this, &ThreadPanel::closeRequested);
+    headerLayout->addWidget(_closeBtn);
+    layout->addWidget(_headerWidget);
+
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
 
     _msgList = new MessageListWidget(nullptr, nullptr, this);
     layout->addWidget(_msgList, 1);
@@ -98,4 +95,23 @@ void ThreadPanel::close() {
     _rootTs = {};
     _msgList->clear();
     _composer->setEnabled(false);
+}
+
+void ThreadPanel::applyTheme() {
+    setStyleSheet(QString("QWidget#threadPanel { border-left: 1px solid %1; background: %2; }")
+                      .arg(Th::qss(Th::c().divider.def), Th::qss(Th::c().surface.raised)));
+    _headerWidget->setStyleSheet(
+        QString("QWidget#threadHeader {"
+                "  background: %1;"
+                "  border-bottom: 1px solid %2;"
+                "}")
+            .arg(Th::qss(Th::c().surface.sunken), Th::qss(Th::c().divider.def))
+    );
+    _header->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
+                               .arg(Th::c().fonts.lg)
+                               .arg(Th::qss(Th::c().text.primary)));
+    _closeBtn->setStyleSheet(QString("QPushButton { font-size: %1px; border-radius: 4px; }"
+                                     "QPushButton:hover { background: %2; }")
+                                 .arg(Th::c().fonts.base)
+                                 .arg(Th::qss(Th::c().divider.def)));
 }

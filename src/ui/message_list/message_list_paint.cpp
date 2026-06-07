@@ -41,7 +41,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
 
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(event->rect(), Theme::kMessageBg);
+    p.fillRect(event->rect(), Th::c().surface.content);
 
     if ((_loading || _waiting) && _items.empty()) {
         _loadingAnim.paint(p, viewport()->rect());
@@ -61,7 +61,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
                 QFont f = QApplication::font();
                 f.setPointSizeF(f.pointSizeF() * 1.15);
                 p.setFont(f);
-                p.setPen(Theme::kTextSecondary);
+                p.setPen(Th::c().text.secondary);
                 const QRect vr      = viewport()->rect();
                 const int   textTop = vr.center().y() + 26 + 24; // spinner radius + gap
                 const QRect textRect(vr.left() + 32, textTop, vr.width() - 64, 80);
@@ -119,7 +119,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
 
     // Hover background (message area only, not separator)
     if (index == _hoveredRow)
-        p.fillRect(QRect(0, msgTop, vw, msgH), QColor(0, 0, 0, 10));
+        p.fillRect(QRect(0, msgTop, vw, msgH), Th::c().message.hover);
 
     // New-message highlight: fade from Slack green tint → transparent
     if (_newMsgTs.contains(item.msg.ts)) {
@@ -132,10 +132,12 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
     const int pinnedBannerH = item.msg.pinned ? 18 : 0;
     if (item.msg.pinned) {
         const QRect bannerRect(0, msgTop, vw, pinnedBannerH);
-        p.fillRect(bannerRect, QColor(0xFF, 0xEB, 0x3B, 60)); // subtle yellow tint
+        p.fillRect(bannerRect, Th::c().message.pinnedBg); // subtle yellow tint
 
         // Pin icon
-        static const QPixmap kPinPx = svgPixmap(":/ui/pin.svg", QSize(12, 12), QColor("#888"));
+        // NOTE: static — captures theme value once at first paint (acceptable for V1).
+        static const QPixmap kPinPx =
+            svgPixmap(":/ui/pin.svg", QSize(12, 12), Th::c().message.attachmentDismiss);
         if (!kPinPx.isNull())
             p.drawPixmap(kPadH, msgTop + (pinnedBannerH - 12) / 2, kPinPx);
 
@@ -146,7 +148,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         pinFont.setPointSizeF(pinFont.pointSizeF() * 0.78);
         p.save();
         p.setFont(pinFont);
-        p.setPen(QColor("#888888"));
+        p.setPen(Th::c().message.attachmentDismiss);
         p.drawText(
             kPadH + 16,
             msgTop,
@@ -174,7 +176,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         QFont nameFont = QApplication::font();
         nameFont.setBold(true);
         p.setFont(nameFont);
-        p.setPen(Theme::kTextPrimary);
+        p.setPen(Th::c().text.primary);
         const QFontMetrics nameFm(nameFont);
         const int          headerBaseline = contTop + nameFm.ascent();
         p.drawText(textLeft, headerBaseline, name);
@@ -183,7 +185,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         QFont tsFont = QApplication::font();
         tsFont.setPointSizeF(tsFont.pointSizeF() * 0.85);
         p.setFont(tsFont);
-        p.setPen(Theme::kTextSecondary);
+        p.setPen(Th::c().text.secondary);
         const QFontMetrics tsFm(tsFont);
         const QString      tsText = MsgRender::formatTs(item.msg.ts);
         // Align timestamp to the same baseline as the bold name
@@ -277,7 +279,7 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         tsFont.setPointSizeF(tsFont.pointSizeF() * 0.82);
         p.save();
         p.setFont(tsFont);
-        p.setPen(Theme::kTextSecondary);
+        p.setPen(Th::c().text.secondary);
         const QString tsText  = MsgRender::formatTs(item.msg.ts);
         const int     tsRight = kPadH + kAvSize;
         p.drawText(
@@ -359,7 +361,9 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor::fromHsl(hue, 130, 100));
+    p.setBrush(QColor::fromHsl(
+        hue, Th::c().message.avatarHslSaturation, Th::c().message.avatarHslLightness
+    ));
     p.drawRoundedRect(rect, 4, 4);
 
     p.setPen(Qt::white);
@@ -402,7 +406,7 @@ void MessageListWidget::paintAttachments(
             QFont xFont = QApplication::font();
             xFont.setPointSizeF(xFont.pointSizeF() * 1.15);
             p.setFont(xFont);
-            p.setPen(QColor("#888888"));
+            p.setPen(Th::c().message.attachmentDismiss);
             p.drawText(btnRect, Qt::AlignCenter, "\xC3\x97"); // UTF-8 × (U+00D7)
             p.restore();
         }
@@ -495,7 +499,7 @@ void MessageListWidget::paintFileImages(
             QFont nameFont = p.font();
             nameFont.setPointSizeF(nameFont.pointSizeF() * 0.82);
             p.setFont(nameFont);
-            p.setPen(QColor("#666666"));
+            p.setPen(Th::c().message.fileNameDim);
             p.drawText(
                 QRect(left, y, width, kImgNameH), Qt::AlignVCenter | Qt::TextSingleLine, f.name
             );
@@ -526,10 +530,10 @@ void MessageListWidget::paintFileImages(
                 phH = 24;
             }
             p.save();
-            p.setPen(QColor("#CCC"));
-            p.setBrush(QColor("#F5F5F5"));
+            p.setPen(Th::c().message.imagePlaceholderBorder);
+            p.setBrush(Th::c().message.imagePlaceholderBg);
             p.drawRect(QRect(left, y, phW, phH));
-            p.setPen(QColor("#888"));
+            p.setPen(Th::c().text.tertiary);
             p.drawText(QRect(left, y, phW, phH), Qt::AlignCenter, tr("Loading image…"));
             p.restore();
             y += phH;
@@ -678,15 +682,15 @@ void MessageListWidget::paintReactions(
 
         const QRect chip(x, top, chipW, chipH);
         if (mine) {
-            p.setPen(QColor("#1264A3"));
-            p.setBrush(QColor("#D9ECFF"));
+            p.setPen(Th::c().text.link);
+            p.setBrush(Th::c().accent.subtleBg);
         } else {
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor("#F0F0F0"));
+            p.setBrush(Th::c().surface.highlight);
         }
         p.drawRoundedRect(QRectF(chip).adjusted(0.5, 0.5, -0.5, -0.5), chipH / 2.0, chipH / 2.0);
 
-        const QColor textCol = mine ? QColor("#1264A3") : Theme::kTextPrimary;
+        const QColor textCol = mine ? Th::c().text.link : Th::c().text.primary;
 
         // Emoji — drawn in fixed left slot
         p.setFont(kEmojiF);
@@ -760,14 +764,14 @@ void MessageListWidget::paintFileChips(
 
         p.save();
         p.setClipPath(chipPath);
-        p.fillRect(chipRect, QColor("#FAFAFA"));
+        p.fillRect(chipRect, Th::c().message.fileChipBg);
         p.fillRect(QRect(left, y, kFileChipIconW, kFileChipH), MsgRender::fileTypeColor(f));
         p.restore();
 
         // Card border
         p.save();
         p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(QColor("#DDDDDD"));
+        p.setPen(Th::c().message.fileChipBorder);
         p.setBrush(Qt::NoBrush);
         p.drawRoundedRect(QRectF(chipRect), 4, 4);
         p.restore();
@@ -797,7 +801,7 @@ void MessageListWidget::paintFileChips(
             QFont nameFont = QApplication::font();
             nameFont.setBold(true);
             p.setFont(nameFont);
-            p.setPen(Theme::kTextPrimary);
+            p.setPen(Th::c().text.primary);
             const QString elided = nameFm.elidedText(f.name, Qt::ElideRight, textW);
             p.drawText(
                 QRect(textX, textTop, textW, nameFm.height()),
@@ -807,7 +811,7 @@ void MessageListWidget::paintFileChips(
         }
         {
             p.setFont(subFont);
-            p.setPen(Theme::kTextSecondary);
+            p.setPen(Th::c().text.secondary);
             QString       sub = f.prettyType;
             const QString sz  = MsgRender::formatFileSize(f.size);
             if (!sz.isEmpty())
@@ -947,8 +951,8 @@ void MessageListWidget::paintReplyBar(
     if (hovered) {
         p.save();
         p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(QPen(QColor("#D1D5DB"), 1));
-        p.setBrush(QColor("#F8F8F8"));
+        p.setPen(QPen(Th::c().message.replyBarHoverBorder, 1));
+        p.setBrush(Th::c().message.replyBarHover);
         p.drawRoundedRect(QRectF(bar).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
         p.restore();
     }
@@ -957,7 +961,7 @@ void MessageListWidget::paintReplyBar(
     static constexpr int kInnerPad = 6;
     int                  x         = bar.left() + kInnerPad;
     const int            avY       = bar.top() + (kReplyBarH - kThreadAvSize) / 2;
-    const QColor         ringColor = hovered ? QColor("#F8F8F8") : QColor(Qt::white);
+    const QColor         ringColor = hovered ? Th::c().message.replyBarHover : QColor(Qt::white);
 
     // ── Avatars ───────────────────────────────────────────────────────────────
     const int maxAv = std::min((int)item.msg.replyUsers.size(), 5);
@@ -975,7 +979,11 @@ void MessageListWidget::paintReplyBar(
             initial = uid.value;
         }
         const QChar ch = initial.isEmpty() ? QChar('?') : initial[0];
-        bg             = QColor::fromHsl(ch.unicode() * 37 % 360, 130, 100);
+        bg             = QColor::fromHsl(
+            ch.unicode() * 37 % 360,
+            Th::c().message.avatarHslSaturation,
+            Th::c().message.avatarHslLightness
+        );
 
         const QRect avRect(
             x + i * (kThreadAvSize - kThreadAvOver), avY, kThreadAvSize, kThreadAvSize
@@ -1002,7 +1010,7 @@ void MessageListWidget::paintReplyBar(
     boldF.setBold(true);
     boldF.setPointSizeF(boldF.pointSizeF() * 0.88);
     p.setFont(boldF);
-    p.setPen(QColor("#1164A3"));
+    p.setPen(Th::c().message.replyLink);
 
     const QString countLabel = count == 1 ? tr("1 reply") : tr("%1 replies").arg(count);
     const int     countW     = p.fontMetrics().horizontalAdvance(countLabel);
@@ -1012,7 +1020,7 @@ void MessageListWidget::paintReplyBar(
     QFont normF = QApplication::font();
     normF.setPointSizeF(normF.pointSizeF() * 0.88);
     p.setFont(normF);
-    p.setPen(QColor("#616061"));
+    p.setPen(Th::c().text.secondary);
 
     if (hovered) {
         p.drawText(
@@ -1230,8 +1238,9 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     p.drawRoundedRect(cardRect, kToolbarRadius, kToolbarRadius);
 
     // SVG icons: 0=emoji (smile), 1=forward, 2=more-horizontal
+    // NOTE: static — captures Th::c().icon.strong once at first paint (acceptable for V1).
     static const QSize    kIconSz(16, 16);
-    static const QColor   kIconColor("#454245");
+    static const QColor   kIconColor = Th::c().icon.strong;
     static const QPixmap  kPxSmile   = svgPixmap(":/ui/smile.svg", kIconSz, kIconColor);
     static const QPixmap  kPxForward = svgPixmap(":/ui/forward.svg", kIconSz, kIconColor);
     static const QPixmap  kPxMore    = svgPixmap(":/ui/more-horizontal.svg", kIconSz, kIconColor);
@@ -1269,14 +1278,14 @@ void MessageListWidget::paintIntro(QPainter &p, int top) const {
 
     p.save();
     p.setFont(nameFont);
-    p.setPen(Theme::kTextPrimary);
+    p.setPen(Th::c().text.primary);
     const QRect nameRect(padX, top + kIntroPadTop, vw - padX * 2, kIntroNameH);
     p.drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, _convName);
 
     if (!_convDescription.isEmpty()) {
         QFont descFont = QApplication::font();
         p.setFont(descFont);
-        p.setPen(Theme::kTextSecondary);
+        p.setPen(Th::c().text.secondary);
         const int descY = top + kIntroPadTop + kIntroNameH + kIntroGap;
         p.drawText(
             QRect(padX, descY, vw - padX * 2, kIntroDescH),
@@ -1301,18 +1310,18 @@ void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, const Ts &ts)
     const int          pillX = (vw - pillW) / 2;
 
     p.save();
-    p.setPen(QColor("#E0E0E0"));
+    p.setPen(Th::c().divider.def);
     p.drawLine(kPadH, midY, pillX - 8, midY);
     p.drawLine(pillX + pillW + 8, midY, vw - kPadH, midY);
 
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QColor("#E0E0E0"));
-    p.setBrush(Theme::kMessageBg);
+    p.setPen(Th::c().divider.def);
+    p.setBrush(Th::c().surface.content);
     const QRect pill(pillX, midY - pillH / 2, pillW, pillH);
     p.drawRoundedRect(pill, pillH / 2, pillH / 2);
 
     p.setFont(font);
-    p.setPen(QColor("#777777"));
+    p.setPen(Th::c().text.tertiary);
     p.drawText(pill, Qt::AlignCenter, label);
     p.restore();
 }

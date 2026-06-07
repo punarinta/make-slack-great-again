@@ -44,6 +44,7 @@ private:
     enum class Dir { None, N, NE, E, SE, S, SW, W, NW };
 
     void                   buildPanel();
+    void                   applyTheme();
     void                   saveNotifications();
     void                   loadNotifications();
     void                   saveAppearance();

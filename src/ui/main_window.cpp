@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "main_window.h"
 #include "theme.h"
+#include "theme_manager.h"
 #include "header_avatar_widget.h"
 #include "image_cache.h"
 #include "title_bar/title_bar.h"
@@ -66,6 +67,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setMinimumSize(800, 600);
     resize(1200, 800);
     buildUi();
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
     updateRoundedMask();
     qApp->installEventFilter(this);
 
@@ -150,16 +153,20 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *title = new QLabel("MSGA", titleBlock);
     title->setAlignment(Qt::AlignCenter);
-    title->setStyleSheet("font-size: 24px; font-weight: 600; color: #1D1C1D; margin-top: 4px;");
+    title->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2; margin-top: 4px;")
+                             .arg(Th::c().fonts.xxxl)
+                             .arg(Th::qss(Th::c().text.primary)));
 
     auto *tagline = new QLabel(titleBlock);
     tagline->setAlignment(Qt::AlignCenter);
-    tagline->setText("<span style='font-size:11px; color:#777; letter-spacing:0.06em;'>"
-                     "[<span style='color:#1D1C1D;'>m</span>ake "
-                     "<span style='color:#1D1C1D;'>s</span>lack "
-                     "<span style='color:#1D1C1D;'>g</span>reat "
-                     "<span style='color:#1D1C1D;'>a</span>gain]"
-                     "</span>");
+    tagline->setText(QString("<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
+                             "[<span style='color:%2;'>m</span>ake "
+                             "<span style='color:%2;'>s</span>lack "
+                             "<span style='color:%2;'>g</span>reat "
+                             "<span style='color:%2;'>a</span>gain]"
+                             "</span>")
+                         .arg(Th::qss(Th::c().text.tertiary), Th::qss(Th::c().text.primary))
+                         .arg(Th::c().fonts.sm));
 
     titleLayout->addWidget(title);
     titleLayout->addWidget(tagline);
@@ -167,17 +174,23 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *loginBtn = new QPushButton(tr("Log in to workspace"), inner);
     loginBtn->setFixedHeight(40);
     loginBtn->setCursor(Qt::PointingHandCursor);
-    loginBtn->setStyleSheet("QPushButton {"
-                            "  background: #007A5A;"
-                            "  color: white;"
-                            "  border: none;"
-                            "  border-radius: 4px;"
-                            "  font-size: 15px;"
-                            "  font-weight: 600;"
-                            "  padding: 0 24px;"
-                            "}"
-                            "QPushButton:hover   { background: #148567; }"
-                            "QPushButton:pressed { background: #005E45; }");
+    loginBtn->setStyleSheet(QString("QPushButton {"
+                                    "  background: %1;"
+                                    "  color: white;"
+                                    "  border: none;"
+                                    "  border-radius: 4px;"
+                                    "  font-size: %4px;"
+                                    "  font-weight: 600;"
+                                    "  padding: 0 24px;"
+                                    "}"
+                                    "QPushButton:hover   { background: %2; }"
+                                    "QPushButton:pressed { background: %3; }")
+                                .arg(
+                                    Th::qss(Th::c().accent.def),
+                                    Th::qss(Th::c().accent.hover),
+                                    Th::qss(Th::c().accent.pressed)
+                                )
+                                .arg(Th::c().fonts.lg));
     connect(loginBtn, &QPushButton::clicked, this, [this] {
         if (runLoginFlow())
             startSession(_activeTeamId);
@@ -275,10 +288,6 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     auto *msgHeader = new QWidget(rightPanel);
     msgHeader->setObjectName("msgHeader");
     msgHeader->setFixedHeight(48);
-    msgHeader->setStyleSheet("QWidget#msgHeader {"
-                             "  background: #FFFFFF;"
-                             "  border-bottom: 1px solid #E8E8E8;"
-                             "}");
     auto *msgHeaderLayout = new QHBoxLayout(msgHeader);
     msgHeaderLayout->setContentsMargins(16, 0, 8, 0);
     msgHeaderLayout->setSpacing(6);
@@ -289,7 +298,6 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     _convNameLabel = new QLabel("", msgHeader);
     _convNameLabel->setObjectName("convNameLabel");
-    _convNameLabel->setStyleSheet("font-weight: bold; font-size: 15px; color: #1D1C1D;");
     msgHeaderLayout->addWidget(_convNameLabel, 1);
 
     _starBtn = new QPushButton(msgHeader);
@@ -298,21 +306,18 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _starBtn->setCursor(Qt::PointingHandCursor);
     _starBtn->setToolTip(tr("Star conversation"));
     _starBtn->setIconSize(QSize(15, 15));
-    _starBtn->setStyleSheet("QPushButton { border-radius: 4px; }"
-                            "QPushButton:hover { background: #F0F0F0; }");
     _starBtn->setVisible(false);
     msgHeaderLayout->addWidget(_starBtn);
     msgHeaderLayout->addSpacing(2);
 
     auto *searchBtn = new QPushButton(msgHeader);
+    searchBtn->setObjectName("headerSearchBtn");
     searchBtn->setFixedSize(32, 32);
     searchBtn->setFlat(true);
     searchBtn->setCursor(Qt::PointingHandCursor);
     searchBtn->setToolTip(tr("Search messages"));
     searchBtn->setIconSize(QSize(16, 16));
-    searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), QColor("#616061")));
-    searchBtn->setStyleSheet("QPushButton { border-radius: 4px; }"
-                             "QPushButton:hover { background: #F0F0F0; }");
+    searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), Th::c().icon.def));
     msgHeaderLayout->addWidget(searchBtn);
     _msgHeader = msgHeader;
     rightLayout->addWidget(msgHeader);
@@ -320,12 +325,6 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     // ── Error banner — shown briefly when a background network error fires ──
     _errorBanner = new QLabel(rightPanel);
     _errorBanner->setObjectName("errorBanner");
-    _errorBanner->setStyleSheet("QLabel#errorBanner {"
-                                "  background: #C0392B;"
-                                "  color: #FFFFFF;"
-                                "  padding: 6px 12px;"
-                                "  font-size: 13px;"
-                                "}");
     _errorBanner->setAlignment(Qt::AlignCenter);
     _errorBanner->hide();
     rightLayout->addWidget(_errorBanner);
@@ -503,6 +502,50 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     });
 
     return rightPanel;
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+void MainWindow::applyTheme() {
+    qApp->setStyleSheet(Th::globalQss());
+
+    const auto &th = Th::c();
+
+    if (_msgHeader) {
+        _msgHeader->setStyleSheet(QString("QWidget#msgHeader {"
+                                          "  background: %1;"
+                                          "  border-bottom: 1px solid %2;"
+                                          "}")
+                                      .arg(Th::qss(th.surface.raised), Th::qss(th.divider.def)));
+    }
+    if (_convNameLabel) {
+        _convNameLabel->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
+                                          .arg(th.fonts.lg)
+                                          .arg(Th::qss(th.text.primary)));
+    }
+    if (_starBtn) {
+        _starBtn->setStyleSheet(QString("QPushButton { border-radius: 4px; }"
+                                        "QPushButton:hover { background: %1; }")
+                                    .arg(Th::qss(th.surface.highlight)));
+    }
+    if (_msgHeader) {
+        if (auto *searchBtn = _msgHeader->findChild<QPushButton *>("headerSearchBtn")) {
+            searchBtn->setStyleSheet(QString("QPushButton { border-radius: 4px; }"
+                                             "QPushButton:hover { background: %1; }")
+                                         .arg(Th::qss(th.surface.highlight)));
+            searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
+        }
+    }
+    if (_errorBanner) {
+        _errorBanner->setStyleSheet(QString("QLabel#errorBanner {"
+                                            "  background: %1;"
+                                            "  color: %2;"
+                                            "  padding: 6px 12px;"
+                                            "  font-size: %3px;"
+                                            "}")
+                                        .arg(Th::qss(th.danger.icon), Th::qss(th.surface.raised))
+                                        .arg(th.fonts.md));
+    }
 }
 
 // ── Session lifecycle ─────────────────────────────────────────────────────────
@@ -829,7 +872,7 @@ void MainWindow::updateTrayIcon() {
     if (renderer.isValid())
         renderer.render(&p, QRectF(0, 0, sz, sz));
     const int d = 36;
-    p.setBrush(_totalMentions > 0 ? Theme::kMentionBadge : QColor(180, 180, 180));
+    p.setBrush(_totalMentions > 0 ? Th::c().badge.mention : QColor(180, 180, 180));
     p.setPen(Qt::NoPen);
     p.drawEllipse(sz - d, 0, d, d);
     p.end();
@@ -1179,7 +1222,7 @@ void MainWindow::updateStarBtn(bool starred) {
     if (!_starBtn)
         return;
     _starBtn->setIcon(
-        svgIcon(":/ui/star.svg", QSize(15, 15), starred ? QColor("#C6920A") : QColor("#888888"))
+        svgIcon(":/ui/star.svg", QSize(15, 15), starred ? QColor("#C6920A") : Th::c().icon.def)
     );
 }
 

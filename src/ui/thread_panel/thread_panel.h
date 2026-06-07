@@ -11,6 +11,7 @@ class Session;
 class MessageListWidget;
 class ComposerWidget;
 class QLabel;
+class QPushButton;
 
 // Right-side panel showing a Slack thread: root message + replies + composer.
 // Slides in when the user clicks a "N replies" bar in the main message list.
@@ -27,13 +28,17 @@ signals:
     void closeRequested();
 
 private:
+    void applyTheme();
+
     Session       *_session = nullptr;
     ConversationId _conv;
     Ts             _rootTs;
 
-    QLabel            *_header   = nullptr;
-    MessageListWidget *_msgList  = nullptr;
-    ComposerWidget    *_composer = nullptr;
+    QWidget           *_headerWidget = nullptr;
+    QLabel            *_header       = nullptr;
+    QPushButton       *_closeBtn     = nullptr;
+    MessageListWidget *_msgList      = nullptr;
+    ComposerWidget    *_composer     = nullptr;
 
     rpl::lifetime _lifetime;
 };

@@ -84,6 +84,8 @@ add_msga_qt_test(test_session
 
 add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
@@ -92,6 +94,8 @@ add_msga_widget_test(test_workspace_switcher
 
 add_msga_widget_test(test_composer
     test_composer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp

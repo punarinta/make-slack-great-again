@@ -94,6 +94,8 @@ add_executable(msga MACOSX_BUNDLE
     src/session/session.cpp
 
     # UI
+    src/ui/theme.cpp
+    src/ui/theme_manager.cpp
     src/ui/virtual_list/virtual_list_widget.cpp
     src/ui/image_cache.cpp
     src/ui/main_window.cpp

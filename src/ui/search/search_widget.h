@@ -9,6 +9,7 @@
 
 class QLineEdit;
 class QListWidget;
+class QPushButton;
 class Session;
 
 class SearchWidget : public QWidget {
@@ -26,9 +27,12 @@ signals:
 private:
     void runSearch(const QString &query);
     void populateResults(const std::vector<SearchResult> &results);
+    void applyTheme();
 
     Session     *_session    = nullptr;
+    QWidget     *_header     = nullptr;
     QLineEdit   *_queryEdit  = nullptr;
+    QPushButton *_closeBtn   = nullptr;
     QListWidget *_resultList = nullptr;
 
     std::vector<SearchResult> _results;

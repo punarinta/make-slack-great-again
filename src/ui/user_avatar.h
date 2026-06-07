@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include "ui/theme.h"
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
@@ -59,7 +60,7 @@ inline void paint(
         p.setClipping(false);
     } else {
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0x8B, 0x8B, 0x8B));
+        p.setBrush(Th::c().presence.away);
         p.drawRoundedRect(rect, cornerRadius, cornerRadius);
         if (!initial.isEmpty()) {
             p.setPen(Qt::white);
@@ -83,15 +84,15 @@ inline void paint(
     }
 
     if (state.dndEnabled) {
-        p.setBrush(QColor("#B8B8B8"));
+        p.setBrush(Th::c().divider.def);
         p.drawEllipse(dot);
         // Horizontal bar — "do not disturb"
-        p.setPen(QPen(QColor("#888888"), 1.5, Qt::SolidLine, Qt::RoundCap));
+        p.setPen(QPen(Th::c().presence.away, 1.5, Qt::SolidLine, Qt::RoundCap));
         const int cx = dot.center().x();
         const int cy = dot.center().y();
         p.drawLine(cx - 2, cy, cx + 2, cy);
     } else {
-        p.setBrush(state.isActive ? QColor("#2BAC76") : QColor("#B8B8B8"));
+        p.setBrush(state.isActive ? Th::c().presence.online : Th::c().divider.def);
         p.drawEllipse(dot);
     }
 

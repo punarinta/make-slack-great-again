@@ -25,6 +25,7 @@ signals:
     void removeRequested(const QString &path);
 
 private:
+    void applyTheme();
     void addPendingChip(const QString &path);
     void addReadOnlyChip(const File &file);
 

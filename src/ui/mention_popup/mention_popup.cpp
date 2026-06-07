@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "mention_popup.h"
 #include "session/session.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -76,17 +78,27 @@ private:
 
     void applyStyle(bool sel) {
         if (sel) {
-            setStyleSheet("background:#1264A3; border-radius:4px;");
+            setStyleSheet(
+                QString("background:%1; border-radius:4px;").arg(Th::qss(Th::c().text.link))
+            );
             if (_nameL)
-                _nameL->setStyleSheet("font-size:13px; color:#FFFFFF; background:transparent;");
+                _nameL->setStyleSheet(QString("font-size:%2px; color:%1; background:transparent;")
+                                          .arg(Th::qss(Th::c().text.onDark))
+                                          .arg(Th::c().fonts.md));
             if (_descL)
-                _descL->setStyleSheet("font-size:12px; color:#FFFFFF; background:transparent;");
+                _descL->setStyleSheet(QString("font-size:%2px; color:%1; background:transparent;")
+                                          .arg(Th::qss(Th::c().text.onDark))
+                                          .arg(Th::c().fonts.caption));
         } else {
             setStyleSheet("background:transparent;");
             if (_nameL)
-                _nameL->setStyleSheet("font-size:13px; color:#1D1C1D; background:transparent;");
+                _nameL->setStyleSheet(QString("font-size:%2px; color:%1; background:transparent;")
+                                          .arg(Th::qss(Th::c().text.primary))
+                                          .arg(Th::c().fonts.md));
             if (_descL)
-                _descL->setStyleSheet("font-size:12px; color:#888888; background:transparent;");
+                _descL->setStyleSheet(QString("font-size:%2px; color:%1; background:transparent;")
+                                          .arg(Th::qss(Th::c().text.tertiary))
+                                          .arg(Th::c().fonts.caption));
         }
     }
 };
@@ -97,11 +109,6 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
     // Plain child widget of the container — no separate window, no focus events.
     setAttribute(Qt::WA_StyledBackground, true);
     setObjectName("mentionPopup");
-    setStyleSheet("QFrame#mentionPopup {"
-                  "  background:#FFFFFF;"
-                  "  border:1px solid #D1D1D1;"
-                  "  border-radius:6px;"
-                  "}");
     setFixedWidth(kWidth);
 
     auto *outer = new QVBoxLayout(this);
@@ -126,6 +133,20 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
     outer->addWidget(_scroll);
 
     hide();
+
+    applyTheme();
+    connect(
+        &ThemeManager::instance(), &ThemeManager::themeChanged, this, &MentionPopup::applyTheme
+    );
+}
+
+void MentionPopup::applyTheme() {
+    setStyleSheet(QString("QFrame#mentionPopup {"
+                          "  background:%1;"
+                          "  border:1px solid %2;"
+                          "  border-radius:6px;"
+                          "}")
+                      .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)));
 }
 
 void MentionPopup::setSession(Session *s) {

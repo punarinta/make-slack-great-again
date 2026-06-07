@@ -20,6 +20,8 @@ signals:
     void restartRequested(const QString &stagedPath);
 
 private:
+    void applyTheme();
+
     QLabel      *_label = nullptr;
     QPushButton *_btn   = nullptr;
     QString      _staged;

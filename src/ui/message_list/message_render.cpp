@@ -3,6 +3,7 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "text/mrkdwn_parser.h"
+#include "ui/theme.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
 
@@ -91,13 +92,15 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
             html += "<s>" + inner + "</s>";
             break;
         case EntityType::Code:
-            html += "<span style='background:#FDF0F0;color:#C0392B;font-family:monospace;"
-                    "font-size:0.88em;padding:1px 3px;border-radius:3px'>" +
+            html += "<span style='background:" + Th::qss(Th::c().message.codeBlockBg) +
+                    ";color:" + Th::qss(Th::c().danger.text) +
+                    ";font-family:monospace;font-size:0.88em;padding:1px 3px;border-radius:3px'>" +
                     inner + "</span>";
             break;
         case EntityType::Pre:
-            html += "<pre style='background:#F4F4F4;padding:6px 10px;border-radius:4px;"
-                    "font-family:monospace;font-size:0.88em;white-space:pre-wrap;margin:4px 0'>" +
+            html += "<pre style='background:" + Th::qss(Th::c().message.codeBlockBg) +
+                    ";padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.88em;"
+                    "white-space:pre-wrap;margin:4px 0'>" +
                     inner + "</pre>";
             break;
         case EntityType::Blockquote:
@@ -105,29 +108,34 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
             html +=
                 "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:0 0 8px 0'>"
                 "<tr>"
-                "<td width='3' bgcolor='#CCCCCC' style='padding:0;border-radius:2px'></td>"
-                "<td style='padding:2px 0 2px 10px;color:#555555'>" +
-                inner.replace("\n", "<br>") + "</td></tr></table>";
+                "<td width='3' bgcolor='" +
+                Th::c().message.codeBlockBorder.name() +
+                "' style='padding:0;border-radius:2px'></td>"
+                "<td style='padding:2px 0 2px 10px;color:" +
+                Th::qss(Th::c().message.codeText) + "'>" + inner.replace("\n", "<br>") +
+                "</td></tr></table>";
             break;
         case EntityType::Link:
             html += "<a href='" + e.data.toHtmlEscaped() +
-                    "' style='color:#1264A3;text-decoration:none'>" + inner + "</a>";
+                    "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
+                    inner + "</a>";
             break;
         case EntityType::UserMention: {
             const QString label = session ? resolveMentionImpl(e.data, session) : rawInner;
-            html += "<span style='color:#1164A3;background:#E8F5FA;"
-                    "border-radius:3px;padding:0 2px'>" +
-                    label.toHtmlEscaped() + "</span>";
+            html += "<span style='color:" + Th::qss(Th::c().message.replyLink) +
+                    ";background:" + Th::qss(Th::c().accent.subtleBg) +
+                    ";border-radius:3px;padding:0 2px'>" + label.toHtmlEscaped() + "</span>";
             break;
         }
         case EntityType::ChannelMention:
-            html += "<span style='color:#1164A3;background:#E8F5FA;"
-                    "border-radius:3px;padding:0 2px'>" +
-                    inner + "</span>";
+            html += "<span style='color:" + Th::qss(Th::c().message.replyLink) +
+                    ";background:" + Th::qss(Th::c().accent.subtleBg) +
+                    ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
             break;
         case EntityType::HereCommand:
         case EntityType::ChannelCommand:
-            html += "<span style='color:#E01E5A;font-weight:bold'>" + inner + "</span>";
+            html += "<span style='color:" + Th::qss(Th::c().badge.unread) + ";font-weight:bold'>" +
+                    inner + "</span>";
             break;
         case EntityType::Emoji: {
             static const QString kEmojiSpanOpen =
@@ -149,15 +157,17 @@ QString buildMsgHtml(const Message &msg, const Session *session) {
         QString html;
         for (const auto &blk : msg.blocks) {
             if (blk.typeStr == "divider") {
-                html += "<hr style='border:0;border-top:1px solid #DDD;margin:4px 0'>";
+                html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
+                        ";margin:4px 0'>";
             } else if (blk.typeStr == "header") {
                 html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
                         toHtml(blk.text, session) + "</p>";
             } else if (blk.typeStr == "image") {
                 // Painted separately; show alt text as italic placeholder
                 if (!blk.altText.isEmpty())
-                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>" +
-                            blk.altText.toHtmlEscaped() + "</p>";
+                    html += "<p style='color:" + Th::qss(Th::c().text.tertiary) +
+                            ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() +
+                            "</p>";
             } else if (!blk.text.text.isEmpty()) {
                 html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
             }
@@ -173,35 +183,36 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     if (!att.pretext.isEmpty())
         html += "<p style='margin:0 0 2px'>" + att.pretext.toHtmlEscaped() + "</p>";
     if (!att.authorName.isEmpty())
-        html += "<p style='margin:0;font-size:0.85em;color:#888'>" +
-                att.authorName.toHtmlEscaped() + "</p>";
+        html += "<p style='margin:0;font-size:0.85em;color:" + Th::qss(Th::c().text.tertiary) +
+                "'>" + att.authorName.toHtmlEscaped() + "</p>";
     if (!att.title.isEmpty()) {
         if (!att.titleLink.isEmpty())
             html += "<p style='margin:0;font-weight:bold'><a href='" +
-                    att.titleLink.toHtmlEscaped() +
-                    "' style='color:#1264A3;text-decoration:none'>" + att.title.toHtmlEscaped() +
-                    "</a></p>";
+                    att.titleLink.toHtmlEscaped() + "' style='color:" + Th::qss(Th::c().text.link) +
+                    ";text-decoration:none'>" + att.title.toHtmlEscaped() + "</a></p>";
         else
             html += "<p style='margin:0;font-weight:bold'>" + att.title.toHtmlEscaped() + "</p>";
     }
     if (!att.text.text.isEmpty())
         html += "<p style='margin:2px 0 0'>" + toHtml(att.text, session) + "</p>";
     if (!att.footer.isEmpty())
-        html += "<p style='margin:2px 0 0;font-size:0.8em;color:#888'>" +
-                att.footer.toHtmlEscaped() + "</p>";
+        html += "<p style='margin:2px 0 0;font-size:0.8em;color:" + Th::qss(Th::c().text.tertiary) +
+                "'>" + att.footer.toHtmlEscaped() + "</p>";
 
     // Render Block Kit blocks embedded in the attachment (modern bot format).
     if (html.isEmpty() && !att.blocks.empty()) {
         for (const auto &blk : att.blocks) {
             if (blk.typeStr == "divider") {
-                html += "<hr style='border:0;border-top:1px solid #DDD;margin:4px 0'>";
+                html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
+                        ";margin:4px 0'>";
             } else if (blk.typeStr == "header") {
                 html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
                         toHtml(blk.text, session) + "</p>";
             } else if (blk.typeStr == "image") {
                 if (!blk.altText.isEmpty())
-                    html += "<p style='color:#888;font-style:italic;margin:1px 0'>" +
-                            blk.altText.toHtmlEscaped() + "</p>";
+                    html += "<p style='color:" + Th::qss(Th::c().text.tertiary) +
+                            ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() +
+                            "</p>";
             } else if (!blk.text.text.isEmpty()) {
                 html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
             }

@@ -5,6 +5,7 @@
 #include "session/session.h"
 #include "backend/backend.h"
 #include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include "ui/image_cache.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
@@ -63,6 +64,13 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
     });
 
     _loadingAnim.setUpdateCallback([this] { viewport()->update(); });
+
+    connect(
+        &ThemeManager::instance(),
+        &ThemeManager::themeChanged,
+        viewport(),
+        QOverload<>::of(&QWidget::update)
+    );
 
     if (_imgCache) {
         connect(_imgCache, &ImageCache::loaded, this, [this] {

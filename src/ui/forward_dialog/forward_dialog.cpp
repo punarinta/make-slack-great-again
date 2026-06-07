@@ -4,6 +4,7 @@
 #include "ui/conv_selector/conv_selector_widget.h"
 #include "ui/composer/composer_widget.h"
 #include "ui/message_list/message_render.h"
+#include "ui/theme.h"
 #include "session/session.h"
 
 #include <QApplication>
@@ -36,14 +37,9 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     cl->addWidget(_composer);
 
     // ── Message preview card ───────────────────────────────────────────
-    auto *previewCard = new QFrame;
-    previewCard->setObjectName("fwdCard");
-    previewCard->setStyleSheet("QFrame#fwdCard {"
-                               "  border: 1px solid #E0E0E0;"
-                               "  border-radius: 6px;"
-                               "  background: #FAFAFA;"
-                               "}");
-    auto *cardLay = new QVBoxLayout(previewCard);
+    _previewCard = new QFrame;
+    _previewCard->setObjectName("fwdCard");
+    auto *cardLay = new QVBoxLayout(_previewCard);
     cardLay->setContentsMargins(12, 8, 12, 8);
     cardLay->setSpacing(4);
 
@@ -51,15 +47,16 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         const auto   *user      = session->findUser(msg.author);
         const QString name      = user ? user->displayName : msg.author.value;
         auto         *nameLabel = new QLabel(
-            "<b>" + name.toHtmlEscaped() + "</b>" + "  <span style='color:#888;font-size:11px'>" +
-                MsgRender::formatTs(msg.ts) + "</span>",
-            previewCard
+            "<b>" + name.toHtmlEscaped() + "</b>" + "  <span style='color:" +
+                Th::qss(Th::c().text.tertiary) + ";font-size:" + QString::number(Th::c().fonts.sm) +
+                "px'>" + MsgRender::formatTs(msg.ts) + "</span>",
+            _previewCard
         );
         nameLabel->setTextFormat(Qt::RichText);
         cardLay->addWidget(nameLabel);
     }
 
-    auto *preview = new QTextBrowser(previewCard);
+    auto *preview = new QTextBrowser(_previewCard);
     preview->setReadOnly(true);
     preview->setMaximumHeight(140);
     preview->setFrameShape(QFrame::NoFrame);
@@ -73,33 +70,22 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         preview->setHtml(html);
 
     cardLay->addWidget(preview);
-    cl->addWidget(previewCard);
+    cl->addWidget(_previewCard);
 
     // ── Button bar ─────────────────────────────────────────────────────
     auto *btnRow = new QHBoxLayout;
     btnRow->setSpacing(8);
 
-    auto *copyLinkBtn = new QPushButton(tr("Copy Link"));
-    copyLinkBtn->setStyleSheet("QPushButton { border: 1px solid #CCC; border-radius: 4px;"
-                               " padding: 6px 14px; background: white; }"
-                               "QPushButton:hover { background: #F5F5F5; }");
-
-    btnRow->addWidget(copyLinkBtn);
+    _copyLinkBtn = new QPushButton(tr("Copy Link"));
+    btnRow->addWidget(_copyLinkBtn);
     btnRow->addStretch();
 
-    auto *cancelBtn = new QPushButton(tr("Cancel"));
-    cancelBtn->setStyleSheet("QPushButton { border: 1px solid #CCC; border-radius: 4px;"
-                             " padding: 6px 18px; background: white; }"
-                             "QPushButton:hover { background: #F5F5F5; }");
+    _cancelBtn = new QPushButton(tr("Cancel"));
 
     _fwdBtn = new QPushButton(tr("Forward"));
     _fwdBtn->setEnabled(false);
-    _fwdBtn->setStyleSheet("QPushButton { background: #007A5A; color: white; border: none;"
-                           " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
-                           "QPushButton:hover { background: #006348; }"
-                           "QPushButton:disabled { background: #CCCCCC; }");
 
-    btnRow->addWidget(cancelBtn);
+    btnRow->addWidget(_cancelBtn);
     btnRow->addWidget(_fwdBtn);
     cl->addLayout(btnRow);
 
@@ -117,10 +103,10 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
             accept();
     });
 
-    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     connect(_fwdBtn, &QPushButton::clicked, this, &QDialog::accept);
 
-    connect(copyLinkBtn, &QPushButton::clicked, this, [&msg] {
+    connect(_copyLinkBtn, &QPushButton::clicked, this, [&msg] {
         for (const auto &ent : msg.text.entities) {
             if (ent.type == EntityType::Link && !ent.data.isEmpty()) {
                 QApplication::clipboard()->setText(ent.data);
@@ -129,7 +115,46 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         }
     });
 
+    applyTheme();
     updateCard();
+}
+
+void ForwardDialog::applyTheme() {
+    AppDialog::applyTheme();
+    _previewCard->setStyleSheet(
+        QString("QFrame#fwdCard {"
+                "  border: 1px solid %1;"
+                "  border-radius: 6px;"
+                "  background: %2;"
+                "}")
+            .arg(Th::qss(Th::c().surface.highlightStrong), Th::qss(Th::c().message.fileChipBg))
+    );
+    _copyLinkBtn->setStyleSheet(QString("QPushButton { border: 1px solid %1; border-radius: 4px;"
+                                        " padding: 6px 14px; background: %2; }"
+                                        "QPushButton:hover { background: %3; }")
+                                    .arg(
+                                        Th::qss(Th::c().divider.strong),
+                                        Th::qss(Th::c().surface.raised),
+                                        Th::qss(Th::c().surface.sunken)
+                                    ));
+    _cancelBtn->setStyleSheet(QString("QPushButton { border: 1px solid %1; border-radius: 4px;"
+                                      " padding: 6px 18px; background: %2; }"
+                                      "QPushButton:hover { background: %3; }")
+                                  .arg(
+                                      Th::qss(Th::c().divider.strong),
+                                      Th::qss(Th::c().surface.raised),
+                                      Th::qss(Th::c().surface.sunken)
+                                  ));
+    _fwdBtn->setStyleSheet(QString("QPushButton { background: %1; color: %2; border: none;"
+                                   " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
+                                   "QPushButton:hover { background: %3; }"
+                                   "QPushButton:disabled { background: %4; }")
+                               .arg(
+                                   Th::qss(Th::c().accent.def),
+                                   Th::qss(Th::c().accent.text),
+                                   Th::qss(Th::c().accent.dark),
+                                   Th::qss(Th::c().icon.dim)
+                               ));
 }
 
 ConversationId ForwardDialog::targetConv() const {

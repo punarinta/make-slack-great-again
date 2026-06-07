@@ -4,19 +4,9 @@
 #include "app/single_instance.h"
 
 #include <QApplication>
-#include <QFile>
 #include <QFileOpenEvent>
 #include <QLocale>
-#include <QTextStream>
 #include <QTranslator>
-
-static void loadStyleSheet(QApplication &app) {
-    QFile f(":/style.qss");
-    if (f.open(QFile::ReadOnly | QFile::Text)) {
-        QTextStream ts(&f);
-        app.setStyleSheet(ts.readAll());
-    }
-}
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
@@ -43,8 +33,6 @@ int main(int argc, char *argv[]) {
                         translator.load(":/translations/msga_" + locale.section('_', 0, 0));
     if (loaded)
         app.installTranslator(&translator);
-
-    loadStyleSheet(app);
 
     MainWindow window;
     QObject::connect(

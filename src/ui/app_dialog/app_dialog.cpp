@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "app_dialog.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QApplication>
 #include <QFrame>
@@ -28,9 +30,6 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     // ── Card ─────────────────────────────────────────────────────────────────
     _card = new QFrame(this);
     _card->setObjectName("appDialogCard");
-    _card->setStyleSheet(
-        "QFrame#appDialogCard { background: white; border-radius: 12px; border: none; }"
-    );
 
     auto *shadow = new QGraphicsDropShadowEffect(_card);
     shadow->setBlurRadius(40);
@@ -47,31 +46,25 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     headerRow->setContentsMargins(0, 0, 0, 0);
     headerRow->setSpacing(12);
 
-    auto *titleLabel = new QLabel(title, _card);
-    QFont tf         = titleLabel->font();
+    _titleLabel = new QLabel(title, _card);
+    QFont tf    = _titleLabel->font();
     tf.setBold(true);
     tf.setPointSizeF(tf.pointSizeF() * 1.45);
-    titleLabel->setFont(tf);
-    titleLabel->setStyleSheet("color: #1D1C1D;");
+    _titleLabel->setFont(tf);
 
-    auto *closeBtn = new QPushButton(_card);
-    closeBtn->setFixedSize(32, 32);
-    closeBtn->setFlat(true);
-    closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setFocusPolicy(Qt::NoFocus);
+    _closeBtn = new QPushButton(_card);
+    _closeBtn->setFixedSize(32, 32);
+    _closeBtn->setFlat(true);
+    _closeBtn->setCursor(Qt::PointingHandCursor);
+    _closeBtn->setFocusPolicy(Qt::NoFocus);
     // Draw a plain × glyph via text
-    closeBtn->setText("✕");
-    QFont cf = closeBtn->font();
+    _closeBtn->setText("✕");
+    QFont cf = _closeBtn->font();
     cf.setPointSizeF(cf.pointSizeF() * 1.1);
-    closeBtn->setFont(cf);
-    closeBtn->setStyleSheet("QPushButton {"
-                            "  border: none; border-radius: 16px;"
-                            "  color: #888; background: transparent;"
-                            "}"
-                            "QPushButton:hover { background: #F0F0F0; color: #333; }");
+    _closeBtn->setFont(cf);
 
-    headerRow->addWidget(titleLabel, 1, Qt::AlignVCenter);
-    headerRow->addWidget(closeBtn, 0, Qt::AlignTop);
+    headerRow->addWidget(_titleLabel, 1, Qt::AlignVCenter);
+    headerRow->addWidget(_closeBtn, 0, Qt::AlignTop);
     cardLayout->addLayout(headerRow);
     cardLayout->addSpacing(20);
 
@@ -81,7 +74,32 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     _contentLayout->setSpacing(12);
     cardLayout->addLayout(_contentLayout);
 
-    connect(closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(_closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
+        applyTheme();
+        update();
+    });
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+void AppDialog::applyTheme() {
+    _card->setStyleSheet(
+        "QFrame#appDialogCard { background: white; border-radius: 12px; border: none; }"
+    );
+    _titleLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
+    _closeBtn->setStyleSheet(QString("QPushButton {"
+                                     "  border: none; border-radius: 16px;"
+                                     "  color: %1; background: transparent;"
+                                     "}"
+                                     "QPushButton:hover { background: %2; color: %3; }")
+                                 .arg(
+                                     Th::qss(Th::c().text.tertiary),
+                                     Th::qss(Th::c().surface.highlight),
+                                     Th::qss(Th::c().text.secondary)
+                                 ));
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────

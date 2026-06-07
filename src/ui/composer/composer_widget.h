@@ -76,6 +76,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 
 private:
+    void applyTheme();
     void trySend();
     void trySchedule();
     void updateSendState();
@@ -94,6 +95,7 @@ private:
     EditModeBanner    *_editBanner   = nullptr;
     AttachmentStrip   *_attachStrip  = nullptr;
     QTextEdit         *_edit         = nullptr;
+    QWidget           *_bottomBar    = nullptr; // bottom action bar
     QPushButton       *_sendBtn      = nullptr;
     QPushButton       *_dropBtn      = nullptr; // schedule-send dropdown
     QWidget           *_sendGroup    = nullptr; // pill container for send+drop

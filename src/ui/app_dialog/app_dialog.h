@@ -6,6 +6,7 @@
 
 class QFrame;
 class QLabel;
+class QPushButton;
 class QVBoxLayout;
 
 // Base for all application modal dialogs.
@@ -36,7 +37,11 @@ protected:
     void mousePressEvent(QMouseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
 
+    virtual void applyTheme();
+
 private:
     QFrame      *_card;
+    QLabel      *_titleLabel;
+    QPushButton *_closeBtn;
     QVBoxLayout *_contentLayout;
 };

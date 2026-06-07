@@ -34,6 +34,7 @@ private:
     void rebuild(const QString &query, bool isDm);
     void selectRow(int idx);
     void confirm();
+    void applyTheme();
 
     QScrollArea     *_scroll  = nullptr;
     QWidget         *_content = nullptr;

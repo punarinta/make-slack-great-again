@@ -5,6 +5,7 @@
 #include "ui/app_dialog/app_dialog.h"
 #include "backend/domain.h"
 
+class QFrame;
 class Session;
 class ConvSelectorWidget;
 class ComposerWidget;
@@ -21,8 +22,14 @@ public:
     ConversationId targetConv() const;
     QString        comment() const;
 
+protected:
+    void applyTheme() override;
+
 private:
-    ConvSelectorWidget *_selector = nullptr;
-    ComposerWidget     *_composer = nullptr;
-    QPushButton        *_fwdBtn   = nullptr;
+    ConvSelectorWidget *_selector    = nullptr;
+    ComposerWidget     *_composer    = nullptr;
+    QFrame             *_previewCard = nullptr;
+    QPushButton        *_copyLinkBtn = nullptr;
+    QPushButton        *_cancelBtn   = nullptr;
+    QPushButton        *_fwdBtn      = nullptr;
 };

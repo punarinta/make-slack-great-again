@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "conv_list_widget.h"
 #include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/user_avatar.h"
@@ -42,6 +43,12 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     if (_imgCache) {
         connect(_imgCache, &ImageCache::loaded, this, [this] { viewport()->update(); });
     }
+    connect(
+        &ThemeManager::instance(),
+        &ThemeManager::themeChanged,
+        viewport(),
+        QOverload<>::of(&QWidget::update)
+    );
 }
 
 void ConvListWidget::setRelevantDays(int days) {
@@ -452,7 +459,7 @@ void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &user
 void ConvListWidget::doPaint(QPaintEvent *event) {
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(event->rect(), Theme::kConvPanelBg);
+    p.fillRect(event->rect(), Th::c().nav.panelBg);
 
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
@@ -465,7 +472,7 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
 
     triggerMissingAvatarDownloads();
 
-    paintScrollThumb(p, static_cast<int>(_rows.size()) * kRowH, QColor(255, 255, 255, 100));
+    paintScrollThumb(p, static_cast<int>(_rows.size()) * kRowH, Th::c().nav.scrollThumb);
 }
 
 void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int sectionId) const {
@@ -473,20 +480,22 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     const bool collapsed = (sectionId == 0) ? _channelsCollapsed : _dmsCollapsed;
 
     if (hovered)
-        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Theme::kHoverItem);
+        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
 
     // Normally show the section icon; on hover replace it with the chevron that
     // previews what clicking will do (collapsed → down chevron, expanded → right chevron).
+    // NOTE: static pixmaps baked at first paint with the theme active at that moment.
+    // They will not live-update on theme change — acceptable for V1.
     static const QPixmap kChevDownDim =
-        svgPixmap(":/ui/chevron-down.svg", QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
+        svgPixmap(":/ui/chevron-down.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
     static const QPixmap kChevRightDim =
-        svgPixmap(":/ui/chevron-right.svg", QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
+        svgPixmap(":/ui/chevron-right.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
     static const QPixmap kHashDim =
-        svgPixmap(":/ui/hash.svg", QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
+        svgPixmap(":/ui/hash.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
     static const QPixmap kMsgDim =
-        svgPixmap(":/ui/messages-square.svg", QSize(kIconSize, kIconSize), Theme::kTextOnDarkDim);
+        svgPixmap(":/ui/messages-square.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
 
-    const QColor color = Theme::kTextOnDarkDim;
+    const QColor color = Th::c().text.onDarkDim;
 
     const QPixmap *icon;
     if (hovered)
@@ -512,9 +521,9 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
 void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     const bool hovered = (row == _hovered);
     if (hovered)
-        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Theme::kHoverItem);
+        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
 
-    const QColor color = hovered ? Theme::kTextOnDark : Theme::kTextOnDarkDim;
+    const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
 
     QFont font = QApplication::font();
     font.setWeight(QFont::Normal);
@@ -532,9 +541,9 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
 void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int sectionId, int count) const {
     const bool hovered = (row == _hovered);
     if (hovered)
-        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Theme::kHoverItem);
+        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
 
-    const QColor color = hovered ? Theme::kTextOnDark : Theme::kTextOnDarkDim;
+    const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
 
     QFont font = QApplication::font();
     font.setWeight(QFont::Normal);
@@ -573,10 +582,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const QRect rowRect(0, y, viewport()->width(), kRowH);
 
     // Background
-    QColor rowBg = Theme::kConvPanelBg;
+    QColor rowBg = Th::c().nav.panelBg;
     if (row == _selected) {
-        const QColor base = (row == _hovered) ? Theme::kHoverItem : Theme::kConvPanelBg;
-        const QColor sel  = Theme::kSelectedItem;
+        const QColor base = (row == _hovered) ? Th::c().nav.itemHover : Th::c().nav.panelBg;
+        const QColor sel  = Th::c().nav.itemSelected;
         auto lerp = [](int a, int b, double t) { return static_cast<int>(a + (b - a) * t); };
         rowBg     = QColor(
             lerp(base.red(), sel.red(), _selT),
@@ -588,7 +597,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.setBrush(rowBg);
         p.drawRoundedRect(rowRect.adjusted(8, 2, -8, -2), 6, 6);
     } else if (row == _hovered) {
-        rowBg = Theme::kHoverItem;
+        rowBg = Th::c().nav.itemHover;
         p.fillRect(rowRect, rowBg);
     }
 
@@ -598,7 +607,8 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
     p.setFont(font);
 
-    const QColor textColor = (isSelected || isUnread) ? Theme::kTextOnDark : Theme::kTextOnDarkDim;
+    const QColor textColor =
+        (isSelected || isUnread) ? Th::c().text.onDark : Th::c().text.onDarkDim;
     p.setPen(textColor);
 
     const QFontMetrics fm(font);
@@ -663,16 +673,18 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             df.setWeight(QFont::Normal);
             df.setPointSizeF(df.pointSizeF() * 0.88);
             p.setFont(df);
-            p.setPen(Theme::kTextOnDarkDim);
+            p.setPen(Th::c().text.onDarkDim);
             p.drawText(curX, textY, tr("you"));
         }
     } else {
         int prefixW = 0;
         if (conv.kind == ConvKind::PrivateChannel) {
+            // NOTE: static pixmaps baked at first paint — will not live-update on theme change
+            // (V1).
             static const QPixmap kLockDim =
-                svgPixmap(":/ui/lock.svg", QSize(14, 14), Theme::kTextOnDarkDim);
+                svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().text.onDarkDim);
             static const QPixmap kLockBright =
-                svgPixmap(":/ui/lock.svg", QSize(14, 14), Theme::kTextOnDark);
+                svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().text.onDark);
             const QPixmap &lockPx = (isSelected || isUnread) ? kLockBright : kLockDim;
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, lockPx);
             prefixW = 14 + 6;
@@ -700,7 +712,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             const int          bx = viewport()->width() - bw - 8;
             const int          by = y + (kRowH - bh) / 2;
             p.setPen(Qt::NoPen);
-            p.setBrush(Theme::kMentionBadge);
+            p.setBrush(Th::c().badge.mention);
             p.drawRoundedRect(QRect(bx, by, bw, bh), bh / 2, bh / 2);
             p.setPen(Qt::white);
             p.drawText(QRect(bx, by, bw, bh), Qt::AlignCenter, badge);

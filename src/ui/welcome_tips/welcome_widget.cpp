@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "welcome_widget.h"
 #include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include <QLabel>
 #include <QFrame>
 #include <QVBoxLayout>
@@ -12,18 +13,6 @@
 
 namespace {
 
-// ── Visual constants ──────────────────────────────────────────────────────────
-
-const char *kChipStyle = "QLabel {"
-                         "  background-color: #F3F3F4;"
-                         "  border: 1px solid #D4D3D3;"
-                         "  border-bottom: 2px solid #BBBBBB;"
-                         "  border-radius: 5px;"
-                         "  padding: 3px 9px;"
-                         "  font-size: 12px;"
-                         "  color: #333333;"
-                         "}";
-
 // ── Platform key labels ───────────────────────────────────────────────────────
 
 #ifdef Q_OS_MAC
@@ -33,70 +22,6 @@ const QString kShift = QString(QChar(0x21E7)); // ⇧
 const QString kMod   = QStringLiteral("Ctrl");
 const QString kShift = QStringLiteral("Shift");
 #endif
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-QLabel *keyChip(const QString &text, QWidget *parent) {
-    auto *lbl = new QLabel(text, parent);
-    lbl->setStyleSheet(kChipStyle);
-    lbl->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    lbl->setAlignment(Qt::AlignCenter);
-    return lbl;
-}
-
-QLabel *plusLabel(QWidget *parent) {
-    auto *lbl = new QLabel("+", parent);
-    lbl->setStyleSheet("font-size: 11px; color: #BBBBBB; padding: 0 1px;");
-    lbl->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    return lbl;
-}
-
-// Adds one row: action name on the left, key chips on the right.
-// keys = list of key labels that form one chord, joined with "+" separators.
-void addRow(QVBoxLayout *vbox, const QString &action, const QStringList &keys) {
-    auto *row = new QWidget;
-    row->setFixedHeight(36);
-    auto *hl = new QHBoxLayout(row);
-    hl->setContentsMargins(0, 0, 0, 0);
-    hl->setSpacing(5);
-
-    auto *actionLbl = new QLabel(action, row);
-    actionLbl->setStyleSheet(QString("font-size: 14px; color: %1;").arg(Theme::kTextPrimary.name())
-    );
-    hl->addWidget(actionLbl);
-    hl->addStretch(1);
-
-    for (int i = 0; i < keys.size(); ++i) {
-        if (i > 0)
-            hl->addWidget(plusLabel(row));
-        hl->addWidget(keyChip(keys.at(i), row));
-    }
-
-    vbox->addWidget(row);
-}
-
-// ── Shortcut table ────────────────────────────────────────────────────────────
-
-void buildRows(QVBoxLayout *vbox) {
-    const QString up = QString(QChar(0x2191)); // ↑
-
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Send message"), {"Enter"});
-    addRow(
-        vbox, QCoreApplication::translate("WelcomeWidget", "New line in message"), {kShift, "Enter"}
-    );
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Edit last message"), {up});
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Bold"), {kMod, "B"});
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Italic"), {kMod, "I"});
-    addRow(
-        vbox, QCoreApplication::translate("WelcomeWidget", "Strikethrough"), {kMod, kShift, "X"}
-    );
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Inline code"), {kMod, kShift, "C"});
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Attach file"), {kMod, "O"});
-    addRow(
-        vbox, QCoreApplication::translate("WelcomeWidget", "Emoji picker"), {kMod, kShift, "\\"}
-    );
-    addRow(vbox, QCoreApplication::translate("WelcomeWidget", "Cancel / exit edit"), {"Esc"});
-}
 
 } // namespace
 
@@ -109,25 +34,115 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
     vbox->setSpacing(0);
 
     // Title
-    auto *title = new QLabel(tr("Keyboard shortcuts"), _content);
-    title->setStyleSheet(
-        QString("font-size: 15px; color: %1; font-weight: 500;").arg(Theme::kTextSecondary.name())
-    );
-    vbox->addWidget(title);
+    _title = new QLabel(tr("Keyboard shortcuts"), _content);
+    vbox->addWidget(_title);
 
     vbox->addSpacing(14);
 
     // Thin rule beneath the title
-    auto *rule = new QFrame(_content);
-    rule->setFrameShape(QFrame::HLine);
-    rule->setFrameShadow(QFrame::Plain);
-    rule->setStyleSheet("color: #EBEBEB;");
-    rule->setFixedHeight(1);
-    vbox->addWidget(rule);
+    _rule = new QFrame(_content);
+    _rule->setFrameShape(QFrame::HLine);
+    _rule->setFrameShadow(QFrame::Plain);
+    _rule->setFixedHeight(1);
+    vbox->addWidget(_rule);
 
     vbox->addSpacing(8);
 
-    buildRows(vbox);
+    // ── Build shortcut rows ───────────────────────────────────────────────────
+
+    const QString up = QString(QChar(0x2191)); // ↑
+
+    // Helper lambdas that build widgets and register them for applyTheme().
+    auto makeChip = [this](const QString &text, QWidget *parent) -> QLabel * {
+        auto *lbl = new QLabel(text, parent);
+        lbl->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        lbl->setAlignment(Qt::AlignCenter);
+        _chipLabels.append(lbl);
+        return lbl;
+    };
+
+    auto makePlus = [this](QWidget *parent) -> QLabel * {
+        auto *lbl = new QLabel("+", parent);
+        lbl->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        _plusLabels.append(lbl);
+        return lbl;
+    };
+
+    auto addRow = [&](const QString &action, const QStringList &keys) {
+        auto *row = new QWidget;
+        row->setFixedHeight(36);
+        auto *hl = new QHBoxLayout(row);
+        hl->setContentsMargins(0, 0, 0, 0);
+        hl->setSpacing(5);
+
+        auto *actionLbl = new QLabel(action, row);
+        _actionLabels.append(actionLbl);
+        hl->addWidget(actionLbl);
+        hl->addStretch(1);
+
+        for (int i = 0; i < keys.size(); ++i) {
+            if (i > 0)
+                hl->addWidget(makePlus(row));
+            hl->addWidget(makeChip(keys.at(i), row));
+        }
+
+        vbox->addWidget(row);
+    };
+
+    addRow(QCoreApplication::translate("WelcomeWidget", "Send message"), {"Enter"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "New line in message"), {kShift, "Enter"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Edit last message"), {up});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Bold"), {kMod, "B"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Italic"), {kMod, "I"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Strikethrough"), {kMod, kShift, "X"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Inline code"), {kMod, kShift, "C"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Attach file"), {kMod, "O"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Emoji picker"), {kMod, kShift, "\\"});
+    addRow(QCoreApplication::translate("WelcomeWidget", "Cancel / exit edit"), {"Esc"});
+
+    applyTheme();
+    connect(
+        &ThemeManager::instance(), &ThemeManager::themeChanged, this, &WelcomeWidget::applyTheme
+    );
+}
+
+void WelcomeWidget::applyTheme() {
+    const auto &th = Th::c();
+
+    _title->setStyleSheet(QString("font-size: %1px; color: %2; font-weight: 500;")
+                              .arg(th.fonts.lg)
+                              .arg(Th::qss(th.text.secondary)));
+
+    _rule->setStyleSheet(QString("color: %1;").arg(Th::qss(th.surface.highlight)));
+
+    const QString chipSS = QString("QLabel {"
+                                   "  background-color: %1;"
+                                   "  border: 1px solid %2;"
+                                   "  border-bottom: 2px solid %2;"
+                                   "  border-radius: 5px;"
+                                   "  padding: 3px 9px;"
+                                   "  font-size: %3px;"
+                                   "  color: %4;"
+                                   "}")
+                               .arg(
+                                   Th::qss(th.surface.highlight),
+                                   Th::qss(th.divider.def),
+                                   QString::number(th.fonts.caption),
+                                   Th::qss(th.text.primary)
+                               );
+    for (QLabel *lbl : std::as_const(_chipLabels))
+        lbl->setStyleSheet(chipSS);
+
+    const QString plusSS = QString("font-size: %1px; color: %2; padding: 0 1px;")
+                               .arg(th.fonts.sm)
+                               .arg(Th::qss(th.divider.def));
+    for (QLabel *lbl : std::as_const(_plusLabels))
+        lbl->setStyleSheet(plusSS);
+
+    const QString actionSS =
+        QString("font-size: %1px; color: %2;").arg(th.fonts.base).arg(Th::qss(th.text.primary));
+    for (QLabel *lbl : std::as_const(_actionLabels))
+        lbl->setStyleSheet(actionSS);
 }
 
 void WelcomeWidget::resizeEvent(QResizeEvent *e) {

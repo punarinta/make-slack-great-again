@@ -5,6 +5,9 @@
 #include "ui/app_dialog/app_dialog.h"
 #include "backend/domain.h"
 
+class QFrame;
+class QLabel;
+class QPushButton;
 class Session;
 
 // Confirmation dialog shown before deleting a message.
@@ -15,4 +18,14 @@ public:
     explicit DeleteMessageDialog(
         const Message &msg, Session *session = nullptr, QWidget *parent = nullptr
     );
+
+protected:
+    void applyTheme() override;
+
+private:
+    QLabel      *_warnLabel = nullptr;
+    QFrame      *_msgCard   = nullptr;
+    QLabel      *_tsLabel   = nullptr;
+    QPushButton *_cancelBtn = nullptr;
+    QPushButton *_deleteBtn = nullptr;
 };

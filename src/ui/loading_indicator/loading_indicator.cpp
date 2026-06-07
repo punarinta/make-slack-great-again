@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "loading_indicator.h"
+#include "ui/theme.h"
 
 #include <QPainter>
 #include <QPaintEvent>
 #include <QRect>
 #include <QShowEvent>
-
-// Brand colors matching the four logo segments.
-const std::array<QColor, 4> LoadingIndicator::kColors = {
-    QColor(0xed, 0xae, 0x2f), // amber
-    QColor(0x2f, 0xb2, 0x7c), // green
-    QColor(0x38, 0xbc, 0xed), // blue
-    QColor(0xdc, 0x1a, 0x59), // red
-};
 
 LoadingIndicator::LoadingIndicator() {
     _timer.setTimerType(Qt::CoarseTimer);
@@ -74,8 +67,14 @@ void LoadingIndicator::paint(QPainter &p, const QRect &rect) const {
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
 
+    const std::array<QColor, 4> colors = {
+        Th::c().loader.a,
+        Th::c().loader.b,
+        Th::c().loader.c,
+        Th::c().loader.d,
+    };
     for (int i = 0; i < 4; ++i) {
-        QColor c = kColors[i];
+        QColor c = colors[i];
         c.setAlphaF(i == _step ? 1.0 : 0.2);
         pen.setColor(c);
         p.setPen(pen);

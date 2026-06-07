@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "popup_tooltip.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -15,6 +17,7 @@ PopupTooltip::PopupTooltip(QWidget *parent)
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
     setFocusPolicy(Qt::NoFocus);
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { update(); });
 }
 
 void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect) {
@@ -87,7 +90,7 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
 
     // Fill body
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor("#1D1C1D"));
+    p.setBrush(Th::c().text.primary);
     p.drawRoundedRect(body, kRadius, kRadius);
 
     // Arrow — base overlaps body by 3px to cover antialiased edge seam
@@ -111,7 +114,7 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
     QFont f = QApplication::font();
     f.setWeight(QFont::Weight(500));
     p.setFont(f);
-    p.setPen(Qt::white);
+    p.setPen(Th::c().text.onDark);
     p.drawText(
         QRectF(
             body.left() + kPadH,

@@ -38,6 +38,8 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
+    void applyTheme();
+
     QList<QPair<QAbstractButton *, QString>> _iconBtns;
     QHash<QWidget *, QString>                _tooltipBtns;
     PopupTooltip                            *_tooltip = nullptr;

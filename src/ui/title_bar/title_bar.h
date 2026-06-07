@@ -26,12 +26,14 @@ protected:
     bool eventFilter(QObject *watched, QEvent *e) override;
 
 private:
+    void applyTheme();
     void updateMaxButton();
     void togglePin();
     void updatePinButton();
     void refreshHoverState();
 
     QLabel       *_titleLabel        = nullptr;
+    QPushButton  *_minBtn            = nullptr;
     QPushButton  *_maxBtn            = nullptr;
     QPushButton  *_closeBtn          = nullptr;
     QPushButton  *_pinBtn            = nullptr;

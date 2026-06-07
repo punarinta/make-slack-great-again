@@ -10,6 +10,8 @@
 #include "session/session.h"
 #include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -41,8 +43,6 @@
 static constexpr int kMinEditHeight = 40;
 
 static constexpr QSize kToolIconSize{18, 18};
-static const QColor    kIconColorNormal{"#888888"};
-static const QColor    kIconColorFocused{"#505050"};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ static QFrame *makeVSep(QWidget *parent) {
     auto *sep = new QFrame(parent);
     sep->setFrameShape(QFrame::VLine);
     sep->setFixedSize(1, 16);
-    sep->setStyleSheet("QFrame { color: #DDDDDD; }");
+    sep->setStyleSheet("QFrame { color: " + Th::qss(Th::c().composer.toolbarBorder) + "; }");
     return sep;
 }
 
@@ -87,21 +87,28 @@ public:
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setObjectName("linkPopup");
         setStyleSheet(
-            "QWidget#linkPopup {"
-            "  background: #FFFFFF;"
-            "  border: 1px solid #D1D1D1;"
-            "  border-radius: 8px;"
-            "}"
-            "QLabel { border: none; font-size: 12px; color: #616061; background: transparent; }"
-            "QLineEdit {"
-            "  border: 1px solid #D1D1D1;"
-            "  border-radius: 4px;"
-            "  padding: 4px 8px;"
-            "  font-size: 13px;"
-            "  color: #1D1C1D;"
-            "  background: #FFFFFF;"
-            "}"
-            "QLineEdit:focus { border-color: #007A5A; }"
+            QString("QWidget#linkPopup {"
+                    "  background: %1;"
+                    "  border: 1px solid %2;"
+                    "  border-radius: 8px;"
+                    "}"
+                    "QLabel { border: none; font-size: %6px; color: %3; background: transparent; }"
+                    "QLineEdit {"
+                    "  border: 1px solid %2;"
+                    "  border-radius: 4px;"
+                    "  padding: 4px 8px;"
+                    "  font-size: %7px;"
+                    "  color: %4;"
+                    "  background: %1;"
+                    "}"
+                    "QLineEdit:focus { border-color: %5; }")
+                .arg(Th::qss(Th::c().surface.raised))
+                .arg(Th::qss(Th::c().divider.strong))
+                .arg(Th::qss(Th::c().text.secondary))
+                .arg(Th::qss(Th::c().text.primary))
+                .arg(Th::qss(Th::c().accent.def))
+                .arg(Th::c().fonts.caption)
+                .arg(Th::c().fonts.md)
         );
 
         auto *lay = new QVBoxLayout(this);
@@ -116,18 +123,26 @@ public:
         auto *insertBtn = new QPushButton(t.insertLabel, this);
         insertBtn->setCursor(Qt::PointingHandCursor);
         insertBtn->setStyleSheet(
-            "QPushButton { background:#007A5A; color:white; border:none;"
-            "  border-radius:4px; padding:4px 14px; font-size:13px; font-weight:600; }"
-            "QPushButton:hover   { background:#148567; }"
-            "QPushButton:pressed { background:#005E45; }"
+            QString("QPushButton { background:%1; color:white; border:none;"
+                    "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
+                    "QPushButton:hover   { background:%2; }"
+                    "QPushButton:pressed { background:%3; }")
+                .arg(Th::qss(Th::c().accent.def))
+                .arg(Th::qss(Th::c().accent.hover))
+                .arg(Th::qss(Th::c().accent.pressed))
+                .arg(Th::c().fonts.md)
         );
 
         auto *cancelBtn = new QPushButton(t.cancelLabel, this);
         cancelBtn->setCursor(Qt::PointingHandCursor);
         cancelBtn->setStyleSheet(
-            "QPushButton { background:transparent; color:#616061; border:1px solid #D1D1D1;"
-            "  border-radius:4px; padding:4px 14px; font-size:13px; }"
-            "QPushButton:hover { background:#F0F0F0; }"
+            QString("QPushButton { background:transparent; color:%1; border:1px solid %2;"
+                    "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
+                    "QPushButton:hover { background:%3; }")
+                .arg(Th::qss(Th::c().text.secondary))
+                .arg(Th::qss(Th::c().divider.strong))
+                .arg(Th::qss(Th::c().surface.highlight))
+                .arg(Th::c().fonts.md)
         );
 
         auto *btnRow = new QHBoxLayout;
@@ -195,18 +210,25 @@ public:
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setObjectName("schedulePopup");
         setStyleSheet(
-            "QWidget#schedulePopup {"
-            "  background:#FFFFFF; border:1px solid #D1D1D1; border-radius:8px;"
-            "}"
-            "QLabel  { font-size:12px; color:#616061; border:none; background:transparent; }"
-            "QDateTimeEdit {"
-            "  border:1px solid #D1D1D1; border-radius:4px;"
-            "  padding:4px 8px; font-size:13px; color:#1D1C1D; background:#FFFFFF;"
-            "}"
-            "QDateTimeEdit:focus { border-color:#007A5A; }"
-            "QDateTimeEdit::up-button, QDateTimeEdit::down-button {"
-            "  width:14px;"
-            "}"
+            QString("QWidget#schedulePopup {"
+                    "  background:%1; border:1px solid %2; border-radius:8px;"
+                    "}"
+                    "QLabel  { font-size:%6px; color:%3; border:none; background:transparent; }"
+                    "QDateTimeEdit {"
+                    "  border:1px solid %2; border-radius:4px;"
+                    "  padding:4px 8px; font-size:%7px; color:%4; background:%1;"
+                    "}"
+                    "QDateTimeEdit:focus { border-color:%5; }"
+                    "QDateTimeEdit::up-button, QDateTimeEdit::down-button {"
+                    "  width:14px;"
+                    "}")
+                .arg(Th::qss(Th::c().surface.raised))
+                .arg(Th::qss(Th::c().divider.strong))
+                .arg(Th::qss(Th::c().text.secondary))
+                .arg(Th::qss(Th::c().text.primary))
+                .arg(Th::qss(Th::c().accent.def))
+                .arg(Th::c().fonts.caption)
+                .arg(Th::c().fonts.md)
         );
 
         auto *lay = new QVBoxLayout(this);
@@ -228,15 +250,23 @@ public:
         cancelBtn->setCursor(Qt::PointingHandCursor);
         confirmBtn->setCursor(Qt::PointingHandCursor);
         cancelBtn->setStyleSheet(
-            "QPushButton { background:transparent; color:#616061; border:1px solid #D1D1D1;"
-            "  border-radius:4px; padding:4px 14px; font-size:13px; }"
-            "QPushButton:hover { background:#F0F0F0; }"
+            QString("QPushButton { background:transparent; color:%1; border:1px solid %2;"
+                    "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
+                    "QPushButton:hover { background:%3; }")
+                .arg(Th::qss(Th::c().text.secondary))
+                .arg(Th::qss(Th::c().divider.strong))
+                .arg(Th::qss(Th::c().surface.highlight))
+                .arg(Th::c().fonts.md)
         );
         confirmBtn->setStyleSheet(
-            "QPushButton { background:#007A5A; color:white; border:none;"
-            "  border-radius:4px; padding:4px 14px; font-size:13px; font-weight:600; }"
-            "QPushButton:hover   { background:#148567; }"
-            "QPushButton:pressed { background:#005E45; }"
+            QString("QPushButton { background:%1; color:white; border:none;"
+                    "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
+                    "QPushButton:hover   { background:%2; }"
+                    "QPushButton:pressed { background:%3; }")
+                .arg(Th::qss(Th::c().accent.def))
+                .arg(Th::qss(Th::c().accent.hover))
+                .arg(Th::qss(Th::c().accent.pressed))
+                .arg(Th::c().fonts.md)
         );
 
         auto *btnRow = new QHBoxLayout;
@@ -347,13 +377,6 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     _edit->setAcceptRichText(false);
     _edit->setFrameShape(QFrame::NoFrame);
     _edit->setAcceptDrops(false); // we handle drops via event filter
-    _edit->setStyleSheet("QTextEdit {"
-                         "  border: none;"
-                         "  padding: 6px 10px;"
-                         "  font-size: 14px;"
-                         "  color: #1D1C1D;"
-                         "  background: transparent;"
-                         "}");
     _edit->installEventFilter(this);
     setAcceptDrops(true); // drops on the whole composer widget
     connect(_edit, &QTextEdit::textChanged, this, &ComposerWidget::updateSendState);
@@ -367,10 +390,10 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     boxLayout->addWidget(_edit, 1);
 
     // ── Bottom action bar ─────────────────────────────────────────────────────
-    auto *bottomBar = new QWidget(_box);
-    bottomBar->setFixedHeight(36);
-    bottomBar->setStyleSheet("QWidget { background: transparent; }");
-    auto *bbLayout = new QHBoxLayout(bottomBar);
+    _bottomBar = new QWidget(_box);
+    _bottomBar->setFixedHeight(36);
+    _bottomBar->setStyleSheet("QWidget { background: transparent; }");
+    auto *bbLayout = new QHBoxLayout(_bottomBar);
     bbLayout->setContentsMargins(8, 3, 4, 3);
     bbLayout->setSpacing(4);
 
@@ -381,32 +404,24 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     };
 
     static constexpr QSize kAttachIconSize{19, 19};
-    auto                  *attachBtn = new QToolButton(bottomBar);
+    auto                  *attachBtn = new QToolButton(_bottomBar);
     attachBtn->setFixedSize(26, 26);
     attachBtn->setIconSize(kAttachIconSize);
-    attachBtn->setIcon(svgIcon(":/ui/paperclip.svg", kAttachIconSize, kIconColorNormal));
+    attachBtn->setIcon(svgIcon(":/ui/paperclip.svg", kAttachIconSize, Th::c().composer.toolbarIcon)
+    );
     attachBtn->setCursor(Qt::PointingHandCursor);
     attachBtn->setFocusPolicy(Qt::NoFocus);
-    attachBtn->setStyleSheet(
-        "QToolButton { border: none; border-radius: 4px; background: transparent; }"
-        "QToolButton:hover   { background: #E8E8E8; }"
-        "QToolButton:pressed { background: #E0E0E0; }"
-    );
     _iconBtns.append({attachBtn, ":/ui/paperclip.svg"});
     registerTip(attachBtn, tip(tr("Attach file"), "Ctrl+O"));
     connect(attachBtn, &QToolButton::clicked, this, &ComposerWidget::openAttachDialog);
 
     auto makeBbBtn = [&](const QString &svgPath, const QString &tooltipText) {
-        auto *btn = new QToolButton(bottomBar);
+        auto *btn = new QToolButton(_bottomBar);
         btn->setFixedSize(26, 26);
         btn->setIconSize(kToolIconSize);
-        btn->setIcon(svgIcon(svgPath, kToolIconSize, kIconColorNormal));
+        btn->setIcon(svgIcon(svgPath, kToolIconSize, Th::c().composer.toolbarIcon));
         btn->setCursor(Qt::PointingHandCursor);
         btn->setFocusPolicy(Qt::NoFocus);
-        btn->setStyleSheet(
-            "QToolButton { border: none; border-radius: 3px; background: transparent; }"
-            "QToolButton:hover { background: #E8E8E8; }"
-        );
         _iconBtns.append({btn, svgPath});
         registerTip(btn, tooltipText);
         return btn;
@@ -420,7 +435,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     bbLayout->addWidget(mentionBtn);
     bbLayout->addStretch();
 
-    _sendBtn = new QPushButton(bottomBar);
+    _sendBtn = new QPushButton(_bottomBar);
     _sendBtn->setFixedSize(38, 28);
     _sendBtn->setIconSize(QSize(18, 18));
     _sendBtn->setCursor(Qt::PointingHandCursor);
@@ -428,10 +443,10 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     registerTip(_sendBtn, tip(tr("Send message"), "Enter"));
 
     // Schedule-send dropdown (chevron beside send button)
-    _dropBtn = new QPushButton(bottomBar);
+    _dropBtn = new QPushButton(_bottomBar);
     _dropBtn->setFixedSize(18, 28);
     _dropBtn->setIconSize(QSize(12, 12));
-    _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), QColor("#CCCCCC")));
+    _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), Th::c().composer.dropArrow));
     _dropBtn->setCursor(Qt::PointingHandCursor);
     _dropBtn->setFocusPolicy(Qt::NoFocus);
     registerTip(_dropBtn, tr("Schedule send"));
@@ -439,7 +454,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
 
     // Group send + drop; the group provides the unified pill background/shape.
     // Buttons are fully transparent so they never create a visible seam.
-    _sendGroup     = new QWidget(bottomBar);
+    _sendGroup     = new QWidget(_bottomBar);
     auto *sgLayout = new QHBoxLayout(_sendGroup);
     sgLayout->setContentsMargins(0, 0, 0, 0);
     sgLayout->setSpacing(0);
@@ -447,7 +462,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     sgLayout->addWidget(_dropBtn);
     bbLayout->addWidget(_sendGroup);
 
-    boxLayout->addWidget(bottomBar);
+    boxLayout->addWidget(_bottomBar);
     outerLayout->addWidget(_box);
 
     // ── Bottom bar actions ────────────────────────────────────────────────────
@@ -481,8 +496,35 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         QTimer::singleShot(0, this, &ComposerWidget::checkMentionPopup);
     });
 
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
+
     setFocused(false);
     updateSendState();
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+void ComposerWidget::applyTheme() {
+    _edit->setStyleSheet(QString("QTextEdit {"
+                                 "  border: none;"
+                                 "  padding: 6px 10px;"
+                                 "  font-size: %2px;"
+                                 "  color: %1;"
+                                 "  background: transparent;"
+                                 "}")
+                             .arg(Th::qss(Th::c().text.primary))
+                             .arg(Th::c().fonts.base));
+
+    // Re-apply bottom-bar tool button styles
+    const QString bbToolBtnStyle =
+        QString("QToolButton { border: none; border-radius: 3px; background: transparent; }"
+                "QToolButton:hover   { background: %1; }"
+                "QToolButton:pressed { background: %2; }")
+            .arg(Th::qss(Th::c().divider.def), Th::qss(Th::c().surface.highlightStrong));
+    const auto toolBtns = _bottomBar->findChildren<QToolButton *>();
+    for (auto *btn : toolBtns)
+        btn->setStyleSheet(bbToolBtnStyle);
 }
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -585,20 +627,23 @@ void ComposerWidget::recolorBottomBarIcons(const QColor &color) {
 }
 
 void ComposerWidget::setFocused(bool focused) {
-    const QColor iconColor = focused ? kIconColorFocused : kIconColorNormal;
+    const QColor iconColor =
+        focused ? Th::c().composer.toolbarIconActive : Th::c().composer.toolbarIcon;
     recolorBottomBarIcons(iconColor);
     _formattingTb->recolor(iconColor);
-    const QString borderColor = focused ? "#999999" : "#DDDDDD";
-    _box->setStyleSheet(QString("QFrame#composerBox {"
-                                "  border: 1px solid %1;"
-                                "  border-radius: 8px;"
-                                "  background: #FFFFFF;"
-                                "}")
-                            .arg(borderColor));
+    _box->setStyleSheet(
+        QString("QFrame#composerBox {"
+                "  border: 1px solid %1;"
+                "  border-radius: 8px;"
+                "  background: %2;"
+                "}")
+            .arg(Th::qss(focused ? Th::c().composer.borderFocus : Th::c().composer.border))
+            .arg(Th::qss(Th::c().surface.raised))
+    );
 
     // Update schedule-send dropdown icon color
     const QColor dropColor =
-        _edit->toPlainText().trimmed().isEmpty() ? QColor("#CCCCCC") : Qt::white;
+        _edit->toPlainText().trimmed().isEmpty() ? Th::c().composer.dropArrow : Qt::white;
     _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), dropColor));
 }
 
@@ -619,15 +664,17 @@ void ComposerWidget::updateSendState() {
     const bool active = !_edit->toPlainText().trimmed().isEmpty() || !_pendingFiles.isEmpty();
 
     _sendBtn->setIcon(
-        svgIcon(":/ui/send.svg", QSize(18, 18), active ? Qt::white : QColor("#CCCCCC"))
+        svgIcon(":/ui/send.svg", QSize(18, 18), active ? Qt::white : Th::c().composer.dropArrow)
     );
 
-    const QColor dropColor = active ? Qt::white : QColor("#CCCCCC");
+    const QColor dropColor = active ? Qt::white : Th::c().composer.dropArrow;
     _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), dropColor));
 
     if (active) {
         // Group paints the unified green pill; buttons are transparent windows into it.
-        _sendGroup->setStyleSheet("background:#007A5A; border-radius:4px;");
+        _sendGroup->setStyleSheet(
+            QString("background:%1; border-radius:4px;").arg(Th::qss(Th::c().accent.def))
+        );
         _sendBtn->setStyleSheet(
             "QPushButton { background:transparent; border:none; margin:0; padding:0; }"
             "QPushButton:hover   { background:rgba(255,255,255,40); }"
@@ -642,14 +689,16 @@ void ComposerWidget::updateSendState() {
     } else {
         _sendGroup->setStyleSheet("background:transparent;");
         _sendBtn->setStyleSheet(
-            "QPushButton { background:transparent; border:none; margin:0; padding:0;"
-            "  border-top-left-radius:4px; border-bottom-left-radius:4px; }"
-            "QPushButton:hover { background:#F0F0F0; }"
+            QString("QPushButton { background:transparent; border:none; margin:0; padding:0;"
+                    "  border-top-left-radius:4px; border-bottom-left-radius:4px; }"
+                    "QPushButton:hover { background:%1; }")
+                .arg(Th::qss(Th::c().surface.highlight))
         );
         _dropBtn->setStyleSheet(
-            "QPushButton { background:transparent; border:none; margin:0; padding:0;"
-            "  border-top-right-radius:4px; border-bottom-right-radius:4px; }"
-            "QPushButton:hover { background:#F0F0F0; }"
+            QString("QPushButton { background:transparent; border:none; margin:0; padding:0;"
+                    "  border-top-right-radius:4px; border-bottom-right-radius:4px; }"
+                    "QPushButton:hover { background:%1; }")
+                .arg(Th::qss(Th::c().surface.highlight))
         );
     }
 }

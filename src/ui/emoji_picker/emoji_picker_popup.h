@@ -38,6 +38,7 @@ signals:
 
 private:
     void buildGrid(const QString &filter = {});
+    void applyTheme();
 
     QLineEdit   *_search  = nullptr;
     QScrollArea *_scroll  = nullptr;

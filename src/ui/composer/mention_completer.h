@@ -37,6 +37,7 @@ public:
     bool isVisible() const;
 
 private:
+    void applyTheme();
     void rebuild(const QList<Item> &items);
     void selectRow(int row);
     void confirm();

@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "attachment_strip.h"
 #include "ui/icon_utils.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QFileInfo>
 #include <QFrame>
@@ -22,12 +24,9 @@ AttachmentStrip::AttachmentStrip(QWidget *parent) : QWidget(parent) {
     _scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     _scroll->setFixedHeight(84);
     _scroll->setFrameShape(QFrame::NoFrame);
-    _scroll->setStyleSheet("QScrollArea#fileScrollArea { background: transparent; border: none; }"
-                           "QScrollArea#fileScrollArea > QWidget { background: transparent; }");
 
     _strip = new QWidget;
     _strip->setObjectName("fileStrip");
-    _strip->setStyleSheet("QWidget#fileStrip { background: transparent; }");
     auto *stripLayout = new QHBoxLayout(_strip);
     stripLayout->setContentsMargins(8, 6, 8, 6);
     stripLayout->setSpacing(8);
@@ -38,6 +37,15 @@ AttachmentStrip::AttachmentStrip(QWidget *parent) : QWidget(parent) {
     outerLayout->addWidget(_scroll);
 
     hide();
+
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
+}
+
+void AttachmentStrip::applyTheme() {
+    _scroll->setStyleSheet("QScrollArea#fileScrollArea { background: transparent; border: none; }"
+                           "QScrollArea#fileScrollArea > QWidget { background: transparent; }");
+    _strip->setStyleSheet("QWidget#fileStrip { background: transparent; }");
 }
 
 void AttachmentStrip::rebuild(const QStringList &pending, const std::vector<File> &readOnly) {
@@ -71,9 +79,13 @@ void AttachmentStrip::addPendingChip(const QString &path) {
     auto *chip = new QFrame(_strip);
     chip->setObjectName("fileChip");
     chip->setFixedSize(160, 70);
-    chip->setStyleSheet("QFrame#fileChip {"
-                        "  background: #F8F8F8; border: 1px solid #E0E0E0; border-radius: 8px;"
-                        "}");
+    chip->setStyleSheet(QString("QFrame#fileChip {"
+                                "  background: %1; border: 1px solid %2; border-radius: 8px;"
+                                "}")
+                            .arg(
+                                Th::qss(Th::c().composer.attachmentChipBg),
+                                Th::qss(Th::c().composer.attachmentChipBorder)
+                            ));
 
     auto *chipLayout = new QVBoxLayout(chip);
     chipLayout->setContentsMargins(8, 6, 8, 6);
@@ -81,7 +93,9 @@ void AttachmentStrip::addPendingChip(const QString &path) {
 
     auto *nameLabel = new QLabel(chip);
     nameLabel->setText(name.length() > 18 ? name.left(15) + "…" + fi.suffix() : name);
-    nameLabel->setStyleSheet("font-size:11px; color:#1D1C1D; font-weight:600; border:none;");
+    nameLabel->setStyleSheet(QString("font-size:%2px; color:%1; font-weight:600; border:none;")
+                                 .arg(Th::qss(Th::c().text.primary))
+                                 .arg(Th::c().fonts.sm));
     nameLabel->setWordWrap(false);
 
     auto fmtSize = [](qint64 b) -> QString {
@@ -92,7 +106,9 @@ void AttachmentStrip::addPendingChip(const QString &path) {
         return QString::number(b / (1024 * 1024)) + " MB";
     };
     auto *sizeLabel = new QLabel(fmtSize(size), chip);
-    sizeLabel->setStyleSheet("font-size:10px; color:#888; border:none;");
+    sizeLabel->setStyleSheet(QString("font-size:%2px; color:%1; border:none;")
+                                 .arg(Th::qss(Th::c().text.tertiary))
+                                 .arg(Th::c().fonts.xs));
 
     chipLayout->addWidget(nameLabel);
     chipLayout->addWidget(sizeLabel);
@@ -101,11 +117,14 @@ void AttachmentStrip::addPendingChip(const QString &path) {
     auto *removeBtn = new QToolButton(chip);
     removeBtn->setFixedSize(16, 16);
     removeBtn->setIconSize(QSize(10, 10));
-    removeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(10, 10), QColor("#888")));
+    removeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(10, 10), Th::c().icon.def));
     removeBtn->setFocusPolicy(Qt::NoFocus);
     removeBtn->setCursor(Qt::PointingHandCursor);
-    removeBtn->setStyleSheet("QToolButton { border:none; border-radius:8px; background:#E0E0E0; }"
-                             "QToolButton:hover { background:#CCCCCC; }");
+    removeBtn->setStyleSheet(
+        QString("QToolButton { border:none; border-radius:8px; background:%1; }"
+                "QToolButton:hover { background:%2; }")
+            .arg(Th::qss(Th::c().composer.attachmentChipBorder), Th::qss(Th::c().icon.dim))
+    );
     removeBtn->setParent(chip);
     removeBtn->move(chip->width() - 20, 4);
     removeBtn->raise();
@@ -119,9 +138,12 @@ void AttachmentStrip::addReadOnlyChip(const File &file) {
     auto *chip = new QFrame(_strip);
     chip->setObjectName("fileChipRO");
     chip->setFixedSize(160, 70);
-    chip->setStyleSheet("QFrame#fileChipRO {"
-                        "  background: #F0F0F0; border: 1px solid #E0E0E0; border-radius: 8px;"
-                        "}");
+    chip->setStyleSheet(
+        QString("QFrame#fileChipRO {"
+                "  background: %1; border: 1px solid %2; border-radius: 8px;"
+                "}")
+            .arg(Th::qss(Th::c().surface.highlight), Th::qss(Th::c().composer.attachmentChipBorder))
+    );
 
     auto *chipLayout = new QVBoxLayout(chip);
     chipLayout->setContentsMargins(8, 6, 8, 6);
@@ -130,10 +152,14 @@ void AttachmentStrip::addReadOnlyChip(const File &file) {
     const QString name      = file.name;
     auto         *nameLabel = new QLabel(chip);
     nameLabel->setText(name.length() > 18 ? name.left(15) + "…" + QFileInfo(name).suffix() : name);
-    nameLabel->setStyleSheet("font-size:11px; color:#616061; font-weight:600; border:none;");
+    nameLabel->setStyleSheet(QString("font-size:%2px; color:%1; font-weight:600; border:none;")
+                                 .arg(Th::qss(Th::c().text.secondary))
+                                 .arg(Th::c().fonts.sm));
 
     auto *typeLabel = new QLabel(file.prettyType.isEmpty() ? file.mimeType : file.prettyType, chip);
-    typeLabel->setStyleSheet("font-size:10px; color:#888; border:none;");
+    typeLabel->setStyleSheet(QString("font-size:%2px; color:%1; border:none;")
+                                 .arg(Th::qss(Th::c().text.tertiary))
+                                 .arg(Th::c().fonts.xs));
 
     chipLayout->addWidget(nameLabel);
     chipLayout->addWidget(typeLabel);

@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "workspace_switcher.h"
 #include "ui/theme.h"
+#include "ui/theme_manager.h"
 #include "ui/image_cache.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 
@@ -20,6 +21,12 @@ WorkspaceSwitcher::WorkspaceSwitcher(QWidget *parent) : QWidget(parent) {
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     setAttribute(Qt::WA_OpaquePaintEvent);
     _tooltip = new PopupTooltip(this);
+    connect(
+        &ThemeManager::instance(),
+        &ThemeManager::themeChanged,
+        this,
+        QOverload<>::of(&QWidget::update)
+    );
 }
 
 void WorkspaceSwitcher::setWorkspaces(const std::vector<Entry> &entries) {
@@ -156,7 +163,7 @@ int WorkspaceSwitcher::hitTest(const QPoint &pos) const {
 
 QColor WorkspaceSwitcher::bubbleColor(const QString &teamId) const {
     const int hue = static_cast<int>(qHash(teamId) * 37u) % 360;
-    return QColor::fromHsl(hue, 65, 42);
+    return QColor::fromHsl(hue, Th::c().workspaceHslSaturation, Th::c().workspaceHslLightness);
 }
 
 // ── Painting ──────────────────────────────────────────────────────────────────
@@ -166,7 +173,7 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    p.fillRect(rect(), Theme::kSidebarBg);
+    p.fillRect(rect(), Th::c().nav.bg);
 
     for (int i = 0; i < static_cast<int>(_entries.size()); ++i) {
         const auto &ep     = _entries[i];
@@ -243,8 +250,8 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
             const int          by     = r.top() - 3;
             const QRectF       br(bx, by, badgeW, badgeH);
 
-            p.setBrush(Theme::kUnreadBadge);
-            p.setPen(QPen(Theme::kSidebarBg, 1.5));
+            p.setBrush(Th::c().badge.unread);
+            p.setPen(QPen(Th::c().nav.bg, 1.5));
             p.drawRoundedRect(br.adjusted(0.75, 0.75, -0.75, -0.75), badgeH / 2.0, badgeH / 2.0);
             p.setFont(bf);
             p.setPen(Qt::white);

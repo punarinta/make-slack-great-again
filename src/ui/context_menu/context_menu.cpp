@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "context_menu.h"
 #include "ui/icon_utils.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -18,14 +20,18 @@ ContextMenu::ContextMenu(QWidget *parent)
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_DeleteOnClose);
     setMouseTracking(true);
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { update(); });
 }
 
+// NOTE (V1 limitation): icon QPixmaps stored in Item::icon are rasterised with
+// the theme color at addItem() time. They will NOT live-update when the theme
+// changes — the menu is recreated on each popup() call so this is acceptable.
 static QPixmap loadMenuIcon(const QString &path) {
     if (path.isEmpty())
         return {};
     const qreal dpr = qGuiApp ? qGuiApp->devicePixelRatio() : 1.0;
     return svgPixmapPhys(
-        path, QSize(ContextMenu::kIconSize, ContextMenu::kIconSize), QColor("#454245"), dpr
+        path, QSize(ContextMenu::kIconSize, ContextMenu::kIconSize), Th::c().icon.strong, dpr
     );
 }
 
@@ -181,8 +187,8 @@ void ContextMenu::paintEvent(QPaintEvent *) {
         p.drawRoundedRect(mrf.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), r, r);
     }
 
-    // ── White menu card ───────────────────────────────────────────────────
-    p.setBrush(Qt::white);
+    // ── Menu card ─────────────────────────────────────────────────────────
+    p.setBrush(Th::c().contextMenu.bg);
     p.setPen(Qt::NoPen);
     p.drawRoundedRect(mrf, kRadius, kRadius);
 
@@ -213,12 +219,13 @@ void ContextMenu::paintEvent(QPaintEvent *) {
             p.setClipping(false);
         }
 
-        const QColor textColor = _items[i].destructive ? QColor("#E01E5A") : QColor("#1D1C1D");
+        const QColor textColor =
+            _items[i].destructive ? Th::c().contextMenu.dangerText : Th::c().contextMenu.itemText;
 
         // Right-side hint (shortcut or submenu arrow)
         if (!_items[i].shortcut.isEmpty()) {
             p.setFont(shortcutFont);
-            p.setPen(QColor("#888888"));
+            p.setPen(Th::c().contextMenu.itemTextDim);
             p.drawText(
                 QRect(ir.left(), ir.top(), ir.width() - kPadH, ir.height()),
                 Qt::AlignVCenter | Qt::AlignRight,
@@ -226,7 +233,7 @@ void ContextMenu::paintEvent(QPaintEvent *) {
             );
         } else if (_items[i].submenu) {
             p.setFont(shortcutFont);
-            p.setPen(QColor("#888888"));
+            p.setPen(Th::c().contextMenu.itemTextDim);
             p.drawText(
                 QRect(ir.left(), ir.top(), ir.width() - kPadH, ir.height()),
                 Qt::AlignVCenter | Qt::AlignRight,

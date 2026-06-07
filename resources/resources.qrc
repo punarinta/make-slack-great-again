@@ -1,6 +1,5 @@
 <RCC>
     <qresource prefix="/">
-        <file>style.qss</file>
         <file alias="icon.png">../gfx/icon_256.png</file>
         <file alias="icon.svg">../gfx/icon.svg</file>
         <file alias="icon_tray.svg">../gfx/icon_tray.svg</file>

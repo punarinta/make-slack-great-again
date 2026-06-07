@@ -5,6 +5,7 @@
 #include <QWidget>
 
 class QLabel;
+class QToolButton;
 
 // Amber "Editing message" strip shown inside the composer during edit mode.
 class EditModeBanner : public QWidget {
@@ -14,4 +15,9 @@ public:
 
 signals:
     void cancelClicked();
+
+private:
+    void applyTheme();
+
+    QToolButton *_cancelBtn = nullptr;
 };
