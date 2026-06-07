@@ -692,6 +692,8 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
     const int level = s.value("notifications/level", 1).toInt();
     const auto *conv = _sessionOwner->findConversation(ev.conv);
 
+    if (conv && conv->isMuted) return;
+
     if (level == 1) { // DMs and mentions only
         const bool isDm = conv &&
             (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
@@ -724,7 +726,7 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
 void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
     int total = 0;
     for (const auto &c : convs)
-        total += c.unread;
+        if (!c.isMuted) total += c.unread;
     if (total == _totalUnread) return;
     _totalUnread = total;
     if (_switcher)

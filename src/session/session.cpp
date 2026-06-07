@@ -104,7 +104,10 @@ void Session::start() {
                 if (!ownMessage && ev->conv != _readingConv) {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {
-                        if (c.id == ev->conv) { c.unread++; break; }
+                        if (c.id == ev->conv) {
+                            if (!c.isMuted) c.unread++;
+                            break;
+                        }
                     }
                     _conversations = std::move(convs);
                 }

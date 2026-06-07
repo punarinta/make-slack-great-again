@@ -68,6 +68,7 @@ struct Conversation {
     Ts                   lastRead;
     int                  unread   = 0;
     std::optional<UserId> dmUser; // set for Im conversations
+    bool                 isMuted  = false;
     bool operator==(const Conversation &) const = default;
 };
 

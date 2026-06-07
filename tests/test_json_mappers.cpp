@@ -91,6 +91,23 @@ TEST_CASE("toConversation private channel", "[mappers][conv]") {
     CHECK(!c.dmUser.has_value());
 }
 
+TEST_CASE("toConversation is_muted true", "[mappers][conv]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "muted-channel",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "is_muted": true
+    })"));
+    CHECK(c.isMuted);
+}
+
+TEST_CASE("toConversation is_muted defaults to false", "[mappers][conv]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "normal",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(!c.isMuted);
+}
+
 TEST_CASE("toConversation IM sets kind and dmUser", "[mappers][conv]") {
     auto c = JsonMappers::toConversation(obj(R"({
         "id": "D1", "is_im": true, "is_mpim": false, "is_private": false,

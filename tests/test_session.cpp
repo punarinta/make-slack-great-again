@@ -238,6 +238,21 @@ TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for own
     CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
 }
 
+TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for muted conv", "[session][events]") {
+    Conversation muted;
+    muted.id      = ConversationId{"C3"};
+    muted.kind    = ConvKind::PublicChannel;
+    muted.name    = "muted-chan";
+    muted.isMuted = true;
+    stub->_convs  = std::vector<Conversation>{kGeneral, kRandom, muted};
+
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C3"}, msg});
+    CHECK(session->findConversation(ConversationId{"C3"})->unread == 0);
+}
+
 TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for currently reading conv", "[session][events]") {
     session->setReading(ConversationId{"C2"});
     Message msg;

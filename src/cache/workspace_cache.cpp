@@ -222,7 +222,8 @@ static QJsonObject toJson(const Conversation &c) {
     o["mb"] = c.isMember;
     o["lr"] = c.lastRead;
     o["un"] = c.unread;
-    if (c.dmUser) o["dm"] = c.dmUser->value;
+    if (c.dmUser)  o["dm"] = c.dmUser->value;
+    if (c.isMuted) o["mu"] = true;
     return o;
 }
 static Conversation convFromJson(const QJsonObject &o) {
@@ -233,7 +234,8 @@ static Conversation convFromJson(const QJsonObject &o) {
     c.isMember = o["mb"].toBool();
     c.lastRead = o["lr"].toString();
     c.unread   = o["un"].toInt();
-    if (o.contains("dm")) c.dmUser = UserId{o["dm"].toString()};
+    if (o.contains("dm")) c.dmUser  = UserId{o["dm"].toString()};
+    if (o.contains("mu")) c.isMuted = o["mu"].toBool();
     return c;
 }
 

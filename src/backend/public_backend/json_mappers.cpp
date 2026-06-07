@@ -62,6 +62,7 @@ Conversation toConversation(const QJsonObject &o) {
         .lastRead    = o.value("last_read").toString(),
         .unread      = o.value("unread_count").toInt(),
         .dmUser      = dmUser,
+        .isMuted     = o.value("is_muted").toBool(),
     };
 }
 
