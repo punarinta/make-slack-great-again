@@ -71,7 +71,6 @@ void WebApiClient::paginate(const QString &method, const QString &arrayKey,
     if (!params.hasQueryItem("limit"))
         params.addQueryItem("limit", "200");
 
-    // Recursive lambda via shared_ptr so it can call itself.
     struct Ctx {
         WebApiClient *self;
         QString       method;
@@ -80,17 +79,18 @@ void WebApiClient::paginate(const QString &method, const QString &arrayKey,
         std::function<void(QJsonArray)> onPage;
         std::function<void()>           onDone;
         OnError                         onError;
+        std::function<void(QUrlQuery)>  loadPage;
     };
     auto ctx = std::make_shared<Ctx>(Ctx{
         this, method, arrayKey, params,
         std::move(onPage), std::move(onDone), std::move(onError)
     });
 
-    std::function<void(QUrlQuery)> loadPage;
-    loadPage = [ctx, loadPage](QUrlQuery p) mutable {
+    ctx->loadPage = [ctx](QUrlQuery p) {
         ctx->self->call(ctx->method, p,
-            [ctx, loadPage](QJsonObject resp) mutable {
+            [ctx](QJsonObject resp) {
                 if (!resp.value("ok").toBool()) {
+                    ctx->loadPage = {};
                     if (ctx->onError)
                         ctx->onError(resp.value("error").toString("unknown"));
                     return;
@@ -106,15 +106,16 @@ void WebApiClient::paginate(const QString &method, const QString &arrayKey,
                     auto next = ctx->params;
                     next.removeQueryItem("cursor");
                     next.addQueryItem("cursor", cursor);
-                    loadPage(next);
+                    ctx->loadPage(next);
                 } else {
+                    ctx->loadPage = {};
                     ctx->onDone();
                 }
             },
             ctx->onError
         );
     };
-    loadPage(params);
+    ctx->loadPage(params);
 }
 
 void WebApiClient::enqueue(PendingCall c) {
