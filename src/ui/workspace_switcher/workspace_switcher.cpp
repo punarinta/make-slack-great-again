@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "workspace_switcher.h"
 #include "ui/theme.h"
+#include "ui/image_cache.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 
 #include <QPainter>
@@ -10,9 +11,6 @@
 #include <QMouseEvent>
 #include <QHelpEvent>
 #include <QToolTip>
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
 #include <QSvgRenderer>
 #include <cmath>
 
@@ -58,31 +56,34 @@ void WorkspaceSwitcher::setUnread(const QString &teamId, int count) {
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
 
+void WorkspaceSwitcher::setImageCache(ImageCache *cache) {
+    _imgCache = cache;
+    connect(cache, &ImageCache::loaded, this, [this](const QString &url) {
+        for (auto &ep : _entries) {
+            if (ep.info.iconUrl != url || !ep.icon.isNull()) continue;
+            const QPixmap px = _imgCache->get(url);
+            if (!px.isNull()) ep.icon = scaleIcon(px);
+            break;
+        }
+        update();
+    });
+}
+
+QPixmap WorkspaceSwitcher::scaleIcon(const QPixmap &src) const {
+    const qreal dpr  = devicePixelRatioF();
+    const int   phys = qRound(kBubble * dpr);
+    QPixmap px = src.scaled(phys, phys, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    px.setDevicePixelRatio(dpr);
+    return px;
+}
+
 void WorkspaceSwitcher::loadIcons() {
+    if (!_imgCache) return;
     for (auto &ep : _entries) {
         if (ep.info.iconUrl.isEmpty() || !ep.icon.isNull()) continue;
-        if (!_nam) _nam = new QNetworkAccessManager(this);
-
-        QNetworkRequest req(QUrl(ep.info.iconUrl));
-        auto *reply = _nam->get(req);
-        const QString teamId = ep.info.teamId;
-
-        connect(reply, &QNetworkReply::finished, this, [this, reply, teamId] {
-            reply->deleteLater();
-            if (reply->error() != QNetworkReply::NoError) return;
-            QPixmap px;
-            if (!px.loadFromData(reply->readAll())) return;
-            for (auto &ep2 : _entries) {
-                if (ep2.info.teamId != teamId) continue;
-                const qreal dpr   = devicePixelRatioF();
-                const int   phys  = qRound(kBubble * dpr);
-                ep2.icon = px.scaled(phys, phys,
-                                     Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                ep2.icon.setDevicePixelRatio(dpr);
-                break;
-            }
-            update();
-        });
+        const QPixmap px = _imgCache->get(ep.info.iconUrl);
+        if (!px.isNull()) ep.icon = scaleIcon(px);
+        // null means in-flight or not yet fetched — loaded() signal will fire
     }
 }
 

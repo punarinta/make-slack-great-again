@@ -210,6 +210,7 @@ QWidget *MainWindow::buildMainPage() {
         [this](const QString &url, const QByteArray &data) {
             if (_sessionOwner) _sessionOwner->cacheImage(url, data);
         });
+    _switcher->setImageCache(_imgCache);
 
     auto *page = new QWidget;
     auto *root = new QHBoxLayout(page);

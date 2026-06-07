@@ -9,8 +9,7 @@
 #include <vector>
 
 class PopupTooltip;
-
-class QNetworkAccessManager;
+class ImageCache;
 
 class WorkspaceSwitcher : public QWidget {
     Q_OBJECT
@@ -24,6 +23,7 @@ public:
 
     explicit WorkspaceSwitcher(QWidget *parent = nullptr);
 
+    void setImageCache(ImageCache *cache);
     void setWorkspaces(const std::vector<Entry> &entries);
     void setActive(const QString &teamId);
     void setUnread(const QString &teamId, int count);
@@ -52,16 +52,17 @@ private:
     QRect entryRect(int i) const;
     QRect addButtonRect() const;
     QRect gearButtonRect() const;
-    void  loadIcons();
-    QColor bubbleColor(const QString &teamId) const;
+    void    loadIcons();
+    QPixmap scaleIcon(const QPixmap &src) const;
+    QColor  bubbleColor(const QString &teamId) const;
 
     std::vector<EntryPrivate> _entries;
     QString _activeId;
     int     _hovered = -99;
     int     _pressed = -99;
 
-    QNetworkAccessManager *_nam     = nullptr;
-    PopupTooltip          *_tooltip = nullptr;
+    ImageCache   *_imgCache = nullptr;
+    PopupTooltip *_tooltip  = nullptr;
 
     static constexpr int kW         = 64;
     static constexpr int kBubble    = 40;
