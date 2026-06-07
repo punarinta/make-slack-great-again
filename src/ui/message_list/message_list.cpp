@@ -623,7 +623,7 @@ int MessageListWidget::rowHeight(int index) const {
     const int sepH     = needsDateSep(index) ? kSepH : 0;
     if (collapsed)
         return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH;
-    return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadV + replyBarH;
+    return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadVBottom + replyBarH;
 }
 
 void MessageListWidget::rebuildLayout() {

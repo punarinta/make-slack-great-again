@@ -188,7 +188,8 @@ private:
 
     // Layout constants (all in logical pixels)
     static constexpr int kPadH          = 16;  // horizontal margin on both sides
-    static constexpr int kPadV          = 8;   // vertical padding top/bottom of each row
+    static constexpr int kPadV          = 8;   // vertical padding above each full-header row
+    static constexpr int kPadVBottom    = 4;   // vertical padding below each full-header row
     static constexpr int kAvSize        = 36;  // avatar square size
     static constexpr int kAvGap         = 10;  // gap between avatar and text column
     static constexpr int kHdrH          = 20;  // height of the name+timestamp header line
