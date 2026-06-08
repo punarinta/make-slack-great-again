@@ -293,9 +293,21 @@ QWidget *MainWindow::buildMainPage() {
     root->setContentsMargins(0, 0, 0, 0);
 
     root->addWidget(buildConvPanel(page));
-    _convResizeHandle = new ConvResizeHandle(_convPanel, page);
-    root->addWidget(_convResizeHandle);
-    root->addWidget(buildRightPanel(page), 1);
+
+    // Wrapper with nav.bg background — right/bottom gap shows through when windowed
+    auto *rightArea = new QWidget(page);
+    rightArea->setAttribute(Qt::WA_StyledBackground);
+    rightArea->setStyleSheet(
+        QString("QWidget#rightArea { background: %1; }").arg(Th::qss(Th::c().nav.bg))
+    );
+    rightArea->setObjectName("rightArea");
+    _rightPanelLayout = new QHBoxLayout(rightArea);
+    _rightPanelLayout->setContentsMargins(0, 0, 0, 0);
+    _rightPanelLayout->setSpacing(0);
+    _convResizeHandle = new ConvResizeHandle(_convPanel, rightArea);
+    _rightPanelLayout->addWidget(_convResizeHandle);
+    _rightPanelLayout->addWidget(buildRightPanel(rightArea), 1);
+    root->addWidget(rightArea, 1);
 
     // Apply stored appearance setting and keep conv list in sync when settings are saved.
     _convList->setRelevantDays(
@@ -350,7 +362,11 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
 }
 
 QWidget *MainWindow::buildRightPanel(QWidget *parent) {
-    auto *rightPanel  = new QWidget(parent);
+    auto *rightPanel = new QWidget(parent);
+    rightPanel->setAttribute(Qt::WA_StyledBackground);
+    rightPanel->setStyleSheet(
+        QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
+    );
     auto *rightLayout = new QVBoxLayout(rightPanel);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
@@ -1274,7 +1290,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
 void MainWindow::updateRoundedMask() {
     if (!_frame)
         return;
-    if (isMaximized() || isFullScreen()) {
+    const bool windowed = !isMaximized() && !isFullScreen();
+    if (_rightPanelLayout)
+        _rightPanelLayout->setContentsMargins(0, 0, windowed ? 4 : 0, windowed ? 4 : 0);
+    if (!windowed) {
         _frame->clearMask();
         return;
     }

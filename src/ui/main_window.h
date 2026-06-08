@@ -119,6 +119,7 @@ private:
     QLabel            *_convNameLabel    = nullptr;
     QWidget           *_msgHeader        = nullptr;
     QWidget           *_headerDivider    = nullptr;
+    QHBoxLayout       *_rightPanelLayout = nullptr; // right-area outer layout — right/bottom gap
     QSplitter         *_msgSplitter      = nullptr;
     QStackedWidget    *_contentStack     = nullptr;
     MessageListWidget *_messageList      = nullptr;
