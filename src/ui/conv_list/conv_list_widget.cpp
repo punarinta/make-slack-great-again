@@ -129,6 +129,8 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
 void ConvListWidget::rebuildFilteredConvs() {
     _convs.clear();
     for (const auto &conv : _allConvs) {
+        if (!conv.isMember)
+            continue;
         if ((conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim) && conv.dmUser) {
             const auto it = _userInfos.constFind(conv.dmUser->value);
             if (it != _userInfos.constEnd()) {

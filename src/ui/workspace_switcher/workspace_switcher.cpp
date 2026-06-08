@@ -52,13 +52,14 @@ void WorkspaceSwitcher::setActive(const QString &teamId) {
     update();
 }
 
-void WorkspaceSwitcher::setUnread(const QString &teamId, int count) {
+void WorkspaceSwitcher::setUnreadCounts(const QString &teamId, int total, int mentions) {
     for (auto &ep : _entries) {
         if (ep.info.teamId != teamId)
             continue;
-        if (ep.info.unread == count)
+        if (ep.info.unread == total && ep.info.mentions == mentions)
             return;
-        ep.info.unread = count;
+        ep.info.unread   = total;
+        ep.info.mentions = mentions;
         update();
         return;
     }
@@ -235,26 +236,16 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
             );
         }
 
-        // Unread notification badge (top-right corner of the avatar bubble)
+        // Unread dot: red for mentions/DMs, green for regular unreads
         if (ep.info.unread > 0) {
-            const QString text =
-                ep.info.unread > 99 ? QStringLiteral("99+") : QString::number(ep.info.unread);
-            QFont bf = font();
-            bf.setPixelSize(9);
-            bf.setBold(true);
-            const QFontMetrics fm(bf);
-            const int          badgeH = 14;
-            const int          badgeW = qMax(badgeH, fm.horizontalAdvance(text) + 6);
-            const int          bx     = r.right() - badgeW + 3;
-            const int          by     = r.top() - 3;
-            const QRectF       br(bx, by, badgeW, badgeH);
-
-            p.setBrush(Th::c().badge.unread);
-            p.setPen(QPen(Th::c().nav.bg, 1.5));
-            p.drawRoundedRect(br.adjusted(0.75, 0.75, -0.75, -0.75), badgeH / 2.0, badgeH / 2.0);
-            p.setFont(bf);
-            p.setPen(Qt::white);
-            p.drawText(br.toRect(), Qt::AlignCenter, text);
+            const QColor dotColor =
+                ep.info.mentions > 0 ? Th::c().badge.mention : Th::c().presence.online;
+            constexpr int d  = 10;
+            const qreal   cx = r.right() - 3.0;
+            const qreal   cy = r.bottom() - 3.0;
+            p.setBrush(dotColor);
+            p.setPen(QPen(Th::c().nav.bg, 2.5));
+            p.drawEllipse(QRectF(cx - d / 2.0, cy - d / 2.0, d, d));
         }
     }
 

@@ -80,6 +80,9 @@ public:
     // Fires the bot_id whenever a bot's info arrives from the network.
     rpl::producer<UserId> botInfoLoaded() const;
 
+    // Flush current unread counts to cache so they survive a restart.
+    void persistUnreads();
+
     // --- Persistent cache ---
     std::vector<Message> cachedMessages(ConversationId conv) const;
     void                 cacheMessages(ConversationId conv, const std::vector<Message> &msgs);

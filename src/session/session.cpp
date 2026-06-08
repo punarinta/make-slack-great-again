@@ -47,6 +47,20 @@ void Session::start() {
     // Load conversations; update cache on arrival.
     _backend->loadConversations() | rpl::on_next(
                                         [this](std::vector<Conversation> convs) {
+                                            // Preserve locally-incremented unread/mention counts
+                                            // accumulated since startup (API returns 0 for
+                                            // channels).
+                                            const auto &prev = _conversations.current();
+                                            for (auto &c : convs) {
+                                                for (const auto &old : prev) {
+                                                    if (old.id != c.id)
+                                                        continue;
+                                                    c.unread = std::max(c.unread, old.unread);
+                                                    c.mentionCount =
+                                                        std::max(c.mentionCount, old.mentionCount);
+                                                    break;
+                                                }
+                                            }
                                             _cache->saveConversations(convs);
                                             _conversations = std::move(convs);
                                         },
@@ -122,7 +136,7 @@ void Session::start() {
                         auto convs = _conversations.current();
                         for (auto &c : convs) {
                             if (c.id == ev->conv) {
-                                if (!c.isMuted) {
+                                if (!c.isMuted && c.isMember) {
                                     c.unread++;
                                     const bool isDm =
                                         (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
@@ -331,6 +345,10 @@ void Session::requestPresence(UserId userId) {
                                          },
                                          _lifetime
                                      );
+}
+
+void Session::persistUnreads() {
+    _cache->saveConversations(_conversations.current());
 }
 
 void Session::setReading(ConversationId conv) {

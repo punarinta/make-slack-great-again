@@ -18,7 +18,8 @@ public:
         QString teamId;
         QString name;
         QString iconUrl;
-        int     unread = 0;
+        int     unread   = 0;
+        int     mentions = 0;
     };
 
     explicit WorkspaceSwitcher(QWidget *parent = nullptr);
@@ -26,7 +27,7 @@ public:
     void setImageCache(ImageCache *cache);
     void setWorkspaces(const std::vector<Entry> &entries);
     void setActive(const QString &teamId);
-    void setUnread(const QString &teamId, int count);
+    void setUnreadCounts(const QString &teamId, int total, int mentions);
 
 signals:
     void workspaceClicked(const QString &teamId);

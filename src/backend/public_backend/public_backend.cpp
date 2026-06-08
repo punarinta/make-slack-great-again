@@ -177,10 +177,9 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
         QUrlQuery params;
         params.addQueryItem("types", "public_channel,private_channel,im,mpim");
         params.addQueryItem("exclude_archived", "true");
-        params.addQueryItem("include_all_metadata", "true");
 
         _api->paginate(
-            "users.conversations",
+            "conversations.list",
             "channels",
             params,
             [accum](QJsonArray page) {

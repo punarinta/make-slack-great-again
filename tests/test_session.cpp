@@ -31,31 +31,32 @@ int main(int argc, char **argv) {
 // All producers use rpl::variable so they fire synchronously on subscription.
 
 struct StubBackend : Backend {
-    rpl::variable<AuthState>                  _authState{AuthState::LoggedIn};
-    rpl::variable<UserId>                     _meId;
-    rpl::variable<std::vector<Conversation>>  _convs;
-    rpl::variable<std::vector<User>>          _users;
-    rpl::event_stream<Event>                  _events;
+    rpl::variable<AuthState>                 _authState{AuthState::LoggedIn};
+    rpl::variable<UserId>                    _meId;
+    rpl::variable<std::vector<Conversation>> _convs;
+    rpl::variable<std::vector<User>>         _users;
+    rpl::event_stream<Event>                 _events;
 
-    bool   presenceResult = false;
-    struct SentMessage { ConversationId conv; OutgoingMessage msg; };
+    bool presenceResult = false;
+    struct SentMessage {
+        ConversationId  conv;
+        OutgoingMessage msg;
+    };
     std::vector<SentMessage> sentMessages;
 
-    User          botInfoResult;   // returned by loadBotInfo; empty id = not found
-    int           botInfoCallCount = 0;
+    User           botInfoResult; // returned by loadBotInfo; empty id = not found
+    int            botInfoCallCount = 0;
     QList<QString> botInfoRequested;
 
     rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities capabilities()          const override { return {}; }
-    void connectRealtime()    override {}
-    void disconnectRealtime() override {}
+    Capabilities             capabilities() const override { return {}; }
+    void                     connectRealtime() override {}
+    void                     disconnectRealtime() override {}
 
     rpl::producer<UserId> loadMe() override { return _meId.value(); }
 
-    rpl::producer<std::vector<Conversation>> loadConversations() override {
-        return _convs.value();
-    }
-    rpl::producer<std::vector<User>> loadUsers() override { return _users.value(); }
+    rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
+    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
 
     rpl::producer<bool> loadPresence(UserId) override {
         return rpl::variable<bool>(presenceResult).value();
@@ -71,21 +72,21 @@ struct StubBackend : Backend {
         sentMessages.push_back({c, std::move(m)});
     }
     void editMessage(ConversationId, Ts, TextWithEntities) override {}
-    void deleteMessage(ConversationId, Ts)                 override {}
-    void addReaction(ConversationId, Ts, QString)          override {}
-    void removeReaction(ConversationId, Ts, QString)       override {}
-    void markRead(ConversationId, Ts)                      override {}
+    void deleteMessage(ConversationId, Ts) override {}
+    void addReaction(ConversationId, Ts, QString) override {}
+    void removeReaction(ConversationId, Ts, QString) override {}
+    void markRead(ConversationId, Ts) override {}
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
         return rpl::variable<std::vector<SearchResult>>({}).value();
     }
-    rpl::producer<QHash<QString,QString>> loadEmojiList() override {
-        return rpl::variable<QHash<QString,QString>>({}).value();
+    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
+        return rpl::variable<QHash<QString, QString>>({}).value();
     }
     void uploadFile(ConversationId, const QString &) override {}
-    void downloadFile(const QString &,
-                      std::function<void(QByteArray)>,
-                      std::function<void(QString)>) override {}
+    void
+    downloadFile(const QString &, std::function<void(QByteArray)>, std::function<void(QString)>)
+        override {}
 
     rpl::producer<Event> events() const override { return _events.events(); }
 
@@ -94,7 +95,8 @@ struct StubBackend : Backend {
         botInfoRequested.append(botId.value);
         User result = botInfoResult;
         return [result](auto consumer) mutable {
-            if (!result.id.value.isEmpty()) consumer.put_next(std::move(result));
+            if (!result.id.value.isEmpty())
+                consumer.put_next(std::move(result));
             consumer.put_done();
             return rpl::lifetime();
         };
@@ -106,12 +108,22 @@ struct StubBackend : Backend {
 // ── SessionFixture ────────────────────────────────────────────────────────────
 
 static const User kAlice = User{
-    UserId{"U1"}, "alice", "Alice Wonder", "https://av/alice.png",
-    /*isBot=*/false, /*isActive=*/false, /*isDeactivated=*/false
+    UserId{"U1"},
+    "alice",
+    "Alice Wonder",
+    "https://av/alice.png",
+    /*isBot=*/false,
+    /*isActive=*/false,
+    /*isDeactivated=*/false
 };
 static const User kBob = User{
-    UserId{"U2"}, "bob", "Bob Builder", "",
-    /*isBot=*/false, /*isActive=*/true, /*isDeactivated=*/false
+    UserId{"U2"},
+    "bob",
+    "Bob Builder",
+    "",
+    /*isBot=*/false,
+    /*isActive=*/true,
+    /*isDeactivated=*/false
 };
 static const Conversation kGeneral = Conversation{
     .id       = ConversationId{"C1"},
@@ -131,17 +143,17 @@ static const Conversation kRandom = Conversation{
 };
 
 struct SessionFixture {
-    const QString teamId = "T_SESSION_TEST";
-    QString       baseDir;
-    StubBackend  *stub;               // non-owning; owned by session
+    const QString            teamId = "T_SESSION_TEST";
+    QString                  baseDir;
+    StubBackend             *stub; // non-owning; owned by session
     std::unique_ptr<Session> session;
 
     SessionFixture() {
-        baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-                  + "/cache/" + teamId;
+        baseDir =
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
 
         auto backend = std::make_unique<StubBackend>();
-        stub = backend.get();
+        stub         = backend.get();
         stub->_meId  = UserId{"U1"};
         stub->_convs = std::vector<Conversation>{kGeneral, kRandom};
         stub->_users = std::vector<User>{kAlice, kBob};
@@ -162,9 +174,7 @@ struct SessionFixture {
     };
     EventCollector collectEvents() {
         EventCollector c;
-        session->events() | rpl::on_next([&c](Event e) {
-            c.events.push_back(std::move(e));
-        }, c.lt);
+        session->events() | rpl::on_next([&c](Event e) { c.events.push_back(std::move(e)); }, c.lt);
         return c;
     }
 };
@@ -182,7 +192,7 @@ TEST_CASE_METHOD(SessionFixture, "start() populates users from backend", "[sessi
     REQUIRE(session->findUser(UserId{"U1"}) != nullptr);
     REQUIRE(session->findUser(UserId{"U2"}) != nullptr);
     CHECK(session->findUser(UserId{"U1"})->displayName == "Alice Wonder");
-    CHECK(session->findUser(UserId{"U2"})->isActive    == true);
+    CHECK(session->findUser(UserId{"U2"})->isActive == true);
 }
 
 TEST_CASE_METHOD(SessionFixture, "start() sets meUserId from loadMe", "[session]") {
@@ -208,7 +218,9 @@ TEST_CASE_METHOD(SessionFixture, "EvPresenceChanged updates user isActive", "[se
     CHECK(session->findUser(UserId{"U1"})->isActive == true);
 }
 
-TEST_CASE_METHOD(SessionFixture, "EvPresenceChanged is forwarded to subscribers", "[session][events]") {
+TEST_CASE_METHOD(
+    SessionFixture, "EvPresenceChanged is forwarded to subscribers", "[session][events]"
+) {
     auto col = collectEvents();
     stub->fireEvent(EvPresenceChanged{UserId{"U1"}, true});
     REQUIRE(col.events.size() == 1);
@@ -218,17 +230,23 @@ TEST_CASE_METHOD(SessionFixture, "EvPresenceChanged is forwarded to subscribers"
 
 // ── EvConvMarked ──────────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(SessionFixture, "EvConvMarked updates conversation unread and lastRead", "[session][events]") {
+TEST_CASE_METHOD(
+    SessionFixture, "EvConvMarked updates conversation unread and lastRead", "[session][events]"
+) {
     stub->fireEvent(EvConvMarked{ConversationId{"C1"}, "999.000", 0});
     auto *c = session->findConversation(ConversationId{"C1"});
     REQUIRE(c != nullptr);
-    CHECK(c->unread   == 0);
+    CHECK(c->unread == 0);
     CHECK(c->lastRead == "999.000");
 }
 
 // ── EvMessageNew unread logic ─────────────────────────────────────────────────
 
-TEST_CASE_METHOD(SessionFixture, "EvMessageNew increments unread for other-user message in non-reading conv", "[session][events]") {
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew increments unread for other-user message in non-reading conv",
+    "[session][events]"
+) {
     // C2 starts at unread=0; U2 sends a message; unread should become 1.
     Message msg;
     msg.ts     = "500.000";
@@ -237,7 +255,9 @@ TEST_CASE_METHOD(SessionFixture, "EvMessageNew increments unread for other-user 
     CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
 }
 
-TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for own message", "[session][events]") {
+TEST_CASE_METHOD(
+    SessionFixture, "EvMessageNew does not increment unread for own message", "[session][events]"
+) {
     // meUserId is U1; U1 sends a message — unread stays at 0.
     Message msg;
     msg.ts     = "500.000";
@@ -246,7 +266,9 @@ TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for own
     CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
 }
 
-TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for muted conv", "[session][events]") {
+TEST_CASE_METHOD(
+    SessionFixture, "EvMessageNew does not increment unread for muted conv", "[session][events]"
+) {
     Conversation muted;
     muted.id      = ConversationId{"C3"};
     muted.kind    = ConvKind::PublicChannel;
@@ -261,7 +283,11 @@ TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for mut
     CHECK(session->findConversation(ConversationId{"C3"})->unread == 0);
 }
 
-TEST_CASE_METHOD(SessionFixture, "EvMessageNew does not increment unread for currently reading conv", "[session][events]") {
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew does not increment unread for currently reading conv",
+    "[session][events]"
+) {
     session->setReading(ConversationId{"C2"});
     Message msg;
     msg.ts     = "500.000";
@@ -291,12 +317,14 @@ TEST_CASE_METHOD(SessionFixture, "sendMessage fires optimistic EvMessageNew", "[
     REQUIRE(col.events.size() == 1);
     REQUIRE(std::holds_alternative<EvMessageNew>(col.events[0]));
     const auto &ev = std::get<EvMessageNew>(col.events[0]);
-    CHECK(ev.conv          == ConversationId{"C1"});
+    CHECK(ev.conv == ConversationId{"C1"});
     CHECK(ev.msg.text.text == "hello");
-    CHECK(ev.msg.author    == UserId{"U1"});
+    CHECK(ev.msg.author == UserId{"U1"});
 }
 
-TEST_CASE_METHOD(SessionFixture, "sendMessage includes threadRoot in optimistic event", "[session][send]") {
+TEST_CASE_METHOD(
+    SessionFixture, "sendMessage includes threadRoot in optimistic event", "[session][send]"
+) {
     auto col = collectEvents();
     session->sendMessage(ConversationId{"C1"}, "reply", Ts{"100.000"});
     REQUIRE(col.events.size() == 1);
@@ -308,15 +336,17 @@ TEST_CASE_METHOD(SessionFixture, "sendMessage includes threadRoot in optimistic 
 TEST_CASE_METHOD(SessionFixture, "sendMessage delegates to backend", "[session][send]") {
     session->sendMessage(ConversationId{"C1"}, "hi");
     REQUIRE(stub->sentMessages.size() == 1);
-    CHECK(stub->sentMessages[0].conv         == ConversationId{"C1"});
+    CHECK(stub->sentMessages[0].conv == ConversationId{"C1"});
     CHECK(stub->sentMessages[0].msg.text.text == "hi");
 }
 
 // ── requestPresence ───────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(SessionFixture, "requestPresence updates user and fires EvPresenceChanged", "[session]") {
+TEST_CASE_METHOD(
+    SessionFixture, "requestPresence updates user and fires EvPresenceChanged", "[session]"
+) {
     stub->presenceResult = true;
-    auto col = collectEvents();
+    auto col             = collectEvents();
     session->requestPresence(UserId{"U1"});
     // Presence updated in-memory
     CHECK(session->findUser(UserId{"U1"})->isActive == true);
@@ -337,7 +367,7 @@ TEST_CASE_METHOD(SessionFixture, "cacheMessages/cachedMessages round-trip", "[se
     session->cacheMessages(conv, {m});
     auto loaded = session->cachedMessages(conv);
     REQUIRE(loaded.size() == 1);
-    CHECK(loaded[0].ts        == "100.000");
+    CHECK(loaded[0].ts == "100.000");
     CHECK(loaded[0].text.text == "cached msg");
 }
 
@@ -349,7 +379,7 @@ TEST_CASE_METHOD(SessionFixture, "saveLastConv/loadLastConv round-trip", "[sessi
 }
 
 TEST_CASE_METHOD(SessionFixture, "cacheImage/cachedImage round-trip", "[session][cache]") {
-    const QString url  = "https://example.com/avatar.png";
+    const QString    url  = "https://example.com/avatar.png";
     const QByteArray data = "PNG_DATA";
     session->cacheImage(url, data);
     CHECK(session->cachedImage(url) == data);
@@ -357,24 +387,31 @@ TEST_CASE_METHOD(SessionFixture, "cacheImage/cachedImage round-trip", "[session]
 
 // ── fetchBotIfNeeded ──────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded resolves unknown bot via loadBotInfo", "[session][bot]") {
-    stub->botInfoResult = User{UserId{"B001"}, "jenkins", "Jenkins CI",
-                               "https://cdn.example.com/jenkins_72.png", true};
+TEST_CASE_METHOD(
+    SessionFixture, "fetchBotIfNeeded resolves unknown bot via loadBotInfo", "[session][bot]"
+) {
+    stub->botInfoResult = User{
+        UserId{"B001"}, "jenkins", "Jenkins CI", "https://cdn.example.com/jenkins_72.png", true
+    };
     session->fetchBotIfNeeded(UserId{"B001"});
     CHECK(stub->botInfoCallCount == 1);
     const auto *u = session->findUser(UserId{"B001"});
     REQUIRE(u != nullptr);
     CHECK(u->displayName == "Jenkins CI");
-    CHECK(u->avatarUrl   == "https://cdn.example.com/jenkins_72.png");
+    CHECK(u->avatarUrl == "https://cdn.example.com/jenkins_72.png");
 }
 
-TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded is no-op for non-B prefixed id", "[session][bot]") {
+TEST_CASE_METHOD(
+    SessionFixture, "fetchBotIfNeeded is no-op for non-B prefixed id", "[session][bot]"
+) {
     session->fetchBotIfNeeded(UserId{"U999"});
     CHECK(stub->botInfoCallCount == 0);
     CHECK(session->findUser(UserId{"U999"}) == nullptr);
 }
 
-TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded does not issue duplicate requests", "[session][bot]") {
+TEST_CASE_METHOD(
+    SessionFixture, "fetchBotIfNeeded does not issue duplicate requests", "[session][bot]"
+) {
     stub->botInfoResult = User{UserId{"B002"}, "deploy-bot", "Deploy Bot", "", true};
     session->fetchBotIfNeeded(UserId{"B002"});
     session->fetchBotIfNeeded(UserId{"B002"});
@@ -391,42 +428,48 @@ TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded skips already-known bot", "[s
     CHECK(stub->botInfoCallCount == 1);
 }
 
-TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded fires botInfoLoaded on success", "[session][bot]") {
+TEST_CASE_METHOD(
+    SessionFixture, "fetchBotIfNeeded fires botInfoLoaded on success", "[session][bot]"
+) {
     stub->botInfoResult = User{UserId{"B004"}, "notifier", "Notifier", "", true};
     std::vector<UserId> fired;
-    rpl::lifetime lt;
-    session->botInfoLoaded() | rpl::on_next([&fired](UserId id) {
-        fired.push_back(id);
-    }, lt);
+    rpl::lifetime       lt;
+    session->botInfoLoaded() | rpl::on_next([&fired](UserId id) { fired.push_back(id); }, lt);
     session->fetchBotIfNeeded(UserId{"B004"});
     REQUIRE(fired.size() == 1);
     CHECK(fired[0] == UserId{"B004"});
 }
 
-TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded does not fire botInfoLoaded when backend returns empty", "[session][bot]") {
+TEST_CASE_METHOD(
+    SessionFixture,
+    "fetchBotIfNeeded does not fire botInfoLoaded when backend returns empty",
+    "[session][bot]"
+) {
     stub->botInfoResult = User{}; // empty id — simulates 404 / not found
     std::vector<UserId> fired;
-    rpl::lifetime lt;
-    session->botInfoLoaded() | rpl::on_next([&fired](UserId id) {
-        fired.push_back(id);
-    }, lt);
+    rpl::lifetime       lt;
+    session->botInfoLoaded() | rpl::on_next([&fired](UserId id) { fired.push_back(id); }, lt);
     session->fetchBotIfNeeded(UserId{"B005"});
     CHECK(fired.empty());
     CHECK(session->findUser(UserId{"B005"}) == nullptr);
 }
 
-TEST_CASE_METHOD(SessionFixture, "start() restores bots from cache so findUser works immediately", "[session][bot]") {
+TEST_CASE_METHOD(
+    SessionFixture,
+    "start() restores bots from cache so findUser works immediately",
+    "[session][bot]"
+) {
     // Pre-populate the cache with a bot from a previous session.
     {
-        WorkspaceCache cache(teamId);
+        WorkspaceCache       cache(teamId);
         QHash<QString, User> bots;
-        bots["B099"] = User{UserId{"B099"}, "ci-bot", "CI Bot",
-                            "https://cdn.example.com/ci_72.png", true};
+        bots["B099"] =
+            User{UserId{"B099"}, "ci-bot", "CI Bot", "https://cdn.example.com/ci_72.png", true};
         cache.saveBots(bots);
     }
 
     // Start a fresh session against the same team — bot should be visible immediately.
-    auto backend2 = std::make_unique<StubBackend>();
+    auto backend2    = std::make_unique<StubBackend>();
     backend2->_meId  = UserId{"U1"};
     backend2->_convs = std::vector<Conversation>{kGeneral};
     backend2->_users = std::vector<User>{kAlice};
@@ -436,18 +479,190 @@ TEST_CASE_METHOD(SessionFixture, "start() restores bots from cache so findUser w
     const auto *u = session2.findUser(UserId{"B099"});
     REQUIRE(u != nullptr);
     CHECK(u->displayName == "CI Bot");
-    CHECK(u->avatarUrl   == "https://cdn.example.com/ci_72.png");
+    CHECK(u->avatarUrl == "https://cdn.example.com/ci_72.png");
 }
 
 TEST_CASE_METHOD(SessionFixture, "fetchBotIfNeeded persists new bot to cache", "[session][bot]") {
-    stub->botInfoResult = User{UserId{"B100"}, "release-bot", "Release Bot",
-                               "https://cdn.example.com/release_72.png", true};
+    stub->botInfoResult = User{
+        UserId{"B100"}, "release-bot", "Release Bot", "https://cdn.example.com/release_72.png", true
+    };
     session->fetchBotIfNeeded(UserId{"B100"});
 
     // Read the cache directly to verify the bot was written.
     WorkspaceCache cache(teamId);
-    const auto bots = cache.loadBots();
+    const auto     bots = cache.loadBots();
     REQUIRE(bots.contains("B100"));
     CHECK(bots["B100"].displayName == "Release Bot");
-    CHECK(bots["B100"].avatarUrl   == "https://cdn.example.com/release_72.png");
+    CHECK(bots["B100"].avatarUrl == "https://cdn.example.com/release_72.png");
+}
+
+// ── Notification filtering invariants ────────────────────────────────────────
+// These cover the bugs fixed in the notification / unread-badge session:
+//   • non-member channels must never accumulate local unreads
+//   • muted member channels must never accumulate local unreads
+//   • an API reload (loadConversations firing again) must not wipe locally-
+//     incremented unreads — we keep max(api, local)
+//   • EvConvMarked is always authoritative and resets the count
+//   • persistUnreads() saves to cache; a fresh session restores them via the
+//     same max-merge so a normal restart preserves the badge state
+
+static const Conversation kNonMember{
+    .id       = ConversationId{"C_NM"},
+    .kind     = ConvKind::PublicChannel,
+    .name     = "non-member-chan",
+    .isMember = false,
+    .lastRead = "0",
+    .unread   = 0,
+};
+
+static const Conversation kMutedMember{
+    .id       = ConversationId{"C_MUTED"},
+    .kind     = ConvKind::PublicChannel,
+    .name     = "muted-chan",
+    .isMember = true,
+    .lastRead = "0",
+    .unread   = 0,
+    .isMuted  = true,
+};
+
+// Helper: fire an EvMessageNew from U2 into the given channel.
+static void fireIncoming(StubBackend &stub, const QString &convId) {
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub.fireEvent(EvMessageNew{ConversationId{convId}, msg});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew does not increment unread for non-member channel",
+    "[session][notif]"
+) {
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom, kNonMember};
+    fireIncoming(*stub, "C_NM");
+    CHECK(session->findConversation(ConversationId{"C_NM"})->unread == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew does not increment unread for muted member channel",
+    "[session][notif]"
+) {
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom, kMutedMember};
+    fireIncoming(*stub, "C_MUTED");
+    CHECK(session->findConversation(ConversationId{"C_MUTED"})->unread == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "EvMessageNew increments unread for unmuted member channel", "[session][notif]"
+) {
+    // Baseline: C2 starts at unread=0 and is a member channel.
+    REQUIRE(session->findConversation(ConversationId{"C2"})->unread == 0);
+    fireIncoming(*stub, "C2");
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
+}
+
+// ── API reload must not wipe locally-incremented unreads ──────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "API reload preserves locally-incremented unread via max merge",
+    "[session][notif]"
+) {
+    // A message arrives before the API responds: local unread becomes 1.
+    fireIncoming(*stub, "C2");
+    REQUIRE(session->findConversation(ConversationId{"C2"})->unread == 1);
+
+    // Simulate a conversations.list API response returning unread=0 (Slack's
+    // list endpoint does not include unread counts).
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom}; // kRandom.unread == 0
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "API reload uses api unread when it is greater than local", "[session][notif]"
+) {
+    // API reports 5 unread (e.g. from conversations.info in a future implementation).
+    Conversation c1High = kGeneral;
+    c1High.unread       = 5;
+    stub->_convs        = std::vector<Conversation>{c1High, kRandom};
+    CHECK(session->findConversation(ConversationId{"C1"})->unread == 5);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvConvMarked overrides locally-incremented unread with server value",
+    "[session][notif]"
+) {
+    // Message arrives on another device; local counter goes up.
+    fireIncoming(*stub, "C2");
+    REQUIRE(session->findConversation(ConversationId{"C2"})->unread == 1);
+
+    // User reads on another device; server sends channel_marked with unread=0.
+    stub->fireEvent(EvConvMarked{ConversationId{"C2"}, "500.000", 0});
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
+}
+
+// ── persistUnreads ────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "persistUnreads saves accumulated unreads; fresh session restores them",
+    "[session][notif]"
+) {
+    // Accumulate an unread that the API would not know about.
+    fireIncoming(*stub, "C2");
+    REQUIRE(session->findConversation(ConversationId{"C2"})->unread == 1);
+
+    session->persistUnreads();
+
+    // Fresh session: API still returns unread=0, but cache has 1 → max wins.
+    auto backend2    = std::make_unique<StubBackend>();
+    backend2->_meId  = UserId{"U1"};
+    backend2->_convs = std::vector<Conversation>{kGeneral, kRandom}; // unread=0
+    backend2->_users = std::vector<User>{kAlice};
+    Session session2(std::move(backend2), teamId);
+    session2.start();
+
+    CHECK(session2.findConversation(ConversationId{"C2"})->unread == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "persistUnreads after setReading stores zero; fresh session sees zero",
+    "[session][notif]"
+) {
+    fireIncoming(*stub, "C2");
+    REQUIRE(session->findConversation(ConversationId{"C2"})->unread == 1);
+
+    // User reads the channel — badge clears.
+    session->setReading(ConversationId{"C2"});
+    REQUIRE(session->findConversation(ConversationId{"C2"})->unread == 0);
+
+    session->persistUnreads();
+
+    auto backend2    = std::make_unique<StubBackend>();
+    backend2->_meId  = UserId{"U1"};
+    backend2->_convs = std::vector<Conversation>{kGeneral, kRandom};
+    backend2->_users = std::vector<User>{kAlice};
+    Session session2(std::move(backend2), teamId);
+    session2.start();
+
+    CHECK(session2.findConversation(ConversationId{"C2"})->unread == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew into non-member channel never inflates unread even alongside member channels",
+    "[session][notif]"
+) {
+    // Both a member and a non-member channel receive a message; only the
+    // member channel's unread must rise.
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom, kNonMember};
+
+    fireIncoming(*stub, "C2");   // member
+    fireIncoming(*stub, "C_NM"); // non-member
+
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
+    CHECK(session->findConversation(ConversationId{"C_NM"})->unread == 0);
 }

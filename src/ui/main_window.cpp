@@ -74,6 +74,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     setupTray();
 
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
+        if (_sessionOwner)
+            _sessionOwner->persistUnreads();
+    });
+
     if (TokenStore::hasAnyWorkspace())
         startSession(TokenStore::activeWorkspaceId());
     else
@@ -575,8 +580,10 @@ void MainWindow::startSession(const QString &teamId) {
         _stack->addWidget(_mainPage);
     }
 
-    // Tear down existing session
+    // Tear down existing session — persist unreads before destroying.
     _sessionLifetime = rpl::lifetime();
+    if (_sessionOwner)
+        _sessionOwner->persistUnreads();
     _sessionOwner.reset();
     _currentConvId = {};
     _totalUnread   = 0;
@@ -835,7 +842,8 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
     const int   level = s.value("notifications/level", 1).toInt();
     const auto *conv  = _sessionOwner->findConversation(ev.conv);
 
-    if (conv && conv->isMuted)
+    // Unknown conversation → not a member; muted → no notification wanted.
+    if (!conv || conv->isMuted || !conv->isMember)
         return;
 
     if (level == 1) { // DMs and mentions only
@@ -871,7 +879,7 @@ void MainWindow::maybeNotify(const EvMessageNew &ev) {
 void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
     int total = 0, mentions = 0;
     for (const auto &c : convs) {
-        if (c.isMuted)
+        if (c.isMuted || !c.isMember)
             continue;
         total += c.unread;
         const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
@@ -882,7 +890,7 @@ void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
     _totalUnread   = total;
     _totalMentions = mentions;
     if (_switcher)
-        _switcher->setUnread(_activeTeamId, _totalUnread);
+        _switcher->setUnreadCounts(_activeTeamId, _totalUnread, _totalMentions);
     updateTrayIcon();
 }
 
