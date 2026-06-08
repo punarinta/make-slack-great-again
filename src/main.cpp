@@ -38,6 +38,14 @@ int main(int argc, char *argv[]) {
     QObject::connect(
         &singleInstance, &SingleInstance::uriReceived, &window, &MainWindow::handleOAuthUri
     );
+    // On Linux, clicking the dock icon when the window is hidden causes the DE to
+    // launch a new process. SingleInstance blocks the second process and emits
+    // activateRequested so we can show the window instead of doing nothing.
+    QObject::connect(&singleInstance, &SingleInstance::activateRequested, &window, [&window] {
+        window.show();
+        window.raise();
+        window.activateWindow();
+    });
 
     // On macOS, already-running apps receive URLs via QFileOpenEvent (Apple Events),
     // not as command-line arguments. Install a filter on QApplication to catch them.

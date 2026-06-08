@@ -19,6 +19,9 @@ public:
 
 signals:
     void uriReceived(QUrl url);
+    // Emitted when a secondary instance starts (e.g. clicking the dock on Linux
+    // when the window is hidden). Primary should show its main window.
+    void activateRequested();
 
 private:
     void onNewConnection();

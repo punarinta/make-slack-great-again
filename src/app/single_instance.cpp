@@ -47,6 +47,9 @@ bool SingleInstance::init(const QString &urlArg) {
 void SingleInstance::onNewConnection() {
     while (_server->hasPendingConnections()) {
         auto *sock = _server->nextPendingConnection();
+        // The mere act of a second instance connecting means "please show yourself"
+        // (e.g. Ubuntu dock click when window is hidden launches a new process).
+        emit  activateRequested();
         connect(sock, &QLocalSocket::readyRead, this, [this, sock] {
             QString     url;
             QDataStream ds(sock);
