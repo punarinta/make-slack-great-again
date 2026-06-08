@@ -22,7 +22,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseDoubleClickEvent(QMouseEvent *e) override;
-    void changeEvent(QEvent *e) override;
+    void showEvent(QShowEvent *e) override;
     bool eventFilter(QObject *watched, QEvent *e) override;
 
 private:
@@ -41,5 +41,6 @@ private:
     bool          _pinned            = false;
     bool          _dragging          = false; // manual drag (non-Wayland)
     bool          _systemMovePending = false; // startSystemMove() in flight (Wayland)
+    bool          _windowConnected   = false;
     QPoint        _dragOffset;
 };

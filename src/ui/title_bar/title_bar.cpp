@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QStyle>
 #include <QTimer>
 #include <QWindow>
@@ -173,10 +174,15 @@ void TitleBar::mouseDoubleClickEvent(QMouseEvent *e) {
     QWidget::mouseDoubleClickEvent(e);
 }
 
-void TitleBar::changeEvent(QEvent *e) {
-    if (e->type() == QEvent::WindowStateChange)
-        updateMaxButton();
-    QWidget::changeEvent(e);
+void TitleBar::showEvent(QShowEvent *e) {
+    QWidget::showEvent(e);
+    if (auto *h = window()->windowHandle(); h && !_windowConnected) {
+        _windowConnected = true;
+        connect(h, &QWindow::windowStateChanged, this, [this](Qt::WindowState) {
+            updateMaxButton();
+        });
+    }
+    updateMaxButton();
 }
 
 bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
