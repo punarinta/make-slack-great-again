@@ -101,6 +101,20 @@ add_msga_widget_test(test_context_menu
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
 
+add_msga_widget_test(test_search_widget
+    test_search_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/search/search_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_search_widget PRIVATE Qt6::Test)
+
 add_msga_widget_test(test_composer
     test_composer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp

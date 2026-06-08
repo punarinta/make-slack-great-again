@@ -85,6 +85,9 @@ public:
     // Returns the most recent non-system message authored by `me`, or nullopt.
     std::optional<Message> lastOwnMessage(UserId me) const;
 
+    // Smooth-scroll to the message with this timestamp if it is currently loaded.
+    void scrollToTs(const Ts &ts);
+
 signals:
     // Fired once when the first page of content for the current conversation is
     // ready to display — immediately if loaded from cache, otherwise when the

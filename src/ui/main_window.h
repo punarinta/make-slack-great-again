@@ -75,6 +75,9 @@ private:
     void updateHeaderForConv(const ConversationId &conv);
     void updateStarBtn(bool starred);
 
+    // Search overlay
+    void repositionSearch();
+
     // Tray
     void setupTray();
     void maybeNotify(const EvMessageNew &ev);
@@ -121,6 +124,7 @@ private:
     QWidget           *_headerDivider    = nullptr;
     QHBoxLayout       *_rightPanelLayout = nullptr; // right-area outer layout — right/bottom gap
     QSplitter         *_msgSplitter      = nullptr;
+    QWidget           *_msgArea          = nullptr; // parent of contentStack + composer
     QStackedWidget    *_contentStack     = nullptr;
     MessageListWidget *_messageList      = nullptr;
     ComposerWidget    *_composer         = nullptr;

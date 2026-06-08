@@ -55,6 +55,7 @@
 #include <QProcess>
 #include <QTimer>
 #include <QDesktopServices>
+#include <QShortcut>
 
 static constexpr int kResizeBorder  = 6;
 static constexpr int kConvMinWidth  = 160;
@@ -433,6 +434,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     rightLayout->addWidget(_msgSplitter, 1);
 
     auto *msgArea   = new QWidget(_msgSplitter);
+    _msgArea        = msgArea;
     auto *msgLayout = new QVBoxLayout(msgArea);
     msgLayout->setContentsMargins(0, 0, 0, 0);
     msgLayout->setSpacing(0);
@@ -443,12 +445,15 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _messageList = new MessageListWidget(nullptr, _imgCache, _contentStack);
     _contentStack->addWidget(_messageList);
 
-    _searchWidget = new SearchWidget(_contentStack);
-    _contentStack->addWidget(_searchWidget);
-
     _welcomeTips = new WelcomeWidget(_contentStack);
     _contentStack->addWidget(_welcomeTips);
     _contentStack->setCurrentWidget(_welcomeTips);
+
+    // Search is an overlay on msgArea — not a stack page, so it doesn't replace the
+    // message list.  Show/hide it; the message list stays loaded beneath it.
+    _searchWidget = new SearchWidget(msgArea);
+    _searchWidget->hide();
+    _contentStack->installEventFilter(this);
 
     _composer = new ComposerWidget(msgArea);
     _composer->setEnabled(false);
@@ -463,29 +468,30 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgSplitter->setStretchFactor(1, 0);
 
     // ── Signal wiring ─────────────────────────────────────────────────
-    connect(_searchBtn, &QPushButton::clicked, this, [this] {
-        if (_contentStack->currentWidget() == _searchWidget)
-            _contentStack->setCurrentWidget(
-                _currentConvId.value.isEmpty() ? (QWidget *)_welcomeTips : (QWidget *)_messageList
-            );
-        else
-            _contentStack->setCurrentWidget(_searchWidget);
-    });
+    auto openSearch = [this] {
+        if (_searchWidget->isVisible()) {
+            _searchWidget->hide();
+        } else {
+            repositionSearch();
+            _searchWidget->show();
+            _searchWidget->raise();
+        }
+    };
+    connect(_searchBtn, &QPushButton::clicked, this, openSearch);
+    auto *searchShortcut = new QShortcut(QKeySequence::Find, this);
+    connect(searchShortcut, &QShortcut::activated, this, openSearch);
     connect(_searchWidget, &SearchWidget::closeRequested, this, [this] {
-        _contentStack->setCurrentWidget(
-            _currentConvId.value.isEmpty() ? (QWidget *)_welcomeTips : (QWidget *)_messageList
-        );
+        _searchWidget->closeSearch(); // animated
     });
-    connect(
-        _searchWidget,
-        &SearchWidget::resultSelected,
-        this,
-        [this](ConversationId conv, Ts /*ts*/) {
+    connect(_searchWidget, &SearchWidget::resultSelected, this, [this](ConversationId conv, Ts ts) {
+        if (conv == _currentConvId) {
+            _messageList->scrollToTs(ts);
+        } else {
             const int row = _convList->rowForId(conv);
             if (row >= 0)
                 openConversation(row);
         }
-    );
+    });
 
     connect(
         _messageList,
@@ -665,6 +671,8 @@ void MainWindow::startSession(const QString &teamId) {
     _totalUnread   = 0;
     _totalMentions = 0;
     updateTrayIcon();
+    if (_searchWidget)
+        _searchWidget->hide();
     _composer->setEnabled(false);
     _composer->hide();
     if (_msgHeader)
@@ -910,6 +918,12 @@ void MainWindow::connectToSession() {
 
     _sessionOwner->errors() |
         rpl::on_next([this](QString msg) { showNetworkError(msg); }, _sessionLifetime);
+}
+
+void MainWindow::repositionSearch() {
+    if (!_searchWidget || !_contentStack || !_msgArea)
+        return;
+    _searchWidget->setGeometry(_msgArea->rect());
 }
 
 void MainWindow::showNetworkError(const QString &message) {
@@ -1258,6 +1272,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
             }
         }
     }
+    if (obj == _contentStack && e->type() == QEvent::Resize) {
+        if (_searchWidget && _searchWidget->isVisible())
+            repositionSearch();
+    }
     if (obj == _starBtn && _starBtnTooltip) {
         if (e->type() == QEvent::Enter) {
             const auto *conv =
@@ -1326,6 +1344,9 @@ void MainWindow::populateConversations(const std::vector<Conversation> &convs) {
 void MainWindow::openConversation(int row) {
     if (!_sessionOwner)
         return;
+
+    if (_searchWidget && _searchWidget->isVisible())
+        _searchWidget->hide();
 
     // Save draft / exit edit mode for the outgoing conversation.
     if (!_currentConvId.value.isEmpty() && _composer) {

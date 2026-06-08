@@ -486,6 +486,13 @@ int MessageListWidget::findByTs(const Ts &ts) const {
     return -1;
 }
 
+void MessageListWidget::scrollToTs(const Ts &ts) {
+    const int idx = findByTs(ts);
+    if (idx < 0 || idx >= (int)_tops.size())
+        return;
+    smoothScrollTo(qMax(0, _tops[idx] - viewport()->height() / 3));
+}
+
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 int MessageListWidget::introHeight() const {
