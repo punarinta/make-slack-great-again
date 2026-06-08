@@ -7,8 +7,13 @@
 #include "util/emoji.h"
 #include "util/emoji_font.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QFontMetrics>
+#include <QPainter>
+#include <QPainterPath>
+#include <QRect>
 
 namespace MsgRender {
 
@@ -270,6 +275,85 @@ QString formatFileSize(qint64 bytes) {
         return QString("%1 KB").arg(bytes / 1024);
     const double mb = bytes / (1024.0 * 1024.0);
     return QString("%1 MB").arg(mb, 0, 'f', mb < 10 ? 1 : 0);
+}
+
+void paintFileChip(QPainter &p, const File &f, const QRect &rect) {
+    static constexpr int kIconW  = 48;
+    static constexpr int kPadX   = 12;
+    static constexpr int kRadius = 4;
+
+    const int   chipW = std::min(rect.width(), kFileChipMaxW);
+    const QRect chipRect(rect.x(), rect.y(), chipW, kFileChipH);
+
+    // Clipped fill: background + colored icon column
+    QPainterPath clipPath;
+    clipPath.addRoundedRect(QRectF(chipRect), kRadius, kRadius);
+    p.save();
+    p.setClipPath(clipPath);
+    p.fillRect(chipRect, Th::c().message.fileChipBg);
+    p.fillRect(QRect(chipRect.x(), chipRect.y(), kIconW, kFileChipH), fileTypeColor(f));
+    p.restore();
+
+    // Border
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Th::c().message.fileChipBorder);
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(chipRect), kRadius, kRadius);
+    p.restore();
+
+    // Extension label centered in icon column
+    {
+        QFont iconFont = QApplication::font();
+        iconFont.setBold(true);
+        iconFont.setPointSizeF(iconFont.pointSizeF() * 0.72);
+        p.save();
+        p.setFont(iconFont);
+        p.setPen(Qt::white);
+        p.drawText(
+            QRect(chipRect.x(), chipRect.y(), kIconW, kFileChipH), Qt::AlignCenter, fileIconLabel(f)
+        );
+        p.restore();
+    }
+
+    // Filename + subtitle (type · size) vertically centred in text column
+    const int textX = chipRect.x() + kIconW + kPadX;
+    const int textW = chipW - kIconW - kPadX - 8;
+
+    QFont nameFont = QApplication::font();
+    nameFont.setBold(true);
+    const QFontMetrics nameFm(nameFont);
+
+    QFont subFont = QApplication::font();
+    subFont.setPointSizeF(subFont.pointSizeF() * 0.82);
+    const QFontMetrics subFm(subFont);
+
+    const int totalTextH = nameFm.height() + 3 + subFm.height();
+    const int textTop    = chipRect.y() + (kFileChipH - totalTextH) / 2;
+
+    p.save();
+    p.setFont(nameFont);
+    p.setPen(Th::c().text.primary);
+    p.drawText(
+        QRect(textX, textTop, textW, nameFm.height()),
+        Qt::AlignLeft | Qt::AlignVCenter,
+        nameFm.elidedText(f.name, Qt::ElideRight, textW)
+    );
+
+    QString       sub = f.prettyType;
+    const QString sz  = formatFileSize(f.size);
+    if (!sz.isEmpty())
+        sub += (sub.isEmpty() ? "" : " · ") + sz;
+    if (!sub.isEmpty()) {
+        p.setFont(subFont);
+        p.setPen(Th::c().text.secondary);
+        p.drawText(
+            QRect(textX, textTop + nameFm.height() + 3, textW, subFm.height()),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            sub
+        );
+    }
+    p.restore();
 }
 
 } // namespace MsgRender

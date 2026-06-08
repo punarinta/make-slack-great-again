@@ -3,6 +3,7 @@
 #include "forward_dialog.h"
 #include "ui/conv_selector/conv_selector_widget.h"
 #include "ui/composer/composer_widget.h"
+#include "ui/message_list/file_chip_widget.h"
 #include "ui/message_list/message_render.h"
 #include "ui/theme.h"
 #include "session/session.h"
@@ -12,6 +13,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPointer>
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QVBoxLayout>
@@ -63,13 +65,85 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     preview->setStyleSheet("QTextBrowser { background: transparent; }");
     preview->setOpenLinks(false);
 
+    // Message text
     const QString html = MsgRender::buildMsgHtml(msg, session);
-    if (html.trimmed().isEmpty())
+    if (!html.trimmed().isEmpty())
+        preview->setHtml(html);
+    else if (!msg.rawText.trimmed().isEmpty())
         preview->setPlainText(msg.rawText);
     else
-        preview->setHtml(html);
+        preview->hide(); // no text — skip the browser entirely
 
     cardLay->addWidget(preview);
+
+    // ── Inline image thumbnails (filename above, image below — mirrors the message list) ──
+    static constexpr int kThumbMaxH = 150;
+    static constexpr int kThumbMaxW = 300;
+    for (const auto &f : msg.files) {
+        if (!f.isImage())
+            continue;
+
+        // Filename label
+        auto *nameLabel = new QLabel(f.name, _previewCard);
+        {
+            QFont nf = nameLabel->font();
+            nf.setPointSizeF(nf.pointSizeF() * 0.82);
+            nameLabel->setFont(nf);
+        }
+        nameLabel->setStyleSheet("color:" + Th::qss(Th::c().message.fileNameDim) + ";");
+        cardLay->addWidget(nameLabel);
+
+        // Compute placeholder size from metadata (avoids layout jump when image loads)
+        int phW = kThumbMaxW, phH = kThumbMaxH;
+        if (f.imageWidth > 0 && f.imageHeight > 0) {
+            const double scale = std::min(
+                1.0, std::min((double)kThumbMaxW / f.imageWidth, (double)kThumbMaxH / f.imageHeight)
+            );
+            phW = (int)(f.imageWidth * scale);
+            phH = (int)(f.imageHeight * scale);
+        }
+
+        auto *imgLabel = new QLabel(_previewCard);
+        imgLabel->setFixedSize(phW, phH);
+        imgLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        imgLabel->setStyleSheet(
+            "QLabel { background:" + Th::qss(Th::c().message.imagePlaceholderBg) +
+            "; border: 1px solid " + Th::qss(Th::c().message.imagePlaceholderBorder) + "; }"
+        );
+        cardLay->addWidget(imgLabel);
+
+        if (session) {
+            const QString    url       = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+            QPointer<QLabel> safeLabel = imgLabel;
+            session->downloadFile(url, [safeLabel](QByteArray data) {
+                if (!safeLabel)
+                    return;
+                QPixmap px;
+                if (!px.loadFromData(data))
+                    return;
+                const double scale = std::min(
+                    1.0, std::min((double)kThumbMaxW / px.width(), (double)kThumbMaxH / px.height())
+                );
+                px = px.scaled(
+                    (int)(px.width() * scale),
+                    (int)(px.height() * scale),
+                    Qt::IgnoreAspectRatio,
+                    Qt::SmoothTransformation
+                );
+                safeLabel->setFixedSize(px.size());
+                safeLabel->setPixmap(px);
+                safeLabel->setStyleSheet({});
+            });
+        }
+    }
+
+    // ── Non-image file chips — identical appearance to the message list ────────
+    for (const auto &f : msg.files) {
+        if (f.isImage())
+            continue;
+        cardLay->addWidget(new FileChipWidget(f, _previewCard));
+    }
+
     cl->addWidget(_previewCard);
 
     // ── Button bar ─────────────────────────────────────────────────────

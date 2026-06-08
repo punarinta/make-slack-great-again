@@ -332,6 +332,13 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         p.restore();
     }
 
+    // ── File action bar ──────────────────────────────────────────────────
+    if (_hoveredFile.first == index) {
+        const QRect fr = fileViewportRect(index, _hoveredFile.second);
+        if (!fr.isNull())
+            paintFileActionBar(p, fr);
+    }
+
     // ── Hover toolbar ─────────────────────────────────────────────────
     if (index == _hoveredRow)
         paintHoverToolbar(p, index, rowTop, rh);
@@ -777,94 +784,15 @@ void MessageListWidget::paintFileChips(
         }
     const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
 
-    int                y     = top;
-    bool               first = true;
-    const QFontMetrics nameFm([] {
-        QFont f = QApplication::font();
-        f.setBold(true);
-        return f;
-    }());
-    QFont              subFont = QApplication::font();
-    subFont.setPointSizeF(subFont.pointSizeF() * 0.82);
-    const QFontMetrics subFm(subFont);
-    const int          totalTextH = nameFm.height() + 3 + subFm.height();
-
+    int  y     = top;
+    bool first = true;
     for (const auto &f : item.msg.files) {
         if (f.isImage())
             continue;
-
         if (!first || hasAbove)
             y += kFileChipGap;
         first = false;
-
-        const int   chipW = std::min(width, kFileChipMaxW);
-        const QRect chipRect(left, y, chipW, kFileChipH);
-
-        // Clip chip area to rounded shape so icon fill has matching rounded-left corners.
-        QPainterPath chipPath;
-        chipPath.addRoundedRect(QRectF(chipRect), 4, 4);
-
-        p.save();
-        p.setClipPath(chipPath);
-        p.fillRect(chipRect, Th::c().message.fileChipBg);
-        p.fillRect(QRect(left, y, kFileChipIconW, kFileChipH), MsgRender::fileTypeColor(f));
-        p.restore();
-
-        // Card border
-        p.save();
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(Th::c().message.fileChipBorder);
-        p.setBrush(Qt::NoBrush);
-        p.drawRoundedRect(QRectF(chipRect), 4, 4);
-        p.restore();
-
-        // Icon label (file extension, e.g. "PDF")
-        {
-            QFont iconFont = QApplication::font();
-            iconFont.setBold(true);
-            iconFont.setPointSizeF(iconFont.pointSizeF() * 0.72);
-            p.save();
-            p.setFont(iconFont);
-            p.setPen(Qt::white);
-            p.drawText(
-                QRect(left, y, kFileChipIconW, kFileChipH),
-                Qt::AlignCenter,
-                MsgRender::fileIconLabel(f)
-            );
-            p.restore();
-        }
-
-        // Filename + type/size — vertically centred in the card
-        const int textX   = left + kFileChipIconW + kFileChipPadX;
-        const int textW   = chipW - kFileChipIconW - kFileChipPadX - 8;
-        const int textTop = y + (kFileChipH - totalTextH) / 2;
-
-        {
-            QFont nameFont = QApplication::font();
-            nameFont.setBold(true);
-            p.setFont(nameFont);
-            p.setPen(Th::c().text.primary);
-            const QString elided = nameFm.elidedText(f.name, Qt::ElideRight, textW);
-            p.drawText(
-                QRect(textX, textTop, textW, nameFm.height()),
-                Qt::AlignLeft | Qt::AlignVCenter,
-                elided
-            );
-        }
-        {
-            p.setFont(subFont);
-            p.setPen(Th::c().text.secondary);
-            QString       sub = f.prettyType;
-            const QString sz  = MsgRender::formatFileSize(f.size);
-            if (!sz.isEmpty())
-                sub += (sub.isEmpty() ? "" : " · ") + sz;
-            p.drawText(
-                QRect(textX, textTop + nameFm.height() + 3, textW, subFm.height()),
-                Qt::AlignLeft | Qt::AlignVCenter,
-                sub
-            );
-        }
-
+        MsgRender::paintFileChip(p, f, QRect(left, y, width, kFileChipH));
         y += kFileChipH;
     }
 }
@@ -1306,6 +1234,165 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     }
     p.restore();
     (void)index;
+}
+
+// ── File action bar ───────────────────────────────────────────────────────────
+
+QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
+    if (msgIdx < 0 || msgIdx >= (int)_items.size())
+        return {};
+    const auto &item = _items[msgIdx];
+    if (fileIdx < 0 || fileIdx >= (int)item.msg.files.size())
+        return {};
+
+    ensureDocLayout(item);
+    const PaintContext ctx       = makePaintContext();
+    const int          scrollY   = ctx.scrollY;
+    const int          left      = ctx.textLeft;
+    const int          width     = ctx.textWidth;
+    const bool         collapsed = isCollapsed(msgIdx);
+    const int          padV      = collapsed ? kPadVCollapsed : kPadV;
+    const int          sep       = needsDateSep(msgIdx) ? kSepH : 0;
+    const int          pinnedH   = item.msg.pinned ? 18 : 0;
+    const int          rowTop    = _tops[msgIdx] - scrollY;
+
+    // Replicate contentY buildup from paintRow up to the file sections.
+    int contentY =
+        rowTop + sep + pinnedH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+        if (!isDismissed(item.msg.ts, ai))
+            contentY += kAttachGap + attachTotalH(item, ai);
+    }
+
+    // Walk file images (same logic as paintFileImages).
+    int        y        = contentY;
+    const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
+        const auto &f = item.msg.files[fi];
+        if (!f.isImage())
+            continue;
+        if (hasAbove)
+            y += kImgGap;
+        y += kImgNameH; // name label height; image starts below this
+        int           iw, ih;
+        const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+        const auto    it     = _fileImages.constFind(imgUrl);
+        if (it != _fileImages.constEnd() && !it->isNull()) {
+            const double scale = std::min(
+                1.0, std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height())
+            );
+            iw = (int)(it->width() * scale);
+            ih = (int)(it->height() * scale);
+        } else if (f.imageWidth > 0 && f.imageHeight > 0) {
+            const double scale = std::min(
+                1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
+            );
+            iw = (int)(f.imageWidth * scale);
+            ih = (int)(f.imageHeight * scale);
+        } else {
+            iw = std::min(width, kImgMaxW);
+            ih = 24;
+        }
+        if (fi == fileIdx)
+            return QRect(left, y, iw, ih);
+        y += ih;
+    }
+
+    // Walk non-image file chips (same logic as paintFileChips).
+    bool anyImg = false;
+    for (const auto &f : item.msg.files)
+        if (f.isImage()) {
+            anyImg = true;
+            break;
+        }
+    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+    bool       firstChip     = true;
+    for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
+        const auto &f = item.msg.files[fi];
+        if (f.isImage())
+            continue;
+        if (!firstChip || hasAboveChips)
+            y += kFileChipGap;
+        firstChip = false;
+        if (fi == fileIdx) {
+            const int chipW = std::min(width, kFileChipMaxW);
+            return QRect(left, y, chipW, kFileChipH);
+        }
+        y += kFileChipH;
+    }
+    return {};
+}
+
+QRect MessageListWidget::fileActionBarButtonRect(int btn, const QRect &fileRect) const {
+    const int nButtons = 3;
+    const int cardW = kToolbarPadH * 2 + nButtons * kToolbarBtnSize + (nButtons - 1) * kToolbarGap;
+    const int cardH = kToolbarPadV * 2 + kToolbarBtnSize;
+    const int cardTop  = fileRect.top() - cardH / 2;
+    const int cardLeft = fileRect.right() - cardW;
+    const int btnX     = cardLeft + kToolbarPadH + btn * (kToolbarBtnSize + kToolbarGap);
+    const int btnY     = cardTop + kToolbarPadV;
+    return QRect(btnX, btnY, kToolbarBtnSize, kToolbarBtnSize);
+}
+
+int MessageListWidget::fileActionBarButtonAt(const QPoint &viewportPos) const {
+    const auto [mi, fi] = _hoveredFile;
+    if (mi < 0)
+        return -1;
+    const QRect fr = fileViewportRect(mi, fi);
+    if (fr.isNull())
+        return -1;
+    for (int b = 0; b < 3; ++b) {
+        if (fileActionBarButtonRect(b, fr).contains(viewportPos))
+            return b;
+    }
+    return -1;
+}
+
+void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) const {
+    const int nButtons = 3;
+    const int cardW = kToolbarPadH * 2 + nButtons * kToolbarBtnSize + (nButtons - 1) * kToolbarGap;
+    const int cardH = kToolbarPadV * 2 + kToolbarBtnSize;
+    const int cardTop  = fileRect.top() - cardH / 2;
+    const int cardLeft = fileRect.right() - cardW;
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    const QRectF cardRect(cardLeft, cardTop, cardW, cardH);
+    for (int i = 4; i >= 1; --i) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 5 + (4 - i) * 3));
+        p.drawRoundedRect(
+            cardRect.adjusted(-i, -i, i, i + 1), kToolbarRadius + i, kToolbarRadius + i
+        );
+    }
+    p.setBrush(Qt::white);
+    p.setPen(QColor(0, 0, 0, 18));
+    p.drawRoundedRect(cardRect, kToolbarRadius, kToolbarRadius);
+
+    // NOTE: static — captures Th::c().icon.strong once at first paint (acceptable for V1).
+    static const QSize    kIconSz(16, 16);
+    static const QColor   kIconColor  = Th::c().icon.strong;
+    static const QPixmap  kPxDownload = svgPixmap(":/ui/download.svg", kIconSz, kIconColor);
+    static const QPixmap  kPxShare    = svgPixmap(":/ui/share-2.svg", kIconSz, kIconColor);
+    static const QPixmap  kPxMore     = svgPixmap(":/ui/more-horizontal.svg", kIconSz, kIconColor);
+    static const QPixmap *kIcons[]    = {&kPxDownload, &kPxShare, &kPxMore};
+
+    for (int b = 0; b < nButtons; ++b) {
+        const QRect br = fileActionBarButtonRect(b, fileRect);
+
+        if (b == _hoveredFileBtn) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 0, 0, 14));
+            p.drawRoundedRect(QRectF(br).adjusted(1, 1, -1, -1), 5, 5);
+        }
+
+        if (!kIcons[b]->isNull()) {
+            const int ix = br.left() + (br.width() - kIconSz.width()) / 2;
+            const int iy = br.top() + (br.height() - kIconSz.height()) / 2;
+            p.drawPixmap(ix, iy, *kIcons[b]);
+        }
+    }
+    p.restore();
 }
 
 // ── Intro header + date separator painting ────────────────────────────────────

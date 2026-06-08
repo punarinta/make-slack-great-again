@@ -58,6 +58,7 @@ public:
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void uploadFile(ConversationId, const QString &filePath) override;
+    void deleteFile(const QString &fileId) override;
     void downloadFile(
         const QString                  &url,
         std::function<void(QByteArray)> onData,

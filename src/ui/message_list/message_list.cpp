@@ -26,6 +26,8 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include <QClipboard>
+#include <QFileDialog>
+#include <QFile>
 #include <QMessageBox>
 #include <QUrl>
 #include <QTimer>
@@ -873,6 +875,8 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         return;
     if (tryHandleLinkPress(event->pos()))
         return;
+    if (tryHandleFileActionBarPress(event->pos()))
+        return;
 
     // Start text-selection drag if the click lands inside a message body.
     const TextPos tp = textHitTest(event->pos());
@@ -1145,6 +1149,82 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
     return true;
 }
 
+bool MessageListWidget::tryHandleFileActionBarPress(const QPoint &pos) {
+    const int btn = fileActionBarButtonAt(pos);
+    if (btn < 0 || _hoveredFile.first < 0)
+        return false;
+
+    const auto  &msg  = _items[_hoveredFile.first].msg;
+    const auto  &file = msg.files[_hoveredFile.second];
+    const QRect  fr   = fileViewportRect(_hoveredFile.first, _hoveredFile.second);
+    const QRect  btnR = fileActionBarButtonRect(btn, fr);
+    const QPoint gPos = viewport()->mapToGlobal(btnR.bottomLeft());
+
+    if (btn == 0)
+        downloadFileToUser(file);
+    else if (btn == 1)
+        emit forwardMessageRequested(msg);
+    else if (btn == 2)
+        showFileContextMenu(file, msg, gPos);
+    return true;
+}
+
+void MessageListWidget::downloadFileToUser(const File &file) {
+    if (!_session)
+        return;
+    const QString defaultName = file.name.isEmpty() ? tr("file") : file.name;
+    const QString savePath =
+        QFileDialog::getSaveFileName(this, tr("Save file"), QDir::homePath() + "/" + defaultName);
+    if (savePath.isEmpty())
+        return;
+    const QString url = file.urlPrivate;
+    _session->downloadFile(
+        url,
+        [savePath](QByteArray data) {
+            QFile f(savePath);
+            if (f.open(QIODevice::WriteOnly))
+                f.write(data);
+        },
+        [](QString err) { qWarning() << "File download failed:" << err; }
+    );
+}
+
+void MessageListWidget::showFileContextMenu(
+    const File &file, const Message &msg, const QPoint &globalPos
+) {
+    const bool isImage = file.isImage();
+    auto      *menu    = new ContextMenu(this);
+
+    const QString linkUrl = file.permalink.isEmpty() ? file.urlPrivate : file.permalink;
+    menu->addItem(
+        isImage ? tr("Copy link to image") : tr("Copy link to file"),
+        {},
+        [linkUrl] { Clipboard::setText(linkUrl); },
+        false,
+        false,
+        ":/ui/link.svg"
+    );
+
+    const bool canDelete =
+        _session && (msg.author == _session->meUserId() || _session->meIsAdmin());
+    if (canDelete && !file.id.isEmpty()) {
+        menu->addSeparator();
+        menu->addItem(
+            isImage ? tr("Delete image…") : tr("Delete file…"),
+            {},
+            [this, fileId = file.id] {
+                if (_session)
+                    _session->backend()->deleteFile(fileId);
+            },
+            /*destructive=*/true,
+            false,
+            ":/ui/trash-2.svg"
+        );
+    }
+
+    menu->popup(globalPos);
+}
+
 bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
     const File *f = fileChipAt(pos);
     if (!f)
@@ -1174,11 +1254,13 @@ void MessageListWidget::doMouseLeave() {
     }
 
     if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1 ||
-        _hoveredReplyRow != -1) {
+        _hoveredReplyRow != -1 || _hoveredFile.first != -1) {
         _hoveredRow      = -1;
         _hoveredToolBtn  = -1;
         _hoveredAttach   = {-1, -1};
         _hoveredReplyRow = -1;
+        _hoveredFile     = {-1, -1};
+        _hoveredFileBtn  = -1;
         viewport()->update();
     }
 }
@@ -1407,12 +1489,42 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     const int newHoveredReplyRow = replyBarIndexAt(pos);
 
+    // Detect which file chip or image (if any) the cursor is over, and which action bar button.
+    std::pair<int, int> newHoveredFile    = {-1, -1};
+    int                 newHoveredFileBtn = -1;
+    if (newHoveredRow >= 0) {
+        const auto &fitem    = _items[newHoveredRow];
+        const int   nButtons = 3;
+        const int   fCardW =
+            kToolbarPadH * 2 + nButtons * kToolbarBtnSize + (nButtons - 1) * kToolbarGap;
+        const int fCardH = kToolbarPadV * 2 + kToolbarBtnSize;
+        for (int fi = 0; fi < (int)fitem.msg.files.size(); ++fi) {
+            const QRect fr = fileViewportRect(newHoveredRow, fi);
+            if (fr.isNull())
+                continue;
+            const QRect cardArea(fr.right() - fCardW, fr.top() - fCardH / 2, fCardW, fCardH);
+            if (!fr.contains(pos) && !cardArea.contains(pos))
+                continue;
+            newHoveredFile = {newHoveredRow, fi};
+            for (int b = 0; b < nButtons; ++b) {
+                if (fileActionBarButtonRect(b, fr).contains(pos)) {
+                    newHoveredFileBtn = b;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
     if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn ||
-        newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow) {
+        newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow ||
+        newHoveredFile != _hoveredFile || newHoveredFileBtn != _hoveredFileBtn) {
         _hoveredRow      = newHoveredRow;
         _hoveredToolBtn  = newHoveredBtn;
         _hoveredAttach   = newHoveredAttach;
         _hoveredReplyRow = newHoveredReplyRow;
+        _hoveredFile     = newHoveredFile;
+        _hoveredFileBtn  = newHoveredFileBtn;
         viewport()->update();
     }
 
@@ -1448,6 +1560,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect btnLocal = toolbarButtonRect(newHoveredBtn, rowTop + sep6, rh - sep6);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kTips[newHoveredBtn], btnGlobal);
+    } else if (newHoveredFileBtn >= 0 && newHoveredFile.first >= 0) {
+        static const QString kFileTips[] = {tr("Download"), tr("Share"), tr("More actions")};
+        const QRect          fr = fileViewportRect(newHoveredFile.first, newHoveredFile.second);
+        const QRect          btnLocal = fileActionBarButtonRect(newHoveredFileBtn, fr);
+        const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
+        _tooltip->showAbove(kFileTips[newHoveredFileBtn], btnGlobal);
     } else if (!anchor.isEmpty()) {
         // Collect link display text; skip tooltip when it is identical to the URL.
         QString linkText;
@@ -1485,12 +1603,14 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const auto [dMI, dAI] = dismissButtonAt(pos);
     const bool overDismiss =
         dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
-    const auto [rMI, rRI] = reactionAt(pos);
-    const bool overLink   = !anchor.isEmpty() || fileChipAt(pos) || replyBarIndexAt(pos) >= 0 ||
-                          overDismiss || rMI >= 0;
-    const int  sbHitX     = viewport()->width() - kScrollW - 2 - 6;
-    const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
-    const bool overText   = !overLink && textHitTest(pos).row >= 0;
+    const auto [rMI, rRI]  = reactionAt(pos);
+    // File action bar buttons take priority — keep arrow cursor over them even if a chip is below.
+    const bool overFileBar = newHoveredFileBtn >= 0;
+    const bool overLink    = !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) ||
+                                           replyBarIndexAt(pos) >= 0 || overDismiss || rMI >= 0);
+    const int  sbHitX      = viewport()->width() - kScrollW - 2 - 6;
+    const bool overScroll  = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
+    const bool overText    = !overLink && textHitTest(pos).row >= 0;
     if (overScroll)
         viewport()->setCursor(Qt::SizeVerCursor);
     else if (overLink)

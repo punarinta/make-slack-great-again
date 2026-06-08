@@ -430,57 +430,102 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="970"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="974"/>
         <source>Edit message</source>
         <translation>Edit message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="984"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="988"/>
         <source>Copy link</source>
         <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="994"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="998"/>
         <source>Copy message</source>
         <translation>Copy message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1006"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1010"/>
         <source>Unpin from channel</source>
         <translation>Unpin from channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1023"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1027"/>
         <source>Pin to channel</source>
         <translation>Pin to channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1044"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1048"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1055"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1059"/>
         <source>Delete message…</source>
         <translation>Delete message…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1443"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1175"/>
+        <source>file</source>
+        <translation>file</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1177"/>
+        <source>Save file</source>
+        <translation>Save file</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1200"/>
+        <source>Copy link to image</source>
+        <translation>Copy link to image</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1200"/>
+        <source>Copy link to file</source>
+        <translation>Copy link to file</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1213"/>
+        <source>Delete image…</source>
+        <translation>Delete image…</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1213"/>
+        <source>Delete file…</source>
+        <translation>Delete file…</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1555"/>
         <source>Add reaction</source>
         <translation>Add reaction</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1443"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1555"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1443"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1555"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1478"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1564"/>
+        <source>Download</source>
+        <translation>Download</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1564"/>
+        <source>Share</source>
+        <translation>Share</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1564"/>
+        <source>More actions</source>
+        <translation>More actions</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1596"/>
         <source>Remove preview</source>
         <translation>Remove preview</translation>
     </message>
@@ -515,32 +560,32 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>(edited)</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="579"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="586"/>
         <source>Loading image…</source>
         <translation>Loading image…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1057"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1064"/>
         <source>1 reply</source>
         <translation>1 reply</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1057"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1064"/>
         <source>%1 replies</source>
         <translation>%1 replies</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1074"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1081"/>
         <source>View thread</source>
         <translation>View thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1088"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1095"/>
         <source>Last reply</source>
         <translation>Last reply</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1088"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1095"/>
         <source>Last reply %1</source>
         <translation>Last reply %1</translation>
     </message>

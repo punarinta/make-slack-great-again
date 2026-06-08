@@ -7,6 +7,8 @@
 #include <QColor>
 #include <QDate>
 
+class QPainter;
+class QRect;
 class Session;
 
 // Pure rendering helpers shared between message_list.cpp and message_list_paint.cpp.
@@ -24,5 +26,13 @@ QString buildAttachHtml(const Attachment &att, const Session *session);
 QColor  fileTypeColor(const File &f);
 QString fileIconLabel(const File &f);
 QString formatFileSize(qint64 bytes);
+
+// Paint a single non-image file chip into rect using the canonical message-list style.
+// rect should be kFileChipH (52px) tall; width is clamped to kFileChipMaxW (380px).
+void paintFileChip(QPainter &p, const File &f, const QRect &rect);
+
+// Canonical chip dimensions — exposed so callers can size widgets correctly.
+inline constexpr int kFileChipH    = 52;
+inline constexpr int kFileChipMaxW = 380;
 
 } // namespace MsgRender

@@ -120,11 +120,14 @@ private:
     bool tryHandleDismissPress(const QPoint &pos);
     bool tryHandleReplyBarPress(const QPoint &pos);
     bool tryHandleLinkPress(const QPoint &pos);
+    bool tryHandleFileActionBarPress(const QPoint &pos);
     bool tryHandleFileChipPress(const QPoint &pos);
 
     // Toolbar sub-actions called from tryHandleToolbarPress.
     void         openEmojiPickerForRow(int row, const QPoint &globalPos);
     void         showMessageContextMenu(const Message &msg, const QPoint &globalPos);
+    void         downloadFileToUser(const File &file);
+    void         showFileContextMenu(const File &file, const Message &msg, const QPoint &globalPos);
     bool         isOnScrollThumb(int vpY) const; // delegates to VirtualListWidget with _totalH
     PaintContext makePaintContext() const;
 
@@ -161,9 +164,13 @@ private:
     paintFileImages(QPainter &p, const MessageItem &item, const PaintContext &ctx, int top) const;
     void
     paintFileChips(QPainter &p, const MessageItem &item, const PaintContext &ctx, int top) const;
-    void paintHoverToolbar(QPainter &p, int index, int rowTop, int rowH) const;
-    void paintIntro(QPainter &p, int top) const;
-    void paintDateSep(QPainter &p, int top, int vw, const Ts &ts) const;
+    void  paintHoverToolbar(QPainter &p, int index, int rowTop, int rowH) const;
+    void  paintFileActionBar(QPainter &p, const QRect &fileRect) const;
+    QRect fileViewportRect(int msgIdx, int fileIdx) const;
+    QRect fileActionBarButtonRect(int btn, const QRect &fileRect) const;
+    int   fileActionBarButtonAt(const QPoint &viewportPos) const;
+    void  paintIntro(QPainter &p, int top) const;
+    void  paintDateSep(QPainter &p, int top, int vw, const Ts &ts) const;
 
     int  introHeight() const;
     bool needsDateSep(int index) const;
@@ -295,6 +302,9 @@ private:
     int                 _hoveredToolBtn = -1; // 0=emoji, 1=forward, 2=more; -1=none
     // {msgIdx, attachIdx} of the attachment preview the cursor is over, else {-1,-1}
     std::pair<int, int> _hoveredAttach  = {-1, -1};
+    // {msgIdx, fileIdx} of the file chip/image the cursor is over, else {-1,-1}
+    std::pair<int, int> _hoveredFile    = {-1, -1};
+    int                 _hoveredFileBtn = -1;  // 0=download, 1=share, 2=more; -1=none
     QString             _hoveredLinkUrl;       // URL of the link currently under the mouse cursor
     int                 _hoveredLinkRow  = -1; // row index owning that link (-1 if none)
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)

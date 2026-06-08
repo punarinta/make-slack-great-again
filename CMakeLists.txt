@@ -104,6 +104,7 @@ add_executable(msga MACOSX_BUNDLE
     src/ui/message_list/message_list.cpp
     src/ui/message_list/message_list_paint.cpp
     src/ui/message_list/message_render.cpp
+    src/ui/message_list/file_chip_widget.cpp
     src/ui/conv_list/conv_list_widget.cpp
     src/ui/composer/formatting_toolbar.cpp
     src/ui/composer/attachment_strip.cpp

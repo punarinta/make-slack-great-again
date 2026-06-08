@@ -372,6 +372,14 @@ void PublicBackend::deleteMessage(ConversationId conv, Ts ts) {
     });
 }
 
+void PublicBackend::deleteFile(const QString &fileId) {
+    QUrlQuery params;
+    params.addQueryItem("file", fileId);
+    _api->call("files.delete", params, {}, [](QString e) {
+        qWarning() << "deleteFile error:" << e;
+    });
+}
+
 void PublicBackend::addReaction(ConversationId conv, Ts ts, QString emoji) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
