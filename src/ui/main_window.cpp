@@ -6,6 +6,7 @@
 #include "header_avatar_widget.h"
 #include "image_cache.h"
 #include "title_bar/title_bar.h"
+#include "popup_tooltip/popup_tooltip.h"
 #include "message_list/message_list.h"
 #include "composer/composer_widget.h"
 #include "conv_list/conv_list_widget.h"
@@ -310,21 +311,23 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _starBtn->setFixedSize(28, 28);
     _starBtn->setFlat(true);
     _starBtn->setCursor(Qt::PointingHandCursor);
-    _starBtn->setToolTip(tr("Star conversation"));
     _starBtn->setIconSize(QSize(15, 15));
     _starBtn->setVisible(false);
+    _starBtnTooltip = new PopupTooltip(_starBtn);
+    _starBtn->installEventFilter(this);
     msgHeaderLayout->addWidget(_starBtn);
     msgHeaderLayout->addSpacing(2);
 
-    auto *searchBtn = new QPushButton(msgHeader);
-    searchBtn->setObjectName("headerSearchBtn");
-    searchBtn->setFixedSize(32, 32);
-    searchBtn->setFlat(true);
-    searchBtn->setCursor(Qt::PointingHandCursor);
-    searchBtn->setToolTip(tr("Search messages"));
-    searchBtn->setIconSize(QSize(16, 16));
-    searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), Th::c().icon.def));
-    msgHeaderLayout->addWidget(searchBtn);
+    _searchBtn = new QPushButton(msgHeader);
+    _searchBtn->setObjectName("headerSearchBtn");
+    _searchBtn->setFixedSize(32, 32);
+    _searchBtn->setFlat(true);
+    _searchBtn->setCursor(Qt::PointingHandCursor);
+    _searchBtn->setIconSize(QSize(16, 16));
+    _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), Th::c().icon.def));
+    _searchBtnTooltip = new PopupTooltip(_searchBtn);
+    _searchBtn->installEventFilter(this);
+    msgHeaderLayout->addWidget(_searchBtn);
     _msgHeader = msgHeader;
     rightLayout->addWidget(msgHeader);
 
@@ -379,7 +382,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgSplitter->setStretchFactor(1, 0);
 
     // ── Signal wiring ─────────────────────────────────────────────────
-    connect(searchBtn, &QPushButton::clicked, this, [this] {
+    connect(_searchBtn, &QPushButton::clicked, this, [this] {
         if (_contentStack->currentWidget() == _searchWidget)
             _contentStack->setCurrentWidget(
                 _currentConvId.value.isEmpty() ? (QWidget *)_welcomeTips : (QWidget *)_messageList
@@ -505,13 +508,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     });
 
     connect(_starBtn, &QPushButton::clicked, this, [this] {
-        if (_currentConvId.value.isEmpty())
+        if (_currentConvId.value.isEmpty() || !_sessionOwner)
             return;
-        QSettings     s("msga", "msga");
-        const QString key        = "starred/" + _activeTeamId + "/" + _currentConvId.value;
-        const bool    nowStarred = !s.value(key, false).toBool();
-        s.setValue(key, nowStarred);
-        updateStarBtn(nowStarred);
+        const auto *conv       = _sessionOwner->findConversation(_currentConvId);
+        const bool  nowStarred = conv ? !conv->isStarred : true;
+        _sessionOwner->starConversation(_currentConvId, nowStarred);
     });
 
     return rightPanel;
@@ -546,13 +547,11 @@ void MainWindow::applyTheme() {
                                         "QPushButton:hover { background: %1; }")
                                     .arg(Th::qss(th.surface.highlight)));
     }
-    if (_msgHeader) {
-        if (auto *searchBtn = _msgHeader->findChild<QPushButton *>("headerSearchBtn")) {
-            searchBtn->setStyleSheet(QString("QPushButton { border-radius: 4px; }"
-                                             "QPushButton:hover { background: %1; }")
-                                         .arg(Th::qss(th.surface.highlight)));
-            searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
-        }
+    if (_searchBtn) {
+        _searchBtn->setStyleSheet(QString("QPushButton { border-radius: 4px; }"
+                                          "QPushButton:hover { background: %1; }")
+                                      .arg(Th::qss(th.surface.highlight)));
+        _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
     }
     if (_errorBanner) {
         _errorBanner->setStyleSheet(QString("QLabel#errorBanner {"
@@ -701,6 +700,29 @@ void MainWindow::handleOAuthUri(const QUrl &uri) {
 }
 
 void MainWindow::connectToSession() {
+    if (_convList) {
+        connect(
+            _convList,
+            &ConvListWidget::starConversationRequested,
+            this,
+            [this](ConversationId id, bool star) { _sessionOwner->starConversation(id, star); }
+        );
+        connect(
+            _convList,
+            &ConvListWidget::leaveConversationRequested,
+            this,
+            [this](ConversationId id) { _sessionOwner->leaveConversation(id); }
+        );
+        connect(
+            _convList,
+            &ConvListWidget::setNotificationLevelRequested,
+            this,
+            [this](ConversationId id, NotificationLevel level) {
+                _sessionOwner->setNotificationLevel(id, level);
+            }
+        );
+    }
+
     // If the backend can't refresh the token (no refresh token, or refresh fails),
     // it sets authState → LoggedOut so we show the login screen instead of hanging.
     _sessionOwner->authState() | rpl::on_next(
@@ -716,6 +738,15 @@ void MainWindow::connectToSession() {
             [this](std::vector<Conversation> convs) {
                 populateConversations(convs);
                 updateUnreadBadges(convs);
+                // Keep the header star in sync when isStarred changes.
+                if (!_currentConvId.value.isEmpty() && _starBtn) {
+                    for (const auto &c : convs) {
+                        if (c.id == _currentConvId) {
+                            updateStarBtn(c.isStarred);
+                            break;
+                        }
+                    }
+                }
                 // Reveal the conv column the moment real data arrives.
                 if (!convs.empty() && _convPanel && !_convPanel->isVisible()) {
                     if (_messageList)
@@ -1137,6 +1168,28 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
             }
         }
     }
+    if (obj == _starBtn && _starBtnTooltip) {
+        if (e->type() == QEvent::Enter) {
+            const auto *conv =
+                _sessionOwner ? _sessionOwner->findConversation(_currentConvId) : nullptr;
+            const bool    starred = conv && conv->isStarred;
+            const QString text    = starred ? tr("Unstar conversation") : tr("Star conversation");
+            _starBtnTooltip->showAbove(
+                text, QRect(_starBtn->mapToGlobal(QPoint(0, 0)), _starBtn->size())
+            );
+        } else if (e->type() == QEvent::Leave) {
+            _starBtnTooltip->hide();
+        }
+    }
+    if (obj == _searchBtn && _searchBtnTooltip) {
+        if (e->type() == QEvent::Enter)
+            _searchBtnTooltip->showAbove(
+                tr("Search messages"),
+                QRect(_searchBtn->mapToGlobal(QPoint(0, 0)), _searchBtn->size())
+            );
+        else if (e->type() == QEvent::Leave)
+            _searchBtnTooltip->hide();
+    }
     return QMainWindow::eventFilter(obj, e);
 }
 
@@ -1266,8 +1319,9 @@ void MainWindow::openConversation(int row) {
 void MainWindow::updateStarBtn(bool starred) {
     if (!_starBtn)
         return;
-    _starBtn->setIcon(
-        svgIcon(":/ui/star.svg", QSize(15, 15), starred ? QColor("#C6920A") : Th::c().icon.def)
+    const QString svg =
+        starred ? QStringLiteral(":/ui/star-solid.svg") : QStringLiteral(":/ui/star.svg");
+    _starBtn->setIcon(svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
     );
 }
 
@@ -1275,17 +1329,16 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
     if (conv.value.isEmpty())
         return;
 
-    // Star button state
-    if (_starBtn) {
-        _starBtn->setVisible(true);
-        QSettings s("msga", "msga");
-        updateStarBtn(s.value("starred/" + _activeTeamId + "/" + conv.value, false).toBool());
-    }
-
     if (!_sessionOwner)
         return;
     const auto *conversation = _sessionOwner->findConversation(conv);
-    const bool  isDm         = conversation &&
+
+    // Star button state
+    if (_starBtn) {
+        _starBtn->setVisible(true);
+        updateStarBtn(conversation ? conversation->isStarred : false);
+    }
+    const bool isDm = conversation &&
                       (conversation->kind == ConvKind::Im || conversation->kind == ConvKind::Mpim);
 
     if (_headerAvatar) {

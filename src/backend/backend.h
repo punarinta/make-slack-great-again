@@ -58,6 +58,11 @@ public:
     virtual void pinMessage(ConversationId, Ts) {}
     virtual void unpinMessage(ConversationId, Ts) {}
 
+    // Star / unstar a conversation (stars.add / stars.remove).
+    virtual void starConversation(ConversationId, bool star) {}
+    // Leave a conversation (conversations.leave).
+    virtual void leaveConversation(ConversationId) {}
+
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;
     virtual rpl::producer<QHash<QString, QString>>   loadEmojiList()                      = 0;

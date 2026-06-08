@@ -45,27 +45,37 @@ void Session::start() {
         );
 
     // Load conversations; update cache on arrival.
-    _backend->loadConversations() | rpl::on_next(
-                                        [this](std::vector<Conversation> convs) {
-                                            // Preserve locally-incremented unread/mention counts
-                                            // accumulated since startup (API returns 0 for
-                                            // channels).
-                                            const auto &prev = _conversations.current();
-                                            for (auto &c : convs) {
-                                                for (const auto &old : prev) {
-                                                    if (old.id != c.id)
-                                                        continue;
-                                                    c.unread = std::max(c.unread, old.unread);
-                                                    c.mentionCount =
-                                                        std::max(c.mentionCount, old.mentionCount);
-                                                    break;
-                                                }
-                                            }
-                                            _cache->saveConversations(convs);
-                                            _conversations = std::move(convs);
-                                        },
-                                        _lifetime
-                                    );
+    _backend->loadConversations() |
+        rpl::on_next(
+            [this](std::vector<Conversation> convs) {
+                // Preserve locally-incremented unread/mention counts
+                // accumulated since startup (API returns 0 for
+                // channels).
+                const auto &prev = _conversations.current();
+                for (auto &c : convs) {
+                    for (const auto &old : prev) {
+                        if (old.id != c.id)
+                            continue;
+                        c.unread       = std::max(c.unread, old.unread);
+                        c.mentionCount = std::max(c.mentionCount, old.mentionCount);
+                        // Preserve locally-applied star state: the
+                        // API may not echo is_starred immediately
+                        // after stars.add/stars.remove.
+                        if (old.isStarred != c.isStarred && old.isStarred)
+                            c.isStarred = old.isStarred;
+                        // Preserve locally-set notification level
+                        // (no public read API for per-channel prefs).
+                        if (old.notifLevel != NotificationLevel::Default &&
+                            c.notifLevel == NotificationLevel::Default)
+                            c.notifLevel = old.notifLevel;
+                        break;
+                    }
+                }
+                _cache->saveConversations(convs);
+                _conversations = std::move(convs);
+            },
+            _lifetime
+        );
 
     // Load users; update cache on arrival.
     _backend->loadUsers() | rpl::on_next(
@@ -361,6 +371,43 @@ void Session::setReading(ConversationId conv) {
     for (auto &c : convs) {
         if (c.id == conv) {
             c.unread = 0;
+            break;
+        }
+    }
+    _conversations = std::move(convs);
+}
+
+void Session::starConversation(ConversationId conv, bool star) {
+    auto convs = _conversations.current();
+    for (auto &c : convs) {
+        if (c.id == conv) {
+            c.isStarred = star;
+            break;
+        }
+    }
+    _conversations = std::move(convs);
+    _backend->starConversation(conv, star);
+}
+
+void Session::leaveConversation(ConversationId conv) {
+    _backend->leaveConversation(conv);
+    // Optimistically remove from the local list so the UI updates immediately.
+    auto convs = _conversations.current();
+    convs.erase(
+        std::remove_if(
+            convs.begin(), convs.end(), [&](const Conversation &c) { return c.id == conv; }
+        ),
+        convs.end()
+    );
+    _conversations = std::move(convs);
+}
+
+void Session::setNotificationLevel(ConversationId conv, NotificationLevel level) {
+    auto convs = _conversations.current();
+    for (auto &c : convs) {
+        if (c.id == conv) {
+            c.notifLevel = level;
+            c.isMuted    = (level == NotificationLevel::Mute);
             break;
         }
     }

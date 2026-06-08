@@ -28,6 +28,7 @@ class WelcomeWidget;
 class TitleBar;
 class ThreadPanel;
 class HeaderAvatarWidget;
+class PopupTooltip;
 class QSplitter;
 class UpdateBar;
 class UpdateChecker;
@@ -134,11 +135,14 @@ private:
 
     QHash<QString, QString> _drafts; // convId.value → unsent draft text
 
-    ImageCache         *_imgCache     = nullptr;
-    QLabel             *_errorBanner  = nullptr;
-    QSystemTrayIcon    *_trayIcon     = nullptr;
-    QPushButton        *_starBtn      = nullptr;
-    HeaderAvatarWidget *_headerAvatar = nullptr;
+    ImageCache         *_imgCache         = nullptr;
+    QLabel             *_errorBanner      = nullptr;
+    QSystemTrayIcon    *_trayIcon         = nullptr;
+    QPushButton        *_starBtn          = nullptr;
+    PopupTooltip       *_starBtnTooltip   = nullptr;
+    QPushButton        *_searchBtn        = nullptr;
+    PopupTooltip       *_searchBtnTooltip = nullptr;
+    HeaderAvatarWidget *_headerAvatar     = nullptr;
 
     // Manual resize state (non-Wayland)
     Qt::Edges _resizeEdges = {};

@@ -71,6 +71,13 @@ public:
     // Call when the user opens a conversation — zeroes its unread count and marks it read on Slack.
     void setReading(ConversationId conv);
 
+    // Star / unstar a conversation (optimistic + API call).
+    void starConversation(ConversationId conv, bool star);
+    // Leave a conversation (optimistic removal + API call).
+    void leaveConversation(ConversationId conv);
+    // Update notification level locally (no public API for per-channel prefs).
+    void setNotificationLevel(ConversationId conv, NotificationLevel level);
+
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
 

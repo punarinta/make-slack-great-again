@@ -16,6 +16,7 @@ class ImageCache;
 struct UserInfo {
     QString displayName;
     QString avatarUrl;
+    QString name; // Slack username (used for MPDM name parsing)
     bool    isDeactivated = false;
     bool    isActive      = false;
     bool    dndEnabled    = false;
@@ -70,6 +71,9 @@ signals:
     void conversationSelected(int row);
     void findChannelRequested();
     void createChannelRequested();
+    void starConversationRequested(ConversationId id, bool star);
+    void setNotificationLevelRequested(ConversationId id, NotificationLevel level);
+    void leaveConversationRequested(ConversationId id);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -84,6 +88,8 @@ protected:
     int  rowAt(int viewportY) const; // -1 if none
     void setHovered(int row);
     void setSelected(int row); // emits conversationSelected (no-op for non-Conv rows)
+    void showChannelContextMenu(int row, QPoint globalPos);
+    void showMpdmContextMenu(int row, QPoint globalPos);
     void paintRow(QPainter &p, int row, int y) const;
     void paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
     void paintAddChannelsRow(QPainter &p, int row, int y) const;
@@ -103,6 +109,8 @@ protected:
     std::vector<RowItem>      _rows;     // visual row list (includes headers/actions)
     // userId → {displayName, avatarUrl, ...}, rebuilt on setUsers().
     QHash<QString, UserInfo>  _userInfos;
+    // Slack username (user.name) → userId.value, for MPDM name parsing.
+    QHash<QString, QString>   _usernameToId;
     // convId.value → Unix epoch sec of last time the user opened that conversation in this app.
     // Persisted to QSettings so recency survives restarts.
     QHash<QString, qint64>    _visitedAt;

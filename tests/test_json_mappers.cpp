@@ -34,7 +34,9 @@ TEST_CASE("toUser full profile — real_name preferred over display_name", "[map
     CHECK(!u.isDeactivated);
 }
 
-TEST_CASE("toUser enterprise slug: real_name wins over AD-provisioned display_name", "[mappers][user]") {
+TEST_CASE(
+    "toUser enterprise slug: real_name wins over AD-provisioned display_name", "[mappers][user]"
+) {
     // Enterprise workspaces often auto-provision display_name from AD as a username
     // slug (e.g. "john.doe.dept") while real_name holds the human-readable full name.
     auto u = JsonMappers::toUser(obj(R"({
@@ -82,7 +84,7 @@ TEST_CASE("toUser status_emoji simple — colons stripped", "[mappers][user][sta
                     "status_emoji": ":palm_tree:", "status_text": "On vacation"}
     })"));
     CHECK(u.statusEmoji == "palm_tree");
-    CHECK(u.statusText  == "On vacation");
+    CHECK(u.statusText == "On vacation");
 }
 
 TEST_CASE("toUser status_emoji absent — empty string", "[mappers][user][status]") {
@@ -94,7 +96,10 @@ TEST_CASE("toUser status_emoji absent — empty string", "[mappers][user][status
     CHECK(u.statusText.isEmpty());
 }
 
-TEST_CASE("toUser status_emoji skin-tone modifier stripped — sidebar regression", "[mappers][user][status]") {
+TEST_CASE(
+    "toUser status_emoji skin-tone modifier stripped — sidebar regression",
+    "[mappers][user][status]"
+) {
     // Slack encodes a skin-toned emoji as ":baby::skin-tone-3:". After stripping
     // outer colons we get "baby::skin-tone-3". The skin-tone suffix must be removed
     // so that the base name "baby" resolves to the 👶 glyph instead of falling back
@@ -182,7 +187,10 @@ TEST_CASE("toConversation unread uses unread_count when non-zero", "[mappers][co
     CHECK(c.unread == 5);
 }
 
-TEST_CASE("toConversation unread falls back to 1 when latestTs > lastRead and count is 0", "[mappers][conv][unread]") {
+TEST_CASE(
+    "toConversation unread falls back to 1 when latestTs > lastRead and count is 0",
+    "[mappers][conv][unread]"
+) {
     auto c = JsonMappers::toConversation(obj(R"({
         "id": "C1", "name": "channel",
         "is_private": false, "is_im": false, "is_mpim": false,
@@ -224,7 +232,9 @@ TEST_CASE("toConversation unread is 0 when lastRead missing", "[mappers][conv][u
     CHECK(c.unread == 0);
 }
 
-TEST_CASE("toConversation latestTs from IM string shape triggers fallback", "[mappers][conv][unread]") {
+TEST_CASE(
+    "toConversation latestTs from IM string shape triggers fallback", "[mappers][conv][unread]"
+) {
     // DMs return latest as a bare ts string, not an object
     auto c = JsonMappers::toConversation(obj(R"({
         "id": "D1", "is_im": true, "is_mpim": false, "is_private": false,
@@ -242,8 +252,8 @@ TEST_CASE("toConversation mentionCount is mapped", "[mappers][conv][unread]") {
         "is_private": false, "is_im": false, "is_mpim": false,
         "unread_count": 3, "mention_count": 2
     })"));
-    CHECK(c.unread        == 3);
-    CHECK(c.mentionCount  == 2);
+    CHECK(c.unread == 3);
+    CHECK(c.mentionCount == 2);
 }
 
 TEST_CASE("toConversation mentionCount defaults to 0 when absent", "[mappers][conv][unread]") {
@@ -336,16 +346,16 @@ TEST_CASE("toFile basic fields", "[mappers][file]") {
         "original_w": 1920, "original_h": 1080,
         "size": 204800
     })"));
-    CHECK(f.id          == "F001");
-    CHECK(f.name        == "report.pdf");
-    CHECK(f.mimeType    == "application/pdf");
-    CHECK(f.prettyType  == "PDF");
-    CHECK(f.urlPrivate  == "https://files.slack.com/report.pdf");
-    CHECK(f.permalink   == "https://workspace.slack.com/files/report");
-    CHECK(f.thumbUrl    == "https://thumb.example.com/360.png");
-    CHECK(f.imageWidth  == 1920);
+    CHECK(f.id == "F001");
+    CHECK(f.name == "report.pdf");
+    CHECK(f.mimeType == "application/pdf");
+    CHECK(f.prettyType == "PDF");
+    CHECK(f.urlPrivate == "https://files.slack.com/report.pdf");
+    CHECK(f.permalink == "https://workspace.slack.com/files/report");
+    CHECK(f.thumbUrl == "https://thumb.example.com/360.png");
+    CHECK(f.imageWidth == 1920);
     CHECK(f.imageHeight == 1080);
-    CHECK(f.size        == 204800);
+    CHECK(f.size == 204800);
 }
 
 TEST_CASE("toFile thumb_360 preferred over thumb_480", "[mappers][file]") {
@@ -367,7 +377,7 @@ TEST_CASE("toFile original dimensions preferred over thumb dimensions", "[mapper
         "id": "F1", "original_w": 800, "original_h": 600,
         "thumb_360_w": 360, "thumb_360_h": 270
     })"));
-    CHECK(f.imageWidth  == 800);
+    CHECK(f.imageWidth == 800);
     CHECK(f.imageHeight == 600);
 }
 
@@ -375,7 +385,7 @@ TEST_CASE("toFile falls back to thumb_360 dimensions", "[mappers][file]") {
     auto f = JsonMappers::toFile(obj(R"({
         "id": "F1", "thumb_360_w": 360, "thumb_360_h": 270
     })"));
-    CHECK(f.imageWidth  == 360);
+    CHECK(f.imageWidth == 360);
     CHECK(f.imageHeight == 270);
 }
 
@@ -409,8 +419,8 @@ TEST_CASE("toBlock header with plain_text", "[mappers][block]") {
         "type": "header",
         "text": {"type": "plain_text", "text": "My Header"}
     })"));
-    CHECK(b.typeStr        == "header");
-    CHECK(b.text.text      == "My Header");
+    CHECK(b.typeStr == "header");
+    CHECK(b.text.text == "My Header");
     CHECK(b.text.entities.empty());
 }
 
@@ -420,9 +430,9 @@ TEST_CASE("toBlock image block", "[mappers][block]") {
         "image_url": "https://img.example.com/pic.png",
         "alt_text": "a picture"
     })"));
-    CHECK(b.typeStr  == "image");
+    CHECK(b.typeStr == "image");
     CHECK(b.imageUrl == "https://img.example.com/pic.png");
-    CHECK(b.altText  == "a picture");
+    CHECK(b.altText == "a picture");
     CHECK(b.text.text.isEmpty());
 }
 
@@ -480,7 +490,7 @@ TEST_CASE("toBlock rich_text section bold inline", "[mappers][block]") {
     })"));
     CHECK(b.text.text == "hi");
     REQUIRE(b.text.entities.size() == 1);
-    CHECK(b.text.entities[0].type   == EntityType::Bold);
+    CHECK(b.text.entities[0].type == EntityType::Bold);
     CHECK(b.text.entities[0].offset == 0);
     CHECK(b.text.entities[0].length == 2);
 }
@@ -539,7 +549,7 @@ TEST_CASE("toBlock rich_text preformatted", "[mappers][block]") {
     })"));
     CHECK(b.text.text == "code here");
     REQUIRE(b.text.entities.size() == 1);
-    CHECK(b.text.entities[0].type   == EntityType::Pre);
+    CHECK(b.text.entities[0].type == EntityType::Pre);
     CHECK(b.text.entities[0].offset == 0);
     CHECK(b.text.entities[0].length == 9);
 }
@@ -554,7 +564,7 @@ TEST_CASE("toBlock rich_text quote", "[mappers][block]") {
     })"));
     CHECK(b.text.text == "quoted");
     REQUIRE(b.text.entities.size() == 1);
-    CHECK(b.text.entities[0].type   == EntityType::Blockquote);
+    CHECK(b.text.entities[0].type == EntityType::Blockquote);
     CHECK(b.text.entities[0].offset == 0);
     CHECK(b.text.entities[0].length == 6);
 }
@@ -601,16 +611,16 @@ TEST_CASE("toAttachment all fields", "[mappers][attachment]") {
         "thumb_url": "https://img.example.com/thumb.png",
         "footer": "Posted via App"
     })"));
-    CHECK(a.fallback   == "fb");
-    CHECK(a.color      == "#36a64f");
-    CHECK(a.pretext    == "pre");
+    CHECK(a.fallback == "fb");
+    CHECK(a.color == "#36a64f");
+    CHECK(a.pretext == "pre");
     CHECK(a.authorName == "Author");
-    CHECK(a.title      == "My title");
-    CHECK(a.titleLink  == "https://link.example.com");
-    CHECK(a.text.text  == "plain body");
-    CHECK(a.imageUrl   == "https://img.example.com/img.png");
-    CHECK(a.thumbUrl   == "https://img.example.com/thumb.png");
-    CHECK(a.footer     == "Posted via App");
+    CHECK(a.title == "My title");
+    CHECK(a.titleLink == "https://link.example.com");
+    CHECK(a.text.text == "plain body");
+    CHECK(a.imageUrl == "https://img.example.com/img.png");
+    CHECK(a.thumbUrl == "https://img.example.com/thumb.png");
+    CHECK(a.footer == "Posted via App");
 }
 
 TEST_CASE("toAttachment text is parsed as mrkdwn", "[mappers][attachment]") {
@@ -628,9 +638,9 @@ TEST_CASE("toSearchResult extracts conv from nested channel object", "[mappers][
         "channel": {"id": "C001", "name": "general"},
         "ts": "123.456", "user": "U1", "text": "found it"
     })"));
-    CHECK(r.conv     == ConversationId{"C001"});
+    CHECK(r.conv == ConversationId{"C001"});
     CHECK(r.convName == "general");
-    CHECK(r.msg.ts   == "123.456");
+    CHECK(r.msg.ts == "123.456");
     CHECK(r.msg.text.text == "found it");
 }
 
@@ -659,20 +669,26 @@ TEST_CASE("toConversations skips entries with empty id", "[mappers][batch]") {
 }
 
 TEST_CASE("toMessages reverseOrder=true reverses the array", "[mappers][batch]") {
-    auto msgs = JsonMappers::toMessages(arr(R"([
+    auto msgs = JsonMappers::toMessages(
+        arr(R"([
         {"ts":"1.000","user":"U1","text":"first"},
         {"ts":"2.000","user":"U1","text":"second"}
-    ])"), true);
+    ])"),
+        true
+    );
     REQUIRE(msgs.size() == 2);
     CHECK(msgs[0].ts == "2.000");
     CHECK(msgs[1].ts == "1.000");
 }
 
 TEST_CASE("toMessages reverseOrder=false preserves array order", "[mappers][batch]") {
-    auto msgs = JsonMappers::toMessages(arr(R"([
+    auto msgs = JsonMappers::toMessages(
+        arr(R"([
         {"ts":"1.000","user":"U1","text":"first"},
         {"ts":"2.000","user":"U1","text":"second"}
-    ])"), false);
+    ])"),
+        false
+    );
     REQUIRE(msgs.size() == 2);
     CHECK(msgs[0].ts == "1.000");
     CHECK(msgs[1].ts == "2.000");
@@ -685,4 +701,85 @@ TEST_CASE("toSearchResults skips entries with empty conv id", "[mappers][batch]"
     ])"));
     REQUIRE(results.size() == 1);
     CHECK(results[0].conv == ConversationId{"C1"});
+}
+
+// ── is_starred ────────────────────────────────────────────────────────────────
+
+TEST_CASE("toConversation is_starred true", "[mappers][conv][star]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "is_starred": true
+    })"));
+    CHECK(c.isStarred == true);
+}
+
+TEST_CASE("toConversation is_starred absent defaults to false", "[mappers][conv][star]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(c.isStarred == false);
+}
+
+// ── notification_preference ───────────────────────────────────────────────────
+
+TEST_CASE("toConversation notification_preference=everything → All", "[mappers][conv][notif]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "notification_preference": "everything"
+    })"));
+    CHECK(c.notifLevel == NotificationLevel::All);
+}
+
+TEST_CASE("toConversation notification_preference=mentions → Mentions", "[mappers][conv][notif]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "notification_preference": "mentions"
+    })"));
+    CHECK(c.notifLevel == NotificationLevel::Mentions);
+}
+
+TEST_CASE("toConversation notification_preference=nothing → Mute", "[mappers][conv][notif]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "notification_preference": "nothing"
+    })"));
+    CHECK(c.notifLevel == NotificationLevel::Mute);
+}
+
+TEST_CASE("toConversation notification_preference absent → Default", "[mappers][conv][notif]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(c.notifLevel == NotificationLevel::Default);
+}
+
+// ── Mpim members ──────────────────────────────────────────────────────────────
+
+TEST_CASE("toConversation Mpim parses members array", "[mappers][conv][mpim]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "G1", "name": "mpdm-alice--bob--1",
+        "is_mpim": true, "is_im": false, "is_private": true,
+        "is_member": true,
+        "members": ["U1", "U2", "U3"]
+    })"));
+    REQUIRE(c.kind == ConvKind::Mpim);
+    REQUIRE(c.members.size() == 3);
+    CHECK(c.members[0] == UserId{"U1"});
+    CHECK(c.members[1] == UserId{"U2"});
+    CHECK(c.members[2] == UserId{"U3"});
+}
+
+TEST_CASE("toConversation non-Mpim ignores members array", "[mappers][conv][mpim]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "members": ["U1", "U2"]
+    })"));
+    CHECK(c.members.empty());
 }

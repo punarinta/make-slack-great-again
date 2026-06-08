@@ -35,14 +35,28 @@ static QPixmap loadMenuIcon(const QString &path) {
     );
 }
 
+void ContextMenu::addHeader(const QString &text) {
+    Item it;
+    it.text   = text;
+    it.header = true;
+    _items.push_back(std::move(it));
+}
+
 void ContextMenu::addItem(
-    const QString &text, std::function<void()> action, bool destructive, const QString &iconPath
+    const QString        &text,
+    std::function<void()> action,
+    bool                  destructive,
+    const QString        &iconPath,
+    bool                  selected
 ) {
     Item it;
     it.text        = text;
     it.action      = std::move(action);
     it.destructive = destructive;
     it.icon        = loadMenuIcon(iconPath);
+    it.selected    = selected;
+    if (selected)
+        _hasChecked = true;
     _items.push_back(std::move(it));
 }
 
@@ -71,7 +85,11 @@ void ContextMenu::addSeparator() {
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
 int ContextMenu::itemH(int i) const {
-    return _items[i].separator ? kSepH : kItemH;
+    if (_items[i].separator)
+        return kSepH;
+    if (_items[i].header)
+        return kHeaderH;
+    return kItemH;
 }
 
 int ContextMenu::itemTop(int i) const {
@@ -104,12 +122,13 @@ void ContextMenu::updateGeometry(const QPoint &globalPos) {
     shortcutFont.setPointSizeF(shortcutFont.pointSizeF() * 0.85);
     const QFontMetrics sfm(shortcutFont);
 
-    int w = kMinW;
+    const int checkInset = _hasChecked ? kCheckW : 0;
+    int       w          = kMinW;
     for (const auto &it : _items) {
-        if (it.separator)
+        if (it.separator || it.header)
             continue;
         const int iconW = it.icon.isNull() ? 0 : (kIconSize + kIconGap);
-        int       itemW = kPadH + iconW + fm.horizontalAdvance(it.text) + kPadH;
+        int       itemW = kPadH + checkInset + iconW + fm.horizontalAdvance(it.text) + kPadH;
         if (!it.shortcut.isEmpty())
             itemW += kShortcutGap + sfm.horizontalAdvance(it.shortcut) + kPadH;
         if (it.submenu)
@@ -193,20 +212,35 @@ void ContextMenu::paintEvent(QPaintEvent *) {
     p.drawRoundedRect(mrf, kRadius, kRadius);
 
     // ── Items ─────────────────────────────────────────────────────────────
-    const QFont baseFont     = QApplication::font();
-    QFont       shortcutFont = baseFont;
+    const QFont baseFont   = QApplication::font();
+    QFont       headerFont = baseFont;
+    headerFont.setPointSizeF(headerFont.pointSizeF() * 0.82);
+    QFont shortcutFont = baseFont;
     shortcutFont.setPointSizeF(shortcutFont.pointSizeF() * 0.85);
     const QFontMetrics fm(baseFont);
     const QFontMetrics sfm(shortcutFont);
+
+    // When any item carries a checkmark, all content shifts right to make room.
+    const int checkInset = _hasChecked ? kCheckW : 0;
 
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
         const QRect ir = itemRect(i);
 
         if (_items[i].separator) {
-            // Thin divider line vertically centered in the separator row
             const int lineY = ir.top() + ir.height() / 2;
             p.setPen(QColor(0, 0, 0, 18));
             p.drawLine(mr.left() + kPadH / 2, lineY, mr.right() - kPadH / 2, lineY);
+            continue;
+        }
+
+        if (_items[i].header) {
+            p.setFont(headerFont);
+            p.setPen(Th::c().contextMenu.itemTextDim);
+            p.drawText(
+                ir.adjusted(kPadH + checkInset, 0, -kPadH, -2),
+                Qt::AlignLeft | Qt::AlignBottom,
+                _items[i].text
+            );
             continue;
         }
 
@@ -219,8 +253,20 @@ void ContextMenu::paintEvent(QPaintEvent *) {
             p.setClipping(false);
         }
 
-        const QColor textColor =
-            _items[i].destructive ? Th::c().contextMenu.dangerText : Th::c().contextMenu.itemText;
+        const bool   isSelected = _items[i].selected;
+        const QColor accentCol  = Th::c().accent.def;
+        const QColor textColor  = _items[i].destructive ? Th::c().contextMenu.dangerText
+                                  : isSelected          ? accentCol
+                                                        : Th::c().contextMenu.itemText;
+
+        // Checkmark for the selected item
+        if (isSelected) {
+            const int cx = ir.left() + kPadH / 2 + checkInset / 2 - 1;
+            const int cy = ir.top() + ir.height() / 2;
+            p.setPen(QPen(accentCol, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            p.drawLine(cx - 4, cy + 1, cx - 1, cy + 4);
+            p.drawLine(cx - 1, cy + 4, cx + 5, cy - 3);
+        }
 
         // Right-side hint (shortcut or submenu arrow)
         if (!_items[i].shortcut.isEmpty()) {
@@ -241,12 +287,24 @@ void ContextMenu::paintEvent(QPaintEvent *) {
             );
         }
 
-        // Icon
-        const int iconW  = _items[i].icon.isNull() ? 0 : (kIconSize + kIconGap);
-        const int textX0 = ir.left() + kPadH;
+        // Icon — recolorised in accent when selected
+        const int contentX = ir.left() + kPadH + checkInset;
+        const int iconW    = _items[i].icon.isNull() ? 0 : (kIconSize + kIconGap);
         if (!_items[i].icon.isNull()) {
             const int iconY = ir.top() + (ir.height() - kIconSize) / 2;
-            p.drawPixmap(QRect(textX0, iconY, kIconSize, kIconSize), _items[i].icon);
+            if (isSelected) {
+                // Recolourise the icon pixmap to accent color at paint time.
+                QPixmap tinted(_items[i].icon.size());
+                tinted.fill(Qt::transparent);
+                QPainter tp(&tinted);
+                tp.drawPixmap(0, 0, _items[i].icon);
+                tp.setCompositionMode(QPainter::CompositionMode_SourceIn);
+                tp.fillRect(tinted.rect(), accentCol);
+                tp.end();
+                p.drawPixmap(QRect(contentX, iconY, kIconSize, kIconSize), tinted);
+            } else {
+                p.drawPixmap(QRect(contentX, iconY, kIconSize, kIconSize), _items[i].icon);
+            }
         }
 
         // Label
@@ -256,9 +314,9 @@ void ContextMenu::paintEvent(QPaintEvent *) {
             !_items[i].shortcut.isEmpty()
                 ? kShortcutGap + sfm.horizontalAdvance(_items[i].shortcut)
                 : (_items[i].submenu ? kShortcutGap + sfm.horizontalAdvance("›") : 0);
-        const int availW = ir.width() - kPadH - iconW - kPadH - rightHintW;
+        const int availW = ir.width() - kPadH - checkInset - iconW - kPadH - rightHintW;
         p.drawText(
-            QRect(textX0 + iconW, ir.top(), availW, ir.height()),
+            QRect(contentX + iconW, ir.top(), availW, ir.height()),
             Qt::AlignVCenter | Qt::AlignLeft,
             fm.elidedText(_items[i].text, Qt::ElideRight, availW)
         );
@@ -269,7 +327,7 @@ void ContextMenu::paintEvent(QPaintEvent *) {
 
 int ContextMenu::hoveredAt(const QPoint &pos) const {
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-        if (_items[i].separator)
+        if (_items[i].separator || _items[i].header)
             continue;
         if (itemRect(i).contains(pos))
             return i;

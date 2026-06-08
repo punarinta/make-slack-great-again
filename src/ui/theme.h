@@ -127,6 +127,7 @@ struct IconColors {
     QColor danger;  // destructive icon
     QColor onDark;  // icon on dark background
     QColor warning; // icon in warning context
+    QColor starred; // starred-state icon (golden amber)
     QColor dim;     // very subdued icon
 };
 

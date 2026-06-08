@@ -20,17 +20,24 @@ public:
         std::function<void()> action;
         bool                  destructive = false; // draws label in red
         bool                  separator   = false; // thin divider; other fields ignored
+        bool                  header      = false; // non-clickable section label
+        bool                  selected    = false; // checkmark + accent color
         QPixmap               icon; // optional 16×16 icon rendered to the left of text
     };
 
     explicit ContextMenu(QWidget *parent = nullptr);
 
+    // Non-clickable section label (e.g. "Notify you about…").
+    void addHeader(const QString &text);
+
     // icon: optional SVG path (e.g. ":/ui/edit-3.svg"); pass empty string for no icon.
+    // selected: draws a checkmark to the left and renders text+icon in accent color.
     void addItem(
         const QString        &text,
         std::function<void()> action,
         bool                  destructive = false,
-        const QString        &iconPath    = {}
+        const QString        &iconPath    = {},
+        bool                  selected    = false
     );
     void addItem(
         const QString        &text,
@@ -47,6 +54,7 @@ public:
     void popup(const QPoint &globalPos);
 
     static constexpr int kIconSize = 16; // icon square size (public for use in .cpp)
+    static constexpr int kCheckW = 16; // checkmark zone width (reserved when any item is selected)
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -66,11 +74,13 @@ private:
     void  updateGeometry(const QPoint &globalPos);
 
     std::vector<Item> _items;
-    int               _hovered = -1;
-    int               _pressed = -1;
+    int               _hovered    = -1;
+    int               _pressed    = -1;
+    bool              _hasChecked = false; // true if any item has selected=true
 
     // Layout
     static constexpr int kItemH       = 36;  // row height for a normal item
+    static constexpr int kHeaderH     = 26;  // height of a non-clickable section label
     static constexpr int kSepH        = 9;   // height of a separator row
     static constexpr int kPadH        = 12;  // horizontal text padding
     static constexpr int kIconGap     = 8;   // gap between icon and text
@@ -80,7 +90,7 @@ private:
     static constexpr int kMinW        = 200; // minimum menu width
     static constexpr int kShortcutGap = 24;  // min space between label and shortcut
 
-    int itemH(int i) const;   // height of item i (kItemH or kSepH)
+    int itemH(int i) const;   // height of item i (kItemH, kHeaderH, or kSepH)
     int itemTop(int i) const; // cumulative top in menu-card coords
     int totalItemsH() const;  // sum of all item heights
 };

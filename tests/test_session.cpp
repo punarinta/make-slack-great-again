@@ -102,6 +102,18 @@ struct StubBackend : Backend {
         };
     }
 
+    struct StarCall {
+        ConversationId id;
+        bool           star;
+    };
+    std::vector<StarCall>       starCalls;
+    std::vector<ConversationId> leaveCalls;
+
+    void starConversation(ConversationId id, bool star) override {
+        starCalls.push_back({id, star});
+    }
+    void leaveConversation(ConversationId id) override { leaveCalls.push_back(id); }
+
     void fireEvent(Event e) { _events.fire(std::move(e)); }
 };
 
@@ -665,4 +677,145 @@ TEST_CASE_METHOD(
 
     CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
     CHECK(session->findConversation(ConversationId{"C_NM"})->unread == 0);
+}
+
+// ── starConversation ──────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "starConversation optimistically sets isStarred", "[session][star]"
+) {
+    REQUIRE(!session->findConversation(ConversationId{"C1"})->isStarred);
+    session->starConversation(ConversationId{"C1"}, true);
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "starConversation optimistically clears isStarred", "[session][star]"
+) {
+    session->starConversation(ConversationId{"C1"}, true);
+    session->starConversation(ConversationId{"C1"}, false);
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == false);
+}
+
+TEST_CASE_METHOD(SessionFixture, "starConversation delegates to backend", "[session][star]") {
+    session->starConversation(ConversationId{"C1"}, true);
+    REQUIRE(stub->starCalls.size() == 1);
+    CHECK(stub->starCalls[0].id == ConversationId{"C1"});
+    CHECK(stub->starCalls[0].star == true);
+
+    session->starConversation(ConversationId{"C1"}, false);
+    REQUIRE(stub->starCalls.size() == 2);
+    CHECK(stub->starCalls[1].star == false);
+}
+
+// ── leaveConversation ─────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "leaveConversation optimistically removes conversation", "[session][leave]"
+) {
+    REQUIRE(session->findConversation(ConversationId{"C1"}) != nullptr);
+    session->leaveConversation(ConversationId{"C1"});
+    CHECK(session->findConversation(ConversationId{"C1"}) == nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "leaveConversation only removes the target conversation", "[session][leave]"
+) {
+    session->leaveConversation(ConversationId{"C1"});
+    CHECK(session->findConversation(ConversationId{"C2"}) != nullptr);
+}
+
+TEST_CASE_METHOD(SessionFixture, "leaveConversation delegates to backend", "[session][leave]") {
+    session->leaveConversation(ConversationId{"C1"});
+    REQUIRE(stub->leaveCalls.size() == 1);
+    CHECK(stub->leaveCalls[0] == ConversationId{"C1"});
+}
+
+TEST_CASE_METHOD(SessionFixture, "leaveConversation unknown id is a no-op", "[session][leave]") {
+    session->leaveConversation(ConversationId{"C_GHOST"});
+    CHECK(session->findConversation(ConversationId{"C1"}) != nullptr);
+    CHECK(session->findConversation(ConversationId{"C2"}) != nullptr);
+}
+
+// ── setNotificationLevel ──────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(SessionFixture, "setNotificationLevel updates notifLevel", "[session][notif]") {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::All);
+    CHECK(session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::All);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "setNotificationLevel Mute also sets isMuted", "[session][notif]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::Mute);
+    const auto *c = session->findConversation(ConversationId{"C1"});
+    CHECK(c->notifLevel == NotificationLevel::Mute);
+    CHECK(c->isMuted == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "setNotificationLevel non-Mute clears isMuted", "[session][notif]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::Mute);
+    REQUIRE(session->findConversation(ConversationId{"C1"})->isMuted == true);
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::Mentions);
+    const auto *c = session->findConversation(ConversationId{"C1"});
+    CHECK(c->notifLevel == NotificationLevel::Mentions);
+    CHECK(c->isMuted == false);
+}
+
+// ── API reload merge: isStarred and notifLevel ────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "API reload preserves locally-starred state when API returns false",
+    "[session][star][merge]"
+) {
+    session->starConversation(ConversationId{"C1"}, true);
+    REQUIRE(session->findConversation(ConversationId{"C1"})->isStarred == true);
+
+    // API reload returns is_starred=false (field absent / not yet reflected by Slack).
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom};
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "API reload does not restore isStarred after explicit unstar",
+    "[session][star][merge]"
+) {
+    session->starConversation(ConversationId{"C1"}, true);
+    session->starConversation(ConversationId{"C1"}, false);
+    REQUIRE(session->findConversation(ConversationId{"C1"})->isStarred == false);
+
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom};
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == false);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "API reload preserves locally-set notifLevel when API returns Default",
+    "[session][notif][merge]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::All);
+    REQUIRE(session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::All);
+
+    // API reload returns Default (field absent in conversations.list).
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom};
+    CHECK(session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::All);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "API reload uses API notifLevel when it carries an explicit value",
+    "[session][notif][merge]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::All);
+
+    Conversation c1Mentions = kGeneral;
+    c1Mentions.notifLevel   = NotificationLevel::Mentions;
+    stub->_convs            = std::vector<Conversation>{c1Mentions, kRandom};
+    CHECK(
+        session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::Mentions
+    );
 }

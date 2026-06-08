@@ -59,6 +59,21 @@ Conversation toConversation(const QJsonObject &o) {
     if (kind == ConvKind::Im)
         dmUser = UserId{o.value("user").toString()};
 
+    std::vector<UserId> members;
+    if (kind == ConvKind::Mpim) {
+        for (const auto &v : o.value("members").toArray())
+            members.push_back(UserId{v.toString()});
+    }
+
+    const QString     notifPref  = o.value("notification_preference").toString();
+    NotificationLevel notifLevel = NotificationLevel::Default;
+    if (notifPref == "everything")
+        notifLevel = NotificationLevel::All;
+    else if (notifPref == "nothing")
+        notifLevel = NotificationLevel::Mute;
+    else if (notifPref == "mentions")
+        notifLevel = NotificationLevel::Mentions;
+
     const auto topic   = o.value("topic").toObject().value("value").toString().trimmed();
     const auto purpose = o.value("purpose").toObject().value("value").toString().trimmed();
 
@@ -92,7 +107,10 @@ Conversation toConversation(const QJsonObject &o) {
         .unread       = unread,
         .mentionCount = o.value("mention_count").toInt(),
         .dmUser       = dmUser,
+        .members      = std::move(members),
         .isMuted      = o.value("is_muted").toBool(),
+        .isStarred    = o.value("is_starred").toBool(),
+        .notifLevel   = notifLevel,
     };
 }
 

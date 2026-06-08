@@ -54,6 +54,8 @@ Then scroll down to **User Token Scopes** and add the following scopes:
 | `chat:write` | Send messages |
 | `reactions:write` | Add/remove reactions |
 | `files:write` | Upload files |
+| `stars:write` | Star/unstar channels and conversations |
+| `stars:read` | List starred channels and conversations |
 
 ### 3. Enable socket mode
 

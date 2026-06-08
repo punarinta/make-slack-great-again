@@ -134,6 +134,7 @@ const Theme kSlackDark = {
             .danger  = QColor("#C0392B"),
             .onDark  = QColor("#FFFFFF"),
             .warning = QColor("#7A5800"),
+            .starred = QColor("#C6920A"),
             .dim     = QColor("#CCCCCC"),
         },
     .titleBar =

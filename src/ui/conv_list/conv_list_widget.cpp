@@ -109,6 +109,7 @@ void ConvListWidget::selectRow(int row) {
 
 void ConvListWidget::setUsers(const std::vector<User> &users) {
     _userInfos.clear();
+    _usernameToId.clear();
     _userInfos.reserve(users.size());
     for (const auto &u : users) {
         _userInfos.insert(
@@ -116,12 +117,15 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
             {
                 .displayName = Emoji::expandCodes(u.displayName.isEmpty() ? u.name : u.displayName),
                 .avatarUrl   = u.avatarUrl,
+                .name        = u.name,
                 .isDeactivated = u.isDeactivated,
                 .isActive      = u.isActive,
                 .dndEnabled    = u.dndEnabled,
                 .statusEmoji   = u.statusEmoji,
             }
         );
+        if (!u.name.isEmpty())
+            _usernameToId.insert(u.name, u.id.value);
     }
     rebuildFilteredConvs();
 }
@@ -254,6 +258,22 @@ int ConvListWidget::rowForId(ConversationId id) const {
     return -1;
 }
 
+// Parses "mpdm-alice.smith--bob.jones--3" → ["alice.smith", "bob.jones"]
+static QStringList parseMpdmUsernames(const QString &name) {
+    QString s = name;
+    if (s.startsWith("mpdm-"))
+        s = s.mid(5);
+    // Strip trailing numeric suffix like "-1" or "-3"
+    const int lastDash = s.lastIndexOf('-');
+    if (lastDash > 0) {
+        bool ok = false;
+        s.mid(lastDash + 1).toInt(&ok);
+        if (ok)
+            s = s.left(lastDash);
+    }
+    return s.split("--", Qt::SkipEmptyParts);
+}
+
 QString ConvListWidget::resolvedName(int row) const {
     if (row < 0 || row >= (int)_rows.size())
         return {};
@@ -261,10 +281,35 @@ QString ConvListWidget::resolvedName(int row) const {
     if (ri.kind != RowKind::Conv)
         return {};
     const auto &conv = _convs[ri.convIdx];
-    if ((conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim) && conv.dmUser) {
+    if (conv.kind == ConvKind::Im && conv.dmUser) {
         const auto it = _userInfos.constFind(conv.dmUser->value);
         if (it != _userInfos.constEnd() && !it->displayName.isEmpty())
             return it->displayName;
+    }
+    if (conv.kind == ConvKind::Mpim) {
+        QStringList names;
+        if (!conv.members.empty()) {
+            for (const auto &uid : conv.members) {
+                if (!_meUserId.value.isEmpty() && uid == _meUserId)
+                    continue;
+                const auto it = _userInfos.constFind(uid.value);
+                if (it != _userInfos.constEnd() && !it->displayName.isEmpty())
+                    names.append(it->displayName);
+            }
+        } else {
+            for (const QString &uname : parseMpdmUsernames(conv.name)) {
+                const QString uid = _usernameToId.value(uname);
+                if (!uid.isEmpty() && uid == _meUserId.value)
+                    continue;
+                const auto it = uid.isEmpty() ? _userInfos.constEnd() : _userInfos.constFind(uid);
+                names.append(
+                    (it != _userInfos.constEnd() && !it->displayName.isEmpty()) ? it->displayName
+                                                                                : uname
+                );
+            }
+        }
+        if (!names.isEmpty())
+            return names.join(", ");
     }
     return Emoji::expandCodes(conv.name);
 }
@@ -348,7 +393,87 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
     setHovered(rowAt(e->pos().y()));
 }
 
+static void buildNotifySection(
+    ContextMenu *menu, ConversationId id, NotificationLevel level, ConvListWidget *self
+) {
+    menu->addHeader(ConvListWidget::tr("Notify you about…"));
+    menu->addItem(
+        ConvListWidget::tr("All new posts"),
+        [self, id] { emit self->setNotificationLevelRequested(id, NotificationLevel::All); },
+        false,
+        ":/ui/bell.svg",
+        level == NotificationLevel::All
+    );
+    menu->addItem(
+        ConvListWidget::tr("Just mentions"),
+        [self, id] { emit self->setNotificationLevelRequested(id, NotificationLevel::Mentions); },
+        false,
+        ":/ui/bell.svg",
+        level == NotificationLevel::Mentions || level == NotificationLevel::Default
+    );
+    menu->addItem(
+        ConvListWidget::tr("Mute and hide"),
+        [self, id] { emit self->setNotificationLevelRequested(id, NotificationLevel::Mute); },
+        false,
+        ":/ui/bell-off.svg",
+        level == NotificationLevel::Mute
+    );
+}
+
+void ConvListWidget::showChannelContextMenu(int row, QPoint globalPos) {
+    const auto &conv    = _convs[_rows[row].convIdx];
+    const bool  starred = conv.isStarred;
+    auto       *menu    = new ContextMenu(viewport());
+
+    menu->addItem(
+        starred ? tr("Unstar channel") : tr("Star channel"),
+        [this, id = conv.id, starred] { emit starConversationRequested(id, !starred); }
+    );
+    menu->addSeparator();
+    buildNotifySection(menu, conv.id, conv.notifLevel, this);
+    menu->addSeparator();
+    menu->addItem(
+        tr("Leave channel"),
+        [this, id = conv.id] { emit leaveConversationRequested(id); },
+        /*destructive=*/true
+    );
+    menu->popup(globalPos);
+}
+
+void ConvListWidget::showMpdmContextMenu(int row, QPoint globalPos) {
+    const auto &conv    = _convs[_rows[row].convIdx];
+    const bool  starred = conv.isStarred;
+    auto       *menu    = new ContextMenu(viewport());
+
+    menu->addItem(
+        starred ? tr("Unstar conversation") : tr("Star conversation"),
+        [this, id = conv.id, starred] { emit starConversationRequested(id, !starred); }
+    );
+    menu->addSeparator();
+    buildNotifySection(menu, conv.id, conv.notifLevel, this);
+    menu->addSeparator();
+    menu->addItem(
+        tr("Leave conversation"),
+        [this, id = conv.id] { emit leaveConversationRequested(id); },
+        /*destructive=*/true
+    );
+    menu->popup(globalPos);
+}
+
 void ConvListWidget::doMousePress(QMouseEvent *e) {
+    if (e->button() == Qt::RightButton) {
+        const int row = rowAt(e->pos().y());
+        if (row >= 0 && _rows[row].kind == RowKind::Conv) {
+            const auto &conv = _convs[_rows[row].convIdx];
+            if (conv.kind == ConvKind::Mpim) {
+                showMpdmContextMenu(row, e->globalPosition().toPoint());
+            } else if (conv.kind == ConvKind::PublicChannel ||
+                       conv.kind == ConvKind::PrivateChannel) {
+                showChannelContextMenu(row, e->globalPosition().toPoint());
+            }
+        }
+        return;
+    }
     if (e->button() != Qt::LeftButton)
         return;
     const int total  = static_cast<int>(_rows.size()) * kRowH;
@@ -622,7 +747,50 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const int  badgeW = conv.unread == 0 ? 0 : isHighPriority ? (conv.unread > 9 ? 28 : 20) : 14;
 
     const int leftX = kPadH + kGroupIndent;
-    if (isDm && conv.dmUser) {
+    if (conv.kind == ConvKind::Mpim) {
+        // Rounded square icon with participant count (excluding self)
+        const int avY          = y + (kRowH - kAvatarSize) / 2;
+        int       displayCount = 0;
+        if (!conv.members.empty()) {
+            for (const auto &uid : conv.members) {
+                if (_meUserId.value.isEmpty() || uid != _meUserId)
+                    ++displayCount;
+            }
+        } else {
+            const QStringList unames = parseMpdmUsernames(conv.name);
+            displayCount             = unames.size();
+            for (const QString &uname : unames) {
+                if (_usernameToId.value(uname) == _meUserId.value && !_meUserId.value.isEmpty())
+                    --displayCount;
+            }
+        }
+        if (displayCount <= 0)
+            displayCount = 1;
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().presence.away);
+        p.drawRoundedRect(
+            QRect(leftX, avY, kAvatarSize, kAvatarSize), kAvatarRadius, kAvatarRadius
+        );
+
+        QFont cf = font;
+        cf.setPointSizeF(kAvatarSize * 0.38);
+        cf.setBold(true);
+        p.setFont(cf);
+        p.setPen(Qt::white);
+        p.drawText(
+            QRect(leftX, avY, kAvatarSize, kAvatarSize),
+            Qt::AlignCenter,
+            displayCount > 0 ? QString::number(displayCount) : "+"
+        );
+
+        const int     nameX = leftX + kAvatarSize + kAvatarGap;
+        const int     maxW  = viewport()->width() - nameX - badgeW - 8;
+        const QString name  = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
+        p.setFont(font);
+        p.setPen(textColor);
+        p.drawText(nameX, textY, name);
+    } else if (conv.kind == ConvKind::Im && conv.dmUser) {
         const int avY = y + (kRowH - kAvatarSize) / 2;
         drawUserAvatar(p, QRect(leftX, avY, kAvatarSize, kAvatarSize), conv.dmUser->value, rowBg);
 

@@ -35,6 +35,7 @@ using Ts = QString;
 
 enum class ConvKind { PublicChannel, PrivateChannel, Im, Mpim };
 enum class AuthState { NotLoggedIn, LoggingIn, LoggedIn };
+enum class NotificationLevel { Default, All, Mentions, Mute };
 
 struct Capabilities {
     bool typing       = false;
@@ -70,7 +71,10 @@ struct Conversation {
     int            unread       = 0;
     int            mentionCount = 0; // @mentions in channels; for DMs treat all unread as mentions
     std::optional<UserId> dmUser;    // set for Im conversations
+    std::vector<UserId>   members;   // set for Mpim conversations (all participants)
     bool                  isMuted                                = false;
+    bool                  isStarred                              = false;
+    NotificationLevel     notifLevel                             = NotificationLevel::Default;
     bool                  operator==(const Conversation &) const = default;
 };
 

@@ -26,7 +26,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(MSGA_CLAZY "Add 'clazy' target for Qt-aware static analysis" OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Test)
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
 
 include(FetchContent)

@@ -45,12 +45,20 @@ FakeBackend::FakeBackend() : _authState(AuthState::LoggedIn) {
          .lastRead = "0",
          .unread   = 1,
          .dmUser   = std::optional<UserId>(UserId{"U002"})},
+        {.id       = ConversationId{"G001"},
+         .kind     = ConvKind::Mpim,
+         .name     = "mpdm-alice--bob--charlie-1",
+         .isMember = true,
+         .lastRead = "0",
+         .unread   = 0,
+         .members  = {UserId{"U002"}, UserId{"U001"}, UserId{"U004"}}},
     };
 
     _users = std::vector<User>{
         {UserId{"U001"}, "bob", "Bob Builder", "", false, true},
         {UserId{"U002"}, "alice", "Alice Wonder", "", false, false},
         {UserId{"U003"}, "bot", "HelperBot", "", true, false},
+        {UserId{"U004"}, "charlie", "Charlie Dev", "", false, false},
     };
 
     _history["C001"] = {

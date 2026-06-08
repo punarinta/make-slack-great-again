@@ -11,6 +11,7 @@
         <!-- App icons (Lucide — https://lucide.dev/) -->
         <file alias="ui/search.svg">../gfx/ui/search.svg</file>
         <file alias="ui/star.svg">../gfx/ui/star.svg</file>
+        <file alias="ui/star-solid.svg">../gfx/ui/star-solid.svg</file>
         <file alias="ui/send.svg">../gfx/ui/send.svg</file>
         <file alias="ui/paperclip.svg">../gfx/ui/paperclip.svg</file>
         <file alias="ui/smile.svg">../gfx/ui/smile.svg</file>
@@ -41,5 +42,8 @@
         <file alias="ui/trash-2.svg">../gfx/ui/trash-2.svg</file>
         <file alias="ui/share-2.svg">../gfx/ui/share-2.svg</file>
         <file alias="ui/lock.svg">../gfx/ui/lock.svg</file>
+        <file alias="ui/bell.svg">../gfx/ui/bell.svg</file>
+        <file alias="ui/bell-off.svg">../gfx/ui/bell-off.svg</file>
+        <file alias="ui/log-out.svg">../gfx/ui/log-out.svg</file>
     </qresource>
 </RCC>

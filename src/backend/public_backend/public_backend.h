@@ -52,6 +52,8 @@ public:
 
     void pinMessage(ConversationId, Ts) override;
     void unpinMessage(ConversationId, Ts) override;
+    void starConversation(ConversationId, bool star) override;
+    void leaveConversation(ConversationId) override;
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;

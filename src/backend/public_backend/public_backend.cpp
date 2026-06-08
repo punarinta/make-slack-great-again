@@ -433,6 +433,22 @@ void PublicBackend::unpinMessage(ConversationId conv, Ts ts) {
     });
 }
 
+void PublicBackend::starConversation(ConversationId conv, bool star) {
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    _api->call(star ? "stars.add" : "stars.remove", params, {}, [star](QString e) {
+        qWarning() << (star ? "starConversation" : "unstarConversation") << "error:" << e;
+    });
+}
+
+void PublicBackend::leaveConversation(ConversationId conv) {
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    _api->call("conversations.leave", params, {}, [](QString e) {
+        qWarning() << "leaveConversation error:" << e;
+    });
+}
+
 void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
     if (!_realtime)
         return;
