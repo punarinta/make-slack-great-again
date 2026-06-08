@@ -27,10 +27,7 @@ int main(int argc, char **argv) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-static WorkspaceSwitcher::Entry makeEntry(const QString &id,
-                                          const QString &name,
-                                          int unread = 0)
-{
+static WorkspaceSwitcher::Entry makeEntry(const QString &id, const QString &name, int unread = 0) {
     return {id, name, /*iconUrl=*/{}, unread};
 }
 
@@ -55,9 +52,9 @@ TEST_CASE("Entry::unread defaults to zero", "[workspace_switcher][badge]") {
 
 TEST_CASE("setWorkspaces carries unread counts through", "[workspace_switcher][badge]") {
     WorkspaceSwitcher w;
-    w.setWorkspaces({makeEntry("T1", "Alpha", 5),
-                     makeEntry("T2", "Beta",  0),
-                     makeEntry("T3", "Gamma", 99)});
+    w.setWorkspaces(
+        {makeEntry("T1", "Alpha", 5), makeEntry("T2", "Beta", 0), makeEntry("T3", "Gamma", 99)}
+    );
     // After setWorkspaces the widget should render without crashing.
     CHECK(rendersOk(w));
 }
@@ -69,20 +66,22 @@ TEST_CASE("setUnread updates count for known workspace", "[workspace_switcher][b
     w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta")});
 
     // Setting a non-zero count and then rendering must not crash.
-    w.setUnread("T1", 7);
+    w.setUnreadCounts("T1", 7, 0);
     CHECK(rendersOk(w));
 
     // Setting back to zero must also render cleanly.
-    w.setUnread("T1", 0);
+    w.setUnreadCounts("T1", 0, 0);
     CHECK(rendersOk(w));
 }
 
-TEST_CASE("setUnread with same count is a no-op (no second update)", "[workspace_switcher][badge]") {
+TEST_CASE(
+    "setUnread with same count is a no-op (no second update)", "[workspace_switcher][badge]"
+) {
     WorkspaceSwitcher w;
     w.setWorkspaces({makeEntry("T1", "Alpha", 3)});
 
     // Call setUnread with the value already in the entry — should be harmless.
-    w.setUnread("T1", 3);
+    w.setUnreadCounts("T1", 3, 0);
     CHECK(rendersOk(w));
 }
 
@@ -91,13 +90,13 @@ TEST_CASE("setUnread for unknown teamId is safe", "[workspace_switcher][badge]")
     w.setWorkspaces({makeEntry("T1", "Alpha")});
 
     // Unknown team ID must not crash or modify existing entries.
-    w.setUnread("T_UNKNOWN", 42);
+    w.setUnreadCounts("T_UNKNOWN", 42, 0);
     CHECK(rendersOk(w));
 }
 
 TEST_CASE("setUnread on empty switcher is safe", "[workspace_switcher][badge]") {
     WorkspaceSwitcher w;
-    w.setUnread("T1", 10);
+    w.setUnreadCounts("T1", 10, 0);
     CHECK(rendersOk(w));
 }
 
@@ -110,10 +109,10 @@ TEST_CASE("badge shows exact count for 1-99", "[workspace_switcher][badge]") {
         return n > 99 ? QStringLiteral("99+") : QString::number(n);
     };
 
-    CHECK(badgeText(1)   == "1");
-    CHECK(badgeText(9)   == "9");
-    CHECK(badgeText(10)  == "10");
-    CHECK(badgeText(99)  == "99");
+    CHECK(badgeText(1) == "1");
+    CHECK(badgeText(9) == "9");
+    CHECK(badgeText(10) == "10");
+    CHECK(badgeText(99) == "99");
     CHECK(badgeText(100) == "99+");
     CHECK(badgeText(999) == "99+");
 }
@@ -125,41 +124,48 @@ TEST_CASE("renders cleanly with no workspaces", "[workspace_switcher][render]") 
     CHECK(rendersOk(w));
 }
 
-TEST_CASE("renders cleanly with multiple workspaces, mix of zero and non-zero unreads",
-          "[workspace_switcher][render]") {
+TEST_CASE(
+    "renders cleanly with multiple workspaces, mix of zero and non-zero unreads",
+    "[workspace_switcher][render]"
+) {
     WorkspaceSwitcher w;
-    w.setWorkspaces({makeEntry("T1", "Alpha",   0),
-                     makeEntry("T2", "Beta",    1),
-                     makeEntry("T3", "Gamma",  42),
-                     makeEntry("T4", "Delta", 100)});
+    w.setWorkspaces(
+        {makeEntry("T1", "Alpha", 0),
+         makeEntry("T2", "Beta", 1),
+         makeEntry("T3", "Gamma", 42),
+         makeEntry("T4", "Delta", 100)}
+    );
     w.setActive("T2");
     CHECK(rendersOk(w));
 }
 
-TEST_CASE("renders cleanly after setUnread changes badge from zero to non-zero",
-          "[workspace_switcher][render]") {
+TEST_CASE(
+    "renders cleanly after setUnread changes badge from zero to non-zero",
+    "[workspace_switcher][render]"
+) {
     WorkspaceSwitcher w;
     w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta")});
     w.setActive("T1");
 
     CHECK(rendersOk(w)); // baseline: no badges
-    w.setUnread("T1", 5);
+    w.setUnreadCounts("T1", 5, 0);
     CHECK(rendersOk(w)); // active workspace gets a badge
-    w.setUnread("T2", 99);
+    w.setUnreadCounts("T2", 99, 0);
     CHECK(rendersOk(w)); // inactive workspace gets a badge
-    w.setUnread("T1", 0);
+    w.setUnreadCounts("T1", 0, 0);
     CHECK(rendersOk(w)); // badge removed for T1
 }
 
-TEST_CASE("renders cleanly after setWorkspaces replaces entries with new unreads",
-          "[workspace_switcher][render]") {
+TEST_CASE(
+    "renders cleanly after setWorkspaces replaces entries with new unreads",
+    "[workspace_switcher][render]"
+) {
     WorkspaceSwitcher w;
     w.setWorkspaces({makeEntry("T1", "Alpha", 3)});
     CHECK(rendersOk(w));
 
     // Replace workspaces entirely — should not leave stale state.
-    w.setWorkspaces({makeEntry("T1", "Alpha",  0),
-                     makeEntry("T2", "Beta",  12)});
+    w.setWorkspaces({makeEntry("T1", "Alpha", 0), makeEntry("T2", "Beta", 12)});
     CHECK(rendersOk(w));
 }
 
@@ -192,8 +198,10 @@ TEST_CASE("setWorkspaces preserves loaded icon for known teamId", "[workspace_sw
     CHECK(rendersOk(w));
 }
 
-TEST_CASE("setWorkspaces does not discard icon for an entry that stays in the list",
-          "[workspace_switcher][icon]") {
+TEST_CASE(
+    "setWorkspaces does not discard icon for an entry that stays in the list",
+    "[workspace_switcher][icon]"
+) {
     WorkspaceSwitcher w;
 
     // Set up two workspaces; T1 stays, T3 is new.
