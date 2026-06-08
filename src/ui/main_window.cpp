@@ -719,6 +719,7 @@ void MainWindow::showLoggedOut() {
     _currentConvId = {};
     _totalUnread   = 0;
     _totalMentions = 0;
+    _wsUnreads.clear();
     updateTrayIcon();
     if (_titleBar)
         _titleBar->setTitle({});
@@ -989,6 +990,8 @@ void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
         return;
     _totalUnread   = total;
     _totalMentions = mentions;
+    if (!_activeTeamId.isEmpty())
+        _wsUnreads[_activeTeamId] = {total, mentions};
     if (_switcher)
         _switcher->setUnreadCounts(_activeTeamId, _totalUnread, _totalMentions);
     updateTrayIcon();
@@ -997,11 +1000,16 @@ void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
 void MainWindow::updateTrayIcon() {
     if (!_trayIcon)
         return;
-    if (_totalUnread <= 0) {
+    int globalTotal = 0, globalMentions = 0;
+    for (auto it = _wsUnreads.cbegin(); it != _wsUnreads.cend(); ++it) {
+        globalTotal += it.value().first;
+        globalMentions += it.value().second;
+    }
+    if (globalTotal <= 0) {
         _trayIcon->setIcon(QIcon(":/icon_tray.svg"));
         return;
     }
-    // Compose base icon + red notification dot at top-right corner
+    // Compose base icon + notification dot at bottom-right corner
     const int    sz = 128;
     QSvgRenderer renderer(QString(":/icon_tray.svg"));
     QPixmap      px(sz, sz);
@@ -1011,9 +1019,9 @@ void MainWindow::updateTrayIcon() {
     if (renderer.isValid())
         renderer.render(&p, QRectF(0, 0, sz, sz));
     const int d = 36;
-    p.setBrush(_totalMentions > 0 ? Th::c().badge.mention : QColor(180, 180, 180));
+    p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().presence.online);
     p.setPen(Qt::NoPen);
-    p.drawEllipse(sz - d, 0, d, d);
+    p.drawEllipse(sz - d, sz - d, d, d);
     p.end();
     _trayIcon->setIcon(QIcon(px));
 }
@@ -1036,6 +1044,7 @@ void MainWindow::refreshSwitcher() {
 }
 
 void MainWindow::logoutWorkspace(const QString &teamId) {
+    _wsUnreads.remove(teamId);
     const bool wasActive = (teamId == _activeTeamId);
 
     if (wasActive) {

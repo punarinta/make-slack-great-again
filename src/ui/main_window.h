@@ -127,12 +127,13 @@ private:
     WelcomeWidget     *_welcomeTips      = nullptr;
     ThreadPanel       *_threadPanel      = nullptr;
 
-    std::vector<ConversationId> _convIds;
-    ConversationId              _currentConvId;
-    ConversationId              _pendingNotifConv;
-    int                         _totalUnread   = 0;
-    int                         _totalMentions = 0; // DM unreads + channel @mentions
-    rpl::lifetime               _sessionLifetime;
+    std::vector<ConversationId>     _convIds;
+    ConversationId                  _currentConvId;
+    ConversationId                  _pendingNotifConv;
+    int                             _totalUnread   = 0;
+    int                             _totalMentions = 0; // DM unreads + channel @mentions
+    QHash<QString, QPair<int, int>> _wsUnreads;         // teamId → {total, mentions}
+    rpl::lifetime                   _sessionLifetime;
 
     QHash<QString, QString> _drafts; // convId.value → unsent draft text
 
