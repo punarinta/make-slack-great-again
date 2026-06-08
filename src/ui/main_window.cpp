@@ -619,19 +619,15 @@ void MainWindow::applyTheme() {
         _headerDivider->setStyleSheet(QString("background: %1;").arg(Th::qss(th.divider.def)));
     }
     if (_convNameLabel) {
-        _convNameLabel->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
-                                          .arg(th.fonts.lg)
+        _convNameLabel->setStyleSheet(QString("font-weight: 700; font-size: %1px; color: %2;")
+                                          .arg(th.fonts.xl)
                                           .arg(Th::qss(th.text.primary)));
     }
     if (_starBtn) {
-        _starBtn->setStyleSheet(QString("QPushButton { border-radius: 4px; }"
-                                        "QPushButton:hover { background: %1; }")
-                                    .arg(Th::qss(th.surface.highlight)));
+        _starBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
     }
     if (_searchBtn) {
-        _searchBtn->setStyleSheet(QString("QPushButton { border-radius: 4px; }"
-                                          "QPushButton:hover { background: %1; }")
-                                      .arg(Th::qss(th.surface.highlight)));
+        _searchBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
         _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
     }
     if (_errorBanner) {

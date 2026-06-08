@@ -37,9 +37,10 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter      p(this);
         const QString initial = _displayName.isEmpty() ? QString{} : _displayName.left(1);
+        const int     offset  = (width() - 28) / 2;
         UserAvatar::paint(
             p,
-            QRect(0, 0, 28, 28),
+            QRect(offset, offset, 28, 28),
             _pixmap,
             initial,
             _state,
