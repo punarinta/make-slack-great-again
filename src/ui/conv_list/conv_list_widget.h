@@ -134,10 +134,10 @@ protected:
     int               _selFrom = -1;
     double            _selT    = 1.0;
 
-    static constexpr int kRowH         = 36; // height of every row (uniform)
+    static constexpr int kRowH         = 30; // height of every row (uniform)
     static constexpr int kPadH         = 12; // horizontal left padding
     static constexpr int kPadV         = 8;  // vertical padding inside row
-    static constexpr int kAvatarSize   = 28; // size of user avatar square
+    static constexpr int kAvatarSize   = 20; // size of user avatar square
     static constexpr int kAvatarRadius = 5;  // corner radius
     static constexpr int kAvatarGap    = 8;  // gap between avatar and name
     static constexpr int kIconSize     = 14; // section / prefix icon size

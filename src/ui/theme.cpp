@@ -21,10 +21,10 @@ const Theme kSlackDark = {
     .nav =
         {
             .bg               = QColor("#3F0E40"),
-            .panelBg          = QColor("#350D36"),
+            .primary          = QColor("#350D36"),
             .workspaceBubble  = QColor("#4A154B"),
             .itemHover        = QColor("#522653"),
-            .itemSelected     = QColor("#7D5D7E"),
+            .itemSelected     = QColor("#E1DBE1"), // white ~85% over nav.primary
             .itemText         = QColor("#FFFFFF"),
             .itemTextDim      = QColor("#CFC3CF"),
             .scrollThumb      = QColor(255, 255, 255, 100),

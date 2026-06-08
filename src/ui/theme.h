@@ -14,7 +14,7 @@ namespace Th {
 
 struct NavColors {
     QColor bg;              // workspace sidebar column
-    QColor panelBg;         // conversation list panel
+    QColor primary;         // conversation list panel
     QColor workspaceBubble; // workspace icon chip
     QColor itemHover;       // hovered conversation row
     QColor itemSelected;    // active/selected conversation row

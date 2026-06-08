@@ -586,7 +586,7 @@ void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &user
 void ConvListWidget::doPaint(QPaintEvent *event) {
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(event->rect(), Th::c().nav.panelBg);
+    p.fillRect(event->rect(), Th::c().nav.primary);
 
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
@@ -709,9 +709,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const QRect rowRect(0, y, viewport()->width(), kRowH);
 
     // Background
-    QColor rowBg = Th::c().nav.panelBg;
+    QColor rowBg = Th::c().nav.primary;
     if (row == _selected) {
-        const QColor base = (row == _hovered) ? Th::c().nav.itemHover : Th::c().nav.panelBg;
+        const QColor base = (row == _hovered) ? Th::c().nav.itemHover : Th::c().nav.primary;
         const QColor sel  = Th::c().nav.itemSelected;
         auto lerp = [](int a, int b, double t) { return static_cast<int>(a + (b - a) * t); };
         rowBg     = QColor(
@@ -722,10 +722,12 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         // Rounded pill inset from edges, not full-width
         p.setPen(Qt::NoPen);
         p.setBrush(rowBg);
-        p.drawRoundedRect(rowRect.adjusted(8, 2, -8, -2), 6, 6);
+        p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
     } else if (row == _hovered) {
         rowBg = Th::c().nav.itemHover;
-        p.fillRect(rowRect, rowBg);
+        p.setPen(Qt::NoPen);
+        p.setBrush(rowBg);
+        p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
     }
 
     QFont      font       = QApplication::font();
@@ -734,8 +736,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
     p.setFont(font);
 
-    const QColor textColor =
-        (isSelected || isUnread) ? Th::c().text.onDark : Th::c().text.onDarkDim;
+    const QColor textColor = isSelected ? Th::c().nav.primary
+                             : isUnread ? Th::c().text.onDark
+                                        : Th::c().text.onDarkDim;
     p.setPen(textColor);
 
     const QFontMetrics fm(font);
@@ -843,7 +846,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             df.setWeight(QFont::Normal);
             df.setPointSizeF(df.pointSizeF() * 0.88);
             p.setFont(df);
-            p.setPen(Th::c().text.onDarkDim);
+            p.setPen(isSelected ? textColor : Th::c().text.onDarkDim);
             p.drawText(curX, textY, tr("you"));
         }
     } else {
