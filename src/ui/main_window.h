@@ -111,20 +111,21 @@ private:
     QWidget        *_loggedOutPage = nullptr;
     QWidget        *_mainPage      = nullptr; // built lazily
 
-    WorkspaceSwitcher *_switcher       = nullptr;
-    SettingsDialog    *_settingsDialog = nullptr;
-    QWidget           *_convPanel      = nullptr;
-    ConvListWidget    *_convList       = nullptr;
-    QLabel            *_convNameLabel  = nullptr;
-    QWidget           *_msgHeader      = nullptr;
-    QWidget           *_headerDivider  = nullptr;
-    QSplitter         *_msgSplitter    = nullptr;
-    QStackedWidget    *_contentStack   = nullptr;
-    MessageListWidget *_messageList    = nullptr;
-    ComposerWidget    *_composer       = nullptr;
-    SearchWidget      *_searchWidget   = nullptr;
-    WelcomeWidget     *_welcomeTips    = nullptr;
-    ThreadPanel       *_threadPanel    = nullptr;
+    WorkspaceSwitcher *_switcher         = nullptr;
+    SettingsDialog    *_settingsDialog   = nullptr;
+    QWidget           *_convPanel        = nullptr;
+    QWidget           *_convResizeHandle = nullptr;
+    ConvListWidget    *_convList         = nullptr;
+    QLabel            *_convNameLabel    = nullptr;
+    QWidget           *_msgHeader        = nullptr;
+    QWidget           *_headerDivider    = nullptr;
+    QSplitter         *_msgSplitter      = nullptr;
+    QStackedWidget    *_contentStack     = nullptr;
+    MessageListWidget *_messageList      = nullptr;
+    ComposerWidget    *_composer         = nullptr;
+    SearchWidget      *_searchWidget     = nullptr;
+    WelcomeWidget     *_welcomeTips      = nullptr;
+    ThreadPanel       *_threadPanel      = nullptr;
 
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;

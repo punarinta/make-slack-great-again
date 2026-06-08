@@ -56,7 +56,70 @@
 #include <QTimer>
 #include <QDesktopServices>
 
-static constexpr int kResizeBorder = 6;
+static constexpr int kResizeBorder  = 6;
+static constexpr int kConvMinWidth  = 160;
+static constexpr int kConvMaxWidth  = 400;
+static constexpr int kConvInitWidth = 240;
+
+// Thin drag handle between the conv panel and the message area.
+class ConvResizeHandle final : public QWidget {
+public:
+    explicit ConvResizeHandle(QWidget *target, QWidget *parent = nullptr)
+        : QWidget(parent), _target(target) {
+        setFixedWidth(4);
+        setCursor(Qt::SizeHorCursor);
+        setAttribute(Qt::WA_OpaquePaintEvent, false);
+        setMouseTracking(true);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        if (!_hovered)
+            return;
+        QPainter p(this);
+        p.fillRect(rect(), QColor(0, 120, 215, 80));
+    }
+
+    void enterEvent(QEnterEvent *) override {
+        _hovered = true;
+        update();
+    }
+
+    void leaveEvent(QEvent *) override {
+        _hovered = false;
+        update();
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton)
+            return;
+        _dragging = true;
+        _startX   = e->globalPosition().x();
+        _startW   = _target->width();
+        e->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        if (!_dragging)
+            return;
+        const int w =
+            qBound(kConvMinWidth, _startW + int(e->globalPosition().x() - _startX), kConvMaxWidth);
+        _target->setFixedWidth(w);
+        e->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton)
+            _dragging = false;
+    }
+
+private:
+    QWidget *_target;
+    bool     _hovered  = false;
+    bool     _dragging = false;
+    qreal    _startX   = 0;
+    int      _startW   = 0;
+};
 
 MainWindow::~MainWindow() = default;
 
@@ -230,6 +293,8 @@ QWidget *MainWindow::buildMainPage() {
     root->setContentsMargins(0, 0, 0, 0);
 
     root->addWidget(buildConvPanel(page));
+    _convResizeHandle = new ConvResizeHandle(_convPanel, page);
+    root->addWidget(_convResizeHandle);
     root->addWidget(buildRightPanel(page), 1);
 
     // Apply stored appearance setting and keep conv list in sync when settings are saved.
@@ -270,7 +335,7 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
 QWidget *MainWindow::buildConvPanel(QWidget *parent) {
     _convPanel = new QWidget(parent);
     _convPanel->setObjectName("convPanel");
-    _convPanel->setFixedWidth(240);
+    _convPanel->setFixedWidth(kConvInitWidth);
 
     auto *convLayout = new QVBoxLayout(_convPanel);
     convLayout->setContentsMargins(0, 0, 0, 0);
@@ -632,6 +697,8 @@ void MainWindow::startSession(const QString &teamId) {
     if (_convPanel && _messageList) {
         const bool hasCached = !_sessionOwner->currentConversations().empty();
         _convPanel->setVisible(hasCached);
+        if (_convResizeHandle)
+            _convResizeHandle->setVisible(hasCached);
         _messageList->setWaiting(!hasCached);
     }
 
@@ -752,6 +819,8 @@ void MainWindow::connectToSession() {
                     if (_messageList)
                         _messageList->setWaiting(false);
                     _convPanel->show();
+                    if (_convResizeHandle)
+                        _convResizeHandle->show();
                 }
                 // On first populate (no conversation open yet), jump to the last
                 // conversation the user had open in the previous session.
