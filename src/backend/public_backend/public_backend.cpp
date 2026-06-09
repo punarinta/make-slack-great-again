@@ -533,6 +533,28 @@ void PublicBackend::createChannel(
     );
 }
 
+void PublicBackend::joinChannel(
+    ConversationId                      id,
+    std::function<void(ConversationId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    QJsonObject body;
+    body["channel"] = id.value;
+    _api->postJson(
+        "conversations.join",
+        body,
+        [id, onSuccess](QJsonObject) {
+            if (onSuccess)
+                onSuccess(id);
+        },
+        [onError](QString e) {
+            qWarning() << "joinChannel error:" << e;
+            if (onError)
+                onError(e);
+        }
+    );
+}
+
 void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
     if (!_realtime)
         return;

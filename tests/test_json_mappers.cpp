@@ -783,3 +783,22 @@ TEST_CASE("toConversation non-Mpim ignores members array", "[mappers][conv][mpim
     })"));
     CHECK(c.members.empty());
 }
+
+// ── num_members / memberCount ─────────────────────────────────────────────────
+
+TEST_CASE("toConversation num_members maps to memberCount", "[mappers][conv][members]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "big-channel",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "num_members": 42
+    })"));
+    CHECK(c.memberCount == 42);
+}
+
+TEST_CASE("toConversation num_members absent defaults to 0", "[mappers][conv][members]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "channel",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(c.memberCount == 0);
+}

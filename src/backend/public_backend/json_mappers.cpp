@@ -102,6 +102,7 @@ Conversation toConversation(const QJsonObject &o) {
         .name = o.value("name").toString(o.value("user").toString()), // Im: use user id as fallback
         .description  = !topic.isEmpty() ? topic : purpose,
         .isMember     = o.value("is_member").toBool(true),
+        .memberCount  = o.value("num_members").toInt(),
         .lastRead     = lastRead,
         .latestTs     = latestTs,
         .unread       = unread,

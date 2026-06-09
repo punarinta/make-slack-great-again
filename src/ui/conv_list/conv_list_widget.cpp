@@ -654,17 +654,22 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
 
     const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
 
+    // NOTE: static pixmaps baked at first paint — will not live-update on theme change (V1).
+    static const QPixmap kPlusDim =
+        svgPixmap(":/ui/plus.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
+    static const QPixmap kPlusBright =
+        svgPixmap(":/ui/plus.svg", QSize(kIconSize, kIconSize), Th::c().text.onDark);
+    const QPixmap &plusPx = hovered ? kPlusBright : kPlusDim;
+    p.drawPixmap(kPadH + kGroupIndent, y + (kRowH - kIconSize) / 2, plusPx);
+
     QFont font = QApplication::font();
     font.setWeight(QFont::Normal);
     p.setFont(font);
     p.setPen(color);
 
     const QFontMetrics fm(font);
-    const int          textY   = y + (kRowH - fm.height()) / 2 + fm.ascent();
-    const int          leftX   = kPadH + kGroupIndent;
-    const int          prefixW = fm.horizontalAdvance("+") + 6;
-    p.drawText(leftX, textY, "+");
-    p.drawText(leftX + prefixW, textY, tr("Add channels"));
+    const int          textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
+    p.drawText(kPadH + kGroupIndent + kIconSize + 6, textY, tr("Add channels"));
 }
 
 void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int sectionId, int count) const {

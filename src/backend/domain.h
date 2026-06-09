@@ -65,7 +65,8 @@ struct Conversation {
     ConvKind       kind;
     QString        name;
     QString        description; // channel topic/purpose; empty for DMs
-    bool           isMember = false;
+    bool           isMember    = false;
+    int            memberCount = 0; // num_members from conversations.list; 0 for DMs
     Ts             lastRead;
     Ts             latestTs; // ts of most recent message (from conversations.list "latest.ts")
     int            unread       = 0;

@@ -69,6 +69,12 @@ public:
         std::function<void(ConversationId)> /*onSuccess*/ = {},
         std::function<void(QString)> /*onError*/          = {}
     ) {}
+    // Join a public channel (conversations.join). No-op on unsupported backends.
+    virtual void joinChannel(
+        ConversationId /*id*/,
+        std::function<void(ConversationId)> /*onSuccess*/ = {},
+        std::function<void(QString)> /*onError*/          = {}
+    ) {}
 
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;

@@ -64,6 +64,11 @@ public:
         std::function<void(ConversationId)> onSuccess = {},
         std::function<void(QString)>        onError   = {}
     ) override;
+    void joinChannel(
+        ConversationId                      id,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override;
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;

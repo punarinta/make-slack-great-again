@@ -52,12 +52,12 @@ const Theme kSlackDark = {
         },
     .accent =
         {
-            .def      = QColor("#007A5A"),
-            .hover    = QColor("#148567"),
-            .pressed  = QColor("#005E45"),
-            .dark     = QColor("#006348"),
+            .def      = QColor("#4A154B"),
+            .hover    = QColor("#611F69"),
+            .pressed  = QColor("#350D36"),
+            .dark     = QColor("#350D36"),
             .text     = QColor("#FFFFFF"),
-            .subtleBg = QColor("#E8F5FA"),
+            .subtleBg = QColor("#F4E5F5"),
         },
     .badge =
         {
@@ -130,7 +130,7 @@ const Theme kSlackDark = {
         {
             .def     = QColor("#888888"),
             .strong  = QColor("#454245"),
-            .accent  = QColor("#007A5A"),
+            .accent  = QColor("#4A154B"),
             .danger  = QColor("#C0392B"),
             .onDark  = QColor("#FFFFFF"),
             .warning = QColor("#7A5800"),

@@ -139,6 +139,29 @@ struct StubBackend : Backend {
         }
     }
 
+    struct JoinChannelCall {
+        ConversationId id;
+    };
+    std::vector<JoinChannelCall> joinChannelCalls;
+    bool                         joinChannelShouldFail = false;
+    ConversationId               joinChannelResultId;
+    QString                      joinChannelError;
+
+    void joinChannel(
+        ConversationId                      id,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override {
+        joinChannelCalls.push_back({id});
+        if (joinChannelShouldFail) {
+            if (onError)
+                onError(joinChannelError);
+        } else {
+            if (onSuccess)
+                onSuccess(joinChannelResultId);
+        }
+    }
+
     void fireEvent(Event e) { _events.fire(std::move(e)); }
 };
 
@@ -927,4 +950,72 @@ TEST_CASE_METHOD(
     session->errors() | rpl::on_next([&](const QString &e) { hubErr = e; }, lt);
     session->createChannel("bad name", false);
     CHECK(hubErr == "invalid_name");
+}
+
+// ── joinChannel ────────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(SessionFixture, "joinChannel delegates id to backend", "[session][joinChannel]") {
+    stub->joinChannelResultId = ConversationId{"C_PUB"};
+    session->joinChannel(ConversationId{"C_PUB"});
+    REQUIRE(stub->joinChannelCalls.size() == 1);
+    CHECK(stub->joinChannelCalls[0].id == ConversationId{"C_PUB"});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "joinChannel success fires onSuccess with returned id", "[session][joinChannel]"
+) {
+    stub->joinChannelResultId = ConversationId{"C_PUB"};
+    ConversationId received;
+    session->joinChannel(ConversationId{"C_PUB"}, [&](ConversationId id) { received = id; });
+    CHECK(received == ConversationId{"C_PUB"});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "joinChannel success refreshes conversation list", "[session][joinChannel]"
+) {
+    const Conversation newChan{
+        .id       = ConversationId{"C_PUB"},
+        .kind     = ConvKind::PublicChannel,
+        .name     = "public-chan",
+        .isMember = true,
+        .lastRead = "0",
+        .unread   = 0,
+    };
+    stub->joinChannelResultId = newChan.id;
+    stub->_convs              = std::vector<Conversation>{kGeneral, kRandom, newChan};
+    session->joinChannel(ConversationId{"C_PUB"});
+    CHECK(session->findConversation(ConversationId{"C_PUB"}) != nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "joinChannel success does not remove existing conversations",
+    "[session][joinChannel]"
+) {
+    stub->joinChannelResultId = ConversationId{"C_PUB"};
+    session->joinChannel(ConversationId{"C_PUB"});
+    CHECK(session->findConversation(ConversationId{"C1"}) != nullptr);
+    CHECK(session->findConversation(ConversationId{"C2"}) != nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "joinChannel error fires onError callback", "[session][joinChannel]"
+) {
+    stub->joinChannelShouldFail = true;
+    stub->joinChannelError      = "already_in_channel";
+    QString gotErr;
+    session->joinChannel(ConversationId{"C1"}, {}, [&](const QString &err) { gotErr = err; });
+    CHECK(gotErr == "already_in_channel");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "joinChannel error without callback fires error hub", "[session][joinChannel]"
+) {
+    stub->joinChannelShouldFail = true;
+    stub->joinChannelError      = "channel_not_found";
+    QString       hubErr;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { hubErr = e; }, lt);
+    session->joinChannel(ConversationId{"C_GHOST"});
+    CHECK(hubErr == "channel_not_found");
 }

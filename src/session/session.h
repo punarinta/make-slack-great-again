@@ -82,6 +82,12 @@ public:
         std::function<void(ConversationId)> onSuccess = {},
         std::function<void(QString)>        onError   = {}
     );
+    // Join a public channel; refreshes the conversation list on success.
+    void joinChannel(
+        ConversationId                      id,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    );
     // Update notification level locally (no public API for per-channel prefs).
     void setNotificationLevel(ConversationId conv, NotificationLevel level);
 

@@ -430,6 +430,31 @@ void Session::createChannel(
     );
 }
 
+void Session::joinChannel(
+    ConversationId                      id,
+    std::function<void(ConversationId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    _backend->joinChannel(
+        id,
+        [this, onSuccess](ConversationId convId) {
+            _backend->loadConversations() |
+                rpl::on_next(
+                    [this](std::vector<Conversation> convs) { _conversations = std::move(convs); },
+                    _lifetime
+                );
+            if (onSuccess)
+                onSuccess(convId);
+        },
+        [this, onError](QString err) {
+            if (onError)
+                onError(err);
+            else
+                _errorHub.fire_copy(err);
+        }
+    );
+}
+
 void Session::setNotificationLevel(ConversationId conv, NotificationLevel level) {
     auto convs = _conversations.current();
     for (auto &c : convs) {
