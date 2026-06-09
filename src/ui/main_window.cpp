@@ -172,7 +172,7 @@ void MainWindow::buildUi() {
     _frameLayout->addWidget(_updateBar);
 
     // Horizontal body: switcher rail always present, stack fills the rest.
-    // _stack must be created before buildWorkspaceSwitcher (SettingsDialog parents to it).
+    // _stack must be created before buildWorkspaceSwitcher (SettingsDialog parents to body).
     auto *body       = new QWidget(_frame);
     auto *bodyLayout = new QHBoxLayout(body);
     bodyLayout->setContentsMargins(0, 0, 0, 0);
@@ -343,7 +343,7 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
         _switcher, &WorkspaceSwitcher::workspaceRightClicked, this, &MainWindow::showWorkspaceMenu
     );
 
-    _settingsDialog = new SettingsDialog(_stack);
+    _settingsDialog = new SettingsDialog(qobject_cast<QWidget *>(_stack->parent()));
     _settingsDialog->setUpdateChecker(_updateChecker);
     connect(_switcher, &WorkspaceSwitcher::settingsClicked, _settingsDialog, &SettingsDialog::open);
     return _switcher;

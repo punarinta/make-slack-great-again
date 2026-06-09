@@ -9,6 +9,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QMouseEvent>
+#include <QShortcut>
 #include <QResizeEvent>
 #include <QFrame>
 #include <QListWidget>
@@ -56,6 +57,7 @@ void SettingsDialog::open() {
     updatePanelGeometry();
     show();
     raise();
+    _tabs->setFocus();
 }
 
 // ── Panel construction ────────────────────────────────────────────────────────
@@ -347,6 +349,10 @@ void SettingsDialog::buildPanel() {
 
     _stack->addWidget(sysPage);
     root->addWidget(body, 1);
+
+    auto *esc = new QShortcut(Qt::Key_Escape, _panel);
+    esc->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(esc, &QShortcut::activated, this, &SettingsDialog::hide);
 
     updatePanelGeometry();
 }
