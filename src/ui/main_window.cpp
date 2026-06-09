@@ -148,6 +148,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         startSession(TokenStore::activeWorkspaceId());
     else
         showLoggedOut();
+
+    const QByteArray geo = QSettings("msga", "msga").value("window/geometry").toByteArray();
+    if (!geo.isEmpty())
+        restoreGeometry(geo);
 }
 
 // ── UI construction ───────────────────────────────────────────────────────────
@@ -1333,6 +1337,7 @@ void MainWindow::changeEvent(QEvent *e) {
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {
+    QSettings("msga", "msga").setValue("window/geometry", saveGeometry());
     hide();
     e->ignore();
 }
