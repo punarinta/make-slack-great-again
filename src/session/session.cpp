@@ -375,7 +375,8 @@ void Session::setReading(ConversationId conv) {
     auto convs = _conversations.current();
     for (auto &c : convs) {
         if (c.id == conv) {
-            c.unread = 0;
+            c.unread       = 0;
+            c.mentionCount = 0;
             break;
         }
     }
