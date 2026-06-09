@@ -19,6 +19,7 @@ namespace UserAvatar {
 struct State {
     bool isActive   = false;
     bool dndEnabled = false;
+    bool isSelected = false;
 };
 
 // Paints a rounded-rect avatar + a 10px presence/DND indicator dot.
@@ -73,26 +74,34 @@ inline void paint(
     }
 
     // ── Presence / DND dot ─────────────────────────────────────────────
-    constexpr int dotD = 10;
-    const QRect   dot(rect.right() - dotD + 3, rect.bottom() - dotD + 3, dotD, dotD);
+    // Layer 1: background circle in row colour — visually separates indicator from avatar.
+    // Layer 2: smaller indicator circle on top — filled (online/DND) or hollow ring (offline).
+    constexpr int bgD  = 10;
+    constexpr int dotD = 6;
+    const int     cx   = rect.right() - 2;
+    const int     cy   = rect.bottom() - 2;
+    const QRect   bgDot(cx - bgD / 2, cy - bgD / 2, bgD, bgD);
+    const QRect   dot(cx - dotD / 2, cy - dotD / 2, dotD, dotD);
 
-    // Border ring — matches container background, creating the "cut-out" look.
     if (borderColor.alpha() > 0) {
-        p.setPen(QPen(borderColor, 2));
-    } else {
         p.setPen(Qt::NoPen);
+        p.setBrush(borderColor);
+        p.drawEllipse(bgDot);
     }
 
+    p.setPen(Qt::NoPen);
     if (state.dndEnabled) {
         p.setBrush(Th::c().divider.def);
         p.drawEllipse(dot);
-        // Horizontal bar — "do not disturb"
         p.setPen(QPen(Th::c().presence.away, 1.5, Qt::SolidLine, Qt::RoundCap));
-        const int cx = dot.center().x();
-        const int cy = dot.center().y();
         p.drawLine(cx - 2, cy, cx + 2, cy);
+    } else if (state.isActive) {
+        p.setBrush(Th::c().presence.online);
+        p.drawEllipse(dot);
     } else {
-        p.setBrush(state.isActive ? Th::c().presence.online : Th::c().divider.def);
+        const QColor ring = state.isSelected ? Th::c().nav.primary : Th::c().nav.itemTextDim;
+        p.setPen(QPen(ring, 1.0));
+        p.setBrush(Qt::NoBrush);
         p.drawEllipse(dot);
     }
 

@@ -102,7 +102,9 @@ protected:
 
     // Avatar helpers — trigger is non-const (starts downloads), draw is const.
     void triggerMissingAvatarDownloads();
-    void drawUserAvatar(QPainter &p, QRect rect, const QString &userId, QColor bgColor) const;
+    void drawUserAvatar(
+        QPainter &p, QRect rect, const QString &userId, QColor bgColor, bool isSelected = false
+    ) const;
 
     std::vector<Conversation> _allConvs; // unfiltered; source of truth
     std::vector<Conversation> _convs;    // filtered convs

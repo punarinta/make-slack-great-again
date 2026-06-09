@@ -565,17 +565,19 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
     }
 }
 
-void ConvListWidget::drawUserAvatar(QPainter &p, QRect rect, const QString &userId, QColor bgColor)
-    const {
+void ConvListWidget::drawUserAvatar(
+    QPainter &p, QRect rect, const QString &userId, QColor bgColor, bool isSelected
+) const {
     const auto    infoIt  = _userInfos.constFind(userId);
     const QString url     = (infoIt != _userInfos.constEnd()) ? infoIt->avatarUrl : QString{};
     const QPixmap pixmap  = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap{};
     const QString initial = (infoIt != _userInfos.constEnd() && !infoIt->displayName.isEmpty())
                                 ? infoIt->displayName.left(1)
                                 : QString{"?"};
-    const UserAvatar::State state = (infoIt != _userInfos.constEnd())
-                                        ? UserAvatar::State{infoIt->isActive, infoIt->dndEnabled}
-                                        : UserAvatar::State{};
+    const UserAvatar::State state =
+        (infoIt != _userInfos.constEnd())
+            ? UserAvatar::State{infoIt->isActive, infoIt->dndEnabled, isSelected}
+            : UserAvatar::State{};
     UserAvatar::paint(
         p, rect, pixmap, initial, state, kAvatarRadius, p.device()->devicePixelRatioF(), bgColor
     );
@@ -795,7 +797,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.drawText(nameX, textY, name);
     } else if (conv.kind == ConvKind::Im && conv.dmUser) {
         const int avY = y + (kRowH - kAvatarSize) / 2;
-        drawUserAvatar(p, QRect(leftX, avY, kAvatarSize, kAvatarSize), conv.dmUser->value, rowBg);
+        drawUserAvatar(
+            p, QRect(leftX, avY, kAvatarSize, kAvatarSize), conv.dmUser->value, rowBg, isSelected
+        );
 
         const auto    infoIt = _userInfos.constFind(conv.dmUser->value);
         const QString emoji  = (infoIt != _userInfos.constEnd())
@@ -858,7 +862,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
                 svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().text.onDarkDim);
             static const QPixmap kLockBright =
                 svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().text.onDark);
-            const QPixmap &lockPx = (isSelected || isUnread) ? kLockBright : kLockDim;
+            static const QPixmap kLockSelected =
+                svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().nav.primary);
+            const QPixmap &lockPx = isSelected ? kLockSelected : isUnread ? kLockBright : kLockDim;
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, lockPx);
             prefixW = 14 + 6;
         } else {
@@ -866,7 +872,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
                 svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().text.onDarkDim);
             static const QPixmap kHashBright =
                 svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().text.onDark);
-            const QPixmap &hashPx = (isSelected || isUnread) ? kHashBright : kHashDim;
+            static const QPixmap kHashSelected =
+                svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().nav.primary);
+            const QPixmap &hashPx = isSelected ? kHashSelected : isUnread ? kHashBright : kHashDim;
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
             prefixW = 14 + 6;
         }
