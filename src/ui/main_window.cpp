@@ -21,6 +21,7 @@
 #include "thread_panel/thread_panel.h"
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
+#include "create_channel_dialog/create_channel_dialog.h"
 #include "update_checker/update_checker.h"
 #include "update_bar/update_bar.h"
 #include "app_credentials.h"
@@ -814,6 +815,20 @@ void MainWindow::connectToSession() {
                 _sessionOwner->setNotificationLevel(id, level);
             }
         );
+        connect(_convList, &ConvListWidget::createChannelRequested, this, [this] {
+            if (!_sessionOwner)
+                return;
+            const auto creds = TokenStore::loadWorkspace(_activeTeamId);
+            auto      *dlg   = new CreateChannelDialog(creds.teamName, this);
+            if (dlg->exec() == QDialog::Accepted) {
+                const QString name = dlg->channelName();
+                const bool    priv = dlg->isPrivate();
+                _sessionOwner->createChannel(name, priv, {}, [this](const QString &err) {
+                    showNetworkError(err);
+                });
+            }
+            dlg->deleteLater();
+        });
     }
 
     // If the backend can't refresh the token (no refresh token, or refresh fails),

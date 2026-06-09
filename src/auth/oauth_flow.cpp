@@ -19,10 +19,12 @@ OAuthFlow::OAuthFlow(const TokenStore::AppConfig &app, QObject *parent)
 
 QStringList OAuthFlow::userScopes() {
     return {
-        "channels:history", "groups:history",  "im:history",  "mpim:history",       "channels:read",
-        "groups:read",      "im:read",         "mpim:read",   "users:read",         "team:read",
-        "emoji:read",       "reactions:read",  "files:read",  "users.profile:read", "search:read",
-        "chat:write",       "reactions:write", "files:write", "stars:write",
+        "channels:history", "groups:history",     "im:history",  "mpim:history",
+        "channels:read",    "groups:read",        "im:read",     "mpim:read",
+        "users:read",       "team:read",          "emoji:read",  "reactions:read",
+        "files:read",       "users.profile:read", "search:read", "chat:write",
+        "reactions:write",  "files:write",        "stars:write", "channels:write",
+        "groups:write",     "mpim:write",         "im:write",
     };
 }
 

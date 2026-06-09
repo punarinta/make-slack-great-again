@@ -75,6 +75,13 @@ public:
     void starConversation(ConversationId conv, bool star);
     // Leave a conversation (optimistic removal + API call).
     void leaveConversation(ConversationId conv);
+    // Create a new channel via the Slack API; refreshes the conversation list on success.
+    void createChannel(
+        const QString                      &name,
+        bool                                isPrivate,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    );
     // Update notification level locally (no public API for per-channel prefs).
     void setNotificationLevel(ConversationId conv, NotificationLevel level);
 

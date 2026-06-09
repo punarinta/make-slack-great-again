@@ -402,6 +402,34 @@ void Session::leaveConversation(ConversationId conv) {
     _conversations = std::move(convs);
 }
 
+void Session::createChannel(
+    const QString                      &name,
+    bool                                isPrivate,
+    std::function<void(ConversationId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    _backend->createChannel(
+        name,
+        isPrivate,
+        [this, onSuccess](ConversationId id) {
+            // Refresh conversation list so the new channel appears.
+            _backend->loadConversations() |
+                rpl::on_next(
+                    [this](std::vector<Conversation> convs) { _conversations = std::move(convs); },
+                    _lifetime
+                );
+            if (onSuccess)
+                onSuccess(id);
+        },
+        [this, onError](QString err) {
+            if (onError)
+                onError(err);
+            else
+                _errorHub.fire_copy(err);
+        }
+    );
+}
+
 void Session::setNotificationLevel(ConversationId conv, NotificationLevel level) {
     auto convs = _conversations.current();
     for (auto &c : convs) {

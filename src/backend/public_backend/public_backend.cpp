@@ -508,6 +508,31 @@ void PublicBackend::leaveConversation(ConversationId conv) {
     });
 }
 
+void PublicBackend::createChannel(
+    const QString                      &name,
+    bool                                isPrivate,
+    std::function<void(ConversationId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    QJsonObject body;
+    body["name"]       = name;
+    body["is_private"] = isPrivate;
+    _api->postJson(
+        "conversations.create",
+        body,
+        [onSuccess](QJsonObject resp) {
+            const QString id = resp.value("channel").toObject().value("id").toString();
+            if (!id.isEmpty() && onSuccess)
+                onSuccess(ConversationId{id});
+        },
+        [onError](QString e) {
+            qWarning() << "createChannel error:" << e;
+            if (onError)
+                onError(e);
+        }
+    );
+}
+
 void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
     if (!_realtime)
         return;

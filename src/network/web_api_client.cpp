@@ -212,7 +212,9 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
 
     if (!obj.value("ok").toBool()) {
         auto err = obj.value("error").toString("unknown");
-        qWarning() << "WebApiClient Slack error:" << err << "on" << c.method;
+        qWarning() << "WebApiClient Slack error:" << err << "on" << c.method
+                   << "| needed:" << obj.value("needed").toString()
+                   << "| provided:" << obj.value("provided").toString();
         if (err == "token_expired" && _onTokenExpired) {
             qDebug() << "WebApiClient: token_expired on" << c.method
                      << "— pausing queue, re-queuing call";

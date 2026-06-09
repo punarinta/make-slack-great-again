@@ -114,6 +114,31 @@ struct StubBackend : Backend {
     }
     void leaveConversation(ConversationId id) override { leaveCalls.push_back(id); }
 
+    struct CreateChannelCall {
+        QString name;
+        bool    isPrivate;
+    };
+    std::vector<CreateChannelCall> createChannelCalls;
+    bool                           createChannelShouldFail = false;
+    ConversationId                 createChannelResultId;
+    QString                        createChannelError;
+
+    void createChannel(
+        const QString                      &name,
+        bool                                isPrivate,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override {
+        createChannelCalls.push_back({name, isPrivate});
+        if (createChannelShouldFail) {
+            if (onError)
+                onError(createChannelError);
+        } else {
+            if (onSuccess)
+                onSuccess(createChannelResultId);
+        }
+    }
+
     void fireEvent(Event e) { _events.fire(std::move(e)); }
 };
 
@@ -818,4 +843,88 @@ TEST_CASE_METHOD(
     CHECK(
         session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::Mentions
     );
+}
+
+// ── createChannel ─────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "createChannel delegates name and flag to backend", "[session][createChannel]"
+) {
+    stub->createChannelResultId = ConversationId{"C_NEW"};
+    session->createChannel("new-channel", false);
+    REQUIRE(stub->createChannelCalls.size() == 1);
+    CHECK(stub->createChannelCalls[0].name == "new-channel");
+    CHECK(stub->createChannelCalls[0].isPrivate == false);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "createChannel private flag forwarded to backend", "[session][createChannel]"
+) {
+    stub->createChannelResultId = ConversationId{"C_SEC"};
+    session->createChannel("secret", true);
+    REQUIRE(stub->createChannelCalls.size() == 1);
+    CHECK(stub->createChannelCalls[0].isPrivate == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "createChannel success fires onSuccess with returned id",
+    "[session][createChannel]"
+) {
+    stub->createChannelResultId = ConversationId{"C_NEW"};
+    ConversationId received;
+    session->createChannel("new-channel", false, [&](ConversationId id) { received = id; });
+    CHECK(received == ConversationId{"C_NEW"});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "createChannel success refreshes conversation list", "[session][createChannel]"
+) {
+    const Conversation newChan{
+        .id       = ConversationId{"C_NEW"},
+        .kind     = ConvKind::PublicChannel,
+        .name     = "new-channel",
+        .isMember = true,
+        .lastRead = "0",
+        .unread   = 0,
+    };
+    stub->createChannelResultId = newChan.id;
+    stub->_convs                = std::vector<Conversation>{kGeneral, kRandom, newChan};
+    session->createChannel("new-channel", false);
+    CHECK(session->findConversation(ConversationId{"C_NEW"}) != nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "createChannel success does not remove existing conversations",
+    "[session][createChannel]"
+) {
+    stub->createChannelResultId = ConversationId{"C_NEW"};
+    session->createChannel("new-channel", false);
+    CHECK(session->findConversation(ConversationId{"C1"}) != nullptr);
+    CHECK(session->findConversation(ConversationId{"C2"}) != nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "createChannel error fires onError callback", "[session][createChannel]"
+) {
+    stub->createChannelShouldFail = true;
+    stub->createChannelError      = "name_taken";
+    QString gotErr;
+    session->createChannel("taken", false, {}, [&](const QString &err) { gotErr = err; });
+    CHECK(gotErr == "name_taken");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "createChannel error without callback fires error hub",
+    "[session][createChannel]"
+) {
+    stub->createChannelShouldFail = true;
+    stub->createChannelError      = "invalid_name";
+    QString       hubErr;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { hubErr = e; }, lt);
+    session->createChannel("bad name", false);
+    CHECK(hubErr == "invalid_name");
 }

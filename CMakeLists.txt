@@ -122,6 +122,8 @@ add_executable(msga MACOSX_BUNDLE
     src/ui/delete_message_dialog/delete_message_dialog.cpp
     src/ui/conv_selector/conv_selector_widget.cpp
     src/ui/forward_dialog/forward_dialog.cpp
+    src/ui/styled_line_edit/styled_line_edit.cpp
+    src/ui/create_channel_dialog/create_channel_dialog.cpp
     src/ui/update_checker/update_checker.cpp
     src/ui/update_bar/update_bar.cpp
 

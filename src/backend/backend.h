@@ -62,6 +62,13 @@ public:
     virtual void starConversation(ConversationId, bool star) {}
     // Leave a conversation (conversations.leave).
     virtual void leaveConversation(ConversationId) {}
+    // Create a new channel (conversations.create). No-op on unsupported backends.
+    virtual void createChannel(
+        const QString & /*name*/,
+        bool /*isPrivate*/,
+        std::function<void(ConversationId)> /*onSuccess*/ = {},
+        std::function<void(QString)> /*onError*/          = {}
+    ) {}
 
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;
