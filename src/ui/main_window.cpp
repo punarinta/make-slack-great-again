@@ -629,8 +629,8 @@ void MainWindow::applyTheme() {
         _headerDivider->setStyleSheet(QString("background: %1;").arg(Th::qss(th.divider.def)));
     }
     if (_convNameLabel) {
-        _convNameLabel->setStyleSheet(QString("font-weight: 700; font-size: %1px; color: %2;")
-                                          .arg(th.fonts.xl)
+        _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
+                                          .arg(th.fonts.xxl)
                                           .arg(Th::qss(th.text.primary)));
     }
     if (_starBtn) {
@@ -664,6 +664,7 @@ void MainWindow::startSession(const QString &teamId) {
     if (!_mainPage) {
         _mainPage = buildMainPage();
         _stack->addWidget(_mainPage);
+        applyTheme();
     }
 
     // Tear down existing session — persist unreads before destroying.
