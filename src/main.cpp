@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QFileOpenEvent>
 #include <QLocale>
+#include <QNetworkAccessManager>
 #include <QTranslator>
 
 int main(int argc, char *argv[]) {
@@ -26,6 +27,11 @@ int main(int argc, char *argv[]) {
     SingleInstance singleInstance;
     if (!singleInstance.init(urlArg))
         return 0;
+
+    // Start TLS handshake to slack.com before any UI is built so it can
+    // complete in the background during window construction.
+    QNetworkAccessManager preWarmNam;
+    preWarmNam.connectToHostEncrypted("slack.com", 443);
 
     QTranslator   translator;
     const QString locale = QLocale::system().name(); // e.g. "fr_FR"

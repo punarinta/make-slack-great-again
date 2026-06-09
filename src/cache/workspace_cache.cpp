@@ -285,6 +285,9 @@ QString WorkspaceCache::usersPath() const {
 QString WorkspaceCache::botsPath() const {
     return _dir + "/bots.json";
 }
+QString WorkspaceCache::emojiPath() const {
+    return _dir + "/emoji.json";
+}
 QString WorkspaceCache::msgsPath(const ConversationId &conv) const {
     return _dir + "/messages/" + conv.value + ".json";
 }
@@ -416,6 +419,27 @@ std::pair<ConversationId, QString> WorkspaceCache::loadLastConv() const {
         return {};
     const auto o = doc.object();
     return {ConversationId{o["conv"].toString()}, o["name"].toString()};
+}
+
+void WorkspaceCache::saveEmojiMap(const QHash<QString, QString> &map) {
+    QJsonObject o;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        o[it.key()] = it.value();
+    writeJson(emojiPath(), QJsonDocument(o));
+}
+
+QHash<QString, QString> WorkspaceCache::loadEmojiMap() const {
+    const auto data = readFile(emojiPath());
+    if (data.isEmpty())
+        return {};
+    const auto doc = QJsonDocument::fromJson(data);
+    if (!doc.isObject())
+        return {};
+    QHash<QString, QString> result;
+    const auto              obj = doc.object();
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        result[it.key()] = it.value().toString();
+    return result;
 }
 
 void WorkspaceCache::saveImage(const QString &url, const QByteArray &data) {

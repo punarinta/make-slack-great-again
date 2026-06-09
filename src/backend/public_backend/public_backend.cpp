@@ -253,7 +253,7 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
 rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
     return [this](auto consumer) mutable {
         auto accum = std::make_shared<std::vector<User>>();
-        _api->paginate(
+        _historyApi->paginate(
             "users.list",
             "members",
             QUrlQuery{},

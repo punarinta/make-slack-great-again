@@ -33,6 +33,9 @@ public:
     void saveLastConv(const ConversationId &conv, const QString &displayName);
     std::pair<ConversationId, QString> loadLastConv() const;
 
+    void                    saveEmojiMap(const QHash<QString, QString> &map);
+    QHash<QString, QString> loadEmojiMap() const;
+
     // Persist/retrieve raw downloaded thumbnail bytes, keyed by URL.
     // The URL is hashed to a safe filename; no expiry — images are small and stable.
     void       saveImage(const QString &url, const QByteArray &data);
@@ -46,6 +49,7 @@ private:
     QString convPath() const;
     QString usersPath() const;
     QString botsPath() const;
+    QString emojiPath() const;
     QString msgsPath(const ConversationId &conv) const;
     QString metaPath() const;
     QString imgPath(const QString &url) const; // url → hashed filename

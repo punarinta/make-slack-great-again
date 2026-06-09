@@ -23,26 +23,10 @@ void Session::start() {
         if (!users.empty())
             _users = std::move(users);
         _botUsers = _cache->loadBots();
+        _emojiMap = _cache->loadEmojiMap();
     }
 
     _backend->connectRealtime();
-
-    _backend->loadMe() | rpl::on_next(
-                             [this](UserId id) {
-                                 setMe(std::move(id));
-                                 // Users may already be loaded (from cache); pick up admin flag
-                                 // immediately.
-                                 if (const User *u = findUser(_meUserId))
-                                     _meIsAdmin = u->isAdmin;
-                             },
-                             _lifetime
-                         );
-
-    // Load custom emoji map once.
-    _backend->loadEmojiList() |
-        rpl::on_next(
-            [this](QHash<QString, QString> map) { _emojiMap = std::move(map); }, _lifetime
-        );
 
     // Load conversations; update cache on arrival.
     _backend->loadConversations() |
@@ -73,6 +57,16 @@ void Session::start() {
                 }
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
+                // Emoji load is deferred to here so it doesn't queue ahead of
+                // conversations/users. Cache serves emojis until the refresh
+                // arrives and the result is written back to cache.
+                _backend->loadEmojiList() | rpl::on_next(
+                                                [this](QHash<QString, QString> map) {
+                                                    _emojiMap = std::move(map);
+                                                    _cache->saveEmojiMap(_emojiMap);
+                                                },
+                                                _lifetime
+                                            );
             },
             _lifetime
         );
@@ -103,6 +97,17 @@ void Session::start() {
                                 },
                                 _lifetime
                             );
+
+    _backend->loadMe() | rpl::on_next(
+                             [this](UserId id) {
+                                 setMe(std::move(id));
+                                 // Users may already be loaded (from cache); pick up admin flag
+                                 // immediately.
+                                 if (const User *u = findUser(_meUserId))
+                                     _meIsAdmin = u->isAdmin;
+                             },
+                             _lifetime
+                         );
 
     // Wire the backend event firehose through our hub so Session can
     // intercept and patch state before forwarding to the UI.
