@@ -82,7 +82,7 @@ Click **Save Changes**. Slack will prompt you to reinstall the app — do so via
 
 Go to **Install App** and click **Install to Workspace**. Authorize the requested permissions.
 
-### 6. Add credentials to the build
+### 6. Add Credentials to the Build
 
 From **Basic Information**, copy:
 
@@ -97,10 +97,11 @@ Copy `credentials.cmake.example` to `credentials.cmake` in the project root and 
 set(MSGA_CLIENT_ID     "your-client-id")
 set(MSGA_CLIENT_SECRET "your-client-secret")
 set(MSGA_XAPP          "xapp-1-...")
-set(MSGA_VERSION       1)
 ```
 
 `credentials.cmake` is gitignored and never committed. Rebuild after editing it — the values are compiled in.
+
+The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSION` there before each public release.
 
 ### 7. Configure build environment
 

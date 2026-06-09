@@ -1,15 +1,13 @@
 cmake_minimum_required(VERSION 3.21)
 project(msga LANGUAGES CXX)
 
+include("${CMAKE_SOURCE_DIR}/version.cmake")
 include("${CMAKE_SOURCE_DIR}/credentials.cmake" OPTIONAL)
 foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP)
     if(NOT DEFINED ${_var})
         set(${_var} "")
     endif()
 endforeach()
-if(NOT DEFINED MSGA_VERSION)
-    set(MSGA_VERSION 0)
-endif()
 string(TIMESTAMP MSGA_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ" UTC)
 configure_file(
     "${CMAKE_SOURCE_DIR}/src/app_credentials.h.in"
