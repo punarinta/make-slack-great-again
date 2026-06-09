@@ -2,6 +2,59 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="en_US">
 <context>
+    <name>BrowseChannelsDialog</name>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="116"/>
+        <source>%1 %2</source>
+        <translation>%1 %2</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="118"/>
+        <source>member</source>
+        <translation>member</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="118"/>
+        <source>members</source>
+        <translation>members</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="147"/>
+        <source>Joined</source>
+        <translation>Joined</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="196"/>
+        <source>Search for channels</source>
+        <translation>Search for channels</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="205"/>
+        <source>Create Channel</source>
+        <translation>Create Channel</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="230"/>
+        <source>Channels</source>
+        <translation>Channels</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="237"/>
+        <source>People</source>
+        <translation>People</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="509"/>
+        <source>Search for channels</source>
+        <translation>Search for channels</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="509"/>
+        <source>Search for people</source>
+        <translation>Search for people</translation>
+    </message>
+</context>
+<context>
     <name>ComposerWidget</name>
     <message>
         <location filename="../src/ui/composer/composer_widget.cpp" line="374"/>
@@ -198,57 +251,57 @@
         <translation>Create a channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="644"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="646"/>
         <source>Channels</source>
         <translation>Channels</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="644"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="646"/>
         <source>Direct messages</source>
         <translation>Direct messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="665"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="672"/>
         <source>Add channels</source>
         <translation>Add channels</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="686"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="693"/>
         <source>%1 more %2</source>
         <translation>%1 more %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="686"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="693"/>
         <source>channel</source>
         <translation>channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="686"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="693"/>
         <source>channels</source>
         <translation>channels</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="687"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="694"/>
         <source>%1 more %2</source>
         <translation>%1 more %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="687"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="694"/>
         <source>DM</source>
         <translation>DM</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="687"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="694"/>
         <source>DMs</source>
         <translation>DMs</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="822"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="831"/>
         <source>you</source>
         <translation>you</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="850"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="859"/>
         <source>you</source>
         <translation>you</translation>
     </message>
@@ -259,6 +312,74 @@
         <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="39"/>
         <source>Search channels and people…</source>
         <translation>Search channels and people…</translation>
+    </message>
+</context>
+<context>
+    <name>CreateChannelDialog</name>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="18"/>
+        <source>Create a channel</source>
+        <translation>Create a channel</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="31"/>
+        <source>Name</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="40"/>
+        <source>e.g. plan-budget</source>
+        <translation>e.g. plan-budget</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="44"/>
+        <source>Channels are where conversations happen around a topic. Use a name that is easy to find and understand.</source>
+        <translation>Channels are where conversations happen around a topic. Use a name that is easy to find and understand.</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="55"/>
+        <source>Next</source>
+        <translation>Next</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="75"/>
+        <source>Visibility</source>
+        <translation>Visibility</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="85"/>
+        <source>Private — only specific people</source>
+        <translation>Private — only specific people</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="88"/>
+        <source>Can only be viewed or joined by invitation</source>
+        <translation>Can only be viewed or joined by invitation</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="95"/>
+        <source>Step 2 of 2</source>
+        <translation>Step 2 of 2</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="96"/>
+        <source>Back</source>
+        <translation>Back</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="97"/>
+        <source>Create</source>
+        <translation>Create</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="139"/>
+        <source>this workspace</source>
+        <translation>this workspace</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="140"/>
+        <source>Public — anyone in %1</source>
+        <translation>Public — anyone in %1</translation>
     </message>
 </context>
 <context>
@@ -295,27 +416,27 @@
 <context>
     <name>ForwardDialog</name>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="20"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="22"/>
         <source>Forward this message</source>
         <translation>Forward this message</translation>
     </message>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="29"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="31"/>
         <source>Add a message, if you'd like.</source>
         <translation>Add a message, if you'd like.</translation>
     </message>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="79"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="153"/>
         <source>Copy Link</source>
         <translation>Copy Link</translation>
     </message>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="83"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="157"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="85"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="159"/>
         <source>Forward</source>
         <translation>Forward</translation>
     </message>
@@ -323,17 +444,17 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="244"/>
+        <location filename="../src/ui/main_window.cpp" line="250"/>
         <source>Log in to workspace</source>
         <translation>Log in to workspace</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="755"/>
+        <location filename="../src/ui/main_window.cpp" line="762"/>
         <source>Missing credentials</source>
         <translation>Missing credentials</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="756"/>
+        <location filename="../src/ui/main_window.cpp" line="763"/>
         <source>App credentials are not configured.
 
 Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
@@ -342,87 +463,87 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="775"/>
+        <location filename="../src/ui/main_window.cpp" line="782"/>
         <source>Login failed</source>
         <translation>Login failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="880"/>
+        <location filename="../src/ui/main_window.cpp" line="959"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="886"/>
+        <location filename="../src/ui/main_window.cpp" line="965"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="886"/>
+        <location filename="../src/ui/main_window.cpp" line="965"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="941"/>
+        <location filename="../src/ui/main_window.cpp" line="1020"/>
         <source>Could not replace binary — check file permissions.</source>
         <translation>Could not replace binary — check file permissions.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="988"/>
+        <location filename="../src/ui/main_window.cpp" line="1067"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="995"/>
+        <location filename="../src/ui/main_window.cpp" line="1074"/>
         <source>a channel</source>
         <translation>a channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1101"/>
+        <location filename="../src/ui/main_window.cpp" line="1180"/>
         <source>Log out</source>
         <translation>Log out</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1101"/>
+        <location filename="../src/ui/main_window.cpp" line="1180"/>
         <source>Log out from %1</source>
         <translation>Log out from %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1131"/>
+        <location filename="../src/ui/main_window.cpp" line="1210"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1138"/>
+        <location filename="../src/ui/main_window.cpp" line="1217"/>
         <source>Quit</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1284"/>
+        <location filename="../src/ui/main_window.cpp" line="1363"/>
         <source>Unstar conversation</source>
         <translation>Unstar conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1284"/>
+        <location filename="../src/ui/main_window.cpp" line="1363"/>
         <source>Star conversation</source>
         <translation>Star conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1295"/>
+        <location filename="../src/ui/main_window.cpp" line="1374"/>
         <source>Search messages</source>
         <translation>Search messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1376"/>
+        <location filename="../src/ui/main_window.cpp" line="1456"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1391"/>
+        <location filename="../src/ui/main_window.cpp" line="1471"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1391"/>
+        <location filename="../src/ui/main_window.cpp" line="1471"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
@@ -565,27 +686,27 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Loading image…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1064"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="985"/>
         <source>1 reply</source>
         <translation>1 reply</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1064"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="985"/>
         <source>%1 replies</source>
         <translation>%1 replies</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1081"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1002"/>
         <source>View thread</source>
         <translation>View thread</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1095"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1016"/>
         <source>Last reply</source>
         <translation>Last reply</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1095"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1016"/>
         <source>Last reply %1</source>
         <translation>Last reply %1</translation>
     </message>
@@ -593,12 +714,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MsgRender</name>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="41"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="46"/>
         <source>Today</source>
         <translation>Today</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="43"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="48"/>
         <source>Yesterday</source>
         <translation>Yesterday</translation>
     </message>
@@ -639,203 +760,203 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="80"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="82"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="102"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="104"/>
         <source>Appearance</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="103"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="105"/>
         <source>Notifications</source>
         <translation>Notifications</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="104"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="106"/>
         <source>Storage</source>
         <translation>Storage</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="105"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="107"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="120"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="122"/>
         <source>Appearance</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="124"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="126"/>
         <source>Conversations sidebar</source>
         <translation>Conversations sidebar</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="131"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="133"/>
         <source>Show conversations active in the last</source>
         <translation>Show conversations active in the last</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="137"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="139"/>
         <source> days</source>
         <translation> days</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="144"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="146"/>
         <source>Conversations with no activity in this period are hidden
 under an &quot;N more...&quot; row at the bottom of each section.</source>
         <translation>Conversations with no activity in this period are hidden
 under an &quot;N more...&quot; row at the bottom of each section.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="157"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="159"/>
         <source>Save</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="177"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="179"/>
         <source>Notifications</source>
         <translation>Notifications</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="181"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="183"/>
         <source>Enable desktop notifications</source>
         <translation>Enable desktop notifications</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="184"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="186"/>
         <source>Notify me about</source>
         <translation>Notify me about</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="190"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="192"/>
         <source>All new messages</source>
         <translation>All new messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="191"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="193"/>
         <source>Direct messages and mentions only</source>
         <translation>Direct messages and mentions only</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="201"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="203"/>
         <source>Play a sound for notifications</source>
         <translation>Play a sound for notifications</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="216"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="218"/>
         <source>Save</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="236"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="238"/>
         <source>Storage</source>
         <translation>Storage</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="241"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="243"/>
         <source>Cache size:</source>
         <translation>Cache size:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="251"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="253"/>
         <source>Conversations, user names, message history, and image thumbnails
 stored locally to speed up startup.</source>
         <translation>Conversations, user names, message history, and image thumbnails
 stored locally to speed up startup.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="261"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="263"/>
         <source>Clear Cache</source>
         <translation>Clear Cache</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="277"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="279"/>
         <source>App state</source>
         <translation>App state</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="282"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="284"/>
         <source>Sidebar visit history used to decide which conversations are shown.
 Clear this to let the app re-analyse activity from scratch on next load.</source>
         <translation>Sidebar visit history used to decide which conversations are shown.
 Clear this to let the app re-analyse activity from scratch on next load.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="292"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="294"/>
         <source>Clear State</source>
         <translation>Clear State</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="311"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="313"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="319"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="321"/>
         <source>Version %1, built %2</source>
         <translation>Version %1, built %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="324"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="326"/>
         <source>Updates</source>
         <translation>Updates</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="331"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="333"/>
         <source>Check for updates</source>
         <translation>Check for updates</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="689"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="695"/>
         <source>Last checked: %1</source>
         <translation>Last checked: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="697"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="703"/>
         <source>Update checks not available.</source>
         <translation>Update checks not available.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="702"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="708"/>
         <source>Checking for updates…</source>
         <translation>Checking for updates…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="705"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="711"/>
         <source>Update downloaded — restart the app to apply.</source>
         <translation>Update downloaded — restart the app to apply.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="719"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="725"/>
         <source>Checking for updates…</source>
         <translation>Checking for updates…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="723"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="729"/>
         <source>msga is up to date.</source>
         <translation>msga is up to date.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="727"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="733"/>
         <source>Version %1 available — downloading…</source>
         <translation>Version %1 available — downloading…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="730"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="736"/>
         <source>Downloading update… %1%</source>
         <translation>Downloading update… %1%</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="734"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="740"/>
         <source>Update downloaded — restart the app to apply.</source>
         <translation>Update downloaded — restart the app to apply.</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="739"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="745"/>
         <source>Check failed: %1</source>
         <translation>Check failed: %1</translation>
     </message>
@@ -856,12 +977,12 @@ Clear this to let the app re-analyse activity from scratch on next load.</transl
 <context>
     <name>TitleBar</name>
     <message>
-        <location filename="../src/ui/title_bar/title_bar.cpp" line="191"/>
+        <location filename="../src/ui/title_bar/title_bar.cpp" line="212"/>
         <source>Unpin window</source>
         <translation>Unpin window</translation>
     </message>
     <message>
-        <location filename="../src/ui/title_bar/title_bar.cpp" line="191"/>
+        <location filename="../src/ui/title_bar/title_bar.cpp" line="212"/>
         <source>Pin window on top</source>
         <translation>Pin window on top</translation>
     </message>
