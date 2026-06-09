@@ -23,6 +23,9 @@ public:
     void               setToken(const QString &token);
     [[nodiscard]] bool hasToken() const;
 
+    // Override base URL per instance (tests only — production uses kBaseUrl).
+    void setBaseUrl(const QString &url);
+
     // Pre-warm the TLS connection so the first API call skips the handshake.
     void preWarm(const QString &host);
 
@@ -81,6 +84,7 @@ private:
 
     QNetworkAccessManager *_nam;
     QString                _token;
+    QString                _baseUrl{kBaseUrl};
     QQueue<PendingCall>    _queue;
     bool                   _inflight = false;
     bool           _throttled = false; // true while waiting out a Retry-After or token refresh

@@ -23,6 +23,10 @@ void WebApiClient::setOnTokenExpired(OnTokenExpired fn) {
     _onTokenExpired = std::move(fn);
 }
 
+void WebApiClient::setBaseUrl(const QString &url) {
+    _baseUrl = url;
+}
+
 void WebApiClient::preWarm(const QString &host) {
     _nam->connectToHostEncrypted(host, 443);
 }
@@ -152,7 +156,7 @@ void WebApiClient::tryNext() {
 }
 
 void WebApiClient::execute(const PendingCall &c) {
-    QUrl            url(kBaseUrl + c.method);
+    QUrl            url(_baseUrl + c.method);
     QNetworkRequest req;
     req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
     req.setAttribute(

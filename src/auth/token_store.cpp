@@ -36,6 +36,7 @@ void TokenStore::saveWorkspace(const Credentials &c) {
     s.setValue(QStringLiteral("workspace/%1/name").arg(c.teamId), c.teamName);
     s.setValue(QStringLiteral("workspace/%1/iconUrl").arg(c.teamId), c.iconUrl);
     s.setValue(QStringLiteral("workspace/%1/refreshToken").arg(c.teamId), c.refreshToken);
+    s.setValue(QStringLiteral("workspace/%1/expiresAt").arg(c.teamId), c.expiresAt);
 }
 
 TokenStore::Credentials TokenStore::loadWorkspace(const QString &teamId) {
@@ -46,6 +47,7 @@ TokenStore::Credentials TokenStore::loadWorkspace(const QString &teamId) {
         s.value(QStringLiteral("workspace/%1/name").arg(teamId)).toString(),
         s.value(QStringLiteral("workspace/%1/iconUrl").arg(teamId)).toString(),
         s.value(QStringLiteral("workspace/%1/refreshToken").arg(teamId)).toString(),
+        s.value(QStringLiteral("workspace/%1/expiresAt").arg(teamId)).toLongLong(),
     };
 }
 

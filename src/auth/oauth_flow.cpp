@@ -12,6 +12,7 @@
 #include <QNetworkAccessManager>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDateTime>
 
 OAuthFlow::OAuthFlow(const TokenStore::AppConfig &app, QObject *parent)
     : QObject(parent), _app(app), _client(this) {}
@@ -94,11 +95,14 @@ void OAuthFlow::exchangeCode(const QString &code) {
             emit failed(obj.value("error").toString("unknown"));
             return;
         }
-        auto user = obj.value("authed_user").toObject();
-        auto team = obj.value("team").toObject();
+        auto         user      = obj.value("authed_user").toObject();
+        auto         team      = obj.value("team").toObject();
+        const qint64 expiresIn = user.value("expires_in").toInteger(0);
+        const qint64 expiresAt = expiresIn > 0 ? QDateTime::currentSecsSinceEpoch() + expiresIn : 0;
         fetchTeamInfo(
             user.value("access_token").toString(),
-            user.value("refresh_token").toString(), // non-empty when token rotation enabled
+            user.value("refresh_token").toString(),
+            expiresAt,
             team.value("id").toString(),
             team.value("name").toString()
         );
@@ -106,7 +110,11 @@ void OAuthFlow::exchangeCode(const QString &code) {
 }
 
 void OAuthFlow::fetchTeamInfo(
-    const QString &xoxp, const QString &refreshToken, const QString &teamId, const QString &teamName
+    const QString &xoxp,
+    const QString &refreshToken,
+    qint64         expiresAt,
+    const QString &teamId,
+    const QString &teamName
 ) {
     auto           *nam = new QNetworkAccessManager(this);
     QNetworkRequest req(QUrl("https://slack.com/api/team.info"));
@@ -116,7 +124,7 @@ void OAuthFlow::fetchTeamInfo(
         reply,
         &QNetworkReply::finished,
         this,
-        [this, reply, nam, xoxp, refreshToken, teamId, teamName] {
+        [this, reply, nam, xoxp, refreshToken, expiresAt, teamId, teamName] {
             reply->deleteLater();
             nam->deleteLater();
             QString iconUrl;
@@ -125,7 +133,9 @@ void OAuthFlow::fetchTeamInfo(
                 auto icon = root.value("team").toObject().value("icon").toObject();
                 iconUrl   = icon.value("image_88").toString();
             }
-            emit done(TokenStore::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken});
+            emit done(
+                TokenStore::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken, expiresAt}
+            );
         }
     );
 }

@@ -9,6 +9,7 @@
 #include "rpl/event_stream.h"
 
 #include <QNetworkAccessManager>
+#include <QTimer>
 #include <functional>
 #include <vector>
 
@@ -20,10 +21,13 @@ class SocketModeRealtime;
 // the workspace has token rotation enabled.
 class PublicBackend : public Backend {
 public:
+    // refreshUrl: override the oauth.v2.exchange endpoint (empty = use Slack's default; tests
+    // only).
     explicit PublicBackend(
         const TokenStore::Credentials &creds,
         const TokenStore::AppConfig   &appCfg,
-        const QString                 &xappToken = {}
+        const QString                 &xappToken  = {},
+        const QString                 &refreshUrl = {}
     );
     ~PublicBackend() override;
 
@@ -69,17 +73,26 @@ public:
 
     rpl::producer<Event> events() const override;
 
+protected:
+    // Overridable in tests to intercept the network call.
+    virtual void doRefresh(std::function<void(bool)> done);
+    qint64       _tokenExpiresAt = 0;
+
 private:
     void
     setupTokenRefresh(const TokenStore::Credentials &creds, const TokenStore::AppConfig &appCfg);
-    void doRefresh(const TokenStore::AppConfig &appCfg, std::function<void(bool)> done);
+    void triggerRefresh(std::function<void(bool)> done);
+    void scheduleProactiveRefresh();
 
-    QString             _xappToken;
-    QString             _teamId;
-    QString             _refreshToken;
-    WebApiClient       *_api;
-    WebApiClient       *_historyApi; // dedicated client for loadHistory/loadThread
-    SocketModeRealtime *_realtime = nullptr;
+    QString               _xappToken;
+    QString               _teamId;
+    QString               _refreshToken;
+    QString               _refreshUrl;
+    TokenStore::AppConfig _appCfg;
+    WebApiClient         *_api;
+    WebApiClient         *_historyApi; // dedicated client for loadHistory/loadThread
+    SocketModeRealtime   *_realtime              = nullptr;
+    QTimer               *_proactiveRefreshTimer = nullptr;
 
     // Token refresh deduplication
     bool                                   _refreshInProgress = false;

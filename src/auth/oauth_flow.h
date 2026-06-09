@@ -34,6 +34,7 @@ private:
     void fetchTeamInfo(
         const QString &xoxp,
         const QString &refreshToken,
+        qint64         expiresAt,
         const QString &teamId,
         const QString &teamName
     );

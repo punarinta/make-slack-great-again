@@ -30,7 +30,7 @@ struct TokenStoreFixture {
         s.clear();
         s.sync();
     }
-    TokenStoreFixture()  { clearSettings(); }
+    TokenStoreFixture() { clearSettings(); }
     ~TokenStoreFixture() { clearSettings(); }
 };
 
@@ -40,10 +40,10 @@ TEST_CASE_METHOD(TokenStoreFixture, "saveWorkspace/loadWorkspace round-trip", "[
     TokenStore::Credentials c{"xoxp-token", "T001", "My Team", "https://icon.example.com/t.png"};
     TokenStore::saveWorkspace(c);
     auto loaded = TokenStore::loadWorkspace("T001");
-    CHECK(loaded.xoxp     == "xoxp-token");
-    CHECK(loaded.teamId   == "T001");
+    CHECK(loaded.xoxp == "xoxp-token");
+    CHECK(loaded.teamId == "T001");
     CHECK(loaded.teamName == "My Team");
-    CHECK(loaded.iconUrl  == "https://icon.example.com/t.png");
+    CHECK(loaded.iconUrl == "https://icon.example.com/t.png");
 }
 
 TEST_CASE_METHOD(TokenStoreFixture, "saveWorkspace registers id in workspaceIds", "[tokenstore]") {
@@ -51,16 +51,20 @@ TEST_CASE_METHOD(TokenStoreFixture, "saveWorkspace registers id in workspaceIds"
     CHECK(TokenStore::workspaceIds().contains("T001"));
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "saveWorkspace twice for same id does not duplicate", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One",     ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T001", "Team One v2",  ""});
+TEST_CASE_METHOD(
+    TokenStoreFixture, "saveWorkspace twice for same id does not duplicate", "[tokenstore]"
+) {
+    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
+    TokenStore::saveWorkspace({"xoxp-2", "T001", "Team One v2", ""});
     auto ids = TokenStore::workspaceIds();
     CHECK(ids.count("T001") == 1);
-    CHECK(TokenStore::loadWorkspace("T001").xoxp     == "xoxp-2");
+    CHECK(TokenStore::loadWorkspace("T001").xoxp == "xoxp-2");
     CHECK(TokenStore::loadWorkspace("T001").teamName == "Team One v2");
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "multiple workspaces all appear in workspaceIds", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "multiple workspaces all appear in workspaceIds", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
     TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
     auto ids = TokenStore::workspaceIds();
@@ -71,7 +75,9 @@ TEST_CASE_METHOD(TokenStoreFixture, "multiple workspaces all appear in workspace
 
 // ── removeWorkspace ───────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace removes id from workspaceIds", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "removeWorkspace removes id from workspaceIds", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
     TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
     TokenStore::removeWorkspace("T001");
@@ -88,7 +94,9 @@ TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace clears stored credentials",
     CHECK(loaded.teamName.isEmpty());
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace active shifts to first remaining", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "removeWorkspace active shifts to first remaining", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
     TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
     TokenStore::setActiveWorkspace("T001");
@@ -96,7 +104,9 @@ TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace active shifts to first rema
     CHECK(TokenStore::activeWorkspaceId() == "T002");
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace last workspace clears active", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "removeWorkspace last workspace clears active", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
     TokenStore::setActiveWorkspace("T001");
     TokenStore::removeWorkspace("T001");
@@ -117,13 +127,17 @@ TEST_CASE_METHOD(TokenStoreFixture, "activeWorkspaceId empty when nothing set", 
     CHECK(TokenStore::activeWorkspaceId().isEmpty());
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "setActiveWorkspace/activeWorkspaceId round-trip", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "setActiveWorkspace/activeWorkspaceId round-trip", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", ""});
     TokenStore::setActiveWorkspace("T001");
     CHECK(TokenStore::activeWorkspaceId() == "T001");
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "setActiveWorkspace can switch between workspaces", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "setActiveWorkspace can switch between workspaces", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
     TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
     TokenStore::setActiveWorkspace("T001");
@@ -143,7 +157,9 @@ TEST_CASE_METHOD(TokenStoreFixture, "hasAnyWorkspace true after save", "[tokenst
     CHECK(TokenStore::hasAnyWorkspace());
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "hasAnyWorkspace false after removing only workspace", "[tokenstore]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "hasAnyWorkspace false after removing only workspace", "[tokenstore]"
+) {
     TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", ""});
     TokenStore::removeWorkspace("T001");
     CHECK(!TokenStore::hasAnyWorkspace());
@@ -151,13 +167,19 @@ TEST_CASE_METHOD(TokenStoreFixture, "hasAnyWorkspace false after removing only w
 
 // ── legacy wrappers ───────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(TokenStoreFixture, "save() stores credentials and sets active", "[tokenstore][legacy]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "save() stores credentials and sets active", "[tokenstore][legacy]"
+) {
     TokenStore::save({"xoxp-1", "T001", "Team One", ""});
     CHECK(TokenStore::activeWorkspaceId() == "T001");
     CHECK(TokenStore::load().xoxp == "xoxp-1");
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "load() returns credentials for current active workspace", "[tokenstore][legacy]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture,
+    "load() returns credentials for current active workspace",
+    "[tokenstore][legacy]"
+) {
     TokenStore::save({"xoxp-1", "T001", "Team One", ""});
     TokenStore::save({"xoxp-2", "T002", "Team Two", ""});
     TokenStore::setActiveWorkspace("T001");
@@ -166,7 +188,9 @@ TEST_CASE_METHOD(TokenStoreFixture, "load() returns credentials for current acti
     CHECK(TokenStore::load().teamId == "T002");
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "clear() removes the active workspace", "[tokenstore][legacy]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "clear() removes the active workspace", "[tokenstore][legacy]"
+) {
     TokenStore::save({"xoxp-1", "T001", "Team One", ""});
     TokenStore::clear();
     CHECK(!TokenStore::hasAnyWorkspace());
@@ -182,27 +206,31 @@ TEST_CASE_METHOD(TokenStoreFixture, "hasToken mirrors hasAnyWorkspace", "[tokens
 
 // ── migration from old auth/* format ─────────────────────────────────────────
 
-TEST_CASE_METHOD(TokenStoreFixture, "workspaceIds migrates old auth/* format", "[tokenstore][migrate]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "workspaceIds migrates old auth/* format", "[tokenstore][migrate]"
+) {
     {
         QSettings s("msga", "msga");
-        s.setValue("auth/xoxp",      "xoxp-old");
-        s.setValue("auth/team_id",   "T_OLD");
+        s.setValue("auth/xoxp", "xoxp-old");
+        s.setValue("auth/team_id", "T_OLD");
         s.setValue("auth/team_name", "Old Team");
         s.sync();
     }
     auto ids = TokenStore::workspaceIds();
     REQUIRE(ids.size() == 1);
     CHECK(ids[0] == "T_OLD");
-    CHECK(TokenStore::loadWorkspace("T_OLD").xoxp     == "xoxp-old");
+    CHECK(TokenStore::loadWorkspace("T_OLD").xoxp == "xoxp-old");
     CHECK(TokenStore::loadWorkspace("T_OLD").teamName == "Old Team");
-    CHECK(TokenStore::activeWorkspaceId()             == "T_OLD");
+    CHECK(TokenStore::activeWorkspaceId() == "T_OLD");
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "migration uses 'legacy' id when team_id was empty", "[tokenstore][migrate]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "migration uses 'legacy' id when team_id was empty", "[tokenstore][migrate]"
+) {
     {
         QSettings s("msga", "msga");
-        s.setValue("auth/xoxp",      "xoxp-old");
-        s.setValue("auth/team_id",   "");
+        s.setValue("auth/xoxp", "xoxp-old");
+        s.setValue("auth/team_id", "");
         s.setValue("auth/team_name", "Old Team");
         s.sync();
     }
@@ -215,8 +243,8 @@ TEST_CASE_METHOD(TokenStoreFixture, "migration uses 'legacy' id when team_id was
 TEST_CASE_METHOD(TokenStoreFixture, "migration removes old auth/* keys", "[tokenstore][migrate]") {
     {
         QSettings s("msga", "msga");
-        s.setValue("auth/xoxp",      "xoxp-old");
-        s.setValue("auth/team_id",   "T_OLD");
+        s.setValue("auth/xoxp", "xoxp-old");
+        s.setValue("auth/team_id", "T_OLD");
         s.setValue("auth/team_name", "Old Team");
         s.sync();
     }
@@ -227,20 +255,72 @@ TEST_CASE_METHOD(TokenStoreFixture, "migration removes old auth/* keys", "[token
     CHECK(!s.contains("auth/team_name"));
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "migration skipped when auth/xoxp is empty", "[tokenstore][migrate]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture, "migration skipped when auth/xoxp is empty", "[tokenstore][migrate]"
+) {
     {
         QSettings s("msga", "msga");
-        s.setValue("auth/xoxp",    "");
+        s.setValue("auth/xoxp", "");
         s.setValue("auth/team_id", "T_EMPTY");
         s.sync();
     }
     CHECK(TokenStore::workspaceIds().isEmpty());
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "migration is idempotent when workspaces key already exists", "[tokenstore][migrate]") {
+TEST_CASE_METHOD(
+    TokenStoreFixture,
+    "migration is idempotent when workspaces key already exists",
+    "[tokenstore][migrate]"
+) {
     TokenStore::saveWorkspace({"xoxp-new", "T_NEW", "New Team", ""});
     TokenStore::workspaceIds(); // should not alter the already-migrated state
     auto ids = TokenStore::workspaceIds();
     REQUIRE(ids.size() == 1);
     CHECK(ids[0] == "T_NEW");
+}
+
+// ── expiresAt ─────────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "saveWorkspace/loadWorkspace round-trips expiresAt", "[tokenstore][expiry]"
+) {
+    TokenStore::Credentials c{"xoxp-1", "T001", "Team", "", "refresh-tok", 1234567890LL};
+    TokenStore::saveWorkspace(c);
+    auto loaded = TokenStore::loadWorkspace("T001");
+    CHECK(loaded.expiresAt == 1234567890LL);
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture,
+    "loadWorkspace returns expiresAt=0 when key is absent",
+    "[tokenstore][expiry]"
+) {
+    // Write credentials without an expiresAt key (simulates an old install).
+    {
+        QSettings s("msga", "msga");
+        s.setValue("workspaces", QStringList{"T_OLD"});
+        s.setValue("workspace/T_OLD/xoxp", "xoxp-old");
+        s.setValue("workspace/T_OLD/name", "Old Team");
+        s.setValue("workspace/T_OLD/iconUrl", "");
+        s.setValue("workspace/T_OLD/refreshToken", "refresh-old");
+        // intentionally no expiresAt key
+        s.sync();
+    }
+    auto loaded = TokenStore::loadWorkspace("T_OLD");
+    CHECK(loaded.expiresAt == 0);
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "saveWorkspace overwrites expiresAt on update", "[tokenstore][expiry]"
+) {
+    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", "", "refresh-1", 1000LL});
+    TokenStore::saveWorkspace({"xoxp-2", "T001", "Team", "", "refresh-2", 9999LL});
+    CHECK(TokenStore::loadWorkspace("T001").expiresAt == 9999LL);
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "save/load legacy wrappers preserve expiresAt", "[tokenstore][expiry]"
+) {
+    TokenStore::save({"xoxp-1", "T001", "Team", "", "refresh-tok", 7777LL});
+    CHECK(TokenStore::load().expiresAt == 7777LL);
 }

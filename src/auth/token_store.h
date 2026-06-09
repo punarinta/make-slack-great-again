@@ -11,8 +11,9 @@ struct Credentials {
     QString xoxp;
     QString teamId;
     QString teamName;
-    QString iconUrl;      // 88px workspace icon URL, may be empty
-    QString refreshToken; // non-empty when workspace has token rotation enabled
+    QString iconUrl;       // 88px workspace icon URL, may be empty
+    QString refreshToken;  // non-empty when workspace has token rotation enabled
+    qint64  expiresAt = 0; // Unix timestamp when access token expires; 0 = unknown
 };
 
 // ── Multi-workspace ───────────────────────────────────────────────────────────

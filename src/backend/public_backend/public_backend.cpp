@@ -13,15 +13,19 @@
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QDateTime>
+#include <QTimer>
 #include <QDebug>
 
 PublicBackend::PublicBackend(
     const TokenStore::Credentials &creds,
     const TokenStore::AppConfig   &appCfg,
-    const QString                 &xappToken
+    const QString                 &xappToken,
+    const QString                 &refreshUrl
 )
     : _xappToken(xappToken), _teamId(creds.teamId), _refreshToken(creds.refreshToken),
-      _api(new WebApiClient(nullptr)), _historyApi(new WebApiClient(nullptr)) {
+      _refreshUrl(refreshUrl), _api(new WebApiClient(nullptr)),
+      _historyApi(new WebApiClient(nullptr)) {
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
     // Pre-warm TLS so the first API calls skip the handshake latency.
@@ -36,33 +40,71 @@ PublicBackend::PublicBackend(
 void PublicBackend::setupTokenRefresh(
     const TokenStore::Credentials &creds, const TokenStore::AppConfig &appCfg
 ) {
-    // Shared handler: both clients call this; deduplication ensures only one
-    // in-flight refresh request even if both fire simultaneously.
-    auto handler = [this, appCfg](std::function<void(bool)> done) {
-        qDebug() << "[TokenRefresh] token_expired received; refreshInProgress="
-                 << _refreshInProgress << "refreshToken present=" << !_refreshToken.isEmpty();
-        _refreshWaiters.push_back(std::move(done));
-        if (_refreshInProgress) {
-            qDebug() << "[TokenRefresh] refresh already in flight, queuing";
-            return;
-        }
-        _refreshInProgress = true;
-        doRefresh(appCfg, [this](bool success) {
-            qDebug() << "[TokenRefresh] doRefresh completed, success=" << success;
-            _refreshInProgress = false;
-            auto waiters       = std::move(_refreshWaiters);
-            for (auto &w : waiters)
-                w(success);
-            if (!success)
-                _authState.force_assign(AuthState::NotLoggedIn);
-        });
+    _appCfg         = appCfg;
+    _tokenExpiresAt = creds.expiresAt;
+
+    // Reactive: WebApiClient calls this on token_expired API error
+    auto handler = [this](std::function<void(bool)> done) {
+        qDebug() << "[TokenRefresh] token_expired received";
+        triggerRefresh(std::move(done));
     };
     _api->setOnTokenExpired(handler);
     _historyApi->setOnTokenExpired(handler);
-    Q_UNUSED(creds)
+
+    // Proactive: refresh before expiry so users never see a token_expired error
+    if (!_refreshToken.isEmpty()) {
+        _proactiveRefreshTimer = new QTimer(_api);
+        _proactiveRefreshTimer->setSingleShot(true);
+        QObject::connect(_proactiveRefreshTimer, &QTimer::timeout, _api, [this]() {
+            triggerRefresh([this](bool success) {
+                if (success)
+                    scheduleProactiveRefresh();
+            });
+        });
+        scheduleProactiveRefresh();
+    }
 }
 
-void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg, std::function<void(bool)> done) {
+void PublicBackend::triggerRefresh(std::function<void(bool)> done) {
+    qDebug() << "[TokenRefresh] triggerRefresh; inProgress=" << _refreshInProgress
+             << "refreshToken present=" << !_refreshToken.isEmpty();
+    _refreshWaiters.push_back(std::move(done));
+    if (_refreshInProgress) {
+        qDebug() << "[TokenRefresh] refresh already in flight, queuing";
+        return;
+    }
+    _refreshInProgress = true;
+    doRefresh([this](bool success) {
+        qDebug() << "[TokenRefresh] doRefresh completed, success=" << success;
+        _refreshInProgress = false;
+        auto waiters       = std::move(_refreshWaiters);
+        for (auto &w : waiters)
+            w(success);
+        if (!success)
+            _authState.force_assign(AuthState::NotLoggedIn);
+    });
+}
+
+void PublicBackend::scheduleProactiveRefresh() {
+    if (_refreshToken.isEmpty() || _tokenExpiresAt == 0 || !_proactiveRefreshTimer)
+        return;
+
+    const qint64 now      = QDateTime::currentSecsSinceEpoch();
+    const qint64 secsLeft = _tokenExpiresAt - now;
+
+    if (secsLeft <= 3600) {
+        // Token expires within the hour — refresh immediately on the next event loop tick
+        qDebug() << "[TokenRefresh] proactive: token expires in" << secsLeft << "s, refreshing now";
+        _proactiveRefreshTimer->start(0);
+    } else {
+        // Schedule 1 hour before expiry; cap at INT_MAX ms (~24 days, never reached in practice)
+        const qint64 msDelay = qMin((secsLeft - 3600) * 1000LL, (qint64)INT_MAX);
+        qDebug() << "[TokenRefresh] proactive: next refresh in" << (secsLeft - 3600) << "s";
+        _proactiveRefreshTimer->start(static_cast<int>(msDelay));
+    }
+}
+
+void PublicBackend::doRefresh(std::function<void(bool)> done) {
     if (_refreshToken.isEmpty()) {
         qDebug() << "[TokenRefresh] no refresh token stored — forcing logout";
         done(false);
@@ -70,13 +112,17 @@ void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg, std::function
     }
     qDebug() << "[TokenRefresh] posting oauth.v2.exchange for team" << _teamId;
 
+    const QUrl endpoint{
+        _refreshUrl.isEmpty() ? QStringLiteral("https://slack.com/api/oauth.v2.exchange")
+                              : _refreshUrl
+    };
     auto *nam = new QNetworkAccessManager(_api); // _api owns it → cleaned up with backend
-    QNetworkRequest req(QUrl(QStringLiteral("https://slack.com/api/oauth.v2.exchange")));
+    QNetworkRequest req(endpoint);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     QUrlQuery body;
     body.addQueryItem("grant_type", "refresh_token");
-    body.addQueryItem("client_id", appCfg.clientId);
-    body.addQueryItem("client_secret", appCfg.clientSecret);
+    body.addQueryItem("client_id", _appCfg.clientId);
+    body.addQueryItem("client_secret", _appCfg.clientSecret);
     body.addQueryItem("refresh_token", _refreshToken);
     auto *reply = nam->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
 
@@ -106,18 +152,23 @@ void PublicBackend::doRefresh(const TokenStore::AppConfig &appCfg, std::function
             return;
         }
 
-        // Update in-memory tokens on both clients
+        // Update in-memory state
         _api->setToken(newToken);
         _historyApi->setToken(newToken);
-        _refreshToken = newRefresh.isEmpty() ? _refreshToken : newRefresh;
+        _refreshToken          = newRefresh.isEmpty() ? _refreshToken : newRefresh;
+        const qint64 expiresIn = obj.value("expires_in").toInteger(0);
+        if (expiresIn > 0)
+            _tokenExpiresAt = QDateTime::currentSecsSinceEpoch() + expiresIn;
 
-        // Persist the new credentials
+        // Persist atomically
         auto saved         = TokenStore::loadWorkspace(_teamId);
         saved.xoxp         = newToken;
         saved.refreshToken = _refreshToken;
+        saved.expiresAt    = _tokenExpiresAt;
         TokenStore::saveWorkspace(saved);
 
-        qDebug() << "Token refreshed successfully for team" << _teamId;
+        qDebug() << "[TokenRefresh] token refreshed successfully for team" << _teamId
+                 << "next expiry in" << expiresIn << "s";
         done(true);
     });
 }
