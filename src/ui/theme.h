@@ -134,6 +134,7 @@ struct IconColors {
 struct TitleBarColors {
     QColor bg;
     QColor controlDefault;
+    QColor controlHover;
     QColor controlClose;
 };
 

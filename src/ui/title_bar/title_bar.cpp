@@ -53,10 +53,12 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     }
 
     _minBtn = makeBtn(":/ui/wc-minimize.svg", "titleBarMin");
+    _minBtn->installEventFilter(this);
     connect(_minBtn, &QPushButton::clicked, this, [this] { window()->showMinimized(); });
     layout->addWidget(_minBtn);
 
     _maxBtn = makeBtn(":/ui/wc-maximize.svg", "titleBarMax");
+    _maxBtn->installEventFilter(this);
     connect(_maxBtn, &QPushButton::clicked, this, [this] {
         window()->isMaximized() ? window()->showNormal() : window()->showMaximized();
     });
@@ -83,9 +85,10 @@ void TitleBar::applyTheme() {
     );
     updateMaxButton();
     updatePinButton();
-    // _closeBtn default icon is managed by eventFilter (enter/leave);
-    // reset it to the default state here so it tracks the new theme.
     _closeBtn->setIcon(svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlDefault));
+    _closeBtn->setStyleSheet(QString("QPushButton#titleBarClose:hover { background-color: %1; "
+                                     "border-top-right-radius: 8px; }")
+                                 .arg(Th::qss(Th::c().titleBar.controlClose)));
 }
 
 void TitleBar::updateMaxButton() {
@@ -186,18 +189,39 @@ void TitleBar::showEvent(QShowEvent *e) {
 }
 
 bool TitleBar::eventFilter(QObject *watched, QEvent *e) {
+    if (watched == _minBtn) {
+        if (e->type() == QEvent::Enter)
+            _minBtn->setIcon(
+                svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlHover)
+            );
+        else if (e->type() == QEvent::Leave)
+            _minBtn->setIcon(
+                svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
+            );
+    }
+    if (watched == _maxBtn) {
+        if (e->type() == QEvent::Enter) {
+            const QString svg =
+                window()->isMaximized() ? ":/ui/wc-restore.svg" : ":/ui/wc-maximize.svg";
+            _maxBtn->setIcon(svgIcon(svg, kBtnIconSize, Th::c().titleBar.controlHover));
+        } else if (e->type() == QEvent::Leave)
+            updateMaxButton();
+    }
     if (watched == _pinBtn) {
         if (e->type() == QEvent::Enter) {
             const QString text = _pinned ? tr("Unpin window") : tr("Pin window on top");
             _tooltip->showAbove(text, QRect(_pinBtn->mapToGlobal(QPoint(0, 0)), _pinBtn->size()));
+            const QString svg = _pinned ? ":/ui/pin.svg" : ":/ui/pin-off.svg";
+            _pinBtn->setIcon(svgIcon(svg, kBtnIconSize, Th::c().titleBar.controlHover));
         } else if (e->type() == QEvent::Leave) {
             _tooltip->hide();
+            updatePinButton();
         }
     }
     if (watched == _closeBtn) {
         if (e->type() == QEvent::Enter)
             _closeBtn->setIcon(
-                svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlClose)
+                svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlHover)
             );
         else if (e->type() == QEvent::Leave)
             _closeBtn->setIcon(
