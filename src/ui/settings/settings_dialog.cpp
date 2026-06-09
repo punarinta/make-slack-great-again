@@ -706,7 +706,7 @@ void SettingsDialog::refreshUpdateStatus() {
     if (_updateChecker->isChecking()) {
         _checkBtn->setEnabled(false);
         _updateStatus->setText(tr("Checking for updates…"));
-    } else if (_updateChecker->stagedVersion() > AppCredentials::version) {
+    } else if (_updateChecker->isReady()) {
         _checkBtn->setEnabled(true);
         _updateStatus->setText(tr("Update downloaded — restart the app to apply."));
     } else {
@@ -735,7 +735,7 @@ void SettingsDialog::setUpdateChecker(UpdateChecker *checker) {
     connect(checker, &UpdateChecker::downloadProgress, this, [this](int pct) {
         _updateStatus->setText(tr("Downloading update… %1%").arg(pct));
     });
-    connect(checker, &UpdateChecker::downloadReady, this, [this](const QString &) {
+    connect(checker, &UpdateChecker::downloadReady, this, [this]() {
         _checkBtn->setEnabled(true);
         _updateStatus->setText(tr("Update downloaded — restart the app to apply."));
         refreshLastChecked();

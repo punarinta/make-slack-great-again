@@ -15,6 +15,12 @@
 #include <QSettings>
 #include <QDateTime>
 
+#if defined(Q_OS_LINUX)
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#endif
+
 static constexpr char kBase[] = "https://msga.app/download/";
 
 #if defined(Q_OS_LINUX) && defined(Q_PROCESSOR_X86_64)
@@ -26,6 +32,9 @@ static constexpr char kManifest[] = "msga-macos-arm64.manifest";
 #elif defined(Q_OS_MACOS) && defined(Q_PROCESSOR_X86_64)
 static constexpr char kBinary[]   = "msga-macos-x86_64.dmg";
 static constexpr char kManifest[] = "msga-macos-x86_64.manifest";
+#elif defined(Q_OS_WIN) && defined(Q_PROCESSOR_X86_64)
+static constexpr char kBinary[]   = "msga-windows-x86_64.exe";
+static constexpr char kManifest[] = "msga-windows-x86_64.manifest";
 #else
 static constexpr char kBinary[]   = "";
 static constexpr char kManifest[] = "";
@@ -33,15 +42,10 @@ static constexpr char kManifest[] = "";
 
 UpdateChecker::UpdateChecker(QObject *parent)
     : QObject(parent), _nam(new QNetworkAccessManager(this)) {
-    QSettings s("msga", "msga");
-    _staged        = s.value("updates/stagedPath").toString();
-    _stagedVersion = s.value("updates/stagedVersion", 0).toInt();
-    if (!_staged.isEmpty() && !QFile::exists(_staged)) {
-        _staged.clear();
-        _stagedVersion = 0;
-        s.remove("updates/stagedPath");
-        s.remove("updates/stagedVersion");
-    }
+#if defined(Q_OS_WIN)
+    // Clean up backup left by the previous update's rename-away step.
+    QFile::remove(QCoreApplication::applicationFilePath() + ".old");
+#endif
 }
 
 QString UpdateChecker::manifestUrl() {
@@ -52,23 +56,19 @@ QString UpdateChecker::binaryUrl() {
     return kBinary[0] ? QString(kBase) + kBinary : QString();
 }
 
-QString UpdateChecker::stagePath() {
-#if defined(Q_OS_LINUX)
-    // Same directory as the running binary → rename(2) is atomic on the same FS.
-    return QCoreApplication::applicationFilePath() + ".new";
-#else
+static QString downloadTempPath() {
+#if defined(Q_OS_MACOS)
     return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + "/" + kBinary;
+#else
+    // Linux and Windows: same directory as the running binary so rename(2)/MoveFileEx
+    // stays on the same filesystem and is atomic.
+    return QCoreApplication::applicationFilePath() + ".download";
 #endif
 }
 
 void UpdateChecker::checkInBackground() {
-    if (_checking)
+    if (_checking || _ready)
         return;
-    // Already have a usable staged update — just surface it again.
-    if (_stagedVersion > AppCredentials::version && !_staged.isEmpty()) {
-        emit downloadReady(_staged);
-        return;
-    }
     fetch(/*silent=*/true);
 }
 
@@ -116,16 +116,11 @@ void UpdateChecker::onManifestDone(QNetworkReply *reply, bool silent) {
         return;
     }
     emit updateAvailable(remote);
-
-    if (_stagedVersion == remote && !_staged.isEmpty()) {
-        emit downloadReady(_staged);
-        return;
-    }
     startDownload(remote);
 }
 
 void UpdateChecker::startDownload(int newVersion) {
-    const QString dest = stagePath();
+    const QString dest = downloadTempPath();
     QFile::remove(dest);
 
     auto *file = new QFile(dest, this);
@@ -153,34 +148,58 @@ void UpdateChecker::startDownload(int newVersion) {
 }
 
 void UpdateChecker::onDownloadDone(QNetworkReply *reply, int newVersion) {
-    const QString dest = stagePath();
+    Q_UNUSED(newVersion)
+    const QString tmp = downloadTempPath();
     if (reply->error() != QNetworkReply::NoError) {
-        QFile::remove(dest);
+        QFile::remove(tmp);
         emit checkFailed(tr("Download failed: %1").arg(reply->errorString()));
         return;
     }
 
 #if defined(Q_OS_LINUX)
     QFile::setPermissions(
-        dest,
+        tmp,
         QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ReadGroup |
             QFile::ExeGroup | QFile::ReadOther | QFile::ExeOther
     );
+    const QString target = QCoreApplication::applicationFilePath();
+    // QFile::rename() refuses to overwrite an existing destination; use POSIX
+    // rename() which atomically replaces the directory entry.
+    if (::rename(QFile::encodeName(tmp).constData(), QFile::encodeName(target).constData()) != 0) {
+        const int e = errno;
+        QFile::remove(tmp);
+        emit checkFailed(tr("Could not replace binary: %1").arg(QString::fromLocal8Bit(strerror(e)))
+        );
+        return;
+    }
+    _ready          = true;
+    _downloadedPath = target;
+    emit downloadReady();
+#elif defined(Q_OS_WIN)
+    // Windows locks running EXEs against deletion/replacement, but not against
+    // renaming. Rename the current EXE away first, then move the new one in.
+    const QString target = QCoreApplication::applicationFilePath();
+    const QString backup = target + ".old";
+    QFile::remove(backup);
+    if (!QFile::rename(target, backup)) {
+        QFile::remove(tmp);
+        emit checkFailed(
+            tr("Could not move current binary — check file permissions on %1").arg(target)
+        );
+        return;
+    }
+    if (!QFile::rename(tmp, target)) {
+        QFile::rename(backup, target); // best-effort restore
+        emit checkFailed(tr("Could not place new binary at %1").arg(target));
+        return;
+    }
+    _ready          = true;
+    _downloadedPath = target;
+    emit downloadReady();
+#else
+    // macOS: DMG saved to Downloads; opened by the user or via QDesktopServices.
+    _ready          = true;
+    _downloadedPath = tmp;
+    emit downloadReady();
 #endif
-
-    _staged        = dest;
-    _stagedVersion = newVersion;
-    QSettings s("msga", "msga");
-    s.setValue("updates/stagedPath", _staged);
-    s.setValue("updates/stagedVersion", _stagedVersion);
-    emit downloadReady(_staged);
-}
-
-void UpdateChecker::clearStaged() {
-    QFile::remove(_staged);
-    _staged.clear();
-    _stagedVersion = 0;
-    QSettings s("msga", "msga");
-    s.remove("updates/stagedPath");
-    s.remove("updates/stagedVersion");
 }

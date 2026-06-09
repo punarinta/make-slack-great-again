@@ -38,6 +38,9 @@ class QCloseEvent;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
+    // main() checks for this exit code after app.exec() to trigger a clean re-exec.
+    static constexpr int kRestartExitCode = 64;
+
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -88,7 +91,7 @@ private:
     void showNetworkError(const QString &message);
 
     // Update
-    void applyUpdateAndRestart(const QString &stagedPath);
+    void applyUpdateAndRestart();
 
     // Event handlers
     bool eventFilter(QObject *o, QEvent *e) override;

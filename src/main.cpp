@@ -9,6 +9,12 @@
 #include <QNetworkAccessManager>
 #include <QTranslator>
 
+#if defined(Q_OS_LINUX)
+#include <unistd.h>
+#elif defined(Q_OS_WIN)
+#include <QProcess>
+#endif
+
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
@@ -93,5 +99,22 @@ int main(int argc, char *argv[]) {
     window.raise();
     window.activateWindow();
 
-    return app.exec();
+    const int ret = app.exec();
+
+    if (ret == MainWindow::kRestartExitCode) {
+        // Release the SingleInstance server so the new process can become primary,
+        // then re-exec the (already-updated) binary cleanly.
+        singleInstance.release();
+#if defined(Q_OS_LINUX)
+        const QByteArray exe = QCoreApplication::applicationFilePath().toLocal8Bit();
+        ::execv(exe.constData(), argv);
+        // execv only returns on error; fall through to normal exit.
+#elif defined(Q_OS_WIN)
+        QProcess::startDetached(
+            QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1)
+        );
+#endif
+    }
+
+    return ret;
 }

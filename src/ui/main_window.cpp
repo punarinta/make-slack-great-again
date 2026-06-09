@@ -190,9 +190,8 @@ void MainWindow::buildUi() {
 
     setCentralWidget(_frame);
 
-    if (_updateChecker->stagedVersion() > AppCredentials::version)
-        _updateBar->showUpdateReady(_updateChecker->stagedPath());
     connect(_updateChecker, &UpdateChecker::downloadReady, _updateBar, &UpdateBar::showUpdateReady);
+    connect(_updateChecker, &UpdateChecker::checkFailed, this, &MainWindow::showNetworkError);
     connect(_updateBar, &UpdateBar::restartRequested, this, &MainWindow::applyUpdateAndRestart);
     QTimer::singleShot(5000, _updateChecker, &UpdateChecker::checkInBackground);
 
@@ -1013,21 +1012,12 @@ void MainWindow::showNetworkError(const QString &message) {
     QTimer::singleShot(5000, _errorBanner, &QWidget::hide);
 }
 
-void MainWindow::applyUpdateAndRestart(const QString &staged) {
-#if defined(Q_OS_LINUX)
-    const QString target = QCoreApplication::applicationFilePath();
-    if (!QFile::rename(staged, target)) {
-        showNetworkError(tr("Could not replace binary — check file permissions."));
-        return;
-    }
-    _updateChecker->clearStaged();
-    QProcess::startDetached(target, QCoreApplication::arguments());
-    QCoreApplication::quit();
+void MainWindow::applyUpdateAndRestart() {
+#if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
+    // Signal main() to release SingleInstance and re-exec after the event loop exits.
+    QCoreApplication::exit(kRestartExitCode);
 #elif defined(Q_OS_MACOS)
-    _updateChecker->clearStaged();
-    QDesktopServices::openUrl(QUrl::fromLocalFile(staged));
-#else
-    Q_UNUSED(staged)
+    QDesktopServices::openUrl(QUrl::fromLocalFile(_updateChecker->downloadedPath()));
 #endif
 }
 

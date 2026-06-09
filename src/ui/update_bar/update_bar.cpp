@@ -7,8 +7,11 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QHBoxLayout>
+#include <QPainter>
+#include <QStyleOption>
 
 UpdateBar::UpdateBar(QWidget *parent) : QWidget(parent) {
+    setObjectName("updateBar");
     setFixedHeight(32);
 
     auto *lay = new QHBoxLayout(this);
@@ -21,7 +24,7 @@ UpdateBar::UpdateBar(QWidget *parent) : QWidget(parent) {
     _btn = new QPushButton(this);
     _btn->setFixedHeight(22);
     _btn->setCursor(Qt::PointingHandCursor);
-    connect(_btn, &QPushButton::clicked, this, [this] { emit restartRequested(_staged); });
+    connect(_btn, &QPushButton::clicked, this, [this] { emit restartRequested(); });
     lay->addWidget(_btn);
 
     applyTheme();
@@ -30,29 +33,41 @@ UpdateBar::UpdateBar(QWidget *parent) : QWidget(parent) {
     hide();
 }
 
+void UpdateBar::paintEvent(QPaintEvent *) {
+    QStyleOption opt;
+    opt.initFrom(this);
+    QPainter p(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &opt, &p, this);
+}
+
 void UpdateBar::applyTheme() {
     const auto &th = Th::c();
 
-    setStyleSheet(QString("background: %1;").arg(Th::qss(th.accent.def)));
-
-    _label->setStyleSheet(QString("color: %1; font-size: %2px; background: transparent;")
-                              .arg(Th::qss(th.accent.text))
-                              .arg(th.fonts.caption));
-
-    _btn->setStyleSheet(QString("QPushButton {"
-                                "  background: rgba(255,255,255,0.20); color: %1;"
-                                "  border: 1px solid rgba(255,255,255,0.35); border-radius: 3px;"
-                                "  font-size: %2px; font-weight: 600; padding: 0 10px;"
-                                "}"
-                                "QPushButton:hover   { background: rgba(255,255,255,0.30); }"
-                                "QPushButton:pressed { background: rgba(255,255,255,0.15); }")
-                            .arg(Th::qss(th.accent.text))
-                            .arg(th.fonts.caption));
+    setStyleSheet(
+        QString("QWidget#updateBar {"
+                "  background: %1;"
+                "  border-bottom: 1px solid %2;"
+                "}"
+                "QLabel { background: transparent; color: %3; font-size: %4px; font-weight: 600; }"
+                "QPushButton {"
+                "  background: %5; color: %6;"
+                "  border: none; border-radius: 3px;"
+                "  font-size: %4px; font-weight: 600; padding: 0 10px;"
+                "}"
+                "QPushButton:hover   { background: %7; }"
+                "QPushButton:pressed { background: %7; }")
+            .arg(
+                Th::qss(th.updateBanner.bg),
+                Th::qss(th.updateBanner.border),
+                Th::qss(th.updateBanner.text)
+            )
+            .arg(th.fonts.caption)
+            .arg(Th::qss(th.danger.def), Th::qss(th.text.onDark), Th::qss(th.danger.hover))
+    );
 }
 
-void UpdateBar::showUpdateReady(const QString &stagedPath) {
-    _staged = stagedPath;
-#if defined(Q_OS_LINUX)
+void UpdateBar::showUpdateReady() {
+#if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
     _label->setText(tr("A new version of msga has been downloaded. Restart to apply."));
     _btn->setText(tr("Restart now"));
 #else

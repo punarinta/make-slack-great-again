@@ -16,6 +16,7 @@ public:
     // Returns true  → this is the primary instance; server is now listening.
     // Returns false → a primary was already running; URL forwarded; caller must exit(0).
     bool init(const QString &urlArg);
+    void release(); // Stop listening before re-exec so the new instance becomes primary
 
 signals:
     void uriReceived(QUrl url);

@@ -10,27 +10,27 @@ class QNetworkReply;
 
 // Fetches the platform manifest from msga.app, compares against the running
 // version, and downloads the new binary/DMG when a newer version is found.
-// Linux:  stages {applicationFilePath()}.new, replaced atomically on restart.
+// Linux:  downloads to a .download temp file, renames atomically over the
+//         running binary (safe on Linux — kernel holds the old inode), then
+//         signals downloadReady so the UI can prompt for a restart.
 // macOS:  saves the DMG to ~/Downloads, opened via QDesktopServices on restart.
 class UpdateChecker : public QObject {
     Q_OBJECT
 public:
     explicit UpdateChecker(QObject *parent = nullptr);
 
-    void checkInBackground(); // silent; no-ops on failure / no network
-    void checkNow();          // explicit check; always emits a terminal signal
-    bool isChecking() const { return _checking; }
-
-    QString stagedPath() const { return _staged; }
-    int     stagedVersion() const { return _stagedVersion; }
-    void    clearStaged();
+    void    checkInBackground(); // silent; no-ops on failure / no network
+    void    checkNow();          // explicit check; always emits a terminal signal
+    bool    isChecking() const { return _checking; }
+    bool    isReady() const { return _ready; }
+    QString downloadedPath() const { return _downloadedPath; }
 
 signals:
     void checkStarted();
     void upToDate();
     void updateAvailable(int newVersion);
     void downloadProgress(int percent);
-    void downloadReady(const QString &stagedPath);
+    void downloadReady();
     void checkFailed(const QString &message);
 
 private:
@@ -43,8 +43,8 @@ private:
     static QString binaryUrl();
     static QString stagePath();
 
-    QNetworkAccessManager *_nam           = nullptr;
-    bool                   _checking      = false;
-    int                    _stagedVersion = 0;
-    QString                _staged;
+    QNetworkAccessManager *_nam      = nullptr;
+    bool                   _checking = false;
+    bool                   _ready    = false;
+    QString                _downloadedPath;
 };

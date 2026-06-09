@@ -44,6 +44,13 @@ bool SingleInstance::init(const QString &urlArg) {
     return true;
 }
 
+void SingleInstance::release() {
+    if (_server) {
+        _server->close();
+        QLocalServer::removeServer(socketName());
+    }
+}
+
 void SingleInstance::onNewConnection() {
     while (_server->hasPendingConnections()) {
         auto *sock = _server->nextPendingConnection();

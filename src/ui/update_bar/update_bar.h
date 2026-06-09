@@ -14,15 +14,17 @@ class UpdateBar : public QWidget {
 public:
     explicit UpdateBar(QWidget *parent = nullptr);
 
-    void showUpdateReady(const QString &stagedPath);
+    void showUpdateReady();
 
 signals:
-    void restartRequested(const QString &stagedPath);
+    void restartRequested();
+
+protected:
+    void paintEvent(QPaintEvent *) override;
 
 private:
     void applyTheme();
 
     QLabel      *_label = nullptr;
     QPushButton *_btn   = nullptr;
-    QString      _staged;
 };

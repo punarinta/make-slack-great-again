@@ -113,6 +113,13 @@ const Theme kSlackDark = {
             .accent = QColor("#F0DFA0"),
             .text   = QColor("#7A5800"),
         },
+    .updateBanner =
+        {
+            .bg     = QColor("#FFFDE7"),
+            .border = QColor("#F9A825"),
+            .accent = QColor("#FFF9C4"),
+            .text   = QColor("#1D1C1D"),
+        },
     .danger =
         {
             .def   = QColor("#E01E5A"),

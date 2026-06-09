@@ -193,6 +193,7 @@ struct Theme {
     MessageColors     message;
     ComposerColors    composer;
     EditBannerColors  editBanner;
+    EditBannerColors  updateBanner;
     DangerColors      danger;
     DividerColors     divider;
     IconColors        icon;
