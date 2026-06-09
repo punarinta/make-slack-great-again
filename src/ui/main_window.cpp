@@ -45,6 +45,7 @@
 #include <QMessageBox>
 #include <QStackedWidget>
 #include <QSystemTrayIcon>
+#include <QCursor>
 #include <QSettings>
 #include <QSplitter>
 #include <QWindow>
@@ -1100,11 +1101,7 @@ void MainWindow::updateTrayIcon() {
         globalTotal += it.value().first;
         globalMentions += it.value().second;
     }
-    if (globalTotal <= 0) {
-        _trayIcon->setIcon(QIcon(":/icon_tray.svg"));
-        return;
-    }
-    // Compose base icon + notification dot at bottom-right corner
+    // Always render via QSvgRenderer so the alpha channel is preserved in static builds.
     const int    sz = 128;
     QSvgRenderer renderer(QString(":/icon_tray.svg"));
     QPixmap      px(sz, sz);
@@ -1113,10 +1110,12 @@ void MainWindow::updateTrayIcon() {
     p.setRenderHint(QPainter::Antialiasing);
     if (renderer.isValid())
         renderer.render(&p, QRectF(0, 0, sz, sz));
-    const int d = 36;
-    p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().presence.online);
-    p.setPen(Qt::NoPen);
-    p.drawEllipse(sz - d, sz - d, d, d);
+    if (globalTotal > 0) {
+        const int d = 36;
+        p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().presence.online);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(sz - d, sz - d, d, d);
+    }
     p.end();
     _trayIcon->setIcon(QIcon(px));
 }
@@ -1177,8 +1176,9 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
 // ── Tray ──────────────────────────────────────────────────────────────────────
 
 void MainWindow::setupTray() {
-    _trayIcon = new QSystemTrayIcon(QIcon(":/icon_tray.svg"), this);
+    _trayIcon = new QSystemTrayIcon(this);
     _trayIcon->setToolTip("MSGA");
+    updateTrayIcon();
 
     auto *menu = new QMenu(this);
 
@@ -1204,7 +1204,12 @@ void MainWindow::setupTray() {
         QMetaObject::invokeMethod(this, [this] { _settingsDialog->open(); }, Qt::QueuedConnection);
     });
     menu->addSeparator();
-    menu->addAction(tr("Quit"), qApp, &QApplication::quit);
+    auto *quitAct = menu->addAction(tr("Quit"));
+    // Defer quit so the menu closes fully before the event loop exits;
+    // calling exit() synchronously inside a menu-action handler corrupts Qt's popup state.
+    connect(quitAct, &QAction::triggered, this, [] {
+        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+    });
     _trayIcon->setContextMenu(menu);
 
     connect(
@@ -1212,7 +1217,9 @@ void MainWindow::setupTray() {
         &QSystemTrayIcon::activated,
         this,
         [this](QSystemTrayIcon::ActivationReason reason) {
-            if (reason == QSystemTrayIcon::DoubleClick) {
+            if (reason == QSystemTrayIcon::Trigger) {
+                _trayIcon->contextMenu()->popup(QCursor::pos());
+            } else if (reason == QSystemTrayIcon::DoubleClick) {
                 show();
                 raise();
                 activateWindow();
