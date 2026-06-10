@@ -1576,6 +1576,12 @@ void MainWindow::restoreLastConv() {
     if (lastConvId.value.isEmpty())
         return;
     const int row = _convList->rowForId(lastConvId);
-    if (row >= 0)
-        _convList->selectRow(row);
+    if (row < 0)
+        return;
+    _convList->selectRow(row);
+    // selectRow is a no-op when the row is already visually selected (e.g. after
+    // rebuildFilteredConvs re-mapped _selectedId without emitting conversationSelected).
+    // In that case openConversation was never called, so drive it directly.
+    if (_currentConvId.value.isEmpty())
+        openConversation(row);
 }
