@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 project(msga LANGUAGES CXX)
 
-include("${CMAKE_SOURCE_DIR}/version.cmake")
 include("${CMAKE_SOURCE_DIR}/credentials.cmake" OPTIONAL)
+include("${CMAKE_SOURCE_DIR}/version.cmake")
 foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP)
     if(NOT DEFINED ${_var})
         set(${_var} "")
