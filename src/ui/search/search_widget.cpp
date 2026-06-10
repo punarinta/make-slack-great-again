@@ -402,62 +402,70 @@ void SearchWidget::populateResults(const std::vector<SearchResult> &results) {
 void SearchWidget::applyTheme() {
     const auto &th = Th::c();
 
-    _header->setStyleSheet(QString("QWidget#searchHeader {"
-                                   "  background: %1;"
-                                   "  border-bottom: 1px solid %2;"
-                                   "}")
+    _header->setStyleSheet(QString(
+                               "QWidget#searchHeader {"
+                               "  background: %1;"
+                               "  border-bottom: 1px solid %2;"
+                               "}"
+    )
                                .arg(Th::qss(th.surface.raised), Th::qss(th.divider.def)));
-    _queryEdit->setStyleSheet(QString("QLineEdit {"
-                                      "  border: 1px solid %1;"
-                                      "  border-radius: 4px;"
-                                      "  padding: 4px 8px;"
-                                      "  font-size: %3px;"
-                                      "}"
-                                      "QLineEdit:focus { border-color: %2; }")
+    _queryEdit->setStyleSheet(QString(
+                                  "QLineEdit {"
+                                  "  border: 1px solid %1;"
+                                  "  border-radius: 4px;"
+                                  "  padding: 4px 8px;"
+                                  "  font-size: %3px;"
+                                  "}"
+                                  "QLineEdit:focus { border-color: %2; }"
+    )
                                   .arg(Th::qss(th.divider.strong), Th::qss(th.text.link))
                                   .arg(th.fonts.base));
-    _closeBtn->setStyleSheet("QPushButton#searchCloseBtn { border: none; background: transparent; }"
+    _closeBtn->setStyleSheet(
+        "QPushButton#searchCloseBtn { border: none; background: transparent; }"
     );
     _searchIconLabel->setPixmap(svgPixmap(":/ui/search.svg", QSize(16, 16), th.icon.def));
 
-    _resultList->setStyleSheet(QString("QListWidget#searchResultList {"
-                                       "  border: none;"
-                                       "  background: %1;"
-                                       "  outline: 0;"
-                                       "}"
-                                       "QListWidget#searchResultList::item {"
-                                       "  padding: 8px 12px;"
-                                       "  border-bottom: 1px solid %2;"
-                                       "  color: %6;"
-                                       "}"
-                                       "QListWidget#searchResultList::item:hover {"
-                                       "  background: %3;"
-                                       "}"
-                                       "QListWidget#searchResultList::item:selected {"
-                                       "  background: %4;"
-                                       "  color: %6;"
-                                       "}"
-                                       "QScrollBar:vertical {"
-                                       "  background: transparent;"
-                                       "  width: 6px;"
-                                       "  margin: 2px;"
-                                       "}"
-                                       "QScrollBar::handle:vertical {"
-                                       "  background: %5;"
-                                       "  border-radius: 3px;"
-                                       "  min-height: 20px;"
-                                       "}"
-                                       "QScrollBar::add-line:vertical,"
-                                       "QScrollBar::sub-line:vertical { height: 0; }"
-                                       "QScrollBar::add-page:vertical,"
-                                       "QScrollBar::sub-page:vertical { background: transparent; }")
-                                   .arg(
-                                       Th::qss(th.surface.raised),    // %1 list bg
-                                       Th::qss(th.divider.subtle),    // %2 item separator
-                                       Th::qss(th.surface.highlight), // %3 hover
-                                       Th::qss(th.surface.highlightStrong
-                                       ), // %4 keyboard-selected (no accent blue)
-                                       Th::qss(th.divider.strong), // %5 scrollbar handle
-                                       Th::qss(th.text.primary)    // %6 item text
-                                   ));
+    _resultList->setStyleSheet(
+        QString(
+            "QListWidget#searchResultList {"
+            "  border: none;"
+            "  background: %1;"
+            "  outline: 0;"
+            "}"
+            "QListWidget#searchResultList::item {"
+            "  padding: 8px 12px;"
+            "  border-bottom: 1px solid %2;"
+            "  color: %6;"
+            "}"
+            "QListWidget#searchResultList::item:hover {"
+            "  background: %3;"
+            "}"
+            "QListWidget#searchResultList::item:selected {"
+            "  background: %4;"
+            "  color: %6;"
+            "}"
+            "QScrollBar:vertical {"
+            "  background: transparent;"
+            "  width: 6px;"
+            "  margin: 2px;"
+            "}"
+            "QScrollBar::handle:vertical {"
+            "  background: %5;"
+            "  border-radius: 3px;"
+            "  min-height: 20px;"
+            "}"
+            "QScrollBar::add-line:vertical,"
+            "QScrollBar::sub-line:vertical { height: 0; }"
+            "QScrollBar::add-page:vertical,"
+            "QScrollBar::sub-page:vertical { background: transparent; }"
+        )
+            .arg(
+                Th::qss(th.surface.raised),          // %1 list bg
+                Th::qss(th.divider.subtle),          // %2 item separator
+                Th::qss(th.surface.highlight),       // %3 hover
+                Th::qss(th.surface.highlightStrong), // %4 keyboard-selected (no accent blue)
+                Th::qss(th.divider.strong),          // %5 scrollbar handle
+                Th::qss(th.text.primary)             // %6 item text
+            )
+    );
 }

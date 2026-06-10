@@ -364,8 +364,9 @@ TEST_CASE_METHOD(
 
     PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.exchange");
 
-    REQUIRE(waitFor([&] { return TokenStore::loadWorkspace("T001").refreshToken == "refresh-new"; })
-    );
+    REQUIRE(waitFor([&] {
+        return TokenStore::loadWorkspace("T001").refreshToken == "refresh-new";
+    }));
     CHECK(TokenStore::loadWorkspace("T001").refreshToken == "refresh-new");
 }
 

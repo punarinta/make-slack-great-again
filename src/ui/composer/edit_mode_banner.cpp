@@ -35,23 +35,23 @@ EditModeBanner::EditModeBanner(QWidget *parent) : QWidget(parent) {
 }
 
 void EditModeBanner::applyTheme() {
-    setStyleSheet(
-        QString("QWidget#editBanner {"
-                "  background: %1;"
-                "  border-left: 3px solid %2;"
-                "  border-bottom: 1px solid %3;"
-                "}"
-                "QLabel { border: none; background: transparent;"
-                "  font-size: %4px; color: %5; font-weight: 600; }"
-                "QToolButton { border: none; border-radius: 3px; background: transparent; }"
-                "QToolButton:hover { background: %3; }")
-            .arg(
-                Th::qss(Th::c().editBanner.bg),
-                Th::qss(Th::c().editBanner.border),
-                Th::qss(Th::c().editBanner.accent)
-            )
-            .arg(Th::c().fonts.caption)
-            .arg(Th::qss(Th::c().editBanner.text))
-    );
+    setStyleSheet(QString(
+                      "QWidget#editBanner {"
+                      "  background: %1;"
+                      "  border-left: 3px solid %2;"
+                      "  border-bottom: 1px solid %3;"
+                      "}"
+                      "QLabel { border: none; background: transparent;"
+                      "  font-size: %4px; color: %5; font-weight: 600; }"
+                      "QToolButton { border: none; border-radius: 3px; background: transparent; }"
+                      "QToolButton:hover { background: %3; }"
+    )
+                      .arg(
+                          Th::qss(Th::c().editBanner.bg),
+                          Th::qss(Th::c().editBanner.border),
+                          Th::qss(Th::c().editBanner.accent)
+                      )
+                      .arg(Th::c().fonts.caption)
+                      .arg(Th::qss(Th::c().editBanner.text)));
     _cancelBtn->setIcon(svgIcon(":/ui/x.svg", QSize(12, 12), Th::c().editBanner.text));
 }

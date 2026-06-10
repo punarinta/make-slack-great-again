@@ -16,19 +16,16 @@ int main(int argc, char **argv) {
 
 // Each test gets a fresh fixture; the destructor removes the cache directory.
 struct CacheFixture {
-    const QString teamId;
+    const QString  teamId;
     WorkspaceCache cache;
-    QString baseDir;
+    QString        baseDir;
 
     CacheFixture()
-        : teamId("T_CACHE_TEST")
-        , cache(teamId)
-        , baseDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-                  + "/cache/" + teamId)
-    {}
-    ~CacheFixture() {
-        QDir(baseDir).removeRecursively();
-    }
+        : teamId("T_CACHE_TEST"), cache(teamId),
+          baseDir(
+              QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId
+          ) {}
+    ~CacheFixture() { QDir(baseDir).removeRecursively(); }
 };
 
 // ── Conversations ─────────────────────────────────────────────────────────────
@@ -68,7 +65,9 @@ TEST_CASE_METHOD(CacheFixture, "conversations round-trip all kinds", "[cache][co
     CHECK(loaded[2] == input[2]);
 }
 
-TEST_CASE_METHOD(CacheFixture, "conversation without dmUser stays nullopt after round-trip", "[cache][conv]") {
+TEST_CASE_METHOD(
+    CacheFixture, "conversation without dmUser stays nullopt after round-trip", "[cache][conv]"
+) {
     std::vector<Conversation> input = {
         Conversation{
             .id   = ConversationId{"C1"},
@@ -126,31 +125,28 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     // Note: File.prettyType and File.permalink are NOT cached — leave them empty.
     // Note: Message.replyCount is NOT cached — leave it at default 0.
     Message m;
-    m.ts         = "123.456";
-    m.threadRoot = QString{"100.000"};
-    m.author     = UserId{"U1"};
-    m.text       = TextWithEntities{
-        "hello world",
-        { TextEntity{EntityType::Bold, 0, 5, ""} }
-    };
-    m.edited     = true;
-    m.subtype    = QString{"bot_message"};
-    m.reactions  = { Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}} };
-    m.files      = { File{
-        .id          = "F1",
-        .name        = "img.png",
-        .mimeType    = "image/png",
-        .urlPrivate  = "https://files.slack.com/img.png",
-        .thumbUrl    = "https://thumb.example.com/img.png",
-        .imageWidth  = 640,
-        .imageHeight = 480,
-        .size        = 12345,
+    m.ts          = "123.456";
+    m.threadRoot  = QString{"100.000"};
+    m.author      = UserId{"U1"};
+    m.text        = TextWithEntities{"hello world", {TextEntity{EntityType::Bold, 0, 5, ""}}};
+    m.edited      = true;
+    m.subtype     = QString{"bot_message"};
+    m.reactions   = {Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}}};
+    m.files       = {File{
+              .id          = "F1",
+              .name        = "img.png",
+              .mimeType    = "image/png",
+              .urlPrivate  = "https://files.slack.com/img.png",
+              .thumbUrl    = "https://thumb.example.com/img.png",
+              .imageWidth  = 640,
+              .imageHeight = 480,
+              .size        = 12345,
     }};
-    m.blocks     = { Block{
-        .typeStr  = "section",
-        .text     = TextWithEntities{"block text", { TextEntity{EntityType::Italic, 0, 5, ""} }},
+    m.blocks      = {Block{
+             .typeStr = "section",
+             .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
     }};
-    m.attachments = { Attachment{
+    m.attachments = {Attachment{
         .fallback = "fallback",
         .color    = "#36a64f",
         .title    = "Attachment title",
@@ -165,7 +161,7 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
 }
 
 TEST_CASE_METHOD(CacheFixture, "saveMessages caps at 50 newest messages", "[cache][msg]") {
-    ConversationId conv{"C2"};
+    ConversationId       conv{"C2"};
     std::vector<Message> msgs;
     for (int i = 0; i < 60; ++i) {
         Message m;
@@ -177,11 +173,11 @@ TEST_CASE_METHOD(CacheFixture, "saveMessages caps at 50 newest messages", "[cach
     auto loaded = cache.loadMessages(conv);
     REQUIRE(loaded.size() == 50);
     CHECK(loaded.front().ts == "10.000");
-    CHECK(loaded.back().ts  == "59.000");
+    CHECK(loaded.back().ts == "59.000");
 }
 
 TEST_CASE_METHOD(CacheFixture, "saveMessages with fewer than 50 keeps all", "[cache][msg]") {
-    ConversationId conv{"C3"};
+    ConversationId       conv{"C3"};
     std::vector<Message> msgs;
     for (int i = 0; i < 10; ++i) {
         Message m;
@@ -237,12 +233,17 @@ TEST_CASE_METHOD(CacheFixture, "loadBots returns empty when no file", "[cache][b
 TEST_CASE_METHOD(CacheFixture, "bots round-trip preserves name and avatar", "[cache][bot]") {
     QHash<QString, User> bots;
     bots["B001"] = User{
-        UserId{"B001"}, "jenkins", "Jenkins CI",
+        UserId{"B001"},
+        "jenkins",
+        "Jenkins CI",
         "https://cdn.example.com/jenkins_72.png",
         /*isBot=*/true,
     };
     bots["B002"] = User{
-        UserId{"B002"}, "deploy-bot", "Deploy Bot", "",
+        UserId{"B002"},
+        "deploy-bot",
+        "Deploy Bot",
+        "",
         /*isBot=*/true,
     };
 
@@ -252,8 +253,8 @@ TEST_CASE_METHOD(CacheFixture, "bots round-trip preserves name and avatar", "[ca
     REQUIRE(loaded.size() == 2);
     REQUIRE(loaded.contains("B001"));
     CHECK(loaded["B001"].displayName == "Jenkins CI");
-    CHECK(loaded["B001"].avatarUrl   == "https://cdn.example.com/jenkins_72.png");
-    CHECK(loaded["B001"].isBot       == true);
+    CHECK(loaded["B001"].avatarUrl == "https://cdn.example.com/jenkins_72.png");
+    CHECK(loaded["B001"].isBot == true);
     REQUIRE(loaded.contains("B002"));
     CHECK(loaded["B002"].displayName == "Deploy Bot");
     CHECK(loaded["B002"].avatarUrl.isEmpty());

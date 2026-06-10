@@ -87,21 +87,23 @@ public:
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setObjectName("linkPopup");
         setStyleSheet(
-            QString("QWidget#linkPopup {"
-                    "  background: %1;"
-                    "  border: 1px solid %2;"
-                    "  border-radius: 8px;"
-                    "}"
-                    "QLabel { border: none; font-size: %6px; color: %3; background: transparent; }"
-                    "QLineEdit {"
-                    "  border: 1px solid %2;"
-                    "  border-radius: 4px;"
-                    "  padding: 4px 8px;"
-                    "  font-size: %7px;"
-                    "  color: %4;"
-                    "  background: %1;"
-                    "}"
-                    "QLineEdit:focus { border-color: %5; }")
+            QString(
+                "QWidget#linkPopup {"
+                "  background: %1;"
+                "  border: 1px solid %2;"
+                "  border-radius: 8px;"
+                "}"
+                "QLabel { border: none; font-size: %6px; color: %3; background: transparent; }"
+                "QLineEdit {"
+                "  border: 1px solid %2;"
+                "  border-radius: 4px;"
+                "  padding: 4px 8px;"
+                "  font-size: %7px;"
+                "  color: %4;"
+                "  background: %1;"
+                "}"
+                "QLineEdit:focus { border-color: %5; }"
+            )
                 .arg(Th::qss(Th::c().surface.raised))
                 .arg(Th::qss(Th::c().divider.strong))
                 .arg(Th::qss(Th::c().text.secondary))
@@ -123,10 +125,12 @@ public:
         auto *insertBtn = new QPushButton(t.insertLabel, this);
         insertBtn->setCursor(Qt::PointingHandCursor);
         insertBtn->setStyleSheet(
-            QString("QPushButton { background:%1; color:white; border:none;"
-                    "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
-                    "QPushButton:hover   { background:%2; }"
-                    "QPushButton:pressed { background:%3; }")
+            QString(
+                "QPushButton { background:%1; color:white; border:none;"
+                "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
+                "QPushButton:hover   { background:%2; }"
+                "QPushButton:pressed { background:%3; }"
+            )
                 .arg(Th::qss(Th::c().accent.def))
                 .arg(Th::qss(Th::c().accent.hover))
                 .arg(Th::qss(Th::c().accent.pressed))
@@ -136,9 +140,11 @@ public:
         auto *cancelBtn = new QPushButton(t.cancelLabel, this);
         cancelBtn->setCursor(Qt::PointingHandCursor);
         cancelBtn->setStyleSheet(
-            QString("QPushButton { background:transparent; color:%1; border:1px solid %2;"
-                    "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
-                    "QPushButton:hover { background:%3; }")
+            QString(
+                "QPushButton { background:transparent; color:%1; border:1px solid %2;"
+                "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
+                "QPushButton:hover { background:%3; }"
+            )
                 .arg(Th::qss(Th::c().text.secondary))
                 .arg(Th::qss(Th::c().divider.strong))
                 .arg(Th::qss(Th::c().surface.highlight))
@@ -210,18 +216,20 @@ public:
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setObjectName("schedulePopup");
         setStyleSheet(
-            QString("QWidget#schedulePopup {"
-                    "  background:%1; border:1px solid %2; border-radius:8px;"
-                    "}"
-                    "QLabel  { font-size:%6px; color:%3; border:none; background:transparent; }"
-                    "QDateTimeEdit {"
-                    "  border:1px solid %2; border-radius:4px;"
-                    "  padding:4px 8px; font-size:%7px; color:%4; background:%1;"
-                    "}"
-                    "QDateTimeEdit:focus { border-color:%5; }"
-                    "QDateTimeEdit::up-button, QDateTimeEdit::down-button {"
-                    "  width:14px;"
-                    "}")
+            QString(
+                "QWidget#schedulePopup {"
+                "  background:%1; border:1px solid %2; border-radius:8px;"
+                "}"
+                "QLabel  { font-size:%6px; color:%3; border:none; background:transparent; }"
+                "QDateTimeEdit {"
+                "  border:1px solid %2; border-radius:4px;"
+                "  padding:4px 8px; font-size:%7px; color:%4; background:%1;"
+                "}"
+                "QDateTimeEdit:focus { border-color:%5; }"
+                "QDateTimeEdit::up-button, QDateTimeEdit::down-button {"
+                "  width:14px;"
+                "}"
+            )
                 .arg(Th::qss(Th::c().surface.raised))
                 .arg(Th::qss(Th::c().divider.strong))
                 .arg(Th::qss(Th::c().text.secondary))
@@ -250,19 +258,23 @@ public:
         cancelBtn->setCursor(Qt::PointingHandCursor);
         confirmBtn->setCursor(Qt::PointingHandCursor);
         cancelBtn->setStyleSheet(
-            QString("QPushButton { background:transparent; color:%1; border:1px solid %2;"
-                    "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
-                    "QPushButton:hover { background:%3; }")
+            QString(
+                "QPushButton { background:transparent; color:%1; border:1px solid %2;"
+                "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
+                "QPushButton:hover { background:%3; }"
+            )
                 .arg(Th::qss(Th::c().text.secondary))
                 .arg(Th::qss(Th::c().divider.strong))
                 .arg(Th::qss(Th::c().surface.highlight))
                 .arg(Th::c().fonts.md)
         );
         confirmBtn->setStyleSheet(
-            QString("QPushButton { background:%1; color:white; border:none;"
-                    "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
-                    "QPushButton:hover   { background:%2; }"
-                    "QPushButton:pressed { background:%3; }")
+            QString(
+                "QPushButton { background:%1; color:white; border:none;"
+                "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
+                "QPushButton:hover   { background:%2; }"
+                "QPushButton:pressed { background:%3; }"
+            )
                 .arg(Th::qss(Th::c().accent.def))
                 .arg(Th::qss(Th::c().accent.hover))
                 .arg(Th::qss(Th::c().accent.pressed))
@@ -407,7 +419,8 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     auto                  *attachBtn = new QToolButton(_bottomBar);
     attachBtn->setFixedSize(26, 26);
     attachBtn->setIconSize(kAttachIconSize);
-    attachBtn->setIcon(svgIcon(":/ui/paperclip.svg", kAttachIconSize, Th::c().composer.toolbarIcon)
+    attachBtn->setIcon(
+        svgIcon(":/ui/paperclip.svg", kAttachIconSize, Th::c().composer.toolbarIcon)
     );
     attachBtn->setCursor(Qt::PointingHandCursor);
     attachBtn->setFocusPolicy(Qt::NoFocus);
@@ -472,10 +485,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         if (!_emojiPicker) {
             _emojiPicker = new EmojiPickerPopup(this);
             connect(
-                _emojiPicker,
-                &EmojiPickerPopup::emojiSelected,
-                this,
-                [this](const QString &name) {
+                _emojiPicker, &EmojiPickerPopup::emojiSelected, this, [this](const QString &name) {
                     auto cursor = _edit->textCursor();
                     cursor.insertText(":" + name + ":");
                     _edit->setFocus();
@@ -506,21 +516,25 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 void ComposerWidget::applyTheme() {
-    _edit->setStyleSheet(QString("QTextEdit {"
-                                 "  border: none;"
-                                 "  padding: 6px 10px;"
-                                 "  font-size: %2px;"
-                                 "  color: %1;"
-                                 "  background: transparent;"
-                                 "}")
+    _edit->setStyleSheet(QString(
+                             "QTextEdit {"
+                             "  border: none;"
+                             "  padding: 6px 10px;"
+                             "  font-size: %2px;"
+                             "  color: %1;"
+                             "  background: transparent;"
+                             "}"
+    )
                              .arg(Th::qss(Th::c().text.primary))
                              .arg(Th::c().fonts.base));
 
     // Re-apply bottom-bar tool button styles
     const QString bbToolBtnStyle =
-        QString("QToolButton { border: none; border-radius: 3px; background: transparent; }"
-                "QToolButton:hover   { background: %1; }"
-                "QToolButton:pressed { background: %2; }")
+        QString(
+            "QToolButton { border: none; border-radius: 3px; background: transparent; }"
+            "QToolButton:hover   { background: %1; }"
+            "QToolButton:pressed { background: %2; }"
+        )
             .arg(Th::qss(Th::c().divider.def), Th::qss(Th::c().surface.highlightStrong));
     const auto toolBtns = _bottomBar->findChildren<QToolButton *>();
     for (auto *btn : toolBtns)
@@ -632,11 +646,13 @@ void ComposerWidget::setFocused(bool focused) {
     recolorBottomBarIcons(iconColor);
     _formattingTb->recolor(iconColor);
     _box->setStyleSheet(
-        QString("QFrame#composerBox {"
-                "  border: 1px solid %1;"
-                "  border-radius: 8px;"
-                "  background: %2;"
-                "}")
+        QString(
+            "QFrame#composerBox {"
+            "  border: 1px solid %1;"
+            "  border-radius: 8px;"
+            "  background: %2;"
+            "}"
+        )
             .arg(Th::qss(focused ? Th::c().composer.borderFocus : Th::c().composer.border))
             .arg(Th::qss(Th::c().surface.raised))
     );
@@ -689,15 +705,19 @@ void ComposerWidget::updateSendState() {
     } else {
         _sendGroup->setStyleSheet("background:transparent;");
         _sendBtn->setStyleSheet(
-            QString("QPushButton { background:transparent; border:none; margin:0; padding:0;"
-                    "  border-top-left-radius:4px; border-bottom-left-radius:4px; }"
-                    "QPushButton:hover { background:%1; }")
+            QString(
+                "QPushButton { background:transparent; border:none; margin:0; padding:0;"
+                "  border-top-left-radius:4px; border-bottom-left-radius:4px; }"
+                "QPushButton:hover { background:%1; }"
+            )
                 .arg(Th::qss(Th::c().surface.highlight))
         );
         _dropBtn->setStyleSheet(
-            QString("QPushButton { background:transparent; border:none; margin:0; padding:0;"
-                    "  border-top-right-radius:4px; border-bottom-right-radius:4px; }"
-                    "QPushButton:hover { background:%1; }")
+            QString(
+                "QPushButton { background:transparent; border:none; margin:0; padding:0;"
+                "  border-top-right-radius:4px; border-bottom-right-radius:4px; }"
+                "QPushButton:hover { background:%1; }"
+            )
                 .arg(Th::qss(Th::c().surface.highlight))
         );
     }
@@ -922,7 +942,8 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                                 c.kind != ConvKind::PrivateChannel)
                                 continue;
                             if (c.name.contains(query, Qt::CaseInsensitive)) {
-                                items.append({"#" + c.name, "<#" + c.id.value + "|" + c.name + ">"}
+                                items.append(
+                                    {"#" + c.name, "<#" + c.id.value + "|" + c.name + ">"}
                                 );
                                 if (items.size() >= 8)
                                     break;

@@ -89,9 +89,9 @@ struct StubBackend : Backend {
         return rpl::variable<QHash<QString, QString>>({}).value();
     }
     void uploadFile(ConversationId, const QString &) override {}
-    void
-    downloadFile(const QString &, std::function<void(QByteArray)>, std::function<void(QString)>)
-        override {}
+    void downloadFile(
+        const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
+    ) override {}
 
     rpl::producer<Event> events() const override { return _events.events(); }
 };

@@ -33,7 +33,8 @@ static QFrame *makeVSep(QWidget *parent) {
     auto *sep = new QFrame(parent);
     sep->setFrameShape(QFrame::VLine);
     sep->setFixedSize(1, 16);
-    sep->setStyleSheet(QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
+    sep->setStyleSheet(
+        QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
     );
     return sep;
 }
@@ -111,16 +112,18 @@ void FormattingToolbar::recolor(const QColor &color) {
     for (auto &[btn, path] : _iconBtns)
         btn->setIcon(svgIcon(path, btn->iconSize(), color));
     setStyleSheet(
-        QString("QWidget#composerToolbar {"
-                "  background: %1;"
-                "  border-radius: 7px 7px 0 0;"
-                "}"
-                "QWidget#composerToolbar QToolButton {"
-                "  border: none; border-radius: 3px;"
-                "  background: transparent;"
-                "}"
-                "QWidget#composerToolbar QToolButton:hover   { background: %2; }"
-                "QWidget#composerToolbar QToolButton:pressed { background: %2; }")
+        QString(
+            "QWidget#composerToolbar {"
+            "  background: %1;"
+            "  border-radius: 7px 7px 0 0;"
+            "}"
+            "QWidget#composerToolbar QToolButton {"
+            "  border: none; border-radius: 3px;"
+            "  background: transparent;"
+            "}"
+            "QWidget#composerToolbar QToolButton:hover   { background: %2; }"
+            "QWidget#composerToolbar QToolButton:pressed { background: %2; }"
+        )
             .arg(Th::qss(Th::c().composer.toolbarBg), Th::qss(Th::c().surface.highlightStrong))
     );
     (void)color; // stylesheet is static; only icons change with color

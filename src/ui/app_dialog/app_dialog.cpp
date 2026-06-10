@@ -90,11 +90,13 @@ void AppDialog::applyTheme() {
         "QFrame#appDialogCard { background: white; border-radius: 12px; border: none; }"
     );
     _titleLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
-    _closeBtn->setStyleSheet(QString("QPushButton {"
-                                     "  border: none; border-radius: 16px;"
-                                     "  color: %1; background: transparent;"
-                                     "}"
-                                     "QPushButton:hover { background: %2; color: %3; }")
+    _closeBtn->setStyleSheet(QString(
+                                 "QPushButton {"
+                                 "  border: none; border-radius: 16px;"
+                                 "  color: %1; background: transparent;"
+                                 "}"
+                                 "QPushButton:hover { background: %2; color: %3; }"
+    )
                                  .arg(
                                      Th::qss(Th::c().text.tertiary),
                                      Th::qss(Th::c().surface.highlight),

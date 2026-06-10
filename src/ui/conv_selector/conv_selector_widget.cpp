@@ -99,25 +99,31 @@ ConvSelectorWidget::~ConvSelectorWidget() {
 
 void ConvSelectorWidget::applyTheme() {
     _inputFrame->setStyleSheet(
-        QString("QFrame#convInput {"
-                "  border: 1px solid %1;"
-                "  border-radius: 4px;"
-                "  background: white;"
-                "}"
-                "QFrame#convInput:focus-within {"
-                "  border-color: %2;"
-                "}")
+        QString(
+            "QFrame#convInput {"
+            "  border: 1px solid %1;"
+            "  border-radius: 4px;"
+            "  background: white;"
+            "}"
+            "QFrame#convInput:focus-within {"
+            "  border-color: %2;"
+            "}"
+        )
             .arg(Th::qss(Th::c().divider.strong), Th::qss(Th::c().accent.def))
     );
     _chipLabel->setStyleSheet(
-        QString("QLabel { background: %1; color: %2;"
-                " border-radius: 12px; padding: 2px 8px;"
-                " font-weight: bold; }")
+        QString(
+            "QLabel { background: %1; color: %2;"
+            " border-radius: 12px; padding: 2px 8px;"
+            " font-weight: bold; }"
+        )
             .arg(Th::qss(Th::c().accent.subtleBg), Th::qss(Th::c().message.replyLink))
     );
     _chipClear->setStyleSheet(
-        QString("QPushButton { border: none; color: #666; font-size: %1px; padding: 0; }"
-                "QPushButton:hover { color: #333; }")
+        QString(
+            "QPushButton { border: none; color: #666; font-size: %1px; padding: 0; }"
+            "QPushButton:hover { color: #333; }"
+        )
             .arg(Th::c().fonts.base)
     );
 }
@@ -129,11 +135,13 @@ void ConvSelectorWidget::openDropdown() {
         _dropdown =
             new QFrame(window(), Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
         _dropdown->setObjectName("convDropdown");
-        _dropdown->setStyleSheet(QString("QFrame#convDropdown {"
-                                         "  background: white;"
-                                         "  border: 1px solid %1;"
-                                         "  border-radius: 4px;"
-                                         "}")
+        _dropdown->setStyleSheet(QString(
+                                     "QFrame#convDropdown {"
+                                     "  background: white;"
+                                     "  border: 1px solid %1;"
+                                     "  border-radius: 4px;"
+                                     "}"
+        )
                                      .arg(Th::qss(Th::c().divider.strong)));
 
         auto *lay = new QVBoxLayout(_dropdown);
@@ -142,10 +150,11 @@ void ConvSelectorWidget::openDropdown() {
 
         _dropList = new QListWidget(_dropdown);
         _dropList->setFrameShape(QFrame::NoFrame);
-        _dropList->setStyleSheet(QString("QListWidget { border: none; }"
-                                         "QListWidget::item { padding: 6px 12px; }"
-                                         "QListWidget::item:hover { background: %1; }"
-                                         "QListWidget::item:selected { background: %2; color: %3; }"
+        _dropList->setStyleSheet(QString(
+                                     "QListWidget { border: none; }"
+                                     "QListWidget::item { padding: 6px 12px; }"
+                                     "QListWidget::item:hover { background: %1; }"
+                                     "QListWidget::item:selected { background: %2; color: %3; }"
         )
                                      .arg(
                                          Th::qss(Th::c().surface.highlight),

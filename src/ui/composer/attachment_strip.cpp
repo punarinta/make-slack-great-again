@@ -43,8 +43,10 @@ AttachmentStrip::AttachmentStrip(QWidget *parent) : QWidget(parent) {
 }
 
 void AttachmentStrip::applyTheme() {
-    _scroll->setStyleSheet("QScrollArea#fileScrollArea { background: transparent; border: none; }"
-                           "QScrollArea#fileScrollArea > QWidget { background: transparent; }");
+    _scroll->setStyleSheet(
+        "QScrollArea#fileScrollArea { background: transparent; border: none; }"
+        "QScrollArea#fileScrollArea > QWidget { background: transparent; }"
+    );
     _strip->setStyleSheet("QWidget#fileStrip { background: transparent; }");
 }
 
@@ -79,9 +81,11 @@ void AttachmentStrip::addPendingChip(const QString &path) {
     auto *chip = new QFrame(_strip);
     chip->setObjectName("fileChip");
     chip->setFixedSize(160, 70);
-    chip->setStyleSheet(QString("QFrame#fileChip {"
-                                "  background: %1; border: 1px solid %2; border-radius: 8px;"
-                                "}")
+    chip->setStyleSheet(QString(
+                            "QFrame#fileChip {"
+                            "  background: %1; border: 1px solid %2; border-radius: 8px;"
+                            "}"
+    )
                             .arg(
                                 Th::qss(Th::c().composer.attachmentChipBg),
                                 Th::qss(Th::c().composer.attachmentChipBorder)
@@ -121,8 +125,10 @@ void AttachmentStrip::addPendingChip(const QString &path) {
     removeBtn->setFocusPolicy(Qt::NoFocus);
     removeBtn->setCursor(Qt::PointingHandCursor);
     removeBtn->setStyleSheet(
-        QString("QToolButton { border:none; border-radius:8px; background:%1; }"
-                "QToolButton:hover { background:%2; }")
+        QString(
+            "QToolButton { border:none; border-radius:8px; background:%1; }"
+            "QToolButton:hover { background:%2; }"
+        )
             .arg(Th::qss(Th::c().composer.attachmentChipBorder), Th::qss(Th::c().icon.dim))
     );
     removeBtn->setParent(chip);
@@ -139,9 +145,11 @@ void AttachmentStrip::addReadOnlyChip(const File &file) {
     chip->setObjectName("fileChipRO");
     chip->setFixedSize(160, 70);
     chip->setStyleSheet(
-        QString("QFrame#fileChipRO {"
-                "  background: %1; border: 1px solid %2; border-radius: 8px;"
-                "}")
+        QString(
+            "QFrame#fileChipRO {"
+            "  background: %1; border: 1px solid %2; border-radius: 8px;"
+            "}"
+        )
             .arg(Th::qss(Th::c().surface.highlight), Th::qss(Th::c().composer.attachmentChipBorder))
     );
 

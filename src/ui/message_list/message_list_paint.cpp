@@ -52,8 +52,9 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
             const qint64 ms = _loadingElapsedTimer.elapsed();
             QString      hint;
             if (ms >= 15000)
-                hint = tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
-                          "Slack user. Still loading...");
+                hint =
+                    tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
+                       "Slack user. Still loading...");
             else if (ms >= 5000)
                 hint = tr("Oh, you must have a lot of co-workers and messages! Still loading...");
             else if (ms >= 1000)
@@ -100,8 +101,9 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     paintScrollThumb(p, _totalH, QColor(0, 0, 0, 80));
 }
 
-void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx)
-    const {
+void MessageListWidget::paintRow(
+    QPainter &p, int index, int rowTop, const PaintContext &ctx
+) const {
     const auto &item = _items[index];
     ensureDocLayout(item);
     const bool collapsed = isCollapsed(index);
@@ -410,9 +412,11 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor::fromHsl(
-        hue, Th::c().message.avatarHslSaturation, Th::c().message.avatarHslLightness
-    ));
+    p.setBrush(
+        QColor::fromHsl(
+            hue, Th::c().message.avatarHslSaturation, Th::c().message.avatarHslLightness
+        )
+    );
     p.drawRoundedRect(rect, 4, 4);
 
     p.setPen(Qt::white);

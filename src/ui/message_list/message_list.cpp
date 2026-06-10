@@ -1086,9 +1086,9 @@ bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
     auto         &reactions = _items[reactMsgIdx].msg.reactions;
     const UserId  me        = _session->meUserId();
     const bool    already   = std::any_of(
-        reactions[reactIdx].users.begin(),
-        reactions[reactIdx].users.end(),
-        [&me](const UserId &u) { return u == me; }
+        reactions[reactIdx].users.begin(), reactions[reactIdx].users.end(), [&me](const UserId &u) {
+            return u == me;
+        }
     );
     if (already) {
         _session->backend()->removeReaction(_currentConv, reactTs, emojiName);

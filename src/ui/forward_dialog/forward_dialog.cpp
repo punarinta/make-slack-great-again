@@ -196,33 +196,41 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
 void ForwardDialog::applyTheme() {
     AppDialog::applyTheme();
     _previewCard->setStyleSheet(
-        QString("QFrame#fwdCard {"
-                "  border: 1px solid %1;"
-                "  border-radius: 6px;"
-                "  background: %2;"
-                "}")
+        QString(
+            "QFrame#fwdCard {"
+            "  border: 1px solid %1;"
+            "  border-radius: 6px;"
+            "  background: %2;"
+            "}"
+        )
             .arg(Th::qss(Th::c().surface.highlightStrong), Th::qss(Th::c().message.fileChipBg))
     );
-    _copyLinkBtn->setStyleSheet(QString("QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                        " padding: 6px 14px; background: %2; }"
-                                        "QPushButton:hover { background: %3; }")
+    _copyLinkBtn->setStyleSheet(QString(
+                                    "QPushButton { border: 1px solid %1; border-radius: 4px;"
+                                    " padding: 6px 14px; background: %2; }"
+                                    "QPushButton:hover { background: %3; }"
+    )
                                     .arg(
                                         Th::qss(Th::c().divider.strong),
                                         Th::qss(Th::c().surface.raised),
                                         Th::qss(Th::c().surface.sunken)
                                     ));
-    _cancelBtn->setStyleSheet(QString("QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                      " padding: 6px 18px; background: %2; }"
-                                      "QPushButton:hover { background: %3; }")
+    _cancelBtn->setStyleSheet(QString(
+                                  "QPushButton { border: 1px solid %1; border-radius: 4px;"
+                                  " padding: 6px 18px; background: %2; }"
+                                  "QPushButton:hover { background: %3; }"
+    )
                                   .arg(
                                       Th::qss(Th::c().divider.strong),
                                       Th::qss(Th::c().surface.raised),
                                       Th::qss(Th::c().surface.sunken)
                                   ));
-    _fwdBtn->setStyleSheet(QString("QPushButton { background: %1; color: %2; border: none;"
-                                   " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
-                                   "QPushButton:hover { background: %3; }"
-                                   "QPushButton:disabled { background: %4; }")
+    _fwdBtn->setStyleSheet(QString(
+                               "QPushButton { background: %1; color: %2; border: none;"
+                               " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
+                               "QPushButton:hover { background: %3; }"
+                               "QPushButton:disabled { background: %4; }"
+    )
                                .arg(
                                    Th::qss(Th::c().accent.def),
                                    Th::qss(Th::c().accent.text),

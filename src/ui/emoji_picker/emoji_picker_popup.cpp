@@ -252,22 +252,24 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
 }
 
 void EmojiPickerPopup::applyTheme() {
-    setStyleSheet(QString("QFrame#emojiPicker {"
-                          "  background: %1;"
-                          "  border: 1px solid %2;"
-                          "  border-radius: 8px;"
-                          "}"
-                          "QLineEdit {"
-                          "  border: 1px solid %2;"
-                          "  border-radius: 4px;"
-                          "  padding: 4px 8px;"
-                          "  font-size: %5px;"
-                          "  color: %3;"
-                          "  background: %1;"
-                          "}"
-                          "QLineEdit:focus { border-color: %4; }"
-                          "QScrollArea { border: none; background: transparent; }"
-                          "QScrollArea > QWidget > QWidget { background: transparent; }")
+    setStyleSheet(QString(
+                      "QFrame#emojiPicker {"
+                      "  background: %1;"
+                      "  border: 1px solid %2;"
+                      "  border-radius: 8px;"
+                      "}"
+                      "QLineEdit {"
+                      "  border: 1px solid %2;"
+                      "  border-radius: 4px;"
+                      "  padding: 4px 8px;"
+                      "  font-size: %5px;"
+                      "  color: %3;"
+                      "  background: %1;"
+                      "}"
+                      "QLineEdit:focus { border-color: %4; }"
+                      "QScrollArea { border: none; background: transparent; }"
+                      "QScrollArea > QWidget > QWidget { background: transparent; }"
+    )
                       .arg(
                           Th::qss(Th::c().surface.raised),
                           Th::qss(Th::c().divider.strong),
@@ -304,8 +306,10 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
     int       col = 0, row = 0;
 
     const QString kBtnStyle =
-        QString("QToolButton { border: none; border-radius: 4px; background: transparent; }"
-                "QToolButton:hover { background: %1; }")
+        QString(
+            "QToolButton { border: none; border-radius: 4px; background: transparent; }"
+            "QToolButton:hover { background: %1; }"
+        )
             .arg(Th::qss(Th::c().surface.highlight));
 
     auto makeBtn = [&](const QString &name) -> QToolButton * {

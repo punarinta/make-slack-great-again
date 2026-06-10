@@ -101,17 +101,21 @@ void ThreadPanel::applyTheme() {
     setStyleSheet(QString("QWidget#threadPanel { border-left: 1px solid %1; background: %2; }")
                       .arg(Th::qss(Th::c().divider.def), Th::qss(Th::c().surface.raised)));
     _headerWidget->setStyleSheet(
-        QString("QWidget#threadHeader {"
-                "  background: %1;"
-                "  border-bottom: 1px solid %2;"
-                "}")
+        QString(
+            "QWidget#threadHeader {"
+            "  background: %1;"
+            "  border-bottom: 1px solid %2;"
+            "}"
+        )
             .arg(Th::qss(Th::c().surface.sunken), Th::qss(Th::c().divider.def))
     );
     _header->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
                                .arg(Th::c().fonts.lg)
                                .arg(Th::qss(Th::c().text.primary)));
-    _closeBtn->setStyleSheet(QString("QPushButton { font-size: %1px; border-radius: 4px; }"
-                                     "QPushButton:hover { background: %2; }")
+    _closeBtn->setStyleSheet(QString(
+                                 "QPushButton { font-size: %1px; border-radius: 4px; }"
+                                 "QPushButton:hover { background: %2; }"
+    )
                                  .arg(Th::c().fonts.base)
                                  .arg(Th::qss(Th::c().divider.def)));
 }

@@ -24,11 +24,13 @@ MentionCompleter::MentionCompleter(QWidget *parent)
 }
 
 void MentionCompleter::applyTheme() {
-    setStyleSheet(QString("QFrame#mentionCompleter {"
-                          "  background: %1;"
-                          "  border: 1px solid %2;"
-                          "  border-radius: 6px;"
-                          "}")
+    setStyleSheet(QString(
+                      "QFrame#mentionCompleter {"
+                      "  background: %1;"
+                      "  border: 1px solid %2;"
+                      "  border-radius: 6px;"
+                      "}"
+    )
                       .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)));
 }
 
@@ -91,16 +93,18 @@ void MentionCompleter::rebuild(const QList<Item> &items) {
         row->setCursor(Qt::PointingHandCursor);
         row->setText(_items[i].display);
         row->setStyleSheet(
-            QString("QPushButton {"
-                    "  text-align: left;"
-                    "  padding: 4px 10px;"
-                    "  font-size: %3px;"
-                    "  color: %1;"
-                    "  background: transparent;"
-                    "  border: none;"
-                    "  border-radius: 4px;"
-                    "}"
-                    "QPushButton:hover { background: %2; }")
+            QString(
+                "QPushButton {"
+                "  text-align: left;"
+                "  padding: 4px 10px;"
+                "  font-size: %3px;"
+                "  color: %1;"
+                "  background: transparent;"
+                "  border: none;"
+                "  border-radius: 4px;"
+                "}"
+                "QPushButton:hover { background: %2; }"
+            )
                 .arg(Th::qss(Th::c().text.primary), Th::qss(Th::c().surface.highlight))
                 .arg(Th::c().fonts.md)
         );
@@ -122,12 +126,14 @@ void MentionCompleter::selectRow(int row) {
     // Deselect old
     if (_sel >= 0 && _sel < _rows.size()) {
         _rows[_sel]->setStyleSheet(
-            QString("QPushButton {"
-                    "  text-align: left; padding: 4px 10px;"
-                    "  font-size: %3px; color: %1;"
-                    "  background: transparent; border: none; border-radius: 4px;"
-                    "}"
-                    "QPushButton:hover { background: %2; }")
+            QString(
+                "QPushButton {"
+                "  text-align: left; padding: 4px 10px;"
+                "  font-size: %3px; color: %1;"
+                "  background: transparent; border: none; border-radius: 4px;"
+                "}"
+                "QPushButton:hover { background: %2; }"
+            )
                 .arg(Th::qss(Th::c().text.primary), Th::qss(Th::c().surface.highlight))
                 .arg(Th::c().fonts.md)
         );
@@ -135,11 +141,13 @@ void MentionCompleter::selectRow(int row) {
     _sel = row;
     if (_sel >= 0 && _sel < _rows.size()) {
         _rows[_sel]->setStyleSheet(
-            QString("QPushButton {"
-                    "  text-align: left; padding: 4px 10px;"
-                    "  font-size: %3px; color: %1;"
-                    "  background: %2; border: none; border-radius: 4px;"
-                    "}")
+            QString(
+                "QPushButton {"
+                "  text-align: left; padding: 4px 10px;"
+                "  font-size: %3px; color: %1;"
+                "  background: %2; border: none; border-radius: 4px;"
+                "}"
+            )
                 .arg(Th::qss(Th::c().text.primary), Th::qss(Th::c().accent.subtleBg))
                 .arg(Th::c().fonts.md)
         );

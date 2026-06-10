@@ -85,28 +85,34 @@ void DeleteMessageDialog::applyTheme() {
     AppDialog::applyTheme();
     _warnLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.secondary)));
     _msgCard->setStyleSheet(
-        QString("QFrame#msgCard {"
-                "  border: 1px solid %1;"
-                "  border-radius: 6px;"
-                "  background: %2;"
-                "}")
+        QString(
+            "QFrame#msgCard {"
+            "  border: 1px solid %1;"
+            "  border-radius: 6px;"
+            "  background: %2;"
+            "}"
+        )
             .arg(Th::qss(Th::c().surface.highlightStrong), Th::qss(Th::c().message.fileChipBg))
     );
     if (_tsLabel)
         _tsLabel->setStyleSheet(QString("color: %1; font-size: %2px;")
                                     .arg(Th::qss(Th::c().text.secondary))
                                     .arg(Th::c().fonts.sm));
-    _cancelBtn->setStyleSheet(QString("QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                      " padding: 6px 18px; background: %2; }"
-                                      "QPushButton:hover { background: %3; }")
+    _cancelBtn->setStyleSheet(QString(
+                                  "QPushButton { border: 1px solid %1; border-radius: 4px;"
+                                  " padding: 6px 18px; background: %2; }"
+                                  "QPushButton:hover { background: %3; }"
+    )
                                   .arg(
                                       Th::qss(Th::c().divider.strong),
                                       Th::qss(Th::c().surface.raised),
                                       Th::qss(Th::c().surface.sunken)
                                   ));
-    _deleteBtn->setStyleSheet(QString("QPushButton { background: %1; color: %2; border: none;"
-                                      " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
-                                      "QPushButton:hover { background: %3; }")
+    _deleteBtn->setStyleSheet(QString(
+                                  "QPushButton { background: %1; color: %2; border: none;"
+                                  " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
+                                  "QPushButton:hover { background: %3; }"
+    )
                                   .arg(
                                       Th::qss(Th::c().danger.def),
                                       Th::qss(Th::c().accent.text),

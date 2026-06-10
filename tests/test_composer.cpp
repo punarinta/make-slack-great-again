@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
 
 // Type text into the hidden QTextEdit inside a ComposerWidget.
 static QTextEdit *editOf(ComposerWidget *c) {
-    return c->findChild<QTextEdit*>("composerEdit");
+    return c->findChild<QTextEdit *>("composerEdit");
 }
 
 static void typeText(ComposerWidget *c, const QString &text) {
@@ -72,7 +72,7 @@ TEST_CASE("ComposerWidget setText empty clears text", "[composer]") {
 
 TEST_CASE("enterEditMode pre-fills editor with existing text", "[composer][edit]") {
     ComposerWidget c;
-    Ts ts = "1700000000.000100";
+    Ts             ts = "1700000000.000100";
     c.enterEditMode(ts, "original message");
     CHECK(c.currentText() == "original message");
 }
@@ -178,17 +178,21 @@ struct StubBackend2 : Backend {
     rpl::variable<std::vector<User>>         _users;
     rpl::event_stream<Event>                 _events;
 
-    int  typingCallCount = 0;
-    struct ScheduledMsg { ConversationId conv; QString text; qint64 postAt; };
+    int typingCallCount = 0;
+    struct ScheduledMsg {
+        ConversationId conv;
+        QString        text;
+        qint64         postAt;
+    };
     std::vector<ScheduledMsg> scheduled;
 
-    rpl::producer<AuthState> authState() const override { return _auth.value(); }
-    Capabilities capabilities()          const override { return {}; }
-    void connectRealtime()    override {}
-    void disconnectRealtime() override {}
-    rpl::producer<UserId> loadMe() override { return _me.value(); }
+    rpl::producer<AuthState>                 authState() const override { return _auth.value(); }
+    Capabilities                             capabilities() const override { return {}; }
+    void                                     connectRealtime() override {}
+    void                                     disconnectRealtime() override {}
+    rpl::producer<UserId>                    loadMe() override { return _me.value(); }
     rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
-    rpl::producer<std::vector<User>>         loadUsers()         override { return _users.value(); }
+    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
     rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
@@ -196,12 +200,12 @@ struct StubBackend2 : Backend {
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
     }
-    void sendMessage(ConversationId, OutgoingMessage)       override {}
-    void editMessage(ConversationId, Ts, TextWithEntities)  override {}
-    void deleteMessage(ConversationId, Ts)                  override {}
-    void addReaction(ConversationId, Ts, QString)           override {}
-    void removeReaction(ConversationId, Ts, QString)        override {}
-    void markRead(ConversationId, Ts)                       override {}
+    void sendMessage(ConversationId, OutgoingMessage) override {}
+    void editMessage(ConversationId, Ts, TextWithEntities) override {}
+    void deleteMessage(ConversationId, Ts) override {}
+    void addReaction(ConversationId, Ts, QString) override {}
+    void removeReaction(ConversationId, Ts, QString) override {}
+    void markRead(ConversationId, Ts) override {}
     void sendTyping(ConversationId) override { ++typingCallCount; }
     void scheduleMessage(ConversationId conv, OutgoingMessage msg, qint64 postAt) override {
         scheduled.push_back({conv, msg.text.text, postAt});
@@ -209,18 +213,18 @@ struct StubBackend2 : Backend {
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
         return rpl::variable<std::vector<SearchResult>>({}).value();
     }
-    rpl::producer<QHash<QString,QString>> loadEmojiList() override {
-        return rpl::variable<QHash<QString,QString>>({}).value();
+    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
+        return rpl::variable<QHash<QString, QString>>({}).value();
     }
     void uploadFile(ConversationId, const QString &) override {}
-    void downloadFile(const QString &,
-                      std::function<void(QByteArray)>,
-                      std::function<void(QString)>) override {}
+    void downloadFile(
+        const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
+    ) override {}
     rpl::producer<Event> events() const override { return _events.events(); }
 };
 
 TEST_CASE("Session::sendTyping delegates to backend", "[session][typing]") {
-    auto *stub = new StubBackend2;
+    auto   *stub = new StubBackend2;
     Session session(std::unique_ptr<Backend>(stub), "T_TEST");
     session.start();
 
@@ -231,20 +235,22 @@ TEST_CASE("Session::sendTyping delegates to backend", "[session][typing]") {
     CHECK(stub->typingCallCount == 2);
 }
 
-TEST_CASE("Session::scheduleMessage delegates to backend with correct args", "[session][schedule]") {
-    auto *stub = new StubBackend2;
+TEST_CASE(
+    "Session::scheduleMessage delegates to backend with correct args", "[session][schedule]"
+) {
+    auto   *stub = new StubBackend2;
     Session session(std::unique_ptr<Backend>(stub), "T_TEST");
     session.start();
 
     session.scheduleMessage(ConversationId{"C1"}, "hello future", 9999999999LL);
     REQUIRE(stub->scheduled.size() == 1);
-    CHECK(stub->scheduled[0].conv   == ConversationId{"C1"});
-    CHECK(stub->scheduled[0].text   == "hello future");
+    CHECK(stub->scheduled[0].conv == ConversationId{"C1"});
+    CHECK(stub->scheduled[0].text == "hello future");
     CHECK(stub->scheduled[0].postAt == 9999999999LL);
 }
 
 TEST_CASE("Session::scheduleMessage parses mrkdwn in text", "[session][schedule]") {
-    auto *stub = new StubBackend2;
+    auto   *stub = new StubBackend2;
     Session session(std::unique_ptr<Backend>(stub), "T_TEST");
     session.start();
 
@@ -255,9 +261,9 @@ TEST_CASE("Session::scheduleMessage parses mrkdwn in text", "[session][schedule]
 
 TEST_CASE("Session::currentUsers returns snapshot", "[session]") {
     auto *stub = new StubBackend2;
-    User u;
-    u.id   = UserId{"U1"};
-    u.name = "alice";
+    User  u;
+    u.id         = UserId{"U1"};
+    u.name       = "alice";
     stub->_users = std::vector<User>{u};
 
     Session session(std::unique_ptr<Backend>(stub), "T_TEST");
@@ -269,11 +275,11 @@ TEST_CASE("Session::currentUsers returns snapshot", "[session]") {
 }
 
 TEST_CASE("Session::currentConversations returns snapshot", "[session]") {
-    auto *stub = new StubBackend2;
+    auto        *stub = new StubBackend2;
     Conversation c;
-    c.id   = ConversationId{"C1"};
-    c.name = "general";
-    c.kind = ConvKind::PublicChannel;
+    c.id         = ConversationId{"C1"};
+    c.name       = "general";
+    c.kind       = ConvKind::PublicChannel;
     stub->_convs = std::vector<Conversation>{c};
 
     Session session(std::unique_ptr<Backend>(stub), "T_TEST");

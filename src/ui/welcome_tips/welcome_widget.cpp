@@ -115,15 +115,17 @@ void WelcomeWidget::applyTheme() {
 
     _rule->setStyleSheet(QString("color: %1;").arg(Th::qss(th.surface.highlight)));
 
-    const QString chipSS = QString("QLabel {"
-                                   "  background-color: %1;"
-                                   "  border: 1px solid %2;"
-                                   "  border-bottom: 2px solid %2;"
-                                   "  border-radius: 5px;"
-                                   "  padding: 3px 9px;"
-                                   "  font-size: %3px;"
-                                   "  color: %4;"
-                                   "}")
+    const QString chipSS = QString(
+                               "QLabel {"
+                               "  background-color: %1;"
+                               "  border: 1px solid %2;"
+                               "  border-bottom: 2px solid %2;"
+                               "  border-radius: 5px;"
+                               "  padding: 3px 9px;"
+                               "  font-size: %3px;"
+                               "  color: %4;"
+                               "}"
+    )
                                .arg(
                                    Th::qss(th.surface.highlight),
                                    Th::qss(th.divider.def),

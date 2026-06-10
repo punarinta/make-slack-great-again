@@ -141,11 +141,13 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
 }
 
 void MentionPopup::applyTheme() {
-    setStyleSheet(QString("QFrame#mentionPopup {"
-                          "  background:%1;"
-                          "  border:1px solid %2;"
-                          "  border-radius:6px;"
-                          "}")
+    setStyleSheet(QString(
+                      "QFrame#mentionPopup {"
+                      "  background:%1;"
+                      "  border:1px solid %2;"
+                      "  border-radius:6px;"
+                      "}"
+    )
                       .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)));
 }
 

@@ -79,15 +79,19 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
 void TitleBar::setTitle(const QString &) {}
 
 void TitleBar::applyTheme() {
-    setStyleSheet(QString("QWidget#titleBar { background: %1; }").arg(Th::qss(Th::c().titleBar.bg))
+    setStyleSheet(
+        QString("QWidget#titleBar { background: %1; }").arg(Th::qss(Th::c().titleBar.bg))
     );
-    _minBtn->setIcon(svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
+    _minBtn->setIcon(
+        svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
     );
     updateMaxButton();
     updatePinButton();
     _closeBtn->setIcon(svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlDefault));
-    _closeBtn->setStyleSheet(QString("QPushButton#titleBarClose:hover { background-color: %1; "
-                                     "border-top-right-radius: 8px; }")
+    _closeBtn->setStyleSheet(QString(
+                                 "QPushButton#titleBarClose:hover { background-color: %1; "
+                                 "border-top-right-radius: 8px; }"
+    )
                                  .arg(Th::qss(Th::c().titleBar.controlClose)));
 }
 
@@ -251,7 +255,8 @@ void TitleBar::updatePinButton() {
         _pinBtn->setIcon(svgIcon(":/ui/pin.svg", kBtnIconSize, Th::c().titleBar.controlClose));
         _pinBtn->setObjectName("titleBarPinActive");
     } else {
-        _pinBtn->setIcon(svgIcon(":/ui/pin-off.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
+        _pinBtn->setIcon(
+            svgIcon(":/ui/pin-off.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
         );
         _pinBtn->setObjectName("titleBarPin");
     }

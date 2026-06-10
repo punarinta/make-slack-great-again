@@ -95,7 +95,8 @@ void SocketModeRealtime::sendPresenceSub() {
     QJsonArray ids;
     for (const auto &id : _presenceIds)
         ids.append(id);
-    _ws->sendTextMessage(QJsonDocument(QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
+    _ws->sendTextMessage(QJsonDocument(
+                             QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
     ).toJson(QJsonDocument::Compact));
 }
 

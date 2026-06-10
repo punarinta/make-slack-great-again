@@ -117,15 +117,15 @@ private:
     QWidget        *_loggedOutPage = nullptr;
     QWidget        *_mainPage      = nullptr; // built lazily
 
-    WorkspaceSwitcher *_switcher         = nullptr;
-    SettingsDialog    *_settingsDialog   = nullptr;
-    QWidget           *_convPanel        = nullptr;
-    QWidget           *_convResizeHandle = nullptr;
-    ConvListWidget    *_convList         = nullptr;
-    QLabel            *_convNameLabel    = nullptr;
-    QWidget           *_msgHeader        = nullptr;
-    QWidget           *_headerDivider    = nullptr;
-    QHBoxLayout       *_rightPanelLayout = nullptr; // right-area outer layout — right/bottom gap
+    WorkspaceSwitcher *_switcher            = nullptr;
+    SettingsDialog    *_settingsDialog      = nullptr;
+    QWidget           *_convPanel           = nullptr;
+    QWidget           *_convResizeHandle    = nullptr;
+    ConvListWidget    *_convList            = nullptr;
+    QLabel            *_convNameLabel       = nullptr;
+    QWidget           *_msgHeader           = nullptr;
+    QWidget           *_headerDivider       = nullptr;
+    QHBoxLayout       *_rightPanelLayout    = nullptr; // right-area outer layout — right/bottom gap
     QVBoxLayout       *_loggedOutPageLayout = nullptr; // same border treatment for login screen
     QSplitter         *_msgSplitter         = nullptr;
     QWidget           *_msgArea             = nullptr; // parent of contentStack + composer

@@ -183,9 +183,9 @@ private:
     // Mouse: returns the href under the given viewport point, or empty.
     QString anchorAt(const QPoint &viewportPos) const;
     // Attachment height helpers
-    int     attachImageH(const Attachment &att
-        ) const; // preview image height (includes kImgGap), 0 if none
-    int     attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
+    int
+    attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
+    int attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
 
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
     const File *fileChipAt(const QPoint &viewportPos) const;

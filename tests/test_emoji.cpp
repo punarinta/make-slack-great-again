@@ -7,20 +7,22 @@
 
 TEST_CASE("fromName common names resolve to unicode", "[emoji][fromName]") {
     CHECK(Emoji::fromName("palm_tree") == "🌴");
-    CHECK(Emoji::fromName("wave")      == "👋");
-    CHECK(Emoji::fromName("fire")      == "🔥");
-    CHECK(Emoji::fromName("tada")      == "🎉");
-    CHECK(Emoji::fromName("baby")      == "👶");
+    CHECK(Emoji::fromName("wave") == "👋");
+    CHECK(Emoji::fromName("fire") == "🔥");
+    CHECK(Emoji::fromName("tada") == "🎉");
+    CHECK(Emoji::fromName("baby") == "👶");
 }
 
 TEST_CASE("fromName Slack aliases resolve correctly", "[emoji][fromName]") {
     // +1 and thumbsup are both aliases for the same emoji
-    CHECK(Emoji::fromName("+1")       == "👍");
+    CHECK(Emoji::fromName("+1") == "👍");
     CHECK(Emoji::fromName("thumbsup") == "👍");
-    CHECK(Emoji::fromName("-1")       == "👎");
+    CHECK(Emoji::fromName("-1") == "👎");
 }
 
-TEST_CASE("fromName person_feeding_baby resolves — regression for ZWJ sequence", "[emoji][fromName]") {
+TEST_CASE(
+    "fromName person_feeding_baby resolves — regression for ZWJ sequence", "[emoji][fromName]"
+) {
     // This was the bug: person_feeding_baby is a ZWJ sequence (U+1F9D1 U+200D U+1F37C)
     // and must be in the table so status emoji doesn't fall back to literal text.
     const QString result = Emoji::fromName("person_feeding_baby");
@@ -37,7 +39,7 @@ TEST_CASE("fromName unknown name falls back to :name:", "[emoji][fromName]") {
 
 TEST_CASE("expandCodes no colons returns string unchanged", "[emoji][expandCodes]") {
     CHECK(Emoji::expandCodes("Hello world") == "Hello world");
-    CHECK(Emoji::expandCodes("")            == "");
+    CHECK(Emoji::expandCodes("") == "");
     CHECK(Emoji::expandCodes("Petter Kristoffersson") == "Petter Kristoffersson");
 }
 
@@ -54,7 +56,9 @@ TEST_CASE("expandCodes multiple codes", "[emoji][expandCodes]") {
     CHECK(result == "👋 hello 🔥");
 }
 
-TEST_CASE("expandCodes person_feeding_baby inline — the sidebar regression", "[emoji][expandCodes]") {
+TEST_CASE(
+    "expandCodes person_feeding_baby inline — the sidebar regression", "[emoji][expandCodes]"
+) {
     // A user whose display name is `:person_feeding_baby:` should render as the
     // actual emoji, not as a long literal string that squeezes the name out of view.
     const QString result = Emoji::expandCodes(":person_feeding_baby:");
