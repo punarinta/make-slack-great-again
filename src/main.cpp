@@ -4,9 +4,14 @@
 #include "app/single_instance.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QFileOpenEvent>
+#include <QFont>
 #include <QLocale>
 #include <QNetworkAccessManager>
+#include <QProcess>
+#include <QSettings>
 #include <QTranslator>
 
 #if defined(Q_OS_LINUX)
@@ -15,10 +20,75 @@
 #include <QProcess>
 #endif
 
+#if defined(Q_OS_LINUX)
+static QFont detectSystemFont() {
+    // KDE: ~/.config/kdeglobals [Fonts] General=Family,size,...
+    {
+        QSettings kde(QDir::homePath() + "/.config/kdeglobals", QSettings::IniFormat);
+        kde.beginGroup("Fonts");
+        const QString val = kde.value("General").toString();
+        if (!val.isEmpty()) {
+            const QStringList parts = val.split(',');
+            if (parts.size() >= 2) {
+                bool      ok;
+                const int sz = parts[1].trimmed().toInt(&ok);
+                QFont     f(parts[0].trimmed());
+                if (ok && sz > 0)
+                    f.setPointSize(sz);
+                return f;
+            }
+        }
+    }
+    // GNOME/GTK: ~/.config/gtk-{4,3}.0/settings.ini  gtk-font-name=Family Size
+    for (const char *dir : {"gtk-4.0", "gtk-3.0"}) {
+        QFile f(QDir::homePath() + "/.config/" + dir + "/settings.ini");
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        while (!f.atEnd()) {
+            const QString line = QString::fromUtf8(f.readLine()).trimmed();
+            if (line.startsWith("gtk-font-name")) {
+                const QString val = line.section('=', 1).trimmed();
+                const int     sp  = val.lastIndexOf(' ');
+                if (sp > 0) {
+                    bool      ok;
+                    const int sz = val.mid(sp + 1).toInt(&ok);
+                    QFont     font(val.left(sp).trimmed());
+                    if (ok && sz > 0)
+                        font.setPointSize(sz);
+                    return font;
+                }
+            }
+        }
+    }
+    // GNOME (dconf): gsettings get org.gnome.desktop.interface font-name → 'Family Size'
+    {
+        QProcess gs;
+        gs.start("gsettings", {"get", "org.gnome.desktop.interface", "font-name"});
+        if (gs.waitForFinished(500)) {
+            QString val = QString::fromUtf8(gs.readAllStandardOutput()).trimmed();
+            val.remove('\'').remove('"');
+            const int sp = val.lastIndexOf(' ');
+            if (sp > 0) {
+                bool      ok;
+                const int sz = val.mid(sp + 1).toInt(&ok);
+                QFont     font(val.left(sp).trimmed());
+                if (ok && sz > 0)
+                    font.setPointSize(sz);
+                return font;
+            }
+        }
+    }
+    return QFont();
+}
+#endif
+
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
     app.setOrganizationName("msga");
+#if defined(Q_OS_LINUX)
+    app.setFont(detectSystemFont());
+#endif
 
     // Collect any msga:// URL argument (delivered by the OS after OAuth redirect).
     QString urlArg;
