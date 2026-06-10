@@ -444,17 +444,17 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="250"/>
+        <location filename="../src/ui/main_window.cpp" line="264"/>
         <source>Log in to workspace</source>
         <translation>Log in to workspace</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="762"/>
+        <location filename="../src/ui/main_window.cpp" line="776"/>
         <source>Missing credentials</source>
         <translation>Missing credentials</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="763"/>
+        <location filename="../src/ui/main_window.cpp" line="777"/>
         <source>App credentials are not configured.
 
 Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
@@ -463,82 +463,82 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="782"/>
+        <location filename="../src/ui/main_window.cpp" line="796"/>
         <source>Login failed</source>
         <translation>Login failed</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="959"/>
+        <location filename="../src/ui/main_window.cpp" line="973"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="965"/>
+        <location filename="../src/ui/main_window.cpp" line="979"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="965"/>
+        <location filename="../src/ui/main_window.cpp" line="979"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1058"/>
+        <location filename="../src/ui/main_window.cpp" line="1072"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1065"/>
+        <location filename="../src/ui/main_window.cpp" line="1079"/>
         <source>a channel</source>
         <translation>a channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1169"/>
+        <location filename="../src/ui/main_window.cpp" line="1183"/>
         <source>Log out</source>
         <translation>Log out</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1169"/>
+        <location filename="../src/ui/main_window.cpp" line="1183"/>
         <source>Log out from %1</source>
         <translation>Log out from %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1200"/>
+        <location filename="../src/ui/main_window.cpp" line="1214"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1207"/>
+        <location filename="../src/ui/main_window.cpp" line="1221"/>
         <source>Quit</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1360"/>
+        <location filename="../src/ui/main_window.cpp" line="1374"/>
         <source>Unstar conversation</source>
         <translation>Unstar conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1360"/>
+        <location filename="../src/ui/main_window.cpp" line="1374"/>
         <source>Star conversation</source>
         <translation>Star conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1371"/>
+        <location filename="../src/ui/main_window.cpp" line="1385"/>
         <source>Search messages</source>
         <translation>Search messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1453"/>
+        <location filename="../src/ui/main_window.cpp" line="1469"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1468"/>
+        <location filename="../src/ui/main_window.cpp" line="1484"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1468"/>
+        <location filename="../src/ui/main_window.cpp" line="1484"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>

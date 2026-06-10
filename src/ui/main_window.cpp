@@ -202,8 +202,24 @@ void MainWindow::buildUi() {
 }
 
 QWidget *MainWindow::buildLoggedOutPage() {
-    auto *page = new QWidget;
+    // Outer nav.bg wrapper — right/bottom margin exposes nav.bg as a colored border,
+    // matching the same treatment applied to rightArea in buildMainPage().
+    auto *wrapper = new QWidget;
+    wrapper->setObjectName("loggedOutWrapper");
+    wrapper->setAttribute(Qt::WA_StyledBackground);
+    wrapper->setStyleSheet(
+        QString("QWidget#loggedOutWrapper { background: %1; }").arg(Th::qss(Th::c().nav.bg))
+    );
+    _loggedOutPageLayout = new QVBoxLayout(wrapper);
+    _loggedOutPageLayout->setContentsMargins(0, 0, 0, 0);
+    _loggedOutPageLayout->setSpacing(0);
+
+    auto *page = new QWidget(wrapper);
     page->setObjectName("loggedOutPage");
+    page->setAttribute(Qt::WA_StyledBackground);
+    page->setStyleSheet(QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
+    );
+    _loggedOutPageLayout->addWidget(page);
 
     auto *outer = new QVBoxLayout(page);
     outer->setAlignment(Qt::AlignCenter);
@@ -235,14 +251,11 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *tagline = new QLabel(titleBlock);
     tagline->setAlignment(Qt::AlignCenter);
-    tagline->setText(QString("<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
-                             "[<span style='color:%2;'>m</span>ake "
-                             "<span style='color:%2;'>s</span>lack "
-                             "<span style='color:%2;'>g</span>reat "
-                             "<span style='color:%2;'>a</span>gain]"
+    tagline->setText(QString("<span style='font-size:%1px; color:%2; letter-spacing:0.06em;'>"
+                             "make slack great again"
                              "</span>")
-                         .arg(Th::qss(Th::c().text.tertiary), Th::qss(Th::c().text.primary))
-                         .arg(Th::c().fonts.sm));
+                         .arg(Th::c().fonts.sm)
+                         .arg(Th::qss(Th::c().text.primary)));
 
     titleLayout->addWidget(title);
     titleLayout->addWidget(tagline);
@@ -278,7 +291,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
     layout->addWidget(loginBtn);
 
     outer->addWidget(inner, 0, Qt::AlignCenter);
-    return page;
+    return wrapper;
 }
 
 QWidget *MainWindow::buildMainPage() {
@@ -1383,6 +1396,8 @@ void MainWindow::updateRoundedMask() {
     const bool windowed = !isMaximized() && !isFullScreen();
     if (_rightPanelLayout)
         _rightPanelLayout->setContentsMargins(0, 0, windowed ? 4 : 0, windowed ? 4 : 0);
+    if (_loggedOutPageLayout)
+        _loggedOutPageLayout->setContentsMargins(0, 0, windowed ? 4 : 0, windowed ? 4 : 0);
     if (!windowed) {
         _frame->clearMask();
         return;

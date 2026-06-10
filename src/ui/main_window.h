@@ -126,14 +126,15 @@ private:
     QWidget           *_msgHeader        = nullptr;
     QWidget           *_headerDivider    = nullptr;
     QHBoxLayout       *_rightPanelLayout = nullptr; // right-area outer layout — right/bottom gap
-    QSplitter         *_msgSplitter      = nullptr;
-    QWidget           *_msgArea          = nullptr; // parent of contentStack + composer
-    QStackedWidget    *_contentStack     = nullptr;
-    MessageListWidget *_messageList      = nullptr;
-    ComposerWidget    *_composer         = nullptr;
-    SearchWidget      *_searchWidget     = nullptr;
-    WelcomeWidget     *_welcomeTips      = nullptr;
-    ThreadPanel       *_threadPanel      = nullptr;
+    QVBoxLayout       *_loggedOutPageLayout = nullptr; // same border treatment for login screen
+    QSplitter         *_msgSplitter         = nullptr;
+    QWidget           *_msgArea             = nullptr; // parent of contentStack + composer
+    QStackedWidget    *_contentStack        = nullptr;
+    MessageListWidget *_messageList         = nullptr;
+    ComposerWidget    *_composer            = nullptr;
+    SearchWidget      *_searchWidget        = nullptr;
+    WelcomeWidget     *_welcomeTips         = nullptr;
+    ThreadPanel       *_threadPanel         = nullptr;
 
     std::vector<ConversationId>     _convIds;
     ConversationId                  _currentConvId;
