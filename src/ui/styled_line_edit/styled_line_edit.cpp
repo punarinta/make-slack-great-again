@@ -117,11 +117,13 @@ void StyledLineEdit::updateCounter() {
 void StyledLineEdit::updateBorderStyle(bool focused) {
     const QColor border = focused ? Th::c().composer.borderFocus : Th::c().composer.border;
     const int    bw     = focused ? 2 : 1;
-    setStyleSheet(QString("StyledLineEdit {"
-                          "  border: %1px solid %2;"
-                          "  border-radius: 6px;"
-                          "  background: %3;"
-                          "}")
+    setStyleSheet(QString(
+                      "StyledLineEdit {"
+                      "  border: %1px solid %2;"
+                      "  border-radius: 6px;"
+                      "  background: %3;"
+                      "}"
+    )
                       .arg(bw)
                       .arg(Th::qss(border), Th::qss(Th::c().surface.raised)));
 }

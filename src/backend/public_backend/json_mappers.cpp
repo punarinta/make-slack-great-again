@@ -181,7 +181,8 @@ static void richInlineToTWE(const QJsonObject &el, Builder &b) {
             b.entities.push_back({EntityType::HereCommand, start, (int)b.text.size() - start, {}});
         } else {
             b.text += "@" + range;
-            b.entities.push_back({EntityType::ChannelCommand, start, (int)b.text.size() - start, {}}
+            b.entities.push_back(
+                {EntityType::ChannelCommand, start, (int)b.text.size() - start, {}}
             );
         }
     } else {

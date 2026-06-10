@@ -26,15 +26,12 @@ static constexpr char kBase[] = "https://msga.app/download/";
 #if defined(Q_OS_LINUX) && defined(Q_PROCESSOR_X86_64)
 static constexpr char kBinary[]   = "msga-linux-x86_64";
 static constexpr char kManifest[] = "msga-linux-x86_64.manifest";
-#elif defined(Q_OS_MACOS) && defined(Q_PROCESSOR_ARM_64)
-static constexpr char kBinary[]   = "msga-macos-arm64.dmg";
-static constexpr char kManifest[] = "msga-macos-arm64.manifest";
-#elif defined(Q_OS_MACOS) && defined(Q_PROCESSOR_X86_64)
-static constexpr char kBinary[]   = "msga-macos-x86_64.dmg";
-static constexpr char kManifest[] = "msga-macos-x86_64.manifest";
 #elif defined(Q_OS_WIN) && defined(Q_PROCESSOR_X86_64)
 static constexpr char kBinary[]   = "msga-windows-x86_64.exe";
 static constexpr char kManifest[] = "msga-windows-x86_64.manifest";
+#elif defined(Q_OS_MACOS) && defined(Q_PROCESSOR_ARM_64)
+static constexpr char kBinary[]   = "msga-macos-arm64.dmg";
+static constexpr char kManifest[] = "msga-macos-arm64.manifest";
 #else
 static constexpr char kBinary[]   = "";
 static constexpr char kManifest[] = "";
@@ -168,7 +165,8 @@ void UpdateChecker::onDownloadDone(QNetworkReply *reply, int newVersion) {
     if (::rename(QFile::encodeName(tmp).constData(), QFile::encodeName(target).constData()) != 0) {
         const int e = errno;
         QFile::remove(tmp);
-        emit checkFailed(tr("Could not replace binary: %1").arg(QString::fromLocal8Bit(strerror(e)))
+        emit checkFailed(
+            tr("Could not replace binary: %1").arg(QString::fromLocal8Bit(strerror(e)))
         );
         return;
     }

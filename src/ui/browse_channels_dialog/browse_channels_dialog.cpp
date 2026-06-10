@@ -539,11 +539,13 @@ void BrowseChannelsDialog::applyTheme() {
         "QFrame#browseCard { background: white; border-radius: 12px; border: none; }"
     );
 
-    _searchEdit->setStyleSheet(QString("QLineEdit {"
-                                       "  border: 1.5px solid %1; border-radius: 8px;"
-                                       "  padding: 6px 8px; background: %2; color: %3;"
-                                       "}"
-                                       "QLineEdit:focus { border-color: %4; }")
+    _searchEdit->setStyleSheet(QString(
+                                   "QLineEdit {"
+                                   "  border: 1.5px solid %1; border-radius: 8px;"
+                                   "  padding: 6px 8px; background: %2; color: %3;"
+                                   "}"
+                                   "QLineEdit:focus { border-color: %4; }"
+    )
                                    .arg(
                                        Th::qss(Th::c().divider.strong),
                                        Th::qss(Th::c().surface.raised),
@@ -551,43 +553,49 @@ void BrowseChannelsDialog::applyTheme() {
                                        Th::qss(Th::c().accent.def)
                                    ));
 
-    _createBtn->setStyleSheet(
-        QString("QPushButton {"
-                "  background: %1; color: %2; border: 1.5px solid transparent;"
-                "  border-radius: 6px; padding: 6px 16px;"
-                "}"
-                "QPushButton:hover { background: %3; }")
-            .arg(
-                Th::qss(Th::c().accent.def),
-                Th::qss(Th::c().accent.text),
-                Th::qss(Th::c().accent.dark)
-            )
-    );
+    _createBtn->setStyleSheet(QString(
+                                  "QPushButton {"
+                                  "  background: %1; color: %2; border: 1.5px solid transparent;"
+                                  "  border-radius: 6px; padding: 6px 16px;"
+                                  "}"
+                                  "QPushButton:hover { background: %3; }"
+    )
+                                  .arg(
+                                      Th::qss(Th::c().accent.def),
+                                      Th::qss(Th::c().accent.text),
+                                      Th::qss(Th::c().accent.dark)
+                                  ));
 
-    _closeBtn->setStyleSheet(QString("QPushButton {"
-                                     "  border: none; border-radius: 16px;"
-                                     "  color: %1; background: transparent;"
-                                     "}"
-                                     "QPushButton:hover { background: %2; color: %3; }")
+    _closeBtn->setStyleSheet(QString(
+                                 "QPushButton {"
+                                 "  border: none; border-radius: 16px;"
+                                 "  color: %1; background: transparent;"
+                                 "}"
+                                 "QPushButton:hover { background: %2; color: %3; }"
+    )
                                  .arg(
                                      Th::qss(Th::c().text.tertiary),
                                      Th::qss(Th::c().surface.highlight),
                                      Th::qss(Th::c().text.secondary)
                                  ));
 
-    const QString tabActive = QString("QPushButton {"
-                                      "  border: none; border-bottom: 2px solid %1;"
-                                      "  padding: 8px 16px; background: transparent;"
-                                      "  color: %2; font-weight: bold;"
-                                      "}")
+    const QString tabActive = QString(
+                                  "QPushButton {"
+                                  "  border: none; border-bottom: 2px solid %1;"
+                                  "  padding: 8px 16px; background: transparent;"
+                                  "  color: %2; font-weight: bold;"
+                                  "}"
+    )
                                   .arg(Th::qss(Th::c().accent.def), Th::qss(Th::c().text.primary));
 
     const QString tabInactive =
-        QString("QPushButton {"
-                "  border: none; border-bottom: 2px solid transparent;"
-                "  padding: 8px 16px; background: transparent; color: %1;"
-                "}"
-                "QPushButton:hover { color: %2; }")
+        QString(
+            "QPushButton {"
+            "  border: none; border-bottom: 2px solid transparent;"
+            "  padding: 8px 16px; background: transparent; color: %1;"
+            "}"
+            "QPushButton:hover { color: %2; }"
+        )
             .arg(Th::qss(Th::c().text.secondary), Th::qss(Th::c().text.primary));
 
     _channelsTab->setStyleSheet(_activeTab == 0 ? tabActive : tabInactive);
@@ -609,14 +617,18 @@ void BrowseChannelsDialog::applyTheme() {
     }
 
     // Item hover
-    const QString channelHover = QString("QFrame#channelItem { background: transparent; }"
-                                         "QFrame#channelItem:hover { background: %1; }")
+    const QString channelHover = QString(
+                                     "QFrame#channelItem { background: transparent; }"
+                                     "QFrame#channelItem:hover { background: %1; }"
+    )
                                      .arg(Th::qss(Th::c().surface.highlight));
     for (auto *f : _channelPage->findChildren<QFrame *>("channelItem", Qt::FindDirectChildrenOnly))
         f->setStyleSheet(channelHover);
 
-    const QString peopleHover = QString("QFrame#peopleItem { background: transparent; }"
-                                        "QFrame#peopleItem:hover { background: %1; }")
+    const QString peopleHover = QString(
+                                    "QFrame#peopleItem { background: transparent; }"
+                                    "QFrame#peopleItem:hover { background: %1; }"
+    )
                                     .arg(Th::qss(Th::c().surface.highlight));
     for (auto *f : _peoplePage->findChildren<QFrame *>("peopleItem", Qt::FindDirectChildrenOnly))
         f->setStyleSheet(peopleHover);

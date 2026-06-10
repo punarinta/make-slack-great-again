@@ -116,7 +116,7 @@ void PublicBackend::doRefresh(std::function<void(bool)> done) {
         _refreshUrl.isEmpty() ? QStringLiteral("https://slack.com/api/oauth.v2.exchange")
                               : _refreshUrl
     };
-    auto *nam = new QNetworkAccessManager(_api); // _api owns it → cleaned up with backend
+    auto           *nam = new QNetworkAccessManager(_api); // _api owns it → cleaned up with backend
     QNetworkRequest req(endpoint);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     QUrlQuery body;

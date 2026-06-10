@@ -361,34 +361,42 @@ void SettingsDialog::applyTheme() {
     const auto &th = Th::c();
 
     // Panel frame
-    _panel->setStyleSheet(QString("QFrame#settingsPanel {"
-                                  "  background: %1;"
-                                  "  border-radius: 8px;"
-                                  "  border: 1px solid %2;"
-                                  "}")
+    _panel->setStyleSheet(QString(
+                              "QFrame#settingsPanel {"
+                              "  background: %1;"
+                              "  border-radius: 8px;"
+                              "  border: 1px solid %2;"
+                              "}"
+    )
                               .arg(Th::qss(th.surface.raised), Th::qss(th.divider.strong)));
 
     // Header
     if (auto *w = _panel->findChild<QWidget *>("settingsHeader")) {
-        w->setStyleSheet(QString("background: %1;"
-                                 "border-bottom: 1px solid %2;"
-                                 "border-top-left-radius: 8px;"
-                                 "border-top-right-radius: 8px;")
+        w->setStyleSheet(QString(
+                             "background: %1;"
+                             "border-bottom: 1px solid %2;"
+                             "border-top-left-radius: 8px;"
+                             "border-top-right-radius: 8px;"
+        )
                              .arg(Th::qss(th.surface.highlight), Th::qss(th.divider.def)));
     }
     if (auto *w = _panel->findChild<QLabel *>("settingsTitleLabel")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;"
-                                 "background: transparent; border: none;")
+        w->setStyleSheet(QString(
+                             "font-size: %1px; font-weight: 600; color: %2;"
+                             "background: transparent; border: none;"
+        )
                              .arg(th.fonts.lg)
                              .arg(Th::qss(th.text.primary)));
     }
     if (auto *w = _panel->findChild<QPushButton *>("settingsCloseBtn")) {
-        w->setStyleSheet(QString("QPushButton {"
-                                 "  background: transparent; color: %1; border: none;"
-                                 "  border-radius: 4px; font-size: %2px;"
-                                 "}"
-                                 "QPushButton:hover   { background: %3; color: %4; }"
-                                 "QPushButton:pressed { background: %5; }")
+        w->setStyleSheet(QString(
+                             "QPushButton {"
+                             "  background: transparent; color: %1; border: none;"
+                             "  border-radius: 4px; font-size: %2px;"
+                             "}"
+                             "QPushButton:hover   { background: %3; color: %4; }"
+                             "QPushButton:pressed { background: %5; }"
+        )
                              .arg(Th::qss(th.text.secondary))
                              .arg(th.fonts.xl)
                              .arg(
@@ -400,28 +408,30 @@ void SettingsDialog::applyTheme() {
 
     // Tabs list
     _tabs->setStyleSheet(
-        QString("QListWidget {"
-                "  background: %1;"
-                "  border: none;"
-                "  border-right: 1px solid %2;"
-                "  border-bottom-left-radius: 8px;"
-                "  outline: none;"
-                "  padding: 8px 0;"
-                "}"
-                "QListWidget::item {"
-                "  padding: 9px 14px;"
-                "  color: %3;"
-                "  font-size: %4px;"
-                "  border-radius: 4px;"
-                "  margin: 1px 6px;"
-                "}"
-                "QListWidget::item:selected {"
-                "  background: %5;"
-                "  color: %3;"
-                "}"
-                "QListWidget::item:hover:!selected {"
-                "  background: %6;"
-                "}")
+        QString(
+            "QListWidget {"
+            "  background: %1;"
+            "  border: none;"
+            "  border-right: 1px solid %2;"
+            "  border-bottom-left-radius: 8px;"
+            "  outline: none;"
+            "  padding: 8px 0;"
+            "}"
+            "QListWidget::item {"
+            "  padding: 9px 14px;"
+            "  color: %3;"
+            "  font-size: %4px;"
+            "  border-radius: 4px;"
+            "  margin: 1px 6px;"
+            "}"
+            "QListWidget::item:selected {"
+            "  background: %5;"
+            "  color: %3;"
+            "}"
+            "QListWidget::item:hover:!selected {"
+            "  background: %6;"
+            "}"
+        )
             .arg(Th::qss(th.surface.sunken), Th::qss(th.divider.def), Th::qss(th.text.primary))
             .arg(th.fonts.md)
             .arg(Th::qss(th.surface.highlightStrong), Th::qss(th.surface.highlight))
@@ -435,8 +445,10 @@ void SettingsDialog::applyTheme() {
     }
     if (auto *w = _panel->findChild<QGroupBox *>("sidebarBox")) {
         w->setStyleSheet(
-            QString("QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                    "QGroupBox::title { subcontrol-origin: margin; left: 0; }")
+            QString(
+                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+            )
                 .arg(th.fonts.caption)
                 .arg(Th::qss(th.text.secondary))
         );
@@ -447,11 +459,13 @@ void SettingsDialog::applyTheme() {
         );
     }
     _relevantDays->setStyleSheet(
-        QString("QSpinBox {"
-                "  font-size: %1px; color: %2;"
-                "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
-                "}"
-                "QSpinBox:focus { border-color: %4; }")
+        QString(
+            "QSpinBox {"
+            "  font-size: %1px; color: %2;"
+            "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
+            "}"
+            "QSpinBox:focus { border-color: %4; }"
+        )
             .arg(th.fonts.md)
             .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
     );
@@ -462,12 +476,14 @@ void SettingsDialog::applyTheme() {
     }
     if (auto *w = _panel->findChild<QPushButton *>("appearSaveBtn")) {
         w->setStyleSheet(
-            QString("QPushButton {"
-                    "  background: %1; color: white; border: none;"
-                    "  border-radius: 4px; font-size: %2px; font-weight: 600; padding: 0 16px;"
-                    "}"
-                    "QPushButton:hover   { background: %3; }"
-                    "QPushButton:pressed { background: %4; }")
+            QString(
+                "QPushButton {"
+                "  background: %1; color: white; border: none;"
+                "  border-radius: 4px; font-size: %2px; font-weight: 600; padding: 0 16px;"
+                "}"
+                "QPushButton:hover   { background: %3; }"
+                "QPushButton:pressed { background: %4; }"
+            )
                 .arg(Th::qss(th.accent.def))
                 .arg(th.fonts.md)
                 .arg(Th::qss(th.accent.hover), Th::qss(th.accent.pressed))
@@ -485,8 +501,10 @@ void SettingsDialog::applyTheme() {
     );
     if (auto *w = _panel->findChild<QGroupBox *>("levelBox")) {
         w->setStyleSheet(
-            QString("QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                    "QGroupBox::title { subcontrol-origin: margin; left: 0; }")
+            QString(
+                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+            )
                 .arg(th.fonts.caption)
                 .arg(Th::qss(th.text.secondary))
         );
@@ -502,12 +520,14 @@ void SettingsDialog::applyTheme() {
     );
     if (auto *w = _panel->findChild<QPushButton *>("notifSaveBtn")) {
         w->setStyleSheet(
-            QString("QPushButton {"
-                    "  background: %1; color: white; border: none;"
-                    "  border-radius: 4px; font-size: %2px; font-weight: 600; padding: 0 16px;"
-                    "}"
-                    "QPushButton:hover   { background: %3; }"
-                    "QPushButton:pressed { background: %4; }")
+            QString(
+                "QPushButton {"
+                "  background: %1; color: white; border: none;"
+                "  border-radius: 4px; font-size: %2px; font-weight: 600; padding: 0 16px;"
+                "}"
+                "QPushButton:hover   { background: %3; }"
+                "QPushButton:pressed { background: %4; }"
+            )
                 .arg(Th::qss(th.accent.def))
                 .arg(th.fonts.md)
                 .arg(Th::qss(th.accent.hover), Th::qss(th.accent.pressed))
@@ -535,12 +555,14 @@ void SettingsDialog::applyTheme() {
     }
     if (auto *w = _panel->findChild<QPushButton *>("clearCacheBtn")) {
         w->setStyleSheet(
-            QString("QPushButton {"
-                    "  background: #CC0000; color: white; border: none;"
-                    "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
-                    "}"
-                    "QPushButton:hover   { background: #E00000; }"
-                    "QPushButton:pressed { background: #AA0000; }")
+            QString(
+                "QPushButton {"
+                "  background: #CC0000; color: white; border: none;"
+                "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
+                "}"
+                "QPushButton:hover   { background: #E00000; }"
+                "QPushButton:pressed { background: #AA0000; }"
+            )
                 .arg(th.fonts.md)
         );
     }
@@ -559,12 +581,14 @@ void SettingsDialog::applyTheme() {
     }
     if (auto *w = _panel->findChild<QPushButton *>("clearStateBtn")) {
         w->setStyleSheet(
-            QString("QPushButton {"
-                    "  background: #CC0000; color: white; border: none;"
-                    "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
-                    "}"
-                    "QPushButton:hover   { background: #E00000; }"
-                    "QPushButton:pressed { background: #AA0000; }")
+            QString(
+                "QPushButton {"
+                "  background: #CC0000; color: white; border: none;"
+                "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
+                "}"
+                "QPushButton:hover   { background: #E00000; }"
+                "QPushButton:pressed { background: #AA0000; }"
+            )
                 .arg(th.fonts.md)
         );
     }
@@ -582,20 +606,24 @@ void SettingsDialog::applyTheme() {
     }
     if (auto *w = _panel->findChild<QGroupBox *>("updBox")) {
         w->setStyleSheet(
-            QString("QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                    "QGroupBox::title { subcontrol-origin: margin; left: 0; }")
+            QString(
+                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+            )
                 .arg(th.fonts.caption)
                 .arg(Th::qss(th.text.secondary))
         );
     }
     _checkBtn->setStyleSheet(
-        QString("QPushButton {"
-                "  background: %1; color: %2; border: none;"
-                "  border-radius: 4px; font-size: %3px; padding: 0 14px;"
-                "}"
-                "QPushButton:hover   { background: %4; }"
-                "QPushButton:pressed { background: %4; }"
-                "QPushButton:disabled { color: %5; }")
+        QString(
+            "QPushButton {"
+            "  background: %1; color: %2; border: none;"
+            "  border-radius: 4px; font-size: %3px; padding: 0 14px;"
+            "}"
+            "QPushButton:hover   { background: %4; }"
+            "QPushButton:pressed { background: %4; }"
+            "QPushButton:disabled { color: %5; }"
+        )
             .arg(Th::qss(th.surface.highlight), Th::qss(th.text.primary))
             .arg(th.fonts.md)
             .arg(Th::qss(th.surface.highlightStrong), Th::qss(th.text.tertiary))

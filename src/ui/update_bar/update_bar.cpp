@@ -44,18 +44,20 @@ void UpdateBar::applyTheme() {
     const auto &th = Th::c();
 
     setStyleSheet(
-        QString("QWidget#updateBar {"
-                "  background: %1;"
-                "  border-bottom: 1px solid %2;"
-                "}"
-                "QLabel { background: transparent; color: %3; font-size: %4px; font-weight: 600; }"
-                "QPushButton {"
-                "  background: %5; color: %6;"
-                "  border: none; border-radius: 3px;"
-                "  font-size: %4px; font-weight: 600; padding: 0 10px;"
-                "}"
-                "QPushButton:hover   { background: %7; }"
-                "QPushButton:pressed { background: %7; }")
+        QString(
+            "QWidget#updateBar {"
+            "  background: %1;"
+            "  border-bottom: 1px solid %2;"
+            "}"
+            "QLabel { background: transparent; color: %3; font-size: %4px; font-weight: 600; }"
+            "QPushButton {"
+            "  background: %5; color: %6;"
+            "  border: none; border-radius: 3px;"
+            "  font-size: %4px; font-weight: 600; padding: 0 10px;"
+            "}"
+            "QPushButton:hover   { background: %7; }"
+            "QPushButton:pressed { background: %7; }"
+        )
             .arg(
                 Th::qss(th.updateBanner.bg),
                 Th::qss(th.updateBanner.border),

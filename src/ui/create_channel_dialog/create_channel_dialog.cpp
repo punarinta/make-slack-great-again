@@ -164,23 +164,23 @@ void CreateChannelDialog::applyTheme() {
                                         .arg(Th::c().fonts.sm));
 
     if (_nextBtn)
-        _nextBtn->setStyleSheet(
-            QString("QPushButton {"
-                    "  background: %1; color: %2; border: none;"
-                    "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
-                    "}"
-                    "QPushButton:hover { background: %3; }"
-                    "QPushButton:disabled {"
-                    "  background: %4; color: %5;"
-                    "}")
-                .arg(
-                    Th::qss(Th::c().accent.def),
-                    Th::qss(Th::c().accent.text),
-                    Th::qss(Th::c().accent.dark),
-                    Th::qss(Th::c().surface.highlightStrong),
-                    Th::qss(Th::c().text.tertiary)
-                )
-        );
+        _nextBtn->setStyleSheet(QString(
+                                    "QPushButton {"
+                                    "  background: %1; color: %2; border: none;"
+                                    "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
+                                    "}"
+                                    "QPushButton:hover { background: %3; }"
+                                    "QPushButton:disabled {"
+                                    "  background: %4; color: %5;"
+                                    "}"
+        )
+                                    .arg(
+                                        Th::qss(Th::c().accent.def),
+                                        Th::qss(Th::c().accent.text),
+                                        Th::qss(Th::c().accent.dark),
+                                        Th::qss(Th::c().surface.highlightStrong),
+                                        Th::qss(Th::c().text.tertiary)
+                                    ));
 
     if (_channelSubtitle)
         _channelSubtitle->setStyleSheet(QString("color: %1; font-size: %2px;")
@@ -207,11 +207,13 @@ void CreateChannelDialog::applyTheme() {
                                       .arg(Th::c().fonts.sm));
 
     if (_backBtn)
-        _backBtn->setStyleSheet(QString("QPushButton {"
-                                        "  border: 1px solid %1; border-radius: 6px;"
-                                        "  padding: 8px 20px; background: %2;"
-                                        "}"
-                                        "QPushButton:hover { background: %3; }")
+        _backBtn->setStyleSheet(QString(
+                                    "QPushButton {"
+                                    "  border: 1px solid %1; border-radius: 6px;"
+                                    "  padding: 8px 20px; background: %2;"
+                                    "}"
+                                    "QPushButton:hover { background: %3; }"
+        )
                                     .arg(
                                         Th::qss(Th::c().divider.strong),
                                         Th::qss(Th::c().surface.raised),
@@ -219,16 +221,16 @@ void CreateChannelDialog::applyTheme() {
                                     ));
 
     if (_createBtn)
-        _createBtn->setStyleSheet(
-            QString("QPushButton {"
-                    "  background: %1; color: %2; border: none;"
-                    "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
-                    "}"
-                    "QPushButton:hover { background: %3; }")
-                .arg(
-                    Th::qss(Th::c().accent.def),
-                    Th::qss(Th::c().accent.text),
-                    Th::qss(Th::c().accent.dark)
-                )
-        );
+        _createBtn->setStyleSheet(QString(
+                                      "QPushButton {"
+                                      "  background: %1; color: %2; border: none;"
+                                      "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
+                                      "}"
+                                      "QPushButton:hover { background: %3; }"
+        )
+                                      .arg(
+                                          Th::qss(Th::c().accent.def),
+                                          Th::qss(Th::c().accent.text),
+                                          Th::qss(Th::c().accent.dark)
+                                      ));
 }

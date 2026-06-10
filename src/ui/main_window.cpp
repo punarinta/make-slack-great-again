@@ -217,7 +217,8 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *page = new QWidget(wrapper);
     page->setObjectName("loggedOutPage");
     page->setAttribute(Qt::WA_StyledBackground);
-    page->setStyleSheet(QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
+    page->setStyleSheet(
+        QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
     );
     _loggedOutPageLayout->addWidget(page);
 
@@ -251,11 +252,16 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *tagline = new QLabel(titleBlock);
     tagline->setAlignment(Qt::AlignCenter);
-    tagline->setText(QString("<span style='font-size:%1px; color:%2; letter-spacing:0.06em;'>"
-                             "make slack great again"
-                             "</span>")
-                         .arg(Th::c().fonts.sm)
-                         .arg(Th::qss(Th::c().text.primary)));
+    tagline->setText(QString(
+                         "<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
+                         "[<span style='color:%2;'>m</span>ake "
+                         "<span style='color:%2;'>s</span>lack "
+                         "<span style='color:%2;'>g</span>reat "
+                         "<span style='color:%2;'>a</span>gain]"
+                         "</span>"
+    )
+                         .arg(Th::qss(Th::c().text.tertiary), Th::qss(Th::c().text.primary))
+                         .arg(Th::c().fonts.sm));
 
     titleLayout->addWidget(title);
     titleLayout->addWidget(tagline);
@@ -263,17 +269,19 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *loginBtn = new QPushButton(tr("Log in to workspace"), inner);
     loginBtn->setFixedHeight(40);
     loginBtn->setCursor(Qt::PointingHandCursor);
-    loginBtn->setStyleSheet(QString("QPushButton {"
-                                    "  background: %1;"
-                                    "  color: white;"
-                                    "  border: none;"
-                                    "  border-radius: 4px;"
-                                    "  font-size: %4px;"
-                                    "  font-weight: 600;"
-                                    "  padding: 0 24px;"
-                                    "}"
-                                    "QPushButton:hover   { background: %2; }"
-                                    "QPushButton:pressed { background: %3; }")
+    loginBtn->setStyleSheet(QString(
+                                "QPushButton {"
+                                "  background: %1;"
+                                "  color: white;"
+                                "  border: none;"
+                                "  border-radius: 4px;"
+                                "  font-size: %4px;"
+                                "  font-weight: 600;"
+                                "  padding: 0 24px;"
+                                "}"
+                                "QPushButton:hover   { background: %2; }"
+                                "QPushButton:pressed { background: %3; }"
+    )
                                 .arg(
                                     Th::qss(Th::c().accent.def),
                                     Th::qss(Th::c().accent.hover),
@@ -656,12 +664,14 @@ void MainWindow::applyTheme() {
         _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
     }
     if (_errorBanner) {
-        _errorBanner->setStyleSheet(QString("QLabel#errorBanner {"
-                                            "  background: %1;"
-                                            "  color: %2;"
-                                            "  padding: 6px 12px;"
-                                            "  font-size: %3px;"
-                                            "}")
+        _errorBanner->setStyleSheet(QString(
+                                        "QLabel#errorBanner {"
+                                        "  background: %1;"
+                                        "  color: %2;"
+                                        "  padding: 6px 12px;"
+                                        "  font-size: %3px;"
+                                        "}"
+        )
                                         .arg(Th::qss(th.danger.icon), Th::qss(th.surface.raised))
                                         .arg(th.fonts.md));
     }
@@ -845,10 +855,9 @@ void MainWindow::connectToSession() {
                 auto      *cdlg  = new CreateChannelDialog(creds.teamName, this);
                 if (cdlg->exec() == QDialog::Accepted) {
                     _sessionOwner->createChannel(
-                        cdlg->channelName(),
-                        cdlg->isPrivate(),
-                        {},
-                        [this](const QString &err) { showNetworkError(err); }
+                        cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
+                            showNetworkError(err);
+                        }
                     );
                 }
                 cdlg->deleteLater();
@@ -1527,7 +1536,8 @@ void MainWindow::updateStarBtn(bool starred) {
         return;
     const QString svg =
         starred ? QStringLiteral(":/ui/star-solid.svg") : QStringLiteral(":/ui/star.svg");
-    _starBtn->setIcon(svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
+    _starBtn->setIcon(
+        svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
     );
 }
 

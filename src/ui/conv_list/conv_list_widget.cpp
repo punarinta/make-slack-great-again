@@ -818,9 +818,11 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         QString emojiGlyph;
         if (!emoji.isEmpty() && !infoIt->statusEmoji.isEmpty()) {
             emojiGlyph = emoji;
-            QFont ef   = emojiFont(static_cast<int>(
-                font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height()
-            ));
+            QFont ef   = emojiFont(
+                static_cast<int>(
+                    font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height()
+                )
+            );
             suffixW += QFontMetrics(ef).horizontalAdvance(emojiGlyph) + 4;
         }
         int youW = 0;

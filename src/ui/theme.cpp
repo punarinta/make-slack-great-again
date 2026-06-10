@@ -207,15 +207,17 @@ const Theme &defaultTheme() {
 
 QString globalQss() {
     const auto &th = c();
-    return QString("QToolTip {"
-                   "  background-color: %1;"
-                   "  color: %2;"
-                   "  border: none;"
-                   "  border-radius: 6px;"
-                   "  padding: 5px 10px;"
-                   "  font-weight: bold;"
-                   "  font-size: %3px;"
-                   "}")
+    return QString(
+               "QToolTip {"
+               "  background-color: %1;"
+               "  color: %2;"
+               "  border: none;"
+               "  border-radius: 6px;"
+               "  padding: 5px 10px;"
+               "  font-weight: bold;"
+               "  font-size: %3px;"
+               "}"
+    )
         .arg(qss(th.text.primary))
         .arg(qss(th.text.onDark))
         .arg(th.fonts.caption);
