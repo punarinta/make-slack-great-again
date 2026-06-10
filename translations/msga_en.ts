@@ -483,67 +483,62 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Message %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1020"/>
-        <source>Could not replace binary — check file permissions.</source>
-        <translation>Could not replace binary — check file permissions.</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/main_window.cpp" line="1067"/>
+        <location filename="../src/ui/main_window.cpp" line="1058"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1074"/>
+        <location filename="../src/ui/main_window.cpp" line="1065"/>
         <source>a channel</source>
         <translation>a channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1180"/>
+        <location filename="../src/ui/main_window.cpp" line="1169"/>
         <source>Log out</source>
         <translation>Log out</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1180"/>
+        <location filename="../src/ui/main_window.cpp" line="1169"/>
         <source>Log out from %1</source>
         <translation>Log out from %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1210"/>
+        <location filename="../src/ui/main_window.cpp" line="1200"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1217"/>
+        <location filename="../src/ui/main_window.cpp" line="1207"/>
         <source>Quit</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1363"/>
+        <location filename="../src/ui/main_window.cpp" line="1360"/>
         <source>Unstar conversation</source>
         <translation>Unstar conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1363"/>
+        <location filename="../src/ui/main_window.cpp" line="1360"/>
         <source>Star conversation</source>
         <translation>Star conversation</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1374"/>
+        <location filename="../src/ui/main_window.cpp" line="1371"/>
         <source>Search messages</source>
         <translation>Search messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1456"/>
+        <location filename="../src/ui/main_window.cpp" line="1453"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1471"/>
+        <location filename="../src/ui/main_window.cpp" line="1468"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1471"/>
+        <location filename="../src/ui/main_window.cpp" line="1468"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
@@ -990,22 +985,22 @@ Clear this to let the app re-analyse activity from scratch on next load.</transl
 <context>
     <name>UpdateBar</name>
     <message>
-        <location filename="../src/ui/update_bar/update_bar.cpp" line="56"/>
+        <location filename="../src/ui/update_bar/update_bar.cpp" line="71"/>
         <source>A new version of msga has been downloaded. Restart to apply.</source>
         <translation>A new version of msga has been downloaded. Restart to apply.</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_bar/update_bar.cpp" line="57"/>
+        <location filename="../src/ui/update_bar/update_bar.cpp" line="72"/>
         <source>Restart now</source>
         <translation>Restart now</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_bar/update_bar.cpp" line="59"/>
+        <location filename="../src/ui/update_bar/update_bar.cpp" line="74"/>
         <source>A new version of msga is ready to install.</source>
         <translation>A new version of msga is ready to install.</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_bar/update_bar.cpp" line="60"/>
+        <location filename="../src/ui/update_bar/update_bar.cpp" line="75"/>
         <source>Open installer</source>
         <translation>Open installer</translation>
     </message>
@@ -1023,14 +1018,29 @@ Clear this to let the app re-analyse activity from scratch on next load.</transl
         <translation>Could not parse version manifest.</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="133"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="128"/>
         <source>Cannot write update to %1</source>
         <translation>Cannot write update to %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="159"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="155"/>
         <source>Download failed: %1</source>
         <translation>Download failed: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="171"/>
+        <source>Could not replace binary: %1</source>
+        <translation>Could not replace binary: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="187"/>
+        <source>Could not move current binary — check file permissions on %1</source>
+        <translation>Could not move current binary — check file permissions on %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="193"/>
+        <source>Could not place new binary at %1</source>
+        <translation>Could not place new binary at %1</translation>
     </message>
 </context>
 <context>
