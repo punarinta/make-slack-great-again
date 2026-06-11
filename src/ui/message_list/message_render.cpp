@@ -127,20 +127,22 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
             break;
         case EntityType::UserMention: {
             const QString label = session ? resolveMentionImpl(e.data, session) : rawInner;
-            html += "<span style='color:" + Th::qss(Th::c().message.replyLink) +
-                    ";background:" + Th::qss(Th::c().accent.subtleBg) +
+            const bool    isMe  = session && UserId{e.data} == session->meUserId();
+            html += "<span style='color:" + Th::qss(Th::c().message.mentionText) + ";background:" +
+                    Th::qss(isMe ? Th::c().message.mentionSelfBg : Th::c().message.mentionBg) +
                     ";border-radius:3px;padding:0 2px'>" + label.toHtmlEscaped() + "</span>";
             break;
         }
         case EntityType::ChannelMention:
-            html += "<span style='color:" + Th::qss(Th::c().message.replyLink) +
-                    ";background:" + Th::qss(Th::c().accent.subtleBg) +
+            html += "<span style='color:" + Th::qss(Th::c().message.mentionText) +
+                    ";background:" + Th::qss(Th::c().message.mentionBg) +
                     ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
             break;
         case EntityType::HereCommand:
         case EntityType::ChannelCommand:
-            html += "<span style='color:" + Th::qss(Th::c().badge.unread) + ";font-weight:bold'>" +
-                    inner + "</span>";
+            html += "<span style='color:" + Th::qss(Th::c().message.mentionText) +
+                    ";background:" + Th::qss(Th::c().message.mentionSelfBg) +
+                    ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
             break;
         case EntityType::Emoji: {
             static const QString kEmojiSpanOpen =

@@ -69,7 +69,9 @@ struct PresenceColors {
 
 struct MessageColors {
     QColor hover;              // message row hover
-    QColor mentionBg;          // @mention highlight row background
+    QColor mentionBg;          // @mention chip background — someone else
+    QColor mentionSelfBg;      // @mention chip background — the authed user (yellow)
+    QColor mentionText;        // @mention chip text (both variants)
     QColor codeBlockBg;        // inline/block code background
     QColor codeBlockBorder;    // code block border / blockquote bar
     QColor codeText;           // code font colour

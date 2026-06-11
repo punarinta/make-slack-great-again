@@ -76,7 +76,9 @@ const Theme kSlackDark = {
     .message =
         {
             .hover                  = QColor(0, 0, 0, 10),
-            .mentionBg              = QColor("#E8F5FA"),
+            .mentionBg              = QColor("#E5F6FD"),
+            .mentionSelfBg          = QColor("#FFF5D1"),
+            .mentionText            = QColor("#1264A3"),
             .codeBlockBg            = QColor("#F4F4F4"),
             .codeBlockBorder        = QColor("#CCCCCC"),
             .codeText               = QColor("#555555"),
