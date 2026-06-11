@@ -47,6 +47,10 @@ add_msga_test(test_emoji
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
 )
 
+add_msga_test(test_nav_history
+    test_nav_history.cpp
+)
+
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp

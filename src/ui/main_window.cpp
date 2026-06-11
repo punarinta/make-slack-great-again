@@ -141,6 +141,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     updateRoundedMask();
     qApp->installEventFilter(this);
 
+    // Back/forward chat navigation: mouse side buttons are handled in
+    // eventFilter; these cover the keyboard equivalents — dedicated
+    // XF86 Back/Forward keys and the conventional Alt+arrow bindings.
+    const auto addNavShortcut = [this](const QKeySequence &seq, bool back) {
+        auto *sc = new QShortcut(seq, this);
+        connect(sc, &QShortcut::activated, this, [this, back] { navigateHistory(back); });
+    };
+    addNavShortcut(QKeySequence(Qt::Key_Back), true);
+    addNavShortcut(QKeySequence(Qt::Key_Forward), false);
+    addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), true);
+    addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), false);
+
     setupTray();
 
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
@@ -771,8 +783,10 @@ void MainWindow::dropSession(QString teamId) {
         _session    = nullptr;
         if (_messageList)
             _messageList->setSession(nullptr);
-        _currentConvId = {};
+        _currentConvId  = {};
+        _pendingNavConv = {};
     }
+    _navHistory.purgeTeam(teamId);
     _sessions.erase(it);
     _wsUnreads.remove(teamId);
     if (_switcher)
@@ -849,6 +863,8 @@ void MainWindow::activateWorkspace(QString teamId) {
 void MainWindow::switchToWorkspace(QString teamId) {
     if (teamId == _activeTeamId)
         return;
+    // A manual switch cancels any in-flight back/forward jump target.
+    _pendingNavConv = {};
     activateWorkspace(std::move(teamId));
 }
 
@@ -1052,6 +1068,21 @@ void MainWindow::connectToSession() {
                     if (_convResizeHandle)
                         _convResizeHandle->show();
                 }
+                // A back/forward jump into this workspace is waiting for the
+                // conv list — open the jump target instead of the last conv.
+                if (!convs.empty() && !_pendingNavConv.value.isEmpty()) {
+                    const int row   = _convList->rowForId(_pendingNavConv);
+                    _pendingNavConv = {};
+                    if (row >= 0) {
+                        _navApplying = true;
+                        _convList->selectRow(row);
+                        if (_currentConvId.value.isEmpty())
+                            openConversation(row);
+                        _navApplying = false;
+                    }
+                    // Conversation gone (left/archived) — fall through to the
+                    // usual last-conv restore below.
+                }
                 // On first populate (no conversation open yet), jump to the last
                 // conversation the user had open in the previous session.
                 if (_currentConvId.value.isEmpty()) {
@@ -1146,6 +1177,46 @@ void MainWindow::repositionSearch() {
     if (!_searchWidget || !_contentStack || !_msgArea)
         return;
     _searchWidget->setGeometry(_msgArea->rect());
+}
+
+// ── Back/forward chat navigation ─────────────────────────────────────────────
+
+void MainWindow::navigateHistory(bool back) {
+    const auto valid = [this](const NavLocation &loc) {
+        // Workspace must still be logged in; within the active workspace the
+        // conversation must still be listed (it may have been left/archived).
+        // Background workspaces are checked when their conv list arrives.
+        if (!_sessions.count(loc.teamId))
+            return false;
+        if (loc.teamId == _activeTeamId)
+            return _convList && _convList->rowForId(loc.conv) >= 0;
+        return true;
+    };
+    const auto target = back ? _navHistory.goBack(valid) : _navHistory.goForward(valid);
+    if (target)
+        applyNavLocation(*target);
+}
+
+void MainWindow::applyNavLocation(const NavLocation &loc) {
+    if (loc.teamId != _activeTeamId) {
+        // Cross-workspace jump: open the target conversation (not the
+        // last-open one) once the workspace's conv list is available.
+        // activateWorkspace replays the cached list synchronously, so this
+        // normally completes before it returns.
+        _pendingNavConv = loc.conv;
+        activateWorkspace(loc.teamId);
+        return;
+    }
+    const int row = _convList ? _convList->rowForId(loc.conv) : -1;
+    if (row < 0)
+        return;
+    _navApplying = true;
+    _convList->selectRow(row); // emits conversationSelected → openConversation
+    // selectRow no-ops when the row is already visually selected (e.g. stale
+    // selection after a workspace round-trip) — drive the open directly.
+    if (_currentConvId != loc.conv)
+        openConversation(row);
+    _navApplying = false;
 }
 
 void MainWindow::showNetworkError(const QString &message) {
@@ -1453,6 +1524,17 @@ static Qt::CursorShape cursorForEdges(Qt::Edges edges) {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
+    // Mouse side buttons anywhere in this window navigate chat history.
+    if (e->type() == QEvent::MouseButtonPress) {
+        auto *me = static_cast<QMouseEvent *>(e);
+        if (me->button() == Qt::BackButton || me->button() == Qt::ForwardButton) {
+            auto *w = qobject_cast<QWidget *>(obj);
+            if (w && w->window() == this) {
+                navigateHistory(me->button() == Qt::BackButton);
+                return true;
+            }
+        }
+    }
     if (!isMaximized() && !isFullScreen()) {
         auto *w = qobject_cast<QWidget *>(obj);
         if (w && w->window() == this) {
@@ -1630,6 +1712,13 @@ void MainWindow::openConversation(int row) {
     _currentConvId = _convList->conversationId(row);
     if (_currentConvId.value.isEmpty())
         return;
+
+    // Track navigation history.  Jumps applied by navigateHistory() keep the
+    // forward stack (like editor undo/redo); direct opens discard it.
+    if (_navApplying)
+        _navHistory.setCurrent({_activeTeamId, _currentConvId});
+    else
+        _navHistory.recordOpen({_activeTeamId, _currentConvId});
 
     const QString name = _convList->resolvedName(row);
     const auto   *conv = _session->findConversation(_currentConvId);

@@ -4,6 +4,7 @@
 
 #include "backend/domain.h"
 #include "auth/token_store.h"
+#include "ui/nav_history.h"
 #include "rpl/lifetime.h"
 
 #include <QMainWindow>
@@ -90,6 +91,11 @@ private:
     // Search overlay
     void repositionSearch();
 
+    // Back/forward chat navigation (mouse side buttons, XF86 Back/Forward
+    // keys, Alt+Left/Right) — works across workspaces.
+    void navigateHistory(bool back);
+    void applyNavLocation(const NavLocation &loc);
+
     // Tray
     void setupTray();
     void maybeNotify(const QString &teamId, const EvMessageNew &ev);
@@ -159,10 +165,13 @@ private:
     WelcomeWidget     *_welcomeTips         = nullptr;
     ThreadPanel       *_threadPanel         = nullptr;
 
-    std::vector<ConversationId>     _convIds;
-    ConversationId                  _currentConvId;
-    ConversationId                  _pendingNotifConv;
-    QString                         _pendingNotifTeam;
+    std::vector<ConversationId> _convIds;
+    ConversationId              _currentConvId;
+    NavHistory                  _navHistory;
+    bool                        _navApplying = false; // a back/forward jump is driving the UI
+    ConversationId _pendingNavConv; // jump target awaiting the new workspace's conv list
+    ConversationId _pendingNotifConv;
+    QString        _pendingNotifTeam;
     // teamId → {normal unreads (blue), important: DM unreads + mentions (red)}
     QHash<QString, QPair<int, int>> _wsUnreads;
     bool                            _convListWired = false;
