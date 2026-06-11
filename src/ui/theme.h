@@ -88,6 +88,8 @@ struct MessageColors {
     QColor replyBarHover; // reply bar hover background
     QColor replyBarHoverBorder;
     QColor replyLink;           // "N replies" link color
+    QColor appBadgeBg;          // "APP" tag background next to bot names
+    QColor appBadgeText;        // "APP" tag text
     int    avatarHslSaturation; // generated avatar HSL saturation
     int    avatarHslLightness;
 };

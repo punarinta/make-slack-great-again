@@ -96,7 +96,16 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
     );
 
     if (_imgCache) {
-        connect(_imgCache, &ImageCache::loaded, this, [this] {
+        connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
+            // Custom-emoji image arrived: docs referencing it were laid out
+            // without the resource, so rebuild them from scratch.
+            for (auto &item : _items) {
+                if (item.emojiUrlsCollected && item.emojiUrls.contains(url)) {
+                    item.textDoc.reset();
+                    item.attachDocs.clear();
+                    item.docWidth = -1;
+                }
+            }
             const bool wasAtBottom =
                 verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
             rebuildLayout();
@@ -243,6 +252,10 @@ void MessageListWidget::openConversation(
                                     },
                                     _eventLifetime
                                 );
+
+    // Fresh emoji.list arrived: :codes: that resolved to nothing (or to stale
+    // URLs) while the map was empty must be re-rendered.
+    _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
 
     // Reset scroll intent — stale state from a previous conversation must not leak.
     _scrollToBottomPending = false;
@@ -448,6 +461,8 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
 
     _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
+    _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
+
     _session->backend()->loadThread(conv, rootTs, std::nullopt) |
         rpl::on_next(
             [this](MessagePage page) {
@@ -559,17 +574,48 @@ int MessageListWidget::textAreaWidth() const {
     return viewport()->width() - kPadH - kAvSize - kAvGap - kPadH;
 }
 
+void MessageListWidget::invalidateAllDocs() {
+    for (auto &item : _items) {
+        item.textDoc.reset();
+        item.attachDocs.clear();
+        item.docWidth = -1;
+        item.emojiUrls.clear();
+        item.emojiUrlsCollected = false;
+    }
+    rebuildLayout();
+    viewport()->update();
+}
+
 void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
     const int w = textAreaWidth();
     if (w <= 0)
         return;
+
+    // Custom-emoji images referenced by this message. Registering the cached
+    // pixmaps as document resources lets the `<img>` tags emitted by
+    // MsgRender::toHtml render; ImageCache::get() also kicks off the download
+    // for anything missing (the loaded() handler resets the docs to re-render).
+    if (!item.emojiUrlsCollected) {
+        item.emojiUrls          = MsgRender::collectEmojiImageUrls(item.msg, _session);
+        item.emojiUrlsCollected = true;
+    }
+    auto addEmojiResources = [&](QTextDocument *doc) {
+        if (!_imgCache)
+            return;
+        for (const auto &url : item.emojiUrls) {
+            const QPixmap px = _imgCache->get(url);
+            if (!px.isNull())
+                doc->addResource(QTextDocument::ImageResource, QUrl(url), px);
+        }
+    };
 
     // Main text doc
     if (!item.textDoc) {
         item.textDoc = std::make_unique<QTextDocument>();
         item.textDoc->setDefaultFont(QApplication::font());
         item.textDoc->setDocumentMargin(0);
-        item.textDoc->setDefaultStyleSheet("p { line-height: 135%; margin: 0; }");
+        item.textDoc->setDefaultStyleSheet(MsgRender::docStyleSheet());
+        addEmojiResources(item.textDoc.get());
         const auto html = MsgRender::buildMsgHtml(item.msg, _session);
         if (!html.isEmpty())
             item.textDoc->setHtml(html);
@@ -594,6 +640,8 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
             ad.textDoc = std::make_unique<QTextDocument>();
             ad.textDoc->setDefaultFont(QApplication::font());
             ad.textDoc->setDocumentMargin(0);
+            ad.textDoc->setDefaultStyleSheet(MsgRender::docStyleSheet());
+            addEmojiResources(ad.textDoc.get());
             const auto html = MsgRender::buildAttachHtml(attachments[ai], _session);
             if (!html.isEmpty())
                 ad.textDoc->setHtml(html);

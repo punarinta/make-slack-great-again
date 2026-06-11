@@ -95,6 +95,8 @@ const Theme kSlackDark = {
             .replyBarHover          = QColor("#F8F8F8"),
             .replyBarHoverBorder    = QColor("#D1D5DB"),
             .replyLink              = QColor("#1164A3"),
+            .appBadgeBg             = QColor(29, 28, 29, 33),
+            .appBadgeText           = QColor("#616061"),
             .avatarHslSaturation    = 130,
             .avatarHslLightness     = 100,
         },

@@ -10,6 +10,7 @@
 class Session;
 class MessageListWidget;
 class ComposerWidget;
+class ImageCache;
 class QLabel;
 class QPushButton;
 
@@ -18,7 +19,7 @@ class QPushButton;
 class ThreadPanel : public QWidget {
     Q_OBJECT
 public:
-    explicit ThreadPanel(QWidget *parent = nullptr);
+    explicit ThreadPanel(ImageCache *imgCache, QWidget *parent = nullptr);
 
     void setSession(Session *session);
     void openThread(ConversationId conv, Ts rootTs);

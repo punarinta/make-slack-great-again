@@ -12,7 +12,7 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 
-ThreadPanel::ThreadPanel(QWidget *parent) : QWidget(parent) {
+ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent) {
     setObjectName("threadPanel");
 
     auto *layout = new QVBoxLayout(this);
@@ -41,7 +41,7 @@ ThreadPanel::ThreadPanel(QWidget *parent) : QWidget(parent) {
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
 
-    _msgList = new MessageListWidget(nullptr, nullptr, this);
+    _msgList = new MessageListWidget(nullptr, imgCache, this);
     layout->addWidget(_msgList, 1);
     connect(_msgList, &MessageListWidget::openDmRequested, this, &ThreadPanel::openDmRequested);
 

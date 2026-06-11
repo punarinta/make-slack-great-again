@@ -304,6 +304,21 @@ Block toBlock(const QJsonObject &o) {
     } else if (b.typeStr == "header" || b.typeStr == "section") {
         if (o.contains("text"))
             b.text = parseTextObj(o.value("text").toObject());
+        // Section blocks may carry a "fields" array instead of (or alongside) "text";
+        // append each field as its own line, shifting entity offsets accordingly.
+        for (const auto &fv : o.value("fields").toArray()) {
+            const TextWithEntities ft = parseTextObj(fv.toObject());
+            if (ft.text.isEmpty())
+                continue;
+            if (!b.text.text.isEmpty())
+                b.text.text += "\n";
+            const int base = b.text.text.size();
+            b.text.text += ft.text;
+            for (auto e : ft.entities) {
+                e.offset += base;
+                b.text.entities.push_back(e);
+            }
+        }
     } else if (b.typeStr == "context") {
         // Context blocks have an "elements" array; concatenate text elements.
         Builder cb;
@@ -338,6 +353,16 @@ Attachment toAttachment(const QJsonObject &o) {
     std::vector<Block> blocks;
     for (const auto &bv : o.value("blocks").toArray())
         blocks.push_back(toBlock(bv.toObject()));
+    std::vector<AttachmentField> fields;
+    for (const auto &fv : o.value("fields").toArray()) {
+        const auto fo = fv.toObject();
+        fields.push_back(
+            AttachmentField{
+                .title = fo.value("title").toString(),
+                .value = MrkdwnParser::parse(fo.value("value").toString()),
+            }
+        );
+    }
     return Attachment{
         .fallback    = o.value("fallback").toString(),
         .color       = o.value("color").toString(),
@@ -354,6 +379,7 @@ Attachment toAttachment(const QJsonObject &o) {
         .imageHeight = o.value("image_height").toInt(),
         .thumbWidth  = o.value("thumb_width").toInt(),
         .thumbHeight = o.value("thumb_height").toInt(),
+        .fields      = std::move(fields),
         .blocks      = std::move(blocks),
     };
 }

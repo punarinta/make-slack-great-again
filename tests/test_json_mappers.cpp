@@ -754,6 +754,53 @@ TEST_CASE("toAttachment text is parsed as mrkdwn", "[mappers][attachment]") {
     CHECK(a.text.entities[1].type == EntityType::Bold);
 }
 
+TEST_CASE("toAttachment fields parsed with mrkdwn values", "[mappers][attachment]") {
+    auto a = JsonMappers::toAttachment(obj(R"({
+        "fields": [
+            {"title": "Type", "value": "Privacy violation", "short": true},
+            {"title": "Code", "value": "<https://x.example.com|HITTA-1>", "short": true}
+        ]
+    })"));
+    REQUIRE(a.fields.size() == 2);
+    CHECK(a.fields[0].title == "Type");
+    CHECK(a.fields[0].value.text == "Privacy violation");
+    CHECK(a.fields[1].title == "Code");
+    CHECK(a.fields[1].value.text == "HITTA-1");
+    REQUIRE(a.fields[1].value.entities.size() == 1);
+    CHECK(a.fields[1].value.entities[0].type == EntityType::Link);
+    CHECK(a.fields[1].value.entities[0].data == "https://x.example.com");
+}
+
+TEST_CASE("toAttachment without fields leaves vector empty", "[mappers][attachment]") {
+    auto a = JsonMappers::toAttachment(obj(R"({"text": "hi"})"));
+    CHECK(a.fields.empty());
+}
+
+TEST_CASE("section block fields appended as lines with shifted entities", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "header line"},
+        "fields": [
+            {"type": "mrkdwn", "text": "*Title:* first"},
+            {"type": "mrkdwn", "text": "*Severity:* high"}
+        ]
+    })"));
+    CHECK(b.text.text == "header line\nTitle: first\nSeverity: high");
+    REQUIRE(b.text.entities.size() == 2);
+    CHECK(b.text.entities[0].type == EntityType::Bold);
+    // "header line\n" is 12 chars — first bold label starts right after it.
+    CHECK(b.text.entities[0].offset == 12);
+    CHECK(b.text.entities[1].offset == 12 + QString("Title: first\n").size());
+}
+
+TEST_CASE("section block with only fields and no text", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "section",
+        "fields": [{"type": "plain_text", "text": "solo"}]
+    })"));
+    CHECK(b.text.text == "solo");
+}
+
 // ── toSearchResult ────────────────────────────────────────────────────────────
 
 TEST_CASE("toSearchResult extracts conv from nested channel object", "[mappers][search]") {

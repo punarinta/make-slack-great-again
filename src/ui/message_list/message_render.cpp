@@ -10,15 +10,90 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QFontInfo>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRect>
+#include <QSet>
 
 namespace MsgRender {
 
 QString resolveEmoji(const QString &name) {
     return Emoji::fromName(name);
+}
+
+EmojiResolved resolveEmojiRich(const QString &name, const QHash<QString, QString> &customMap) {
+    const QString unicode = Emoji::fromName(name);
+    if (unicode != ":" + name + ":")
+        return {unicode, {}};
+    QString cur = name;
+    for (int hops = 0; hops < 8; ++hops) { // bounded alias-chain walk
+        const auto it = customMap.constFind(cur);
+        if (it == customMap.constEnd())
+            break;
+        if (it->startsWith(QLatin1String("alias:"))) {
+            cur                   = it->mid(6);
+            const QString aliased = Emoji::fromName(cur);
+            if (aliased != ":" + cur + ":")
+                return {aliased, {}};
+            continue;
+        }
+        return {{}, *it};
+    }
+    return {unicode, {}};
+}
+
+EmojiResolved resolveEmojiRich(const QString &name, const Session *session) {
+    static const QHash<QString, QString> kEmpty;
+    return resolveEmojiRich(name, session ? session->emojiMap() : kEmpty);
+}
+
+// Slack's body metric: 22px line-height on a 15px font (×1.4667). Everything
+// line-height-related derives from that ratio applied to the active font.
+static int slackLinePx() {
+    return qRound(QFontInfo(QApplication::font()).pixelSize() * 22.0 / 15.0);
+}
+
+int inlineEmojiPx() {
+    // Slack renders inline emoji exactly one line-height tall.
+    return slackLinePx();
+}
+
+QString docStyleSheet() {
+    // Qt's natural line height already includes per-font leading, so use the
+    // proportional factor that lands on Slack's line height for this font —
+    // the old fixed 135% overshot it and made paragraph gaps look bloated.
+    const int natural = QFontMetrics(QApplication::font()).height();
+    const int pct     = std::max(100, qRound(slackLinePx() * 100.0 / natural));
+    return QString("p { line-height: %1%; margin: 0; }").arg(pct);
+}
+
+QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
+    QStringList   out;
+    QSet<QString> seen;
+    auto          addFrom = [&](const TextWithEntities &twe) {
+        for (const auto &e : twe.entities) {
+            if (e.type != EntityType::Emoji)
+                continue;
+            const auto er = resolveEmojiRich(e.data, session);
+            if (!er.imageUrl.isEmpty() && !seen.contains(er.imageUrl)) {
+                seen.insert(er.imageUrl);
+                out << er.imageUrl;
+            }
+        }
+    };
+    addFrom(msg.text);
+    for (const auto &b : msg.blocks)
+        addFrom(b.text);
+    for (const auto &att : msg.attachments) {
+        addFrom(att.text);
+        for (const auto &f : att.fields)
+            addFrom(f.value);
+        for (const auto &b : att.blocks)
+            addFrom(b.text);
+    }
+    return out;
 }
 
 QString formatTs(const Ts &ts) {
@@ -49,6 +124,23 @@ QString formatDateLabel(const Ts &ts) {
     if (date.year() == today.year())
         return date.toString("MMMM d");
     return date.toString("MMMM d, yyyy");
+}
+
+QString lastReplyLabel(const Ts &ts) {
+    bool   ok   = false;
+    double secs = ts.toDouble(&ok);
+    if (!ok)
+        return {};
+    const QDateTime dt    = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs));
+    const QString   time  = dt.toString("h:mm AP");
+    const QDate     today = QDate::currentDate();
+    if (dt.date() == today)
+        return QCoreApplication::translate("MsgRender", "today at %1").arg(time);
+    if (dt.date() == today.addDays(-1))
+        return QCoreApplication::translate("MsgRender", "yesterday at %1").arg(time);
+    const QString day = dt.date().year() == today.year() ? dt.date().toString("MMMM d")
+                                                         : dt.date().toString("MMMM d, yyyy");
+    return QCoreApplication::translate("MsgRender", "%1 at %2").arg(day, time);
 }
 
 // Resolve a UserMention entity's display name via entity.data (the user ID).
@@ -148,9 +240,17 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
                     ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
             break;
         case EntityType::Emoji: {
-            static const QString kEmojiSpanOpen =
-                "<span style='font-family:" + emojiFontFamily() + "'>";
-            html += kEmojiSpanOpen + resolveEmoji(e.data).toHtmlEscaped() + "</span>";
+            const auto    er = resolveEmojiRich(e.data, session);
+            const QString px = QString::number(inlineEmojiPx());
+            if (!er.imageUrl.isEmpty()) {
+                // Workspace custom emoji — the image resource is registered on the
+                // QTextDocument by the caller (see ensureDocLayout).
+                html += "<img src='" + er.imageUrl.toHtmlEscaped() + "' width='" + px +
+                        "' height='" + px + "'>";
+            } else {
+                html += "<span style='font-family:" + emojiFontFamily() + ";font-size:" + px +
+                        "px'>" + er.unicode.toHtmlEscaped() + "</span>";
+            }
             break;
         }
         }
@@ -182,9 +282,12 @@ QString buildMsgHtml(const Message &msg, const Session *session) {
                 html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
             }
         }
-        return html.isEmpty() ? toHtml(msg.text, session) : html;
+        if (!html.isEmpty())
+            return html;
     }
-    return toHtml(msg.text, session);
+    // Wrap in <p> so the doc stylesheet's line-height applies to plain text too.
+    const QString inner = toHtml(msg.text, session);
+    return inner.isEmpty() ? QString() : "<p style='margin:0'>" + inner + "</p>";
 }
 
 // Attachment text HTML (used inside the colored bar area).
@@ -205,9 +308,15 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     }
     if (!att.text.text.isEmpty())
         html += "<p style='margin:2px 0 0'>" + toHtml(att.text, session) + "</p>";
-    if (!att.footer.isEmpty())
-        html += "<p style='margin:2px 0 0;font-size:0.8em;color:" + Th::qss(Th::c().text.tertiary) +
-                "'>" + att.footer.toHtmlEscaped() + "</p>";
+
+    // Key/value fields (classic bot format): bold title line, value below.
+    for (const auto &f : att.fields) {
+        if (!f.title.isEmpty())
+            html +=
+                "<p style='margin:2px 0 0;font-weight:bold'>" + f.title.toHtmlEscaped() + "</p>";
+        if (!f.value.text.isEmpty())
+            html += "<p style='margin:0'>" + toHtml(f.value, session) + "</p>";
+    }
 
     // Render Block Kit blocks embedded in the attachment (modern bot format).
     if (html.isEmpty() && !att.blocks.empty()) {
@@ -233,6 +342,11 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     if (html.isEmpty() && !att.fallback.isEmpty())
         html += "<p style='margin:2px 0 0'>" + toHtml(MrkdwnParser::parse(att.fallback), session) +
                 "</p>";
+
+    // Footer always renders last, after whichever content variant was chosen.
+    if (!att.footer.isEmpty())
+        html += "<p style='margin:4px 0 0;font-size:0.8em;color:" + Th::qss(Th::c().text.tertiary) +
+                "'>" + att.footer.toHtmlEscaped() + "</p>";
 
     return html;
 }

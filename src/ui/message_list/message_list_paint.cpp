@@ -7,7 +7,6 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "util/emoji_font.h"
-#include "util/relative_time.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -45,6 +44,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
 
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
     p.fillRect(event->rect(), Th::c().surface.content);
 
     if ((_loading || _waiting) && _items.empty()) {
@@ -193,6 +193,34 @@ void MessageListWidget::paintRow(
         const int          headerBaseline = contTop + nameFm.ascent();
         p.drawText(textLeft, headerBaseline, name);
         const int nameW = nameFm.horizontalAdvance(name);
+        int       tsX   = textLeft + nameW + 8;
+
+        // Slack-style "APP" tag after bot names
+        const bool isBot = !item.msg.botName.isEmpty() || (user && user->isBot);
+        if (isBot) {
+            QFont badgeFont = QApplication::font();
+            badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.62);
+            badgeFont.setBold(true);
+            const QFontMetrics bFm(badgeFont);
+            const QString      label = tr("APP");
+            const int          bH    = 14;
+            const QRect        bRect(
+                textLeft + nameW + 6,
+                contTop + (nameFm.height() - bH) / 2,
+                bFm.horizontalAdvance(label) + 8,
+                bH
+            );
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(Th::c().message.appBadgeBg);
+            p.drawRoundedRect(bRect, 2, 2);
+            p.setFont(badgeFont);
+            p.setPen(Th::c().message.appBadgeText);
+            p.drawText(bRect, Qt::AlignCenter, label);
+            p.restore();
+            tsX = bRect.right() + 8;
+        }
 
         QFont tsFont = QApplication::font();
         tsFont.setPointSizeF(tsFont.pointSizeF() * 0.85);
@@ -201,11 +229,11 @@ void MessageListWidget::paintRow(
         const QFontMetrics tsFm(tsFont);
         const QString      tsText = MsgRender::formatTs(item.msg.ts);
         // Align timestamp to the same baseline as the bold name
-        p.drawText(textLeft + nameW + 8, headerBaseline, tsText);
+        p.drawText(tsX, headerBaseline, tsText);
 
         if (item.msg.edited) {
             const int tsW = tsFm.horizontalAdvance(tsText);
-            p.drawText(textLeft + nameW + 8 + tsW + 6, headerBaseline, tr("(edited)"));
+            p.drawText(tsX + tsW + 6, headerBaseline, tr("(edited)"));
         }
     }
 
@@ -753,8 +781,9 @@ void MessageListWidget::triggerMissingDownloads() {
 
 // Chip sizing: color emoji fonts report advance width ≈ 2× pixelSize, so we use
 // a fixed slot for the glyph and measure only the count with the regular font.
-static constexpr int kReactPad  = 6;  // horizontal padding inside chip
-static constexpr int kEmojiSlot = 15; // fixed pixel budget for one emoji glyph
+static constexpr int kReactPad   = 6;  // horizontal padding inside chip
+static constexpr int kEmojiSlot  = 17; // fixed pixel budget for one emoji glyph
+static constexpr int kReactEmoji = 16; // rendered emoji size (glyph px / custom image side)
 
 static int reactChipW(const QString &countStr) {
     static const QFont kCntFont = [] {
@@ -773,7 +802,7 @@ void MessageListWidget::paintReactions(
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
 
-    static const QFont kEmojiF = emojiFont(14);
+    static const QFont kEmojiF = emojiFont(kReactEmoji);
     static const QFont kCountF = [] {
         QFont f = QApplication::font();
         f.setPointSizeF(f.pointSizeF() * 0.82);
@@ -785,7 +814,7 @@ void MessageListWidget::paintReactions(
     const UserId me = _session ? _session->meUserId() : UserId{};
 
     for (const auto &r : item.msg.reactions) {
-        const QString emojiStr = MsgRender::resolveEmoji(r.name);
+        const auto    emoji    = MsgRender::resolveEmojiRich(r.name, _session);
         const QString countStr = " " + QString::number(r.count);
         const int     chipW    = reactChipW(countStr);
         if (x + chipW > left + width)
@@ -796,8 +825,9 @@ void MessageListWidget::paintReactions(
 
         const QRect chip(x, top, chipW, chipH);
         if (mine) {
+            // Slack: own reactions get a blue border on a light blue fill
             p.setPen(Th::c().text.link);
-            p.setBrush(Th::c().accent.subtleBg);
+            p.setBrush(Th::c().message.mentionBg);
         } else {
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().surface.highlight);
@@ -806,14 +836,30 @@ void MessageListWidget::paintReactions(
 
         const QColor textCol = mine ? Th::c().text.link : Th::c().text.primary;
 
-        // Emoji — drawn in fixed left slot
-        p.setFont(kEmojiF);
-        p.setPen(textCol);
-        p.drawText(
-            QRect(chip.x() + kReactPad, chip.y(), kEmojiSlot, chipH),
-            Qt::AlignVCenter | Qt::AlignLeft,
-            emojiStr
-        );
+        // Emoji — drawn in fixed left slot (custom emojis as downloaded images)
+        if (!emoji.imageUrl.isEmpty()) {
+            const QPixmap px = _imgCache ? _imgCache->get(emoji.imageUrl) : QPixmap();
+            if (!px.isNull()) {
+                const QSize tgt = px.size().scaled(kReactEmoji, kReactEmoji, Qt::KeepAspectRatio);
+                p.drawPixmap(
+                    QRect(
+                        chip.x() + kReactPad,
+                        chip.y() + (chipH - tgt.height()) / 2,
+                        tgt.width(),
+                        tgt.height()
+                    ),
+                    px
+                );
+            }
+        } else {
+            p.setFont(kEmojiF);
+            p.setPen(textCol);
+            p.drawText(
+                QRect(chip.x() + kReactPad, chip.y(), kEmojiSlot, chipH),
+                Qt::AlignVCenter | Qt::AlignLeft,
+                emoji.unicode
+            );
+        }
 
         // Count — drawn right after emoji slot
         p.setFont(kCountF);
@@ -941,7 +987,8 @@ const File *MessageListWidget::previewFileAt(const QPoint &viewportPos) const {
 
 // ── Reply bar ─────────────────────────────────────────────────────────────────
 
-static void paintCircularAvatar(
+// Small rounded-square avatar used in the reply bar (matches Slack's official client).
+static void paintReplyAvatar(
     QPainter      &p,
     const QPixmap &px,
     const QRect   &rect,
@@ -951,7 +998,7 @@ static void paintCircularAvatar(
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     QPainterPath clip;
-    clip.addEllipse(QRectF(rect));
+    clip.addRoundedRect(QRectF(rect), 4, 4);
     p.setClipPath(clip);
 
     if (!px.isNull()) {
@@ -963,7 +1010,7 @@ static void paintCircularAvatar(
     } else {
         p.setPen(Qt::NoPen);
         p.setBrush(bgColor);
-        p.drawEllipse(rect);
+        p.drawRoundedRect(QRectF(rect), 4, 4);
         p.setPen(Qt::white);
         QFont f = QApplication::font();
         f.setBold(true);
@@ -1000,9 +1047,8 @@ void MessageListWidget::paintReplyBar(
     static constexpr int kInnerPad = 6;
     int                  x         = bar.left() + kInnerPad;
     const int            avY       = bar.top() + (kReplyBarH - kThreadAvSize) / 2;
-    const QColor         ringColor = hovered ? Th::c().message.replyBarHover : QColor(Qt::white);
 
-    // ── Avatars ───────────────────────────────────────────────────────────────
+    // ── Avatars (side by side, rounded squares — Slack style) ─────────────────
     const int maxAv = std::min((int)item.msg.replyUsers.size(), 5);
     for (int i = 0; i < maxAv; ++i) {
         const UserId &uid  = item.msg.replyUsers[i];
@@ -1025,23 +1071,13 @@ void MessageListWidget::paintReplyBar(
         );
 
         const QRect avRect(
-            x + i * (kThreadAvSize - kThreadAvOver), avY, kThreadAvSize, kThreadAvSize
+            x + i * (kThreadAvSize + kThreadAvGap), avY, kThreadAvSize, kThreadAvSize
         );
-
-        // Ring separator between overlapping avatars matches the background
-        if (i > 0) {
-            p.save();
-            p.setRenderHint(QPainter::Antialiasing);
-            p.setPen(Qt::NoPen);
-            p.setBrush(ringColor);
-            p.drawEllipse(avRect.adjusted(-2, -2, 2, 2));
-            p.restore();
-        }
-        paintCircularAvatar(p, px, avRect, initial, bg);
+        paintReplyAvatar(p, px, avRect, initial, bg);
     }
 
     if (maxAv > 0)
-        x += maxAv * (kThreadAvSize - kThreadAvOver) + kThreadAvOver + 6;
+        x += maxAv * (kThreadAvSize + kThreadAvGap) - kThreadAvGap + 8;
 
     // ── Text ──────────────────────────────────────────────────────────────────
     p.save();
@@ -1081,8 +1117,8 @@ void MessageListWidget::paintReplyBar(
     } else {
         QString sub;
         if (item.msg.latestReply) {
-            const QString rel = relativeTime(*item.msg.latestReply);
-            sub               = rel.isEmpty() ? tr("Last reply") : tr("Last reply %1").arg(rel);
+            const QString when = MsgRender::lastReplyLabel(*item.msg.latestReply);
+            sub                = when.isEmpty() ? tr("Last reply") : tr("Last reply %1").arg(when);
         }
         if (!sub.isEmpty())
             p.drawText(

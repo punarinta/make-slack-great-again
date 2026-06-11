@@ -63,6 +63,9 @@ public:
 
     // Custom emoji map: name → URL (custom) or "alias:name" (alias). Empty until loaded.
     const QHash<QString, QString> &emojiMap() const { return _emojiMap; }
+    // Fires after the emoji map is replaced by a fresh emoji.list response —
+    // anything that rendered :codes: before that must re-resolve them.
+    rpl::producer<>                emojiMapLoaded() const { return _emojiMapLoadedHub.events(); }
 
     // Called once the current user's ID is known (e.g., from auth.test).
     void   setMe(UserId id) { _meUserId = std::move(id); }
@@ -159,6 +162,7 @@ private:
     QTimer                                   _selfPresenceTimer;
     rpl::event_stream<Event>                 _eventHub;
     rpl::event_stream<QString>               _errorHub;
+    rpl::event_stream<>                      _emojiMapLoadedHub;
 
     UserId                  _meUserId;          // set via setMe() once auth.test result is known
     bool                    _meIsAdmin = false; // is_admin || is_owner from auth.test

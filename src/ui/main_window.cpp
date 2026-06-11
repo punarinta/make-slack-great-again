@@ -511,7 +511,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     _msgSplitter->addWidget(msgArea);
 
-    _threadPanel = new ThreadPanel(_msgSplitter);
+    _threadPanel = new ThreadPanel(_imgCache, _msgSplitter);
     _threadPanel->setVisible(false);
     _msgSplitter->addWidget(_threadPanel);
     _msgSplitter->setStretchFactor(0, 1);

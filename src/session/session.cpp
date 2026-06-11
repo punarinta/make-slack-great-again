@@ -96,6 +96,7 @@ void Session::start() {
                                                 [this](QHash<QString, QString> map) {
                                                     _emojiMap = std::move(map);
                                                     _cache->saveEmojiMap(_emojiMap);
+                                                    _emojiMapLoadedHub.fire({});
                                                 },
                                                 _lifetime
                                             );

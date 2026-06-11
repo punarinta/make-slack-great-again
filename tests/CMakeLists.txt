@@ -88,6 +88,18 @@ add_msga_qt_test(test_session
 # session.cpp probes image dimensions for optimistic upload previews (QImageReader)
 target_link_libraries(test_session PRIVATE Qt6::Gui)
 
+add_msga_widget_test(test_message_render
+    test_message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+
 add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp

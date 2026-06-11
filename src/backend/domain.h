@@ -217,24 +217,32 @@ struct Block {
 };
 
 // Legacy Slack attachment (link unfurls, bot messages, older integrations).
+// One entry of an attachment's "fields" array (bold title + mrkdwn value).
+struct AttachmentField {
+    QString          title;
+    TextWithEntities value;
+    bool             operator==(const AttachmentField &) const = default;
+};
+
 struct Attachment {
-    QString            fallback;
-    QString            color; // "#rrggbb" left-border accent; may be empty
-    QString            pretext;
-    QString            authorName;
-    QString            title;
-    QString            titleLink;
-    TextWithEntities   text;
-    QString            imageUrl;
-    QString            thumbUrl;
-    QString            faviconUrl; // service_icon URL (favicon for link previews)
-    QString            footer;
-    int                imageWidth  = 0; // image_url dimensions; 0 when not provided
-    int                imageHeight = 0;
-    int                thumbWidth  = 0; // thumb_url dimensions; 0 when not provided
-    int                thumbHeight = 0;
-    std::vector<Block> blocks; // Block Kit blocks embedded in this attachment
-    bool               operator==(const Attachment &) const = default;
+    QString                      fallback;
+    QString                      color; // "#rrggbb" left-border accent; may be empty
+    QString                      pretext;
+    QString                      authorName;
+    QString                      title;
+    QString                      titleLink;
+    TextWithEntities             text;
+    QString                      imageUrl;
+    QString                      thumbUrl;
+    QString                      faviconUrl; // service_icon URL (favicon for link previews)
+    QString                      footer;
+    int                          imageWidth  = 0; // image_url dimensions; 0 when not provided
+    int                          imageHeight = 0;
+    int                          thumbWidth  = 0; // thumb_url dimensions; 0 when not provided
+    int                          thumbHeight = 0;
+    std::vector<AttachmentField> fields; // bold-titled key/value rows (classic bot format)
+    std::vector<Block>           blocks; // Block Kit blocks embedded in this attachment
+    bool                         operator==(const Attachment &) const = default;
 
     // Preview source covering physW physical pixels: the thumbnail when it is
     // large enough (or its size is unknown), the full image otherwise.

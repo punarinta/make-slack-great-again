@@ -12,6 +12,7 @@
 #include <QSet>
 #include <QHash>
 #include <QPixmap>
+#include <QStringList>
 #include <QTimer>
 
 #include <memory>
@@ -42,7 +43,9 @@ struct MessageItem {
     mutable std::vector<AttachDoc> attachDocs;    // one per msg.attachments entry
     mutable bool fileImgsRequested = false; // true once file image download has been triggered
     mutable bool attachImgsRequested =
-        false; // true once attachment image/favicon download triggered
+        false;                     // true once attachment image/favicon download triggered
+    mutable QStringList emojiUrls; // custom-emoji image URLs referenced by this message
+    mutable bool        emojiUrlsCollected = false;
 };
 
 // Aggregates the constant viewport geometry computed at the start of every paint/hit-test.
@@ -156,6 +159,9 @@ private:
     int  rowHeight(int index) const;
     bool isCollapsed(int index) const; // true if same author within 5 min of previous
     void ensureDocLayout(const MessageItem &item) const;
+    // Drop every item's rendered docs (and collected emoji URLs) so the next
+    // paint rebuilds them — used when emoji resolution inputs change.
+    void invalidateAllDocs();
     int  textAreaWidth() const;
 
     // Painting
@@ -257,8 +263,8 @@ private:
     static constexpr int kReactH        = 22;  // height of the reactions strip
     static constexpr int kReplyBarH     = 36;  // height of the thread-participants bar
     static constexpr int kReplyBarGap   = 6;   // gap above the reply bar
-    static constexpr int kThreadAvSize  = 22;  // small circular avatar size in reply bar
-    static constexpr int kThreadAvOver  = 6;   // overlap between consecutive avatars
+    static constexpr int kThreadAvSize  = 24;  // small rounded-square avatar size in reply bar
+    static constexpr int kThreadAvGap   = 3;   // gap between consecutive avatars
     static constexpr int kAttachGap     = 4;   // gap above each attachment
     static constexpr int kAttachBarW    = 3;   // width of attachment color bar
     static constexpr int kAttachBarGap  = 8;   // gap between bar and attachment text
