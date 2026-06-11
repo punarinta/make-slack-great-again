@@ -173,7 +173,7 @@ int WorkspaceSwitcher::hitTest(const QPoint &pos) const {
 }
 
 QColor WorkspaceSwitcher::bubbleColor(const QString &teamId) const {
-    const int hue = static_cast<int>(qHash(teamId) * 37u) % 360;
+    const int hue = static_cast<int>((qHash(teamId) * 37u) % 360u);
     return QColor::fromHsl(hue, Th::c().workspaceHslSaturation, Th::c().workspaceHslLightness);
 }
 
