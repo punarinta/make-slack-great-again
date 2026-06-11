@@ -100,7 +100,9 @@ struct ComposerColors {
     QColor toolbarIconActive;
     QColor attachmentChipBg;
     QColor attachmentChipBorder;
-    QColor dropArrow; // drop-menu chevron (empty composer)
+    QColor attachmentOverlayBg;   // semitransparent plate behind name/size on image chips
+    QColor attachmentOverlayText; // text on attachmentOverlayBg
+    QColor dropArrow;             // drop-menu chevron (empty composer)
     QColor dropArrowActive;
 };
 
