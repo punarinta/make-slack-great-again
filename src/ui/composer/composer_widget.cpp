@@ -13,6 +13,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
+#include <QApplication>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFrame>
@@ -562,17 +563,16 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 void ComposerWidget::applyTheme() {
+    _edit->setFont(QApplication::font());
     _edit->setStyleSheet(QString(
                              "QTextEdit {"
                              "  border: none;"
                              "  padding: 6px 10px;"
-                             "  font-size: %2px;"
                              "  color: %1;"
                              "  background: transparent;"
                              "}"
     )
-                             .arg(Th::qss(Th::c().text.primary))
-                             .arg(Th::c().fonts.base));
+                             .arg(Th::qss(Th::c().text.primary)));
 
     recolorMentionPills();
 
