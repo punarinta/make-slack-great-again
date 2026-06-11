@@ -61,7 +61,9 @@ public:
 
 signals:
     void sendRequested(const QString &text);
-    void uploadRequested(const QString &filePath);
+    // Emitted instead of sendRequested when files are attached: the files and
+    // the text travel together so they post as one Slack message.
+    void uploadRequested(const QStringList &filePaths, const QString &text);
     // Emitted instead of sendRequested when in edit mode.
     void editRequested(const Ts &ts, const QString &newText);
     // Emitted when ↑ is pressed in an empty editor; caller should call enterEditMode().

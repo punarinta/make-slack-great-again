@@ -580,10 +580,15 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         if (_session && !_currentConvId.value.isEmpty())
             _session->sendMessage(_currentConvId, text);
     });
-    connect(_composer, &ComposerWidget::uploadRequested, this, [this](const QString &filePath) {
-        if (_session && !_currentConvId.value.isEmpty())
-            _session->uploadFile(_currentConvId, filePath);
-    });
+    connect(
+        _composer,
+        &ComposerWidget::uploadRequested,
+        this,
+        [this](const QStringList &filePaths, const QString &text) {
+            if (_session && !_currentConvId.value.isEmpty())
+                _session->uploadFiles(_currentConvId, filePaths, text);
+        }
+    );
     connect(
         _composer,
         &ComposerWidget::editRequested,

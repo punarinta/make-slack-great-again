@@ -52,7 +52,7 @@ public:
     void scheduleMessage(ConversationId conv, const QString &text, qint64 postAt);
 
     // --- Phase 3 ---
-    void uploadFile(ConversationId conv, const QString &filePath);
+    void uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text);
     void
     searchMessages(const QString &query, std::function<void(std::vector<SearchResult>)> callback);
     void downloadFile(

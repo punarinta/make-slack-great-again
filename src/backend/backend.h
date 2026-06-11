@@ -87,7 +87,10 @@ public:
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;
     virtual rpl::producer<QHash<QString, QString>>   loadEmojiList()                      = 0;
-    virtual void uploadFile(ConversationId, const QString &filePath)                      = 0;
+    // Upload one or more files and share them in the conversation as a single
+    // message; initialComment (may be empty) becomes the message text.
+    virtual void
+    uploadFiles(ConversationId, const QStringList &filePaths, const QString &initialComment) = 0;
     // Delete a file by its Slack file ID (files.delete). No-op on unsupported backends.
     virtual void deleteFile(const QString & /*fileId*/) {}
     // Download arbitrary Slack file URL with auth credentials.

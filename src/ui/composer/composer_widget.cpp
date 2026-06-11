@@ -377,6 +377,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     connect(_attachStrip, &AttachmentStrip::removeRequested, this, [this](const QString &path) {
         _pendingFiles.removeAll(path);
         _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+        updateSendState();
     });
     boxLayout->addWidget(_attachStrip);
 
@@ -627,12 +628,14 @@ void ComposerWidget::addPendingFile(const QString &filePath) {
     if (!_pendingFiles.contains(filePath))
         _pendingFiles.append(filePath);
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    updateSendState();
 }
 
 void ComposerWidget::clearPendingFiles() {
     _pendingFiles.clear();
     _editModeFiles.clear();
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    updateSendState();
 }
 
 void ComposerWidget::recolorBottomBarIcons(const QColor &color) {
@@ -1015,28 +1018,32 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
 
 void ComposerWidget::trySend() {
     _tooltip->hide();
-    const auto text     = _edit->toPlainText().trimmed();
-    const bool hasFiles = !_pendingFiles.isEmpty();
+    const auto        text  = _edit->toPlainText().trimmed();
+    const QStringList files = _pendingFiles;
 
-    if (text.isEmpty() && !hasFiles)
+    if (text.isEmpty() && files.isEmpty())
         return;
 
-    // Upload pending files
-    for (const QString &f : std::as_const(_pendingFiles))
-        emit uploadRequested(f);
     _pendingFiles.clear();
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
 
     if (!_editingTs.isEmpty()) {
+        // Edit mode: the text updates the existing message; any newly attached
+        // files post separately (Slack cannot attach files via chat.update).
         const Ts ts = _editingTs;
         exitEditMode();
+        if (!files.isEmpty())
+            emit uploadRequested(files, QString());
         if (!text.isEmpty())
             emit editRequested(ts, text);
     } else {
         _edit->clear();
-        if (!text.isEmpty())
+        if (!files.isEmpty())
+            emit uploadRequested(files, text); // files + text = one message
+        else
             emit sendRequested(text);
     }
+    updateSendState();
 
     _typingTimer.stop();
     _typingPending = true;
@@ -1058,6 +1065,7 @@ void ComposerWidget::trySchedule() {
         _edit->clear();
         _pendingFiles.clear();
         _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+        updateSendState();
         emit scheduleRequested(text, unixTs);
     });
 }

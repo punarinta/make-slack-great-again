@@ -58,9 +58,9 @@ public:
         const QString &method, const QJsonObject &body, OnSuccess onSuccess, OnError onError = {}
     );
 
-    // Raw PUT to an external URL (e.g. Slack file upload S3 URL). No auth header.
-    // Bypasses the API queue.
-    void rawPut(
+    // Raw POST of a body to an external URL (Slack file upload URL — the docs
+    // require POST, raw bytes allowed). No auth header. Bypasses the API queue.
+    void rawPost(
         const QUrl &url, const QByteArray &data, std::function<void()> onDone, OnError onError = {}
     );
 

@@ -670,56 +670,83 @@ rpl::producer<QHash<QString, QString>> PublicBackend::loadEmojiList() {
     };
 }
 
-void PublicBackend::uploadFile(ConversationId conv, const QString &filePath) {
-    QFile f(filePath);
-    if (!f.open(QIODevice::ReadOnly)) {
-        qWarning() << "uploadFile: cannot open" << filePath;
-        return;
+void PublicBackend::uploadFiles(
+    ConversationId conv, const QStringList &filePaths, const QString &initialComment
+) {
+    // Slack external upload flow: per file, files.getUploadURLExternal then a
+    // raw POST of the bytes to the returned URL; once every file has settled,
+    // ONE files.completeUploadExternal shares them all as a single message
+    // with initial_comment as the message text.
+    struct Batch {
+        int        pending = 0;
+        QJsonArray files; // {id, title} of successfully uploaded files
+    };
+    auto batch = std::make_shared<Batch>();
+
+    auto finishOne = [this, conv, initialComment, batch]() {
+        if (--batch->pending > 0)
+            return;
+        if (batch->files.isEmpty())
+            return; // every upload failed; warnings already logged
+        QJsonObject body;
+        body["channel_id"] = conv.value;
+        body["files"]      = batch->files;
+        if (!initialComment.isEmpty())
+            body["initial_comment"] = initialComment;
+
+        _api->postJson(
+            "files.completeUploadExternal",
+            body,
+            [](QJsonObject) { /* success */ },
+            [](QString err) { qWarning() << "completeUploadExternal error:" << err; }
+        );
+    };
+
+    for (const QString &filePath : filePaths) {
+        QFile f(filePath);
+        if (!f.open(QIODevice::ReadOnly)) {
+            qWarning() << "uploadFiles: cannot open" << filePath;
+            continue;
+        }
+        const QByteArray data     = f.readAll();
+        const QString    filename = QFileInfo(filePath).fileName();
+        ++batch->pending;
+
+        // Step 1: get upload URL (filename + length are the only request args)
+        QUrlQuery params;
+        params.addQueryItem("filename", filename);
+        params.addQueryItem("length", QString::number(data.size()));
+
+        _api->call(
+            "files.getUploadURLExternal",
+            params,
+            [this, filename, data, finishOne, batch](QJsonObject resp) mutable {
+                const QString uploadUrl = resp.value("upload_url").toString();
+                const QString fileId    = resp.value("file_id").toString();
+
+                // Step 2: POST bytes to the upload URL (no auth header)
+                _api->rawPost(
+                    QUrl(uploadUrl),
+                    data,
+                    [filename, fileId, finishOne, batch]() mutable {
+                        QJsonObject entry;
+                        entry["id"]    = fileId;
+                        entry["title"] = filename;
+                        batch->files.append(entry);
+                        finishOne();
+                    },
+                    [finishOne](QString err) mutable {
+                        qWarning() << "upload POST error:" << err;
+                        finishOne();
+                    }
+                );
+            },
+            [finishOne](QString err) mutable {
+                qWarning() << "getUploadURLExternal error:" << err;
+                finishOne();
+            }
+        );
     }
-    const QByteArray data     = f.readAll();
-    const QString    filename = QFileInfo(filePath).fileName();
-    const qint64     length   = data.size();
-
-    // Step 1: get upload URL
-    QUrlQuery params;
-    params.addQueryItem("filename", filename);
-    params.addQueryItem("length", QString::number(length));
-    params.addQueryItem("channel", conv.value);
-
-    _api->call(
-        "files.getUploadURLExternal",
-        params,
-        [this, conv, filename, data](QJsonObject resp) mutable {
-            const QString uploadUrl = resp.value("upload_url").toString();
-            const QString fileId    = resp.value("file_id").toString();
-
-            // Step 2: PUT data to upload URL (S3 — no auth header)
-            _api->rawPut(
-                QUrl(uploadUrl),
-                data,
-                [this, conv, filename, fileId]() mutable {
-                    // Step 3: complete the upload
-                    QJsonObject body;
-                    body["channel_id"] = conv.value;
-                    QJsonArray  filesArr;
-                    QJsonObject fileEntry;
-                    fileEntry["id"]    = fileId;
-                    fileEntry["title"] = filename;
-                    filesArr.append(fileEntry);
-                    body["files"] = filesArr;
-
-                    _api->postJson(
-                        "files.completeUploadExternal",
-                        body,
-                        [](QJsonObject) { /* success */ },
-                        [](QString err) { qWarning() << "completeUploadExternal error:" << err; }
-                    );
-                },
-                [](QString err) { qWarning() << "rawPut error:" << err; }
-            );
-        },
-        [](QString err) { qWarning() << "getUploadURLExternal error:" << err; }
-    );
 }
 
 void PublicBackend::downloadFile(

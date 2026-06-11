@@ -328,8 +328,8 @@ void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 p
     _backend->scheduleMessage(conv, std::move(out), postAt);
 }
 
-void Session::uploadFile(ConversationId conv, const QString &filePath) {
-    _backend->uploadFile(conv, filePath);
+void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text) {
+    _backend->uploadFiles(conv, filePaths, text);
 }
 
 void Session::searchMessages(

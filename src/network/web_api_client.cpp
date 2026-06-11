@@ -43,7 +43,7 @@ void WebApiClient::postJson(
     enqueue({method, {}, body, std::move(onSuccess), std::move(onError)});
 }
 
-void WebApiClient::rawPut(
+void WebApiClient::rawPost(
     const QUrl &url, const QByteArray &data, std::function<void()> onDone, OnError onError
 ) {
     QNetworkRequest req(url);
@@ -51,7 +51,7 @@ void WebApiClient::rawPut(
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
-    auto *reply = _nam->put(req, data);
+    auto *reply = _nam->post(req, data);
     connect(reply, &QNetworkReply::finished, this, [reply, onDone, onError]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
