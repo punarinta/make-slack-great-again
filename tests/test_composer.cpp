@@ -437,3 +437,236 @@ TEST_CASE("adjacent mention pills serialize independently", "[composer][mention]
     CHECK(editOf(&c)->toPlainText() == "@ann@ann");
     CHECK(c.currentText() == "<@U1|ann><@U1|ann>");
 }
+
+// ── Inline :emoji: autocomplete ───────────────────────────────────────────────
+
+#include "ui/composer/mention_completer.h"
+#include <QEventLoop>
+#include <QKeyEvent>
+#include <QPushButton>
+#include <QTimer>
+
+// Let the completer's QTimer::singleShot(0) fire.
+static void pumpEvents(int ms = 30) {
+    QEventLoop loop;
+    QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+    loop.exec();
+}
+
+// The completer reacts to KeyRelease in the editor's event filter.
+// The composer must be shown: the completer is a plain child widget, so its
+// isVisible() is false while any ancestor is hidden.
+static void releaseKey(ComposerWidget *c, int key, const QString &txt) {
+    if (!c->isVisible())
+        c->show();
+    QKeyEvent ev(QEvent::KeyRelease, key, Qt::NoModifier, txt);
+    QApplication::sendEvent(editOf(c), &ev);
+    pumpEvents();
+}
+
+static MentionCompleter *completerOf(ComposerWidget *c) {
+    return c->findChild<MentionCompleter *>();
+}
+
+TEST_CASE("typing :letters at text start opens the emoji completer", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    CHECK(comp->isVisible());
+    const auto rows = comp->findChildren<QPushButton *>();
+    REQUIRE(!rows.isEmpty());
+    CHECK(rows.first()->text().contains(":fire:"));
+    CHECK(rows.first()->text().contains("🔥"));
+}
+
+TEST_CASE("emoji completer triggers after a space", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, "hello :wav");
+    releaseKey(&c, Qt::Key_V, "v");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    CHECK(comp->isVisible());
+}
+
+TEST_CASE("colon inside a word does not trigger the completer", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, "abc:fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    CHECK((!comp || !comp->isVisible()));
+}
+
+TEST_CASE("uppercase after colon does not trigger the completer", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":D");
+    releaseKey(&c, Qt::Key_D, "D");
+    auto *comp = completerOf(&c);
+    CHECK((!comp || !comp->isVisible()));
+}
+
+TEST_CASE("completer hides when the word stops looking like an emoji code", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+
+    typeText(&c, ":fir)");
+    releaseKey(&c, Qt::Key_ParenRight, ")");
+    CHECK(!comp->isVisible());
+}
+
+TEST_CASE("completer hides when nothing matches anymore", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+
+    typeText(&c, ":firzzz");
+    releaseKey(&c, Qt::Key_Z, "z");
+    CHECK(!comp->isVisible());
+}
+
+TEST_CASE("Enter inserts the selected emoji glyph", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &enter);
+    CHECK(editOf(&c)->toPlainText() == QString("🔥 "));
+    CHECK(!comp->isVisible());
+}
+
+TEST_CASE("Down then Enter inserts the second suggestion", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":fi");
+    releaseKey(&c, Qt::Key_I, "i");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+    const auto rows = comp->findChildren<QPushButton *>();
+    REQUIRE(rows.size() >= 2);
+
+    QKeyEvent down(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &down);
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &enter);
+
+    const QString text = editOf(&c)->toPlainText();
+    CHECK(!text.startsWith(':'));
+    CHECK(rows[1]->text().startsWith(text.trimmed()));
+}
+
+TEST_CASE("Escape dismisses the completer without inserting", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+
+    QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &esc);
+    CHECK(!comp->isVisible());
+    CHECK(editOf(&c)->toPlainText() == ":fir");
+}
+
+TEST_CASE("completer is a plain child widget, not a window", "[composer][emoji]") {
+    // A real window steals focus on show (the editor's FocusOut then dismisses
+    // it instantly — the "blink" bug) and cannot be positioned on Wayland.
+    ComposerWidget c;
+    typeText(&c, ":smi");
+    releaseKey(&c, Qt::Key_I, "i");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    CHECK(comp->isVisible());
+    CHECK(!comp->isWindow());
+    CHECK(comp->focusPolicy() == Qt::NoFocus);
+}
+
+TEST_CASE("completer stays anchored at the colon while typing", "[composer][emoji]") {
+    ComposerWidget c;
+    typeText(&c, ":s");
+    releaseKey(&c, Qt::Key_S, "s");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+    const QPoint posAfterOneLetter = comp->pos();
+
+    typeText(&c, ":sm");
+    releaseKey(&c, Qt::Key_M, "m");
+    REQUIRE(comp->isVisible());
+    CHECK(comp->pos().x() == posAfterOneLetter.x());
+}
+
+TEST_CASE("completer sits above the editor, not far from it", "[composer][emoji]") {
+    ComposerWidget c;
+    c.resize(600, 120);
+    c.show();
+    typeText(&c, ":fir");
+    releaseKey(&c, Qt::Key_R, "r");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+
+    QTextEdit  *ed = editOf(&c);
+    QTextCursor tc = ed->textCursor();
+    tc.setPosition(0); // the ':' trigger
+    // Anchor mapped into the completer's parent coordinates, the same space
+    // as comp->pos().
+    const QPoint anchor =
+        comp->parentWidget()->mapFromGlobal(ed->mapToGlobal(ed->cursorRect(tc).topLeft()));
+    // Bottom edge hugs the trigger line (4px gap) and is left-aligned with
+    // ':' (subject to the clamp keeping it inside the parent).
+    CHECK(
+        comp->pos().x() ==
+        qBound(0, anchor.x(), qMax(0, comp->parentWidget()->width() - comp->width()))
+    );
+    CHECK(comp->pos().y() + comp->height() + 4 == anchor.y());
+}
+
+// Simulates real typing: KeyPress (which inserts the char via QTextEdit's own
+// handler) followed by KeyRelease — unlike typeText() which uses setPlainText.
+static void typeChar(ComposerWidget *c, int key, const QString &txt) {
+    if (!c->isVisible())
+        c->show();
+    QTextEdit *ed = editOf(c);
+    QKeyEvent  press(QEvent::KeyPress, key, Qt::NoModifier, txt);
+    QApplication::sendEvent(ed, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, txt);
+    QApplication::sendEvent(ed, &release);
+    pumpEvents();
+}
+
+// Types ':', 's', 'm' as real key events, stops, and verifies the list is
+// still open at full size — it must not collapse on the second keystroke.
+TEST_CASE("completer stays open after typing :sm and stopping", "[composer][emoji]") {
+    ComposerWidget c;
+    typeChar(&c, Qt::Key_Colon, ":");
+    typeChar(&c, Qt::Key_S, "s");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    CHECK(comp->isVisible());
+
+    typeChar(&c, Qt::Key_M, "m");
+    CHECK(editOf(&c)->toPlainText() == ":sm");
+    CHECK(comp->isVisible());
+
+    // The rebuilt rows must actually be visible: children added to an
+    // already-visible parent stay hidden unless explicitly shown, which
+    // collapsed the popup to a sliver on the second keystroke.
+    const auto rows = comp->findChildren<QPushButton *>();
+    REQUIRE(!rows.isEmpty());
+    for (const auto *row : rows)
+        CHECK(row->isVisible());
+    CHECK(comp->height() > 50);
+}

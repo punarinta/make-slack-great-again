@@ -12,8 +12,12 @@
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "util/emoji.h"
+
+#include <algorithm>
 
 #include <QApplication>
+#include <QSet>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFrame>
@@ -1148,32 +1152,25 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                         return;
                     }
 
+                    // Word start: the trigger must follow whitespace (or be at
+                    // the very start of the text), so "abc:de" never triggers.
                     int trigStart = cursor - 1;
-                    while (trigStart > 0 && !text[trigStart - 1].isSpace() &&
-                           text[trigStart - 1] != '#' && text[trigStart - 1] != ':')
+                    while (trigStart > 0 && !text[trigStart - 1].isSpace())
                         --trigStart;
-
-                    if (trigStart < 0 || trigStart >= text.length()) {
-                        if (_mentionComp)
-                            _mentionComp->dismiss();
-                        return;
-                    }
 
                     const QChar   trigger = text[trigStart];
                     const QString query   = text.mid(trigStart + 1, cursor - trigStart - 1);
 
-                    if (query.isEmpty() || query.contains(' ') ||
-                        (trigger != '#' && trigger != ':')) {
+                    if (query.isEmpty() || (trigger != '#' && trigger != ':')) {
                         if (_mentionComp)
                             _mentionComp->dismiss();
                         return;
                     }
 
-                    if (!_session)
-                        return;
-
                     QList<MentionCompleter::Item> items;
                     if (trigger == '#') {
+                        if (!_session)
+                            return;
                         const auto &convs = _session->currentConversations();
                         for (const auto &c : convs) {
                             if (c.kind != ConvKind::PublicChannel &&
@@ -1188,22 +1185,62 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                             }
                         }
                     } else { // ':'
+                        // Only a lowercase word reads as the start of an emoji
+                        // code; anything else (":)", ":D", ":3") is a smiley.
+                        const bool looksLikeCode =
+                            query[0].isLower() &&
+                            std::all_of(query.begin(), query.end(), [](QChar ch) {
+                                return ch.isLower() || ch.isDigit() || ch == '_' || ch == '-' ||
+                                       ch == '+';
+                            });
+                        if (!looksLikeCode) {
+                            if (_mentionComp)
+                                _mentionComp->dismiss();
+                            return;
+                        }
+                        // Frequently used emoji surface ahead of the
+                        // alphabetical matches from the full table.
                         static const QStringList kCommonEmoji{
                             "thumbsup", "thumbsdown", "clap",        "heart",    "fire",
                             "rocket",   "eyes",       "smile",       "laughing", "wink",
                             "grin",     "joy",        "sweat_smile", "sob",      "thinking_face",
                             "wave",     "ok_hand",    "point_right", "muscle",   "100"
                         };
+                        QSet<QString> added;
+                        const auto    addEmoji = [&items, &added](const QString &name) {
+                            if (added.contains(name) || items.size() >= 8)
+                                return;
+                            added.insert(name);
+                            const QString glyph = Emoji::fromName(name);
+                            items.append({glyph + "  :" + name + ":", glyph});
+                        };
                         for (const QString &name : kCommonEmoji) {
-                            if (name.startsWith(query, Qt::CaseInsensitive))
+                            if (name.startsWith(query))
+                                addEmoji(name);
+                        }
+                        for (const QString &name : Emoji::allNames()) {
+                            if (items.size() >= 8)
+                                break;
+                            if (name.startsWith(query))
+                                addEmoji(name);
+                        }
+                        // Workspace custom emoji have no Unicode form — insert
+                        // the :code: so Slack renders the image server-side.
+                        if (_session) {
+                            QStringList custom;
+                            const auto &emap = _session->emojiMap();
+                            for (auto it = emap.begin(); it != emap.end(); ++it) {
+                                if (it.key().startsWith(query) && !added.contains(it.key()))
+                                    custom.append(it.key());
+                            }
+                            custom.sort();
+                            for (const QString &name : custom) {
+                                if (items.size() >= 8)
+                                    break;
+                                added.insert(name);
                                 items.append({":" + name + ":", ":" + name + ":"});
+                            }
                         }
-                        const auto &emap = _session->emojiMap();
-                        for (auto it = emap.begin(); it != emap.end() && items.size() < 8; ++it) {
-                            if (it.key().startsWith(query, Qt::CaseInsensitive))
-                                items.append({":" + it.key() + ":", ":" + it.key() + ":"});
-                        }
-                        items = items.mid(0, 8);
                     }
 
                     if (items.isEmpty()) {
@@ -1213,18 +1250,19 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                     }
 
                     if (!_mentionComp) {
-                        _mentionComp = new MentionCompleter(this);
-                        _mentionComp->setWindowFlags(
-                            Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint
-                        );
+                        // Parent = msgArea (like MentionPopup), so the popup
+                        // overlays the message list above the composer.
+                        _mentionComp = new MentionCompleter(parentWidget() ? parentWidget() : this);
                     }
 
-                    const QRect  curRect   = _edit->cursorRect();
-                    const QPoint globalCur = _edit->mapToGlobal(curRect.bottomLeft());
+                    // Anchor at the trigger character, not the moving text
+                    // cursor, so the popup stays put while the user types.
+                    QTextCursor anchorCursor = _edit->textCursor();
+                    anchorCursor.setPosition(trigStart);
+                    const QPoint anchor =
+                        _edit->mapToGlobal(_edit->cursorRect(anchorCursor).topLeft());
                     _mentionComp->show(
-                        globalCur + QPoint(0, 4),
-                        items,
-                        [this, trigStart, cursor](const QString &insert) {
+                        anchor, items, [this, trigStart, cursor](const QString &insert) {
                             auto tc = _edit->textCursor();
                             tc.setPosition(trigStart);
                             tc.setPosition(cursor, QTextCursor::KeepAnchor);

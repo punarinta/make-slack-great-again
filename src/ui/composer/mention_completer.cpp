@@ -11,9 +11,14 @@
 
 static constexpr int kMaxRows = 8;
 
-MentionCompleter::MentionCompleter(QWidget *parent)
-    : QFrame(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
+MentionCompleter::MentionCompleter(QWidget *parent) : QFrame(parent) {
+    // Plain child widget of the container, like MentionPopup — a real window
+    // (Qt::Tool) cannot be positioned by the client on Wayland and is
+    // activated on show by some window managers, which steals the editor's
+    // focus and instantly dismisses the completer via FocusOut.
     setObjectName("mentionCompleter");
+    setAttribute(Qt::WA_StyledBackground, true);
+    setFocusPolicy(Qt::NoFocus);
     _layout = new QVBoxLayout(this);
     _layout->setContentsMargins(4, 4, 4, 4);
     _layout->setSpacing(1);
@@ -39,10 +44,20 @@ void MentionCompleter::show(const QPoint &globalPos, const QList<Item> &items, C
     _sel = 0;
     rebuild(items);
 
-    adjustSize();
-    // Position above the cursor
-    const int popupH = height();
-    move(globalPos - QPoint(0, popupH + 4));
+    // height() is stale until the first show — size from the layout instead.
+    _layout->activate();
+    const QSize sz = sizeHint();
+    resize(sz);
+
+    // Bottom edge sits just above the anchor (the trigger character), in the
+    // parent's coordinates; keep the popup inside the parent horizontally.
+    QPoint pos = globalPos - QPoint(0, sz.height() + 4);
+    if (QWidget *par = parentWidget()) {
+        const QPoint local = par->mapFromGlobal(globalPos);
+        pos                = local - QPoint(0, sz.height() + 4);
+        pos.setX(qBound(0, pos.x(), qMax(0, par->width() - sz.width())));
+    }
+    move(pos);
     QFrame::show();
     raise();
 }
@@ -114,6 +129,9 @@ void MentionCompleter::rebuild(const QList<Item> &items) {
             confirm();
         });
         _layout->addWidget(row);
+        // Children added to an already-visible parent stay hidden until shown
+        // explicitly; without this the popup collapses on rebuild-while-open.
+        row->show();
         _rows.append(row);
     }
 

@@ -3,6 +3,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include "util/emoji.h"
 
+#include <algorithm>
+
 // ── Emoji::fromName ───────────────────────────────────────────────────────────
 
 TEST_CASE("fromName common names resolve to unicode", "[emoji][fromName]") {
@@ -82,4 +84,17 @@ TEST_CASE("expandCodes code with space inside is not a code", "[emoji][expandCod
 
 TEST_CASE("expandCodes adjacent colons are not treated as codes", "[emoji][expandCodes]") {
     CHECK(Emoji::expandCodes("::") == "::");
+}
+
+// ── Emoji::allNames ───────────────────────────────────────────────────────────
+
+TEST_CASE("allNames covers the full table, sorted", "[emoji][allNames]") {
+    const QStringList &names = Emoji::allNames();
+    CHECK(names.size() > 1000);
+    CHECK(std::is_sorted(names.begin(), names.end()));
+    CHECK(names.contains("fire"));
+    CHECK(names.contains("thumbsup"));
+    // Every listed name must resolve to a real glyph, not the ":name:" fallback.
+    CHECK(!Emoji::fromName(names.first()).startsWith(':'));
+    CHECK(!Emoji::fromName(names.last()).startsWith(':'));
 }

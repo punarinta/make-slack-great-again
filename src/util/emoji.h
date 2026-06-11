@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 namespace Emoji {
 
@@ -15,5 +16,8 @@ QString fromName(const QString &name);
 // Unknown codes are left as-is (":unknown:").
 // Example: expandCodes("Hello :palm_tree: world") → "Hello 🌴 world"
 QString expandCodes(const QString &text);
+
+// All built-in short names, sorted alphabetically. Used for :code: autocomplete.
+const QStringList &allNames();
 
 } // namespace Emoji

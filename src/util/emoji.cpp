@@ -2023,4 +2023,13 @@ QString expandCodes(const QString &text) {
     return result;
 }
 
+const QStringList &allNames() {
+    static const QStringList kNames = [] {
+        QStringList names = table().keys();
+        names.sort();
+        return names;
+    }();
+    return kNames;
+}
+
 } // namespace Emoji

@@ -10,8 +10,9 @@ class QVBoxLayout;
 class Session;
 
 // Floating autocomplete list for @user, #channel, and :emoji: triggers.
-// Appears below/above the trigger word in the editor; auto-dismisses on Escape
-// or when the editor loses focus. NOT Qt::Popup so the editor keeps focus.
+// Appears above the trigger word in the editor; auto-dismisses on Escape or
+// when the editor loses focus. A plain child widget of the conversation panel
+// (NOT a window) so it never takes focus and positions reliably on Wayland.
 class MentionCompleter : public QFrame {
     Q_OBJECT
 public:
@@ -21,7 +22,8 @@ public:
 
     using Callback = std::function<void(const QString &insertText)>;
 
-    // Show the completer anchored above anchorGlobalRect with the given suggestions.
+    // Show the completer with its bottom edge just above globalPos (pass the
+    // global top-left of the trigger character so the popup hugs the word).
     // Each item: display string, and the text to insert on confirmation.
     struct Item {
         QString display;
