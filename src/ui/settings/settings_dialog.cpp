@@ -5,6 +5,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "app_credentials.h"
+#include "llm/llm_service.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -24,11 +25,15 @@
 #include <QSettings>
 #include <QGroupBox>
 #include <QSpinBox>
+#include <QComboBox>
+#include <QLineEdit>
 #include <algorithm>
 #include <QDirIterator>
 #include <QStandardPaths>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDesktopServices>
+#include <QUrl>
 
 static constexpr int kPanelW    = 700;
 static constexpr int kPanelH    = 540;
@@ -50,6 +55,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QWidget(parent) {
 void SettingsDialog::open() {
     loadAppearance();
     loadNotifications();
+    refreshAiProviders();
+    if (_aiError)
+        _aiError->clear();
     refreshCacheSize();
     refreshLastChecked();
     refreshUpdateStatus();
@@ -103,6 +111,7 @@ void SettingsDialog::buildPanel() {
     _tabs->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     _tabs->addItem(tr("Appearance"));
     _tabs->addItem(tr("Notifications"));
+    _tabs->addItem(tr("AI assistance"));
     _tabs->addItem(tr("Storage"));
     _tabs->addItem(tr("System"));
     _tabs->setCurrentRow(0);
@@ -228,6 +237,9 @@ void SettingsDialog::buildPanel() {
     nlay->addLayout(btnRow);
 
     _stack->addWidget(notifPage);
+
+    // ── AI assistance page ────────────────────────────────────────────
+    _stack->addWidget(buildAiPage());
 
     // ── Storage page ──────────────────────────────────────────────────
     auto *storagePage = new QWidget;
@@ -355,6 +367,173 @@ void SettingsDialog::buildPanel() {
     connect(esc, &QShortcut::activated, this, &SettingsDialog::hide);
 
     updatePanelGeometry();
+}
+
+QWidget *SettingsDialog::buildAiPage() {
+    auto &svc = LlmService::instance();
+
+    auto *page = new QWidget;
+    auto *lay  = new QVBoxLayout(page);
+    lay->setContentsMargins(24, 20, 24, 20);
+    lay->setSpacing(16);
+
+    auto *heading = new QLabel(tr("AI assistance"), page);
+    heading->setObjectName("aiHeading");
+    lay->addWidget(heading);
+
+    auto *desc = new QLabel(
+        tr("Connect an AI provider to enable assistant features.\n"
+           "Create an API key in your own provider account and paste it below —\n"
+           "it is stored on this computer and sent only to that provider."),
+        page
+    );
+    desc->setObjectName("aiDesc");
+    desc->setWordWrap(true);
+    lay->addWidget(desc);
+
+    // Default provider selector
+    auto *defRow   = new QHBoxLayout;
+    auto *defLabel = new QLabel(tr("Default provider:"), page);
+    defLabel->setObjectName("aiDefaultLabel");
+    defRow->addWidget(defLabel);
+
+    _aiDefault = new QComboBox(page);
+    for (auto *p : svc.providers())
+        _aiDefault->addItem(p->displayName(), p->id());
+    defRow->addWidget(_aiDefault);
+    defRow->addStretch();
+    lay->addLayout(defRow);
+
+    connect(_aiDefault, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        if (idx >= 0)
+            LlmService::instance().setDefaultProviderId(_aiDefault->itemData(idx).toString());
+    });
+
+    // One card per provider
+    for (auto *p : svc.providers()) {
+        auto *box = new QGroupBox(p->displayName(), page);
+        box->setObjectName("aiBox");
+        auto *bl = new QVBoxLayout(box);
+        bl->setSpacing(8);
+        bl->setContentsMargins(0, 12, 0, 0);
+
+        AiProviderRow row;
+        row.provider = p;
+
+        row.status = new QLabel(box);
+        row.status->setObjectName("aiStatus");
+        bl->addWidget(row.status);
+
+        auto *btnRow = new QHBoxLayout;
+        row.oauthBtn = new QPushButton(tr("Connect (OAuth)"), box);
+        row.oauthBtn->setObjectName("aiConnectBtn");
+        row.oauthBtn->setFixedHeight(30);
+        row.oauthBtn->setCursor(Qt::PointingHandCursor);
+        btnRow->addWidget(row.oauthBtn);
+
+        row.disconnectBtn = new QPushButton(tr("Disconnect"), box);
+        row.disconnectBtn->setObjectName("aiDisconnectBtn");
+        row.disconnectBtn->setFixedHeight(30);
+        row.disconnectBtn->setCursor(Qt::PointingHandCursor);
+        btnRow->addWidget(row.disconnectBtn);
+        btnRow->addStretch();
+        bl->addLayout(btnRow);
+
+        auto *keyRow = new QHBoxLayout;
+        row.keyEdit  = new QLineEdit(box);
+        row.keyEdit->setObjectName("aiKeyEdit");
+        row.keyEdit->setPlaceholderText(tr("Paste your API key"));
+        row.keyEdit->setEchoMode(QLineEdit::Password);
+        keyRow->addWidget(row.keyEdit, 1);
+
+        row.saveKeyBtn = new QPushButton(tr("Save key"), box);
+        row.saveKeyBtn->setObjectName("aiSaveKeyBtn");
+        row.saveKeyBtn->setFixedHeight(30);
+        row.saveKeyBtn->setCursor(Qt::PointingHandCursor);
+        keyRow->addWidget(row.saveKeyBtn);
+        bl->addLayout(keyRow);
+
+        auto *keyLink = new QPushButton(tr("Get an API key from %1…").arg(p->displayName()), box);
+        keyLink->setObjectName("aiKeyLink");
+        keyLink->setCursor(Qt::PointingHandCursor);
+        keyLink->setFlat(true);
+        connect(keyLink, &QPushButton::clicked, this, [p] {
+            QDesktopServices::openUrl(QUrl(p->apiKeyUrl()));
+        });
+        auto *keyLinkRow = new QHBoxLayout;
+        keyLinkRow->addWidget(keyLink);
+        keyLinkRow->addStretch();
+        bl->addLayout(keyLinkRow);
+        row.keyLink = keyLink;
+
+        connect(row.oauthBtn, &QPushButton::clicked, this, [this, p] {
+            _aiError->clear();
+            p->connectOAuth();
+        });
+        connect(row.disconnectBtn, &QPushButton::clicked, this, [this, p] {
+            _aiError->clear();
+            p->disconnectAccount();
+        });
+        const auto saveKey = [this, p, keyEdit = row.keyEdit] {
+            _aiError->clear();
+            p->connectApiKey(keyEdit->text());
+            keyEdit->clear();
+        };
+        connect(row.saveKeyBtn, &QPushButton::clicked, this, saveKey);
+        connect(row.keyEdit, &QLineEdit::returnPressed, this, saveKey);
+
+        connect(p, &LlmProvider::authStateChanged, this, &SettingsDialog::refreshAiProviders);
+        connect(p, &LlmProvider::authFailed, this, [this, p](const QString &reason) {
+            _aiError->setText(tr("%1: %2").arg(p->displayName(), reason));
+        });
+
+        _aiRows.append(row);
+        lay->addWidget(box);
+    }
+
+    _aiError = new QLabel(page);
+    _aiError->setObjectName("aiError");
+    _aiError->setWordWrap(true);
+    lay->addWidget(_aiError);
+    lay->addStretch();
+
+    refreshAiProviders();
+    return page;
+}
+
+void SettingsDialog::refreshAiProviders() {
+    for (const auto &row : _aiRows) {
+        const auto state      = row.provider->authState();
+        const bool connected  = state == LlmProvider::AuthState::Connected;
+        const bool connecting = state == LlmProvider::AuthState::Connecting;
+
+        if (connected) {
+            row.status->setText(
+                row.provider->authMethod() == LlmProvider::AuthMethod::OAuth
+                    ? tr("Connected as %1").arg(row.provider->accountLabel())
+                    : tr("Connected with API key (%1)").arg(row.provider->accountLabel())
+            );
+        } else if (connecting) {
+            row.status->setText(tr("Waiting for browser sign-in…"));
+        } else {
+            row.status->setText(tr("Not connected"));
+        }
+
+        row.oauthBtn->setVisible(!connected && row.provider->supportsOAuth());
+        row.oauthBtn->setEnabled(!connecting);
+        row.keyEdit->setVisible(!connected);
+        row.saveKeyBtn->setVisible(!connected);
+        row.keyLink->setVisible(!connected);
+        row.disconnectBtn->setVisible(connected);
+    }
+
+    // Sync the default-provider combo without re-triggering the save.
+    const QString def = LlmService::instance().defaultProviderId();
+    int           idx = _aiDefault->findData(def);
+    if (idx < 0)
+        idx = 0;
+    const QSignalBlocker blocker(_aiDefault);
+    _aiDefault->setCurrentIndex(idx);
 }
 
 void SettingsDialog::applyTheme() {
@@ -532,6 +711,117 @@ void SettingsDialog::applyTheme() {
                 .arg(th.fonts.md)
                 .arg(Th::qss(th.accent.hover), Th::qss(th.accent.pressed))
         );
+    }
+
+    // ── AI assistance page ────────────────────────────────────────────
+    if (auto *w = _panel->findChild<QLabel *>("aiHeading")) {
+        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
+                             .arg(th.fonts.base)
+                             .arg(Th::qss(th.text.primary)));
+    }
+    if (auto *w = _panel->findChild<QLabel *>("aiDesc")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
+    if (auto *w = _panel->findChild<QLabel *>("aiDefaultLabel")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
+    if (_aiDefault) {
+        _aiDefault->setStyleSheet(
+            QString(
+                "QComboBox {"
+                "  font-size: %1px; color: %2;"
+                "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
+                "}"
+                "QComboBox:focus { border-color: %4; }"
+            )
+                .arg(th.fonts.md)
+                .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
+        );
+    }
+    for (auto *w : _panel->findChildren<QGroupBox *>("aiBox")) {
+        w->setStyleSheet(
+            QString(
+                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+            )
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
+    }
+    for (auto *w : _panel->findChildren<QLabel *>("aiStatus")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
+    const QString aiAccentBtn = QString(
+                                    "QPushButton {"
+                                    "  background: %1; color: white; border: none;"
+                                    "  border-radius: 4px; font-size: %2px; font-weight: 600;"
+                                    "  padding: 0 14px;"
+                                    "}"
+                                    "QPushButton:hover    { background: %3; }"
+                                    "QPushButton:pressed  { background: %4; }"
+                                    "QPushButton:disabled { background: %5; color: %6; }"
+    )
+                                    .arg(Th::qss(th.accent.def))
+                                    .arg(th.fonts.md)
+                                    .arg(
+                                        Th::qss(th.accent.hover),
+                                        Th::qss(th.accent.pressed),
+                                        Th::qss(th.surface.highlight),
+                                        Th::qss(th.text.tertiary)
+                                    );
+    const QString aiNeutralBtn = QString(
+                                     "QPushButton {"
+                                     "  background: %1; color: %2; border: none;"
+                                     "  border-radius: 4px; font-size: %3px; padding: 0 14px;"
+                                     "}"
+                                     "QPushButton:hover   { background: %4; }"
+                                     "QPushButton:pressed { background: %4; }"
+    )
+                                     .arg(Th::qss(th.surface.highlight), Th::qss(th.text.primary))
+                                     .arg(th.fonts.md)
+                                     .arg(Th::qss(th.surface.highlightStrong));
+    for (auto *w : _panel->findChildren<QPushButton *>("aiConnectBtn"))
+        w->setStyleSheet(aiAccentBtn);
+    for (auto *w : _panel->findChildren<QPushButton *>("aiSaveKeyBtn"))
+        w->setStyleSheet(aiAccentBtn);
+    for (auto *w : _panel->findChildren<QPushButton *>("aiDisconnectBtn"))
+        w->setStyleSheet(aiNeutralBtn);
+    for (auto *w : _panel->findChildren<QLineEdit *>("aiKeyEdit")) {
+        w->setStyleSheet(
+            QString(
+                "QLineEdit {"
+                "  font-size: %1px; color: %2;"
+                "  border: 1px solid %3; border-radius: 4px; padding: 4px 6px;"
+                "}"
+                "QLineEdit:focus { border-color: %4; }"
+            )
+                .arg(th.fonts.md)
+                .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
+        );
+    }
+    for (auto *w : _panel->findChildren<QPushButton *>("aiKeyLink")) {
+        w->setStyleSheet(QString(
+                             "QPushButton {"
+                             "  background: transparent; border: none; padding: 0;"
+                             "  color: %1; font-size: %2px; text-decoration: underline;"
+                             "  text-align: left;"
+                             "}"
+                             "QPushButton:hover { color: %3; }"
+        )
+                             .arg(Th::qss(th.text.link))
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.accent.hover)));
+    }
+    if (_aiError) {
+        _aiError->setStyleSheet(QString("font-size: %1px; color: %2;")
+                                    .arg(th.fonts.caption)
+                                    .arg(Th::qss(th.text.danger)));
     }
 
     // ── Storage page ──────────────────────────────────────────────────

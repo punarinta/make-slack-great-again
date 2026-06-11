@@ -7,6 +7,7 @@
 #include <QWidget>
 #include <QPoint>
 #include <QRect>
+#include <QList>
 
 class QFrame;
 class QLabel;
@@ -16,7 +17,10 @@ class QCheckBox;
 class QRadioButton;
 class QPushButton;
 class QSpinBox;
+class QComboBox;
+class QLineEdit;
 class UpdateChecker;
+class LlmProvider;
 
 class SettingsDialog : public QWidget {
     Q_OBJECT
@@ -44,6 +48,8 @@ private:
     enum class Dir { None, N, NE, E, SE, S, SW, W, NW };
 
     void                   buildPanel();
+    QWidget               *buildAiPage();
+    void                   refreshAiProviders();
     void                   applyTheme();
     void                   saveNotifications();
     void                   loadNotifications();
@@ -70,6 +76,23 @@ private:
 
     // Appearance controls
     QSpinBox *_relevantDays = nullptr;
+
+    // AI assistance controls
+    struct AiProviderRow {
+        LlmProvider *provider      = nullptr;
+        QLabel      *status        = nullptr;
+        QPushButton *oauthBtn      = nullptr;
+        QPushButton *disconnectBtn = nullptr;
+        QLineEdit   *keyEdit       = nullptr;
+        QPushButton *saveKeyBtn    = nullptr;
+        // QPushButton styled as a link: rich-text QLabels rasterize at
+        // fractional pixel offsets and show inconsistent stroke weight on
+        // fractionally-scaled displays; plain widget text is pixel-snapped.
+        QPushButton *keyLink       = nullptr;
+    };
+    QList<AiProviderRow> _aiRows;
+    QComboBox           *_aiDefault = nullptr;
+    QLabel              *_aiError   = nullptr;
 
     // Storage controls
     QLabel *_cacheSize = nullptr;

@@ -74,6 +74,15 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/auth/token_store.cpp
     src/auth/oauth_flow.cpp
 
+    # LLM service (Settings → AI assistance)
+    src/llm/llm_provider.h # header-only QObject — listed so AUTOMOC picks it up
+    src/llm/llm_token_store.cpp
+    src/llm/oauth_loopback.cpp
+    src/llm/llm_provider_base.cpp
+    src/llm/anthropic_provider.cpp
+    src/llm/openai_provider.cpp
+    src/llm/llm_service.cpp
+
     # Backend port
     src/backend/public_backend/public_backend.cpp
     src/backend/public_backend/json_mappers.cpp
