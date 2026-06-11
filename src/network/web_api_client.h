@@ -75,6 +75,7 @@ private:
         QJsonObject jsonBody; // non-empty → POST JSON instead of GET with params
         OnSuccess   onSuccess;
         OnError     onError;
+        int         transportRetries = 0; // retries after a stale-connection failure
     };
 
     void enqueue(PendingCall c);

@@ -62,7 +62,8 @@ public:
 
     void enqueue(const QByteArray &json) { _pending.append(json); }
 
-    int requestCount = 0;
+    int requestCount    = 0;
+    int dropConnections = 0; // close this many requests without responding
 
 private:
     void onNewConnection() {
@@ -87,6 +88,11 @@ private:
                 return; // body not fully received yet
 
             ++requestCount;
+            if (dropConnections > 0) {
+                --dropConnections;
+                sock->close(); // simulates a stale/killed connection
+                return;
+            }
             QByteArray body = _pending.isEmpty() ? R"({"ok":false,"error":"no_response_queued"})"
                                                  : _pending.takeFirst();
 
@@ -111,23 +117,24 @@ private:
 
 // ── TestablePublicBackend ─────────────────────────────────────────────────────
 // Overrides doRefresh so tests control success/failure without real HTTP.
-// Updates _tokenExpiresAt to a far future value on success so that
-// scheduleProactiveRefresh re-arms the timer for hours from now, preventing
+// Updates _tokenExpiresAt to a far future value on success so that the
+// periodic proactive check stays outside the refresh window, preventing
 // an immediate re-fire that would create an infinite processEvents loop.
 
 class TestablePublicBackend : public PublicBackend {
 public:
-    int  doRefreshCallCount = 0;
-    bool doRefreshSucceeds  = true;
+    int           doRefreshCallCount = 0;
+    RefreshResult doRefreshResult    = RefreshResult::Success;
 
     using PublicBackend::PublicBackend;
+    using PublicBackend::RefreshResult;
 
 protected:
-    void doRefresh(std::function<void(bool)> done) override {
+    void doRefresh(std::function<void(RefreshResult)> done) override {
         ++doRefreshCallCount;
-        if (doRefreshSucceeds)
+        if (doRefreshResult == RefreshResult::Success)
             _tokenExpiresAt = QDateTime::currentSecsSinceEpoch() + 43200;
-        done(doRefreshSucceeds);
+        done(doRefreshResult);
     }
 };
 
@@ -253,6 +260,63 @@ TEST_CASE_METHOD(
     CHECK(errorMsg == "token_expired");
 }
 
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "WebApiClient: stale-connection failure is retried once on a fresh connection",
+    "[token_refresh][webclient]"
+) {
+    FakeHttpServer server;
+    server.dropConnections = 1; // first request: connection killed without a response
+    server.enqueue(R"({"ok":true,"value":"hello"})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("token");
+
+    QString resultValue;
+    int     errorCount = 0;
+    client.call(
+        "api.method",
+        QUrlQuery{},
+        [&](QJsonObject r) { resultValue = r.value("value").toString(); },
+        [&](QString) { errorCount++; }
+    );
+
+    REQUIRE(waitFor([&] { return !resultValue.isEmpty(); }));
+    CHECK(resultValue == "hello");
+    CHECK(errorCount == 0);
+    CHECK(server.requestCount == 2); // initial (dropped) + retry
+}
+
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "WebApiClient: persistent connection failure surfaces an error after one retry",
+    "[token_refresh][webclient]"
+) {
+    FakeHttpServer server;
+    server.dropConnections = 2; // both the initial attempt and the retry die
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("token");
+
+    int successCount = 0;
+    int errorCount   = 0;
+    client.call(
+        "api.method",
+        QUrlQuery{},
+        [&](QJsonObject) { successCount++; },
+        [&](QString) { errorCount++; }
+    );
+
+    REQUIRE(waitFor([&] { return errorCount == 1; }));
+    CHECK(successCount == 0);
+    // Our single retry plus possibly one QNAM-internal reconnect attempt —
+    // bounded either way, no endless retry loop.
+    CHECK(server.requestCount >= 2);
+    CHECK(server.requestCount <= 4);
+}
+
 // =============================================================================
 // PublicBackend — proactive refresh scheduling (via TestablePublicBackend)
 // =============================================================================
@@ -308,19 +372,38 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     RefreshFixture,
-    "PublicBackend: proactive doRefresh failure → authState becomes NotLoggedIn",
+    "PublicBackend: proactive doRefresh auth error → authState becomes NotLoggedIn",
     "[token_refresh][backend]"
 ) {
     qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
     TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
     TestablePublicBackend   backend(creds, kTestApp);
-    backend.doRefreshSucceeds = false;
+    backend.doRefreshResult = TestablePublicBackend::RefreshResult::AuthError;
 
     AuthState     lastState = AuthState::LoggedIn;
     rpl::lifetime lt;
     backend.authState() | rpl::on_next([&](AuthState s) { lastState = s; }, lt);
 
     REQUIRE(waitFor([&] { return lastState == AuthState::NotLoggedIn; }));
+}
+
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "PublicBackend: proactive doRefresh transient error → stays LoggedIn, retried later",
+    "[token_refresh][backend]"
+) {
+    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
+    TestablePublicBackend   backend(creds, kTestApp);
+    backend.doRefreshResult = TestablePublicBackend::RefreshResult::TransientError;
+
+    AuthState     lastState = AuthState::NotLoggedIn; // start wrong — subscribe corrects it
+    rpl::lifetime lt;
+    backend.authState() | rpl::on_next([&](AuthState s) { lastState = s; }, lt);
+
+    REQUIRE(waitFor([&] { return backend.doRefreshCallCount > 0; }));
+    waitFor([] { return false; }, 100); // give a wrong NotLoggedIn time to arrive
+    CHECK(lastState == AuthState::LoggedIn);
 }
 
 // =============================================================================
@@ -342,7 +425,7 @@ TEST_CASE_METHOD(
     TokenStore::saveWorkspace(creds);
 
     // Pass refreshUrl so doRefresh posts to our local server instead of Slack.
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.exchange");
+    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
 
     REQUIRE(waitFor([&] { return TokenStore::loadWorkspace("T001").xoxp == "xoxp-new"; }));
     CHECK(TokenStore::loadWorkspace("T001").xoxp == "xoxp-new");
@@ -362,7 +445,7 @@ TEST_CASE_METHOD(
     TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
     TokenStore::saveWorkspace(creds);
 
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.exchange");
+    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
 
     REQUIRE(waitFor([&] {
         return TokenStore::loadWorkspace("T001").refreshToken == "refresh-new";
@@ -385,7 +468,7 @@ TEST_CASE_METHOD(
     TokenStore::saveWorkspace(creds);
 
     const qint64  before = QDateTime::currentSecsSinceEpoch();
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.exchange");
+    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
 
     REQUIRE(waitFor([&] { return TokenStore::loadWorkspace("T001").expiresAt > soonExpiry; }));
     // expiresAt should be approximately now + 43200 (within a few seconds of tolerance)
@@ -406,13 +489,35 @@ TEST_CASE_METHOD(
     TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-bad", soonExpiry};
     TokenStore::saveWorkspace(creds);
 
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.exchange");
+    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
 
     AuthState     lastState = AuthState::LoggedIn;
     rpl::lifetime lt;
     backend.authState() | rpl::on_next([&](AuthState s) { lastState = s; }, lt);
 
     REQUIRE(waitFor([&] { return lastState == AuthState::NotLoggedIn; }));
+}
+
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "PublicBackend doRefresh: network error → stays LoggedIn (transient, retried later)",
+    "[token_refresh][backend][http]"
+) {
+    // Nothing listens on port 1 — the refresh POST fails with a connection
+    // error, which must NOT log the user out (e.g. waking from suspend before
+    // the network is back).
+    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-tok", soonExpiry};
+    TokenStore::saveWorkspace(creds);
+
+    PublicBackend backend(creds, kTestApp, {}, "http://127.0.0.1:1/oauth.v2.access");
+
+    AuthState     lastState = AuthState::NotLoggedIn; // start wrong — subscribe corrects it
+    rpl::lifetime lt;
+    backend.authState() | rpl::on_next([&](AuthState s) { lastState = s; }, lt);
+
+    waitFor([] { return false; }, 300); // let the failed refresh attempt complete
+    CHECK(lastState == AuthState::LoggedIn);
 }
 
 TEST_CASE_METHOD(

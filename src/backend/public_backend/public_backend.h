@@ -21,7 +21,7 @@ class SocketModeRealtime;
 // the workspace has token rotation enabled.
 class PublicBackend : public Backend {
 public:
-    // refreshUrl: override the oauth.v2.exchange endpoint (empty = use Slack's default; tests
+    // refreshUrl: override the oauth.v2.access endpoint (empty = use Slack's default; tests
     // only).
     explicit PublicBackend(
         const TokenStore::Credentials &creds,
@@ -85,15 +85,20 @@ public:
     rpl::producer<Event> events() const override;
 
 protected:
+    // AuthError means Slack definitively rejected the credentials (logout);
+    // TransientError (network down, Slack 5xx) keeps the session alive and the
+    // periodic check retries.
+    enum class RefreshResult { Success, TransientError, AuthError };
+
     // Overridable in tests to intercept the network call.
-    virtual void doRefresh(std::function<void(bool)> done);
+    virtual void doRefresh(std::function<void(RefreshResult)> done);
     qint64       _tokenExpiresAt = 0;
 
 private:
     void
     setupTokenRefresh(const TokenStore::Credentials &creds, const TokenStore::AppConfig &appCfg);
     void triggerRefresh(std::function<void(bool)> done);
-    void scheduleProactiveRefresh();
+    void maybeProactiveRefresh();
 
     QString               _xappToken;
     QString               _teamId;

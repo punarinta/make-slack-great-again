@@ -200,6 +200,20 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
     }
 
     if (reply->error() != QNetworkReply::NoError) {
+        // A kept-alive connection that the server (or a suspend cycle) silently
+        // killed surfaces as RemoteHostClosedError / ProtocolFailure ("HTTP/2
+        // protocol error") on reuse. Drop the cached connections and retry once.
+        const bool staleConnection = reply->error() == QNetworkReply::RemoteHostClosedError ||
+                                     reply->error() == QNetworkReply::ProtocolFailure;
+        if (staleConnection && c.transportRetries == 0) {
+            qDebug() << "WebApiClient: transport error" << reply->errorString() << "on" << c.method
+                     << "— clearing connection cache, retrying";
+            c.transportRetries++;
+            _nam->clearConnectionCache();
+            _queue.prepend(std::move(c));
+            tryNext();
+            return;
+        }
         qWarning() << "WebApiClient error:" << reply->errorString();
         if (c.onError)
             c.onError(reply->errorString());

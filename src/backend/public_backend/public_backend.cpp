@@ -51,17 +51,25 @@ void PublicBackend::setupTokenRefresh(
     _api->setOnTokenExpired(handler);
     _historyApi->setOnTokenExpired(handler);
 
-    // Proactive: refresh before expiry so users never see a token_expired error
+    // Proactive: refresh before expiry so users never see a token_expired error.
+    // A periodic wall-clock check rather than one long single-shot timer: Qt
+    // timers run on the monotonic clock, which pauses during system suspend, so
+    // a multi-hour timer fires hours late after a night of sleep. The periodic
+    // check also retries transient refresh failures automatically.
     if (!_refreshToken.isEmpty()) {
         _proactiveRefreshTimer = new QTimer(_api);
-        _proactiveRefreshTimer->setSingleShot(true);
+        _proactiveRefreshTimer->setInterval(60 * 1000);
         QObject::connect(_proactiveRefreshTimer, &QTimer::timeout, _api, [this]() {
-            triggerRefresh([this](bool success) {
-                if (success)
-                    scheduleProactiveRefresh();
-            });
+            maybeProactiveRefresh();
         });
-        scheduleProactiveRefresh();
+        _proactiveRefreshTimer->start();
+        if (_tokenExpiresAt > 0)
+            qDebug() << "[TokenRefresh] proactive: token expires in"
+                     << (_tokenExpiresAt - QDateTime::currentSecsSinceEpoch())
+                     << "s; refresh window opens 3600 s before that";
+        // First check is deferred: doRefresh is virtual and must not be
+        // dispatched from within the constructor.
+        QTimer::singleShot(0, _api, [this]() { maybeProactiveRefresh(); });
     }
 }
 
@@ -74,46 +82,50 @@ void PublicBackend::triggerRefresh(std::function<void(bool)> done) {
         return;
     }
     _refreshInProgress = true;
-    doRefresh([this](bool success) {
-        qDebug() << "[TokenRefresh] doRefresh completed, success=" << success;
+    doRefresh([this](RefreshResult result) {
+        qDebug() << "[TokenRefresh] doRefresh completed, result="
+                 << (result == RefreshResult::Success          ? "success"
+                     : result == RefreshResult::TransientError ? "transient error"
+                                                               : "auth error");
         _refreshInProgress = false;
         auto waiters       = std::move(_refreshWaiters);
         for (auto &w : waiters)
-            w(success);
-        if (!success)
+            w(result == RefreshResult::Success);
+        if (result == RefreshResult::AuthError) {
+            // Credentials definitively rejected — stop retrying, show login.
+            if (_proactiveRefreshTimer)
+                _proactiveRefreshTimer->stop();
             _authState.force_assign(AuthState::NotLoggedIn);
+        }
+        // TransientError: stay logged in — the periodic check retries within 60 s.
     });
 }
 
-void PublicBackend::scheduleProactiveRefresh() {
-    if (_refreshToken.isEmpty() || _tokenExpiresAt == 0 || !_proactiveRefreshTimer)
+void PublicBackend::maybeProactiveRefresh() {
+    if (_refreshToken.isEmpty() || _tokenExpiresAt == 0 || _refreshInProgress)
         return;
 
-    const qint64 now      = QDateTime::currentSecsSinceEpoch();
-    const qint64 secsLeft = _tokenExpiresAt - now;
+    const qint64 secsLeft = _tokenExpiresAt - QDateTime::currentSecsSinceEpoch();
+    if (secsLeft > 3600)
+        return;
 
-    if (secsLeft <= 3600) {
-        // Token expires within the hour — refresh immediately on the next event loop tick
-        qDebug() << "[TokenRefresh] proactive: token expires in" << secsLeft << "s, refreshing now";
-        _proactiveRefreshTimer->start(0);
-    } else {
-        // Schedule 1 hour before expiry; cap at INT_MAX ms (~24 days, never reached in practice)
-        const qint64 msDelay = qMin((secsLeft - 3600) * 1000LL, (qint64)INT_MAX);
-        qDebug() << "[TokenRefresh] proactive: next refresh in" << (secsLeft - 3600) << "s";
-        _proactiveRefreshTimer->start(static_cast<int>(msDelay));
-    }
+    qDebug() << "[TokenRefresh] proactive: token expires in" << secsLeft << "s, refreshing now";
+    triggerRefresh([](bool) {});
 }
 
-void PublicBackend::doRefresh(std::function<void(bool)> done) {
+void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
     if (_refreshToken.isEmpty()) {
         qDebug() << "[TokenRefresh] no refresh token stored — forcing logout";
-        done(false);
+        done(RefreshResult::AuthError);
         return;
     }
-    qDebug() << "[TokenRefresh] posting oauth.v2.exchange for team" << _teamId;
+    qDebug() << "[TokenRefresh] posting oauth.v2.access for team" << _teamId;
 
+    // oauth.v2.access with grant_type=refresh_token is the rotation refresh
+    // call; oauth.v2.exchange only migrates a legacy token and rejects this
+    // grant.
     const QUrl endpoint{
-        _refreshUrl.isEmpty() ? QStringLiteral("https://slack.com/api/oauth.v2.exchange")
+        _refreshUrl.isEmpty() ? QStringLiteral("https://slack.com/api/oauth.v2.access")
                               : _refreshUrl
     };
     auto           *nam = new QNetworkAccessManager(_api); // _api owns it → cleaned up with backend
@@ -131,15 +143,22 @@ void PublicBackend::doRefresh(std::function<void(bool)> done) {
         nam->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             qWarning() << "[TokenRefresh] network error:" << reply->errorString();
-            done(false);
+            done(RefreshResult::TransientError);
             return;
         }
         const auto raw = reply->readAll();
         auto       obj = QJsonDocument::fromJson(raw).object();
-        qDebug() << "[TokenRefresh] exchange response:" << raw;
+        qDebug() << "[TokenRefresh] refresh response:" << raw;
         if (!obj.value("ok").toBool()) {
-            qWarning() << "[TokenRefresh] Slack error:" << obj.value("error").toString();
-            done(false);
+            const QString err = obj.value("error").toString();
+            qWarning() << "[TokenRefresh] Slack error:" << err;
+            // Server-side hiccups are retried later; anything else (e.g.
+            // invalid_refresh_token) means the credentials are dead.
+            const bool transient = err == QLatin1String("internal_error") ||
+                                   err == QLatin1String("service_unavailable") ||
+                                   err == QLatin1String("fatal_error") ||
+                                   err == QLatin1String("ratelimited");
+            done(transient ? RefreshResult::TransientError : RefreshResult::AuthError);
             return;
         }
         const QString newToken   = obj.value("access_token").toString();
@@ -148,7 +167,7 @@ void PublicBackend::doRefresh(std::function<void(bool)> done) {
                  << "... refresh_token present=" << !newRefresh.isEmpty();
         if (newToken.isEmpty()) {
             qWarning() << "[TokenRefresh] empty access_token in successful response";
-            done(false);
+            done(RefreshResult::TransientError);
             return;
         }
 
@@ -169,7 +188,7 @@ void PublicBackend::doRefresh(std::function<void(bool)> done) {
 
         qDebug() << "[TokenRefresh] token refreshed successfully for team" << _teamId
                  << "next expiry in" << expiresIn << "s";
-        done(true);
+        done(RefreshResult::Success);
     });
 }
 
