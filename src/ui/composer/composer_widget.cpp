@@ -34,6 +34,10 @@
 #include <QMimeData>
 #include <QFileInfo>
 #include <QPixmap>
+#include <QImage>
+#include <QStandardPaths>
+#include <QDir>
+#include <QDateTime>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -105,6 +109,32 @@ static std::pair<int, int> mentionRangeAt(const QTextDocument *doc, int pos) {
     }
     return {-1, -1};
 }
+
+// ── ComposerTextEdit ──────────────────────────────────────────────────────────
+// QTextEdit that routes non-text pastes (clipboard images, copied files) to the
+// composer instead of inserting them inline. Overriding insertFromMimeData
+// covers every paste path — Ctrl+V / ⌘V, Shift+Insert, context menu, middle
+// click — without per-platform shortcut handling.
+
+class ComposerTextEdit : public QTextEdit {
+public:
+    using QTextEdit::QTextEdit;
+
+    // Returns true when the mime data was consumed (attached as a file).
+    std::function<bool(const QMimeData *)> onMediaPaste;
+
+protected:
+    bool canInsertFromMimeData(const QMimeData *source) const override {
+        // Without this, paste is a no-op when the clipboard holds only an image.
+        return source->hasImage() || QTextEdit::canInsertFromMimeData(source);
+    }
+
+    void insertFromMimeData(const QMimeData *source) override {
+        if (onMediaPaste && onMediaPaste(source))
+            return;
+        QTextEdit::insertFromMimeData(source);
+    }
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -444,7 +474,9 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     boxLayout->addWidget(_attachStrip);
 
     // ── Text input ────────────────────────────────────────────────────────────
-    _edit = new QTextEdit(_box);
+    auto *edit         = new ComposerTextEdit(_box);
+    edit->onMediaPaste = [this](const QMimeData *source) { return attachFromMimeData(source); };
+    _edit              = edit;
     _edit->setObjectName("composerEdit");
     _edit->setPlaceholderText(tr("Message #channel"));
     _edit->setMinimumHeight(kMinEditHeight);
@@ -758,6 +790,42 @@ void ComposerWidget::addPendingFile(const QString &filePath) {
         _pendingFiles.append(filePath);
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);
     updateSendState();
+}
+
+bool ComposerWidget::attachFromMimeData(const QMimeData *source) {
+    // Files copied in a file manager arrive as local-file URLs.
+    if (source->hasUrls()) {
+        bool added = false;
+        for (const QUrl &url : source->urls()) {
+            if (url.isLocalFile()) {
+                addPendingFile(url.toLocalFile());
+                added = true;
+            }
+        }
+        if (added)
+            return true;
+    }
+
+    // Raw image data (screenshots, "Copy image" in a browser): save to a temp
+    // PNG so it travels through the same pending-file upload path as any other
+    // attachment.
+    if (source->hasImage()) {
+        const QImage img = qvariant_cast<QImage>(source->imageData());
+        if (img.isNull())
+            return false;
+        QDir          dir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
+        static int    seq  = 0; // distinct names for pastes within the same second
+        const QString name = QString("Pasted image %1-%2.png")
+                                 .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HHmmss"))
+                                 .arg(++seq);
+        const QString path = dir.filePath(name);
+        if (!img.save(path, "PNG"))
+            return false;
+        addPendingFile(path);
+        return true;
+    }
+
+    return false;
 }
 
 void ComposerWidget::clearPendingFiles() {

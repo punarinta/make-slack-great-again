@@ -8,6 +8,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
+#include <QClipboard>
+#include <QDir>
+#include <QFile>
+#include <QUrl>
+#include <QImage>
+#include <QMimeData>
 #include <QTextEdit>
 
 #include "ui/composer/composer_widget.h"
@@ -152,6 +158,74 @@ TEST_CASE("pending files persist across setText calls", "[composer][files]") {
     // setText replaces text but should not clear pending files
     CHECK(c.pendingFiles().size() == 1);
     CHECK(c.currentText() == "new draft text");
+}
+
+// ── Clipboard paste ───────────────────────────────────────────────────────────
+
+TEST_CASE("pasting a clipboard image attaches it as a pending file", "[composer][files][paste]") {
+    ComposerWidget c;
+    QImage         img(4, 4, QImage::Format_ARGB32);
+    img.fill(Qt::red);
+    QApplication::clipboard()->setImage(img);
+
+    editOf(&c)->paste();
+
+    REQUIRE(c.pendingFiles().size() == 1);
+    const QString path = c.pendingFiles().first();
+    CHECK(path.endsWith(".png"));
+    CHECK(QFile::exists(path));
+    CHECK(editOf(&c)->toPlainText().isEmpty()); // nothing inserted into the text
+    QFile::remove(path);
+    QApplication::clipboard()->clear();
+}
+
+TEST_CASE("pasting two clipboard images attaches two distinct files", "[composer][files][paste]") {
+    ComposerWidget c;
+    QImage         img(4, 4, QImage::Format_ARGB32);
+    img.fill(Qt::blue);
+    QApplication::clipboard()->setImage(img);
+
+    editOf(&c)->paste();
+    editOf(&c)->paste();
+
+    REQUIRE(c.pendingFiles().size() == 2);
+    CHECK(c.pendingFiles()[0] != c.pendingFiles()[1]);
+    for (const QString &p : c.pendingFiles())
+        QFile::remove(p);
+    QApplication::clipboard()->clear();
+}
+
+TEST_CASE("pasting plain text still inserts text", "[composer][paste]") {
+    ComposerWidget c;
+    QApplication::clipboard()->setText("just text");
+
+    editOf(&c)->paste();
+
+    CHECK(c.currentText() == "just text");
+    CHECK(c.pendingFiles().isEmpty());
+    QApplication::clipboard()->clear();
+}
+
+TEST_CASE("pasting a copied local file attaches it", "[composer][files][paste]") {
+    // A file copied in a file manager arrives as a local-file URL on the clipboard.
+    const QString tmpPath = QDir::tempPath() + "/msga-paste-test.txt";
+    {
+        QFile f(tmpPath);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("hi");
+    }
+    auto *mime = new QMimeData;
+    mime->setUrls({QUrl::fromLocalFile(tmpPath)});
+    QApplication::clipboard()->setMimeData(mime);
+
+    ComposerWidget c;
+    editOf(&c)->paste();
+
+    REQUIRE(c.pendingFiles().size() == 1);
+    CHECK(c.pendingFiles().first() == tmpPath);
+    CHECK(editOf(&c)->toPlainText().isEmpty());
+    QFile::remove(tmpPath);
+    QApplication::clipboard()->clear();
 }
 
 // ── Draft persistence (public API) ────────────────────────────────────────────

@@ -14,6 +14,7 @@
 
 class QAbstractButton;
 class QFrame;
+class QMimeData;
 class QScrollArea;
 class QTextEdit;
 class QPushButton;
@@ -91,6 +92,9 @@ private:
     void prefixSelectedLines(const QString &prefix, bool ordered = false);
     void applyBlockFormat(const QString &fence);
     void openAttachDialog();
+    // Attach pasted media (clipboard image or copied files) as pending files.
+    // Returns true when consumed; false falls back to a normal text paste.
+    bool attachFromMimeData(const QMimeData *source);
     void openLinkDialog(const QPoint &toolbarGlobalPos);
     void checkMentionPopup();
     // Fill the editor from mrkdwn, rendering <@U…> tokens as "@Name" pills.
