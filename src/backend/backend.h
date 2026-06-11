@@ -45,6 +45,16 @@ public:
             return rpl::lifetime();
         };
     }
+    // Authoritative per-conversation state (conversations.info): last_read and
+    // latest message ts, which conversations.list no longer returns. Used by the
+    // Session's background activity sweep to seed conversation-list relevance.
+    // Default no-op for backends that don't support this.
+    virtual rpl::producer<Conversation> loadConversationInfo(ConversationId) {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
     virtual rpl::producer<MessagePage>
     loadHistory(ConversationId, std::optional<QString> cursor) = 0;
     virtual rpl::producer<MessagePage>
@@ -80,6 +90,13 @@ public:
     // Join a public channel (conversations.join). No-op on unsupported backends.
     virtual void joinChannel(
         ConversationId /*id*/,
+        std::function<void(ConversationId)> /*onSuccess*/ = {},
+        std::function<void(QString)> /*onError*/          = {}
+    ) {}
+    // Open (or resume) a 1:1 DM with a user (conversations.open). No-op on
+    // unsupported backends.
+    virtual void openDm(
+        UserId /*user*/,
         std::function<void(ConversationId)> /*onSuccess*/ = {},
         std::function<void(QString)> /*onError*/          = {}
     ) {}

@@ -11,6 +11,7 @@
 #include <vector>
 
 class ImageCache;
+class PopupTooltip;
 
 // Per-user info cached from setUsers().
 struct UserInfo {
@@ -67,6 +68,10 @@ public:
     int            rowForId(ConversationId id) const;
     // Programmatically select a row; emits conversationSelected.
     void           selectRow(int row);
+    // Select a conversation even if it is currently hidden by the relevance
+    // filter: stamps it visited (making it relevant), expands its section,
+    // then selects its row. Returns false if the id is not in the list at all.
+    bool           selectConversation(ConversationId id);
 
     // Set how many days of activity qualify a conversation as "relevant" (shown inline).
     // Conversations outside this window appear under "N more..." until expanded.
@@ -78,6 +83,8 @@ public:
 signals:
     void conversationSelected(int row);
     void findChannelRequested();
+    // "+" on the Direct messages header — open the browse dialog on People.
+    void browsePeopleRequested();
     void createChannelRequested();
     void starConversationRequested(ConversationId id, bool star);
     void setNotificationLevelRequested(ConversationId id, NotificationLevel level);
@@ -93,20 +100,22 @@ protected:
     void doMouseRelease(QMouseEvent *e) override;
     void doMouseLeave() override;
 
-    int  rowAt(int viewportY) const; // -1 if none
-    void setHovered(int row);
-    void setSelected(int row); // emits conversationSelected (no-op for non-Conv rows)
-    void showChannelContextMenu(int row, QPoint globalPos);
-    void showMpdmContextMenu(int row, QPoint globalPos);
-    void paintRow(QPainter &p, int row, int y) const;
-    void paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
-    void paintAddChannelsRow(QPainter &p, int row, int y) const;
-    void paintShowMoreRow(QPainter &p, int row, int y, int sectionId, int count) const;
-    void updateScrollRange();
+    int   rowAt(int viewportY) const; // -1 if none
+    void  setHovered(int row);
+    void  setSelected(int row); // emits conversationSelected (no-op for non-Conv rows)
+    void  showChannelContextMenu(int row, QPoint globalPos);
+    void  showMpdmContextMenu(int row, QPoint globalPos);
+    void  paintRow(QPainter &p, int row, int y) const;
+    void  paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
+    void  paintAddChannelsRow(QPainter &p, int row, int y) const;
+    void  paintShowMoreRow(QPainter &p, int row, int y, int count) const;
+    // Hit/paint rect of the "+" button on the Direct messages section header.
+    QRect dmPlusRect(int rowY) const;
+    void  updateScrollRange();
     // Rebuild _convs from _allConvs, filtering deactivated / raw-ID DM users.
-    void rebuildFilteredConvs();
+    void  rebuildFilteredConvs();
     // Rebuild _rows from _convs according to current section collapse state.
-    void rebuildRows();
+    void  rebuildRows();
 
     // Avatar helpers — trigger is non-const (starts downloads), draw is const.
     void triggerMissingAvatarDownloads();
@@ -125,16 +134,16 @@ protected:
     // Persisted to QSettings so recency survives restarts.
     QHash<QString, qint64>    _visitedAt;
 
-    void        loadVisitedAt();
-    void        saveVisitedAt();
-    ImageCache *_imgCache = nullptr;
-    UserId      _meUserId;
-    bool        _selfPhantomAway = false;
+    void          loadVisitedAt();
+    void          saveVisitedAt();
+    ImageCache   *_imgCache = nullptr;
+    PopupTooltip *_tooltip  = nullptr; // hover tooltip for the DM header "+"
+    UserId        _meUserId;
+    bool          _selfPhantomAway = false;
 
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;
     bool _showAllChannels   = false; // true after user clicks "N more channels"
-    bool _showAllDms        = false; // true after user clicks "N more DMs"
 
     int            _hovered  = -1;
     int            _selected = -1;

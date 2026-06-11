@@ -970,60 +970,10 @@ void MainWindow::wireConvList() {
         }
     );
     connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
-        if (!_session)
-            return;
-        auto *dlg = new BrowseChannelsDialog(
-            _session->currentConversations(), _session->currentUsers(), _imgCache, this
-        );
-        connect(dlg, &BrowseChannelsDialog::createChannelRequested, this, [this] {
-            if (!_session)
-                return;
-            const auto creds = TokenStore::loadWorkspace(_activeTeamId);
-            auto      *cdlg  = new CreateChannelDialog(creds.teamName, this);
-            if (cdlg->exec() == QDialog::Accepted) {
-                _session->createChannel(
-                    cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
-                        showNetworkError(err);
-                    }
-                );
-            }
-            cdlg->deleteLater();
-        });
-        connect(dlg, &BrowseChannelsDialog::channelActivated, this, [this](ConversationId id) {
-            // Already a member: just navigate
-            const int row = _convList->rowForId(id);
-            if (row >= 0) {
-                _convList->selectRow(row);
-                return;
-            }
-            // Not a member: join first, then navigate when conv list updates
-            if (!_session)
-                return;
-            _session->joinChannel(
-                id,
-                [this](ConversationId joined) {
-                    const int r = _convList->rowForId(joined);
-                    if (r >= 0)
-                        _convList->selectRow(r);
-                },
-                [this](const QString &err) { showNetworkError(err); }
-            );
-        });
-        connect(dlg, &BrowseChannelsDialog::userActivated, this, [this](UserId id) {
-            if (!_session)
-                return;
-            // Find the DM conversation for this user and open it
-            for (const auto &c : _session->currentConversations()) {
-                if (c.kind == ConvKind::Im && c.dmUser == id) {
-                    const int row = _convList->rowForId(c.id);
-                    if (row >= 0)
-                        _convList->selectRow(row);
-                    break;
-                }
-            }
-        });
-        dlg->exec();
-        dlg->deleteLater();
+        openBrowseDialog(0);
+    });
+    connect(_convList, &ConvListWidget::browsePeopleRequested, this, [this] {
+        openBrowseDialog(1);
     });
     connect(_convList, &ConvListWidget::createChannelRequested, this, [this] {
         if (!_session)
@@ -1039,6 +989,56 @@ void MainWindow::wireConvList() {
         }
         dlg->deleteLater();
     });
+}
+
+void MainWindow::openBrowseDialog(int initialTab) {
+    if (!_session)
+        return;
+    auto *dlg = new BrowseChannelsDialog(
+        _session->currentConversations(), _session->currentUsers(), _imgCache, this
+    );
+    if (initialTab == 1)
+        dlg->showPeopleTab();
+    connect(dlg, &BrowseChannelsDialog::createChannelRequested, this, [this] {
+        if (!_session)
+            return;
+        const auto creds = TokenStore::loadWorkspace(_activeTeamId);
+        auto      *cdlg  = new CreateChannelDialog(creds.teamName, this);
+        if (cdlg->exec() == QDialog::Accepted) {
+            _session->createChannel(
+                cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
+                    showNetworkError(err);
+                }
+            );
+        }
+        cdlg->deleteLater();
+    });
+    connect(dlg, &BrowseChannelsDialog::channelActivated, this, [this](ConversationId id) {
+        // Already a member: just navigate (even if hidden by the relevance filter)
+        if (_convList->selectConversation(id))
+            return;
+        // Not a member: join first, then navigate when conv list updates
+        if (!_session)
+            return;
+        _session->joinChannel(
+            id,
+            [this](ConversationId joined) { _convList->selectConversation(joined); },
+            [this](const QString &err) { showNetworkError(err); }
+        );
+    });
+    connect(dlg, &BrowseChannelsDialog::userActivated, this, [this](UserId id) {
+        if (!_session)
+            return;
+        // Open the existing DM — creating it via conversations.open if the user
+        // has never been messaged — and select it even if currently hidden.
+        _session->openDm(
+            id,
+            [this](ConversationId conv) { _convList->selectConversation(conv); },
+            [this](const QString &err) { showNetworkError(err); }
+        );
+    });
+    dlg->exec();
+    dlg->deleteLater();
 }
 
 void MainWindow::connectToSession() {

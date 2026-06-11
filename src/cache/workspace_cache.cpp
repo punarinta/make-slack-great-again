@@ -433,7 +433,8 @@ std::vector<Message> WorkspaceCache::loadMessages(const ConversationId &conv) co
 }
 
 void WorkspaceCache::saveLastConv(const ConversationId &conv, const QString &displayName) {
-    QJsonObject o;
+    // Read-modify-write: meta.json also carries other keys (activity sweep stamp).
+    auto o    = QJsonDocument::fromJson(readFile(metaPath())).object();
     o["conv"] = conv.value;
     o["name"] = displayName;
     writeJson(metaPath(), QJsonDocument(o));
@@ -448,6 +449,17 @@ std::pair<ConversationId, QString> WorkspaceCache::loadLastConv() const {
         return {};
     const auto o = doc.object();
     return {ConversationId{o["conv"].toString()}, o["name"].toString()};
+}
+
+void WorkspaceCache::saveActivitySweepAt(qint64 unixSecs) {
+    auto o       = QJsonDocument::fromJson(readFile(metaPath())).object();
+    o["sweepAt"] = unixSecs;
+    writeJson(metaPath(), QJsonDocument(o));
+}
+
+qint64 WorkspaceCache::loadActivitySweepAt() const {
+    const auto doc = QJsonDocument::fromJson(readFile(metaPath()));
+    return doc.object()["sweepAt"].toVariant().toLongLong();
 }
 
 void WorkspaceCache::saveEmojiMap(const QHash<QString, QString> &map) {

@@ -195,6 +195,45 @@ struct StubBackend : Backend {
         }
     }
 
+    std::vector<UserId> openDmCalls;
+    bool                openDmShouldFail = false;
+    ConversationId      openDmResultId;
+    QString             openDmError;
+    void                openDm(
+                       UserId                              user,
+                       std::function<void(ConversationId)> onSuccess = {},
+                       std::function<void(QString)>        onError   = {}
+                   ) override {
+        openDmCalls.push_back(user);
+        if (openDmShouldFail) {
+            if (onError)
+                onError(openDmError);
+        } else {
+            if (onSuccess)
+                onSuccess(openDmResultId);
+        }
+    }
+
+    // conversations.info results for the DM activity sweep; missing id = error
+    // (producer completes empty, like the real backend on failure).
+    QHash<QString, Conversation> infoResults;
+    QList<QString>               infoRequested;
+    rpl::producer<Conversation>  loadConversationInfo(ConversationId id) override {
+        infoRequested.append(id.value);
+        const auto it = infoResults.constFind(id.value);
+        if (it == infoResults.constEnd())
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        Conversation result = *it;
+        return [result](auto consumer) mutable {
+            consumer.put_next(std::move(result));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+
     void fireEvent(Event e) { _events.fire(std::move(e)); }
 };
 
@@ -1325,4 +1364,136 @@ TEST_CASE_METHOD(
     session->errors() | rpl::on_next([&](const QString &e) { hubErr = e; }, lt);
     session->joinChannel(ConversationId{"C_GHOST"});
     CHECK(hubErr == "channel_not_found");
+}
+
+// ── DM activity sweep (conversations.info enrichment) ─────────────────────────
+// conversations.list no longer returns last_read/latest, so Session fetches
+// them for IMs/MPDMs via loadConversationInfo after each conversations merge.
+// Invariants:
+//   • only IMs and MPDMs are fetched — channels get stamps through normal use
+//   • only the activity cursors merge; unread from the info response is ignored
+//   • cursors survive an API reload (max-merge) and persist to cache
+//   • the sweep is throttled across loadConversations() re-fires
+
+static const Conversation kDmBob{
+    .id       = ConversationId{"D1"},
+    .kind     = ConvKind::Im,
+    .name     = "U2",
+    .isMember = true,
+    .dmUser   = UserId{"U2"},
+};
+
+static const Conversation kMpdm{
+    .id       = ConversationId{"G1"},
+    .kind     = ConvKind::Mpim,
+    .name     = "mpdm-alice--bob-1",
+    .isMember = true,
+};
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity sweep fetches conversations.info for DMs and MPDMs only",
+    "[session][sweep]"
+) {
+    stub->_convs = std::vector<Conversation>{kGeneral, kRandom, kDmBob, kMpdm};
+    CHECK(stub->infoRequested.contains("D1"));
+    CHECK(stub->infoRequested.contains("G1"));
+    CHECK_FALSE(stub->infoRequested.contains("C1"));
+    CHECK_FALSE(stub->infoRequested.contains("C2"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity sweep merges last_read/latest cursors but not unread",
+    "[session][sweep]"
+) {
+    Conversation info = kMpdm;
+    info.lastRead     = "1700000000.000100";
+    info.latestTs     = "1700000005.000200";
+    info.unread       = 7; // mapper fallback may fabricate this — must be ignored
+    stub->infoResults.insert("G1", info);
+
+    stub->_convs = std::vector<Conversation>{kGeneral, kMpdm};
+
+    const auto *c = session->findConversation(ConversationId{"G1"});
+    REQUIRE(c != nullptr);
+    CHECK(c->lastRead == "1700000000.000100");
+    CHECK(c->latestTs == "1700000005.000200");
+    CHECK(c->unread == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "API reload preserves enriched activity cursors", "[session][sweep]"
+) {
+    Conversation info = kDmBob;
+    info.lastRead     = "1700000000.000100";
+    info.latestTs     = "1700000005.000200";
+    stub->infoResults.insert("D1", info);
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob};
+
+    // Second list response: cursors absent again (Slack dropped these fields).
+    // The sweep is now throttled, so only the max-merge can preserve them.
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob};
+
+    const auto *c = session->findConversation(ConversationId{"D1"});
+    REQUIRE(c != nullptr);
+    CHECK(c->lastRead == "1700000000.000100");
+    CHECK(c->latestTs == "1700000005.000200");
+}
+
+TEST_CASE_METHOD(SessionFixture, "activity sweep is throttled across reloads", "[session][sweep]") {
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob};
+    REQUIRE(stub->infoRequested.count("D1") == 1);
+
+    // The completed sweep stamped the cache; a reload must not re-fetch.
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob, kMpdm};
+    CHECK(stub->infoRequested.count("D1") == 1);
+    CHECK(stub->infoRequested.count("G1") == 0);
+}
+
+TEST_CASE_METHOD(SessionFixture, "activity sweep analyzes DMs before MPDMs", "[session][sweep]") {
+    stub->_convs = std::vector<Conversation>{kMpdm, kGeneral, kDmBob};
+    REQUIRE(stub->infoRequested.size() == 2);
+    CHECK(stub->infoRequested[0] == "D1");
+    CHECK(stub->infoRequested[1] == "G1");
+}
+
+// ── openDm ────────────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "openDm short-circuits to an existing IM conversation", "[session][openDm]"
+) {
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob};
+    ConversationId got;
+    session->openDm(UserId{"U2"}, [&](ConversationId id) { got = id; });
+    CHECK(got == ConversationId{"D1"});
+    CHECK(stub->openDmCalls.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "openDm creates and inserts a new IM conversation", "[session][openDm]"
+) {
+    stub->openDmResultId = ConversationId{"D_NEW"};
+    ConversationId got;
+    session->openDm(UserId{"U9"}, [&](ConversationId id) { got = id; });
+
+    REQUIRE(stub->openDmCalls.size() == 1);
+    CHECK(stub->openDmCalls[0] == UserId{"U9"});
+    CHECK(got == ConversationId{"D_NEW"});
+
+    const auto *c = session->findConversation(ConversationId{"D_NEW"});
+    REQUIRE(c != nullptr);
+    CHECK(c->kind == ConvKind::Im);
+    CHECK(c->isMember);
+    REQUIRE(c->dmUser.has_value());
+    CHECK(*c->dmUser == UserId{"U9"});
+}
+
+TEST_CASE_METHOD(SessionFixture, "openDm error fires onError callback", "[session][openDm]") {
+    stub->openDmShouldFail = true;
+    stub->openDmError      = "user_not_found";
+    QString gotErr;
+    session->openDm(UserId{"U_GHOST"}, {}, [&](const QString &err) { gotErr = err; });
+    CHECK(gotErr == "user_not_found");
+    CHECK(session->findConversation(ConversationId{"D_NEW"}) == nullptr);
 }

@@ -32,6 +32,9 @@ public:
         QWidget                         *parent = nullptr
     );
 
+    // Switch to the People tab (e.g. when opened from the DM section "+").
+    void showPeopleTab() { selectTab(1); }
+
 signals:
     void createChannelRequested();
     void channelActivated(ConversationId id);

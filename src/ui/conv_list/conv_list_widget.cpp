@@ -22,12 +22,15 @@
 #include <QSettings>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <algorithm>
 #include "ui/context_menu/context_menu.h"
+#include "ui/popup_tooltip/popup_tooltip.h"
 
 ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     : VirtualListWidget(parent), _imgCache(imgCache) {
     loadVisitedAt();
     viewport()->setCursor(Qt::PointingHandCursor);
+    _tooltip = new PopupTooltip(this);
 
     _selAnim.setDuration(140);
     _selAnim.setEasingCurve(QEasingCurve::OutCubic);
@@ -107,6 +110,25 @@ void ConvListWidget::selectRow(int row) {
     setSelected(row);
 }
 
+bool ConvListWidget::selectConversation(ConversationId id) {
+    const auto it = std::find_if(_convs.begin(), _convs.end(), [&](const Conversation &c) {
+        return c.id == id;
+    });
+    if (it == _convs.end())
+        return false;
+    const bool isDm = (it->kind == ConvKind::Im || it->kind == ConvKind::Mpim);
+    (isDm ? _dmsCollapsed : _channelsCollapsed) = false;
+    // Stamp before rebuilding so the relevance filter keeps the row visible.
+    _visitedAt[id.value]                        = QDateTime::currentSecsSinceEpoch();
+    saveVisitedAt();
+    rebuildRows();
+    const int row = rowForId(id);
+    if (row < 0)
+        return false;
+    selectRow(row);
+    return true;
+}
+
 void ConvListWidget::setUsers(const std::vector<User> &users) {
     _userInfos.clear();
     _usernameToId.clear();
@@ -174,17 +196,29 @@ void ConvListWidget::rebuildRows() {
     //   - it has unread messages, OR
     //   - it is currently selected, OR
     //   - the user visited it within the window (_visitedAt stamp >= cutoff), OR
-    //   - it has never been stamped at all (new/unknown channel shown by default until
-    //     the background info-fetch populates its stamp from last_read).
+    //   - it had server-side activity (latest message or read cursor — from
+    //     Session's background conversations.info sweep, cache, or realtime
+    //     events) within the window, OR
+    //   - it is a channel nothing is known about yet (channels are not swept,
+    //     so an unknown one is shown by default until it earns a stamp).
+    // DMs and MPDMs with no data start hidden and pop in once the sweep
+    // analyzes them and finds recent activity.
     auto isRelevant = [&](const Conversation &c) -> bool {
         if (c.unread > 0)
             return true;
         if (c.id == _selectedId)
             return true;
         const qint64 stamp = _visitedAt.value(c.id.value, -1);
-        if (stamp < 0)
-            return true; // never stamped → show by default
-        return stamp >= cutoff;
+        if (stamp >= cutoff)
+            return true;
+        // Slack ts strings are zero-padded fixed-width, so lexicographic max
+        // picks the most recent of the two cursors.
+        const QString &activity = std::max(c.latestTs, c.lastRead);
+        if (!activity.isEmpty())
+            return qint64(activity.toDouble()) >= cutoff;
+        if (stamp >= 0)
+            return false; // stale visit stamp and no newer activity
+        return c.kind != ConvKind::Im && c.kind != ConvKind::Mpim;
     };
 
     std::vector<int> visCh, hidCh, visDm, hidDm;
@@ -209,17 +243,13 @@ void ConvListWidget::rebuildRows() {
     }
 
     // ── Direct messages section ───────────────────────────────────────
+    // No "N more" expander here: hidden DMs/MPDMs can number in the hundreds,
+    // so they are reached through the People tab of the browse dialog (the "+"
+    // on the section header) instead of being dumped into the list.
     _rows.push_back({RowKind::SectionHeader, -1, 1});
     if (!_dmsCollapsed) {
         for (int i : visDm)
             _rows.push_back({RowKind::Conv, i, -1});
-        if (!hidDm.empty()) {
-            if (_showAllDms)
-                for (int i : hidDm)
-                    _rows.push_back({RowKind::Conv, i, -1});
-            else
-                _rows.push_back({RowKind::ShowMore, -1, 1, (int)hidDm.size()});
-        }
     }
 
     // Re-map selection to new visual row indices.
@@ -322,6 +352,7 @@ void ConvListWidget::resizeEvent(QResizeEvent *event) {
 }
 
 void ConvListWidget::wheelEvent(QWheelEvent *event) {
+    _tooltip->hide(); // rows shift under the cursor; reappears on next move
     auto        *vsb = verticalScrollBar();
     const QPoint px  = event->pixelDelta();
     if (!px.isNull()) {
@@ -390,7 +421,21 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
         viewport()->setCursor(Qt::SizeVerCursor);
     else
         viewport()->setCursor(Qt::PointingHandCursor);
-    setHovered(rowAt(e->pos().y()));
+    const int row = rowAt(e->pos().y());
+    setHovered(row);
+
+    // Tooltip for the "+" on the Direct messages header.
+    bool onPlus = false;
+    if (row >= 0 && _rows[row].kind == RowKind::SectionHeader && _rows[row].sectionId == 1) {
+        const QRect r = dmPlusRect(row * kRowH - verticalScrollBar()->value());
+        onPlus        = r.contains(e->pos());
+        if (onPlus && !_tooltip->isVisible())
+            _tooltip->showAbove(
+                tr("Open a direct message"), QRect(viewport()->mapToGlobal(r.topLeft()), r.size())
+            );
+    }
+    if (!onPlus)
+        _tooltip->hide();
 }
 
 static void buildNotifySection(
@@ -461,6 +506,7 @@ void ConvListWidget::showMpdmContextMenu(int row, QPoint globalPos) {
 }
 
 void ConvListWidget::doMousePress(QMouseEvent *e) {
+    _tooltip->hide();
     if (e->button() == Qt::RightButton) {
         const int row = rowAt(e->pos().y());
         if (row >= 0 && _rows[row].kind == RowKind::Conv) {
@@ -491,6 +537,11 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     const auto &ri = _rows[row];
     switch (ri.kind) {
     case RowKind::SectionHeader:
+        if (ri.sectionId == 1 &&
+            dmPlusRect(row * kRowH - verticalScrollBar()->value()).contains(e->pos())) {
+            emit browsePeopleRequested();
+            break;
+        }
         if (ri.sectionId == 0)
             _channelsCollapsed = !_channelsCollapsed;
         else
@@ -508,10 +559,7 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
         break;
     }
     case RowKind::ShowMore:
-        if (ri.sectionId == 0)
-            _showAllChannels = true;
-        else
-            _showAllDms = true;
+        _showAllChannels = true;
         rebuildRows();
         break;
     }
@@ -528,6 +576,7 @@ void ConvListWidget::doMouseRelease(QMouseEvent *e) {
 
 void ConvListWidget::doMouseLeave() {
     setHovered(-1);
+    _tooltip->hide();
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -647,6 +696,21 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     const QFontMetrics fm(font);
     const QString      label = (sectionId == 0) ? tr("Channels") : tr("Direct messages");
     p.drawText(x, y + (kRowH - fm.height()) / 2 + fm.ascent(), label);
+
+    // DM section header: a "+" on hover opens the browse dialog on People.
+    if (sectionId == 1 && hovered) {
+        static const QPixmap kPlusDim =
+            svgPixmap(":/ui/plus.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
+        const QRect r = dmPlusRect(y);
+        p.drawPixmap(r.topLeft(), kPlusDim);
+    }
+}
+
+QRect ConvListWidget::dmPlusRect(int rowY) const {
+    // Right-aligned inside the header row, vertically centered. Slightly inset
+    // from the scroll thumb gutter.
+    const int x = viewport()->width() - kPadH - kIconSize;
+    return QRect(x, rowY + (kRowH - kIconSize) / 2, kIconSize, kIconSize);
 }
 
 void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
@@ -674,7 +738,7 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     p.drawText(kPadH + kGroupIndent + kIconSize + 6, textY, tr("Add channels"));
 }
 
-void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int sectionId, int count) const {
+void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) const {
     const bool hovered = (row == _hovered);
     if (hovered)
         p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
@@ -691,9 +755,7 @@ void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int sectionId
     const int          leftX = kPadH + kGroupIndent;
 
     const QString label =
-        (sectionId == 0)
-            ? tr("%1 more %2").arg(count).arg(count == 1 ? tr("channel") : tr("channels"))
-            : tr("%1 more %2").arg(count).arg(count == 1 ? tr("DM") : tr("DMs"));
+        tr("%1 more %2").arg(count).arg(count == 1 ? tr("channel") : tr("channels"));
     p.drawText(leftX, textY, label);
 }
 
@@ -709,7 +771,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         return;
     }
     if (ri.kind == RowKind::ShowMore) {
-        paintShowMoreRow(p, row, y, ri.sectionId, ri.count);
+        paintShowMoreRow(p, row, y, ri.count);
         return;
     }
 

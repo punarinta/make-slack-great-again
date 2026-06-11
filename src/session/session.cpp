@@ -7,6 +7,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <algorithm>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMimeDatabase>
@@ -67,11 +68,19 @@ void Session::start() {
                         // API can't read — local state wins.
                         if (old.isMuted)
                             c.isMuted = true;
+                        // last_read / latest were dropped from conversations.list
+                        // responses; keep the newest value we know (cached from a
+                        // previous run's activity sweep or realtime events).
+                        if (old.lastRead > c.lastRead)
+                            c.lastRead = old.lastRead;
+                        if (old.latestTs > c.latestTs)
+                            c.latestTs = old.latestTs;
                         break;
                     }
                 }
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
+                enrichDmActivity();
                 // Emoji load is deferred to here so it doesn't queue ahead of
                 // conversations/users. Cache serves emojis until the refresh
                 // arrives and the result is written back to cache.
@@ -232,6 +241,67 @@ void Session::start() {
             },
             _lifetime
         );
+}
+
+void Session::enrichDmActivity() {
+    // conversations.list no longer returns last_read / latest, so without extra
+    // calls we cannot tell how old a DM or MPDM is. Fetch conversations.info for
+    // each of them on the backend's low-priority queue, merge only the activity
+    // fields, and persist — so the cost is one sweep per kActivitySweepGapSecs
+    // across restarts. Realtime events keep latestTs fresh in between; channels
+    // are excluded since they get visit/unread stamps through normal use.
+    constexpr qint64 kActivitySweepGapSecs = qint64(12) * 3600;
+    const qint64     now                   = QDateTime::currentSecsSinceEpoch();
+    if (now - _cache->loadActivitySweepAt() < kActivitySweepGapSecs)
+        return;
+
+    // Unanalyzed DMs/MPDMs start hidden in the conversation list and pop in as
+    // their info arrives, so sweep 1:1 DMs first — they matter more — and the
+    // lower-priority MPDMs after.
+    std::vector<ConversationId> targets;
+    for (const auto &c : _conversations.current())
+        if (c.kind == ConvKind::Im)
+            targets.push_back(c.id);
+    for (const auto &c : _conversations.current())
+        if (c.kind == ConvKind::Mpim)
+            targets.push_back(c.id);
+    if (targets.empty())
+        return;
+
+    qDebug() << "[ActivitySweep] fetching conversations.info for" << targets.size() << "DMs/MPDMs";
+    auto remaining = std::make_shared<int>(int(targets.size()));
+    for (const auto &id : targets) {
+        _backend->loadConversationInfo(id) |
+            rpl::on_next_done(
+                [this, id](Conversation info) {
+                    // Merge only the activity cursors. The info response lacks
+                    // fields the list provides (e.g. MPDM members), and its
+                    // unread fallback could fabricate badges — leave the rest
+                    // of the local state alone.
+                    auto convs = _conversations.current();
+                    for (auto &c : convs) {
+                        if (c.id != id)
+                            continue;
+                        if (info.lastRead > c.lastRead)
+                            c.lastRead = info.lastRead;
+                        if (info.latestTs > c.latestTs)
+                            c.latestTs = info.latestTs;
+                        break;
+                    }
+                    _conversations = std::move(convs);
+                },
+                [this, now, remaining] {
+                    // Fires on success and error alike — the sweep is complete
+                    // when every call has settled.
+                    if (--*remaining > 0)
+                        return;
+                    _cache->saveConversations(_conversations.current());
+                    _cache->saveActivitySweepAt(now);
+                    qDebug() << "[ActivitySweep] done";
+                },
+                _lifetime
+            );
+    }
 }
 
 rpl::producer<std::vector<Conversation>> Session::conversations() const {
@@ -606,6 +676,47 @@ void Session::joinChannel(
                     [this](std::vector<Conversation> convs) { _conversations = std::move(convs); },
                     _lifetime
                 );
+            if (onSuccess)
+                onSuccess(convId);
+        },
+        [this, onError](QString err) {
+            if (onError)
+                onError(err);
+            else
+                _errorHub.fire_copy(err);
+        }
+    );
+}
+
+void Session::openDm(
+    UserId user, std::function<void(ConversationId)> onSuccess, std::function<void(QString)> onError
+) {
+    for (const auto &c : _conversations.current()) {
+        if (c.kind == ConvKind::Im && c.dmUser == user) {
+            if (onSuccess)
+                onSuccess(c.id);
+            return;
+        }
+    }
+    _backend->openDm(
+        user,
+        [this, user, onSuccess](ConversationId convId) {
+            // Insert a minimal conversation so the UI can select it right away;
+            // the next conversations.list refresh fills in the rest.
+            auto       convs = _conversations.current();
+            const bool known = std::any_of(convs.begin(), convs.end(), [&](const Conversation &c) {
+                return c.id == convId;
+            });
+            if (!known) {
+                Conversation c;
+                c.id       = convId;
+                c.kind     = ConvKind::Im;
+                c.name     = user.value;
+                c.isMember = true;
+                c.dmUser   = user;
+                convs.push_back(std::move(c));
+                _conversations = std::move(convs);
+            }
             if (onSuccess)
                 onSuccess(convId);
         },

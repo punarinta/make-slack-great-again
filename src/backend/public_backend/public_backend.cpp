@@ -25,10 +25,12 @@ PublicBackend::PublicBackend(
 )
     : _xappToken(xappToken), _teamId(creds.teamId), _refreshToken(creds.refreshToken),
       _refreshUrl(refreshUrl), _api(new WebApiClient(nullptr)),
-      _historyApi(new WebApiClient(nullptr)) {
+      _historyApi(new WebApiClient(nullptr)), _infoApi(new WebApiClient(nullptr)) {
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
-    // Pre-warm TLS so the first API calls skip the handshake latency.
+    _infoApi->setToken(creds.xoxp);
+    // Pre-warm TLS so the first API calls skip the handshake latency. The info
+    // client is not pre-warmed: its background sweep starts well after launch.
     _api->preWarm("slack.com");
     _historyApi->preWarm("slack.com");
 
@@ -50,6 +52,7 @@ void PublicBackend::setupTokenRefresh(
     };
     _api->setOnTokenExpired(handler);
     _historyApi->setOnTokenExpired(handler);
+    _infoApi->setOnTokenExpired(handler);
 
     // Proactive: refresh before expiry so users never see a token_expired error.
     // A periodic wall-clock check rather than one long single-shot timer: Qt
@@ -176,6 +179,7 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
         // Update in-memory state
         _api->setToken(newToken);
         _historyApi->setToken(newToken);
+        _infoApi->setToken(newToken);
         _refreshToken          = newRefresh.isEmpty() ? _refreshToken : newRefresh;
         const qint64 expiresIn = obj.value("expires_in").toInteger(0);
         if (expiresIn > 0)
@@ -198,6 +202,7 @@ PublicBackend::~PublicBackend() {
     if (_sharedRealtime)
         _sharedRealtime->removeSink(&_events);
     delete _realtime;
+    delete _infoApi;
     delete _historyApi;
     delete _api;
 }
@@ -278,6 +283,26 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
             },
             [consumer](QString err) mutable {
                 qWarning() << "loadConversations error:" << err;
+                consumer.put_done();
+            }
+        );
+        return rpl::lifetime();
+    };
+}
+
+rpl::producer<Conversation> PublicBackend::loadConversationInfo(ConversationId id) {
+    return [this, id](auto consumer) mutable {
+        QUrlQuery params;
+        params.addQueryItem("channel", id.value);
+        _infoApi->call(
+            "conversations.info",
+            params,
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toConversation(resp.value("channel").toObject()));
+                consumer.put_done();
+            },
+            [consumer, id](QString err) mutable {
+                qWarning() << "loadConversationInfo error:" << id.value << err;
                 consumer.put_done();
             }
         );
@@ -612,6 +637,26 @@ void PublicBackend::joinChannel(
         },
         [onError](QString e) {
             qWarning() << "joinChannel error:" << e;
+            if (onError)
+                onError(e);
+        }
+    );
+}
+
+void PublicBackend::openDm(
+    UserId user, std::function<void(ConversationId)> onSuccess, std::function<void(QString)> onError
+) {
+    QJsonObject body;
+    body["users"] = user.value;
+    _api->postJson(
+        "conversations.open",
+        body,
+        [onSuccess](QJsonObject resp) {
+            if (onSuccess)
+                onSuccess(ConversationId{resp.value("channel").toObject().value("id").toString()});
+        },
+        [onError](QString e) {
+            qWarning() << "openDm error:" << e;
             if (onError)
                 onError(e);
         }

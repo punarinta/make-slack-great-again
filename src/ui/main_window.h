@@ -102,6 +102,9 @@ private:
     void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 
+    // "Find a channel" dialog; initialTab 0 = Channels, 1 = People.
+    void openBrowseDialog(int initialTab);
+
     // Error banner — shown briefly when a network error occurs with no UI handler.
     void showNetworkError(const QString &message);
 

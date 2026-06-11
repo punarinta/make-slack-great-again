@@ -48,6 +48,7 @@ public:
     rpl::producer<bool>                      loadPresence(UserId) override;
     rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<User>                      loadBotInfo(UserId botId) override;
+    rpl::producer<Conversation>              loadConversationInfo(ConversationId) override;
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
     rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) override;
@@ -73,6 +74,11 @@ public:
     ) override;
     void joinChannel(
         ConversationId                      id,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override;
+    void openDm(
+        UserId                              user,
         std::function<void(ConversationId)> onSuccess = {},
         std::function<void(QString)>        onError   = {}
     ) override;
@@ -119,6 +125,7 @@ private:
     TokenStore::AppConfig _appCfg;
     WebApiClient         *_api;
     WebApiClient         *_historyApi; // dedicated client for loadHistory/loadThread
+    WebApiClient         *_infoApi; // low-priority client for background conversations.info sweeps
     SocketModeRealtime   *_realtime              = nullptr; // owned (private connection)
     SocketModeRealtime   *_sharedRealtime        = nullptr; // non-owning (app-level shared)
     QTimer               *_proactiveRefreshTimer = nullptr;

@@ -33,6 +33,11 @@ public:
     void saveLastConv(const ConversationId &conv, const QString &displayName);
     std::pair<ConversationId, QString> loadLastConv() const;
 
+    // When the background conversations.info activity sweep last completed
+    // (Unix seconds; 0 = never). Used to throttle the sweep across restarts.
+    void   saveActivitySweepAt(qint64 unixSecs);
+    qint64 loadActivitySweepAt() const;
+
     void                    saveEmojiMap(const QHash<QString, QString> &map);
     QHash<QString, QString> loadEmojiMap() const;
 

@@ -89,6 +89,14 @@ public:
         std::function<void(ConversationId)> onSuccess = {},
         std::function<void(QString)>        onError   = {}
     );
+    // Open a 1:1 DM with a user. Short-circuits to the existing IM conversation
+    // when one is known; otherwise calls conversations.open and inserts the new
+    // conversation so the UI can select it immediately.
+    void openDm(
+        UserId                              user,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    );
     // Update notification level locally (no public API for per-channel prefs).
     void setNotificationLevel(ConversationId conv, NotificationLevel level);
 
@@ -131,6 +139,11 @@ public:
     Backend *backend() const;
 
 private:
+    // Background conversations.info sweep over IMs/MPDMs that refreshes their
+    // last_read/latest cursors (used for conversation-list relevance). Throttled
+    // via the workspace cache; called after each loadConversations() merge.
+    void enrichDmActivity();
+
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
 
