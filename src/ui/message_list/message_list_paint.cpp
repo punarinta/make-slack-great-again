@@ -1170,7 +1170,7 @@ QRect MessageListWidget::toolbarButtonRect(int btn, int rowTop, int rowH) const 
 }
 
 int MessageListWidget::toolbarButtonAt(const QPoint &viewportPos) const {
-    if (_hoveredRow < 0)
+    if (_hoveredRow < 0 || _hoveredRow >= (int)_tops.size())
         return -1;
     const int scrollY = verticalScrollBar()->value();
     const int rowTop  = _tops[_hoveredRow] - scrollY;

@@ -145,7 +145,13 @@ void MessageListWidget::clear() {
     _totalH    = 0;
     _showIntro = false;
     _hoveredLinkUrl.clear();
-    _hoveredLinkRow = -1;
+    _hoveredLinkRow  = -1;
+    _hoveredRow      = -1;
+    _hoveredToolBtn  = -1;
+    _hoveredAttach   = {-1, -1};
+    _hoveredReplyRow = -1;
+    _hoveredFile     = {-1, -1};
+    _hoveredFileBtn  = -1;
     _convName.clear();
     _convDescription.clear();
     _selAnchor   = {};
@@ -389,7 +395,13 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _eventLifetime = rpl::lifetime();
     _items.clear();
     _tops.clear();
-    _totalH = 0;
+    _totalH          = 0;
+    _hoveredRow      = -1;
+    _hoveredToolBtn  = -1;
+    _hoveredAttach   = {-1, -1};
+    _hoveredReplyRow = -1;
+    _hoveredFile     = {-1, -1};
+    _hoveredFileBtn  = -1;
     verticalScrollBar()->setRange(0, 0);
     viewport()->update();
 
@@ -904,7 +916,7 @@ bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {
 
 bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
     const int btn = toolbarButtonAt(pos);
-    if (btn < 0 || _hoveredRow < 0)
+    if (btn < 0 || _hoveredRow < 0 || _hoveredRow >= (int)_tops.size())
         return false;
 
     const auto  &msg       = _items[_hoveredRow].msg;
@@ -1422,7 +1434,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // row's top edge, so without this the hover would flip to the row above
     // the moment the cursor enters the card's upper half.
     int newHoveredRow = -1;
-    if (_hoveredRow >= 0) {
+    if (_hoveredRow >= 0 && _hoveredRow < (int)_tops.size()) {
         const int   rowTop = _tops[_hoveredRow] - scrollY;
         const int   rh     = rowHeight(_hoveredRow);
         const bool  inRow  = pos.y() >= rowTop && pos.y() < rowTop + rh;
@@ -1681,6 +1693,13 @@ void MessageListWidget::handleEvent(const Event &e) {
         if (i < 0)
             return;
         _items.erase(_items.begin() + i);
+        // Row indices shifted — drop hover state; the next mouse move recomputes it.
+        _hoveredRow      = -1;
+        _hoveredToolBtn  = -1;
+        _hoveredAttach   = {-1, -1};
+        _hoveredReplyRow = -1;
+        _hoveredFile     = {-1, -1};
+        _hoveredFileBtn  = -1;
         rebuildLayout();
         viewport()->update();
 
