@@ -212,6 +212,26 @@ TEST_CASE_METHOD(CacheFixture, "lastConv round-trip", "[cache][meta]") {
     CHECK(name == "general");
 }
 
+// ── MeUserId ──────────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(CacheFixture, "loadMeUserId returns empty when no file", "[cache][meta]") {
+    CHECK(cache.loadMeUserId().value.isEmpty());
+}
+
+TEST_CASE_METHOD(CacheFixture, "meUserId round-trip", "[cache][meta]") {
+    cache.saveMeUserId(UserId{"U777"});
+    CHECK(cache.loadMeUserId() == UserId{"U777"});
+}
+
+TEST_CASE_METHOD(CacheFixture, "meUserId does not clobber other meta keys", "[cache][meta]") {
+    cache.saveLastConv(ConversationId{"C42"}, "general");
+    cache.saveMeUserId(UserId{"U777"});
+    auto [conv, name] = cache.loadLastConv();
+    CHECK(conv == ConversationId{"C42"});
+    CHECK(name == "general");
+    CHECK(cache.loadMeUserId() == UserId{"U777"});
+}
+
 // ── Images ────────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "image round-trip", "[cache][img]") {

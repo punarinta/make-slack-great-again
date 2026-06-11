@@ -30,9 +30,17 @@ void Session::start() {
             _users = std::move(users);
         _botUsers = _cache->loadBots();
         _emojiMap = _cache->loadEmojiMap();
+        // Seed our own user id from cache so optimistic sends carry the right
+        // author (avatar/name, and ghost removal on the realtime echo) even
+        // before auth.test answers — or if it fails this run entirely.
+        _meUserId = _cache->loadMeUserId();
     }
 
     _backend->connectRealtime();
+
+    // Resolve our own user id first — optimistic sends and own-message
+    // detection depend on it.
+    fetchMe();
 
     // Poll rich self-presence so the UI can show how the user appears to
     // others; there is no realtime event for your own connection count.
@@ -112,12 +120,17 @@ void Session::start() {
                                             ids.push_back(u.id);
                                     _backend->subscribePresence(std::move(ids));
 
-                                    // The self-presence call made at start() can race the
-                                    // startup token refresh and come back empty; users.list
-                                    // landing proves the token works, so re-poll now (ahead of
-                                    // the per-DM polls below, which share the request queue).
+                                    // The self-presence and auth.test calls made at start() can
+                                    // race the startup token refresh and come back empty;
+                                    // users.list landing proves the token works, so retry now
+                                    // (ahead of the per-DM polls below, which share the request
+                                    // queue). A session without meUserId ghosts every send: the
+                                    // optimistic copy has no author and is never reconciled with
+                                    // its realtime echo, so the message shows up twice.
                                     if (!_selfPresence.current().loaded)
                                         refreshSelfPresence();
+                                    if (_meUserId.value.isEmpty())
+                                        fetchMe();
 
                                     // Poll current presence for every DM conversation partner so
                                     // the list shows the right indicator without waiting for the
@@ -128,17 +141,6 @@ void Session::start() {
                                 },
                                 _lifetime
                             );
-
-    _backend->loadMe() | rpl::on_next(
-                             [this](UserId id) {
-                                 setMe(std::move(id));
-                                 // Users may already be loaded (from cache); pick up admin flag
-                                 // immediately.
-                                 if (const User *u = findUser(_meUserId))
-                                     _meIsAdmin = u->isAdmin;
-                             },
-                             _lifetime
-                         );
 
     // Wire the backend event firehose through our hub so Session can
     // intercept and patch state before forwarding to the UI.
@@ -241,6 +243,24 @@ void Session::start() {
             },
             _lifetime
         );
+}
+
+void Session::fetchMe() {
+    _backend->loadMe() | rpl::on_next(
+                             [this](UserId id) {
+                                 if (id.value.isEmpty())
+                                     return;
+                                 setMe(std::move(id));
+                                 // Persist so the next run knows the id before
+                                 // (or without) auth.test answering.
+                                 _cache->saveMeUserId(_meUserId);
+                                 // Users may already be loaded (from cache); pick up admin flag
+                                 // immediately.
+                                 if (const User *u = findUser(_meUserId))
+                                     _meIsAdmin = u->isAdmin;
+                             },
+                             _lifetime
+                         );
 }
 
 void Session::enrichDmActivity() {

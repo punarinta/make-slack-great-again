@@ -54,7 +54,18 @@ struct StubBackend : Backend {
     void                     connectRealtime() override {}
     void                     disconnectRealtime() override {}
 
-    rpl::producer<UserId> loadMe() override { return _meId.value(); }
+    bool loadMeAlwaysFails    = false; // every call completes empty (auth.test error)
+    bool loadMeFirstCallFails = false; // first call completes empty, later ones succeed
+    int  loadMeCalls          = 0;
+    rpl::producer<UserId> loadMe() override {
+        ++loadMeCalls;
+        if (loadMeAlwaysFails || (loadMeFirstCallFails && loadMeCalls == 1))
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return _meId.value();
+    }
 
     rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
     rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
@@ -329,6 +340,84 @@ TEST_CASE_METHOD(SessionFixture, "start() populates users from backend", "[sessi
 
 TEST_CASE_METHOD(SessionFixture, "start() sets meUserId from loadMe", "[session]") {
     CHECK(session->meUserId() == UserId{"U1"});
+}
+
+TEST_CASE_METHOD(SessionFixture, "successful loadMe persists meUserId to cache", "[session]") {
+    CHECK(WorkspaceCache(teamId).loadMeUserId() == UserId{"U1"});
+}
+
+// auth.test fired at start() can race the startup token refresh and fail.
+// Without recovery, meUserId stays empty for the whole run and every send
+// turns into a permanent duplicate: the optimistic ghost has no author, so
+// the realtime echo is never recognized as "own" and never replaces it.
+
+TEST_CASE(
+    "loadMe is retried once users.list lands if auth.test raced the token refresh", "[session]"
+) {
+    const QString teamId = "T_SESSION_ME_RETRY";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively(); // pristine first run — nothing cached
+
+    auto  backend              = std::make_unique<StubBackend>();
+    auto *stub                 = backend.get();
+    stub->loadMeFirstCallFails = true;
+    stub->_meId                = UserId{"U1"};
+    stub->_convs               = std::vector<Conversation>{kGeneral};
+    stub->_users               = std::vector<User>{kAlice, kBob};
+
+    Session session(std::move(backend), teamId);
+    session.start();
+
+    CHECK(stub->loadMeCalls == 2);
+    CHECK(session.meUserId() == UserId{"U1"});
+
+    QDir(baseDir).removeRecursively();
+}
+
+TEST_CASE(
+    "cached meUserId keeps optimistic sends working when auth.test fails all run", "[session][send]"
+) {
+    const QString teamId = "T_SESSION_ME_CACHED";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+    {
+        WorkspaceCache cache(teamId);
+        cache.saveMeUserId(UserId{"U1"}); // a previous run learned the id
+    }
+
+    auto  backend           = std::make_unique<StubBackend>();
+    auto *stub              = backend.get();
+    stub->loadMeAlwaysFails = true;
+    stub->_convs            = std::vector<Conversation>{kGeneral};
+    stub->_users            = std::vector<User>{kAlice, kBob};
+
+    Session session(std::move(backend), teamId);
+    session.start();
+    CHECK(session.meUserId() == UserId{"U1"});
+
+    std::vector<Event> events;
+    rpl::lifetime      lt;
+    session.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+
+    session.sendMessage(ConversationId{"C1"}, "hello");
+    REQUIRE(events.size() == 1);
+    // Author comes from the cached id — renders with the right name/avatar.
+    CHECK(std::get<EvMessageNew>(events[0]).msg.author == UserId{"U1"});
+    const Ts fakeTs = std::get<EvMessageNew>(events[0]).msg.ts;
+
+    // The realtime echo of our own message must still replace the ghost.
+    Message real;
+    real.ts     = "200.000";
+    real.author = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, real});
+
+    REQUIRE(events.size() == 3);
+    REQUIRE(std::holds_alternative<EvMessageDeleted>(events[1]));
+    CHECK(std::get<EvMessageDeleted>(events[1]).ts == fakeTs);
+
+    QDir(baseDir).removeRecursively();
 }
 
 // ── findUser / findConversation ───────────────────────────────────────────────

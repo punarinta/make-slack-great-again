@@ -451,6 +451,17 @@ std::pair<ConversationId, QString> WorkspaceCache::loadLastConv() const {
     return {ConversationId{o["conv"].toString()}, o["name"].toString()};
 }
 
+void WorkspaceCache::saveMeUserId(const UserId &id) {
+    auto o    = QJsonDocument::fromJson(readFile(metaPath())).object();
+    o["meId"] = id.value;
+    writeJson(metaPath(), QJsonDocument(o));
+}
+
+UserId WorkspaceCache::loadMeUserId() const {
+    const auto doc = QJsonDocument::fromJson(readFile(metaPath()));
+    return UserId{doc.object()["meId"].toString()};
+}
+
 void WorkspaceCache::saveActivitySweepAt(qint64 unixSecs) {
     auto o       = QJsonDocument::fromJson(readFile(metaPath())).object();
     o["sweepAt"] = unixSecs;

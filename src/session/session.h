@@ -139,6 +139,12 @@ public:
     Backend *backend() const;
 
 private:
+    // Resolve our own user id via auth.test; persists the result to cache.
+    // Called at start() and retried from the loadUsers handler if the first
+    // call raced the startup token refresh and failed — without meUserId every
+    // optimistic send turns into a permanent duplicate ghost.
+    void fetchMe();
+
     // Background conversations.info sweep over IMs/MPDMs that refreshes their
     // last_read/latest cursors (used for conversation-list relevance). Throttled
     // via the workspace cache; called after each loadConversations() merge.

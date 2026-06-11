@@ -33,6 +33,12 @@ public:
     void saveLastConv(const ConversationId &conv, const QString &displayName);
     std::pair<ConversationId, QString> loadLastConv() const;
 
+    // The authed user's id (from auth.test). Seeds Session::meUserId() at
+    // startup so optimistic sends work even if auth.test races the token
+    // refresh and fails on this run.
+    void   saveMeUserId(const UserId &id);
+    UserId loadMeUserId() const;
+
     // When the background conversations.info activity sweep last completed
     // (Unix seconds; 0 = never). Used to throttle the sweep across restarts.
     void   saveActivitySweepAt(qint64 unixSecs);
