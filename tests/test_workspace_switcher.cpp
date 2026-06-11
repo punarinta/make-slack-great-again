@@ -59,6 +59,21 @@ TEST_CASE("setWorkspaces carries unread counts through", "[workspace_switcher][b
     CHECK(rendersOk(w));
 }
 
+TEST_CASE(
+    "setWorkspaces preserves live unread counts for existing entries", "[workspace_switcher][badge]"
+) {
+    // Regression: rebuilding the entry list on a workspace switch used to
+    // zero the unread dot of every other workspace.
+    WorkspaceSwitcher w;
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta")});
+    w.setUnreadCounts("T1", 4, 2);
+
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta"), makeEntry("T3", "Gamma")});
+    CHECK(w.unreadCounts("T1") == qMakePair(4, 2));
+    CHECK(w.unreadCounts("T2") == qMakePair(0, 0));
+    CHECK(w.unreadCounts("T3") == qMakePair(0, 0));
+}
+
 // ── setUnread ─────────────────────────────────────────────────────────────────
 
 TEST_CASE("setUnread updates count for known workspace", "[workspace_switcher][badge]") {

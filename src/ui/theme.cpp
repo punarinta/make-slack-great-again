@@ -61,8 +61,9 @@ const Theme kSlackDark = {
         },
     .badge =
         {
-            .unread  = QColor("#E01E5A"),
-            .mention = QColor("#CD2553"),
+            .unread   = QColor("#E01E5A"),
+            .mention  = QColor("#CD2553"),
+            .activity = QColor("#1D9BD1"),
         },
     .presence =
         {

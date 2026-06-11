@@ -54,8 +54,9 @@ struct AccentColors {
 };
 
 struct BadgeColors {
-    QColor unread;  // unread message count badge
-    QColor mention; // @mention badge
+    QColor unread;   // unread message count badge
+    QColor mention;  // @mention badge (important: DMs + mentions — red)
+    QColor activity; // non-important unread activity dot (blue)
 };
 
 struct PresenceColors {

@@ -24,10 +24,12 @@ public:
 
     explicit WorkspaceSwitcher(QWidget *parent = nullptr);
 
-    void setImageCache(ImageCache *cache);
-    void setWorkspaces(const std::vector<Entry> &entries);
-    void setActive(const QString &teamId);
-    void setUnreadCounts(const QString &teamId, int total, int mentions);
+    void            setImageCache(ImageCache *cache);
+    void            setWorkspaces(const std::vector<Entry> &entries);
+    void            setActive(const QString &teamId);
+    void            setUnreadCounts(const QString &teamId, int total, int mentions);
+    // Current counts for a workspace — {total, mentions}; zeros if unknown.
+    QPair<int, int> unreadCounts(const QString &teamId) const;
 
 signals:
     void workspaceClicked(const QString &teamId);

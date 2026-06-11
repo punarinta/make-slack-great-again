@@ -32,13 +32,17 @@ void WorkspaceSwitcher::setWorkspaces(const std::vector<Entry> &entries) {
     std::vector<EntryPrivate> next;
     next.reserve(entries.size());
     for (const auto &e : entries) {
-        QPixmap existing;
+        EntryPrivate ep{e, {}};
+        // Carry over what the caller doesn't know: the downloaded icon and
+        // live unread counts (entries built from TokenStore carry zeros).
         for (const auto &old : _entries)
             if (old.info.teamId == e.teamId) {
-                existing = old.icon;
+                ep.icon          = old.icon;
+                ep.info.unread   = old.info.unread;
+                ep.info.mentions = old.info.mentions;
                 break;
             }
-        next.push_back({e, std::move(existing)});
+        next.push_back(std::move(ep));
     }
     _entries = std::move(next);
     loadIcons();
@@ -63,6 +67,13 @@ void WorkspaceSwitcher::setUnreadCounts(const QString &teamId, int total, int me
         update();
         return;
     }
+}
+
+QPair<int, int> WorkspaceSwitcher::unreadCounts(const QString &teamId) const {
+    for (const auto &ep : _entries)
+        if (ep.info.teamId == teamId)
+            return {ep.info.unread, ep.info.mentions};
+    return {0, 0};
 }
 
 // ── Icon loading ──────────────────────────────────────────────────────────────
@@ -236,10 +247,10 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
             );
         }
 
-        // Unread dot: red for mentions/DMs, green for regular unreads
-        if (ep.info.unread > 0) {
+        // Unread dot: red for important (DMs/mentions), blue for regular unreads
+        if (ep.info.unread > 0 || ep.info.mentions > 0) {
             const QColor dotColor =
-                ep.info.mentions > 0 ? Th::c().badge.mention : Th::c().presence.online;
+                ep.info.mentions > 0 ? Th::c().badge.mention : Th::c().badge.activity;
             constexpr int d  = 10;
             const qreal   cx = r.right() - 3.0;
             const qreal   cy = r.bottom() - 3.0;
@@ -288,14 +299,19 @@ void WorkspaceSwitcher::mouseReleaseEvent(QMouseEvent *e) {
     _pressed = -99;
 
     if (e->button() == Qt::LeftButton) {
-        if (hit >= 0)
-            emit workspaceClicked(_entries[hit].info.teamId);
-        else if (hit == -2)
+        if (hit >= 0) {
+            // Copy before emitting: a handler may call setWorkspaces(), which
+            // rebuilds _entries and would leave a reference argument dangling.
+            const QString teamId = _entries[hit].info.teamId;
+            emit          workspaceClicked(teamId);
+        } else if (hit == -2) {
             emit addWorkspaceClicked();
-        else if (hit == -3)
+        } else if (hit == -3) {
             emit settingsClicked();
+        }
     } else if (e->button() == Qt::RightButton && hit >= 0) {
-        emit workspaceRightClicked(_entries[hit].info.teamId, e->globalPosition().toPoint());
+        const QString teamId = _entries[hit].info.teamId;
+        emit          workspaceRightClicked(teamId, e->globalPosition().toPoint());
     }
 }
 

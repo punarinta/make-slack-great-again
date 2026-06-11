@@ -8,23 +8,35 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QTimer>
 #include <QDebug>
 
 #include <algorithm>
 
-SocketModeRealtime::SocketModeRealtime(
-    QString xappToken, rpl::event_stream<Event> *events, QObject *parent
-)
-    : QObject(parent), _xappToken(std::move(xappToken)), _events(events),
-      _nam(new QNetworkAccessManager(this)) {}
+SocketModeRealtime::SocketModeRealtime(QString xappToken, QObject *parent)
+    : QObject(parent), _xappToken(std::move(xappToken)), _nam(new QNetworkAccessManager(this)) {}
 
 SocketModeRealtime::~SocketModeRealtime() {
     stop();
 }
 
 void SocketModeRealtime::start() {
+    if (_started)
+        return;
+    _started = true;
     openAndConnect();
+}
+
+void SocketModeRealtime::addSink(rpl::event_stream<Event> *events) {
+    if (std::find(_sinks.begin(), _sinks.end(), events) == _sinks.end())
+        _sinks.push_back(events);
+}
+
+void SocketModeRealtime::removeSink(rpl::event_stream<Event> *events) {
+    _sinks.erase(std::remove(_sinks.begin(), _sinks.end(), events), _sinks.end());
+    if (_presenceIds.remove(events))
+        sendPresenceSub();
 }
 
 void SocketModeRealtime::stop() {
@@ -84,17 +96,22 @@ void SocketModeRealtime::scheduleReconnect() {
 
 // ── WebSocket event handlers ──────────────────────────────────────────────────
 
-void SocketModeRealtime::subscribePresence(QStringList userIds) {
-    _presenceIds = std::move(userIds);
+void SocketModeRealtime::subscribePresence(rpl::event_stream<Event> *sink, QStringList userIds) {
+    _presenceIds[sink] = std::move(userIds);
     sendPresenceSub();
 }
 
 void SocketModeRealtime::sendPresenceSub() {
     if (!_ws || _ws->state() != QAbstractSocket::ConnectedState || _presenceIds.isEmpty())
         return;
-    QJsonArray ids;
-    for (const auto &id : _presenceIds)
-        ids.append(id);
+    QJsonArray    ids;
+    QSet<QString> seen;
+    for (const auto &list : _presenceIds)
+        for (const auto &id : list)
+            if (!seen.contains(id)) {
+                seen.insert(id);
+                ids.append(id);
+            }
     _ws->sendTextMessage(QJsonDocument(
                              QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
     ).toJson(QJsonDocument::Compact));
@@ -134,7 +151,13 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
         const auto event   = payload.value("event").toObject();
 
         if (auto ev = normalizeSlackEvent(event)) {
-            _events->fire(std::move(*ev));
+            // Broadcast to every workspace backend — sinks ignore events for
+            // conversations/users they don't know (IDs are globally unique).
+            // Iterate a copy: a handler may remove a sink (session teardown).
+            const auto sinks = _sinks;
+            for (auto *sink : sinks)
+                if (std::find(_sinks.begin(), _sinks.end(), sink) != _sinks.end())
+                    sink->fire_copy(*ev);
         }
     }
 }

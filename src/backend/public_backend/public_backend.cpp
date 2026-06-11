@@ -193,9 +193,15 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
 }
 
 PublicBackend::~PublicBackend() {
+    if (_sharedRealtime)
+        _sharedRealtime->removeSink(&_events);
     delete _realtime;
     delete _historyApi;
     delete _api;
+}
+
+void PublicBackend::setSharedRealtime(SocketModeRealtime *realtime) {
+    _sharedRealtime = realtime;
 }
 
 rpl::producer<AuthState> PublicBackend::authState() const {
@@ -207,13 +213,21 @@ Capabilities PublicBackend::capabilities() const {
 }
 
 void PublicBackend::connectRealtime() {
+    if (_sharedRealtime) {
+        _sharedRealtime->addSink(&_events);
+        _sharedRealtime->start();
+        return;
+    }
     if (_xappToken.isEmpty() || _realtime)
         return;
-    _realtime = new SocketModeRealtime(_xappToken, &_events);
+    _realtime = new SocketModeRealtime(_xappToken);
+    _realtime->addSink(&_events);
     _realtime->start();
 }
 
 void PublicBackend::disconnectRealtime() {
+    if (_sharedRealtime)
+        _sharedRealtime->removeSink(&_events);
     if (_realtime) {
         _realtime->stop();
         delete _realtime;
@@ -595,13 +609,14 @@ void PublicBackend::joinChannel(
 }
 
 void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
-    if (!_realtime)
+    SocketModeRealtime *rt = _sharedRealtime ? _sharedRealtime : _realtime;
+    if (!rt)
         return;
     QStringList ids;
     ids.reserve(static_cast<qsizetype>(userIds.size()));
     for (const auto &u : userIds)
         ids.append(u.value);
-    _realtime->subscribePresence(std::move(ids));
+    rt->subscribePresence(&_events, std::move(ids));
 }
 
 rpl::producer<Event> PublicBackend::events() const {

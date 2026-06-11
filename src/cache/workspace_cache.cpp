@@ -245,25 +245,32 @@ static QJsonObject toJson(const Conversation &c) {
     if (!c.latestTs.isEmpty())
         o["lt"] = c.latestTs;
     o["un"] = c.unread;
+    if (c.mentionCount > 0)
+        o["mc"] = c.mentionCount;
     if (c.dmUser)
         o["dm"] = c.dmUser->value;
     if (c.isMuted)
         o["mu"] = true;
+    if (c.notifLevel != NotificationLevel::Default)
+        o["nl"] = static_cast<int>(c.notifLevel);
     return o;
 }
 static Conversation convFromJson(const QJsonObject &o) {
     Conversation c;
-    c.id       = ConversationId{o["id"].toString()};
-    c.kind     = static_cast<ConvKind>(o["ki"].toInt());
-    c.name     = o["na"].toString();
-    c.isMember = o["mb"].toBool();
-    c.lastRead = o["lr"].toString();
-    c.latestTs = o["lt"].toString();
-    c.unread   = o["un"].toInt();
+    c.id           = ConversationId{o["id"].toString()};
+    c.kind         = static_cast<ConvKind>(o["ki"].toInt());
+    c.name         = o["na"].toString();
+    c.isMember     = o["mb"].toBool();
+    c.lastRead     = o["lr"].toString();
+    c.latestTs     = o["lt"].toString();
+    c.unread       = o["un"].toInt();
+    c.mentionCount = o["mc"].toInt();
     if (o.contains("dm"))
         c.dmUser = UserId{o["dm"].toString()};
     if (o.contains("mu"))
         c.isMuted = o["mu"].toBool();
+    if (o.contains("nl"))
+        c.notifLevel = static_cast<NotificationLevel>(o["nl"].toInt());
     return c;
 }
 

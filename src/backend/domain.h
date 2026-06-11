@@ -96,6 +96,24 @@ struct Conversation {
     bool                  operator==(const Conversation &) const = default;
 };
 
+// True when mrkdwn text explicitly mentions `me` — a direct <@U…> / <@U…|name>
+// mention or a broadcast keyword (<!here>, <!channel>, <!everyone>). This is
+// what the official Slack client treats as a mention for red badges and
+// notifications.
+inline bool mrkdwnMentions(const QString &mrkdwn, const UserId &me) {
+    if (!me.value.isEmpty()) {
+        const QString tag = QStringLiteral("<@") + me.value;
+        for (qsizetype i = mrkdwn.indexOf(tag); i >= 0; i = mrkdwn.indexOf(tag, i + 1)) {
+            const qsizetype after = i + tag.size();
+            if (after < mrkdwn.size() && (mrkdwn[after] == u'>' || mrkdwn[after] == u'|'))
+                return true;
+        }
+    }
+    return mrkdwn.contains(QLatin1String("<!here")) ||
+           mrkdwn.contains(QLatin1String("<!channel")) ||
+           mrkdwn.contains(QLatin1String("<!everyone"));
+}
+
 struct Reaction {
     QString             name; // e.g. "thumbsup"
     int                 count = 0;

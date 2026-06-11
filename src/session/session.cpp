@@ -58,6 +58,10 @@ void Session::start() {
                         if (old.notifLevel != NotificationLevel::Default &&
                             c.notifLevel == NotificationLevel::Default)
                             c.notifLevel = old.notifLevel;
+                        // Mute state also lives in client prefs the public
+                        // API can't read — local state wins.
+                        if (old.isMuted)
+                            c.isMuted = true;
                         break;
                     }
                 }
@@ -160,22 +164,43 @@ void Session::start() {
                 } else if (auto *ev = std::get_if<EvMessageNew>(&e)) {
                     const bool ownMessage =
                         !_meUserId.value.isEmpty() && ev->msg.author == _meUserId;
-                    if (!ownMessage && ev->conv != _readingConv) {
+                    {
                         auto convs = _conversations.current();
                         for (auto &c : convs) {
-                            if (c.id == ev->conv) {
-                                if (!c.isMuted && c.isMember) {
-                                    c.unread++;
-                                    const bool isDm =
-                                        (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-                                    const bool isMention =
-                                        !_meUserId.value.isEmpty() &&
-                                        ev->msg.rawText.contains("<@" + _meUserId.value + ">");
-                                    if (isDm || isMention)
-                                        c.mentionCount++;
-                                }
+                            if (c.id != ev->conv)
+                                continue;
+                            c.latestTs = ev->msg.ts;
+                            if (ownMessage || !c.isMember)
+                                break;
+                            if (ev->conv == _readingConv) {
+                                // On screen right now — keep the server-side
+                                // read cursor in sync so other clients (and
+                                // the next restart) agree it's read.
+                                c.lastRead = ev->msg.ts;
+                                _backend->markRead(ev->conv, ev->msg.ts);
                                 break;
                             }
+                            const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+                            const QString &mt =
+                                ev->msg.rawText.isEmpty() ? ev->msg.text.text : ev->msg.rawText;
+                            const bool isMention = mrkdwnMentions(mt, _meUserId);
+                            // Plain channel thread replies don't mark the
+                            // channel unread (they live in the Threads view);
+                            // mentions and DM replies still count.
+                            if (ev->msg.threadRoot && !isDm && !isMention)
+                                break;
+                            if (!c.isMuted) {
+                                c.unread++;
+                                if (isDm || isMention)
+                                    c.mentionCount++;
+                            } else if (!isDm && isMention) {
+                                // Muted channels stay quiet except for explicit
+                                // mentions, which still badge (official-client
+                                // behavior).
+                                c.unread++;
+                                c.mentionCount++;
+                            }
+                            break;
                         }
                         _conversations = std::move(convs);
                     }
@@ -422,6 +447,12 @@ void Session::setReading(ConversationId conv) {
         if (c.id == conv) {
             c.unread       = 0;
             c.mentionCount = 0;
+            // Sync the read cursor to Slack so other clients (and the next
+            // restart) agree this conversation is read.
+            if (!c.latestTs.isEmpty() && c.lastRead < c.latestTs) {
+                c.lastRead = c.latestTs;
+                _backend->markRead(conv, c.latestTs);
+            }
             break;
         }
     }

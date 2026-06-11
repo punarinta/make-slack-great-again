@@ -87,7 +87,13 @@ struct StubBackend : Backend {
     void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
-    void markRead(ConversationId, Ts) override {}
+
+    struct MarkReadCall {
+        ConversationId conv;
+        Ts             ts;
+    };
+    std::vector<MarkReadCall> markReadCalls;
+    void markRead(ConversationId c, Ts t) override { markReadCalls.push_back({c, std::move(t)}); }
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
         return rpl::variable<std::vector<SearchResult>>({}).value();
@@ -357,6 +363,60 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     SessionFixture,
+    "EvMessageNew with @mention in muted channel still badges (official-client behavior)",
+    "[session][events]"
+) {
+    Conversation muted;
+    muted.id       = ConversationId{"C3"};
+    muted.kind     = ConvKind::PublicChannel;
+    muted.name     = "muted-chan";
+    muted.isMember = true;
+    muted.isMuted  = true;
+    stub->_convs   = std::vector<Conversation>{kGeneral, kRandom, muted};
+
+    Message msg;
+    msg.ts      = "500.000";
+    msg.author  = UserId{"U2"};
+    msg.rawText = "hey <@U1> look at this";
+    stub->fireEvent(EvMessageNew{ConversationId{"C3"}, msg});
+    CHECK(session->findConversation(ConversationId{"C3"})->unread == 1);
+    CHECK(session->findConversation(ConversationId{"C3"})->mentionCount == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew for a plain channel thread reply does not mark the channel unread",
+    "[session][events]"
+) {
+    Message msg;
+    msg.ts         = "501.000";
+    msg.threadRoot = Ts{"500.000"};
+    msg.author     = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
+
+    // …but a mention inside a thread still badges.
+    msg.ts      = "502.000";
+    msg.rawText = "<@U1> ping";
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
+    CHECK(session->findConversation(ConversationId{"C2"})->mentionCount == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "EvMessageNew counts @here broadcast as a mention", "[session][events]"
+) {
+    Message msg;
+    msg.ts      = "500.000";
+    msg.author  = UserId{"U2"};
+    msg.rawText = "<!here> standup time";
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 1);
+    CHECK(session->findConversation(ConversationId{"C2"})->mentionCount == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
     "EvMessageNew does not increment unread for currently reading conv",
     "[session][events]"
 ) {
@@ -379,6 +439,57 @@ TEST_CASE_METHOD(SessionFixture, "setReading zeroes unread badge for conversatio
 
 TEST_CASE_METHOD(SessionFixture, "setReading with empty id does not crash", "[session]") {
     CHECK_NOTHROW(session->setReading(ConversationId{""}));
+}
+
+TEST_CASE_METHOD(SessionFixture, "setReading syncs the read cursor to the backend", "[session]") {
+    // A message arrives in C2, then the user opens it — Slack must be told
+    // it's read so other clients (and the next restart) agree.
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+
+    session->setReading(ConversationId{"C2"});
+    REQUIRE(stub->markReadCalls.size() == 1);
+    CHECK(stub->markReadCalls[0].conv == ConversationId{"C2"});
+    CHECK(stub->markReadCalls[0].ts == "500.000");
+    CHECK(session->findConversation(ConversationId{"C2"})->lastRead == "500.000");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew in the currently-reading conv marks it read on the backend",
+    "[session][events]"
+) {
+    session->setReading(ConversationId{"C2"});
+    stub->markReadCalls.clear();
+
+    Message msg;
+    msg.ts     = "600.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    REQUIRE(stub->markReadCalls.size() == 1);
+    CHECK(stub->markReadCalls[0].ts == "600.000");
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
+}
+
+// ── mrkdwnMentions ────────────────────────────────────────────────────────────
+
+TEST_CASE("mrkdwnMentions matches direct and piped mentions", "[session][mentions]") {
+    const UserId me{"U1"};
+    CHECK(mrkdwnMentions("hi <@U1> there", me));
+    CHECK(mrkdwnMentions("hi <@U1|vladimir> there", me));
+    CHECK_FALSE(mrkdwnMentions("hi <@U12> there", me)); // prefix must not match
+    CHECK_FALSE(mrkdwnMentions("plain text", me));
+    CHECK_FALSE(mrkdwnMentions("hi <@U2>", me));
+}
+
+TEST_CASE("mrkdwnMentions matches broadcast keywords", "[session][mentions]") {
+    const UserId me{"U1"};
+    CHECK(mrkdwnMentions("<!here> hello", me));
+    CHECK(mrkdwnMentions("<!channel> hello", me));
+    CHECK(mrkdwnMentions("<!everyone> hello", me));
+    CHECK_FALSE(mrkdwnMentions("here channel everyone", me));
 }
 
 // ── sendMessage ───────────────────────────────────────────────────────────────

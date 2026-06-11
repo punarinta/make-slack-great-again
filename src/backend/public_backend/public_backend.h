@@ -31,6 +31,12 @@ public:
     );
     ~PublicBackend() override;
 
+    // Use an app-level Socket Mode connection shared between workspace
+    // backends (one socket receives all workspaces' events — see
+    // SocketModeRealtime). Call before connectRealtime(); non-owning.
+    // Without this, connectRealtime() creates a private connection.
+    void setSharedRealtime(SocketModeRealtime *realtime);
+
     rpl::producer<AuthState> authState() const override;
     Capabilities             capabilities() const override;
     void                     connectRealtime() override;
@@ -108,7 +114,8 @@ private:
     TokenStore::AppConfig _appCfg;
     WebApiClient         *_api;
     WebApiClient         *_historyApi; // dedicated client for loadHistory/loadThread
-    SocketModeRealtime   *_realtime              = nullptr;
+    SocketModeRealtime   *_realtime              = nullptr; // owned (private connection)
+    SocketModeRealtime   *_sharedRealtime        = nullptr; // non-owning (app-level shared)
     QTimer               *_proactiveRefreshTimer = nullptr;
 
     // Token refresh deduplication

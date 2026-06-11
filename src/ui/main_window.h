@@ -13,9 +13,11 @@
 #include <QSystemTrayIcon>
 #include <QPushButton>
 #include <QUrl>
+#include <map>
 #include <memory>
 
 class Session;
+class SocketModeRealtime;
 class OAuthFlow;
 class ImageCache;
 class MessageListWidget;
@@ -61,13 +63,20 @@ private:
 
     void applyTheme();
 
-    // Session lifecycle
-    void startSession(const QString &teamId);
-    void switchToWorkspace(const QString &teamId);
-    void showLoggedOut();
-    bool runLoginFlow();
-    void connectToSession();
-    void restoreLastConv();
+    // Session lifecycle.  One Session per logged-in workspace stays alive in
+    // the background (badges + notifications); activateWorkspace() points the
+    // UI at one of them.  Team ids are taken BY VALUE: callers often pass
+    // strings owned by structures these functions rebuild (switcher entries,
+    // _activeTeamId, the sessions map), which would dangle behind a reference.
+    Session *ensureSession(const QString &teamId);
+    void     activateWorkspace(QString teamId);
+    void     dropSession(QString teamId);
+    void     switchToWorkspace(QString teamId);
+    void     showLoggedOut();
+    bool     runLoginFlow();
+    void     wireConvList(); // one-time Qt signal wiring (lambdas read _session)
+    void     connectToSession();
+    void     restoreLastConv();
 
     // Workspace management
     void refreshSwitcher();
@@ -83,8 +92,8 @@ private:
 
     // Tray
     void setupTray();
-    void maybeNotify(const EvMessageNew &ev);
-    void updateUnreadBadges(const std::vector<Conversation> &convs);
+    void maybeNotify(const QString &teamId, const EvMessageNew &ev);
+    void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 
     // Error banner — shown briefly when a network error occurs with no UI handler.
@@ -102,8 +111,22 @@ private:
     void populateConversations(const std::vector<Conversation> &convs);
     void openConversation(int row);
 
-    std::unique_ptr<Session> _sessionOwner;
-    QString                  _activeTeamId;
+    // All logged-in workspaces, alive for the whole app run so unread badges
+    // and notifications keep working for workspaces that aren't on screen.
+    struct WorkspaceSession {
+        std::unique_ptr<Session> session;
+        rpl::lifetime            lifetime; // background subscriptions (badges/notify/auth)
+    };
+    // App-level Socket Mode socket shared by every workspace backend — Slack
+    // delivers all workspaces' events over one connection (and round-robins
+    // between sockets of the same app, so per-workspace sockets lose events).
+    // Declared before _sessions: ~PublicBackend unregisters its sink from it,
+    // so it must be destroyed after the sessions.
+    std::unique_ptr<SocketModeRealtime> _sharedRealtime;
+    std::map<QString, WorkspaceSession> _sessions;
+    Session                            *_session = nullptr; // active workspace's session
+
+    QString    _activeTeamId;
     OAuthFlow *_activeFlow = nullptr; // non-owning; valid only while runLoginFlow() blocks
 
     // Window frame
@@ -139,10 +162,11 @@ private:
     std::vector<ConversationId>     _convIds;
     ConversationId                  _currentConvId;
     ConversationId                  _pendingNotifConv;
-    int                             _totalUnread   = 0;
-    int                             _totalMentions = 0; // DM unreads + channel @mentions
-    QHash<QString, QPair<int, int>> _wsUnreads;         // teamId → {total, mentions}
-    rpl::lifetime                   _sessionLifetime;
+    QString                         _pendingNotifTeam;
+    // teamId → {normal unreads (blue), important: DM unreads + mentions (red)}
+    QHash<QString, QPair<int, int>> _wsUnreads;
+    bool                            _convListWired = false;
+    rpl::lifetime                   _uiLifetime; // active-workspace UI subscriptions
 
     QHash<QString, QString> _drafts; // convId.value → unsent draft text
 

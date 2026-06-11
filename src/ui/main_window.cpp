@@ -16,6 +16,7 @@
 #include "auth/token_store.h"
 #include "auth/oauth_flow.h"
 #include "backend/public_backend/public_backend.h"
+#include "backend/public_backend/socket_mode_realtime.h"
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
@@ -143,14 +144,21 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setupTray();
 
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
-        if (_sessionOwner)
-            _sessionOwner->persistUnreads();
+        for (auto &[teamId, ws] : _sessions)
+            ws.session->persistUnreads();
     });
 
-    if (TokenStore::hasAnyWorkspace())
-        startSession(TokenStore::activeWorkspaceId());
-    else
+    if (TokenStore::hasAnyWorkspace()) {
+        // Connect every logged-in workspace so unread badges and
+        // notifications work without clicking each one first.
+        const auto ids = TokenStore::workspaceIds();
+        for (const auto &id : ids)
+            ensureSession(id);
+        const QString active = TokenStore::activeWorkspaceId();
+        activateWorkspace(active.isEmpty() ? ids.first() : active);
+    } else {
         showLoggedOut();
+    }
 
     const QByteArray geo = QSettings("msga", "msga").value("window/geometry").toByteArray();
     if (!geo.isEmpty())
@@ -290,7 +298,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
                                 .arg(Th::c().fonts.lg));
     connect(loginBtn, &QPushButton::clicked, this, [this] {
         if (runLoginFlow())
-            startSession(_activeTeamId);
+            activateWorkspace(_activeTeamId);
     });
 
     layout->addWidget(icon, 0, Qt::AlignCenter);
@@ -306,11 +314,11 @@ QWidget *MainWindow::buildMainPage() {
     _imgCache = new ImageCache(this);
     _imgCache->setDiskCache(
         [this](const QString &url) -> QByteArray {
-            return _sessionOwner ? _sessionOwner->cachedImage(url) : QByteArray{};
+            return _session ? _session->cachedImage(url) : QByteArray{};
         },
         [this](const QString &url, const QByteArray &data) {
-            if (_sessionOwner)
-                _sessionOwner->cacheImage(url, data);
+            if (_session)
+                _session->cacheImage(url, data);
         }
     );
     _switcher->setImageCache(_imgCache);
@@ -360,7 +368,7 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
     connect(_switcher, &WorkspaceSwitcher::workspaceClicked, this, &MainWindow::switchToWorkspace);
     connect(_switcher, &WorkspaceSwitcher::addWorkspaceClicked, this, [this] {
         if (runLoginFlow())
-            startSession(_activeTeamId);
+            activateWorkspace(_activeTeamId);
     });
     connect(
         _switcher, &WorkspaceSwitcher::workspaceRightClicked, this, &MainWindow::showWorkspaceMenu
@@ -551,9 +559,9 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         &MessageListWidget::forwardMessageRequested,
         this,
         [this](const Message &msg) {
-            if (!_sessionOwner)
+            if (!_session)
                 return;
-            auto *dlg = new ForwardDialog(msg, _sessionOwner.get(), this);
+            auto *dlg = new ForwardDialog(msg, _session, this);
             dlg->setAttribute(Qt::WA_DeleteOnClose);
             connect(dlg, &QDialog::accepted, this, [this, dlg, msg] {
                 const ConversationId target = dlg->targetConv();
@@ -562,49 +570,49 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
                 const QString comment = dlg->comment();
                 const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
                 const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
-                _sessionOwner->sendMessage(target, full);
+                _session->sendMessage(target, full);
             });
             dlg->open();
         }
     );
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
-        if (_sessionOwner && !_currentConvId.value.isEmpty())
-            _sessionOwner->sendMessage(_currentConvId, text);
+        if (_session && !_currentConvId.value.isEmpty())
+            _session->sendMessage(_currentConvId, text);
     });
     connect(_composer, &ComposerWidget::uploadRequested, this, [this](const QString &filePath) {
-        if (_sessionOwner && !_currentConvId.value.isEmpty())
-            _sessionOwner->uploadFile(_currentConvId, filePath);
+        if (_session && !_currentConvId.value.isEmpty())
+            _session->uploadFile(_currentConvId, filePath);
     });
     connect(
         _composer,
         &ComposerWidget::editRequested,
         this,
         [this](const Ts &ts, const QString &newText) {
-            if (_sessionOwner && !_currentConvId.value.isEmpty())
-                _sessionOwner->editMessage(_currentConvId, ts, newText);
+            if (_session && !_currentConvId.value.isEmpty())
+                _session->editMessage(_currentConvId, ts, newText);
         }
     );
     connect(_composer, &ComposerWidget::editLastRequested, this, [this] {
-        if (!_sessionOwner || !_messageList)
+        if (!_session || !_messageList)
             return;
-        const auto msg = _messageList->lastOwnMessage(_sessionOwner->meUserId());
+        const auto msg = _messageList->lastOwnMessage(_session->meUserId());
         if (!msg)
             return;
         const QString text = msg->rawText.isEmpty() ? msg->text.text : msg->rawText;
         _composer->enterEditMode(msg->ts, text, msg->files);
     });
     connect(_composer, &ComposerWidget::typingStarted, this, [this] {
-        if (_sessionOwner && !_currentConvId.value.isEmpty())
-            _sessionOwner->sendTyping(_currentConvId);
+        if (_session && !_currentConvId.value.isEmpty())
+            _session->sendTyping(_currentConvId);
     });
     connect(
         _composer,
         &ComposerWidget::scheduleRequested,
         this,
         [this](const QString &text, qint64 postAt) {
-            if (_sessionOwner && !_currentConvId.value.isEmpty())
-                _sessionOwner->scheduleMessage(_currentConvId, text, postAt);
+            if (_session && !_currentConvId.value.isEmpty())
+                _session->scheduleMessage(_currentConvId, text, postAt);
         }
     );
 
@@ -612,7 +620,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         const ConversationId id = _convList->conversationId(row);
         if (id.value.isEmpty())
             return;
-        const auto *conv = _sessionOwner ? _sessionOwner->findConversation(id) : nullptr;
+        const auto *conv = _session ? _session->findConversation(id) : nullptr;
         if (!conv)
             return;
         const QString name = _convList->resolvedName(row);
@@ -622,11 +630,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     });
 
     connect(_starBtn, &QPushButton::clicked, this, [this] {
-        if (_currentConvId.value.isEmpty() || !_sessionOwner)
+        if (_currentConvId.value.isEmpty() || !_session)
             return;
-        const auto *conv       = _sessionOwner->findConversation(_currentConvId);
+        const auto *conv       = _session->findConversation(_currentConvId);
         const bool  nowStarred = conv ? !conv->isStarred : true;
-        _sessionOwner->starConversation(_currentConvId, nowStarred);
+        _session->starConversation(_currentConvId, nowStarred);
     });
 
     return rightPanel;
@@ -679,7 +687,92 @@ void MainWindow::applyTheme() {
 
 // ── Session lifecycle ─────────────────────────────────────────────────────────
 
-void MainWindow::startSession(const QString &teamId) {
+Session *MainWindow::ensureSession(const QString &teamId) {
+    auto it = _sessions.find(teamId);
+    if (it != _sessions.end())
+        return it->second.session.get();
+
+    const auto    creds  = TokenStore::loadWorkspace(teamId);
+    const auto    appCfg = TokenStore::loadApp();
+    const QString xapp   = qEnvironmentVariable("SLACK_XAPP_TOKEN", appCfg.xapp);
+
+    // One app-level Socket Mode connection serves every workspace: Slack
+    // delivers all installations' events over a single socket and
+    // round-robins between sockets of the same app, so per-workspace
+    // connections would lose events.
+    if (!_sharedRealtime && !xapp.isEmpty())
+        _sharedRealtime = std::make_unique<SocketModeRealtime>(xapp);
+
+    auto backend = std::make_unique<PublicBackend>(creds, appCfg, xapp);
+    backend->setSharedRealtime(_sharedRealtime.get());
+
+    auto &entry      = _sessions[teamId];
+    entry.session    = std::make_unique<Session>(std::move(backend), teamId);
+    Session *session = entry.session.get();
+
+    // Background subscriptions — alive for the whole session, active
+    // workspace or not, so badges and notifications never depend on what's
+    // on screen.
+    session->conversations() |
+        rpl::on_next(
+            [this, teamId](std::vector<Conversation> convs) { updateUnreadBadges(teamId, convs); },
+            entry.lifetime
+        );
+
+    session->events() | rpl::on_next(
+                            [this, teamId](Event e) {
+                                if (const auto *ev = std::get_if<EvMessageNew>(&e))
+                                    maybeNotify(teamId, *ev);
+                            },
+                            entry.lifetime
+                        );
+
+    // If the backend can't refresh the token (no refresh token, or refresh
+    // fails), it sets authState → NotLoggedIn. Deferred: this fires from
+    // inside the session's own rpl chain, and dropSession destroys it.
+    session->authState() | rpl::on_next(
+                               [this, teamId](AuthState state) {
+                                   if (state != AuthState::NotLoggedIn)
+                                       return;
+                                   QMetaObject::invokeMethod(
+                                       this,
+                                       [this, teamId] {
+                                           dropSession(teamId);
+                                           if (teamId == _activeTeamId || _activeTeamId.isEmpty())
+                                               showLoggedOut();
+                                       },
+                                       Qt::QueuedConnection
+                                   );
+                               },
+                               entry.lifetime
+                           );
+
+    // start() loads cache into _conversations/_users, so the subscriptions
+    // above fire immediately with cached data (badges show before the
+    // network responds).
+    session->start();
+    return session;
+}
+
+void MainWindow::dropSession(QString teamId) {
+    auto it = _sessions.find(teamId);
+    if (it == _sessions.end())
+        return;
+    if (it->second.session.get() == _session) {
+        _uiLifetime = rpl::lifetime();
+        _session    = nullptr;
+        if (_messageList)
+            _messageList->setSession(nullptr);
+        _currentConvId = {};
+    }
+    _sessions.erase(it);
+    _wsUnreads.remove(teamId);
+    if (_switcher)
+        _switcher->setUnreadCounts(teamId, 0, 0);
+    updateTrayIcon();
+}
+
+void MainWindow::activateWorkspace(QString teamId) {
     if (teamId.isEmpty()) {
         showLoggedOut();
         return;
@@ -692,15 +785,14 @@ void MainWindow::startSession(const QString &teamId) {
         applyTheme();
     }
 
-    // Tear down existing session — persist unreads before destroying.
-    _sessionLifetime = rpl::lifetime();
-    if (_sessionOwner)
-        _sessionOwner->persistUnreads();
-    _sessionOwner.reset();
+    // Detach the UI from the outgoing session — it stays alive in the
+    // background and keeps accumulating unreads / firing notifications.
+    _uiLifetime = rpl::lifetime();
+    if (_session) {
+        _session->setReading({});
+        _session->persistUnreads();
+    }
     _currentConvId = {};
-    _totalUnread   = 0;
-    _totalMentions = 0;
-    updateTrayIcon();
     if (_searchWidget)
         _searchWidget->hide();
     _composer->setEnabled(false);
@@ -712,20 +804,14 @@ void MainWindow::startSession(const QString &teamId) {
     if (_contentStack && _messageList)
         _contentStack->setCurrentWidget(_messageList);
 
-    // Create new session
-    const auto    creds  = TokenStore::loadWorkspace(teamId);
-    const auto    appCfg = TokenStore::loadApp();
-    const QString xapp   = qEnvironmentVariable("SLACK_XAPP_TOKEN", appCfg.xapp);
-
-    auto backend  = std::make_unique<PublicBackend>(creds, appCfg, xapp);
-    _sessionOwner = std::make_unique<Session>(std::move(backend), teamId);
-    _messageList->setSession(_sessionOwner.get());
+    _session = ensureSession(teamId);
+    _messageList->setSession(_session);
     if (_searchWidget)
-        _searchWidget->setSession(_sessionOwner.get());
+        _searchWidget->setSession(_session);
     if (_composer)
-        _composer->setSession(_sessionOwner.get());
+        _composer->setSession(_session);
     if (_threadPanel) {
-        _threadPanel->setSession(_sessionOwner.get());
+        _threadPanel->setSession(_session);
         _threadPanel->close();
         _threadPanel->setVisible(false);
     }
@@ -736,16 +822,12 @@ void MainWindow::startSession(const QString &teamId) {
     // Update switcher + title bar
     refreshSwitcher();
     if (_titleBar)
-        _titleBar->setTitle(creds.teamName);
-
-    // start() loads cache into _conversations/_users before connectToSession()
-    // subscribes, so the first emission already carries cached data.
-    _sessionOwner->start();
+        _titleBar->setTitle(TokenStore::loadWorkspace(teamId).teamName);
 
     // First load with no cache: hide the conv column and show a spinner in the
     // message area until conversations arrive from the network.
     if (_convPanel && _messageList) {
-        const bool hasCached = !_sessionOwner->currentConversations().empty();
+        const bool hasCached = !_session->currentConversations().empty();
         _convPanel->setVisible(hasCached);
         if (_convResizeHandle)
             _convResizeHandle->setVisible(hasCached);
@@ -756,20 +838,21 @@ void MainWindow::startSession(const QString &teamId) {
     _stack->setCurrentWidget(_mainPage);
 }
 
-void MainWindow::switchToWorkspace(const QString &teamId) {
+void MainWindow::switchToWorkspace(QString teamId) {
     if (teamId == _activeTeamId)
         return;
-    startSession(teamId);
+    activateWorkspace(std::move(teamId));
 }
 
 void MainWindow::showLoggedOut() {
-    _sessionLifetime = rpl::lifetime();
-    _sessionOwner.reset();
+    // Detach the UI only — background sessions for other workspaces (if any)
+    // keep running and keep their badges/notifications.
+    _uiLifetime = rpl::lifetime();
+    _session    = nullptr;
+    if (_messageList)
+        _messageList->setSession(nullptr);
     _activeTeamId.clear();
     _currentConvId = {};
-    _totalUnread   = 0;
-    _totalMentions = 0;
-    _wsUnreads.clear();
     updateTrayIcon();
     if (_titleBar)
         _titleBar->setTitle({});
@@ -830,116 +913,120 @@ static QString selfPresenceTooltip(const SelfPresence &sp) {
     return {};
 }
 
-void MainWindow::connectToSession() {
-    if (_convList) {
-        connect(
-            _convList,
-            &ConvListWidget::starConversationRequested,
-            this,
-            [this](ConversationId id, bool star) { _sessionOwner->starConversation(id, star); }
+void MainWindow::wireConvList() {
+    // Qt signal connections survive workspace switches (the lambdas read
+    // _session at invoke time), so wire them exactly once — re-connecting on
+    // every switch would fire each handler N times.
+    if (_convListWired || !_convList)
+        return;
+    _convListWired = true;
+
+    connect(
+        _convList,
+        &ConvListWidget::starConversationRequested,
+        this,
+        [this](ConversationId id, bool star) {
+            if (_session)
+                _session->starConversation(id, star);
+        }
+    );
+    connect(
+        _convList, &ConvListWidget::leaveConversationRequested, this, [this](ConversationId id) {
+            if (_session)
+                _session->leaveConversation(id);
+        }
+    );
+    connect(
+        _convList,
+        &ConvListWidget::setNotificationLevelRequested,
+        this,
+        [this](ConversationId id, NotificationLevel level) {
+            if (_session)
+                _session->setNotificationLevel(id, level);
+        }
+    );
+    connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
+        if (!_session)
+            return;
+        auto *dlg = new BrowseChannelsDialog(
+            _session->currentConversations(), _session->currentUsers(), _imgCache, this
         );
-        connect(
-            _convList,
-            &ConvListWidget::leaveConversationRequested,
-            this,
-            [this](ConversationId id) { _sessionOwner->leaveConversation(id); }
-        );
-        connect(
-            _convList,
-            &ConvListWidget::setNotificationLevelRequested,
-            this,
-            [this](ConversationId id, NotificationLevel level) {
-                _sessionOwner->setNotificationLevel(id, level);
-            }
-        );
-        connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
-            if (!_sessionOwner)
-                return;
-            auto *dlg = new BrowseChannelsDialog(
-                _sessionOwner->currentConversations(),
-                _sessionOwner->currentUsers(),
-                _imgCache,
-                this
-            );
-            connect(dlg, &BrowseChannelsDialog::createChannelRequested, this, [this] {
-                if (!_sessionOwner)
-                    return;
-                const auto creds = TokenStore::loadWorkspace(_activeTeamId);
-                auto      *cdlg  = new CreateChannelDialog(creds.teamName, this);
-                if (cdlg->exec() == QDialog::Accepted) {
-                    _sessionOwner->createChannel(
-                        cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
-                            showNetworkError(err);
-                        }
-                    );
-                }
-                cdlg->deleteLater();
-            });
-            connect(dlg, &BrowseChannelsDialog::channelActivated, this, [this](ConversationId id) {
-                // Already a member: just navigate
-                const int row = _convList->rowForId(id);
-                if (row >= 0) {
-                    _convList->selectRow(row);
-                    return;
-                }
-                // Not a member: join first, then navigate when conv list updates
-                if (!_sessionOwner)
-                    return;
-                _sessionOwner->joinChannel(
-                    id,
-                    [this](ConversationId joined) {
-                        const int r = _convList->rowForId(joined);
-                        if (r >= 0)
-                            _convList->selectRow(r);
-                    },
-                    [this](const QString &err) { showNetworkError(err); }
-                );
-            });
-            connect(dlg, &BrowseChannelsDialog::userActivated, this, [this](UserId id) {
-                // Find the DM conversation for this user and open it
-                for (const auto &c : _sessionOwner->currentConversations()) {
-                    if (c.kind == ConvKind::Im && c.dmUser == id) {
-                        const int row = _convList->rowForId(c.id);
-                        if (row >= 0)
-                            _convList->selectRow(row);
-                        break;
-                    }
-                }
-            });
-            dlg->exec();
-            dlg->deleteLater();
-        });
-        connect(_convList, &ConvListWidget::createChannelRequested, this, [this] {
-            if (!_sessionOwner)
+        connect(dlg, &BrowseChannelsDialog::createChannelRequested, this, [this] {
+            if (!_session)
                 return;
             const auto creds = TokenStore::loadWorkspace(_activeTeamId);
-            auto      *dlg   = new CreateChannelDialog(creds.teamName, this);
-            if (dlg->exec() == QDialog::Accepted) {
-                const QString name = dlg->channelName();
-                const bool    priv = dlg->isPrivate();
-                _sessionOwner->createChannel(name, priv, {}, [this](const QString &err) {
-                    showNetworkError(err);
-                });
+            auto      *cdlg  = new CreateChannelDialog(creds.teamName, this);
+            if (cdlg->exec() == QDialog::Accepted) {
+                _session->createChannel(
+                    cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
+                        showNetworkError(err);
+                    }
+                );
             }
-            dlg->deleteLater();
+            cdlg->deleteLater();
         });
-    }
+        connect(dlg, &BrowseChannelsDialog::channelActivated, this, [this](ConversationId id) {
+            // Already a member: just navigate
+            const int row = _convList->rowForId(id);
+            if (row >= 0) {
+                _convList->selectRow(row);
+                return;
+            }
+            // Not a member: join first, then navigate when conv list updates
+            if (!_session)
+                return;
+            _session->joinChannel(
+                id,
+                [this](ConversationId joined) {
+                    const int r = _convList->rowForId(joined);
+                    if (r >= 0)
+                        _convList->selectRow(r);
+                },
+                [this](const QString &err) { showNetworkError(err); }
+            );
+        });
+        connect(dlg, &BrowseChannelsDialog::userActivated, this, [this](UserId id) {
+            if (!_session)
+                return;
+            // Find the DM conversation for this user and open it
+            for (const auto &c : _session->currentConversations()) {
+                if (c.kind == ConvKind::Im && c.dmUser == id) {
+                    const int row = _convList->rowForId(c.id);
+                    if (row >= 0)
+                        _convList->selectRow(row);
+                    break;
+                }
+            }
+        });
+        dlg->exec();
+        dlg->deleteLater();
+    });
+    connect(_convList, &ConvListWidget::createChannelRequested, this, [this] {
+        if (!_session)
+            return;
+        const auto creds = TokenStore::loadWorkspace(_activeTeamId);
+        auto      *dlg   = new CreateChannelDialog(creds.teamName, this);
+        if (dlg->exec() == QDialog::Accepted) {
+            const QString name = dlg->channelName();
+            const bool    priv = dlg->isPrivate();
+            _session->createChannel(name, priv, {}, [this](const QString &err) {
+                showNetworkError(err);
+            });
+        }
+        dlg->deleteLater();
+    });
+}
 
-    // If the backend can't refresh the token (no refresh token, or refresh fails),
-    // it sets authState → LoggedOut so we show the login screen instead of hanging.
-    _sessionOwner->authState() | rpl::on_next(
-                                     [this](AuthState state) {
-                                         if (state == AuthState::NotLoggedIn)
-                                             showLoggedOut();
-                                     },
-                                     _sessionLifetime
-                                 );
+void MainWindow::connectToSession() {
+    wireConvList();
 
-    _sessionOwner->conversations() |
+    // Auth loss, unread badges and notifications are handled by the
+    // per-session background subscriptions in ensureSession(); here we only
+    // wire what drives the visible UI.
+    _session->conversations() |
         rpl::on_next(
             [this](std::vector<Conversation> convs) {
                 populateConversations(convs);
-                updateUnreadBadges(convs);
                 // Keep the header star in sync when isStarred changes.
                 if (!_currentConvId.value.isEmpty() && _starBtn) {
                     for (const auto &c : convs) {
@@ -968,18 +1055,18 @@ void MainWindow::connectToSession() {
                         _contentStack->setCurrentWidget(_welcomeTips);
                 }
             },
-            _sessionLifetime
+            _uiLifetime
         );
 
-    _sessionOwner->users() |
+    _session->users() |
         rpl::on_next(
             [this](std::vector<User> users) {
                 if (_convList) {
                     _convList->setUsers(users);
-                    _convList->setMe(_sessionOwner->meUserId());
+                    _convList->setMe(_session->meUserId());
                     // Re-apply header for current DM conv now that user names are resolved.
                     if (!_currentConvId.value.isEmpty()) {
-                        const auto *conv = _sessionOwner->findConversation(_currentConvId);
+                        const auto *conv = _session->findConversation(_currentConvId);
                         if (conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)) {
                             const int row = _convList->rowForId(_currentConvId);
                             if (row >= 0) {
@@ -1005,49 +1092,46 @@ void MainWindow::connectToSession() {
                     }
                 }
             },
-            _sessionLifetime
+            _uiLifetime
         );
 
-    _sessionOwner->events() |
+    _session->events() |
         rpl::on_next(
             [this](Event e) {
-                if (const auto *ev = std::get_if<EvMessageNew>(&e)) {
-                    maybeNotify(*ev);
-                } else if (const auto *ev = std::get_if<EvPresenceChanged>(&e)) {
+                if (const auto *ev = std::get_if<EvPresenceChanged>(&e)) {
                     if (_headerAvatar && _headerAvatar->isVisible()) {
-                        const auto *conv = _sessionOwner->findConversation(_currentConvId);
+                        const auto *conv = _session->findConversation(_currentConvId);
                         if (conv && conv->dmUser && *conv->dmUser == ev->user)
                             _headerAvatar->setPresence(ev->active);
                     }
                 } else if (const auto *ev = std::get_if<EvDndChanged>(&e)) {
                     if (_headerAvatar && _headerAvatar->isVisible()) {
-                        const auto *conv = _sessionOwner->findConversation(_currentConvId);
+                        const auto *conv = _session->findConversation(_currentConvId);
                         if (conv && conv->dmUser && *conv->dmUser == ev->user)
                             _headerAvatar->setDnd(ev->dndEnabled);
                     }
                 }
             },
-            _sessionLifetime
+            _uiLifetime
         );
 
-    _sessionOwner->selfPresence() |
+    _session->selfPresence() |
         rpl::on_next(
             [this](SelfPresence sp) {
                 if (_convList)
                     _convList->setSelfPhantomAway(sp.phantomAway());
                 if (_headerAvatar && _headerAvatar->isVisible()) {
-                    const auto *conv = _sessionOwner->findConversation(_currentConvId);
-                    if (conv && conv->dmUser && *conv->dmUser == _sessionOwner->meUserId()) {
+                    const auto *conv = _session->findConversation(_currentConvId);
+                    if (conv && conv->dmUser && *conv->dmUser == _session->meUserId()) {
                         _headerAvatar->setPhantomAway(sp.phantomAway());
                         _headerAvatar->setToolTip(selfPresenceTooltip(sp));
                     }
                 }
             },
-            _sessionLifetime
+            _uiLifetime
         );
 
-    _sessionOwner->errors() |
-        rpl::on_next([this](QString msg) { showNetworkError(msg); }, _sessionLifetime);
+    _session->errors() | rpl::on_next([this](QString msg) { showNetworkError(msg); }, _uiLifetime);
 }
 
 void MainWindow::repositionSearch() {
@@ -1073,74 +1157,106 @@ void MainWindow::applyUpdateAndRestart() {
 #endif
 }
 
-void MainWindow::maybeNotify(const EvMessageNew &ev) {
+void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     QSettings s("msga", "msga");
     if (!s.value("notifications/enabled", false).toBool())
         return;
 
+    const auto it = _sessions.find(teamId);
+    if (it == _sessions.end())
+        return;
+    Session *session = it->second.session.get();
+
     // Skip own messages and bot messages with no author
-    const UserId me = _sessionOwner->meUserId();
+    const UserId me = session->meUserId();
     if (!me.value.isEmpty() && ev.msg.author == me)
         return;
 
-    // Skip if the window is focused and this conversation is already open
-    if (isActiveWindow() && ev.conv == _currentConvId)
+    // Skip if this conversation is on screen right now
+    if (isActiveWindow() && teamId == _activeTeamId && ev.conv == _currentConvId)
         return;
 
-    const int   level = s.value("notifications/level", 1).toInt();
-    const auto *conv  = _sessionOwner->findConversation(ev.conv);
+    const auto *conv = session->findConversation(ev.conv);
 
-    // Unknown conversation → not a member; muted → no notification wanted.
-    if (!conv || conv->isMuted || !conv->isMember)
+    // Unknown conversation → not a member (or another workspace's event from
+    // the shared socket); muted → no notification wanted, mentions included.
+    if (!conv || conv->isMuted || !conv->isMember || conv->notifLevel == NotificationLevel::Mute)
         return;
 
-    if (level == 1) { // DMs and mentions only
-        const bool isDm = conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
-        const bool isMention =
-            !me.value.isEmpty() && ev.msg.text.text.contains(QString("<@%1>").arg(me.value));
-        if (!isDm && !isMention)
-            return;
+    const bool     isDm        = (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
+    const QString &mt          = ev.msg.rawText.isEmpty() ? ev.msg.text.text : ev.msg.rawText;
+    const bool     isImportant = isDm || mrkdwnMentions(mt, me);
+
+    // Per-conversation level wins over the global setting (1 = DMs/mentions only).
+    bool notifyAll;
+    switch (conv->notifLevel) {
+    case NotificationLevel::All:
+        notifyAll = true;
+        break;
+    case NotificationLevel::Mentions:
+        notifyAll = false;
+        break;
+    default:
+        notifyAll = s.value("notifications/level", 1).toInt() != 1;
     }
+    if (!notifyAll && !isImportant)
+        return;
 
     // Build title and body
-    const auto   *sender = _sessionOwner->findUser(ev.msg.author);
+    const auto   *sender = session->findUser(ev.msg.author);
     const QString senderName =
         sender ? (sender->displayName.isEmpty() ? sender->name : sender->displayName)
                : tr("Someone");
 
     QString title, body;
-    if (conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)) {
+    if (isDm) {
         title = senderName;
         body  = ev.msg.text.text;
     } else {
-        const QString convName = conv ? ("#" + conv->name) : tr("a channel");
-        title                  = convName;
-        body                   = senderName + ": " + ev.msg.text.text;
+        title = "#" + conv->name;
+        body  = senderName + ": " + ev.msg.text.text;
+    }
+    // Say which workspace it came from when it isn't the one on screen.
+    if (teamId != _activeTeamId) {
+        const QString teamName = TokenStore::loadWorkspace(teamId).teamName;
+        if (!teamName.isEmpty())
+            title = teamName + " · " + title;
     }
     if (body.length() > 100)
         body = body.left(97) + "…";
 
+    _pendingNotifTeam = teamId;
     _pendingNotifConv = ev.conv;
     _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
 }
 
-void MainWindow::updateUnreadBadges(const std::vector<Conversation> &convs) {
-    int total = 0, mentions = 0;
+void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs) {
+    // Official-client semantics: important (red) = DM/MPDM unreads + channel
+    // @mentions — mentions badge even in muted channels; normal (blue) = any
+    // other unread in non-muted channels.
+    int normal = 0, important = 0;
     for (const auto &c : convs) {
-        if (c.isMuted || !c.isMember)
+        if (!c.isMember)
             continue;
-        total += c.unread;
         const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-        mentions += isDm ? c.unread : c.mentionCount;
+        if (c.isMuted) {
+            if (!isDm)
+                important += c.mentionCount;
+            continue;
+        }
+        if (isDm) {
+            important += c.unread;
+        } else {
+            important += c.mentionCount;
+            normal += c.unread;
+        }
     }
-    if (total == _totalUnread && mentions == _totalMentions)
+    const QPair<int, int> counts{normal, important};
+    if (_wsUnreads.value(teamId) == counts)
         return;
-    _totalUnread   = total;
-    _totalMentions = mentions;
-    if (!_activeTeamId.isEmpty())
-        _wsUnreads[_activeTeamId] = {total, mentions};
+    _wsUnreads[teamId] = counts;
     if (_switcher)
-        _switcher->setUnreadCounts(_activeTeamId, _totalUnread, _totalMentions);
+        _switcher->setUnreadCounts(teamId, normal, important);
     updateTrayIcon();
 }
 
@@ -1161,9 +1277,11 @@ void MainWindow::updateTrayIcon() {
     p.setRenderHint(QPainter::Antialiasing);
     if (renderer.isValid())
         renderer.render(&p, QRectF(0, 0, sz, sz));
-    if (globalTotal > 0) {
+    if (globalTotal > 0 || globalMentions > 0) {
+        // Red when anything important (DM/mention) is unread anywhere,
+        // blue for plain unread activity.
         const int d = 36;
-        p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().presence.online);
+        p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().badge.activity);
         p.setPen(Qt::NoPen);
         p.drawEllipse(sz - d, sz - d, d, d);
     }
@@ -1186,28 +1304,24 @@ void MainWindow::refreshSwitcher() {
     }
     _switcher->setWorkspaces(entries);
     _switcher->setActive(_activeTeamId);
+    // Re-apply unread counts — entries built from TokenStore carry zeros.
+    for (auto it = _wsUnreads.cbegin(); it != _wsUnreads.cend(); ++it)
+        _switcher->setUnreadCounts(it.key(), it.value().first, it.value().second);
 }
 
 void MainWindow::logoutWorkspace(const QString &teamId) {
-    _wsUnreads.remove(teamId);
     const bool wasActive = (teamId == _activeTeamId);
 
-    if (wasActive) {
-        _sessionLifetime = rpl::lifetime();
-        _sessionOwner.reset();
+    dropSession(teamId);
+    if (wasActive)
         _activeTeamId.clear();
-    }
-
     TokenStore::removeWorkspace(teamId);
 
     const auto remaining = TokenStore::workspaceIds();
     if (remaining.isEmpty()) {
-        if (_messageList)
-            _messageList->setSession(nullptr);
-        _currentConvId = {};
         showLoggedOut();
     } else if (wasActive) {
-        startSession(remaining.first());
+        activateWorkspace(remaining.first());
     } else {
         refreshSwitcher();
     }
@@ -1284,10 +1398,16 @@ void MainWindow::setupTray() {
         activateWindow();
         if (_pendingNotifConv.value.isEmpty())
             return;
-        const int row = _convList->rowForId(_pendingNotifConv);
-        if (row >= 0)
-            openConversation(row);
+        // The notification may belong to a background workspace — bring it up first.
+        if (!_pendingNotifTeam.isEmpty() && _pendingNotifTeam != _activeTeamId)
+            activateWorkspace(_pendingNotifTeam);
+        if (_convList) {
+            const int row = _convList->rowForId(_pendingNotifConv);
+            if (row >= 0)
+                openConversation(row);
+        }
         _pendingNotifConv = {};
+        _pendingNotifTeam.clear();
     });
 
     _trayIcon->show();
@@ -1405,8 +1525,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
     }
     if (obj == _starBtn && _starBtnTooltip) {
         if (e->type() == QEvent::Enter) {
-            const auto *conv =
-                _sessionOwner ? _sessionOwner->findConversation(_currentConvId) : nullptr;
+            const auto   *conv    = _session ? _session->findConversation(_currentConvId) : nullptr;
             const bool    starred = conv && conv->isStarred;
             const QString text    = starred ? tr("Unstar conversation") : tr("Star conversation");
             _starBtnTooltip->showAbove(
@@ -1456,11 +1575,20 @@ void MainWindow::resizeEvent(QResizeEvent *e) {
 }
 
 void MainWindow::changeEvent(QEvent *e) {
-    if (e->type() == QEvent::WindowStateChange)
+    if (e->type() == QEvent::WindowStateChange) {
         updateRoundedMask();
-    else if (e->type() == QEvent::ActivationChange && isActiveWindow() && _sessionOwner)
-        // Coming back to the app is when "how do I look to others" matters most.
-        _sessionOwner->refreshSelfPresence();
+    } else if (e->type() == QEvent::ActivationChange && _session) {
+        if (isActiveWindow()) {
+            // Coming back to the app is when "how do I look to others" matters most.
+            _session->refreshSelfPresence();
+            // The open conversation is visible again — clear and mark it read.
+            _session->setReading(_currentConvId);
+        } else {
+            // Window in background: let the open conversation accrue unreads
+            // and fire notifications, like the official client does.
+            _session->setReading({});
+        }
+    }
     QMainWindow::changeEvent(e);
 }
 
@@ -1475,7 +1603,7 @@ void MainWindow::populateConversations(const std::vector<Conversation> &convs) {
 }
 
 void MainWindow::openConversation(int row) {
-    if (!_sessionOwner)
+    if (!_session)
         return;
 
     if (_searchWidget && _searchWidget->isVisible())
@@ -1496,7 +1624,7 @@ void MainWindow::openConversation(int row) {
         return;
 
     const QString name = _convList->resolvedName(row);
-    const auto   *conv = _sessionOwner->findConversation(_currentConvId);
+    const auto   *conv = _session->findConversation(_currentConvId);
     const bool    isDm = conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
     const QString displayName = isDm ? name : name.isEmpty() ? "" : "#" + name;
 
@@ -1512,9 +1640,9 @@ void MainWindow::openConversation(int row) {
         }
     }
 
-    const bool hasCachedMsgs = !_sessionOwner->cachedMessages(_currentConvId).empty();
+    const bool hasCachedMsgs = !_session->cachedMessages(_currentConvId).empty();
 
-    _sessionOwner->setReading(_currentConvId);
+    _session->setReading(_currentConvId);
     if (_contentStack)
         _contentStack->setCurrentWidget(_messageList);
     _messageList->openConversation(_currentConvId, displayName, description);
@@ -1559,7 +1687,7 @@ void MainWindow::openConversation(int row) {
         );
     }
 
-    _sessionOwner->saveLastConv(_currentConvId, displayName);
+    _session->saveLastConv(_currentConvId, displayName);
     updateHeaderForConv(_currentConvId);
 }
 
@@ -1577,9 +1705,9 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
     if (conv.value.isEmpty())
         return;
 
-    if (!_sessionOwner)
+    if (!_session)
         return;
-    const auto *conversation = _sessionOwner->findConversation(conv);
+    const auto *conversation = _session->findConversation(conv);
 
     // Star button state
     if (_starBtn) {
@@ -1593,16 +1721,16 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
         _headerAvatar->setVisible(isDm);
         _headerAvatar->clearAvatar();
         if (isDm && conversation->dmUser) {
-            const auto *u = _sessionOwner->findUser(*conversation->dmUser);
+            const auto *u = _session->findUser(*conversation->dmUser);
             if (u) {
                 _headerAvatar->setPresence(u->isActive);
                 _headerAvatar->setDnd(u->dndEnabled);
-                const bool isSelf = *conversation->dmUser == _sessionOwner->meUserId();
-                const auto sp     = _sessionOwner->currentSelfPresence();
+                const bool isSelf = *conversation->dmUser == _session->meUserId();
+                const auto sp     = _session->currentSelfPresence();
                 _headerAvatar->setPhantomAway(isSelf && sp.phantomAway());
                 _headerAvatar->setToolTip(isSelf ? selfPresenceTooltip(sp) : QString{});
                 _headerAvatar->setDisplayName(u->displayName.isEmpty() ? u->name : u->displayName);
-                _sessionOwner->requestPresence(*conversation->dmUser);
+                _session->requestPresence(*conversation->dmUser);
                 if (!u->avatarUrl.isEmpty() && _imgCache) {
                     const QPixmap cached = _imgCache->get(u->avatarUrl);
                     if (!cached.isNull()) {
@@ -1631,9 +1759,9 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
 }
 
 void MainWindow::restoreLastConv() {
-    if (!_sessionOwner)
+    if (!_session)
         return;
-    auto [lastConvId, lastConvName] = _sessionOwner->loadLastConv();
+    auto [lastConvId, lastConvName] = _session->loadLastConv();
     if (lastConvId.value.isEmpty())
         return;
     const int row = _convList->rowForId(lastConvId);
