@@ -76,11 +76,11 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
 
     cardLay->addWidget(preview);
 
-    // ── Inline image thumbnails (filename above, image below — mirrors the message list) ──
+    // ── Inline previews (filename above, image below — mirrors the message list) ──
     static constexpr int kThumbMaxH = 150;
     static constexpr int kThumbMaxW = 300;
     for (const auto &f : msg.files) {
-        if (!f.isImage())
+        if (!f.hasPreview())
             continue;
 
         // Filename label
@@ -137,9 +137,9 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         }
     }
 
-    // ── Non-image file chips — identical appearance to the message list ────────
+    // ── File chips for files without a preview — identical to the message list ─
     for (const auto &f : msg.files) {
-        if (f.isImage())
+        if (f.hasPreview())
             continue;
         cardLay->addWidget(new FileChipWidget(f, _previewCard));
     }

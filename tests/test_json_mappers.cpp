@@ -394,6 +394,48 @@ TEST_CASE("toFile large size preserved as qint64", "[mappers][file]") {
     CHECK(f.size == 3000000000LL);
 }
 
+TEST_CASE("toFile PDF falls back to prerendered thumb_pdf", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "name": "report.pdf", "mimetype": "application/pdf",
+        "thumb_pdf": "https://files.slack.com/thumb_pdf.png",
+        "thumb_pdf_w": 909, "thumb_pdf_h": 1286
+    })"));
+    CHECK(f.thumbUrl == "https://files.slack.com/thumb_pdf.png");
+    CHECK(f.imageWidth == 909);
+    CHECK(f.imageHeight == 1286);
+    CHECK(!f.isImage());
+    CHECK(f.hasPreview());
+}
+
+TEST_CASE("toFile standard thumbs preferred over thumb_pdf", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "mimetype": "application/pdf",
+        "thumb_360": "https://360.png", "thumb_360_w": 360, "thumb_360_h": 509,
+        "thumb_pdf": "https://thumb_pdf.png", "thumb_pdf_w": 909, "thumb_pdf_h": 1286
+    })"));
+    CHECK(f.thumbUrl == "https://360.png");
+    CHECK(f.imageWidth == 360);
+    CHECK(f.imageHeight == 509);
+    CHECK(f.hasPreview());
+}
+
+TEST_CASE("PDF without thumbnail has no preview", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "name": "report.pdf", "mimetype": "application/pdf",
+        "url_private": "https://files.slack.com/report.pdf"
+    })"));
+    CHECK(!f.hasPreview());
+}
+
+TEST_CASE("non-PDF document ignores thumb_pdf for preview", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "name": "deck.pptx",
+        "mimetype": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "thumb_pdf": "https://thumb_pdf.png"
+    })"));
+    CHECK(!f.hasPreview());
+}
+
 // ── toBlock ───────────────────────────────────────────────────────────────────
 
 TEST_CASE("toBlock divider has typeStr only", "[mappers][block]") {

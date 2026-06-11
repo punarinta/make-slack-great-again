@@ -240,7 +240,7 @@ static TextWithEntities richTextToTWE(const QJsonObject &block) {
 }
 
 File toFile(const QJsonObject &o) {
-    return File{
+    File f{
         .id          = o.value("id").toString(),
         .name        = o.value("name").toString(),
         .mimeType    = o.value("mimetype").toString(),
@@ -252,6 +252,13 @@ File toFile(const QJsonObject &o) {
         .imageHeight = o.value("original_h").toInt(o.value("thumb_360_h").toInt()),
         .size        = (qint64)o.value("size").toDouble(),
     };
+    // PDFs: Slack prerenders the first page server-side (thumb_pdf + thumb_pdf_w/h).
+    if (f.thumbUrl.isEmpty() && o.contains("thumb_pdf")) {
+        f.thumbUrl    = o.value("thumb_pdf").toString();
+        f.imageWidth  = o.value("thumb_pdf_w").toInt(f.imageWidth);
+        f.imageHeight = o.value("thumb_pdf_h").toInt(f.imageHeight);
+    }
+    return f;
 }
 
 // Parse a text-object ({"type":"mrkdwn"|"plain_text","text":"..."}).

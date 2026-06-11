@@ -169,6 +169,10 @@ struct File {
     qint64  size        = 0;
 
     bool isImage() const { return mimeType.startsWith("image/") && imageWidth > 0; }
+    bool isPdf() const { return mimeType == "application/pdf"; }
+    // True when Slack provides a prerendered preview image: the image itself, or the
+    // server-rendered first page of a PDF (thumb_pdf) — no client-side rendering needed.
+    bool hasPreview() const { return isImage() || (isPdf() && !thumbUrl.isEmpty()); }
     bool operator==(const File &) const = default;
 };
 
