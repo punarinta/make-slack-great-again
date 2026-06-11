@@ -63,10 +63,12 @@ void PublicBackend::setupTokenRefresh(
             maybeProactiveRefresh();
         });
         _proactiveRefreshTimer->start();
-        if (_tokenExpiresAt > 0)
-            qDebug() << "[TokenRefresh] proactive: token expires in"
-                     << (_tokenExpiresAt - QDateTime::currentSecsSinceEpoch())
-                     << "s; refresh window opens 3600 s before that";
+        if (_tokenExpiresAt > 0) {
+            const qint64 secsLeft = _tokenExpiresAt - QDateTime::currentSecsSinceEpoch();
+            qDebug() << "[TokenRefresh] token healthy, valid for" << secsLeft
+                     << "s more; will auto-refresh in" << std::max<qint64>(secsLeft - 3600, 0)
+                     << "s";
+        }
         // First check is deferred: doRefresh is virtual and must not be
         // dispatched from within the constructor.
         QTimer::singleShot(0, _api, [this]() { maybeProactiveRefresh(); });
