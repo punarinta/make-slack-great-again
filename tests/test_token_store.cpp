@@ -146,6 +146,48 @@ TEST_CASE_METHOD(
     CHECK(TokenStore::activeWorkspaceId() == "T002");
 }
 
+// ── setWorkspaceOrder ─────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder persists new order", "[tokenstore]") {
+    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
+    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
+    TokenStore::saveWorkspace({"xoxp-3", "T003", "Team Three", ""});
+
+    TokenStore::setWorkspaceOrder({"T003", "T001", "T002"});
+    CHECK(TokenStore::workspaceIds() == QStringList{"T003", "T001", "T002"});
+}
+
+TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder ignores unknown ids", "[tokenstore]") {
+    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
+    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
+
+    TokenStore::setWorkspaceOrder({"T002", "T_BOGUS", "T001"});
+    CHECK(TokenStore::workspaceIds() == QStringList{"T002", "T001"});
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "setWorkspaceOrder appends known ids missing from the list", "[tokenstore]"
+) {
+    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
+    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
+    TokenStore::saveWorkspace({"xoxp-3", "T003", "Team Three", ""});
+
+    // A stale/partial order must never drop a workspace.
+    TokenStore::setWorkspaceOrder({"T002"});
+    CHECK(TokenStore::workspaceIds() == QStringList{"T002", "T001", "T003"});
+}
+
+TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder keeps credentials intact", "[tokenstore]") {
+    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
+    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
+    TokenStore::setActiveWorkspace("T001");
+
+    TokenStore::setWorkspaceOrder({"T002", "T001"});
+    CHECK(TokenStore::loadWorkspace("T001").xoxp == "xoxp-1");
+    CHECK(TokenStore::loadWorkspace("T002").xoxp == "xoxp-2");
+    CHECK(TokenStore::activeWorkspaceId() == "T001");
+}
+
 // ── hasAnyWorkspace ───────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(TokenStoreFixture, "hasAnyWorkspace false when empty", "[tokenstore]") {

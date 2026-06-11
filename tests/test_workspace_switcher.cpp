@@ -227,3 +227,132 @@ TEST_CASE(
     w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T3", "Gamma")});
     CHECK(rendersOk(w));
 }
+
+// ── Drag-and-drop reordering ──────────────────────────────────────────────────
+// Geometry constants mirrored from workspace_switcher.h: bubbles are 40px tall
+// with an 8px gap below a 16px top pad, so entry i is centred at y = 36 + 48*i.
+
+#include <QMouseEvent>
+
+static QPoint entryCenter(int i) {
+    return QPoint(32, 36 + 48 * i);
+}
+
+static void sendPress(QWidget &w, const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton) {
+    QMouseEvent ev(QEvent::MouseButtonPress, pos, w.mapToGlobal(pos), btn, btn, Qt::NoModifier);
+    QApplication::sendEvent(&w, &ev);
+}
+
+static void sendMove(QWidget &w, const QPoint &pos, Qt::MouseButtons buttons = Qt::LeftButton) {
+    QMouseEvent ev(
+        QEvent::MouseMove, pos, w.mapToGlobal(pos), Qt::NoButton, buttons, Qt::NoModifier
+    );
+    QApplication::sendEvent(&w, &ev);
+}
+
+static void sendRelease(QWidget &w, const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton) {
+    QMouseEvent ev(
+        QEvent::MouseButtonRelease, pos, w.mapToGlobal(pos), btn, Qt::NoButton, Qt::NoModifier
+    );
+    QApplication::sendEvent(&w, &ev);
+}
+
+TEST_CASE("workspaceIds reflects setWorkspaces order", "[workspace_switcher][reorder]") {
+    WorkspaceSwitcher w;
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta"), makeEntry("T3", "Gamma")});
+    CHECK(w.workspaceIds() == QStringList{"T1", "T2", "T3"});
+}
+
+TEST_CASE(
+    "dragging a bubble past the next slot reorders and emits workspacesReordered",
+    "[workspace_switcher][reorder]"
+) {
+    WorkspaceSwitcher w;
+    w.resize(64, 400);
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta"), makeEntry("T3", "Gamma")});
+
+    QStringList reordered;
+    int         emissions = 0;
+    QObject::connect(&w, &WorkspaceSwitcher::workspacesReordered, [&](const QStringList &ids) {
+        reordered = ids;
+        ++emissions;
+    });
+
+    // Grab T1 and drop it onto T2's slot.
+    sendPress(w, entryCenter(0));
+    sendMove(w, entryCenter(0) + QPoint(0, 54));
+    sendRelease(w, entryCenter(0) + QPoint(0, 54));
+
+    CHECK(w.workspaceIds() == QStringList{"T2", "T1", "T3"});
+    CHECK(emissions == 1);
+    CHECK(reordered == QStringList{"T2", "T1", "T3"});
+    CHECK(rendersOk(w));
+}
+
+TEST_CASE(
+    "drag that stays within the original slot does not reorder or emit",
+    "[workspace_switcher][reorder]"
+) {
+    WorkspaceSwitcher w;
+    w.resize(64, 400);
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta")});
+
+    int emissions = 0;
+    QObject::connect(&w, &WorkspaceSwitcher::workspacesReordered, [&](const QStringList &) {
+        ++emissions;
+    });
+
+    // Wiggle T1 a little — enough to start a drag, not enough to change slots.
+    sendPress(w, entryCenter(0));
+    sendMove(w, entryCenter(0) + QPoint(0, 14));
+    sendRelease(w, entryCenter(0) + QPoint(0, 14));
+
+    CHECK(w.workspaceIds() == QStringList{"T1", "T2"});
+    CHECK(emissions == 0);
+}
+
+TEST_CASE(
+    "plain click still emits workspaceClicked, not a reorder", "[workspace_switcher][reorder]"
+) {
+    WorkspaceSwitcher w;
+    w.resize(64, 400);
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta")});
+
+    QString clicked;
+    int     reorders = 0;
+    QObject::connect(&w, &WorkspaceSwitcher::workspaceClicked, [&](const QString &id) {
+        clicked = id;
+    });
+    QObject::connect(&w, &WorkspaceSwitcher::workspacesReordered, [&](const QStringList &) {
+        ++reorders;
+    });
+
+    sendPress(w, entryCenter(1));
+    sendRelease(w, entryCenter(1));
+
+    CHECK(clicked == "T2");
+    CHECK(reorders == 0);
+    CHECK(w.workspaceIds() == QStringList{"T1", "T2"});
+}
+
+TEST_CASE("setWorkspaces mid-drag abandons the drag safely", "[workspace_switcher][reorder]") {
+    WorkspaceSwitcher w;
+    w.resize(64, 400);
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta"), makeEntry("T3", "Gamma")});
+
+    int emissions = 0;
+    QObject::connect(&w, &WorkspaceSwitcher::workspacesReordered, [&](const QStringList &) {
+        ++emissions;
+    });
+
+    sendPress(w, entryCenter(0));
+    sendMove(w, entryCenter(0) + QPoint(0, 54)); // drag in progress, T1 now at index 1
+
+    // External refresh rebuilds the list while the user is still dragging.
+    w.setWorkspaces({makeEntry("T1", "Alpha"), makeEntry("T2", "Beta")});
+    sendRelease(w, entryCenter(0) + QPoint(0, 54));
+
+    CHECK(w.workspaceIds() == QStringList{"T1", "T2"});
+    CHECK(emissions == 0);
+    CHECK(rendersOk(w));
+}

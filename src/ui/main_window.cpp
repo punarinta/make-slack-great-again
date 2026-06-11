@@ -373,6 +373,9 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
     connect(
         _switcher, &WorkspaceSwitcher::workspaceRightClicked, this, &MainWindow::showWorkspaceMenu
     );
+    connect(_switcher, &WorkspaceSwitcher::workspacesReordered, this, [](const QStringList &ids) {
+        TokenStore::setWorkspaceOrder(ids);
+    });
 
     _settingsDialog = new SettingsDialog(qobject_cast<QWidget *>(_stack->parent()));
     _settingsDialog->setUpdateChecker(_updateChecker);

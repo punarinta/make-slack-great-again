@@ -68,6 +68,20 @@ QStringList TokenStore::workspaceIds() {
     return s.value(QStringLiteral("workspaces")).toStringList();
 }
 
+void TokenStore::setWorkspaceOrder(const QStringList &ordered) {
+    auto s = settings();
+    migrate(s);
+    const auto  existing = s.value(QStringLiteral("workspaces")).toStringList();
+    QStringList next;
+    for (const auto &id : ordered)
+        if (existing.contains(id) && !next.contains(id))
+            next.append(id);
+    for (const auto &id : existing)
+        if (!next.contains(id))
+            next.append(id);
+    s.setValue(QStringLiteral("workspaces"), next);
+}
+
 bool TokenStore::hasAnyWorkspace() {
     return !workspaceIds().isEmpty();
 }

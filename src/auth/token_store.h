@@ -21,6 +21,9 @@ void        saveWorkspace(const Credentials &c);
 Credentials loadWorkspace(const QString &teamId);
 void        removeWorkspace(const QString &teamId);
 QStringList workspaceIds();
+// Persist a new display order. Unknown ids are ignored; known ids missing
+// from `ordered` are appended at the end so no workspace is ever lost.
+void        setWorkspaceOrder(const QStringList &ordered);
 bool        hasAnyWorkspace();
 QString     activeWorkspaceId();
 void        setActiveWorkspace(const QString &teamId);
