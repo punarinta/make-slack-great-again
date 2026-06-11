@@ -50,6 +50,14 @@ public:
         _meUserId = std::move(id);
         viewport()->update();
     }
+    // Self-only: the user appears away to others merely because no official
+    // Slack client is connected (see Session::selfPresence()).
+    void setSelfPhantomAway(bool phantom) {
+        if (_selfPhantomAway == phantom)
+            return;
+        _selfPhantomAway = phantom;
+        viewport()->update();
+    }
     // Resolved display name for a visual row (DMs → user displayName, channels → conv.name).
     QString        resolvedName(int row) const;
     int            selectedIndex() const { return _selected; }
@@ -121,6 +129,7 @@ protected:
     void        saveVisitedAt();
     ImageCache *_imgCache = nullptr;
     UserId      _meUserId;
+    bool        _selfPhantomAway = false;
 
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;

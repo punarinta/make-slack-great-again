@@ -644,6 +644,54 @@ TEST_CASE("toSearchResult extracts conv from nested channel object", "[mappers][
     CHECK(r.msg.text.text == "found it");
 }
 
+// ── toSelfPresence ────────────────────────────────────────────────────────────
+
+TEST_CASE("toSelfPresence active with a connected client", "[mappers][presence]") {
+    auto sp = JsonMappers::toSelfPresence(obj(R"({
+        "ok": true, "presence": "active",
+        "online": true, "auto_away": false, "manual_away": false,
+        "connection_count": 2, "last_activity": 1700000000
+    })"));
+    CHECK(sp.loaded);
+    CHECK(sp.active);
+    CHECK(sp.online);
+    CHECK(sp.connectionCount == 2);
+    CHECK_FALSE(sp.phantomAway());
+}
+
+TEST_CASE("toSelfPresence away with zero connections is phantom away", "[mappers][presence]") {
+    auto sp = JsonMappers::toSelfPresence(obj(R"({
+        "ok": true, "presence": "away",
+        "online": false, "auto_away": false, "manual_away": false,
+        "connection_count": 0, "last_activity": 0
+    })"));
+    CHECK(sp.loaded);
+    CHECK_FALSE(sp.active);
+    CHECK_FALSE(sp.online);
+    CHECK(sp.phantomAway());
+}
+
+TEST_CASE("toSelfPresence manual away is not phantom away", "[mappers][presence]") {
+    auto sp = JsonMappers::toSelfPresence(obj(R"({
+        "ok": true, "presence": "away",
+        "online": false, "auto_away": false, "manual_away": true,
+        "connection_count": 0, "last_activity": 0
+    })"));
+    CHECK(sp.manualAway);
+    CHECK_FALSE(sp.phantomAway());
+}
+
+TEST_CASE("toSelfPresence idle auto-away while online is not phantom away", "[mappers][presence]") {
+    auto sp = JsonMappers::toSelfPresence(obj(R"({
+        "ok": true, "presence": "away",
+        "online": true, "auto_away": true, "manual_away": false,
+        "connection_count": 1, "last_activity": 1700000000
+    })"));
+    CHECK(sp.autoAway);
+    CHECK(sp.online);
+    CHECK_FALSE(sp.phantomAway());
+}
+
 // ── Batch helpers ─────────────────────────────────────────────────────────────
 
 TEST_CASE("toUsers skips entries with empty id", "[mappers][batch]") {

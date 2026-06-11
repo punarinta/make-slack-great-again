@@ -27,6 +27,10 @@ public:
         _state.dndEnabled = dnd;
         update();
     }
+    void setPhantomAway(bool phantom) {
+        _state.phantomAway = phantom;
+        update();
+    }
     void clearAvatar() {
         _pixmap = {};
         _state  = {};

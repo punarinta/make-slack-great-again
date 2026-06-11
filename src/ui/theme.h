@@ -61,6 +61,7 @@ struct BadgeColors {
 struct PresenceColors {
     QColor online;
     QColor away;
+    QColor phantom; // self-only: would be active, but no official client is connected
 };
 
 struct MessageColors {

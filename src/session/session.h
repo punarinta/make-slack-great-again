@@ -13,6 +13,7 @@
 #include <QHash>
 #include <QList>
 #include <QSet>
+#include <QTimer>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -94,6 +95,14 @@ public:
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
 
+    // Rich presence of the authed user — how we appear to others and why
+    // (see SelfPresence::phantomAway()). Polled periodically; no realtime
+    // event exists for your own connection count.
+    rpl::producer<SelfPresence> selfPresence() const;
+    SelfPresence                currentSelfPresence() const;
+    // Re-poll now (e.g. on window activation).
+    void                        refreshSelfPresence();
+
     // Fetch name + avatar for a bot by bot_id if not already cached; no-op if known.
     void fetchBotIfNeeded(UserId botId);
 
@@ -127,6 +136,8 @@ private:
 
     rpl::variable<std::vector<Conversation>> _conversations;
     rpl::variable<std::vector<User>>         _users;
+    rpl::variable<SelfPresence>              _selfPresence;
+    QTimer                                   _selfPresenceTimer;
     rpl::event_stream<Event>                 _eventHub;
     rpl::event_stream<QString>               _errorHub;
 

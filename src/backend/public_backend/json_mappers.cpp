@@ -327,6 +327,17 @@ Attachment toAttachment(const QJsonObject &o) {
     };
 }
 
+SelfPresence toSelfPresence(const QJsonObject &o) {
+    return SelfPresence{
+        .loaded          = true,
+        .active          = o.value("presence").toString() == "active",
+        .online          = o.value("online").toBool(false),
+        .autoAway        = o.value("auto_away").toBool(false),
+        .manualAway      = o.value("manual_away").toBool(false),
+        .connectionCount = o.value("connection_count").toInt(0),
+    };
+}
+
 SearchResult toSearchResult(const QJsonObject &o) {
     return SearchResult{
         .conv     = ConversationId{o.value("channel").toObject().value("id").toString()},

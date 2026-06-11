@@ -10,6 +10,8 @@
 namespace JsonMappers {
 
 User         toUser(const QJsonObject &);
+// users.getPresence response for the authed user (extra fields only exist there).
+SelfPresence toSelfPresence(const QJsonObject &);
 Conversation toConversation(const QJsonObject &);
 Message      toMessage(const QJsonObject &);
 Reaction     toReaction(const QJsonObject &);

@@ -100,6 +100,11 @@ rpl::producer<bool> FakeBackend::loadPresence(UserId) {
     return rpl::variable<bool>(false).value();
 }
 
+rpl::producer<SelfPresence> FakeBackend::loadSelfPresence() {
+    // No official client connected — exercises the "phantom away" indicator in dev.
+    return rpl::variable<SelfPresence>(SelfPresence{.loaded = true}).value();
+}
+
 rpl::producer<MessagePage>
 FakeBackend::loadHistory(ConversationId conv, std::optional<QString> /*cursor*/) {
     auto it   = _history.find(conv.value);

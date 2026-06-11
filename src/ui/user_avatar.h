@@ -17,9 +17,12 @@
 namespace UserAvatar {
 
 struct State {
-    bool isActive   = false;
-    bool dndEnabled = false;
-    bool isSelected = false;
+    bool isActive    = false;
+    bool dndEnabled  = false;
+    bool isSelected  = false;
+    // Self-only: appears away to others merely because no official Slack
+    // client is connected (SelfPresence::phantomAway()).
+    bool phantomAway = false;
 };
 
 // Paints a rounded-rect avatar + a 10px presence/DND indicator dot.
@@ -97,6 +100,9 @@ inline void paint(
         p.drawLine(cx - 2, cy, cx + 2, cy);
     } else if (state.isActive) {
         p.setBrush(Th::c().presence.online);
+        p.drawEllipse(dot);
+    } else if (state.phantomAway) {
+        p.setBrush(Th::c().presence.phantom);
         p.drawEllipse(dot);
     } else {
         const QColor ring = state.isSelected ? Th::c().nav.primary : Th::c().nav.itemTextDim;

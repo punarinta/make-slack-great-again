@@ -61,6 +61,18 @@ struct StubBackend : Backend {
     rpl::producer<bool> loadPresence(UserId) override {
         return rpl::variable<bool>(presenceResult).value();
     }
+    SelfPresence                selfPresenceResult;                 // returned by loadSelfPresence
+    bool                        selfPresenceFirstCallFails = false; // first call completes empty
+    int                         selfPresenceCalls          = 0;
+    rpl::producer<SelfPresence> loadSelfPresence() override {
+        ++selfPresenceCalls;
+        if (selfPresenceFirstCallFails && selfPresenceCalls == 1)
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return rpl::variable<SelfPresence>(selfPresenceResult).value();
+    }
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
     }
@@ -414,6 +426,79 @@ TEST_CASE_METHOD(
     REQUIRE(col.events.size() == 1);
     REQUIRE(std::holds_alternative<EvPresenceChanged>(col.events[0]));
     CHECK(std::get<EvPresenceChanged>(col.events[0]).active == true);
+}
+
+// ── refreshSelfPresence ───────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "refreshSelfPresence stores snapshot and syncs own isActive", "[session]"
+) {
+    stub->selfPresenceResult =
+        SelfPresence{.loaded = true, .active = true, .online = true, .connectionCount = 1};
+    auto col = collectEvents();
+    session->refreshSelfPresence();
+
+    CHECK(session->currentSelfPresence().active == true);
+    CHECK_FALSE(session->currentSelfPresence().phantomAway());
+    // Me (U1) starts inactive in the fixture → snapshot flips it and fires the event.
+    CHECK(session->findUser(UserId{"U1"})->isActive == true);
+    REQUIRE(col.events.size() == 1);
+    REQUIRE(std::holds_alternative<EvPresenceChanged>(col.events[0]));
+    CHECK(std::get<EvPresenceChanged>(col.events[0]).user == UserId{"U1"});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "refreshSelfPresence detects phantom away (no client connected)", "[session]"
+) {
+    stub->selfPresenceResult = SelfPresence{.loaded = true};
+    session->refreshSelfPresence();
+    CHECK(session->currentSelfPresence().phantomAway());
+}
+
+TEST_CASE_METHOD(SessionFixture, "manual away is not phantom away", "[session]") {
+    stub->selfPresenceResult = SelfPresence{.loaded = true, .manualAway = true};
+    session->refreshSelfPresence();
+    CHECK_FALSE(session->currentSelfPresence().phantomAway());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "self presence is re-polled after users load when the first call fails",
+    "[session]"
+) {
+    // Simulates the startup race: the immediate poll in start() can fail while
+    // the token is being refreshed; the snapshot must still land right after
+    // users.list arrives, not a full timer interval later.
+    auto backend2                        = std::make_unique<StubBackend>();
+    backend2->selfPresenceFirstCallFails = true;
+    backend2->selfPresenceResult =
+        SelfPresence{.loaded = true, .active = true, .online = true, .connectionCount = 1};
+    backend2->_meId  = UserId{"U1"};
+    backend2->_convs = std::vector<Conversation>{kGeneral};
+    backend2->_users = std::vector<User>{kAlice};
+    auto *stub2      = backend2.get();
+
+    Session session2(std::move(backend2), teamId);
+    session2.start();
+
+    CHECK(stub2->selfPresenceCalls == 2);
+    CHECK(session2.currentSelfPresence().loaded);
+    CHECK(session2.currentSelfPresence().active);
+}
+
+TEST_CASE_METHOD(SessionFixture, "default backend yields no self presence snapshot", "[session]") {
+    // SessionFixture's stub overrides loadSelfPresence; a fresh Session over a
+    // backend without the override must keep the unloaded default.
+    struct NoSelfPresenceStub : StubBackend {
+        rpl::producer<SelfPresence> loadSelfPresence() override {
+            return Backend::loadSelfPresence();
+        }
+    };
+    auto    backend2 = std::make_unique<NoSelfPresenceStub>();
+    Session session2(std::move(backend2), teamId);
+    session2.start();
+    CHECK_FALSE(session2.currentSelfPresence().loaded);
+    CHECK_FALSE(session2.currentSelfPresence().phantomAway());
 }
 
 // ── cache passthrough ─────────────────────────────────────────────────────────

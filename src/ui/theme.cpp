@@ -66,8 +66,9 @@ const Theme kSlackDark = {
         },
     .presence =
         {
-            .online = QColor("#2BAC76"),
-            .away   = QColor("#8B8B8B"),
+            .online  = QColor("#2BAC76"),
+            .away    = QColor("#8B8B8B"),
+            .phantom = QColor("#E8A33D"),
         },
     .message =
         {

@@ -314,6 +314,26 @@ rpl::producer<bool> PublicBackend::loadPresence(UserId userId) {
     };
 }
 
+rpl::producer<SelfPresence> PublicBackend::loadSelfPresence() {
+    return [this](auto consumer) mutable {
+        // No "user" param → Slack returns the rich self snapshot
+        // (online / auto_away / manual_away / connection_count).
+        _api->call(
+            "users.getPresence",
+            QUrlQuery{},
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toSelfPresence(resp));
+                consumer.put_done();
+            },
+            [consumer](QString err) mutable {
+                qWarning() << "loadSelfPresence error:" << err;
+                consumer.put_done();
+            }
+        );
+        return rpl::lifetime();
+    };
+}
+
 rpl::producer<User> PublicBackend::loadBotInfo(UserId botId) {
     return [this, botId](auto consumer) mutable {
         QUrlQuery params;

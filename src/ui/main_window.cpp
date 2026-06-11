@@ -817,6 +817,19 @@ void MainWindow::handleOAuthUri(const QUrl &uri) {
         _activeFlow->handleUri(uri);
 }
 
+// How the user's own presence reads to others — shown on the self-DM header avatar.
+static QString selfPresenceTooltip(const SelfPresence &sp) {
+    if (sp.phantomAway())
+        return QCoreApplication::translate(
+            "MainWindow", "You appear away to others — no official Slack client is connected"
+        );
+    if (sp.active)
+        return QCoreApplication::translate("MainWindow", "Active");
+    if (sp.loaded)
+        return QCoreApplication::translate("MainWindow", "Away");
+    return {};
+}
+
 void MainWindow::connectToSession() {
     if (_convList) {
         connect(
@@ -1011,6 +1024,22 @@ void MainWindow::connectToSession() {
                         const auto *conv = _sessionOwner->findConversation(_currentConvId);
                         if (conv && conv->dmUser && *conv->dmUser == ev->user)
                             _headerAvatar->setDnd(ev->dndEnabled);
+                    }
+                }
+            },
+            _sessionLifetime
+        );
+
+    _sessionOwner->selfPresence() |
+        rpl::on_next(
+            [this](SelfPresence sp) {
+                if (_convList)
+                    _convList->setSelfPhantomAway(sp.phantomAway());
+                if (_headerAvatar && _headerAvatar->isVisible()) {
+                    const auto *conv = _sessionOwner->findConversation(_currentConvId);
+                    if (conv && conv->dmUser && *conv->dmUser == _sessionOwner->meUserId()) {
+                        _headerAvatar->setPhantomAway(sp.phantomAway());
+                        _headerAvatar->setToolTip(selfPresenceTooltip(sp));
                     }
                 }
             },
@@ -1429,6 +1458,9 @@ void MainWindow::resizeEvent(QResizeEvent *e) {
 void MainWindow::changeEvent(QEvent *e) {
     if (e->type() == QEvent::WindowStateChange)
         updateRoundedMask();
+    else if (e->type() == QEvent::ActivationChange && isActiveWindow() && _sessionOwner)
+        // Coming back to the app is when "how do I look to others" matters most.
+        _sessionOwner->refreshSelfPresence();
     QMainWindow::changeEvent(e);
 }
 
@@ -1565,6 +1597,10 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             if (u) {
                 _headerAvatar->setPresence(u->isActive);
                 _headerAvatar->setDnd(u->dndEnabled);
+                const bool isSelf = *conversation->dmUser == _sessionOwner->meUserId();
+                const auto sp     = _sessionOwner->currentSelfPresence();
+                _headerAvatar->setPhantomAway(isSelf && sp.phantomAway());
+                _headerAvatar->setToolTip(isSelf ? selfPresenceTooltip(sp) : QString{});
                 _headerAvatar->setDisplayName(u->displayName.isEmpty() ? u->name : u->displayName);
                 _sessionOwner->requestPresence(*conversation->dmUser);
                 if (!u->avatarUrl.isEmpty() && _imgCache) {

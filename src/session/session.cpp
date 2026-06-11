@@ -28,6 +28,12 @@ void Session::start() {
 
     _backend->connectRealtime();
 
+    // Poll rich self-presence so the UI can show how the user appears to
+    // others; there is no realtime event for your own connection count.
+    refreshSelfPresence();
+    QObject::connect(&_selfPresenceTimer, &QTimer::timeout, [this] { refreshSelfPresence(); });
+    _selfPresenceTimer.start(60 * 1000);
+
     // Load conversations; update cache on arrival.
     _backend->loadConversations() |
         rpl::on_next(
@@ -87,6 +93,13 @@ void Session::start() {
                                         if (!u.isBot && !u.isDeactivated)
                                             ids.push_back(u.id);
                                     _backend->subscribePresence(std::move(ids));
+
+                                    // The self-presence call made at start() can race the
+                                    // startup token refresh and come back empty; users.list
+                                    // landing proves the token works, so re-poll now (ahead of
+                                    // the per-DM polls below, which share the request queue).
+                                    if (!_selfPresence.current().loaded)
+                                        refreshSelfPresence();
 
                                     // Poll current presence for every DM conversation partner so
                                     // the list shows the right indicator without waiting for the
@@ -360,6 +373,38 @@ void Session::requestPresence(UserId userId) {
                                          },
                                          _lifetime
                                      );
+}
+
+rpl::producer<SelfPresence> Session::selfPresence() const {
+    return _selfPresence.value();
+}
+
+SelfPresence Session::currentSelfPresence() const {
+    return _selfPresence.current();
+}
+
+void Session::refreshSelfPresence() {
+    _backend->loadSelfPresence() |
+        rpl::on_next(
+            [this](SelfPresence sp) {
+                _selfPresence  = sp;
+                // Keep our own User.isActive (the others-see-me flag) in sync
+                // and notify listeners the same way requestPresence() does.
+                const User *me = findUser(_meUserId);
+                if (me && me->isActive != sp.active) {
+                    auto users = _users.current();
+                    for (auto &u : users) {
+                        if (u.id == _meUserId) {
+                            u.isActive = sp.active;
+                            break;
+                        }
+                    }
+                    _users = std::move(users);
+                    _eventHub.fire(EvPresenceChanged{_meUserId, sp.active});
+                }
+            },
+            _lifetime
+        );
 }
 
 void Session::persistUnreads() {

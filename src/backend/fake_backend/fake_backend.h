@@ -21,6 +21,7 @@ public:
     rpl::producer<std::vector<Conversation>> loadConversations() override;
     rpl::producer<std::vector<User>>         loadUsers() override;
     rpl::producer<bool>                      loadPresence(UserId) override;
+    rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override;
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override;
 

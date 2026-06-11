@@ -568,16 +568,18 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
 void ConvListWidget::drawUserAvatar(
     QPainter &p, QRect rect, const QString &userId, QColor bgColor, bool isSelected
 ) const {
-    const auto    infoIt  = _userInfos.constFind(userId);
-    const QString url     = (infoIt != _userInfos.constEnd()) ? infoIt->avatarUrl : QString{};
-    const QPixmap pixmap  = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap{};
-    const QString initial = (infoIt != _userInfos.constEnd() && !infoIt->displayName.isEmpty())
-                                ? infoIt->displayName.left(1)
-                                : QString{"?"};
-    const UserAvatar::State state =
+    const auto        infoIt  = _userInfos.constFind(userId);
+    const QString     url     = (infoIt != _userInfos.constEnd()) ? infoIt->avatarUrl : QString{};
+    const QPixmap     pixmap  = (_imgCache && !url.isEmpty()) ? _imgCache->get(url) : QPixmap{};
+    const QString     initial = (infoIt != _userInfos.constEnd() && !infoIt->displayName.isEmpty())
+                                    ? infoIt->displayName.left(1)
+                                    : QString{"?"};
+    UserAvatar::State state =
         (infoIt != _userInfos.constEnd())
             ? UserAvatar::State{infoIt->isActive, infoIt->dndEnabled, isSelected}
             : UserAvatar::State{};
+    if (_selfPhantomAway && !_meUserId.value.isEmpty() && userId == _meUserId.value)
+        state.phantomAway = true;
     UserAvatar::paint(
         p, rect, pixmap, initial, state, kAvatarRadius, p.device()->devicePixelRatioF(), bgColor
     );

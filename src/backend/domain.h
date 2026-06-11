@@ -60,6 +60,23 @@ struct User {
     bool    operator==(const User &) const = default;
 };
 
+// Rich presence for the authed user only. users.getPresence returns these
+// extra fields when called for yourself; for everyone else only the binary
+// active/away (User::isActive) exists.
+struct SelfPresence {
+    bool loaded          = false; // true once a snapshot has actually arrived
+    bool active          = false; // what others see: true=active, false=away
+    bool online          = false; // at least one official client connection exists
+    bool autoAway        = false; // idle >10 min while a client is connected
+    bool manualAway      = false; // user explicitly set themselves away
+    int  connectionCount = 0;     // official clients only; Socket Mode never counts
+
+    // True when the user appears away to others *only* because no official
+    // Slack client is connected — not because they chose (or idled into) away.
+    bool phantomAway() const { return loaded && !active && !online && !manualAway; }
+    bool operator==(const SelfPresence &) const = default;
+};
+
 struct Conversation {
     ConversationId id;
     ConvKind       kind;

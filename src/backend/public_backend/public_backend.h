@@ -40,6 +40,7 @@ public:
     rpl::producer<std::vector<Conversation>> loadConversations() override;
     rpl::producer<std::vector<User>>         loadUsers() override;
     rpl::producer<bool>                      loadPresence(UserId) override;
+    rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<User>                      loadBotInfo(UserId botId) override;
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
     rpl::producer<MessagePage>
