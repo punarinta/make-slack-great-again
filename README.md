@@ -8,9 +8,8 @@ Download the latest prebuilt binary from [msga.app](https://msga.app/):
 
 - [Linux x86-64](https://msga.app/download/msga-linux-x86_64) (any distribution)
 - [macOS Apple Silicon](https://msga.app/download/msga-macos-arm64.dmg)
-- Windows — coming soon
+- [Windows](https://msga.app/download/msga-windows-x86_64.exe)
 
-A Windows build is planned once the client is stable enough for daily use.
 
 ## 2. Build your own version
 
