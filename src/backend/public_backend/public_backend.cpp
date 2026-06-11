@@ -671,7 +671,10 @@ rpl::producer<QHash<QString, QString>> PublicBackend::loadEmojiList() {
 }
 
 void PublicBackend::uploadFiles(
-    ConversationId conv, const QStringList &filePaths, const QString &initialComment
+    ConversationId                              conv,
+    const QStringList                          &filePaths,
+    const QString                              &initialComment,
+    std::function<void(bool ok, QString error)> done
 ) {
     // Slack external upload flow: per file, files.getUploadURLExternal then a
     // raw POST of the bytes to the returned URL; once every file has settled,
@@ -681,13 +684,18 @@ void PublicBackend::uploadFiles(
         int        pending = 0;
         QJsonArray files; // {id, title} of successfully uploaded files
     };
-    auto batch = std::make_shared<Batch>();
+    auto batch  = std::make_shared<Batch>();
+    auto settle = std::make_shared<std::function<void(bool, QString)>>(std::move(done));
 
-    auto finishOne = [this, conv, initialComment, batch]() {
+    auto finishOne = [this, conv, initialComment, batch, settle]() {
         if (--batch->pending > 0)
             return;
-        if (batch->files.isEmpty())
-            return; // every upload failed; warnings already logged
+        if (batch->files.isEmpty()) {
+            // Every upload failed; warnings already logged.
+            if (*settle)
+                (*settle)(false, QStringLiteral("file upload failed"));
+            return;
+        }
         QJsonObject body;
         body["channel_id"] = conv.value;
         body["files"]      = batch->files;
@@ -697,8 +705,15 @@ void PublicBackend::uploadFiles(
         _api->postJson(
             "files.completeUploadExternal",
             body,
-            [](QJsonObject) { /* success */ },
-            [](QString err) { qWarning() << "completeUploadExternal error:" << err; }
+            [settle](QJsonObject) {
+                if (*settle)
+                    (*settle)(true, {});
+            },
+            [settle](QString err) {
+                qWarning() << "completeUploadExternal error:" << err;
+                if (*settle)
+                    (*settle)(false, err);
+            }
         );
     };
 
@@ -747,6 +762,10 @@ void PublicBackend::uploadFiles(
             }
         );
     }
+
+    // No file could even be opened — finishOne will never run.
+    if (batch->pending == 0 && *settle)
+        (*settle)(false, QStringLiteral("could not read the selected files"));
 }
 
 void PublicBackend::downloadFile(

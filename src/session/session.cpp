@@ -5,7 +5,12 @@
 #include "cache/workspace_cache.h"
 #include "text/mrkdwn_parser.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QFileInfo>
+#include <QImageReader>
+#include <QMimeDatabase>
+#include <QUrl>
 
 Session::Session(std::unique_ptr<Backend> backend, const QString &teamId)
     : _backend(std::move(backend)), _cache(std::make_unique<WorkspaceCache>(teamId)) {}
@@ -205,11 +210,20 @@ void Session::start() {
                         _conversations = std::move(convs);
                     }
                     // Remove the matching optimistic copy so the real message
-                    // replaces it instead of appearing as a duplicate.
+                    // replaces it instead of appearing as a duplicate. Match
+                    // within the same kind (file message vs plain text) so a
+                    // quick text confirmation can't displace the ghost of a
+                    // still-uploading file batch.
                     if (ownMessage) {
-                        auto it = _pendingOptimisticTs.find(ev->conv.value);
-                        if (it != _pendingOptimisticTs.end() && !it->isEmpty()) {
-                            const QString fakeTs = it->takeFirst();
+                        auto it = _pendingSends.find(ev->conv.value);
+                        if (it != _pendingSends.end() && !it->isEmpty()) {
+                            const bool withFiles = !ev->msg.files.empty();
+                            int        idx       = 0;
+                            while (idx < it->size() && (*it)[idx].withFiles != withFiles)
+                                ++idx;
+                            if (idx == it->size())
+                                idx = 0; // no same-kind entry; fall back to FIFO
+                            const QString fakeTs = it->takeAt(idx).ts;
                             _eventHub.fire(EvMessageDeleted{ev->conv, fakeTs});
                         }
                     }
@@ -288,9 +302,19 @@ const std::vector<Conversation> &Session::currentConversations() const {
     return _conversations.current();
 }
 
+static Ts makeFakeTs() {
+    // Monotonic: two sends within the same millisecond must not collide —
+    // optimistic messages are looked up and removed by this ts.
+    static qint64 lastUsec = 0;
+    qint64        usec     = QDateTime::currentMSecsSinceEpoch() * 1000;
+    if (usec <= lastUsec)
+        usec = lastUsec + 1;
+    lastUsec = usec;
+    return QString("%1.%2").arg(usec / 1000000).arg(usec % 1000000, 6, 10, QChar('0'));
+}
+
 void Session::sendMessage(ConversationId conv, const QString &text, std::optional<Ts> threadRoot) {
-    qint64 msec   = QDateTime::currentMSecsSinceEpoch();
-    Ts     fakeTs = QString("%1.%2").arg(msec / 1000).arg((msec % 1000) * 1000, 6, 10, QChar('0'));
+    const Ts fakeTs = makeFakeTs();
 
     Message optimistic;
     optimistic.ts         = fakeTs;
@@ -298,10 +322,11 @@ void Session::sendMessage(ConversationId conv, const QString &text, std::optiona
     optimistic.text       = MrkdwnParser::parse(text);
     optimistic.rawText    = text;
     optimistic.threadRoot = threadRoot;
+    optimistic.pending    = true;
 
     _eventHub.fire(EvMessageNew{conv, optimistic});
 
-    _pendingOptimisticTs[conv.value].append(fakeTs);
+    _pendingSends[conv.value].append({fakeTs, false});
 
     OutgoingMessage out;
     out.text       = optimistic.text;
@@ -329,7 +354,52 @@ void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 p
 }
 
 void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text) {
-    _backend->uploadFiles(conv, filePaths, text);
+    // Uploads can take a while for big files — show the message immediately as
+    // a translucent pending copy; the real message arrives via realtime once
+    // Slack posts it, replacing the ghost (same flow as plain text sends).
+    const Ts fakeTs = makeFakeTs();
+
+    Message optimistic;
+    optimistic.ts      = fakeTs;
+    optimistic.author  = _meUserId;
+    optimistic.text    = MrkdwnParser::parse(text);
+    optimistic.rawText = text;
+    optimistic.pending = true;
+
+    QMimeDatabase mimeDb;
+    for (const QString &path : filePaths) {
+        const QFileInfo info(path);
+        File            f;
+        f.id         = QStringLiteral("pending:") + path;
+        f.name       = info.fileName();
+        f.mimeType   = mimeDb.mimeTypeForFile(path).name();
+        f.prettyType = info.suffix().toUpper();
+        f.size       = info.size();
+        if (f.mimeType.startsWith("image/")) {
+            // Local preview: point at the file itself; the message list loads
+            // file:// URLs straight from disk instead of downloading.
+            const QSize dim = QImageReader(path).size();
+            if (dim.isValid()) {
+                f.imageWidth  = dim.width();
+                f.imageHeight = dim.height();
+                f.urlPrivate  = QUrl::fromLocalFile(path).toString();
+            }
+        }
+        optimistic.files.push_back(std::move(f));
+    }
+
+    _eventHub.fire(EvMessageNew{conv, optimistic});
+    _pendingSends[conv.value].append({fakeTs, true});
+
+    _backend->uploadFiles(conv, filePaths, text, [this, conv, fakeTs](bool ok, QString error) {
+        if (ok)
+            return; // realtime delivery of the real message removes the ghost
+        auto it = _pendingSends.find(conv.value);
+        if (it != _pendingSends.end())
+            it->removeIf([&](const PendingSend &p) { return p.ts == fakeTs; });
+        _eventHub.fire(EvMessageDeleted{conv, fakeTs});
+        _errorHub.fire(QCoreApplication::translate("Session", "Upload failed: %1").arg(error));
+    });
 }
 
 void Session::searchMessages(
@@ -362,7 +432,13 @@ std::vector<Message> Session::cachedMessages(ConversationId conv) const {
 }
 
 void Session::cacheMessages(ConversationId conv, const std::vector<Message> &msgs) {
-    _cache->saveMessages(conv, msgs);
+    // Pending optimistic copies must not survive a restart as ghost messages.
+    std::vector<Message> confirmed;
+    confirmed.reserve(msgs.size());
+    for (const auto &m : msgs)
+        if (!m.pending)
+            confirmed.push_back(m);
+    _cache->saveMessages(conv, confirmed);
 }
 
 void Session::saveLastConv(ConversationId conv, const QString &displayName) {

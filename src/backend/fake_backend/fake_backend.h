@@ -34,7 +34,15 @@ public:
 
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
-    void uploadFiles(ConversationId, const QStringList &, const QString &) override {}
+    void                                     uploadFiles(
+                                            ConversationId,
+                                            const QStringList &,
+                                            const QString &,
+                                            std::function<void(bool, QString)> done = {}
+                                        ) override {
+        if (done)
+            done(true, {});
+    }
     void downloadFile(
         const QString &, std::function<void(QByteArray)>, std::function<void(QString)> = {}
     ) override {}

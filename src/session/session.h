@@ -141,13 +141,20 @@ private:
     rpl::event_stream<Event>                 _eventHub;
     rpl::event_stream<QString>               _errorHub;
 
-    UserId                         _meUserId; // set via setMe() once auth.test result is known
-    bool                           _meIsAdmin = false; // is_admin || is_owner from auth.test
-    ConversationId                 _readingConv;       // currently open conversation
-    QHash<QString, QString>        _emojiMap;
-    QHash<QString, QList<QString>> _pendingOptimisticTs; // conv.value → queue of fake ts values
-    QHash<QString, User>           _botUsers;     // bot_id → User; for bots not in users.list
-    QSet<QString>             _pendingBotFetches; // bot_ids with an in-flight bots.info request
+    UserId                  _meUserId;          // set via setMe() once auth.test result is known
+    bool                    _meIsAdmin = false; // is_admin || is_owner from auth.test
+    ConversationId          _readingConv;       // currently open conversation
+    QHash<QString, QString> _emojiMap;
+    // One entry per in-flight optimistic message (text send or file upload).
+    // withFiles disambiguates which ghost a confirming server message replaces:
+    // a slow upload must not be displaced by a quick text sent after it.
+    struct PendingSend {
+        QString ts; // fake client-side ts of the optimistic copy
+        bool    withFiles = false;
+    };
+    QHash<QString, QList<PendingSend>> _pendingSends; // conv.value → FIFO queue
+    QHash<QString, User>               _botUsers;     // bot_id → User; for bots not in users.list
+    QSet<QString>             _pendingBotFetches;     // bot_ids with an in-flight bots.info request
     rpl::event_stream<UserId> _botInfoHub;
     rpl::lifetime             _lifetime;
 };

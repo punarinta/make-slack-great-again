@@ -919,7 +919,9 @@ bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
     if (btn < 0 || _hoveredRow < 0 || _hoveredRow >= (int)_tops.size())
         return false;
 
-    const auto  &msg       = _items[_hoveredRow].msg;
+    const auto &msg = _items[_hoveredRow].msg;
+    if (msg.pending) // not on the server yet — no actions available
+        return false;
     const int    scrollY   = verticalScrollBar()->value();
     const int    rowTop    = _tops[_hoveredRow] - scrollY;
     const int    rh        = rowHeight(_hoveredRow);
@@ -975,6 +977,8 @@ void MessageListWidget::openEmojiPickerForRow(int row, const QPoint &globalPos) 
 }
 
 void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint &globalPos) {
+    if (msg.pending)
+        return;
     const bool    isOwnMessage = _session && (msg.author == _session->meUserId());
     const bool    canDelete    = isOwnMessage || (_session && _session->meIsAdmin());
     const QString linkUrl      = firstLinkInMessage(msg);
@@ -1166,7 +1170,9 @@ bool MessageListWidget::tryHandleFileActionBarPress(const QPoint &pos) {
     if (btn < 0 || _hoveredFile.first < 0)
         return false;
 
-    const auto  &msg  = _items[_hoveredFile.first].msg;
+    const auto &msg = _items[_hoveredFile.first].msg;
+    if (msg.pending) // not on the server yet — no actions available
+        return false;
     const auto  &file = msg.files[_hoveredFile.second];
     const QRect  fr   = fileViewportRect(_hoveredFile.first, _hoveredFile.second);
     const QRect  btnR = fileActionBarButtonRect(btn, fr);
@@ -1204,6 +1210,8 @@ void MessageListWidget::downloadFileToUser(const File &file) {
 void MessageListWidget::showFileContextMenu(
     const File &file, const Message &msg, const QPoint &globalPos
 ) {
+    if (msg.pending)
+        return;
     const bool isImage = file.isImage();
     auto      *menu    = new ContextMenu(this);
 

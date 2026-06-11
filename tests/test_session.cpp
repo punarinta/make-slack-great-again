@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -101,7 +102,21 @@ struct StubBackend : Backend {
     rpl::producer<QHash<QString, QString>> loadEmojiList() override {
         return rpl::variable<QHash<QString, QString>>({}).value();
     }
-    void uploadFiles(ConversationId, const QStringList &, const QString &) override {}
+    struct UploadCall {
+        ConversationId                     conv;
+        QStringList                        paths;
+        QString                            comment;
+        std::function<void(bool, QString)> done;
+    };
+    std::vector<UploadCall> uploadCalls;
+    void                    uploadFiles(
+                           ConversationId                     c,
+                           const QStringList                 &paths,
+                           const QString                     &comment,
+                           std::function<void(bool, QString)> done = {}
+                       ) override {
+        uploadCalls.push_back({c, paths, comment, std::move(done)});
+    }
     void downloadFile(
         const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
     ) override {}
@@ -521,6 +536,102 @@ TEST_CASE_METHOD(SessionFixture, "sendMessage delegates to backend", "[session][
     REQUIRE(stub->sentMessages.size() == 1);
     CHECK(stub->sentMessages[0].conv == ConversationId{"C1"});
     CHECK(stub->sentMessages[0].msg.text.text == "hi");
+}
+
+TEST_CASE_METHOD(SessionFixture, "sendMessage optimistic copy is pending", "[session][send]") {
+    auto col = collectEvents();
+    session->sendMessage(ConversationId{"C1"}, "hello");
+    REQUIRE(col.events.size() == 1);
+    CHECK(std::get<EvMessageNew>(col.events[0]).msg.pending);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "own realtime message removes the optimistic copy", "[session][send]"
+) {
+    auto col = collectEvents();
+    session->sendMessage(ConversationId{"C1"}, "hello");
+    const Ts fakeTs = std::get<EvMessageNew>(col.events[0]).msg.ts;
+
+    Message real;
+    real.ts     = "200.000";
+    real.author = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, real});
+
+    // optimistic new + ghost delete + real new
+    REQUIRE(col.events.size() == 3);
+    REQUIRE(std::holds_alternative<EvMessageDeleted>(col.events[1]));
+    CHECK(std::get<EvMessageDeleted>(col.events[1]).ts == fakeTs);
+    CHECK_FALSE(std::get<EvMessageNew>(col.events[2]).msg.pending);
+}
+
+// ── uploadFiles ───────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "uploadFiles fires optimistic pending message with files", "[session][upload]"
+) {
+    QTemporaryDir dir;
+    const QString path = dir.path() + "/notes.txt";
+    {
+        QFile f(path);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("hello world");
+    }
+
+    auto col = collectEvents();
+    session->uploadFiles(ConversationId{"C1"}, {path}, "see attached");
+
+    REQUIRE(col.events.size() == 1);
+    const auto &ev = std::get<EvMessageNew>(col.events[0]);
+    CHECK(ev.msg.pending);
+    CHECK(ev.msg.text.text == "see attached");
+    REQUIRE(ev.msg.files.size() == 1);
+    CHECK(ev.msg.files[0].name == "notes.txt");
+    CHECK(ev.msg.files[0].size == 11);
+
+    REQUIRE(stub->uploadCalls.size() == 1);
+    CHECK(stub->uploadCalls[0].conv == ConversationId{"C1"});
+    CHECK(stub->uploadCalls[0].comment == "see attached");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "failed upload removes the ghost and reports an error", "[session][upload]"
+) {
+    auto          col = collectEvents();
+    QString       error;
+    rpl::lifetime errLt;
+    session->errors() | rpl::on_next([&](QString e) { error = std::move(e); }, errLt);
+
+    session->uploadFiles(ConversationId{"C1"}, {"/nonexistent/big.bin"}, "");
+    const Ts fakeTs = std::get<EvMessageNew>(col.events[0]).msg.ts;
+
+    REQUIRE(stub->uploadCalls.size() == 1);
+    stub->uploadCalls[0].done(false, "boom");
+
+    REQUIRE(col.events.size() == 2);
+    REQUIRE(std::holds_alternative<EvMessageDeleted>(col.events[1]));
+    CHECK(std::get<EvMessageDeleted>(col.events[1]).ts == fakeTs);
+    CHECK(error.contains("boom"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "text confirmation does not displace a pending upload ghost",
+    "[session][upload]"
+) {
+    auto col = collectEvents();
+    session->uploadFiles(ConversationId{"C1"}, {"/nonexistent/big.bin"}, "slow upload");
+    session->sendMessage(ConversationId{"C1"}, "quick text");
+    const Ts textFakeTs = std::get<EvMessageNew>(col.events[1]).msg.ts;
+
+    // The quick text confirms first; it must remove the text ghost, not the upload's.
+    Message real;
+    real.ts     = "300.000";
+    real.author = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, real});
+
+    REQUIRE(col.events.size() == 4);
+    REQUIRE(std::holds_alternative<EvMessageDeleted>(col.events[2]));
+    CHECK(std::get<EvMessageDeleted>(col.events[2]).ts == textFakeTs);
 }
 
 // ── requestPresence ───────────────────────────────────────────────────────────

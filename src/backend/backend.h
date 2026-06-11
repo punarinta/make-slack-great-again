@@ -89,8 +89,14 @@ public:
     virtual rpl::producer<QHash<QString, QString>>   loadEmojiList()                      = 0;
     // Upload one or more files and share them in the conversation as a single
     // message; initialComment (may be empty) becomes the message text.
-    virtual void
-    uploadFiles(ConversationId, const QStringList &filePaths, const QString &initialComment) = 0;
+    // `done` (optional) fires once the whole batch settles: ok=true when a
+    // message was posted, ok=false (with a reason) when nothing was posted.
+    virtual void                                     uploadFiles(
+                                            ConversationId,
+                                            const QStringList                          &filePaths,
+                                            const QString                              &initialComment,
+                                            std::function<void(bool ok, QString error)> done = {}
+                                        ) = 0;
     // Delete a file by its Slack file ID (files.delete). No-op on unsupported backends.
     virtual void deleteFile(const QString & /*fileId*/) {}
     // Download arbitrary Slack file URL with auth credentials.

@@ -80,7 +80,10 @@ public:
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(
-                                            ConversationId, const QStringList &filePaths, const QString &initialComment
+                                            ConversationId,
+                                            const QStringList                          &filePaths,
+                                            const QString                              &initialComment,
+                                            std::function<void(bool ok, QString error)> done = {}
                                         ) override;
     void deleteFile(const QString &fileId) override;
     void downloadFile(

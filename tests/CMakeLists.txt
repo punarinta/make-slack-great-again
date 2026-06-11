@@ -81,6 +81,8 @@ add_msga_qt_test(test_session
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
+# session.cpp probes image dimensions for optimistic upload previews (QImageReader)
+target_link_libraries(test_session PRIVATE Qt6::Gui)
 
 add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp

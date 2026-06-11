@@ -17,6 +17,7 @@
 #include <QAbstractTextDocumentLayout>
 #include <QTextCursor>
 #include <QApplication>
+#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
@@ -131,6 +132,12 @@ void MessageListWidget::paintRow(
         QColor       highlight(0x14, 0x85, 0x67, static_cast<int>(alpha * 40));
         p.fillRect(QRect(0, msgTop, vw, msgH), highlight);
     }
+
+    // Pending (not yet delivered) messages render translucent until the server
+    // confirms them; backgrounds above stay opaque, content below fades.
+    const bool pending = item.msg.pending;
+    if (pending)
+        p.setOpacity(0.5);
 
     // ── Pinned banner — sits at the very top of the message, before padding ──
     const int pinnedBannerH = item.msg.pinned ? 18 : 0;
@@ -332,6 +339,13 @@ void MessageListWidget::paintRow(
             tsText
         );
         p.restore();
+    }
+
+    if (pending) {
+        p.setOpacity(1.0);
+        // No action bars on a pending message — there is nothing on the
+        // server yet to react to, forward, download or delete.
+        return;
     }
 
     // ── File action bar ──────────────────────────────────────────────────
@@ -630,6 +644,18 @@ void MessageListWidget::triggerMissingDownloads() {
                     const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
                     if (_fileImages.contains(url))
                         continue;
+
+                    // Pending uploads point at the local file — read it from
+                    // disk for an instant preview, no network involved.
+                    if (url.startsWith("file://")) {
+                        QPixmap px(QUrl(url).toLocalFile());
+                        if (!px.isNull() && px.width() > kImgMaxW * 2)
+                            px = px.scaledToWidth(kImgMaxW * 2, Qt::SmoothTransformation);
+                        _fileImages[url] = px;
+                        rebuildLayout();
+                        viewport()->update();
+                        continue;
+                    }
 
                     const auto cached = _session->cachedImage(url);
                     if (!cached.isEmpty()) {

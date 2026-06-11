@@ -222,6 +222,9 @@ struct Message {
     std::vector<Attachment> attachments;    // Phase 3
     bool                    pinned = false; // true if pinned to channel
     UserId                  pinnedBy;       // user who pinned it
+    // Local optimistic copy shown while the send/upload is in flight; rendered
+    // translucent and replaced by the real message once the server confirms.
+    bool                    pending                           = false;
     bool                    operator==(const Message &) const = default;
 };
 
