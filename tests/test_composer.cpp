@@ -10,11 +10,14 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDir>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFile>
 #include <QUrl>
 #include <QImage>
 #include <QMimeData>
 #include <QTextEdit>
+#include <QWindow>
 
 #include "ui/composer/composer_widget.h"
 #include "session/session.h"
@@ -226,6 +229,60 @@ TEST_CASE("pasting a copied local file attaches it", "[composer][files][paste]")
     CHECK(editOf(&c)->toPlainText().isEmpty());
     QFile::remove(tmpPath);
     QApplication::clipboard()->clear();
+}
+
+// ── Drag-and-drop attachments ─────────────────────────────────────────────────
+
+// Qt delivers drag-and-drop at the QWindow level: QWidgetWindow routes the
+// events to the widget under the cursor (events sent straight to a QWidget are
+// discarded by QApplication::notify). A DragEnter must precede the Drop so the
+// window knows the drag target.
+static bool sendDrop(ComposerWidget *c, const QMimeData *mime) {
+    c->show();
+    QDragEnterEvent enter(QPoint(10, 10), Qt::CopyAction, mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(c->windowHandle(), &enter);
+    QDropEvent drop(QPointF(10, 10), Qt::CopyAction, mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(c->windowHandle(), &drop);
+    return drop.isAccepted();
+}
+
+TEST_CASE("dropping a local file attaches it", "[composer][files][drop]") {
+    const QString tmpPath = QDir::tempPath() + "/msga-drop-test.txt";
+    {
+        QFile f(tmpPath);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("hi");
+    }
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(tmpPath)});
+
+    ComposerWidget c;
+    CHECK(sendDrop(&c, &mime));
+    REQUIRE(c.pendingFiles().size() == 1);
+    CHECK(c.pendingFiles().first() == tmpPath);
+    QFile::remove(tmpPath);
+}
+
+TEST_CASE("dropping raw image data attaches it as a PNG", "[composer][files][drop]") {
+    QImage img(4, 4, QImage::Format_RGB32);
+    img.fill(Qt::blue);
+    QMimeData mime;
+    mime.setImageData(img);
+
+    ComposerWidget c;
+    CHECK(sendDrop(&c, &mime));
+    REQUIRE(c.pendingFiles().size() == 1);
+    CHECK(c.pendingFiles().first().endsWith(".png"));
+    QFile::remove(c.pendingFiles().first());
+}
+
+TEST_CASE("drag of plain text is not accepted", "[composer][drop]") {
+    QMimeData mime;
+    mime.setText("just text");
+
+    ComposerWidget c;
+    CHECK_FALSE(sendDrop(&c, &mime));
+    CHECK(c.pendingFiles().isEmpty());
 }
 
 // ── Draft persistence (public API) ────────────────────────────────────────────

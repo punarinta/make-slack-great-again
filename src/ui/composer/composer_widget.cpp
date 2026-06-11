@@ -487,9 +487,9 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     _edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     _edit->setAcceptRichText(false);
     _edit->setFrameShape(QFrame::NoFrame);
-    _edit->setAcceptDrops(false); // we handle drops via event filter
+    _edit->setAcceptDrops(false); // drops propagate up to our dragEnterEvent/dropEvent
     _edit->installEventFilter(this);
-    setAcceptDrops(true); // drops on the whole composer widget
+    setAcceptDrops(true); // drops anywhere on the composer attach files
     connect(_edit, &QTextEdit::textChanged, this, &ComposerWidget::updateSendState);
     connect(
         _edit->document()->documentLayout(),
@@ -929,27 +929,46 @@ void ComposerWidget::updateSendState() {
 
 // ── Event filter ──────────────────────────────────────────────────────────────
 
+// ── Drag-and-drop ─────────────────────────────────────────────────────────────
+// _edit has acceptDrops(false), so drags over the editor propagate up to the
+// composer widget and every drop — editor, toolbar, attachment strip — lands
+// in one place. The same attachFromMimeData() path as paste handles both
+// local-file URLs and raw image data (e.g. an image dragged from a browser).
+
+static bool canAttachMimeData(const QMimeData *source) {
+    if (source->hasImage())
+        return true;
+    const auto urls = source->urls();
+    return std::any_of(urls.begin(), urls.end(), [](const QUrl &u) { return u.isLocalFile(); });
+}
+
+void ComposerWidget::dragEnterEvent(QDragEnterEvent *event) {
+    if (canAttachMimeData(event->mimeData())) {
+        event->acceptProposedAction();
+        setFocused(true); // accent border doubles as the drop-target cue
+    }
+}
+
+void ComposerWidget::dragMoveEvent(QDragMoveEvent *event) {
+    if (canAttachMimeData(event->mimeData()))
+        event->acceptProposedAction();
+}
+
+void ComposerWidget::dragLeaveEvent(QDragLeaveEvent *event) {
+    QWidget::dragLeaveEvent(event);
+    setFocused(_edit->hasFocus());
+}
+
+void ComposerWidget::dropEvent(QDropEvent *event) {
+    if (attachFromMimeData(event->mimeData())) {
+        event->acceptProposedAction();
+        _edit->setFocus();
+    }
+    setFocused(_edit->hasFocus());
+}
+
 bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
-    // ── Drag-and-drop on the whole composer ───────────────────────────────────
     const auto t = event->type();
-    if (t == QEvent::DragEnter || t == QEvent::DragMove) {
-        auto *de = static_cast<QDragMoveEvent *>(event);
-        if (de->mimeData()->hasUrls()) {
-            de->acceptProposedAction();
-            return true;
-        }
-    }
-    if (t == QEvent::Drop) {
-        auto *de = static_cast<QDropEvent *>(event);
-        if (de->mimeData()->hasUrls()) {
-            de->acceptProposedAction();
-            for (const QUrl &url : de->mimeData()->urls()) {
-                if (url.isLocalFile())
-                    addPendingFile(url.toLocalFile());
-            }
-            return true;
-        }
-    }
 
     // ── Editor events ─────────────────────────────────────────────────────────
     if (obj == _edit) {
