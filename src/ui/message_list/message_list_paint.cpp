@@ -265,44 +265,31 @@ void MessageListWidget::paintRow(
         contentY += kAttachGap + attachTotalH(item, ai);
     }
 
-    // ── Inline file images ───────────────────────────────────────────
+    // ── Inline file previews (images + prerendered docs) ─────────────
     paintFileImages(p, item, ctx, contentY);
     {
         const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
-        bool       anyImg   = false;
         for (const auto &f : item.msg.files) {
-            if (!f.isImage())
+            if (!f.hasPreview())
                 continue;
-            anyImg               = true;
-            const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-            const int     imgGap = hasAbove ? kImgGap : 0;
-            auto          it     = _fileImages.constFind(imgUrl);
-            if (it != _fileImages.constEnd() && !it->isNull()) {
-                const auto  &px    = it.value();
-                const double scale = std::min(
-                    1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height())
-                );
-                contentY += imgGap + kImgNameH + static_cast<int>(px.height() * scale);
-            } else {
-                contentY += imgGap + kImgNameH + 24;
-            }
+            const int imgGap = hasAbove ? kImgGap : 0;
+            contentY += imgGap + kImgNameH + filePreviewSize(f, ctx.textWidth).height();
         }
-        (void)anyImg;
     }
 
-    // ── Non-image file chips ─────────────────────────────────────────
+    // ── File chips (files without a preview) ─────────────────────────
     paintFileChips(p, item, ctx, contentY);
     {
         bool anyImg = false;
         for (const auto &f : item.msg.files)
-            if (f.isImage()) {
+            if (f.hasPreview()) {
                 anyImg = true;
                 break;
             }
         const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
-            if (f.isImage())
+            if (f.hasPreview())
                 continue;
             if (!firstChip || hasAboveChips)
                 contentY += kFileChipGap;
@@ -544,6 +531,24 @@ void MessageListWidget::paintAttachments(
 
 // ── Inline file images ────────────────────────────────────────────────────────
 
+QSize MessageListWidget::filePreviewSize(const File &f, int maxW) const {
+    const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+    const auto    it  = _fileImages.constFind(url);
+    if (it != _fileImages.constEnd() && !it->isNull()) {
+        const double scale = std::min(
+            1.0, std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height())
+        );
+        return {static_cast<int>(it->width() * scale), static_cast<int>(it->height() * scale)};
+    }
+    if (f.imageWidth > 0 && f.imageHeight > 0) {
+        const double scale = std::min(
+            1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
+        );
+        return {static_cast<int>(f.imageWidth * scale), static_cast<int>(f.imageHeight * scale)};
+    }
+    return {std::min(maxW, kImgMaxW), 24};
+}
+
 void MessageListWidget::paintFileImages(
     QPainter &p, const MessageItem &item, const PaintContext &ctx, int top
 ) const {
@@ -552,7 +557,7 @@ void MessageListWidget::paintFileImages(
     int        y        = top;
     const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
     for (const auto &f : item.msg.files) {
-        if (!f.isImage())
+        if (!f.hasPreview())
             continue;
         const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
 
@@ -585,17 +590,8 @@ void MessageListWidget::paintFileImages(
             y += ih;
         } else {
             // Placeholder while loading — size must match rowHeight() to avoid jumps.
-            int phW, phH;
-            if (f.imageWidth > 0 && f.imageHeight > 0) {
-                const double scale = std::min(
-                    1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
-                );
-                phW = static_cast<int>(f.imageWidth * scale);
-                phH = static_cast<int>(f.imageHeight * scale);
-            } else {
-                phW = std::min(width, kImgMaxW);
-                phH = 24;
-            }
+            const QSize ph  = filePreviewSize(f, width);
+            const int   phW = ph.width(), phH = ph.height();
             p.save();
             p.setPen(Th::c().message.imagePlaceholderBorder);
             p.setBrush(Th::c().message.imagePlaceholderBg);
@@ -628,7 +624,7 @@ void MessageListWidget::triggerMissingDownloads() {
         if (!item.fileImgsRequested) {
             bool needsDownload = false;
             for (const auto &f : item.msg.files) {
-                if (!f.isImage())
+                if (!f.hasPreview())
                     continue;
                 const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
                 if (!_fileImages.contains(url)) {
@@ -639,7 +635,7 @@ void MessageListWidget::triggerMissingDownloads() {
             if (needsDownload) {
                 item.fileImgsRequested = true;
                 for (const auto &f : item.msg.files) {
-                    if (!f.isImage())
+                    if (!f.hasPreview())
                         continue;
                     const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
                     if (_fileImages.contains(url))
@@ -808,7 +804,7 @@ void MessageListWidget::paintFileChips(
     const int width  = ctx.textWidth;
     bool      anyImg = false;
     for (const auto &f : item.msg.files)
-        if (f.isImage()) {
+        if (f.hasPreview()) {
             anyImg = true;
             break;
         }
@@ -817,7 +813,7 @@ void MessageListWidget::paintFileChips(
     int  y     = top;
     bool first = true;
     for (const auto &f : item.msg.files) {
-        if (f.isImage())
+        if (f.hasPreview())
             continue;
         if (!first || hasAbove)
             y += kFileChipGap;
@@ -842,14 +838,14 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
 
         const auto &item = _items[i];
 
-        // Quick check: are there any non-image files?
-        bool hasNonImg = false;
+        // Quick check: are there any files rendered as chips?
+        bool hasChips = false;
         for (const auto &f : item.msg.files)
-            if (!f.isImage()) {
-                hasNonImg = true;
+            if (!f.hasPreview()) {
+                hasChips = true;
                 break;
             }
-        if (!hasNonImg)
+        if (!hasChips)
             continue;
 
         // Reproduce the contentY tracking from paintRow up to the file chips section.
@@ -866,27 +862,16 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         const bool hasAbove0 = item.docHeight > 0 || !item.attachDocs.empty();
         bool       anyImg    = false;
         for (const auto &f : item.msg.files) {
-            if (!f.isImage())
+            if (!f.hasPreview())
                 continue;
-            anyImg            = true;
-            const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-            auto          it  = _fileImages.constFind(url);
-            if (it != _fileImages.constEnd() && !it->isNull()) {
-                const auto  &px    = it.value();
-                const double scale = std::min(
-                    1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height())
-                );
-                chipY +=
-                    (hasAbove0 ? kImgGap : 0) + kImgNameH + static_cast<int>(px.height() * scale);
-            } else {
-                chipY += (hasAbove0 ? kImgGap : 0) + kImgNameH + 24;
-            }
+            anyImg = true;
+            chipY += (hasAbove0 ? kImgGap : 0) + kImgNameH + filePreviewSize(f, textWidth).height();
         }
 
         const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
-            if (f.isImage())
+            if (f.hasPreview())
                 continue;
             if (!firstChip || hasAboveChips)
                 chipY += kFileChipGap;
@@ -898,6 +883,21 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         }
     }
     return nullptr;
+}
+
+const File *MessageListWidget::previewFileAt(const QPoint &viewportPos) const {
+    const auto [mi, fi] = _hoveredFile;
+    if (mi < 0 || mi >= (int)_items.size())
+        return nullptr;
+    const auto &files = _items[mi].msg.files;
+    if (fi < 0 || fi >= (int)files.size())
+        return nullptr;
+    const File &f = files[fi];
+    if (!f.hasPreview())
+        return nullptr;
+    if (!fileViewportRect(mi, fi).contains(viewportPos))
+        return nullptr;
+    return &f;
 }
 
 // ── Reply bar ─────────────────────────────────────────────────────────────────
@@ -1123,36 +1123,26 @@ std::pair<int, int> MessageListWidget::reactionAt(const QPoint &viewportPos) con
                 y += kAttachGap + attachTotalH(item, ai);
         }
 
-        // File images
+        // File previews
         const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
         for (const auto &f : item.msg.files) {
-            if (!f.isImage())
+            if (!f.hasPreview())
                 continue;
-            const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
             y += hasAbove ? kImgGap : 0;
-            y += kImgNameH;
-            auto it = _fileImages.constFind(url);
-            if (it != _fileImages.constEnd() && !it->isNull()) {
-                const double sc = std::min(
-                    1.0, std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height())
-                );
-                y += (int)(it->height() * sc);
-            } else {
-                y += 24;
-            }
+            y += kImgNameH + filePreviewSize(f, textWidth).height();
         }
 
-        // Non-image file chips
+        // File chips
         bool anyImg = false;
         for (const auto &f : item.msg.files)
-            if (f.isImage()) {
+            if (f.hasPreview()) {
                 anyImg = true;
                 break;
             }
         const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
-            if (f.isImage())
+            if (f.hasPreview())
                 continue;
             if (!firstChip || hasAboveChips)
                 y += kFileChipGap;
@@ -1294,44 +1284,26 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
             contentY += kAttachGap + attachTotalH(item, ai);
     }
 
-    // Walk file images (same logic as paintFileImages).
+    // Walk file previews (same logic as paintFileImages).
     int        y        = contentY;
     const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
     for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
         const auto &f = item.msg.files[fi];
-        if (!f.isImage())
+        if (!f.hasPreview())
             continue;
         if (hasAbove)
             y += kImgGap;
         y += kImgNameH; // name label height; image starts below this
-        int           iw, ih;
-        const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-        const auto    it     = _fileImages.constFind(imgUrl);
-        if (it != _fileImages.constEnd() && !it->isNull()) {
-            const double scale = std::min(
-                1.0, std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height())
-            );
-            iw = (int)(it->width() * scale);
-            ih = (int)(it->height() * scale);
-        } else if (f.imageWidth > 0 && f.imageHeight > 0) {
-            const double scale = std::min(
-                1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
-            );
-            iw = (int)(f.imageWidth * scale);
-            ih = (int)(f.imageHeight * scale);
-        } else {
-            iw = std::min(width, kImgMaxW);
-            ih = 24;
-        }
+        const QSize sz = filePreviewSize(f, width);
         if (fi == fileIdx)
-            return QRect(left, y, iw, ih);
-        y += ih;
+            return QRect(left, y, sz.width(), sz.height());
+        y += sz.height();
     }
 
-    // Walk non-image file chips (same logic as paintFileChips).
+    // Walk file chips (same logic as paintFileChips).
     bool anyImg = false;
     for (const auto &f : item.msg.files)
-        if (f.isImage()) {
+        if (f.hasPreview()) {
             anyImg = true;
             break;
         }
@@ -1339,7 +1311,7 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
     bool       firstChip     = true;
     for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
         const auto &f = item.msg.files[fi];
-        if (f.isImage())
+        if (f.hasPreview())
             continue;
         if (!firstChip || hasAboveChips)
             y += kFileChipGap;

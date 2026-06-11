@@ -36,6 +36,8 @@ const Theme kSlackDark = {
             .raised          = QColor("#FFFFFF"),
             .sunken          = QColor("#F4F4F4"),
             .overlay         = QColor(0, 0, 0, 70),
+            .viewerBackdrop  = QColor(12, 12, 14, 238),
+            .viewerBtnHover  = QColor(255, 255, 255, 38),
             .highlight       = QColor("#F0F0F0"),
             .highlightStrong = QColor("#E8E8E8"),
         },

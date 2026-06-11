@@ -10,6 +10,7 @@
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
+#include "ui/image_viewer/image_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "util/clipboard.h"
 
@@ -238,7 +239,7 @@ void MessageListWidget::openConversation(
         // Pre-warm the image pixel cache from disk so images appear without download.
         for (const auto &item : _items) {
             for (const auto &f : item.msg.files) {
-                if (!f.isImage())
+                if (!f.hasPreview())
                     continue;
                 const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
                 if (_fileImages.contains(url))
@@ -612,38 +613,22 @@ int MessageListWidget::rowHeight(int index) const {
         extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
     }
 
-    // Inline file image heights
+    // Inline file preview heights (images + prerendered docs)
     const bool hasContentAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
     bool       anyImgFiles           = false;
     for (const auto &f : item.msg.files) {
-        if (!f.isImage())
+        if (!f.hasPreview())
             continue;
-        anyImgFiles          = true;
-        const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-        const int     imgGap = hasContentAboveImages ? kImgGap : 0;
-        auto          it     = _fileImages.constFind(imgUrl);
-        if (it != _fileImages.constEnd() && !it->isNull()) {
-            const auto  &px    = it.value();
-            const double scale = std::min(
-                1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height())
-            );
-            extraH += imgGap + kImgNameH + static_cast<int>(px.height() * scale);
-        } else if (f.imageWidth > 0 && f.imageHeight > 0) {
-            // Use known file dimensions so layout doesn't jump when the image loads.
-            const double scale = std::min(
-                1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
-            );
-            extraH += imgGap + kImgNameH + static_cast<int>(f.imageHeight * scale);
-        } else {
-            extraH += imgGap + kImgNameH + 24; // unknown size — small placeholder
-        }
+        anyImgFiles      = true;
+        const int imgGap = hasContentAboveImages ? kImgGap : 0;
+        extraH += imgGap + kImgNameH + filePreviewSize(f, kImgMaxW).height();
     }
 
-    // Non-image file chips
+    // File chips (files without a preview)
     const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
-        if (f.isImage())
+        if (f.hasPreview())
             continue;
         if (!firstChip || hasAboveChips)
             extraH += kFileChipGap;
@@ -888,6 +873,8 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
     if (tryHandleLinkPress(event->pos()))
         return;
     if (tryHandleFileActionBarPress(event->pos()))
+        return;
+    if (tryHandlePreviewPress(event->pos()))
         return;
 
     // Start text-selection drag if the click lands inside a message body.
@@ -1243,6 +1230,68 @@ void MessageListWidget::showFileContextMenu(
     }
 
     menu->popup(globalPos);
+}
+
+bool MessageListWidget::tryHandlePreviewPress(const QPoint &pos) {
+    const File *f = previewFileAt(pos);
+    if (!f)
+        return false;
+    openPreviewViewer(*f, _items[_hoveredFile.first].msg);
+    return true;
+}
+
+void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) {
+    if (!_imageViewer) {
+        _imageViewer = new ImageViewerOverlay(window());
+        connect(_imageViewer, &ImageViewerOverlay::downloadRequested, this, [this](const File &f) {
+            downloadFileToUser(f);
+        });
+        connect(
+            _imageViewer, &ImageViewerOverlay::forwardRequested, this, [this](const Message &m) {
+                emit forwardMessageRequested(m);
+            }
+        );
+        connect(
+            _imageViewer,
+            &ImageViewerOverlay::moreRequested,
+            this,
+            [this](const File &f, const Message &m, const QPoint &globalPos) {
+                showFileContextMenu(f, m, globalPos);
+            }
+        );
+    }
+
+    const QString thumbKey = file.thumbUrl.isEmpty() ? file.urlPrivate : file.thumbUrl;
+    _imageViewer->open(file, msg, _fileImages.value(thumbKey));
+
+    // Full resolution only makes sense for real images — a PDF's url_private is
+    // the document itself, and its thumb already IS the prerendered page.
+    if (!file.isImage() || file.urlPrivate.isEmpty())
+        return;
+    if (file.urlPrivate.startsWith("file://")) { // pending upload — read from disk
+        const QPixmap px(QUrl(file.urlPrivate).toLocalFile());
+        _imageViewer->updatePixmap(file.id, px);
+        return;
+    }
+    if (file.urlPrivate == thumbKey || !_session || msg.pending)
+        return;
+    const auto cached = _session->cachedImage(file.urlPrivate);
+    if (!cached.isEmpty()) {
+        QPixmap px;
+        if (px.loadFromData(cached) && !px.isNull()) {
+            _imageViewer->updatePixmap(file.id, px);
+            return;
+        }
+    }
+    _session->downloadFile(
+        file.urlPrivate, [this, id = file.id, url = file.urlPrivate](QByteArray data) {
+            if (_session)
+                _session->cacheImage(url, data);
+            QPixmap px;
+            if (px.loadFromData(data) && _imageViewer)
+                _imageViewer->updatePixmap(id, px);
+        }
+    );
 }
 
 bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
@@ -1626,11 +1675,12 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const auto [rMI, rRI]  = reactionAt(pos);
     // File action bar buttons take priority — keep arrow cursor over them even if a chip is below.
     const bool overFileBar = newHoveredFileBtn >= 0;
-    const bool overLink    = !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) ||
-                                           replyBarIndexAt(pos) >= 0 || overDismiss || rMI >= 0);
-    const int  sbHitX      = viewport()->width() - kScrollW - 2 - 6;
-    const bool overScroll  = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
-    const bool overText    = !overLink && textHitTest(pos).row >= 0;
+    const bool overLink =
+        !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) ||
+                         replyBarIndexAt(pos) >= 0 || overDismiss || rMI >= 0);
+    const int  sbHitX     = viewport()->width() - kScrollW - 2 - 6;
+    const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
+    const bool overText   = !overLink && textHitTest(pos).row >= 0;
     if (overScroll)
         viewport()->setCursor(Qt::SizeVerCursor);
     else if (overLink)

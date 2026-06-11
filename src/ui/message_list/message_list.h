@@ -21,6 +21,7 @@ class Session;
 class ImageCache;
 class PopupTooltip;
 class EmojiPickerPopup;
+class ImageViewerOverlay;
 
 // Per-attachment rendered doc (lazy, like the main textDoc).
 struct AttachDoc {
@@ -121,6 +122,7 @@ private:
     bool tryHandleReplyBarPress(const QPoint &pos);
     bool tryHandleLinkPress(const QPoint &pos);
     bool tryHandleFileActionBarPress(const QPoint &pos);
+    bool tryHandlePreviewPress(const QPoint &pos);
     bool tryHandleFileChipPress(const QPoint &pos);
 
     // Toolbar sub-actions called from tryHandleToolbarPress.
@@ -128,6 +130,9 @@ private:
     void         showMessageContextMenu(const Message &msg, const QPoint &globalPos);
     void         downloadFileToUser(const File &file);
     void         showFileContextMenu(const File &file, const Message &msg, const QPoint &globalPos);
+    // Open the full-window in-app viewer for a file preview (image / PDF page),
+    // then fetch the full-resolution image for real images.
+    void         openPreviewViewer(const File &file, const Message &msg);
     bool         isOnScrollThumb(int vpY) const; // delegates to VirtualListWidget with _totalH
     PaintContext makePaintContext() const;
 
@@ -189,6 +194,13 @@ private:
 
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
     const File *fileChipAt(const QPoint &viewportPos) const;
+    // Returns the hovered file whose inline preview (image or PDF first page)
+    // is under viewportPos, or nullptr.
+    const File *previewFileAt(const QPoint &viewportPos) const;
+    // Displayed size of a file's inline preview: the loaded pixmap scaled to fit,
+    // else a placeholder sized from known file dimensions, else maxW × 24.
+    // Single source of truth for rowHeight / paint / hit-test geometry.
+    QSize       filePreviewSize(const File &f, int maxW) const;
     // Returns index of the message whose reply bar is at viewportPos, or -1.
     int         replyBarIndexAt(const QPoint &viewportPos) const;
     // Returns which toolbar button (0-2) is under pos for the hovered row, or -1.
@@ -312,8 +324,9 @@ private:
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
 
-    PopupTooltip     *_tooltip     = nullptr;
-    EmojiPickerPopup *_emojiPicker = nullptr;
+    PopupTooltip       *_tooltip     = nullptr;
+    EmojiPickerPopup   *_emojiPicker = nullptr;
+    ImageViewerOverlay *_imageViewer = nullptr; // lazily created, parented to window()
 
     std::optional<QString> _olderCursor; // set when more pages exist above
     bool                   _loadingOlder = false;

@@ -29,6 +29,8 @@ struct SurfaceColors {
     QColor raised;          // popups, tooltips, dropdowns
     QColor sunken;          // code blocks, inset areas
     QColor overlay;         // semi-transparent modal backdrop
+    QColor viewerBackdrop;  // near-opaque backdrop of the full-window image viewer
+    QColor viewerBtnHover;  // hovered action button on the viewer backdrop
     QColor highlight;       // hover on light background
     QColor highlightStrong; // pressed / stronger highlight
 };

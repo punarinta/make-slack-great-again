@@ -46,6 +46,7 @@
         <file alias="ui/bell-off.svg">../gfx/ui/bell-off.svg</file>
         <file alias="ui/log-out.svg">../gfx/ui/log-out.svg</file>
         <file alias="ui/download.svg">../gfx/ui/download.svg</file>
+        <file alias="ui/external-link.svg">../gfx/ui/external-link.svg</file>
         <file alias="ui/plus.svg">../gfx/ui/plus.svg</file>
         <file alias="ui/check.svg">../gfx/ui/check.svg</file>
     </qresource>
