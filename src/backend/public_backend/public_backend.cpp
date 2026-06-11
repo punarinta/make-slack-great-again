@@ -471,7 +471,15 @@ void PublicBackend::deleteMessage(ConversationId conv, Ts ts) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
     params.addQueryItem("ts", ts);
-    _api->call("chat.delete", params, {}, [](QString e) {
+    _api->call("chat.delete", params, {}, [this, conv, ts](QString e) {
+        if (e == QLatin1String("message_not_found")) {
+            // The message is already gone server-side (deleted elsewhere, or a
+            // stale local copy such as an unreconciled optimistic send) — the
+            // user's intent is satisfied either way, so drop it locally as if
+            // the delete succeeded.
+            _events.fire(EvMessageDeleted{conv, ts});
+            return;
+        }
         qWarning() << "deleteMessage error:" << e;
     });
 }
