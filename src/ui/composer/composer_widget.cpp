@@ -90,6 +90,22 @@ static QString serializeWithMentions(const QTextDocument *doc) {
     return out;
 }
 
+// Returns the [start, end) range of the mention pill containing doc position
+// pos, or {-1, -1} if pos is not inside a pill.
+static std::pair<int, int> mentionRangeAt(const QTextDocument *doc, int pos) {
+    const QTextBlock block = doc->findBlock(pos);
+    if (!block.isValid())
+        return {-1, -1};
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        const QTextFragment frag = it.fragment();
+        if (!frag.isValid() || frag.charFormat().stringProperty(kMentionRawProp).isEmpty())
+            continue;
+        if (pos >= frag.position() && pos < frag.position() + frag.length())
+            return {frag.position(), frag.position() + frag.length()};
+    }
+    return {-1, -1};
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 static QString sc(const char *keys) {
@@ -705,8 +721,12 @@ void ComposerWidget::checkMentionPopup() {
 
     _atTriggerStart = atPos;
 
-    const bool   isDm   = (_convKind == ConvKind::Im || _convKind == ConvKind::Mpim);
-    const QPoint anchor = _edit->mapToGlobal(_edit->cursorRect().bottomLeft());
+    const bool  isDm     = (_convKind == ConvKind::Im || _convKind == ConvKind::Mpim);
+    // Anchor at the '@' that triggered the popup, not the moving text cursor,
+    // so the popup stays put while the user types the filter query.
+    QTextCursor atCursor = _edit->textCursor();
+    atCursor.setPosition(atPos);
+    const QPoint anchor = _edit->mapToGlobal(_edit->cursorRect(atCursor).bottomLeft());
     _mentionPopup->open(anchor, query, isDm);
 }
 
@@ -883,6 +903,44 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
             if (_mentionComp && _mentionComp->isVisible()) {
                 if (_mentionComp->handleKey(key))
                     return true;
+            }
+
+            // Mention pills are atomic: deleting any part of one removes the
+            // whole pill — a partially edited pill would otherwise lose its
+            // raw token and be sent as literal text.
+            if (key == Qt::Key_Backspace || key == Qt::Key_Delete) {
+                auto *doc = _edit->document();
+                auto  tc  = _edit->textCursor();
+                if (tc.hasSelection()) {
+                    // Expand the selection over pills it partially covers.
+                    int s = tc.selectionStart();
+                    int e = tc.selectionEnd();
+                    if (const auto [ps, pe] = mentionRangeAt(doc, s); ps >= 0)
+                        s = ps;
+                    if (const auto [ps, pe] = mentionRangeAt(doc, e - 1); ps >= 0)
+                        e = pe;
+                    if (s != tc.selectionStart() || e != tc.selectionEnd()) {
+                        tc.setPosition(s);
+                        tc.setPosition(e, QTextCursor::KeepAnchor);
+                        tc.removeSelectedText();
+                        return true;
+                    }
+                } else {
+                    const int pos = (key == Qt::Key_Backspace) ? tc.position() - 1 : tc.position();
+                    if (const auto [ps, pe] = mentionRangeAt(doc, pos); pos >= 0 && ps >= 0) {
+                        tc.setPosition(ps);
+                        tc.setPosition(pe, QTextCursor::KeepAnchor);
+                        tc.removeSelectedText();
+                        return true;
+                    }
+                }
+            }
+
+            // Typed text must never inherit a pill's char format — typing at
+            // a pill's edge would silently extend (and corrupt) the pill.
+            if (!ke->text().isEmpty() && ke->text()[0].isPrint() &&
+                _edit->currentCharFormat().hasProperty(kMentionRawProp)) {
+                _edit->setCurrentCharFormat(QTextCharFormat());
             }
 
             if (key == Qt::Key_Return && !(mod & Qt::ShiftModifier)) {

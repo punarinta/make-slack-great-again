@@ -166,15 +166,18 @@ void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm) {
     // height = visible rows + spacing between them + top/bottom margins
     setFixedHeight(visible * kRowH + (visible - 1) * 1 + 2 * kMargins);
 
+    // Re-anchor on every call: place the popup so its bottom edge sits just
+    // above the '@' that triggered it. When filtering shrinks the list the
+    // popup must shrink toward the anchor instead of leaving a gap above it.
+    const QPoint local = parentWidget()->mapFromGlobal(anchor);
+    QPoint       pos   = local - QPoint(0, height() + 4);
+    pos.setX(qBound(0, pos.x(), qMax(0, parentWidget()->width() - width())));
+    move(pos);
+
     if (!isVisible()) {
-        // Convert global cursor position to parent-local coordinates, then
-        // place the popup so its bottom edge sits just above the cursor.
-        const QPoint local = parentWidget()->mapFromGlobal(anchor);
-        move(local - QPoint(0, height() + 4));
         show();
         raise();
     }
-    // Already visible: list rebuilt in-place, position stays.
 }
 
 void MentionPopup::dismiss() {

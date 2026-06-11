@@ -17,10 +17,12 @@ public:
 
     void setSession(Session *session);
 
-    // Show or update the popup above cursorGlobalBottomLeft.
+    // Show or update the popup with its bottom edge just above anchor —
+    // the global position of the '@' that triggered it. Re-anchors on every
+    // call so the popup hugs the '@' as filtering changes the list height.
     // query : text typed after '@' (empty = show all).
     // isDm  : true suppresses @channel / @everyone / @here aliases.
-    void open(const QPoint &cursorGlobalBottomLeft, const QString &query, bool isDm);
+    void open(const QPoint &anchorGlobalBottomLeft, const QString &query, bool isDm);
     void dismiss();
     bool isOpen() const { return isVisible(); }
 
