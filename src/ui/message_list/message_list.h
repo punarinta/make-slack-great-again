@@ -197,16 +197,22 @@ private:
     // Returns the hovered file whose inline preview (image or PDF first page)
     // is under viewportPos, or nullptr.
     const File *previewFileAt(const QPoint &viewportPos) const;
-    // Displayed size of a file's inline preview: the loaded pixmap scaled to fit,
-    // else a placeholder sized from known file dimensions, else maxW × 24.
+    // Displayed size of a file's inline preview: known file dimensions scaled to
+    // fit, else the loaded pixmap scaled to fit, else maxW × 24.
     // Single source of truth for rowHeight / paint / hit-test geometry.
     QSize       filePreviewSize(const File &f, int maxW) const;
+    // Preview source URLs matching this widget's screen density (DPR-aware).
+    QString     filePreviewUrl(const File &f) const;
+    QString     attachPreviewUrl(const Attachment &att) const;
+    // Returns `src` smooth-scaled to `logical` × dpr physical pixels (with the
+    // DPR set on the result), cached per key so paints don't rescale every frame.
+    QPixmap scaledPreview(const QString &key, const QPixmap &src, QSize logical, qreal dpr) const;
     // Returns index of the message whose reply bar is at viewportPos, or -1.
-    int         replyBarIndexAt(const QPoint &viewportPos) const;
+    int     replyBarIndexAt(const QPoint &viewportPos) const;
     // Returns which toolbar button (0-2) is under pos for the hovered row, or -1.
-    int         toolbarButtonAt(const QPoint &viewportPos) const;
+    int     toolbarButtonAt(const QPoint &viewportPos) const;
     // Rect of toolbar button i for the given row top/height, in viewport coords.
-    QRect       toolbarButtonRect(int btn, int rowTop, int rowH) const;
+    QRect   toolbarButtonRect(int btn, int rowTop, int rowH) const;
 
     // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
     std::pair<int, int> reactionAt(const QPoint &viewportPos) const;
@@ -296,6 +302,11 @@ private:
     ImageCache                     *_imgCache = nullptr;
     // Auth-required file image downloads (Slack CDN, private URLs via session token).
     mutable QHash<QString, QPixmap> _fileImages;
+    // Preview pixmaps pre-scaled to physical pixels for the current DPR (see scaledPreview).
+    mutable QHash<QString, QPixmap> _scaledPreviews;
+    // DPR the visible previews were requested for; a change (window moved to a
+    // screen with a different density) re-triggers downloads at the new density.
+    mutable qreal                   _previewDpr = 0.0;
 
     // New-message highlight: ts → elapsed ms since arrival (driven by _highlightTimer)
     QSet<QString>     _newMsgTs;

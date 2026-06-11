@@ -389,6 +389,42 @@ TEST_CASE("toFile falls back to thumb_360 dimensions", "[mappers][file]") {
     CHECK(f.imageHeight == 270);
 }
 
+TEST_CASE("toFile parses thumbnail ladder ascending", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "original_w": 2000, "original_h": 1500,
+        "thumb_360": "https://360.png", "thumb_360_w": 360, "thumb_360_h": 270,
+        "thumb_480": "https://480.png", "thumb_480_w": 480, "thumb_480_h": 360,
+        "thumb_720": "https://720.png", "thumb_720_w": 720, "thumb_720_h": 540,
+        "thumb_1024": "https://1024.png", "thumb_1024_w": 1024, "thumb_1024_h": 768
+    })"));
+    REQUIRE(f.thumbs.size() == 4);
+    CHECK(f.thumbs[0] == FileThumb{360, 270, "https://360.png"});
+    CHECK(f.thumbs[3] == FileThumb{1024, 768, "https://1024.png"});
+
+    // previewUrl picks the smallest thumb covering the physical width…
+    CHECK(f.previewUrl(400) == "https://480.png");
+    CHECK(f.previewUrl(800) == "https://1024.png");
+    // …and the largest one when nothing is big enough (never the original).
+    CHECK(f.previewUrl(2000) == "https://1024.png");
+}
+
+TEST_CASE("File previewUrl falls back to thumbUrl then urlPrivate", "[mappers][file]") {
+    File f;
+    f.urlPrivate = "https://orig.png";
+    CHECK(f.previewUrl(400) == "https://orig.png");
+    f.thumbUrl = "https://legacy.png";
+    CHECK(f.previewUrl(400) == "https://legacy.png");
+}
+
+TEST_CASE("toFile thumb width defaults to nominal side when _w absent", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "thumb_64": "https://64.png"
+    })"));
+    REQUIRE(f.thumbs.size() == 1);
+    CHECK(f.thumbs[0].width == 64);
+    CHECK(f.thumbs[0].url == "https://64.png");
+}
+
 TEST_CASE("toFile large size preserved as qint64", "[mappers][file]") {
     auto f = JsonMappers::toFile(obj(R"({"id":"F1","size":3000000000})"));
     CHECK(f.size == 3000000000LL);
@@ -663,6 +699,30 @@ TEST_CASE("toAttachment all fields", "[mappers][attachment]") {
     CHECK(a.imageUrl == "https://img.example.com/img.png");
     CHECK(a.thumbUrl == "https://img.example.com/thumb.png");
     CHECK(a.footer == "Posted via App");
+}
+
+TEST_CASE("toAttachment image and thumb dimensions", "[mappers][attachment]") {
+    auto a = JsonMappers::toAttachment(obj(R"({
+        "image_url": "https://img.png", "image_width": 1200, "image_height": 630,
+        "thumb_url": "https://thumb.png", "thumb_width": 360, "thumb_height": 189
+    })"));
+    CHECK(a.imageWidth == 1200);
+    CHECK(a.imageHeight == 630);
+    CHECK(a.thumbWidth == 360);
+    CHECK(a.thumbHeight == 189);
+
+    // Thumb when it covers the physical width, full image otherwise.
+    CHECK(a.previewUrl(360) == "https://thumb.png");
+    CHECK(a.previewUrl(800) == "https://img.png");
+}
+
+TEST_CASE("Attachment previewUrl with unknown thumb size keeps thumb", "[mappers][attachment]") {
+    Attachment a;
+    a.imageUrl = "https://img.png";
+    a.thumbUrl = "https://thumb.png";
+    CHECK(a.previewUrl(800) == "https://thumb.png");
+    a.thumbUrl.clear();
+    CHECK(a.previewUrl(800) == "https://img.png");
 }
 
 TEST_CASE("toAttachment text is parsed as mrkdwn", "[mappers][attachment]") {

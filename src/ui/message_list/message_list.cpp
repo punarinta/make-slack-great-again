@@ -241,7 +241,7 @@ void MessageListWidget::openConversation(
             for (const auto &f : item.msg.files) {
                 if (!f.hasPreview())
                     continue;
-                const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+                const QString url = filePreviewUrl(f);
                 if (_fileImages.contains(url))
                     continue;
                 const auto data = _session->cachedImage(url);
@@ -667,7 +667,7 @@ void MessageListWidget::rebuildLayout() {
 // ── Attachment height helpers ─────────────────────────────────────────────────
 
 int MessageListWidget::attachImageH(const Attachment &att) const {
-    const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+    const QString imgUrl = attachPreviewUrl(att);
     if (imgUrl.isEmpty() || !_imgCache)
         return 0;
     const QPixmap px = _imgCache->get(imgUrl);
@@ -1261,7 +1261,7 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
         );
     }
 
-    const QString thumbKey = file.thumbUrl.isEmpty() ? file.urlPrivate : file.thumbUrl;
+    const QString thumbKey = filePreviewUrl(file);
     _imageViewer->open(file, msg, _fileImages.value(thumbKey));
 
     // Full resolution only makes sense for real images — a PDF's url_private is

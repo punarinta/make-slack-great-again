@@ -78,6 +78,12 @@ static QJsonObject toJson(const File &f) {
     o["iw"] = f.imageWidth;
     o["ih"] = f.imageHeight;
     o["sz"] = static_cast<double>(f.size);
+    if (!f.thumbs.empty()) {
+        QJsonArray arr;
+        for (const auto &t : f.thumbs)
+            arr.append(QJsonObject{{"w", t.width}, {"h", t.height}, {"u", t.url}});
+        o["tb"] = arr;
+    }
     return o;
 }
 static File fileFromJson(const QJsonObject &o) {
@@ -90,6 +96,10 @@ static File fileFromJson(const QJsonObject &o) {
     f.imageWidth  = o["iw"].toInt();
     f.imageHeight = o["ih"].toInt();
     f.size        = static_cast<qint64>(o["sz"].toDouble());
+    for (const auto &v : o["tb"].toArray()) {
+        const auto t = v.toObject();
+        f.thumbs.push_back(FileThumb{t["w"].toInt(), t["h"].toInt(), t["u"].toString()});
+    }
     return f;
 }
 
@@ -124,6 +134,14 @@ static QJsonObject toJson(const Attachment &a) {
     o["iu"] = a.imageUrl;
     o["tu"] = a.thumbUrl;
     o["fo"] = a.footer;
+    if (a.imageWidth > 0)
+        o["iw"] = a.imageWidth;
+    if (a.imageHeight > 0)
+        o["ih"] = a.imageHeight;
+    if (a.thumbWidth > 0)
+        o["tw"] = a.thumbWidth;
+    if (a.thumbHeight > 0)
+        o["tg"] = a.thumbHeight;
     if (!a.blocks.empty()) {
         QJsonArray arr;
         for (const auto &b : a.blocks)
@@ -134,16 +152,20 @@ static QJsonObject toJson(const Attachment &a) {
 }
 static Attachment attachmentFromJson(const QJsonObject &o) {
     Attachment a;
-    a.fallback   = o["fb"].toString();
-    a.color      = o["co"].toString();
-    a.pretext    = o["pt"].toString();
-    a.authorName = o["an"].toString();
-    a.title      = o["ti"].toString();
-    a.titleLink  = o["tl"].toString();
-    a.text       = tweFromJson(o["tx"].toObject());
-    a.imageUrl   = o["iu"].toString();
-    a.thumbUrl   = o["tu"].toString();
-    a.footer     = o["fo"].toString();
+    a.fallback    = o["fb"].toString();
+    a.color       = o["co"].toString();
+    a.pretext     = o["pt"].toString();
+    a.authorName  = o["an"].toString();
+    a.title       = o["ti"].toString();
+    a.titleLink   = o["tl"].toString();
+    a.text        = tweFromJson(o["tx"].toObject());
+    a.imageUrl    = o["iu"].toString();
+    a.thumbUrl    = o["tu"].toString();
+    a.footer      = o["fo"].toString();
+    a.imageWidth  = o["iw"].toInt();
+    a.imageHeight = o["ih"].toInt();
+    a.thumbWidth  = o["tw"].toInt();
+    a.thumbHeight = o["tg"].toInt();
     for (const auto &v : o["bl"].toArray())
         a.blocks.push_back(blockFromJson(v.toObject()));
     return a;

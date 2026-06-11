@@ -158,18 +158,39 @@ struct TextWithEntities {
 
 // --- Phase 3: Files, Blocks, Attachments ---
 
+// One entry of a Slack file's prerendered thumbnail ladder (thumb_64 … thumb_1024).
+struct FileThumb {
+    int width = 0; // actual pixel width (thumb_N_w; N is the long side, so width < N for portraits)
+    int height = 0;
+    QString url; // auth required
+    bool    operator==(const FileThumb &) const = default;
+};
+
 // File shared in a Slack message (from the "files" array).
 struct File {
-    QString id;
-    QString name;
-    QString mimeType;
-    QString prettyType; // human-readable type, e.g. "PDF", "Word Document"
-    QString urlPrivate; // url_private: auth header required for download
-    QString permalink;  // Slack web UI URL — no auth required, opens in browser
-    QString thumbUrl;   // thumbnail URL (e.g. thumb_360); auth required
-    int     imageWidth  = 0;
-    int     imageHeight = 0;
-    qint64  size        = 0;
+    QString                id;
+    QString                name;
+    QString                mimeType;
+    QString                prettyType; // human-readable type, e.g. "PDF", "Word Document"
+    QString                urlPrivate; // url_private: auth header required for download
+    QString                permalink;  // Slack web UI URL — no auth required, opens in browser
+    QString                thumbUrl;   // thumbnail URL (e.g. thumb_360); auth required
+    int                    imageWidth  = 0;
+    int                    imageHeight = 0;
+    qint64                 size        = 0;
+    std::vector<FileThumb> thumbs; // thumbnail ladder, ascending by width
+
+    // Preview source covering physW physical pixels: the smallest thumbnail wide
+    // enough, else the largest available (never the original — it can be huge),
+    // else the legacy thumbUrl, else the original file.
+    QString previewUrl(int physW) const {
+        for (const auto &t : thumbs)
+            if (t.width >= physW)
+                return t.url;
+        if (!thumbs.empty())
+            return thumbs.back().url;
+        return thumbUrl.isEmpty() ? urlPrivate : thumbUrl;
+    }
 
     bool isImage() const { return mimeType.startsWith("image/") && imageWidth > 0; }
     bool isPdf() const { return mimeType == "application/pdf"; }
@@ -204,8 +225,20 @@ struct Attachment {
     QString            thumbUrl;
     QString            faviconUrl; // service_icon URL (favicon for link previews)
     QString            footer;
+    int                imageWidth  = 0; // image_url dimensions; 0 when not provided
+    int                imageHeight = 0;
+    int                thumbWidth  = 0; // thumb_url dimensions; 0 when not provided
+    int                thumbHeight = 0;
     std::vector<Block> blocks; // Block Kit blocks embedded in this attachment
     bool               operator==(const Attachment &) const = default;
+
+    // Preview source covering physW physical pixels: the thumbnail when it is
+    // large enough (or its size is unknown), the full image otherwise.
+    QString previewUrl(int physW) const {
+        if (thumbUrl.isEmpty() || imageUrl.isEmpty())
+            return thumbUrl.isEmpty() ? imageUrl : thumbUrl;
+        return (thumbWidth > 0 && thumbWidth < physW) ? imageUrl : thumbUrl;
+    }
 };
 
 // --- Messages ---

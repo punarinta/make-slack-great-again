@@ -378,7 +378,12 @@ void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, con
         if (f.mimeType.startsWith("image/")) {
             // Local preview: point at the file itself; the message list loads
             // file:// URLs straight from disk instead of downloading.
-            const QSize dim = QImageReader(path).size();
+            QImageReader reader(path);
+            QSize        dim = reader.size();
+            // size() ignores EXIF rotation but the pixmap loads auto-rotated —
+            // transpose so the preview box matches what gets drawn.
+            if (reader.transformation() & QImageIOHandler::TransformationRotate90)
+                dim.transpose();
             if (dim.isValid()) {
                 f.imageWidth  = dim.width();
                 f.imageHeight = dim.height();

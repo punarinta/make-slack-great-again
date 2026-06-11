@@ -18,6 +18,7 @@
 #include <QTextCursor>
 #include <QApplication>
 #include <QUrl>
+#include <QtMath>
 
 #include <algorithm>
 #include <cmath>
@@ -508,19 +509,22 @@ void MessageListWidget::paintAttachments(
             p.restore();
         }
 
-        // Preview image (thumbUrl preferred over imageUrl)
+        // Preview image (thumbnail when large enough for this DPR, else full image)
         if (imgH > 0 && _imgCache) {
-            const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+            const QString imgUrl = attachPreviewUrl(att);
             const QPixmap img    = _imgCache->get(imgUrl);
             if (!img.isNull()) {
                 const double scale = std::min(
                     1.0, std::min((double)kImgMaxW / img.width(), (double)kImgMaxH / img.height())
                 );
-                const int iw = (int)(img.width() * scale);
-                const int ih = (int)(img.height() * scale);
+                const QSize sz((int)(img.width() * scale), (int)(img.height() * scale));
+                const qreal dpr = p.device()->devicePixelRatioF();
                 p.save();
                 p.setRenderHint(QPainter::SmoothPixmapTransform);
-                p.drawPixmap(QRect(textX, y + docH + kImgGap, iw, ih), img);
+                p.drawPixmap(
+                    QRect(QPoint(textX, y + docH + kImgGap), sz),
+                    scaledPreview(imgUrl, img, sz, dpr)
+                );
                 p.restore();
             }
         }
@@ -532,21 +536,44 @@ void MessageListWidget::paintAttachments(
 // ── Inline file images ────────────────────────────────────────────────────────
 
 QSize MessageListWidget::filePreviewSize(const File &f, int maxW) const {
-    const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
-    const auto    it  = _fileImages.constFind(url);
-    if (it != _fileImages.constEnd() && !it->isNull()) {
-        const double scale = std::min(
-            1.0, std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height())
-        );
-        return {static_cast<int>(it->width() * scale), static_cast<int>(it->height() * scale)};
-    }
+    // Original dimensions first: geometry must not depend on which thumbnail
+    // resolution was fetched, and the no-upscale clamp applies to the original.
     if (f.imageWidth > 0 && f.imageHeight > 0) {
         const double scale = std::min(
             1.0, std::min((double)kImgMaxW / f.imageWidth, (double)kImgMaxH / f.imageHeight)
         );
         return {static_cast<int>(f.imageWidth * scale), static_cast<int>(f.imageHeight * scale)};
     }
+    const auto it = _fileImages.constFind(filePreviewUrl(f));
+    if (it != _fileImages.constEnd() && !it->isNull()) {
+        const double scale = std::min(
+            1.0, std::min((double)kImgMaxW / it->width(), (double)kImgMaxH / it->height())
+        );
+        return {static_cast<int>(it->width() * scale), static_cast<int>(it->height() * scale)};
+    }
     return {std::min(maxW, kImgMaxW), 24};
+}
+
+QString MessageListWidget::filePreviewUrl(const File &f) const {
+    return f.previewUrl(qCeil(kImgMaxW * devicePixelRatioF()));
+}
+
+QString MessageListWidget::attachPreviewUrl(const Attachment &att) const {
+    return att.previewUrl(qCeil(kImgMaxW * devicePixelRatioF()));
+}
+
+QPixmap MessageListWidget::scaledPreview(
+    const QString &key, const QPixmap &src, QSize logical, qreal dpr
+) const {
+    const QSize phys(qRound(logical.width() * dpr), qRound(logical.height() * dpr));
+    QPixmap    &out = _scaledPreviews[key];
+    if (out.size() != phys) {
+        // IgnoreAspectRatio: `logical` is derived from the same image, so the
+        // aspect already matches up to rounding.
+        out = src.scaled(phys, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        out.setDevicePixelRatio(dpr);
+    }
+    return out;
 }
 
 void MessageListWidget::paintFileImages(
@@ -559,7 +586,7 @@ void MessageListWidget::paintFileImages(
     for (const auto &f : item.msg.files) {
         if (!f.hasPreview())
             continue;
-        const QString imgUrl = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+        const QString imgUrl = filePreviewUrl(f);
 
         const auto it = _fileImages.constFind(imgUrl);
         if (hasAbove)
@@ -579,34 +606,44 @@ void MessageListWidget::paintFileImages(
         }
         y += kImgNameH;
 
+        // Same geometry for placeholder and loaded image — matches rowHeight(),
+        // so nothing jumps when the download lands.
+        const QSize sz = filePreviewSize(f, width);
         if (it != _fileImages.constEnd() && !it->isNull()) {
-            const auto  &px    = it.value();
-            const double scale = std::min(
-                1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height())
-            );
-            const int iw = static_cast<int>(px.width() * scale);
-            const int ih = static_cast<int>(px.height() * scale);
-            p.drawPixmap(QRect(left, y, iw, ih), px);
-            y += ih;
+            p.save();
+            p.setRenderHint(QPainter::SmoothPixmapTransform);
+            const qreal dpr = p.device()->devicePixelRatioF();
+            p.drawPixmap(QRect(QPoint(left, y), sz), scaledPreview(imgUrl, it.value(), sz, dpr));
+            p.restore();
         } else {
-            // Placeholder while loading — size must match rowHeight() to avoid jumps.
-            const QSize ph  = filePreviewSize(f, width);
-            const int   phW = ph.width(), phH = ph.height();
             p.save();
             p.setPen(Th::c().message.imagePlaceholderBorder);
             p.setBrush(Th::c().message.imagePlaceholderBg);
-            p.drawRect(QRect(left, y, phW, phH));
+            p.drawRect(QRect(QPoint(left, y), sz));
             p.setPen(Th::c().text.tertiary);
-            p.drawText(QRect(left, y, phW, phH), Qt::AlignCenter, tr("Loading image…"));
+            p.drawText(QRect(QPoint(left, y), sz), Qt::AlignCenter, tr("Loading image…"));
             p.restore();
-            y += phH;
         }
+        y += sz.height();
     }
 }
 
 void MessageListWidget::triggerMissingDownloads() {
     if (!_session)
         return;
+
+    // Screen density changed (window moved between monitors): the preview URL
+    // choice depends on it, so re-request images at the new density.
+    const qreal dpr = devicePixelRatioF();
+    if (!qFuzzyCompare(dpr, _previewDpr)) {
+        _previewDpr = dpr;
+        _scaledPreviews.clear();
+        for (auto &item : _items) {
+            item.fileImgsRequested   = false;
+            item.attachImgsRequested = false;
+        }
+    }
+
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
 
@@ -626,7 +663,7 @@ void MessageListWidget::triggerMissingDownloads() {
             for (const auto &f : item.msg.files) {
                 if (!f.hasPreview())
                     continue;
-                const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+                const QString url = filePreviewUrl(f);
                 if (!_fileImages.contains(url)) {
                     needsDownload = true;
                     break;
@@ -637,16 +674,17 @@ void MessageListWidget::triggerMissingDownloads() {
                 for (const auto &f : item.msg.files) {
                     if (!f.hasPreview())
                         continue;
-                    const QString url = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+                    const QString url = filePreviewUrl(f);
                     if (_fileImages.contains(url))
                         continue;
 
                     // Pending uploads point at the local file — read it from
                     // disk for an instant preview, no network involved.
                     if (url.startsWith("file://")) {
-                        QPixmap px(QUrl(url).toLocalFile());
-                        if (!px.isNull() && px.width() > kImgMaxW * 2)
-                            px = px.scaledToWidth(kImgMaxW * 2, Qt::SmoothTransformation);
+                        QPixmap   px(QUrl(url).toLocalFile());
+                        const int maxSrcW = qCeil(kImgMaxW * devicePixelRatioF());
+                        if (!px.isNull() && px.width() > maxSrcW)
+                            px = px.scaledToWidth(maxSrcW, Qt::SmoothTransformation);
                         _fileImages[url] = px;
                         rebuildLayout();
                         viewport()->update();
@@ -673,6 +711,7 @@ void MessageListWidget::triggerMissingDownloads() {
                         QPixmap px;
                         px.loadFromData(data);
                         _fileImages[url] = px;
+                        _scaledPreviews.remove(url);
                         rebuildLayout();
                         if (wasAtBottom)
                             verticalScrollBar()->setValue(verticalScrollBar()->maximum());
@@ -686,7 +725,7 @@ void MessageListWidget::triggerMissingDownloads() {
         if (!item.attachImgsRequested && _imgCache) {
             bool needsAttach = false;
             for (const auto &att : item.msg.attachments) {
-                const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+                const QString imgUrl = attachPreviewUrl(att);
                 if (!imgUrl.isEmpty()) {
                     needsAttach = true;
                     break;
@@ -699,7 +738,7 @@ void MessageListWidget::triggerMissingDownloads() {
             if (needsAttach) {
                 item.attachImgsRequested = true;
                 for (const auto &att : item.msg.attachments) {
-                    const QString imgUrl = att.thumbUrl.isEmpty() ? att.imageUrl : att.thumbUrl;
+                    const QString imgUrl = attachPreviewUrl(att);
                     if (!imgUrl.isEmpty())
                         _imgCache->get(imgUrl);
                     if (!att.faviconUrl.isEmpty())

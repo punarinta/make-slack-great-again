@@ -252,6 +252,22 @@ File toFile(const QJsonObject &o) {
         .imageHeight = o.value("original_h").toInt(o.value("thumb_360_h").toInt()),
         .size        = (qint64)o.value("size").toDouble(),
     };
+    // Full thumbnail ladder — the UI picks the variant matching the physical
+    // (DPR-scaled) preview size, so previews stay crisp on any screen density.
+    static constexpr int kThumbSides[] = {64, 80, 160, 360, 480, 720, 800, 960, 1024};
+    for (int side : kThumbSides) {
+        const QString key = QStringLiteral("thumb_%1").arg(side);
+        const QString url = o.value(key).toString();
+        if (url.isEmpty())
+            continue;
+        f.thumbs.push_back(
+            FileThumb{
+                o.value(key + "_w").toInt(side),
+                o.value(key + "_h").toInt(),
+                url,
+            }
+        );
+    }
     // PDFs: Slack prerenders the first page server-side (thumb_pdf + thumb_pdf_w/h).
     if (f.thumbUrl.isEmpty() && o.contains("thumb_pdf")) {
         f.thumbUrl    = o.value("thumb_pdf").toString();
@@ -319,18 +335,22 @@ Attachment toAttachment(const QJsonObject &o) {
     for (const auto &bv : o.value("blocks").toArray())
         blocks.push_back(toBlock(bv.toObject()));
     return Attachment{
-        .fallback   = o.value("fallback").toString(),
-        .color      = o.value("color").toString(),
-        .pretext    = o.value("pretext").toString(),
-        .authorName = o.value("author_name").toString(),
-        .title      = o.value("title").toString(),
-        .titleLink  = o.value("title_link").toString(),
-        .text       = MrkdwnParser::parse(o.value("text").toString()),
-        .imageUrl   = o.value("image_url").toString(),
-        .thumbUrl   = o.value("thumb_url").toString(),
-        .faviconUrl = o.value("service_icon").toString(),
-        .footer     = o.value("footer").toString(),
-        .blocks     = std::move(blocks),
+        .fallback    = o.value("fallback").toString(),
+        .color       = o.value("color").toString(),
+        .pretext     = o.value("pretext").toString(),
+        .authorName  = o.value("author_name").toString(),
+        .title       = o.value("title").toString(),
+        .titleLink   = o.value("title_link").toString(),
+        .text        = MrkdwnParser::parse(o.value("text").toString()),
+        .imageUrl    = o.value("image_url").toString(),
+        .thumbUrl    = o.value("thumb_url").toString(),
+        .faviconUrl  = o.value("service_icon").toString(),
+        .footer      = o.value("footer").toString(),
+        .imageWidth  = o.value("image_width").toInt(),
+        .imageHeight = o.value("image_height").toInt(),
+        .thumbWidth  = o.value("thumb_width").toInt(),
+        .thumbHeight = o.value("thumb_height").toInt(),
+        .blocks      = std::move(blocks),
     };
 }
 

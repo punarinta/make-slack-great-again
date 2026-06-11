@@ -17,6 +17,7 @@
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QVBoxLayout>
+#include <QtMath>
 
 ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *parent)
     : AppDialog(tr("Forward this message"), parent) {
@@ -113,25 +114,31 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         cardLay->addWidget(imgLabel);
 
         if (session) {
-            const QString    url       = f.thumbUrl.isEmpty() ? f.urlPrivate : f.thumbUrl;
+            const QString    url       = f.previewUrl(qCeil(kThumbMaxW * devicePixelRatioF()));
+            const bool       hasDims   = f.imageWidth > 0 && f.imageHeight > 0;
             QPointer<QLabel> safeLabel = imgLabel;
-            session->downloadFile(url, [safeLabel](QByteArray data) {
+            session->downloadFile(url, [safeLabel, hasDims, phW, phH](QByteArray data) {
                 if (!safeLabel)
                     return;
                 QPixmap px;
                 if (!px.loadFromData(data))
                     return;
-                const double scale = std::min(
-                    1.0, std::min((double)kThumbMaxW / px.width(), (double)kThumbMaxH / px.height())
-                );
-                px = px.scaled(
-                    (int)(px.width() * scale),
-                    (int)(px.height() * scale),
-                    Qt::IgnoreAspectRatio,
-                    Qt::SmoothTransformation
-                );
-                safeLabel->setFixedSize(px.size());
-                safeLabel->setPixmap(px);
+                // Display size comes from the original dimensions (the placeholder
+                // size), not from whichever thumbnail resolution was fetched.
+                QSize logical(phW, phH);
+                if (!hasDims) {
+                    const double scale = std::min(
+                        1.0,
+                        std::min((double)kThumbMaxW / px.width(), (double)kThumbMaxH / px.height())
+                    );
+                    logical = QSize((int)(px.width() * scale), (int)(px.height() * scale));
+                }
+                const qreal dpr = safeLabel->devicePixelRatioF();
+                QPixmap     scaled =
+                    px.scaled(logical * dpr, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                scaled.setDevicePixelRatio(dpr);
+                safeLabel->setFixedSize(logical);
+                safeLabel->setPixmap(scaled);
                 safeLabel->setStyleSheet({});
             });
         }

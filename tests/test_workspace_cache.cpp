@@ -141,16 +141,24 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
               .imageWidth  = 640,
               .imageHeight = 480,
               .size        = 12345,
+              .thumbs      = {
+            FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
+            FileThumb{480, 360, "https://thumb.example.com/img_480.png"}
+        },
     }};
     m.blocks      = {Block{
              .typeStr = "section",
              .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
     }};
     m.attachments = {Attachment{
-        .fallback = "fallback",
-        .color    = "#36a64f",
-        .title    = "Attachment title",
-        .text     = TextWithEntities{"attach body", {}},
+        .fallback    = "fallback",
+        .color       = "#36a64f",
+        .title       = "Attachment title",
+        .text        = TextWithEntities{"attach body", {}},
+        .imageWidth  = 1200,
+        .imageHeight = 630,
+        .thumbWidth  = 360,
+        .thumbHeight = 189,
     }};
 
     ConversationId conv{"C1"};
