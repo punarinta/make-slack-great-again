@@ -10,6 +10,7 @@
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/emoji_picker/emoji_picker_popup.h"
+#include "ui/user_profile_card/user_profile_card.h"
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "util/clipboard.h"
@@ -23,6 +24,7 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextCharFormat>
+#include <QTextLayout>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
 #include <QDesktopServices>
@@ -46,6 +48,23 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
+
+    _profileCard = new UserProfileCard(this);
+    connect(_profileCard, &UserProfileCard::messageRequested, this, [this](UserId user) {
+        hideProfileCard();
+        emit openDmRequested(user);
+    });
+    _profileShowTimer.setSingleShot(true);
+    _profileShowTimer.setInterval(300);
+    connect(&_profileShowTimer, &QTimer::timeout, this, [this] {
+        // Show only if the cursor is still on the same mention.
+        const QPoint vpPos = viewport()->mapFromGlobal(QCursor::pos());
+        if (anchorAt(vpPos) != _pendingProfileAnchor)
+            return;
+        const QString uid = MsgRender::userIdFromAnchor(_pendingProfileAnchor);
+        if (!uid.isEmpty())
+            showProfileCardFor(uid, userAnchorVpRect(vpPos, _pendingProfileAnchor));
+    });
 
     // Smooth scroll
     _scrollAnim.setDuration(220);
@@ -85,6 +104,11 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
                 verticalScrollBar()->setValue(verticalScrollBar()->maximum());
             viewport()->update();
         });
+        // Deliver the avatar to the profile card if it arrives while shown.
+        connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
+            if (_profileCard->isVisible() && url == _profileCard->avatarUrl())
+                _profileCard->updateAvatar(_imgCache->get(url));
+        });
     }
 }
 
@@ -98,6 +122,7 @@ void MessageListWidget::smoothScrollTo(int target) {
 }
 
 void MessageListWidget::scrollContentsBy(int /*dx*/, int /*dy*/) {
+    hideProfileCard(); // anchor moved away from under the card
     viewport()->update();
     if (verticalScrollBar()->value() <= 200)
         loadOlderMessages();
@@ -145,6 +170,7 @@ void MessageListWidget::clear() {
     _tops.clear();
     _totalH    = 0;
     _showIntro = false;
+    hideProfileCard();
     _hoveredLinkUrl.clear();
     _hoveredLinkRow  = -1;
     _hoveredRow      = -1;
@@ -780,6 +806,90 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
     return {};
 }
 
+QRect MessageListWidget::userAnchorVpRect(const QPoint &viewportPos, const QString &href) const {
+    // Fallback anchors the card to the cursor (e.g. mentions inside attachment docs).
+    const QRect fallback(viewportPos - QPoint(8, 8), QSize(16, 16));
+    if (href.isEmpty())
+        return fallback;
+
+    const PaintContext ctx  = makePaintContext();
+    const int          docY = viewportPos.y() + ctx.scrollY;
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        const int rowTop = _tops[i];
+        const int rh     = rowHeight(i);
+        if (docY < rowTop)
+            break;
+        if (docY > rowTop + rh)
+            continue;
+
+        const auto &item = _items[i];
+        ensureDocLayout(item);
+        if (!item.textDoc)
+            return fallback;
+
+        const bool coll    = isCollapsed(i);
+        const int  padV    = coll ? kPadVCollapsed : kPadV;
+        const int  sepH    = needsDateSep(i) ? kSepH : 0;
+        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  textTop = rowTop + sepH + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+
+        const QPointF local(viewportPos.x() - ctx.textLeft, docY - textTop);
+        const int     hit = item.textDoc->documentLayout()->hitTest(local, Qt::ExactHit);
+        if (hit < 0)
+            return fallback;
+
+        // Find the anchor fragment under the cursor and compute its line rect.
+        const QTextBlock block = item.textDoc->findBlock(hit);
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (!frag.isValid() || frag.charFormat().anchorHref() != href)
+                continue;
+            if (hit < frag.position() || hit >= frag.position() + frag.length())
+                continue;
+            QTextLayout    *lay  = block.layout();
+            const int       rel  = frag.position() - block.position();
+            const QTextLine line = lay->lineForTextPosition(rel);
+            if (!line.isValid())
+                break;
+            const qreal x1 = line.cursorToX(rel);
+            const qreal x2 = line.cursorToX(rel + frag.length());
+            return QRect(
+                ctx.textLeft + qRound(lay->position().x() + std::min(x1, x2)),
+                textTop - ctx.scrollY + qRound(lay->position().y() + line.y()),
+                qRound(std::abs(x2 - x1)),
+                qRound(line.height())
+            );
+        }
+        return fallback;
+    }
+    return fallback;
+}
+
+void MessageListWidget::showProfileCardFor(const QString &userIdStr, const QRect &anchorVpRect) {
+    if (!_session)
+        return;
+    const User *user = _session->findUser(UserId{userIdStr});
+    if (!user)
+        return;
+
+    QPixmap avatar;
+    if (_imgCache && !user->avatarUrl.isEmpty())
+        avatar = _imgCache->get(user->avatarUrl);
+
+    const QRect globalRect(viewport()->mapToGlobal(anchorVpRect.topLeft()), anchorVpRect.size());
+    _profileCard->showFor(*user, avatar, globalRect);
+    // Refresh the presence dot; the result arrives as EvPresenceChanged in handleEvent.
+    _session->requestPresence(user->id);
+}
+
+void MessageListWidget::hideProfileCard() {
+    _profileShowTimer.stop();
+    _pendingProfileAnchor.clear();
+    if (_profileCard)
+        _profileCard->hideNow();
+}
+
 std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos) const {
     const PaintContext ctx      = makePaintContext();
     const int          scrollY  = ctx.scrollY;
@@ -856,6 +966,10 @@ static QString firstLinkInMessage(const Message &msg) {
 void MessageListWidget::doMousePress(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton)
         return;
+
+    // Any press dismisses the profile card; a press on a mention re-shows it
+    // immediately via tryHandleLinkPress below.
+    hideProfileCard();
 
     // Clear any existing selection; it may be re-established below if the press lands on text.
     clearSelection();
@@ -1148,6 +1262,13 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
     const QString anchor = anchorAt(pos);
     if (anchor.isEmpty())
         return false;
+    const QString uid = MsgRender::userIdFromAnchor(anchor);
+    if (!uid.isEmpty()) {
+        // Clicking a mention opens the profile card without the hover delay.
+        _profileShowTimer.stop();
+        showProfileCardFor(uid, userAnchorVpRect(pos, anchor));
+        return true;
+    }
     QDesktopServices::openUrl(QUrl(anchor));
     return true;
 }
@@ -1311,6 +1432,11 @@ void MessageListWidget::doMouseLeave() {
         return;
 
     _tooltip->hide();
+    // Grace-period hide so the cursor can travel from the mention into the
+    // card (entering the card cancels the timer).
+    _profileShowTimer.stop();
+    _pendingProfileAnchor.clear();
+    _profileCard->scheduleHide();
 
     if (!_hoveredLinkUrl.isEmpty()) {
         if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
@@ -1598,9 +1724,10 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     }
 
     // Compute anchor once and reuse for link hover, tooltip, and cursor
-    const QString anchor = anchorAt(pos);
+    const QString anchor       = anchorAt(pos);
+    const bool    isUserAnchor = !MsgRender::userIdFromAnchor(anchor).isEmpty();
 
-    // Update link hover underline
+    // Update link hover underline (mention chips don't get underlined)
     if (anchor != _hoveredLinkUrl) {
         if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 &&
             _hoveredLinkRow < (int)_items.size()) {
@@ -1610,12 +1737,27 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
-        if (!anchor.isEmpty() && newHoveredRow >= 0) {
+        if (!anchor.isEmpty() && !isUserAnchor && newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
             for (auto &ad : _items[newHoveredRow].attachDocs)
                 setDocLinkUnderline(ad.textDoc.get(), anchor, true);
         }
         viewport()->update();
+    }
+
+    // Mention hover → profile card (after a short delay); leaving → grace hide
+    if (isUserAnchor) {
+        const QString uid = MsgRender::userIdFromAnchor(anchor);
+        if (_profileCard->isVisible() && _profileCard->userId().value == uid) {
+            _profileCard->cancelHide();
+        } else if (anchor != _pendingProfileAnchor) {
+            _pendingProfileAnchor = anchor;
+            _profileShowTimer.start();
+        }
+    } else {
+        _profileShowTimer.stop();
+        _pendingProfileAnchor.clear();
+        _profileCard->scheduleHide();
     }
 
     // Tooltip
@@ -1635,7 +1777,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect          btnLocal = fileActionBarButtonRect(newHoveredFileBtn, fr);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kFileTips[newHoveredFileBtn], btnGlobal);
-    } else if (!anchor.isEmpty()) {
+    } else if (!anchor.isEmpty() && !isUserAnchor) {
         // Collect link display text; skip tooltip when it is identical to the URL.
         QString linkText;
         if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {
@@ -1801,5 +1943,10 @@ void MessageListWidget::handleEvent(const Event &e) {
         }
         rebuildLayout();
         viewport()->update();
+
+    } else if (auto *ev = std::get_if<EvPresenceChanged>(&e)) {
+        // Keep the profile card's presence dot live while it is shown.
+        if (_profileCard->isVisible() && ev->user == _profileCard->userId())
+            _profileCard->setActive(ev->active);
     }
 }

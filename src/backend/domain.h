@@ -54,9 +54,13 @@ struct User {
     bool    isActive      = false; // presence; polled on public path
     bool    isDeactivated = false; // Slack "deleted" flag
     bool    isAdmin       = false; // is_admin || is_owner from users.list
+    bool    isOwner       = false; // is_owner / is_primary_owner (profile card role label)
     bool    dndEnabled    = false; // do-not-disturb; updated via dnd_updated_user event
     QString statusEmoji;           // Slack emoji name without colons, e.g. "palm_tree"
     QString statusText;            // user status text, e.g. "On vacation"
+    QString title;                 // job title from profile.title
+    bool    hasTz                          = false; // true when tzOffset is known
+    int     tzOffset                       = 0;     // seconds east of UTC (Slack tz_offset)
     bool    operator==(const User &) const = default;
 
     // Name to show in UI: the display name when set, otherwise the account name.

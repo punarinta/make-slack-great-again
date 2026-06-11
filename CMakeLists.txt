@@ -114,6 +114,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/mention_popup/mention_popup.cpp
     src/ui/context_menu/context_menu.cpp
     src/ui/popup_tooltip/popup_tooltip.cpp
+    src/ui/user_profile_card/user_profile_card.cpp
     src/ui/workspace_switcher/workspace_switcher.cpp
     src/ui/settings/settings_dialog.cpp
     src/ui/search/search_widget.cpp

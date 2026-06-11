@@ -77,6 +77,27 @@ TEST_CASE("toUser deleted flag maps to isDeactivated", "[mappers][user]") {
     CHECK(u.isDeactivated);
 }
 
+TEST_CASE("toUser profile-card fields: owner, title, tz_offset", "[mappers][user]") {
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U3", "name": "stefan", "is_owner": true, "tz_offset": 7200,
+        "profile": {"real_name": "Stefan Möller", "title": "CTO"}
+    })"));
+    CHECK(u.isOwner);
+    CHECK(u.isAdmin); // is_owner implies the admin role label fallback
+    CHECK(u.title == "CTO");
+    CHECK(u.hasTz);
+    CHECK(u.tzOffset == 7200);
+}
+
+TEST_CASE("toUser missing tz_offset leaves hasTz false", "[mappers][user]") {
+    auto u = JsonMappers::toUser(obj(R"({
+        "id": "U4", "name": "bot", "is_bot": true, "profile": {}
+    })"));
+    CHECK(!u.isOwner);
+    CHECK(!u.hasTz);
+    CHECK(u.tzOffset == 0);
+}
+
 TEST_CASE("toUser status_emoji simple — colons stripped", "[mappers][user][status]") {
     auto u = JsonMappers::toUser(obj(R"({
         "id": "U1", "name": "u1",

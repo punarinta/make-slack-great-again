@@ -561,6 +561,20 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         _threadPanel->setVisible(false);
     });
 
+    // "Message" on the mention-hover profile card → open/create the DM and
+    // navigate to it (same path as the People browser).
+    const auto openDmFor = [this](UserId user) {
+        if (!_session)
+            return;
+        _session->openDm(
+            user,
+            [this](ConversationId conv) { _convList->selectConversation(conv); },
+            [this](const QString &err) { showNetworkError(err); }
+        );
+    };
+    connect(_messageList, &MessageListWidget::openDmRequested, this, openDmFor);
+    connect(_threadPanel, &ThreadPanel::openDmRequested, this, openDmFor);
+
     connect(
         _messageList,
         &MessageListWidget::editMessageRequested,

@@ -12,6 +12,7 @@
 #include <QSet>
 #include <QHash>
 #include <QPixmap>
+#include <QTimer>
 
 #include <memory>
 #include <vector>
@@ -22,6 +23,7 @@ class ImageCache;
 class PopupTooltip;
 class EmojiPickerPopup;
 class ImageViewerOverlay;
+class UserProfileCard;
 
 // Per-attachment rendered doc (lazy, like the main textDoc).
 struct AttachDoc {
@@ -100,6 +102,8 @@ signals:
     void editMessageRequested(Ts ts, QString rawText, std::vector<File> files);
     // Emitted when "Forward message" is chosen.
     void forwardMessageRequested(Message msg);
+    // Emitted when "Message" is clicked on the mention-hover profile card.
+    void openDmRequested(UserId user);
 
 protected:
     void scrollContentsBy(int dx, int dy) override;
@@ -187,6 +191,14 @@ private:
 
     // Mouse: returns the href under the given viewport point, or empty.
     QString anchorAt(const QPoint &viewportPos) const;
+
+    // Mention hover profile card
+    // Viewport rect of the mention-anchor fragment under viewportPos; falls
+    // back to a 1px rect at viewportPos when the fragment can't be located.
+    QRect userAnchorVpRect(const QPoint &viewportPos, const QString &href) const;
+    // Look up the user and show the profile card anchored to anchorVpRect.
+    void  showProfileCardFor(const QString &userIdStr, const QRect &anchorVpRect);
+    void  hideProfileCard();
     // Attachment height helpers
     int
     attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
@@ -338,6 +350,11 @@ private:
     PopupTooltip       *_tooltip     = nullptr;
     EmojiPickerPopup   *_emojiPicker = nullptr;
     ImageViewerOverlay *_imageViewer = nullptr; // lazily created, parented to window()
+
+    // Mention hover profile card
+    UserProfileCard *_profileCard = nullptr;
+    QTimer           _profileShowTimer;     // hover delay before the card appears
+    QString          _pendingProfileAnchor; // mention href waiting on the show timer
 
     std::optional<QString> _olderCursor; // set when more pages exist above
     bool                   _loadingOlder = false;

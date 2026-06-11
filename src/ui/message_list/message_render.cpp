@@ -128,9 +128,12 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
         case EntityType::UserMention: {
             const QString label = session ? resolveMentionImpl(e.data, session) : rawInner;
             const bool    isMe  = session && UserId{e.data} == session->meUserId();
-            html += "<span style='color:" + Th::qss(Th::c().message.mentionText) + ";background:" +
+            // Anchor (not span) so the mention is hit-testable for the hover profile card.
+            html += "<a href='" + (kUserAnchorPrefix + e.data).toHtmlEscaped() +
+                    "' style='color:" + Th::qss(Th::c().message.mentionText) + ";background:" +
                     Th::qss(isMe ? Th::c().message.mentionSelfBg : Th::c().message.mentionBg) +
-                    ";border-radius:3px;padding:0 2px'>" + label.toHtmlEscaped() + "</span>";
+                    ";border-radius:3px;padding:0 2px;text-decoration:none'>" +
+                    label.toHtmlEscaped() + "</a>";
             break;
         }
         case EntityType::ChannelMention:

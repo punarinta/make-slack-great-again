@@ -36,8 +36,12 @@ User toUser(const QJsonObject &o) {
         .isActive      = false, // filled by presence poll
         .isDeactivated = o.value("deleted").toBool(),
         .isAdmin       = o.value("is_admin").toBool() || o.value("is_owner").toBool(),
+        .isOwner       = o.value("is_owner").toBool() || o.value("is_primary_owner").toBool(),
         .statusEmoji   = rawEmoji,
         .statusText    = profile.value("status_text").toString(),
+        .title         = profile.value("title").toString(),
+        .hasTz         = o.contains("tz_offset"),
+        .tzOffset      = o.value("tz_offset").toInt(),
     };
 }
 

@@ -43,6 +43,7 @@ ThreadPanel::ThreadPanel(QWidget *parent) : QWidget(parent) {
 
     _msgList = new MessageListWidget(nullptr, nullptr, this);
     layout->addWidget(_msgList, 1);
+    connect(_msgList, &MessageListWidget::openDmRequested, this, &ThreadPanel::openDmRequested);
 
     _composer = new ComposerWidget(this);
     _composer->setEnabled(false);

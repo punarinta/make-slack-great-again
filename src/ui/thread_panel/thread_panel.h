@@ -26,6 +26,8 @@ public:
 
 signals:
     void closeRequested();
+    // Forwarded from the embedded message list's mention-hover profile card.
+    void openDmRequested(UserId user);
 
 private:
     void applyTheme();

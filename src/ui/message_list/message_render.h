@@ -35,4 +35,13 @@ void paintFileChip(QPainter &p, const File &f, const QRect &rect);
 inline constexpr int kFileChipH    = 52;
 inline constexpr int kFileChipMaxW = 380;
 
+// User mentions are rendered as anchors with this internal scheme so they are
+// hit-testable like links: href = kUserAnchorPrefix + userId.
+inline const QString kUserAnchorPrefix = QStringLiteral("msga://user/");
+
+// Returns the user ID when href is a user-mention anchor, else an empty string.
+inline QString userIdFromAnchor(const QString &href) {
+    return href.startsWith(kUserAnchorPrefix) ? href.mid(kUserAnchorPrefix.size()) : QString();
+}
+
 } // namespace MsgRender

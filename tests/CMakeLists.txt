@@ -98,6 +98,16 @@ add_msga_widget_test(test_workspace_switcher
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
+add_msga_widget_test(test_user_profile_card
+    test_user_profile_card.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_user_profile_card PRIVATE Qt6::Test)
+
 add_msga_widget_test(test_context_menu
     test_context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp

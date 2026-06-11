@@ -243,6 +243,13 @@ static QJsonObject toJson(const User &u) {
     o["bo"] = u.isBot;
     o["ac"] = u.isActive;
     o["de"] = u.isDeactivated;
+    o["ad"] = u.isAdmin;
+    o["ow"] = u.isOwner;
+    o["se"] = u.statusEmoji;
+    o["st"] = u.statusText;
+    o["ti"] = u.title;
+    if (u.hasTz)
+        o["tz"] = u.tzOffset;
     return o;
 }
 static User userFromJson(const QJsonObject &o) {
@@ -254,6 +261,13 @@ static User userFromJson(const QJsonObject &o) {
     u.isBot         = o["bo"].toBool();
     u.isActive      = o["ac"].toBool();
     u.isDeactivated = o["de"].toBool();
+    u.isAdmin       = o["ad"].toBool();
+    u.isOwner       = o["ow"].toBool();
+    u.statusEmoji   = o["se"].toString();
+    u.statusText    = o["st"].toString();
+    u.title         = o["ti"].toString();
+    u.hasTz         = o.contains("tz");
+    u.tzOffset      = o["tz"].toInt();
     return u;
 }
 
