@@ -28,7 +28,10 @@ public:
     bool handleKey(int key);
 
 signals:
-    void selected(const QString &insertText);
+    // display    : human-readable label of the chosen row (e.g. "@Maria").
+    // insertText : what the outgoing message must contain — the raw token
+    //              "<@U…>" for users, or the alias itself for @here/@channel.
+    void selected(const QString &display, const QString &insertText);
 
 private:
     void rebuild(const QString &query, bool isDm);
@@ -41,6 +44,7 @@ private:
     QVBoxLayout     *_vbox    = nullptr;
     Session         *_session = nullptr;
     QList<QWidget *> _rows;
+    QList<QString>   _displays;
     QList<QString>   _inserts;
     int              _sel = 0;
 };

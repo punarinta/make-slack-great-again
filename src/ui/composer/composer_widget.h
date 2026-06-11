@@ -50,7 +50,9 @@ public:
     );
     void exitEditMode();
 
-    // Draft support: read/write the editor's plain text directly.
+    // Draft support: read/write the editor content as mrkdwn. User mentions
+    // are shown as "@Name" pills in the editor but always read back as the
+    // raw <@U…> tokens, so the outgoing message format never changes.
     QString currentText() const;
     void    setText(const QString &text);
 
@@ -91,6 +93,10 @@ private:
     void openAttachDialog();
     void openLinkDialog(const QPoint &toolbarGlobalPos);
     void checkMentionPopup();
+    // Fill the editor from mrkdwn, rendering <@U…> tokens as "@Name" pills.
+    void setEditorMrkdwn(const QString &text);
+    // Refresh pill colors after a theme change.
+    void recolorMentionPills();
 
     QFrame            *_box          = nullptr;
     FormattingToolbar *_formattingTb = nullptr;

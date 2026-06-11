@@ -211,6 +211,7 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
     while (_vbox->count())
         delete _vbox->takeAt(0)->widget();
     _rows.clear();
+    _displays.clear();
     _inserts.clear();
     _sel = 0;
 
@@ -226,6 +227,7 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
         row->onHover = [this, idx] { selectRow(idx); };
         _vbox->addWidget(row);
         _rows.append(row);
+        _displays.append(name);
         _inserts.append(insert);
     };
 
@@ -245,7 +247,7 @@ void MentionPopup::rebuild(const QString &query, bool isDm) {
         for (const auto &u : users) {
             if (u.isDeactivated)
                 continue;
-            const QString disp = u.displayName.isEmpty() ? u.name : u.displayName;
+            const QString disp = u.displayLabel();
             if (!q.isEmpty() && !disp.contains(q, Qt::CaseInsensitive))
                 continue;
             addRow("@" + disp, "<@" + u.id.value + ">");
@@ -273,7 +275,8 @@ void MentionPopup::confirm() {
         dismiss();
         return;
     }
-    const QString text = _inserts[_sel];
+    const QString display = _displays[_sel];
+    const QString text    = _inserts[_sel];
     dismiss();
-    emit selected(text);
+    emit selected(display, text);
 }

@@ -56,7 +56,7 @@ static QString resolveMentionImpl(const QString &userId, const Session *session)
     if (!session)
         return "@" + userId;
     const auto *u = session->findUser(UserId{userId});
-    return u ? ("@" + u->displayName) : ("@" + userId);
+    return u ? ("@" + u->displayLabel()) : ("@" + userId);
 }
 
 QString resolveMention(const QString &userId, const Session *session) {

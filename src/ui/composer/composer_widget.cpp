@@ -38,11 +38,56 @@
 #include <QNetworkRequest>
 #include <QtMath>
 #include <QAbstractTextDocumentLayout>
+#include <QRegularExpression>
+#include <QTextBlock>
 #include <QTimer>
 
 static constexpr int kMinEditHeight = 40;
 
 static constexpr QSize kToolIconSize{18, 18};
+
+// ── Mention pills ─────────────────────────────────────────────────────────────
+// The editor shows "@Display Name" while the raw Slack token ("<@U123ABC>")
+// travels in the fragment's char format — the sent message keeps the official
+// mrkdwn format, only the visualization changes.
+
+static constexpr int kMentionRawProp     = QTextFormat::UserProperty;
+static constexpr int kMentionDisplayProp = QTextFormat::UserProperty + 1;
+static constexpr int kMentionSeqProp     = QTextFormat::UserProperty + 2;
+
+static QTextCharFormat mentionCharFormat(const QString &display, const QString &raw) {
+    static int      seq = 0; // distinct per pill so adjacent pills never merge into one fragment
+    QTextCharFormat fmt;
+    fmt.setForeground(Th::c().message.replyLink);
+    fmt.setBackground(Th::c().accent.subtleBg);
+    fmt.setProperty(kMentionRawProp, raw);
+    fmt.setProperty(kMentionDisplayProp, display);
+    fmt.setProperty(kMentionSeqProp, ++seq);
+    return fmt;
+}
+
+// Document text with mention pills replaced by their raw tokens. A pill whose
+// visible text was edited by hand no longer matches its stored display string
+// and is emitted literally instead.
+static QString serializeWithMentions(const QTextDocument *doc) {
+    QString out;
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        if (block.blockNumber() > 0)
+            out += '\n';
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (!frag.isValid())
+                continue;
+            const QTextCharFormat fmt = frag.charFormat();
+            const QString         raw = fmt.stringProperty(kMentionRawProp);
+            if (!raw.isEmpty() && frag.text() == fmt.stringProperty(kMentionDisplayProp))
+                out += raw;
+            else
+                out += frag.text();
+        }
+    }
+    return out;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -529,6 +574,8 @@ void ComposerWidget::applyTheme() {
                              .arg(Th::qss(Th::c().text.primary))
                              .arg(Th::c().fonts.base));
 
+    recolorMentionPills();
+
     // Re-apply bottom-bar tool button styles
     const QString bbToolBtnStyle =
         QString(
@@ -540,6 +587,36 @@ void ComposerWidget::applyTheme() {
     const auto toolBtns = _bottomBar->findChildren<QToolButton *>();
     for (auto *btn : toolBtns)
         btn->setStyleSheet(bbToolBtnStyle);
+}
+
+void ComposerWidget::recolorMentionPills() {
+    // Pill colors live in char formats, not stylesheets — collect the ranges
+    // first (re-formatting mutates the fragment list), then re-apply.
+    struct Range {
+        int     pos, len;
+        QString display, raw;
+    };
+    QList<Range> ranges;
+    const auto  *doc = _edit->document();
+    for (QTextBlock block = doc->begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (!frag.isValid())
+                continue;
+            const QTextCharFormat fmt = frag.charFormat();
+            const QString         raw = fmt.stringProperty(kMentionRawProp);
+            if (!raw.isEmpty())
+                ranges.append(
+                    {frag.position(), frag.length(), fmt.stringProperty(kMentionDisplayProp), raw}
+                );
+        }
+    }
+    for (const Range &r : ranges) {
+        QTextCursor tc(_edit->document());
+        tc.setPosition(r.pos);
+        tc.setPosition(r.pos + r.len, QTextCursor::KeepAnchor);
+        tc.setCharFormat(mentionCharFormat(r.display, r.raw));
+    }
 }
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -607,14 +684,23 @@ void ComposerWidget::checkMentionPopup() {
         _mentionPopup = new MentionPopup(parentWidget());
         _mentionPopup->setSession(_session);
         connect(_mentionPopup, &QObject::destroyed, this, [this] { _mentionPopup = nullptr; });
-        connect(_mentionPopup, &MentionPopup::selected, this, [this](const QString &insert) {
-            const int cur2 = _edit->textCursor().position();
-            auto      tc   = _edit->textCursor();
-            tc.setPosition(_atTriggerStart);
-            tc.setPosition(cur2, QTextCursor::KeepAnchor);
-            tc.insertText(insert + " ");
-            _edit->setFocus();
-        });
+        connect(
+            _mentionPopup,
+            &MentionPopup::selected,
+            this,
+            [this](const QString &display, const QString &insert) {
+                const int cur2 = _edit->textCursor().position();
+                auto      tc   = _edit->textCursor();
+                tc.setPosition(_atTriggerStart);
+                tc.setPosition(cur2, QTextCursor::KeepAnchor);
+                if (insert.startsWith("<@")) // user: show the name, send the raw token
+                    tc.insertText(display, mentionCharFormat(display, insert));
+                else // @here/@channel/@everyone aliases stay literal
+                    tc.insertText(insert, QTextCharFormat());
+                tc.insertText(" ", QTextCharFormat());
+                _edit->setFocus();
+            }
+        );
     }
 
     _atTriggerStart = atPos;
@@ -622,6 +708,29 @@ void ComposerWidget::checkMentionPopup() {
     const bool   isDm   = (_convKind == ConvKind::Im || _convKind == ConvKind::Mpim);
     const QPoint anchor = _edit->mapToGlobal(_edit->cursorRect().bottomLeft());
     _mentionPopup->open(anchor, query, isDm);
+}
+
+void ComposerWidget::setEditorMrkdwn(const QString &text) {
+    static const QRegularExpression kUserMention(
+        QStringLiteral("<@([UW][A-Z0-9]+)(?:\\|([^>]+))?>")
+    );
+    _edit->clear();
+    QTextCursor tc(_edit->document());
+    int         pos = 0;
+    auto        it  = kUserMention.globalMatch(text);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        tc.insertText(text.mid(pos, m.capturedStart() - pos), QTextCharFormat());
+        QString display = m.captured(2); // "<@U…|name>" carries its own label
+        if (display.isEmpty()) {
+            const User *u = _session ? _session->findUser(UserId{m.captured(1)}) : nullptr;
+            display       = u ? u->displayLabel() : m.captured(1);
+        }
+        display.prepend('@');
+        tc.insertText(display, mentionCharFormat(display, m.captured(0)));
+        pos = m.capturedEnd();
+    }
+    tc.insertText(text.mid(pos), QTextCharFormat());
 }
 
 void ComposerWidget::addPendingFile(const QString &filePath) {
@@ -1018,7 +1127,7 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
 
 void ComposerWidget::trySend() {
     _tooltip->hide();
-    const auto        text  = _edit->toPlainText().trimmed();
+    const auto        text  = currentText().trimmed();
     const QStringList files = _pendingFiles;
 
     if (text.isEmpty() && files.isEmpty())
@@ -1050,7 +1159,7 @@ void ComposerWidget::trySend() {
 }
 
 void ComposerWidget::trySchedule() {
-    const auto text = _edit->toPlainText().trimmed();
+    const auto text = currentText().trimmed();
     if (text.isEmpty() && _pendingFiles.isEmpty())
         return;
 
@@ -1133,7 +1242,7 @@ void ComposerWidget::enterEditMode(
         exitEditMode();
     _editingTs = ts;
 
-    _edit->setPlainText(existingText);
+    setEditorMrkdwn(existingText);
     auto cursor = _edit->textCursor();
     cursor.movePosition(QTextCursor::End);
     _edit->setTextCursor(cursor);
@@ -1161,11 +1270,11 @@ void ComposerWidget::exitEditMode() {
 // ── Draft support ─────────────────────────────────────────────────────────────
 
 QString ComposerWidget::currentText() const {
-    return _edit->toPlainText();
+    return serializeWithMentions(_edit->document());
 }
 
 void ComposerWidget::setText(const QString &text) {
-    _edit->setPlainText(text);
+    setEditorMrkdwn(text);
     if (!text.isEmpty()) {
         auto cursor = _edit->textCursor();
         cursor.movePosition(QTextCursor::End);

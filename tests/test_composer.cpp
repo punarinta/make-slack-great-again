@@ -294,3 +294,72 @@ TEST_CASE("Session::currentConversations returns snapshot", "[session]") {
     REQUIRE(convs.size() == 1);
     CHECK(convs[0].name == "general");
 }
+
+// ── Mention pills ─────────────────────────────────────────────────────────────
+// The editor shows "@Name" while currentText()/sends keep the raw <@U…> token.
+
+TEST_CASE("setText shows mention token as @id pill without a session", "[composer][mention]") {
+    ComposerWidget c;
+    c.setText("ping <@U123ABC> ok");
+    CHECK(editOf(&c)->toPlainText() == "ping @U123ABC ok");
+    CHECK(c.currentText() == "ping <@U123ABC> ok"); // wire format unchanged
+}
+
+TEST_CASE("setText uses the |label of a labeled mention token", "[composer][mention]") {
+    ComposerWidget c;
+    c.setText("hi <@U1|maria>!");
+    CHECK(editOf(&c)->toPlainText() == "hi @maria!");
+    CHECK(c.currentText() == "hi <@U1|maria>!");
+}
+
+TEST_CASE("setText resolves mention display name via session", "[composer][mention]") {
+    auto *stub = new StubBackend2;
+    User  u;
+    u.id          = UserId{"U42"};
+    u.name        = "maria";
+    u.displayName = "Maria O";
+    stub->_users  = std::vector<User>{u};
+
+    Session session(std::unique_ptr<Backend>(stub), "T_TEST");
+    session.start();
+
+    ComposerWidget c;
+    c.setSession(&session);
+    c.setText("hi <@U42>");
+    CHECK(editOf(&c)->toPlainText() == "hi @Maria O");
+    CHECK(c.currentText() == "hi <@U42>");
+}
+
+TEST_CASE("enterEditMode keeps raw mention tokens through currentText", "[composer][mention]") {
+    ComposerWidget c;
+    c.enterEditMode("100.000", "ask <@U7> about it");
+    CHECK(editOf(&c)->toPlainText() == "ask @U7 about it");
+    CHECK(c.currentText() == "ask <@U7> about it");
+}
+
+TEST_CASE("hand-edited mention pill falls back to its literal text", "[composer][mention]") {
+    ComposerWidget c;
+    c.setText("<@U1|bob>");
+    QTextEdit *ed = editOf(&c);
+    REQUIRE(ed->toPlainText() == "@bob");
+    // Delete the last character inside the pill — it no longer matches the
+    // stored display string, so it must serialize as what the user sees.
+    auto tc = ed->textCursor();
+    tc.movePosition(QTextCursor::End);
+    tc.deletePreviousChar();
+    CHECK(c.currentText() == "@bo");
+}
+
+TEST_CASE("mention serialization preserves newlines", "[composer][mention]") {
+    ComposerWidget c;
+    c.setText("line one\ncc <@U9|zoe>\nline three");
+    CHECK(editOf(&c)->toPlainText() == "line one\ncc @zoe\nline three");
+    CHECK(c.currentText() == "line one\ncc <@U9|zoe>\nline three");
+}
+
+TEST_CASE("adjacent mention pills serialize independently", "[composer][mention]") {
+    ComposerWidget c;
+    c.setText("<@U1|ann><@U1|ann>");
+    CHECK(editOf(&c)->toPlainText() == "@ann@ann");
+    CHECK(c.currentText() == "<@U1|ann><@U1|ann>");
+}

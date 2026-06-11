@@ -58,6 +58,9 @@ struct User {
     QString statusEmoji;           // Slack emoji name without colons, e.g. "palm_tree"
     QString statusText;            // user status text, e.g. "On vacation"
     bool    operator==(const User &) const = default;
+
+    // Name to show in UI: the display name when set, otherwise the account name.
+    const QString &displayLabel() const { return displayName.isEmpty() ? name : displayName; }
 };
 
 // Rich presence for the authed user only. users.getPresence returns these
