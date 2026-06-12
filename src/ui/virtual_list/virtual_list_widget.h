@@ -18,6 +18,9 @@ protected:
 
     virtual void doPaint(QPaintEvent *event) = 0;
     virtual void doMousePress(QMouseEvent *event) { Q_UNUSED(event) }
+    // Default: treat the second click of a double-click as a plain press, so
+    // rapid clicks on click-driven lists don't lose every other click.
+    virtual void doMouseDoubleClick(QMouseEvent *event) { doMousePress(event); }
     virtual void doMouseMove(QMouseEvent *event) { Q_UNUSED(event) }
     virtual void doMouseRelease(QMouseEvent *event) { Q_UNUSED(event) }
     virtual void doMouseLeave() {}

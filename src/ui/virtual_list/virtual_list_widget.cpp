@@ -25,6 +25,9 @@ bool VirtualListWidget::eventFilter(QObject *obj, QEvent *event) {
         case QEvent::MouseButtonPress:
             doMousePress(static_cast<QMouseEvent *>(event));
             return true;
+        case QEvent::MouseButtonDblClick:
+            doMouseDoubleClick(static_cast<QMouseEvent *>(event));
+            return true;
         case QEvent::MouseButtonRelease:
             doMouseRelease(static_cast<QMouseEvent *>(event));
             return true;

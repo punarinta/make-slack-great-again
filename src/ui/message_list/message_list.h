@@ -126,6 +126,7 @@ private:
     // Viewport event handlers (called from eventFilter)
     void doPaint(QPaintEvent *event);
     void doMousePress(QMouseEvent *event);
+    void doMouseDoubleClick(QMouseEvent *event) override;
     void doMouseMove(QMouseEvent *event);
     void doMouseRelease(QMouseEvent *event);
     void doMouseLeave();

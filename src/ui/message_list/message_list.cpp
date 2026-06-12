@@ -1263,6 +1263,35 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
     tryHandleFileChipPress(event->pos());
 }
 
+void MessageListWidget::doMouseDoubleClick(QMouseEvent *event) {
+    if (event->button() != Qt::LeftButton) {
+        VirtualListWidget::doMouseDoubleClick(event);
+        return;
+    }
+
+    // Double-click on message text selects the word under the cursor.
+    const TextPos tp = textHitTest(event->pos());
+    if (tp.row >= 0) {
+        const auto &item = _items[tp.row];
+        ensureDocLayout(item);
+        if (item.textDoc) {
+            QTextCursor cur(item.textDoc.get());
+            cur.setPosition(tp.offset);
+            cur.select(QTextCursor::WordUnderCursor);
+            if (cur.hasSelection()) {
+                _selAnchor   = {tp.row, cur.selectionStart()};
+                _selFocus    = {tp.row, cur.selectionEnd()};
+                _selDragging = false;
+                viewport()->update();
+            }
+        }
+        return;
+    }
+
+    // Off-text: treat as another press so rapid clicks (reactions, etc.) register.
+    VirtualListWidget::doMouseDoubleClick(event);
+}
+
 bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
     if (pos.x() < sbHitX || !isOnScrollThumb(pos.y()))
