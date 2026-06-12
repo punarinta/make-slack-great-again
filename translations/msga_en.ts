@@ -170,43 +170,48 @@
     <name>CanvasPage</name>
     <message>
         <location filename="../src/ui/canvas_page/canvas_page.cpp" line="151"/>
+        <source>This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here.</source>
+        <translation>This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here.</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="162"/>
         <source>Your canvas title</source>
         <translation>Your canvas title</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="155"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="166"/>
         <source>Go ahead, start writing!</source>
         <translation>Go ahead, start writing!</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="356"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="479"/>
         <source>Copy link</source>
         <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="366"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="488"/>
         <source>Delete canvas</source>
         <translation>Delete canvas</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="79"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="80"/>
         <source>Delete canvas</source>
         <translation>Delete canvas</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="82"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="84"/>
         <source>The canvas will be deleted for everyone in the conversation.
 This action cannot be undone.</source>
         <translation>The canvas will be deleted for everyone in the conversation.
 This action cannot be undone.</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="94"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="98"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="96"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="100"/>
         <source>Delete canvas</source>
         <translation>Delete canvas</translation>
     </message>
@@ -482,7 +487,7 @@ This action cannot be undone.</translation>
         <translation>Messages</translation>
     </message>
     <message>
-        <location filename="../src/ui/conv_tabs/conv_tabs_widget.cpp" line="48"/>
+        <location filename="../src/ui/conv_tabs/conv_tabs_widget.cpp" line="49"/>
         <source>Untitled</source>
         <translation>Untitled</translation>
     </message>
@@ -739,12 +744,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1847"/>
+        <location filename="../src/ui/main_window.cpp" line="1855"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1847"/>
+        <location filename="../src/ui/main_window.cpp" line="1855"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
@@ -767,102 +772,102 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1139"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1154"/>
         <source>Edit message</source>
         <translation>Edit message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1153"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1168"/>
         <source>Copy link</source>
         <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1163"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1178"/>
         <source>Copy message</source>
         <translation>Copy message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1175"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1190"/>
         <source>Unpin from channel</source>
         <translation>Unpin from channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1192"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1207"/>
         <source>Pin to channel</source>
         <translation>Pin to channel</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1213"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1228"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1224"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1239"/>
         <source>Delete message…</source>
         <translation>Delete message…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1349"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1364"/>
         <source>file</source>
         <translation>file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1351"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1366"/>
         <source>Save file</source>
         <translation>Save file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1376"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1391"/>
         <source>Copy link to image</source>
         <translation>Copy link to image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1376"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1391"/>
         <source>Copy link to file</source>
         <translation>Copy link to file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1389"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1404"/>
         <source>Delete image…</source>
         <translation>Delete image…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1389"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1404"/>
         <source>Delete file…</source>
         <translation>Delete file…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1814"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1829"/>
         <source>Add reaction</source>
         <translation>Add reaction</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1814"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1829"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1814"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1829"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1823"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1838"/>
         <source>Download</source>
         <translation>Download</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1823"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1838"/>
         <source>Share</source>
         <translation>Share</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1823"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1838"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="1855"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1870"/>
         <source>Remove preview</source>
         <translation>Remove preview</translation>
     </message>
