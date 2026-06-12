@@ -214,16 +214,14 @@ public:
             done(false, QStringLiteral("not_supported"));
     }
     // Canvas display metadata (files.info): title for the tab label, permalink
-    // for "Copy link". exists=false when the file is gone (file_deleted /
-    // file_not_found) — conversations.info keeps referencing deleted channel
-    // canvases, so this is the authoritative existence check. Other failures
-    // report empty strings with exists=true.
+    // for "Copy link". See CanvasMetaState for how failures map; transient/
+    // unknown errors report empty strings with CanvasMetaState::Ok.
     virtual void loadCanvasMeta(
         const QString & /*fileId*/,
-        std::function<void(QString title, QString permalink, bool exists)> done
+        std::function<void(QString title, QString permalink, CanvasMetaState state)> done
     ) {
         if (done)
-            done({}, {}, true);
+            done({}, {}, CanvasMetaState::Ok);
     }
     // Permanently delete a canvas (canvases.delete) — Slack offers no undo.
     virtual void deleteCanvas(

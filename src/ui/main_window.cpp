@@ -1832,16 +1832,18 @@ void MainWindow::openConversation(int row) {
                 if (fileId.isEmpty())
                     return;
                 _session->loadCanvasMeta(
-                    fileId, [this, convId, fileId](QString title, QString, bool exists) {
+                    fileId, [this, convId, fileId](QString title, QString, CanvasMetaState state) {
                         if (_currentConvId != convId || _currentCanvasFileId != fileId)
                             return;
-                        if (!exists) {
+                        if (state == CanvasMetaState::Gone) {
                             // conversations.info still references a deleted canvas.
                             _currentCanvasFileId.clear();
                             _currentCanvasTitle.clear();
                             _convTabs->setCanvasInfo(false);
                             return;
                         }
+                        // NoAccess keeps the tab — the canvas exists, the page
+                        // shows the read-only no-access notice when opened.
                         _currentCanvasTitle = title;
                         _convTabs->setCanvasInfo(true, title);
                     }

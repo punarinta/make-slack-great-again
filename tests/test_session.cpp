@@ -187,19 +187,19 @@ struct StubBackend : Backend {
     std::vector<QString>                 deleteCanvasCalls;
     bool                                 deleteCanvasOk = true;
     void                                 loadCanvasMeta(
-                                        const QString &fileId, std::function<void(QString, QString, bool)> done
+                                        const QString &fileId, std::function<void(QString, QString, CanvasMetaState)> done
                                     ) override {
         if (!done)
             return;
         if (!canvasHtml.count(fileId)) {
-            done({}, {}, false); // file_deleted
+            done({}, {}, CanvasMetaState::Gone); // file_deleted
             return;
         }
         const auto it = canvasTitle.find(fileId);
         done(
             it == canvasTitle.end() ? QString() : it->second,
             QStringLiteral("https://stub.slack.com/docs/T0/%1").arg(fileId),
-            true
+            CanvasMetaState::Ok
         );
     }
     void
@@ -2023,23 +2023,23 @@ TEST_CASE_METHOD(SessionFixture, "loadCanvasMeta passes title and permalink", "[
     stub->canvasHtml["F1"]  = "<p>x</p>";
     stub->canvasTitle["F1"] = "Roadmap";
     QString title, permalink;
-    bool    exists = false;
-    session->loadCanvasMeta("F1", [&](QString t, QString p, bool e) {
+    auto    state = CanvasMetaState::Gone;
+    session->loadCanvasMeta("F1", [&](QString t, QString p, CanvasMetaState s) {
         title     = t;
         permalink = p;
-        exists    = e;
+        state     = s;
     });
     CHECK(title == "Roadmap");
     CHECK(permalink.contains("F1"));
-    CHECK(exists);
+    CHECK(state == CanvasMetaState::Ok);
 }
 
 TEST_CASE_METHOD(
     SessionFixture, "loadCanvasMeta reports a deleted canvas as gone", "[session][canvas]"
 ) {
-    bool exists = true;
-    session->loadCanvasMeta("F-GONE", [&](QString, QString, bool e) { exists = e; });
-    CHECK(!exists);
+    auto state = CanvasMetaState::Ok;
+    session->loadCanvasMeta("F-GONE", [&](QString, QString, CanvasMetaState s) { state = s; });
+    CHECK(state == CanvasMetaState::Gone);
 }
 
 TEST_CASE_METHOD(SessionFixture, "deleteCanvas reaches the backend", "[session][canvas]") {

@@ -113,8 +113,8 @@ public:
     // exists=false when the file is deleted — conversations.info keeps
     // referencing deleted channel canvases, so callers must drop theirs.
     void loadCanvasMeta(
-        const QString                                                     &fileId,
-        std::function<void(QString title, QString permalink, bool exists)> done
+        const QString                                                               &fileId,
+        std::function<void(QString title, QString permalink, CanvasMetaState state)> done
     );
     // Permanent canvas deletion; failures fire errors().
     void deleteCanvas(const QString &canvasId, std::function<void(bool ok)> done = {});

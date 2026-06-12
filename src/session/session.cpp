@@ -832,7 +832,8 @@ void Session::editCanvas(
 }
 
 void Session::loadCanvasMeta(
-    const QString &fileId, std::function<void(QString title, QString permalink, bool exists)> done
+    const QString                                                               &fileId,
+    std::function<void(QString title, QString permalink, CanvasMetaState state)> done
 ) {
     _backend->loadCanvasMeta(fileId, std::move(done));
 }

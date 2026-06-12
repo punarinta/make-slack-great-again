@@ -32,9 +32,9 @@ void WebApiClient::preWarm(const QString &host) {
 }
 
 void WebApiClient::call(
-    const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError
+    const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError, bool quietErrors
 ) {
-    enqueue({method, std::move(params), {}, std::move(onSuccess), std::move(onError)});
+    enqueue({method, std::move(params), {}, std::move(onSuccess), std::move(onError), quietErrors});
 }
 
 void WebApiClient::postJson(
@@ -226,9 +226,10 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
 
     if (!obj.value("ok").toBool()) {
         auto err = obj.value("error").toString("unknown");
-        qWarning() << "WebApiClient Slack error:" << err << "on" << c.method
-                   << "| needed:" << obj.value("needed").toString()
-                   << "| provided:" << obj.value("provided").toString();
+        if (!c.quietErrors)
+            qWarning() << "WebApiClient Slack error:" << err << "on" << c.method
+                       << "| needed:" << obj.value("needed").toString()
+                       << "| provided:" << obj.value("provided").toString();
         if (err == "token_expired" && _onTokenExpired) {
             qDebug() << "WebApiClient: token_expired on" << c.method
                      << "— pausing queue, re-queuing call";

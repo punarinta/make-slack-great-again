@@ -250,19 +250,20 @@ void FakeBackend::editCanvas(
 }
 
 void FakeBackend::loadCanvasMeta(
-    const QString &fileId, std::function<void(QString title, QString permalink, bool exists)> done
+    const QString                                                               &fileId,
+    std::function<void(QString title, QString permalink, CanvasMetaState state)> done
 ) {
     if (!done)
         return;
     if (!_canvasHtml.count(fileId)) {
-        done({}, {}, false);
+        done({}, {}, CanvasMetaState::Gone);
         return;
     }
     const auto it = _canvasTitle.find(fileId);
     done(
         it == _canvasTitle.end() ? QString() : it->second,
         QStringLiteral("https://fake.slack.com/docs/T0/%1").arg(fileId),
-        true
+        CanvasMetaState::Ok
     );
 }
 

@@ -147,11 +147,7 @@ CanvasPage::CanvasPage(QWidget *parent) : QWidget(parent) {
     col->setContentsMargins(16, 56, 16, 24);
     col->setSpacing(12);
 
-    _roNotice = new QLabel(
-        tr("This canvas was created with Slack's built-in editor and is not editable "
-           "through the Slack API — it is read-only here."),
-        _column
-    );
+    _roNotice = new QLabel(_column); // text set by setReadOnlyUi per cause
     _roNotice->setWordWrap(true);
     _roNotice->hide();
     col->addWidget(_roNotice);
@@ -228,7 +224,7 @@ void CanvasPage::open(ConversationId conv, const QString &fileId, const QString 
     _lastHtml       = {};
     _serverTitle    = knownTitle;
     _baseRefetching = false;
-    setReadOnlyUi(false);
+    setReadOnlyUi(ReadOnlyCause::None);
     _title->setText(knownTitle);
     _titleDirty = false;
     setBodyHtml({});
@@ -248,41 +244,62 @@ void CanvasPage::loadContent() {
     QPointer<CanvasPage> guard(this);
     _baseRefetching = true;
     // Meta first: the file title identifies the title h1 in the content HTML.
-    _session->loadCanvasMeta(_fileId, [guard, seq](QString title, QString permalink, bool exists) {
-        if (!guard || guard->_openSeq != seq)
-            return;
-        if (!exists) {
-            // Deleted elsewhere but conversations.info still references it —
-            // drop ours and let the tab strip revert to "Add canvas".
-            guard->_baseRefetching = false;
-            guard->_fileId         = {};
-            guard->_lastHtml       = {};
-            guard->_serverTitle    = {};
-            guard->_title->clear();
-            guard->setBodyHtml({});
-            guard->_menuBtn->hide();
-            emit guard->canvasDeleted();
-            return;
-        }
-        guard->_permalink = permalink;
-        if (!title.isEmpty())
-            guard->_serverTitle = title;
-        guard->_session->loadCanvasContent(
-            guard->_fileId,
-            [guard, seq](QString html) {
-                if (!guard || guard->_openSeq != seq)
-                    return;
-                guard->applyRemoteHtml(html);
-            },
-            [guard, seq](const QString &) {
-                if (!guard || guard->_openSeq != seq)
-                    return;
-                // Base unknown — force the whole-doc fallback on the next save.
+    _session->loadCanvasMeta(
+        _fileId, [guard, seq](QString title, QString permalink, CanvasMetaState state) {
+            if (!guard || guard->_openSeq != seq)
+                return;
+            if (state == CanvasMetaState::Gone) {
+                // Deleted elsewhere but conversations.info still references it —
+                // drop ours and let the tab strip revert to "Add canvas".
+                guard->_baseRefetching = false;
+                guard->_fileId         = {};
+                guard->_lastHtml       = {};
+                guard->_serverTitle    = {};
+                guard->_title->clear();
+                guard->setBodyHtml({});
+                guard->_menuBtn->hide();
+                emit guard->canvasDeleted();
+                return;
+            }
+            if (state == CanvasMetaState::NoAccess) {
+                // The canvas exists but the token may not view it (files.info
+                // not_visible — e.g. a public channel the user hasn't joined, or
+                // restricted canvas access). The content download would fail the
+                // same way, so don't attempt it — and never show an empty editable
+                // document whose autosave would try to replace the whole canvas.
                 guard->_baseRefetching = false;
                 guard->_lastHtml       = {};
+                guard->_serverTitle    = {};
+                guard->_title->clear();
+                guard->setBodyHtml({});
+                guard->_menuBtn->hide();
+                guard->setReadOnlyUi(ReadOnlyCause::NoAccess);
+                return;
             }
-        );
-    });
+            // Visible again after a NoAccess spell — re-enable editing.
+            // (NotAddressable is permanent and never cleared here.)
+            if (guard->_roCause == ReadOnlyCause::NoAccess)
+                guard->setReadOnlyUi(ReadOnlyCause::None);
+            guard->_permalink = permalink;
+            if (!title.isEmpty())
+                guard->_serverTitle = title;
+            guard->_session->loadCanvasContent(
+                guard->_fileId,
+                [guard, seq](QString html) {
+                    if (!guard || guard->_openSeq != seq)
+                        return;
+                    guard->applyRemoteHtml(html);
+                },
+                [guard, seq](const QString &) {
+                    if (!guard || guard->_openSeq != seq)
+                        return;
+                    // Base unknown — force the whole-doc fallback on the next save.
+                    guard->_baseRefetching = false;
+                    guard->_lastHtml       = {};
+                }
+            );
+        }
+    );
 }
 
 void CanvasPage::applyRemoteHtml(const QString &html) {
@@ -313,7 +330,7 @@ void CanvasPage::setBodyHtml(const QString &html) {
 }
 
 void CanvasPage::flushPendingSave() {
-    if (!_session || _conv.value.isEmpty() || _readOnly)
+    if (!_session || _conv.value.isEmpty() || _roCause != ReadOnlyCause::None)
         return;
     if (!_bodyDirty && !_titleDirty)
         return;
@@ -449,7 +466,7 @@ void CanvasPage::flushPendingSave() {
         if (err.contains(QLatin1String("canvas_not_found"))) {
             // Not addressable as a canvas (e.g. a free-team tab canvas made
             // with Slack's built-in editor) — retrying can never succeed.
-            guard->setReadOnlyUi(true);
+            guard->setReadOnlyUi(ReadOnlyCause::NotAddressable);
             return;
         }
         // Edits stay in the editor; force the whole-doc fallback next time —
@@ -460,8 +477,16 @@ void CanvasPage::flushPendingSave() {
     });
 }
 
-void CanvasPage::setReadOnlyUi(bool readOnly) {
-    _readOnly = readOnly;
+void CanvasPage::setReadOnlyUi(ReadOnlyCause cause) {
+    _roCause               = cause;
+    const bool    readOnly = cause != ReadOnlyCause::None;
+    const QString notice =
+        cause == ReadOnlyCause::NotAddressable
+            ? tr("This canvas was created with Slack's built-in editor and is not editable "
+                 "through the Slack API — it is read-only here.")
+        : cause == ReadOnlyCause::NoAccess ? tr("You don't have access to this canvas.")
+                                           : QString();
+    _roNotice->setText(notice);
     _body->setReadOnly(readOnly);
     _title->setReadOnly(readOnly);
     _roNotice->setVisible(readOnly);
@@ -518,7 +543,7 @@ void CanvasPage::clear() {
     _lastHtml       = {};
     _serverTitle    = {};
     _baseRefetching = false;
-    setReadOnlyUi(false);
+    setReadOnlyUi(ReadOnlyCause::None);
     _title->clear();
     setBodyHtml({});
     _titleDirty = false;

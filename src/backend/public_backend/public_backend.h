@@ -145,8 +145,8 @@ private:
 
 public:
     void loadCanvasMeta(
-        const QString                                                     &fileId,
-        std::function<void(QString title, QString permalink, bool exists)> done
+        const QString                                                               &fileId,
+        std::function<void(QString title, QString permalink, CanvasMetaState state)> done
     ) override;
     void deleteCanvas(
         const QString &canvasId, std::function<void(bool ok, QString err)> done = {}

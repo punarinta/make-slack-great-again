@@ -56,7 +56,11 @@ private:
     void showMenu();
     void confirmDelete();
     void setBodyHtml(const QString &html);
-    void setReadOnlyUi(bool readOnly);
+    // Why the editor is read-only. NotAddressable is permanent (the canvas
+    // can never be edited through the API); NoAccess clears if a later
+    // files.info shows the canvas became visible.
+    enum class ReadOnlyCause { None, NotAddressable, NoAccess };
+    void setReadOnlyUi(ReadOnlyCause cause);
 
     Session       *_session = nullptr;
     ConversationId _conv;
@@ -65,7 +69,7 @@ private:
     QString        _lastHtml;               // remote HTML the section diff is computed against
     QString        _serverTitle;            // files.info title; identifies the title h1 in HTML
     bool           _baseRefetching = false; // base refresh in flight; saves are deferred
-    bool           _readOnly       = false; // canvas not addressable via the API
+    ReadOnlyCause  _roCause        = ReadOnlyCause::None;
     bool           _loading        = false; // programmatic body changes; don't mark dirty
     bool           _bodyDirty      = false;
     bool           _titleDirty     = false;

@@ -108,7 +108,7 @@
         <translation>Canvas edit failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="844"/>
+        <location filename="../src/session/session.cpp" line="845"/>
         <source>Canvas deletion failed: %1</source>
         <translation>Canvas deletion failed: %1</translation>
     </message>
@@ -169,27 +169,32 @@
 <context>
     <name>CanvasPage</name>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="151"/>
-        <source>This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here.</source>
-        <translation>This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here.</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="162"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="158"/>
         <source>Your canvas title</source>
         <translation>Your canvas title</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="166"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="162"/>
         <source>Go ahead, start writing!</source>
         <translation>Go ahead, start writing!</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="479"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="485"/>
+        <source>This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here.</source>
+        <translation>This canvas was created with Slack's built-in editor and is not editable through the Slack API — it is read-only here.</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="487"/>
+        <source>You don't have access to this canvas.</source>
+        <translation>You don't have access to this canvas.</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="504"/>
         <source>Copy link</source>
         <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="488"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="513"/>
         <source>Delete canvas</source>
         <translation>Delete canvas</translation>
     </message>
@@ -744,12 +749,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1855"/>
+        <location filename="../src/ui/main_window.cpp" line="1857"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1855"/>
+        <location filename="../src/ui/main_window.cpp" line="1857"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>

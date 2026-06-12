@@ -556,9 +556,13 @@ rpl::producer<std::vector<SlashCommand>> PublicBackend::listCommands() {
                 consumer.put_done();
             },
             [consumer](QString err) mutable {
-                qWarning() << "listCommands error:" << err;
+                // not_allowed_token_type is the norm for OAuth tokens (see the
+                // comment above) — built-ins take over, nothing to report.
+                if (err != QLatin1String("not_allowed_token_type"))
+                    qWarning() << "listCommands error:" << err;
                 consumer.put_done();
-            }
+            },
+            /*quietErrors=*/true
         );
         return rpl::lifetime();
     };
@@ -1030,7 +1034,8 @@ void PublicBackend::createChannelCanvas(
 }
 
 void PublicBackend::loadCanvasMeta(
-    const QString &fileId, std::function<void(QString title, QString permalink, bool exists)> done
+    const QString                                                               &fileId,
+    std::function<void(QString title, QString permalink, CanvasMetaState state)> done
 ) {
     QUrlQuery params;
     params.addQueryItem("file", fileId);
@@ -1040,14 +1045,21 @@ void PublicBackend::loadCanvasMeta(
         [done](QJsonObject resp) {
             const auto file = resp.value("file").toObject();
             if (done)
-                done(file.value("title").toString(), file.value("permalink").toString(), true);
+                done(
+                    file.value("title").toString(),
+                    file.value("permalink").toString(),
+                    CanvasMetaState::Ok
+                );
         },
         [done](QString err) {
             qWarning() << "loadCanvasMeta error:" << err;
-            const bool gone =
-                err == QLatin1String("file_deleted") || err == QLatin1String("file_not_found");
+            auto state = CanvasMetaState::Ok; // unknown error — assume still there
+            if (err == QLatin1String("file_deleted") || err == QLatin1String("file_not_found"))
+                state = CanvasMetaState::Gone;
+            else if (err == QLatin1String("not_visible"))
+                state = CanvasMetaState::NoAccess;
             if (done)
-                done({}, {}, !gone);
+                done({}, {}, state);
         }
     );
 }

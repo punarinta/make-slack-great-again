@@ -127,6 +127,17 @@ struct CanvasChange {
     bool    operator==(const CanvasChange &) const = default;
 };
 
+// Outcome of a canvas metadata lookup (files.info).
+// Gone     — the file no longer exists (file_deleted / file_not_found);
+//            conversations.info keeps referencing deleted channel canvases,
+//            so this is the authoritative existence check.
+// NoAccess — the file exists but the token may not view it (not_visible),
+//            e.g. a canvas in a public channel the user hasn't joined or one
+//            with restricted access — show it read-only, never edit it.
+// Ok       — visible; also the fallback for transient/unknown errors (then
+//            with empty title/permalink).
+enum class CanvasMetaState { Ok, Gone, NoAccess };
+
 // True when mrkdwn text explicitly mentions `me` — a direct <@U…> / <@U…|name>
 // mention or a broadcast keyword (<!here>, <!channel>, <!everyone>). This is
 // what the official Slack client treats as a mention for red badges and

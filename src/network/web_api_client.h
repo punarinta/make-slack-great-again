@@ -39,7 +39,15 @@ public:
     void setOnTokenExpired(OnTokenExpired fn);
 
     // Single-call: fires onSuccess with the full response object.
-    void call(const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError = {});
+    // quietErrors: suppress the generic Slack-error warning — for call sites
+    // that expect routine failures and do their own logging.
+    void call(
+        const QString &method,
+        QUrlQuery      params,
+        OnSuccess      onSuccess,
+        OnError        onError     = {},
+        bool           quietErrors = false
+    );
 
     // Paginated load: fires onPage for each page's array items, then onDone.
     // Follows next_cursor until exhausted.
@@ -75,7 +83,8 @@ private:
         QJsonObject jsonBody; // non-empty → POST JSON instead of GET with params
         OnSuccess   onSuccess;
         OnError     onError;
-        int         transportRetries = 0; // retries after a stale-connection failure
+        bool        quietErrors      = false; // skip the generic Slack-error warning
+        int         transportRetries = 0;     // retries after a stale-connection failure
     };
 
     void enqueue(PendingCall c);
