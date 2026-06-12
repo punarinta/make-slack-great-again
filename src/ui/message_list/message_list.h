@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 
+class QMovie;
 class QTextDocument;
 class Session;
 class ImageCache;
@@ -112,6 +113,7 @@ protected:
     void scrollContentsBy(int dx, int dy) override;
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
 
 private:
     // Viewport event handlers (called from eventFilter)
@@ -238,6 +240,20 @@ private:
     // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
     std::pair<int, int> reactionAt(const QPoint &viewportPos) const;
 
+    // ── Animated images (GIF / animated WebP) ──
+    // Shared player for a public-URL image, or nullptr while loading / static.
+    // First sighting wires frameChanged → viewport repaint (gated on visibility).
+    QMovie *gifMovieFor(const QString &url) const;
+    void    watchGifMovie(const QString &url, QMovie *movie) const;
+    // Create a widget-owned player for an auth-downloaded file when its bytes
+    // decode to an animation (public-URL ones are owned by ImageCache).
+    void    maybeCreateFileGifMovie(const QString &url, const QByteArray &bytes) const;
+    // Swap the current movie frame into the item's doc image resources and mark
+    // the url visible; called per visible row right before the docs are drawn.
+    void    pullGifFrames(const MessageItem &item) const;
+    // Start players painted this pass, pause the rest — called after each paint.
+    void    syncGifPlayback() const;
+
     // Text selection
     TextPos textHitTest(const QPoint &viewportPos) const;
     void    clearSelection();
@@ -355,6 +371,16 @@ private:
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
+
+    // Image blocks the user collapsed via their "GIF ▾" title line.
+    // Key: ts [+ "/a" + attachIndex] + "/b" + blockIndex (see GifRenderContext).
+    QSet<QString> _collapsedGifs;
+
+    // Animated image players by url — ImageCache-owned for public URLs,
+    // widget-owned (parented to this) for auth-downloaded files.
+    mutable QHash<QString, QMovie *> _gifMovies;
+    // Urls whose frames were drawn during the current/last paint pass.
+    mutable QSet<QString>            _visibleGifs;
 
     PopupTooltip       *_tooltip     = nullptr;
     EmojiPickerPopup   *_emojiPicker = nullptr;

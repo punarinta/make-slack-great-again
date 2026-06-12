@@ -6,6 +6,7 @@
 #include "backend/backend.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
@@ -15,6 +16,8 @@
 #include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "util/clipboard.h"
 
+#include <QBuffer>
+#include <QMovie>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QResizeEvent>
@@ -614,13 +617,47 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
         item.emojiUrls          = MsgRender::collectEmojiImageUrls(item.msg, _session);
         item.emojiUrlsCollected = true;
     }
-    auto addEmojiResources = [&](QTextDocument *doc) {
+    // Chevron pixmaps for image-block title lines ("GIF ▾") — only rendered
+    // when the message actually carries an image block.
+    auto hasImageBlock = [](const std::vector<Block> &blocks) {
+        return std::any_of(blocks.begin(), blocks.end(), [](const Block &b) {
+            return b.typeStr == "image" && !b.imageUrl.isEmpty();
+        });
+    };
+    bool anyImageBlock = hasImageBlock(item.msg.blocks);
+    for (const auto &att : item.msg.attachments)
+        anyImageBlock = anyImageBlock || hasImageBlock(att.blocks);
+    QPixmap chevDown, chevRight;
+    if (anyImageBlock) {
+        const qreal dpr = devicePixelRatioF();
+        chevDown =
+            svgPixmapPhys(":/ui/chevron-down.svg", QSize(10, 10), Th::c().text.secondary, dpr);
+        chevRight =
+            svgPixmapPhys(":/ui/chevron-right.svg", QSize(10, 10), Th::c().text.secondary, dpr);
+    }
+
+    auto addImageResources = [&](QTextDocument *doc) {
+        if (anyImageBlock) {
+            doc->addResource(
+                QTextDocument::ImageResource, QUrl(MsgRender::kGifChevronExpandedRes), chevDown
+            );
+            doc->addResource(
+                QTextDocument::ImageResource, QUrl(MsgRender::kGifChevronCollapsedRes), chevRight
+            );
+        }
         if (!_imgCache)
             return;
         for (const auto &url : item.emojiUrls) {
             const QPixmap px = _imgCache->get(url);
-            if (!px.isNull())
+            if (!px.isNull()) {
                 doc->addResource(QTextDocument::ImageResource, QUrl(url), px);
+            } else if (anyImageBlock) {
+                // Still downloading: flat placeholder so the reserved image area
+                // doesn't show Qt's broken-image icon (loaded() rebuilds the doc).
+                QPixmap ph(4, 3);
+                ph.fill(Th::c().message.imagePlaceholderBg);
+                doc->addResource(QTextDocument::ImageResource, QUrl(url), ph);
+            }
         }
     };
 
@@ -630,8 +667,9 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
         item.textDoc->setDefaultFont(QApplication::font());
         item.textDoc->setDocumentMargin(0);
         item.textDoc->setDefaultStyleSheet(MsgRender::docStyleSheet());
-        addEmojiResources(item.textDoc.get());
-        const auto html = MsgRender::buildMsgHtml(item.msg, _session);
+        addImageResources(item.textDoc.get());
+        const MsgRender::GifRenderContext gifCtx{item.msg.ts, &_collapsedGifs};
+        const auto html = MsgRender::buildMsgHtml(item.msg, _session, &gifCtx);
         if (!html.isEmpty())
             item.textDoc->setHtml(html);
     }
@@ -656,8 +694,11 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
             ad.textDoc->setDefaultFont(QApplication::font());
             ad.textDoc->setDocumentMargin(0);
             ad.textDoc->setDefaultStyleSheet(MsgRender::docStyleSheet());
-            addEmojiResources(ad.textDoc.get());
-            const auto html = MsgRender::buildAttachHtml(attachments[ai], _session);
+            addImageResources(ad.textDoc.get());
+            const MsgRender::GifRenderContext gifCtx{
+                item.msg.ts + "/a" + QString::number(ai), &_collapsedGifs
+            };
+            const auto html = MsgRender::buildAttachHtml(attachments[ai], _session, &gifCtx);
             if (!html.isEmpty())
                 ad.textDoc->setHtml(html);
         }
@@ -771,6 +812,83 @@ int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
     return item.attachDocs[ai].docHeight + attachImageH(item.msg.attachments[ai]);
 }
 
+// ── Animated images (GIF / animated WebP) ─────────────────────────────────────
+
+QMovie *MessageListWidget::gifMovieFor(const QString &url) const {
+    const auto it = _gifMovies.constFind(url);
+    if (it != _gifMovies.constEnd())
+        return it.value();
+    QMovie *m = _imgCache ? _imgCache->movie(url) : nullptr;
+    if (m)
+        watchGifMovie(url, m);
+    return m;
+}
+
+void MessageListWidget::watchGifMovie(const QString &url, QMovie *movie) const {
+    _gifMovies.insert(url, movie);
+    // Repaint per frame, but only while the gif is actually on screen — an
+    // offscreen movie gets paused by syncGifPlayback on the next paint anyway.
+    connect(movie, &QMovie::frameChanged, this, [this, url](int) {
+        if (_visibleGifs.contains(url))
+            viewport()->update();
+    });
+}
+
+void MessageListWidget::maybeCreateFileGifMovie(const QString &url, const QByteArray &bytes) const {
+    if (_gifMovies.contains(url) || !ImageCache::isAnimatedImage(bytes))
+        return;
+    auto *buf = new QBuffer;
+    buf->setData(bytes);
+    buf->open(QIODevice::ReadOnly);
+    auto *movie = new QMovie(buf);
+    buf->setParent(movie);
+    if (!movie->isValid()) {
+        delete movie;
+        return;
+    }
+    movie->setParent(const_cast<MessageListWidget *>(this));
+    watchGifMovie(url, movie);
+}
+
+void MessageListWidget::pullGifFrames(const MessageItem &item) const {
+    for (const auto &url : item.emojiUrls) {
+        QMovie *m = gifMovieFor(url);
+        if (!m)
+            continue;
+        _visibleGifs.insert(url);
+        const QPixmap frame = m->currentPixmap();
+        if (frame.isNull())
+            continue;
+        if (item.textDoc)
+            item.textDoc->addResource(QTextDocument::ImageResource, QUrl(url), frame);
+        for (auto &ad : item.attachDocs)
+            if (ad.textDoc)
+                ad.textDoc->addResource(QTextDocument::ImageResource, QUrl(url), frame);
+    }
+}
+
+void MessageListWidget::syncGifPlayback() const {
+    for (auto it = _gifMovies.cbegin(); it != _gifMovies.cend(); ++it) {
+        QMovie    *m       = it.value();
+        const bool visible = _visibleGifs.contains(it.key());
+        if (visible) {
+            if (m->state() == QMovie::NotRunning)
+                m->start();
+            else if (m->state() == QMovie::Paused)
+                m->setPaused(false);
+        } else if (m->state() == QMovie::Running) {
+            m->setPaused(true);
+        }
+    }
+}
+
+void MessageListWidget::hideEvent(QHideEvent *event) {
+    // Don't burn CPU decoding frames nobody can see.
+    _visibleGifs.clear();
+    syncGifPlayback();
+    VirtualListWidget::hideEvent(event);
+}
+
 // Walk all text fragments in a QTextDocument and set underline on those whose
 // anchor href matches url.
 static void setDocLinkUnderline(QTextDocument *doc, const QString &url, bool underline) {
@@ -845,14 +963,18 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
         }
 
         // Check attachment text docs
-        const int attTextX = textLeft + kAttachBarW + kAttachBarGap;
-        const int attW     = textAreaWidth() - kAttachBarW - kAttachBarGap;
-        int       ay       = textTop + item.docHeight;
+        const int attW = textAreaWidth() - kAttachBarW - kAttachBarGap;
+        int       ay   = textTop + item.docHeight;
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
             if (isDismissed(item.msg.ts, ai))
                 continue;
             ay += kAttachGap;
             const auto &ad         = item.attachDocs[ai];
+            // Image-only attachments paint un-indented (no quote bar) — keep
+            // the hit-test x in sync with paintAttachments.
+            const int   attTextX   = MsgRender::attachIsImageOnly(item.msg.attachments[ai])
+                                         ? textLeft
+                                         : textLeft + kAttachBarW + kAttachBarGap;
             const int   attTextTop = ay;
             if (docY >= attTextTop && docY < attTextTop + ad.docHeight && ad.textDoc) {
                 const QPointF local(viewportPos.x() - attTextX, docY - attTextTop);
@@ -1325,6 +1447,22 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
     const QString anchor = anchorAt(pos);
     if (anchor.isEmpty())
         return false;
+    const QString gifKey = MsgRender::gifKeyFromAnchor(anchor);
+    if (!gifKey.isEmpty()) {
+        // "GIF ▾" title line: collapse/expand the image block below it.
+        if (!_collapsedGifs.remove(gifKey))
+            _collapsedGifs.insert(gifKey);
+        const int idx = findByTs(gifKey.section('/', 0, 0));
+        if (idx >= 0) {
+            auto &item = _items[idx];
+            item.textDoc.reset();
+            item.attachDocs.clear();
+            item.docWidth = -1;
+            rebuildLayout();
+            viewport()->update();
+        }
+        return true;
+    }
     const QString uid = MsgRender::userIdFromAnchor(anchor);
     if (!uid.isEmpty()) {
         // Clicking a mention opens the profile card without the hover delay.
@@ -1789,8 +1927,9 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // Compute anchor once and reuse for link hover, tooltip, and cursor
     const QString anchor       = anchorAt(pos);
     const bool    isUserAnchor = !MsgRender::userIdFromAnchor(anchor).isEmpty();
+    const bool    isGifAnchor  = !MsgRender::gifKeyFromAnchor(anchor).isEmpty();
 
-    // Update link hover underline (mention chips don't get underlined)
+    // Update link hover underline (mention chips and "GIF ▾" toggles don't get underlined)
     if (anchor != _hoveredLinkUrl) {
         if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 &&
             _hoveredLinkRow < (int)_items.size()) {
@@ -1800,7 +1939,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
-        if (!anchor.isEmpty() && !isUserAnchor && newHoveredRow >= 0) {
+        if (!anchor.isEmpty() && !isUserAnchor && !isGifAnchor && newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
             for (auto &ad : _items[newHoveredRow].attachDocs)
                 setDocLinkUnderline(ad.textDoc.get(), anchor, true);
@@ -1840,7 +1979,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect          btnLocal = fileActionBarButtonRect(newHoveredFileBtn, fr);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kFileTips[newHoveredFileBtn], btnGlobal);
-    } else if (!anchor.isEmpty() && !isUserAnchor) {
+    } else if (!anchor.isEmpty() && !isUserAnchor && !isGifAnchor) {
         // Collect link display text; skip tooltip when it is identical to the URL.
         QString linkText;
         if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {

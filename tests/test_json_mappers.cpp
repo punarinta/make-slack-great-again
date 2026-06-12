@@ -637,6 +637,8 @@ TEST_CASE("toBlock image block", "[mappers][block]") {
     CHECK(b.imageUrl == "https://img.example.com/pic.png");
     CHECK(b.altText == "a picture");
     CHECK(b.text.text.isEmpty());
+    CHECK(b.imageWidth == 0);
+    CHECK(b.imageHeight == 0);
 }
 
 TEST_CASE("toBlock image block with title", "[mappers][block]") {
@@ -647,6 +649,21 @@ TEST_CASE("toBlock image block with title", "[mappers][block]") {
         "title": {"type": "plain_text", "text": "Title text"}
     })"));
     CHECK(b.text.text == "Title text");
+}
+
+TEST_CASE("toBlock image block keeps dimensions (Slack GIF picker shape)", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "image",
+        "image_url": "https://media2.giphy.com/media/abc/giphy-downsized.gif",
+        "alt_text": "a man is sweating",
+        "title": {"type": "plain_text", "text": "GIF"},
+        "image_width": 480,
+        "image_height": 360
+    })"));
+    CHECK(b.typeStr == "image");
+    CHECK(b.imageWidth == 480);
+    CHECK(b.imageHeight == 360);
+    CHECK(b.text.text == "GIF");
 }
 
 TEST_CASE("toBlock context concatenates text elements with separator", "[mappers][block]") {

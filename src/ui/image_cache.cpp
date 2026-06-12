@@ -2,12 +2,44 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "image_cache.h"
 
+#include <QBuffer>
+#include <QImageReader>
+#include <QMovie>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrl>
 
 ImageCache::ImageCache(QObject *parent) : QObject(parent), _nam(new QNetworkAccessManager(this)) {}
+
+bool ImageCache::isAnimatedImage(const QByteArray &bytes) {
+    QBuffer buf;
+    buf.setData(bytes);
+    buf.open(QIODevice::ReadOnly);
+    QImageReader reader(&buf);
+    return reader.supportsAnimation() && reader.imageCount() > 1;
+}
+
+QMovie *ImageCache::movie(const QString &url) {
+    auto it = _cache.find(url);
+    if (it == _cache.end() || it->animatedBytes.isEmpty())
+        return nullptr;
+    if (!it->movie) {
+        auto *buf = new QBuffer;
+        buf->setData(it->animatedBytes);
+        buf->open(QIODevice::ReadOnly);
+        auto *m = new QMovie(buf);
+        buf->setParent(m);
+        if (!m->isValid()) {
+            delete m;
+            it->animatedBytes.clear();
+            return nullptr;
+        }
+        m->setParent(this);
+        it->movie = m;
+    }
+    return it->movie;
+}
 
 void ImageCache::setDiskCache(
     std::function<QByteArray(const QString &)>               load,
@@ -32,7 +64,10 @@ QPixmap ImageCache::get(const QString &url) {
         if (!bytes.isEmpty()) {
             QPixmap px;
             if (px.loadFromData(bytes) && !px.isNull()) {
-                _cache[url].pixmap = px;
+                auto &entry  = _cache[url];
+                entry.pixmap = px;
+                if (isAnimatedImage(bytes))
+                    entry.animatedBytes = bytes;
                 return px;
             }
         }
@@ -52,6 +87,8 @@ QPixmap ImageCache::get(const QString &url) {
             QPixmap    px;
             if (px.loadFromData(bytes) && !px.isNull()) {
                 e.pixmap = px;
+                if (isAnimatedImage(bytes))
+                    e.animatedBytes = bytes;
                 if (_diskSave)
                     _diskSave(url, bytes);
             }

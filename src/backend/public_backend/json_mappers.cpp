@@ -360,8 +360,10 @@ Block toBlock(const QJsonObject &o) {
     if (b.typeStr == "rich_text") {
         b.text = richTextToTWE(o);
     } else if (b.typeStr == "image") {
-        b.imageUrl = o.value("image_url").toString();
-        b.altText  = o.value("alt_text").toString();
+        b.imageUrl    = o.value("image_url").toString();
+        b.altText     = o.value("alt_text").toString();
+        b.imageWidth  = o.value("image_width").toInt();
+        b.imageHeight = o.value("image_height").toInt();
         if (o.contains("title"))
             b.text = parseTextObj(o.value("title").toObject());
     } else if (b.typeStr == "header" || b.typeStr == "section") {

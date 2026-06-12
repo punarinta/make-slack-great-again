@@ -245,9 +245,11 @@ struct File {
 // divider → typeStr == "divider", rest empty.
 struct Block {
     QString typeStr;       // "section"|"header"|"divider"|"image"|"context"|"rich_text"|"actions"
-    TextWithEntities text; // primary displayable text
-    QString          imageUrl; // for "image" blocks
-    QString          altText;  // for "image" blocks
+    TextWithEntities text; // primary displayable text; for "image" blocks this is the title
+    QString          imageUrl;                            // for "image" blocks
+    QString          altText;                             // for "image" blocks
+    int              imageWidth                      = 0; // for "image" blocks; 0 when not provided
+    int              imageHeight                     = 0;
     bool             operator==(const Block &) const = default;
 };
 

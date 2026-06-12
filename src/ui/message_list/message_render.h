@@ -8,6 +8,7 @@
 #include <QColor>
 #include <QDate>
 #include <QHash>
+#include <QSet>
 
 class QPainter;
 class QRect;
@@ -38,9 +39,20 @@ int inlineEmojiPx();
 // height (22/15 of the font pixel size) computed for the active font.
 QString docStyleSheet();
 
-// All custom-emoji image URLs referenced by a message (text, blocks, attachments),
-// deduplicated. Used to register QTextDocument image resources.
+// All image URLs a message's docs reference as <img>: custom emoji plus Block
+// Kit image-block urls (top-level and attachment-embedded), deduplicated.
+// Used to register QTextDocument image resources and trigger downloads.
 QStringList collectEmojiImageUrls(const Message &msg, const Session *session);
+
+// Context for rendering Block Kit "image" blocks inline (Slack GIF/Giphy
+// messages). When provided, image blocks emit a title line ("GIF ▾", a
+// collapse-toggle anchor) followed by the real <img>; the caller registers the
+// pixmap/movie frames as doc resources. When absent (preview dialogs), image
+// blocks fall back to their italic alt text.
+struct GifRenderContext {
+    QString              keyPrefix;           // message ts, + "/a<idx>" inside attachment docs
+    const QSet<QString> *collapsed = nullptr; // keys of user-collapsed images
+};
 
 QString formatTs(const Ts &ts);
 QDate   tsToDate(const Ts &ts);
@@ -50,8 +62,16 @@ QString formatDateLabel(const Ts &ts);
 QString lastReplyLabel(const Ts &ts);
 QString resolveMention(const QString &userId, const Session *session);
 QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
-QString buildMsgHtml(const Message &msg, const Session *session);
-QString buildAttachHtml(const Attachment &att, const Session *session);
+QString
+buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif = nullptr);
+QString buildAttachHtml(
+    const Attachment &att, const Session *session, const GifRenderContext *gif = nullptr
+);
+
+// True when the attachment renders nothing but Block Kit image blocks (the
+// Slack GIF-picker shape) — official clients draw those without the colored
+// quote bar and without the bar indent.
+bool    attachIsImageOnly(const Attachment &att);
 QColor  fileTypeColor(const File &f);
 QString fileIconLabel(const File &f);
 QString formatFileSize(qint64 bytes);
@@ -72,5 +92,24 @@ inline const QString kUserAnchorPrefix = QStringLiteral("msga://user/");
 inline QString userIdFromAnchor(const QString &href) {
     return href.startsWith(kUserAnchorPrefix) ? href.mid(kUserAnchorPrefix.size()) : QString();
 }
+
+// Image-block title lines ("GIF ▾") are anchors with this internal scheme;
+// clicking one toggles the collapse key that follows the prefix.
+inline const QString kGifToggleAnchorPrefix = QStringLiteral("msga://gif/");
+
+// Returns the collapse key when href is an image-block toggle anchor, else "".
+inline QString gifKeyFromAnchor(const QString &href) {
+    return href.startsWith(kGifToggleAnchorPrefix) ? href.mid(kGifToggleAnchorPrefix.size())
+                                                   : QString();
+}
+
+// QTextDocument resource names for the chevron icon on image-block title lines.
+// The doc owner registers theme-colored pixmaps under these urls.
+inline const QString kGifChevronExpandedRes  = QStringLiteral("msga://gif-chevron/expanded");
+inline const QString kGifChevronCollapsedRes = QStringLiteral("msga://gif-chevron/collapsed");
+
+// Inline image-block size cap — matches the message list's kImgMaxW/kImgMaxH.
+inline constexpr int kBlockImgMaxW = 400;
+inline constexpr int kBlockImgMaxH = 300;
 
 } // namespace MsgRender

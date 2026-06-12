@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QPixmap>
 
+class QMovie;
 class QNetworkAccessManager;
 
 // Shared cache for public-URL image downloads: avatars, attachment previews, favicons.
@@ -24,6 +25,15 @@ public:
     // download is in-flight return null immediately and wait for the loaded() signal.
     QPixmap get(const QString &url);
 
+    // Player for an animated image (GIF / animated WebP), or nullptr when the
+    // url hasn't loaded yet or decodes to a single frame. The QMovie is created
+    // lazily, shared between callers and owned by the cache — callers connect
+    // to frameChanged() and drive start()/setPaused() by visibility.
+    QMovie *movie(const QString &url);
+
+    // True when bytes decode to a multi-frame animation.
+    static bool isAnimatedImage(const QByteArray &bytes);
+
     // Wire a persistent backing store: load is called before any network fetch;
     // save is called after each successful download so the bytes survive restarts.
     // Passing empty functions disables the backing store.
@@ -37,8 +47,10 @@ signals:
 
 private:
     struct Entry {
-        QPixmap pixmap;
-        bool    inFlight = false;
+        QPixmap    pixmap;             // first frame for animated images
+        QByteArray animatedBytes;      // raw bytes, kept only for multi-frame images
+        QMovie    *movie    = nullptr; // lazily created from animatedBytes
+        bool       inFlight = false;
     };
 
     QHash<QString, Entry>  _cache;

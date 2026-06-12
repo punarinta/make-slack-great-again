@@ -8,6 +8,7 @@
 #include "ui/image_cache.h"
 #include "util/emoji_font.h"
 
+#include <QMovie>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
@@ -48,6 +49,10 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     p.fillRect(event->rect(), Th::c().surface.content);
 
     if ((_loading || _waiting) && _items.empty()) {
+        // Nothing visible — make sure gif players from the previous conversation stop.
+        _visibleGifs.clear();
+        syncGifPlayback();
+
         _loadingAnim.paint(p, viewport()->rect());
 
         if (_loadingElapsedTimer.isValid()) {
@@ -89,6 +94,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
             paintIntro(p, introVpTop);
     }
 
+    _visibleGifs.clear();
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
         const int rowTop = _tops[i] - scrollY;
         const int rh     = rowHeight(i);
@@ -98,6 +104,8 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
             break;
         paintRow(p, i, rowTop, ctx);
     }
+    // Animated images: play the ones drawn this pass, pause everything else.
+    syncGifPlayback();
 
     // Thin Telegram-style scrollbar overlay
     paintScrollThumb(p, _totalH, QColor(0, 0, 0, 80));
@@ -238,6 +246,8 @@ void MessageListWidget::paintRow(
     }
 
     // ── Message text via QTextDocument ───────────────────────────────
+    // Swap current animation frames into the doc image resources first.
+    pullGifFrames(item);
     p.setFont(QApplication::font());
     int contentY = collapsed ? contTop : (contTop + kHdrH + kHdrGap);
     p.save();
@@ -481,6 +491,11 @@ void MessageListWidget::paintAttachments(
         const int imgH   = attachImageH(att);
         const int totalH = docH + imgH;
 
+        // GIF-picker attachments (image blocks only) render bar-less and
+        // un-indented, like the official client.
+        const bool imageOnly = MsgRender::attachIsImageOnly(att);
+        const int  attX      = imageOnly ? left : textX;
+
         // Dismiss "×" button — only visible when this specific attachment is hovered
         if (_hoveredAttach.first == index && _hoveredAttach.second == ai) {
             const int   btnX = left - kDismissGap - kDismissW;
@@ -495,22 +510,24 @@ void MessageListWidget::paintAttachments(
         }
 
         // Colored left bar (full attachment height)
-        QColor barColor("#AAAAAA");
-        if (!att.color.isEmpty()) {
-            QColor c(att.color.startsWith('#') ? att.color : "#" + att.color);
-            if (c.isValid())
-                barColor = c;
+        if (!imageOnly) {
+            QColor barColor("#AAAAAA");
+            if (!att.color.isEmpty()) {
+                QColor c(att.color.startsWith('#') ? att.color : "#" + att.color);
+                if (c.isValid())
+                    barColor = c;
+            }
+            p.save();
+            p.setPen(Qt::NoPen);
+            p.setBrush(barColor);
+            p.drawRect(QRect(left, y, kAttachBarW, totalH > 0 ? totalH : docH));
+            p.restore();
         }
-        p.save();
-        p.setPen(Qt::NoPen);
-        p.setBrush(barColor);
-        p.drawRect(QRect(left, y, kAttachBarW, totalH > 0 ? totalH : docH));
-        p.restore();
 
         // Favicon: draw 16×16 to the left of the title, only if it loaded successfully.
         // We indent the text doc by 20px horizontally so the text starts right of the icon.
         int textIndent = 0;
-        if (!att.faviconUrl.isEmpty() && _imgCache) {
+        if (!imageOnly && !att.faviconUrl.isEmpty() && _imgCache) {
             const QPixmap fav = _imgCache->get(att.faviconUrl);
             if (!fav.isNull()) {
                 textIndent            = 20;
@@ -532,7 +549,7 @@ void MessageListWidget::paintAttachments(
         // Attachment text doc
         if (ad.textDoc && docH > 0) {
             p.save();
-            p.translate(textX + textIndent, y);
+            p.translate(attX + textIndent, y);
             ad.textDoc->drawContents(&p, QRectF(0, 0, textW - textIndent, docH));
             p.restore();
         }
@@ -546,13 +563,20 @@ void MessageListWidget::paintAttachments(
                     1.0, std::min((double)kImgMaxW / img.width(), (double)kImgMaxH / img.height())
                 );
                 const QSize sz((int)(img.width() * scale), (int)(img.height() * scale));
+                const QRect target(QPoint(attX, y + docH + kImgGap), sz);
                 const qreal dpr = p.device()->devicePixelRatioF();
                 p.save();
                 p.setRenderHint(QPainter::SmoothPixmapTransform);
-                p.drawPixmap(
-                    QRect(QPoint(textX, y + docH + kImgGap), sz),
-                    scaledPreview(imgUrl, img, sz, dpr)
-                );
+                // Animated previews (legacy Giphy attachments) draw the current
+                // movie frame; static ones use the cached pre-scaled pixmap.
+                QMovie *movie = gifMovieFor(imgUrl);
+                QPixmap frame = movie ? movie->currentPixmap() : QPixmap();
+                if (movie)
+                    _visibleGifs.insert(imgUrl);
+                if (!frame.isNull())
+                    p.drawPixmap(target, frame);
+                else
+                    p.drawPixmap(target, scaledPreview(imgUrl, img, sz, dpr));
                 p.restore();
             }
         }
@@ -640,8 +664,18 @@ void MessageListWidget::paintFileImages(
         if (it != _fileImages.constEnd() && !it->isNull()) {
             p.save();
             p.setRenderHint(QPainter::SmoothPixmapTransform);
-            const qreal dpr = p.device()->devicePixelRatioF();
-            p.drawPixmap(QRect(QPoint(left, y), sz), scaledPreview(imgUrl, it.value(), sz, dpr));
+            const qreal dpr   = p.device()->devicePixelRatioF();
+            // Uploaded GIFs animate: draw the current movie frame when one exists.
+            QMovie     *movie = _gifMovies.value(imgUrl, nullptr);
+            QPixmap     frame = movie ? movie->currentPixmap() : QPixmap();
+            if (movie)
+                _visibleGifs.insert(imgUrl);
+            if (!frame.isNull())
+                p.drawPixmap(QRect(QPoint(left, y), sz), frame);
+            else
+                p.drawPixmap(
+                    QRect(QPoint(left, y), sz), scaledPreview(imgUrl, it.value(), sz, dpr)
+                );
             p.restore();
         } else {
             p.save();
@@ -724,6 +758,7 @@ void MessageListWidget::triggerMissingDownloads() {
                         QPixmap px;
                         if (px.loadFromData(cached) && !px.isNull()) {
                             _fileImages[url] = px;
+                            maybeCreateFileGifMovie(url, cached);
                             rebuildLayout();
                             viewport()->update();
                             continue;
@@ -739,6 +774,7 @@ void MessageListWidget::triggerMissingDownloads() {
                         QPixmap px;
                         px.loadFromData(data);
                         _fileImages[url] = px;
+                        maybeCreateFileGifMovie(url, data);
                         _scaledPreviews.remove(url);
                         rebuildLayout();
                         if (wasAtBottom)

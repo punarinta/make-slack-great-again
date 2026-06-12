@@ -84,15 +84,25 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
             }
         }
     };
+    auto addBlockImage = [&](const Block &b) {
+        if (b.typeStr == "image" && !b.imageUrl.isEmpty() && !seen.contains(b.imageUrl)) {
+            seen.insert(b.imageUrl);
+            out << b.imageUrl;
+        }
+    };
     addFrom(msg.text);
-    for (const auto &b : msg.blocks)
+    for (const auto &b : msg.blocks) {
         addFrom(b.text);
+        addBlockImage(b);
+    }
     for (const auto &att : msg.attachments) {
         addFrom(att.text);
         for (const auto &f : att.fields)
             addFrom(f.value);
-        for (const auto &b : att.blocks)
+        for (const auto &b : att.blocks) {
             addFrom(b.text);
+            addBlockImage(b);
+        }
     }
     return out;
 }
@@ -302,11 +312,57 @@ static QString wrapParagraph(const QString &inner, const QString &pStyle) {
     return result;
 }
 
+// HTML for one Block Kit image block (Slack GIF picker / Giphy / app images).
+// With a GifRenderContext: a "GIF ▾" title line (collapse-toggle anchor, when the
+// block has a title) followed by the real <img> sized to the kBlockImg cap; the
+// doc owner registers the image resource and animates it by swapping in QMovie
+// frames. Without one (preview dialogs): the alt text as italic placeholder.
+static QString imageBlockHtml(
+    const Block &blk, const Session *session, const GifRenderContext *gif, int blockIdx
+) {
+    if (!gif || blk.imageUrl.isEmpty()) {
+        if (blk.altText.isEmpty())
+            return {};
+        return "<p style='color:" + Th::qss(Th::c().text.tertiary) +
+               ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() + "</p>";
+    }
+    const QString key       = gif->keyPrefix + "/b" + QString::number(blockIdx);
+    const bool    collapsed = gif->collapsed && gif->collapsed->contains(key);
+
+    QString html;
+    if (!blk.text.text.isEmpty()) {
+        html += "<p style='margin:2px 0;font-size:0.9em'><a href='" +
+                (kGifToggleAnchorPrefix + key).toHtmlEscaped() +
+                "' style='color:" + Th::qss(Th::c().text.secondary) + ";text-decoration:none'>" +
+                toHtml(blk.text, session) + "&nbsp;<img src='" +
+                (collapsed ? kGifChevronCollapsedRes : kGifChevronExpandedRes) +
+                "' width='10' height='10'></a></p>";
+    }
+    if (!collapsed) {
+        QString sizeAttrs;
+        if (blk.imageWidth > 0 && blk.imageHeight > 0) {
+            const double scale = std::min(
+                1.0,
+                std::min(
+                    (double)kBlockImgMaxW / blk.imageWidth, (double)kBlockImgMaxH / blk.imageHeight
+                )
+            );
+            sizeAttrs = " width='" + QString::number(qRound(blk.imageWidth * scale)) +
+                        "' height='" + QString::number(qRound(blk.imageHeight * scale)) + "'";
+        }
+        html += "<p style='margin:2px 0 0'><img src='" + blk.imageUrl.toHtmlEscaped() + "'" +
+                sizeAttrs + "></p>";
+    }
+    return html;
+}
+
 // Build the full HTML for a message's main text doc (blocks preferred over text field).
-QString buildMsgHtml(const Message &msg, const Session *session) {
+QString buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif) {
     if (!msg.blocks.empty()) {
         QString html;
-        for (const auto &blk : msg.blocks) {
+        bool    anyImage = false;
+        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi) {
+            const auto &blk = msg.blocks[bi];
             if (blk.typeStr == "divider") {
                 html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
                         ";margin:4px 0'>";
@@ -314,23 +370,23 @@ QString buildMsgHtml(const Message &msg, const Session *session) {
                 html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
                         toHtml(blk.text, session) + "</p>";
             } else if (blk.typeStr == "image") {
-                // Painted separately; show alt text as italic placeholder
-                if (!blk.altText.isEmpty())
-                    html += "<p style='color:" + Th::qss(Th::c().text.tertiary) +
-                            ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() +
-                            "</p>";
+                anyImage = anyImage || (gif && !blk.imageUrl.isEmpty());
+                html += imageBlockHtml(blk, session, gif, bi);
             } else if (!blk.text.text.isEmpty()) {
                 html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
             }
         }
-        if (!html.isEmpty())
+        // An embedded image block fully represents the message — never fall back
+        // to the text field (it duplicates the alt text).
+        if (!html.isEmpty() || anyImage)
             return html;
     }
     return wrapParagraph(toHtml(msg.text, session), "margin:0");
 }
 
 // Attachment text HTML (used inside the colored bar area).
-QString buildAttachHtml(const Attachment &att, const Session *session) {
+QString
+buildAttachHtml(const Attachment &att, const Session *session, const GifRenderContext *gif) {
     QString html;
     if (!att.pretext.isEmpty())
         html += "<p style='margin:0 0 2px'>" + att.pretext.toHtmlEscaped() + "</p>";
@@ -358,8 +414,10 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     }
 
     // Render Block Kit blocks embedded in the attachment (modern bot format).
+    bool anyImage = false;
     if (html.isEmpty() && !att.blocks.empty()) {
-        for (const auto &blk : att.blocks) {
+        for (int bi = 0; bi < (int)att.blocks.size(); ++bi) {
+            const auto &blk = att.blocks[bi];
             if (blk.typeStr == "divider") {
                 html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
                         ";margin:4px 0'>";
@@ -367,10 +425,8 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
                 html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
                         toHtml(blk.text, session) + "</p>";
             } else if (blk.typeStr == "image") {
-                if (!blk.altText.isEmpty())
-                    html += "<p style='color:" + Th::qss(Th::c().text.tertiary) +
-                            ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() +
-                            "</p>";
+                anyImage = anyImage || (gif && !blk.imageUrl.isEmpty());
+                html += imageBlockHtml(blk, session, gif, bi);
             } else if (!blk.text.text.isEmpty()) {
                 html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
             }
@@ -378,7 +434,8 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
     }
 
     // Last-resort fallback: parse as mrkdwn so any <url> links become clickable.
-    if (html.isEmpty() && !att.fallback.isEmpty())
+    // Skipped when an image block was embedded — the fallback duplicates its alt.
+    if (html.isEmpty() && !anyImage && !att.fallback.isEmpty())
         html += "<p style='margin:2px 0 0'>" + toHtml(MrkdwnParser::parse(att.fallback), session) +
                 "</p>";
 
@@ -388,6 +445,23 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
                 "'>" + att.footer.toHtmlEscaped() + "</p>";
 
     return html;
+}
+
+bool attachIsImageOnly(const Attachment &att) {
+    const bool hasImageBlock =
+        std::any_of(att.blocks.begin(), att.blocks.end(), [](const Block &b) {
+            return b.typeStr == "image" && !b.imageUrl.isEmpty();
+        });
+    if (!hasImageBlock)
+        return false;
+    if (!att.pretext.isEmpty() || !att.authorName.isEmpty() || !att.title.isEmpty() ||
+        !att.text.text.isEmpty() || !att.fields.empty() || !att.footer.isEmpty() ||
+        !att.imageUrl.isEmpty() || !att.thumbUrl.isEmpty())
+        return false;
+    for (const auto &b : att.blocks)
+        if (b.typeStr != "image" && (b.typeStr == "divider" || !b.text.text.isEmpty()))
+            return false;
+    return true;
 }
 
 QColor fileTypeColor(const File &f) {

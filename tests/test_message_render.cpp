@@ -113,6 +113,79 @@ TEST_CASE("buildAttachHtml footer renders after fallback content", "[render][att
     CHECK(html.indexOf("via Bot") > html.indexOf("fb text"));
 }
 
+// ── Image blocks (Slack GIF picker / Giphy) ──────────────────────────────────
+
+static Block gifBlock() {
+    Block b;
+    b.typeStr     = "image";
+    b.imageUrl    = "https://media2.giphy.com/media/abc/giphy.gif";
+    b.altText     = "a man is sweating";
+    b.text        = {"GIF", {}};
+    b.imageWidth  = 480;
+    b.imageHeight = 360;
+    return b;
+}
+
+TEST_CASE("buildMsgHtml without gif context renders image block alt text", "[render][gif]") {
+    Message msg;
+    msg.ts = "1718000000.000100";
+    msg.blocks.push_back(gifBlock());
+    const QString html = MsgRender::buildMsgHtml(msg, nullptr);
+    CHECK(html.contains("a man is sweating"));
+    CHECK(!html.contains("<img src='https://media2.giphy.com"));
+}
+
+TEST_CASE("buildMsgHtml with gif context embeds image + title toggle", "[render][gif]") {
+    Message msg;
+    msg.ts   = "1718000000.000100";
+    msg.text = MrkdwnParser::parse("a man is sweating"); // fallback text duplicate
+    msg.blocks.push_back(gifBlock());
+    const QSet<QString>               collapsed;
+    const MsgRender::GifRenderContext gif{msg.ts, &collapsed};
+    const QString                     html = MsgRender::buildMsgHtml(msg, nullptr, &gif);
+    CHECK(html.contains("<img src='https://media2.giphy.com/media/abc/giphy.gif'"));
+    // 480×360 scaled into the 400×300 cap.
+    CHECK(html.contains("width='400'"));
+    CHECK(html.contains("height='300'"));
+    // Title line is a collapse-toggle anchor.
+    CHECK(html.contains(MsgRender::kGifToggleAnchorPrefix + msg.ts + "/b0"));
+    CHECK(html.contains(">GIF&nbsp;<img src='" + MsgRender::kGifChevronExpandedRes));
+    // The text field must NOT leak in below the image.
+    CHECK(!html.contains("a man is sweating"));
+}
+
+TEST_CASE("buildMsgHtml collapsed image block keeps title, drops image", "[render][gif]") {
+    Message msg;
+    msg.ts = "1718000000.000100";
+    msg.blocks.push_back(gifBlock());
+    QSet<QString>                     collapsed{msg.ts + "/b0"};
+    const MsgRender::GifRenderContext gif{msg.ts, &collapsed};
+    const QString                     html = MsgRender::buildMsgHtml(msg, nullptr, &gif);
+    CHECK(!html.contains("giphy.gif"));
+    CHECK(html.contains(MsgRender::kGifChevronCollapsedRes));
+}
+
+TEST_CASE("buildAttachHtml with gif context embeds image and skips fallback", "[render][gif]") {
+    Attachment att;
+    att.fallback = "a man is sweating";
+    att.blocks.push_back(gifBlock());
+    const QSet<QString>               collapsed;
+    const MsgRender::GifRenderContext gif{"1718000000.000100/a0", &collapsed};
+    const QString                     html = MsgRender::buildAttachHtml(att, nullptr, &gif);
+    CHECK(html.contains("giphy.gif"));
+    CHECK(html.contains(MsgRender::kGifToggleAnchorPrefix + "1718000000.000100/a0/b0"));
+    CHECK(!html.contains("a man is sweating"));
+}
+
+TEST_CASE("attachIsImageOnly true only for pure image-block attachments", "[render][gif]") {
+    Attachment att;
+    att.blocks.push_back(gifBlock());
+    CHECK(MsgRender::attachIsImageOnly(att));
+    att.title = "GIF from Giphy";
+    CHECK(!MsgRender::attachIsImageOnly(att));
+    CHECK(!MsgRender::attachIsImageOnly(Attachment{}));
+}
+
 // ── lastReplyLabel ────────────────────────────────────────────────────────────
 
 TEST_CASE("lastReplyLabel uses 'today at' wording for today's ts", "[render][reply]") {
