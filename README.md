@@ -55,9 +55,15 @@ Then scroll down to **User Token Scopes** and add the following scopes:
 | `files:write` | Upload files |
 | `stars:write` | Star/unstar channels and conversations |
 | `stars:read` | List starred channels and conversations |
+| `channels:write` | Create public channels |
+| `groups:write` | Create private channels |
+| `mpim:write` | Create group DM conversations |
+| `im:write` | Create direct message conversations |
 | `users:write` | Set your presence — away/active (`/away`, `/active`) |
 | `users.profile:write` | Set or clear your status (`/status`) |
 | `dnd:write` | Pause/resume notifications (`/dnd`) |
+| `canvases:read` | Look up canvas sections |
+| `canvases:write` | Create, edit and delete canvases |
 
 ### 3. Enable socket mode
 
