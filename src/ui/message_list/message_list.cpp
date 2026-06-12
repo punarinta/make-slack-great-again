@@ -149,15 +149,7 @@ void MessageListWidget::resizeEvent(QResizeEvent *event) {
     }
     rebuildLayout();
     maybeFillViewport();
-    if (_items.empty())
-        return;
-    if (_pendingRestorePos >= 0) {
-        verticalScrollBar()->setValue(std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
-        _pendingRestorePos = -1;
-    } else if (_scrollToBottomPending) {
-        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-        _scrollToBottomPending = false;
-    }
+    applyPendingScroll();
 }
 
 // ── Data model ────────────────────────────────────────────────────────────────
@@ -181,6 +173,7 @@ void MessageListWidget::clear() {
     _loadingOlder      = false;
     _items.clear();
     _tops.clear();
+    _topsTs.clear();
     _totalH    = 0;
     _showIntro = false;
     hideProfileCard();
@@ -194,9 +187,13 @@ void MessageListWidget::clear() {
     _hoveredFileBtn  = -1;
     _convName.clear();
     _convDescription.clear();
-    _selAnchor   = {};
-    _selFocus    = {};
-    _selDragging = false;
+    _selAnchor             = {};
+    _selFocus              = {};
+    _selDragging           = false;
+    _scrollToBottomPending = false;
+    _pendingLastReadTs.clear();
+    _pendingAnchorTs.clear();
+    _pendingAnchorDelta = 0;
     verticalScrollBar()->setRange(0, 0);
     viewport()->update();
 }
@@ -216,6 +213,9 @@ void MessageListWidget::setWaiting(bool waiting) {
 }
 
 void MessageListWidget::setSession(Session *session) {
+    // Workspace switch arrives here (not openConversation) — keep the reading
+    // position of the chat we're leaving so coming back restores it.
+    saveScrollAnchor();
     clear();
     _currentConv = {};
     _session     = session;
@@ -224,7 +224,7 @@ void MessageListWidget::setSession(Session *session) {
 }
 
 void MessageListWidget::openConversation(
-    ConversationId conv, const QString &convName, const QString &description
+    ConversationId conv, const QString &convName, const QString &description, const Ts &lastReadTs
 ) {
     // Persist messages of the conversation we're leaving before discarding them.
     if (!_currentConv.value.isEmpty() && _session && !_items.empty()) {
@@ -235,10 +235,7 @@ void MessageListWidget::openConversation(
         _session->cacheMessages(_currentConv, msgs);
     }
 
-    // Save scroll position of the conversation we're leaving.
-    if (!_currentConv.value.isEmpty())
-        _savedScrollPos[_currentConv.value] = verticalScrollBar()->value();
-
+    saveScrollAnchor();
     clear();
     _currentConv     = conv;
     _isThreadMode    = false;
@@ -261,14 +258,15 @@ void MessageListWidget::openConversation(
     // URLs) while the map was empty must be re-rendered.
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
 
-    // Reset scroll intent — stale state from a previous conversation must not leak.
-    _scrollToBottomPending = false;
-    _pendingRestorePos     = -1;
-
-    if (_savedScrollPos.contains(conv.value))
-        _pendingRestorePos = _savedScrollPos[conv.value];
-    else
-        _scrollToBottomPending = true;
+    // Every open scrolls to the saved reading position (if the chat was left
+    // scrolled away from the bottom), else to the first unread message, else
+    // to the bottom.
+    _scrollToBottomPending = true;
+    _pendingLastReadTs     = lastReadTs;
+    if (const auto it = _savedAnchors.constFind(conv.value); it != _savedAnchors.constEnd()) {
+        _pendingAnchorTs    = it->first;
+        _pendingAnchorDelta = it->second;
+    }
 
     // Pre-populate from cache for instant display while network loads.
     const bool hasCached = [&] {
@@ -335,15 +333,15 @@ void MessageListWidget::openConversation(
                     const bool wasAtBottom =
                         verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
                     mergeNetworkMessages(page.messages);
-                    if (wasAtBottom || _scrollToBottomPending) {
-                        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+                    if (_scrollToBottomPending) {
+                        applyPendingScroll();
+                        // The network page is authoritative — if the saved or
+                        // unread anchor wasn't found in it, stop retargeting.
                         _scrollToBottomPending = false;
-                    }
-                    if (_pendingRestorePos >= 0) {
-                        verticalScrollBar()->setValue(
-                            std::min(_pendingRestorePos, verticalScrollBar()->maximum())
-                        );
-                        _pendingRestorePos = -1;
+                        _pendingLastReadTs.clear();
+                        _pendingAnchorTs.clear();
+                    } else if (wasAtBottom) {
+                        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
                     }
                 } else {
                     // No cached data was shown — normal first-load path.
@@ -369,17 +367,75 @@ void MessageListWidget::updateConvName(const QString &convName, const QString &d
     viewport()->update();
 }
 
-void MessageListWidget::applyPendingScroll() {
-    if (textAreaWidth() <= 0 || _items.empty())
+std::pair<Ts, int> MessageListWidget::viewportAnchor() const {
+    const int scrollY = verticalScrollBar()->value();
+    for (int i = 0; i < static_cast<int>(_topsTs.size()); ++i)
+        if (_tops[i] >= scrollY)
+            return {_topsTs[i], _tops[i] - scrollY};
+    // Viewport top is inside the last row (taller than the viewport) — anchor
+    // to it with a negative offset.
+    if (!_topsTs.empty())
+        return {_topsTs.back(), _tops.back() - scrollY};
+    return {};
+}
+
+void MessageListWidget::saveScrollAnchor() {
+    if (_currentConv.value.isEmpty() || _isThreadMode)
         return;
-    if (_pendingRestorePos >= 0) {
-        verticalScrollBar()->setValue(std::min(_pendingRestorePos, verticalScrollBar()->maximum()));
-        _pendingRestorePos     = -1;
-        _scrollToBottomPending = false;
-    } else if (_scrollToBottomPending) {
-        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-        _scrollToBottomPending = false;
+    auto *sb = verticalScrollBar();
+    if (sb->value() >= sb->maximum() - 4) {
+        // At the bottom (or nothing shown): the default open placement
+        // (first unread / bottom) is what the user wants on return.
+        _savedAnchors.remove(_currentConv.value);
+        return;
     }
+    const auto anchor = viewportAnchor();
+    if (anchor.first.isEmpty())
+        _savedAnchors.remove(_currentConv.value);
+    else
+        _savedAnchors[_currentConv.value] = anchor;
+}
+
+void MessageListWidget::applyPendingScroll() {
+    if (textAreaWidth() <= 0 || _items.empty() || !_scrollToBottomPending)
+        return;
+    if (!_pendingAnchorTs.isEmpty()) {
+        // The user deliberately left this chat scrolled-up — restore that
+        // reading position, anchored to a message ts (pixel offsets don't
+        // survive relayout).
+        const int idx = findByTs(_pendingAnchorTs);
+        if (idx >= 0) {
+            verticalScrollBar()->setValue(
+                std::clamp(_tops[idx] - _pendingAnchorDelta, 0, verticalScrollBar()->maximum())
+            );
+            _scrollToBottomPending = false;
+            _pendingAnchorTs.clear();
+            _pendingLastReadTs.clear();
+            return;
+        }
+        // The anchor message isn't in the loaded window (stale cache) — show
+        // the bottom for now, but keep the intent so the network merge retargets.
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+        return;
+    }
+    if (!_pendingLastReadTs.isEmpty()) {
+        // First message strictly newer than the read cursor = first unread.
+        // Slack ts strings are zero-padded, so lexicographic compare is valid.
+        for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
+            if (_items[i].msg.ts > _pendingLastReadTs) {
+                verticalScrollBar()->setValue(qMax(0, _tops[i] - viewport()->height() / 3));
+                _scrollToBottomPending = false;
+                _pendingLastReadTs.clear();
+                return;
+            }
+        }
+        // The unreads aren't in the loaded window (stale cache) — show the
+        // bottom for now, but keep the intent so the network merge retargets.
+        verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+        return;
+    }
+    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    _scrollToBottomPending = false;
 }
 
 void MessageListWidget::maybeFillViewport() {
@@ -427,19 +483,14 @@ void MessageListWidget::loadOlderMessages() {
                                   _selFocus    = {};
                                   _selDragging = false;
 
-                                  // Record the pre-insert total height and current scroll so we can
-                                  // shift the scrollbar down by exactly the height added at the
-                                  // top, keeping the visible content from jumping.
+                                  // rebuildLayout (inside the merge) keeps the topmost visible
+                                  // message anchored while rows are inserted above; just stop
+                                  // any running scroll animation, whose absolute target the
+                                  // insert invalidated.
                                   const int prevTotalH = _totalH;
-                                  const int scrollY    = verticalScrollBar()->value();
-
                                   mergeNetworkMessages(page.messages);
-
-                                  const int delta = _totalH - prevTotalH;
-                                  if (delta > 0) {
+                                  if (_totalH != prevTotalH)
                                       _scrollAnim.stop();
-                                      verticalScrollBar()->setValue(scrollY + delta);
-                                  }
                                   maybeFillViewport();
                               },
                               _olderLoadLifetime
@@ -468,7 +519,8 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _threadRootTs          = rootTs;
     _showIntro             = false;
     _scrollToBottomPending = true;
-    _pendingRestorePos     = -1;
+    _pendingLastReadTs.clear(); // threads always open at the bottom
+    _pendingAnchorTs.clear();
 
     if (!_session)
         return;
@@ -780,18 +832,39 @@ int MessageListWidget::rowHeight(int index) const {
 }
 
 void MessageListWidget::rebuildLayout() {
+    // View stability lives here so EVERY height change keeps the reading
+    // position: heights settle asynchronously long after any scroll was applied
+    // (image downloads, emoji-map doc invalidation, bot info, older-page
+    // inserts). At the bottom the view stays pinned to the newest message;
+    // anywhere else the topmost visible message keeps its viewport offset.
+    // The anchor comes from the _tops/_topsTs snapshot of the PREVIOUS layout —
+    // callers mutate _items before calling us, so it is matched back by ts.
+    auto      *sb                      = verticalScrollBar();
+    const bool atBottom                = sb->value() >= sb->maximum() - 4;
+    const auto [anchorTs, anchorDelta] = atBottom ? std::pair<Ts, int>{} : viewportAnchor();
+
     _tops.resize(_items.size());
+    _topsTs.resize(_items.size());
     const int ih = introHeight();
     int       y  = ih + kPadV;
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-        _tops[i] = y;
+        _tops[i]   = y;
+        _topsTs[i] = _items[i].msg.ts;
         y += rowHeight(i) + kRowGap;
     }
     _totalH = std::max(y + kPadV, ih + kPadV * 2);
 
     const int vh = viewport()->height();
-    verticalScrollBar()->setRange(0, std::max(0, _totalH - vh));
-    verticalScrollBar()->setPageStep(vh);
+    sb->setRange(0, std::max(0, _totalH - vh));
+    sb->setPageStep(vh);
+
+    if (atBottom) {
+        sb->setValue(sb->maximum());
+    } else if (!anchorTs.isEmpty()) {
+        const int idx = findByTs(anchorTs);
+        if (idx >= 0)
+            sb->setValue(std::clamp(_tops[idx] - anchorDelta, 0, sb->maximum()));
+    }
 }
 
 // ── Attachment height helpers ─────────────────────────────────────────────────

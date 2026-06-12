@@ -74,8 +74,14 @@ class MessageListWidget : public VirtualListWidget {
 public:
     explicit MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent = nullptr);
 
+    // lastReadTs: the conversation's read cursor captured before the open marks
+    // it read — when set, the list opens scrolled to the first message after it
+    // (the first unread); when empty, it opens scrolled to the bottom.
     void openConversation(
-        ConversationId conv, const QString &convName = {}, const QString &description = {}
+        ConversationId conv,
+        const QString &convName    = {},
+        const QString &description = {},
+        const Ts      &lastReadTs  = {}
     );
     // Update only the display name / description shown in the intro header without
     // reloading history (used when user data arrives after the conversation was opened).
@@ -146,18 +152,27 @@ private:
     PaintContext makePaintContext() const;
 
     // Data model
-    void appendMessage(const Message &msg);
-    int  findByTs(const Ts &ts) const; // linear scan, fine for <500 visible
-    void handleEvent(const Event &e);
+    void               appendMessage(const Message &msg);
+    int                findByTs(const Ts &ts) const; // linear scan, fine for <500 visible
+    void               handleEvent(const Event &e);
     // Merge freshly-loaded network messages into the existing item list.
-    void mergeNetworkMessages(const std::vector<Message> &incoming);
-    // Apply _pendingRestorePos / _scrollToBottomPending if set.
-    void applyPendingScroll();
+    void               mergeNetworkMessages(const std::vector<Message> &incoming);
+    // Apply the pending open-scroll intent (saved position / first unread /
+    // bottom) if set.
+    void               applyPendingScroll();
+    // Remember the reading position of _currentConv (topmost visible message ts
+    // + viewport offset) so reopening restores it; at-bottom clears the entry.
+    void               saveScrollAnchor();
+    // {ts of the message anchoring the viewport top, its offset from the
+    // viewport top}, or empty ts when nothing is laid out. Reads the
+    // _tops/_topsTs snapshot, so it stays valid when _items was mutated after
+    // the last rebuild.
+    std::pair<Ts, int> viewportAnchor() const;
     // Load older messages using the stored pagination cursor.
-    void loadOlderMessages();
+    void               loadOlderMessages();
     // Keep loading older pages while the content is shorter than the viewport —
     // the scroll-position trigger can't fire when there is nothing to scroll.
-    void maybeFillViewport();
+    void               maybeFillViewport();
 
     // Layout
     void rebuildLayout();
@@ -328,6 +343,10 @@ private:
     bool                     _showIntro = false;
     std::vector<MessageItem> _items;
     std::vector<int>         _tops; // document-space top of each row
+    // ts of each row at the time _tops was built — a consistent snapshot of the
+    // previous layout used by rebuildLayout() to re-anchor the view (callers
+    // mutate _items before calling it, so indexing into _items would misalign).
+    std::vector<Ts>          _topsTs;
     int                      _totalH = 0;
 
     // Smooth scroll
@@ -349,9 +368,18 @@ private:
     QSet<QString>     _newMsgTs;
     QVariantAnimation _highlightAnim;
 
-    bool                _scrollToBottomPending = false;
-    int                 _pendingRestorePos     = -1; // >= 0: restore this position after layout
-    QHash<QString, int> _savedScrollPos;             // conv.value → last scroll position
+    bool                               _scrollToBottomPending = false;
+    // Read cursor of the conversation being opened: while _scrollToBottomPending
+    // is set, the initial scroll targets the first message after this ts instead
+    // of the bottom. Empty = no unreads, plain scroll-to-bottom.
+    Ts                                 _pendingLastReadTs;
+    // Saved reading position of the conversation being opened (takes precedence
+    // over the unread target): message ts + its offset from the viewport top.
+    Ts                                 _pendingAnchorTs;
+    int                                _pendingAnchorDelta = 0;
+    // conv.value → saved reading position; entries exist only for conversations
+    // the user left scrolled away from the bottom.
+    QHash<QString, std::pair<Ts, int>> _savedAnchors;
 
     // Text selection state
     TextPos _selAnchor;           // where the drag started

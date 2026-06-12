@@ -1814,12 +1814,18 @@ void MainWindow::openConversation(int row) {
 
     const bool hasCachedMsgs = !_session->cachedMessages(_currentConvId).empty();
 
+    // Capture the unread boundary before setReading() advances lastRead, so the
+    // message list can open scrolled to the first unread message.
+    Ts lastReadTs;
+    if (conv && (conv->unread > 0 || conv->mentionCount > 0) && !conv->lastRead.isEmpty())
+        lastReadTs = conv->lastRead;
+
     _session->setReading(_currentConvId);
     if (_canvasPage)
         _canvasPage->flushPendingSave(); // outgoing conversation's canvas edits
     if (_contentStack)
         _contentStack->setCurrentWidget(_messageList);
-    _messageList->openConversation(_currentConvId, displayName, description);
+    _messageList->openConversation(_currentConvId, displayName, description, lastReadTs);
 
     // Reset the tab strip to Messages and look up this conversation's canvas.
     // conversations.list often omits "properties", so the cached Conversation
