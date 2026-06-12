@@ -1,0 +1,11 @@
+This project uses the following third-party libraries:
+
+- lib_rpl and lib_base from the desktop-app toolkit
+  (https://github.com/desktop-app), licensed under the
+  GNU General Public License version 3.
+
+- Qt6 (https://www.qt.io), licensed under the
+  GNU Lesser General Public License version 3.
+
+- Microsoft GSL (https://github.com/microsoft/GSL), licensed under the
+  MIT License.
