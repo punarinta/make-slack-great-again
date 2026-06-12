@@ -83,6 +83,19 @@ static QFont detectSystemFont() {
 #endif
 
 int main(int argc, char *argv[]) {
+#if defined(Q_OS_LINUX)
+    // Wayland fractional scaling (wp_fractional_scale_v1) gives widgets a
+    // fractional devicePixelRatio (e.g. 1.3333 at 133%), and Qt's per-widget
+    // region rounding then leaves 1-device-pixel artifacts: hairline seams
+    // between adjacent widgets and stale border pixels after popups hide
+    // (painted vs flushed region mismatch, QTBUG-82601 family). Opting out of
+    // the protocol falls back to the integer wl_output scale: Qt renders at
+    // 2x and the compositor downscales — the same path GTK apps use, with no
+    // fractional rounding anywhere in widget painting. Respect an explicit
+    // user override if the variable is already set.
+    if (!qEnvironmentVariableIsSet("QT_WAYLAND_DISABLED_INTERFACES"))
+        qputenv("QT_WAYLAND_DISABLED_INTERFACES", "wp_fractional_scale_manager_v1");
+#endif
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
     app.setOrganizationName("msga");

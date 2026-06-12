@@ -690,8 +690,12 @@ void MainWindow::applyTheme() {
 
     const auto &th = Th::c();
 
+    // nav.bg, not surface.content: at fractional display scale, hairline gaps
+    // between sibling widgets expose this frame — it must blend into the dark
+    // nav blocks (title bar, workspace rail, conv list), and the right-side
+    // panels paint their own light backgrounds over it anyway.
     _frame->setStyleSheet(
-        QString("QWidget#windowFrame { background: %1; }").arg(Th::qss(th.surface.content))
+        QString("QWidget#windowFrame { background: %1; }").arg(Th::qss(th.nav.bg))
     );
 
     if (_msgHeader) {
