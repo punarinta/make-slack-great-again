@@ -1345,6 +1345,20 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
 
     auto *menu = new ContextMenu(this);
 
+    if (!_isThreadMode) {
+        menu->addItem(
+            tr("Reply in thread"),
+            "T",
+            [this, conv = _currentConv, rootTs = msg.threadRoot.value_or(msg.ts)] {
+                emit threadClicked(conv, rootTs);
+            },
+            false,
+            false,
+            ":/ui/message-square-reply.svg"
+        );
+        menu->addSeparator();
+    }
+
     if (isOwnMessage) {
         menu->addItem(
             tr("Edit message"),
