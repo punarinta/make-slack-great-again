@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "ui/main_window.h"
+#include "app/crash_handler.h"
 #include "app/single_instance.h"
 #include "util/time_format.h"
 
@@ -100,6 +101,9 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
     app.setOrganizationName("msga");
+    // A crash now prints a stack trace (stderr + crash.log in AppDataLocation)
+    // instead of a bare "Segmentation fault", then still core-dumps as before.
+    CrashHandler::install();
 #if defined(Q_OS_LINUX)
     app.setFont(detectSystemFont());
 #endif

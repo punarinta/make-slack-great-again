@@ -64,6 +64,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/base_stubs.cpp
 
     # App
+    src/app/crash_handler.cpp
     src/app/single_instance.cpp
 
     # Network
@@ -167,6 +168,18 @@ target_link_libraries(msga PRIVATE
     Qt6::Svg
     Microsoft.GSL::GSL
 )
+
+# Crash reports (src/app/crash_handler.cpp): -rdynamic keeps function names
+# visible to backtrace_symbols on Linux; dbghelp is the Windows symbol engine.
+# A fully static binary (release-linux-static.sh passes -static) has no
+# dynamic symbol table, so -rdynamic is pointless there — frames resolve
+# offline via addr2line instead.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^| )-static( |$)")
+    set_property(TARGET msga PROPERTY ENABLE_EXPORTS ON)
+endif()
+if(WIN32)
+    target_link_libraries(msga PRIVATE dbghelp)
+endif()
 
 if(Qt6LinguistTools_FOUND)
     qt_add_translations(msga
