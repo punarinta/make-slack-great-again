@@ -895,7 +895,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         );
 
         const int     nameX = leftX + kAvatarSize + kAvatarGap;
-        const int     maxW  = viewport()->width() - nameX - badgeW - 8;
+        const int     maxW  = viewport()->width() - nameX - badgeW - 14;
         const QString name  = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
         p.setFont(font);
         p.setPen(textColor);
@@ -934,7 +934,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             suffixW += youW;
         }
 
-        const int     maxW = viewport()->width() - nameX - suffixW - badgeW - 8;
+        const int     maxW = viewport()->width() - nameX - suffixW - badgeW - 14;
         const QString name = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
         p.setPen(textColor);
         p.drawText(nameX, textY, name);
@@ -975,7 +975,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
             prefixW = 14 + 6;
         }
-        const int     maxW = viewport()->width() - leftX - prefixW - badgeW - 8;
+        const int     maxW = viewport()->width() - leftX - prefixW - badgeW - 14;
         const QString name = fm.elidedText(conv.name, Qt::ElideRight, maxW);
         p.drawText(leftX + prefixW, textY, name);
     }
@@ -992,7 +992,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             const QFontMetrics bfm(bf);
             const int          bw = bfm.horizontalAdvance(badge) + 10;
             const int          bh = bfm.height() + 4;
-            const int          bx = viewport()->width() - bw - 8;
+            const int          bx = viewport()->width() - bw - 14;
             const int          by = y + (kRowH - bh) / 2;
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().badge.mention);
@@ -1002,7 +1002,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         } else {
             // Small dim dot for regular channel unreads (bold text already signals activity)
             const int dotD = 8;
-            const int bx   = viewport()->width() - dotD - 10;
+            const int bx   = viewport()->width() - dotD - 14;
             const int by   = y + (kRowH - dotD) / 2;
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(255, 255, 255, 160));
