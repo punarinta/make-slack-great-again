@@ -1313,7 +1313,7 @@ void MainWindow::applyUpdateAndRestart() {
 
 void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     QSettings s("msga", "msga");
-    if (!s.value("notifications/enabled", false).toBool())
+    if (!s.value("notifications/enabled", true).toBool())
         return;
 
     const auto it = _sessions.find(teamId);

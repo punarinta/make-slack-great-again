@@ -1062,7 +1062,7 @@ void SettingsDialog::applyTheme() {
 
 void SettingsDialog::loadNotifications() {
     QSettings s("msga", "msga");
-    _notifEnabled->setChecked(s.value("notifications/enabled", false).toBool());
+    _notifEnabled->setChecked(s.value("notifications/enabled", true).toBool());
     _notifSound->setChecked(s.value("notifications/sound", true).toBool());
     const int level = s.value("notifications/level", 1).toInt();
     (level == 0 ? _notifAll : _notifMentions)->setChecked(true);
