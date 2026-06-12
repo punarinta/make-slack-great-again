@@ -245,6 +245,67 @@ struct StubBackend : Backend {
         };
     }
 
+    // Self presence / status — recorded calls; configurable failure.
+    QString           selfActionError; // non-empty = all three calls fail with this
+    std::vector<bool> presenceCalls;   // away flag per setPresence call
+    struct StatusCall {
+        QString emoji;
+        QString text;
+        qint64  expirationTs;
+    };
+    std::vector<StatusCall> statusCalls;
+    std::vector<int>        dndCalls; // minutes per setDndSnooze call
+
+    void setPresence(bool away, std::function<void(bool, QString)> done = {}) override {
+        presenceCalls.push_back(away);
+        if (done)
+            done(selfActionError.isEmpty(), selfActionError);
+    }
+    void setStatus(
+        const QString                     &emoji,
+        const QString                     &text,
+        qint64                             expirationTs = 0,
+        std::function<void(bool, QString)> done         = {}
+    ) override {
+        statusCalls.push_back({emoji, text, expirationTs});
+        if (done)
+            done(selfActionError.isEmpty(), selfActionError);
+    }
+    void setDndSnooze(int minutes, std::function<void(bool, QString)> done = {}) override {
+        dndCalls.push_back(minutes);
+        if (done)
+            done(selfActionError.isEmpty(), selfActionError);
+    }
+
+    // commands.list result; empty = unsupported (producer completes empty).
+    std::vector<SlashCommand>                commandsResult;
+    rpl::producer<std::vector<SlashCommand>> listCommands() override {
+        if (commandsResult.empty())
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return rpl::variable<std::vector<SlashCommand>>(commandsResult).value();
+    }
+
+    struct RunCommandCall {
+        ConversationId conv;
+        QString        command;
+        QString        text;
+    };
+    std::vector<RunCommandCall> runCommandCalls;
+    bool                        runCommandShouldFail = false;
+    void                        runCommand(
+                               ConversationId                     c,
+                               const QString                     &command,
+                               const QString                     &text,
+                               std::function<void(bool, QString)> done = {}
+                           ) override {
+        runCommandCalls.push_back({c, command, text});
+        if (done)
+            done(!runCommandShouldFail, runCommandShouldFail ? "missing_scope" : QString());
+    }
+
     void fireEvent(Event e) { _events.fire(std::move(e)); }
 };
 
@@ -1585,4 +1646,240 @@ TEST_CASE_METHOD(SessionFixture, "openDm error fires onError callback", "[sessio
     session->openDm(UserId{"U_GHOST"}, {}, [&](const QString &err) { gotErr = err; });
     CHECK(gotErr == "user_not_found");
     CHECK(session->findConversation(ConversationId{"D_NEW"}) == nullptr);
+}
+
+// ── Slash commands ────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "built-in slash commands are available after start", "[session][commands]"
+) {
+    // The stub's listCommands completes empty (unsupported), so the built-in
+    // fallback set must serve the composer.
+    REQUIRE(session->findCommand("shrug") != nullptr);
+    REQUIRE(session->findCommand("status") != nullptr);
+    CHECK(session->findCommand("SHRUG") != nullptr); // case-insensitive
+    CHECK(session->findCommand("definitely-not-a-command") == nullptr);
+    // Built-ins are limited to natively-executable commands: /remind would
+    // need chat.command, which the fallback path can't call.
+    CHECK(session->findCommand("remind") == nullptr);
+}
+
+TEST_CASE(
+    "commands.list result replaces built-ins but keeps unlisted ones", "[session][commands]"
+) {
+    const QString teamId = "T_SESSION_CMDS";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    auto  backend        = std::make_unique<StubBackend>();
+    auto *stub           = backend.get();
+    stub->commandsResult = {
+        {"deploy", "Deploy a service", "[service]", "A012"},
+        {"remind", "Set a reminder (server copy)", "", ""},
+    };
+
+    Session session(std::move(backend), teamId);
+    session.start();
+
+    const auto *deploy = session.findCommand("deploy");
+    REQUIRE(deploy != nullptr);
+    CHECK(deploy->appId == "A012");
+    // Server copy wins over the built-in duplicate…
+    const auto *remind = session.findCommand("remind");
+    REQUIRE(remind != nullptr);
+    CHECK(remind->desc == "Set a reminder (server copy)");
+    // …and built-ins the server didn't mention survive the merge.
+    CHECK(session.findCommand("shrug") != nullptr);
+
+    QDir(baseDir).removeRecursively();
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /shrug sends the kaomoji as a message", "[session][commands]"
+) {
+    session->runCommand(ConversationId{"C1"}, "shrug", "oh well");
+    REQUIRE(stub->sentMessages.size() == 1);
+    CHECK(stub->sentMessages[0].conv == ConversationId{"C1"});
+    CHECK(stub->sentMessages[0].msg.rawText == QString("oh well ¯\\_(ツ)_/¯"));
+    CHECK(stub->runCommandCalls.empty()); // native — never hits chat.command
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /leave leaves the conversation natively", "[session][commands]"
+) {
+    session->runCommand(ConversationId{"C1"}, "leave", "");
+    REQUIRE(stub->leaveCalls.size() == 1);
+    CHECK(stub->leaveCalls[0] == ConversationId{"C1"});
+    CHECK(stub->runCommandCalls.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /msg opens a DM and sends the text", "[session][commands]"
+) {
+    stub->openDmResultId = ConversationId{"D_BOB"};
+    session->runCommand(ConversationId{"C1"}, "msg", "@bob hello there");
+    REQUIRE(stub->openDmCalls.size() == 1);
+    CHECK(stub->openDmCalls[0] == UserId{"U2"}); // resolved by username
+    REQUIRE(stub->sentMessages.size() == 1);
+    CHECK(stub->sentMessages[0].conv == ConversationId{"D_BOB"});
+    CHECK(stub->sentMessages[0].msg.rawText == "hello there");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /msg with unknown user reports an error", "[session][commands]"
+) {
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    session->runCommand(ConversationId{"C1"}, "msg", "@nosuchuser hi");
+    CHECK(!err.isEmpty());
+    CHECK(stub->openDmCalls.empty());
+    CHECK(stub->sentMessages.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand delegates unknown commands to the backend", "[session][commands]"
+) {
+    session->runCommand(ConversationId{"C1"}, "remind", "me to stretch in 1 hour");
+    REQUIRE(stub->runCommandCalls.size() == 1);
+    CHECK(stub->runCommandCalls[0].conv == ConversationId{"C1"});
+    CHECK(stub->runCommandCalls[0].command == "/remind"); // leading slash added
+    CHECK(stub->runCommandCalls[0].text == "me to stretch in 1 hour");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand backend failure surfaces on the error hub", "[session][commands]"
+) {
+    stub->runCommandShouldFail = true;
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    session->runCommand(ConversationId{"C1"}, "remind", "me");
+    CHECK(err.contains("remind"));
+    CHECK(err.contains("missing_scope"));
+}
+
+// ── Self presence / status ────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(SessionFixture, "setPresence forwards to backend", "[session][presence]") {
+    session->setPresence(true);
+    REQUIRE(stub->presenceCalls == std::vector<bool>{true});
+    session->setPresence(false);
+    REQUIRE(stub->presenceCalls == (std::vector<bool>{true, false}));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "setPresence success patches own user and fires event", "[session][presence]"
+) {
+    auto collector = collectEvents();
+    session->setPresence(true); // me = U1 (Alice)
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK_FALSE(me->isActive);
+    REQUIRE(collector.events.size() == 1);
+    const auto &ev = std::get<EvPresenceChanged>(collector.events[0]);
+    CHECK(ev.user == UserId{"U1"});
+    CHECK_FALSE(ev.active);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "setPresence failure reports with re-auth hint", "[session][presence]"
+) {
+    stub->selfActionError = "missing_scope";
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    session->setPresence(true);
+    CHECK(err.contains("missing_scope"));
+    CHECK(err.contains("sign in"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /away toggles based on manualAway", "[session][commands]"
+) {
+    // Not manually away → /away sets away.
+    session->runCommand(ConversationId{"C1"}, "away", "");
+    REQUIRE(stub->presenceCalls == std::vector<bool>{true});
+
+    // Manually away → /away returns to auto.
+    stub->selfPresenceResult.manualAway = true;
+    session->refreshSelfPresence();
+    session->runCommand(ConversationId{"C1"}, "away", "");
+    REQUIRE(stub->presenceCalls == (std::vector<bool>{true, false}));
+}
+
+TEST_CASE_METHOD(SessionFixture, "runCommand /active sets auto presence", "[session][commands]") {
+    session->runCommand(ConversationId{"C1"}, "active", "");
+    REQUIRE(stub->presenceCalls == std::vector<bool>{false});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /status parses emoji, text, and clear", "[session][commands]"
+) {
+    session->runCommand(ConversationId{"C1"}, "status", ":palm_tree: On vacation");
+    REQUIRE(stub->statusCalls.size() == 1);
+    CHECK(stub->statusCalls[0].emoji == ":palm_tree:");
+    CHECK(stub->statusCalls[0].text == "On vacation");
+
+    session->runCommand(ConversationId{"C1"}, "status", "just text");
+    REQUIRE(stub->statusCalls.size() == 2);
+    CHECK(stub->statusCalls[1].emoji.isEmpty());
+    CHECK(stub->statusCalls[1].text == "just text");
+
+    session->runCommand(ConversationId{"C1"}, "status", "clear");
+    REQUIRE(stub->statusCalls.size() == 3);
+    CHECK(stub->statusCalls[2].emoji.isEmpty());
+    CHECK(stub->statusCalls[2].text.isEmpty());
+
+    // Success patches our own user entry (bare emoji name, no colons).
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK(me->statusEmoji.isEmpty());
+    CHECK(me->statusText.isEmpty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /status success patches own status", "[session][commands]"
+) {
+    session->runCommand(ConversationId{"C1"}, "status", ":coffee: brb");
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK(me->statusEmoji == "coffee");
+    CHECK(me->statusText == "brb");
+}
+
+TEST_CASE_METHOD(SessionFixture, "runCommand /dnd parses durations", "[session][commands]") {
+    session->runCommand(ConversationId{"C1"}, "dnd", "30");
+    session->runCommand(ConversationId{"C1"}, "dnd", "45m");
+    session->runCommand(ConversationId{"C1"}, "dnd", "2h");
+    session->runCommand(ConversationId{"C1"}, "dnd", "1h 30m");
+    session->runCommand(ConversationId{"C1"}, "dnd", "1 hour");
+    session->runCommand(ConversationId{"C1"}, "dnd", "off");
+    REQUIRE(stub->dndCalls == (std::vector<int>{30, 45, 120, 90, 60, 0}));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "runCommand /dnd rejects unparseable durations", "[session][commands]"
+) {
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    session->runCommand(ConversationId{"C1"}, "dnd", "until tomorrow");
+    CHECK(stub->dndCalls.empty());
+    CHECK(err.contains("/dnd"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "setDndSnooze success patches own dnd flag and fires event", "[session][dnd]"
+) {
+    auto collector = collectEvents();
+    session->setDndSnooze(30);
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK(me->dndEnabled);
+    REQUIRE(collector.events.size() == 1);
+    const auto &ev = std::get<EvDndChanged>(collector.events[0]);
+    CHECK(ev.user == UserId{"U1"});
+    CHECK(ev.dndEnabled);
 }

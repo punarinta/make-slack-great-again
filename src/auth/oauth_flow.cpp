@@ -18,13 +18,17 @@ OAuthFlow::OAuthFlow(const TokenStore::AppConfig &app, QObject *parent)
     : QObject(parent), _app(app), _client(this) {}
 
 QStringList OAuthFlow::userScopes() {
+    // NOTE: tokens issued before a scope was added here lack it until the user
+    // signs in to the workspace again; the affected calls fail with
+    // missing_scope and the UI shows a re-auth hint.
     return {
-        "channels:history", "groups:history",     "im:history",  "mpim:history",
-        "channels:read",    "groups:read",        "im:read",     "mpim:read",
-        "users:read",       "team:read",          "emoji:read",  "reactions:read",
-        "files:read",       "users.profile:read", "search:read", "chat:write",
-        "reactions:write",  "files:write",        "stars:write", "channels:write",
-        "groups:write",     "mpim:write",         "im:write",
+        "channels:history",    "groups:history",     "im:history",  "mpim:history",
+        "channels:read",       "groups:read",        "im:read",     "mpim:read",
+        "users:read",          "team:read",          "emoji:read",  "reactions:read",
+        "files:read",          "users.profile:read", "search:read", "chat:write",
+        "reactions:write",     "files:write",        "stars:write", "channels:write",
+        "groups:write",        "mpim:write",         "im:write",    "users:write",
+        "users.profile:write", "dnd:write",
     };
 }
 

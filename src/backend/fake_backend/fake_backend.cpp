@@ -132,6 +132,31 @@ void FakeBackend::fireEvent(Event e) {
     _events.fire(std::move(e));
 }
 
+rpl::producer<std::vector<SlashCommand>> FakeBackend::listCommands() {
+    return rpl::variable<std::vector<SlashCommand>>(std::vector<SlashCommand>{
+                                                        {.name  = "remind",
+                                                         .desc  = "Set a reminder",
+                                                         .usage = "[@someone or #channel] [what] "
+                                                                  "[when]"},
+                                                        {.name  = "deploy",
+                                                         .desc  = "Deploy a service",
+                                                         .usage = "[service]",
+                                                         .appId = "A012FAKE"},
+                                                    })
+        .value();
+}
+
+void FakeBackend::runCommand(
+    ConversationId                     conv,
+    const QString                     &command,
+    const QString                     &text,
+    std::function<void(bool, QString)> done
+) {
+    ranCommands.push_back({conv, command, text});
+    if (done)
+        done(true, {});
+}
+
 rpl::producer<std::vector<SearchResult>> FakeBackend::searchMessages(const QString &) {
     return rpl::variable<std::vector<SearchResult>>({}).value();
 }

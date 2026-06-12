@@ -27,5 +27,8 @@ std::vector<Conversation> toConversations(const QJsonArray &);
 // (oldest-first).
 std::vector<Message>      toMessages(const QJsonArray &, bool reverseOrder = true);
 std::vector<SearchResult> toSearchResults(const QJsonArray &);
+// commands.list "commands" value — observed both as an array of command
+// objects and as an object keyed by command name; handles either shape.
+std::vector<SlashCommand> toSlashCommands(const QJsonValue &);
 
 } // namespace JsonMappers

@@ -1020,3 +1020,34 @@ TEST_CASE("toConversation num_members absent defaults to 0", "[mappers][conv][me
     })"));
     CHECK(c.memberCount == 0);
 }
+
+// ── toSlashCommands ───────────────────────────────────────────────────────────
+
+TEST_CASE("toSlashCommands parses an array of command objects", "[mappers][commands]") {
+    auto cmds = JsonMappers::toSlashCommands(arr(R"([
+        {"name": "/remind", "desc": "Set a reminder",
+         "usage": "[what] [when]", "type": "core"},
+        {"name": "deploy", "desc": "Deploy a service",
+         "usage": "[service]", "type": "app", "app": "A012"}
+    ])"));
+    REQUIRE(cmds.size() == 2);
+    CHECK(cmds[0].name == "remind"); // leading slash stripped
+    CHECK(cmds[0].desc == "Set a reminder");
+    CHECK(cmds[0].usage == "[what] [when]");
+    CHECK(cmds[0].appId.isEmpty()); // core command — no app
+    CHECK(cmds[1].name == "deploy");
+    CHECK(cmds[1].appId == "A012");
+}
+
+TEST_CASE("toSlashCommands parses an object keyed by command name", "[mappers][commands]") {
+    auto cmds = JsonMappers::toSlashCommands(obj(R"({
+        "/shrug": {"name": "/shrug", "desc": "Shrug", "type": "core"}
+    })"));
+    REQUIRE(cmds.size() == 1);
+    CHECK(cmds[0].name == "shrug");
+}
+
+TEST_CASE("toSlashCommands tolerates junk input", "[mappers][commands]") {
+    CHECK(JsonMappers::toSlashCommands(QJsonValue{}).empty());
+    CHECK(JsonMappers::toSlashCommands(arr(R"([{"desc": "nameless"}, 42])")).empty());
+}

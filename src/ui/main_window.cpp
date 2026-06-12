@@ -611,6 +611,15 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     });
     connect(
         _composer,
+        &ComposerWidget::commandRequested,
+        this,
+        [this](const QString &name, const QString &args) {
+            if (_session && !_currentConvId.value.isEmpty())
+                _session->runCommand(_currentConvId, name, args);
+        }
+    );
+    connect(
+        _composer,
         &ComposerWidget::uploadRequested,
         this,
         [this](const QStringList &filePaths, const QString &text) {

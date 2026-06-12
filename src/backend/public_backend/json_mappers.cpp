@@ -511,4 +511,37 @@ std::vector<SearchResult> toSearchResults(const QJsonArray &a) {
     return out;
 }
 
+static SlashCommand toSlashCommand(const QJsonObject &o) {
+    SlashCommand c;
+    c.name = o.value("name").toString();
+    if (c.name.startsWith('/'))
+        c.name = c.name.mid(1);
+    c.desc  = o.value("desc").toString();
+    c.usage = o.value("usage").toString();
+    if (o.value("type").toString() == QLatin1String("app"))
+        c.appId = o.value("app").toString();
+    return c;
+}
+
+std::vector<SlashCommand> toSlashCommands(const QJsonValue &v) {
+    std::vector<SlashCommand> out;
+    const auto                add = [&out](const QJsonObject &o) {
+        auto c = toSlashCommand(o);
+        if (!c.name.isEmpty())
+            out.push_back(std::move(c));
+    };
+    if (v.isArray()) {
+        const auto a = v.toArray();
+        out.reserve(a.size());
+        for (auto e : a)
+            add(e.toObject());
+    } else if (v.isObject()) {
+        const auto o = v.toObject();
+        out.reserve(o.size());
+        for (auto it = o.begin(); it != o.end(); ++it)
+            add(it.value().toObject());
+    }
+    return out;
+}
+
 } // namespace JsonMappers

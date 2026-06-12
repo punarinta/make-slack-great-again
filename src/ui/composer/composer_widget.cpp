@@ -1180,14 +1180,41 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                     const QChar   trigger = text[trigStart];
                     const QString query   = text.mid(trigStart + 1, cursor - trigStart - 1);
 
-                    if (query.isEmpty() || (trigger != '#' && trigger != ':')) {
+                    // "/" lists slash commands, but only at the very start of
+                    // the message (official-client behavior); a bare "/" shows
+                    // the full list, so an empty query is allowed here.
+                    const bool cmdTrigger = (trigger == '/' && trigStart == 0);
+                    if (!cmdTrigger && (query.isEmpty() || (trigger != '#' && trigger != ':'))) {
                         if (_mentionComp)
                             _mentionComp->dismiss();
                         return;
                     }
 
                     QList<MentionCompleter::Item> items;
-                    if (trigger == '#') {
+                    if (cmdTrigger) {
+                        if (!_session)
+                            return;
+                        std::vector<const SlashCommand *> matches;
+                        for (const auto &c : _session->currentCommands()) {
+                            if (c.name.startsWith(query, Qt::CaseInsensitive))
+                                matches.push_back(&c);
+                        }
+                        std::sort(
+                            matches.begin(),
+                            matches.end(),
+                            [](const SlashCommand *a, const SlashCommand *b) {
+                                return a->name < b->name;
+                            }
+                        );
+                        for (const auto *c : matches) {
+                            QString display = "/" + c->name;
+                            if (!c->desc.isEmpty())
+                                display += QStringLiteral(" — ") + c->desc;
+                            items.append({display, "/" + c->name});
+                            if (items.size() >= 8)
+                                break;
+                        }
+                    } else if (trigger == '#') {
                         if (!_session)
                             return;
                         const auto &convs = _session->currentConversations();
@@ -1315,6 +1342,22 @@ void ComposerWidget::trySend() {
 
     if (text.isEmpty() && files.isEmpty())
         return;
+
+    // "/command [args]" runs a slash command instead of posting text — only
+    // when the command is known, so a plain message that merely starts with
+    // "/" still sends as text.
+    if (_editingTs.isEmpty() && files.isEmpty() && text.startsWith('/') && _session) {
+        const int     sp   = text.indexOf(' ');
+        const QString name = sp < 0 ? text.mid(1) : text.mid(1, sp - 1);
+        if (!name.isEmpty() && _session->findCommand(name)) {
+            _edit->clear();
+            updateSendState();
+            _typingTimer.stop();
+            _typingPending = true;
+            emit commandRequested(name.toLower(), sp < 0 ? QString() : text.mid(sp + 1).trimmed());
+            return;
+        }
+    }
 
     _pendingFiles.clear();
     _attachStrip->rebuild(_pendingFiles, _editModeFiles);

@@ -11,12 +11,60 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMimeDatabase>
+#include <QRegularExpression>
 #include <QUrl>
 
 Session::Session(std::unique_ptr<Backend> backend, const QString &teamId)
     : _backend(std::move(backend)), _cache(std::make_unique<WorkspaceCache>(teamId)) {}
 
 Session::~Session() = default;
+
+// Built-in Slack commands, available even when commands.list is rejected for
+// the token (not_allowed_token_type for OAuth tokens). Deliberately limited to
+// commands Session::runCommand executes natively: anything else would route
+// through chat.command, which the same tokens can't call — never offer a
+// command that is guaranteed to end in an error banner. Names and usage
+// mirror the official client.
+static std::vector<SlashCommand> builtinCommands() {
+    const auto t = [](const char *s) { return QCoreApplication::translate("Session", s); };
+    return {
+        {"active", t("Set yourself to active"), {}, {}},
+        {"away", t("Toggle your away status"), {}, {}},
+        {"dnd", t("Pause or resume notifications"), t("[duration, e.g. 30m or 2h] or off"), {}},
+        {"status", t("Set or clear your status"), t("[:emoji:] [text] or clear"), {}},
+        {"shrug", t("Appends ¯\\_(ツ)_/¯ to your message"), t("[message]"), {}},
+        {"msg", t("Send a direct message"), t("@user [message]"), {}},
+        {"dm", t("Send a direct message"), t("@user [message]"), {}},
+        {"leave", t("Leave a channel or conversation"), {}, {}},
+        {"mute", t("Mute or unmute a channel"), {}, {}},
+    };
+}
+
+// Tokens issued before a scope was added to OAuthFlow::userScopes() lack it;
+// only a fresh sign-in can grant it, so point the user there.
+static QString withReauthHint(QString msg, const QString &err) {
+    if (err == QLatin1String("missing_scope"))
+        msg += QCoreApplication::translate(
+            "Session", " — sign in to this workspace again to grant the new permission"
+        );
+    return msg;
+}
+
+// Parses /dnd durations: "30" / "45m" / "2h" / "1h 30m" / "1 hour" → minutes;
+// "off" / "end" / "resume" → 0 (end snooze); anything else → -1.
+static int parseDndMinutes(const QString &args) {
+    const QString a = args.trimmed().toLower();
+    if (a == QLatin1String("off") || a == QLatin1String("end") || a == QLatin1String("resume"))
+        return 0;
+    static const QRegularExpression re(
+        QStringLiteral("^(?:(\\d+)\\s*h[a-z]*)?\\s*(?:(\\d+)\\s*(?:m[a-z]*)?)?$")
+    );
+    const auto m = re.match(a);
+    if (!m.hasMatch() || (m.captured(1).isEmpty() && m.captured(2).isEmpty()))
+        return -1;
+    const int minutes = m.captured(1).toInt() * 60 + m.captured(2).toInt();
+    return minutes > 0 ? minutes : -1;
+}
 
 void Session::start() {
     // Serve cached data immediately so the UI has something to show before
@@ -244,6 +292,31 @@ void Session::start() {
             },
             _lifetime
         );
+
+    // Slash commands: built-ins serve immediately; the workspace list
+    // (commands.list — adds app commands) replaces them when it arrives.
+    // Subscribed last so the call queues behind the core data loads.
+    _commands = builtinCommands();
+    _backend->listCommands() |
+        rpl::on_next(
+            [this](std::vector<SlashCommand> cmds) {
+                if (cmds.empty())
+                    return;
+                // Keep any built-in the server list doesn't mention (it
+                // normally contains all core commands, but don't regress
+                // if it ever returns app commands only).
+                for (const auto &b : builtinCommands()) {
+                    const bool dup =
+                        std::any_of(cmds.begin(), cmds.end(), [&b](const SlashCommand &c) {
+                            return c.name.compare(b.name, Qt::CaseInsensitive) == 0;
+                        });
+                    if (!dup)
+                        cmds.push_back(b);
+                }
+                _commands = std::move(cmds);
+            },
+            _lifetime
+        );
 }
 
 void Session::fetchMe() {
@@ -442,6 +515,185 @@ void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 p
     OutgoingMessage out;
     out.text = MrkdwnParser::parse(text);
     _backend->scheduleMessage(conv, std::move(out), postAt);
+}
+
+const SlashCommand *Session::findCommand(const QString &name) const {
+    for (const auto &c : _commands)
+        if (c.name.compare(name, Qt::CaseInsensitive) == 0)
+            return &c;
+    return nullptr;
+}
+
+void Session::runCommand(ConversationId conv, const QString &name, const QString &args) {
+    const QString cmd = name.toLower();
+
+    // Native handlers — where local state or a documented public API can do
+    // the job, don't depend on the undocumented chat.command endpoint (it
+    // requires the legacy `post` scope and is often rejected for OAuth tokens).
+    if (cmd == QLatin1String("shrug")) {
+        const QString shrug = QStringLiteral("¯\\_(ツ)_/¯");
+        sendMessage(conv, args.isEmpty() ? shrug : args + ' ' + shrug);
+        return;
+    }
+    if (cmd == QLatin1String("msg") || cmd == QLatin1String("dm")) {
+        const QString trimmed = args.trimmed();
+        const int     sp      = trimmed.indexOf(' ');
+        QString       uname   = sp < 0 ? trimmed : trimmed.left(sp);
+        const QString rest    = sp < 0 ? QString() : trimmed.mid(sp + 1).trimmed();
+        const User   *target  = nullptr;
+        if (uname.startsWith(QLatin1String("<@")) && uname.endsWith('>')) {
+            // Composer mention pills read back as raw <@U…> tokens.
+            target = findUser(UserId{uname.mid(2, uname.size() - 3)});
+        } else {
+            if (uname.startsWith('@'))
+                uname = uname.mid(1);
+            for (const auto &u : currentUsers()) {
+                if (u.name.compare(uname, Qt::CaseInsensitive) == 0 ||
+                    u.displayName.compare(uname, Qt::CaseInsensitive) == 0) {
+                    target = &u;
+                    break;
+                }
+            }
+        }
+        if (!target) {
+            _errorHub.fire(QCoreApplication::translate("Session", "No such user: %1").arg(uname));
+            return;
+        }
+        openDm(target->id, [this, rest](ConversationId dm) {
+            if (!rest.isEmpty())
+                sendMessage(dm, rest);
+        });
+        return;
+    }
+    if (cmd == QLatin1String("leave")) {
+        leaveConversation(conv);
+        return;
+    }
+    if (cmd == QLatin1String("mute")) {
+        const Conversation *c = findConversation(conv);
+        setNotificationLevel(
+            conv, (c && c->isMuted) ? NotificationLevel::Default : NotificationLevel::Mute
+        );
+        return;
+    }
+    if (cmd == QLatin1String("away")) {
+        // Official-client semantics: /away toggles between away and auto.
+        setPresence(!currentSelfPresence().manualAway);
+        return;
+    }
+    if (cmd == QLatin1String("active")) {
+        setPresence(false);
+        return;
+    }
+    if (cmd == QLatin1String("status")) {
+        const QString a = args.trimmed();
+        if (a.isEmpty() || a.compare(QLatin1String("clear"), Qt::CaseInsensitive) == 0) {
+            setStatus({}, {});
+            return;
+        }
+        // Optional leading :emoji:, the rest is the status text.
+        QString emoji, text = a;
+        if (a.startsWith(':')) {
+            const int end = a.indexOf(':', 1);
+            if (end > 1) {
+                emoji = a.left(end + 1);
+                text  = a.mid(end + 1).trimmed();
+            }
+        }
+        setStatus(emoji, text);
+        return;
+    }
+    if (cmd == QLatin1String("dnd")) {
+        const int minutes = parseDndMinutes(args);
+        if (minutes < 0) {
+            _errorHub.fire(
+                QCoreApplication::translate(
+                    "Session", "Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume"
+                )
+            );
+            return;
+        }
+        setDndSnooze(minutes);
+        return;
+    }
+
+    _backend->runCommand(conv, '/' + cmd, args, [this, cmd](bool ok, QString message) {
+        // Success responses (e.g. /who's inline member list) are posted by
+        // Slack into the conversation where relevant; only failures need a
+        // local surface.
+        if (!ok)
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Command /%1 failed: %2").arg(cmd, message)
+            );
+    });
+}
+
+void Session::patchMeUser(const std::function<void(User &)> &fn) {
+    if (_meUserId.value.isEmpty())
+        return;
+    auto users = _users.current();
+    for (auto &u : users) {
+        if (u.id == _meUserId) {
+            fn(u);
+            break;
+        }
+    }
+    _users = std::move(users);
+}
+
+void Session::setPresence(bool away) {
+    _backend->setPresence(away, [this, away](bool ok, QString err) {
+        if (!ok) {
+            _errorHub.fire(withReauthHint(
+                QCoreApplication::translate("Session", "Could not change presence: %1").arg(err),
+                err
+            ));
+            return;
+        }
+        patchMeUser([away](User &u) { u.isActive = !away; });
+        if (!_meUserId.value.isEmpty())
+            _eventHub.fire(EvPresenceChanged{_meUserId, !away});
+        // The rich self-presence snapshot (manualAway etc.) only comes from the
+        // server — re-poll instead of guessing.
+        refreshSelfPresence();
+    });
+}
+
+void Session::setStatus(const QString &emoji, const QString &text) {
+    _backend->setStatus(emoji, text, 0, [this, emoji, text](bool ok, QString err) {
+        if (!ok) {
+            _errorHub.fire(withReauthHint(
+                QCoreApplication::translate("Session", "Could not set status: %1").arg(err), err
+            ));
+            return;
+        }
+        // User.statusEmoji stores the bare name (":palm_tree:" → "palm_tree").
+        QString bare = emoji;
+        if (bare.startsWith(':'))
+            bare = bare.mid(1);
+        if (bare.endsWith(':'))
+            bare.chop(1);
+        patchMeUser([&bare, &text](User &u) {
+            u.statusEmoji = bare;
+            u.statusText  = text;
+        });
+    });
+}
+
+void Session::setDndSnooze(int minutes) {
+    _backend->setDndSnooze(minutes, [this, minutes](bool ok, QString err) {
+        if (!ok) {
+            _errorHub.fire(withReauthHint(
+                QCoreApplication::translate("Session", "Could not update notifications: %1")
+                    .arg(err),
+                err
+            ));
+            return;
+        }
+        patchMeUser([minutes](User &u) { u.dndEnabled = minutes > 0; });
+        if (!_meUserId.value.isEmpty())
+            _eventHub.fire(EvDndChanged{_meUserId, minutes > 0});
+    });
 }
 
 void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text) {

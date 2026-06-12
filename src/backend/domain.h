@@ -353,6 +353,18 @@ struct SearchResult {
     bool           operator==(const SearchResult &) const = default;
 };
 
+// --- Slash commands ---
+
+// A slash command available in the workspace ("/remind", an app's "/github", …).
+// Built-in Slack commands have an empty appId.
+struct SlashCommand {
+    QString name;  // without the leading slash, e.g. "remind"
+    QString desc;  // human-readable description
+    QString usage; // argument hint, e.g. "[@someone or #channel] [what] [when]"
+    QString appId; // owning app ID for app commands; empty for core commands
+    bool    operator==(const SlashCommand &) const = default;
+};
+
 using Event = std::variant<
     EvMessageNew,
     EvMessageChanged,

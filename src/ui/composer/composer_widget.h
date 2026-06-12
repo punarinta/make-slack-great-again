@@ -64,6 +64,9 @@ public:
 
 signals:
     void sendRequested(const QString &text);
+    // Emitted instead of sendRequested when the message is a known slash
+    // command: "/remind me …" → ("remind", "me …"). Name is lowercase, no slash.
+    void commandRequested(const QString &name, const QString &args);
     // Emitted instead of sendRequested when files are attached: the files and
     // the text travel together so they post as one Slack message.
     void uploadRequested(const QStringList &filePaths, const QString &text);

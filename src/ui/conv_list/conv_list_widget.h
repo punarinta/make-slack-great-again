@@ -21,7 +21,8 @@ struct UserInfo {
     bool    isDeactivated = false;
     bool    isActive      = false;
     bool    dndEnabled    = false;
-    QString statusEmoji; // resolved emoji name without colons, e.g. "palm_tree"
+    bool    isBot         = false; // bot/app user (incl. Slackbot)
+    QString statusEmoji;           // resolved emoji name without colons, e.g. "palm_tree"
 };
 
 // Visual row kinds in the conversation list.
@@ -30,10 +31,10 @@ enum class RowKind { SectionHeader, Conv, AddChannels, ShowMore };
 // Maps a visual row index to its content.
 struct RowItem {
     RowKind kind;
-    int     convIdx = -1; // index into _convs, valid when kind == Conv
-    int     sectionId =
-        -1; // 0 = Channels, 1 = Direct messages; valid for SectionHeader/AddChannels/ShowMore
-    int count = 0; // for ShowMore: number of hidden items
+    int     convIdx   = -1; // index into _convs, valid when kind == Conv
+    int     sectionId = -1; // 0 = Channels, 1 = Direct messages, 2 = Agents & apps;
+                            // valid for SectionHeader/AddChannels/ShowMore
+    int     count     = 0;  // for ShowMore: number of hidden items
 };
 
 // Virtual-painted conversation list with section grouping and collapse/expand.
@@ -112,6 +113,9 @@ protected:
     // Hit/paint rect of the "+" button on the Direct messages section header.
     QRect dmPlusRect(int rowY) const;
     void  updateScrollRange();
+    // True for 1:1 IMs whose counterpart is a bot/app (incl. Slackbot) —
+    // these are grouped under "Agents & apps" instead of "Direct messages".
+    bool  isAppConv(const Conversation &c) const;
     // Rebuild _convs from _allConvs, filtering deactivated / raw-ID DM users.
     void  rebuildFilteredConvs();
     // Rebuild _rows from _convs according to current section collapse state.
@@ -143,6 +147,7 @@ protected:
 
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;
+    bool _appsCollapsed     = false;
     bool _showAllChannels   = false; // true after user clicks "N more channels"
 
     int            _hovered  = -1;

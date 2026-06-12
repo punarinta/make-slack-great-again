@@ -83,6 +83,23 @@ public:
         std::function<void(QString)>        onError   = {}
     ) override;
 
+    void setPresence(bool away, std::function<void(bool ok, QString err)> done = {}) override;
+    void setStatus(
+        const QString                            &emoji,
+        const QString                            &text,
+        qint64                                    expirationTs = 0,
+        std::function<void(bool ok, QString err)> done         = {}
+    ) override;
+    void setDndSnooze(int minutes, std::function<void(bool ok, QString err)> done = {}) override;
+
+    rpl::producer<std::vector<SlashCommand>> listCommands() override;
+    void                                     runCommand(
+                                            ConversationId,
+                                            const QString                                &command,
+                                            const QString                                &text,
+                                            std::function<void(bool ok, QString message)> done = {}
+                                        ) override;
+
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(

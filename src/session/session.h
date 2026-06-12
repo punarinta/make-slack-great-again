@@ -51,6 +51,31 @@ public:
     // Schedule a message to be sent at a future Unix timestamp.
     void scheduleMessage(ConversationId conv, const QString &text, qint64 postAt);
 
+    // --- Slash commands ---
+    // Workspace slash commands: the built-in Slack set, replaced/extended by
+    // whatever the backend reports (commands.list) once it answers.
+    const std::vector<SlashCommand> &currentCommands() const { return _commands; }
+    // Look up a command by name (no leading slash, case-insensitive); nullptr if unknown.
+    const SlashCommand              *findCommand(const QString &name) const;
+    // Execute "/name args" in a conversation. Commands with documented
+    // public-API equivalents run natively; the rest go through
+    // Backend::runCommand (undocumented chat.command) and report failures
+    // via errors().
+    void runCommand(ConversationId conv, const QString &name, const QString &args);
+
+    // --- Self presence / status (documented public APIs) ---
+    // Failures fire errors() (with a re-auth hint when the token lacks the
+    // scope); successes patch our own entry in users() so the UI updates
+    // without waiting for a poll.
+    // Force away (true) or return to automatic presence detection (false);
+    // also refreshes selfPresence().
+    void setPresence(bool away);
+    // Set — or clear, when both args are empty — the status. `emoji` uses the
+    // API's ":name:" form.
+    void setStatus(const QString &emoji, const QString &text);
+    // Pause notifications for `minutes`; minutes <= 0 resumes them.
+    void setDndSnooze(int minutes);
+
     // --- Phase 3 ---
     void uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text);
     void
@@ -153,6 +178,10 @@ private:
     // via the workspace cache; called after each loadConversations() merge.
     void enrichDmActivity();
 
+    // Apply `fn` to our own entry in _users (no-op while meUserId is unknown);
+    // reassigning the variable notifies users() subscribers.
+    void patchMeUser(const std::function<void(User &)> &fn);
+
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
 
@@ -164,10 +193,11 @@ private:
     rpl::event_stream<QString>               _errorHub;
     rpl::event_stream<>                      _emojiMapLoadedHub;
 
-    UserId                  _meUserId;          // set via setMe() once auth.test result is known
-    bool                    _meIsAdmin = false; // is_admin || is_owner from auth.test
-    ConversationId          _readingConv;       // currently open conversation
-    QHash<QString, QString> _emojiMap;
+    UserId                    _meUserId;          // set via setMe() once auth.test result is known
+    bool                      _meIsAdmin = false; // is_admin || is_owner from auth.test
+    ConversationId            _readingConv;       // currently open conversation
+    QHash<QString, QString>   _emojiMap;
+    std::vector<SlashCommand> _commands; // built-ins + commands.list result
     // One entry per in-flight optimistic message (text send or file upload).
     // withFiles disambiguates which ghost a confirming server message replaces:
     // a slow upload must not be displaced by a quick text sent after it.

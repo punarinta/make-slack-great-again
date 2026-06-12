@@ -117,9 +117,9 @@ bool ConvListWidget::selectConversation(ConversationId id) {
     if (it == _convs.end())
         return false;
     const bool isDm = (it->kind == ConvKind::Im || it->kind == ConvKind::Mpim);
-    (isDm ? _dmsCollapsed : _channelsCollapsed) = false;
+    (isAppConv(*it) ? _appsCollapsed : isDm ? _dmsCollapsed : _channelsCollapsed) = false;
     // Stamp before rebuilding so the relevance filter keeps the row visible.
-    _visitedAt[id.value]                        = QDateTime::currentSecsSinceEpoch();
+    _visitedAt[id.value] = QDateTime::currentSecsSinceEpoch();
     saveVisitedAt();
     rebuildRows();
     const int row = rowForId(id);
@@ -143,6 +143,8 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
                 .isDeactivated = u.isDeactivated,
                 .isActive      = u.isActive,
                 .dndEnabled    = u.dndEnabled,
+                // Slackbot reports is_bot=false in the API; special-case its fixed ID.
+                .isBot         = u.isBot || u.id.value == QLatin1String("USLACKBOT"),
                 .statusEmoji   = u.statusEmoji,
             }
         );
@@ -150,6 +152,15 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
             _usernameToId.insert(u.name, u.id.value);
     }
     rebuildFilteredConvs();
+}
+
+bool ConvListWidget::isAppConv(const Conversation &c) const {
+    if (c.kind != ConvKind::Im || !c.dmUser)
+        return false;
+    if (c.dmUser->value == QLatin1String("USLACKBOT"))
+        return true;
+    const auto it = _userInfos.constFind(c.dmUser->value);
+    return it != _userInfos.constEnd() && it->isBot;
 }
 
 void ConvListWidget::rebuildFilteredConvs() {
@@ -221,10 +232,14 @@ void ConvListWidget::rebuildRows() {
         return c.kind != ConvKind::Im && c.kind != ConvKind::Mpim;
     };
 
-    std::vector<int> visCh, hidCh, visDm, hidDm;
+    std::vector<int> visCh, hidCh, visDm, hidDm, apps;
     for (int i = 0; i < (int)_convs.size(); ++i) {
-        const auto &c    = _convs[i];
-        const bool  isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+        const auto &c = _convs[i];
+        if (isAppConv(c)) {
+            apps.push_back(i);
+            continue;
+        }
+        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
         (isDm ? (isRelevant(c) ? visDm : hidDm) : (isRelevant(c) ? visCh : hidCh)).push_back(i);
     }
     // ── Channels section ─────────────────────────────────────────────
@@ -250,6 +265,19 @@ void ConvListWidget::rebuildRows() {
     if (!_dmsCollapsed) {
         for (int i : visDm)
             _rows.push_back({RowKind::Conv, i, -1});
+    }
+
+    // ── Agents & apps section ─────────────────────────────────────────
+    // Bot/app DMs live here, like in the official client. No relevance
+    // filter: open app DMs are few, and unlike human DMs there is no
+    // People-tab path to reopen one the filter would hide. The section
+    // disappears entirely when there are no app DMs.
+    if (!apps.empty()) {
+        _rows.push_back({RowKind::SectionHeader, -1, 2});
+        if (!_appsCollapsed) {
+            for (int i : apps)
+                _rows.push_back({RowKind::Conv, i, -1});
+        }
     }
 
     // Re-map selection to new visual row indices.
@@ -544,8 +572,10 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
         }
         if (ri.sectionId == 0)
             _channelsCollapsed = !_channelsCollapsed;
-        else
+        else if (ri.sectionId == 1)
             _dmsCollapsed = !_dmsCollapsed;
+        else
+            _appsCollapsed = !_appsCollapsed;
         rebuildRows();
         break;
     case RowKind::Conv:
@@ -657,7 +687,9 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
 
 void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int sectionId) const {
     const bool hovered   = (row == _hovered);
-    const bool collapsed = (sectionId == 0) ? _channelsCollapsed : _dmsCollapsed;
+    const bool collapsed = (sectionId == 0)   ? _channelsCollapsed
+                           : (sectionId == 1) ? _dmsCollapsed
+                                              : _appsCollapsed;
 
     if (hovered)
         p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
@@ -674,6 +706,8 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
         svgPixmap(":/ui/hash.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
     static const QPixmap kMsgDim =
         svgPixmap(":/ui/messages-square.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
+    static const QPixmap kBotDim =
+        svgPixmap(":/ui/bot.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
 
     const QColor color = Th::c().text.onDarkDim;
 
@@ -681,7 +715,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     if (hovered)
         icon = collapsed ? &kChevRightDim : &kChevDownDim;
     else
-        icon = (sectionId == 0) ? &kHashDim : &kMsgDim;
+        icon = (sectionId == 0) ? &kHashDim : (sectionId == 1) ? &kMsgDim : &kBotDim;
 
     const int iconY = y + (kRowH - kIconSize) / 2;
     int       x     = kPadH;
@@ -694,7 +728,9 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     p.setFont(font);
     p.setPen(color);
     const QFontMetrics fm(font);
-    const QString      label = (sectionId == 0) ? tr("Channels") : tr("Direct messages");
+    const QString      label = (sectionId == 0)   ? tr("Channels")
+                               : (sectionId == 1) ? tr("Direct messages")
+                                                  : tr("Agents & apps");
     p.drawText(x, y + (kRowH - fm.height()) / 2 + fm.ascent(), label);
 
     // DM section header: a "+" on hover opens the browse dialog on People.

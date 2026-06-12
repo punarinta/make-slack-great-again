@@ -32,6 +32,29 @@ public:
     void removeReaction(ConversationId, Ts, QString) override;
     void markRead(ConversationId, Ts) override;
 
+    void setPresence(bool, std::function<void(bool, QString)> done = {}) override {
+        if (done)
+            done(true, {});
+    }
+    void setStatus(
+        const QString &, const QString &, qint64 = 0, std::function<void(bool, QString)> done = {}
+    ) override {
+        if (done)
+            done(true, {});
+    }
+    void setDndSnooze(int, std::function<void(bool, QString)> done = {}) override {
+        if (done)
+            done(true, {});
+    }
+
+    rpl::producer<std::vector<SlashCommand>> listCommands() override;
+    void                                     runCommand(
+                                            ConversationId,
+                                            const QString                     &command,
+                                            const QString                     &text,
+                                            std::function<void(bool, QString)> done = {}
+                                        ) override;
+
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override;
     rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(
@@ -51,6 +74,14 @@ public:
 
     // Test helpers — fire events from outside
     void fireEvent(Event e);
+
+    // Test helper — every runCommand() call is recorded here.
+    struct RanCommand {
+        ConversationId conv;
+        QString        command;
+        QString        text;
+    };
+    std::vector<RanCommand> ranCommands;
 
 private:
     rpl::variable<AuthState>                          _authState;

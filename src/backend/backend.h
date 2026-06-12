@@ -101,6 +101,56 @@ public:
         std::function<void(QString)> /*onError*/          = {}
     ) {}
 
+    // --- Self presence / status (documented public APIs) ---
+    // Set the authed user's presence (users.setPresence): away=true forces
+    // "away"; away=false returns to automatic presence detection ("auto").
+    virtual void setPresence(bool /*away*/, std::function<void(bool ok, QString err)> done = {}) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+    // Set — or clear, when emoji and text are both empty — the authed user's
+    // status (users.profile.set). `emoji` uses the API's ":name:" form;
+    // expirationTs is a Unix timestamp, 0 = no expiration.
+    virtual void setStatus(
+        const QString & /*emoji*/,
+        const QString & /*text*/,
+        qint64 /*expirationTs*/                        = 0,
+        std::function<void(bool ok, QString err)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+    // Pause notifications for `minutes` (dnd.setSnooze); minutes <= 0 resumes
+    // them (dnd.endSnooze).
+    virtual void
+    setDndSnooze(int /*minutes*/, std::function<void(bool ok, QString err)> done = {}) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+
+    // List the slash commands available in the workspace (undocumented
+    // commands.list — official-client API). Backends that can't list commands
+    // produce nothing; the Session falls back to the built-in command set.
+    virtual rpl::producer<std::vector<SlashCommand>> listCommands() {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+    // Execute a slash command in a conversation (undocumented chat.command —
+    // official-client API). `command` carries the leading slash ("/remind").
+    // done(ok, message): on failure `message` is the error; on success it is
+    // the optional inline response some core commands return (e.g. /who).
+    virtual void runCommand(
+        ConversationId,
+        const QString & /*command*/,
+        const QString & /*text*/,
+        std::function<void(bool ok, QString message)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;
     virtual rpl::producer<QHash<QString, QString>>   loadEmojiList()                      = 0;

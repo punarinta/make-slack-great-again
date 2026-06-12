@@ -471,6 +471,125 @@ PublicBackend::loadThread(ConversationId conv, Ts root, std::optional<QString> c
     };
 }
 
+// ── Self presence / status ────────────────────────────────────────
+
+void PublicBackend::setPresence(bool away, std::function<void(bool, QString)> done) {
+    QUrlQuery params;
+    params.addQueryItem("presence", away ? "away" : "auto");
+    _api->call(
+        "users.setPresence",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            qWarning() << "setPresence error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}
+
+void PublicBackend::setStatus(
+    const QString                     &emoji,
+    const QString                     &text,
+    qint64                             expirationTs,
+    std::function<void(bool, QString)> done
+) {
+    const QJsonObject profile{
+        {"status_text", text},
+        {"status_emoji", emoji},
+        {"status_expiration", expirationTs},
+    };
+    QUrlQuery params;
+    params.addQueryItem(
+        "profile", QString::fromUtf8(QJsonDocument(profile).toJson(QJsonDocument::Compact))
+    );
+    _api->call(
+        "users.profile.set",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            qWarning() << "setStatus error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}
+
+void PublicBackend::setDndSnooze(int minutes, std::function<void(bool, QString)> done) {
+    QUrlQuery params;
+    if (minutes > 0)
+        params.addQueryItem("num_minutes", QString::number(minutes));
+    _api->call(
+        minutes > 0 ? "dnd.setSnooze" : "dnd.endSnooze",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            qWarning() << "setDndSnooze error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}
+
+// ── Slash commands ────────────────────────────────────────────────
+// Both endpoints are undocumented official-client API (commands.list /
+// chat.command) and may be rejected for OAuth tokens (missing legacy `post`
+// scope). listCommands degrades to "produce nothing" — the Session merges in
+// its built-in command set; runCommand reports the server error to the caller.
+
+rpl::producer<std::vector<SlashCommand>> PublicBackend::listCommands() {
+    return [this](auto consumer) mutable {
+        _api->call(
+            "commands.list",
+            {},
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toSlashCommands(resp.value("commands")));
+                consumer.put_done();
+            },
+            [consumer](QString err) mutable {
+                qWarning() << "listCommands error:" << err;
+                consumer.put_done();
+            }
+        );
+        return rpl::lifetime();
+    };
+}
+
+void PublicBackend::runCommand(
+    ConversationId                                conv,
+    const QString                                &command,
+    const QString                                &text,
+    std::function<void(bool ok, QString message)> done
+) {
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    params.addQueryItem("command", command);
+    if (!text.isEmpty())
+        params.addQueryItem("text", text);
+    _api->call(
+        "chat.command",
+        params,
+        [done](QJsonObject resp) {
+            if (done)
+                done(true, resp.value("response").toString());
+        },
+        [done](QString err) {
+            qWarning() << "runCommand error:" << err;
+            if (done)
+                done(false, err);
+        }
+    );
+}
+
 // ── Commands ──────────────────────────────────────────────────────
 
 void PublicBackend::sendMessage(ConversationId conv, OutgoingMessage msg) {
