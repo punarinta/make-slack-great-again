@@ -15,6 +15,7 @@
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "util/clipboard.h"
+#include "util/mailto_link.h"
 
 #include <QBuffer>
 #include <QMovie>
@@ -1543,7 +1544,21 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
         showProfileCardFor(uid, userAnchorVpRect(pos, anchor));
         return true;
     }
-    QDesktopServices::openUrl(QUrl(anchor));
+    const QUrl url(anchor);
+    if (MailtoLink::isMailto(url)) {
+        if (MailtoLink::openOrCopy(url)) {
+            // No mail client registered — tell the user where the address went.
+            constexpr int kToastMs = 1800;
+            const QPoint  gPos     = viewport()->mapToGlobal(pos);
+            _tooltip->showAbove(
+                tr("No email app — address copied"), QRect(gPos - QPoint(0, 2), QSize(1, 4))
+            );
+            _tooltipPin.setRemainingTime(kToastMs);
+            QTimer::singleShot(kToastMs, _tooltip, &QWidget::hide);
+        }
+        return true;
+    }
+    QDesktopServices::openUrl(url);
     return true;
 }
 
@@ -2036,7 +2051,9 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     }
 
     // Tooltip
-    if (newHoveredBtn >= 0) {
+    if (!_tooltipPin.hasExpired()) {
+        // A click toast (e.g. "address copied") is showing — leave it up.
+    } else if (newHoveredBtn >= 0) {
         static const QString kTips[] = {
             tr("Add reaction"), tr("Forward message"), tr("More actions")
         };

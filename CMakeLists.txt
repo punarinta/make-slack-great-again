@@ -92,6 +92,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Utilities
     src/util/emoji.cpp
+    src/util/mailto_link.cpp
     src/util/relative_time.cpp
     src/util/time_format.cpp
 

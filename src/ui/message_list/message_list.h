@@ -7,6 +7,7 @@
 #include "ui/loading_indicator/loading_indicator.h"
 #include "ui/virtual_list/virtual_list_widget.h"
 
+#include <QDeadlineTimer>
 #include <QElapsedTimer>
 #include <QVariantAnimation>
 #include <QSet>
@@ -410,7 +411,8 @@ private:
     // Urls whose frames were drawn during the current/last paint pass.
     mutable QSet<QString>            _visibleGifs;
 
-    PopupTooltip       *_tooltip     = nullptr;
+    PopupTooltip       *_tooltip = nullptr;
+    QDeadlineTimer      _tooltipPin; // while running, hover logic leaves the tooltip alone
     EmojiPickerPopup   *_emojiPicker = nullptr;
     ImageViewerOverlay *_imageViewer = nullptr; // lazily created, parented to window()
 

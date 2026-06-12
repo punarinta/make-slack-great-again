@@ -782,6 +782,11 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>メッセージを編集</translation>
     </message>
     <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="1552" />
+        <source>No email app — address copied</source>
+        <translation>メールアプリがないため、アドレスをコピーしました</translation>
+    </message>
+    <message>
         <location filename="../src/ui/message_list/message_list.cpp" line="1168" />
         <source>Copy link</source>
         <translation>リンクをコピー</translation>
