@@ -200,15 +200,14 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
             break;
         case EntityType::Blockquote:
             // Use a table so the gray left bar renders reliably in Qt's HTML subset.
-            html +=
-                "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:0 0 8px 0'>"
-                "<tr>"
-                "<td width='3' bgcolor='" +
-                Th::c().message.codeBlockBorder.name() +
-                "' style='padding:0;border-radius:2px'></td>"
-                "<td style='padding:2px 0 2px 10px;color:" +
-                Th::qss(Th::c().message.codeText) + "'>" + inner.replace("\n", "<br>") +
-                "</td></tr></table>";
+            html += "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:4px 0'>"
+                    "<tr>"
+                    "<td width='3' bgcolor='" +
+                    Th::c().message.codeBlockBorder.name() +
+                    "' style='padding:0;border-radius:2px'></td>"
+                    "<td style='padding:2px 0 2px 10px;color:" +
+                    Th::qss(Th::c().message.codeText) + "'>" + inner.replace("\n", "<br>") +
+                    "</td></tr></table>";
             break;
         case EntityType::Link:
             html += "<a href='" + e.data.toHtmlEscaped() +
@@ -259,6 +258,50 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
     return html;
 }
 
+// Wrap inline HTML in <p> (so the doc stylesheet's line-height applies), keeping any
+// <table> elements (blockquotes) OUTSIDE the paragraphs. A table inside/after a <p>
+// gets an implicit separator block that inherits the paragraph's line-height, which
+// makes the gap above the table larger than the gap below (controlled only by the
+// table's own bottom margin). Splitting at table boundaries keeps the gaps symmetric.
+static QString wrapParagraph(const QString &inner, const QString &pStyle) {
+    if (inner.isEmpty())
+        return {};
+    if (!inner.contains(QLatin1String("<table")))
+        return "<p style='" + pStyle + "'>" + inner + "</p>";
+    QString result;
+    int     pos = 0;
+    while (pos < inner.size()) {
+        const int tableStart = inner.indexOf(QLatin1String("<table"), pos);
+        if (tableStart < 0) {
+            const QString tail = inner.mid(pos);
+            // Qt SUMS the table's bottom margin with the next block's top margin
+            // (no collapsing), so zero the top margin right after a table.
+            if (!tail.isEmpty())
+                result += "<p style='" + pStyle + ";margin-top:0'>" + tail + "</p>";
+            break;
+        }
+        // Text segment before the table — strip trailing <br> (the \n the parser appends
+        // after a blockquote turns into a leading <br> for the following segment), and
+        // leave it UNwrapped (see above).
+        if (tableStart > pos) {
+            QString seg = inner.mid(pos, tableStart - pos);
+            while (seg.endsWith(QLatin1String("<br>")))
+                seg.chop(4);
+            if (!seg.isEmpty())
+                result += seg;
+        }
+        const int tableEnd = inner.indexOf(QLatin1String("</table>"), tableStart);
+        if (tableEnd < 0)
+            break;
+        result += inner.mid(tableStart, tableEnd - tableStart + 8); // include </table>
+        pos = tableEnd + 8;
+        // Strip the leading <br> that follows the table.
+        while (pos + 4 <= inner.size() && QStringView{inner}.mid(pos, 4) == u"<br>")
+            pos += 4;
+    }
+    return result;
+}
+
 // Build the full HTML for a message's main text doc (blocks preferred over text field).
 QString buildMsgHtml(const Message &msg, const Session *session) {
     if (!msg.blocks.empty()) {
@@ -277,15 +320,13 @@ QString buildMsgHtml(const Message &msg, const Session *session) {
                             ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() +
                             "</p>";
             } else if (!blk.text.text.isEmpty()) {
-                html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
+                html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
             }
         }
         if (!html.isEmpty())
             return html;
     }
-    // Wrap in <p> so the doc stylesheet's line-height applies to plain text too.
-    const QString inner = toHtml(msg.text, session);
-    return inner.isEmpty() ? QString() : "<p style='margin:0'>" + inner + "</p>";
+    return wrapParagraph(toHtml(msg.text, session), "margin:0");
 }
 
 // Attachment text HTML (used inside the colored bar area).
@@ -305,7 +346,7 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
             html += "<p style='margin:0;font-weight:bold'>" + att.title.toHtmlEscaped() + "</p>";
     }
     if (!att.text.text.isEmpty())
-        html += "<p style='margin:2px 0 0'>" + toHtml(att.text, session) + "</p>";
+        html += wrapParagraph(toHtml(att.text, session), "margin:2px 0 0");
 
     // Key/value fields (classic bot format): bold title line, value below.
     for (const auto &f : att.fields) {
@@ -331,7 +372,7 @@ QString buildAttachHtml(const Attachment &att, const Session *session) {
                             ";font-style:italic;margin:1px 0'>" + blk.altText.toHtmlEscaped() +
                             "</p>";
             } else if (!blk.text.text.isEmpty()) {
-                html += "<p style='margin:2px 0'>" + toHtml(blk.text, session) + "</p>";
+                html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
             }
         }
     }
