@@ -177,6 +177,19 @@ add_msga_qt_test(test_token_refresh
 target_link_libraries(test_token_refresh PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_token_refresh PROPERTIES AUTOMOC ON)
 
+add_msga_qt_test(test_send_retry
+    test_send_retry.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/web_api_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/public_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_send_retry PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_send_retry PROPERTIES AUTOMOC ON)
+
 add_msga_widget_test(test_browse_channels_dialog
     test_browse_channels_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_channels_dialog.cpp

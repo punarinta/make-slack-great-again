@@ -227,6 +227,12 @@ void Session::start() {
                     }
                     _conversations = std::move(convs);
                 } else if (auto *ev = std::get_if<EvMessageNew>(&e)) {
+                    // The same message can arrive twice — the chat.postMessage
+                    // response echo plus the realtime echo, or a Socket Mode
+                    // redelivery of an un-acked envelope. Process and forward
+                    // only the first copy.
+                    if (!firstSighting(ev->conv, ev->msg.ts))
+                        return;
                     const bool ownMessage =
                         !_meUserId.value.isEmpty() && ev->msg.author == _meUserId;
                     {
@@ -287,6 +293,24 @@ void Session::start() {
                             _eventHub.fire(EvMessageDeleted{ev->conv, fakeTs});
                         }
                     }
+                } else if (auto *ev = std::get_if<EvSendFailed>(&e)) {
+                    // The send definitively failed (transport problems are
+                    // retried before this fires) — drop the translucent
+                    // optimistic copy and tell the user. Sends confirm or
+                    // fail in FIFO order, so the oldest text-kind ghost is
+                    // the one that failed.
+                    auto it = _pendingSends.find(ev->conv.value);
+                    if (it != _pendingSends.end()) {
+                        int idx = 0;
+                        while (idx < it->size() && (*it)[idx].withFiles)
+                            ++idx;
+                        if (idx < it->size())
+                            _eventHub.fire(EvMessageDeleted{ev->conv, it->takeAt(idx).ts});
+                    }
+                    _errorHub.fire(
+                        QCoreApplication::translate("Session", "Couldn't send message: %1")
+                            .arg(ev->reason)
+                    );
                 }
                 _eventHub.fire(std::move(e));
             },
@@ -496,7 +520,22 @@ void Session::sendMessage(ConversationId conv, const QString &text, std::optiona
     out.text       = optimistic.text;
     out.rawText    = text;
     out.threadRoot = threadRoot;
+    // Anchor for the backend's lost-send reconciliation: only messages newer
+    // than this server ts can be the one we are about to post.
+    if (const Conversation *c = findConversation(conv))
+        out.sinceTs = c->latestTs;
     _backend->sendMessage(conv, std::move(out));
+}
+
+bool Session::firstSighting(const ConversationId &conv, const Ts &ts) {
+    const QString key = conv.value + '|' + ts;
+    if (_seenMsgKeys.contains(key))
+        return false;
+    _seenMsgKeys.insert(key);
+    _seenMsgOrder.enqueue(key);
+    while (_seenMsgOrder.size() > 512)
+        _seenMsgKeys.remove(_seenMsgOrder.dequeue());
+    return true;
 }
 
 Backend *Session::backend() const {

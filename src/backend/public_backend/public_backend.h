@@ -135,7 +135,18 @@ public:
         std::function<void(bool ok, QString err)> done = {}
     ) override;
 
+    // Tests only: point the API clients at a local fake server / shrink the
+    // send-reconcile backoff.
+    void setApiBaseUrlForTests(const QString &url);
+    void setSendRetryDelayMsForTests(int ms) { _sendRetryDelayMs = ms; }
+
 private:
+    // One in-flight sendMessage with enough context to verify delivery and
+    // resend after a connection loss. See sendMessage in the .cpp.
+    struct SendState;
+    void postMessageAttempt(std::shared_ptr<SendState> st);
+    void reconcileSend(std::shared_ptr<SendState> st);
+
     // canvases.edit allows one change per call; sends the queue sequentially.
     void sendNextCanvasChange(
         const QString                            &canvasId,
@@ -187,6 +198,9 @@ private:
     // Token refresh deduplication
     bool                                   _refreshInProgress = false;
     std::vector<std::function<void(bool)>> _refreshWaiters;
+
+    UserId _meUserId; // cached from auth.test; used to reconcile lost sends
+    int    _sendRetryDelayMs = 1000;
 
     rpl::variable<AuthState> _authState{AuthState::LoggedIn};
     rpl::event_stream<Event> _events;

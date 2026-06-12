@@ -1922,6 +1922,20 @@ void MessageListWidget::handleEvent(const Event &e) {
             }
             return;
         }
+        // Backstop dedup: the ts can already be on screen when a history
+        // load raced the realtime echo. Refresh that row in place instead of
+        // appending a twin.
+        const int existing = findByTs(ev->msg.ts);
+        if (existing >= 0) {
+            _items[existing].msg = ev->msg;
+            _items[existing].textDoc.reset();
+            _items[existing].docWidth = 0;
+            _items[existing].attachDocs.clear();
+            _items[existing].fileImgsRequested = false;
+            rebuildLayout();
+            viewport()->update();
+            return;
+        }
         appendMessage(ev->msg);
         // Highlight the new row
         _newMsgTs.insert(ev->msg.ts);

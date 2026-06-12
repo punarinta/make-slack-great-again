@@ -207,6 +207,12 @@ PublicBackend::~PublicBackend() {
     delete _api;
 }
 
+void PublicBackend::setApiBaseUrlForTests(const QString &url) {
+    _api->setBaseUrl(url);
+    _historyApi->setBaseUrl(url);
+    _infoApi->setBaseUrl(url);
+}
+
 void PublicBackend::setSharedRealtime(SocketModeRealtime *realtime) {
     _sharedRealtime = realtime;
 }
@@ -249,7 +255,8 @@ rpl::producer<UserId> PublicBackend::loadMe() {
         _api->call(
             "auth.test",
             QUrlQuery{},
-            [consumer](QJsonObject resp) mutable {
+            [this, consumer](QJsonObject resp) mutable {
+                _meUserId = UserId{resp.value("user_id").toString()};
                 consumer.put_next(UserId{resp.value("user_id").toString()});
                 consumer.put_done();
             },
@@ -579,7 +586,7 @@ void PublicBackend::runCommand(
     params.addQueryItem("command", command);
     if (!text.isEmpty())
         params.addQueryItem("text", text);
-    _api->call(
+    _api->callNonIdempotent(
         "chat.command",
         params,
         [done](QJsonObject resp) {
@@ -596,15 +603,115 @@ void PublicBackend::runCommand(
 
 // ── Commands ──────────────────────────────────────────────────────
 
+// A chat.postMessage whose connection died mid-flight may or may not have
+// reached Slack, and resending blindly is exactly what duplicates messages.
+// Slack offers no idempotency key for API callers (client_msg_id is internal
+// to first-party clients and ignored here), so the loop is:
+//   post → ambiguous failure → wait with backoff → scan recent history for
+//   the message (own author + same text, window anchored on the last server
+//   ts seen before the send) → found: emit its echo / absent: post again.
+// It repeats until delivered or Slack returns a definitive error, which
+// surfaces as EvSendFailed.
+struct PublicBackend::SendState {
+    ConversationId  conv;
+    OutgoingMessage msg;
+    QString         wireText; // exactly what chat.postMessage was given
+    QString         oldestTs; // exclusive lower bound of the reconcile scan
+    int             attempts = 0;
+};
+
+namespace {
+// Slack entity-escapes bare & < > in stored message text; unescape both
+// sides so a sent text compares equal to its stored form.
+QString unescapedText(QString t) {
+    t.replace(QLatin1String("&lt;"), QLatin1String("<"))
+        .replace(QLatin1String("&gt;"), QLatin1String(">"))
+        .replace(QLatin1String("&amp;"), QLatin1String("&"));
+    return t.trimmed();
+}
+} // namespace
+
 void PublicBackend::sendMessage(ConversationId conv, OutgoingMessage msg) {
+    auto st      = std::make_shared<SendState>();
+    st->conv     = conv;
+    st->wireText = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+    // Prefer the server-assigned anchor (immune to local clock skew); fall
+    // back to the local clock minus a minute of slack for empty convs.
+    st->oldestTs = msg.sinceTs.isEmpty() ? QString::number(QDateTime::currentSecsSinceEpoch() - 60)
+                                         : msg.sinceTs;
+    st->msg      = std::move(msg);
+    postMessageAttempt(std::move(st));
+}
+
+void PublicBackend::postMessageAttempt(std::shared_ptr<SendState> st) {
     QUrlQuery params;
-    params.addQueryItem("channel", conv.value);
-    params.addQueryItem("text", msg.rawText.isEmpty() ? msg.text.text : msg.rawText);
-    if (msg.threadRoot)
-        params.addQueryItem("thread_ts", *msg.threadRoot);
-    _api->call("chat.postMessage", params, {}, [](QString e) {
-        qWarning() << "sendMessage error:" << e;
-    });
+    params.addQueryItem("channel", st->conv.value);
+    params.addQueryItem("text", st->wireText);
+    if (st->msg.threadRoot)
+        params.addQueryItem("thread_ts", *st->msg.threadRoot);
+    _api->callNonIdempotent(
+        "chat.postMessage",
+        params,
+        [this, st](QJsonObject resp) {
+            // Confirm from the HTTP response instead of waiting for the
+            // realtime echo — the websocket may be down while HTTP works.
+            // Session drops the second copy when the echo arrives anyway.
+            Message m = JsonMappers::toMessage(resp.value("message").toObject());
+            if (m.ts.isEmpty())
+                m.ts = resp.value("ts").toString();
+            _events.fire(EvMessageNew{st->conv, std::move(m)});
+        },
+        [this, st](QString err) {
+            if (err == WebApiClient::kConnectionLost) {
+                st->attempts++;
+                const int delay = qMin(_sendRetryDelayMs << qMin(st->attempts - 1, 6), 60'000);
+                qDebug() << "sendMessage: connection lost mid-flight, reconciling in" << delay
+                         << "ms";
+                QTimer::singleShot(delay, _api, [this, st] { reconcileSend(st); });
+                return;
+            }
+            qWarning() << "sendMessage error:" << err;
+            _events.fire(EvSendFailed{st->conv, err});
+        }
+    );
+}
+
+void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
+    const bool inThread = st->msg.threadRoot.has_value();
+    QUrlQuery  params;
+    params.addQueryItem("channel", st->conv.value);
+    params.addQueryItem("oldest", st->oldestTs);
+    params.addQueryItem("limit", "100");
+    if (inThread)
+        params.addQueryItem("ts", *st->msg.threadRoot);
+    _api->call(
+        inThread ? "conversations.replies" : "conversations.history",
+        params,
+        [this, st, inThread](QJsonObject resp) {
+            const QString want = unescapedText(st->wireText);
+            for (const auto v : resp.value("messages").toArray()) {
+                const auto o = v.toObject();
+                if (inThread && o.value("ts").toString() == *st->msg.threadRoot)
+                    continue; // the thread root itself, not a reply
+                if (!_meUserId.value.isEmpty() && o.value("user").toString() != _meUserId.value)
+                    continue;
+                if (unescapedText(o.value("text").toString()) != want)
+                    continue;
+                qDebug() << "sendMessage: message" << o.value("ts").toString()
+                         << "was delivered after all — not resending";
+                _events.fire(EvMessageNew{st->conv, JsonMappers::toMessage(o)});
+                return;
+            }
+            postMessageAttempt(st); // genuinely missing — safe to post again
+        },
+        [this, st](QString err) {
+            // Transport failures retry inside WebApiClient and never reach
+            // here; a Slack-level error means the conversation itself is
+            // unusable (gone, kicked, …) — resending would fail the same way.
+            qWarning() << "sendMessage reconcile error:" << err;
+            _events.fire(EvSendFailed{st->conv, err});
+        }
+    );
 }
 
 void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities text) {
@@ -682,7 +789,7 @@ void PublicBackend::scheduleMessage(ConversationId conv, OutgoingMessage msg, qi
     params.addQueryItem("post_at", QString::number(postAt));
     if (msg.threadRoot)
         params.addQueryItem("thread_ts", *msg.threadRoot);
-    _api->call("chat.scheduleMessage", params, {}, [](QString e) {
+    _api->callNonIdempotent("chat.scheduleMessage", params, {}, [](QString e) {
         qWarning() << "scheduleMessage error:" << e;
     });
 }

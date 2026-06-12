@@ -12,6 +12,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QQueue>
 #include <QSet>
 #include <QTimer>
 #include <functional>
@@ -215,6 +216,11 @@ private:
     // reassigning the variable notifies users() subscribers.
     void patchMeUser(const std::function<void(User &)> &fn);
 
+    // False when this (conv, ts) was already delivered once — a duplicate
+    // echo (chat.postMessage response + realtime) or a Socket Mode envelope
+    // redelivery. Remembers the last 512 sightings.
+    bool firstSighting(const ConversationId &conv, const Ts &ts);
+
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
 
@@ -239,6 +245,8 @@ private:
         bool    withFiles = false;
     };
     QHash<QString, QList<PendingSend>> _pendingSends; // conv.value → FIFO queue
+    QSet<QString>                      _seenMsgKeys;  // "conv|ts" of delivered messages
+    QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
     QHash<QString, User>               _botUsers;     // bot_id → User; for bots not in users.list
     QSet<QString>             _pendingBotFetches;     // bot_ids with an in-flight bots.info request
     rpl::event_stream<UserId> _botInfoHub;

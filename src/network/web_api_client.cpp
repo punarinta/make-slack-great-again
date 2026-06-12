@@ -8,7 +8,49 @@
 #include <QTimer>
 #include <QDebug>
 
-const QString WebApiClient::kBaseUrl = "https://slack.com/api/";
+const QString WebApiClient::kBaseUrl        = "https://slack.com/api/";
+const QString WebApiClient::kConnectionLost = "connection_lost";
+
+namespace {
+
+// Did the failed request definitely never get processed by the server (Safe
+// to resend anything), possibly get processed with only the response lost
+// (Ambiguous — resending a non-idempotent call could duplicate its effect),
+// or fail in a way retrying won't fix (Fatal)?
+enum class FailureClass { Safe, Ambiguous, Fatal };
+
+FailureClass classifyTransportError(QNetworkReply::NetworkError e) {
+    switch (e) {
+    // The connection was never established — nothing reached Slack.
+    case QNetworkReply::ConnectionRefusedError:
+    case QNetworkReply::HostNotFoundError:
+    case QNetworkReply::NetworkSessionFailedError:
+    case QNetworkReply::TemporaryNetworkFailureError:
+    case QNetworkReply::SslHandshakeFailedError:
+    case QNetworkReply::ProxyConnectionRefusedError:
+    case QNetworkReply::ProxyNotFoundError:
+        return FailureClass::Safe;
+    // The request may have been sent and processed; only the response is
+    // known to be missing. Includes HTTP 5xx — Slack documents that parts of
+    // an operation can succeed before an internal error is raised.
+    case QNetworkReply::RemoteHostClosedError:
+    case QNetworkReply::TimeoutError:
+    case QNetworkReply::OperationCanceledError: // transfer-timeout abort
+    case QNetworkReply::ProtocolFailure:
+    case QNetworkReply::ProxyConnectionClosedError:
+    case QNetworkReply::ProxyTimeoutError:
+    case QNetworkReply::InternalServerError:
+    case QNetworkReply::ServiceUnavailableError:
+    case QNetworkReply::UnknownNetworkError:
+    case QNetworkReply::UnknownProxyError:
+    case QNetworkReply::UnknownServerError:
+        return FailureClass::Ambiguous;
+    default:
+        return FailureClass::Fatal;
+    }
+}
+
+} // namespace
 
 WebApiClient::WebApiClient(QObject *parent)
     : QObject(parent), _nam(new QNetworkAccessManager(this)) {}
@@ -37,10 +79,20 @@ void WebApiClient::call(
     enqueue({method, std::move(params), {}, std::move(onSuccess), std::move(onError), quietErrors});
 }
 
+void WebApiClient::callNonIdempotent(
+    const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError
+) {
+    PendingCall c{method, std::move(params), {}, std::move(onSuccess), std::move(onError)};
+    c.idempotent = false;
+    enqueue(std::move(c));
+}
+
 void WebApiClient::postJson(
     const QString &method, const QJsonObject &body, OnSuccess onSuccess, OnError onError
 ) {
-    enqueue({method, {}, body, std::move(onSuccess), std::move(onError)});
+    PendingCall c{method, {}, body, std::move(onSuccess), std::move(onError)};
+    c.idempotent = false;
+    enqueue(std::move(c));
 }
 
 void WebApiClient::rawPost(
@@ -51,6 +103,7 @@ void WebApiClient::rawPost(
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
+    req.setTransferTimeout(_transferTimeoutMs);
     auto *reply = _nam->post(req, data);
     connect(reply, &QNetworkReply::finished, this, [reply, onDone, onError]() {
         reply->deleteLater();
@@ -72,6 +125,7 @@ void WebApiClient::downloadUrl(
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
+    req.setTransferTimeout(_transferTimeoutMs);
     auto *reply = _nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, onData, onError]() {
         reply->deleteLater();
@@ -162,6 +216,10 @@ void WebApiClient::execute(const PendingCall &c) {
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
+    // Without this a dead connection hangs the single-slot queue indefinitely
+    // (and the message that's "sending" stays translucent forever). The timer
+    // resets whenever bytes move, so it only fires on a genuinely stuck call.
+    req.setTransferTimeout(_transferTimeoutMs);
 
     QNetworkReply *reply = nullptr;
     if (!c.jsonBody.isEmpty()) {
@@ -170,6 +228,17 @@ void WebApiClient::execute(const PendingCall &c) {
         req.setUrl(url);
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
         reply = _nam->post(req, QJsonDocument(c.jsonBody).toJson(QJsonDocument::Compact));
+    } else if (!c.idempotent) {
+        // POST with form body. Qt's HTTP stack transparently retransmits GET
+        // requests when a connection dies mid-flight (HTTP deems GET safe to
+        // repeat) — for a Slack write method that re-applies the call and,
+        // for chat.postMessage, duplicates the message. POSTs are never
+        // auto-retransmitted, so the ambiguity surfaces here and is handled
+        // by the classification in handleReply instead of inside Qt.
+        url.setQuery(QUrlQuery{});
+        req.setUrl(url);
+        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+        reply = _nam->post(req, c.params.toString(QUrl::FullyEncoded).toUtf8());
     } else {
         // GET with query params
         url.setQuery(c.params);
@@ -200,23 +269,31 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
     }
 
     if (reply->error() != QNetworkReply::NoError) {
-        // A kept-alive connection that the server (or a suspend cycle) silently
-        // killed surfaces as RemoteHostClosedError / ProtocolFailure ("HTTP/2
-        // protocol error") on reuse. Drop the cached connections and retry once.
-        const bool staleConnection = reply->error() == QNetworkReply::RemoteHostClosedError ||
-                                     reply->error() == QNetworkReply::ProtocolFailure;
-        if (staleConnection && c.transportRetries == 0) {
-            qDebug() << "WebApiClient: transport error" << reply->errorString() << "on" << c.method
-                     << "— clearing connection cache, retrying";
+        const FailureClass cls = classifyTransportError(reply->error());
+        const bool         retryable =
+            cls == FailureClass::Safe || (cls == FailureClass::Ambiguous && c.idempotent);
+        if (retryable) {
             c.transportRetries++;
-            _nam->clearConnectionCache();
+            // A kept-alive connection that the server (or a suspend cycle)
+            // silently killed surfaces as RemoteHostClosedError /
+            // ProtocolFailure on reuse — drop the cached connections so the
+            // retry runs on a fresh one.
+            if (c.transportRetries == 1)
+                _nam->clearConnectionCache();
+            const int delay = retryDelayMs(c.transportRetries);
+            qDebug() << "WebApiClient: transport error" << reply->errorString() << "on" << c.method
+                     << "— retry" << c.transportRetries << "in" << delay << "ms";
+            _throttled = true;
             _queue.prepend(std::move(c));
-            tryNext();
+            QTimer::singleShot(delay, this, [this] {
+                _throttled = false;
+                tryNext();
+            });
             return;
         }
-        qWarning() << "WebApiClient error:" << reply->errorString();
+        qWarning() << "WebApiClient error:" << reply->errorString() << "on" << c.method;
         if (c.onError)
-            c.onError(reply->errorString());
+            c.onError(cls == FailureClass::Ambiguous ? kConnectionLost : reply->errorString());
         tryNext();
         return;
     }
@@ -259,4 +336,14 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
     if (c.onSuccess)
         c.onSuccess(obj);
     tryNext();
+}
+
+int WebApiClient::retryDelayMs(int attempt) const {
+    if (attempt <= 1)
+        return 0;
+    constexpr int kMaxDelayMs = 60'000;
+    int           d           = _retryBaseDelayMs;
+    for (int i = 2; i < attempt && d < kMaxDelayMs; ++i)
+        d *= 2;
+    return qMin(d, kMaxDelayMs);
 }

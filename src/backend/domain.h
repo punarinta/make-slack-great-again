@@ -325,6 +325,10 @@ struct OutgoingMessage {
     TextWithEntities  text;
     QString           rawText; // original mrkdwn source; sent verbatim to chat.postMessage
     std::optional<Ts> threadRoot;
+    // Latest server ts known for the conversation when the send started.
+    // Anchors the duplicate-check window when a send must be reconciled after
+    // a connection loss (server-assigned, so immune to local clock skew).
+    Ts                sinceTs;
 };
 
 // --- Realtime events (normalized from both Socket Mode and internal ws) ---
@@ -378,6 +382,13 @@ struct EvMemberJoined {
     ConversationId conv;
     UserId         user;
 };
+// A sendMessage definitively failed (Slack rejected it — not a transport
+// problem, those are retried). Session removes the optimistic copy and
+// surfaces the reason to the user.
+struct EvSendFailed {
+    ConversationId conv;
+    QString        reason; // Slack error string, e.g. "not_in_channel"
+};
 
 // --- Search ---
 
@@ -411,4 +422,5 @@ using Event = std::variant<
     EvPresenceChanged,
     EvDndChanged,
     EvChannelCreated,
-    EvMemberJoined>;
+    EvMemberJoined,
+    EvSendFailed>;
