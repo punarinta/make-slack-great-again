@@ -72,6 +72,11 @@ add_msga_qt_test(test_token_store
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
 )
 
+add_msga_qt_test(test_time_format
+    test_time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+)
+
 add_msga_test(test_fake_backend
     test_fake_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
@@ -94,6 +99,7 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
@@ -121,6 +127,7 @@ add_msga_widget_test(test_user_profile_card
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 target_link_libraries(test_user_profile_card PRIVATE Qt6::Test)
@@ -137,6 +144,7 @@ target_link_libraries(test_context_menu PRIVATE Qt6::Test)
 add_msga_widget_test(test_search_widget
     test_search_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/search/search_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
@@ -186,6 +194,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )

@@ -6,6 +6,7 @@
 #include "ui/theme.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
+#include "util/time_format.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -101,7 +102,7 @@ QString formatTs(const Ts &ts) {
     double secs = ts.toDouble(&ok);
     if (!ok)
         return ts;
-    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs)).toString("h:mm AP");
+    return TimeFmt::formatTime(static_cast<qint64>(secs));
 }
 
 QDate tsToDate(const Ts &ts) {
@@ -121,9 +122,7 @@ QString formatDateLabel(const Ts &ts) {
         return QCoreApplication::translate("MsgRender", "Today");
     if (date == today.addDays(-1))
         return QCoreApplication::translate("MsgRender", "Yesterday");
-    if (date.year() == today.year())
-        return date.toString("MMMM d");
-    return date.toString("MMMM d, yyyy");
+    return TimeFmt::formatDate(date);
 }
 
 QString lastReplyLabel(const Ts &ts) {
@@ -132,15 +131,14 @@ QString lastReplyLabel(const Ts &ts) {
     if (!ok)
         return {};
     const QDateTime dt    = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs));
-    const QString   time  = dt.toString("h:mm AP");
+    const QString   time  = TimeFmt::formatTime(dt);
     const QDate     today = QDate::currentDate();
     if (dt.date() == today)
         return QCoreApplication::translate("MsgRender", "today at %1").arg(time);
     if (dt.date() == today.addDays(-1))
         return QCoreApplication::translate("MsgRender", "yesterday at %1").arg(time);
-    const QString day = dt.date().year() == today.year() ? dt.date().toString("MMMM d")
-                                                         : dt.date().toString("MMMM d, yyyy");
-    return QCoreApplication::translate("MsgRender", "%1 at %2").arg(day, time);
+    return QCoreApplication::translate("MsgRender", "%1 at %2")
+        .arg(TimeFmt::formatDate(dt.date()), time);
 }
 
 // Resolve a UserMention entity's display name via entity.data (the user ID).

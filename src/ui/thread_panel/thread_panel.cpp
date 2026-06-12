@@ -98,6 +98,10 @@ void ThreadPanel::close() {
     _composer->setEnabled(false);
 }
 
+void ThreadPanel::refreshTimestamps() {
+    _msgList->viewport()->update();
+}
+
 void ThreadPanel::applyTheme() {
     setStyleSheet(QString("QWidget#threadPanel { border-left: 1px solid %1; background: %2; }")
                       .arg(Th::qss(Th::c().divider.def), Th::qss(Th::c().surface.raised)));

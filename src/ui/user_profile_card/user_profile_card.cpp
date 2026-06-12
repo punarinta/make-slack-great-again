@@ -6,6 +6,7 @@
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
+#include "util/time_format.h"
 
 #include <QApplication>
 #include <QDateTime>
@@ -72,8 +73,8 @@ QString UserProfileCard::roleLabel() const {
 QString UserProfileCard::localTimeText() const {
     if (!_user.hasTz)
         return {};
-    const QTime t = QDateTime::currentDateTimeUtc().addSecs(_user.tzOffset).time();
-    return tr("%1 local time").arg(t.toString("h:mm AP"));
+    const QDateTime dt = QDateTime::currentDateTimeUtc().addSecs(_user.tzOffset);
+    return tr("%1 local time").arg(TimeFmt::formatTime(dt));
 }
 
 void UserProfileCard::relayout() {

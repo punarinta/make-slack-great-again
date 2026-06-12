@@ -24,6 +24,8 @@ public:
     void setSession(Session *session);
     void openThread(ConversationId conv, Ts rootTs);
     void close();
+    // Repaint the embedded message list, e.g. after the time-format setting changed.
+    void refreshTimestamps();
 
 signals:
     void closeRequested();

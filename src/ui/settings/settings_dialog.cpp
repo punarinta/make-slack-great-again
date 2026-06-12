@@ -6,6 +6,7 @@
 #include "ui/theme_manager.h"
 #include "app_credentials.h"
 #include "llm/llm_service.h"
+#include "util/time_format.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -131,6 +132,65 @@ void SettingsDialog::buildPanel() {
     auto *appearHeading = new QLabel(tr("Appearance"), appearPage);
     appearHeading->setObjectName("appearHeading");
     alay->addWidget(appearHeading);
+
+    // ── Language ──────────────────────────────────────────────────────
+    _startupLanguage = TimeFmt::language();
+
+    auto *langBox = new QGroupBox(tr("Language"), appearPage);
+    langBox->setObjectName("langBox");
+    auto *langLayout = new QVBoxLayout(langBox);
+    langLayout->setSpacing(8);
+    langLayout->setContentsMargins(0, 12, 0, 0);
+
+    auto *langRow   = new QHBoxLayout;
+    auto *langLabel = new QLabel(tr("App language"), langBox);
+    langLabel->setObjectName("langLabel");
+    langRow->addWidget(langLabel);
+
+    _language = new QComboBox(langBox);
+    // Language names are intentionally not translated — each stays readable
+    // to a speaker of that language regardless of the active locale.
+    _language->addItem(tr("System default"), "system");
+    _language->addItem("English", "en");
+    _language->addItem("日本語", "ja");
+    _language->setFixedWidth(180);
+    langRow->addWidget(_language);
+    langRow->addStretch();
+    langLayout->addLayout(langRow);
+
+    _langRestartNote = new QLabel(
+        tr("The new language will be applied the next time MSGA starts.\n"
+           "Time and date formats update immediately."),
+        langBox
+    );
+    _langRestartNote->setObjectName("langRestartNote");
+    _langRestartNote->setWordWrap(true);
+    _langRestartNote->hide();
+    langLayout->addWidget(_langRestartNote);
+
+    connect(_language, &QComboBox::currentIndexChanged, this, [this] {
+        _langRestartNote->setVisible(_language->currentData().toString() != _startupLanguage);
+    });
+
+    alay->addWidget(langBox);
+
+    // ── Time format ───────────────────────────────────────────────────
+    auto *timeBox = new QGroupBox(tr("Time format"), appearPage);
+    timeBox->setObjectName("timeBox");
+    auto *timeLayout = new QVBoxLayout(timeBox);
+    timeLayout->setSpacing(6);
+    timeLayout->setContentsMargins(0, 12, 0, 0);
+
+    _time12 = new QRadioButton(tr("12-hour clock (2:34 PM)"), timeBox);
+    _time24 = new QRadioButton(tr("24-hour clock (14:34)"), timeBox);
+
+    auto *timeGroup = new QButtonGroup(timeBox);
+    timeGroup->addButton(_time12, 0);
+    timeGroup->addButton(_time24, 1);
+
+    timeLayout->addWidget(_time12);
+    timeLayout->addWidget(_time24);
+    alay->addWidget(timeBox);
 
     auto *sidebarBox = new QGroupBox(tr("Conversations sidebar"), appearPage);
     sidebarBox->setObjectName("sidebarBox");
@@ -622,16 +682,52 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.base)
                              .arg(Th::qss(th.text.primary)));
     }
-    if (auto *w = _panel->findChild<QGroupBox *>("sidebarBox")) {
+    for (const auto &boxName : {QString("sidebarBox"), QString("langBox"), QString("timeBox")}) {
+        if (auto *w = _panel->findChild<QGroupBox *>(boxName)) {
+            w->setStyleSheet(
+                QString(
+                    "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
+                    "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+                )
+                    .arg(th.fonts.caption)
+                    .arg(Th::qss(th.text.secondary))
+            );
+        }
+    }
+    if (auto *w = _panel->findChild<QLabel *>("langLabel")) {
         w->setStyleSheet(
-            QString(
-                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
-            )
-                .arg(th.fonts.caption)
-                .arg(Th::qss(th.text.secondary))
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
+    _language->setStyleSheet(
+        QString(
+            "QComboBox {"
+            "  font-size: %1px; color: %2;"
+            "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
+            "}"
+            "QComboBox:focus { border-color: %4; }"
+        )
+            .arg(th.fonts.md)
+            .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
+    );
+    _langRestartNote->setStyleSheet(
+        QString(
+            "font-size: %1px; color: %2; background: %3;"
+            "border: 1px solid %4; border-radius: 4px; padding: 6px 8px;"
+        )
+            .arg(th.fonts.caption)
+            .arg(
+                Th::qss(th.editBanner.text),
+                Th::qss(th.editBanner.bg),
+                Th::qss(th.editBanner.border)
+            )
+    );
+    _time12->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+    );
+    _time24->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+    );
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
@@ -948,12 +1044,22 @@ void SettingsDialog::saveNotifications() {
 void SettingsDialog::loadAppearance() {
     const int days = QSettings("msga", "msga").value("appearance/relevantDays", 14).toInt();
     _relevantDays->setValue(std::max(1, days));
+
+    const int idx = _language->findData(TimeFmt::language());
+    _language->setCurrentIndex(idx >= 0 ? idx : 0);
+    _langRestartNote->setVisible(_language->currentData().toString() != _startupLanguage);
+    (TimeFmt::use24h() ? _time24 : _time12)->setChecked(true);
 }
 
 void SettingsDialog::saveAppearance() {
     const int days = _relevantDays->value();
     QSettings("msga", "msga").setValue("appearance/relevantDays", days);
+
+    TimeFmt::setLanguage(_language->currentData().toString());
+    TimeFmt::setUse24h(_time24->isChecked());
+
     emit appearanceChanged(days);
+    emit timeFormatChanged();
 }
 
 static QString formatBytes(qint64 bytes) {

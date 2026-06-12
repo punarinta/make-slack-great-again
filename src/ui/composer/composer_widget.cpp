@@ -13,6 +13,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
+#include "util/time_format.h"
 
 #include <algorithm>
 
@@ -343,7 +344,6 @@ public:
 
         // Use a simple QDateTimeEdit
         _dt = new QDateTimeEdit(QDateTime::currentDateTime().addSecs(3600), this);
-        _dt->setDisplayFormat("MMM d, yyyy h:mm AP");
         _dt->setMinimumDateTime(QDateTime::currentDateTime().addSecs(60));
         _dt->setCalendarPopup(true);
         _dt->setMinimumWidth(240);
@@ -394,6 +394,10 @@ public:
 
     void open(const QPoint &pos, Callback cb) {
         _cb = std::move(cb);
+        // The popup instance is long-lived; re-apply locale/format each open so
+        // a time-format or language preference change takes effect.
+        _dt->setLocale(TimeFmt::locale());
+        _dt->setDisplayFormat(TimeFmt::editFormat());
         _dt->setDateTime(QDateTime::currentDateTime().addSecs(3600));
         adjustSize();
         move(pos);

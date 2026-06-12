@@ -6,6 +6,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "util/time_format.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -31,7 +32,7 @@ QString formatTs(const Ts &ts) {
     double secs = ts.toDouble(&ok);
     if (!ok)
         return ts;
-    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs)).toString("MMM d, h:mm AP");
+    return TimeFmt::formatDateTime(static_cast<qint64>(secs));
 }
 
 } // namespace

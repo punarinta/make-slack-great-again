@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "ui/main_window.h"
 #include "app/single_instance.h"
+#include "util/time_format.h"
 
 #include <QApplication>
 #include <QDir>
@@ -122,8 +123,15 @@ int main(int argc, char *argv[]) {
     QNetworkAccessManager preWarmNam;
     preWarmNam.connectToHostEncrypted("slack.com", 443);
 
+    // The language preference from Settings → Appearance overrides the system
+    // locale ("system" resolves to it). Changing the preference at runtime
+    // requires a restart — the translator is installed only here. Setting the
+    // default locale keeps any locale-aware formatting in sync.
+    const QLocale uiLocale = TimeFmt::locale();
+    QLocale::setDefault(uiLocale);
+
     QTranslator   translator;
-    const QString locale = QLocale::system().name(); // e.g. "fr_FR"
+    const QString locale = uiLocale.name(); // e.g. "ja_JP"
     const bool    loaded = translator.load(":/translations/msga_" + locale) ||
                         translator.load(":/translations/msga_" + locale.section('_', 0, 0));
     if (loaded)

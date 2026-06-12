@@ -93,6 +93,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     # Utilities
     src/util/emoji.cpp
     src/util/relative_time.cpp
+    src/util/time_format.cpp
 
     # Cache
     src/cache/workspace_cache.cpp
@@ -167,7 +168,7 @@ target_link_libraries(msga PRIVATE
 
 if(Qt6LinguistTools_FOUND)
     qt_add_translations(msga
-        TS_FILES translations/msga_en.ts
+        TS_FILES translations/msga_en.ts translations/msga_ja.ts
         RESOURCE_PREFIX "/translations"
     )
 endif()

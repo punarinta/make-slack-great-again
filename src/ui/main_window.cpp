@@ -372,6 +372,12 @@ QWidget *MainWindow::buildMainPage() {
     connect(
         _settingsDialog, &SettingsDialog::stateCleared, _convList, &ConvListWidget::resetVisitedAt
     );
+    // Timestamps are formatted at paint time, so a repaint is enough to apply
+    // a new 12h/24h preference everywhere.
+    connect(_settingsDialog, &SettingsDialog::timeFormatChanged, this, [this] {
+        _messageList->viewport()->update();
+        _threadPanel->refreshTimestamps();
+    });
 
     return page;
 }

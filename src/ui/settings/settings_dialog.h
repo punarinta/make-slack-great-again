@@ -33,6 +33,9 @@ public:
 signals:
     // Emitted when appearance settings are saved; carries the new relevantDays value.
     void appearanceChanged(int relevantDays);
+    // Emitted when the 12h/24h preference (or language, which affects date
+    // patterns) is saved, so timestamp-painting views can repaint.
+    void timeFormatChanged();
     // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
     void stateCleared();
 
@@ -75,7 +78,14 @@ private:
     QCheckBox    *_notifSound    = nullptr;
 
     // Appearance controls
-    QSpinBox *_relevantDays = nullptr;
+    QSpinBox     *_relevantDays    = nullptr;
+    QComboBox    *_language        = nullptr;
+    QLabel       *_langRestartNote = nullptr;
+    QRadioButton *_time12          = nullptr;
+    QRadioButton *_time24          = nullptr;
+    // Language the app actually started with — the restart note shows whenever
+    // the combo selection differs from this, even across settings re-opens.
+    QString       _startupLanguage;
 
     // AI assistance controls
     struct AiProviderRow {
