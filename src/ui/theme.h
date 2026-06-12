@@ -8,6 +8,8 @@
 #include <QColor>
 #include <QString>
 
+#include <vector>
+
 namespace Th {
 
 // ── Sub-structs ───────────────────────────────────────────────────────────────
@@ -218,6 +220,21 @@ struct Theme {
     int workspaceHslSaturation; // 65
     int workspaceHslLightness;  // 42
 };
+
+// ── Theme registry ────────────────────────────────────────────────────────────
+
+// A selectable color theme. `id` is the persisted QSettings value
+// ("appearance/theme"); the display name is translated at the UI site.
+struct ThemeInfo {
+    QString      id;
+    const Theme *theme;
+};
+
+// All built-in themes, in display order. First entry is the default (purple).
+const std::vector<ThemeInfo> &availableThemes();
+
+// nullptr for unknown ids (callers fall back to defaultTheme()).
+const Theme *themeById(const QString &id);
 
 // ── Access ────────────────────────────────────────────────────────────────────
 

@@ -106,6 +106,14 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 
+add_msga_widget_test(test_theme
+    test_theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+)
+
+target_link_libraries(test_theme PRIVATE Qt6::Test)
+
 add_msga_widget_test(test_canvas_diff
     test_canvas_diff.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp

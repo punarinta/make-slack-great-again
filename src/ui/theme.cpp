@@ -15,9 +15,9 @@ QString qss(const QColor &c) {
     return QString("rgba(%1,%2,%3,%4)").arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha());
 }
 
-// ── Default theme: Slack dark-sidebar ────────────────────────────────────────
+// ── Default theme: aubergine (Slack's classic purple sidebar) ────────────────
 
-const Theme kSlackDark = {
+const Theme kAubergine = {
     .nav =
         {
             .bg               = QColor("#3F0E40"),
@@ -211,8 +211,51 @@ const Theme kSlackDark = {
     .workspaceHslLightness  = 42,
 };
 
+// ── Blue theme: same content surfaces, ocean-blue chrome ─────────────────────
+// Copy-and-patch rather than a second 200-line literal: the delta below IS the
+// definition of what "blue" changes, and content-side tokens can never drift.
+
+static Theme makeOceanBlue() {
+    Theme t = kAubergine;
+
+    t.nav.bg              = QColor("#0E2A40");
+    t.nav.primary         = QColor("#0B2335");
+    t.nav.workspaceBubble = QColor("#15405E");
+    t.nav.itemHover       = QColor("#26465F");
+    t.nav.itemSelected    = QColor("#DBE0E5"); // white ~85% over nav.primary
+    t.nav.itemTextDim     = QColor("#C3CCD4");
+
+    t.accent.def      = QColor("#1264A3");
+    t.accent.hover    = QColor("#1B7CC4");
+    t.accent.pressed  = QColor("#0B4F82");
+    t.accent.dark     = QColor("#0B4F82");
+    t.accent.subtleBg = QColor("#E5F0F8");
+
+    t.icon.accent = t.accent.def;
+    t.titleBar.bg = t.nav.bg;
+
+    return t;
+}
+
+const Theme kOceanBlue = makeOceanBlue();
+
+const std::vector<ThemeInfo> &availableThemes() {
+    static const std::vector<ThemeInfo> kThemes = {
+        {QStringLiteral("purple"), &kAubergine},
+        {QStringLiteral("blue"), &kOceanBlue},
+    };
+    return kThemes;
+}
+
+const Theme *themeById(const QString &id) {
+    for (const auto &info : availableThemes())
+        if (info.id == id)
+            return info.theme;
+    return nullptr;
+}
+
 const Theme &defaultTheme() {
-    return kSlackDark;
+    return kAubergine;
 }
 
 QString globalQss() {

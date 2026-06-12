@@ -121,6 +121,16 @@ protected:
     // Rebuild _rows from _convs according to current section collapse state.
     void  rebuildRows();
 
+    // Icon pixmaps colorized with nav-side theme tokens. Rebuilt on
+    // themeChanged — a static-local cache would keep the old theme's tint.
+    struct IconPixmaps {
+        QPixmap chevDown, chevRight, hash, msg, bot, plusDim; // section headers, onDarkDim
+        QPixmap plusBright;                                   // add-channels hover, onDark
+        QPixmap lockDim, lockBright, lockSelected;            // private channel prefix
+        QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
+    };
+    void rebuildIconPixmaps();
+
     // Avatar helpers — trigger is non-const (starts downloads), draw is const.
     void triggerMissingAvatarDownloads();
     void drawUserAvatar(
@@ -140,6 +150,7 @@ protected:
 
     void          loadVisitedAt();
     void          saveVisitedAt();
+    IconPixmaps   _iconPx;
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr; // hover tooltip for the DM header "+"
     UserId        _meUserId;

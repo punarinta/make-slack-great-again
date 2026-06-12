@@ -46,12 +46,32 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     if (_imgCache) {
         connect(_imgCache, &ImageCache::loaded, this, [this] { viewport()->update(); });
     }
-    connect(
-        &ThemeManager::instance(),
-        &ThemeManager::themeChanged,
-        viewport(),
-        QOverload<>::of(&QWidget::update)
-    );
+    rebuildIconPixmaps();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
+        rebuildIconPixmaps();
+        viewport()->update();
+    });
+}
+
+void ConvListWidget::rebuildIconPixmaps() {
+    const auto &th  = Th::c();
+    const QSize big = QSize(kIconSize, kIconSize);
+    const QSize sm  = QSize(14, 14);
+
+    _iconPx.chevDown   = svgPixmap(":/ui/chevron-down.svg", big, th.text.onDarkDim);
+    _iconPx.chevRight  = svgPixmap(":/ui/chevron-right.svg", big, th.text.onDarkDim);
+    _iconPx.hash       = svgPixmap(":/ui/hash.svg", big, th.text.onDarkDim);
+    _iconPx.msg        = svgPixmap(":/ui/messages-square.svg", big, th.text.onDarkDim);
+    _iconPx.bot        = svgPixmap(":/ui/bot.svg", big, th.text.onDarkDim);
+    _iconPx.plusDim    = svgPixmap(":/ui/plus.svg", big, th.text.onDarkDim);
+    _iconPx.plusBright = svgPixmap(":/ui/plus.svg", big, th.text.onDark);
+
+    _iconPx.lockDim        = svgPixmap(":/ui/lock.svg", sm, th.text.onDarkDim);
+    _iconPx.lockBright     = svgPixmap(":/ui/lock.svg", sm, th.text.onDark);
+    _iconPx.lockSelected   = svgPixmap(":/ui/lock.svg", sm, th.nav.primary);
+    _iconPx.hashSmDim      = svgPixmap(":/ui/hash.svg", sm, th.text.onDarkDim);
+    _iconPx.hashSmBright   = svgPixmap(":/ui/hash.svg", sm, th.text.onDark);
+    _iconPx.hashSmSelected = svgPixmap(":/ui/hash.svg", sm, th.nav.primary);
 }
 
 void ConvListWidget::setRelevantDays(int days) {
@@ -696,26 +716,13 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
 
     // Normally show the section icon; on hover replace it with the chevron that
     // previews what clicking will do (collapsed → down chevron, expanded → right chevron).
-    // NOTE: static pixmaps baked at first paint with the theme active at that moment.
-    // They will not live-update on theme change — acceptable for V1.
-    static const QPixmap kChevDownDim =
-        svgPixmap(":/ui/chevron-down.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
-    static const QPixmap kChevRightDim =
-        svgPixmap(":/ui/chevron-right.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
-    static const QPixmap kHashDim =
-        svgPixmap(":/ui/hash.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
-    static const QPixmap kMsgDim =
-        svgPixmap(":/ui/messages-square.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
-    static const QPixmap kBotDim =
-        svgPixmap(":/ui/bot.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
-
     const QColor color = Th::c().text.onDarkDim;
 
     const QPixmap *icon;
     if (hovered)
-        icon = collapsed ? &kChevRightDim : &kChevDownDim;
+        icon = collapsed ? &_iconPx.chevRight : &_iconPx.chevDown;
     else
-        icon = (sectionId == 0) ? &kHashDim : (sectionId == 1) ? &kMsgDim : &kBotDim;
+        icon = (sectionId == 0) ? &_iconPx.hash : (sectionId == 1) ? &_iconPx.msg : &_iconPx.bot;
 
     const int iconY = y + (kRowH - kIconSize) / 2;
     int       x     = kPadH;
@@ -735,10 +742,8 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
 
     // DM section header: a "+" on hover opens the browse dialog on People.
     if (sectionId == 1 && hovered) {
-        static const QPixmap kPlusDim =
-            svgPixmap(":/ui/plus.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
         const QRect r = dmPlusRect(y);
-        p.drawPixmap(r.topLeft(), kPlusDim);
+        p.drawPixmap(r.topLeft(), _iconPx.plusDim);
     }
 }
 
@@ -756,12 +761,7 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
 
     const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
 
-    // NOTE: static pixmaps baked at first paint — will not live-update on theme change (V1).
-    static const QPixmap kPlusDim =
-        svgPixmap(":/ui/plus.svg", QSize(kIconSize, kIconSize), Th::c().text.onDarkDim);
-    static const QPixmap kPlusBright =
-        svgPixmap(":/ui/plus.svg", QSize(kIconSize, kIconSize), Th::c().text.onDark);
-    const QPixmap &plusPx = hovered ? kPlusBright : kPlusDim;
+    const QPixmap &plusPx = hovered ? _iconPx.plusBright : _iconPx.plusDim;
     p.drawPixmap(kPadH + kGroupIndent, y + (kRowH - kIconSize) / 2, plusPx);
 
     QFont font = QApplication::font();
@@ -963,25 +963,15 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     } else {
         int prefixW = 0;
         if (conv.kind == ConvKind::PrivateChannel) {
-            // NOTE: static pixmaps baked at first paint — will not live-update on theme change
-            // (V1).
-            static const QPixmap kLockDim =
-                svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().text.onDarkDim);
-            static const QPixmap kLockBright =
-                svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().text.onDark);
-            static const QPixmap kLockSelected =
-                svgPixmap(":/ui/lock.svg", QSize(14, 14), Th::c().nav.primary);
-            const QPixmap &lockPx = isSelected ? kLockSelected : isUnread ? kLockBright : kLockDim;
+            const QPixmap &lockPx = isSelected ? _iconPx.lockSelected
+                                    : isUnread ? _iconPx.lockBright
+                                               : _iconPx.lockDim;
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, lockPx);
             prefixW = 14 + 6;
         } else {
-            static const QPixmap kHashDim =
-                svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().text.onDarkDim);
-            static const QPixmap kHashBright =
-                svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().text.onDark);
-            static const QPixmap kHashSelected =
-                svgPixmap(":/ui/hash.svg", QSize(14, 14), Th::c().nav.primary);
-            const QPixmap &hashPx = isSelected ? kHashSelected : isUnread ? kHashBright : kHashDim;
+            const QPixmap &hashPx = isSelected ? _iconPx.hashSmSelected
+                                    : isUnread ? _iconPx.hashSmBright
+                                               : _iconPx.hashSmDim;
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
             prefixW = 14 + 6;
         }

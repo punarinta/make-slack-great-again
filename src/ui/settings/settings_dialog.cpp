@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "settings_dialog.h"
+#include "theme_preview_card.h"
 #include "ui/update_checker/update_checker.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -132,6 +133,32 @@ void SettingsDialog::buildPanel() {
     auto *appearHeading = new QLabel(tr("Appearance"), appearPage);
     appearHeading->setObjectName("appearHeading");
     alay->addWidget(appearHeading);
+
+    // ── Color theme ───────────────────────────────────────────────────
+    auto *themeBox = new QGroupBox(tr("Color theme"), appearPage);
+    themeBox->setObjectName("themeBox");
+    auto *themeLayout = new QHBoxLayout(themeBox);
+    themeLayout->setSpacing(12);
+    themeLayout->setContentsMargins(0, 12, 0, 0);
+
+    auto *themeGroup = new QButtonGroup(themeBox);
+    themeGroup->setExclusive(true);
+    for (const auto &info : Th::availableThemes()) {
+        const QString name = info.id == QLatin1String("purple") ? tr("Purple")
+                             : info.id == QLatin1String("blue") ? tr("Blue")
+                                                                : info.id;
+        auto         *card = new ThemePreviewCard(info.id, name, *info.theme, themeBox);
+        themeGroup->addButton(card);
+        themeLayout->addWidget(card);
+        _themeCards.append(card);
+        // Apply + persist instantly — cheap and trivially reversible, and the
+        // dialog restyling doubles as a live preview.
+        connect(card, &QAbstractButton::clicked, this, [card] {
+            ThemeManager::instance().setThemeById(card->themeId());
+        });
+    }
+    themeLayout->addStretch();
+    alay->addWidget(themeBox);
 
     // ── Language ──────────────────────────────────────────────────────
     _startupLanguage = TimeFmt::language();
@@ -682,7 +709,8 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.base)
                              .arg(Th::qss(th.text.primary)));
     }
-    for (const auto &boxName : {QString("sidebarBox"), QString("langBox"), QString("timeBox")}) {
+    for (const auto &boxName :
+         {QString("sidebarBox"), QString("langBox"), QString("timeBox"), QString("themeBox")}) {
         if (auto *w = _panel->findChild<QGroupBox *>(boxName)) {
             w->setStyleSheet(
                 QString(
@@ -1049,6 +1077,9 @@ void SettingsDialog::loadAppearance() {
     _language->setCurrentIndex(idx >= 0 ? idx : 0);
     _langRestartNote->setVisible(_language->currentData().toString() != _startupLanguage);
     (TimeFmt::use24h() ? _time24 : _time12)->setChecked(true);
+
+    for (auto *card : _themeCards)
+        card->setChecked(card->themeId() == ThemeManager::instance().themeId());
 }
 
 void SettingsDialog::saveAppearance() {

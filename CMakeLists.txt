@@ -127,6 +127,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/user_profile_card/user_profile_card.cpp
     src/ui/workspace_switcher/workspace_switcher.cpp
     src/ui/settings/settings_dialog.cpp
+    src/ui/settings/theme_preview_card.cpp
     src/ui/search/search_widget.cpp
     src/ui/thread_panel/thread_panel.cpp
     src/ui/canvas_page/canvas_page.cpp

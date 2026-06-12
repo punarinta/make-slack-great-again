@@ -20,6 +20,7 @@ class QSpinBox;
 class QComboBox;
 class QLineEdit;
 class UpdateChecker;
+class ThemePreviewCard;
 class LlmProvider;
 
 class SettingsDialog : public QWidget {
@@ -78,14 +79,15 @@ private:
     QCheckBox    *_notifSound    = nullptr;
 
     // Appearance controls
-    QSpinBox     *_relevantDays    = nullptr;
-    QComboBox    *_language        = nullptr;
-    QLabel       *_langRestartNote = nullptr;
-    QRadioButton *_time12          = nullptr;
-    QRadioButton *_time24          = nullptr;
+    QSpinBox                 *_relevantDays    = nullptr;
+    QComboBox                *_language        = nullptr;
+    QLabel                   *_langRestartNote = nullptr;
+    QRadioButton             *_time12          = nullptr;
+    QRadioButton             *_time24          = nullptr;
+    QList<ThemePreviewCard *> _themeCards; // one per registry theme
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.
-    QString       _startupLanguage;
+    QString                   _startupLanguage;
 
     // AI assistance controls
     struct AiProviderRow {
