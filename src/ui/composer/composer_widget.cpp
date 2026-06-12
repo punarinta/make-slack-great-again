@@ -1048,6 +1048,20 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                 return true;
             }
 
+            // Up on the first line / Down on the last line can't move
+            // vertically — snap to the start/end of the line instead of the
+            // default no-op.
+            if ((key == Qt::Key_Up || key == Qt::Key_Down) && mod == Qt::NoModifier) {
+                auto       tc      = _edit->textCursor();
+                const bool up      = (key == Qt::Key_Up);
+                auto       canMove = tc;
+                if (!canMove.movePosition(up ? QTextCursor::Up : QTextCursor::Down)) {
+                    tc.movePosition(up ? QTextCursor::StartOfLine : QTextCursor::EndOfLine);
+                    _edit->setTextCursor(tc);
+                    return true;
+                }
+            }
+
             if (key == Qt::Key_Escape && !_editingTs.isEmpty()) {
                 exitEditMode();
                 return true;

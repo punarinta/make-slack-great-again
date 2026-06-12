@@ -727,3 +727,53 @@ TEST_CASE("completer stays open after typing :sm and stopping", "[composer][emoj
         CHECK(row->isVisible());
     CHECK(comp->height() > 50);
 }
+
+// ── Arrow-key boundary navigation ─────────────────────────────────────────────
+
+// Vertical cursor movement needs a laid-out document — show the widget and
+// let the layout settle before sending arrow keys.
+static void showWithText(ComposerWidget *c, const QString &text) {
+    c->show();
+    typeText(c, text);
+    pumpEvents();
+}
+
+static void placeCursor(ComposerWidget *c, int pos) {
+    QTextEdit *ed = editOf(c);
+    auto       tc = ed->textCursor();
+    tc.setPosition(pos);
+    ed->setTextCursor(tc);
+}
+
+static void sendKey(ComposerWidget *c, int key) {
+    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
+    QApplication::sendEvent(editOf(c), &press);
+}
+
+TEST_CASE("Up on the first line moves the cursor to the line start", "[composer][nav]") {
+    ComposerWidget c;
+    showWithText(&c, "first line\nsecond line");
+    placeCursor(&c, 5); // middle of "first"
+    sendKey(&c, Qt::Key_Up);
+    CHECK(editOf(&c)->textCursor().position() == 0);
+}
+
+TEST_CASE("Down on the last line moves the cursor to the line end", "[composer][nav]") {
+    ComposerWidget c;
+    showWithText(&c, "first line\nsecond line");
+    const int end = editOf(&c)->toPlainText().size();
+    placeCursor(&c, end - 4); // middle of "second line"
+    sendKey(&c, Qt::Key_Down);
+    CHECK(editOf(&c)->textCursor().position() == end);
+}
+
+TEST_CASE("Up on a non-first line still moves up a line", "[composer][nav]") {
+    ComposerWidget c;
+    showWithText(&c, "first line\nsecond line");
+    const int secondLineMid = QString("first line\nsec").size();
+    placeCursor(&c, secondLineMid);
+    sendKey(&c, Qt::Key_Up);
+    const auto tc = editOf(&c)->textCursor();
+    CHECK(tc.blockNumber() == 0);
+    CHECK(tc.position() != 0); // landed inside line 1, not snapped to its start
+}
