@@ -294,10 +294,12 @@ void ContextMenu::paintEvent(QPaintEvent *) {
             const int iconY = ir.top() + (ir.height() - kIconSize) / 2;
             if (isSelected) {
                 // Recolourise the icon pixmap to accent color at paint time.
+                // icon.size() is physical (DPR-scaled) while tinted has DPR 1 —
+                // draw into the full rect so the icon isn't shrunk by the DPR.
                 QPixmap tinted(_items[i].icon.size());
                 tinted.fill(Qt::transparent);
                 QPainter tp(&tinted);
-                tp.drawPixmap(0, 0, _items[i].icon);
+                tp.drawPixmap(tinted.rect(), _items[i].icon);
                 tp.setCompositionMode(QPainter::CompositionMode_SourceIn);
                 tp.fillRect(tinted.rect(), accentCol);
                 tp.end();
