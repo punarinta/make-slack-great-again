@@ -128,6 +128,9 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/settings/settings_dialog.cpp
     src/ui/search/search_widget.cpp
     src/ui/thread_panel/thread_panel.cpp
+    src/ui/canvas_page/canvas_page.cpp
+    src/ui/canvas_page/canvas_diff.cpp
+    src/ui/conv_tabs/conv_tabs_widget.cpp
     src/ui/welcome_tips/welcome_widget.cpp
     src/ui/app_dialog/app_dialog.cpp
     src/ui/delete_message_dialog/delete_message_dialog.cpp

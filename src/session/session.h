@@ -86,6 +86,39 @@ public:
         std::function<void(QString)>    onError = {}
     );
 
+    // --- Canvases ---
+    // Channel canvas lookup: done(fileId, isEmpty); empty fileId = no canvas.
+    void loadChannelCanvas(ConversationId conv, std::function<void(QString, bool)> done);
+    // Canvas content as HTML (Slack serves canvases as HTML via url_private).
+    void loadCanvasContent(
+        const QString                    &fileId,
+        std::function<void(QString html)> onHtml,
+        std::function<void(QString)>      onError = {}
+    );
+    // Create the conversation's channel canvas from canvas markdown.
+    void createChannelCanvas(
+        ConversationId                      conv,
+        const QString                      &markdown,
+        std::function<void(QString fileId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    );
+    // Section-based canvas edits; failures always fire errors() (done, if
+    // given, is additionally notified either way).
+    void editCanvas(
+        const QString                            &canvasId,
+        const std::vector<CanvasChange>          &changes,
+        std::function<void(bool ok, QString err)> done = {}
+    );
+    // Canvas title (tab label) + permalink ("Copy link"); empty on failure.
+    // exists=false when the file is deleted — conversations.info keeps
+    // referencing deleted channel canvases, so callers must drop theirs.
+    void loadCanvasMeta(
+        const QString                                                     &fileId,
+        std::function<void(QString title, QString permalink, bool exists)> done
+    );
+    // Permanent canvas deletion; failures fire errors().
+    void deleteCanvas(const QString &canvasId, std::function<void(bool ok)> done = {});
+
     // Custom emoji map: name → URL (custom) or "alias:name" (alias). Empty until loaded.
     const QHash<QString, QString> &emojiMap() const { return _emojiMap; }
     // Fires after the emoji map is replaced by a fresh emoji.list response —

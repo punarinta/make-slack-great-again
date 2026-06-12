@@ -100,6 +100,11 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 
+add_msga_widget_test(test_canvas_diff
+    test_canvas_diff.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp
+)
+
 add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp

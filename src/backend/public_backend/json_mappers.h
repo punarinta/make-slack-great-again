@@ -31,4 +31,14 @@ std::vector<SearchResult> toSearchResults(const QJsonArray &);
 // objects and as an object keyed by command name; handles either shape.
 std::vector<SlashCommand> toSlashCommands(const QJsonValue &);
 
+// Domain → Slack JSON: canvases.edit "changes" array.
+QJsonArray toCanvasChanges(const std::vector<CanvasChange> &);
+
+// Channel canvas lookup on a conversations.info/list "channel" object, across
+// both server shapes: paid teams expose properties.canvas {file_id, is_empty};
+// free-team channel canvases appear only as a properties.tabs[] entry of
+// type "canvas" with data.file_id (no is_empty — reported as false).
+// Returns {fileId, isEmpty}; empty fileId = no canvas.
+std::pair<QString, bool> channelCanvas(const QJsonObject &channel);
+
 } // namespace JsonMappers

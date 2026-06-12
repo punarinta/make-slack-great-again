@@ -947,3 +947,174 @@ void PublicBackend::downloadFile(
 ) {
     _api->downloadUrl(QUrl(url), std::move(onData), std::move(onError));
 }
+
+void PublicBackend::loadChannelCanvas(ConversationId id, std::function<void(QString, bool)> done) {
+    QUrlQuery params;
+    params.addQueryItem("channel", id.value);
+    _api->call(
+        "conversations.info",
+        params,
+        [done](QJsonObject resp) {
+            const auto [fileId, isEmpty] =
+                JsonMappers::channelCanvas(resp.value("channel").toObject());
+            if (done)
+                done(fileId, isEmpty);
+        },
+        [done, id](QString err) {
+            qWarning() << "loadChannelCanvas error:" << id.value << err;
+            if (done)
+                done({}, true);
+        }
+    );
+}
+
+void PublicBackend::loadCanvasContent(
+    const QString                    &fileId,
+    std::function<void(QString html)> onHtml,
+    std::function<void(QString)>      onError
+) {
+    // files.info → url_private → authed GET; canvases come back as HTML
+    // (content-type text/html, <div class="quip-canvas-content">…).
+    QUrlQuery params;
+    params.addQueryItem("file", fileId);
+    _api->call(
+        "files.info",
+        params,
+        [this, onHtml, onError](QJsonObject resp) {
+            const QString url = resp.value("file").toObject().value("url_private").toString();
+            if (url.isEmpty()) {
+                if (onError)
+                    onError(QStringLiteral("canvas has no url_private"));
+                return;
+            }
+            _api->downloadUrl(
+                QUrl(url),
+                [onHtml](QByteArray data) {
+                    if (onHtml)
+                        onHtml(QString::fromUtf8(data));
+                },
+                onError
+            );
+        },
+        [onError](QString err) {
+            qWarning() << "loadCanvasContent error:" << err;
+            if (onError)
+                onError(err);
+        }
+    );
+}
+
+void PublicBackend::createChannelCanvas(
+    ConversationId                      id,
+    const QString                      &markdown,
+    std::function<void(QString fileId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    QJsonObject body;
+    body["channel_id"] = id.value;
+    if (!markdown.isEmpty())
+        body["document_content"] = QJsonObject{{"type", "markdown"}, {"markdown", markdown}};
+    _api->postJson(
+        "conversations.canvases.create",
+        body,
+        [onSuccess](QJsonObject resp) {
+            if (onSuccess)
+                onSuccess(resp.value("canvas_id").toString());
+        },
+        [onError](QString e) {
+            qWarning() << "createChannelCanvas error:" << e;
+            if (onError)
+                onError(e);
+        }
+    );
+}
+
+void PublicBackend::loadCanvasMeta(
+    const QString &fileId, std::function<void(QString title, QString permalink, bool exists)> done
+) {
+    QUrlQuery params;
+    params.addQueryItem("file", fileId);
+    _api->call(
+        "files.info",
+        params,
+        [done](QJsonObject resp) {
+            const auto file = resp.value("file").toObject();
+            if (done)
+                done(file.value("title").toString(), file.value("permalink").toString(), true);
+        },
+        [done](QString err) {
+            qWarning() << "loadCanvasMeta error:" << err;
+            const bool gone =
+                err == QLatin1String("file_deleted") || err == QLatin1String("file_not_found");
+            if (done)
+                done({}, {}, !gone);
+        }
+    );
+}
+
+void PublicBackend::deleteCanvas(
+    const QString &canvasId, std::function<void(bool ok, QString err)> done
+) {
+    QJsonObject body;
+    body["canvas_id"] = canvasId;
+    _api->postJson(
+        "canvases.delete",
+        body,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            qWarning() << "deleteCanvas error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}
+
+void PublicBackend::editCanvas(
+    const QString                            &canvasId,
+    const std::vector<CanvasChange>          &changes,
+    std::function<void(bool ok, QString err)> done
+) {
+    if (changes.empty()) {
+        if (done)
+            done(true, {});
+        return;
+    }
+    // canvases.edit rejects more than one item in "changes" (verified:
+    // "[ERROR] no more than 1 items allowed") — send the ops one call each,
+    // in order, aborting the sequence on the first failure.
+    auto queue = std::make_shared<std::deque<CanvasChange>>(changes.begin(), changes.end());
+    sendNextCanvasChange(canvasId, std::move(queue), std::move(done));
+}
+
+void PublicBackend::sendNextCanvasChange(
+    const QString                            &canvasId,
+    std::shared_ptr<std::deque<CanvasChange>> queue,
+    std::function<void(bool ok, QString err)> done
+) {
+    const CanvasChange change = queue->front();
+    queue->pop_front();
+
+    QJsonObject body;
+    body["canvas_id"] = canvasId;
+    body["changes"]   = JsonMappers::toCanvasChanges({change});
+    _api->postJson(
+        "canvases.edit",
+        body,
+        [this, canvasId, queue = std::move(queue), done](QJsonObject) mutable {
+            if (queue->empty()) {
+                if (done)
+                    done(true, {});
+                return;
+            }
+            sendNextCanvasChange(canvasId, std::move(queue), std::move(done));
+        },
+        [done](QString e) {
+            qWarning() << "editCanvas error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}

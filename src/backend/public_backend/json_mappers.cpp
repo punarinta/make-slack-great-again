@@ -100,23 +100,86 @@ Conversation toConversation(const QJsonObject &o) {
                           : (!latestTs.isEmpty() && !lastRead.isEmpty() && latestTs > lastRead) ? 1
                                                                                                 : 0;
 
+    // Channel canvas (conversations.info; conversations.list may omit "properties").
+    const auto [canvasFileId, canvasIsEmpty] = channelCanvas(o);
+
     return Conversation{
         .id   = ConversationId{o.value("id").toString()},
         .kind = kind,
         .name = o.value("name").toString(o.value("user").toString()), // Im: use user id as fallback
-        .description  = !topic.isEmpty() ? topic : purpose,
-        .isMember     = o.value("is_member").toBool(true),
-        .memberCount  = o.value("num_members").toInt(),
-        .lastRead     = lastRead,
-        .latestTs     = latestTs,
-        .unread       = unread,
-        .mentionCount = o.value("mention_count").toInt(),
-        .dmUser       = dmUser,
-        .members      = std::move(members),
-        .isMuted      = o.value("is_muted").toBool(),
-        .isStarred    = o.value("is_starred").toBool(),
-        .notifLevel   = notifLevel,
+        .description   = !topic.isEmpty() ? topic : purpose,
+        .isMember      = o.value("is_member").toBool(true),
+        .memberCount   = o.value("num_members").toInt(),
+        .lastRead      = lastRead,
+        .latestTs      = latestTs,
+        .unread        = unread,
+        .mentionCount  = o.value("mention_count").toInt(),
+        .dmUser        = dmUser,
+        .members       = std::move(members),
+        .isMuted       = o.value("is_muted").toBool(),
+        .isStarred     = o.value("is_starred").toBool(),
+        .notifLevel    = notifLevel,
+        .canvasFileId  = canvasFileId,
+        .canvasIsEmpty = canvasIsEmpty,
     };
+}
+
+std::pair<QString, bool> channelCanvas(const QJsonObject &channel) {
+    const auto props  = channel.value("properties").toObject();
+    const auto canvas = props.value("canvas").toObject();
+    if (const auto fileId = canvas.value("file_id").toString(); !fileId.isEmpty())
+        return {fileId, canvas.value("is_empty").toBool()};
+    // Free-team shape: the channel canvas is a "canvas" tab.
+    for (const auto tab : props.value("tabs").toArray()) {
+        const auto o = tab.toObject();
+        if (o.value("type").toString() == QLatin1String("canvas")) {
+            const auto fileId = o.value("data").toObject().value("file_id").toString();
+            if (!fileId.isEmpty())
+                return {fileId, false};
+        }
+    }
+    return {{}, false};
+}
+
+QJsonArray toCanvasChanges(const std::vector<CanvasChange> &changes) {
+    QJsonArray out;
+    for (const auto &c : changes) {
+        QJsonObject op;
+        switch (c.op) {
+        case CanvasChange::Op::InsertAtStart:
+            op.insert("operation", "insert_at_start");
+            break;
+        case CanvasChange::Op::InsertAtEnd:
+            op.insert("operation", "insert_at_end");
+            break;
+        case CanvasChange::Op::InsertAfter:
+            op.insert("operation", "insert_after");
+            break;
+        case CanvasChange::Op::InsertBefore:
+            op.insert("operation", "insert_before");
+            break;
+        case CanvasChange::Op::ReplaceSection:
+        case CanvasChange::Op::ReplaceAll:
+            op.insert("operation", "replace");
+            break;
+        case CanvasChange::Op::DeleteSection:
+            op.insert("operation", "delete");
+            break;
+        case CanvasChange::Op::Rename:
+            op.insert("operation", "rename");
+            break;
+        }
+        if (!c.sectionId.isEmpty())
+            op.insert("section_id", c.sectionId);
+        if (c.op == CanvasChange::Op::Rename)
+            op.insert("title_content", QJsonObject{{"type", "markdown"}, {"markdown", c.markdown}});
+        else if (c.op != CanvasChange::Op::DeleteSection)
+            op.insert(
+                "document_content", QJsonObject{{"type", "markdown"}, {"markdown", c.markdown}}
+            );
+        out.append(op);
+    }
+    return out;
 }
 
 static std::vector<Reaction> parseReactions(const QJsonArray &arr) {

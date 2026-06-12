@@ -30,6 +30,8 @@ class SearchWidget;
 class WelcomeWidget;
 class TitleBar;
 class ThreadPanel;
+class CanvasPage;
+class ConvTabsWidget;
 class HeaderAvatarWidget;
 class PopupTooltip;
 class QSplitter;
@@ -156,7 +158,6 @@ private:
     ConvListWidget    *_convList            = nullptr;
     QLabel            *_convNameLabel       = nullptr;
     QWidget           *_msgHeader           = nullptr;
-    QWidget           *_headerDivider       = nullptr;
     QHBoxLayout       *_rightPanelLayout    = nullptr; // right-area outer layout — right/bottom gap
     QVBoxLayout       *_loggedOutPageLayout = nullptr; // same border treatment for login screen
     QSplitter         *_msgSplitter         = nullptr;
@@ -167,6 +168,10 @@ private:
     SearchWidget      *_searchWidget        = nullptr;
     WelcomeWidget     *_welcomeTips         = nullptr;
     ThreadPanel       *_threadPanel         = nullptr;
+    ConvTabsWidget    *_convTabs            = nullptr;
+    CanvasPage        *_canvasPage          = nullptr;
+    QString            _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
+    QString            _currentCanvasTitle;
 
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;

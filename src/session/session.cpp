@@ -775,6 +775,79 @@ void Session::downloadFile(
     _backend->downloadFile(url, std::move(onData), std::move(onError));
 }
 
+void Session::loadChannelCanvas(ConversationId conv, std::function<void(QString, bool)> done) {
+    _backend->loadChannelCanvas(conv, std::move(done));
+}
+
+void Session::loadCanvasContent(
+    const QString                    &fileId,
+    std::function<void(QString html)> onHtml,
+    std::function<void(QString)>      onError
+) {
+    if (!onError) {
+        onError = [this](const QString &err) {
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Could not load canvas: %1").arg(err)
+            );
+        };
+    }
+    _backend->loadCanvasContent(fileId, std::move(onHtml), std::move(onError));
+}
+
+void Session::createChannelCanvas(
+    ConversationId                      conv,
+    const QString                      &markdown,
+    std::function<void(QString fileId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    // The banner always fires on failure; a caller-provided onError is
+    // notified in addition (state cleanup), mirroring editCanvas().
+    _backend->createChannelCanvas(
+        conv,
+        markdown,
+        std::move(onSuccess),
+        [this, onError = std::move(onError)](const QString &err) {
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Could not create canvas: %1").arg(err)
+            );
+            if (onError)
+                onError(err);
+        }
+    );
+}
+
+void Session::editCanvas(
+    const QString                            &canvasId,
+    const std::vector<CanvasChange>          &changes,
+    std::function<void(bool ok, QString err)> done
+) {
+    _backend->editCanvas(canvasId, changes, [this, done](bool ok, QString err) {
+        if (!ok)
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Canvas edit failed: %1").arg(err)
+            );
+        if (done)
+            done(ok, std::move(err));
+    });
+}
+
+void Session::loadCanvasMeta(
+    const QString &fileId, std::function<void(QString title, QString permalink, bool exists)> done
+) {
+    _backend->loadCanvasMeta(fileId, std::move(done));
+}
+
+void Session::deleteCanvas(const QString &canvasId, std::function<void(bool ok)> done) {
+    _backend->deleteCanvas(canvasId, [this, done](bool ok, QString err) {
+        if (!ok)
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Canvas deletion failed: %1").arg(err)
+            );
+        if (done)
+            done(ok);
+    });
+}
+
 std::vector<Message> Session::cachedMessages(ConversationId conv) const {
     return _cache->loadMessages(conv);
 }

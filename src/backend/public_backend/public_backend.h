@@ -10,7 +10,9 @@
 
 #include <QNetworkAccessManager>
 #include <QTimer>
+#include <deque>
 #include <functional>
+#include <memory>
 #include <vector>
 
 class SocketModeRealtime;
@@ -113,6 +115,41 @@ public:
         const QString                  &url,
         std::function<void(QByteArray)> onData,
         std::function<void(QString)>    onError = {}
+    ) override;
+
+    void loadChannelCanvas(ConversationId, std::function<void(QString, bool)> done) override;
+    void loadCanvasContent(
+        const QString                    &fileId,
+        std::function<void(QString html)> onHtml,
+        std::function<void(QString)>      onError = {}
+    ) override;
+    void createChannelCanvas(
+        ConversationId,
+        const QString                      &markdown,
+        std::function<void(QString fileId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override;
+    void editCanvas(
+        const QString                            &canvasId,
+        const std::vector<CanvasChange>          &changes,
+        std::function<void(bool ok, QString err)> done = {}
+    ) override;
+
+private:
+    // canvases.edit allows one change per call; sends the queue sequentially.
+    void sendNextCanvasChange(
+        const QString                            &canvasId,
+        std::shared_ptr<std::deque<CanvasChange>> queue,
+        std::function<void(bool ok, QString err)> done
+    );
+
+public:
+    void loadCanvasMeta(
+        const QString                                                     &fileId,
+        std::function<void(QString title, QString permalink, bool exists)> done
+    ) override;
+    void deleteCanvas(
+        const QString &canvasId, std::function<void(bool ok, QString err)> done = {}
     ) override;
 
     void subscribePresence(std::vector<UserId> userIds) override;

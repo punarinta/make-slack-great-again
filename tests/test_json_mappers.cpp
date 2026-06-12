@@ -197,6 +197,110 @@ TEST_CASE("toConversation IM sets kind and dmUser", "[mappers][conv]") {
     CHECK(c.dmUser->value == "U456");
 }
 
+TEST_CASE("toConversation parses channel canvas properties", "[mappers][conv][canvas]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "properties": {"canvas": {"file_id": "F123ABC456", "is_empty": true,
+                                  "quip_thread_id": "JAB1CDefGhI"}}
+    })"));
+    CHECK(c.canvasFileId == "F123ABC456");
+    CHECK(c.canvasIsEmpty);
+}
+
+TEST_CASE(
+    "toConversation finds free-team canvas tab under properties.tabs", "[mappers][conv][canvas]"
+) {
+    // Observed shape on a free workspace: no properties.canvas, the channel
+    // canvas appears only as a tabs[] entry (verified against a real team).
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "test-channel-1",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "properties": {"tabs": [
+            {"id": "Ct0AAA", "type": "bookmarks", "data": {}},
+            {"id": "Ct0BBB", "type": "canvas",
+             "data": {"file_id": "F0BAXNFLR5W", "shared_ts": "1781244767.317469"},
+             "label": ""}
+        ]}
+    })"));
+    CHECK(c.canvasFileId == "F0BAXNFLR5W");
+    CHECK(!c.canvasIsEmpty);
+}
+
+TEST_CASE("toConversation prefers properties.canvas over tabs", "[mappers][conv][canvas]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "chan",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "properties": {
+            "canvas": {"file_id": "F_MAIN", "is_empty": true},
+            "tabs": [{"id": "Ct1", "type": "canvas", "data": {"file_id": "F_TAB"}}]
+        }
+    })"));
+    CHECK(c.canvasFileId == "F_MAIN");
+    CHECK(c.canvasIsEmpty);
+}
+
+TEST_CASE("toConversation without canvas leaves fields empty", "[mappers][conv][canvas]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(c.canvasFileId.isEmpty());
+    CHECK(!c.canvasIsEmpty);
+}
+
+// ── toCanvasChanges ──────────────────────────────────────────────────────────
+
+TEST_CASE("toCanvasChanges maps ops and document content", "[mappers][canvas]") {
+    const auto arr = JsonMappers::toCanvasChanges({
+        {.op = CanvasChange::Op::InsertAtEnd, .sectionId = {}, .markdown = "- [ ] task"},
+        {.op = CanvasChange::Op::ReplaceSection, .sectionId = "temp:C:abc", .markdown = "## Done"},
+        {.op = CanvasChange::Op::DeleteSection, .sectionId = "temp:C:xyz", .markdown = {}},
+    });
+    REQUIRE(arr.size() == 3);
+
+    const auto a = arr.at(0).toObject();
+    CHECK(a.value("operation").toString() == "insert_at_end");
+    CHECK(!a.contains("section_id"));
+    CHECK(a.value("document_content").toObject().value("type").toString() == "markdown");
+    CHECK(a.value("document_content").toObject().value("markdown").toString() == "- [ ] task");
+
+    const auto b = arr.at(1).toObject();
+    CHECK(b.value("operation").toString() == "replace");
+    CHECK(b.value("section_id").toString() == "temp:C:abc");
+
+    const auto d = arr.at(2).toObject();
+    CHECK(d.value("operation").toString() == "delete");
+    CHECK(d.value("section_id").toString() == "temp:C:xyz");
+    CHECK(!d.contains("document_content"));
+}
+
+TEST_CASE("toCanvasChanges rename uses title_content", "[mappers][canvas]") {
+    const auto arr = JsonMappers::toCanvasChanges({
+        {.op = CanvasChange::Op::Rename, .sectionId = {}, .markdown = "Project Status"},
+    });
+    REQUIRE(arr.size() == 1);
+
+    const auto r = arr.at(0).toObject();
+    CHECK(r.value("operation").toString() == "rename");
+    CHECK(!r.contains("section_id"));
+    CHECK(!r.contains("document_content"));
+    CHECK(r.value("title_content").toObject().value("type").toString() == "markdown");
+    CHECK(r.value("title_content").toObject().value("markdown").toString() == "Project Status");
+}
+
+TEST_CASE("toCanvasChanges whole-document replace omits section_id", "[mappers][canvas]") {
+    const auto arr = JsonMappers::toCanvasChanges({
+        {.op = CanvasChange::Op::ReplaceAll, .sectionId = {}, .markdown = "# Fresh\n\nbody"},
+    });
+    REQUIRE(arr.size() == 1);
+
+    const auto r = arr.at(0).toObject();
+    CHECK(r.value("operation").toString() == "replace");
+    CHECK(!r.contains("section_id"));
+    CHECK(r.value("document_content").toObject().value("markdown").toString() == "# Fresh\n\nbody");
+}
+
 TEST_CASE("toConversation unread uses unread_count when non-zero", "[mappers][conv][unread]") {
     auto c = JsonMappers::toConversation(obj(R"({
         "id": "C1", "name": "busy",

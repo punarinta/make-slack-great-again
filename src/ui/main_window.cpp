@@ -20,6 +20,8 @@
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
+#include "canvas_page/canvas_page.h"
+#include "conv_tabs/conv_tabs_widget.h"
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
 #include "create_channel_dialog/create_channel_dialog.h"
@@ -463,12 +465,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _msgHeader = msgHeader;
     rightLayout->addWidget(msgHeader);
 
-    _headerDivider = new QWidget(rightPanel);
-    _headerDivider->setFixedHeight(1);
-    _headerDivider->setAttribute(Qt::WA_StyledBackground);
-    _headerDivider->setStyleSheet(QString("background: %1;").arg(Th::qss(Th::c().divider.def)));
-    _headerDivider->hide();
-    rightLayout->addWidget(_headerDivider);
+    // Messages / canvas tab strip; paints its own bottom divider, replacing
+    // the old 1px header divider.
+    _convTabs = new ConvTabsWidget(rightPanel);
+    _convTabs->hide();
+    rightLayout->addWidget(_convTabs);
 
     // ── Error banner — shown briefly when a background network error fires ──
     _errorBanner = new QLabel(rightPanel);
@@ -498,6 +499,9 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _welcomeTips = new WelcomeWidget(_contentStack);
     _contentStack->addWidget(_welcomeTips);
     _contentStack->setCurrentWidget(_welcomeTips);
+
+    _canvasPage = new CanvasPage(_contentStack);
+    _contentStack->addWidget(_canvasPage);
 
     // Search is an overlay on msgArea — not a stack page, so it doesn't replace the
     // message list.  Show/hide it; the message list stays loaded beneath it.
@@ -559,6 +563,38 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     connect(_threadPanel, &ThreadPanel::closeRequested, this, [this] {
         _threadPanel->close();
         _threadPanel->setVisible(false);
+    });
+
+    // ── Messages / canvas tabs ────────────────────────────────────────
+    connect(_convTabs, &ConvTabsWidget::tabSelected, this, [this](ConvTabsWidget::Tab tab) {
+        if (_currentConvId.value.isEmpty())
+            return;
+        if (tab == ConvTabsWidget::Tab::Messages) {
+            _canvasPage->flushPendingSave();
+            _contentStack->setCurrentWidget(_messageList);
+            _composer->show();
+        } else {
+            _contentStack->setCurrentWidget(_canvasPage);
+            _composer->hide();
+            _canvasPage->open(_currentConvId, _currentCanvasFileId, _currentCanvasTitle);
+        }
+    });
+    connect(_canvasPage, &CanvasPage::canvasCreated, this, [this](const QString &fileId) {
+        _currentCanvasFileId = fileId;
+        _convTabs->setCanvasInfo(true, _currentCanvasTitle);
+    });
+    connect(_canvasPage, &CanvasPage::titleChanged, this, [this](const QString &title) {
+        _currentCanvasTitle = title;
+        if (!_currentCanvasFileId.isEmpty())
+            _convTabs->setCanvasInfo(true, title);
+    });
+    connect(_canvasPage, &CanvasPage::canvasDeleted, this, [this] {
+        _currentCanvasFileId.clear();
+        _currentCanvasTitle.clear();
+        _convTabs->setCanvasInfo(false);
+        _convTabs->setActiveTab(ConvTabsWidget::Tab::Messages);
+        _contentStack->setCurrentWidget(_messageList);
+        _composer->show();
     });
 
     // "Message" on the mention-hover profile card → open/create the DM and
@@ -703,9 +739,6 @@ void MainWindow::applyTheme() {
             QString("QWidget#msgHeader { background: %1; }").arg(Th::qss(th.surface.raised))
         );
     }
-    if (_headerDivider) {
-        _headerDivider->setStyleSheet(QString("background: %1;").arg(Th::qss(th.divider.def)));
-    }
     if (_convNameLabel) {
         _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
                                           .arg(th.fonts.xxl)
@@ -848,8 +881,8 @@ void MainWindow::activateWorkspace(QString teamId) {
     _composer->hide();
     if (_msgHeader)
         _msgHeader->hide();
-    if (_headerDivider)
-        _headerDivider->hide();
+    if (_convTabs)
+        _convTabs->hide();
     if (_contentStack && _messageList)
         _contentStack->setCurrentWidget(_messageList);
 
@@ -864,6 +897,15 @@ void MainWindow::activateWorkspace(QString teamId) {
         _threadPanel->close();
         _threadPanel->setVisible(false);
     }
+    if (_canvasPage) {
+        _canvasPage->flushPendingSave();
+        _canvasPage->setSession(_session);
+        _canvasPage->clear();
+    }
+    _currentCanvasFileId.clear();
+    _currentCanvasTitle.clear();
+    if (_convTabs)
+        _convTabs->setCanvasInfo(false);
 
     _activeTeamId = teamId;
     TokenStore::setActiveWorkspace(teamId);
@@ -1767,9 +1809,46 @@ void MainWindow::openConversation(int row) {
     const bool hasCachedMsgs = !_session->cachedMessages(_currentConvId).empty();
 
     _session->setReading(_currentConvId);
+    if (_canvasPage)
+        _canvasPage->flushPendingSave(); // outgoing conversation's canvas edits
     if (_contentStack)
         _contentStack->setCurrentWidget(_messageList);
     _messageList->openConversation(_currentConvId, displayName, description);
+
+    // Reset the tab strip to Messages and look up this conversation's canvas.
+    // conversations.list often omits "properties", so the cached Conversation
+    // only seeds the tab; conversations.info is authoritative.
+    if (_convTabs) {
+        _convTabs->setActiveTab(ConvTabsWidget::Tab::Messages);
+        _currentCanvasFileId = conv ? conv->canvasFileId : QString();
+        _currentCanvasTitle.clear();
+        _convTabs->setCanvasInfo(!_currentCanvasFileId.isEmpty());
+        _session->loadChannelCanvas(
+            _currentConvId, [this, convId = _currentConvId](QString fileId, bool) {
+                if (_currentConvId != convId)
+                    return;
+                _currentCanvasFileId = fileId;
+                _convTabs->setCanvasInfo(!fileId.isEmpty());
+                if (fileId.isEmpty())
+                    return;
+                _session->loadCanvasMeta(
+                    fileId, [this, convId, fileId](QString title, QString, bool exists) {
+                        if (_currentConvId != convId || _currentCanvasFileId != fileId)
+                            return;
+                        if (!exists) {
+                            // conversations.info still references a deleted canvas.
+                            _currentCanvasFileId.clear();
+                            _currentCanvasTitle.clear();
+                            _convTabs->setCanvasInfo(false);
+                            return;
+                        }
+                        _currentCanvasTitle = title;
+                        _convTabs->setCanvasInfo(true, title);
+                    }
+                );
+            }
+        );
+    }
     _composer->setEnabled(true);
     _composer->setConvKind(conv ? conv->kind : ConvKind::PublicChannel);
     _composer->setPlaceholderText(
@@ -1782,16 +1861,16 @@ void MainWindow::openConversation(int row) {
     if (hasCachedMsgs) {
         if (_msgHeader)
             _msgHeader->show();
-        if (_headerDivider)
-            _headerDivider->show();
+        if (_convTabs)
+            _convTabs->show();
         _composer->show();
     } else {
         // Messages are loading; keep header and composer hidden until the first
         // page is ready so the user doesn't see chrome around an empty chat area.
         if (_msgHeader)
             _msgHeader->hide();
-        if (_headerDivider)
-            _headerDivider->hide();
+        if (_convTabs)
+            _convTabs->hide();
         _composer->hide();
         connect(
             _messageList,
@@ -1802,8 +1881,8 @@ void MainWindow::openConversation(int row) {
                     return;
                 if (_msgHeader)
                     _msgHeader->show();
-                if (_headerDivider)
-                    _headerDivider->show();
+                if (_convTabs)
+                    _convTabs->show();
                 if (_composer)
                     _composer->show();
             },

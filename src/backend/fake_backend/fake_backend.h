@@ -70,6 +70,31 @@ public:
         const QString &, std::function<void(QByteArray)>, std::function<void(QString)> = {}
     ) override {}
 
+    void loadChannelCanvas(ConversationId, std::function<void(QString, bool)> done) override;
+    void loadCanvasContent(
+        const QString                    &fileId,
+        std::function<void(QString html)> onHtml,
+        std::function<void(QString)>      onError = {}
+    ) override;
+    void createChannelCanvas(
+        ConversationId,
+        const QString                      &markdown,
+        std::function<void(QString fileId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override;
+    void editCanvas(
+        const QString                            &canvasId,
+        const std::vector<CanvasChange>          &changes,
+        std::function<void(bool ok, QString err)> done = {}
+    ) override;
+    void loadCanvasMeta(
+        const QString                                                     &fileId,
+        std::function<void(QString title, QString permalink, bool exists)> done
+    ) override;
+    void deleteCanvas(
+        const QString &canvasId, std::function<void(bool ok, QString err)> done = {}
+    ) override;
+
     rpl::producer<Event> events() const override;
 
     // Test helpers — fire events from outside
@@ -88,5 +113,9 @@ private:
     rpl::variable<std::vector<Conversation>>          _conversations;
     rpl::variable<std::vector<User>>                  _users;
     std::unordered_map<QString, std::vector<Message>> _history; // conv id → messages
+    // Canvas fixtures: conv id → canvas file id, file id → HTML body / title.
+    std::unordered_map<QString, QString>              _convCanvas;
+    std::unordered_map<QString, QString>              _canvasHtml;
+    std::unordered_map<QString, QString>              _canvasTitle;
     rpl::event_stream<Event>                          _events;
 };

@@ -128,6 +128,86 @@ struct StubBackend : Backend {
                        ) override {
         uploadCalls.push_back({c, paths, comment, std::move(done)});
     }
+
+    // Canvas fixtures: conv id → file id, file id → HTML.
+    std::unordered_map<QString, QString> convCanvas;
+    std::unordered_map<QString, QString> canvasHtml;
+    struct EditCanvasCall {
+        QString                   canvasId;
+        std::vector<CanvasChange> changes;
+    };
+    std::vector<EditCanvasCall> editCanvasCalls;
+    bool                        editCanvasOk = true;
+
+    void loadChannelCanvas(ConversationId c, std::function<void(QString, bool)> done) override {
+        const auto it = convCanvas.find(c.value);
+        if (done)
+            done(it == convCanvas.end() ? QString() : it->second, false);
+    }
+    void loadCanvasContent(
+        const QString                    &fileId,
+        std::function<void(QString html)> onHtml,
+        std::function<void(QString)>      onError = {}
+    ) override {
+        const auto it = canvasHtml.find(fileId);
+        if (it == canvasHtml.end()) {
+            if (onError)
+                onError(QStringLiteral("canvas_not_found"));
+        } else if (onHtml) {
+            onHtml(it->second);
+        }
+    }
+    void createChannelCanvas(
+        ConversationId                      c,
+        const QString                      &markdown,
+        std::function<void(QString fileId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    ) override {
+        if (convCanvas.count(c.value)) {
+            if (onError)
+                onError(QStringLiteral("channel_canvas_already_exists"));
+            return;
+        }
+        const QString id    = QStringLiteral("FCV-%1").arg(c.value);
+        convCanvas[c.value] = id;
+        canvasHtml[id]      = QStringLiteral("<p>%1</p>").arg(markdown);
+        if (onSuccess)
+            onSuccess(id);
+    }
+    void editCanvas(
+        const QString                            &canvasId,
+        const std::vector<CanvasChange>          &changes,
+        std::function<void(bool ok, QString err)> done = {}
+    ) override {
+        editCanvasCalls.push_back({canvasId, changes});
+        if (done)
+            done(editCanvasOk, editCanvasOk ? QString() : QStringLiteral("canvas_editing_failed"));
+    }
+    std::unordered_map<QString, QString> canvasTitle;
+    std::vector<QString>                 deleteCanvasCalls;
+    bool                                 deleteCanvasOk = true;
+    void                                 loadCanvasMeta(
+                                        const QString &fileId, std::function<void(QString, QString, bool)> done
+                                    ) override {
+        if (!done)
+            return;
+        if (!canvasHtml.count(fileId)) {
+            done({}, {}, false); // file_deleted
+            return;
+        }
+        const auto it = canvasTitle.find(fileId);
+        done(
+            it == canvasTitle.end() ? QString() : it->second,
+            QStringLiteral("https://stub.slack.com/docs/T0/%1").arg(fileId),
+            true
+        );
+    }
+    void
+    deleteCanvas(const QString &canvasId, std::function<void(bool, QString)> done = {}) override {
+        deleteCanvasCalls.push_back(canvasId);
+        if (done)
+            done(deleteCanvasOk, deleteCanvasOk ? QString() : QStringLiteral("canvas_not_found"));
+    }
     void downloadFile(
         const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
     ) override {}
@@ -1882,4 +1962,118 @@ TEST_CASE_METHOD(
     const auto &ev = std::get<EvDndChanged>(collector.events[0]);
     CHECK(ev.user == UserId{"U1"});
     CHECK(ev.dndEnabled);
+}
+
+// ── Canvases ──────────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(SessionFixture, "loadChannelCanvas reports no canvas", "[session][canvas]") {
+    QString fileId = "sentinel";
+    session->loadChannelCanvas(ConversationId{"C1"}, [&](QString id, bool) { fileId = id; });
+    CHECK(fileId.isEmpty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "create then load round-trips canvas content", "[session][canvas]"
+) {
+    QString fileId;
+    session->createChannelCanvas(ConversationId{"C1"}, "hello canvas", [&](QString id) {
+        fileId = id;
+    });
+    REQUIRE(!fileId.isEmpty());
+
+    QString viaLookup;
+    session->loadChannelCanvas(ConversationId{"C1"}, [&](QString id, bool) { viaLookup = id; });
+    CHECK(viaLookup == fileId);
+
+    QString html;
+    session->loadCanvasContent(fileId, [&](QString h) { html = h; });
+    CHECK(html.contains("hello canvas"));
+}
+
+TEST_CASE_METHOD(SessionFixture, "loadCanvasContent failure fires errors()", "[session][canvas]") {
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    session->loadCanvasContent("F-NOPE", [](QString) {});
+    CHECK(err.contains("canvas_not_found"));
+}
+
+TEST_CASE_METHOD(SessionFixture, "editCanvas passes changes to backend", "[session][canvas]") {
+    session->editCanvas(
+        "F1", {{.op = CanvasChange::Op::InsertAtEnd, .sectionId = {}, .markdown = "- item"}}
+    );
+    REQUIRE(stub->editCanvasCalls.size() == 1);
+    CHECK(stub->editCanvasCalls[0].canvasId == "F1");
+    REQUIRE(stub->editCanvasCalls[0].changes.size() == 1);
+    CHECK(stub->editCanvasCalls[0].changes[0].markdown == "- item");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "editCanvas failure without handler fires errors()", "[session][canvas]"
+) {
+    stub->editCanvasOk = false;
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    session->editCanvas("F1", {{.op = CanvasChange::Op::InsertAtEnd, .markdown = "x"}});
+    CHECK(err.contains("canvas_editing_failed"));
+}
+
+TEST_CASE_METHOD(SessionFixture, "loadCanvasMeta passes title and permalink", "[session][canvas]") {
+    stub->canvasHtml["F1"]  = "<p>x</p>";
+    stub->canvasTitle["F1"] = "Roadmap";
+    QString title, permalink;
+    bool    exists = false;
+    session->loadCanvasMeta("F1", [&](QString t, QString p, bool e) {
+        title     = t;
+        permalink = p;
+        exists    = e;
+    });
+    CHECK(title == "Roadmap");
+    CHECK(permalink.contains("F1"));
+    CHECK(exists);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "loadCanvasMeta reports a deleted canvas as gone", "[session][canvas]"
+) {
+    bool exists = true;
+    session->loadCanvasMeta("F-GONE", [&](QString, QString, bool e) { exists = e; });
+    CHECK(!exists);
+}
+
+TEST_CASE_METHOD(SessionFixture, "deleteCanvas reaches the backend", "[session][canvas]") {
+    bool ok = false;
+    session->deleteCanvas("F1", [&](bool r) { ok = r; });
+    CHECK(ok);
+    REQUIRE(stub->deleteCanvasCalls.size() == 1);
+    CHECK(stub->deleteCanvasCalls[0] == "F1");
+}
+
+TEST_CASE_METHOD(SessionFixture, "deleteCanvas failure fires errors()", "[session][canvas]") {
+    stub->deleteCanvasOk = false;
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    bool ok = true;
+    session->deleteCanvas("F-NOPE", [&](bool r) { ok = r; });
+    CHECK(!ok);
+    CHECK(err.contains("canvas_not_found"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "createChannelCanvas failure fires errors() even with a handler",
+    "[session][canvas]"
+) {
+    session->createChannelCanvas(ConversationId{"C1"}, "first"); // canvas now exists
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+    bool handlerCalled = false;
+    session->createChannelCanvas(ConversationId{"C1"}, "second", {}, [&](const QString &) {
+        handlerCalled = true;
+    });
+    CHECK(handlerCalled);
+    CHECK(err.contains("channel_canvas_already_exists"));
 }

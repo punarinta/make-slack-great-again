@@ -164,3 +164,124 @@ rpl::producer<std::vector<SearchResult>> FakeBackend::searchMessages(const QStri
 rpl::producer<QHash<QString, QString>> FakeBackend::loadEmojiList() {
     return rpl::variable<QHash<QString, QString>>({}).value();
 }
+
+void FakeBackend::loadChannelCanvas(ConversationId conv, std::function<void(QString, bool)> done) {
+    if (!done)
+        return;
+    const auto it = _convCanvas.find(conv.value);
+    if (it == _convCanvas.end())
+        done({}, true);
+    else
+        done(it->second, _canvasHtml[it->second].isEmpty());
+}
+
+void FakeBackend::loadCanvasContent(
+    const QString                    &fileId,
+    std::function<void(QString html)> onHtml,
+    std::function<void(QString)>      onError
+) {
+    const auto it = _canvasHtml.find(fileId);
+    if (it == _canvasHtml.end()) {
+        if (onError)
+            onError(QStringLiteral("canvas_not_found"));
+        return;
+    }
+    if (onHtml)
+        onHtml(QStringLiteral("<div class=\"quip-canvas-content\">%1</div>").arg(it->second));
+}
+
+void FakeBackend::createChannelCanvas(
+    ConversationId                      conv,
+    const QString                      &markdown,
+    std::function<void(QString fileId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    if (_convCanvas.count(conv.value)) {
+        if (onError)
+            onError(QStringLiteral("channel_canvas_already_exists"));
+        return;
+    }
+    const QString fileId    = QStringLiteral("FCANVAS-%1").arg(conv.value);
+    _convCanvas[conv.value] = fileId;
+    // Fixture-grade markdown→HTML: one <p> per line, enough for assertions.
+    QString html;
+    for (const auto &line : markdown.split('\n', Qt::SkipEmptyParts))
+        html += QStringLiteral("<p>%1</p>").arg(line.toHtmlEscaped());
+    _canvasHtml[fileId] = html;
+    if (onSuccess)
+        onSuccess(fileId);
+}
+
+void FakeBackend::editCanvas(
+    const QString                            &canvasId,
+    const std::vector<CanvasChange>          &changes,
+    std::function<void(bool ok, QString err)> done
+) {
+    const auto it = _canvasHtml.find(canvasId);
+    if (it == _canvasHtml.end()) {
+        if (done)
+            done(false, QStringLiteral("canvas_not_found"));
+        return;
+    }
+    for (const auto &c : changes) {
+        const QString p = QStringLiteral("<p>%1</p>").arg(c.markdown.toHtmlEscaped());
+        switch (c.op) {
+        case CanvasChange::Op::InsertAtStart:
+            it->second.prepend(p);
+            break;
+        case CanvasChange::Op::InsertAtEnd:
+        case CanvasChange::Op::InsertAfter:
+        case CanvasChange::Op::InsertBefore:
+            it->second.append(p);
+            break;
+        case CanvasChange::Op::ReplaceSection:
+        case CanvasChange::Op::ReplaceAll:
+            it->second = p;
+            break;
+        case CanvasChange::Op::DeleteSection:
+            break;
+        case CanvasChange::Op::Rename:
+            _canvasTitle[canvasId] = c.markdown;
+            break;
+        }
+    }
+    if (done)
+        done(true, {});
+}
+
+void FakeBackend::loadCanvasMeta(
+    const QString &fileId, std::function<void(QString title, QString permalink, bool exists)> done
+) {
+    if (!done)
+        return;
+    if (!_canvasHtml.count(fileId)) {
+        done({}, {}, false);
+        return;
+    }
+    const auto it = _canvasTitle.find(fileId);
+    done(
+        it == _canvasTitle.end() ? QString() : it->second,
+        QStringLiteral("https://fake.slack.com/docs/T0/%1").arg(fileId),
+        true
+    );
+}
+
+void FakeBackend::deleteCanvas(
+    const QString &canvasId, std::function<void(bool ok, QString err)> done
+) {
+    if (!_canvasHtml.count(canvasId)) {
+        if (done)
+            done(false, QStringLiteral("canvas_not_found"));
+        return;
+    }
+    _canvasHtml.erase(canvasId);
+    _canvasTitle.erase(canvasId);
+    for (auto it = _convCanvas.begin(); it != _convCanvas.end();) {
+        if (it->second == canvasId)
+            it = _convCanvas.erase(it);
+        else
+            ++it;
+    }
+    if (done)
+        done(true, {});
+}

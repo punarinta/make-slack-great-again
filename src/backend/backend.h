@@ -173,6 +173,66 @@ public:
         std::function<void(QString)>    onError = {}
     ) = 0;
 
+    // --- Canvases ---
+    // Look up the conversation's channel canvas (conversations.info
+    // "properties.canvas"). done(fileId, isEmpty); empty fileId = no canvas.
+    virtual void
+    loadChannelCanvas(ConversationId, std::function<void(QString fileId, bool isEmpty)> done) {
+        if (done)
+            done({}, true);
+    }
+    // Fetch a canvas's rendered content. Slack has no read API for canvases;
+    // the file's url_private returns the document as HTML (verified: a
+    // <div class="quip-canvas-content"> whose blocks carry the section ids
+    // canvases.edit operates on). onHtml receives that HTML.
+    virtual void loadCanvasContent(
+        const QString & /*fileId*/,
+        std::function<void(QString html)> /*onHtml*/,
+        std::function<void(QString)> onError = {}
+    ) {
+        if (onError)
+            onError(QStringLiteral("not_supported"));
+    }
+    // Create the conversation's channel canvas (conversations.canvases.create)
+    // with initial canvas-markdown content (real markdown, not mrkdwn).
+    virtual void createChannelCanvas(
+        ConversationId,
+        const QString & /*markdown*/,
+        std::function<void(QString fileId)> /*onSuccess*/ = {},
+        std::function<void(QString)> onError              = {}
+    ) {
+        if (onError)
+            onError(QStringLiteral("not_supported"));
+    }
+    // Apply section-based edits to a canvas (canvases.edit).
+    virtual void editCanvas(
+        const QString & /*canvasId*/,
+        const std::vector<CanvasChange> & /*changes*/,
+        std::function<void(bool ok, QString err)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+    // Canvas display metadata (files.info): title for the tab label, permalink
+    // for "Copy link". exists=false when the file is gone (file_deleted /
+    // file_not_found) — conversations.info keeps referencing deleted channel
+    // canvases, so this is the authoritative existence check. Other failures
+    // report empty strings with exists=true.
+    virtual void loadCanvasMeta(
+        const QString & /*fileId*/,
+        std::function<void(QString title, QString permalink, bool exists)> done
+    ) {
+        if (done)
+            done({}, {}, true);
+    }
+    // Permanently delete a canvas (canvases.delete) — Slack offers no undo.
+    virtual void deleteCanvas(
+        const QString & /*canvasId*/, std::function<void(bool ok, QString err)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+
     // Subscribe to presence_change events for the given users via Socket Mode.
     // No-op on backends that don't support live presence.
     virtual void subscribePresence(std::vector<UserId> /*userIds*/) {}

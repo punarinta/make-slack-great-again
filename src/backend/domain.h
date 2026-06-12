@@ -97,10 +97,34 @@ struct Conversation {
     int            mentionCount = 0; // @mentions in channels; for DMs treat all unread as mentions
     std::optional<UserId> dmUser;    // set for Im conversations
     std::vector<UserId>   members;   // set for Mpim conversations (all participants)
-    bool                  isMuted                                = false;
-    bool                  isStarred                              = false;
-    NotificationLevel     notifLevel                             = NotificationLevel::Default;
-    bool                  operator==(const Conversation &) const = default;
+    bool                  isMuted    = false;
+    bool                  isStarred  = false;
+    NotificationLevel     notifLevel = NotificationLevel::Default;
+    QString canvasFileId; // channel canvas file id (conversations.info "properties.canvas"); empty
+                          // = none
+    bool    canvasIsEmpty                          = false;
+    bool    operator==(const Conversation &) const = default;
+};
+
+// One canvases.edit operation. Relative inserts and section ops need a
+// sectionId (the "temp:C:…" ids embedded in the canvas HTML / returned by
+// canvases.sections.lookup); markdown is canvas markdown — real markdown,
+// NOT Slack mrkdwn.
+struct CanvasChange {
+    enum class Op {
+        InsertAtStart,
+        InsertAtEnd,
+        InsertAfter,    // needs sectionId
+        InsertBefore,   // needs sectionId
+        ReplaceSection, // needs sectionId
+        ReplaceAll,
+        DeleteSection, // needs sectionId; markdown unused
+        Rename,        // markdown = new canvas title; sectionId unused
+    };
+    Op      op = Op::InsertAtEnd;
+    QString sectionId;
+    QString markdown;
+    bool    operator==(const CanvasChange &) const = default;
 };
 
 // True when mrkdwn text explicitly mentions `me` — a direct <@U…> / <@U…|name>
