@@ -1587,6 +1587,26 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
         showProfileCardFor(uid, userAnchorVpRect(pos, anchor));
         return true;
     }
+    if (MsgRender::isBotButtonAnchor(anchor)) {
+        const QString btnUrl = MsgRender::botButtonUrlFromAnchor(anchor);
+        if (!btnUrl.isEmpty()) {
+            QDesktopServices::openUrl(QUrl(btnUrl));
+            return true;
+        }
+        // Interactive bot buttons can't be triggered from here: Slack delivers
+        // button callbacks to the bot only from its own clients (the endpoints
+        // are closed to third-party API tokens) — explain instead of ignoring.
+        constexpr int kToastMs = 2600;
+        const QPoint  gPos     = viewport()->mapToGlobal(pos);
+        _tooltip->showAbove(
+            tr("Slack doesn't let third-party apps press bot buttons, we are working on a "
+               "workaround"),
+            QRect(gPos - QPoint(0, 2), QSize(1, 4))
+        );
+        _tooltipPin.setRemainingTime(kToastMs);
+        QTimer::singleShot(kToastMs, _tooltip, &QWidget::hide);
+        return true;
+    }
     const QUrl url(anchor);
     if (MailtoLink::isMailto(url)) {
         if (MailtoLink::openOrCopy(url)) {
@@ -2059,8 +2079,10 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const QString anchor       = anchorAt(pos);
     const bool    isUserAnchor = !MsgRender::userIdFromAnchor(anchor).isEmpty();
     const bool    isGifAnchor  = !MsgRender::gifKeyFromAnchor(anchor).isEmpty();
+    const bool    isBotBtn     = MsgRender::isBotButtonAnchor(anchor);
 
-    // Update link hover underline (mention chips and "GIF ▾" toggles don't get underlined)
+    // Update link hover underline (mention chips, "GIF ▾" toggles and bot
+    // buttons don't get underlined — buttons aren't links)
     if (anchor != _hoveredLinkUrl) {
         if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 &&
             _hoveredLinkRow < (int)_items.size()) {
@@ -2070,7 +2092,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
-        if (!anchor.isEmpty() && !isUserAnchor && !isGifAnchor && newHoveredRow >= 0) {
+        if (!anchor.isEmpty() && !isUserAnchor && !isGifAnchor && !isBotBtn && newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
             for (auto &ad : _items[newHoveredRow].attachDocs)
                 setDocLinkUnderline(ad.textDoc.get(), anchor, true);

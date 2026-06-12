@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QRectF>
 #include <QSet>
+#include <QUrl>
 #include <QVector>
 
 class QPainter;
@@ -73,6 +74,12 @@ QVector<QRectF> codeBlockRects(const QTextDocument *doc);
 // border-radius, so callers paint this under the document, with the painter
 // already translated to the doc origin.
 void            paintCodeBlockChrome(QPainter &p, const QTextDocument *doc);
+
+// Geometry of every bot-button cell in a laid-out message document, and the
+// rounded button face (background + border) painted underneath them — same
+// pattern as the code-block chrome. Call wherever paintCodeBlockChrome is called.
+QVector<QRectF> botButtonRects(const QTextDocument *doc);
+void            paintBotButtonChrome(QPainter &p, const QTextDocument *doc);
 QString
 buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif = nullptr);
 QString buildAttachHtml(
@@ -118,6 +125,31 @@ inline QString gifKeyFromAnchor(const QString &href) {
 // The doc owner registers theme-colored pixmaps under these urls.
 inline const QString kGifChevronExpandedRes  = QStringLiteral("msga://gif-chevron/expanded");
 inline const QString kGifChevronCollapsedRes = QStringLiteral("msga://gif-chevron/collapsed");
+
+// Bot buttons are anchors with this internal scheme (even URL buttons — a raw
+// URL href would pick up the link hover underline, and buttons aren't links).
+// "url:<percent-encoded>" buttons open their URL on click; the rest carry no
+// deliverable action — Slack routes bot-button callbacks only from its own
+// clients — so the click handler explains that instead.
+inline const QString kBotBtnAnchorPrefix = QStringLiteral("msga://botbtn/");
+
+inline bool isBotButtonAnchor(const QString &href) {
+    return href.startsWith(kBotBtnAnchorPrefix);
+}
+
+// The target URL of a bot-button anchor; empty for interactive-only buttons.
+inline QString botButtonUrlFromAnchor(const QString &href) {
+    if (!isBotButtonAnchor(href))
+        return {};
+    const QString rest = href.mid(kBotBtnAnchorPrefix.size());
+    if (!rest.startsWith(QLatin1String("url:")))
+        return {};
+    return QUrl::fromPercentEncoding(rest.mid(4).toLatin1());
+}
+
+// Marker cell spacing identifying bot-button tables in a QTextDocument (code
+// blocks and blockquotes use 0); read back by botButtonRects().
+inline constexpr int kBotBtnCellSpacing = 4;
 
 // Inline image-block size cap — matches the message list's kImgMaxW/kImgMaxH.
 inline constexpr int kBlockImgMaxW = 400;

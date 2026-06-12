@@ -143,6 +143,85 @@ TEST_CASE("buildAttachHtml footer renders after fallback content", "[render][att
     CHECK(html.indexOf("via Bot") > html.indexOf("fb text"));
 }
 
+TEST_CASE("toHtml renders a link nested in bold as <b><a>", "[render][nested]") {
+    const auto    twe  = MrkdwnParser::parse("*<https://example.com/e|Stand-Up>*");
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK(html.contains("<b><a href='https://example.com/e'"));
+    CHECK(html.contains("Stand-Up</a></b>"));
+}
+
+TEST_CASE("toHtml renders marks nested inside a blockquote", "[render][nested]") {
+    const auto    twe  = MrkdwnParser::parse("> *bold* word");
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK(html.contains("<b>bold</b>"));
+    CHECK(html.contains("<table")); // the quote's left-bar table survives
+}
+
+TEST_CASE("buildAttachHtml parses pretext as mrkdwn", "[render][attachment]") {
+    Attachment att;
+    att.pretext        = "_1 minute until this event_";
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(html.contains("<i>1 minute until this event</i>"));
+}
+
+TEST_CASE("buildAttachHtml decodes HTML entities in title and footer", "[render][attachment]") {
+    Attachment att;
+    att.title          = "Q&amp;A";
+    att.footer         = "Bits &amp; Bobs";
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(html.contains("Q&amp;A"));    // decoded to "Q&A", then HTML-escaped once
+    CHECK(!html.contains("&amp;amp;")); // not double-escaped
+    CHECK(html.contains("Bits &amp; Bobs"));
+}
+
+TEST_CASE("buildAttachHtml renders legacy action buttons, skipping fallback", "[render][buttons]") {
+    Attachment att;
+    att.fallback = "You are unable to respond from here";
+    att.buttons.push_back({"Change Response", "", ""});
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(html.contains("Change Response"));
+    CHECK(html.contains("<table"));             // button row
+    CHECK(!html.contains("unable to respond")); // fallback replaced by buttons
+    // Interactive-only button: anchor with the internal scheme, no target URL.
+    CHECK(html.contains("<a href='" + MsgRender::kBotBtnAnchorPrefix));
+    CHECK(MsgRender::botButtonUrlFromAnchor(MsgRender::kBotBtnAnchorPrefix + "0").isEmpty());
+}
+
+TEST_CASE("buildMsgHtml routes URL buttons through the botbtn anchor scheme", "[render][buttons]") {
+    Message msg;
+    Block   actions;
+    actions.typeStr = "actions";
+    actions.buttons.push_back({"Open Docs", "https://example.com/docs?a=1&b=2", ""});
+    msg.blocks.push_back(actions);
+    const QString html = MsgRender::buildMsgHtml(msg, nullptr);
+    CHECK(html.contains("Open Docs"));
+    CHECK(html.contains(MsgRender::kBotBtnAnchorPrefix + "url:"));
+    CHECK(!html.contains("<a href='https://")); // raw URL hrefs would get link hover styling
+
+    // The click handler resolves the original URL back out of the anchor.
+    const int     hrefStart = html.indexOf("href='") + 6;
+    const QString href      = html.mid(hrefStart, html.indexOf('\'', hrefStart) - hrefStart);
+    CHECK(MsgRender::isBotButtonAnchor(href));
+    CHECK(MsgRender::botButtonUrlFromAnchor(href) == "https://example.com/docs?a=1&b=2");
+}
+
+TEST_CASE(
+    "botButtonRects finds one rect per button, codeBlockRects ignores them", "[render][buttons]"
+) {
+    Attachment att;
+    att.text = MrkdwnParser::parse("pick one:");
+    att.buttons.push_back({"Yes", "", ""});
+    att.buttons.push_back({"No", "", ""});
+    QTextDocument doc;
+    doc.setHtml(MsgRender::buildAttachHtml(att, nullptr));
+    doc.setTextWidth(400);
+    const auto rects = MsgRender::botButtonRects(&doc);
+    REQUIRE(rects.size() == 2);
+    CHECK(rects[0].height() > 10);             // tall enough to look like a button
+    CHECK(rects[1].left() > rects[0].right()); // side by side
+    CHECK(MsgRender::codeBlockRects(&doc).isEmpty());
+}
+
 // ── Image blocks (Slack GIF picker / Giphy) ──────────────────────────────────
 
 static Block gifBlock() {

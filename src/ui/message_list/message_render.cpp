@@ -98,6 +98,8 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
         addBlockImage(b);
     }
     for (const auto &att : msg.attachments) {
+        if (!att.pretext.isEmpty()) // pretext is parsed as mrkdwn at render time
+            addFrom(MrkdwnParser::parse(att.pretext));
         addFrom(att.text);
         for (const auto &f : att.fields)
             addFrom(f.value);
@@ -165,26 +167,37 @@ QString resolveMention(const QString &userId, const Session *session) {
     return resolveMentionImpl(userId, session);
 }
 
-// Converts TextWithEntities to Qt-flavoured HTML for QTextDocument.
-QString toHtml(const TextWithEntities &twe, const Session *session) {
-    if (twe.entities.empty()) {
-        return twe.text.toHtmlEscaped().replace("\n", "<br>");
-    }
+static QString escapeAndBr(const QString &s) {
+    return s.toHtmlEscaped().replace("\n", "<br>");
+}
 
+// Render the entities listed in `nodes` (indices into `ents`, all spanning
+// [start,end) of `text`) plus the plain-text gaps between them. Container
+// entities (bold, links, quotes…) recurse into their children, so nested
+// spans like *<url|label>* render as a link inside <b>.
+static QString renderRange(
+    const QString                       &text,
+    int                                  start,
+    int                                  end,
+    const std::vector<int>              &nodes,
+    const std::vector<TextEntity>       &ents,
+    const std::vector<std::vector<int>> &kids,
+    const Session                       *session
+) {
     QString html;
-    int     pos    = 0;
-    auto    sorted = twe.entities;
-    std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
-        return a.offset < b.offset;
-    });
-
-    auto escapeAndBr = [](const QString &s) { return s.toHtmlEscaped().replace("\n", "<br>"); };
-
-    for (const auto &e : sorted) {
+    int     pos = start;
+    for (int idx : nodes) {
+        const auto &e = ents[idx];
         if (e.offset > pos)
-            html += escapeAndBr(twe.text.mid(pos, e.offset - pos));
-        auto rawInner = twe.text.mid(e.offset, e.length);
-        auto inner    = rawInner.toHtmlEscaped();
+            html += escapeAndBr(text.mid(pos, e.offset - pos));
+        const auto rawInner  = text.mid(e.offset, e.length);
+        const bool container = e.type == EntityType::Bold || e.type == EntityType::Italic ||
+                               e.type == EntityType::Underline || e.type == EntityType::Strike ||
+                               e.type == EntityType::Link || e.type == EntityType::Blockquote;
+        const QString inner =
+            container
+                ? renderRange(text, e.offset, e.offset + e.length, kids[idx], ents, kids, session)
+                : rawInner.toHtmlEscaped();
         switch (e.type) {
         case EntityType::Bold:
             html += "<b>" + inner + "</b>";
@@ -230,8 +243,7 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
                     Th::c().message.codeBlockBorder.name() +
                     "' style='padding:0;border-radius:2px'></td>"
                     "<td style='padding:2px 0 2px 10px;color:" +
-                    Th::qss(Th::c().message.codeText) + "'>" + inner.replace("\n", "<br>") +
-                    "</td></tr></table>";
+                    Th::qss(Th::c().message.codeText) + "'>" + inner + "</td></tr></table>";
             break;
         case EntityType::Link:
             html += "<a href='" + e.data.toHtmlEscaped() +
@@ -278,12 +290,43 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
         pos = e.offset + e.length;
         // The code-block table carries its own vertical margin — eat the newline
         // that followed the closing fence so it doesn't add a <br> on top.
-        if (e.type == EntityType::Pre && pos < twe.text.size() && twe.text[pos] == '\n')
+        if (e.type == EntityType::Pre && pos < end && text[pos] == '\n')
             ++pos;
     }
-    if (pos < twe.text.size())
-        html += escapeAndBr(twe.text.mid(pos));
+    if (pos < end)
+        html += escapeAndBr(text.mid(pos, end - pos));
     return html;
+}
+
+// Converts TextWithEntities to Qt-flavoured HTML for QTextDocument.
+QString toHtml(const TextWithEntities &twe, const Session *session) {
+    if (twe.entities.empty())
+        return escapeAndBr(twe.text);
+
+    // Parents before children: offset ascending, longer span first. The parser
+    // pushes a wrapping entity before its nested ones, so a stable sort keeps
+    // the parent first even for equal ranges (e.g. a link spanning all of a bold).
+    auto sorted = twe.entities;
+    std::stable_sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
+        return a.offset != b.offset ? a.offset < b.offset : a.length > b.length;
+    });
+
+    // Containment tree — entity spans are nested-or-disjoint by construction.
+    const int                     n = static_cast<int>(sorted.size());
+    std::vector<std::vector<int>> kids(n);
+    std::vector<int>              roots, stack;
+    for (int i = 0; i < n; ++i) {
+        const auto &e = sorted[i];
+        while (!stack.empty()) {
+            const auto &p = sorted[stack.back()];
+            if (e.offset >= p.offset && e.offset + e.length <= p.offset + p.length)
+                break;
+            stack.pop_back();
+        }
+        (stack.empty() ? roots : kids[stack.back()]).push_back(i);
+        stack.push_back(i);
+    }
+    return renderRange(twe.text, 0, twe.text.size(), roots, sorted, kids, session);
 }
 
 static void collectCodeTables(QTextFrame *frame, QVector<QTextTable *> &out) {
@@ -425,26 +468,117 @@ static QString imageBlockHtml(
     return html;
 }
 
+// Bot buttons as a row of real-looking buttons. Each button is a table cell;
+// the rounded border + background are painted underneath by
+// paintBotButtonChrome() (Qt rich text can't do border-radius), which finds
+// these tables via the kBotBtnCellSpacing marker. Every button is an anchor so
+// it's hit-testable and gets the pointing cursor: URL buttons open their URL,
+// interactive-only ones use the msga://botbtn/ scheme — clicking shows why the
+// action can't be delivered (see BotButton).
+static QString buttonsHtml(const std::vector<BotButton> &buttons) {
+    if (buttons.empty())
+        return {};
+    QString cells;
+    for (size_t i = 0; i < buttons.size(); ++i) {
+        const auto   &btn = buttons[i];
+        const QColor  fg  = btn.style == QLatin1String("danger")    ? Th::c().danger.text
+                            : btn.style == QLatin1String("primary") ? Th::c().accent.def
+                                                                    : Th::c().text.primary;
+        const QString href =
+            btn.url.isEmpty() ? kBotBtnAnchorPrefix + QString::number(i)
+                              : kBotBtnAnchorPrefix +
+                                    "url:" + QString::fromLatin1(QUrl::toPercentEncoding(btn.url));
+        cells += "<td style='padding:4px 12px'><a href='" + href.toHtmlEscaped() +
+                 "' style='color:" + Th::qss(fg) + ";font-weight:bold;text-decoration:none'>" +
+                 btn.text.toHtmlEscaped() + "</a></td>";
+    }
+    return "<table cellspacing='" + QString::number(kBotBtnCellSpacing) +
+           "' cellpadding='0' style='margin:4px 0 2px'><tr>" + cells + "</tr></table>";
+}
+
+static void collectButtonTables(QTextFrame *frame, QVector<QTextTable *> &out) {
+    for (auto it = frame->begin(); it != frame->end(); ++it) {
+        QTextFrame *child = it.currentFrame();
+        if (!child)
+            continue;
+        if (auto *table = qobject_cast<QTextTable *>(child)) {
+            // Button rows are the only tables buttonsHtml emits with this exact
+            // cell spacing (code blocks and blockquotes use 0).
+            if (qRound(table->format().cellSpacing()) == kBotBtnCellSpacing)
+                out.push_back(table);
+        }
+        collectButtonTables(child, out);
+    }
+}
+
+QVector<QRectF> botButtonRects(const QTextDocument *doc) {
+    QVector<QTextTable *> tables;
+    collectButtonTables(doc->rootFrame(), tables);
+    QVector<QRectF> rects;
+    auto           *layout = doc->documentLayout();
+    for (QTextTable *table : tables) {
+        for (int col = 0; col < table->columns(); ++col) {
+            // Same approach as codeBlockRects: rebuild each cell's rect from its
+            // block geometry + paddings (frameBoundingRect is unusable for tables).
+            const auto   cell  = table->cellAt(0, col);
+            const QRectF first = layout->blockBoundingRect(cell.firstCursorPosition().block());
+            const QRectF last  = layout->blockBoundingRect(cell.lastCursorPosition().block());
+            const auto   cf    = cell.format().toTableCellFormat();
+            rects.push_back(QRectF(
+                QPointF(first.left() - cf.leftPadding(), first.top() - cf.topPadding()),
+                QPointF(first.right() + cf.rightPadding(), last.bottom() + cf.bottomPadding())
+            ));
+        }
+    }
+    return rects;
+}
+
+void paintBotButtonChrome(QPainter &p, const QTextDocument *doc) {
+    const auto rects = botButtonRects(doc);
+    if (rects.isEmpty())
+        return;
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(Th::c().message.fileChipBorder, 1));
+    p.setBrush(Th::c().surface.raised);
+    for (const QRectF &r : rects)
+        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+    p.restore();
+}
+
+// Shared Block Kit block → HTML dispatch for buildMsgHtml/buildAttachHtml.
+// Returns true when the block embedded a real image (caller skips text fallbacks).
+static bool blockHtml(
+    QString                &html,
+    const Block            &blk,
+    const Session          *session,
+    const GifRenderContext *gif,
+    int                     blockIdx
+) {
+    if (blk.typeStr == "divider") {
+        html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
+                ";margin:4px 0'>";
+    } else if (blk.typeStr == "header") {
+        html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
+                toHtml(blk.text, session) + "</p>";
+    } else if (blk.typeStr == "image") {
+        html += imageBlockHtml(blk, session, gif, blockIdx);
+        return gif && !blk.imageUrl.isEmpty();
+    } else {
+        if (!blk.text.text.isEmpty())
+            html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
+        html += buttonsHtml(blk.buttons);
+    }
+    return false;
+}
+
 // Build the full HTML for a message's main text doc (blocks preferred over text field).
 QString buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif) {
     if (!msg.blocks.empty()) {
         QString html;
         bool    anyImage = false;
-        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi) {
-            const auto &blk = msg.blocks[bi];
-            if (blk.typeStr == "divider") {
-                html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
-                        ";margin:4px 0'>";
-            } else if (blk.typeStr == "header") {
-                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
-                        toHtml(blk.text, session) + "</p>";
-            } else if (blk.typeStr == "image") {
-                anyImage = anyImage || (gif && !blk.imageUrl.isEmpty());
-                html += imageBlockHtml(blk, session, gif, bi);
-            } else if (!blk.text.text.isEmpty()) {
-                html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
-            }
-        }
+        for (int bi = 0; bi < (int)msg.blocks.size(); ++bi)
+            anyImage = blockHtml(html, msg.blocks[bi], session, gif, bi) || anyImage;
         // An embedded image block fully represents the message — never fall back
         // to the text field (it duplicates the alt text).
         if (!html.isEmpty() || anyImage)
@@ -457,18 +591,20 @@ QString buildMsgHtml(const Message &msg, const Session *session, const GifRender
 QString
 buildAttachHtml(const Attachment &att, const Session *session, const GifRenderContext *gif) {
     QString html;
-    if (!att.pretext.isEmpty())
-        html += "<p style='margin:0 0 2px'>" + att.pretext.toHtmlEscaped() + "</p>";
+    if (!att.pretext.isEmpty()) // pretext is mrkdwn, like text
+        html += wrapParagraph(toHtml(MrkdwnParser::parse(att.pretext), session), "margin:0 0 2px");
     if (!att.authorName.isEmpty())
         html += "<p style='margin:0;font-size:0.85em;color:" + Th::qss(Th::c().text.tertiary) +
-                "'>" + att.authorName.toHtmlEscaped() + "</p>";
+                "'>" + MrkdwnParser::decodeEntities(att.authorName).toHtmlEscaped() + "</p>";
     if (!att.title.isEmpty()) {
+        const QString title = MrkdwnParser::decodeEntities(att.title).toHtmlEscaped();
         if (!att.titleLink.isEmpty())
             html += "<p style='margin:0;font-weight:bold'><a href='" +
-                    att.titleLink.toHtmlEscaped() + "' style='color:" + Th::qss(Th::c().text.link) +
-                    ";text-decoration:none'>" + att.title.toHtmlEscaped() + "</a></p>";
+                    MrkdwnParser::decodeEntities(att.titleLink).toHtmlEscaped() +
+                    "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
+                    title + "</a></p>";
         else
-            html += "<p style='margin:0;font-weight:bold'>" + att.title.toHtmlEscaped() + "</p>";
+            html += "<p style='margin:0;font-weight:bold'>" + title + "</p>";
     }
     if (!att.text.text.isEmpty())
         html += wrapParagraph(toHtml(att.text, session), "margin:2px 0 0");
@@ -476,8 +612,8 @@ buildAttachHtml(const Attachment &att, const Session *session, const GifRenderCo
     // Key/value fields (classic bot format): bold title line, value below.
     for (const auto &f : att.fields) {
         if (!f.title.isEmpty())
-            html +=
-                "<p style='margin:2px 0 0;font-weight:bold'>" + f.title.toHtmlEscaped() + "</p>";
+            html += "<p style='margin:2px 0 0;font-weight:bold'>" +
+                    MrkdwnParser::decodeEntities(f.title).toHtmlEscaped() + "</p>";
         if (!f.value.text.isEmpty())
             html += "<p style='margin:0'>" + toHtml(f.value, session) + "</p>";
     }
@@ -485,33 +621,24 @@ buildAttachHtml(const Attachment &att, const Session *session, const GifRenderCo
     // Render Block Kit blocks embedded in the attachment (modern bot format).
     bool anyImage = false;
     if (html.isEmpty() && !att.blocks.empty()) {
-        for (int bi = 0; bi < (int)att.blocks.size(); ++bi) {
-            const auto &blk = att.blocks[bi];
-            if (blk.typeStr == "divider") {
-                html += "<hr style='border:0;border-top:1px solid " + Th::qss(Th::c().divider.def) +
-                        ";margin:4px 0'>";
-            } else if (blk.typeStr == "header") {
-                html += "<p style='font-size:1.1em;font-weight:bold;margin:2px 0'>" +
-                        toHtml(blk.text, session) + "</p>";
-            } else if (blk.typeStr == "image") {
-                anyImage = anyImage || (gif && !blk.imageUrl.isEmpty());
-                html += imageBlockHtml(blk, session, gif, bi);
-            } else if (!blk.text.text.isEmpty()) {
-                html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
-            }
-        }
+        for (int bi = 0; bi < (int)att.blocks.size(); ++bi)
+            anyImage = blockHtml(html, att.blocks[bi], session, gif, bi) || anyImage;
     }
 
     // Last-resort fallback: parse as mrkdwn so any <url> links become clickable.
-    // Skipped when an image block was embedded — the fallback duplicates its alt.
-    if (html.isEmpty() && !anyImage && !att.fallback.isEmpty())
+    // Skipped when an image block was embedded (it duplicates the alt text) or
+    // when there are buttons to render (the fallback duplicates their purpose).
+    if (html.isEmpty() && !anyImage && att.buttons.empty() && !att.fallback.isEmpty())
         html += "<p style='margin:2px 0 0'>" + toHtml(MrkdwnParser::parse(att.fallback), session) +
                 "</p>";
+
+    // Legacy attachment "actions" buttons render after text/fields, like Slack.
+    html += buttonsHtml(att.buttons);
 
     // Footer always renders last, after whichever content variant was chosen.
     if (!att.footer.isEmpty())
         html += "<p style='margin:4px 0 0;font-size:0.8em;color:" + Th::qss(Th::c().text.tertiary) +
-                "'>" + att.footer.toHtmlEscaped() + "</p>";
+                "'>" + MrkdwnParser::decodeEntities(att.footer).toHtmlEscaped() + "</p>";
 
     return html;
 }
@@ -525,10 +652,11 @@ bool attachIsImageOnly(const Attachment &att) {
         return false;
     if (!att.pretext.isEmpty() || !att.authorName.isEmpty() || !att.title.isEmpty() ||
         !att.text.text.isEmpty() || !att.fields.empty() || !att.footer.isEmpty() ||
-        !att.imageUrl.isEmpty() || !att.thumbUrl.isEmpty())
+        !att.imageUrl.isEmpty() || !att.thumbUrl.isEmpty() || !att.buttons.empty())
         return false;
     for (const auto &b : att.blocks)
-        if (b.typeStr != "image" && (b.typeStr == "divider" || !b.text.text.isEmpty()))
+        if (b.typeStr != "image" &&
+            (b.typeStr == "divider" || !b.text.text.isEmpty() || !b.buttons.empty()))
             return false;
     return true;
 }

@@ -106,6 +106,21 @@ static File fileFromJson(const QJsonObject &o) {
     return f;
 }
 
+static QJsonArray buttonsToJson(const std::vector<BotButton> &buttons) {
+    QJsonArray arr;
+    for (const auto &btn : buttons)
+        arr.append(QJsonObject{{"t", btn.text}, {"u", btn.url}, {"s", btn.style}});
+    return arr;
+}
+static std::vector<BotButton> buttonsFromJson(const QJsonArray &arr) {
+    std::vector<BotButton> buttons;
+    for (const auto &v : arr) {
+        const auto o = v.toObject();
+        buttons.push_back(BotButton{o["t"].toString(), o["u"].toString(), o["s"].toString()});
+    }
+    return buttons;
+}
+
 static QJsonObject toJson(const Block &b) {
     QJsonObject o;
     o["ty"] = b.typeStr;
@@ -114,6 +129,8 @@ static QJsonObject toJson(const Block &b) {
         o["iu"] = b.imageUrl;
     if (!b.altText.isEmpty())
         o["at"] = b.altText;
+    if (!b.buttons.empty())
+        o["bt"] = buttonsToJson(b.buttons);
     return o;
 }
 static Block blockFromJson(const QJsonObject &o) {
@@ -122,6 +139,7 @@ static Block blockFromJson(const QJsonObject &o) {
     b.text     = tweFromJson(o["tx"].toObject());
     b.imageUrl = o["iu"].toString();
     b.altText  = o["at"].toString();
+    b.buttons  = buttonsFromJson(o["bt"].toArray());
     return b;
 }
 
@@ -151,6 +169,8 @@ static QJsonObject toJson(const Attachment &a) {
             arr.append(toJson(b));
         o["bl"] = arr;
     }
+    if (!a.buttons.empty())
+        o["bt"] = buttonsToJson(a.buttons);
     return o;
 }
 static Attachment attachmentFromJson(const QJsonObject &o) {
@@ -171,6 +191,7 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
     a.thumbHeight = o["tg"].toInt();
     for (const auto &v : o["bl"].toArray())
         a.blocks.push_back(blockFromJson(v.toObject()));
+    a.buttons = buttonsFromJson(o["bt"].toArray());
     return a;
 }
 

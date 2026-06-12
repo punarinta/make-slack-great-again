@@ -54,12 +54,16 @@ add_msga_test(test_nav_history
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
 add_msga_test(test_json_mappers
     test_json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
 add_msga_qt_test(test_workspace_cache
@@ -95,6 +99,8 @@ add_msga_qt_test(test_session
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 # session.cpp probes image dimensions for optimistic upload previews (QImageReader)
@@ -108,6 +114,7 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
@@ -168,6 +175,7 @@ add_msga_widget_test(test_search_widget
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
@@ -181,6 +189,8 @@ add_msga_qt_test(test_token_refresh
     ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 target_link_libraries(test_token_refresh PRIVATE Qt6::Network Qt6::WebSockets)
@@ -194,6 +204,8 @@ add_msga_qt_test(test_send_retry
     ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 target_link_libraries(test_send_retry PRIVATE Qt6::Network Qt6::WebSockets)
@@ -224,8 +236,11 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
+
+

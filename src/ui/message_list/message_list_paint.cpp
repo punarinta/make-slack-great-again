@@ -292,6 +292,7 @@ void MessageListWidget::paintRow(
         }
 
         MsgRender::paintCodeBlockChrome(p, item.textDoc.get());
+        MsgRender::paintBotButtonChrome(p, item.textDoc.get());
         item.textDoc->documentLayout()->draw(&p, pCtx);
     }
     p.restore();
@@ -552,6 +553,7 @@ void MessageListWidget::paintAttachments(
             p.save();
             p.translate(attX + textIndent, y);
             MsgRender::paintCodeBlockChrome(p, ad.textDoc.get());
+            MsgRender::paintBotButtonChrome(p, ad.textDoc.get());
             ad.textDoc->drawContents(&p, QRectF(0, 0, textW - textIndent, docH));
             p.restore();
         }

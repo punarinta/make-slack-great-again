@@ -353,6 +353,18 @@ static TextWithEntities parseTextObj(const QJsonObject &o) {
     return TextWithEntities{text, {}};
 }
 
+// A button element — Block Kit shape ("text" is a plain_text object) or the
+// legacy attachment-actions shape ("text" is a plain string).
+static BotButton toButton(const QJsonObject &el) {
+    const auto textVal = el.value("text");
+    return BotButton{
+        .text =
+            textVal.isObject() ? textVal.toObject().value("text").toString() : textVal.toString(),
+        .url   = el.value("url").toString(),
+        .style = el.value("style").toString(),
+    };
+}
+
 Block toBlock(const QJsonObject &o) {
     Block b;
     b.typeStr = o.value("type").toString();
@@ -384,32 +396,40 @@ Block toBlock(const QJsonObject &o) {
                 b.text.entities.push_back(e);
             }
         }
+        // Accessory button (e.g. "View details" next to a section's text).
+        const auto acc = o.value("accessory").toObject();
+        if (acc.value("type").toString() == "button")
+            b.buttons.push_back(toButton(acc));
     } else if (b.typeStr == "context") {
-        // Context blocks have an "elements" array; concatenate text elements.
-        Builder cb;
+        // Context blocks have an "elements" array; concatenate text elements
+        // (mrkdwn ones parsed, with entity offsets shifted to the joined text).
+        TextWithEntities ct;
         for (const auto &ev : o.value("elements").toArray()) {
             const auto el    = ev.toObject();
             const auto etype = el.value("type").toString();
-            if (etype == "mrkdwn" || etype == "plain_text") {
-                if (!cb.text.isEmpty())
-                    cb.text += "  ";
-                cb.text += el.value("text").toString();
+            if (etype != "mrkdwn" && etype != "plain_text")
+                continue;
+            const TextWithEntities part = parseTextObj(el);
+            if (part.text.isEmpty())
+                continue;
+            if (!ct.text.isEmpty())
+                ct.text += "  ";
+            const int base = ct.text.size();
+            ct.text += part.text;
+            for (auto e : part.entities) {
+                e.offset += base;
+                ct.entities.push_back(e);
             }
         }
-        b.text = TextWithEntities{cb.text, cb.entities};
+        b.text = ct;
     } else if (b.typeStr == "actions") {
-        // Just show action block text for now; full interactivity in Phase 4.
-        Builder ab;
+        // Buttons render as inert chips (URL buttons are clickable); other
+        // interactive elements (selects, datepickers) aren't representable.
         for (const auto &ev : o.value("elements").toArray()) {
-            const auto el    = ev.toObject();
-            const auto label = el.value("text").toObject().value("text").toString();
-            if (!label.isEmpty()) {
-                if (!ab.text.isEmpty())
-                    ab.text += "  ";
-                ab.text += "[" + label + "]";
-            }
+            const auto el = ev.toObject();
+            if (el.value("type").toString() == "button")
+                b.buttons.push_back(toButton(el));
         }
-        b.text = TextWithEntities{ab.text, ab.entities};
     }
     return b;
 }
@@ -418,6 +438,12 @@ Attachment toAttachment(const QJsonObject &o) {
     std::vector<Block> blocks;
     for (const auto &bv : o.value("blocks").toArray())
         blocks.push_back(toBlock(bv.toObject()));
+    std::vector<BotButton> buttons;
+    for (const auto &av : o.value("actions").toArray()) {
+        const auto ao = av.toObject();
+        if (ao.value("type").toString() == "button")
+            buttons.push_back(toButton(ao));
+    }
     std::vector<AttachmentField> fields;
     for (const auto &fv : o.value("fields").toArray()) {
         const auto fo = fv.toObject();
@@ -446,6 +472,7 @@ Attachment toAttachment(const QJsonObject &o) {
         .thumbHeight = o.value("thumb_height").toInt(),
         .fields      = std::move(fields),
         .blocks      = std::move(blocks),
+        .buttons     = std::move(buttons),
     };
 }
 

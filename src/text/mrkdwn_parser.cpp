@@ -1,13 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "mrkdwn_parser.h"
+#include "util/relative_time.h"
+#include "util/time_format.h"
 
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QRegularExpression>
 
 namespace MrkdwnParser {
 
 // Single-pass scanner. We build plain text while recording entity spans.
 // Offsets in TextEntity refer to positions in the *output* plain text, not the mrkdwn.
+// Paired marks (*_~`__) recurse into their content, so nested constructs
+// (links inside bold, emoji inside quotes…) produce contained entity spans.
+
+QString decodeEntities(QString s) {
+    // Slack escapes exactly these three in every text field. &amp; last, so
+    // "&amp;lt;" correctly decodes to the literal "&lt;".
+    s.replace(QLatin1String("&lt;"), QLatin1String("<"));
+    s.replace(QLatin1String("&gt;"), QLatin1String(">"));
+    s.replace(QLatin1String("&amp;"), QLatin1String("&"));
+    return s;
+}
 
 struct Builder {
     QString                 text;
@@ -18,6 +33,19 @@ struct Builder {
 
     void addSpan(EntityType type, int start, const QString &data = {}) {
         entities.push_back(TextEntity{type, start, static_cast<int>(text.size()) - start, data});
+    }
+
+    // Append a recursively-parsed fragment, then wrap it in an outer span.
+    // The outer entity is pushed BEFORE the shifted inner ones so that a
+    // stable offset/length sort keeps the parent first for equal ranges.
+    void appendNested(EntityType type, const TextWithEntities &sub) {
+        const int start = static_cast<int>(text.size());
+        text += sub.text;
+        entities.push_back(TextEntity{type, start, static_cast<int>(sub.text.size()), {}});
+        for (auto e : sub.entities) {
+            e.offset += start;
+            entities.push_back(e);
+        }
     }
 };
 
@@ -56,6 +84,67 @@ static int findCodeFenceClose(const QString &src, int pos) {
     return -1;
 }
 
+// "Today"/"Yesterday"/"Tomorrow" when date is adjacent to now, else absolute.
+static QString prettyDay(const QDate &date, const QString &absolute) {
+    const QDate today = QDate::currentDate();
+    if (date == today)
+        return QCoreApplication::translate("MrkdwnParser", "Today");
+    if (date == today.addDays(-1))
+        return QCoreApplication::translate("MrkdwnParser", "Yesterday");
+    if (date == today.addDays(1))
+        return QCoreApplication::translate("MrkdwnParser", "Tomorrow");
+    return absolute;
+}
+
+// Render a <!date^ts^format…> token's format string ("{date_short} at {time}").
+// Returns an empty string when the format contains a token we don't know —
+// the caller then falls back to the fallback text, as the Slack docs mandate.
+static QString formatDateToken(qint64 secs, const QString &fmt) {
+    const QDateTime dt   = QDateTime::fromSecsSinceEpoch(secs);
+    const QDate     date = dt.date();
+
+    QString                         out;
+    int                             pos = 0;
+    static const QRegularExpression tokenRe(QStringLiteral("\\{([a-z_]+)\\}"));
+    QRegularExpressionMatchIterator it = tokenRe.globalMatch(fmt);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        out += fmt.mid(pos, m.capturedStart() - pos);
+        pos = m.capturedEnd();
+
+        const QString name = m.captured(1);
+        QString       val;
+        if (name == QLatin1String("date_num")) {
+            val = date.toString(Qt::ISODate);
+        } else if (name == QLatin1String("date") || name == QLatin1String("date_short")) {
+            val = TimeFmt::formatDate(date);
+        } else if (name == QLatin1String("date_pretty") ||
+                   name == QLatin1String("date_short_pretty")) {
+            val = prettyDay(date, TimeFmt::formatDate(date));
+        } else if (name == QLatin1String("date_long")) {
+            val = TimeFmt::locale().dayName(date.dayOfWeek()) + ", " + TimeFmt::formatDate(date);
+        } else if (name == QLatin1String("date_long_pretty")) {
+            val = prettyDay(
+                date, TimeFmt::locale().dayName(date.dayOfWeek()) + ", " + TimeFmt::formatDate(date)
+            );
+        } else if (name == QLatin1String("time")) {
+            val = TimeFmt::formatTime(dt);
+        } else if (name == QLatin1String("time_secs")) {
+            val = TimeFmt::locale().toString(
+                dt.time(),
+                TimeFmt::use24h() ? QStringLiteral("HH:mm:ss") : QStringLiteral("h:mm:ss AP")
+            );
+        } else if (name == QLatin1String("ago")) {
+            val = relativeTime(secs);
+        } else {
+            return {}; // unknown token → use the sender's fallback text
+        }
+        out += val;
+    }
+    out += fmt.mid(pos);
+    return out;
+}
+
 TextWithEntities parse(const QString &mrkdwn) {
     Builder   b;
     int       i = 0;
@@ -74,7 +163,9 @@ TextWithEntities parse(const QString &mrkdwn) {
             int closePos = findCodeFenceClose(mrkdwn, contentStart);
             if (closePos != -1) {
                 int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(contentStart, closePos - 3 - contentStart));
+                b.appendPlain(
+                    decodeEntities(mrkdwn.mid(contentStart, closePos - 3 - contentStart))
+                );
                 b.addSpan(EntityType::Pre, entityStart);
                 i = closePos;
                 continue;
@@ -86,7 +177,7 @@ TextWithEntities parse(const QString &mrkdwn) {
             int close = findClose(mrkdwn, i + 1, '`');
             if (close != -1) {
                 int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
+                b.appendPlain(decodeEntities(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
                 b.addSpan(EntityType::Code, entityStart);
                 i = close;
                 continue;
@@ -97,10 +188,7 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '*') {
             int close = findClose(mrkdwn, i + 1, '*');
             if (close != -1) {
-                int entityStart = b.text.size();
-                // Recurse-parse inner for nested marks? Keep flat for now.
-                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
-                b.addSpan(EntityType::Bold, entityStart);
+                b.appendNested(EntityType::Bold, parse(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
                 i = close;
                 continue;
             }
@@ -110,9 +198,9 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '_' && i + 1 < n && mrkdwn[i + 1] == '_') {
             int close = findDoubleClose(mrkdwn, i + 2, '_');
             if (close != -1) {
-                int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i + 2, close - 2 - (i + 2)));
-                b.addSpan(EntityType::Underline, entityStart);
+                b.appendNested(
+                    EntityType::Underline, parse(mrkdwn.mid(i + 2, close - 2 - (i + 2)))
+                );
                 i = close;
                 continue;
             }
@@ -122,9 +210,7 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '_') {
             int close = findClose(mrkdwn, i + 1, '_');
             if (close != -1) {
-                int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
-                b.addSpan(EntityType::Italic, entityStart);
+                b.appendNested(EntityType::Italic, parse(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
                 i = close;
                 continue;
             }
@@ -134,9 +220,7 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '~') {
             int close = findClose(mrkdwn, i + 1, '~');
             if (close != -1) {
-                int entityStart = b.text.size();
-                b.appendPlain(mrkdwn.mid(i + 1, close - 1 - (i + 1)));
-                b.addSpan(EntityType::Strike, entityStart);
+                b.appendNested(EntityType::Strike, parse(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
                 i = close;
                 continue;
             }
@@ -153,7 +237,7 @@ TextWithEntities parse(const QString &mrkdwn) {
                 if (inner.startsWith('@')) {
                     auto parts       = inner.mid(1).split('|');
                     auto uid         = parts[0];
-                    auto label       = parts.size() > 1 ? parts[1] : ("@" + uid);
+                    auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : ("@" + uid);
                     int  entityStart = b.text.size();
                     b.appendPlain(label);
                     b.addSpan(EntityType::UserMention, entityStart, uid);
@@ -164,14 +248,14 @@ TextWithEntities parse(const QString &mrkdwn) {
                 if (inner.startsWith('#')) {
                     auto parts       = inner.mid(1).split('|');
                     auto cid         = parts[0];
-                    auto name        = parts.size() > 1 ? parts[1] : cid;
+                    auto name        = parts.size() > 1 ? decodeEntities(parts[1]) : cid;
                     int  entityStart = b.text.size();
                     b.appendPlain("#" + name);
                     b.addSpan(EntityType::ChannelMention, entityStart, cid);
                     continue;
                 }
 
-                // Special commands: <!here>, <!channel>, <!subteam^S|name>
+                // Special commands: <!here>, <!channel>, <!date^…>, <!subteam^S|name>
                 if (inner.startsWith('!')) {
                     auto cmd = inner.mid(1);
                     if (cmd == "here") {
@@ -182,10 +266,29 @@ TextWithEntities parse(const QString &mrkdwn) {
                         int s = b.text.size();
                         b.appendPlain("@channel");
                         b.addSpan(EntityType::ChannelCommand, s);
+                    } else if (cmd.startsWith(QLatin1String("date^"))) {
+                        // <!date^unix-ts^format-string[^link]|fallback>
+                        const int     pipe = cmd.indexOf('|');
+                        const QString fallback =
+                            pipe >= 0 ? decodeEntities(cmd.mid(pipe + 1)) : QString();
+                        const auto   parts = (pipe >= 0 ? cmd.left(pipe) : cmd).split('^');
+                        bool         tsOk  = false;
+                        const qint64 secs  = parts.value(1).toLongLong(&tsOk);
+                        QString      rendered =
+                            tsOk ? formatDateToken(secs, decodeEntities(parts.value(2)))
+                                      : QString();
+                        if (rendered.isEmpty())
+                            rendered = fallback;
+                        const QString link =
+                            parts.size() > 3 ? decodeEntities(parts[3]) : QString();
+                        const int s = b.text.size();
+                        b.appendPlain(rendered);
+                        if (!link.isEmpty())
+                            b.addSpan(EntityType::Link, s, link);
                     } else {
                         // subteam or unknown: show as @name
                         auto parts = cmd.split('|');
-                        auto label = parts.size() > 1 ? parts.last() : cmd;
+                        auto label = parts.size() > 1 ? decodeEntities(parts.last()) : cmd;
                         int  s     = b.text.size();
                         b.appendPlain("@" + label);
                         b.addSpan(EntityType::HereCommand, s, cmd);
@@ -196,8 +299,8 @@ TextWithEntities parse(const QString &mrkdwn) {
                 // Link: <url|label> or <url>
                 {
                     auto parts       = inner.split('|');
-                    auto url         = parts[0];
-                    auto label       = parts.size() > 1 ? parts[1] : url;
+                    auto url         = decodeEntities(parts[0]);
+                    auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : url;
                     int  entityStart = b.text.size();
                     b.appendPlain(label);
                     b.addSpan(EntityType::Link, entityStart, url);
@@ -223,33 +326,60 @@ TextWithEntities parse(const QString &mrkdwn) {
             }
         }
 
-        // ── Blockquote (> at line start) ──
-        // Consume all consecutive >-prefixed lines as a single Blockquote entity.
-        if (c == '>' && (i == 0 || mrkdwn[i - 1] == '\n')) {
+        // ── Blockquote (> at line start; the API escapes it to &gt;) ──
+        // Consume all consecutive >-prefixed lines as a single Blockquote entity,
+        // then recursively parse the collected content for inline constructs.
+        auto quoteMarkLen = [&](int pos) -> int {
+            if (pos >= n)
+                return 0;
+            if (mrkdwn[pos] == '>')
+                return 1;
+            return QStringView{mrkdwn}.mid(pos, 4) == u"&gt;" ? 4 : 0;
+        };
+        if ((i == 0 || mrkdwn[i - 1] == '\n') && quoteMarkLen(i) > 0) {
             // Drop all preceding \n: the block-level table element provides its own line break.
             while (!b.text.isEmpty() && b.text.back() == '\n')
                 b.text.chop(1);
-            int  entityStart = b.text.size();
-            bool first       = true;
-            while (i < n && mrkdwn[i] == '>') {
+            QString quoted;
+            bool    first = true;
+            while (int markLen = quoteMarkLen(i)) {
                 if (!first)
-                    b.appendPlain('\n');
+                    quoted += '\n';
                 first = false;
-                ++i; // skip '>'
+                i += markLen; // skip '>' / '&gt;'
                 if (i < n && mrkdwn[i] == ' ')
                     ++i; // skip optional space
                 // Collect content until end of line
                 while (i < n && mrkdwn[i] != '\n')
-                    b.appendPlain(mrkdwn[i++]);
+                    quoted += mrkdwn[i++];
                 if (i < n)
                     ++i; // skip '\n'
                 // Check if next non-empty line continues the quote
-                if (i >= n || mrkdwn[i] != '>')
+                if (quoteMarkLen(i) == 0)
                     break;
             }
-            b.addSpan(EntityType::Blockquote, entityStart);
+            b.appendNested(EntityType::Blockquote, parse(quoted));
             b.appendPlain('\n'); // ensure visual line break after blockquote
             continue;
+        }
+
+        // ── HTML entities (&lt; &gt; &amp;) — Slack escapes these in all text ──
+        if (c == '&') {
+            if (QStringView{mrkdwn}.mid(i, 4) == u"&lt;") {
+                b.appendPlain('<');
+                i += 4;
+                continue;
+            }
+            if (QStringView{mrkdwn}.mid(i, 4) == u"&gt;") {
+                b.appendPlain('>');
+                i += 4;
+                continue;
+            }
+            if (QStringView{mrkdwn}.mid(i, 5) == u"&amp;") {
+                b.appendPlain('&');
+                i += 5;
+                continue;
+            }
         }
 
         b.appendPlain(c);

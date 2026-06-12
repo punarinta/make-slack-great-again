@@ -677,15 +677,73 @@ TEST_CASE("toBlock context concatenates text elements with separator", "[mappers
     CHECK(b.text.text == "first  second");
 }
 
-TEST_CASE("toBlock actions formats button labels", "[mappers][block]") {
+TEST_CASE("toBlock actions maps button elements", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "actions",
         "elements": [
-            {"text": {"type": "plain_text", "text": "Approve"}},
-            {"text": {"type": "plain_text", "text": "Deny"}}
+            {"type": "button", "text": {"type": "plain_text", "text": "Approve"},
+             "style": "primary"},
+            {"type": "button", "text": {"type": "plain_text", "text": "Docs"},
+             "url": "https://example.com/docs"},
+            {"type": "static_select", "placeholder": {"type": "plain_text", "text": "Pick"}}
         ]
     })"));
-    CHECK(b.text.text == "[Approve]  [Deny]");
+    CHECK(b.text.text.isEmpty());
+    REQUIRE(b.buttons.size() == 2);
+    CHECK(b.buttons[0].text == "Approve");
+    CHECK(b.buttons[0].style == "primary");
+    CHECK(b.buttons[0].url.isEmpty());
+    CHECK(b.buttons[1].text == "Docs");
+    CHECK(b.buttons[1].url == "https://example.com/docs");
+}
+
+TEST_CASE("toBlock section accessory button", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "details"},
+        "accessory": {"type": "button", "text": {"type": "plain_text", "text": "View"}}
+    })"));
+    CHECK(b.text.text == "details");
+    REQUIRE(b.buttons.size() == 1);
+    CHECK(b.buttons[0].text == "View");
+}
+
+TEST_CASE("toBlock context parses mrkdwn elements", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "context",
+        "elements": [
+            {"type": "mrkdwn", "text": "see <https://example.com|docs>"}
+        ]
+    })"));
+    CHECK(b.text.text == "see docs");
+    REQUIRE(b.text.entities.size() == 1);
+    CHECK(b.text.entities[0].type == EntityType::Link);
+    CHECK(b.text.entities[0].data == "https://example.com");
+}
+
+TEST_CASE("toAttachment maps legacy actions buttons (string text)", "[mappers][attach]") {
+    auto a = JsonMappers::toAttachment(obj(R"({
+        "fallback": "You are unable to choose",
+        "callback_id": "event_response",
+        "actions": [
+            {"type": "button", "name": "resp", "text": "Change Response"},
+            {"type": "select", "name": "menu", "text": "Pick one"}
+        ]
+    })"));
+    REQUIRE(a.buttons.size() == 1);
+    CHECK(a.buttons[0].text == "Change Response");
+    CHECK(a.buttons[0].url.isEmpty());
+}
+
+TEST_CASE("toAttachment text decodes escaped link URLs (calendar-bot shape)", "[mappers][attach]") {
+    auto a = JsonMappers::toAttachment(obj(R"json({
+        "text": "*<https://cal.example.com/event?eid=X&amp;ctz=UTC|Stand-Up>*\nRoom (4)"
+    })json"));
+    CHECK(a.text.text == "Stand-Up\nRoom (4)");
+    REQUIRE(a.text.entities.size() == 2);
+    CHECK(a.text.entities[0].type == EntityType::Bold);
+    CHECK(a.text.entities[1].type == EntityType::Link);
+    CHECK(a.text.entities[1].data == "https://cal.example.com/event?eid=X&ctz=UTC");
 }
 
 TEST_CASE("toBlock rich_text section plain text", "[mappers][block]") {

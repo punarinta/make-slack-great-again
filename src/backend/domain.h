@@ -239,18 +239,31 @@ struct File {
     bool operator==(const File &) const = default;
 };
 
+// A bot button — from a Block Kit "actions"/"section" button element or a
+// legacy attachment "actions" entry. Display-only: interactive callbacks need
+// the app's interactivity endpoint (not reachable with public API tokens), so
+// only buttons carrying a URL are clickable.
+struct BotButton {
+    QString text;
+    QString url;   // empty for interactive-only buttons
+    QString style; // ""|"primary"|"danger"
+    bool    operator==(const BotButton &) const = default;
+};
+
 // Simplified Block Kit block. Covers the common types needed for rendering.
 // rich_text, section, header, context → text field populated.
 // image → imageUrl/altText populated; text may be empty.
 // divider → typeStr == "divider", rest empty.
+// actions → buttons populated; section may also carry an accessory button.
 struct Block {
-    QString typeStr;       // "section"|"header"|"divider"|"image"|"context"|"rich_text"|"actions"
-    TextWithEntities text; // primary displayable text; for "image" blocks this is the title
-    QString          imageUrl;                            // for "image" blocks
-    QString          altText;                             // for "image" blocks
-    int              imageWidth                      = 0; // for "image" blocks; 0 when not provided
-    int              imageHeight                     = 0;
-    bool             operator==(const Block &) const = default;
+    QString typeStr; // "section"|"header"|"divider"|"image"|"context"|"rich_text"|"actions"
+    TextWithEntities       text; // primary displayable text; for "image" blocks this is the title
+    QString                imageUrl;        // for "image" blocks
+    QString                altText;         // for "image" blocks
+    int                    imageWidth  = 0; // for "image" blocks; 0 when not provided
+    int                    imageHeight = 0;
+    std::vector<BotButton> buttons; // "actions" elements / section accessory
+    bool                   operator==(const Block &) const = default;
 };
 
 // Legacy Slack attachment (link unfurls, bot messages, older integrations).
@@ -277,8 +290,9 @@ struct Attachment {
     int                          imageHeight = 0;
     int                          thumbWidth  = 0; // thumb_url dimensions; 0 when not provided
     int                          thumbHeight = 0;
-    std::vector<AttachmentField> fields; // bold-titled key/value rows (classic bot format)
-    std::vector<Block>           blocks; // Block Kit blocks embedded in this attachment
+    std::vector<AttachmentField> fields;  // bold-titled key/value rows (classic bot format)
+    std::vector<Block>           blocks;  // Block Kit blocks embedded in this attachment
+    std::vector<BotButton>       buttons; // legacy "actions" buttons (classic bot format)
     bool                         operator==(const Attachment &) const = default;
 
     // Preview source covering physW physical pixels: the thumbnail when it is

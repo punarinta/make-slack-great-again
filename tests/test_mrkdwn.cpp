@@ -2,6 +2,7 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 #include <catch2/catch_test_macros.hpp>
 #include "text/mrkdwn_parser.h"
+#include <QDateTime>
 
 // Asserts exactly one entity with the given properties.
 static void checkOne(
@@ -150,4 +151,103 @@ TEST_CASE("emoji name with space is not an emoji", "[mrkdwn]") {
     auto r = MrkdwnParser::parse(":not valid:");
     CHECK(r.text == ":not valid:");
     CHECK(r.entities.empty());
+}
+
+TEST_CASE("HTML entities are decoded in plain text", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("Kamil &amp; 11 more &lt;3 a&gt;b");
+    CHECK(r.text == "Kamil & 11 more <3 a>b");
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("decodeEntities decodes ampersand last", "[mrkdwn]") {
+    CHECK(MrkdwnParser::decodeEntities("&amp;lt;") == "&lt;");
+    CHECK(MrkdwnParser::decodeEntities("a &lt;b&gt; &amp; c") == "a <b> & c");
+}
+
+TEST_CASE("HTML entities are decoded in link URLs and labels", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("<https://example.com?a=1&amp;b=2|A &amp; B>");
+    checkOne(r, "A & B", EntityType::Link, 0, 5, "https://example.com?a=1&b=2");
+}
+
+TEST_CASE("HTML entities are decoded inside code spans", "[mrkdwn]") {
+    checkOne(MrkdwnParser::parse("`a &amp;&amp; b`"), "a && b", EntityType::Code, 0, 6);
+}
+
+TEST_CASE("link nested in bold yields contained entities", "[mrkdwn]") {
+    // The Google Calendar bot wraps event links in bold: *<url|label>*
+    auto r = MrkdwnParser::parse("*<https://example.com|Stand-Up>*");
+    CHECK(r.text == "Stand-Up");
+    REQUIRE(r.entities.size() == 2);
+    CHECK(r.entities[0].type == EntityType::Bold);
+    CHECK(r.entities[0].offset == 0);
+    CHECK(r.entities[0].length == 8);
+    CHECK(r.entities[1].type == EntityType::Link);
+    CHECK(r.entities[1].offset == 0);
+    CHECK(r.entities[1].length == 8);
+    CHECK(r.entities[1].data == "https://example.com");
+}
+
+TEST_CASE("italic nested in bold", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("*a _b_ c*");
+    CHECK(r.text == "a b c");
+    REQUIRE(r.entities.size() == 2);
+    CHECK(r.entities[0].type == EntityType::Bold);
+    CHECK(r.entities[0].offset == 0);
+    CHECK(r.entities[0].length == 5);
+    CHECK(r.entities[1].type == EntityType::Italic);
+    CHECK(r.entities[1].offset == 2);
+    CHECK(r.entities[1].length == 1);
+}
+
+TEST_CASE("inline marks nest inside blockquote", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("> *bold* word");
+    CHECK(r.text == "bold word\n");
+    REQUIRE(r.entities.size() == 2);
+    CHECK(r.entities[0].type == EntityType::Blockquote);
+    CHECK(r.entities[0].offset == 0);
+    CHECK(r.entities[0].length == 9);
+    CHECK(r.entities[1].type == EntityType::Bold);
+    CHECK(r.entities[1].offset == 0);
+    CHECK(r.entities[1].length == 4);
+}
+
+TEST_CASE("API-escaped &gt; at line start is a blockquote", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("&gt; line1\n&gt; line2");
+    CHECK(r.text == "line1\nline2\n");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::Blockquote);
+}
+
+// {date_num} of the test timestamp in the machine's local time zone.
+static QString localDateNum(qint64 secs) {
+    return QDateTime::fromSecsSinceEpoch(secs).date().toString(Qt::ISODate);
+}
+
+TEST_CASE("date token with link", "[mrkdwn]") {
+    // <!date^ts^{format}^link|fallback> — formatted text becomes a link
+    auto r = MrkdwnParser::parse("<!date^1781248500^{date_num}^https://example.com/event|6/12/26>");
+    checkOne(r, localDateNum(1781248500), EntityType::Link, 0, 10, "https://example.com/event");
+}
+
+TEST_CASE("date token without link renders as plain text", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("on <!date^1781248500^{date_num}|6/12/26> ok");
+    CHECK(r.text == "on " + localDateNum(1781248500) + " ok");
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("date token with unknown format token falls back", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("<!date^1781248500^{bogus_token}|the fallback>");
+    CHECK(r.text == "the fallback");
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("date token with invalid timestamp falls back", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("<!date^notanumber^{date_num}|fallback text>");
+    CHECK(r.text == "fallback text");
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("date token format keeps literal text around tokens", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("<!date^1781248500^due {date_num}!|fb>");
+    CHECK(r.text == "due " + localDateNum(1781248500) + "!");
 }
