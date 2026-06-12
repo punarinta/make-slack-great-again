@@ -153,6 +153,9 @@ private:
     void applyPendingScroll();
     // Load older messages using the stored pagination cursor.
     void loadOlderMessages();
+    // Keep loading older pages while the content is shorter than the viewport —
+    // the scroll-position trigger can't fire when there is nothing to scroll.
+    void maybeFillViewport();
 
     // Layout
     void rebuildLayout();

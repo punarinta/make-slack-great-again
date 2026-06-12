@@ -145,6 +145,7 @@ void MessageListWidget::resizeEvent(QResizeEvent *event) {
             ad.docWidth = 0;
     }
     rebuildLayout();
+    maybeFillViewport();
     if (_items.empty())
         return;
     if (_pendingRestorePos >= 0) {
@@ -352,6 +353,7 @@ void MessageListWidget::openConversation(
                         applyPendingScroll();
                     });
                 }
+                maybeFillViewport();
             },
             _loadLifetime
         );
@@ -375,6 +377,16 @@ void MessageListWidget::applyPendingScroll() {
         verticalScrollBar()->setValue(verticalScrollBar()->maximum());
         _scrollToBottomPending = false;
     }
+}
+
+void MessageListWidget::maybeFillViewport() {
+    if (_loading || _loadingOlder || !_olderCursor.has_value())
+        return;
+    // +200 so a short scroll-up remains possible once filled; matches the
+    // scrollContentsBy trigger threshold.
+    if (_totalH >= viewport()->height() + 200)
+        return;
+    loadOlderMessages();
 }
 
 void MessageListWidget::loadOlderMessages() {
@@ -401,8 +413,10 @@ void MessageListWidget::loadOlderMessages() {
                                   _olderCursor  = page.olderCursor;
                                   _loadingOlder = false;
 
-                                  if (page.messages.empty())
+                                  if (page.messages.empty()) {
+                                      maybeFillViewport();
                                       return;
+                                  }
 
                                   // Inserting older messages at the top shifts row indices —
                                   // drop any in-progress selection to avoid stale positions.
@@ -423,6 +437,7 @@ void MessageListWidget::loadOlderMessages() {
                                       _scrollAnim.stop();
                                       verticalScrollBar()->setValue(scrollY + delta);
                                   }
+                                  maybeFillViewport();
                               },
                               _olderLoadLifetime
                           );
