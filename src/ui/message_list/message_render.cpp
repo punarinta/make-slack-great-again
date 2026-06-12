@@ -8,6 +8,7 @@
 #include "util/emoji_font.h"
 #include "util/time_format.h"
 
+#include <QAbstractTextDocumentLayout>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -17,6 +18,7 @@
 #include <QPainterPath>
 #include <QRect>
 #include <QSet>
+#include <QTextTable>
 
 namespace MsgRender {
 
@@ -202,12 +204,24 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
                     ";font-family:monospace;font-size:0.88em;padding:1px 3px;border-radius:3px'>" +
                     inner + "</span>";
             break;
-        case EntityType::Pre:
-            html += "<pre style='background:" + Th::qss(Th::c().message.codeBlockBg) +
-                    ";padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.88em;"
-                    "white-space:pre-wrap;margin:4px 0'>" +
-                    inner + "</pre>";
+        case EntityType::Pre: {
+            // A single-cell table, not <pre>: Qt paints a <pre> CSS background as a
+            // per-line character background (stripey rows). The table carries NO
+            // background/border itself — Qt rich text can't do border-radius, so the
+            // rounded chrome is painted underneath by paintCodeBlockChrome(), which
+            // finds these tables via codeBlockRects().
+            if (html.endsWith("<br>"))
+                html.chop(4); // the block carries its own top margin
+            QString code = inner;
+            while (code.endsWith('\n'))
+                code.chop(1);
+            html += "<table width='100%' cellspacing='0' cellpadding='0' "
+                    "style='margin:4px 0'>"
+                    "<tr><td style='padding:6px 10px;font-family:monospace;font-size:0.88em;"
+                    "white-space:pre-wrap;color:" +
+                    Th::qss(Th::c().message.codeText) + "'>" + code + "</td></tr></table>";
             break;
+        }
         case EntityType::Blockquote:
             // Use a table so the gray left bar renders reliably in Qt's HTML subset.
             html += "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:4px 0'>"
@@ -262,10 +276,65 @@ QString toHtml(const TextWithEntities &twe, const Session *session) {
         }
         }
         pos = e.offset + e.length;
+        // The code-block table carries its own vertical margin — eat the newline
+        // that followed the closing fence so it doesn't add a <br> on top.
+        if (e.type == EntityType::Pre && pos < twe.text.size() && twe.text[pos] == '\n')
+            ++pos;
     }
     if (pos < twe.text.size())
         html += escapeAndBr(twe.text.mid(pos));
     return html;
+}
+
+static void collectCodeTables(QTextFrame *frame, QVector<QTextTable *> &out) {
+    for (auto it = frame->begin(); it != frame->end(); ++it) {
+        QTextFrame *child = it.currentFrame();
+        if (!child)
+            continue;
+        if (auto *table = qobject_cast<QTextTable *>(child)) {
+            // Code blocks are the only single-column percentage-width tables toHtml
+            // emits (blockquotes are two-column, fixed width).
+            if (table->columns() == 1 &&
+                table->format().width().type() == QTextLength::PercentageLength)
+                out.push_back(table);
+        }
+        collectCodeTables(child, out);
+    }
+}
+
+QVector<QRectF> codeBlockRects(const QTextDocument *doc) {
+    QVector<QTextTable *> tables;
+    collectCodeTables(doc->rootFrame(), tables);
+    QVector<QRectF> rects;
+    rects.reserve(tables.size());
+    auto *layout = doc->documentLayout();
+    for (QTextTable *table : tables) {
+        // QTextDocumentLayout::frameBoundingRect is unusable for tables (position
+        // offset by the cell padding, size inflated by the margins) — rebuild the
+        // outer rect from the single cell's accurate block geometry instead.
+        const auto   cell  = table->cellAt(0, 0);
+        const QRectF first = layout->blockBoundingRect(cell.firstCursorPosition().block());
+        const QRectF last  = layout->blockBoundingRect(cell.lastCursorPosition().block());
+        const auto   cf    = cell.format().toTableCellFormat();
+        rects.push_back(QRectF(
+            QPointF(first.left() - cf.leftPadding(), first.top() - cf.topPadding()),
+            QPointF(first.right() + cf.rightPadding(), last.bottom() + cf.bottomPadding())
+        ));
+    }
+    return rects;
+}
+
+void paintCodeBlockChrome(QPainter &p, const QTextDocument *doc) {
+    const auto rects = codeBlockRects(doc);
+    if (rects.isEmpty())
+        return;
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(Th::c().message.codeBlockBorder, 1));
+    p.setBrush(Th::c().message.codeBlockBg);
+    for (const QRectF &r : rects)
+        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+    p.restore();
 }
 
 // Wrap inline HTML in <p> (so the doc stylesheet's line-height applies), keeping any

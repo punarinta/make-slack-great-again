@@ -8,10 +8,13 @@
 #include <QColor>
 #include <QDate>
 #include <QHash>
+#include <QRectF>
 #include <QSet>
+#include <QVector>
 
 class QPainter;
 class QRect;
+class QTextDocument;
 class Session;
 
 // Pure rendering helpers shared between message_list.cpp and message_list_paint.cpp.
@@ -62,6 +65,14 @@ QString formatDateLabel(const Ts &ts);
 QString lastReplyLabel(const Ts &ts);
 QString resolveMention(const QString &userId, const Session *session);
 QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
+
+// Geometry (doc coordinates, margins excluded) of every ``` code-block table in a
+// laid-out message document.
+QVector<QRectF> codeBlockRects(const QTextDocument *doc);
+// Rounded background + border behind ``` code blocks. Qt rich text has no
+// border-radius, so callers paint this under the document, with the painter
+// already translated to the doc origin.
+void            paintCodeBlockChrome(QPainter &p, const QTextDocument *doc);
 QString
 buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif = nullptr);
 QString buildAttachHtml(

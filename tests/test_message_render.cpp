@@ -13,6 +13,7 @@
 
 #include <QApplication>
 #include <QDateTime>
+#include <QTextDocument>
 
 #include "ui/message_list/message_render.h"
 #include "text/mrkdwn_parser.h"
@@ -91,6 +92,35 @@ TEST_CASE("toHtml without session leaves custom emoji as text", "[render][emoji]
     const QString html = MsgRender::toHtml(twe, nullptr);
     CHECK(html.contains(":no-lunch:"));
     CHECK(!html.contains("<img"));
+}
+
+// ── toHtml code blocks ────────────────────────────────────────────────────────
+
+TEST_CASE("toHtml renders ``` block as one full-width table, not <pre>", "[render][pre]") {
+    const auto    twe  = MrkdwnParser::parse("can I add\n```\n  - A=1\n  - B=2\n```\nto compose?");
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK(!html.contains("<pre"));
+    CHECK(html.count("<table") == 1);
+    CHECK(html.contains("white-space:pre-wrap"));
+    // Newlines around the fence are absorbed by the block's own margin.
+    CHECK(!html.contains("<br><table"));
+    CHECK(!html.contains("</table><br>"));
+    // Code lines stay raw newline-separated inside the pre-wrap cell, with the
+    // trailing fence newline trimmed and leading indentation kept.
+    CHECK(html.contains("  - A=1\n  - B=2</td>"));
+}
+
+TEST_CASE("codeBlockRects finds ``` tables but not blockquote tables", "[render][pre]") {
+    const auto    twe = MrkdwnParser::parse("```\ncode here\n```\n> quoted line");
+    QTextDocument doc;
+    doc.setHtml(MsgRender::toHtml(twe, nullptr));
+    doc.setTextWidth(400);
+    CHECK(doc.toHtml().contains("quoted")); // blockquote table is present in the doc
+    const auto rects = MsgRender::codeBlockRects(&doc);
+    REQUIRE(rects.size() == 1);
+    CHECK(rects[0].width() > 300); // full-width block
+    CHECK(rects[0].height() > 10);
+    CHECK(rects[0].top() >= 0);
 }
 
 // ── buildAttachHtml fields ────────────────────────────────────────────────────
