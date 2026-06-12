@@ -63,6 +63,10 @@ void SettingsDialog::open() {
     refreshCacheSize();
     refreshLastChecked();
     refreshUpdateStatus();
+    if (auto *btn = _panel->findChild<QPushButton *>("clearCacheBtn"))
+        btn->setEnabled(true);
+    if (auto *btn = _panel->findChild<QPushButton *>("clearStateBtn"))
+        btn->setEnabled(true);
     setGeometry(parentWidget()->rect());
     updatePanelGeometry();
     show();
@@ -974,10 +978,13 @@ void SettingsDialog::applyTheme() {
                 "  background: #CC0000; color: white; border: none;"
                 "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
                 "}"
-                "QPushButton:hover   { background: #E00000; }"
-                "QPushButton:pressed { background: #AA0000; }"
+                "QPushButton:hover    { background: #E00000; }"
+                "QPushButton:pressed  { background: #AA0000; }"
+                "QPushButton:disabled { background: %2; color: %3; }"
             )
                 .arg(th.fonts.md)
+                .arg(Th::qss(th.surface.raised))
+                .arg(Th::qss(th.text.secondary))
         );
     }
     if (auto *w = _panel->findChild<QFrame *>("storageSep")) {
@@ -1000,10 +1007,13 @@ void SettingsDialog::applyTheme() {
                 "  background: #CC0000; color: white; border: none;"
                 "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
                 "}"
-                "QPushButton:hover   { background: #E00000; }"
-                "QPushButton:pressed { background: #AA0000; }"
+                "QPushButton:hover    { background: #E00000; }"
+                "QPushButton:pressed  { background: #AA0000; }"
+                "QPushButton:disabled { background: %2; color: %3; }"
             )
                 .arg(th.fonts.md)
+                .arg(Th::qss(th.surface.raised))
+                .arg(Th::qss(th.text.secondary))
         );
     }
 
@@ -1118,6 +1128,8 @@ void SettingsDialog::refreshCacheSize() {
 }
 
 void SettingsDialog::clearCache() {
+    if (auto *btn = _panel->findChild<QPushButton *>("clearCacheBtn"))
+        btn->setEnabled(false);
     const QString cacheDir =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache";
     QDir(cacheDir).removeRecursively();
@@ -1125,6 +1137,8 @@ void SettingsDialog::clearCache() {
 }
 
 void SettingsDialog::clearState() {
+    if (auto *btn = _panel->findChild<QPushButton *>("clearStateBtn"))
+        btn->setEnabled(false);
     QSettings("msga", "msga").remove("conv/visitedAt");
     emit stateCleared();
 }
