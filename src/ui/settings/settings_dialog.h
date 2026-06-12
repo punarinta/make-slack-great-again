@@ -107,7 +107,8 @@ private:
     QLabel              *_aiError   = nullptr;
 
     // Storage controls
-    QLabel *_cacheSize = nullptr;
+    QLabel   *_cacheSize = nullptr;
+    QSpinBox *_cacheCap  = nullptr;
 
     // System / update controls
     UpdateChecker *_updateChecker = nullptr;

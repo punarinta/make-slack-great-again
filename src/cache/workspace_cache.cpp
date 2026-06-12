@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "workspace_cache.h"
+#include "cache_evictor.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -511,9 +514,22 @@ QHash<QString, QString> WorkspaceCache::loadEmojiMap() const {
 void WorkspaceCache::saveImage(const QString &url, const QByteArray &data) {
     if (data.isEmpty())
         return;
-    writeFile(imgPath(url), data);
+    if (writeFile(imgPath(url), data))
+        CacheEvictor::noteBytesWritten(data.size());
 }
 
 QByteArray WorkspaceCache::loadImage(const QString &url) const {
-    return readFile(imgPath(url));
+    const QString path = imgPath(url);
+    const auto    data = readFile(path);
+    if (data.isEmpty())
+        return data;
+    // LRU bookkeeping for CacheEvictor: a blob's mtime is its last-used time.
+    // Bumped at most hourly — finer grain isn't worth a write per read.
+    const auto now = QDateTime::currentDateTimeUtc();
+    if (QFileInfo(path).lastModified().secsTo(now) > 3600) {
+        QFile f(path);
+        if (f.open(QIODevice::ReadWrite))
+            f.setFileTime(now, QFileDevice::FileModificationTime);
+    }
+    return data;
 }

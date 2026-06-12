@@ -13,6 +13,7 @@
 #include "context_menu/context_menu.h"
 #include "workspace_switcher/workspace_switcher.h"
 #include "session/session.h"
+#include "cache/cache_evictor.h"
 #include "auth/token_store.h"
 #include "auth/oauth_flow.h"
 #include "backend/public_backend/public_backend.h"
@@ -217,6 +218,14 @@ void MainWindow::buildUi() {
     connect(_updateChecker, &UpdateChecker::checkFailed, this, &MainWindow::showNetworkError);
     connect(_updateBar, &UpdateBar::restartRequested, this, &MainWindow::applyUpdateAndRestart);
     QTimer::singleShot(5000, _updateChecker, &UpdateChecker::checkInBackground);
+
+    // LRU cache cap: sweep shortly after startup, then periodically so a
+    // long-running session can't grow the disk cache unbounded.
+    QTimer::singleShot(15000, this, [] { CacheEvictor::instance()->schedule(); });
+    auto *cacheSweep = new QTimer(this);
+    cacheSweep->setInterval(30 * 60 * 1000);
+    connect(cacheSweep, &QTimer::timeout, this, [] { CacheEvictor::instance()->schedule(); });
+    cacheSweep->start();
 
     _loggedOutPage = buildLoggedOutPage();
     _stack->addWidget(_loggedOutPage);

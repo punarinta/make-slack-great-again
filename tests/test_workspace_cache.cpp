@@ -3,7 +3,10 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include "cache/workspace_cache.h"
 
@@ -250,6 +253,27 @@ TEST_CASE_METHOD(CacheFixture, "saveImage with empty data writes nothing", "[cac
     const QString url = "https://example.com/empty.png";
     cache.saveImage(url, QByteArray{});
     CHECK(cache.loadImage(url).isEmpty());
+}
+
+TEST_CASE_METHOD(
+    CacheFixture, "loadImage bumps a stale blob mtime (LRU last-used)", "[cache][img]"
+) {
+    const QString url = "https://avatar.example.com/U2.png";
+    cache.saveImage(url, "data");
+
+    const auto blobs = QDir(baseDir + "/images").entryInfoList(QDir::Files);
+    REQUIRE(blobs.size() == 1);
+    const QString blobPath = blobs.first().filePath();
+
+    // Backdate past the 1h bump throttle, then read.
+    const auto past = QDateTime::currentDateTimeUtc().addSecs(-7200);
+    {
+        QFile f(blobPath);
+        REQUIRE(f.open(QIODevice::ReadWrite));
+        REQUIRE(f.setFileTime(past, QFileDevice::FileModificationTime));
+    }
+    CHECK(cache.loadImage(url) == "data");
+    CHECK(QFileInfo(blobPath).lastModified().secsTo(QDateTime::currentDateTimeUtc()) < 60);
 }
 
 // ── Bots ──────────────────────────────────────────────────────────────────────

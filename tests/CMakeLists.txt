@@ -65,6 +65,12 @@ add_msga_test(test_json_mappers
 add_msga_qt_test(test_workspace_cache
     test_workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
+)
+
+add_msga_test(test_cache_evictor
+    test_cache_evictor.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
 )
 
 add_msga_qt_test(test_token_store
@@ -87,6 +93,7 @@ add_msga_qt_test(test_session
     test_session.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
@@ -103,6 +110,7 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 
@@ -158,6 +166,7 @@ add_msga_widget_test(test_search_widget
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
@@ -213,6 +222,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp

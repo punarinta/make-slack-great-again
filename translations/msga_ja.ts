@@ -1162,6 +1162,23 @@ stored locally to speed up startup.</source>
 画像サムネイルをローカルに保存しています。</translation>
     </message>
     <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="370" />
+        <source>Limit cache to</source>
+        <translation>キャッシュ上限:</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="376" />
+        <source> MB</source>
+        <translation> MB</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="383" />
+        <source>When the cache grows past this limit, the least recently
+viewed images are deleted first.</source>
+        <translation>キャッシュがこの上限を超えると、最も長く表示されていない
+画像から順に削除されます。</translation>
+    </message>
+    <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="335" />
         <source>Clear Cache</source>
         <translation>キャッシュをクリア</translation>

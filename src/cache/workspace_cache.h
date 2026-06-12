@@ -48,7 +48,9 @@ public:
     QHash<QString, QString> loadEmojiMap() const;
 
     // Persist/retrieve raw downloaded thumbnail bytes, keyed by URL.
-    // The URL is hashed to a safe filename; no expiry — images are small and stable.
+    // The URL is hashed to a safe filename. The blob's mtime doubles as its
+    // last-used time (loadImage bumps it) so CacheEvictor can drop the least
+    // recently viewed blobs when the cache exceeds the configured cap.
     void       saveImage(const QString &url, const QByteArray &data);
     QByteArray loadImage(const QString &url) const;
 

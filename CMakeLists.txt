@@ -99,6 +99,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Cache
     src/cache/workspace_cache.cpp
+    src/cache/cache_evictor.cpp
 
     # Session / domain store
     src/session/session.cpp

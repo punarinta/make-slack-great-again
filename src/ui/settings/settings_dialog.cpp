@@ -7,6 +7,7 @@
 #include "ui/theme_manager.h"
 #include "app_credentials.h"
 #include "llm/llm_service.h"
+#include "cache/cache_evictor.h"
 #include "util/time_format.h"
 
 #include <QPainter>
@@ -61,6 +62,10 @@ void SettingsDialog::open() {
     if (_aiError)
         _aiError->clear();
     refreshCacheSize();
+    {
+        const QSignalBlocker block(_cacheCap); // don't save/sweep on load
+        _cacheCap->setValue(CacheEvictor::capMb());
+    }
     refreshLastChecked();
     refreshUpdateStatus();
     if (auto *btn = _panel->findChild<QPushButton *>("clearCacheBtn"))
@@ -360,6 +365,37 @@ void SettingsDialog::buildPanel() {
     cacheDesc->setObjectName("cacheDesc");
     cacheDesc->setWordWrap(true);
     slay->addWidget(cacheDesc);
+
+    auto *capRow    = new QHBoxLayout;
+    auto *capPrefix = new QLabel(tr("Limit cache to"), storagePage);
+    capPrefix->setObjectName("capPrefix");
+    capRow->addWidget(capPrefix);
+
+    _cacheCap = new QSpinBox(storagePage);
+    _cacheCap->setRange(50, 10240);
+    _cacheCap->setSuffix(tr(" MB"));
+    _cacheCap->setFixedWidth(110);
+    capRow->addWidget(_cacheCap);
+    capRow->addStretch();
+    slay->addLayout(capRow);
+
+    auto *capDesc = new QLabel(
+        tr("When the cache grows past this limit, the least recently\n"
+           "viewed images are deleted first."),
+        storagePage
+    );
+    capDesc->setObjectName("capDesc");
+    capDesc->setWordWrap(true);
+    slay->addWidget(capDesc);
+
+    connect(_cacheCap, &QSpinBox::valueChanged, this, [](int mb) {
+        CacheEvictor::setCapMb(mb);
+        CacheEvictor::instance()->schedule();
+    });
+    connect(CacheEvictor::instance(), &CacheEvictor::finished, this, [this] {
+        if (isVisible())
+            refreshCacheSize();
+    });
 
     auto *clearCacheRow = new QHBoxLayout;
     clearCacheRow->addStretch();
@@ -967,6 +1003,27 @@ void SettingsDialog::applyTheme() {
                                   .arg(th.fonts.md)
                                   .arg(Th::qss(th.text.primary)));
     if (auto *w = _panel->findChild<QLabel *>("cacheDesc")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
+    if (auto *w = _panel->findChild<QLabel *>("capPrefix")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
+    _cacheCap->setStyleSheet(
+        QString(
+            "QSpinBox {"
+            "  font-size: %1px; color: %2;"
+            "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
+            "}"
+            "QSpinBox:focus { border-color: %4; }"
+        )
+            .arg(th.fonts.md)
+            .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
+    );
+    if (auto *w = _panel->findChild<QLabel *>("capDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
