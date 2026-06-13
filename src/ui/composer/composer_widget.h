@@ -20,6 +20,7 @@ class QTextEdit;
 class QPushButton;
 class QToolButton;
 class Session;
+class ImageCache;
 class PopupTooltip;
 class EmojiPickerPopup;
 class MentionCompleter;
@@ -39,6 +40,9 @@ public:
 
     // Provide a session for autocomplete and emoji; can be called at any time.
     void setSession(Session *session);
+
+    // Image cache for app-command avatars in the slash-command palette.
+    void setImageCache(ImageCache *cache) { _imgCache = cache; }
 
     // Tell the composer the current conversation kind so it can decide whether
     // to show @channel/@here aliases in the mention popup.
@@ -129,6 +133,7 @@ private:
     MentionCompleter                        *_mentionComp    = nullptr;
     MentionPopup                            *_mentionPopup   = nullptr;
     Session                                 *_session        = nullptr;
+    ImageCache                              *_imgCache       = nullptr;
     ConvKind                                 _convKind       = ConvKind::PublicChannel;
     int                                      _atTriggerStart = -1;
     QHash<QWidget *, QString>                _tooltipBtns; // bottom-bar buttons

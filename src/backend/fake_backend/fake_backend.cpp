@@ -138,10 +138,11 @@ rpl::producer<std::vector<SlashCommand>> FakeBackend::listCommands() {
                                                          .desc  = "Set a reminder",
                                                          .usage = "[@someone or #channel] [what] "
                                                                   "[when]"},
-                                                        {.name  = "deploy",
-                                                         .desc  = "Deploy a service",
-                                                         .usage = "[service]",
-                                                         .appId = "A012FAKE"},
+                                                        {.name    = "deploy",
+                                                         .desc    = "Deploy a service",
+                                                         .usage   = "[service]",
+                                                         .appId   = "A012FAKE",
+                                                         .appName = "Deploybot"},
                                                     })
         .value();
 }

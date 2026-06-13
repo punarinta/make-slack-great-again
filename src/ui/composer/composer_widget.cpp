@@ -1225,11 +1225,21 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                             }
                         );
                         for (const auto *c : matches) {
-                            QString display = "/" + c->name;
-                            if (!c->desc.isEmpty())
-                                display += QStringLiteral(" — ") + c->desc;
-                            items.append({display, "/" + c->name});
-                            if (items.size() >= 8)
+                            MentionCompleter::Item it;
+                            it.command = true;
+                            it.insert  = "/" + c->name;
+                            it.title   = "/" + c->name;
+                            it.usage   = c->usage;
+                            it.desc    = c->desc;
+                            it.isApp   = !c->appId.isEmpty();
+                            // App name labels the source (CommandRow renders it
+                            // as "App · <name>"); core commands belong to Slack.
+                            it.source  = it.isApp ? c->appName : QStringLiteral("Slack");
+                            it.iconUrl = c->iconUrl;
+                            items.append(it);
+                            // The palette shows 5 rows and scrolls the rest;
+                            // keep a generous cap so scrolling has content.
+                            if (items.size() >= 50)
                                 break;
                         }
                     } else if (trigger == '#') {
@@ -1317,6 +1327,7 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                         // Parent = msgArea (like MentionPopup), so the popup
                         // overlays the message list above the composer.
                         _mentionComp = new MentionCompleter(parentWidget() ? parentWidget() : this);
+                        _mentionComp->setImageCache(_imgCache);
                     }
 
                     // Anchor at the trigger character, not the moving text

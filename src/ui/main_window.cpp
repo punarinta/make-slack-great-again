@@ -526,6 +526,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     _composer = new ComposerWidget(msgArea);
     _composer->setEnabled(false);
+    _composer->setImageCache(_imgCache);
     msgLayout->addWidget(_composer);
 
     _msgSplitter->addWidget(msgArea);

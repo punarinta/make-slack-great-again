@@ -420,10 +420,12 @@ struct SearchResult {
 // A slash command available in the workspace ("/remind", an app's "/github", …).
 // Built-in Slack commands have an empty appId.
 struct SlashCommand {
-    QString name;  // without the leading slash, e.g. "remind"
-    QString desc;  // human-readable description
-    QString usage; // argument hint, e.g. "[@someone or #channel] [what] [when]"
-    QString appId; // owning app ID for app commands; empty for core commands
+    QString name;    // without the leading slash, e.g. "remind"
+    QString desc;    // human-readable description
+    QString usage;   // argument hint, e.g. "[@someone or #channel] [what] [when]"
+    QString appId;   // owning app ID for app commands; empty for core commands
+    QString appName; // owning app display name ("Giphy"); empty for core commands
+    QString iconUrl; // owning app icon URL; empty → fall back to the generic mark
     bool    operator==(const SlashCommand &) const = default;
 };
 

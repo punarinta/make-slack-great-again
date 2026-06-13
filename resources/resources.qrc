@@ -30,6 +30,7 @@
         <file alias="ui/chevron-right.svg">../gfx/ui/chevron-right.svg</file>
         <file alias="ui/hash.svg">../gfx/ui/hash.svg</file>
         <file alias="ui/bot.svg">../gfx/ui/bot.svg</file>
+        <file alias="ui/slack-mark.svg">../gfx/ui/slack-mark.svg</file>
         <file alias="ui/canvas.svg">../gfx/ui/canvas.svg</file>
         <file alias="ui/sticky-note-plus.svg">../gfx/ui/sticky-note-plus.svg</file>
         <file alias="ui/message-circle.svg">../gfx/ui/message-circle.svg</file>

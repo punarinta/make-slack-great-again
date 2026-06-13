@@ -612,6 +612,16 @@ static SlashCommand toSlashCommand(const QJsonObject &o) {
     c.usage = o.value("usage").toString();
     if (o.value("type").toString() == QLatin1String("app"))
         c.appId = o.value("app").toString();
+    // App identity for the command palette. The endpoint is undocumented and
+    // these keys are best-effort; the palette falls back gracefully when absent.
+    c.appName = o.value("app_name").toString();
+    c.iconUrl = o.value("icon_url").toString();
+    if (c.iconUrl.isEmpty()) {
+        const QJsonObject icons = o.value("icons").toObject();
+        c.iconUrl               = icons.value("image_48").toString();
+        if (c.iconUrl.isEmpty())
+            c.iconUrl = icons.value("image_36").toString();
+    }
     return c;
 }
 
