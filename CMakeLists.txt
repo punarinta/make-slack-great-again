@@ -23,6 +23,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(MSGA_CLAZY "Add 'clazy' target for Qt-aware static analysis" OFF)
+option(MSGA_ASAN "Build with AddressSanitizer + LeakSanitizer" OFF)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Test)
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
@@ -180,6 +181,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^
 endif()
 if(WIN32)
     target_link_libraries(msga PRIVATE dbghelp)
+endif()
+
+# AddressSanitizer + LeakSanitizer (MSGA_ASAN=ON). Fast (~2x) runtime detection
+# of heap errors (use-after-free, overflows) and, via the bundled LeakSanitizer,
+# memory leaks reported on exit. -fno-omit-frame-pointer keeps traces readable;
+# pair with a Debug build (-g) so frames resolve to file:line. Use scripts/build.sh
+# --asan, which builds into build-asan/ to keep instrumented objects separate.
+if(MSGA_ASAN)
+    target_compile_options(msga PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+    target_link_options(msga PRIVATE -fsanitize=address)
 endif()
 
 if(Qt6LinguistTools_FOUND)
