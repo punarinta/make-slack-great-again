@@ -119,7 +119,6 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
     _scroll->setFrameShape(QFrame::NoFrame);
     _scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     _scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    _scroll->setStyleSheet("QScrollArea { background:transparent; border:none; }");
 
     _content = new QWidget(_scroll);
     _content->setStyleSheet("background:transparent;");
@@ -147,8 +146,24 @@ void MentionPopup::applyTheme() {
                       "  border:1px solid %2;"
                       "  border-radius:6px;"
                       "}"
+                      "QScrollArea { background: transparent; border: none; }"
+                      // Thin rounded scrollbar, matching the conversation list.
+                      "QScrollBar:vertical {"
+                      "  background: transparent; width: 8px; margin: 2px;"
+                      "}"
+                      "QScrollBar::handle:vertical {"
+                      "  background: %3; border-radius: 3px; min-height: 24px;"
+                      "}"
+                      "QScrollBar::add-line:vertical,"
+                      "QScrollBar::sub-line:vertical { height: 0; }"
+                      "QScrollBar::add-page:vertical,"
+                      "QScrollBar::sub-page:vertical { background: transparent; }"
     )
-                      .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)));
+                      .arg(
+                          Th::qss(Th::c().surface.raised),
+                          Th::qss(Th::c().divider.strong),
+                          Th::qss(Th::c().divider.strong)
+                      ));
 }
 
 void MentionPopup::setSession(Session *s) {
