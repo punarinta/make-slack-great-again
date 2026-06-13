@@ -27,6 +27,12 @@ public:
     // Repaint the embedded message list, e.g. after the time-format setting changed.
     void refreshTimestamps();
 
+protected:
+    void resizeEvent(QResizeEvent *e) override;
+    void moveEvent(QMoveEvent *e) override;
+    void showEvent(QShowEvent *e) override;
+    void hideEvent(QHideEvent *e) override;
+
 signals:
     void closeRequested();
     // Forwarded from the embedded message list's mention-hover profile card.
@@ -34,12 +40,15 @@ signals:
 
 private:
     void applyTheme();
+    // Keep the outward left-edge shadow positioned just left of the panel.
+    void layoutShadow();
 
     Session       *_session = nullptr;
     ConversationId _conv;
     Ts             _rootTs;
 
     QWidget           *_headerWidget = nullptr;
+    QWidget           *_leftShadow   = nullptr;
     QLabel            *_header       = nullptr;
     QPushButton       *_closeBtn     = nullptr;
     MessageListWidget *_msgList      = nullptr;
