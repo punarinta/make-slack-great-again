@@ -1829,6 +1829,12 @@ void MainWindow::openConversation(int row) {
     if (conv && (conv->unread > 0 || conv->mentionCount > 0) && !conv->lastRead.isEmpty())
         lastReadTs = conv->lastRead;
 
+    // setReading() reassigns the conversations rpl::variable, reallocating the
+    // backing vector and invalidating `conv`. Snapshot everything we still need
+    // from it before that point; using `conv` afterwards is a use-after-free.
+    const QString  convCanvasFileId = conv ? conv->canvasFileId : QString();
+    const ConvKind convKind         = conv ? conv->kind : ConvKind::PublicChannel;
+
     _session->setReading(_currentConvId);
     if (_canvasPage)
         _canvasPage->flushPendingSave(); // outgoing conversation's canvas edits
@@ -1841,7 +1847,7 @@ void MainWindow::openConversation(int row) {
     // only seeds the tab; conversations.info is authoritative.
     if (_convTabs) {
         _convTabs->setActiveTab(ConvTabsWidget::Tab::Messages);
-        _currentCanvasFileId = conv ? conv->canvasFileId : QString();
+        _currentCanvasFileId = convCanvasFileId;
         _currentCanvasTitle.clear();
         _convTabs->setCanvasInfo(!_currentCanvasFileId.isEmpty());
         _session->loadChannelCanvas(
@@ -1873,7 +1879,7 @@ void MainWindow::openConversation(int row) {
         );
     }
     _composer->setEnabled(true);
-    _composer->setConvKind(conv ? conv->kind : ConvKind::PublicChannel);
+    _composer->setConvKind(convKind);
     _composer->setPlaceholderText(
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );
