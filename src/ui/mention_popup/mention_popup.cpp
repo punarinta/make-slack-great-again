@@ -23,9 +23,11 @@ struct AliasInfo {
     const char *desc;
 };
 constexpr AliasInfo kAliases[] = {
-    {"@channel", "@channel", QT_TR_NOOP("Notify everyone in this channel")},
-    {"@everyone", "@everyone", QT_TR_NOOP("Notify everyone in your workspace")},
-    {"@here", "@here", QT_TR_NOOP("Notify every online member here")},
+    {"@channel", "@channel", QT_TRANSLATE_NOOP("MentionPopup", "Notify everyone in this channel")},
+    {"@everyone",
+     "@everyone",
+     QT_TRANSLATE_NOOP("MentionPopup", "Notify everyone in your workspace")},
+    {"@here", "@here", QT_TRANSLATE_NOOP("MentionPopup", "Notify every online member here")},
 };
 } // namespace
 
