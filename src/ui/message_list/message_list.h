@@ -189,8 +189,9 @@ private:
     // Painting
     void paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx) const;
     void paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const;
-    void
-    paintReactions(QPainter &p, const MessageItem &item, const PaintContext &ctx, int top) const;
+    void paintReactions(
+        QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
+    ) const;
     void paintReplyBar(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
     ) const;
@@ -255,7 +256,11 @@ private:
     QRect   toolbarButtonRect(int btn, int rowTop, int rowH) const;
 
     // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
-    std::pair<int, int> reactionAt(const QPoint &viewportPos) const;
+    // When a chip is hit and outChipRect is non-null, it receives the chip's viewport rect.
+    std::pair<int, int> reactionAt(const QPoint &viewportPos, QRect *outChipRect = nullptr) const;
+
+    // Shows the hover preview (emoji + reactor names) for reaction `ri` on row `mi`.
+    void showReactionTooltip(int mi, int ri, const QRect &chipVpRect);
 
     // ── Animated images (GIF / animated WebP) ──
     // Shared player for a public-URL image, or nullptr while loading / static.
@@ -398,6 +403,7 @@ private:
     QString             _hoveredLinkUrl;       // URL of the link currently under the mouse cursor
     int                 _hoveredLinkRow  = -1; // row index owning that link (-1 if none)
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
+    std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;

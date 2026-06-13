@@ -341,7 +341,7 @@ void MessageListWidget::paintRow(
 
     // ── Reactions ────────────────────────────────────────────────────
     if (!item.msg.reactions.empty())
-        paintReactions(p, item, ctx, contentY + 2);
+        paintReactions(p, item, ctx, contentY + 2, index);
 
     // ── Reply bar (thread-root messages in channel view) ─────────────
     if (!_isThreadMode && item.msg.replyCount > 0) {
@@ -835,7 +835,7 @@ static int reactChipW(const QString &countStr) {
 }
 
 void MessageListWidget::paintReactions(
-    QPainter &p, const MessageItem &item, const PaintContext &ctx, int top
+    QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
 ) const {
     const int left  = ctx.textLeft;
     const int width = ctx.textWidth;
@@ -853,7 +853,8 @@ void MessageListWidget::paintReactions(
 
     const UserId me = _session ? _session->meUserId() : UserId{};
 
-    for (const auto &r : item.msg.reactions) {
+    for (int j = 0; j < (int)item.msg.reactions.size(); ++j) {
+        const auto   &r        = item.msg.reactions[j];
         const auto    emoji    = MsgRender::resolveEmojiRich(r.name, _session);
         const QString countStr = " " + QString::number(r.count);
         const int     chipW    = reactChipW(countStr);
@@ -862,12 +863,17 @@ void MessageListWidget::paintReactions(
 
         const bool mine =
             std::any_of(r.users.begin(), r.users.end(), [&me](const UserId &u) { return u == me; });
+        const bool hovered = _hoveredReaction.first == index && _hoveredReaction.second == j;
 
         const QRect chip(x, top, chipW, chipH);
         if (mine) {
             // Slack: own reactions get a blue border on a light blue fill
             p.setPen(Th::c().text.link);
             p.setBrush(Th::c().message.mentionBg);
+        } else if (hovered) {
+            // Hovering a foreign chip outlines it without changing the fill
+            p.setPen(Th::c().text.secondary);
+            p.setBrush(Th::c().surface.highlight);
         } else {
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().surface.highlight);
@@ -906,10 +912,7 @@ void MessageListWidget::paintReactions(
         p.setPen(textCol);
         p.drawText(
             QRect(
-                chip.x() + kReactPad + kEmojiSlot,
-                chip.y() - 1,
-                chipW - kReactPad - kEmojiSlot,
-                chipH
+                chip.x() + kReactPad + kEmojiSlot, chip.y(), chipW - kReactPad - kEmojiSlot, chipH
             ),
             Qt::AlignVCenter | Qt::AlignLeft,
             countStr
@@ -1208,7 +1211,8 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
 
 // ── Reaction hit-test ─────────────────────────────────────────────────────────
 
-std::pair<int, int> MessageListWidget::reactionAt(const QPoint &viewportPos) const {
+std::pair<int, int>
+MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) const {
     const PaintContext ctx       = makePaintContext();
     const int          scrollY   = ctx.scrollY;
     const int          textLeft  = ctx.textLeft;
@@ -1276,8 +1280,11 @@ std::pair<int, int> MessageListWidget::reactionAt(const QPoint &viewportPos) con
             const int     chipW    = reactChipW(countStr);
             if (x + chipW > textLeft + textWidth)
                 break;
-            if (viewportPos.x() >= x && viewportPos.x() < x + chipW)
+            if (viewportPos.x() >= x && viewportPos.x() < x + chipW) {
+                if (outChipRect)
+                    *outChipRect = QRect(x, reactTop, chipW, kReactH);
                 return {i, j};
+            }
             x += chipW + 4;
         }
     }

@@ -3,6 +3,7 @@
 #include "popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "util/emoji_font.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -21,8 +22,9 @@ PopupTooltip::PopupTooltip(QWidget *parent)
 }
 
 void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect) {
-    _text    = text;
-    _rightOf = false;
+    _text     = text;
+    _rightOf  = false;
+    _reaction = false;
 
     QFont f = QApplication::font();
     f.setWeight(QFont::Weight(500));
@@ -70,9 +72,10 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
 }
 
 void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRect) {
-    _text    = text;
-    _below   = false;
-    _rightOf = true;
+    _text     = text;
+    _below    = false;
+    _rightOf  = true;
+    _reaction = false;
 
     QFont f = QApplication::font();
     f.setWeight(QFont::Weight(500));
@@ -105,9 +108,73 @@ void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRec
     update();
 }
 
+void PopupTooltip::showReaction(
+    const QString     &emojiGlyph,
+    const QPixmap     &emojiImage,
+    const QStringList &names,
+    const QRect       &targetGlobalRect
+) {
+    _reaction   = true;
+    _rightOf    = false;
+    _emojiGlyph = emojiGlyph;
+    _emojiImage = emojiImage;
+    _names      = names;
+
+    const QFontMetrics nameFm(QApplication::font());
+    const int          lineH = nameFm.height();
+
+    int namesW = 0;
+    for (const QString &n : names)
+        namesW = std::max(namesW, nameFm.horizontalAdvance(n));
+
+    const int contentW = std::min(std::max(kEmojiPx, namesW), 320);
+    const int contentH = kEmojiPx + kReactGapV + (int)names.size() * lineH;
+
+    const int bodyW   = contentW + 2 * kPadH;
+    const int bodyH   = contentH + 2 * kPadV;
+    const int widgetW = bodyW + 2 * kShadow;
+    const int widgetH = kShadow + bodyH + kArrowH + kShadow;
+
+    const int arrowTipGX = targetGlobalRect.center().x();
+
+    QScreen    *s     = QGuiApplication::screenAt(targetGlobalRect.center());
+    const QRect avail = s ? s->availableGeometry() : QRect();
+
+    const int neededAbove = kShadow + bodyH + kArrowH + kGap;
+    _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
+
+    int wx, wy;
+    if (_below)
+        wy = targetGlobalRect.bottom() + kGap - kShadow;
+    else
+        wy = targetGlobalRect.top() - kGap - (kShadow + bodyH + kArrowH);
+    wx = arrowTipGX - widgetW / 2;
+
+    if (avail.isValid()) {
+        wx = std::max(avail.left(), std::min(wx, avail.right() - widgetW));
+        if (_below)
+            wy = std::min(wy, avail.bottom() - widgetH);
+        else
+            wy = std::max(avail.top(), wy);
+    }
+
+    _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
+
+    setFixedSize(widgetW, widgetH);
+    move(wx, wy);
+    show();
+    raise();
+    update();
+}
+
 void PopupTooltip::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
+
+    if (_reaction) {
+        paintReaction(p);
+        return;
+    }
 
     QRectF body;
     if (_rightOf) {
@@ -178,4 +245,74 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
         Qt::AlignCenter,
         _text
     );
+}
+
+void PopupTooltip::paintReaction(QPainter &p) {
+    const int    bodyH = height() - kShadow - kArrowH - kShadow;
+    const QRectF body  = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
+                                : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
+
+    // Light drop shadow around the body only
+    for (int i = kShadow; i >= 2; --i) {
+        const int alpha = (kShadow - i) * 3;
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, alpha));
+        p.drawRoundedRect(
+            body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
+        );
+    }
+
+    // Fill body
+    p.setPen(Qt::NoPen);
+    p.setBrush(Th::c().text.primary);
+    p.drawRoundedRect(body, kRadius, kRadius);
+
+    // Arrow
+    QPolygonF   arrow;
+    const qreal cx = _arrowX;
+    if (_below) {
+        const qreal baseY = body.top();
+        arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
+              << QPointF(cx, kShadow);
+    } else {
+        const qreal baseY = body.bottom();
+        arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
+              << QPointF(cx, baseY + kArrowH);
+    }
+    p.drawPolygon(arrow);
+
+    // Emoji preview — centered near the top of the body
+    const QRect emojiRect(
+        qRound(body.center().x() - kEmojiPx / 2.0), qRound(body.top() + kPadV), kEmojiPx, kEmojiPx
+    );
+    if (!_emojiImage.isNull()) {
+        const QSize tgt = _emojiImage.size().scaled(kEmojiPx, kEmojiPx, Qt::KeepAspectRatio);
+        p.drawPixmap(
+            QRect(
+                emojiRect.x() + (kEmojiPx - tgt.width()) / 2,
+                emojiRect.y() + (kEmojiPx - tgt.height()) / 2,
+                tgt.width(),
+                tgt.height()
+            ),
+            _emojiImage
+        );
+    } else {
+        p.setFont(emojiFont(kEmojiPx));
+        p.setPen(Th::c().text.onDark);
+        p.drawText(emojiRect, Qt::AlignCenter, _emojiGlyph);
+    }
+
+    // Reactor names — one per line below the emoji
+    QFont nameF = QApplication::font();
+    p.setFont(nameF);
+    const QFontMetrics nameFm(nameF);
+    const int          lineH = nameFm.height();
+    const qreal        textW = body.width() - 2 * kPadH;
+    qreal              ty    = body.top() + kPadV + kEmojiPx + kReactGapV;
+    p.setPen(Th::c().text.onDark);
+    for (const QString &n : _names) {
+        const QString line = nameFm.elidedText(n, Qt::ElideRight, qRound(textW));
+        p.drawText(QRectF(body.left() + kPadH, ty, textW, lineH), Qt::AlignCenter, line);
+        ty += lineH;
+    }
 }

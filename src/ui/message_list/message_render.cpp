@@ -29,6 +29,28 @@ QString resolveEmoji(const QString &name) {
 }
 
 EmojiResolved resolveEmojiRich(const QString &name, const QHash<QString, QString> &customMap) {
+    // Slack appends modifiers (notably skin tones) as "::"-separated suffixes,
+    // e.g. "+1::skin-tone-3" or "raised_hands::skin-tone-2". Resolve the base
+    // emoji first, then append each modifier glyph so the composed Unicode
+    // sequence renders the tinted variant instead of falling back to ":name:".
+    const int sep = name.indexOf(QLatin1String("::"));
+    if (sep > 0) {
+        const QString baseName    = name.left(sep);
+        EmojiResolved base        = resolveEmojiRich(baseName, customMap);
+        const bool    baseIsGlyph = !base.unicode.isEmpty() && base.unicode != ":" + baseName + ":";
+        if (baseIsGlyph) {
+            QString out = base.unicode;
+            for (const QString &mod :
+                 name.mid(sep + 2).split(QLatin1String("::"), Qt::SkipEmptyParts)) {
+                const QString glyph = Emoji::fromName(mod);
+                if (glyph != ":" + mod + ":")
+                    out += glyph;
+            }
+            return {out, {}};
+        }
+        return base; // custom-image base — modifiers can't apply
+    }
+
     const QString unicode = Emoji::fromName(name);
     if (unicode != ":" + name + ":")
         return {unicode, {}};

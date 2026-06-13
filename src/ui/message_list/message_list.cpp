@@ -1495,6 +1495,37 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     menu->popup(globalPos);
 }
 
+void MessageListWidget::showReactionTooltip(int mi, int ri, const QRect &chipVpRect) {
+    if (mi < 0 || mi >= (int)_items.size())
+        return;
+    const auto &reactions = _items[mi].msg.reactions;
+    if (ri < 0 || ri >= (int)reactions.size())
+        return;
+    const auto &r = reactions[ri];
+
+    // Resolve reactor display names; our own reaction reads as "You".
+    const UserId me = _session->meUserId();
+    QStringList  names;
+    names.reserve((int)r.users.size());
+    for (const UserId &uid : r.users) {
+        if (uid == me) {
+            names.push_front(tr("You"));
+            continue;
+        }
+        const User *u = _session->findUser(uid);
+        names.push_back(u ? u->displayLabel() : uid.value);
+    }
+    if (names.isEmpty())
+        return;
+
+    const auto    emoji = MsgRender::resolveEmojiRich(r.name, _session);
+    const QPixmap img =
+        (!emoji.imageUrl.isEmpty() && _imgCache) ? _imgCache->get(emoji.imageUrl) : QPixmap();
+
+    const QRect chipGlobal(viewport()->mapToGlobal(chipVpRect.topLeft()), chipVpRect.size());
+    _tooltip->showReaction(emoji.unicode, img, names, chipGlobal);
+}
+
 bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
     const auto [reactMsgIdx, reactIdx] = reactionAt(pos);
     if (reactMsgIdx < 0 || !_session)
@@ -1801,13 +1832,14 @@ void MessageListWidget::doMouseLeave() {
     }
 
     if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1 ||
-        _hoveredReplyRow != -1 || _hoveredFile.first != -1) {
+        _hoveredReplyRow != -1 || _hoveredFile.first != -1 || _hoveredReaction.first != -1) {
         _hoveredRow      = -1;
         _hoveredToolBtn  = -1;
         _hoveredAttach   = {-1, -1};
         _hoveredReplyRow = -1;
         _hoveredFile     = {-1, -1};
         _hoveredFileBtn  = -1;
+        _hoveredReaction = {-1, -1};
         viewport()->update();
     }
 }
@@ -2063,15 +2095,20 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
     }
 
+    QRect                     reactionChipRect;
+    const std::pair<int, int> newHoveredReaction = reactionAt(pos, &reactionChipRect);
+
     if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn ||
         newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow ||
-        newHoveredFile != _hoveredFile || newHoveredFileBtn != _hoveredFileBtn) {
+        newHoveredFile != _hoveredFile || newHoveredFileBtn != _hoveredFileBtn ||
+        newHoveredReaction != _hoveredReaction) {
         _hoveredRow      = newHoveredRow;
         _hoveredToolBtn  = newHoveredBtn;
         _hoveredAttach   = newHoveredAttach;
         _hoveredReplyRow = newHoveredReplyRow;
         _hoveredFile     = newHoveredFile;
         _hoveredFileBtn  = newHoveredFileBtn;
+        _hoveredReaction = newHoveredReaction;
         viewport()->update();
     }
 
@@ -2118,6 +2155,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // Tooltip
     if (!_tooltipPin.hasExpired()) {
         // A click toast (e.g. "address copied") is showing — leave it up.
+    } else if (newHoveredReaction.first >= 0 && _session) {
+        showReactionTooltip(newHoveredReaction.first, newHoveredReaction.second, reactionChipRect);
     } else if (newHoveredBtn >= 0) {
         static const QString kTips[] = {
             tr("Add reaction"), tr("Forward message"), tr("More actions")
@@ -2171,12 +2210,11 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const auto [dMI, dAI] = dismissButtonAt(pos);
     const bool overDismiss =
         dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
-    const auto [rMI, rRI]  = reactionAt(pos);
     // File action bar buttons take priority — keep arrow cursor over them even if a chip is below.
     const bool overFileBar = newHoveredFileBtn >= 0;
     const bool overLink =
         !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) ||
-                         replyBarIndexAt(pos) >= 0 || overDismiss || rMI >= 0);
+                         replyBarIndexAt(pos) >= 0 || overDismiss || newHoveredReaction.first >= 0);
     const int  sbHitX     = viewport()->width() - kScrollW - 2 - 6;
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     const bool overText   = !overLink && textHitTest(pos).row >= 0;

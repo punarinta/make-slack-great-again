@@ -78,6 +78,25 @@ TEST_CASE("resolveEmojiRich null session behaves like empty map", "[render][emoj
     CHECK(r.imageUrl.isEmpty());
 }
 
+TEST_CASE("resolveEmojiRich appends skin-tone modifier to builtin", "[render][emoji]") {
+    const auto r = MsgRender::resolveEmojiRich("+1::skin-tone-3", kMap);
+    // 👍 followed by the medium-light skin-tone modifier 🏼
+    CHECK(r.unicode == QString::fromUtf8("\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBC"));
+    CHECK(r.imageUrl.isEmpty());
+}
+
+TEST_CASE("resolveEmojiRich skin-tone on aliased builtin", "[render][emoji]") {
+    const auto r = MsgRender::resolveEmojiRich("thumbs::skin-tone-2", kMap);
+    CHECK(r.unicode.startsWith(QString::fromUtf8("\xF0\x9F\x91\x8D"))); // 👍…
+    CHECK(r.unicode.endsWith(QString::fromUtf8("\xF0\x9F\x8F\xBB")));   // …🏻
+    CHECK(r.imageUrl.isEmpty());
+}
+
+TEST_CASE("resolveEmojiRich custom-image base ignores modifier", "[render][emoji]") {
+    const auto r = MsgRender::resolveEmojiRich("no-lunch::skin-tone-4", kMap);
+    CHECK(r.imageUrl == "https://emoji.slack-edge.com/T1/no-lunch/abc.jpg");
+}
+
 // ── toHtml emoji rendering ────────────────────────────────────────────────────
 
 TEST_CASE("toHtml renders builtin emoji at Slack line-height size", "[render][emoji]") {
