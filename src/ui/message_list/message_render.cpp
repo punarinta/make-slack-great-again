@@ -18,7 +18,9 @@
 #include <QPainterPath>
 #include <QRect>
 #include <QSet>
+#include <QTextBoundaryFinder>
 #include <QTextTable>
+#include <optional>
 
 namespace MsgRender {
 
@@ -61,6 +63,18 @@ static int slackLinePx() {
 int inlineEmojiPx() {
     // Slack renders inline emoji exactly one line-height tall.
     return slackLinePx();
+}
+
+// HTML for one resolved emoji at `px` logical pixels: custom emoji as an <img>
+// (the image resource is registered on the QTextDocument by the caller), built-in
+// emoji as a span in the platform color-emoji font.
+static QString emojiHtml(const EmojiResolved &er, int px) {
+    const QString s = QString::number(px);
+    if (!er.imageUrl.isEmpty())
+        return "<img src='" + er.imageUrl.toHtmlEscaped() + "' width='" + s + "' height='" + s +
+               "'>";
+    return "<span style='font-family:" + emojiFontFamily() + ";font-size:" + s + "px'>" +
+           er.unicode.toHtmlEscaped() + "</span>";
 }
 
 QString docStyleSheet() {
@@ -272,20 +286,9 @@ static QString renderRange(
                     ";background:" + Th::qss(Th::c().message.mentionSelfBg) +
                     ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
             break;
-        case EntityType::Emoji: {
-            const auto    er = resolveEmojiRich(e.data, session);
-            const QString px = QString::number(inlineEmojiPx());
-            if (!er.imageUrl.isEmpty()) {
-                // Workspace custom emoji — the image resource is registered on the
-                // QTextDocument by the caller (see ensureDocLayout).
-                html += "<img src='" + er.imageUrl.toHtmlEscaped() + "' width='" + px +
-                        "' height='" + px + "'>";
-            } else {
-                html += "<span style='font-family:" + emojiFontFamily() + ";font-size:" + px +
-                        "px'>" + er.unicode.toHtmlEscaped() + "</span>";
-            }
+        case EntityType::Emoji:
+            html += emojiHtml(resolveEmojiRich(e.data, session), inlineEmojiPx());
             break;
-        }
         }
         pos = e.offset + e.length;
         // The code-block table carries its own vertical margin — eat the newline
@@ -572,8 +575,89 @@ static bool blockHtml(
     return false;
 }
 
+// True for a code point that anchors an emoji grapheme (the pictographic blocks
+// plus the symbol ranges that are predominantly emoji). Deliberately conservative
+// so a lone CJK character or letter is never mistaken for an emoji.
+static bool cpIsEmojiBase(char32_t c) {
+    return (c >= 0x1F000 && c <= 0x1FAFF) || // emoticons, pictographs, transport, symbols, flags
+           (c >= 0x2600 && c <= 0x27BF) ||   // misc symbols + dingbats
+           (c >= 0x2B00 && c <= 0x2BFF) ||   // misc symbols & arrows (⭐ ⬆ …)
+           (c >= 0x2194 && c <= 0x21AA) ||   // arrows (↔ ↩ …)
+           (c >= 0x231A && c <= 0x231B) ||   // ⌚ ⌛
+           (c >= 0x23E9 && c <= 0x23FA) ||   // media controls (⏩ ⏰ …)
+           (c >= 0x25AA && c <= 0x25FE) ||   // geometric shapes used as emoji
+           c == 0x24C2 || c == 0x2934 || c == 0x2935 || c == 0x2122 || c == 0x2139 || c == 0x3030 ||
+           c == 0x303D || c == 0x3297 || c == 0x3299;
+}
+
+// True for a code point that only ever continues an emoji grapheme (never starts
+// one): joiners, variation selectors, skin-tone modifiers, keycap, flag tags.
+static bool cpIsEmojiMod(char32_t c) {
+    return c == 0x200D || c == 0xFE0F || c == 0xFE0E || c == 0x20E3 ||
+           (c >= 0x1F3FB && c <= 0x1F3FF) || (c >= 0xE0020 && c <= 0xE007F);
+}
+
+// True when `s` is exactly one emoji — a single grapheme cluster (so flags,
+// ZWJ families and keycaps each count as one) made only of emoji code points.
+static bool isSingleEmoji(const QString &s) {
+    if (s.isEmpty())
+        return false;
+    QTextBoundaryFinder bf(QTextBoundaryFinder::Grapheme, s);
+    bf.toStart();
+    if (bf.toNextBoundary() != s.size()) // more than one grapheme cluster
+        return false;
+
+    const QList<uint> cps       = s.toUcs4();
+    bool              hasKeycap = false, hasEmoji = false;
+    for (uint c : cps) {
+        if (c == 0x20E3)
+            hasKeycap = true;
+        if (cpIsEmojiBase(c))
+            hasEmoji = true;
+    }
+    for (uint c : cps) {
+        // Keycap emoji (#️⃣ *️⃣ 0️⃣–9️⃣) have an ASCII base — only valid alongside U+20E3.
+        const bool keycapBase = hasKeycap && (c == '#' || c == '*' || (c >= '0' && c <= '9'));
+        if (!cpIsEmojiBase(c) && !cpIsEmojiMod(c) && !keycapBase)
+            return false;
+    }
+    return hasEmoji || hasKeycap;
+}
+
+// If `twe` is nothing but a single emoji (ignoring surrounding whitespace),
+// returns it resolved; otherwise nullopt. Drives the jumbomoji size bump.
+static std::optional<EmojiResolved> soleEmoji(const TextWithEntities &twe, const Session *session) {
+    // A single :name: token parsed into one Emoji entity, nothing else around it.
+    if (twe.entities.size() == 1 && twe.entities[0].type == EntityType::Emoji) {
+        const auto &e = twe.entities[0];
+        if (QStringView{twe.text}.left(e.offset).trimmed().isEmpty() &&
+            QStringView{twe.text}.mid(e.offset + e.length).trimmed().isEmpty())
+            return resolveEmojiRich(e.data, session);
+    }
+    // A raw unicode emoji typed directly (the mrkdwn parser leaves it as plain text).
+    if (twe.entities.empty()) {
+        const QString t = twe.text.trimmed();
+        if (isSingleEmoji(t))
+            return EmojiResolved{t, {}};
+    }
+    return std::nullopt;
+}
+
 // Build the full HTML for a message's main text doc (blocks preferred over text field).
 QString buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif) {
+    // Jumbomoji: a message that is nothing but a single emoji renders 50% larger,
+    // matching the official client. The lone emoji arrives either as a one-block
+    // rich_text payload or in the plain text field — check whichever applies.
+    const TextWithEntities *solo = nullptr;
+    if (msg.blocks.empty())
+        solo = &msg.text;
+    else if (msg.blocks.size() == 1 && msg.blocks[0].typeStr == "rich_text")
+        solo = &msg.blocks[0].text;
+    if (solo) {
+        if (const auto er = soleEmoji(*solo, session))
+            return "<p style='margin:0'>" + emojiHtml(*er, qRound(inlineEmojiPx() * 1.5)) + "</p>";
+    }
+
     if (!msg.blocks.empty()) {
         QString html;
         bool    anyImage = false;
