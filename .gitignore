@@ -1,0 +1,8 @@
+build/
+build-release/
+build-release-mac/
+build-tests/
+build-clazy/
+build-asan/
+credentials.cmake
+.DS_Store
