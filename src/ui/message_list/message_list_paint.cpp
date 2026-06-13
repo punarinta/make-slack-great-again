@@ -1196,8 +1196,35 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
         const int  pinnedH3  = _items[i].msg.pinned ? 18 : 0;
         int        y         = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) +
                 _items[i].docHeight;
-        for (int ai = 0; ai < (int)_items[i].attachDocs.size(); ++ai)
+        for (int ai = 0; ai < (int)_items[i].attachDocs.size(); ++ai) {
+            if (isDismissed(_items[i].msg.ts, ai))
+                continue;
             y += kAttachGap + attachTotalH(_items[i], ai);
+        }
+
+        // Inline file previews (images + prerendered docs) — mirror paint.
+        const bool hasAboveImages = _items[i].docHeight > 0 || !_items[i].attachDocs.empty();
+        bool       anyImgFiles    = false;
+        for (const auto &f : _items[i].msg.files) {
+            if (!f.hasPreview())
+                continue;
+            anyImgFiles      = true;
+            const int imgGap = hasAboveImages ? kImgGap : 0;
+            y += imgGap + kImgNameH + filePreviewSize(f, textWidth).height();
+        }
+
+        // File chips (files without a preview) — mirror paint.
+        const bool hasAboveChips =
+            _items[i].docHeight > 0 || !_items[i].attachDocs.empty() || anyImgFiles;
+        bool firstChip = true;
+        for (const auto &f : _items[i].msg.files) {
+            if (f.hasPreview())
+                continue;
+            if (!firstChip || hasAboveChips)
+                y += kFileChipGap;
+            firstChip = false;
+            y += kFileChipH;
+        }
 
         if (!_items[i].msg.reactions.empty())
             y += kReactH + 2;
