@@ -48,7 +48,10 @@ Run with leak detection (logs to /tmp/msga-asan/asan.log.<pid>):
 
   mkdir -p /tmp/msga-asan
   ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0:log_path=/tmp/msga-asan/asan.log \\
-  LSAN_OPTIONS=report_objects=1 \\
+  LSAN_OPTIONS=report_objects=1:suppressions=${SCRIPT_DIR}/lsan-suppressions.txt:print_suppressions=0 \\
     ${BUILD_DIR}/msga
+
+(scripts/lsan-suppressions.txt hides known third-party startup leaks so the
+report only flags leaks in our own code; or just use scripts/run-asan.sh.)
 EOF
 fi

@@ -1,0 +1,32 @@
+# LeakSanitizer suppressions for msga.
+#
+# Everything listed here is a KNOWN, one-time, third-party leak that happens
+# during QApplication construction (src/main.cpp) and is outside our control.
+# Suppressing it keeps the leak report actionable: anything that survives this
+# file is a leak in msga's own code and worth investigating.
+#
+# A suppression matches if ANY frame of the leak's stack contains the pattern
+# (symbolized function name, source file, or module/.so name).
+#
+# Root cause of the bulk of the noise: Qt's GTK3 platform-theme plugin
+# (libqgtk3.so) instantiates GtkStyleContext / GtkWidgets to read the system
+# theme's colors and fonts, then never frees them. That single path drags in
+# GTK3 -> pango -> fontconfig -> harfbuzz -> expat -> glib/gobject font and
+# theme caches, none of which are released. See the leak triaged in
+# logs/2026-06-13_10-34-47.log (5844 allocs, all from this path).
+
+# Qt GTK3 platform-theme plugin — the entry point for almost all of it.
+leak:libqgtk3.so
+leak:QGtk3
+
+# Font/text stack reached through the theme plugin (and via its worker threads).
+leak:libfontconfig
+leak:libpango
+leak:libharfbuzz
+leak:libexpat
+
+# GTK / GLib object machinery used to build the throwaway theme widgets.
+leak:libgtk-3
+leak:libgobject
+leak:libgio
+leak:libglib
