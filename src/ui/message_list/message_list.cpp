@@ -61,13 +61,21 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
     _profileShowTimer.setSingleShot(true);
     _profileShowTimer.setInterval(300);
     connect(&_profileShowTimer, &QTimer::timeout, this, [this] {
-        // Show only if the cursor is still on the same mention.
         const QPoint vpPos = viewport()->mapFromGlobal(QCursor::pos());
-        if (anchorAt(vpPos) != _pendingProfileAnchor)
-            return;
-        const QString uid = MsgRender::userIdFromAnchor(_pendingProfileAnchor);
-        if (!uid.isEmpty())
-            showProfileCardFor(uid, userAnchorVpRect(vpPos, _pendingProfileAnchor));
+        if (!_pendingProfileAnchor.isEmpty()) {
+            // Show only if the cursor is still on the same mention.
+            if (anchorAt(vpPos) != _pendingProfileAnchor)
+                return;
+            const QString uid = MsgRender::userIdFromAnchor(_pendingProfileAnchor);
+            if (!uid.isEmpty())
+                showProfileCardFor(uid, userAnchorVpRect(vpPos, _pendingProfileAnchor));
+        } else if (!_pendingProfileAvatarUser.value.isEmpty()) {
+            // Show only if the cursor is still on the same avatar.
+            QRect         avRect;
+            const QString uid = avatarUserAt(vpPos, &avRect);
+            if (uid == _pendingProfileAvatarUser.value)
+                showProfileCardFor(uid, avRect);
+        }
     });
 
     // Smooth scroll
@@ -1125,6 +1133,40 @@ QRect MessageListWidget::userAnchorVpRect(const QPoint &viewportPos, const QStri
     return fallback;
 }
 
+QString MessageListWidget::avatarUserAt(const QPoint &viewportPos, QRect *outVpRect) const {
+    const int scrollY = verticalScrollBar()->value();
+    const int docY    = viewportPos.y() + scrollY;
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        const int rowTop = _tops[i];
+        const int rh     = rowHeight(i);
+        if (docY < rowTop)
+            break;
+        if (docY > rowTop + rh)
+            continue;
+        // Collapsed (consecutive same-author) rows paint no avatar.
+        if (isCollapsed(i))
+            return {};
+
+        // Mirror the avatar geometry from paintRow(): the square sits at
+        // (kPadH, contTop + 2) where contTop = rowTop + sepH + pinnedBannerH + kPadV.
+        const auto &item    = _items[i];
+        const int   sepH    = needsDateSep(i) ? kSepH : 0;
+        const int   pinnedH = item.msg.pinned ? 18 : 0;
+        const int   contTop = rowTop + sepH + pinnedH + kPadV;
+        const QRect avVp(kPadH, contTop + 2 - scrollY, kAvSize, kAvSize);
+        if (!avVp.contains(viewportPos))
+            return {};
+        // Only real users get a profile card (bots/apps have no User entry).
+        if (!_session || !_session->findUser(item.msg.author))
+            return {};
+        if (outVpRect)
+            *outVpRect = avVp;
+        return item.msg.author.value;
+    }
+    return {};
+}
+
 void MessageListWidget::showProfileCardFor(const QString &userIdStr, const QRect &anchorVpRect) {
     if (!_session)
         return;
@@ -2137,18 +2179,28 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         viewport()->update();
     }
 
-    // Mention hover → profile card (after a short delay); leaving → grace hide
-    if (isUserAnchor) {
-        const QString uid = MsgRender::userIdFromAnchor(anchor);
+    // Mention / avatar hover → profile card (after a short delay); leaving → grace hide
+    QRect         avatarVpRect;
+    const QString avatarUid = isUserAnchor ? QString() : avatarUserAt(pos, &avatarVpRect);
+    if (isUserAnchor || !avatarUid.isEmpty()) {
+        const QString uid = isUserAnchor ? MsgRender::userIdFromAnchor(anchor) : avatarUid;
         if (_profileCard->isVisible() && _profileCard->userId().value == uid) {
             _profileCard->cancelHide();
-        } else if (anchor != _pendingProfileAnchor) {
-            _pendingProfileAnchor = anchor;
+        } else if (isUserAnchor) {
+            if (anchor != _pendingProfileAnchor) {
+                _pendingProfileAnchor     = anchor;
+                _pendingProfileAvatarUser = UserId{};
+                _profileShowTimer.start();
+            }
+        } else if (_pendingProfileAvatarUser.value != uid) {
+            _pendingProfileAnchor.clear();
+            _pendingProfileAvatarUser = UserId{uid};
             _profileShowTimer.start();
         }
     } else {
         _profileShowTimer.stop();
         _pendingProfileAnchor.clear();
+        _pendingProfileAvatarUser = UserId{};
         _profileCard->scheduleHide();
     }
 

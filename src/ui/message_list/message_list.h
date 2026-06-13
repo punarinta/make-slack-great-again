@@ -224,10 +224,14 @@ private:
     // Mention hover profile card
     // Viewport rect of the mention-anchor fragment under viewportPos; falls
     // back to a 1px rect at viewportPos when the fragment can't be located.
-    QRect userAnchorVpRect(const QPoint &viewportPos, const QString &href) const;
+    QRect   userAnchorVpRect(const QPoint &viewportPos, const QString &href) const;
     // Look up the user and show the profile card anchored to anchorVpRect.
-    void  showProfileCardFor(const QString &userIdStr, const QRect &anchorVpRect);
-    void  hideProfileCard();
+    void    showProfileCardFor(const QString &userIdStr, const QRect &anchorVpRect);
+    void    hideProfileCard();
+    // If viewportPos is over a message-row avatar of a known user, returns that
+    // user's id and (when outVpRect is non-null) the avatar's viewport rect;
+    // otherwise returns an empty string.
+    QString avatarUserAt(const QPoint &viewportPos, QRect *outVpRect = nullptr) const;
     // Attachment height helpers
     int
     attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
@@ -425,8 +429,9 @@ private:
 
     // Mention hover profile card
     UserProfileCard *_profileCard = nullptr;
-    QTimer           _profileShowTimer;     // hover delay before the card appears
-    QString          _pendingProfileAnchor; // mention href waiting on the show timer
+    QTimer           _profileShowTimer;         // hover delay before the card appears
+    QString          _pendingProfileAnchor;     // mention href waiting on the show timer
+    UserId           _pendingProfileAvatarUser; // avatar user waiting on the show timer
 
     std::optional<QString> _olderCursor; // set when more pages exist above
     bool                   _loadingOlder = false;
