@@ -9,6 +9,7 @@
 #include "llm/llm_service.h"
 #include "cache/cache_evictor.h"
 #include "util/time_format.h"
+#include "util/process_stats.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -74,9 +75,16 @@ void SettingsDialog::open() {
         btn->setEnabled(true);
     setGeometry(parentWidget()->rect());
     updatePanelGeometry();
+    _ramLabel->setText(tr("RAM used: %1").arg(ProcessStats::formatRss(ProcessStats::rssBytes())));
+    _ramTimer->start();
     show();
     raise();
     _tabs->setFocus();
+}
+
+void SettingsDialog::hideEvent(QHideEvent *e) {
+    _ramTimer->stop();
+    QWidget::hideEvent(e);
 }
 
 // ── Panel construction ────────────────────────────────────────────────────────
@@ -484,7 +492,28 @@ void SettingsDialog::buildPanel() {
     updLayout->addWidget(_lastChecked);
 
     sylay->addWidget(updBox);
+
+    // Memory section
+    auto *memBox = new QGroupBox(tr("Memory"), sysPage);
+    memBox->setObjectName("memBox");
+    auto *memLayout = new QVBoxLayout(memBox);
+    memLayout->setSpacing(4);
+    memLayout->setContentsMargins(0, 12, 0, 0);
+
+    _ramLabel = new QLabel(sysPage);
+    _ramLabel->setObjectName("ramLabel");
+    memLayout->addWidget(_ramLabel);
+
+    sylay->addWidget(memBox);
     sylay->addStretch();
+
+    _ramTimer = new QTimer(this);
+    _ramTimer->setInterval(5000);
+    connect(_ramTimer, &QTimer::timeout, this, [this] {
+        _ramLabel->setText(
+            tr("RAM used: %1").arg(ProcessStats::formatRss(ProcessStats::rssBytes()))
+        );
+    });
 
     _stack->addWidget(sysPage);
     root->addWidget(body, 1);
@@ -1114,6 +1143,19 @@ void SettingsDialog::applyTheme() {
     );
     _lastChecked->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.sm).arg(Th::qss(th.text.tertiary))
+    );
+    if (auto *w = _panel->findChild<QGroupBox *>("memBox")) {
+        w->setStyleSheet(
+            QString(
+                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
+            )
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
+    }
+    _ramLabel->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
 }
 

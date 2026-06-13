@@ -8,6 +8,8 @@
 #include <QPoint>
 #include <QRect>
 #include <QList>
+#include <QTimer>
+#include <QHideEvent>
 
 class QFrame;
 class QLabel;
@@ -46,6 +48,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void leaveEvent(QEvent *) override;
+    void hideEvent(QHideEvent *e) override;
     bool eventFilter(QObject *obj, QEvent *e) override;
 
 private:
@@ -115,6 +118,8 @@ private:
     QLabel        *_updateStatus  = nullptr;
     QLabel        *_lastChecked   = nullptr;
     QPushButton   *_checkBtn      = nullptr;
+    QLabel        *_ramLabel      = nullptr;
+    QTimer        *_ramTimer      = nullptr;
 
     Dir    _resizeDir = Dir::None;
     QPoint _dragStart;
