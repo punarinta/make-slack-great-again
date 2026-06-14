@@ -4,9 +4,11 @@
 
 #include <QFrame>
 #include <QString>
+#include <QVector>
 
 class QLineEdit;
 class QScrollArea;
+class QToolButton;
 class QWidget;
 class Session;
 
@@ -36,12 +38,22 @@ signals:
     // e.g. "thumbsup". Callers wrap it as ":name:" if needed.
     void emojiSelected(const QString &name);
 
+protected:
+    // Routes arrow/enter/escape keys from the search field into grid navigation.
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 private:
     void buildGrid(const QString &filter = {});
     void applyTheme();
+    void setSelected(int idx);     // highlight + scroll the idx-th button into view
+    void moveSelection(int delta); // move selection by delta buttons (clamped)
 
-    QLineEdit   *_search  = nullptr;
-    QScrollArea *_scroll  = nullptr;
-    QWidget     *_grid    = nullptr;
-    Session     *_session = nullptr;
+    QLineEdit             *_search  = nullptr;
+    QScrollArea           *_scroll  = nullptr;
+    QWidget               *_grid    = nullptr;
+    Session               *_session = nullptr;
+    QVector<QToolButton *> _btns;         // buttons in render order (rebuilt per filter)
+    int                    _sel = -1;     // index into _btns of the keyboard selection
+    QString                _btnBaseStyle; // unselected button stylesheet
+    QString                _btnSelStyle;  // selected button stylesheet
 };

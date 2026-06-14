@@ -11,11 +11,15 @@
 #include <QGridLayout>
 #include <QLineEdit>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QToolButton>
 #include <QFont>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QPixmap>
 #include <QPointer>
+
+#include <algorithm>
 
 // Ordered list of emoji names for grid display — resolved via Emoji::fromName.
 static const QStringList kBaseEmojiNames{
@@ -216,10 +220,16 @@ static const QStringList kBaseEmojiNames{
     "warning",
 };
 
+// Full popup size; height shrinks below kFullHeight to fit a short filtered list.
+static constexpr int kFullWidth  = 300;
+static constexpr int kFullHeight = 340;
+static constexpr int kCols       = 8; // emoji per grid row
+
 EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint) {
     setObjectName("emojiPicker");
-    setFixedSize(300, 340);
+    setFixedWidth(kFullWidth);
+    setFixedHeight(kFullHeight);
 
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(8, 8, 8, 8);
@@ -227,6 +237,15 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
 
     _search = new QLineEdit(this);
     _search->setPlaceholderText(tr("Search emoji…"));
+    // Fixed height so the popup's chrome is deterministic when we auto-size it
+    // (QLineEdit::sizeHint doesn't reliably account for the stylesheet padding).
+    {
+        QFont sf = _search->font();
+        sf.setPixelSize(Th::c().fonts.md);
+        _search->setFont(sf);
+        // 4px top/bottom padding + 1px top/bottom border from the stylesheet.
+        _search->setFixedHeight(QFontMetrics(sf).height() + 8 + 2);
+    }
     lay->addWidget(_search);
 
     _scroll = new QScrollArea(this);
@@ -238,6 +257,9 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     _grid = new QWidget;
     _grid->setStyleSheet("background: transparent;");
     _scroll->setWidget(_grid);
+
+    // Drive grid navigation from keys typed in the search field.
+    _search->installEventFilter(this);
 
     buildGrid();
 
@@ -269,6 +291,17 @@ void EmojiPickerPopup::applyTheme() {
                       "QLineEdit:focus { border-color: %4; }"
                       "QScrollArea { border: none; background: transparent; }"
                       "QScrollArea > QWidget > QWidget { background: transparent; }"
+                      // Thin rounded thumb matching the chat list (paintScrollThumb):
+                      // 8px track, 2px margins → 4px visible thumb, on the light surface.
+                      "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
+                      "QScrollBar::handle:vertical {"
+                      "  background: %6; border-radius: 2px; min-height: 20px; margin: 2px;"
+                      "}"
+                      "QScrollBar::handle:vertical:hover { background: %7; }"
+                      "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+                      "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+                      "  background: transparent;"
+                      "}"
     )
                       .arg(
                           Th::qss(Th::c().surface.raised),
@@ -276,7 +309,8 @@ void EmojiPickerPopup::applyTheme() {
                           Th::qss(Th::c().text.primary),
                           Th::qss(Th::c().accent.def)
                       )
-                      .arg(Th::c().fonts.md));
+                      .arg(Th::c().fonts.md)
+                      .arg(Th::qss(QColor(0, 0, 0, 80)), Th::qss(QColor(0, 0, 0, 140))));
 }
 
 void EmojiPickerPopup::setSession(Session *session) {
@@ -293,6 +327,11 @@ void EmojiPickerPopup::open(const QPoint &globalPos) {
 }
 
 void EmojiPickerPopup::buildGrid(const QString &filter) {
+    // Drop references to the about-to-be-deleted buttons before destroying them
+    // so the selection helpers never touch dangling pointers.
+    _btns.clear();
+    _sel = -1;
+
     delete _grid->layout();
     const auto children = _grid->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
     for (QWidget *c : children)
@@ -302,15 +341,15 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
     gridLay->setContentsMargins(2, 2, 2, 2);
     gridLay->setSpacing(2);
 
-    const int cols = 8;
-    int       col = 0, row = 0;
+    int col = 0, row = 0;
 
-    const QString kBtnStyle =
-        QString(
-            "QToolButton { border: none; border-radius: 4px; background: transparent; }"
-            "QToolButton:hover { background: %1; }"
-        )
-            .arg(Th::qss(Th::c().surface.highlight));
+    _btnBaseStyle = QString(
+                        "QToolButton { border: none; border-radius: 4px; background: transparent; }"
+                        "QToolButton:hover { background: %1; }"
+    )
+                        .arg(Th::qss(Th::c().surface.highlight));
+    _btnSelStyle = QString("QToolButton { border: none; border-radius: 4px; background: %1; }")
+                       .arg(Th::qss(Th::c().surface.highlight));
 
     auto makeBtn = [&](const QString &name) -> QToolButton * {
         auto *btn = new QToolButton(_grid);
@@ -318,13 +357,14 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
         btn->setToolTip(name);
         btn->setFocusPolicy(Qt::NoFocus);
         btn->setCursor(Qt::PointingHandCursor);
-        btn->setStyleSheet(kBtnStyle);
+        btn->setStyleSheet(_btnBaseStyle);
         connect(btn, &QToolButton::clicked, this, [this, name] {
             hide();
             emit emojiSelected(name);
         });
         gridLay->addWidget(btn, row, col);
-        if (++col >= cols) {
+        _btns.push_back(btn);
+        if (++col >= kCols) {
             col = 0;
             ++row;
         }
@@ -379,4 +419,72 @@ void EmojiPickerPopup::buildGrid(const QString &filter) {
     }
 
     _grid->adjustSize();
+
+    // Auto-size the popup height to the rendered grid (capped at the full
+    // height, where the scroll bar takes over) so a short filtered list
+    // doesn't leave empty space below the last row.
+    const int rows  = row + (col > 0 ? 1 : 0);
+    const int gridH = rows > 0 ? rows * 32 + (rows - 1) * 2 + 4 /*grid margins*/ : 4;
+
+    // Chrome around the scroll area: layout top/bottom margins (8+8), the
+    // fixed-height search field, and the 6px spacing below it.
+    const int chrome   = 8 + _search->height() + 6 + 8;
+    const int maxGridH = kFullHeight - chrome;
+    setFixedHeight(chrome + std::min(gridH, maxGridH));
+
+    // Pre-select the first match so Enter picks the top hit while typing.
+    setSelected(_btns.isEmpty() ? -1 : 0);
+}
+
+void EmojiPickerPopup::setSelected(int idx) {
+    if (_sel >= 0 && _sel < _btns.size() && _btns[_sel])
+        _btns[_sel]->setStyleSheet(_btnBaseStyle);
+
+    if (idx < 0 || idx >= _btns.size()) {
+        _sel = -1;
+        return;
+    }
+    _sel = idx;
+    if (_btns[_sel]) {
+        _btns[_sel]->setStyleSheet(_btnSelStyle);
+        _scroll->ensureWidgetVisible(_btns[_sel], 0, 8);
+    }
+}
+
+void EmojiPickerPopup::moveSelection(int delta) {
+    if (_btns.isEmpty())
+        return;
+    const int base = _sel < 0 ? 0 : _sel;
+    setSelected(std::clamp(base + delta, 0, static_cast<int>(_btns.size()) - 1));
+}
+
+bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == _search && event->type() == QEvent::KeyPress) {
+        auto *ke = static_cast<QKeyEvent *>(event);
+        switch (ke->key()) {
+        case Qt::Key_Escape:
+            hide();
+            return true;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            if (_sel >= 0 && _sel < _btns.size() && _btns[_sel])
+                _btns[_sel]->click();
+            return true;
+        case Qt::Key_Up:
+            moveSelection(-kCols);
+            return true;
+        case Qt::Key_Down:
+            moveSelection(kCols);
+            return true;
+        case Qt::Key_Left:
+            moveSelection(-1);
+            return true;
+        case Qt::Key_Right:
+            moveSelection(1);
+            return true;
+        default:
+            break;
+        }
+    }
+    return QFrame::eventFilter(obj, event);
 }
