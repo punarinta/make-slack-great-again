@@ -186,6 +186,10 @@ void MainWindow::buildUi() {
     _frame = new QWidget(this);
     _frame->setObjectName("windowFrame");
     _frame->setMouseTracking(true);
+    // Solid background via palette (set in applyTheme), not a stylesheet:
+    // setStyleSheet on this root container re-polishes the whole window
+    // subtree on every theme switch (~150 ms on a populated window).
+    _frame->setAutoFillBackground(true);
 
     _frameLayout = new QVBoxLayout(_frame);
     _frameLayout->setContentsMargins(0, 0, 0, 0);
@@ -738,17 +742,31 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 void MainWindow::applyTheme() {
-    qApp->setStyleSheet(Th::globalQss());
+    // qApp->setStyleSheet() forces Qt to re-polish (recompute the style of)
+    // EVERY widget in the application — hundreds of ms on a populated window.
+    // globalQss() only styles QToolTip, and its colors come from content tokens
+    // (text.*) that are shared across all current themes, so a purple<->blue
+    // switch produces a byte-for-byte identical string. Re-applying it then is
+    // pure waste: skip unless the string actually changed (e.g. a future theme
+    // that retints tooltips), turning the common case into a no-op.
+    static QString lastGlobalQss;
+    const QString  gqss = Th::globalQss();
+    if (gqss != lastGlobalQss) {
+        lastGlobalQss = gqss;
+        qApp->setStyleSheet(gqss);
+    }
 
     const auto &th = Th::c();
 
     // nav.bg, not surface.content: at fractional display scale, hairline gaps
     // between sibling widgets expose this frame — it must blend into the dark
     // nav blocks (title bar, workspace rail, conv list), and the right-side
-    // panels paint their own light backgrounds over it anyway.
-    _frame->setStyleSheet(
-        QString("QWidget#windowFrame { background: %1; }").arg(Th::qss(th.nav.bg))
-    );
+    // panels paint their own light backgrounds over it anyway. Set via palette
+    // (with autoFillBackground), not setStyleSheet, so a theme switch repaints
+    // the frame instead of re-polishing the whole window subtree.
+    QPalette framePal = _frame->palette();
+    framePal.setColor(QPalette::Window, th.nav.bg);
+    _frame->setPalette(framePal);
 
     if (_msgHeader) {
         _msgHeader->setStyleSheet(
