@@ -41,6 +41,16 @@ private:
 
     void paintReaction(QPainter &p);
 
+    // Reparent onto the top-level window and place at a global position.  Done as
+    // an in-window child overlay (not a Qt::ToolTip top-level) because Wayland
+    // compositors don't honour absolute move() of top-level popups — the box would
+    // drift from where we computed it and the arrow would miss its target.
+    void placeGlobal(int gx, int gy, int w, int h);
+
+    // The region the tooltip must stay within: the host top-level window's global
+    // rect (so a child overlay is never clipped), falling back to the screen.
+    QRect availRect() const;
+
     static constexpr int kEmojiPx   = 30; // rendered preview emoji side
     static constexpr int kReactGapV = 8;  // gap between emoji and the name list
 

@@ -13,12 +13,41 @@
 #include <QGuiApplication>
 #include <algorithm>
 
-PopupTooltip::PopupTooltip(QWidget *parent)
-    : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
+PopupTooltip::PopupTooltip(QWidget *parent) : QWidget(parent) {
+    // In-window child overlay (no Qt::ToolTip window flag): see placeGlobal().
     setAttribute(Qt::WA_TranslucentBackground);
-    setAttribute(Qt::WA_ShowWithoutActivating);
+    setAttribute(Qt::WA_TransparentForMouseEvents);
     setFocusPolicy(Qt::NoFocus);
+    hide();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { update(); });
+}
+
+QRect PopupTooltip::availRect() const {
+    if (QWidget *p = parentWidget()) {
+        if (QWidget *host = p->window())
+            return QRect(host->mapToGlobal(QPoint(0, 0)), host->size());
+    }
+    if (QScreen *s = QGuiApplication::primaryScreen())
+        return s->availableGeometry();
+    return QRect();
+}
+
+void PopupTooltip::placeGlobal(int gx, int gy, int w, int h) {
+    // Float above all siblings of the top-level window.  Reparenting onto window()
+    // is essential: the construction parent may be a tiny widget (e.g. a 28px
+    // button) that would clip the tooltip.
+    QWidget *host = parentWidget() ? parentWidget()->window() : nullptr;
+    if (host && parentWidget() != host)
+        setParent(host);
+
+    setFixedSize(w, h);
+    if (host)
+        move(host->mapFromGlobal(QPoint(gx, gy)));
+    else
+        move(gx, gy);
+    show();
+    raise();
+    update();
 }
 
 void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect) {
@@ -37,8 +66,7 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
-    QScreen    *s     = QGuiApplication::screenAt(targetGlobalRect.center());
-    const QRect avail = s ? s->availableGeometry() : QRect();
+    const QRect avail = availRect();
 
     // Prefer above; fall back to below if there isn't enough room
     const int neededAbove = kShadow + bodyH + kArrowH + kGap;
@@ -64,11 +92,7 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
 
     _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
-    setFixedSize(widgetW, widgetH);
-    move(wx, wy);
-    show();
-    raise();
-    update();
+    placeGlobal(wx, wy, widgetW, widgetH);
 }
 
 void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRect) {
@@ -88,8 +112,7 @@ void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRec
 
     const int arrowTipGY = targetGlobalRect.center().y();
 
-    QScreen    *s     = QGuiApplication::screenAt(targetGlobalRect.center());
-    const QRect avail = s ? s->availableGeometry() : QRect();
+    const QRect avail = availRect();
 
     int wx = targetGlobalRect.right() + kGap - kShadow;
     int wy = arrowTipGY - widgetH / 2;
@@ -101,11 +124,7 @@ void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRec
 
     _arrowY = std::clamp(arrowTipGY - wy, kShadow + kArrowW, widgetH - kShadow - kArrowW);
 
-    setFixedSize(widgetW, widgetH);
-    move(wx, wy);
-    show();
-    raise();
-    update();
+    placeGlobal(wx, wy, widgetW, widgetH);
 }
 
 void PopupTooltip::showReaction(
@@ -137,8 +156,7 @@ void PopupTooltip::showReaction(
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
-    QScreen    *s     = QGuiApplication::screenAt(targetGlobalRect.center());
-    const QRect avail = s ? s->availableGeometry() : QRect();
+    const QRect avail = availRect();
 
     const int neededAbove = kShadow + bodyH + kArrowH + kGap;
     _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
@@ -160,11 +178,7 @@ void PopupTooltip::showReaction(
 
     _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
-    setFixedSize(widgetW, widgetH);
-    move(wx, wy);
-    show();
-    raise();
-    update();
+    placeGlobal(wx, wy, widgetW, widgetH);
 }
 
 void PopupTooltip::paintEvent(QPaintEvent *) {
