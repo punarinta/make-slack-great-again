@@ -47,7 +47,7 @@ TEST_CASE("formatTime English 12-hour", "[timefmt]") {
 TEST_CASE("formatTime English 24-hour", "[timefmt]") {
     setPrefs("en", true);
     CHECK(TimeFmt::formatTime(kAfternoon) == "14:34");
-    CHECK(TimeFmt::formatTime(kMorning) == "9:05");
+    CHECK(TimeFmt::formatTime(kMorning) == "09:05");
 }
 
 TEST_CASE("formatTime Japanese 12-hour puts day period first", "[timefmt]") {
@@ -104,9 +104,9 @@ TEST_CASE("editFormat patterns per locale and clock", "[timefmt]") {
     setPrefs("en", false);
     CHECK(TimeFmt::editFormat() == "MMM d, yyyy h:mm AP");
     setPrefs("en", true);
-    CHECK(TimeFmt::editFormat() == "MMM d, yyyy H:mm");
+    CHECK(TimeFmt::editFormat() == "MMM d, yyyy HH:mm");
     setPrefs("ja", true);
-    CHECK(TimeFmt::editFormat() == "yyyy年M月d日 H:mm");
+    CHECK(TimeFmt::editFormat() == "yyyy年M月d日 HH:mm");
     setPrefs("ja", false);
     CHECK(TimeFmt::editFormat() == "yyyy年M月d日 APh:mm");
 }

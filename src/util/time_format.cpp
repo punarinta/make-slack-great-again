@@ -41,8 +41,10 @@ bool isJa() {
 // Per-locale display patterns. Japanese puts the day-period marker before the
 // time (午後2:34) and orders dates year→month→day with counter suffixes.
 QString timePattern() {
+    // 24-hour convention uses a two-digit hour (09:05); 12-hour omits the
+    // leading zero (9:05 AM).
     if (use24h())
-        return "H:mm";
+        return "HH:mm";
     return isJa() ? "APh:mm" : "h:mm AP";
 }
 
