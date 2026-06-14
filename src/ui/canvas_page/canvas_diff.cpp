@@ -14,6 +14,15 @@
 namespace CanvasDiff {
 
 QString normalizeMd(QString md) {
+    // Custom-emoji inline images carry an "emoji:<name>" src so they survive the
+    // HTML round-trip; turn them back into ":name:" shortcodes — both for the
+    // wire form sent to Slack and so an untouched emoji section diffs equal on
+    // the base and document sides.
+    static const QRegularExpression kEmojiImg(
+        QStringLiteral("!\\[[^\\]]*\\]\\(emoji:([^)\\s]+)\\)")
+    );
+    md.replace(kEmojiImg, QStringLiteral(":\\1:"));
+
     QStringList lines = md.split('\n');
     for (auto &l : lines) {
         while (!l.isEmpty() && (l.back() == ' ' || l.back() == '\t'))

@@ -2,13 +2,16 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "canvas_page.h"
 #include "canvas_diff.h"
+#include "canvas_emoji.h"
 #include "session/session.h"
 #include "ui/app_dialog/app_dialog.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/icon_utils.h"
+#include "ui/message_list/message_render.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/clipboard.h"
+#include "util/emoji.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -40,16 +43,26 @@ public:
     Session *session = nullptr;
 
     QVariant loadResource(int type, const QUrl &url) override {
-        if (type != QTextDocument::ImageResource || !url.scheme().startsWith("http"))
+        const bool emojiRef = url.scheme() == QLatin1String("emoji");
+        if (type != QTextDocument::ImageResource || !(emojiRef || url.scheme().startsWith("http")))
             return QTextBrowser::loadResource(type, url);
         const QString key = url.toString();
         if (const auto it = _images.constFind(key); it != _images.constEnd())
             return *it;
-        if (session && !_pending.contains(key)) {
+
+        // Custom-emoji shortcodes are embedded as images with an "emoji:<name>"
+        // src so they survive the markdown round-trip (CanvasDiff::normalizeMd
+        // turns them back into ":name:" on save); resolve to the workspace emoji
+        // image URL here. Every other image loads from its own http(s) URL.
+        const QString fetchUrl =
+            emojiRef
+                ? (session ? MsgRender::resolveEmojiRich(url.path(), session).imageUrl : QString())
+                : key;
+        if (session && !fetchUrl.isEmpty() && !_pending.contains(key)) {
             _pending.insert(key);
             QPointer<CanvasEdit> guard(this);
             session->downloadFile(
-                key,
+                fetchUrl,
                 [guard, key, url](QByteArray data) {
                     if (!guard)
                         return;
@@ -225,7 +238,7 @@ void CanvasPage::open(ConversationId conv, const QString &fileId, const QString 
     _serverTitle    = knownTitle;
     _baseRefetching = false;
     setReadOnlyUi(ReadOnlyCause::None);
-    _title->setText(knownTitle);
+    _title->setText(Emoji::expandCodes(knownTitle));
     _titleDirty = false;
     setBodyHtml({});
     _menuBtn->setVisible(!fileId.isEmpty());
@@ -302,8 +315,14 @@ void CanvasPage::loadContent() {
     );
 }
 
-void CanvasPage::applyRemoteHtml(const QString &html) {
+void CanvasPage::applyRemoteHtml(const QString &rawHtml) {
     _baseRefetching = false;
+    // Expand emoji codes before anything else: the result is both the displayed
+    // body and the diff base (`_lastHtml`), so they must agree or every save
+    // would diff Unicode (document) against shortcodes (base) as a spurious edit.
+    static const QHash<QString, QString> kNoCustom;
+    const QString                        html =
+        CanvasEmoji::expandInHtml(rawHtml, _session ? _session->emojiMap() : kNoCustom);
     if (html == _lastHtml)
         return; // unchanged remote; don't reset the view
     _lastHtml = html;
@@ -312,8 +331,9 @@ void CanvasPage::applyRemoteHtml(const QString &html) {
     if (_bodyDirty || _titleDirty || _saving)
         return;
 
-    const auto [title, bodyHtml] =
-        CanvasDiff::splitTitleH1(html, {_serverTitle, _title->text().trimmed()});
+    const auto [title, bodyHtml] = CanvasDiff::splitTitleH1(
+        html, {Emoji::expandCodes(_serverTitle), _title->text().trimmed()}
+    );
     _title->setText(title);
     emit titleChanged(title);
     setBodyHtml(bodyHtml);
@@ -340,8 +360,9 @@ void CanvasPage::flushPendingSave() {
     }
     _saveTimer->stop();
 
-    const QString bodyMd =
-        _body->document()->toMarkdown(QTextDocument::MarkdownDialectGitHub).trimmed();
+    const QString bodyMd = CanvasDiff::normalizeMd(
+        _body->document()->toMarkdown(QTextDocument::MarkdownDialectGitHub)
+    );
     const QString title = _title->text().trimmed();
 
     // Nothing to create a canvas from yet.

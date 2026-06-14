@@ -303,6 +303,74 @@ TEST_CASE("trailing inserts after an anchor are emitted reversed", "[canvas-diff
     CHECK((*ops)[0].sectionId == "id-a");
 }
 
+// ── Emoji round-trip (custom-emoji "emoji:<name>" images) ─────────────────────
+
+// normalizeMd reverses the inline custom-emoji images the canvas embeds for
+// display back into ":name:" shortcodes — both for the markdown sent to Slack
+// and so an untouched emoji section diffs equal on both sides. The fixtures use
+// the exact image-markdown form Qt's toMarkdown emits (alt text "image").
+TEST_CASE("normalizeMd turns emoji images back into shortcodes", "[canvas-diff]") {
+    CHECK(CanvasDiff::normalizeMd("![image](emoji:tada)") == ":tada:");
+    CHECK(CanvasDiff::normalizeMd("cheer ![image](emoji:tada) now") == "cheer :tada: now");
+    // names with + / - / _ survive intact
+    CHECK(CanvasDiff::normalizeMd("![image](emoji:+1)") == ":+1:");
+    CHECK(CanvasDiff::normalizeMd("![image](emoji:my_custom_parrot)") == ":my_custom_parrot:");
+    // several on one line
+    CHECK(
+        CanvasDiff::normalizeMd("![image](emoji:tada) ![image](emoji:rocket)") == ":tada: :rocket:"
+    );
+}
+
+TEST_CASE("normalizeMd leaves ordinary image URLs untouched", "[canvas-diff]") {
+    const QString md = "![alt](https://files.example.com/pic.png)";
+    CHECK(CanvasDiff::normalizeMd(md) == md);
+}
+
+static const char *kEmojiHtml = "<div class=\"quip-canvas-content\">"
+                                "<p id=\"temp:C:emojiPara001\" class=\"line\">cheer "
+                                "<img src='emoji:tada' width='22' height='22'> up</p>"
+                                "</div>";
+
+TEST_CASE("emoji section parses to a shortcode and is diff-stable", "[canvas-diff]") {
+    const auto base = CanvasDiff::parseBaseChunks(QString::fromUtf8(kEmojiHtml));
+    REQUIRE(base.has_value());
+    REQUIRE(base->size() == 1);
+    // The image is normalized back to its shortcode — not the "emoji:" src.
+    CHECK((*base)[0].md == "cheer :tada: up");
+
+    QTextDocument doc;
+    doc.setHtml(QString::fromUtf8(kEmojiHtml));
+    const auto current = CanvasDiff::documentChunks(&doc);
+    REQUIRE(current.size() == 1);
+    CHECK(current[0].md == (*base)[0].md); // both sides agree → no spurious edit
+
+    const auto ops = CanvasDiff::diff(*base, current);
+    REQUIRE(ops.has_value());
+    CHECK(ops->empty());
+}
+
+TEST_CASE("editing an emoji paragraph sends the shortcode, never the URL", "[canvas-diff]") {
+    const auto base = CanvasDiff::parseBaseChunks(QString::fromUtf8(kEmojiHtml));
+    REQUIRE(base.has_value());
+
+    QTextDocument doc;
+    doc.setHtml(QString::fromUtf8(kEmojiHtml));
+    auto block = findBlock(doc, "cheer");
+    REQUIRE(block.isValid());
+    QTextCursor c(block);
+    c.movePosition(QTextCursor::EndOfBlock);
+    c.insertText(" Edited.");
+
+    const auto ops = CanvasDiff::diff(*base, CanvasDiff::documentChunks(&doc));
+    REQUIRE(ops.has_value());
+    REQUIRE(ops->size() == 1);
+    CHECK((*ops)[0].op == CanvasChange::Op::ReplaceSection);
+    CHECK((*ops)[0].markdown.contains(":tada:"));
+    CHECK(!(*ops)[0].markdown.contains("emoji:")); // no leaked image src
+    CHECK(!(*ops)[0].markdown.contains("!["));     // not serialized as an image
+    CHECK((*ops)[0].markdown.contains("Edited."));
+}
+
 TEST_CASE("replace pairs with delete of extra base sections", "[canvas-diff]") {
     const std::vector<Chunk> base = {
         {Chunk::Kind::Para, "id-a", false, "keep"},
