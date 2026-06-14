@@ -23,6 +23,7 @@ class OAuthFlow;
 class ImageCache;
 class MessageListWidget;
 class ComposerWidget;
+class TypingIndicatorWidget;
 class ConvListWidget;
 class WorkspaceSwitcher;
 class SettingsDialog;
@@ -166,13 +167,14 @@ private:
     QStackedWidget    *_contentStack        = nullptr;
     MessageListWidget *_messageList         = nullptr;
     ComposerWidget    *_composer            = nullptr;
-    SearchWidget      *_searchWidget        = nullptr;
-    WelcomeWidget     *_welcomeTips         = nullptr;
-    ThreadPanel       *_threadPanel         = nullptr;
-    ConvTabsWidget    *_convTabs            = nullptr;
-    CanvasPage        *_canvasPage          = nullptr;
-    QString            _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
-    QString            _currentCanvasTitle;
+    TypingIndicatorWidget *_typingIndicator = nullptr;
+    SearchWidget          *_searchWidget    = nullptr;
+    WelcomeWidget         *_welcomeTips     = nullptr;
+    ThreadPanel           *_threadPanel     = nullptr;
+    ConvTabsWidget        *_convTabs        = nullptr;
+    CanvasPage            *_canvasPage      = nullptr;
+    QString                _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
+    QString                _currentCanvasTitle;
 
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;

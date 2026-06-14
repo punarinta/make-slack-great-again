@@ -222,6 +222,15 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
         };
     }
 
+    // NOTE: dead branch in practice. user_typing is an RTM-only event — it has
+    // no Events API equivalent, so Slack never delivers it in an "events_api"
+    // envelope over Socket Mode (the only frame this method ever sees). A Slack
+    // maintainer has confirmed there is no Events API typing event and none is
+    // planned (slackapi/node-slack-sdk#1130). The only sources of user_typing
+    // are legacy RTM (classic apps, EOL 2026-11-16) and Slack's internal desktop
+    // websocket (scraped xoxc/xoxd session creds) — neither is a supported path
+    // for this OAuth-token app. Kept so the typing UI lights up automatically if
+    // such an event ever does arrive; see MainWindow's EvTyping handler.
     if (type == "user_typing") {
         return EvTyping{
             ConversationId{ev.value("channel").toString()}, UserId{ev.value("user").toString()}

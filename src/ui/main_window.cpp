@@ -9,6 +9,7 @@
 #include "popup_tooltip/popup_tooltip.h"
 #include "message_list/message_list.h"
 #include "composer/composer_widget.h"
+#include "typing_indicator/typing_indicator.h"
 #include "conv_list/conv_list_widget.h"
 #include "context_menu/context_menu.h"
 #include "workspace_switcher/workspace_switcher.h"
@@ -531,6 +532,9 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _searchWidget = new SearchWidget(msgArea);
     _searchWidget->hide();
     _contentStack->installEventFilter(this);
+
+    _typingIndicator = new TypingIndicatorWidget(msgArea);
+    msgLayout->addWidget(_typingIndicator);
 
     _composer = new ComposerWidget(msgArea);
     _composer->setEnabled(false);
@@ -1264,6 +1268,29 @@ void MainWindow::connectToSession() {
                         if (conv && conv->dmUser && *conv->dmUser == ev->user)
                             _headerAvatar->setDnd(ev->dndEnabled);
                     }
+                } else if (const auto *ev = std::get_if<EvTyping>(&e)) {
+                    // NOTE: in practice EvTyping never fires — Slack delivers
+                    // user_typing only over the deprecated RTM API, which has no
+                    // Events API / Socket Mode equivalent and which a maintainer
+                    // confirmed will not be added (node-slack-sdk#1130). See the
+                    // dead user_typing branch in socket_mode_realtime.cpp. This
+                    // handler + TypingIndicatorWidget are kept ready so the UI
+                    // works automatically should such an event ever arrive.
+                    //
+                    // Show typing for the open conversation only.  Our own id can
+                    // arrive here when we type from another client (we never echo
+                    // local typing), shown as "You … on another device".
+                    if (_typingIndicator && ev->conv == _currentConvId) {
+                        const bool  isSelf = ev->user == _session->meUserId();
+                        const auto *u      = _session->findUser(ev->user);
+                        _typingIndicator->userTyping(
+                            ev->user, u ? u->displayLabel() : ev->user.value, isSelf
+                        );
+                    }
+                } else if (const auto *ev = std::get_if<EvMessageNew>(&e)) {
+                    // A delivered message means that author has stopped typing.
+                    if (_typingIndicator && ev->conv == _currentConvId)
+                        _typingIndicator->userStopped(ev->msg.author);
                 }
             },
             _uiLifetime
@@ -1827,6 +1854,10 @@ void MainWindow::openConversation(int row) {
     _currentConvId = _convList->conversationId(row);
     if (_currentConvId.value.isEmpty())
         return;
+
+    // Typing is per-conversation; forget whoever was typing in the old one.
+    if (_typingIndicator)
+        _typingIndicator->clearAll();
 
     // Track navigation history.  Jumps applied by navigateHistory() keep the
     // forward stack (like editor undo/redo); direct opens discard it.
