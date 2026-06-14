@@ -1299,39 +1299,62 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                             "grin",     "joy",        "sweat_smile", "sob",      "thinking_face",
                             "wave",     "ok_hand",    "point_right", "muscle",   "100"
                         };
-                        QSet<QString> added;
-                        const auto    addEmoji = [&items, &added](const QString &name) {
-                            if (added.contains(name) || items.size() >= 8)
-                                return;
-                            added.insert(name);
-                            const QString glyph = Emoji::fromName(name);
-                            items.append({glyph + "  :" + name + ":", glyph});
-                        };
-                        for (const QString &name : kCommonEmoji) {
+                        // Flexible matching: an exact prefix ranks first, then a
+                        // match at a token boundary (codes split on _ - +), then
+                        // any substring — so ":bcd" still finds ":abcde:" while
+                        // exact prefixes stay on top.
+                        const auto rankOf = [&query](const QString &name) -> int {
                             if (name.startsWith(query))
-                                addEmoji(name);
+                                return 0;
+                            if (name.contains("_" + query) || name.contains("-" + query) ||
+                                name.contains("+" + query))
+                                return 1;
+                            return name.contains(query) ? 2 : -1;
+                        };
+                        // Workspace custom emoji have no Unicode form — they carry
+                        // the :code: so Slack renders the image server-side.
+                        struct EmojiCand {
+                            int     rank;
+                            bool    custom;
+                            QString name;
+                        };
+                        QVector<EmojiCand> cands;
+                        QSet<QString>      added;
+                        const auto         consider =
+                            [&cands, &added, &rankOf](const QString &name, bool custom) {
+                                if (added.contains(name))
+                                    return;
+                                const int r = rankOf(name);
+                                if (r < 0)
+                                    return;
+                                added.insert(name);
+                                cands.append({r, custom, name});
+                            };
+                        for (const QString &name : kCommonEmoji)
+                            consider(name, false);
+                        for (const QString &name : Emoji::allNames())
+                            consider(name, false);
+                        if (_session) {
+                            QStringList custom = _session->emojiMap().keys();
+                            custom.sort();
+                            for (const QString &name : custom)
+                                consider(name, true);
                         }
-                        for (const QString &name : Emoji::allNames()) {
+                        // Stable sort by rank keeps common emoji ahead of the
+                        // full table, and custom emoji alphabetical, at equal rank.
+                        std::stable_sort(
+                            cands.begin(), cands.end(), [](const EmojiCand &a, const EmojiCand &b) {
+                                return a.rank < b.rank;
+                            }
+                        );
+                        for (const EmojiCand &c : cands) {
                             if (items.size() >= 8)
                                 break;
-                            if (name.startsWith(query))
-                                addEmoji(name);
-                        }
-                        // Workspace custom emoji have no Unicode form — insert
-                        // the :code: so Slack renders the image server-side.
-                        if (_session) {
-                            QStringList custom;
-                            const auto &emap = _session->emojiMap();
-                            for (auto it = emap.begin(); it != emap.end(); ++it) {
-                                if (it.key().startsWith(query) && !added.contains(it.key()))
-                                    custom.append(it.key());
-                            }
-                            custom.sort();
-                            for (const QString &name : custom) {
-                                if (items.size() >= 8)
-                                    break;
-                                added.insert(name);
-                                items.append({":" + name + ":", ":" + name + ":"});
+                            if (c.custom) {
+                                items.append({":" + c.name + ":", ":" + c.name + ":"});
+                            } else {
+                                const QString glyph = Emoji::fromName(c.name);
+                                items.append({glyph + "  :" + c.name + ":", glyph});
                             }
                         }
                     }
