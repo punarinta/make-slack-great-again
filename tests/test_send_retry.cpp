@@ -111,6 +111,78 @@ TEST_CASE("queued calls survive a retried head call in order", "[send_retry]") {
 }
 
 // =============================================================================
+// WebApiClient::paginate — the self-referential ctx cycle is always broken
+// =============================================================================
+//
+// paginate keeps its state alive across async pages with `ctx->loadPage =
+// [ctx]{...}` — a deliberate self-reference. If that cycle isn't cleared on an
+// error exit, the whole ctx (and the partial page accumulator it captures)
+// leaks. A sentinel captured in the callbacks lets us assert the ctx really
+// died: while it's alive, the sentinel's weak_ptr stays valid.
+
+TEST_CASE("paginate breaks its ctx cycle when a page returns ok:false", "[send_retry]") {
+    FakeHttpServer server;
+    // First page succeeds and yields a cursor (so a second request is made),
+    // then the second page fails at the Slack level — the path that used to
+    // skip clearing loadPage and leak the whole pagination.
+    server.enqueue(
+        R"({"ok":true,"channels":[{"id":"C1"}],"response_metadata":{"next_cursor":"x"}})"
+    );
+    server.enqueue(R"({"ok":false,"error":"internal_error"})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+
+    auto               sentinel = std::make_shared<int>(0);
+    std::weak_ptr<int> alive    = sentinel;
+    int                pages    = 0;
+    QString            err;
+
+    client.paginate(
+        "conversations.list",
+        "channels",
+        QUrlQuery{},
+        [sentinel, &pages](QJsonArray a) { pages += a.size(); },
+        [sentinel] {},
+        [sentinel, &err](QString e) { err = e; }
+    );
+    sentinel.reset(); // only the captures inside the ctx hold it now
+
+    REQUIRE(waitFor([&] { return !err.isEmpty(); }));
+    CHECK(err == "internal_error");
+    CHECK(pages == 1);               // the good first page was delivered
+    CHECK(server.requestCount == 2); // both pages were fetched
+    CHECK(alive.expired());          // ctx destroyed → cycle broken, no leak
+}
+
+TEST_CASE("paginate breaks its ctx cycle on a clean finish", "[send_retry]") {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true,"channels":[{"id":"C1"},{"id":"C2"}]})"); // no cursor → done
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+
+    auto               sentinel = std::make_shared<int>(0);
+    std::weak_ptr<int> alive    = sentinel;
+    bool               done     = false;
+
+    client.paginate(
+        "conversations.list",
+        "channels",
+        QUrlQuery{},
+        [sentinel](QJsonArray) {},
+        [sentinel, &done] { done = true; },
+        [sentinel](QString) {}
+    );
+    sentinel.reset();
+
+    REQUIRE(waitFor([&] { return done; }));
+    CHECK(alive.expired());
+}
+
+// =============================================================================
 // PublicBackend::sendMessage — reconcile instead of blind resend
 // =============================================================================
 

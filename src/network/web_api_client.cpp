@@ -164,17 +164,23 @@ void WebApiClient::paginate(
         this, method, arrayKey, params, std::move(onPage), std::move(onDone), std::move(onError)
     });
 
-    ctx->loadPage = [ctx](QUrlQuery p) {
+    // loadPage holds a shared_ptr to its own ctx (self-reference cycle that
+    // keeps the pagination alive across async pages); it MUST be cleared on
+    // every exit or the whole Ctx — and the partial accumulator it captures —
+    // leaks. call() routes both transport failures and Slack `ok:false`
+    // responses to the error handler, so this wrapper is the single place every
+    // failed page lands: break the cycle, then forward the error.
+    auto onPageError = [ctx](QString err) {
+        ctx->loadPage = {};
+        if (ctx->onError)
+            ctx->onError(err);
+    };
+    ctx->loadPage = [ctx, onPageError](QUrlQuery p) {
         ctx->self->call(
             ctx->method,
             p,
             [ctx](QJsonObject resp) {
-                if (!resp.value("ok").toBool()) {
-                    ctx->loadPage = {};
-                    if (ctx->onError)
-                        ctx->onError(resp.value("error").toString("unknown"));
-                    return;
-                }
+                // call() only invokes onSuccess on `ok:true`, so resp is always ok here.
                 auto arr = resp.value(ctx->arrayKey).toArray();
                 if (!arr.isEmpty())
                     ctx->onPage(arr);
@@ -191,7 +197,7 @@ void WebApiClient::paginate(
                     ctx->onDone();
                 }
             },
-            ctx->onError
+            onPageError
         );
     };
     ctx->loadPage(params);
