@@ -623,6 +623,46 @@ TEST_CASE_METHOD(
     CHECK(std::get<EvPresenceChanged>(col.events[0]).active == true);
 }
 
+// ── EvUserChanged ─────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "EvUserChanged updates avatar and display name", "[session][events]"
+) {
+    REQUIRE(session->findUser(UserId{"U1"})->avatarUrl == "https://av/alice.png");
+    User updated        = kAlice;
+    updated.avatarUrl   = "https://av/alice-v2.png";
+    updated.displayName = "Alice Newname";
+    stub->fireEvent(EvUserChanged{updated});
+    const User *u = session->findUser(UserId{"U1"});
+    REQUIRE(u != nullptr);
+    CHECK(u->avatarUrl == "https://av/alice-v2.png");
+    CHECK(u->displayName == "Alice Newname");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "EvUserChanged preserves live presence and DND", "[session][events]"
+) {
+    // Bring U1 online and mark DND, then let a profile update arrive whose
+    // payload carries no presence info (user_change never does).
+    stub->fireEvent(EvPresenceChanged{UserId{"U1"}, true});
+    stub->fireEvent(EvDndChanged{UserId{"U1"}, true});
+    User updated      = kAlice; // isActive=false, dndEnabled=false
+    updated.avatarUrl = "https://av/alice-v3.png";
+    stub->fireEvent(EvUserChanged{updated});
+    const User *u = session->findUser(UserId{"U1"});
+    REQUIRE(u != nullptr);
+    CHECK(u->avatarUrl == "https://av/alice-v3.png");
+    CHECK(u->isActive == true);   // not clobbered by the merge
+    CHECK(u->dndEnabled == true); // not clobbered by the merge
+}
+
+TEST_CASE_METHOD(SessionFixture, "EvUserChanged is forwarded to subscribers", "[session][events]") {
+    auto col = collectEvents();
+    stub->fireEvent(EvUserChanged{kAlice});
+    REQUIRE(col.events.size() == 1);
+    CHECK(std::holds_alternative<EvUserChanged>(col.events[0]));
+}
+
 // ── EvConvMarked ──────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(

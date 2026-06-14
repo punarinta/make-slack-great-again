@@ -215,6 +215,27 @@ void Session::start() {
                         }
                     }
                     _users = std::move(users);
+                } else if (auto *ev = std::get_if<EvUserChanged>(&e)) {
+                    // Profile/avatar update. Take the fresh fields but keep the
+                    // live presence/DND state — the user_change payload doesn't
+                    // carry it (isActive is poll-filled, dndEnabled tracked via
+                    // EvDndChanged). A changed avatar yields a new image_72 URL
+                    // (the hash is embedded), so reassigning _users lets the UI
+                    // rebuild and ImageCache fetch the new image on its own.
+                    auto users = _users.current();
+                    auto it    = std::find_if(users.begin(), users.end(), [&](const User &u) {
+                        return u.id == ev->user.id;
+                    });
+                    if (it != users.end()) {
+                        User merged       = ev->user;
+                        merged.isActive   = it->isActive;
+                        merged.dndEnabled = it->dndEnabled;
+                        *it               = std::move(merged);
+                    } else {
+                        users.push_back(ev->user);
+                    }
+                    _cache->saveUsers(users);
+                    _users = std::move(users);
                 } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {

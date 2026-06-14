@@ -251,5 +251,13 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
         };
     }
 
+    // A member updated their profile (incl. avatar). user_change carries the
+    // full user object — same shape as users.list — so toUser parses it
+    // directly. (user_profile_changed carries only id+profile and would zero
+    // out is_admin/is_bot/etc., so we don't map it.)
+    if (type == "user_change") {
+        return EvUserChanged{JsonMappers::toUser(ev.value("user").toObject())};
+    }
+
     return std::nullopt;
 }

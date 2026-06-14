@@ -398,6 +398,12 @@ struct EvMemberJoined {
     ConversationId conv;
     UserId         user;
 };
+// A member updated their profile/data (display name, status, title, or
+// avatar). Carries the complete refreshed User; Session merges it into the
+// cache while preserving live presence/DND (which this event doesn't carry).
+struct EvUserChanged {
+    User user;
+};
 // A sendMessage definitively failed (Slack rejected it — not a transport
 // problem, those are retried). Session removes the optimistic copy and
 // surfaces the reason to the user.
@@ -441,4 +447,5 @@ using Event = std::variant<
     EvDndChanged,
     EvChannelCreated,
     EvMemberJoined,
+    EvUserChanged,
     EvSendFailed>;

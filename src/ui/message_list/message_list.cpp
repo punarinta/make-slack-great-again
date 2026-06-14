@@ -2409,5 +2409,15 @@ void MessageListWidget::handleEvent(const Event &e) {
         // Keep the profile card's presence dot live while it is shown.
         if (_profileCard->isVisible() && ev->user == _profileCard->userId())
             _profileCard->setActive(ev->active);
+
+    } else if (auto *ev = std::get_if<EvUserChanged>(&e)) {
+        // A member changed their profile/avatar. Author info is resolved live
+        // via Session::findUser on paint, so a repaint is enough to pick up the
+        // new name + avatar URL (ImageCache fetches the new image on demand).
+        const bool authoredHere = std::any_of(_items.begin(), _items.end(), [&](const auto &it) {
+            return it.msg.author == ev->user.id;
+        });
+        if (authoredHere)
+            viewport()->update();
     }
 }
