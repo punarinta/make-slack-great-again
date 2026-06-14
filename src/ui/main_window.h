@@ -155,6 +155,7 @@ private:
     SettingsDialog    *_settingsDialog      = nullptr;
     QWidget           *_convPanel           = nullptr;
     QWidget           *_convResizeHandle    = nullptr;
+    QWidget           *_rightArea           = nullptr; // nav.bg wrapper — restyled on theme switch
     ConvListWidget    *_convList            = nullptr;
     QLabel            *_convNameLabel       = nullptr;
     QWidget           *_msgHeader           = nullptr;

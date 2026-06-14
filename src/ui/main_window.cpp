@@ -85,7 +85,10 @@ protected:
         if (!_hovered)
             return;
         QPainter p(this);
-        p.fillRect(rect(), QColor(0, 120, 215, 80));
+        // Same blue the composer's @mention popup uses for its highlighted
+        // row — clearly visible against the dark nav strip, unlike the subtle
+        // nav.itemHover tint which barely reads on the default theme.
+        p.fillRect(rect(), Th::c().text.link);
     }
 
     void enterEvent(QEnterEvent *) override {
@@ -357,13 +360,14 @@ QWidget *MainWindow::buildMainPage() {
 
     root->addWidget(buildConvPanel(page));
 
-    // Wrapper with nav.bg background — right/bottom gap shows through when windowed
+    // Wrapper with nav.bg background — right/bottom gap and the resize-handle
+    // strip show it through. Painted via palette (set in applyTheme), not a
+    // stylesheet, so a theme switch recolors it instead of leaving the old
+    // theme's nav.bg behind (the purple-under-the-list seam).
     auto *rightArea = new QWidget(page);
-    rightArea->setAttribute(Qt::WA_StyledBackground);
-    rightArea->setStyleSheet(
-        QString("QWidget#rightArea { background: %1; }").arg(Th::qss(Th::c().nav.bg))
-    );
     rightArea->setObjectName("rightArea");
+    rightArea->setAutoFillBackground(true);
+    _rightArea        = rightArea;
     _rightPanelLayout = new QHBoxLayout(rightArea);
     _rightPanelLayout->setContentsMargins(0, 0, 0, 0);
     _rightPanelLayout->setSpacing(0);
@@ -767,6 +771,14 @@ void MainWindow::applyTheme() {
     QPalette framePal = _frame->palette();
     framePal.setColor(QPalette::Window, th.nav.bg);
     _frame->setPalette(framePal);
+
+    // Same nav.bg, same palette-not-stylesheet rationale: this wrapper backs
+    // the resize-handle strip, so a stale color reads as a colored seam.
+    if (_rightArea) {
+        QPalette areaPal = _rightArea->palette();
+        areaPal.setColor(QPalette::Window, th.nav.bg);
+        _rightArea->setPalette(areaPal);
+    }
 
     if (_msgHeader) {
         _msgHeader->setStyleSheet(
