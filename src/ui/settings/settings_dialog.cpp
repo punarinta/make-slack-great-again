@@ -161,9 +161,10 @@ void SettingsDialog::buildPanel() {
     auto *themeGroup = new QButtonGroup(themeBox);
     themeGroup->setExclusive(true);
     for (const auto &info : Th::availableThemes()) {
-        const QString name = info.id == QLatin1String("purple") ? tr("Purple")
-                             : info.id == QLatin1String("blue") ? tr("Blue")
-                                                                : info.id;
+        const QString name = info.id == QLatin1String("purple")  ? tr("Purple")
+                             : info.id == QLatin1String("blue")  ? tr("Blue")
+                             : info.id == QLatin1String("green") ? tr("Green")
+                                                                 : info.id;
         auto         *card = new ThemePreviewCard(info.id, name, *info.theme, themeBox);
         themeGroup->addButton(card);
         themeLayout->addWidget(card);

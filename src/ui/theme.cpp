@@ -239,10 +239,38 @@ static Theme makeOceanBlue() {
 
 const Theme kOceanBlue = makeOceanBlue();
 
+// ── Green theme: same content surfaces, forest-green chrome ───────────────────
+// Same copy-and-patch approach as blue; only the chrome tokens differ.
+
+static Theme makeForestGreen() {
+    Theme t = kAubergine;
+
+    t.nav.bg              = QColor("#0E3D2E");
+    t.nav.primary         = QColor("#0A3124");
+    t.nav.workspaceBubble = QColor("#15543E");
+    t.nav.itemHover       = QColor("#266048");
+    t.nav.itemSelected    = QColor("#DBE5E0"); // white ~85% over nav.primary
+    t.nav.itemTextDim     = QColor("#C3D4CC");
+
+    t.accent.def      = QColor("#007A5A"); // Slack brand green
+    t.accent.hover    = QColor("#148567");
+    t.accent.pressed  = QColor("#055C42");
+    t.accent.dark     = QColor("#055C42");
+    t.accent.subtleBg = QColor("#E5F4EE");
+
+    t.icon.accent = t.accent.def;
+    t.titleBar.bg = t.nav.bg;
+
+    return t;
+}
+
+const Theme kForestGreen = makeForestGreen();
+
 const std::vector<ThemeInfo> &availableThemes() {
     static const std::vector<ThemeInfo> kThemes = {
         {QStringLiteral("purple"), &kAubergine},
         {QStringLiteral("blue"), &kOceanBlue},
+        {QStringLiteral("green"), &kForestGreen},
     };
     return kThemes;
 }
