@@ -131,6 +131,15 @@ void Session::start() {
                             c.lastRead = old.lastRead;
                         if (old.latestTs > c.latestTs)
                             c.latestTs = old.latestTs;
+                        // conversations.list carries no `room`, so it can't
+                        // report live huddles — keep whatever the realtime
+                        // huddle_thread events detected (start/end is tracked
+                        // there, not via this reload).
+                        if (old.huddleActive && !c.huddleActive) {
+                            c.huddleActive       = old.huddleActive;
+                            c.huddleLink         = old.huddleLink;
+                            c.huddleParticipants = old.huddleParticipants;
+                        }
                         break;
                     }
                 }
@@ -338,6 +347,26 @@ void Session::start() {
                         QCoreApplication::translate("Session", "Couldn't send message: %1")
                             .arg(ev->reason)
                     );
+                } else if (auto *ev = std::get_if<EvHuddleChanged>(&e)) {
+                    // Patch live-huddle state; the conversations() producer
+                    // re-fires, so the huddle banner and conv-list indicator
+                    // update in real time.
+                    auto convs   = _conversations.current();
+                    bool changed = false;
+                    for (auto &c : convs) {
+                        if (c.id != ev->conv)
+                            continue;
+                        if (c.huddleActive != ev->active || c.huddleLink != ev->link ||
+                            c.huddleParticipants != ev->participants) {
+                            c.huddleActive       = ev->active;
+                            c.huddleLink         = ev->link;
+                            c.huddleParticipants = ev->participants;
+                            changed              = true;
+                        }
+                        break;
+                    }
+                    if (changed)
+                        _conversations = std::move(convs);
                 }
                 _eventHub.fire(std::move(e));
             },
@@ -1074,6 +1103,11 @@ void Session::setReading(ConversationId conv) {
         }
     }
     _conversations = std::move(convs);
+    // NOTE: we deliberately do NOT refresh huddle state from conversations.info
+    // on open. Slack doesn't surface the live `room` to our token there, so the
+    // response reports "no huddle" and would clobber the realtime-detected state
+    // (the huddle_thread message — start, and its has_ended edit — end — is the
+    // authoritative signal). See docs/HUDDLES_PLAN.md.
 }
 
 void Session::starConversation(ConversationId conv, bool star) {

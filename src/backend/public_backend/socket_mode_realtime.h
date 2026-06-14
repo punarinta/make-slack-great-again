@@ -54,6 +54,9 @@ private:
     void                 scheduleReconnect();
     void                 sendPresenceSub();
     std::optional<Event> normalizeSlackEvent(const QJsonObject &event);
+    // Extra huddle-state event for a huddle_thread message (start) or its edit
+    // (end); additive — does not replace the message's normal event.
+    std::optional<Event> huddleEventFor(const QJsonObject &event);
 
     QString                                 _xappToken;
     std::vector<rpl::event_stream<Event> *> _sinks; // non-owning

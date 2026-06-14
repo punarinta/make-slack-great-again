@@ -102,8 +102,22 @@ struct Conversation {
     NotificationLevel     notifLevel = NotificationLevel::Default;
     QString canvasFileId; // channel canvas file id (conversations.info "properties.canvas"); empty
                           // = none
-    bool    canvasIsEmpty                          = false;
-    bool    operator==(const Conversation &) const = default;
+    bool    canvasIsEmpty = false;
+    // A Slack huddle is currently live in this conversation. Derived from the
+    // conversations.info `room` object — the only ToS-clean, channel-attached
+    // huddle signal our token can see (huddles aren't in the public API; the
+    // RTM user_huddle_changed event isn't delivered over Socket Mode and is
+    // user-keyed, not channel-keyed).
+    bool    huddleActive  = false;
+    // Preferred join URL straight from the room (`huddle_link`), e.g.
+    // https://app.slack.com/huddle/<team>/<channel>; empty falls back to a
+    // constructed link.
+    QString huddleLink;
+    // People to show on the huddle indicator: current participants, or the host
+    // (`created_by`) alone for a freshly-started "prewarmed" huddle that nobody
+    // has connected to yet.
+    std::vector<UserId> huddleParticipants;
+    bool                operator==(const Conversation &) const = default;
 };
 
 // One canvases.edit operation. Relative inserts and section ops need a
@@ -411,6 +425,16 @@ struct EvSendFailed {
     ConversationId conv;
     QString        reason; // Slack error string, e.g. "not_in_channel"
 };
+// A huddle started or ended in a conversation. Derived from the huddle_thread
+// message event (USLACKBOT posts/edits one in the conversation as the room's
+// state changes); carries the channel and live/ended state. Session patches
+// Conversation::huddleActive from it.
+struct EvHuddleChanged {
+    ConversationId      conv;
+    bool                active = false;
+    QString             link;         // room.huddle_link
+    std::vector<UserId> participants; // current participants, or [host]
+};
 
 // --- Search ---
 
@@ -448,4 +472,5 @@ using Event = std::variant<
     EvChannelCreated,
     EvMemberJoined,
     EvUserChanged,
-    EvSendFailed>;
+    EvSendFailed,
+    EvHuddleChanged>;

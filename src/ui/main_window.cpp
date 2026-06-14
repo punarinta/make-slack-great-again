@@ -29,6 +29,7 @@
 #include "create_channel_dialog/create_channel_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
 #include "update_checker/update_checker.h"
+#include "huddle_banner/huddle_banner.h"
 #include "update_bar/update_bar.h"
 #include "app_credentials.h"
 
@@ -465,6 +466,19 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _convNameLabel->setObjectName("convNameLabel");
     msgHeaderLayout->addWidget(_convNameLabel, 1);
 
+    // Huddle button — hands off to the Slack web client like the huddle banner's
+    // Join (huddles aren't startable through the public API).
+    _huddleBtn = new QPushButton(msgHeader);
+    _huddleBtn->setFixedSize(28, 28);
+    _huddleBtn->setFlat(true);
+    _huddleBtn->setCursor(Qt::PointingHandCursor);
+    _huddleBtn->setIconSize(QSize(16, 16));
+    _huddleBtn->setIcon(svgIcon(":/ui/headphones.svg", QSize(16, 16), Th::c().icon.def));
+    _huddleBtnTooltip = new PopupTooltip(_huddleBtn);
+    _huddleBtn->installEventFilter(this);
+    msgHeaderLayout->addWidget(_huddleBtn);
+    msgHeaderLayout->addSpacing(2);
+
     _starBtn = new QPushButton(msgHeader);
     _starBtn->setFixedSize(28, 28);
     _starBtn->setFlat(true);
@@ -494,6 +508,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _convTabs = new ConvTabsWidget(rightPanel);
     _convTabs->hide();
     rightLayout->addWidget(_convTabs);
+
+    // ── Huddle banner — shown when a huddle is live in the open conversation;
+    //    Join hands off to the Slack web client (no desktop install needed) ──
+    _huddleBanner = new HuddleBanner(rightPanel);
+    connect(_huddleBanner, &HuddleBanner::joinClicked, this, [this] {
+        if (_currentConvId.value.isEmpty())
+            return;
+        QDesktopServices::openUrl(QUrl(huddleJoinUrl(_currentConvId)));
+    });
+    rightLayout->addWidget(_huddleBanner);
 
     // ── Error banner — shown briefly when a background network error fires ──
     _errorBanner = new QLabel(rightPanel);
@@ -736,6 +760,12 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         updateHeaderForConv(id);
     });
 
+    connect(_huddleBtn, &QPushButton::clicked, this, [this] {
+        if (_currentConvId.value.isEmpty())
+            return;
+        QDesktopServices::openUrl(QUrl(huddleJoinUrl(_currentConvId)));
+    });
+
     connect(_starBtn, &QPushButton::clicked, this, [this] {
         if (_currentConvId.value.isEmpty() || !_session)
             return;
@@ -793,6 +823,10 @@ void MainWindow::applyTheme() {
         _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
                                           .arg(th.fonts.xxl)
                                           .arg(Th::qss(th.text.primary)));
+    }
+    if (_huddleBtn) {
+        _huddleBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
+        _huddleBtn->setIcon(svgIcon(":/ui/headphones.svg", QSize(16, 16), th.icon.def));
     }
     if (_starBtn) {
         _starBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
@@ -933,6 +967,8 @@ void MainWindow::activateWorkspace(QString teamId) {
         _msgHeader->hide();
     if (_convTabs)
         _convTabs->hide();
+    if (_huddleBanner)
+        _huddleBanner->hide();
     if (_contentStack && _messageList)
         _contentStack->setCurrentWidget(_messageList);
 
@@ -1079,6 +1115,9 @@ void MainWindow::wireConvList() {
                 _session->leaveConversation(id);
         }
     );
+    connect(_convList, &ConvListWidget::joinHuddleRequested, this, [this](ConversationId id) {
+        QDesktopServices::openUrl(QUrl(huddleJoinUrl(id)));
+    });
     connect(
         _convList,
         &ConvListWidget::setNotificationLevelRequested,
@@ -1179,6 +1218,9 @@ void MainWindow::connectToSession() {
                         }
                     }
                 }
+                // Huddle state rides on the conversation list, so re-evaluate
+                // the banner whenever it changes (incl. the setReading refresh).
+                updateHuddleBanner();
                 // Reveal the conv column the moment real data arrives.
                 if (!convs.empty() && _convPanel && !_convPanel->isVisible()) {
                     if (_messageList)
@@ -1755,6 +1797,15 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
         if (_searchWidget && _searchWidget->isVisible())
             repositionSearch();
     }
+    if (obj == _huddleBtn && _huddleBtnTooltip) {
+        if (e->type() == QEvent::Enter)
+            _huddleBtnTooltip->showAbove(
+                tr("Opens the huddle in Slack for web"),
+                QRect(_huddleBtn->mapToGlobal(QPoint(0, 0)), _huddleBtn->size())
+            );
+        else if (e->type() == QEvent::Leave)
+            _huddleBtnTooltip->hide();
+    }
     if (obj == _starBtn && _starBtnTooltip) {
         if (e->type() == QEvent::Enter) {
             const auto   *conv    = _session ? _session->findConversation(_currentConvId) : nullptr;
@@ -1955,6 +2006,7 @@ void MainWindow::openConversation(int row) {
         if (_convTabs)
             _convTabs->show();
         _composer->show();
+        updateHuddleBanner();
     } else {
         // Messages are loading; keep header and composer hidden until the first
         // page is ready so the user doesn't see chrome around an empty chat area.
@@ -1976,6 +2028,7 @@ void MainWindow::openConversation(int row) {
                     _convTabs->show();
                 if (_composer)
                     _composer->show();
+                updateHuddleBanner();
             },
             Qt::SingleShotConnection
         );
@@ -1993,6 +2046,26 @@ void MainWindow::updateStarBtn(bool starred) {
     _starBtn->setIcon(
         svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
     );
+}
+
+QString MainWindow::huddleJoinUrl(const ConversationId &conv) const {
+    // Deep link that opens the conversation and triggers the start/join-huddle
+    // action in one click (the Slack web client honours ?open=start_huddle).
+    return QStringLiteral("https://app.slack.com/client/%1/%2?open=start_huddle")
+        .arg(_activeTeamId, conv.value);
+}
+
+void MainWindow::updateHuddleBanner() {
+    if (!_huddleBanner)
+        return;
+    // Only alongside the conversation chrome — never floating over a loading or
+    // empty message area. setReading() refreshes huddleActive via
+    // conversations.info; the result re-fires conversations(), which calls here.
+    const bool          chromeVisible = _msgHeader && _msgHeader->isVisible();
+    const Conversation *conv = (chromeVisible && _session && !_currentConvId.value.isEmpty())
+                                   ? _session->findConversation(_currentConvId)
+                                   : nullptr;
+    _huddleBanner->setVisible(conv && conv->huddleActive);
 }
 
 void MainWindow::updateHeaderForConv(const ConversationId &conv) {

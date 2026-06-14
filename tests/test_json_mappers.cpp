@@ -187,6 +187,62 @@ TEST_CASE("toConversation is_muted defaults to false", "[mappers][conv]") {
     CHECK(!c.isMuted);
 }
 
+TEST_CASE("toConversation active huddle: flag, link, participants", "[mappers][conv][huddle]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "room": {
+            "call_family": "huddle", "has_ended": false, "date_end": 0,
+            "huddle_link": "https://app.slack.com/huddle/T1/C1",
+            "created_by": "UHOST", "participants": ["U1", "U2"]
+        }
+    })"));
+    CHECK(c.huddleActive);
+    CHECK(c.huddleLink == "https://app.slack.com/huddle/T1/C1");
+    REQUIRE(c.huddleParticipants.size() == 2);
+    CHECK(c.huddleParticipants[0] == UserId{"U1"});
+}
+TEST_CASE("toConversation ended huddle (has_ended) is not active", "[mappers][conv][huddle]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "room": { "call_family": "huddle", "has_ended": true, "date_end": 1700000000 }
+    })"));
+    CHECK(!c.huddleActive);
+}
+TEST_CASE(
+    "toConversation prewarmed huddle is active, falls back to host", "[mappers][conv][huddle]"
+) {
+    // A freshly-started "prewarmed" huddle has no participants yet but is live.
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "room": {
+            "call_family": "huddle", "has_ended": false, "date_end": 0,
+            "created_by": "UHOST", "participants": []
+        }
+    })"));
+    CHECK(c.huddleActive);
+    REQUIRE(c.huddleParticipants.size() == 1);
+    CHECK(c.huddleParticipants[0] == UserId{"UHOST"}); // host shown until someone joins
+}
+TEST_CASE("toConversation third-party call is not a huddle", "[mappers][conv][huddle]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "room": { "call_family": "call", "date_end": 0, "participants": ["U1"] }
+    })"));
+    CHECK(!c.huddleActive);
+}
+TEST_CASE("toConversation no room means no huddle", "[mappers][conv][huddle]") {
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false
+    })"));
+    CHECK(!c.huddleActive);
+    CHECK(c.huddleParticipants.empty());
+}
+
 TEST_CASE("toConversation IM sets kind and dmUser", "[mappers][conv]") {
     auto c = JsonMappers::toConversation(obj(R"({
         "id": "D1", "is_im": true, "is_mpim": false, "is_private": false,

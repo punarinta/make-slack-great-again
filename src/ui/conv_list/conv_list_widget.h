@@ -88,6 +88,8 @@ signals:
     void browsePeopleRequested();
     void createChannelRequested();
     void starConversationRequested(ConversationId id, bool star);
+    // Click on a row's live-huddle indicator — open the huddle's web join link.
+    void joinHuddleRequested(ConversationId id);
     void setNotificationLevelRequested(ConversationId id, NotificationLevel level);
     void leaveConversationRequested(ConversationId id);
 
@@ -128,6 +130,7 @@ protected:
         QPixmap plusBright;                                   // add-channels hover, onDark
         QPixmap lockDim, lockBright, lockSelected;            // private channel prefix
         QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
+        QPixmap huddle;                                       // live-huddle pill icon, onAccent
     };
     void rebuildIconPixmaps();
 
@@ -161,6 +164,10 @@ protected:
     bool _appsCollapsed     = false;
     bool _showAllChannels   = false; // true after user clicks "N more channels"
 
+    // convId.value → viewport rect of the clickable huddle indicator, refreshed
+    // each paint (so it tracks scroll); consulted on click to join the huddle.
+    mutable QHash<QString, QRect> _huddleHitRects;
+
     int            _hovered  = -1;
     int            _selected = -1;
     ConversationId _selectedId; // survives rebuildRows() calls
@@ -177,6 +184,9 @@ protected:
     static constexpr int kAvatarRadius = 5;  // corner radius
     static constexpr int kAvatarGap    = 8;  // gap between avatar and name
     static constexpr int kIconSize     = 14; // section / prefix icon size
+    static constexpr int kHuddleIcon   = 13; // headphones glyph in the huddle pill
+    static constexpr int kHuddlePad    = 6;  // horizontal padding inside the huddle pill
+    static constexpr int kHuddleGap    = 6;  // gap between huddle avatar and pill
     static constexpr int kGroupIndent =
         kIconSize + 6; // child-row indent (aligns with section label)
     int _relevantDays =

@@ -149,6 +149,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     src/ui/update_checker/update_checker.cpp
     src/ui/update_bar/update_bar.cpp
+    src/ui/huddle_banner/huddle_banner.cpp
 
     # Qt resources
     resources/resources.qrc

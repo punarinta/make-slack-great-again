@@ -103,25 +103,53 @@ Conversation toConversation(const QJsonObject &o) {
     // Channel canvas (conversations.info; conversations.list may omit "properties").
     const auto [canvasFileId, canvasIsEmpty] = channelCanvas(o);
 
+    // Huddle state: a live huddle attaches a `room` object to the channel.
+    const auto huddle = readHuddleRoom(o.value("room").toObject());
+
     return Conversation{
         .id   = ConversationId{o.value("id").toString()},
         .kind = kind,
         .name = o.value("name").toString(o.value("user").toString()), // Im: use user id as fallback
-        .description   = !topic.isEmpty() ? topic : purpose,
-        .isMember      = o.value("is_member").toBool(true),
-        .memberCount   = o.value("num_members").toInt(),
-        .lastRead      = lastRead,
-        .latestTs      = latestTs,
-        .unread        = unread,
-        .mentionCount  = o.value("mention_count").toInt(),
-        .dmUser        = dmUser,
-        .members       = std::move(members),
-        .isMuted       = o.value("is_muted").toBool(),
-        .isStarred     = o.value("is_starred").toBool(),
-        .notifLevel    = notifLevel,
-        .canvasFileId  = canvasFileId,
-        .canvasIsEmpty = canvasIsEmpty,
+        .description        = !topic.isEmpty() ? topic : purpose,
+        .isMember           = o.value("is_member").toBool(true),
+        .memberCount        = o.value("num_members").toInt(),
+        .lastRead           = lastRead,
+        .latestTs           = latestTs,
+        .unread             = unread,
+        .mentionCount       = o.value("mention_count").toInt(),
+        .dmUser             = dmUser,
+        .members            = std::move(members),
+        .isMuted            = o.value("is_muted").toBool(),
+        .isStarred          = o.value("is_starred").toBool(),
+        .notifLevel         = notifLevel,
+        .canvasFileId       = canvasFileId,
+        .canvasIsEmpty      = canvasIsEmpty,
+        .huddleActive       = huddle.active,
+        .huddleLink         = huddle.link,
+        .huddleParticipants = huddle.participants,
     };
+}
+
+HuddleRoom readHuddleRoom(const QJsonObject &room) {
+    HuddleRoom h;
+    // A "huddle" (not a third-party Call). Ignore everything else.
+    if (room.isEmpty() || room.value("call_family").toString() != "huddle")
+        return h;
+    // Ongoing while not ended. has_ended is the explicit flag; date_end is the
+    // fallback (0 = still live; it's a unix-second ts, read as double — overflows
+    // a 32-bit int). A freshly-announced "prewarmed" huddle has no participants
+    // yet but is live, so we do NOT require a non-empty participant list.
+    h.active = !room.value("has_ended").toBool(false) && room.value("date_end").toDouble() == 0.0;
+    h.link   = room.value("huddle_link").toString();
+    for (const auto &v : room.value("participants").toArray())
+        h.participants.push_back(UserId{v.toString()});
+    // Nobody connected yet → show the host so the indicator still has a face.
+    if (h.participants.empty()) {
+        const QString host = room.value("created_by").toString();
+        if (!host.isEmpty())
+            h.participants.push_back(UserId{host});
+    }
+    return h;
 }
 
 std::pair<QString, bool> channelCanvas(const QJsonObject &channel) {

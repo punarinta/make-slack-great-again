@@ -34,6 +34,7 @@ class ThreadPanel;
 class CanvasPage;
 class ConvTabsWidget;
 class HeaderAvatarWidget;
+class HuddleBanner;
 class PopupTooltip;
 class QSplitter;
 class UpdateBar;
@@ -88,8 +89,13 @@ private:
     void showWorkspaceMenu(const QString &teamId, const QPoint &globalPos);
 
     // Header helpers
-    void updateHeaderForConv(const ConversationId &conv);
-    void updateStarBtn(bool starred);
+    void    updateHeaderForConv(const ConversationId &conv);
+    void    updateStarBtn(bool starred);
+    // Toggle the huddle banner from the open conversation's huddleActive flag.
+    void    updateHuddleBanner();
+    // Web join URL for a conversation's huddle: the room's own huddle_link if we
+    // have it, else a constructed app.slack.com/huddle link.
+    QString huddleJoinUrl(const ConversationId &conv) const;
 
     // Search overlay
     void repositionSearch();
@@ -172,6 +178,7 @@ private:
     WelcomeWidget         *_welcomeTips     = nullptr;
     ThreadPanel           *_threadPanel     = nullptr;
     ConvTabsWidget        *_convTabs        = nullptr;
+    HuddleBanner          *_huddleBanner    = nullptr;
     CanvasPage            *_canvasPage      = nullptr;
     QString                _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
     QString                _currentCanvasTitle;
@@ -193,6 +200,8 @@ private:
     ImageCache         *_imgCache         = nullptr;
     QLabel             *_errorBanner      = nullptr;
     QSystemTrayIcon    *_trayIcon         = nullptr;
+    QPushButton        *_huddleBtn        = nullptr;
+    PopupTooltip       *_huddleBtnTooltip = nullptr;
     QPushButton        *_starBtn          = nullptr;
     PopupTooltip       *_starBtnTooltip   = nullptr;
     QPushButton        *_searchBtn        = nullptr;

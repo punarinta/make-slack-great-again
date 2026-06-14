@@ -34,6 +34,15 @@ std::vector<SlashCommand> toSlashCommands(const QJsonValue &);
 // Domain → Slack JSON: canvases.edit "changes" array.
 QJsonArray toCanvasChanges(const std::vector<CanvasChange> &);
 
+// Parsed huddle state from a `room` object (a conversations.info channel's
+// `room`, or a huddle_thread message event's room).
+struct HuddleRoom {
+    bool                active = false; // call_family "huddle" and not ended
+    QString             link;           // room.huddle_link (preferred join URL)
+    std::vector<UserId> participants;   // current participants, or [created_by]
+};
+HuddleRoom readHuddleRoom(const QJsonObject &room);
+
 // Channel canvas lookup on a conversations.info/list "channel" object, across
 // both server shapes: paid teams expose properties.canvas {file_id, is_empty};
 // free-team channel canvases appear only as a properties.tabs[] entry of

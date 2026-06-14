@@ -72,6 +72,8 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.hashSmDim      = svgPixmap(":/ui/hash.svg", sm, th.text.onDarkDim);
     _iconPx.hashSmBright   = svgPixmap(":/ui/hash.svg", sm, th.text.onDark);
     _iconPx.hashSmSelected = svgPixmap(":/ui/hash.svg", sm, th.nav.primary);
+
+    _iconPx.huddle = svgPixmap(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
 }
 
 void ConvListWidget::setRelevantDays(int days) {
@@ -606,9 +608,18 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
             _appsCollapsed = !_appsCollapsed;
         rebuildRows();
         break;
-    case RowKind::Conv:
+    case RowKind::Conv: {
+        // Clicking the live-huddle indicator joins the huddle rather than just
+        // opening the conversation.
+        const auto &conv = _convs[ri.convIdx];
+        const auto  hit  = _huddleHitRects.constFind(conv.id.value);
+        if (hit != _huddleHitRects.constEnd() && hit->contains(e->pos())) {
+            emit joinHuddleRequested(conv.id);
+            break;
+        }
         setSelected(row);
         break;
+    }
     case RowKind::AddChannels: {
         auto *menu = new ContextMenu(viewport());
         menu->addItem(tr("Find a channel"), [this] { emit findChannelRequested(); });
@@ -705,6 +716,7 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
     const int first = scrollY / kRowH;
     const int last  = std::min(static_cast<int>(_rows.size()) - 1, (scrollY + vh) / kRowH);
 
+    _huddleHitRects.clear(); // repopulated by paintRow for visible huddle rows
     for (int r = first; r <= last; ++r)
         paintRow(p, r, r * kRowH - scrollY);
 
@@ -864,6 +876,23 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const bool isHighPriority = isDm || conv.mentionCount > 0;
     const int  badgeW = conv.unread == 0 ? 0 : isHighPriority ? (conv.unread > 9 ? 28 : 20) : 14;
 
+    // Live-huddle indicator (host avatar + accent pill with headphones + count),
+    // right-aligned like Slack. Compute its width up front so the name doesn't
+    // run under it. Drawn at the tail of this function.
+    const QString huddleCount = conv.huddleParticipants.empty()
+                                    ? QString()
+                                    : QString::number(int(conv.huddleParticipants.size()));
+    int           huddlePillW = 0, huddleW = 0;
+    if (conv.huddleActive) {
+        QFont cf = font;
+        cf.setPointSizeF(cf.pointSizeF() * 0.78);
+        cf.setBold(true);
+        const int countW =
+            huddleCount.isEmpty() ? 0 : QFontMetrics(cf).horizontalAdvance(huddleCount) + 4;
+        huddlePillW = kHuddlePad + kHuddleIcon + countW + kHuddlePad;
+        huddleW = huddlePillW + (conv.huddleParticipants.empty() ? 0 : (kAvatarSize + kHuddleGap));
+    }
+
     const int leftX = kPadH + kGroupIndent;
     if (conv.kind == ConvKind::Mpim) {
         // Rounded square icon with participant count (excluding self)
@@ -903,7 +932,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         );
 
         const int     nameX = leftX + kAvatarSize + kAvatarGap;
-        const int     maxW  = viewport()->width() - nameX - badgeW - 14;
+        const int     maxW  = viewport()->width() - nameX - badgeW - huddleW - 14;
         const QString name  = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
         p.setFont(font);
         p.setPen(textColor);
@@ -942,7 +971,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             suffixW += youW;
         }
 
-        const int     maxW = viewport()->width() - nameX - suffixW - badgeW - 14;
+        const int     maxW = viewport()->width() - nameX - suffixW - badgeW - huddleW - 14;
         const QString name = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
         p.setPen(textColor);
         p.drawText(nameX, textY, name);
@@ -983,12 +1012,59 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
             prefixW = 14 + 6;
         }
-        const int     maxW = viewport()->width() - leftX - prefixW - badgeW - 14;
+        const int     maxW = viewport()->width() - leftX - prefixW - badgeW - huddleW - 14;
         const QString name = fm.elidedText(conv.name, Qt::ElideRight, maxW);
         p.drawText(leftX + prefixW, textY, name);
     }
 
-    // ── Unread indicator ──────────────────────────────────────────────
+    // ── Right-side indicators (live huddle, then unread) ──────────────
+    int rightEdge = viewport()->width() - 14; // inner right padding
+
+    // Live huddle: host avatar + accent pill (headphones + participant count),
+    // mirroring Slack's sidebar indicator. Anchored to the right edge.
+    if (conv.huddleActive) {
+        const int pillH = 18;
+        const int pillX = rightEdge - huddlePillW;
+        const int pillY = y + (kRowH - pillH) / 2;
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().accent.def);
+        p.drawRoundedRect(QRect(pillX, pillY, huddlePillW, pillH), pillH / 2, pillH / 2);
+        p.drawPixmap(pillX + kHuddlePad, pillY + (pillH - kHuddleIcon) / 2, _iconPx.huddle);
+        if (!huddleCount.isEmpty()) {
+            QFont cf = font;
+            cf.setPointSizeF(cf.pointSizeF() * 0.78);
+            cf.setBold(true);
+            p.setFont(cf);
+            p.setPen(Th::c().accent.text);
+            p.drawText(
+                QRect(pillX + kHuddlePad + kHuddleIcon, pillY, huddlePillW, pillH),
+                Qt::AlignVCenter | Qt::AlignLeft,
+                huddleCount
+            );
+        }
+        rightEdge = pillX - kHuddleGap;
+
+        if (!conv.huddleParticipants.empty()) {
+            const int avX = rightEdge - kAvatarSize;
+            const int avY = y + (kRowH - kAvatarSize) / 2;
+            drawUserAvatar(
+                p,
+                QRect(avX, avY, kAvatarSize, kAvatarSize),
+                conv.huddleParticipants.front().value,
+                Th::c().accent.def,
+                isSelected
+            );
+            rightEdge = avX - kHuddleGap;
+        }
+
+        // Whole avatar+pill group is a click target → join the huddle.
+        const int groupLeft = rightEdge + kHuddleGap;
+        _huddleHitRects.insert(
+            conv.id.value, QRect(groupLeft, y, viewport()->width() - 14 - groupLeft, kRowH)
+        );
+    }
+
+    // ── Unread indicator (left of the huddle indicator if both present) ──
     if (conv.unread > 0) {
         if (isHighPriority) {
             // Red numbered badge for DMs and @mentions
@@ -1000,7 +1076,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             const QFontMetrics bfm(bf);
             const int          bw = bfm.horizontalAdvance(badge) + 10;
             const int          bh = bfm.height() + 4;
-            const int          bx = viewport()->width() - bw - 14;
+            const int          bx = rightEdge - bw;
             const int          by = y + (kRowH - bh) / 2;
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().badge.mention);
@@ -1010,7 +1086,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         } else {
             // Small dim dot for regular channel unreads (bold text already signals activity)
             const int dotD = 8;
-            const int bx   = viewport()->width() - dotD - 14;
+            const int bx   = rightEdge - dotD;
             const int by   = y + (kRowH - dotD) / 2;
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(255, 255, 255, 160));

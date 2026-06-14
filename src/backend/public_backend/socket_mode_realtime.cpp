@@ -150,15 +150,23 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
         const auto payload = envelope.value("payload").toObject();
         const auto event   = payload.value("event").toObject();
 
-        if (auto ev = normalizeSlackEvent(event)) {
-            // Broadcast to every workspace backend — sinks ignore events for
-            // conversations/users they don't know (IDs are globally unique).
-            // Iterate a copy: a handler may remove a sink (session teardown).
+        // Broadcast to every workspace backend — sinks ignore events for
+        // conversations/users they don't know (IDs are globally unique).
+        // Iterate a copy: a handler may remove a sink (session teardown).
+        auto fire = [this](const Event &e) {
             const auto sinks = _sinks;
             for (auto *sink : sinks)
                 if (std::find(_sinks.begin(), _sinks.end(), sink) != _sinks.end())
-                    sink->fire_copy(*ev);
-        }
+                    sink->fire_copy(e);
+        };
+
+        if (auto ev = normalizeSlackEvent(event))
+            fire(*ev);
+        // Huddle detection is ADDITIVE: a huddle_thread message still flows as a
+        // normal message above (its notification/chat line are untouched); this
+        // fires an extra EvHuddleChanged so the huddle banner can react.
+        if (auto huddle = huddleEventFor(event))
+            fire(*huddle);
     }
 }
 
@@ -269,4 +277,36 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
     }
 
     return std::nullopt;
+}
+
+std::optional<Event> SocketModeRealtime::huddleEventFor(const QJsonObject &ev) {
+    if (ev.value("type").toString() != "message")
+        return std::nullopt;
+
+    const auto subtype = ev.value("subtype").toString();
+
+    // A huddle starting: USLACKBOT posts a "huddle_thread" message carrying the
+    // live `room`. The subtype itself proves it's a huddle, so "ongoing" is just
+    // "no end timestamp" (participants may not be populated at the announce
+    // moment); a roomless announce still counts as a start.
+    QJsonObject room;
+    QString     channel  = ev.value("channel").toString();
+    bool        isHuddle = false;
+    if (subtype == "huddle_thread") {
+        room     = ev.value("room").toObject();
+        isHuddle = true;
+    } else if (subtype == "message_changed") {
+        // A huddle ending/changing arrives as an edit of the huddle_thread
+        // message (its room gains a date_end).
+        const auto inner = ev.value("message").toObject();
+        if (inner.value("subtype").toString() == "huddle_thread") {
+            room     = inner.value("room").toObject();
+            isHuddle = true;
+        }
+    }
+    if (!isHuddle)
+        return std::nullopt;
+
+    const auto h = JsonMappers::readHuddleRoom(room);
+    return EvHuddleChanged{ConversationId{channel}, h.active, h.link, h.participants};
 }

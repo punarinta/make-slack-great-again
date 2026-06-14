@@ -494,6 +494,24 @@ This action cannot be undone.</source>
     </message>
 </context>
 <context>
+    <name>HuddleBanner</name>
+    <message>
+        <location filename="../src/ui/huddle_banner/huddle_banner.cpp" line="+29"/>
+        <source>A huddle is happening</source>
+        <translation>ハドルが開催中です</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Join</source>
+        <translation>参加</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>Opens the huddle in Slack for web</source>
+        <translation>Slack（ブラウザ版）でハドルを開きます</translation>
+    </message>
+</context>
+<context>
     <name>ImageViewerOverlay</name>
     <message>
         <location filename="../src/ui/image_viewer/image_viewer.cpp" line="+45"/>
@@ -691,6 +709,21 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <location line="+1"/>
         <source>Notify every online member here</source>
         <translation>オンラインのメンバー全員に通知</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+125"/>
+        <source>Enter</source>
+        <translation>Enter</translation>
+    </message>
+    <message>
+        <location line="+29"/>
+        <source>APP</source>
+        <translation>アプリ</translation>
+    </message>
+    <message>
+        <location line="+290"/>
+        <source>(you)</source>
+        <translation>(あなた)</translation>
     </message>
 </context>
 <context>
@@ -1406,6 +1439,29 @@ it is stored on this computer and sent only to that provider.</source>
         <location line="+0"/>
         <source>Pin window on top</source>
         <translation>ウィンドウを最前面に固定</translation>
+    </message>
+</context>
+<context>
+    <name>TypingIndicatorWidget</name>
+    <message>
+        <location filename="../src/ui/typing_indicator/typing_indicator.cpp" line="+93"/>
+        <source>&lt;b&gt;You&lt;/b&gt; are typing on another device…</source>
+        <translation>&lt;b&gt;あなた&lt;/b&gt;が別のデバイスで入力中…</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>You</source>
+        <translation>あなた</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>%1 is typing…</source>
+        <translation>%1が入力中…</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>%1 are typing…</source>
+        <translation>%1が入力中…</translation>
     </message>
 </context>
 <context>
