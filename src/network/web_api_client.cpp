@@ -50,6 +50,14 @@ FailureClass classifyTransportError(QNetworkReply::NetworkError e) {
     }
 }
 
+// Slack-level failures (HTTP 200 + ok:false) that are transient server-side
+// hiccups rather than a problem with the request itself. Slack documents these
+// as "likely a transient issue on our end" — safe to retry an idempotent call,
+// same class as an ambiguous transport failure.
+bool isTransientSlackError(const QString &err) {
+    return err == "internal_error" || err == "service_unavailable" || err == "fatal_error";
+}
+
 } // namespace
 
 WebApiClient::WebApiClient(QObject *parent)
@@ -309,6 +317,25 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
 
     if (!obj.value("ok").toBool()) {
         auto err = obj.value("error").toString("unknown");
+
+        // A transient Slack-side error on an idempotent call: ride it out with
+        // the same backoff as an ambiguous transport failure instead of leaking
+        // a dropped call to the caller. Retried at qDebug, not qWarning, so a
+        // brief Slack blip doesn't spam the log.
+        if (c.idempotent && isTransientSlackError(err)) {
+            c.transportRetries++;
+            const int delay = retryDelayMs(c.transportRetries);
+            qDebug() << "WebApiClient: transient Slack error" << err << "on" << c.method
+                     << "— retry" << c.transportRetries << "in" << delay << "ms";
+            _throttled = true;
+            _queue.prepend(std::move(c));
+            QTimer::singleShot(delay, this, [this] {
+                _throttled = false;
+                tryNext();
+            });
+            return;
+        }
+
         if (!c.quietErrors)
             qWarning() << "WebApiClient Slack error:" << err << "on" << c.method
                        << "| needed:" << obj.value("needed").toString()

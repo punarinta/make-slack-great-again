@@ -110,6 +110,53 @@ TEST_CASE("queued calls survive a retried head call in order", "[send_retry]") {
     CHECK(server.requestCount == 3); // a (dropped) + a (retry) + b
 }
 
+TEST_CASE("idempotent call retries a transient Slack error", "[send_retry]") {
+    FakeHttpServer server;
+    // HTTP 200 + ok:false transient server-side errors, then success.
+    server.enqueue(R"({"ok":false,"error":"internal_error"})");
+    server.enqueue(R"({"ok":false,"error":"service_unavailable"})");
+    server.enqueue(R"({"ok":true,"value":"finally"})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+    client.setRetryBaseDelayMs(10);
+
+    QString value, err;
+    client.call(
+        "users.getPresence",
+        QUrlQuery{},
+        [&](QJsonObject resp) { value = resp.value("value").toString(); },
+        [&](QString e) { err = e; }
+    );
+
+    REQUIRE(waitFor([&] { return !value.isEmpty(); }));
+    CHECK(value == "finally");
+    CHECK(err.isEmpty());            // transient errors never surfaced to caller
+    CHECK(server.requestCount == 3); // internal_error + service_unavailable + ok
+}
+
+TEST_CASE("non-idempotent call does NOT retry a transient Slack error", "[send_retry]") {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":false,"error":"internal_error"})");
+    server.enqueue(R"({"ok":true})"); // must never be consumed
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+    client.setRetryBaseDelayMs(10);
+
+    QString err;
+    client.callNonIdempotent(
+        "chat.postMessage", QUrlQuery{}, [](QJsonObject) {}, [&](QString e) { err = e; }
+    );
+
+    REQUIRE(waitFor([&] { return !err.isEmpty(); }));
+    CHECK(err == "internal_error"); // surfaced so the caller can reconcile
+    pumpFor(100);                   // a blind retry would land here
+    CHECK(server.requestCount == 1);
+}
+
 // =============================================================================
 // WebApiClient::paginate — the self-referential ctx cycle is always broken
 // =============================================================================
@@ -124,11 +171,12 @@ TEST_CASE("paginate breaks its ctx cycle when a page returns ok:false", "[send_r
     FakeHttpServer server;
     // First page succeeds and yields a cursor (so a second request is made),
     // then the second page fails at the Slack level — the path that used to
-    // skip clearing loadPage and leak the whole pagination.
+    // skip clearing loadPage and leak the whole pagination. The error must be
+    // terminal (not a transient one the client would retry) so it propagates.
     server.enqueue(
         R"({"ok":true,"channels":[{"id":"C1"}],"response_metadata":{"next_cursor":"x"}})"
     );
-    server.enqueue(R"({"ok":false,"error":"internal_error"})");
+    server.enqueue(R"({"ok":false,"error":"invalid_cursor"})");
 
     WebApiClient client;
     client.setBaseUrl(server.baseUrl());
@@ -150,7 +198,7 @@ TEST_CASE("paginate breaks its ctx cycle when a page returns ok:false", "[send_r
     sentinel.reset(); // only the captures inside the ctx hold it now
 
     REQUIRE(waitFor([&] { return !err.isEmpty(); }));
-    CHECK(err == "internal_error");
+    CHECK(err == "invalid_cursor");
     CHECK(pages == 1);               // the good first page was delivered
     CHECK(server.requestCount == 2); // both pages were fetched
     CHECK(alive.expired());          // ctx destroyed → cycle broken, no leak
