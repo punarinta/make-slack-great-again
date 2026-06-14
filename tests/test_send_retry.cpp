@@ -136,6 +136,28 @@ TEST_CASE("idempotent call retries a transient Slack error", "[send_retry]") {
     CHECK(server.requestCount == 3); // internal_error + service_unavailable + ok
 }
 
+TEST_CASE("a persistent transient Slack error is bounded, then surfaces", "[send_retry]") {
+    FakeHttpServer server;
+    // Slack keeps returning internal_error (e.g. users.getPresence for an
+    // ineligible user) — must NOT loop forever; after the retry cap the error
+    // is reported to the caller. 1 initial attempt + kMaxTransientSlackRetries.
+    for (int i = 0; i < 8; ++i)
+        server.enqueue(R"({"ok":false,"error":"internal_error"})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+    client.setRetryBaseDelayMs(10);
+
+    QString err;
+    client.call("users.getPresence", QUrlQuery{}, [](QJsonObject) {}, [&](QString e) { err = e; });
+
+    REQUIRE(waitFor([&] { return !err.isEmpty(); }));
+    CHECK(err == "internal_error");  // surfaced instead of retried forever
+    pumpFor(100);                    // any further retry would land here
+    CHECK(server.requestCount == 7); // 1 initial + 6 bounded retries
+}
+
 TEST_CASE("non-idempotent call does NOT retry a transient Slack error", "[send_retry]") {
     FakeHttpServer server;
     server.enqueue(R"({"ok":false,"error":"internal_error"})");

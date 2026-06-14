@@ -919,6 +919,18 @@ QByteArray Session::cachedImage(const QString &url) const {
 }
 
 void Session::requestPresence(UserId userId) {
+    // users.getPresence answers internal_error for any user with no observable
+    // presence, and Slack returns the generic error rather than a clean code:
+    //   - Slackbot (fixed id USLACKBOT — reports is_bot=false, so the flag check
+    //     alone misses it; see ConvListWidget::isAppConv);
+    //   - bot/app users (isBot) and deactivated accounts;
+    //   - users not in this workspace's users.list at all (external Slack Connect
+    //     partners, some app IMs) — findUser() is null for them.
+    // We only ever render a presence dot for a known human member, so unless we
+    // hold such a User record, skip the doomed call instead of spamming retries.
+    const User *u = findUser(userId);
+    if (!u || u->isBot || u->isDeactivated || userId.value == QLatin1String("USLACKBOT"))
+        return;
     _backend->loadPresence(userId) | rpl::on_next(
                                          [this, userId](bool active) {
                                              // Update user cache and fire event so all listeners

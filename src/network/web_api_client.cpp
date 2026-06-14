@@ -58,6 +58,16 @@ bool isTransientSlackError(const QString &err) {
     return err == "internal_error" || err == "service_unavailable" || err == "fatal_error";
 }
 
+// Unlike a transport failure (genuinely offline → unlimited queueing is correct,
+// the queue just drains when the network returns), a Slack-level "transient"
+// error is an HTTP 200 with ok:false — Slack received and rejected the request.
+// When it persists it is NOT a passing blip: the request itself is the problem
+// (e.g. users.getPresence is rate-limited, "not intended for frequent/bulk use",
+// and returns internal_error for ineligible users such as bot/app or deactivated
+// accounts). Retrying forever just hammers a failing endpoint, so bound it and
+// surface the error after ~1 min of backoff (1+2+4+8+16+32 s).
+constexpr int kMaxTransientSlackRetries = 6;
+
 } // namespace
 
 WebApiClient::WebApiClient(QObject *parent)
@@ -318,11 +328,14 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
     if (!obj.value("ok").toBool()) {
         auto err = obj.value("error").toString("unknown");
 
-        // A transient Slack-side error on an idempotent call: ride it out with
-        // the same backoff as an ambiguous transport failure instead of leaking
-        // a dropped call to the caller. Retried at qDebug, not qWarning, so a
-        // brief Slack blip doesn't spam the log.
-        if (c.idempotent && isTransientSlackError(err)) {
+        // A transient Slack-side error on an idempotent call: ride out a brief
+        // blip with backoff instead of leaking a dropped call to the caller.
+        // Retried at qDebug, not qWarning, so it doesn't spam the log. Bounded
+        // (kMaxTransientSlackRetries) — once exhausted we fall through to the
+        // normal error path so a *persistent* failure (a down/blocked endpoint,
+        // or a request Slack keeps rejecting) surfaces instead of looping.
+        if (c.idempotent && isTransientSlackError(err) &&
+            c.transportRetries < kMaxTransientSlackRetries) {
             c.transportRetries++;
             const int delay = retryDelayMs(c.transportRetries);
             qDebug() << "WebApiClient: transient Slack error" << err << "on" << c.method
@@ -373,7 +386,7 @@ void WebApiClient::handleReply(QNetworkReply *reply, PendingCall c) {
 
 int WebApiClient::retryDelayMs(int attempt) const {
     if (attempt <= 1)
-        return 0;
+        return 0; // first retry is immediate (a fresh socket usually recovers at once)
     constexpr int kMaxDelayMs = 60'000;
     int           d           = _retryBaseDelayMs;
     for (int i = 2; i < attempt && d < kMaxDelayMs; ++i)

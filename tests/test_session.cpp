@@ -70,7 +70,11 @@ struct StubBackend : Backend {
     rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
     rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
 
-    rpl::producer<bool> loadPresence(UserId) override {
+    int                 loadPresenceCalls = 0; // times loadPresence was actually invoked
+    UserId              lastPresenceUser;      // user id of the most recent loadPresence call
+    rpl::producer<bool> loadPresence(UserId id) override {
+        ++loadPresenceCalls;
+        lastPresenceUser = id;
         return rpl::variable<bool>(presenceResult).value();
     }
     SelfPresence                selfPresenceResult;                 // returned by loadSelfPresence
@@ -408,6 +412,35 @@ static const User kBob = User{
     /*isBot=*/false,
     /*isActive=*/true,
     /*isDeactivated=*/false
+};
+// Counterparts that users.getPresence cannot answer for — querying them returns
+// internal_error, so requestPresence must skip them.
+static const User kBotUser = User{
+    UserId{"B1"},
+    "helperbot",
+    "Helper Bot",
+    "",
+    /*isBot=*/true,
+    /*isActive=*/false,
+    /*isDeactivated=*/false
+};
+static const User kSlackbot = User{
+    UserId{"USLACKBOT"},
+    "slackbot",
+    "Slackbot",
+    "",
+    /*isBot=*/false,
+    /*isActive=*/false,
+    /*isDeactivated=*/false // Slack reports is_bot=false for Slackbot
+};
+static const User kGone = User{
+    UserId{"U3"},
+    "ghost",
+    "Departed Person",
+    "",
+    /*isBot=*/false,
+    /*isActive=*/false,
+    /*isDeactivated=*/true
 };
 static const Conversation kGeneral = Conversation{
     .id       = ConversationId{"C1"},
@@ -917,6 +950,28 @@ TEST_CASE_METHOD(
     REQUIRE(col.events.size() == 1);
     REQUIRE(std::holds_alternative<EvPresenceChanged>(col.events[0]));
     CHECK(std::get<EvPresenceChanged>(col.events[0]).active == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "requestPresence skips users with no observable presence", "[session]"
+) {
+    // Bot/app users, Slackbot (is_bot=false but fixed id), deactivated accounts,
+    // and users not in this workspace all make users.getPresence return
+    // internal_error — never call it for them.
+    stub->_users = std::vector<User>{kAlice, kBob, kBotUser, kSlackbot, kGone};
+    QCoreApplication::processEvents(); // propagate the user-list update into the cache
+
+    stub->loadPresenceCalls = 0;
+    session->requestPresence(UserId{"B1"});        // bot
+    session->requestPresence(UserId{"USLACKBOT"}); // Slackbot
+    session->requestPresence(UserId{"U3"});        // deactivated
+    session->requestPresence(UserId{"U_UNKNOWN"}); // not in users.list (e.g. Slack Connect)
+    CHECK(stub->loadPresenceCalls == 0);
+
+    // A real, known, human member is still queried.
+    session->requestPresence(UserId{"U1"});
+    CHECK(stub->loadPresenceCalls == 1);
+    CHECK(stub->lastPresenceUser == UserId{"U1"});
 }
 
 // ── refreshSelfPresence ───────────────────────────────────────────────────────
