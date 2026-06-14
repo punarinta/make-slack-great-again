@@ -5,6 +5,7 @@
 #include <QFrame>
 
 class Session;
+class ImageCache;
 class QScrollArea;
 class QVBoxLayout;
 
@@ -16,6 +17,7 @@ public:
     explicit MentionPopup(QWidget *parent = nullptr);
 
     void setSession(Session *session);
+    void setImageCache(ImageCache *cache) { _imgCache = cache; }
 
     // Show or update the popup with its bottom edge just above anchor —
     // the global position of the '@' that triggered it. Re-anchors on every
@@ -41,10 +43,11 @@ private:
     void confirm();
     void applyTheme();
 
-    QScrollArea     *_scroll  = nullptr;
-    QWidget         *_content = nullptr;
-    QVBoxLayout     *_vbox    = nullptr;
-    Session         *_session = nullptr;
+    QScrollArea     *_scroll   = nullptr;
+    QWidget         *_content  = nullptr;
+    QVBoxLayout     *_vbox     = nullptr;
+    Session         *_session  = nullptr;
+    ImageCache      *_imgCache = nullptr;
     QList<QWidget *> _rows;
     QList<QString>   _displays;
     QList<QString>   _inserts;

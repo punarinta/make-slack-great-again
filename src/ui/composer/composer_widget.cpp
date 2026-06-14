@@ -739,6 +739,7 @@ void ComposerWidget::checkMentionPopup() {
         // message list without being a separate window — no focus events.
         _mentionPopup = new MentionPopup(parentWidget());
         _mentionPopup->setSession(_session);
+        _mentionPopup->setImageCache(_imgCache);
         connect(_mentionPopup, &QObject::destroyed, this, [this] { _mentionPopup = nullptr; });
         connect(
             _mentionPopup,
