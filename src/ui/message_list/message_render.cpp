@@ -203,6 +203,21 @@ QString resolveMention(const QString &userId, const Session *session) {
     return resolveMentionImpl(userId, session);
 }
 
+// Resolve a ChannelMention's display name via entity.data (the channel ID).
+// Slack often echoes a channel link as a bare "<#C123>" with no name part, so
+// the parser can only bake "#C123"; resolving against the conversation cache
+// recovers the real "#general" the official client shows. `fallback` is the
+// parser's baked text, used when the channel isn't in the cache.
+static QString
+resolveChannelImpl(const QString &channelId, const QString &fallback, const Session *session) {
+    if (session) {
+        const auto *c = session->findConversation(ConversationId{channelId});
+        if (c && !c->name.isEmpty())
+            return "#" + c->name;
+    }
+    return fallback;
+}
+
 static QString escapeAndBr(const QString &s) {
     return s.toHtmlEscaped().replace("\n", "<br>");
 }
@@ -297,11 +312,13 @@ static QString renderRange(
                     label.toHtmlEscaped() + "</a>";
             break;
         }
-        case EntityType::ChannelMention:
+        case EntityType::ChannelMention: {
+            const QString label = resolveChannelImpl(e.data, rawInner, session);
             html += "<span style='color:" + Th::qss(Th::c().message.mentionText) +
                     ";background:" + Th::qss(Th::c().message.mentionBg) +
-                    ";border-radius:3px;padding:0 2px'>" + inner + "</span>";
+                    ";border-radius:3px;padding:0 2px'>" + label.toHtmlEscaped() + "</span>";
             break;
+        }
         case EntityType::HereCommand:
         case EntityType::ChannelCommand:
             html += "<span style='color:" + Th::qss(Th::c().message.mentionText) +

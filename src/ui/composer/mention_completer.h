@@ -35,6 +35,12 @@ public:
         QString display; // plain one-line label (users / channels / emoji)
         QString insert;  // text inserted into the editor on confirmation
 
+        // Rich channel row (channel == true) ────────────────────────────────
+        // Single line: a hashtag (or padlock, for private) icon + bold name,
+        // styled like the @-mention rows. `title` holds the channel name.
+        bool channel        = false;
+        bool channelPrivate = false; // padlock icon instead of hashtag
+
         // Rich slash-command row (command == true) ─────────────────────────
         bool    command = false;
         QString title;         // bold first line, e.g. "/archive"

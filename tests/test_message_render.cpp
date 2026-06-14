@@ -17,6 +17,9 @@
 
 #include "ui/message_list/message_render.h"
 #include "text/mrkdwn_parser.h"
+#include "session/session.h"
+#include "backend/backend.h"
+#include "rpl/variable.h"
 
 // ── Custom main (QApplication required for fonts/theme) ──────────────────────
 
@@ -324,4 +327,86 @@ TEST_CASE("lastReplyLabel uses 'today at' wording for today's ts", "[render][rep
 
 TEST_CASE("lastReplyLabel invalid ts → empty", "[render][reply]") {
     CHECK(MsgRender::lastReplyLabel("not-a-ts").isEmpty());
+}
+
+// ── Channel mention rendering ─────────────────────────────────────────────────
+
+// Minimal Backend so a Session can be seeded with conversations.
+namespace {
+struct RenderStubBackend : Backend {
+    rpl::variable<AuthState>                 _auth{AuthState::LoggedIn};
+    rpl::variable<UserId>                    _me;
+    rpl::variable<std::vector<Conversation>> _convs;
+    rpl::variable<std::vector<User>>         _users;
+    rpl::event_stream<Event>                 _events;
+
+    rpl::producer<AuthState>                 authState() const override { return _auth.value(); }
+    Capabilities                             capabilities() const override { return {}; }
+    void                                     connectRealtime() override {}
+    void                                     disconnectRealtime() override {}
+    rpl::producer<UserId>                    loadMe() override { return _me.value(); }
+    rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
+    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
+    rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
+    rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
+        return rpl::variable<MessagePage>({}).value();
+    }
+    rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
+        return rpl::variable<MessagePage>({}).value();
+    }
+    void sendMessage(ConversationId, OutgoingMessage) override {}
+    void editMessage(ConversationId, Ts, TextWithEntities) override {}
+    void deleteMessage(ConversationId, Ts) override {}
+    void addReaction(ConversationId, Ts, QString) override {}
+    void removeReaction(ConversationId, Ts, QString) override {}
+    void markRead(ConversationId, Ts) override {}
+    rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
+        return rpl::variable<std::vector<SearchResult>>({}).value();
+    }
+    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
+        return rpl::variable<QHash<QString, QString>>({}).value();
+    }
+    void uploadFiles(
+        ConversationId,
+        const QStringList &,
+        const QString &,
+        std::function<void(bool, QString)> = {}
+    ) override {}
+    void downloadFile(
+        const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
+    ) override {}
+    rpl::producer<Event> events() const override { return _events.events(); }
+};
+
+static Session *renderSession() {
+    auto        *stub = new RenderStubBackend;
+    Conversation c;
+    c.id          = ConversationId{"C1"};
+    c.name        = "general";
+    c.kind        = ConvKind::PublicChannel;
+    stub->_convs  = std::vector<Conversation>{c};
+    auto *session = new Session(std::unique_ptr<Backend>(stub), "T_TEST");
+    session->start();
+    return session;
+}
+} // namespace
+
+TEST_CASE("toHtml renders a labeled channel link as its name", "[render][channel]") {
+    const QString html = MsgRender::toHtml(MrkdwnParser::parse("see <#C1|general>"), nullptr);
+    CHECK(html.contains("#general"));
+    CHECK(!html.contains("#C1"));
+}
+
+TEST_CASE("toHtml without session falls back to the channel id", "[render][channel]") {
+    // A bare link has no name part; with no cache to consult, the id shows.
+    const QString html = MsgRender::toHtml(MrkdwnParser::parse("see <#C1>"), nullptr);
+    CHECK(html.contains("#C1"));
+}
+
+TEST_CASE("toHtml resolves a bare channel link via the session", "[render][channel]") {
+    auto         *session = renderSession();
+    const QString html    = MsgRender::toHtml(MrkdwnParser::parse("see <#C1>"), session);
+    CHECK(html.contains("#general"));
+    CHECK(!html.contains("#C1"));
+    delete session;
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "mention_completer.h"
+#include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -9,6 +10,7 @@
 #include <QCoreApplication>
 #include <QFontMetrics>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
@@ -245,6 +247,106 @@ private:
     bool                   _hovered  = false;
 };
 
+// ── Channel row ──────────────────────────────────────────────────────────────
+// Slack-style single line mirroring the @-mention rows: a hashtag (public) or
+// padlock (private) icon, then the bold channel name. The selected/hovered row
+// paints a subtle gray fill and reveals an "Enter" affordance on the right.
+class ChannelRow : public QWidget {
+public:
+    std::function<void()> onClick;
+    std::function<void()> onHover;
+
+    static constexpr int kRowH = 38;
+    static constexpr int kIcon = 22;
+    static constexpr int kPadX = 12;
+    static constexpr int kGap  = 12;
+
+    ChannelRow(const MentionCompleter::Item &item, QWidget *parent) : QWidget(parent), _item(item) {
+        setFixedHeight(kRowH);
+        setCursor(Qt::PointingHandCursor);
+        setMouseTracking(true);
+    }
+
+    void setSelected(bool s) {
+        if (_selected == s)
+            return;
+        _selected = s;
+        update();
+    }
+
+    QSize sizeHint() const override { return {360, kRowH}; }
+
+protected:
+    void enterEvent(QEnterEvent *) override {
+        if (onHover)
+            onHover();
+    }
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && onClick)
+            onClick();
+        QWidget::mousePressEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::TextAntialiasing);
+
+        const QRect r = rect();
+
+        // ── Selection fill (subtle gray, not the blue accent) ───────────────
+        if (_selected) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(Th::c().surface.highlight);
+            p.drawRoundedRect(r, 6, 6);
+        }
+
+        // ── Icon (hashtag / padlock) ────────────────────────────────────────
+        const QRect   iconR(kPadX, (kRowH - kIcon) / 2, kIcon, kIcon);
+        const QString icon = _item.channelPrivate ? QStringLiteral(":/ui/lock.svg")
+                                                  : QStringLiteral(":/ui/hash.svg");
+        const QPixmap px   = svgPixmap(icon, {kIcon, kIcon}, Th::c().text.primary);
+        if (!px.isNull())
+            p.drawPixmap(iconR, px);
+
+        int       x         = iconR.right() + 1 + kGap;
+        int       textRight = r.right() - kPadX;
+        const int midY      = kRowH / 2;
+
+        // ── "Enter" affordance on the selected row (reserved on the right) ──
+        if (_selected) {
+            const QString enterText = QCoreApplication::translate("MentionCompleter", "Enter");
+            QFont         ef        = font();
+            ef.setPixelSize(Th::c().fonts.caption);
+            const QFontMetrics efm(ef);
+            const int          ew = efm.horizontalAdvance(enterText) + 18;
+            const int          eh = 22;
+            const QRect        enterRect(textRight - ew, midY - eh / 2, ew, eh);
+            textRight = enterRect.left() - kGap;
+            p.setPen(QPen(Th::c().divider.strong, 1));
+            p.setBrush(Th::c().surface.raised);
+            p.drawRoundedRect(QRectF(enterRect).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+            p.setFont(ef);
+            p.setPen(Th::c().text.secondary);
+            p.drawText(enterRect, Qt::AlignCenter, enterText);
+        }
+
+        // ── Channel name (bold) ─────────────────────────────────────────────
+        QFont nameF = font();
+        nameF.setPixelSize(Th::c().fonts.base);
+        nameF.setBold(true);
+        const QFontMetrics nfm(nameF);
+        const QString      nameE = nfm.elidedText(_item.title, Qt::ElideRight, textRight - x);
+        p.setFont(nameF);
+        p.setPen(Th::c().text.primary);
+        p.drawText(QRect(x, 0, textRight - x, kRowH), Qt::AlignVCenter | Qt::AlignLeft, nameE);
+    }
+
+private:
+    MentionCompleter::Item _item;
+    bool                   _selected = false;
+};
+
 // Stylesheet for the plain one-line rows (users / channels / emoji).
 QString plainRowStyle(bool selected) {
     if (selected)
@@ -420,6 +522,18 @@ void MentionCompleter::rebuild(const QList<Item> &items) {
 
     for (int i = 0; i < _items.size(); ++i) {
         const int idx = i;
+        if (_items[i].channel) {
+            auto *row    = new ChannelRow(_items[i], _content);
+            row->onClick = [this, idx] {
+                _sel = idx;
+                confirm();
+            };
+            row->onHover = [this, idx] { selectRow(idx); };
+            _layout->addWidget(row);
+            row->show();
+            _rows.append(row);
+            continue;
+        }
         if (_items[i].command) {
             auto *row    = new CommandRow(_items[i], _imgCache, _content);
             row->onClick = [this, idx] {
@@ -458,7 +572,9 @@ void MentionCompleter::selectRow(int row) {
     const auto style = [this](int i, bool selected) {
         if (i < 0 || i >= _rows.size())
             return;
-        if (_items[i].command)
+        if (_items[i].channel)
+            static_cast<ChannelRow *>(_rows[i])->setSelected(selected);
+        else if (_items[i].command)
             static_cast<CommandRow *>(_rows[i])->setSelected(selected);
         else
             static_cast<QPushButton *>(_rows[i])->setStyleSheet(plainRowStyle(selected));

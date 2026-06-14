@@ -728,6 +728,130 @@ TEST_CASE("completer stays open after typing :sm and stopping", "[composer][emoj
     CHECK(comp->height() > 50);
 }
 
+// ── Inline #channel autocomplete ──────────────────────────────────────────────
+
+// Builds a session with one public and one private channel, plus a DM that must
+// never appear among the channel suggestions.
+static Session *channelSession() {
+    auto        *stub = new StubBackend2;
+    Conversation pub;
+    pub.id   = ConversationId{"C1"};
+    pub.name = "general";
+    pub.kind = ConvKind::PublicChannel;
+    Conversation priv;
+    priv.id   = ConversationId{"G1"};
+    priv.name = "secret-stuff";
+    priv.kind = ConvKind::PrivateChannel;
+    Conversation dm;
+    dm.id        = ConversationId{"D1"};
+    dm.name      = "ann";
+    dm.kind      = ConvKind::Im;
+    stub->_convs = std::vector<Conversation>{pub, priv, dm};
+
+    auto *session = new Session(std::unique_ptr<Backend>(stub), "T_TEST");
+    session->start();
+    return session;
+}
+
+TEST_CASE("typing # at text start opens the channel completer", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    typeText(&c, "#");
+    releaseKey(&c, Qt::Key_NumberSign, "#");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    CHECK(comp->isVisible()); // a bare '#' lists every channel
+    delete session;
+}
+
+TEST_CASE("# inside a word does not trigger the channel completer", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    typeText(&c, "abc#gen");
+    releaseKey(&c, Qt::Key_N, "n");
+    auto *comp = completerOf(&c);
+    CHECK((!comp || !comp->isVisible()));
+    delete session;
+}
+
+TEST_CASE("# after a space triggers the channel completer", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    typeText(&c, "join #gen");
+    releaseKey(&c, Qt::Key_N, "n");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    CHECK(comp->isVisible());
+    delete session;
+}
+
+TEST_CASE("Enter inserts the selected channel as a pill", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    typeText(&c, "#gen");
+    releaseKey(&c, Qt::Key_N, "n");
+    auto *comp = completerOf(&c);
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &enter);
+    // The editor shows the channel name as a pill; the wire format keeps Slack's
+    // channel link, with a trailing space.
+    CHECK(editOf(&c)->toPlainText() == "#general ");
+    CHECK(c.currentText() == "<#C1|general> ");
+    CHECK(!comp->isVisible());
+    delete session;
+}
+
+TEST_CASE("Backspace deletes the whole channel pill at once", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    typeText(&c, "#gen");
+    releaseKey(&c, Qt::Key_N, "n");
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &enter);
+    REQUIRE(editOf(&c)->toPlainText() == "#general ");
+
+    // Place the cursor just after the pill (before the trailing space) and
+    // backspace once — the entire "#general" block disappears.
+    QTextEdit *ed = editOf(&c);
+    auto       tc = ed->textCursor();
+    tc.setPosition(QString("#general").size());
+    ed->setTextCursor(tc);
+    QKeyEvent bs(QEvent::KeyPress, Qt::Key_Backspace, Qt::NoModifier);
+    QApplication::sendEvent(ed, &bs);
+    CHECK(ed->toPlainText() == " ");
+    CHECK(c.currentText().trimmed().isEmpty());
+    delete session;
+}
+
+TEST_CASE("a channel pill round-trips through setText", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    c.setText("see <#C1|general> please");
+    // The raw token shows as a "#general" pill but serializes back unchanged.
+    CHECK(editOf(&c)->toPlainText() == "see #general please");
+    CHECK(c.currentText() == "see <#C1|general> please");
+    delete session;
+}
+
+TEST_CASE("a bare channel link resolves its name from the session", "[composer][channel]") {
+    auto          *session = channelSession();
+    ComposerWidget c;
+    c.setSession(session);
+    // Slack often stores the link without the name; the composer recovers it.
+    c.setText("see <#C1> now");
+    CHECK(editOf(&c)->toPlainText() == "see #general now");
+    delete session;
+}
+
 // ── Arrow-key boundary navigation ─────────────────────────────────────────────
 
 // Vertical cursor movement needs a laid-out document — show the widget and

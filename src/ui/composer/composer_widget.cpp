@@ -772,22 +772,29 @@ void ComposerWidget::checkMentionPopup() {
 }
 
 void ComposerWidget::setEditorMrkdwn(const QString &text) {
-    static const QRegularExpression kUserMention(
-        QStringLiteral("<@([UW][A-Z0-9]+)(?:\\|([^>]+))?>")
-    );
+    // Both <@U…> user mentions and <#C…|name> channel links render as pills; the
+    // raw token travels in each pill's char format so the sent text is unchanged.
+    static const QRegularExpression kMention(QStringLiteral("<([@#])([A-Z0-9]+)(?:\\|([^>]+))?>"));
     _edit->clear();
     QTextCursor tc(_edit->document());
     int         pos = 0;
-    auto        it  = kUserMention.globalMatch(text);
+    auto        it  = kMention.globalMatch(text);
     while (it.hasNext()) {
         const auto m = it.next();
         tc.insertText(text.mid(pos, m.capturedStart() - pos), QTextCharFormat());
-        QString display = m.captured(2); // "<@U…|name>" carries its own label
+        const bool isChannel = (m.captured(1) == "#");
+        QString    display   = m.captured(3); // "|name" label carried in the token
         if (display.isEmpty()) {
-            const User *u = _session ? _session->findUser(UserId{m.captured(1)}) : nullptr;
-            display       = u ? u->displayLabel() : m.captured(1);
+            if (isChannel) {
+                const Conversation *c =
+                    _session ? _session->findConversation(ConversationId{m.captured(2)}) : nullptr;
+                display = c ? c->name : m.captured(2);
+            } else {
+                const User *u = _session ? _session->findUser(UserId{m.captured(2)}) : nullptr;
+                display       = u ? u->displayLabel() : m.captured(2);
+            }
         }
-        display.prepend('@');
+        display.prepend(isChannel ? '#' : '@');
         tc.insertText(display, mentionCharFormat(display, m.captured(0)));
         pos = m.capturedEnd();
     }
@@ -1201,9 +1208,14 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
 
                     // "/" lists slash commands, but only at the very start of
                     // the message (official-client behavior); a bare "/" shows
-                    // the full list, so an empty query is allowed here.
-                    const bool cmdTrigger = (trigger == '/' && trigStart == 0);
-                    if (!cmdTrigger && (query.isEmpty() || (trigger != '#' && trigger != ':'))) {
+                    // the full list, so an empty query is allowed here. "#"
+                    // (channels) likewise shows the full list on a bare "#";
+                    // ":" (emoji) needs at least one char to match a code.
+                    const bool cmdTrigger   = (trigger == '/' && trigStart == 0);
+                    const bool chanTrigger  = (trigger == '#');
+                    const bool emojiTrigger = (trigger == ':');
+                    if ((!cmdTrigger && !chanTrigger && !emojiTrigger) ||
+                        (emojiTrigger && query.isEmpty())) {
                         if (_mentionComp)
                             _mentionComp->dismiss();
                         return;
@@ -1243,7 +1255,7 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                             if (items.size() >= 50)
                                 break;
                         }
-                    } else if (trigger == '#') {
+                    } else if (chanTrigger) {
                         if (!_session)
                             return;
                         const auto &convs = _session->currentConversations();
@@ -1252,10 +1264,16 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                                 c.kind != ConvKind::PrivateChannel)
                                 continue;
                             if (c.name.contains(query, Qt::CaseInsensitive)) {
-                                items.append(
-                                    {"#" + c.name, "<#" + c.id.value + "|" + c.name + ">"}
-                                );
-                                if (items.size() >= 8)
+                                MentionCompleter::Item it;
+                                it.channel        = true;
+                                it.channelPrivate = (c.kind == ConvKind::PrivateChannel);
+                                it.title          = c.name;
+                                it.display        = "#" + c.name;
+                                it.insert         = "<#" + c.id.value + "|" + c.name + ">";
+                                items.append(it);
+                                // Cap generously so the list scrolls (the popup
+                                // shows a window of rows, the rest scroll).
+                                if (items.size() >= 50)
                                     break;
                             }
                         }
@@ -1342,7 +1360,23 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                             auto tc = _edit->textCursor();
                             tc.setPosition(trigStart);
                             tc.setPosition(cursor, QTextCursor::KeepAnchor);
-                            tc.insertText(insert + " ");
+                            // A channel link inserts as a pill, like an
+                            // @mention: the editor shows "#name" while the raw
+                            // "<#C…|name>" token travels in the char format, so
+                            // the message keeps Slack's wire format and the pill
+                            // deletes atomically. Emoji/commands stay literal.
+                            if (insert.startsWith(QLatin1String("<#"))) {
+                                const int     pipe    = insert.indexOf('|');
+                                const int     end     = insert.lastIndexOf('>');
+                                const QString name    = (pipe >= 0 && end > pipe)
+                                                            ? insert.mid(pipe + 1, end - pipe - 1)
+                                                            : QString();
+                                const QString display = "#" + name;
+                                tc.insertText(display, mentionCharFormat(display, insert));
+                                tc.insertText(" ", QTextCharFormat());
+                            } else {
+                                tc.insertText(insert + " ");
+                            }
                             _edit->setFocus();
                         }
                     );
