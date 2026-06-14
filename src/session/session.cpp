@@ -137,6 +137,7 @@ void Session::start() {
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
                 enrichDmActivity();
+                fetchMissingDmUsers();
                 // Emoji load is deferred to here so it doesn't queue ahead of
                 // conversations/users. Cache serves emojis until the refresh
                 // arrives and the result is written back to cache.
@@ -187,6 +188,11 @@ void Session::start() {
                                     for (const auto &conv : _conversations.current())
                                         if (conv.dmUser && !conv.dmUser->value.isEmpty())
                                             requestPresence(*conv.dmUser);
+
+                                    // Resolve DM peers users.list omits now that the
+                                    // full list is known (conversations may already
+                                    // be loaded; if not, their handler calls us too).
+                                    fetchMissingDmUsers();
                                 },
                                 _lifetime
                             );
@@ -493,6 +499,45 @@ void Session::fetchBotIfNeeded(UserId botId) {
 
 rpl::producer<UserId> Session::botInfoLoaded() const {
     return _botInfoHub.events();
+}
+
+void Session::fetchUserIfNeeded(UserId userId) {
+    if (userId.value.isEmpty() || !userId.value.startsWith('U'))
+        return;
+    if (findUser(userId))
+        return;
+    if (_pendingUserFetches.contains(userId.value))
+        return;
+    _pendingUserFetches.insert(userId.value);
+    _backend->loadUser(userId) | rpl::on_next(
+                                     [this, userId](User u) {
+                                         _pendingUserFetches.remove(userId.value);
+                                         if (u.id.value.isEmpty())
+                                             return;
+                                         // Append to the live user list so the conv
+                                         // list (fed by users()) re-resolves the name
+                                         // + avatar. user_change handlers copy-mutate
+                                         // _users, preserving this until the next full
+                                         // users.list reload — cheap to re-fetch then.
+                                         auto users = _users.current();
+                                         for (const auto &existing : users)
+                                             if (existing.id == u.id)
+                                                 return;
+                                         users.push_back(std::move(u));
+                                         _users = std::move(users);
+                                     },
+                                     _lifetime
+                                 );
+}
+
+void Session::fetchMissingDmUsers() {
+    // users.list not loaded yet → every peer would look "missing". The users
+    // load handler calls us again once the full list has arrived.
+    if (_users.current().empty())
+        return;
+    for (const auto &c : _conversations.current())
+        if (c.kind == ConvKind::Im && c.dmUser)
+            fetchUserIfNeeded(*c.dmUser);
 }
 
 const Conversation *Session::findConversation(ConversationId id) const {
@@ -942,15 +987,17 @@ QByteArray Session::cachedImage(const QString &url) const {
 void Session::requestPresence(UserId userId) {
     // users.getPresence answers internal_error for any user with no observable
     // presence, and Slack returns the generic error rather than a clean code:
-    //   - Slackbot (fixed id USLACKBOT — reports is_bot=false, so the flag check
-    //     alone misses it; see ConvListWidget::isAppConv);
+    //   - the Slack system accounts (fixed ids USLACKBOT = Slackbot, USLACK = the
+    //     "Slack" workspace/billing notifier — both report is_bot=false, so the
+    //     flag check alone misses them; see ConvListWidget::isAppConv);
     //   - bot/app users (isBot) and deactivated accounts;
     //   - users not in this workspace's users.list at all (external Slack Connect
     //     partners, some app IMs) — findUser() is null for them.
     // We only ever render a presence dot for a known human member, so unless we
     // hold such a User record, skip the doomed call instead of spamming retries.
     const User *u = findUser(userId);
-    if (!u || u->isBot || u->isDeactivated || userId.value == QLatin1String("USLACKBOT"))
+    if (!u || u->isBot || u->isDeactivated || userId.value == QLatin1String("USLACKBOT") ||
+        userId.value == QLatin1String("USLACK"))
         return;
     _backend->loadPresence(userId) | rpl::on_next(
                                          [this, userId](bool active) {

@@ -414,6 +414,26 @@ rpl::producer<User> PublicBackend::loadBotInfo(UserId botId) {
     };
 }
 
+rpl::producer<User> PublicBackend::loadUser(UserId userId) {
+    return [this, userId](auto consumer) mutable {
+        QUrlQuery params;
+        params.addQueryItem("user", userId.value);
+        _api->call(
+            "users.info",
+            params,
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toUser(resp.value("user").toObject()));
+                consumer.put_done();
+            },
+            [consumer](QString err) mutable {
+                qWarning() << "loadUser error:" << err;
+                consumer.put_done();
+            }
+        );
+        return rpl::lifetime();
+    };
+}
+
 rpl::producer<MessagePage>
 PublicBackend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
     return [this, conv, cursor](auto consumer) mutable {

@@ -329,6 +329,26 @@ struct StubBackend : Backend {
         };
     }
 
+    // users.info fixtures for the missing-DM-peer resolver; missing id = error
+    // (producer completes empty, like the real backend on failure).
+    QHash<QString, User> userInfoResults;
+    QList<QString>       userInfoRequested;
+    rpl::producer<User>  loadUser(UserId id) override {
+        userInfoRequested.append(id.value);
+        const auto it = userInfoResults.constFind(id.value);
+        if (it == userInfoResults.constEnd())
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        User result = *it;
+        return [result](auto consumer) mutable {
+            consumer.put_next(std::move(result));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+
     // Self presence / status — recorded calls; configurable failure.
     QString           selfActionError; // non-empty = all three calls fail with this
     std::vector<bool> presenceCalls;   // away flag per setPresence call
@@ -514,6 +534,56 @@ TEST_CASE_METHOD(SessionFixture, "start() populates users from backend", "[sessi
 
 TEST_CASE_METHOD(SessionFixture, "start() sets meUserId from loadMe", "[session]") {
     CHECK(session->meUserId() == UserId{"U1"});
+}
+
+// A DM peer absent from users.list (Slack system accounts like USLACK, Slack
+// Connect partners, deactivated users) must be resolved on demand via users.info
+// so the conversation list shows a real name instead of the raw id + "?" avatar.
+TEST_CASE("DM peer missing from users.list is resolved via users.info", "[session]") {
+    const QString teamId = "T_SESSION_MISSING_DM";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    Conversation slackDm{
+        .id       = ConversationId{"D_SLACK"},
+        .kind     = ConvKind::Im,
+        .name     = "USLACK", // raw id fallback, exactly as conversations.list returns it
+        .isMember = true,
+        .lastRead = "0",
+        .unread   = 0,
+        .dmUser   = UserId{"USLACK"},
+    };
+    User slackUser{
+        .id          = UserId{"USLACK"},
+        .name        = "slack",
+        .displayName = "Slack",
+        .avatarUrl   = "https://a.slack-edge.com/slack_logo_mark.svg",
+    };
+
+    auto  backend = std::make_unique<StubBackend>();
+    auto *stub    = backend.get();
+    stub->_meId   = UserId{"U1"};
+    stub->_convs  = std::vector<Conversation>{slackDm};
+    stub->_users  = std::vector<User>{kAlice}; // USLACK deliberately NOT in users.list
+    stub->userInfoResults["USLACK"] = slackUser;
+
+    Session session(std::move(backend), teamId);
+    session.start();
+
+    CHECK(stub->userInfoRequested.contains("USLACK"));
+    const User *u = session.findUser(UserId{"USLACK"});
+    REQUIRE(u != nullptr);
+    CHECK(u->displayName == "Slack");
+
+    QDir(baseDir).removeRecursively();
+}
+
+// No DM peers to resolve (channels only) must not trigger any users.info call.
+TEST_CASE_METHOD(
+    SessionFixture, "no users.info fetch when there are no missing peers", "[session]"
+) {
+    CHECK(stub->userInfoRequested.isEmpty());
 }
 
 TEST_CASE_METHOD(SessionFixture, "successful loadMe persists meUserId to cache", "[session]") {

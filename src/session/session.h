@@ -176,6 +176,12 @@ public:
     // Fetch name + avatar for a bot by bot_id if not already cached; no-op if known.
     void fetchBotIfNeeded(UserId botId);
 
+    // Fetch a single user (users.info) and merge into the live user list if not
+    // already known; no-op if cached or in-flight. Resolves DM peers that
+    // users.list omits (Slack system accounts, Slack Connect, deactivated users)
+    // so the conversation list can show a real name + avatar instead of the raw id.
+    void fetchUserIfNeeded(UserId userId);
+
     // Fires the bot_id whenever a bot's info arrives from the network.
     rpl::producer<UserId> botInfoLoaded() const;
 
@@ -211,6 +217,11 @@ private:
     // last_read/latest cursors (used for conversation-list relevance). Throttled
     // via the workspace cache; called after each loadConversations() merge.
     void enrichDmActivity();
+
+    // Resolve any DM peer absent from the loaded user list via users.info. No-op
+    // until users.list has loaded (so we don't mistake "not loaded yet" for
+    // "missing"); called from both the users and conversations load handlers.
+    void fetchMissingDmUsers();
 
     // Apply `fn` to our own entry in _users (no-op while meUserId is unknown);
     // reassigning the variable notifies users() subscribers.
@@ -249,6 +260,7 @@ private:
     QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
     QHash<QString, User>               _botUsers;     // bot_id → User; for bots not in users.list
     QSet<QString>             _pendingBotFetches;     // bot_ids with an in-flight bots.info request
+    QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request
     rpl::event_stream<UserId> _botInfoHub;
     rpl::lifetime             _lifetime;
 };

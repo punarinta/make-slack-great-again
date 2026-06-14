@@ -45,6 +45,15 @@ public:
             return rpl::lifetime();
         };
     }
+    // Fetch a single user (users.info) by id. Resolves DM peers that users.list
+    // omits — Slack system accounts (USLACK / USLACKBOT), Slack Connect partners,
+    // deactivated users. Default no-op for backends that don't support this.
+    virtual rpl::producer<User> loadUser(UserId /*userId*/) {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
     // Authoritative per-conversation state (conversations.info): last_read and
     // latest message ts, which conversations.list no longer returns. Used by the
     // Session's background activity sweep to seed conversation-list relevance.

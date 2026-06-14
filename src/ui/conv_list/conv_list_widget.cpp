@@ -108,6 +108,14 @@ void ConvListWidget::saveVisitedAt() {
 }
 
 // Returns true if s looks like a raw Slack user ID (e.g. "U0A1B2C3D").
+// Slack's two built-in system accounts. Both are excluded from users.list and
+// both report is_bot=false, so they need explicit handling to render as apps
+// rather than leaking their raw ids into the Direct messages section:
+//   USLACKBOT — "Slackbot"; USLACK — the "Slack" workspace/billing notifier.
+static bool isSlackSystemUser(const QString &id) {
+    return id == QLatin1String("USLACKBOT") || id == QLatin1String("USLACK");
+}
+
 static bool isRawSlackId(const QString &s) {
     if (s.length() < 9)
         return false;
@@ -163,8 +171,8 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
                 .isDeactivated = u.isDeactivated,
                 .isActive      = u.isActive,
                 .dndEnabled    = u.dndEnabled,
-                // Slackbot reports is_bot=false in the API; special-case its fixed ID.
-                .isBot         = u.isBot || u.id.value == QLatin1String("USLACKBOT"),
+                // Slack system accounts report is_bot=false in the API; special-case.
+                .isBot         = u.isBot || isSlackSystemUser(u.id.value),
                 .statusEmoji   = u.statusEmoji,
             }
         );
@@ -177,7 +185,7 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
 bool ConvListWidget::isAppConv(const Conversation &c) const {
     if (c.kind != ConvKind::Im || !c.dmUser)
         return false;
-    if (c.dmUser->value == QLatin1String("USLACKBOT"))
+    if (isSlackSystemUser(c.dmUser->value))
         return true;
     const auto it = _userInfos.constFind(c.dmUser->value);
     return it != _userInfos.constEnd() && it->isBot;
