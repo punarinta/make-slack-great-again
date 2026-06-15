@@ -22,6 +22,11 @@ public:
     // hasCanvas=false → "Add canvas"; true → title ("Untitled" when empty).
     void setCanvasInfo(bool hasCanvas, const QString &title = {});
 
+    // Hide the canvas tab entirely (not even "Add canvas") — for conversations
+    // that can't own a user-editable canvas, e.g. bot/app DMs. Forces the active
+    // tab back to Messages when hiding.
+    void setCanvasTabVisible(bool visible);
+
 signals:
     void tabSelected(Tab tab);
 
@@ -43,8 +48,9 @@ private:
     void rebuildIcons();
     int  tabAt(const QPoint &pos) const;
 
-    Tab     _active    = Tab::Messages;
-    bool    _hasCanvas = false;
+    Tab     _active           = Tab::Messages;
+    bool    _hasCanvas        = false;
+    bool    _canvasTabVisible = true;
     QString _canvasTitle;
     int     _hovered = -1;
 

@@ -214,6 +214,13 @@ public:
     const User         *findUser(UserId) const;
     const Conversation *findConversation(ConversationId) const;
 
+    // True for a DM with a bot/app user (the conv-list "Agents & apps" section),
+    // including the Slack system accounts that report is_bot=false. Such IMs
+    // never own a user-editable channel canvas — any canvas conversations.info
+    // advertises for them is app-owned and answers not_visible — so the canvas
+    // tab and its probe are skipped. Mirrors ConvListWidget::isAppConv.
+    bool isAppConversation(const Conversation &) const;
+
     // Synchronous snapshot accessors (for autocomplete, etc.)
     const std::vector<User>         &currentUsers() const;
     const std::vector<Conversation> &currentConversations() const;

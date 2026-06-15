@@ -577,6 +577,16 @@ const Conversation *Session::findConversation(ConversationId id) const {
     return nullptr;
 }
 
+bool Session::isAppConversation(const Conversation &c) const {
+    if (c.kind != ConvKind::Im || !c.dmUser)
+        return false;
+    // Slack system accounts report is_bot=false, so the flag check misses them.
+    if (c.dmUser->value == QLatin1String("USLACKBOT") || c.dmUser->value == QLatin1String("USLACK"))
+        return true;
+    const User *u = findUser(*c.dmUser);
+    return u && u->isBot;
+}
+
 const std::vector<User> &Session::currentUsers() const {
     return _users.current();
 }

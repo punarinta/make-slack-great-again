@@ -586,6 +586,55 @@ TEST_CASE_METHOD(
     CHECK(stub->userInfoRequested.isEmpty());
 }
 
+// isAppConversation() identifies bot/app DMs (the conv-list "Agents & apps"
+// section), including the Slack system accounts that report is_bot=false. Such
+// IMs are the ones whose canvas tab + probe MainWindow skips, so this must match
+// ConvListWidget::isAppConv exactly.
+TEST_CASE("isAppConversation identifies bot system and human conversations", "[session]") {
+    const QString teamId = "T_SESSION_APP_CONV";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    auto im = [](const char *id, const char *peer) {
+        return Conversation{
+            .id       = ConversationId{id},
+            .kind     = ConvKind::Im,
+            .name     = peer,
+            .isMember = true,
+            .lastRead = "0",
+            .dmUser   = UserId{peer},
+        };
+    };
+    const Conversation botIm    = im("D_BOT", "B1");             // kBotUser: is_bot=true
+    const Conversation slackbot = im("D_SLACKBOT", "USLACKBOT"); // system, is_bot=false
+    const Conversation uslackIm = im("D_USLACK", "USLACK"); // system id, absent from users.list
+    const Conversation humanDm  = im("D_BOB", "U2");        // kBob: human
+    const Conversation externDm = im("D_EXT", "U_EXT");     // unknown peer, not a system id
+
+    auto  backend = std::make_unique<StubBackend>();
+    auto *stub    = backend.get();
+    stub->_meId   = UserId{"U1"};
+    stub->_convs =
+        std::vector<Conversation>{kGeneral, botIm, slackbot, uslackIm, humanDm, externDm};
+    stub->_users = std::vector<User>{kAlice, kBob, kBotUser, kSlackbot}; // USLACK/U_EXT absent
+
+    Session session(std::move(backend), teamId);
+    session.start();
+
+    // Bot DM and the two Slack system accounts → app conversations.
+    CHECK(session.isAppConversation(botIm));
+    CHECK(session.isAppConversation(slackbot)); // is_bot=false but matched by fixed id
+    CHECK(session.isAppConversation(uslackIm)); // matched by id even when not in users.list
+
+    // Human DM, a channel, and an unresolved non-system peer → not app conversations.
+    CHECK_FALSE(session.isAppConversation(humanDm));
+    CHECK_FALSE(session.isAppConversation(kGeneral));
+    CHECK_FALSE(session.isAppConversation(externDm)); // findUser null → assume human
+
+    QDir(baseDir).removeRecursively();
+}
+
 TEST_CASE_METHOD(SessionFixture, "successful loadMe persists meUserId to cache", "[session]") {
     CHECK(WorkspaceCache(teamId).loadMeUserId() == UserId{"U1"});
 }

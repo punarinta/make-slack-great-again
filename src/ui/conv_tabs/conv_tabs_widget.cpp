@@ -35,6 +35,16 @@ void ConvTabsWidget::setCanvasInfo(bool hasCanvas, const QString &title) {
     update();
 }
 
+void ConvTabsWidget::setCanvasTabVisible(bool visible) {
+    if (_canvasTabVisible == visible)
+        return;
+    _canvasTabVisible = visible;
+    if (!visible)
+        _active = Tab::Messages; // can't stay on a hidden tab
+    relayout();
+    update();
+}
+
 void ConvTabsWidget::rebuildIcons() {
     const auto &th        = Th::c();
     const QSize sz        = QSize(kIconSz, kIconSz);
@@ -60,8 +70,14 @@ void ConvTabsWidget::relayout() {
     f.setBold(true);
     const QFontMetrics fm(f);
 
-    int x = kPadLeft;
-    for (auto &tab : _tabs) {
+    const int tabCount = _canvasTabVisible ? 2 : 1;
+    int       x        = kPadLeft;
+    for (int i = 0; i < 2; ++i) {
+        auto &tab = _tabs[i];
+        if (i >= tabCount) {
+            tab.rect = QRect(); // hidden — not painted, not hit-tested
+            continue;
+        }
         const int w = kTabPadH + kIconSz + kIconGap +
                       fm.horizontalAdvance(fm.elidedText(tab.text, Qt::ElideRight, 240)) + kTabPadH;
         tab.rect = QRect(x, 4, w, kStripH - 4 - kUnderlnH - 1);
@@ -88,7 +104,8 @@ void ConvTabsWidget::paintEvent(QPaintEvent *) {
     QFont f = font();
     f.setPixelSize(th.fonts.md);
 
-    for (int i = 0; i < 2; ++i) {
+    const int tabCount = _canvasTabVisible ? 2 : 1;
+    for (int i = 0; i < tabCount; ++i) {
         const auto &tab    = _tabs[i];
         const bool  active = (static_cast<int>(_active) == i);
 

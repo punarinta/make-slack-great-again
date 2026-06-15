@@ -1223,10 +1223,16 @@ void PublicBackend::loadCanvasContent(
             );
         },
         [onError](QString err) {
-            qWarning() << "loadCanvasContent error:" << err;
+            // not_visible is the routine "canvas owned elsewhere" case the caller
+            // already turns into the read-only no-access notice; don't warn on it.
+            if (err == QLatin1String("not_visible"))
+                qDebug() << "loadCanvasContent:" << err << "(handled)";
+            else
+                qWarning() << "loadCanvasContent error:" << err;
             if (onError)
                 onError(err);
-        }
+        },
+        /*quietErrors=*/true
     );
 }
 
@@ -1274,15 +1280,24 @@ void PublicBackend::loadCanvasMeta(
                 );
         },
         [done](QString err) {
-            qWarning() << "loadCanvasMeta error:" << err;
             auto state = CanvasMetaState::Ok; // unknown error — assume still there
             if (err == QLatin1String("file_deleted") || err == QLatin1String("file_not_found"))
                 state = CanvasMetaState::Gone;
             else if (err == QLatin1String("not_visible"))
                 state = CanvasMetaState::NoAccess;
+            // Gone/NoAccess are expected and handled by the caller (deleted-elsewhere
+            // canvas, or a canvas owned by someone else — e.g. an app/bot DM canvas
+            // or a channel the user hasn't joined). conversations.info advertises the
+            // canvas file_id regardless of whether files.info will let the user view
+            // it, so this is routine; only log genuinely unexpected errors.
+            if (state == CanvasMetaState::Ok)
+                qWarning() << "loadCanvasMeta error:" << err;
+            else
+                qDebug() << "loadCanvasMeta:" << err << "(handled)";
             if (done)
                 done({}, {}, state);
-        }
+        },
+        /*quietErrors=*/true
     );
 }
 

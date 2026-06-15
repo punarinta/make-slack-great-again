@@ -2009,34 +2009,46 @@ void MainWindow::openConversation(int row) {
         _convTabs->setActiveTab(ConvTabsWidget::Tab::Messages);
         _currentCanvasFileId = convCanvasFileId;
         _currentCanvasTitle.clear();
-        _convTabs->setCanvasInfo(!_currentCanvasFileId.isEmpty());
-        _session->loadChannelCanvas(
-            _currentConvId, [this, convId = _currentConvId](QString fileId, bool) {
-                if (_currentConvId != convId)
-                    return;
-                _currentCanvasFileId = fileId;
-                _convTabs->setCanvasInfo(!fileId.isEmpty());
-                if (fileId.isEmpty())
-                    return;
-                _session->loadCanvasMeta(
-                    fileId, [this, convId, fileId](QString title, QString, CanvasMetaState state) {
-                        if (_currentConvId != convId || _currentCanvasFileId != fileId)
-                            return;
-                        if (state == CanvasMetaState::Gone) {
-                            // conversations.info still references a deleted canvas.
-                            _currentCanvasFileId.clear();
-                            _currentCanvasTitle.clear();
-                            _convTabs->setCanvasInfo(false);
-                            return;
+        // Bot/app DMs can't own a user-editable channel canvas — any canvas
+        // conversations.info advertises for them is app-owned and answers
+        // not_visible. Hide the tab and skip the doomed conversations.info +
+        // files.info probe entirely.
+        const Conversation *convForCanvas = _session->findConversation(_currentConvId);
+        if (convForCanvas && _session->isAppConversation(*convForCanvas)) {
+            _currentCanvasFileId.clear();
+            _convTabs->setCanvasTabVisible(false);
+        } else {
+            _convTabs->setCanvasTabVisible(true);
+            _convTabs->setCanvasInfo(!_currentCanvasFileId.isEmpty());
+            _session->loadChannelCanvas(
+                _currentConvId, [this, convId = _currentConvId](QString fileId, bool) {
+                    if (_currentConvId != convId)
+                        return;
+                    _currentCanvasFileId = fileId;
+                    _convTabs->setCanvasInfo(!fileId.isEmpty());
+                    if (fileId.isEmpty())
+                        return;
+                    _session->loadCanvasMeta(
+                        fileId,
+                        [this, convId, fileId](QString title, QString, CanvasMetaState state) {
+                            if (_currentConvId != convId || _currentCanvasFileId != fileId)
+                                return;
+                            if (state == CanvasMetaState::Gone) {
+                                // conversations.info still references a deleted canvas.
+                                _currentCanvasFileId.clear();
+                                _currentCanvasTitle.clear();
+                                _convTabs->setCanvasInfo(false);
+                                return;
+                            }
+                            // NoAccess keeps the tab — the canvas exists, the page
+                            // shows the read-only no-access notice when opened.
+                            _currentCanvasTitle = title;
+                            _convTabs->setCanvasInfo(true, title);
                         }
-                        // NoAccess keeps the tab — the canvas exists, the page
-                        // shows the read-only no-access notice when opened.
-                        _currentCanvasTitle = title;
-                        _convTabs->setCanvasInfo(true, title);
-                    }
-                );
-            }
-        );
+                    );
+                }
+            );
+        }
     }
     _composer->setEnabled(true);
     _composer->setConvKind(convKind);
