@@ -698,6 +698,9 @@ void ConvListWidget::drawUserAvatar(
             : UserAvatar::State{};
     if (_selfPhantomAway && !_meUserId.value.isEmpty() && userId == _meUserId.value)
         state.phantomAway = true;
+    // Apps/bots (incl. Slackbot/system accounts) can't go offline — no presence dot.
+    if (infoIt != _userInfos.constEnd() && infoIt->isBot)
+        state.showPresence = false;
     UserAvatar::paint(
         p, rect, pixmap, initial, state, kAvatarRadius, p.device()->devicePixelRatioF(), bgColor
     );

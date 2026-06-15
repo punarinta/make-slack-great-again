@@ -17,12 +17,15 @@
 namespace UserAvatar {
 
 struct State {
-    bool isActive    = false;
-    bool dndEnabled  = false;
-    bool isSelected  = false;
+    bool isActive     = false;
+    bool dndEnabled   = false;
+    bool isSelected   = false;
     // Self-only: appears away to others merely because no official Slack
     // client is connected (SelfPresence::phantomAway()).
-    bool phantomAway = false;
+    bool phantomAway  = false;
+    // Bots/apps have no presence — they can't "go offline" — so the indicator
+    // dot is meaningless and confusing for them. Suppress it entirely.
+    bool showPresence = true;
 };
 
 // Paints a rounded-rect avatar + a 10px presence/DND indicator dot.
@@ -77,6 +80,12 @@ inline void paint(
     }
 
     // ── Presence / DND dot ─────────────────────────────────────────────
+    // Apps/bots have no presence; drawing a dot for them is misleading.
+    if (!state.showPresence) {
+        p.restore();
+        return;
+    }
+
     // Layer 1: background circle in row colour — visually separates indicator from avatar.
     // Layer 2: smaller indicator circle on top — filled (online/DND) or hollow ring (offline).
     constexpr int bgD  = 10;

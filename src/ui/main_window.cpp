@@ -2150,6 +2150,9 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
         if (isDm && conversation->dmUser) {
             const auto *u = _session->findUser(*conversation->dmUser);
             if (u) {
+                // Apps/bots have no presence — they can't go offline, so the dot
+                // is meaningless and confusing for them.
+                _headerAvatar->setShowPresence(!_session->isAppConversation(*conversation));
                 _headerAvatar->setPresence(u->isActive);
                 _headerAvatar->setDnd(u->dndEnabled);
                 const bool isSelf = *conversation->dmUser == _session->meUserId();

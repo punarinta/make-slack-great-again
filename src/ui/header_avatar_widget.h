@@ -31,6 +31,11 @@ public:
         _state.phantomAway = phantom;
         update();
     }
+    // Apps/bots can't go offline — suppress the (meaningless) presence dot.
+    void setShowPresence(bool show) {
+        _state.showPresence = show;
+        update();
+    }
     void clearAvatar() {
         _pixmap = {};
         _state  = {};
