@@ -8,6 +8,12 @@ A fast native Slack client built in C++ with Qt6.
 ![License](https://img.shields.io/github/license/punarinta/make-slack-great-again)
 ![Release](https://img.shields.io/github/v/release/punarinta/make-slack-great-again)
 
+## Preview
+
+See the app in action — a snappy, native Slack experience:
+
+<video src="https://github.com/punarinta/msga/raw/master/make-slack-great-again/gfx/screenshots/recording-1.mp4" controls muted loop width="640"></video>
+
 ## Download
 
 [![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](https://msga.app/download/msga-linux-x86_64)
