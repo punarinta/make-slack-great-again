@@ -10,7 +10,7 @@ A fast native Slack client built in C++ with Qt6.
 
 ## Demo
 
-<video src="https://github.com/punarinta/make-slack-great-again/raw/refs/heads/master/gfx/screenshots/recording-1.mp4" controls muted loop width="640"></video>
+![msga in action](gfx/screenshots/recording-1.webp)
 
 ## Download
 
