@@ -38,7 +38,8 @@ fi
 BREW_PACKAGES=(
     cmake
     ninja
-    qt   # Qt6 — includes Core/Gui/Widgets/Network/WebSockets/Svg and all other modules
+    qt     # Qt6 — includes Core/Gui/Widgets/Network/WebSockets/Svg and all other modules
+    gcovr  # test coverage reports — used by scripts/coverage.sh
 )
 
 to_install=()

@@ -4,5 +4,6 @@ build-release-mac/
 build-tests/
 build-clazy/
 build-asan/
+build-cov/
 credentials.cmake
 .DS_Store

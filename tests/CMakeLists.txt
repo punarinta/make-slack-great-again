@@ -1,3 +1,5 @@
+option(MSGA_COVERAGE "Build tests with coverage instrumentation" OFF)
+
 include(FetchContent)
 FetchContent_Declare(
     Catch2
@@ -6,6 +8,15 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(Catch2)
+
+if(MSGA_COVERAGE)
+    # Directory-scoped: applies to every test target defined below without
+    # touching each add_msga_test helper. Needs both compile + link flags.
+    # Placed AFTER Catch2 is fetched so the vendored library is NOT instrumented
+    # — its .gcno/.gcda files otherwise produce gcov errors that abort gcovr.
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
 
 set(TEST_INCLUDES
     ${CMAKE_SOURCE_DIR}/src

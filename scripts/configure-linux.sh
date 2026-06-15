@@ -29,6 +29,7 @@ APT_PACKAGES=(
     libgl-dev         # OpenGL headers required by Qt Widgets
     clang-format      # formatting — matches .clang-format config
     clazy             # Qt-aware linting — provides clazy and clazy-standalone
+    gcovr             # test coverage reports — used by scripts/coverage.sh
 )
 
 to_install=()
