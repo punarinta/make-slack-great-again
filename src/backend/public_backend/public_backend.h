@@ -8,6 +8,7 @@
 #include "rpl/variable.h"
 #include "rpl/event_stream.h"
 
+#include <QJsonArray>
 #include <QNetworkAccessManager>
 #include <QTimer>
 #include <deque>
@@ -156,6 +157,16 @@ private:
     struct SendState;
     void postMessageAttempt(std::shared_ptr<SendState> st);
     void reconcileSend(std::shared_ptr<SendState> st);
+
+    // Re-derive live-huddle state from a freshly-fetched history page. The
+    // USLACKBOT "huddle_thread" message carries the authoritative `room`
+    // (current has_ended/date_end), so reading the newest one in the most-recent
+    // page lets a conversation open/reload self-heal a banner that a missed or
+    // mis-parsed realtime end-edit left stuck. Only ever called for the first
+    // (cursor-less, newest) page; emits nothing unless a usable huddle room is
+    // present, so it can never clobber a live huddle (e.g. if the token can't
+    // read `room` at all).
+    void reconcileHuddleFromHistory(const ConversationId &conv, const QJsonArray &messages);
 
     // canvases.edit allows one change per call; sends the queue sequentially.
     void sendNextCanvasChange(

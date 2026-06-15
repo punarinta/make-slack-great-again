@@ -2118,8 +2118,9 @@ void MainWindow::updateHuddleBanner() {
     if (!_huddleBanner)
         return;
     // Only alongside the conversation chrome — never floating over a loading or
-    // empty message area. setReading() refreshes huddleActive via
-    // conversations.info; the result re-fires conversations(), which calls here.
+    // empty message area. Huddle state rides on the conversation list (patched by
+    // realtime huddle_thread events and re-derived from history on open); the
+    // conversations() producer re-fires on any change, which calls here.
     const bool          chromeVisible = _msgHeader && _msgHeader->isVisible();
     const Conversation *conv = (chromeVisible && _session && !_currentConvId.value.isEmpty())
                                    ? _session->findConversation(_currentConvId)

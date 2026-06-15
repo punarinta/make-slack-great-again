@@ -211,6 +211,19 @@ TEST_CASE("toConversation ended huddle (has_ended) is not active", "[mappers][co
     CHECK(!c.huddleActive);
 }
 TEST_CASE(
+    "toConversation ended huddle (string date_end) is not active", "[mappers][conv][huddle]"
+) {
+    // Slack sends date_end as a JSON string in some payloads; QJsonValue::toDouble
+    // yields 0 for a string, which used to read as "still live" and stranded the
+    // huddle banner forever after an end-edit arrived.
+    auto c = JsonMappers::toConversation(obj(R"({
+        "id": "C1", "name": "general",
+        "is_private": false, "is_im": false, "is_mpim": false,
+        "room": { "call_family": "huddle", "date_end": "1700000000" }
+    })"));
+    CHECK(!c.huddleActive);
+}
+TEST_CASE(
     "toConversation prewarmed huddle is active, falls back to host", "[mappers][conv][huddle]"
 ) {
     // A freshly-started "prewarmed" huddle has no participants yet but is live.

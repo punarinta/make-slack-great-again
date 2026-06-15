@@ -435,6 +435,33 @@ rpl::producer<User> PublicBackend::loadUser(UserId userId) {
     };
 }
 
+void PublicBackend::reconcileHuddleFromHistory(
+    const ConversationId &conv, const QJsonArray &messages
+) {
+    // Find the newest huddle_thread message in this page (a busy channel can
+    // hold several over time; only the latest reflects "now").
+    QJsonObject newest;
+    QString     newestTs;
+    for (const auto &v : messages) {
+        const auto m = v.toObject();
+        if (m.value("subtype").toString() != QLatin1String("huddle_thread"))
+            continue;
+        const auto ts = m.value("ts").toString();
+        if (newestTs.isEmpty() || ts.toDouble() > newestTs.toDouble()) {
+            newest   = m;
+            newestTs = ts;
+        }
+    }
+    // Only act when the message carries a usable huddle `room`. If it's absent
+    // (no huddle_thread in the window, or the token can't read `room`), stay
+    // silent rather than emitting active=false and wiping a live huddle.
+    const auto room = newest.value("room").toObject();
+    if (room.isEmpty() || room.value("call_family").toString() != QLatin1String("huddle"))
+        return;
+    const auto h = JsonMappers::readHuddleRoom(room);
+    _events.fire(EvHuddleChanged{conv, h.active, h.link, h.participants});
+}
+
 rpl::producer<MessagePage>
 PublicBackend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
     return [this, conv, cursor](auto consumer) mutable {
@@ -444,12 +471,19 @@ PublicBackend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
         if (cursor)
             params.addQueryItem("cursor", *cursor);
 
+        const bool firstPage = !cursor;
         _historyApi->call(
             "conversations.history",
             params,
-            [consumer](QJsonObject resp) mutable {
+            [this, conv, firstPage, consumer](QJsonObject resp) mutable {
+                const auto messages = resp.value("messages").toArray();
+                // Self-heal huddle state from the authoritative huddle_thread
+                // message. Only on the newest page — older (scroll-up) pages may
+                // hold a long-ended huddle that must not clobber a live one.
+                if (firstPage)
+                    reconcileHuddleFromHistory(conv, messages);
                 MessagePage page;
-                page.messages = JsonMappers::toMessages(resp.value("messages").toArray());
+                page.messages = JsonMappers::toMessages(messages);
                 auto meta     = resp.value("response_metadata").toObject();
                 auto next     = meta.value("next_cursor").toString();
                 if (!next.isEmpty())

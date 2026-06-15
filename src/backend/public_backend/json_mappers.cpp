@@ -130,16 +130,30 @@ Conversation toConversation(const QJsonObject &o) {
     };
 }
 
+// A huddle's `room` is ended once Slack sets either signal. has_ended is the
+// explicit flag; date_end is the end timestamp (0/absent = still live). Slack
+// sends date_end as a JSON number in some payloads and a string in others —
+// QJsonValue::toDouble() silently yields 0 for a string, so a string date_end
+// would otherwise read as "still live" and strand the huddle banner forever
+// (the exact failure where an end-edit arrives but the green bar never clears).
+static bool roomHasEnded(const QJsonObject &room) {
+    if (room.value("has_ended").toBool(false))
+        return true;
+    const auto   dateEnd = room.value("date_end");
+    // String form (e.g. "1718...") parses via QString; number form via toDouble
+    // (a unix-second ts overflows a 32-bit int, so read as double either way).
+    const double end     = dateEnd.isString() ? dateEnd.toString().toDouble() : dateEnd.toDouble();
+    return end != 0.0;
+}
+
 HuddleRoom readHuddleRoom(const QJsonObject &room) {
     HuddleRoom h;
     // A "huddle" (not a third-party Call). Ignore everything else.
     if (room.isEmpty() || room.value("call_family").toString() != "huddle")
         return h;
-    // Ongoing while not ended. has_ended is the explicit flag; date_end is the
-    // fallback (0 = still live; it's a unix-second ts, read as double — overflows
-    // a 32-bit int). A freshly-announced "prewarmed" huddle has no participants
-    // yet but is live, so we do NOT require a non-empty participant list.
-    h.active = !room.value("has_ended").toBool(false) && room.value("date_end").toDouble() == 0.0;
+    // Ongoing while not ended. A freshly-announced "prewarmed" huddle has no
+    // participants yet but is live, so we do NOT require a non-empty list.
+    h.active = !roomHasEnded(room);
     h.link   = room.value("huddle_link").toString();
     for (const auto &v : room.value("participants").toArray())
         h.participants.push_back(UserId{v.toString()});
