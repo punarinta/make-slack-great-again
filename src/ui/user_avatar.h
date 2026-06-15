@@ -105,7 +105,8 @@ inline void paint(
         p.setBrush(Th::c().presence.phantom);
         p.drawEllipse(dot);
     } else {
-        const QColor ring = state.isSelected ? Th::c().nav.primary : Th::c().nav.itemTextDim;
+        const QColor ring =
+            state.isSelected ? Th::c().nav.itemSelectedText : Th::c().nav.itemTextDim;
         p.setPen(QPen(ring, 1.0));
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(dot);

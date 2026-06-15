@@ -240,7 +240,7 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    p.fillRect(rect(), Th::c().nav.bg);
+    p.fillRect(rect(), Th::navGradient(this, Th::c().nav.bgGradTop, Th::c().nav.bgGradBottom));
 
     const qreal bubbleX = (kW - kBubble) / 2.0;
     for (int i = 0; i < static_cast<int>(_entries.size()); ++i) {

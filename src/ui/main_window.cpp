@@ -80,19 +80,30 @@ public:
         : QWidget(parent), _target(target) {
         setFixedWidth(4);
         setCursor(Qt::SizeHorCursor);
-        setAttribute(Qt::WA_OpaquePaintEvent, false);
+        setAttribute(Qt::WA_OpaquePaintEvent, true);
         setMouseTracking(true);
+        connect(
+            &ThemeManager::instance(),
+            &ThemeManager::themeChanged,
+            this,
+            QOverload<>::of(&QWidget::update)
+        );
     }
 
 protected:
     void paintEvent(QPaintEvent *) override {
-        if (!_hovered)
-            return;
         QPainter p(this);
-        // Same blue the composer's @mention popup uses for its highlighted
-        // row — clearly visible against the dark nav strip, unlike the subtle
-        // nav.itemHover tint which barely reads on the default theme.
-        p.fillRect(rect(), Th::c().text.link);
+        if (_hovered) {
+            // Same blue the composer's @mention popup uses for its highlighted
+            // row — clearly visible, unlike the subtle nav.itemHover tint.
+            p.fillRect(rect(), Th::c().text.link);
+            return;
+        }
+        // At rest, blend into the conversation list this handle borders: the
+        // same window-anchored chats-bar gradient, so the seam is invisible.
+        p.fillRect(
+            rect(), Th::navGradient(this, Th::c().nav.primaryGradTop, Th::c().nav.primaryGradBottom)
+        );
     }
 
     void enterEvent(QEnterEvent *) override {

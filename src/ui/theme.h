@@ -6,24 +6,35 @@
 #pragma once
 
 #include <QColor>
+#include <QLinearGradient>
 #include <QString>
 
 #include <vector>
+
+class QWidget;
 
 namespace Th {
 
 // ── Sub-structs ───────────────────────────────────────────────────────────────
 
 struct NavColors {
-    QColor bg;              // workspace sidebar column
-    QColor primary;         // conversation list panel
-    QColor workspaceBubble; // workspace icon chip
-    QColor itemHover;       // hovered conversation row
-    QColor itemSelected;    // active/selected conversation row
-    QColor itemText;        // primary text on nav panel
-    QColor itemTextDim;     // subdued text (channel names, inactive)
-    QColor scrollThumb;     // scrollbar thumb on dark panel
+    QColor bg;               // workspace sidebar column (solid mid-point; borders/dots/seams)
+    QColor primary;          // conversation list panel (solid mid-point; row base, borders)
+    QColor workspaceBubble;  // workspace icon chip
+    QColor itemHover;        // hovered conversation row
+    QColor itemSelected;     // active/selected conversation row (near-white pill)
+    QColor itemSelectedText; // dark ink (text/icons/away-ring) on the selected pill
+    QColor itemText;         // primary text on nav panel
+    QColor itemTextDim;      // subdued text (channel names, inactive)
+    QColor scrollThumb;      // scrollbar thumb on dark panel
     QColor scrollThumbHover;
+    // Slack-style sidebar gradient endpoints (vertical, lighter at top). The
+    // workspace rail and the conversation list share one continuous gradient
+    // anchored to the window; see Th::navGradient(). Derived from bg/primary.
+    QColor bgGradTop;
+    QColor bgGradBottom;
+    QColor primaryGradTop;
+    QColor primaryGradBottom;
 };
 
 struct SurfaceColors {
@@ -245,6 +256,12 @@ const Theme &current();
 inline const Theme &c() {
     return current();
 }
+
+// A vertical gradient spanning the full height of the sidebar column, mapped
+// into `widget`'s local coordinates. Because it's anchored to the top-level
+// window, all sidebar widgets (workspace rail, conversation list, footer) share
+// one continuous gradient — and it stays fixed while list rows scroll.
+QLinearGradient navGradient(const QWidget *widget, const QColor &top, const QColor &bottom);
 
 // Formats a QColor for embedding in a Qt stylesheet string.
 // Opaque → "#RRGGBB"; with alpha → "rgba(r,g,b,A)" (A is 0–255, not 0.0–1.0).

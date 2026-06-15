@@ -68,10 +68,10 @@ void ConvListWidget::rebuildIconPixmaps() {
 
     _iconPx.lockDim        = svgPixmap(":/ui/lock.svg", sm, th.text.onDarkDim);
     _iconPx.lockBright     = svgPixmap(":/ui/lock.svg", sm, th.text.onDark);
-    _iconPx.lockSelected   = svgPixmap(":/ui/lock.svg", sm, th.nav.primary);
+    _iconPx.lockSelected   = svgPixmap(":/ui/lock.svg", sm, th.nav.itemSelectedText);
     _iconPx.hashSmDim      = svgPixmap(":/ui/hash.svg", sm, th.text.onDarkDim);
     _iconPx.hashSmBright   = svgPixmap(":/ui/hash.svg", sm, th.text.onDark);
-    _iconPx.hashSmSelected = svgPixmap(":/ui/hash.svg", sm, th.nav.primary);
+    _iconPx.hashSmSelected = svgPixmap(":/ui/hash.svg", sm, th.nav.itemSelectedText);
 
     _iconPx.huddle = svgPixmap(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
 }
@@ -708,7 +708,10 @@ void ConvListWidget::drawUserAvatar(
 void ConvListWidget::doPaint(QPaintEvent *event) {
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(event->rect(), Th::c().nav.primary);
+    p.fillRect(
+        event->rect(),
+        Th::navGradient(viewport(), Th::c().nav.primaryGradTop, Th::c().nav.primaryGradBottom)
+    );
 
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
@@ -863,7 +866,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
     p.setFont(font);
 
-    const QColor textColor = isSelected ? Th::c().nav.primary
+    const QColor textColor = isSelected ? Th::c().nav.itemSelectedText
                              : isUnread ? Th::c().text.onDark
                                         : Th::c().text.onDarkDim;
     p.setPen(textColor);

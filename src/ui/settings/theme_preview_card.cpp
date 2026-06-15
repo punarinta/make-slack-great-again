@@ -35,10 +35,23 @@ void ThemePreviewCard::paintEvent(QPaintEvent *) {
     p.save();
     p.setClipPath(clip);
 
-    const int railW = 18; // workspace rail
-    const int navW  = 46; // conv list column
-    p.fillRect(QRectF(mock.left(), mock.top(), railW, mock.height()), th.nav.bg);
-    p.fillRect(QRectF(mock.left() + railW, mock.top(), navW, mock.height()), th.nav.primary);
+    const int    railW = 18; // workspace rail
+    const int    navW  = 46; // conv list column
+    const QRectF railRect(mock.left(), mock.top(), railW, mock.height());
+    const QRectF navRect(mock.left() + railW, mock.top(), navW, mock.height());
+
+    // Both columns share one vertical gradient (lighter at top), in lockstep —
+    // the same effect Th::navGradient() produces in the live sidebar.
+    QLinearGradient railGrad(railRect.topLeft(), railRect.bottomLeft());
+    railGrad.setColorAt(0.0, th.nav.bgGradTop);
+    railGrad.setColorAt(1.0, th.nav.bgGradBottom);
+    p.fillRect(railRect, railGrad);
+
+    QLinearGradient navGrad(navRect.topLeft(), navRect.bottomLeft());
+    navGrad.setColorAt(0.0, th.nav.primaryGradTop);
+    navGrad.setColorAt(1.0, th.nav.primaryGradBottom);
+    p.fillRect(navRect, navGrad);
+
     p.fillRect(
         QRectF(mock.left() + railW + navW, mock.top(), mock.width() - railW - navW, mock.height()),
         th.surface.content

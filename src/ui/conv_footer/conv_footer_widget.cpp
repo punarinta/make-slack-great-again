@@ -155,7 +155,9 @@ QString ConvFooterWidget::presenceTooltip() const {
 void ConvFooterWidget::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.fillRect(rect(), Th::c().nav.primary);
+    p.fillRect(
+        rect(), Th::navGradient(this, Th::c().nav.primaryGradTop, Th::c().nav.primaryGradBottom)
+    );
 
     // Avatar (rounded square) with presence/DND dot.
     UserAvatar::paint(

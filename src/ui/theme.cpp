@@ -3,6 +3,11 @@
 #include "theme.h"
 #include "theme_manager.h"
 
+#include <QPoint>
+#include <QWidget>
+
+#include <algorithm>
+
 namespace Th {
 
 const Theme &current() {
@@ -15,16 +20,65 @@ QString qss(const QColor &c) {
     return QString("rgba(%1,%2,%3,%4)").arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha());
 }
 
+namespace {
+
+// Scale each RGB channel of `c` by `f`, clamped — a perceptually fine way to
+// lighten/darken the dark sidebar tones for the gradient endpoints.
+QColor scaleRgb(const QColor &c, double f) {
+    return QColor(
+        std::clamp(static_cast<int>(c.red() * f), 0, 255),
+        std::clamp(static_cast<int>(c.green() * f), 0, 255),
+        std::clamp(static_cast<int>(c.blue() * f), 0, 255),
+        c.alpha()
+    );
+}
+
+// Composite opaque white at alpha `a` (0..1) over `base` — Slack's "translucent
+// plate over the backdrop" trick, evaluated once at theme-build time.
+QColor overlayWhite(const QColor &base, double a) {
+    return QColor(
+        std::clamp(static_cast<int>(base.red() * (1 - a) + 255 * a), 0, 255),
+        std::clamp(static_cast<int>(base.green() * (1 - a) + 255 * a), 0, 255),
+        std::clamp(static_cast<int>(base.blue() * (1 - a) + 255 * a), 0, 255),
+        base.alpha()
+    );
+}
+
+// Subtle vertical sidebar gradient, matching the official Slack reference
+// (~12% lighter at the top, ~10% darker at the bottom). Derived from the solid
+// nav.bg / nav.primary tones so every theme gets a consistent gradient for free.
+constexpr double kGradTopFactor    = 1.12;
+constexpr double kGradBottomFactor = 0.90;
+
+// Slack lightens the conversation list relative to the workspace rail by laying a
+// translucent white plate over the same backdrop. We bake that in: the chats-bar
+// surface (nav.primary) and its hover are derived from the rail tone (nav.bg) plus
+// a white overlay, so the list reads *lighter* than the rail on every theme. The
+// rail-dark tone the theme declared as nav.primary becomes the ink for text/icons
+// on the near-white selected pill (nav.itemSelectedText). Then both columns get
+// the shared vertical gradient.
+void finalizeNav(Theme &t) {
+    t.nav.itemSelectedText = t.nav.primary;                // old dark chats tone → pill ink
+    t.nav.primary          = overlayWhite(t.nav.bg, 0.12); // chats surface = rail + 12% white
+    t.nav.itemHover        = overlayWhite(t.nav.bg, 0.24); // hover sits lighter than the surface
+
+    t.nav.bgGradTop         = scaleRgb(t.nav.bg, kGradTopFactor);
+    t.nav.bgGradBottom      = scaleRgb(t.nav.bg, kGradBottomFactor);
+    t.nav.primaryGradTop    = scaleRgb(t.nav.primary, kGradTopFactor);
+    t.nav.primaryGradBottom = scaleRgb(t.nav.primary, kGradBottomFactor);
+}
+
+} // namespace
+
 // ── Default theme: aubergine (Slack's classic purple sidebar) ────────────────
 
-const Theme kAubergine = {
+const Theme kAubergineBase = {
     .nav =
         {
-            .bg               = QColor("#3F0E40"),
-            .primary          = QColor("#350D36"),
+            .bg      = QColor("#3F0E40"),
+            .primary = QColor("#350D36"), // → itemSelectedText; chats surface derived from bg
             .workspaceBubble  = QColor("#4A154B"),
-            .itemHover        = QColor("#522653"),
-            .itemSelected     = QColor("#E1DBE1"), // white ~85% over nav.primary
+            .itemSelected     = QColor("#E1DBE1"), // near-white selection pill
             .itemText         = QColor("#FFFFFF"),
             .itemTextDim      = QColor("#CFC3CF"),
             .scrollThumb      = QColor(255, 255, 255, 100),
@@ -211,18 +265,25 @@ const Theme kAubergine = {
     .workspaceHslLightness  = 42,
 };
 
+static Theme makeAubergine() {
+    Theme t = kAubergineBase;
+    finalizeNav(t);
+    return t;
+}
+
+const Theme kAubergine = makeAubergine();
+
 // ── Blue theme: same content surfaces, ocean-blue chrome ─────────────────────
 // Copy-and-patch rather than a second 200-line literal: the delta below IS the
 // definition of what "blue" changes, and content-side tokens can never drift.
 
 static Theme makeOceanBlue() {
-    Theme t = kAubergine;
+    Theme t = kAubergineBase;
 
     t.nav.bg              = QColor("#0E2A40");
-    t.nav.primary         = QColor("#0B2335");
+    t.nav.primary         = QColor("#0B2335"); // → itemSelectedText; chats surface derived from bg
     t.nav.workspaceBubble = QColor("#15405E");
-    t.nav.itemHover       = QColor("#26465F");
-    t.nav.itemSelected    = QColor("#DBE0E5"); // white ~85% over nav.primary
+    t.nav.itemSelected    = QColor("#DBE0E5"); // near-white selection pill
     t.nav.itemTextDim     = QColor("#C3CCD4");
 
     t.accent.def      = QColor("#1264A3");
@@ -234,6 +295,7 @@ static Theme makeOceanBlue() {
     t.icon.accent = t.accent.def;
     t.titleBar.bg = t.nav.bg;
 
+    finalizeNav(t);
     return t;
 }
 
@@ -243,13 +305,12 @@ const Theme kOceanBlue = makeOceanBlue();
 // Same copy-and-patch approach as blue; only the chrome tokens differ.
 
 static Theme makeForestGreen() {
-    Theme t = kAubergine;
+    Theme t = kAubergineBase;
 
     t.nav.bg              = QColor("#0E3D2E");
-    t.nav.primary         = QColor("#0A3124");
+    t.nav.primary         = QColor("#0A3124"); // → itemSelectedText; chats surface derived from bg
     t.nav.workspaceBubble = QColor("#15543E");
-    t.nav.itemHover       = QColor("#266048");
-    t.nav.itemSelected    = QColor("#DBE5E0"); // white ~85% over nav.primary
+    t.nav.itemSelected    = QColor("#DBE5E0"); // near-white selection pill
     t.nav.itemTextDim     = QColor("#C3D4CC");
 
     t.accent.def      = QColor("#007A5A"); // Slack brand green
@@ -261,6 +322,7 @@ static Theme makeForestGreen() {
     t.icon.accent = t.accent.def;
     t.titleBar.bg = t.nav.bg;
 
+    finalizeNav(t);
     return t;
 }
 
@@ -284,6 +346,19 @@ const Theme *themeById(const QString &id) {
 
 const Theme &defaultTheme() {
     return kAubergine;
+}
+
+QLinearGradient navGradient(const QWidget *widget, const QColor &top, const QColor &bottom) {
+    const QWidget  *win  = widget->window();
+    const int       yTop = widget->mapTo(win, QPoint(0, 0)).y();
+    const int       h    = std::max(1, win->height());
+    // Local coordinates: the gradient runs from the window's top edge to its
+    // bottom, regardless of where this widget sits — so sibling sidebar widgets
+    // line up seamlessly and the fill stays put as list rows scroll.
+    QLinearGradient g(0, -yTop, 0, h - yTop);
+    g.setColorAt(0.0, top);
+    g.setColorAt(1.0, bottom);
+    return g;
 }
 
 QString globalQss() {
