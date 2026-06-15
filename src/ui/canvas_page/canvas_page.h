@@ -13,6 +13,7 @@ class QLineEdit;
 class QPushButton;
 class QTimer;
 class CanvasEdit;
+class PopupTooltip;
 
 // Full-page channel-canvas editor shown in the content stack when the canvas
 // tab is active. Notion-style: a big borderless title line over a rich-text
@@ -56,6 +57,7 @@ private:
     void showMenu();
     void confirmDelete();
     void setBodyHtml(const QString &html);
+    void styleHeadings();
     // Why the editor is read-only. NotAddressable is permanent (the canvas
     // can never be edited through the API); NoAccess clears if a later
     // files.info shows the canvas became visible.
@@ -76,12 +78,13 @@ private:
     bool           _saving         = false;
     quint64        _openSeq        = 0; // invalidates in-flight loads on re-open
 
-    QWidget     *_column    = nullptr;
-    QLineEdit   *_title     = nullptr;
-    CanvasEdit  *_body      = nullptr;
-    QPushButton *_menuBtn   = nullptr;
-    QLabel      *_roNotice  = nullptr;
-    QTimer      *_saveTimer = nullptr;
+    QWidget      *_column    = nullptr;
+    QLineEdit    *_title     = nullptr;
+    CanvasEdit   *_body      = nullptr;
+    QPushButton  *_menuBtn   = nullptr;
+    QLabel       *_roNotice  = nullptr;
+    QTimer       *_saveTimer = nullptr;
+    PopupTooltip *_linkTip   = nullptr; // shows a hovered link's URL
 
     rpl::lifetime _lifetime;
 };

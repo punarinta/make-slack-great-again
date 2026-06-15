@@ -110,6 +110,13 @@ public:
         std::function<void(QString html)> onHtml,
         std::function<void(QString)>      onError = {}
     );
+    // Resolve and download a canvas-embedded image by its Slack file id (the
+    // trailing segment of the relative /collab-slack-blob/ URL in canvas HTML).
+    void loadCanvasImage(
+        const QString                  &fileId,
+        std::function<void(QByteArray)> onData,
+        std::function<void(QString)>    onError = {}
+    );
     // Create the conversation's channel canvas from canvas markdown.
     void createChannelCanvas(
         ConversationId                      conv,

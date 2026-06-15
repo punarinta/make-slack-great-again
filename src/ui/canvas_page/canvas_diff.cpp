@@ -23,6 +23,16 @@ QString normalizeMd(QString md) {
     );
     md.replace(kEmojiImg, QStringLiteral(":\\1:"));
 
+    // Drop inline images whose URL is relative/host-less — Slack canvas HTML
+    // references embedded pictures as "/collab-slack-blob/<blob>/<fileId>", which
+    // cannot round-trip to canvas markdown (Slack needs a real uploaded-file ref).
+    // Sending one back breaks the save, so strip it here; the picture's own
+    // section is never rewritten by the section diff, so it survives on the
+    // server. Equality on both the base and document sides stays consistent
+    // because both run through normalizeMd.
+    static const QRegularExpression kRelImg(QStringLiteral("!\\[[^\\]]*\\]\\(/[^)\\s]*\\)"));
+    md.remove(kRelImg);
+
     QStringList lines = md.split('\n');
     for (auto &l : lines) {
         while (!l.isEmpty() && (l.back() == ' ' || l.back() == '\t'))
@@ -135,7 +145,22 @@ std::optional<std::vector<Chunk>> parseBaseChunks(const QString &bodyHtml) {
             return std::nullopt; // stray text at top level — unknown structure
         const QString tag     = m.captured(1).toLower();
         const QString opening = m.captured(0);
-        const int     end     = elementEnd(html, pos, tag);
+
+        // Top-level inline image (void element — no closing tag, so elementEnd
+        // would fail). Its markdown is a relative blob ref that normalizeMd
+        // strips to nothing, so it becomes an empty chunk that's dropped below —
+        // i.e. the image is treated as invisible context. Handling it here (vs.
+        // bailing to a whole-document replace) keeps a picture-bearing canvas on
+        // the surgical section-diff path, so the image section is never rewritten.
+        if (tag == "img") {
+            Chunk imgChunk{Chunk::Kind::Para, attrId(opening), false, htmlToMd(opening)};
+            if (!imgChunk.md.isEmpty())
+                chunks.push_back(std::move(imgChunk));
+            pos = m.capturedEnd();
+            continue;
+        }
+
+        const int end = elementEnd(html, pos, tag);
         if (end < 0)
             return std::nullopt;
         const QString element = html.mid(pos, end - pos);

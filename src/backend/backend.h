@@ -230,6 +230,19 @@ public:
         if (onError)
             onError(QStringLiteral("not_supported"));
     }
+    // Resolve and download a canvas-embedded image. Canvas HTML references
+    // inline images by a relative, host-less "/collab-slack-blob/<blob>/<fileId>"
+    // URL that carries no auth; the trailing path segment is a Slack file id,
+    // resolved via files.info to an authed thumbnail URL and fetched. onData
+    // receives the raw image bytes.
+    virtual void loadCanvasImage(
+        const QString & /*fileId*/,
+        std::function<void(QByteArray)> /*onData*/,
+        std::function<void(QString)> onError = {}
+    ) {
+        if (onError)
+            onError(QStringLiteral("not_supported"));
+    }
     // Create the conversation's channel canvas (conversations.canvases.create)
     // with initial canvas-markdown content (real markdown, not mrkdwn).
     virtual void createChannelCanvas(

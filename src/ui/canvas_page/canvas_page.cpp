@@ -8,24 +8,78 @@
 #include "ui/context_menu/context_menu.h"
 #include "ui/icon_utils.h"
 #include "ui/message_list/message_render.h"
+#include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/clipboard.h"
 #include "util/emoji.h"
+#include "util/mailto_link.h"
 
+#include <QCursor>
+#include <QDesktopServices>
+
+#include <QFont>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointer>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSet>
+#include <QTextBlock>
 #include <QTextBrowser>
+#include <QTextCursor>
 #include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
-constexpr int kColumnMaxW  = 700;  // editor column width, Notion-like measure
+constexpr int kColumnMaxW  = 1040; // editor column width, matches Slack's measure
 constexpr int kSaveDelayMs = 2500; // autosave this long after typing stops
+
+// Normalize Slack's canvas HTML for display, in ways that don't change the
+// markdown a section round-trips to (so the section diff stays consistent
+// between the base HTML and the edited document):
+//  - Inline content images are pinned to a tiny placeholder size (e.g.
+//    width='64' height='23'); the official client ignores that and scales them
+//    to the column. Drop those size attrs so they render at the (downscaled)
+//    resource size. (toMarkdown emits ![alt](src) regardless of size.)
+//  - Hyperlinks come as a non-standard <lnk href>…</lnk> tag the rich-text
+//    engine doesn't recognize, so they render as dead plain text. Rewrite them
+//    to real <a> anchors — now clickable, hoverable, and preserved on save as
+//    [text](url) (Qt drops the href entirely for the unknown <lnk> tag, so this
+//    is also more faithful, and identical on the base and document sides).
+QString prepareCanvasHtml(QString html) {
+    static const QRegularExpression lnkOpen(
+        QStringLiteral("<lnk\\b"), QRegularExpression::CaseInsensitiveOption
+    );
+    static const QRegularExpression lnkClose(
+        QStringLiteral("</lnk\\s*>"), QRegularExpression::CaseInsensitiveOption
+    );
+    html.replace(lnkOpen, QStringLiteral("<a"));
+    html.replace(lnkClose, QStringLiteral("</a>"));
+
+    static const QRegularExpression imgRe(
+        QStringLiteral("<img\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption
+    );
+    static const QRegularExpression sizeAttr(
+        QStringLiteral("\\s(?:width|height)=['\"][^'\"]*['\"]"),
+        QRegularExpression::CaseInsensitiveOption
+    );
+    QString out;
+    int     last = 0;
+    auto    it   = imgRe.globalMatch(html);
+    while (it.hasNext()) {
+        const auto m   = it.next();
+        QString    tag = m.captured(0);
+        if (tag.contains(QLatin1String("collab-slack-blob")))
+            tag.replace(sizeAttr, QString());
+        out += QStringView(html).mid(last, m.capturedStart() - last);
+        out += tag;
+        last = m.capturedEnd();
+    }
+    out += QStringView(html).mid(last);
+    return out;
+}
 } // namespace
 
 // Editable canvas body. QTextBrowser rather than QTextEdit purely for the
@@ -34,50 +88,109 @@ constexpr int kSaveDelayMs = 2500; // autosave this long after typing stops
 class CanvasEdit : public QTextBrowser {
 public:
     explicit CanvasEdit(QWidget *parent) : QTextBrowser(parent) {
-        setReadOnly(false);
+        // Don't let the browser navigate the document to the clicked URL (that
+        // would replace the canvas); handle the click ourselves and open it in
+        // the user's browser/mail client. QTextBrowser still shows the
+        // pointing-hand cursor on hover and emits anchorClicked for anchors.
         setOpenLinks(false);
         setOpenExternalLinks(false);
         setFrameShape(QFrame::NoFrame);
+        applyReadOnly(false); // editable + link activation on
+        // Hover detection (the highlighted() signal) needs mouse tracking in
+        // editable mode; without it the link URL wouldn't surface until a drag.
+        viewport()->setMouseTracking(true);
+        connect(this, &QTextBrowser::anchorClicked, this, [](const QUrl &url) {
+            if (url.isEmpty())
+                return;
+            if (url.scheme() == QLatin1String("mailto")) {
+                MailtoLink::openOrCopy(url.toString());
+                return;
+            }
+            QDesktopServices::openUrl(url);
+        });
     }
 
     Session *session = nullptr;
 
+    // setReadOnly() rewrites the text-interaction flags (editable mode drops
+    // link activation), so always re-add it. Use this instead of setReadOnly()
+    // so links stay clickable/hoverable whether the canvas is editable or not.
+    void applyReadOnly(bool readOnly) {
+        setReadOnly(readOnly);
+        setTextInteractionFlags(
+            textInteractionFlags() | Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard
+        );
+    }
+
     QVariant loadResource(int type, const QUrl &url) override {
-        const bool emojiRef = url.scheme() == QLatin1String("emoji");
-        if (type != QTextDocument::ImageResource || !(emojiRef || url.scheme().startsWith("http")))
+        if (type != QTextDocument::ImageResource)
             return QTextBrowser::loadResource(type, url);
+
+        // Three image flavours appear in canvas HTML:
+        //  - emoji:<name>  custom-emoji shortcodes embedded so they survive the
+        //                  markdown round-trip (resolved to the workspace emoji URL)
+        //  - http(s)://…   standard-emoji and remote images (load directly)
+        //  - /collab-slack-blob/<blob>/<fileId>  host-less, auth-less references
+        //                  to inline images; the trailing segment is a file id we
+        //                  resolve through files.info.
+        const bool emojiRef = url.scheme() == QLatin1String("emoji");
+        const bool blobRef  = url.scheme().isEmpty() && url.path().contains("collab-slack-blob");
+        const bool httpRef  = url.scheme().startsWith("http");
+        if (!(emojiRef || blobRef || httpRef))
+            return QTextBrowser::loadResource(type, url);
+
         const QString key = url.toString();
         if (const auto it = _images.constFind(key); it != _images.constEnd())
             return *it;
+        if (!session || _pending.contains(key))
+            return QImage();
 
-        // Custom-emoji shortcodes are embedded as images with an "emoji:<name>"
-        // src so they survive the markdown round-trip (CanvasDiff::normalizeMd
-        // turns them back into ":name:" on save); resolve to the workspace emoji
-        // image URL here. Every other image loads from its own http(s) URL.
-        const QString fetchUrl =
-            emojiRef
-                ? (session ? MsgRender::resolveEmojiRich(url.path(), session).imageUrl : QString())
-                : key;
-        if (session && !fetchUrl.isEmpty() && !_pending.contains(key)) {
+        QPointer<CanvasEdit> guard(this);
+        // Inline content images are downscaled to the column like the official
+        // client; emoji keep their intrinsic inline size.
+        const bool           scaleToFit = blobRef || httpRef;
+        auto                 onData     = [guard, key, url, scaleToFit](QByteArray data) {
+            if (!guard)
+                return;
+            QImage img;
+            if (!img.loadFromData(data))
+                return;
+            if (scaleToFit) {
+                // Scale in *device* pixels and tag the result with the screen's
+                // devicePixelRatio so it lays out at the column width but renders
+                // at full panel resolution — otherwise a logical-width image is
+                // upscaled by the compositor and looks pixelated on HiDPI.
+                const qreal dpr  = guard->devicePixelRatioF();
+                const int   maxW = int(guard->maxImageWidth() * dpr);
+                if (maxW > 0 && img.width() > maxW)
+                    img = img.scaledToWidth(maxW, Qt::SmoothTransformation);
+                img.setDevicePixelRatio(dpr);
+            }
+            guard->_images.insert(key, img);
+            guard->document()->addResource(QTextDocument::ImageResource, url, img);
+            guard->document()->markContentsDirty(0, guard->document()->characterCount());
+        };
+        auto onErr = [](const QString &) {}; // broken image is fine; no error banner
+
+        if (blobRef) {
             _pending.insert(key);
-            QPointer<CanvasEdit> guard(this);
-            session->downloadFile(
-                fetchUrl,
-                [guard, key, url](QByteArray data) {
-                    if (!guard)
-                        return;
-                    QImage img;
-                    if (!img.loadFromData(data))
-                        return;
-                    guard->_images.insert(key, img);
-                    guard->document()->addResource(QTextDocument::ImageResource, url, img);
-                    guard->document()->markContentsDirty(0, guard->document()->characterCount());
-                },
-                [](const QString &) {} // broken image is fine; don't spam the error banner
-            );
+            session->loadCanvasImage(url.path().section('/', -1), onData, onErr);
+        } else if (emojiRef) {
+            const QString fetchUrl = MsgRender::resolveEmojiRich(url.path(), session).imageUrl;
+            if (!fetchUrl.isEmpty()) {
+                _pending.insert(key);
+                session->downloadFile(fetchUrl, onData, onErr);
+            }
+        } else { // httpRef
+            _pending.insert(key);
+            session->downloadFile(key, onData, onErr);
         }
         return QImage();
     }
+
+    // Width (in logical px) inline content images are scaled down to so they
+    // never overflow the editor column.
+    int maxImageWidth() const { return qMax(0, viewport()->width() - 2); }
 
 private:
     QHash<QString, QImage> _images;
@@ -209,6 +322,19 @@ CanvasPage::CanvasPage(QWidget *parent) : QWidget(parent) {
         emit titleChanged(text);
     });
 
+    // Show a hovered link's URL in our tooltip (highlighted() carries the URL on
+    // enter and an empty URL on leave); hide it when a link is clicked.
+    _linkTip = new PopupTooltip(_body);
+    connect(_body, &QTextBrowser::highlighted, this, [this](const QUrl &url) {
+        if (url.isEmpty()) {
+            _linkTip->hide();
+            return;
+        }
+        const QPoint g = QCursor::pos();
+        _linkTip->showAbove(url.toString(), QRect(g - QPoint(0, 6), QSize(1, 1)));
+    });
+    connect(_body, &QTextBrowser::anchorClicked, this, [this] { _linkTip->hide(); });
+
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
 }
@@ -321,14 +447,18 @@ void CanvasPage::applyRemoteHtml(const QString &rawHtml) {
     // body and the diff base (`_lastHtml`), so they must agree or every save
     // would diff Unicode (document) against shortcodes (base) as a spurious edit.
     static const QHash<QString, QString> kNoCustom;
-    const QString                        html =
-        CanvasEmoji::expandInHtml(rawHtml, _session ? _session->emojiMap() : kNoCustom);
+    const QString                        html = prepareCanvasHtml(
+        CanvasEmoji::expandInHtml(rawHtml, _session ? _session->emojiMap() : kNoCustom)
+    );
     if (html == _lastHtml)
         return; // unchanged remote; don't reset the view
     _lastHtml = html;
 
     // Local edits win — the refreshed base is enough; the view keeps them.
-    if (_bodyDirty || _titleDirty || _saving)
+    // But only when there's actually local content to protect: a stuck dirty/
+    // saving flag (e.g. a save Slack keeps rejecting, which re-arms _bodyDirty)
+    // must never leave the body permanently blank when the server has content.
+    if ((_bodyDirty || _titleDirty || _saving) && !_body->document()->isEmpty())
         return;
 
     const auto [title, bodyHtml] = CanvasDiff::splitTitleH1(
@@ -341,12 +471,49 @@ void CanvasPage::applyRemoteHtml(const QString &rawHtml) {
 
 void CanvasPage::setBodyHtml(const QString &html) {
     _loading = true;
-    if (html.isEmpty())
+    if (html.isEmpty()) {
         _body->clear();
-    else
+    } else {
         _body->setHtml(html);
+        styleHeadings();
+    }
     _loading   = false;
     _bodyDirty = false;
+}
+
+// Size heading blocks to a decreasing scale below the canvas title. Done
+// per-block because Qt's HTML engine ignores font-size on h1..h6 in the
+// default stylesheet and falls back to its oversized built-in multipliers.
+// Display-only: the heading *level* (what toMarkdown emits as #) is untouched,
+// so the section diff is unaffected.
+void CanvasPage::styleHeadings() {
+    QTextDocument *doc = _body->document();
+    QTextCursor    c(doc);
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        const int lvl = b.blockFormat().headingLevel();
+        if (lvl <= 0)
+            continue;
+        // Title (QLineEdit) is 28px; keep every heading strictly below it.
+        const int px = lvl == 1 ? 23 : lvl == 2 ? 20 : lvl == 3 ? 17 : 15;
+        // Per fragment so inline runs keep their own colour/italic/bold. A plain
+        // mergeCharFormat can't drop the FontSizeAdjustment that Qt's <h*> import
+        // stamps on (it inflates the size); replacing each fragment's format with
+        // a copy that has the adjustment cleared and the pixel size set does.
+        for (auto it = b.begin(); !it.atEnd(); ++it) {
+            const QTextFragment frag = it.fragment();
+            if (!frag.isValid())
+                continue;
+            QTextCharFormat cf = frag.charFormat();
+            QFont           f  = cf.font();
+            f.setPixelSize(px);
+            f.setBold(true);
+            cf.setFont(f);
+            cf.clearProperty(QTextFormat::FontSizeAdjustment);
+            c.setPosition(frag.position());
+            c.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+            c.setCharFormat(cf);
+        }
+    }
 }
 
 void CanvasPage::flushPendingSave() {
@@ -508,7 +675,7 @@ void CanvasPage::setReadOnlyUi(ReadOnlyCause cause) {
         : cause == ReadOnlyCause::NoAccess ? tr("You don't have access to this canvas.")
                                            : QString();
     _roNotice->setText(notice);
-    _body->setReadOnly(readOnly);
+    _body->applyReadOnly(readOnly);
     _title->setReadOnly(readOnly);
     _roNotice->setVisible(readOnly);
     if (readOnly) {
@@ -557,6 +724,8 @@ void CanvasPage::confirmDelete() {
 
 void CanvasPage::clear() {
     ++_openSeq;
+    if (_linkTip)
+        _linkTip->hide();
     _saveTimer->stop();
     _conv           = {};
     _fileId         = {};
@@ -590,12 +759,37 @@ void CanvasPage::applyTheme() {
     _roNotice->setStyleSheet(
         QString("color: %1; font-size: %2px;").arg(Th::qss(th.text.warning)).arg(th.fonts.caption)
     );
-    _body->setStyleSheet(QString(
-                             "QTextBrowser { background: transparent; border: none;"
-                             " font-size: %1px; color: %2; }"
-    )
-                             .arg(th.fonts.lg)
-                             .arg(Th::qss(th.text.primary)));
+    _body->setStyleSheet(
+        QString(
+            "QTextBrowser { background: transparent; border: none;"
+            " font-size: %1px; color: %2; }"
+            // (color is the softer document-body tone, not near-black primary)
+            // Our scrollbar design: thin rounded handle, transparent track, no arrows.
+            "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
+            "QScrollBar::handle:vertical { background: %3; border-radius: 4px;"
+            " min-height: 28px; }"
+            "QScrollBar::handle:vertical:hover { background: %4; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+            " background: transparent; }"
+            "QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }"
+            "QScrollBar::handle:horizontal { background: %3; border-radius: 4px;"
+            " min-width: 28px; }"
+            "QScrollBar::handle:horizontal:hover { background: %4; }"
+            "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
+            "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+            " background: transparent; }"
+        )
+            .arg(th.fonts.lg)
+            .arg(
+                Th::qss(th.text.documentBody),
+                Th::qss(th.divider.strong),
+                Th::qss(th.text.secondary)
+            )
+    );
+    // Heading sizes are applied per-block in styleHeadings() (Qt's rich-text
+    // engine ignores font-size on h1..h6 in the default stylesheet), so this
+    // sheet only covers links / code / quotes.
     _body->document()->setDefaultStyleSheet(
         QString(
             "a { color: %1; text-decoration: none; }"

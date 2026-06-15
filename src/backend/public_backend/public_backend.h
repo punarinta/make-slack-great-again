@@ -134,6 +134,11 @@ public:
         std::function<void(QString html)> onHtml,
         std::function<void(QString)>      onError = {}
     ) override;
+    void loadCanvasImage(
+        const QString                  &fileId,
+        std::function<void(QByteArray)> onData,
+        std::function<void(QString)>    onError = {}
+    ) override;
     void createChannelCanvas(
         ConversationId,
         const QString                      &markdown,

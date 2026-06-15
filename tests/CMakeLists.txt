@@ -145,6 +145,29 @@ add_msga_widget_test(test_canvas_diff
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp
 )
 
+add_msga_widget_test(test_canvas_page
+    test_canvas_page.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_page.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_diff.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+
 # canvas_emoji reuses MsgRender::resolveEmojiRich, hence the message_render
 # link set (same transitive deps as test_message_render).
 add_msga_widget_test(test_canvas_emoji

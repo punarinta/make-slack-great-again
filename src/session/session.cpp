@@ -982,6 +982,16 @@ void Session::loadCanvasContent(
     _backend->loadCanvasContent(fileId, std::move(onHtml), std::move(onError));
 }
 
+void Session::loadCanvasImage(
+    const QString                  &fileId,
+    std::function<void(QByteArray)> onData,
+    std::function<void(QString)>    onError
+) {
+    // A broken inline image shouldn't surface the error banner; default to
+    // swallowing the error (the caller leaves a placeholder instead).
+    _backend->loadCanvasImage(fileId, std::move(onData), std::move(onError));
+}
+
 void Session::createChannelCanvas(
     ConversationId                      conv,
     const QString                      &markdown,

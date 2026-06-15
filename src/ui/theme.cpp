@@ -97,14 +97,15 @@ const Theme kAubergineBase = {
         },
     .text =
         {
-            .primary   = QColor("#1D1C1D"),
-            .secondary = QColor("#616061"),
-            .tertiary  = QColor("#888888"),
-            .onDark    = QColor("#FFFFFF"),
-            .onDarkDim = QColor("#CFC3CF"),
-            .link      = QColor("#1264A3"),
-            .danger    = QColor("#C0392B"),
-            .warning   = QColor("#7A5800"),
+            .primary      = QColor("#1D1C1D"),
+            .documentBody = QColor("#333333"),
+            .secondary    = QColor("#616061"),
+            .tertiary     = QColor("#888888"),
+            .onDark       = QColor("#FFFFFF"),
+            .onDarkDim    = QColor("#CFC3CF"),
+            .link         = QColor("#1264A3"),
+            .danger       = QColor("#C0392B"),
+            .warning      = QColor("#7A5800"),
         },
     .accent =
         {

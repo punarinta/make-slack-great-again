@@ -49,14 +49,15 @@ struct SurfaceColors {
 };
 
 struct TextColors {
-    QColor primary;   // main body copy
-    QColor secondary; // subdued (timestamps, captions)
-    QColor tertiary;  // placeholder, hints, very dimmed
-    QColor onDark;    // text on dark backgrounds
-    QColor onDarkDim; // subdued text on dark backgrounds
-    QColor link;      // hyperlinks
-    QColor danger;    // error / destructive text
-    QColor warning;   // warning-context text
+    QColor primary;      // main body copy
+    QColor documentBody; // long-form document copy (canvas) — softer than primary
+    QColor secondary;    // subdued (timestamps, captions)
+    QColor tertiary;     // placeholder, hints, very dimmed
+    QColor onDark;       // text on dark backgrounds
+    QColor onDarkDim;    // subdued text on dark backgrounds
+    QColor link;         // hyperlinks
+    QColor danger;       // error / destructive text
+    QColor warning;      // warning-context text
 };
 
 struct AccentColors {

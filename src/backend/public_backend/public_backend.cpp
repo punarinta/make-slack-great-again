@@ -1270,6 +1270,52 @@ void PublicBackend::loadCanvasContent(
     );
 }
 
+void PublicBackend::loadCanvasImage(
+    const QString                  &fileId,
+    std::function<void(QByteArray)> onData,
+    std::function<void(QString)>    onError
+) {
+    // files.info → a sized thumbnail (preferred — the canvas renders inline
+    // images downscaled) → authed GET. The relative blob URL in the HTML has
+    // no host or token, so it can't be fetched directly.
+    QUrlQuery params;
+    params.addQueryItem("file", fileId);
+    _api->call(
+        "files.info",
+        params,
+        [this, onData, onError](QJsonObject resp) {
+            const QJsonObject f = resp.value("file").toObject();
+            QString           url;
+            // Prefer the original (url_private): at HiDPI the column needs more
+            // pixels than the 1024px thumbnail provides, so a thumb would look
+            // upscaled. Thumbnails are only a fallback when there's no original.
+            for (const char *key : {"url_private", "thumb_1024", "thumb_960", "thumb_800"}) {
+                url = f.value(QLatin1String(key)).toString();
+                if (!url.isEmpty())
+                    break;
+            }
+            if (url.isEmpty()) {
+                if (onError)
+                    onError(QStringLiteral("canvas image has no url"));
+                return;
+            }
+            _api->downloadUrl(
+                QUrl(url),
+                [onData](QByteArray data) {
+                    if (onData)
+                        onData(data);
+                },
+                onError
+            );
+        },
+        [onError](QString err) {
+            if (onError)
+                onError(err);
+        },
+        /*quietErrors=*/true
+    );
+}
+
 void PublicBackend::createChannelCanvas(
     ConversationId                      id,
     const QString                      &markdown,
