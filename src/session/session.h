@@ -77,6 +77,20 @@ public:
     // Pause notifications for `minutes`; minutes <= 0 resumes them.
     void setDndSnooze(int minutes);
 
+    // --- Own profile ---
+    // Load the authed user's editable profile (users.profile.get).
+    void loadMyProfile(std::function<void(MyProfile)> done);
+    // Update profile fields (users.profile.set); `fields` maps Slack profile
+    // keys to new values. On success patches our own user entry so the UI
+    // (footer, conv list) updates without a poll; failures fire errors() and
+    // also notify done(false, err).
+    void updateProfile(
+        const QHash<QString, QString> &fields, std::function<void(bool ok, QString err)> done = {}
+    );
+    // Upload a new avatar from a local image file (users.setPhoto). On success
+    // patches our own avatar URL; failures fire errors() and notify done.
+    void setPhoto(const QString &filePath, std::function<void(bool ok, QString err)> done = {});
+
     // --- Phase 3 ---
     void uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text);
     void

@@ -830,6 +830,50 @@ void Session::setDndSnooze(int minutes) {
     });
 }
 
+void Session::loadMyProfile(std::function<void(MyProfile)> done) {
+    _backend->loadMyProfile(std::move(done));
+}
+
+void Session::updateProfile(
+    const QHash<QString, QString> &fields, std::function<void(bool, QString)> done
+) {
+    _backend->updateProfile(fields, [this, fields, done](bool ok, QString err) {
+        if (!ok) {
+            _errorHub.fire(withReauthHint(
+                QCoreApplication::translate("Session", "Could not update profile: %1").arg(err), err
+            ));
+            if (done)
+                done(false, err);
+            return;
+        }
+        // Reflect a changed display name in our own entry so the footer/conv
+        // list update immediately (the footer shows display_name when set).
+        if (fields.contains(QStringLiteral("display_name"))) {
+            const QString dn = fields.value(QStringLiteral("display_name"));
+            patchMeUser([&dn](User &u) { u.displayName = dn; });
+        }
+        if (done)
+            done(true, {});
+    });
+}
+
+void Session::setPhoto(const QString &filePath, std::function<void(bool, QString)> done) {
+    _backend->setPhoto(filePath, [this, done](bool ok, QString err, QString newAvatarUrl) {
+        if (!ok) {
+            _errorHub.fire(withReauthHint(
+                QCoreApplication::translate("Session", "Could not update avatar: %1").arg(err), err
+            ));
+            if (done)
+                done(false, err);
+            return;
+        }
+        if (!newAvatarUrl.isEmpty())
+            patchMeUser([&newAvatarUrl](User &u) { u.avatarUrl = newAvatarUrl; });
+        if (done)
+            done(true, {});
+    });
+}
+
 void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text) {
     // Uploads can take a while for big files — show the message immediately as
     // a translucent pending copy; the real message arrives via realtime once

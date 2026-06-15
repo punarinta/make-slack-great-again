@@ -10,6 +10,8 @@
 #include <QQueue>
 #include <functional>
 
+class QHttpMultiPart;
+
 // Simple Slack Web API client.
 // All calls share a single in-flight slot to stay well under rate limits.
 // On HTTP 429, honors Retry-After then re-queues the failed call.
@@ -99,6 +101,13 @@ public:
     // require POST, raw bytes allowed). No auth header. Bypasses the API queue.
     void rawPost(
         const QUrl &url, const QByteArray &data, std::function<void()> onDone, OnError onError = {}
+    );
+
+    // POST multipart/form-data to a Slack API method with the auth token (for
+    // users.setPhoto — file upload). Takes ownership of `parts`. Bypasses the
+    // rate-limit queue; onSuccess fires with the parsed ok:true response.
+    void postMultipart(
+        const QString &method, QHttpMultiPart *parts, OnSuccess onSuccess, OnError onError = {}
     );
 
     // GET an arbitrary URL with the auth token set. For downloading private files.

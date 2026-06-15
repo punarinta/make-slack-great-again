@@ -25,6 +25,7 @@ class MessageListWidget;
 class ComposerWidget;
 class TypingIndicatorWidget;
 class ConvListWidget;
+class ConvFooterWidget;
 class WorkspaceSwitcher;
 class SettingsDialog;
 class SearchWidget;
@@ -164,6 +165,7 @@ private:
     QWidget           *_convResizeHandle    = nullptr;
     QWidget           *_rightArea           = nullptr; // nav.bg wrapper — restyled on theme switch
     ConvListWidget    *_convList            = nullptr;
+    ConvFooterWidget  *_convFooter          = nullptr;
     QLabel            *_convNameLabel       = nullptr;
     QWidget           *_msgHeader           = nullptr;
     QHBoxLayout       *_rightPanelLayout    = nullptr; // right-area outer layout — right/bottom gap

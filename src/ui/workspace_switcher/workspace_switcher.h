@@ -94,9 +94,9 @@ private:
     static constexpr int kBubble    = 40;
     static constexpr int kGap       = 8;
     static constexpr int kTopPad    = 16;
-    static constexpr int kAddSize   = 36;
+    static constexpr int kAddSize   = 40; // rounded square, same as workspace bubbles
     static constexpr int kRadius    = 10;
     static constexpr int kBarW      = 3;
-    static constexpr int kGearSize  = 36;
+    static constexpr int kGearSize  = 40; // rounded square, same as workspace bubbles
     static constexpr int kBottomPad = 14;
 };

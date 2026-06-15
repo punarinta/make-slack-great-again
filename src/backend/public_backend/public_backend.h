@@ -95,6 +95,15 @@ public:
     ) override;
     void setDndSnooze(int minutes, std::function<void(bool ok, QString err)> done = {}) override;
 
+    void loadMyProfile(std::function<void(MyProfile)> done) override;
+    void updateProfile(
+        const QHash<QString, QString> &fields, std::function<void(bool ok, QString err)> done = {}
+    ) override;
+    void setPhoto(
+        const QString                                                  &filePath,
+        std::function<void(bool ok, QString err, QString newAvatarUrl)> done = {}
+    ) override;
+
     rpl::producer<std::vector<SlashCommand>> listCommands() override;
     void                                     runCommand(
                                             ConversationId,

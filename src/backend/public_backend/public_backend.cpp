@@ -8,6 +8,7 @@
 #include <QUrlQuery>
 #include <QFile>
 #include <QFileInfo>
+#include <QHttpMultiPart>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -563,6 +564,100 @@ void PublicBackend::setDndSnooze(int minutes, std::function<void(bool, QString)>
             qWarning() << "setDndSnooze error:" << e;
             if (done)
                 done(false, e);
+        }
+    );
+}
+
+// ── Own profile ───────────────────────────────────────────────────
+
+void PublicBackend::loadMyProfile(std::function<void(MyProfile)> done) {
+    _api->call(
+        "users.profile.get",
+        QUrlQuery{},
+        [done](QJsonObject resp) {
+            const auto p = resp.value("profile").toObject();
+            MyProfile  mp;
+            mp.realName    = p.value("real_name").toString();
+            mp.displayName = p.value("display_name").toString();
+            mp.email       = p.value("email").toString();
+            mp.phone       = p.value("phone").toString();
+            mp.avatarUrl   = p.value("image_512").toString();
+            if (mp.avatarUrl.isEmpty())
+                mp.avatarUrl = p.value("image_192").toString();
+            if (done)
+                done(mp);
+        },
+        [done](QString e) {
+            qWarning() << "loadMyProfile error:" << e;
+            if (done)
+                done({});
+        }
+    );
+}
+
+void PublicBackend::updateProfile(
+    const QHash<QString, QString> &fields, std::function<void(bool, QString)> done
+) {
+    QJsonObject profile;
+    for (auto it = fields.constBegin(); it != fields.constEnd(); ++it)
+        profile.insert(it.key(), it.value());
+    QUrlQuery params;
+    params.addQueryItem(
+        "profile", QString::fromUtf8(QJsonDocument(profile).toJson(QJsonDocument::Compact))
+    );
+    _api->call(
+        "users.profile.set",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            qWarning() << "updateProfile error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}
+
+void PublicBackend::setPhoto(
+    const QString &filePath, std::function<void(bool, QString, QString)> done
+) {
+    auto *file = new QFile(filePath);
+    if (!file->open(QIODevice::ReadOnly)) {
+        qWarning() << "setPhoto: cannot open" << filePath;
+        delete file;
+        if (done)
+            done(false, QStringLiteral("cannot_open_file"), {});
+        return;
+    }
+
+    auto         *mp = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    QHttpPart     imagePart;
+    const QString fileName = QFileInfo(filePath).fileName();
+    imagePart.setHeader(
+        QNetworkRequest::ContentDispositionHeader,
+        QVariant(QStringLiteral("form-data; name=\"image\"; filename=\"%1\"").arg(fileName))
+    );
+    file->setParent(mp); // closed/destroyed with the multipart
+    imagePart.setBodyDevice(file);
+    mp->append(imagePart);
+
+    _api->postMultipart(
+        "users.setPhoto",
+        mp,
+        [done](QJsonObject resp) {
+            const auto profile = resp.value("profile").toObject();
+            QString    url     = profile.value("image_512").toString();
+            if (url.isEmpty())
+                url = profile.value("image_192").toString();
+            if (done)
+                done(true, {}, url);
+        },
+        [done](QString e) {
+            qWarning() << "setPhoto error:" << e;
+            if (done)
+                done(false, e, {});
         }
     );
 }

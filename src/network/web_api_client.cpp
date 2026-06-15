@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "web_api_client.h"
 
+#include <QHttpMultiPart>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QJsonDocument>
@@ -132,6 +133,35 @@ void WebApiClient::rawPost(
             if (onDone)
                 onDone();
         }
+    });
+}
+
+void WebApiClient::postMultipart(
+    const QString &method, QHttpMultiPart *parts, OnSuccess onSuccess, OnError onError
+) {
+    QNetworkRequest req(QUrl(_baseUrl + method));
+    req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
+    req.setAttribute(
+        QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
+    );
+    req.setTransferTimeout(_transferTimeoutMs);
+    auto *reply = _nam->post(req, parts);
+    parts->setParent(reply); // multipart lives as long as the request
+    connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (onError)
+                onError(reply->errorString());
+            return;
+        }
+        const auto obj = QJsonDocument::fromJson(reply->readAll()).object();
+        if (!obj.value("ok").toBool()) {
+            if (onError)
+                onError(obj.value("error").toString("unknown"));
+            return;
+        }
+        if (onSuccess)
+            onSuccess(obj);
     });
 }
 

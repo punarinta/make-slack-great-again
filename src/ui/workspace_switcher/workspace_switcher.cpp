@@ -4,6 +4,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/image_cache.h"
+#include "ui/nav_ghost_button.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 
 #include <QGuiApplication>
@@ -12,7 +13,6 @@
 #include <QPainterPath>
 #include <QPaintEvent>
 #include <QMouseEvent>
-#include <QSvgRenderer>
 #include <cmath>
 
 namespace {
@@ -145,38 +145,6 @@ void WorkspaceSwitcher::loadIcons() {
     }
 }
 
-// ── Settings icon helper ──────────────────────────────────────────────────────
-
-static void paintSettings(QPainter &p, const QRectF &r, bool hovered) {
-    // Circle background (same visual style as + button)
-    const QColor fill(255, 255, 255, hovered ? 55 : 22);
-    const QColor border(255, 255, 255, hovered ? 180 : 90);
-    p.setBrush(fill);
-    p.setPen(QPen(border, 1.5));
-    const qreal rad = r.height() / 2.0;
-    p.drawRoundedRect(QRectF(r).adjusted(0.75, 0.75, -0.75, -0.75), rad, rad);
-
-    static QSvgRenderer renderer(QString(":/ui/settings-2.svg"));
-    if (!renderer.isValid())
-        return;
-
-    const QColor iconColor = hovered ? QColor(245, 240, 245) : QColor(180, 165, 180);
-    const qreal  dim       = r.width() * 0.52;
-    const QRectF ir(r.x() + (r.width() - dim) / 2.0, r.y() + (r.height() - dim) / 2.0, dim, dim);
-
-    const int sz = qMax(1, qRound(dim));
-    QPixmap   px(sz, sz);
-    px.fill(Qt::transparent);
-    QPainter pp(&px);
-    pp.setRenderHint(QPainter::Antialiasing);
-    renderer.render(&pp, QRectF(0, 0, sz, sz));
-    pp.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    pp.fillRect(0, 0, sz, sz, iconColor);
-    pp.end();
-
-    p.drawPixmap(ir, px, QRectF(px.rect()));
-}
-
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
 int WorkspaceSwitcher::slotY(int i) const {
@@ -293,28 +261,23 @@ void WorkspaceSwitcher::paintEvent(QPaintEvent *) {
         paintBubble(p, ep, r, !_dragging && _hovered == i);
     }
 
-    // "+" add button
-    const QRect  ar     = addButtonRect();
-    const bool   addHov = (_hovered == -2);
-    const QColor addFill(255, 255, 255, addHov ? 55 : 22);
-    const QColor addBorder(255, 255, 255, addHov ? 180 : 90);
-
-    p.setBrush(addFill);
-    p.setPen(QPen(addBorder, 1.5));
-    const qreal r2 = ar.height() / 2.0;
-    p.drawRoundedRect(QRectF(ar).adjusted(0.75, 0.75, -0.75, -0.75), r2, r2);
+    // "+" add button — rounded square, same chrome as the workspace bubbles.
+    const QRect ar     = addButtonRect();
+    const bool  addHov = (_hovered == -2);
+    NavGhostButton::paintChrome(p, QRectF(ar), addHov, kRadius);
 
     // Draw + as two opaque lines — no alpha so the crossing pixel has no artifact.
-    // Hover feedback already comes from the circle fill/border above.
-    const QPointF c         = QRectF(ar).center();
-    const qreal   arm       = 5.0;
-    const QColor  plusColor = addHov ? QColor(245, 240, 245) : QColor(180, 165, 180);
-    p.setPen(QPen(plusColor, 2.5, Qt::SolidLine, Qt::RoundCap));
+    // Hover feedback already comes from the chrome fill/border above.
+    const QPointF c   = QRectF(ar).center();
+    const qreal   arm = 5.0;
+    p.setPen(QPen(NavGhostButton::iconColor(addHov), 2.5, Qt::SolidLine, Qt::RoundCap));
     p.drawLine(QPointF(c.x() - arm, c.y()), QPointF(c.x() + arm, c.y()));
     p.drawLine(QPointF(c.x(), c.y() - arm), QPointF(c.x(), c.y() + arm));
 
     // Settings button (bottom of column)
-    paintSettings(p, QRectF(gearButtonRect()), _hovered == -3);
+    const QRect gr = gearButtonRect();
+    NavGhostButton::paintChrome(p, QRectF(gr), _hovered == -3, kRadius);
+    NavGhostButton::paintIcon(p, QRectF(gr), _hovered == -3, QStringLiteral(":/ui/settings-2.svg"));
 
     // Lifted bubble: soft shadow + slight scale, drawn above everything else
     if (_dragging && _dragIndex >= 0 && _dragIndex < static_cast<int>(_entries.size())) {

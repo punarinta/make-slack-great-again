@@ -137,6 +137,34 @@ public:
             done(false, QStringLiteral("not_supported"));
     }
 
+    // --- Own profile (documented public APIs) ---
+    // Load the authed user's editable profile (users.profile.get).
+    virtual void loadMyProfile(std::function<void(MyProfile)> done) {
+        if (done)
+            done({});
+    }
+    // Update the authed user's profile (users.profile.set). `fields` maps Slack
+    // profile keys (display_name, real_name, email, phone, …) to their new
+    // values; only the supplied keys are changed. Note: Slack rejects self
+    // email changes (admins only on paid teams) — that surfaces as an error.
+    virtual void updateProfile(
+        const QHash<QString, QString> & /*fields*/,
+        std::function<void(bool ok, QString err)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+    // Upload a new avatar from a local image file (users.setPhoto). On success
+    // `newAvatarUrl` is the freshly-served image URL (may be empty if Slack
+    // omits it).
+    virtual void setPhoto(
+        const QString & /*filePath*/,
+        std::function<void(bool ok, QString err, QString newAvatarUrl)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"), {});
+    }
+
     // List the slash commands available in the workspace (undocumented
     // commands.list — official-client API). Backends that can't list commands
     // produce nothing; the Session falls back to the built-in command set.

@@ -11,6 +11,7 @@
 #include "composer/composer_widget.h"
 #include "typing_indicator/typing_indicator.h"
 #include "conv_list/conv_list_widget.h"
+#include "conv_footer/conv_footer_widget.h"
 #include "context_menu/context_menu.h"
 #include "workspace_switcher/workspace_switcher.h"
 #include "session/session.h"
@@ -27,6 +28,7 @@
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
 #include "create_channel_dialog/create_channel_dialog.h"
+#include "profile_dialog/profile_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
@@ -433,7 +435,22 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
 
     _convList = new ConvListWidget(_imgCache, _convPanel);
     _convList->setObjectName("convList");
-    convLayout->addWidget(_convList);
+    convLayout->addWidget(_convList, /*stretch=*/1);
+
+    // Self-presence footer pinned to the bottom (no top border — blends into the list).
+    _convFooter = new ConvFooterWidget(_imgCache, _convPanel);
+    convLayout->addWidget(_convFooter);
+    connect(_convFooter, &ConvFooterWidget::presenceToggleRequested, this, [this](bool away) {
+        if (_session)
+            _session->setPresence(away);
+    });
+    connect(_convFooter, &ConvFooterWidget::profileRequested, this, [this] {
+        if (!_session)
+            return;
+        auto *dlg = new ProfileDialog(_session, _imgCache, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->open();
+    });
 
     connect(_convList, &ConvListWidget::conversationSelected, this, &MainWindow::openConversation);
     return _convPanel;
@@ -959,6 +976,8 @@ void MainWindow::activateWorkspace(QString teamId) {
         _session->persistUnreads();
     }
     _currentConvId = {};
+    if (_convFooter)
+        _convFooter->clear();
     if (_searchWidget)
         _searchWidget->hide();
     _composer->setEnabled(false);
@@ -1030,6 +1049,8 @@ void MainWindow::showLoggedOut() {
     _session    = nullptr;
     if (_messageList)
         _messageList->setSession(nullptr);
+    if (_convFooter)
+        _convFooter->clear();
     _activeTeamId.clear();
     _currentConvId = {};
     updateTrayIcon();
@@ -1264,6 +1285,19 @@ void MainWindow::connectToSession() {
                 if (_convList) {
                     _convList->setUsers(users);
                     _convList->setMe(_session->meUserId());
+                }
+                if (_convFooter) {
+                    const auto meId = _session->meUserId();
+                    for (const auto &u : users) {
+                        if (u.id == meId) {
+                            _convFooter->setUser(
+                                u.displayName.isEmpty() ? u.name : u.displayName, u.avatarUrl
+                            );
+                            break;
+                        }
+                    }
+                }
+                if (_convList) {
                     // Re-apply header for current DM conv now that user names are resolved.
                     if (!_currentConvId.value.isEmpty()) {
                         const auto *conv = _session->findConversation(_currentConvId);
@@ -1343,6 +1377,8 @@ void MainWindow::connectToSession() {
             [this](SelfPresence sp) {
                 if (_convList)
                     _convList->setSelfPhantomAway(sp.phantomAway());
+                if (_convFooter)
+                    _convFooter->setSelfPresence(sp);
                 if (_headerAvatar && _headerAvatar->isVisible()) {
                     const auto *conv = _session->findConversation(_currentConvId);
                     if (conv && conv->dmUser && *conv->dmUser == _session->meUserId()) {

@@ -119,6 +119,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/message_list/file_chip_widget.cpp
     src/ui/image_viewer/image_viewer.cpp
     src/ui/conv_list/conv_list_widget.cpp
+    src/ui/conv_footer/conv_footer_widget.cpp
     src/ui/composer/formatting_toolbar.cpp
     src/ui/composer/attachment_strip.cpp
     src/ui/composer/edit_mode_banner.cpp
@@ -146,6 +147,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/forward_dialog/forward_dialog.cpp
     src/ui/styled_line_edit/styled_line_edit.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
+    src/ui/profile_dialog/profile_dialog.cpp
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     src/ui/update_checker/update_checker.cpp
     src/ui/update_bar/update_bar.cpp

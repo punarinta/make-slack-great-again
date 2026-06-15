@@ -84,6 +84,18 @@ struct SelfPresence {
     bool operator==(const SelfPresence &) const = default;
 };
 
+// Editable fields of the authed user's own profile (users.profile.get /
+// users.profile.set). avatarUrl is read-only here — it's changed via
+// users.setPhoto, not the profile fields.
+struct MyProfile {
+    QString realName;    // profile.real_name ("Full name")
+    QString displayName; // profile.display_name (the name shown in the UI)
+    QString email;       // profile.email
+    QString phone;       // profile.phone
+    QString avatarUrl;   // profile.image_512 / image_192
+    bool    operator==(const MyProfile &) const = default;
+};
+
 struct Conversation {
     ConversationId id;
     ConvKind       kind;
