@@ -5,7 +5,6 @@ A fast native Slack client built in C++ with Qt6.
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)
 ![C++](https://img.shields.io/badge/language-C%2B%2B20-00599C?logo=cplusplus&logoColor=white)
 ![Qt](https://img.shields.io/badge/Qt-6-41CD52?logo=qt&logoColor=white)
-![License](https://img.shields.io/github/license/punarinta/make-slack-great-again)
 ![Release](https://img.shields.io/github/v/release/punarinta/make-slack-great-again)
 
 ## Demo
