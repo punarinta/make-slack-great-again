@@ -1286,6 +1286,16 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
     // immediately via tryHandleLinkPress below.
     hideProfileCard();
 
+    // Triple-click: Qt reports the third click as a plain press shortly after the
+    // double-click, so detect it by closeness in time and space and select the whole line.
+    const bool maybeTriple = _lastDblClickTs != 0 &&
+                             event->timestamp() - _lastDblClickTs <=
+                                 (unsigned long)QApplication::doubleClickInterval() &&
+                             (event->pos() - _lastDblClickPos).manhattanLength() <= 4;
+    _lastDblClickTs = 0;
+    if (maybeTriple && tryHandleTripleClick(event->pos()))
+        return;
+
     // Clear any existing selection; it may be re-established below if the press lands on text.
     clearSelection();
 
@@ -1341,11 +1351,37 @@ void MessageListWidget::doMouseDoubleClick(QMouseEvent *event) {
                 viewport()->update();
             }
         }
+        // Remember this double-click so a follow-up press is recognised as a triple-click.
+        _lastDblClickTs  = event->timestamp();
+        _lastDblClickPos = event->pos();
         return;
     }
 
     // Off-text: treat as another press so rapid clicks (reactions, etc.) register.
     VirtualListWidget::doMouseDoubleClick(event);
+}
+
+bool MessageListWidget::tryHandleTripleClick(const QPoint &pos) {
+    const TextPos tp = textHitTest(pos);
+    if (tp.row < 0)
+        return false;
+    auto &item = _items[tp.row];
+    ensureDocLayout(item);
+    if (!item.textDoc)
+        return false;
+
+    // Select the visual line under the cursor (the "row" of text), matching the
+    // common triple-click behaviour of text editors.
+    QTextCursor cur(item.textDoc.get());
+    cur.setPosition(tp.offset);
+    cur.select(QTextCursor::LineUnderCursor);
+    if (!cur.hasSelection())
+        return false;
+    _selAnchor   = {tp.row, cur.selectionStart()};
+    _selFocus    = {tp.row, cur.selectionEnd()};
+    _selDragging = false;
+    viewport()->update();
+    return true;
 }
 
 bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {

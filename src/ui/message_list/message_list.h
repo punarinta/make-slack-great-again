@@ -132,6 +132,7 @@ private:
     void doMouseLeave();
 
     // doMousePress sub-handlers — each returns true if it consumed the event.
+    bool tryHandleTripleClick(const QPoint &pos);
     bool tryHandleScrollbarPress(const QPoint &pos);
     bool tryHandleToolbarPress(const QPoint &pos);
     bool tryHandleReactionPress(const QPoint &pos);
@@ -402,9 +403,13 @@ private:
     QHash<QString, std::pair<Ts, int>> _savedAnchors;
 
     // Text selection state
-    TextPos _selAnchor;           // where the drag started
-    TextPos _selFocus;            // current drag end
-    bool    _selDragging = false; // true while LMB is held and dragging a selection
+    TextPos       _selAnchor;              // where the drag started
+    TextPos       _selFocus;               // current drag end
+    bool          _selDragging    = false; // true while LMB is held and dragging a selection
+    // Triple-click detection: Qt delivers the third click as a plain press after the
+    // double-click, so we track the last double-click to recognise it.
+    unsigned long _lastDblClickTs = 0;
+    QPoint        _lastDblClickPos;
 
     int                 _hoveredRow     = -1; // index of the row the mouse is over, or -1
     int                 _hoveredToolBtn = -1; // 0=emoji, 1=forward, 2=more; -1=none
