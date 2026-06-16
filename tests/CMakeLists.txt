@@ -274,6 +274,8 @@ set_target_properties(test_send_retry PROPERTIES AUTOMOC ON)
 add_msga_widget_test(test_browse_channels_dialog
     test_browse_channels_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_channels_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp

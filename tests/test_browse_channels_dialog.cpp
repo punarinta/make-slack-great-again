@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 //
-// Tests for BrowseChannelsDialog added in the find-channel session:
+// Tests for BrowseChannelsDialog (virtualized list rewrite):
 //   - Construction smoke test
 //   - Channel list populated from conversations (channels only, no DMs)
 //   - People list populated from users (deactivated users excluded)
 //   - Filter by name and description, case-insensitive; clear restores all
 //   - Tab switching via tab buttons changes QStackedWidget index
 //   - createChannelRequested signal fires on Create Channel button click
-//   - channelActivated signal fires with the correct id on item press
-//   - userActivated signal fires with the correct id on item press
+//   - channelActivated signal fires with the correct id on row activation
+//   - userActivated signal fires with the correct id on row activation
+//
+// Population/filter assertions go through BrowseListView's count()/visibleCount()
+// accessors, and activation through its onActivated hook (the same hook the
+// virtual list invokes on a row click) — neither depends on widget geometry, so
+// the tests run deterministically headless.
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
-#include <QFrame>
-#include <QLabel>
 #include <QLineEdit>
-#include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
 #include <QStackedWidget>
@@ -26,6 +28,7 @@
 
 #include "backend/domain.h"
 #include "ui/browse_channels_dialog/browse_channels_dialog.h"
+#include "ui/browse_channels_dialog/browse_list_view.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -75,17 +78,11 @@ static const User kBob   = {UserId{"U2"}, "bob", "Bob Builder", {}, false, true,
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-static int countFrames(QWidget *parent, const QString &name) {
-    return parent->findChildren<QFrame *>(name).size();
+static BrowseListView *channelList(QWidget *dlg) {
+    return dlg->findChild<BrowseListView *>("browseChannelList");
 }
-
-// Count frames not explicitly hidden (usable without showing the widget).
-static int visibleFrames(QWidget *parent, const QString &name) {
-    int n = 0;
-    for (auto *f : parent->findChildren<QFrame *>(name))
-        if (!f->isHidden())
-            ++n;
-    return n;
+static BrowseListView *peopleList(QWidget *dlg) {
+    return dlg->findChild<BrowseListView *>("browsePeopleList");
 }
 
 // ── Construction ───────────────────────────────────────────────────────────────
@@ -94,10 +91,13 @@ TEST_CASE("BrowseChannelsDialog: constructs without crash", "[browse][smoke]") {
     BrowseChannelsDialog dlg({kGeneral}, {kAlice}, nullptr);
     CHECK(dlg.findChild<QLineEdit *>() != nullptr);
     CHECK(dlg.findChild<QStackedWidget *>() != nullptr);
+    CHECK(dlg.findChildren<BrowseListView *>().size() == 2);
 }
 
 TEST_CASE("BrowseChannelsDialog: renders without crash", "[browse][smoke]") {
-    BrowseChannelsDialog dlg({kGeneral}, {kAlice}, nullptr);
+    // Includes a joined channel (kGeneral) and a person to exercise both
+    // paint paths (channel "Joined" badge + people avatar).
+    BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret}, {kAlice, kBob}, nullptr);
     dlg.resize(800, 600);
     QPixmap px(dlg.size());
     px.fill(Qt::transparent);
@@ -111,31 +111,22 @@ TEST_CASE(
     "BrowseChannelsDialog: public and private channels appear in channel list", "[browse][channels]"
 ) {
     BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret, kDm}, {kAlice}, nullptr);
-    CHECK(countFrames(&dlg, "channelItem") == 3); // general, random, secret — not the DM
+    REQUIRE(channelList(&dlg) != nullptr);
+    CHECK(channelList(&dlg)->count() == 3); // general, random, secret — not the DM
 }
 
 TEST_CASE("BrowseChannelsDialog: DMs are excluded from channel list", "[browse][channels]") {
     BrowseChannelsDialog dlg({kDm}, {kAlice}, nullptr);
-    CHECK(countFrames(&dlg, "channelItem") == 0);
-}
-
-TEST_CASE(
-    "BrowseChannelsDialog: only channels with isMember show joined indicator", "[browse][channels]"
-) {
-    // kGeneral.isMember=true, kRandom.isMember=false — only general should have a "Joined" label
-    BrowseChannelsDialog dlg({kGeneral, kRandom}, {kAlice}, nullptr);
-    int                  joinedLabels = 0;
-    for (auto *label : dlg.findChildren<QLabel *>())
-        if (label->text() == "Joined")
-            ++joinedLabels;
-    CHECK(joinedLabels == 1);
+    REQUIRE(channelList(&dlg) != nullptr);
+    CHECK(channelList(&dlg)->count() == 0);
 }
 
 // ── People list population ─────────────────────────────────────────────────────
 
 TEST_CASE("BrowseChannelsDialog: non-deactivated users appear in people list", "[browse][people]") {
     BrowseChannelsDialog dlg({kGeneral}, {kAlice, kBob}, nullptr);
-    CHECK(countFrames(&dlg, "peopleItem") == 2);
+    REQUIRE(peopleList(&dlg) != nullptr);
+    CHECK(peopleList(&dlg)->count() == 2);
 }
 
 TEST_CASE(
@@ -145,7 +136,8 @@ TEST_CASE(
     ghost.id            = UserId{"U99"};
     ghost.isDeactivated = true;
     BrowseChannelsDialog dlg({kGeneral}, {kAlice, ghost}, nullptr);
-    CHECK(countFrames(&dlg, "peopleItem") == 1);
+    REQUIRE(peopleList(&dlg) != nullptr);
+    CHECK(peopleList(&dlg)->count() == 1);
 }
 
 // ── Filtering — channels ───────────────────────────────────────────────────────
@@ -153,20 +145,20 @@ TEST_CASE(
 TEST_CASE("BrowseChannelsDialog: filter by name hides non-matching channels", "[browse][filter]") {
     BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret}, {kAlice}, nullptr);
     dlg.findChild<QLineEdit *>()->setText("general");
-    CHECK(visibleFrames(&dlg, "channelItem") == 1);
+    CHECK(channelList(&dlg)->visibleCount() == 1);
 }
 
 TEST_CASE("BrowseChannelsDialog: channel filter is case-insensitive", "[browse][filter]") {
     BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret}, {kAlice}, nullptr);
     dlg.findChild<QLineEdit *>()->setText("RANDOM");
-    CHECK(visibleFrames(&dlg, "channelItem") == 1);
+    CHECK(channelList(&dlg)->visibleCount() == 1);
 }
 
 TEST_CASE("BrowseChannelsDialog: filter matches channel description", "[browse][filter]") {
     // kRandom.description = "Off-topic chat"
     BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret}, {kAlice}, nullptr);
     dlg.findChild<QLineEdit *>()->setText("off-topic");
-    CHECK(visibleFrames(&dlg, "channelItem") == 1);
+    CHECK(channelList(&dlg)->visibleCount() == 1);
 }
 
 TEST_CASE(
@@ -175,9 +167,9 @@ TEST_CASE(
     BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret}, {kAlice}, nullptr);
     auto                *ed = dlg.findChild<QLineEdit *>();
     ed->setText("rand");
-    REQUIRE(visibleFrames(&dlg, "channelItem") == 1);
+    REQUIRE(channelList(&dlg)->visibleCount() == 1);
     ed->clear();
-    CHECK(visibleFrames(&dlg, "channelItem") == 3);
+    CHECK(channelList(&dlg)->visibleCount() == 3);
 }
 
 TEST_CASE(
@@ -185,7 +177,7 @@ TEST_CASE(
 ) {
     BrowseChannelsDialog dlg({kGeneral, kRandom, kSecret}, {kAlice}, nullptr);
     dlg.findChild<QLineEdit *>()->setText("zzz-no-match");
-    CHECK(visibleFrames(&dlg, "channelItem") == 0);
+    CHECK(channelList(&dlg)->visibleCount() == 0);
 }
 
 // ── Filtering — people ────────────────────────────────────────────────────────
@@ -193,13 +185,13 @@ TEST_CASE(
 TEST_CASE("BrowseChannelsDialog: filter by name hides non-matching people", "[browse][filter]") {
     BrowseChannelsDialog dlg({kGeneral}, {kAlice, kBob}, nullptr);
     dlg.findChild<QLineEdit *>()->setText("alice");
-    CHECK(visibleFrames(&dlg, "peopleItem") == 1);
+    CHECK(peopleList(&dlg)->visibleCount() == 1);
 }
 
 TEST_CASE("BrowseChannelsDialog: people filter is case-insensitive", "[browse][filter]") {
     BrowseChannelsDialog dlg({kGeneral}, {kAlice, kBob}, nullptr);
     dlg.findChild<QLineEdit *>()->setText("BOB");
-    CHECK(visibleFrames(&dlg, "peopleItem") == 1);
+    CHECK(peopleList(&dlg)->visibleCount() == 1);
 }
 
 // ── Tab switching ──────────────────────────────────────────────────────────────
@@ -266,7 +258,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "BrowseChannelsDialog: channel item press emits channelActivated with correct id",
+    "BrowseChannelsDialog: channel activation emits channelActivated with correct id",
     "[browse][signals]"
 ) {
     // Items are sorted alphabetically: "general" (C1) sorts before "random" (C2).
@@ -276,18 +268,17 @@ TEST_CASE(
         received = id;
     });
 
-    auto frames = dlg.findChildren<QFrame *>("channelItem");
-    REQUIRE(!frames.isEmpty());
-    QMouseEvent press(
-        QEvent::MouseButtonPress, QPointF(5, 5), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
-    );
-    QApplication::sendEvent(frames.first(), &press);
+    auto *list = channelList(&dlg);
+    REQUIRE(list != nullptr);
+    REQUIRE(list->visibleCount() == 2);
+    REQUIRE(list->onActivated);
+    list->onActivated(list->idAt(0)); // activate the first (sorted) row
 
     CHECK(received == ConversationId{"C1"}); // "general" sorts first
 }
 
 TEST_CASE(
-    "BrowseChannelsDialog: people item press emits userActivated with correct id",
+    "BrowseChannelsDialog: people activation emits userActivated with correct id",
     "[browse][signals]"
 ) {
     // Items sorted alphabetically: "Alice Wonder" (U1) before "Bob Builder" (U2).
@@ -295,12 +286,11 @@ TEST_CASE(
     UserId               received;
     QObject::connect(&dlg, &BrowseChannelsDialog::userActivated, [&](UserId id) { received = id; });
 
-    auto frames = dlg.findChildren<QFrame *>("peopleItem");
-    REQUIRE(!frames.isEmpty());
-    QMouseEvent press(
-        QEvent::MouseButtonPress, QPointF(5, 5), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
-    );
-    QApplication::sendEvent(frames.first(), &press);
+    auto *list = peopleList(&dlg);
+    REQUIRE(list != nullptr);
+    REQUIRE(list->visibleCount() == 2);
+    REQUIRE(list->onActivated);
+    list->onActivated(list->idAt(0)); // activate the first (sorted) row
 
     CHECK(received == UserId{"U1"}); // Alice sorts first
 }

@@ -5,18 +5,14 @@
 #include "backend/domain.h"
 
 #include <QDialog>
-#include <QHash>
 #include <vector>
 
+class BrowseListView;
 class ImageCache;
 class QFrame;
-class QLabel;
 class QLineEdit;
 class QPushButton;
-class QScrollArea;
 class QStackedWidget;
-class QVBoxLayout;
-class QWidget;
 
 // Modal "Find a channel" dialog.
 // Shows all known channels with search and a People tab.
@@ -45,7 +41,6 @@ protected:
     void showEvent(QShowEvent *) override;
     void resizeEvent(QResizeEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
-    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
     void buildChannelItems();
@@ -55,23 +50,20 @@ private:
     void updateCard();
     void applyTheme();
 
-    QFrame         *_card          = nullptr;
-    QLineEdit      *_searchEdit    = nullptr;
-    QPushButton    *_createBtn     = nullptr;
-    QPushButton    *_closeBtn      = nullptr;
-    QPushButton    *_channelsTab   = nullptr;
-    QPushButton    *_peopleTab     = nullptr;
-    QStackedWidget *_stack         = nullptr;
-    QWidget        *_channelPage   = nullptr;
-    QVBoxLayout    *_channelLayout = nullptr;
-    QWidget        *_peoplePage    = nullptr;
-    QVBoxLayout    *_peopleLayout  = nullptr;
-    int             _activeTab     = 0;
+    QFrame         *_card        = nullptr;
+    QLineEdit      *_searchEdit  = nullptr;
+    QPushButton    *_createBtn   = nullptr;
+    QPushButton    *_closeBtn    = nullptr;
+    QPushButton    *_channelsTab = nullptr;
+    QPushButton    *_peopleTab   = nullptr;
+    QStackedWidget *_stack       = nullptr;
+    BrowseListView *_channelList = nullptr;
+    BrowseListView *_peopleList  = nullptr;
+    int             _activeTab   = 0;
 
     std::vector<Conversation> _conversations;
     std::vector<User>         _users;
     ImageCache               *_imgCache = nullptr;
-    QHash<QString, QLabel *>  _avatarLabels; // avatarUrl → avatar QLabel
 
     static constexpr int kCardW    = 720;
     static constexpr int kCardMinH = 520;
