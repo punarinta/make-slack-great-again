@@ -12,13 +12,13 @@
 <context>
     <name>BrowseChannelsDialog</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+196"/>
-        <location line="+313"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+61"/>
+        <location line="+183"/>
         <source>Search for channels</source>
         <translation>Search for channels</translation>
     </message>
     <message>
-        <location line="-304"/>
+        <location line="-174"/>
         <source>Create Channel</source>
         <translation>Create Channel</translation>
     </message>
@@ -33,7 +33,22 @@
         <translation>People</translation>
     </message>
     <message>
-        <location line="+272"/>
+        <location line="+80"/>
+        <source>%1 %2</source>
+        <translation>%1 %2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>member</source>
+        <translation>member</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>members</source>
+        <translation>members</translation>
+    </message>
+    <message>
+        <location line="+60"/>
         <source>Search for people</source>
         <translation>Search for people</translation>
     </message>
@@ -118,7 +133,7 @@ This action cannot be undone.</translation>
         <translation>Schedule send</translation>
     </message>
     <message>
-        <location line="+913"/>
+        <location line="+915"/>
         <source>Send at</source>
         <translation>Send at</translation>
     </message>
@@ -156,8 +171,16 @@ This action cannot be undone.</translation>
 </context>
 <context>
     <name>ConvFooterWidget</name>
+    <message numerus="yes">
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+136"/>
+        <source>%n background task(s) running</source>
+        <translation>
+            <numerusform>%n background task running</numerusform>
+            <numerusform>%n background tasks running</numerusform>
+        </translation>
+    </message>
     <message>
-        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+146"/>
+        <location line="+65"/>
         <source>Hidden — you appear away to everyone. Click to use automatic presence.</source>
         <translation>Hidden — you appear away to everyone. Click to use automatic presence.</translation>
     </message>
@@ -172,7 +195,7 @@ This action cannot be undone.</translation>
         <translation>Visible — using automatic presence. Click to appear hidden.</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+71"/>
         <source>Manage profile</source>
         <translation>Manage profile</translation>
     </message>
@@ -180,7 +203,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+492"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+517"/>
         <source>Open a direct message</source>
         <translation>Open a direct message</translation>
     </message>
@@ -414,7 +437,7 @@ This action cannot be undone.</translation>
 <context>
     <name>EmojiPickerPopup</name>
     <message>
-        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+239"/>
+        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+465"/>
         <source>Search emoji…</source>
         <translation>Search emoji…</translation>
     </message>
@@ -590,12 +613,12 @@ This action cannot be undone.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+322"/>
+        <location filename="../src/ui/main_window.cpp" line="+324"/>
         <source>Log in to workspace</source>
         <translation>Log in to workspace</translation>
     </message>
     <message>
-        <location line="+757"/>
+        <location line="+759"/>
         <source>Missing credentials</source>
         <translation>Missing credentials</translation>
     </message>
@@ -615,29 +638,29 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
     </message>
     <message>
         <location line="+227"/>
-        <location line="+652"/>
+        <location line="+660"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location line="-646"/>
-        <location line="+724"/>
+        <location line="-654"/>
+        <location line="+732"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location line="-724"/>
-        <location line="+724"/>
+        <location line="-732"/>
+        <location line="+732"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location line="-537"/>
+        <location line="-545"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location line="+125"/>
+        <location line="+133"/>
         <source>Log out</source>
         <translation>Log out</translation>
     </message>
@@ -677,7 +700,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Search messages</translation>
     </message>
     <message>
-        <location line="-754"/>
+        <location line="-762"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>You appear away to others — no official Slack client is connected</translation>
     </message>
@@ -742,7 +765,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="+1421"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="+1471"/>
         <source>Reply in thread</source>
         <translation>Reply in thread</translation>
     </message>
@@ -773,12 +796,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
     </message>
     <message>
         <location line="+21"/>
-        <location line="+705"/>
+        <location line="+782"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location line="-694"/>
+        <location line="-771"/>
         <source>Delete message…</source>
         <translation>Delete message…</translation>
     </message>
@@ -808,7 +831,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Save file</translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+91"/>
         <source>Copy link to image</source>
         <translation>Copy link to image</translation>
     </message>
@@ -818,7 +841,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Copy link to file</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+10"/>
+        <source>Copy full image</source>
+        <translation>Copy full image</translation>
+    </message>
+    <message>
+        <location line="+14"/>
         <source>Delete image…</source>
         <translation>Delete image…</translation>
     </message>
@@ -1072,22 +1100,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="-393"/>
-        <source>%1 %2</source>
-        <translation>%1 %2</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>member</source>
-        <translation>member</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>members</source>
-        <translation>members</translation>
-    </message>
-    <message>
-        <location line="+29"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_list_view.cpp" line="+200"/>
         <source>Joined</source>
         <translation>Joined</translation>
     </message>
@@ -1128,12 +1141,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>Session</name>
     <message>
-        <location filename="../src/session/session.cpp" line="+47"/>
+        <location filename="../src/session/session.cpp" line="+52"/>
         <source> — sign in to this workspace again to grant the new permission</source>
         <translation> — sign in to this workspace again to grant the new permission</translation>
     </message>
     <message>
-        <location line="+300"/>
+        <location line="+304"/>
         <source>Couldn&apos;t send message: %1</source>
         <translation>Couldn&apos;t send message: %1</translation>
     </message>
@@ -1206,13 +1219,13 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="+78"/>
-        <location line="+437"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="+79"/>
+        <location line="+462"/>
         <source>RAM used: %1</source>
         <translation>RAM used: %1</translation>
     </message>
     <message>
-        <location line="-406"/>
+        <location line="-431"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
@@ -1230,24 +1243,24 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
     </message>
     <message>
         <location line="-160"/>
-        <location line="+404"/>
+        <location line="+429"/>
         <source>AI assistance</source>
         <translation>AI assistance</translation>
     </message>
     <message>
-        <location line="-403"/>
-        <location line="+221"/>
+        <location line="-428"/>
+        <location line="+246"/>
         <source>Storage</source>
         <translation>Storage</translation>
     </message>
     <message>
-        <location line="-220"/>
-        <location line="+326"/>
+        <location line="-245"/>
+        <location line="+351"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location line="-306"/>
+        <location line="-331"/>
         <source>Color theme</source>
         <translation>Color theme</translation>
     </message>
@@ -1327,12 +1340,12 @@ under an &quot;N more...&quot; row at the bottom of each section.</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+59"/>
+        <location line="+84"/>
         <source>Save</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location line="-35"/>
+        <location line="-60"/>
         <source>Enable desktop notifications</source>
         <translation>Enable desktop notifications</translation>
     </message>
@@ -1357,7 +1370,17 @@ under an &quot;N more...&quot; row at the bottom of each section.</translation>
         <translation>Play a sound for notifications</translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+8"/>
+        <source>Sound:</source>
+        <translation>Sound:</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Preview</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <location line="+57"/>
         <source>Cache size:</source>
         <translation>Cache size:</translation>
     </message>
@@ -1492,7 +1515,7 @@ it is stored on this computer and sent only to that provider.</translation>
         <translation>Not connected</translation>
     </message>
     <message>
-        <location line="+588"/>
+        <location line="+611"/>
         <source>Last checked: %1</source>
         <translation>Last checked: %1</translation>
     </message>
@@ -1532,6 +1555,14 @@ it is stored on this computer and sent only to that provider.</translation>
         <location line="+9"/>
         <source>Check failed: %1</source>
         <translation>Check failed: %1</translation>
+    </message>
+</context>
+<context>
+    <name>Sound</name>
+    <message>
+        <location filename="../src/util/sound_player.cpp" line="+53"/>
+        <source>msga chime</source>
+        <translation>msga chime</translation>
     </message>
 </context>
 <context>

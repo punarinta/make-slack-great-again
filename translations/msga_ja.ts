@@ -12,13 +12,13 @@
 <context>
     <name>BrowseChannelsDialog</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+196"/>
-        <location line="+313"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+61"/>
+        <location line="+183"/>
         <source>Search for channels</source>
         <translation>チャンネルを検索</translation>
     </message>
     <message>
-        <location line="-304"/>
+        <location line="-174"/>
         <source>Create Channel</source>
         <translation>チャンネルを作成</translation>
     </message>
@@ -33,7 +33,22 @@
         <translation>メンバー</translation>
     </message>
     <message>
-        <location line="+272"/>
+        <location line="+80"/>
+        <source>%1 %2</source>
+        <translation>%1%2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>member</source>
+        <translation>人のメンバー</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>members</source>
+        <translation>人のメンバー</translation>
+    </message>
+    <message>
+        <location line="+60"/>
         <source>Search for people</source>
         <translation>メンバーを検索</translation>
     </message>
@@ -118,7 +133,7 @@ This action cannot be undone.</source>
         <translation>送信を予約</translation>
     </message>
     <message>
-        <location line="+913"/>
+        <location line="+915"/>
         <source>Send at</source>
         <translation>送信日時</translation>
     </message>
@@ -156,8 +171,15 @@ This action cannot be undone.</source>
 </context>
 <context>
     <name>ConvFooterWidget</name>
+    <message numerus="yes">
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+136"/>
+        <source>%n background task(s) running</source>
+        <translation>
+            <numerusform>%n件のバックグラウンドタスクを実行中</numerusform>
+        </translation>
+    </message>
     <message>
-        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+146"/>
+        <location line="+65"/>
         <source>Hidden — you appear away to everyone. Click to use automatic presence.</source>
         <translation>非表示 — 全員に離席中と表示されます。クリックすると自動プレゼンスを使用します。</translation>
     </message>
@@ -172,7 +194,7 @@ This action cannot be undone.</source>
         <translation>表示中 — 自動プレゼンスを使用しています。クリックすると非表示にします。</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+71"/>
         <source>Manage profile</source>
         <translation>プロフィールを管理</translation>
     </message>
@@ -180,7 +202,7 @@ This action cannot be undone.</source>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+492"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+517"/>
         <source>Open a direct message</source>
         <translation>ダイレクトメッセージを開く</translation>
     </message>
@@ -414,7 +436,7 @@ This action cannot be undone.</source>
 <context>
     <name>EmojiPickerPopup</name>
     <message>
-        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+239"/>
+        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+465"/>
         <source>Search emoji…</source>
         <translation>絵文字を検索…</translation>
     </message>
@@ -590,12 +612,12 @@ This action cannot be undone.</source>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+322"/>
+        <location filename="../src/ui/main_window.cpp" line="+324"/>
         <source>Log in to workspace</source>
         <translation>ワークスペースにログイン</translation>
     </message>
     <message>
-        <location line="+757"/>
+        <location line="+759"/>
         <source>Missing credentials</source>
         <translation>認証情報がありません</translation>
     </message>
@@ -615,29 +637,29 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
     </message>
     <message>
         <location line="+227"/>
-        <location line="+652"/>
+        <location line="+660"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>ここから%1とのダイレクトメッセージの履歴が始まります。</translation>
     </message>
     <message>
-        <location line="-646"/>
-        <location line="+724"/>
+        <location line="-654"/>
+        <location line="+732"/>
         <source>Message</source>
         <translation>メッセージ</translation>
     </message>
     <message>
-        <location line="-724"/>
-        <location line="+724"/>
+        <location line="-732"/>
+        <location line="+732"/>
         <source>Message %1</source>
         <translation>%1へのメッセージ</translation>
     </message>
     <message>
-        <location line="-537"/>
+        <location line="-545"/>
         <source>Someone</source>
         <translation>誰か</translation>
     </message>
     <message>
-        <location line="+125"/>
+        <location line="+133"/>
         <source>Log out</source>
         <translation>ログアウト</translation>
     </message>
@@ -677,7 +699,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location line="-754"/>
+        <location line="-762"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>公式Slackクライアントが接続されていないため、他のメンバーには離席中と表示されます</translation>
     </message>
@@ -742,7 +764,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="+1435"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="+1485"/>
         <source>Edit message</source>
         <translation>メッセージを編集</translation>
     </message>
@@ -778,12 +800,12 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
     </message>
     <message>
         <location line="+21"/>
-        <location line="+705"/>
+        <location line="+782"/>
         <source>Forward message</source>
         <translation>メッセージを転送</translation>
     </message>
     <message>
-        <location line="-694"/>
+        <location line="-771"/>
         <source>Delete message…</source>
         <translation>メッセージを削除…</translation>
     </message>
@@ -808,7 +830,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>ファイルを保存</translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+91"/>
         <source>Copy link to image</source>
         <translation>画像へのリンクをコピー</translation>
     </message>
@@ -818,7 +840,12 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>ファイルへのリンクをコピー</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+10"/>
+        <source>Copy full image</source>
+        <translation>画像全体をコピー</translation>
+    </message>
+    <message>
+        <location line="+14"/>
         <source>Delete image…</source>
         <translation>画像を削除…</translation>
     </message>
@@ -1072,22 +1099,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="-393"/>
-        <source>%1 %2</source>
-        <translation>%1%2</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>member</source>
-        <translation>人のメンバー</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>members</source>
-        <translation>人のメンバー</translation>
-    </message>
-    <message>
-        <location line="+29"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_list_view.cpp" line="+200"/>
         <source>Joined</source>
         <translation>参加済み</translation>
     </message>
@@ -1128,12 +1140,12 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>Session</name>
     <message>
-        <location filename="../src/session/session.cpp" line="+47"/>
+        <location filename="../src/session/session.cpp" line="+52"/>
         <source> — sign in to this workspace again to grant the new permission</source>
         <translation> — 新しい権限を付与するには、このワークスペースに再度サインインしてください</translation>
     </message>
     <message>
-        <location line="+300"/>
+        <location line="+304"/>
         <source>Couldn&apos;t send message: %1</source>
         <translation>メッセージを送信できませんでした: %1</translation>
     </message>
@@ -1206,13 +1218,13 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="+78"/>
-        <location line="+437"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="+79"/>
+        <location line="+462"/>
         <source>RAM used: %1</source>
         <translation>RAM使用量: %1</translation>
     </message>
     <message>
-        <location line="-406"/>
+        <location line="-431"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
@@ -1230,24 +1242,24 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
     </message>
     <message>
         <location line="-160"/>
-        <location line="+404"/>
+        <location line="+429"/>
         <source>AI assistance</source>
         <translation>AIアシスタンス</translation>
     </message>
     <message>
-        <location line="-403"/>
-        <location line="+221"/>
+        <location line="-428"/>
+        <location line="+246"/>
         <source>Storage</source>
         <translation>ストレージ</translation>
     </message>
     <message>
-        <location line="-220"/>
-        <location line="+326"/>
+        <location line="-245"/>
+        <location line="+351"/>
         <source>System</source>
         <translation>システム</translation>
     </message>
     <message>
-        <location line="-306"/>
+        <location line="-331"/>
         <source>Color theme</source>
         <translation>カラーテーマ</translation>
     </message>
@@ -1327,12 +1339,12 @@ under an &quot;N more...&quot; row at the bottom of each section.</source>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+59"/>
+        <location line="+84"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location line="-35"/>
+        <location line="-60"/>
         <source>Enable desktop notifications</source>
         <translation>デスクトップ通知を有効にする</translation>
     </message>
@@ -1357,7 +1369,17 @@ under an &quot;N more...&quot; row at the bottom of each section.</source>
         <translation>通知音を鳴らす</translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location line="+8"/>
+        <source>Sound:</source>
+        <translation>サウンド:</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Preview</source>
+        <translation>プレビュー</translation>
+    </message>
+    <message>
+        <location line="+57"/>
         <source>Cache size:</source>
         <translation>キャッシュサイズ:</translation>
     </message>
@@ -1492,7 +1514,7 @@ it is stored on this computer and sent only to that provider.</source>
         <translation>未接続</translation>
     </message>
     <message>
-        <location line="+588"/>
+        <location line="+611"/>
         <source>Last checked: %1</source>
         <translation>最終確認: %1</translation>
     </message>
@@ -1532,6 +1554,14 @@ it is stored on this computer and sent only to that provider.</source>
         <location line="+9"/>
         <source>Check failed: %1</source>
         <translation>確認に失敗しました: %1</translation>
+    </message>
+</context>
+<context>
+    <name>Sound</name>
+    <message>
+        <location filename="../src/util/sound_player.cpp" line="+53"/>
+        <source>msga chime</source>
+        <translation>msga チャイム</translation>
     </message>
 </context>
 <context>
