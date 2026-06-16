@@ -315,3 +315,18 @@ add_msga_widget_test(test_composer
 )
 
 
+
+# Sound player: shared logic + the platform-native backend for this OS.
+if(APPLE)
+    set(_sound_backend ${CMAKE_SOURCE_DIR}/src/util/sound_player_mac.mm)
+elseif(WIN32)
+    set(_sound_backend ${CMAKE_SOURCE_DIR}/src/util/sound_player_win.cpp)
+else()
+    set(_sound_backend ${CMAKE_SOURCE_DIR}/src/util/sound_player_linux.cpp)
+endif()
+add_msga_qt_test(test_sound_player
+    test_sound_player.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/sound_player.cpp
+    ${_sound_backend}
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)

@@ -10,6 +10,7 @@
 #include "cache/cache_evictor.h"
 #include "util/time_format.h"
 #include "util/process_stats.h"
+#include "util/sound_player.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -317,13 +318,38 @@ void SettingsDialog::buildPanel() {
     _notifSound = new QCheckBox(tr("Play a sound for notifications"), notifPage);
     nlay->addWidget(_notifSound);
 
-    // Disable level/sound when master toggle is off
+    // Sound chooser: bundled chime + OS system sounds (enumerated lazily on
+    // open), with a preview button. Populated in loadNotifications().
+    auto *soundRow = new QHBoxLayout;
+    soundRow->setContentsMargins(24, 0, 0, 0);
+    soundRow->setSpacing(8);
+    auto *soundLabel  = new QLabel(tr("Sound:"), notifPage);
+    _notifSoundChoice = new QComboBox(notifPage);
+    _notifSoundChoice->setMinimumWidth(220);
+    _notifSoundPreview = new QPushButton(tr("Preview"), notifPage);
+    _notifSoundPreview->setCursor(Qt::PointingHandCursor);
+    soundRow->addWidget(soundLabel);
+    soundRow->addWidget(_notifSoundChoice, 1);
+    soundRow->addWidget(_notifSoundPreview);
+    soundRow->addStretch();
+    nlay->addLayout(soundRow);
+
+    connect(_notifSoundPreview, &QPushButton::clicked, this, [this] {
+        Sound::Player::instance().play(_notifSoundChoice->currentData().toString());
+    });
+
+    // Disable level/sound when master toggle is off; the sound chooser also
+    // depends on the "play a sound" checkbox.
     auto updateEnabled = [this, levelBox]() {
-        const bool on = _notifEnabled->isChecked();
+        const bool on      = _notifEnabled->isChecked();
+        const bool soundOn = on && _notifSound->isChecked();
         levelBox->setEnabled(on);
         _notifSound->setEnabled(on);
+        _notifSoundChoice->setEnabled(soundOn);
+        _notifSoundPreview->setEnabled(soundOn);
     };
     connect(_notifEnabled, &QCheckBox::toggled, this, updateEnabled);
+    connect(_notifSound, &QCheckBox::toggled, this, updateEnabled);
 
     nlay->addStretch();
 
@@ -1166,10 +1192,31 @@ void SettingsDialog::loadNotifications() {
     _notifSound->setChecked(s.value("notifications/sound", true).toBool());
     const int level = s.value("notifications/level", 1).toInt();
     (level == 0 ? _notifAll : _notifMentions)->setChecked(true);
+
+    // (Re)populate the sound chooser — bundled sounds first, then the
+    // OS-enumerated system sounds. Enumeration is per-open so a freshly added
+    // system sound shows up.
+    _notifSoundChoice->clear();
+    auto &player = Sound::Player::instance();
+    for (const auto &e : player.bundledSounds())
+        _notifSoundChoice->addItem(e.label, e.id);
+    const auto sys = player.systemSounds();
+    if (!sys.empty()) {
+        _notifSoundChoice->insertSeparator(_notifSoundChoice->count());
+        for (const auto &e : sys)
+            _notifSoundChoice->addItem(e.label, e.id);
+    }
+    const QString soundId = s.value("notifications/soundId", Sound::Player::defaultId()).toString();
+    const int     idx     = _notifSoundChoice->findData(soundId);
+    _notifSoundChoice->setCurrentIndex(idx >= 0 ? idx : 0);
+
     // Sync enabled state of child controls
-    const bool on = _notifEnabled->isChecked();
+    const bool on      = _notifEnabled->isChecked();
+    const bool soundOn = on && _notifSound->isChecked();
     _notifAll->parentWidget()->setEnabled(on);
     _notifSound->setEnabled(on);
+    _notifSoundChoice->setEnabled(soundOn);
+    _notifSoundPreview->setEnabled(soundOn);
 }
 
 void SettingsDialog::saveNotifications() {
@@ -1177,6 +1224,8 @@ void SettingsDialog::saveNotifications() {
     s.setValue("notifications/enabled", _notifEnabled->isChecked());
     s.setValue("notifications/sound", _notifSound->isChecked());
     s.setValue("notifications/level", _notifAll->isChecked() ? 0 : 1);
+    if (_notifSoundChoice->currentIndex() >= 0)
+        s.setValue("notifications/soundId", _notifSoundChoice->currentData());
 }
 
 void SettingsDialog::loadAppearance() {

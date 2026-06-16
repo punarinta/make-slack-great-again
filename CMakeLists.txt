@@ -97,6 +97,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/util/emoji.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp
+    src/util/sound_player.cpp
     src/util/time_format.cpp
 
     # Cache
@@ -188,6 +189,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^
 endif()
 if(WIN32)
     target_link_libraries(msga PRIVATE dbghelp)
+endif()
+
+# Notification sound backend (src/util/sound_player*): platform-native audio,
+# no Qt Multimedia, so the static Linux binary keeps zero shared-lib deps.
+if(APPLE)
+    enable_language(OBJCXX)
+    target_sources(msga PRIVATE src/util/sound_player_mac.mm)
+    set_source_files_properties(src/util/sound_player_mac.mm
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(msga PRIVATE "-framework AppKit" "-framework Foundation")
+elseif(WIN32)
+    target_sources(msga PRIVATE src/util/sound_player_win.cpp)
+    target_link_libraries(msga PRIVATE winmm)
+else()
+    target_sources(msga PRIVATE src/util/sound_player_linux.cpp)
 endif()
 
 # AddressSanitizer + LeakSanitizer (MSGA_ASAN=ON). Fast (~2x) runtime detection

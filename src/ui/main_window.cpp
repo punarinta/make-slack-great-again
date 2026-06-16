@@ -37,6 +37,7 @@
 #include "app_credentials.h"
 
 #include "ui/icon_utils.h"
+#include "util/sound_player.h"
 
 #include <QDialog>
 #include <QEvent>
@@ -1544,6 +1545,11 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     _pendingNotifTeam = teamId;
     _pendingNotifConv = ev.conv;
     _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+
+    if (s.value("notifications/sound", true).toBool())
+        Sound::Player::instance().play(
+            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
+        );
 }
 
 void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs) {
