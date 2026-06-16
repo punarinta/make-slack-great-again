@@ -93,6 +93,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/text/mrkdwn_parser.cpp
 
     # Utilities
+    src/util/background_tasks.cpp
     src/util/emoji.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp

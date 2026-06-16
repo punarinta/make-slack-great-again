@@ -14,11 +14,14 @@
 #include "ui/user_profile_card/user_profile_card.h"
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
+#include "util/background_tasks.h"
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
 
 #include <QBuffer>
+#include <QImage>
 #include <QMovie>
+#include <QThreadPool>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QResizeEvent>
@@ -1751,6 +1754,72 @@ void MessageListWidget::downloadFileToUser(const File &file) {
     );
 }
 
+namespace {
+// Decode the image bytes on a thread-pool worker — a multi-megapixel decode can
+// take tens of ms and would otherwise hitch the GUI thread — then hop back to the
+// GUI thread for the clipboard set (QClipboard is GUI-thread-only) and to clear
+// the background task. Routed through qApp, not the widget, so the copy still
+// completes and the spinner still clears even if the message list is gone by then.
+void decodeImageToClipboardAsync(QByteArray data, int task) {
+    QThreadPool::globalInstance()->start([data = std::move(data), task]() mutable {
+        QImage     img;
+        const bool ok = img.loadFromData(data) && !img.isNull();
+        QMetaObject::invokeMethod(qApp, [img = std::move(img), ok, task]() mutable {
+            if (ok)
+                Clipboard::setImage(img);
+            BackgroundTasks::instance().end(task);
+        });
+    });
+}
+} // namespace
+
+void MessageListWidget::copyFullImageToClipboard(const File &file) {
+    if (file.urlPrivate.isEmpty())
+        return;
+
+    // Spinner runs from the click until the image lands on the clipboard. Every
+    // path funnels through decodeImageToClipboardAsync, which decodes off the GUI
+    // thread and ends the task (even on empty/invalid bytes).
+    const int task = BackgroundTasks::instance().begin();
+
+    // Pending upload — the original bytes live on disk.
+    if (file.urlPrivate.startsWith("file://")) {
+        QFile      f(QUrl(file.urlPrivate).toLocalFile());
+        QByteArray data;
+        if (f.open(QIODevice::ReadOnly))
+            data = f.readAll();
+        decodeImageToClipboardAsync(std::move(data), task);
+        return;
+    }
+
+    // Already downloaded in full once (e.g. opened in the viewer) — use the cache.
+    if (_session) {
+        const auto cached = _session->cachedImage(file.urlPrivate);
+        if (!cached.isEmpty()) {
+            decodeImageToClipboardAsync(cached, task);
+            return;
+        }
+    }
+
+    if (!_session) {
+        BackgroundTasks::instance().end(task);
+        return;
+    }
+    // Slow path: the bytes must come over the network.
+    _session->downloadFile(
+        file.urlPrivate,
+        [this, url = file.urlPrivate, task](QByteArray data) {
+            if (_session)
+                _session->cacheImage(url, data);
+            decodeImageToClipboardAsync(std::move(data), task);
+        },
+        [task](QString err) {
+            qWarning() << "Copy full image failed:" << err;
+            BackgroundTasks::instance().end(task);
+        }
+    );
+}
+
 void MessageListWidget::showFileContextMenu(
     const File &file, const Message &msg, const QPoint &globalPos
 ) {
@@ -1768,6 +1837,17 @@ void MessageListWidget::showFileContextMenu(
         false,
         ":/ui/link.svg"
     );
+
+    if (isImage && !file.urlPrivate.isEmpty()) {
+        menu->addItem(
+            tr("Copy full image"),
+            {},
+            [this, file] { copyFullImageToClipboard(file); },
+            false,
+            false,
+            ":/ui/copy.svg"
+        );
+    }
 
     const bool canDelete =
         _session && (msg.author == _session->meUserId() || _session->meIsAdmin());

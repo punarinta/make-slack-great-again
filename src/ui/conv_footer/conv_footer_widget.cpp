@@ -7,7 +7,9 @@
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "util/background_tasks.h"
 
+#include <QCursor>
 #include <QMouseEvent>
 #include <QPainter>
 
@@ -22,6 +24,10 @@ constexpr int kBottomPad = 14; // bottom inset — matches WorkspaceSwitcher::kB
 constexpr int   kAnimTickMs = 16;   // ~60 fps
 constexpr qreal kAnimStep   = 0.16; // per tick → cross-fade settles in ~100 ms
 constexpr int   kConfirmMs  = 5000; // revert the optimistic icon if the server never confirms
+
+constexpr int   kTaskGap     = 8;   // gap between the task spinner and the toggle button
+constexpr int   kSpinTickMs  = 16;  // ~60 fps
+constexpr qreal kSpinDegStep = 3.0; // per tick → full cog turn in ~2 s
 } // namespace
 
 ConvFooterWidget::ConvFooterWidget(ImageCache *imgCache, QWidget *parent)
@@ -37,6 +43,12 @@ ConvFooterWidget::ConvFooterWidget(ImageCache *imgCache, QWidget *parent)
     _confirmTimer.setSingleShot(true);
     // No confirmation in time (e.g. setPresence failed) → settle back to the truth.
     connect(&_confirmTimer, &QTimer::timeout, this, [this] { animateTo(_sp.manualAway); });
+
+    _taskTimer.setInterval(kSpinTickMs);
+    connect(&_taskTimer, &QTimer::timeout, this, &ConvFooterWidget::tickTaskSpin);
+    auto &tasks = BackgroundTasks::instance();
+    connect(&tasks, &BackgroundTasks::countChanged, this, &ConvFooterWidget::setTaskCount);
+    setTaskCount(tasks.count());
 }
 
 QString ConvFooterWidget::iconFor(bool hidden) {
@@ -73,12 +85,55 @@ QRect ConvFooterWidget::toggleRect() const {
     return QRect(width() - kPadH - kBtn, height() - kBottomPad - kBtn, kBtn, kBtn);
 }
 
+QRect ConvFooterWidget::tasksRect() const {
+    if (!hasTasks())
+        return {};
+    const int x = toggleRect().left() - kTaskGap - kBtn;
+    return QRect(x, height() - kBottomPad - kBtn, kBtn, kBtn);
+}
+
 ConvFooterWidget::Hot ConvFooterWidget::hitTest(const QPoint &pos) const {
     if (toggleRect().contains(pos))
         return Hot::Toggle;
+    if (hasTasks() && tasksRect().contains(pos))
+        return Hot::Tasks;
     if (avatarRect().contains(pos))
         return Hot::Avatar;
     return Hot::None;
+}
+
+void ConvFooterWidget::setTaskCount(int count) {
+    if (count == _taskCount)
+        return;
+    const bool wasRunning = _taskCount > 0;
+    _taskCount            = count;
+    if (_taskCount > 0 && !_taskTimer.isActive())
+        _taskTimer.start();
+    else if (_taskCount == 0 && _taskTimer.isActive())
+        _taskTimer.stop();
+    // Spinner just vanished from under the cursor — drop a now-stale tooltip,
+    // or refresh the count if it's still hovered.
+    if (_hot == Hot::Tasks) {
+        if (_taskCount == 0)
+            setHot(hitTest(mapFromGlobal(QCursor::pos())));
+        else
+            _tooltip->showAbove(
+                tasksTooltip(), QRect(mapToGlobal(tasksRect().topLeft()), tasksRect().size())
+            );
+    }
+    if (wasRunning != (_taskCount > 0))
+        update();
+}
+
+void ConvFooterWidget::tickTaskSpin() {
+    _taskAngle += kSpinDegStep;
+    if (_taskAngle >= 360.0)
+        _taskAngle -= 360.0;
+    update();
+}
+
+QString ConvFooterWidget::tasksTooltip() const {
+    return tr("%n background task(s) running", "", _taskCount);
 }
 
 void ConvFooterWidget::setUser(const QString &displayName, const QString &avatarUrl) {
@@ -185,17 +240,39 @@ void ConvFooterWidget::paintEvent(QPaintEvent *) {
     } else {
         NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_displayHidden));
     }
+
+    // Background-task spinner — same ghost chrome, with a continuously rotating cog.
+    if (hasTasks()) {
+        const QRectF taskR = tasksRect();
+        const bool   thov  = (_hot == Hot::Tasks);
+        NavGhostButton::paintChrome(p, taskR, thov, kRadius);
+        const qreal   dim = taskR.width() * 0.52;
+        const int     sz  = qMax(1, qRound(dim));
+        const QPixmap px  = svgPixmap(
+            QStringLiteral(":/ui/cog.svg"), QSize(sz, sz), NavGhostButton::iconColor(thov)
+        );
+        p.save();
+        p.translate(taskR.center());
+        p.rotate(_taskAngle);
+        p.drawPixmap(QRectF(-dim / 2.0, -dim / 2.0, dim, dim).toRect(), px);
+        p.restore();
+    }
 }
 
 void ConvFooterWidget::setHot(Hot hot) {
     if (_hot == hot)
         return;
-    _hot = hot;
-    setCursor(hot == Hot::None ? Qt::ArrowCursor : Qt::PointingHandCursor);
+    _hot                 = hot;
+    // The spinner is a status indicator, not a button — keep the arrow over it.
+    const bool clickable = (hot == Hot::Avatar || hot == Hot::Toggle);
+    setCursor(clickable ? Qt::PointingHandCursor : Qt::ArrowCursor);
 
     if (hot == Hot::Toggle) {
         const QRect r = toggleRect();
         _tooltip->showAbove(presenceTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
+    } else if (hot == Hot::Tasks) {
+        const QRect r = tasksRect();
+        _tooltip->showAbove(tasksTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else if (hot == Hot::Avatar) {
         const QRect r = avatarRect();
         _tooltip->showAbove(tr("Manage profile"), QRect(mapToGlobal(r.topLeft()), r.size()));

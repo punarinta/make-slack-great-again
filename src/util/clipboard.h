@@ -4,12 +4,17 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QImage>
 #include <QString>
 
 namespace Clipboard {
 
 inline void setText(const QString &text) {
     QApplication::clipboard()->setText(text);
+}
+
+inline void setImage(const QImage &image) {
+    QApplication::clipboard()->setImage(image);
 }
 
 } // namespace Clipboard

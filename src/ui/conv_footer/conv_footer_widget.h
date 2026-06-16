@@ -50,14 +50,19 @@ protected:
     void leaveEvent(QEvent *) override;
 
 private:
-    enum class Hot { None, Avatar, Toggle };
+    enum class Hot { None, Avatar, Toggle, Tasks };
 
     QRect   avatarRect() const;
     QRect   toggleRect() const;
+    // Rounded-square indicator left of the toggle; only present while background
+    // tasks are running (null rect otherwise, so it never gets hit-tested).
+    QRect   tasksRect() const;
+    bool    hasTasks() const { return _taskCount > 0; }
     Hot     hitTest(const QPoint &) const;
     void    setHot(Hot);
     void    loadAvatar();
     QString presenceTooltip() const;
+    QString tasksTooltip() const;
 
     // Cross-fade the toggle icon toward `hidden`. Used both optimistically on
     // click (instant feedback) and to settle on the authoritative state.
@@ -82,4 +87,11 @@ private:
     qreal  _animProgress  = 1.0; // 1.0 = settled (no cross-fade in flight)
     QTimer _animTimer;
     QTimer _confirmTimer; // safety: revert the optimistic icon if no server confirmation arrives
+
+    // Background-task spinner (rotating cog) shown while BackgroundTasks::count() > 0.
+    int    _taskCount = 0;
+    qreal  _taskAngle = 0.0; // current cog rotation, degrees
+    QTimer _taskTimer;
+    void   setTaskCount(int count);
+    void   tickTaskSpin();
 };

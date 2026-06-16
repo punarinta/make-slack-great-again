@@ -146,6 +146,9 @@ private:
     void         openEmojiPickerForRow(int row, const QPoint &globalPos);
     void         showMessageContextMenu(const Message &msg, const QPoint &globalPos);
     void         downloadFileToUser(const File &file);
+    // Copy the full-resolution image (not the preview thumbnail) to the clipboard,
+    // fetching it from disk / cache / network as needed.
+    void         copyFullImageToClipboard(const File &file);
     void         showFileContextMenu(const File &file, const Message &msg, const QPoint &globalPos);
     // Open the full-window in-app viewer for a file preview (image / PDF page),
     // then fetch the full-resolution image for real images.

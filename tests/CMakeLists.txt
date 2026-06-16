@@ -62,6 +62,13 @@ add_msga_test(test_nav_history
     test_nav_history.cpp
 )
 
+add_msga_test(test_background_tasks
+    test_background_tasks.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/background_tasks.cpp
+)
+# BackgroundTasks is a Q_OBJECT — needs moc.
+set_target_properties(test_background_tasks PROPERTIES AUTOMOC ON)
+
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
