@@ -597,6 +597,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         }
         if (_session)
             _emojiPicker->setSession(_session);
+        _emojiPicker->setImageCache(_imgCache);
         const QPoint pos = emojiBtn->mapToGlobal(QPoint(0, -_emojiPicker->sizeHint().height() - 4));
         _emojiPicker->open(pos);
     });
@@ -1156,6 +1157,7 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                     }
                     if (_session)
                         _emojiPicker->setSession(_session);
+                    _emojiPicker->setImageCache(_imgCache);
                     const QRect  cursorRect = _edit->cursorRect();
                     const QPoint pos = _edit->mapToGlobal(cursorRect.topLeft()) - QPoint(0, 320);
                     _emojiPicker->open(pos);

@@ -2,22 +2,21 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "emoji_picker_popup.h"
 #include "session/session.h"
+#include "ui/image_cache.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
 
-#include <QVBoxLayout>
-#include <QGridLayout>
-#include <QLineEdit>
-#include <QScrollArea>
-#include <QScrollBar>
-#include <QToolButton>
-#include <QFont>
-#include <QIcon>
 #include <QKeyEvent>
+#include <QLineEdit>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QPixmap>
-#include <QPointer>
+#include <QResizeEvent>
+#include <QScrollBar>
+#include <QVBoxLayout>
 
 #include <algorithm>
 
@@ -223,7 +222,234 @@ static const QStringList kBaseEmojiNames{
 // Full popup size; height shrinks below kFullHeight to fit a short filtered list.
 static constexpr int kFullWidth  = 300;
 static constexpr int kFullHeight = 340;
-static constexpr int kCols       = 8; // emoji per grid row
+
+// ── EmojiGrid ────────────────────────────────────────────────────────────────
+
+EmojiGrid::EmojiGrid(QWidget *parent) : VirtualListWidget(parent) {
+    _emojiFont = emojiFont(20);
+    verticalScrollBar()->setSingleStep(kRowH);
+}
+
+void EmojiGrid::setImageCache(ImageCache *cache) {
+    if (_imgCache == cache)
+        return;
+    if (_imgCache)
+        disconnect(_imgCache, nullptr, this, nullptr);
+    _imgCache = cache;
+    if (_imgCache) {
+        // Repaint when a custom-emoji image finishes downloading. The popup is
+        // tiny, so an unconditional viewport update is cheaper than tracking
+        // which visible cell the url belongs to.
+        connect(_imgCache, &ImageCache::loaded, this, [this](const QString &) {
+            viewport()->update();
+        });
+    }
+}
+
+int EmojiGrid::rowCount() const {
+    return (count() + kCols - 1) / kCols;
+}
+
+int EmojiGrid::contentHeight() const {
+    const int rows = rowCount();
+    if (rows == 0)
+        return 0;
+    return kMargin * 2 + rows * kCell + (rows - 1) * kSpacing;
+}
+
+QRect EmojiGrid::cellRect(int idx) const {
+    const int row = idx / kCols;
+    const int col = idx % kCols;
+    return QRect(kMargin + col * kRowH, kMargin + row * kRowH, kCell, kCell);
+}
+
+int EmojiGrid::cellAt(const QPoint &vp) const {
+    const int x = vp.x() - kMargin;
+    const int y = vp.y() + verticalScrollBar()->value() - kMargin;
+    if (x < 0 || y < 0)
+        return -1;
+    const int col = x / kRowH;
+    const int row = y / kRowH;
+    if (col >= kCols)
+        return -1;
+    // Reject the spacing gutters between cells.
+    if (x % kRowH >= kCell || y % kRowH >= kCell)
+        return -1;
+    const int idx = row * kCols + col;
+    return idx < count() ? idx : -1;
+}
+
+void EmojiGrid::updateScrollRange() {
+    auto     *sb = verticalScrollBar();
+    const int vh = viewport()->height();
+    sb->setRange(0, std::max(0, contentHeight() - vh));
+    sb->setPageStep(vh);
+}
+
+void EmojiGrid::ensureVisible(int idx) {
+    if (idx < 0 || idx >= count())
+        return;
+    auto       *sb = verticalScrollBar();
+    const QRect cr = cellRect(idx);
+    const int   vh = viewport()->height();
+    if (cr.top() - kMargin < sb->value())
+        sb->setValue(cr.top() - kMargin);
+    else if (cr.bottom() + kMargin > sb->value() + vh)
+        sb->setValue(cr.bottom() + kMargin - vh);
+}
+
+void EmojiGrid::setCells(QVector<Cell> cells) {
+    _cells = std::move(cells);
+    _hover = -1;
+    verticalScrollBar()->setValue(0);
+    updateScrollRange();
+    // Pre-select the first match so Enter picks the top hit while typing.
+    _sel = _cells.isEmpty() ? -1 : 0;
+    viewport()->update();
+}
+
+void EmojiGrid::setSelected(int idx) {
+    if (idx < 0 || idx >= count()) {
+        if (_sel != -1) {
+            _sel = -1;
+            viewport()->update();
+        }
+        return;
+    }
+    _sel = idx;
+    ensureVisible(_sel);
+    viewport()->update();
+}
+
+void EmojiGrid::moveSelection(int delta) {
+    if (_cells.isEmpty())
+        return;
+    const int base = _sel < 0 ? 0 : _sel;
+    setSelected(std::clamp(base + delta, 0, count() - 1));
+}
+
+void EmojiGrid::activateSelected() {
+    if (_sel >= 0 && _sel < count())
+        emit emojiActivated(_cells[_sel].name);
+}
+
+void EmojiGrid::doPaint(QPaintEvent *) {
+    QPainter p(viewport());
+    p.fillRect(viewport()->rect(), Th::c().surface.raised);
+    if (_cells.isEmpty())
+        return;
+
+    const int scrollY = verticalScrollBar()->value();
+    const int vh      = viewport()->height();
+
+    // Only the rows intersecting the viewport are painted.
+    const int firstRow = std::max(0, (scrollY - kMargin) / kRowH);
+    const int lastRow  = (scrollY + vh - kMargin) / kRowH;
+    const int first    = firstRow * kCols;
+    const int last     = std::min(count() - 1, (lastRow + 1) * kCols - 1);
+
+    const qreal dpr = devicePixelRatioF();
+
+    for (int i = first; i <= last; ++i) {
+        const QRect cr = cellRect(i).translated(0, -scrollY);
+
+        if (i == _sel || i == _hover) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(Th::c().surface.highlight);
+            p.drawRoundedRect(cr, 4, 4);
+        }
+
+        const Cell &c = _cells[i];
+        if (!c.glyph.isEmpty()) {
+            p.setFont(_emojiFont);
+            p.setPen(Th::c().text.primary);
+            p.drawText(cr, Qt::AlignCenter, c.glyph);
+        } else if (!c.imageUrl.isEmpty() && _imgCache) {
+            // Lazily fetched — only visible custom emojis ever hit the cache/network.
+            const QPixmap px = _imgCache->get(c.imageUrl);
+            if (!px.isNull()) {
+                constexpr int side   = 22;
+                QPixmap       scaled = px.scaled(
+                    QSize(side, side) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation
+                );
+                scaled.setDevicePixelRatio(dpr);
+                const QSizeF ls = scaled.deviceIndependentSize();
+                const int    x  = cr.x() + qRound((cr.width() - ls.width()) / 2.0);
+                const int    y  = cr.y() + qRound((cr.height() - ls.height()) / 2.0);
+                p.drawPixmap(QPoint(x, y), scaled);
+            }
+        }
+    }
+
+    paintScrollThumb(p, contentHeight(), QColor(0, 0, 0, 80));
+}
+
+void EmojiGrid::doMousePress(QMouseEvent *event) {
+    const QPoint pos = event->pos();
+
+    // Scrollbar thumb drag (thin overlay thumb on the right edge).
+    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    if (pos.x() >= sbHitX && isOnScrollThumb(pos.y(), contentHeight())) {
+        _sbDragging        = true;
+        _sbDragStartY      = pos.y();
+        _sbDragStartScroll = verticalScrollBar()->value();
+        return;
+    }
+
+    const int idx = cellAt(pos);
+    if (idx >= 0) {
+        _sel = idx;
+        activateSelected();
+    }
+}
+
+void EmojiGrid::doMouseMove(QMouseEvent *event) {
+    const QPoint pos = event->pos();
+
+    if (_sbDragging) {
+        const int vh     = viewport()->height();
+        const int totalH = contentHeight();
+        const int thumbH = std::max(20, totalH > 0 ? vh * vh / totalH : vh);
+        const int denom  = vh - thumbH;
+        if (denom > 0) {
+            const int newScroll =
+                _sbDragStartScroll + (pos.y() - _sbDragStartY) * (totalH - vh) / denom;
+            verticalScrollBar()->setValue(std::clamp(newScroll, 0, verticalScrollBar()->maximum()));
+        }
+        return;
+    }
+
+    const int idx = cellAt(pos);
+    if (idx != _hover) {
+        _hover = idx;
+        viewport()->update();
+    }
+}
+
+void EmojiGrid::doMouseRelease(QMouseEvent *) {
+    _sbDragging = false;
+}
+
+void EmojiGrid::doMouseLeave() {
+    if (_hover != -1) {
+        _hover = -1;
+        viewport()->update();
+    }
+}
+
+void EmojiGrid::scrollContentsBy(int, int) {
+    // The hovered index was computed against the old scroll offset; drop it so a
+    // wheel scroll doesn't leave a highlight stuck on a cell the cursor left.
+    _hover = -1;
+    viewport()->update();
+}
+
+void EmojiGrid::resizeEvent(QResizeEvent *event) {
+    VirtualListWidget::resizeEvent(event);
+    updateScrollRange();
+}
+
+// ── EmojiPickerPopup ───────────────────────────────────────────────────────-─
 
 EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint) {
@@ -248,29 +474,27 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     }
     lay->addWidget(_search);
 
-    _scroll = new QScrollArea(this);
-    _scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    _scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    _scroll->setWidgetResizable(true);
-    lay->addWidget(_scroll, 1);
-
-    _grid = new QWidget;
-    _grid->setStyleSheet("background: transparent;");
-    _scroll->setWidget(_grid);
+    _grid = new EmojiGrid(this);
+    lay->addWidget(_grid, 1);
 
     // Drive grid navigation from keys typed in the search field.
     _search->installEventFilter(this);
 
-    buildGrid();
+    connect(_grid, &EmojiGrid::emojiActivated, this, [this](const QString &name) {
+        hide();
+        emit emojiSelected(name);
+    });
 
     connect(_search, &QLineEdit::textChanged, this, [this](const QString &text) {
-        buildGrid(text.trimmed());
+        rebuild(text.trimmed());
     });
 
     applyTheme();
     connect(
         &ThemeManager::instance(), &ThemeManager::themeChanged, this, &EmojiPickerPopup::applyTheme
     );
+
+    rebuild();
 }
 
 void EmojiPickerPopup::applyTheme() {
@@ -289,19 +513,6 @@ void EmojiPickerPopup::applyTheme() {
                       "  background: %1;"
                       "}"
                       "QLineEdit:focus { border-color: %4; }"
-                      "QScrollArea { border: none; background: transparent; }"
-                      "QScrollArea > QWidget > QWidget { background: transparent; }"
-                      // Thin rounded thumb matching the chat list (paintScrollThumb):
-                      // 8px track, 2px margins → 4px visible thumb, on the light surface.
-                      "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
-                      "QScrollBar::handle:vertical {"
-                      "  background: %6; border-radius: 2px; min-height: 20px; margin: 2px;"
-                      "}"
-                      "QScrollBar::handle:vertical:hover { background: %7; }"
-                      "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
-                      "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-                      "  background: transparent;"
-                      "}"
     )
                       .arg(
                           Th::qss(Th::c().surface.raised),
@@ -309,153 +520,67 @@ void EmojiPickerPopup::applyTheme() {
                           Th::qss(Th::c().text.primary),
                           Th::qss(Th::c().accent.def)
                       )
-                      .arg(Th::c().fonts.md)
-                      .arg(Th::qss(QColor(0, 0, 0, 80)), Th::qss(QColor(0, 0, 0, 140))));
+                      .arg(Th::c().fonts.md));
 }
 
 void EmojiPickerPopup::setSession(Session *session) {
     _session = session;
 }
 
+void EmojiPickerPopup::setImageCache(ImageCache *cache) {
+    _grid->setImageCache(cache);
+}
+
 void EmojiPickerPopup::open(const QPoint &globalPos) {
     _search->clear();
-    buildGrid();
+    rebuild();
     move(globalPos);
     show();
     raise();
     _search->setFocus();
 }
 
-void EmojiPickerPopup::buildGrid(const QString &filter) {
-    // Drop references to the about-to-be-deleted buttons before destroying them
-    // so the selection helpers never touch dangling pointers.
-    _btns.clear();
-    _sel = -1;
+void EmojiPickerPopup::rebuild(const QString &filter) {
+    QVector<EmojiGrid::Cell> cells;
 
-    delete _grid->layout();
-    const auto children = _grid->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
-    for (QWidget *c : children)
-        delete c;
-
-    auto *gridLay = new QGridLayout(_grid);
-    gridLay->setContentsMargins(2, 2, 2, 2);
-    gridLay->setSpacing(2);
-
-    int col = 0, row = 0;
-
-    _btnBaseStyle = QString(
-                        "QToolButton { border: none; border-radius: 4px; background: transparent; }"
-                        "QToolButton:hover { background: %1; }"
-    )
-                        .arg(Th::qss(Th::c().surface.highlight));
-    _btnSelStyle = QString("QToolButton { border: none; border-radius: 4px; background: %1; }")
-                       .arg(Th::qss(Th::c().surface.highlight));
-
-    auto makeBtn = [&](const QString &name) -> QToolButton * {
-        auto *btn = new QToolButton(_grid);
-        btn->setFixedSize(32, 32);
-        btn->setToolTip(name);
-        btn->setFocusPolicy(Qt::NoFocus);
-        btn->setCursor(Qt::PointingHandCursor);
-        btn->setStyleSheet(_btnBaseStyle);
-        connect(btn, &QToolButton::clicked, this, [this, name] {
-            hide();
-            emit emojiSelected(name);
-        });
-        gridLay->addWidget(btn, row, col);
-        _btns.push_back(btn);
-        if (++col >= kCols) {
-            col = 0;
-            ++row;
-        }
-        return btn;
-    };
-
-    // Custom emoji from session — shown as downloaded images.
+    // Custom emoji from the session — shown as downloaded images, pulled lazily
+    // from the shared ImageCache as cells scroll into view.
     if (_session) {
         const auto &emap = _session->emojiMap();
         for (auto it = emap.begin(); it != emap.end(); ++it) {
-            const QString name = it.key();
-            const QString url  = it.value();
+            const QString &name = it.key();
+            const QString &url  = it.value();
             if (url.startsWith("alias:"))
                 continue;
             if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive))
                 continue;
-
-            auto *btn = makeBtn(name);
-            btn->setIconSize(QSize(22, 22));
-
-            const QByteArray cached = _session->cachedImage(url);
-            if (!cached.isEmpty()) {
-                QPixmap px;
-                if (px.loadFromData(cached) && !px.isNull())
-                    btn->setIcon(QIcon(px));
-            } else {
-                QPointer<QToolButton> weak = btn;
-                _session->downloadFile(url, [this, url, weak](QByteArray data) {
-                    if (_session)
-                        _session->cacheImage(url, data);
-                    if (!weak)
-                        return;
-                    QPixmap px;
-                    if (px.loadFromData(data) && !px.isNull())
-                        weak->setIcon(QIcon(px));
-                });
-            }
+            cells.push_back({name, {}, url});
         }
     }
 
-    // Base Unicode emoji — rendered via platform color emoji font.
-    static const QFont kEmojiFont = emojiFont(20);
-    for (const QString &name : std::as_const(kBaseEmojiNames)) {
+    // Base Unicode emoji. With no filter we show a curated, sensibly-ordered
+    // subset (the default browse view); once the user types we search the whole
+    // built-in database (matching the composer's ":code" completion), so e.g.
+    // "pill" surfaces 💊 even though it's not in the curated list.
+    const QStringList &baseNames = filter.isEmpty() ? kBaseEmojiNames : Emoji::allNames();
+    for (const QString &name : baseNames) {
         if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive))
             continue;
         const QString ch = Emoji::fromName(name);
         if (ch.startsWith(':'))
             continue; // skip unknown names
-        auto *btn = makeBtn(name);
-        btn->setFont(kEmojiFont);
-        btn->setText(ch);
+        cells.push_back({name, ch, {}});
     }
 
-    _grid->adjustSize();
+    _grid->setCells(std::move(cells));
 
     // Auto-size the popup height to the rendered grid (capped at the full
     // height, where the scroll bar takes over) so a short filtered list
     // doesn't leave empty space below the last row.
-    const int rows  = row + (col > 0 ? 1 : 0);
-    const int gridH = rows > 0 ? rows * 32 + (rows - 1) * 2 + 4 /*grid margins*/ : 4;
-
-    // Chrome around the scroll area: layout top/bottom margins (8+8), the
-    // fixed-height search field, and the 6px spacing below it.
     const int chrome   = 8 + _search->height() + 6 + 8;
     const int maxGridH = kFullHeight - chrome;
+    const int gridH    = std::max(_grid->contentHeight(), 4);
     setFixedHeight(chrome + std::min(gridH, maxGridH));
-
-    // Pre-select the first match so Enter picks the top hit while typing.
-    setSelected(_btns.isEmpty() ? -1 : 0);
-}
-
-void EmojiPickerPopup::setSelected(int idx) {
-    if (_sel >= 0 && _sel < _btns.size() && _btns[_sel])
-        _btns[_sel]->setStyleSheet(_btnBaseStyle);
-
-    if (idx < 0 || idx >= _btns.size()) {
-        _sel = -1;
-        return;
-    }
-    _sel = idx;
-    if (_btns[_sel]) {
-        _btns[_sel]->setStyleSheet(_btnSelStyle);
-        _scroll->ensureWidgetVisible(_btns[_sel], 0, 8);
-    }
-}
-
-void EmojiPickerPopup::moveSelection(int delta) {
-    if (_btns.isEmpty())
-        return;
-    const int base = _sel < 0 ? 0 : _sel;
-    setSelected(std::clamp(base + delta, 0, static_cast<int>(_btns.size()) - 1));
 }
 
 bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
@@ -467,20 +592,19 @@ bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
             return true;
         case Qt::Key_Return:
         case Qt::Key_Enter:
-            if (_sel >= 0 && _sel < _btns.size() && _btns[_sel])
-                _btns[_sel]->click();
+            _grid->activateSelected();
             return true;
         case Qt::Key_Up:
-            moveSelection(-kCols);
+            _grid->moveSelection(-_grid->columns());
             return true;
         case Qt::Key_Down:
-            moveSelection(kCols);
+            _grid->moveSelection(_grid->columns());
             return true;
         case Qt::Key_Left:
-            moveSelection(-1);
+            _grid->moveSelection(-1);
             return true;
         case Qt::Key_Right:
-            moveSelection(1);
+            _grid->moveSelection(1);
             return true;
         default:
             break;

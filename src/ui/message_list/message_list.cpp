@@ -52,6 +52,7 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 
     _tooltip     = new PopupTooltip(this);
     _emojiPicker = new EmojiPickerPopup(this);
+    _emojiPicker->setImageCache(_imgCache);
 
     _profileCard = new UserProfileCard(this);
     connect(_profileCard, &UserProfileCard::messageRequested, this, [this](UserId user) {
