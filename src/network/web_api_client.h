@@ -56,6 +56,17 @@ public:
     using OnTokenExpired = std::function<void(std::function<void(bool)>)>;
     void setOnTokenExpired(OnTokenExpired fn);
 
+    // Fail every queued (not-yet-sent) call with `error`, emptying the queue.
+    // For use when auth is definitively lost: pending calls would otherwise sit
+    // in the queue forever, and any self-referential continuation they hold
+    // (notably paginate's Ctx, whose cycle is only broken by its own
+    // onError/onDone) would leak. The token_expired drain handles the client
+    // that actually received the expiry, but a *proactive* refresh that fails
+    // leaves no such waiter — so the backend calls this on every client. The
+    // in-flight call (if any) is left alone: its reply is already pending and
+    // will run its own error/success path.
+    void failAllPending(const QString &error);
+
     // Single-call: fires onSuccess with the full response object.
     // quietErrors: suppress the generic Slack-error warning — for call sites
     // that expect routine failures and do their own logging.

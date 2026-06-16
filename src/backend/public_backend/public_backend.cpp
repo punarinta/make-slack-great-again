@@ -101,6 +101,16 @@ void PublicBackend::triggerRefresh(std::function<void(bool)> done) {
             // Credentials definitively rejected — stop retrying, show login.
             if (_proactiveRefreshTimer)
                 _proactiveRefreshTimer->stop();
+            // Drain every client's pending queue before tearing anything down.
+            // The token_expired waiters above only drain the client that
+            // actually got the expiry; a refresh kicked off proactively (no-op
+            // waiter) leaves queued calls — and their self-referential paginate
+            // Ctx — orphaned forever. Done before force_assign so the queues are
+            // emptied while the backend is still alive (force_assign may notify
+            // subscribers that tear the session down synchronously).
+            _api->failAllPending("token_expired");
+            _historyApi->failAllPending("token_expired");
+            _infoApi->failAllPending("token_expired");
             _authState.force_assign(AuthState::NotLoggedIn);
         }
         // TransientError: stay logged in — the periodic check retries within 60 s.

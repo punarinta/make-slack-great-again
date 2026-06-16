@@ -84,6 +84,20 @@ void WebApiClient::setOnTokenExpired(OnTokenExpired fn) {
     _onTokenExpired = std::move(fn);
 }
 
+void WebApiClient::failAllPending(const QString &error) {
+    // Drain into a local queue first: an onError handler may legitimately
+    // re-enqueue (a retry), and we must not loop over our own _queue while it's
+    // being appended to.
+    QQueue<PendingCall> pending;
+    pending.swap(_queue);
+    _throttled = false; // nothing left to wait for
+    while (!pending.isEmpty()) {
+        auto c = pending.dequeue();
+        if (c.onError)
+            c.onError(error);
+    }
+}
+
 void WebApiClient::setBaseUrl(const QString &url) {
     _baseUrl = url;
 }

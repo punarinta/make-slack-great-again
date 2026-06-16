@@ -170,6 +170,41 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     RefreshFixture,
+    "WebApiClient: failAllPending errors queued calls and leaves the in-flight one",
+    "[token_refresh][webclient]"
+) {
+    // Regression: a proactive refresh that ends in AuthError has only a no-op
+    // waiter, so it never drains the queue via the token_expired path. Queued
+    // calls — and the self-referential paginate Ctx they hold — would leak
+    // unless the backend fails them explicitly. failAllPending is that drain.
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true})"); // response for the in-flight call
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("token");
+
+    int ok1 = 0, err1 = 0, ok2 = 0, err2 = 0;
+    // Single in-flight slot: method.one starts executing, method.two queues
+    // behind it. No event-loop pump yet, so method.one's reply hasn't arrived.
+    client.call("method.one", {}, [&](QJsonObject) { ok1++; }, [&](QString) { err1++; });
+    client.call("method.two", {}, [&](QJsonObject) { ok2++; }, [&](QString) { err2++; });
+
+    client.failAllPending("token_expired");
+
+    // The queued call errors synchronously; the in-flight call is untouched.
+    CHECK(err2 == 1);
+    CHECK(ok2 == 0);
+    CHECK(err1 == 0);
+
+    // The in-flight call still completes normally afterwards.
+    REQUIRE(waitFor([&] { return ok1 == 1; }));
+    CHECK(err1 == 0);
+    CHECK(err2 == 1); // not drained twice
+}
+
+TEST_CASE_METHOD(
+    RefreshFixture,
     "WebApiClient: token_expired without handler is treated as a regular error",
     "[token_refresh][webclient]"
 ) {
