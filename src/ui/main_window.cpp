@@ -23,6 +23,7 @@
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
+#include "message_list/message_render.h"
 #include "canvas_page/canvas_page.h"
 #include "conv_tabs/conv_tabs_widget.h"
 #include "welcome_tips/welcome_widget.h"
@@ -1520,13 +1521,16 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
         sender ? (sender->displayName.isEmpty() ? sender->name : sender->displayName)
                : tr("Someone");
 
+    // Resolve mentions/channels/emoji codes to friendly names for the OS toast.
+    const QString preview = MsgRender::notificationText(ev.msg.text, session);
+
     QString title, body;
     if (isDm) {
         title = senderName;
-        body  = ev.msg.text.text;
+        body  = preview;
     } else {
         title = "#" + conv->name;
-        body  = senderName + ": " + ev.msg.text.text;
+        body  = senderName + ": " + preview;
     }
     // Say which workspace it came from when it isn't the one on screen.
     if (teamId != _activeTeamId) {

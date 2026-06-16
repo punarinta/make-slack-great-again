@@ -381,10 +381,15 @@ struct RenderStubBackend : Backend {
 static Session *renderSession() {
     auto        *stub = new RenderStubBackend;
     Conversation c;
-    c.id          = ConversationId{"C1"};
-    c.name        = "general";
-    c.kind        = ConvKind::PublicChannel;
-    stub->_convs  = std::vector<Conversation>{c};
+    c.id         = ConversationId{"C1"};
+    c.name       = "general";
+    c.kind       = ConvKind::PublicChannel;
+    stub->_convs = std::vector<Conversation>{c};
+    User u;
+    u.id          = UserId{"U7"};
+    u.name        = "alice";
+    u.displayName = "Alice";
+    stub->_users  = std::vector<User>{u};
     auto *session = new Session(std::unique_ptr<Backend>(stub), "T_TEST");
     session->start();
     return session;
@@ -409,4 +414,42 @@ TEST_CASE("toHtml resolves a bare channel link via the session", "[render][chann
     CHECK(html.contains("#general"));
     CHECK(!html.contains("#C1"));
     delete session;
+}
+
+// ── notificationText (OS toast preview) ───────────────────────────────────────
+
+TEST_CASE("notificationText converts builtin emoji codes to glyphs", "[render][notif]") {
+    const QString out =
+        MsgRender::notificationText(MrkdwnParser::parse("ship it :rocket:"), nullptr);
+    CHECK(out == QString::fromUtf8("ship it 🚀"));
+    CHECK(!out.contains(":rocket:"));
+}
+
+TEST_CASE("notificationText resolves a bare channel link via the session", "[render][notif]") {
+    auto         *session = renderSession();
+    const QString out     = MsgRender::notificationText(MrkdwnParser::parse("join <#C1>"), session);
+    CHECK(out == "join #general");
+    delete session;
+}
+
+TEST_CASE("notificationText keeps a labeled mention's name and drops the id", "[render][notif]") {
+    // Without a session, the parser's baked label survives; the raw id never shows.
+    const QString out =
+        MsgRender::notificationText(MrkdwnParser::parse("hey <@U7|alice> ping"), nullptr);
+    CHECK(out == "hey alice ping");
+    CHECK(!out.contains("U7"));
+}
+
+TEST_CASE("notificationText resolves a bare mention via the session", "[render][notif]") {
+    auto         *session = renderSession();
+    const QString out     = MsgRender::notificationText(MrkdwnParser::parse("ping <@U7>"), session);
+    CHECK(out == "ping @Alice");
+    CHECK(!out.contains("U7"));
+    delete session;
+}
+
+TEST_CASE("notificationText leaves unknown custom emoji as a code", "[render][notif]") {
+    const QString out =
+        MsgRender::notificationText(MrkdwnParser::parse("lunch? :no-lunch:"), nullptr);
+    CHECK(out.contains(":no-lunch:"));
 }

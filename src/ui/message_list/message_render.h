@@ -67,6 +67,12 @@ QString lastReplyLabel(const Ts &ts);
 QString resolveMention(const QString &userId, const Session *session);
 QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
 
+// Plain-text rendering for OS notifications / previews: resolves user and
+// channel mentions to their display names and built-in emoji codes to their
+// Unicode glyph (custom emoji, which can't render in a text-only notification,
+// stay as ":name:"). No HTML, no markup — just readable text.
+QString notificationText(const TextWithEntities &twe, const Session *session);
+
 // Geometry (doc coordinates, margins excluded) of every ``` code-block table in a
 // laid-out message document.
 QVector<QRectF> codeBlockRects(const QTextDocument *doc);

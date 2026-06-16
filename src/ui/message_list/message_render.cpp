@@ -218,6 +218,66 @@ resolveChannelImpl(const QString &channelId, const QString &fallback, const Sess
     return fallback;
 }
 
+QString notificationText(const TextWithEntities &twe, const Session *session) {
+    // Walk the leaf entities that change the displayed text — mentions, channel
+    // links and emoji — and substitute their resolved form into the parsed plain
+    // text. Container entities (bold/italic/links/quotes) don't alter the text,
+    // so they're ignored. Leaf spans never overlap each other, so a single
+    // left-to-right rebuild is safe. Only ever called when a notification fires.
+    struct Repl {
+        int     offset;
+        int     length;
+        QString text;
+    };
+    std::vector<Repl> repls;
+    for (const auto &e : twe.entities) {
+        switch (e.type) {
+        case EntityType::UserMention: {
+            // Prefer the live cache; fall back to the parser's baked text (the
+            // "<@U7|alice>" label, or "@U7" for a bare mention) when uncached.
+            const User *u = session ? session->findUser(UserId{e.data}) : nullptr;
+            repls.push_back(
+                {e.offset,
+                 e.length,
+                 u ? ("@" + u->displayLabel()) : twe.text.mid(e.offset, e.length)}
+            );
+            break;
+        }
+        case EntityType::ChannelMention:
+            repls.push_back(
+                {e.offset,
+                 e.length,
+                 resolveChannelImpl(e.data, twe.text.mid(e.offset, e.length), session)}
+            );
+            break;
+        case EntityType::Emoji: {
+            const auto    er    = resolveEmojiRich(e.data, session);
+            const QString glyph = er.unicode.isEmpty() ? (":" + e.data + ":") : er.unicode;
+            repls.push_back({e.offset, e.length, glyph});
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    if (repls.empty())
+        return twe.text;
+    std::sort(repls.begin(), repls.end(), [](const Repl &a, const Repl &b) {
+        return a.offset < b.offset;
+    });
+    QString out;
+    int     pos = 0;
+    for (const auto &r : repls) {
+        if (r.offset < pos)
+            continue; // defensive: skip any overlapping span
+        out += QStringView{twe.text}.mid(pos, r.offset - pos);
+        out += r.text;
+        pos = r.offset + r.length;
+    }
+    out += QStringView{twe.text}.mid(pos);
+    return out;
+}
+
 static QString escapeAndBr(const QString &s) {
     return s.toHtmlEscaped().replace("\n", "<br>");
 }
