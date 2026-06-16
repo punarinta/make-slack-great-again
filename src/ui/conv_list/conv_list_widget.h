@@ -7,6 +7,7 @@
 
 #include <QHash>
 #include <QPixmap>
+#include <QTimer>
 #include <QVariantAnimation>
 #include <vector>
 
@@ -43,6 +44,7 @@ class ConvListWidget : public VirtualListWidget {
     Q_OBJECT
 public:
     explicit ConvListWidget(ImageCache *imgCache, QWidget *parent = nullptr);
+    ~ConvListWidget() override;
 
     void setConversations(std::vector<Conversation> convs);
     // Call with the full user list so DM names, avatars, and status can be resolved.
@@ -145,6 +147,12 @@ protected:
     std::vector<RowItem>      _rows;     // visual row list (includes headers/actions)
     // userId → {displayName, avatarUrl, ...}, rebuilt on setUsers().
     QHash<QString, UserInfo>  _userInfos;
+    // The exact user list _userInfos was last built from. setUsers() is invoked
+    // on every workspace switch and on every _users re-emission (presence
+    // patches, network refresh); skipping an unchanged list avoids rebuilding
+    // the whole hash (with a per-user Emoji::expandCodes) + a redundant
+    // rebuildRows. QString is implicitly shared, so the copy is cheap.
+    std::vector<User>         _lastUsers;
     // Slack username (user.name) → userId.value, for MPDM name parsing.
     QHash<QString, QString>   _usernameToId;
     // convId.value → Unix epoch sec of last time the user opened that conversation in this app.
@@ -152,7 +160,9 @@ protected:
     QHash<QString, qint64>    _visitedAt;
 
     void          loadVisitedAt();
-    void          saveVisitedAt();
+    void          saveVisitedAt();         // synchronous QSettings write
+    void          scheduleSaveVisitedAt(); // debounced; serializes off the hot path
+    QTimer        _saveVisitedTimer;
     IconPixmaps   _iconPx;
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr; // hover tooltip for the DM header "+"

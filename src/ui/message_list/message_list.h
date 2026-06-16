@@ -155,6 +155,12 @@ private:
 
     // Data model
     void               appendMessage(const Message &msg);
+    // Append without a relayout/repaint — for bulk loads that rebuild once at
+    // the end (a per-message rebuildLayout is O(items), so a loop is O(n²)).
+    void               appendMessageDeferred(const Message &msg);
+    // Append every message then rebuild layout once. Used by the cache
+    // pre-populate and first-page loads.
+    void               appendMessages(const std::vector<Message> &msgs);
     int                findByTs(const Ts &ts) const; // linear scan, fine for <500 visible
     void               handleEvent(const Event &e);
     // Merge freshly-loaded network messages into the existing item list.

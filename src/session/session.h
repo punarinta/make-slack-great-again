@@ -207,7 +207,13 @@ public:
     rpl::producer<UserId> botInfoLoaded() const;
 
     // Flush current unread counts to cache so they survive a restart.
+    // Synchronous — call on shutdown or when durability is required now.
     void persistUnreads();
+    // Debounced variant: coalesces bursts and keeps the (potentially large)
+    // conversation-list serialization + file write off latency-sensitive paths
+    // such as the workspace switch. A pending save is flushed by persistUnreads()
+    // and by the destructor.
+    void scheduleSaveUnreads();
 
     // --- Persistent cache ---
     std::vector<Message> cachedMessages(ConversationId conv) const;
@@ -267,6 +273,7 @@ private:
     rpl::variable<std::vector<User>>         _users;
     rpl::variable<SelfPresence>              _selfPresence;
     QTimer                                   _selfPresenceTimer;
+    QTimer                                   _saveUnreadsTimer; // debounces scheduleSaveUnreads()
     rpl::event_stream<Event>                 _eventHub;
     rpl::event_stream<QString>               _errorHub;
     rpl::event_stream<>                      _emojiMapLoadedHub;

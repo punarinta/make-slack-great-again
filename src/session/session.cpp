@@ -17,7 +17,12 @@
 Session::Session(std::unique_ptr<Backend> backend, const QString &teamId)
     : _backend(std::move(backend)), _cache(std::make_unique<WorkspaceCache>(teamId)) {}
 
-Session::~Session() = default;
+Session::~Session() {
+    // Don't lose a debounced unread save when the session is torn down (logout,
+    // drop, app exit) before the timer fired.
+    if (_saveUnreadsTimer.isActive())
+        persistUnreads();
+}
 
 // Built-in Slack commands, available even when commands.list is rejected for
 // the token (not_allowed_token_type for OAuth tokens). Deliberately limited to
@@ -95,6 +100,10 @@ void Session::start() {
     refreshSelfPresence();
     QObject::connect(&_selfPresenceTimer, &QTimer::timeout, [this] { refreshSelfPresence(); });
     _selfPresenceTimer.start(60 * 1000);
+
+    // Debounced unread persistence (see scheduleSaveUnreads).
+    _saveUnreadsTimer.setSingleShot(true);
+    QObject::connect(&_saveUnreadsTimer, &QTimer::timeout, [this] { persistUnreads(); });
 
     // Load conversations; update cache on arrival.
     _backend->loadConversations() |
@@ -1143,7 +1152,14 @@ void Session::refreshSelfPresence() {
 }
 
 void Session::persistUnreads() {
+    _saveUnreadsTimer.stop(); // an explicit flush subsumes any pending debounce
     _cache->saveConversations(_conversations.current());
+}
+
+void Session::scheduleSaveUnreads() {
+    // ~1 s debounce: a flurry of switches/reads collapses into one write, and
+    // the serialization never blocks the triggering interaction.
+    _saveUnreadsTimer.start(1000);
 }
 
 void Session::setReading(ConversationId conv) {

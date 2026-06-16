@@ -984,7 +984,9 @@ void MainWindow::activateWorkspace(QString teamId) {
     _uiLifetime = rpl::lifetime();
     if (_session) {
         _session->setReading({});
-        _session->persistUnreads();
+        // Debounced: the conv-list serialization + file write must not block the
+        // switch. A pending save is flushed on drop / shutdown / destruction.
+        _session->scheduleSaveUnreads();
     }
     _currentConvId = {};
     if (_convFooter)

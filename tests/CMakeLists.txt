@@ -289,6 +289,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/mention_completer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp

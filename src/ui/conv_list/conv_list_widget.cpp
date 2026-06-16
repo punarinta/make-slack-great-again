@@ -51,6 +51,15 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
         rebuildIconPixmaps();
         viewport()->update();
     });
+
+    _saveVisitedTimer.setSingleShot(true);
+    connect(&_saveVisitedTimer, &QTimer::timeout, this, [this] { saveVisitedAt(); });
+}
+
+ConvListWidget::~ConvListWidget() {
+    // Flush a debounced recency write that hasn't fired yet.
+    if (_saveVisitedTimer.isActive())
+        saveVisitedAt();
 }
 
 void ConvListWidget::rebuildIconPixmaps() {
@@ -107,6 +116,15 @@ void ConvListWidget::saveVisitedAt() {
         .setValue(
             "conv/visitedAt", QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact))
         );
+    _saveVisitedTimer.stop(); // an explicit write subsumes any pending debounce
+}
+
+void ConvListWidget::scheduleSaveVisitedAt() {
+    // The recency store is serialized over the whole hash; keep it off the
+    // rebuild/selection path and coalesce bursts. Durability isn't critical —
+    // a lost update just means a slightly stale relevance window, which
+    // self-heals, and the destructor flushes anything still pending.
+    _saveVisitedTimer.start(1500);
 }
 
 // Returns true if s looks like a raw Slack user ID (e.g. "U0A1B2C3D").
@@ -150,7 +168,7 @@ bool ConvListWidget::selectConversation(ConversationId id) {
     (isAppConv(*it) ? _appsCollapsed : isDm ? _dmsCollapsed : _channelsCollapsed) = false;
     // Stamp before rebuilding so the relevance filter keeps the row visible.
     _visitedAt[id.value] = QDateTime::currentSecsSinceEpoch();
-    saveVisitedAt();
+    scheduleSaveVisitedAt();
     rebuildRows();
     const int row = rowForId(id);
     if (row < 0)
@@ -160,6 +178,13 @@ bool ConvListWidget::selectConversation(ConversationId id) {
 }
 
 void ConvListWidget::setUsers(const std::vector<User> &users) {
+    // No-op re-emissions are common (a presence patch reassigns the whole
+    // _users variable, the network refresh hands back an identical list). Skip
+    // the full hash rebuild + rebuildRows when nothing actually changed.
+    if (users == _lastUsers)
+        return;
+    _lastUsers = users;
+
     _userInfos.clear();
     _usernameToId.clear();
     _userInfos.reserve(users.size());
@@ -231,7 +256,7 @@ void ConvListWidget::rebuildRows() {
         }
     }
     if (seedChanged)
-        saveVisitedAt();
+        scheduleSaveVisitedAt();
 
     // A conversation is relevant if:
     //   - it has unread messages, OR
@@ -453,7 +478,7 @@ void ConvListWidget::setSelected(int row) {
     _selectedId                   = _convs[_rows[row].convIdx].id;
     // Record visit so this conversation stays visible in future sessions.
     _visitedAt[_selectedId.value] = QDateTime::currentSecsSinceEpoch();
-    saveVisitedAt();
+    scheduleSaveVisitedAt();
     _selAnim.stop();
     _selAnim.setStartValue(0.0);
     _selAnim.setEndValue(1.0);

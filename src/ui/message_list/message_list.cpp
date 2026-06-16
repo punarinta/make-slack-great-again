@@ -285,8 +285,7 @@ void MessageListWidget::openConversation(
         const auto cached = _session->cachedMessages(conv);
         if (cached.empty())
             return false;
-        for (const auto &msg : cached)
-            appendMessage(msg);
+        appendMessages(cached);
         // Pre-warm the image pixel cache from disk so images appear without download.
         for (const auto &item : _items) {
             for (const auto &f : item.msg.files) {
@@ -355,8 +354,7 @@ void MessageListWidget::openConversation(
                     }
                 } else {
                     // No cached data was shown — normal first-load path.
-                    for (const auto &msg : page.messages)
-                        appendMessage(msg);
+                    appendMessages(page.messages);
                     emit initialPageLoaded();
                     QTimer::singleShot(0, this, [this, conv] {
                         if (_currentConv != conv)
@@ -549,8 +547,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
                 _loading = false;
                 _loadingAnim.stop();
                 _olderCursor = page.olderCursor;
-                for (const auto &msg : page.messages)
-                    appendMessage(msg);
+                appendMessages(page.messages);
                 QTimer::singleShot(0, this, [this] { applyPendingScroll(); });
             },
             _loadLifetime
@@ -605,12 +602,25 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
     }
 }
 
-void MessageListWidget::appendMessage(const Message &msg) {
+void MessageListWidget::appendMessageDeferred(const Message &msg) {
     if (_session && msg.author.value.startsWith('B'))
         _session->fetchBotIfNeeded(msg.author);
     MessageItem item;
     item.msg = msg;
     _items.push_back(std::move(item));
+}
+
+void MessageListWidget::appendMessage(const Message &msg) {
+    appendMessageDeferred(msg);
+    rebuildLayout();
+    viewport()->update();
+}
+
+void MessageListWidget::appendMessages(const std::vector<Message> &msgs) {
+    if (msgs.empty())
+        return;
+    for (const auto &msg : msgs)
+        appendMessageDeferred(msg);
     rebuildLayout();
     viewport()->update();
 }
