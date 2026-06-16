@@ -12,22 +12,6 @@
 <context>
     <name>BrowseChannelsDialog</name>
     <message>
-        <source>%1 %2</source>
-        <translation type="vanished">%1 %2</translation>
-    </message>
-    <message>
-        <source>member</source>
-        <translation type="vanished">member</translation>
-    </message>
-    <message>
-        <source>members</source>
-        <translation type="vanished">members</translation>
-    </message>
-    <message>
-        <source>Joined</source>
-        <translation type="vanished">Joined</translation>
-    </message>
-    <message>
         <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+196"/>
         <location line="+313"/>
         <source>Search for channels</source>
@@ -57,7 +41,7 @@
 <context>
     <name>CanvasPage</name>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="+158"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="+284"/>
         <source>Your canvas title</source>
         <translation>Your canvas title</translation>
     </message>
@@ -67,7 +51,7 @@
         <translation>Go ahead, start writing!</translation>
     </message>
     <message>
-        <location line="+323"/>
+        <location line="+385"/>
         <source>This canvas was created with Slack&apos;s built-in editor and is not editable through the Slack API — it is read-only here.</source>
         <translation>This canvas was created with Slack&apos;s built-in editor and is not editable through the Slack API — it is read-only here.</translation>
     </message>
@@ -82,14 +66,14 @@
         <translation>Copy link</translation>
     </message>
     <message>
-        <location line="-424"/>
+        <location line="-486"/>
         <location line="+20"/>
-        <location line="+413"/>
+        <location line="+475"/>
         <source>Delete canvas</source>
         <translation>Delete canvas</translation>
     </message>
     <message>
-        <location line="-429"/>
+        <location line="-491"/>
         <source>The canvas will be deleted for everyone in the conversation.
 This action cannot be undone.</source>
         <translation>The canvas will be deleted for everyone in the conversation.
@@ -134,7 +118,7 @@ This action cannot be undone.</translation>
         <translation>Schedule send</translation>
     </message>
     <message>
-        <location line="+855"/>
+        <location line="+913"/>
         <source>Send at</source>
         <translation>Send at</translation>
     </message>
@@ -171,9 +155,32 @@ This action cannot be undone.</translation>
     </message>
 </context>
 <context>
+    <name>ConvFooterWidget</name>
+    <message>
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+146"/>
+        <source>Hidden — you appear away to everyone. Click to use automatic presence.</source>
+        <translation>Hidden — you appear away to everyone. Click to use automatic presence.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Visible — but you appear away if no official Slack client is connected. Click to hide.</source>
+        <translation>Visible — but you appear away if no official Slack client is connected. Click to hide.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Visible — using automatic presence. Click to appear hidden.</source>
+        <translation>Visible — using automatic presence. Click to appear hidden.</translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Manage profile</source>
+        <translation>Manage profile</translation>
+    </message>
+</context>
+<context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+482"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+492"/>
         <source>Open a direct message</source>
         <translation>Open a direct message</translation>
     </message>
@@ -228,7 +235,7 @@ This action cannot be undone.</translation>
         <translation>Leave conversation</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+66"/>
         <source>Find a channel</source>
         <translation>Find a channel</translation>
     </message>
@@ -238,7 +245,7 @@ This action cannot be undone.</translation>
         <translation>Create a channel</translation>
     </message>
     <message>
-        <location line="+131"/>
+        <location line="+138"/>
         <source>Channels</source>
         <translation>Channels</translation>
     </message>
@@ -273,7 +280,7 @@ This action cannot be undone.</translation>
         <translation>channels</translation>
     </message>
     <message>
-        <location line="+139"/>
+        <location line="+156"/>
         <location line="+28"/>
         <source>you</source>
         <translation>you</translation>
@@ -290,7 +297,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvTabsWidget</name>
     <message>
-        <location filename="../src/ui/conv_tabs/conv_tabs_widget.cpp" line="+44"/>
+        <location filename="../src/ui/conv_tabs/conv_tabs_widget.cpp" line="+54"/>
         <source>Messages</source>
         <translation>Messages</translation>
     </message>
@@ -407,7 +414,7 @@ This action cannot be undone.</translation>
 <context>
     <name>EmojiPickerPopup</name>
     <message>
-        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+229"/>
+        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+239"/>
         <source>Search emoji…</source>
         <translation>Search emoji…</translation>
     </message>
@@ -583,12 +590,12 @@ This action cannot be undone.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+300"/>
+        <location filename="../src/ui/main_window.cpp" line="+322"/>
         <source>Log in to workspace</source>
         <translation>Log in to workspace</translation>
     </message>
     <message>
-        <location line="+677"/>
+        <location line="+757"/>
         <source>Missing credentials</source>
         <translation>Missing credentials</translation>
     </message>
@@ -607,25 +614,25 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Login failed</translation>
     </message>
     <message>
-        <location line="+208"/>
-        <location line="+614"/>
+        <location line="+227"/>
+        <location line="+652"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location line="-608"/>
-        <location line="+674"/>
+        <location line="-646"/>
+        <location line="+724"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location line="-674"/>
-        <location line="+674"/>
+        <location line="-724"/>
+        <location line="+724"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location line="-512"/>
+        <location line="-537"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
@@ -650,7 +657,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Quit</translation>
     </message>
     <message>
-        <location line="+169"/>
+        <location line="+168"/>
+        <source>Opens the huddle in Slack for web</source>
+        <translation>Opens the huddle in Slack for web</translation>
+    </message>
+    <message>
+        <location line="+10"/>
         <source>Unstar conversation</source>
         <translation>Unstar conversation</translation>
     </message>
@@ -665,7 +677,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Search messages</translation>
     </message>
     <message>
-        <location line="-701"/>
+        <location line="-754"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>You appear away to others — no official Slack client is connected</translation>
     </message>
@@ -683,12 +695,13 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MentionCompleter</name>
     <message>
-        <location filename="../src/ui/composer/mention_completer.cpp" line="+112"/>
+        <location filename="../src/ui/composer/mention_completer.cpp" line="+114"/>
+        <location line="+204"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="-155"/>
         <source>App</source>
         <translation>App</translation>
     </message>
@@ -696,12 +709,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MentionPopup</name>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+26"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+45"/>
         <source>Notify everyone in this channel</source>
         <translation>Notify everyone in this channel</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+3"/>
         <source>Notify everyone in your workspace</source>
         <translation>Notify everyone in your workspace</translation>
     </message>
@@ -711,7 +724,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Notify every online member here</translation>
     </message>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+125"/>
+        <location line="+76"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
@@ -966,6 +979,97 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
     </message>
 </context>
 <context>
+    <name>ProfileAvatarWidget</name>
+    <message>
+        <location filename="../src/ui/profile_dialog/profile_dialog.cpp" line="+94"/>
+        <source>Change photo</source>
+        <translation>Change photo</translation>
+    </message>
+</context>
+<context>
+    <name>ProfileDialog</name>
+    <message>
+        <location line="+20"/>
+        <source>Profile</source>
+        <translation>Profile</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>Name</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Your display name</source>
+        <translation>Your display name</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Email</source>
+        <translation>Email</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>name@example.com</source>
+        <translation>name@example.com</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Phone</source>
+        <translation>Phone</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Optional</source>
+        <translation>Optional</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Save Changes</source>
+        <translation>Save Changes</translation>
+    </message>
+    <message>
+        <location line="+78"/>
+        <source>Choose a profile photo</source>
+        <translation>Choose a profile photo</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Images (*.png *.jpg *.jpeg *.gif)</source>
+        <translation>Images (*.png *.jpg *.jpeg *.gif)</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Uploading photo…</source>
+        <translation>Uploading photo…</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Could not upload photo: %1</source>
+        <translation>Could not upload photo: %1</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Photo updated.</source>
+        <translation>Photo updated.</translation>
+    </message>
+    <message>
+        <location line="+29"/>
+        <source>Saving…</source>
+        <translation>Saving…</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Could not save: %1</source>
+        <translation>Could not save: %1</translation>
+    </message>
+</context>
+<context>
     <name>QObject</name>
     <message>
         <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="-393"/>
@@ -1029,12 +1133,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation> — sign in to this workspace again to grant the new permission</translation>
     </message>
     <message>
-        <location line="+264"/>
+        <location line="+300"/>
         <source>Couldn&apos;t send message: %1</source>
         <translation>Couldn&apos;t send message: %1</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+356"/>
         <source>No such user: %1</source>
         <translation>No such user: %1</translation>
     </message>
@@ -1064,7 +1168,17 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Could not update notifications: %1</translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+22"/>
+        <source>Could not update profile: %1</source>
+        <translation>Could not update profile: %1</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>Could not update avatar: %1</source>
+        <translation>Could not update avatar: %1</translation>
+    </message>
+    <message>
+        <location line="+63"/>
         <source>Upload failed: %1</source>
         <translation>Upload failed: %1</translation>
     </message>
@@ -1074,7 +1188,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Could not load canvas: %1</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+31"/>
         <source>Could not create canvas: %1</source>
         <translation>Could not create canvas: %1</translation>
     </message>
@@ -1093,12 +1207,12 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
     <name>SettingsDialog</name>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="+78"/>
-        <location line="+436"/>
+        <location line="+437"/>
         <source>RAM used: %1</source>
         <translation>RAM used: %1</translation>
     </message>
     <message>
-        <location line="-405"/>
+        <location line="-406"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
@@ -1110,30 +1224,30 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
     </message>
     <message>
         <location line="-18"/>
-        <location line="+160"/>
+        <location line="+161"/>
         <source>Notifications</source>
         <translation>Notifications</translation>
     </message>
     <message>
-        <location line="-159"/>
-        <location line="+403"/>
+        <location line="-160"/>
+        <location line="+404"/>
         <source>AI assistance</source>
         <translation>AI assistance</translation>
     </message>
     <message>
-        <location line="-402"/>
-        <location line="+220"/>
+        <location line="-403"/>
+        <location line="+221"/>
         <source>Storage</source>
         <translation>Storage</translation>
     </message>
     <message>
-        <location line="-219"/>
-        <location line="+325"/>
+        <location line="-220"/>
+        <location line="+326"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location line="-305"/>
+        <location line="-306"/>
         <source>Color theme</source>
         <translation>Color theme</translation>
     </message>
@@ -1146,6 +1260,11 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <location line="+1"/>
         <source>Blue</source>
         <translation>Blue</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Green</source>
+        <translation>Green</translation>
     </message>
     <message>
         <location line="+18"/>
@@ -1620,7 +1739,7 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>WorkspaceSwitcher</name>
     <message>
-        <location filename="../src/ui/workspace_switcher/workspace_switcher.cpp" line="+480"/>
+        <location filename="../src/ui/workspace_switcher/workspace_switcher.cpp" line="+443"/>
         <source>Add workspace</source>
         <translation>Add workspace</translation>
     </message>
