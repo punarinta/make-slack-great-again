@@ -408,6 +408,10 @@ void Session::start() {
         );
 }
 
+QString Session::teamUrl() const {
+    return _backend ? _backend->teamUrl() : QString();
+}
+
 void Session::fetchMe() {
     _backend->loadMe() | rpl::on_next(
                              [this](UserId id) {

@@ -149,9 +149,11 @@ public:
     rpl::producer<>                emojiMapLoaded() const { return _emojiMapLoadedHub.events(); }
 
     // Called once the current user's ID is known (e.g., from auth.test).
-    void   setMe(UserId id) { _meUserId = std::move(id); }
-    UserId meUserId() const { return _meUserId; }
-    bool   meIsAdmin() const { return _meIsAdmin; }
+    void    setMe(UserId id) { _meUserId = std::move(id); }
+    UserId  meUserId() const { return _meUserId; }
+    bool    meIsAdmin() const { return _meIsAdmin; }
+    // Workspace web base URL (e.g. "https://nisdos.slack.com/"); empty until auth.test answers.
+    QString teamUrl() const;
 
     // Call when the user opens a conversation — zeroes its unread count and marks it read on Slack.
     void setReading(ConversationId conv);

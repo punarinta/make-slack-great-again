@@ -1711,6 +1711,21 @@ void MainWindow::logoutWorkspace(const QString &teamId) {
 void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPos) {
     const auto creds = TokenStore::loadWorkspace(teamId);
     auto      *menu  = new ContextMenu(this);
+
+    // Workspace admins get a shortcut to the Slack admin settings in their browser.
+    const auto it = _sessions.find(teamId);
+    if (it != _sessions.end() && it->second.session && it->second.session->meIsAdmin()) {
+        QString base = it->second.session->teamUrl();
+        if (!base.isEmpty()) {
+            if (!base.endsWith('/'))
+                base += '/';
+            const QString adminUrl = base + QStringLiteral("admin/settings");
+            menu->addItem(tr("Workspace admin"), [adminUrl] {
+                QDesktopServices::openUrl(QUrl(adminUrl));
+            });
+        }
+    }
+
     menu->addItem(
         creds.teamName.isEmpty() ? tr("Log out") : tr("Log out from %1").arg(creds.teamName),
         [this, teamId] { logoutWorkspace(teamId); },

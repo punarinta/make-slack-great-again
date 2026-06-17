@@ -45,6 +45,7 @@ public:
     void                     connectRealtime() override;
     void                     disconnectRealtime() override;
 
+    QString                                  teamUrl() const override { return _teamUrl; }
     rpl::producer<UserId>                    loadMe() override;
     rpl::producer<std::vector<Conversation>> loadConversations() override;
     rpl::producer<std::vector<User>>         loadUsers() override;
@@ -225,8 +226,9 @@ private:
     bool                                   _refreshInProgress = false;
     std::vector<std::function<void(bool)>> _refreshWaiters;
 
-    UserId _meUserId; // cached from auth.test; used to reconcile lost sends
-    int    _sendRetryDelayMs = 1000;
+    UserId  _meUserId; // cached from auth.test; used to reconcile lost sends
+    QString _teamUrl;  // workspace web base URL from auth.test's `url` field
+    int     _sendRetryDelayMs = 1000;
 
     rpl::variable<AuthState> _authState{AuthState::LoggedIn};
     rpl::event_stream<Event> _events;

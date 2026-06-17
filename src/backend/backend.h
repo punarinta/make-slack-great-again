@@ -23,6 +23,11 @@ public:
     virtual void                     connectRealtime()    = 0;
     virtual void                     disconnectRealtime() = 0;
 
+    // Workspace's web base URL (e.g. "https://nisdos.slack.com/"), learned from
+    // auth.test's `url` field once loadMe() completes. Empty until then / if
+    // unsupported.
+    virtual QString teamUrl() const { return {}; }
+
     // --- Snapshot loads (produce one page then complete) ---
     virtual rpl::producer<UserId>                    loadMe()             = 0;
     virtual rpl::producer<std::vector<Conversation>> loadConversations()  = 0;

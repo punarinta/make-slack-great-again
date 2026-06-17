@@ -268,6 +268,7 @@ rpl::producer<UserId> PublicBackend::loadMe() {
             QUrlQuery{},
             [this, consumer](QJsonObject resp) mutable {
                 _meUserId = UserId{resp.value("user_id").toString()};
+                _teamUrl  = resp.value("url").toString();
                 consumer.put_next(UserId{resp.value("user_id").toString()});
                 consumer.put_done();
             },
