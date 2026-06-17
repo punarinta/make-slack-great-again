@@ -812,8 +812,8 @@ void Session::setPresence(bool away) {
     });
 }
 
-void Session::setStatus(const QString &emoji, const QString &text) {
-    _backend->setStatus(emoji, text, 0, [this, emoji, text](bool ok, QString err) {
+void Session::setStatus(const QString &emoji, const QString &text, qint64 expirationTs) {
+    _backend->setStatus(emoji, text, expirationTs, [this, emoji, text](bool ok, QString err) {
         if (!ok) {
             _errorHub.fire(withReauthHint(
                 QCoreApplication::translate("Session", "Could not set status: %1").arg(err), err

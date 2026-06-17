@@ -149,8 +149,10 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/conv_selector/conv_selector_widget.cpp
     src/ui/forward_dialog/forward_dialog.cpp
     src/ui/styled_line_edit/styled_line_edit.cpp
+    src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
     src/ui/profile_dialog/profile_dialog.cpp
+    src/ui/status_dialog/status_dialog.cpp
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     src/ui/browse_channels_dialog/browse_list_view.cpp
     src/ui/update_checker/update_checker.cpp

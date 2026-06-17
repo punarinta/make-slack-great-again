@@ -39,8 +39,10 @@ public:
 signals:
     // Requested new presence: away=true → hidden, away=false → visible.
     void presenceToggleRequested(bool away);
-    // The avatar was clicked — open the "Manage profile" dialog.
-    void profileRequested();
+    // Picked from the avatar's context menu — open the "Manage profile" dialog.
+    void manageProfileRequested();
+    // Picked from the avatar's context menu — open the "Set a status" dialog.
+    void manageStatusRequested();
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -60,6 +62,8 @@ private:
     bool    hasTasks() const { return _taskCount > 0; }
     Hot     hitTest(const QPoint &) const;
     void    setHot(Hot);
+    // Pops the "Manage profile / Manage status" menu anchored above the avatar.
+    void    showAvatarMenu();
     void    loadAvatar();
     QString presenceTooltip() const;
     QString tasksTooltip() const;

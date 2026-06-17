@@ -2143,6 +2143,64 @@ TEST_CASE_METHOD(
     CHECK(me->statusText == "brb");
 }
 
+TEST_CASE_METHOD(
+    SessionFixture, "setStatus forwards emoji, text and expiration", "[session][status]"
+) {
+    session->setStatus(":palm_tree:", "On vacation", 1750000000);
+    REQUIRE(stub->statusCalls.size() == 1);
+    CHECK(stub->statusCalls[0].emoji == ":palm_tree:");
+    CHECK(stub->statusCalls[0].text == "On vacation");
+    CHECK(stub->statusCalls[0].expirationTs == 1750000000);
+
+    // Success patches our own entry with the bare emoji name (colons stripped).
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK(me->statusEmoji == "palm_tree");
+    CHECK(me->statusText == "On vacation");
+}
+
+TEST_CASE_METHOD(SessionFixture, "setStatus defaults expiration to zero", "[session][status]") {
+    session->setStatus(":coffee:", "brb");
+    REQUIRE(stub->statusCalls.size() == 1);
+    CHECK(stub->statusCalls[0].expirationTs == 0);
+}
+
+TEST_CASE_METHOD(SessionFixture, "setStatus clears status with empty args", "[session][status]") {
+    // Seed a status, then clear it.
+    session->setStatus(":coffee:", "brb", 0);
+    session->setStatus({}, {}, 0);
+    REQUIRE(stub->statusCalls.size() == 2);
+    CHECK(stub->statusCalls[1].emoji.isEmpty());
+    CHECK(stub->statusCalls[1].text.isEmpty());
+    CHECK(stub->statusCalls[1].expirationTs == 0);
+
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK(me->statusEmoji.isEmpty());
+    CHECK(me->statusText.isEmpty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "setStatus failure surfaces error and leaves entry unchanged",
+    "[session][status]"
+) {
+    stub->selfActionError = "missing_scope";
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+
+    session->setStatus(":coffee:", "brb", 1750000000);
+    REQUIRE(stub->statusCalls.size() == 1);
+    CHECK(err.contains("status"));
+
+    // The optimistic own-entry patch must NOT happen on failure.
+    const User *me = session->findUser(UserId{"U1"});
+    REQUIRE(me != nullptr);
+    CHECK(me->statusEmoji.isEmpty());
+    CHECK(me->statusText.isEmpty());
+}
+
 TEST_CASE_METHOD(SessionFixture, "runCommand /dnd parses durations", "[session][commands]") {
     session->runCommand(ConversationId{"C1"}, "dnd", "30");
     session->runCommand(ConversationId{"C1"}, "dnd", "45m");

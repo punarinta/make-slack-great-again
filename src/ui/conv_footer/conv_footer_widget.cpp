@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "ui/conv_footer/conv_footer_widget.h"
 
+#include "ui/context_menu/context_menu.h"
 #include "ui/image_cache.h"
 #include "ui/nav_ghost_button.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
@@ -275,7 +276,7 @@ void ConvFooterWidget::setHot(Hot hot) {
         _tooltip->showAbove(tasksTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else if (hot == Hot::Avatar) {
         const QRect r = avatarRect();
-        _tooltip->showAbove(tr("Manage profile"), QRect(mapToGlobal(r.topLeft()), r.size()));
+        _tooltip->showAbove(tr("Profile & status"), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else {
         _tooltip->hide();
     }
@@ -287,8 +288,13 @@ void ConvFooterWidget::mouseMoveEvent(QMouseEvent *e) {
 }
 
 void ConvFooterWidget::mousePressEvent(QMouseEvent *e) {
-    if (e->button() == Qt::LeftButton)
+    if (e->button() == Qt::LeftButton) {
         _pressed = hitTest(e->pos());
+    } else if (e->button() == Qt::RightButton && hitTest(e->pos()) == Hot::Avatar) {
+        // Right-click the avatar → same profile/status menu (left-click also works).
+        _tooltip->hide();
+        showAvatarMenu();
+    }
 }
 
 void ConvFooterWidget::mouseReleaseEvent(QMouseEvent *e) {
@@ -306,9 +312,29 @@ void ConvFooterWidget::mouseReleaseEvent(QMouseEvent *e) {
         emit presenceToggleRequested(target);
     } else if (hit == Hot::Avatar && _pressed == Hot::Avatar) {
         _tooltip->hide();
-        emit profileRequested();
+        showAvatarMenu();
     }
     _pressed = Hot::None;
+}
+
+void ConvFooterWidget::showAvatarMenu() {
+    auto *menu = new ContextMenu(this);
+    menu->addItem(
+        tr("Manage profile"),
+        [this] { emit manageProfileRequested(); }, /*destructive=*/
+        false,
+        QStringLiteral(":/ui/circle-user-round.svg")
+    );
+    menu->addItem(
+        tr("Manage status"),
+        [this] { emit manageStatusRequested(); }, /*destructive=*/
+        false,
+        QStringLiteral(":/ui/smile.svg")
+    );
+    // Anchor at the avatar's top — ContextMenu flips upward near the screen edge,
+    // so the menu opens above the footer.
+    const QRect r = avatarRect();
+    menu->popup(mapToGlobal(r.topLeft()));
 }
 
 void ConvFooterWidget::leaveEvent(QEvent *) {

@@ -30,6 +30,7 @@
 #include "forward_dialog/forward_dialog.h"
 #include "create_channel_dialog/create_channel_dialog.h"
 #include "profile_dialog/profile_dialog.h"
+#include "status_dialog/status_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
@@ -457,10 +458,18 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
         if (_session)
             _session->setPresence(away);
     });
-    connect(_convFooter, &ConvFooterWidget::profileRequested, this, [this] {
+    connect(_convFooter, &ConvFooterWidget::manageProfileRequested, this, [this] {
         if (!_session)
             return;
         auto *dlg = new ProfileDialog(_session, _imgCache, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->open();
+    });
+    connect(_convFooter, &ConvFooterWidget::manageStatusRequested, this, [this] {
+        if (!_session)
+            return;
+        const QString workspace = TokenStore::loadWorkspace(_activeTeamId).teamName;
+        auto         *dlg       = new StatusDialog(_session, _imgCache, workspace, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->open();
     });

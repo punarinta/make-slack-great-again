@@ -72,8 +72,9 @@ public:
     // also refreshes selfPresence().
     void setPresence(bool away);
     // Set — or clear, when both args are empty — the status. `emoji` uses the
-    // API's ":name:" form.
-    void setStatus(const QString &emoji, const QString &text);
+    // API's ":name:" form. `expirationTs` is an absolute Unix timestamp (seconds)
+    // after which Slack auto-clears the status; 0 means "Don't clear".
+    void setStatus(const QString &emoji, const QString &text, qint64 expirationTs = 0);
     // Pause notifications for `minutes`; minutes <= 0 resumes them.
     void setDndSnooze(int minutes);
 
