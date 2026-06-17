@@ -1,8 +1,8 @@
 [Desktop Entry]
 Name=MSGA
 Comment=Fast native Slack client
-Exec=/home/robin/src/nisdos/msga/build/msga %u
-Icon=/home/robin/src/nisdos/msga/gfx/icon_256.png
+Exec=msga %u
+Icon=msga
 Type=Application
 Categories=Network;InstantMessaging;
 StartupWMClass=msga

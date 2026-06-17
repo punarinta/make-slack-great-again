@@ -94,6 +94,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Utilities
     src/util/background_tasks.cpp
+    src/util/desktop_integration.cpp
     src/util/emoji.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp

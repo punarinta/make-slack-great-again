@@ -69,6 +69,11 @@ add_msga_test(test_background_tasks
 # BackgroundTasks is a Q_OBJECT — needs moc.
 set_target_properties(test_background_tasks PROPERTIES AUTOMOC ON)
 
+add_msga_test(test_desktop_integration
+    test_desktop_integration.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/desktop_integration.cpp
+)
+
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp

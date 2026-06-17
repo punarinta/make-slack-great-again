@@ -3,6 +3,7 @@
 #include "ui/main_window.h"
 #include "app/crash_handler.h"
 #include "app/single_instance.h"
+#include "util/desktop_integration.h"
 #include "util/time_format.h"
 
 #include <QApplication>
@@ -193,6 +194,10 @@ int main(int argc, char *argv[]) {
     window.show();
     window.raise();
     window.activateWindow();
+
+    // On freedesktop systems, (re)install the .desktop launcher + icon and the
+    // msga:// scheme handler in the background. No-op on macOS/Windows.
+    DesktopIntegration::installIfSupported();
 
     const int ret = app.exec();
 
