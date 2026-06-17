@@ -2,44 +2,37 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
-#include <QString>
-#include <QStringList>
+#include "backend/domain.h"
 
+#include <QByteArray>
+#include <QString>
+#include <optional>
+#include <vector>
+
+// Neutral, service-agnostic workspace registry. TokenStore stores *every*
+// service's workspaces over one flat QSettings subtree (`workspace/{handle}/…`)
+// keyed by the composite WorkspaceKey handle. It never interprets a workspace's
+// credentials: per-service auth lives in an opaque `auth` blob that the owning
+// service (slack::, telegram::, …) encodes/decodes itself.
 namespace TokenStore {
 
-struct Credentials {
-    QString xoxp;
-    QString teamId;
-    QString teamName;
-    QString iconUrl;       // 88px workspace icon URL, may be empty
-    QString refreshToken;  // non-empty when workspace has token rotation enabled
-    qint64  expiresAt = 0; // Unix timestamp when access token expires; 0 = unknown
+// The common registry record — neutral. No tokens, no service specifics.
+struct WorkspaceRecord {
+    WorkspaceKey key;         // service + id — the app-wide handle
+    QString      displayName; // human-facing workspace name
+    QString      iconUrl;     // workspace icon URL, may be empty
+    QByteArray   auth;        // opaque per-service blob; NEVER interpreted here
 };
 
-// ── Multi-workspace ───────────────────────────────────────────────────────────
-void        saveWorkspace(const Credentials &c);
-Credentials loadWorkspace(const QString &teamId);
-void        removeWorkspace(const QString &teamId);
-QStringList workspaceIds();
-// Persist a new display order. Unknown ids are ignored; known ids missing
+void                           saveWorkspace(const WorkspaceRecord &c);
+std::optional<WorkspaceRecord> loadWorkspace(const WorkspaceKey &key);
+void                           removeWorkspace(const WorkspaceKey &key);
+std::vector<WorkspaceKey>      workspaceKeys();
+// Persist a new display order. Unknown keys are ignored; known keys missing
 // from `ordered` are appended at the end so no workspace is ever lost.
-void        setWorkspaceOrder(const QStringList &ordered);
-bool        hasAnyWorkspace();
-QString     activeWorkspaceId();
-void        setActiveWorkspace(const QString &teamId);
-
-// ── Legacy wrappers (operate on active workspace) ─────────────────────────────
-bool        hasToken();                // = hasAnyWorkspace()
-Credentials load();                    // = loadWorkspace(activeWorkspaceId())
-void        save(const Credentials &); // = saveWorkspace + setActive
-void        clear();                   // = removeWorkspace(activeWorkspaceId())
-
-// ── App registration (credentials compiled in via credentials.cmake) ──────────
-struct AppConfig {
-    QString clientId;
-    QString clientSecret;
-    QString xapp;
-};
-AppConfig loadApp();
+void                           setWorkspaceOrder(const std::vector<WorkspaceKey> &ordered);
+bool                           hasAnyWorkspace();
+std::optional<WorkspaceKey>    activeWorkspace();
+void                           setActiveWorkspace(const WorkspaceKey &key);
 
 } // namespace TokenStore

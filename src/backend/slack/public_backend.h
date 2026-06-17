@@ -3,10 +3,11 @@
 #pragma once
 
 #include "backend/backend.h"
-#include "auth/token_store.h"
-#include "network/web_api_client.h"
 #include "rpl/variable.h"
 #include "rpl/event_stream.h"
+#include "shared_realtime.h"
+#include "slack_auth.h"
+#include "web_api_client.h"
 
 #include <QJsonArray>
 #include <QNetworkAccessManager>
@@ -16,34 +17,36 @@
 #include <memory>
 #include <vector>
 
+namespace slack {
+
 class SocketModeRealtime;
 
 // Real Slack backend using the public API + Socket Mode.
-// xappToken is optional; if empty, connectRealtime() is a no-op.
-// appCfg and creds.refreshToken are used for transparent token refresh when
-// the workspace has token rotation enabled.
+// The app-level Socket Mode socket is supplied by the refcounted slack::
+// SharedRealtime: it exists iff ≥1 Slack workspace is live, and is null when no
+// xapp token is configured (then realtime is a no-op). appCfg and
+// creds.refreshToken drive transparent token refresh when token rotation is on.
 class PublicBackend : public Backend {
 public:
-    // refreshUrl: override the oauth.v2.access endpoint (empty = use Slack's default; tests
-    // only).
+    // appCfg defaults to the compiled-in Slack app credentials; tests pass their
+    // own. refreshUrl overrides the oauth.v2.access endpoint (empty = Slack's
+    // default; tests only).
     explicit PublicBackend(
-        const TokenStore::Credentials &creds,
-        const TokenStore::AppConfig   &appCfg,
-        const QString                 &xappToken  = {},
-        const QString                 &refreshUrl = {}
+        const Credentials &creds,
+        const AppConfig   &appCfg     = appConfig(),
+        const QString     &refreshUrl = {}
     );
     ~PublicBackend() override;
-
-    // Use an app-level Socket Mode connection shared between workspace
-    // backends (one socket receives all workspaces' events — see
-    // SocketModeRealtime). Call before connectRealtime(); non-owning.
-    // Without this, connectRealtime() creates a private connection.
-    void setSharedRealtime(SocketModeRealtime *realtime);
 
     rpl::producer<AuthState> authState() const override;
     Capabilities             capabilities() const override;
     void                     connectRealtime() override;
     void                     disconnectRealtime() override;
+
+    bool isSyntheticUser(UserId) const override;
+    bool isBotId(UserId) const override;
+    bool isUserId(UserId) const override;
+    bool isUnresolvedUserId(const QString &) const override;
 
     QString                                  teamUrl() const override { return _teamUrl; }
     rpl::producer<UserId>                    loadMe() override;
@@ -205,22 +208,23 @@ protected:
     qint64       _tokenExpiresAt = 0;
 
 private:
-    void
-    setupTokenRefresh(const TokenStore::Credentials &creds, const TokenStore::AppConfig &appCfg);
+    void setupTokenRefresh(const Credentials &creds, const AppConfig &appCfg);
     void triggerRefresh(std::function<void(bool)> done);
     void maybeProactiveRefresh();
 
-    QString               _xappToken;
-    QString               _teamId;
-    QString               _refreshToken;
-    QString               _refreshUrl;
-    TokenStore::AppConfig _appCfg;
-    WebApiClient         *_api;
-    WebApiClient         *_historyApi; // dedicated client for loadHistory/loadThread
-    WebApiClient         *_infoApi; // low-priority client for background conversations.info sweeps
-    SocketModeRealtime   *_realtime              = nullptr; // owned (private connection)
-    SocketModeRealtime   *_sharedRealtime        = nullptr; // non-owning (app-level shared)
-    QTimer               *_proactiveRefreshTimer = nullptr;
+    QString             _teamId;
+    QString             _refreshToken;
+    QString             _refreshUrl;
+    AppConfig           _appCfg;
+    WebApiClient       *_api;
+    WebApiClient       *_historyApi; // dedicated client for loadHistory/loadThread
+    WebApiClient       *_infoApi;    // low-priority client for background conversations.info sweeps
+    // Refcounted app-level Socket Mode socket: created on the first Slack
+    // backend, released on the last. _sharedRealtime caches the handle's socket
+    // (null when no xapp token is configured).
+    SharedRealtime      _realtimeHandle;
+    SocketModeRealtime *_sharedRealtime        = nullptr; // non-owning (owned by the handle)
+    QTimer             *_proactiveRefreshTimer = nullptr;
 
     // Token refresh deduplication
     bool                                   _refreshInProgress = false;
@@ -233,3 +237,5 @@ private:
     rpl::variable<AuthState> _authState{AuthState::LoggedIn};
     rpl::event_stream<Event> _events;
 };
+
+} // namespace slack

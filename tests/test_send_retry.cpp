@@ -12,10 +12,13 @@
 #include <QUrlQuery>
 
 #include "auth/token_store.h"
-#include "backend/public_backend/public_backend.h"
+#include "backend/slack/public_backend.h"
+#include "backend/slack/slack_auth.h"
+#include "backend/slack/web_api_client.h"
 #include "fake_http_server.h"
-#include "network/web_api_client.h"
 #include "rpl/producer.h"
+
+using namespace slack;
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -261,8 +264,8 @@ namespace {
 struct SendFixture {
     FakeHttpServer server;
     PublicBackend  backend{
-        TokenStore::Credentials{"xoxp-test", "T1", "Test", "", "", 0},
-        TokenStore::AppConfig{"id", "secret", ""}
+        slack::Credentials{"xoxp-test", "T1", "Test", "", "", 0},
+        slack::AppConfig{"id", "secret", ""}
     };
     std::vector<Event> events;
     rpl::lifetime      lt;

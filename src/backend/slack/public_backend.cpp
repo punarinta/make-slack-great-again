@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "public_backend.h"
 #include "json_mappers.h"
+#include "slack_auth.h"
 #include "socket_mode_realtime.h"
 #include "auth/token_store.h"
 
@@ -18,15 +19,17 @@
 #include <QTimer>
 #include <QDebug>
 
+namespace slack {
+
 PublicBackend::PublicBackend(
-    const TokenStore::Credentials &creds,
-    const TokenStore::AppConfig   &appCfg,
-    const QString                 &xappToken,
-    const QString                 &refreshUrl
+    const Credentials &creds, const AppConfig &appCfg, const QString &refreshUrl
 )
-    : _xappToken(xappToken), _teamId(creds.teamId), _refreshToken(creds.refreshToken),
-      _refreshUrl(refreshUrl), _api(new WebApiClient(nullptr)),
-      _historyApi(new WebApiClient(nullptr)), _infoApi(new WebApiClient(nullptr)) {
+    : _teamId(creds.teamId), _refreshToken(creds.refreshToken), _refreshUrl(refreshUrl),
+      _api(new WebApiClient(nullptr)), _historyApi(new WebApiClient(nullptr)),
+      _infoApi(new WebApiClient(nullptr)) {
+    // The shared app-level Socket Mode socket (null if no xapp token is set).
+    _sharedRealtime = _realtimeHandle.socket();
+
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
     _infoApi->setToken(creds.xoxp);
@@ -40,9 +43,7 @@ PublicBackend::PublicBackend(
     setupTokenRefresh(creds, appCfg);
 }
 
-void PublicBackend::setupTokenRefresh(
-    const TokenStore::Credentials &creds, const TokenStore::AppConfig &appCfg
-) {
+void PublicBackend::setupTokenRefresh(const Credentials &creds, const AppConfig &appCfg) {
     _appCfg         = appCfg;
     _tokenExpiresAt = creds.expiresAt;
 
@@ -196,12 +197,17 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
         if (expiresIn > 0)
             _tokenExpiresAt = QDateTime::currentSecsSinceEpoch() + expiresIn;
 
-        // Persist atomically
-        auto saved         = TokenStore::loadWorkspace(_teamId);
+        // Persist atomically. Decode the existing record's Slack auth blob,
+        // update only the rotated token fields, re-encode — displayName/iconUrl
+        // are preserved.
+        const WorkspaceKey key{Service::Slack, _teamId};
+        Credentials        saved = fromRecord(
+            TokenStore::loadWorkspace(key).value_or(TokenStore::WorkspaceRecord{key, {}, {}, {}})
+        );
         saved.xoxp         = newToken;
         saved.refreshToken = _refreshToken;
         saved.expiresAt    = _tokenExpiresAt;
-        TokenStore::saveWorkspace(saved);
+        TokenStore::saveWorkspace(toRecord(saved));
 
         qDebug() << "[TokenRefresh] token refreshed successfully for team" << _teamId
                  << "next expiry in" << expiresIn << "s";
@@ -210,9 +216,10 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
 }
 
 PublicBackend::~PublicBackend() {
+    // Drop our sink before _realtimeHandle releases (and possibly destroys) the
+    // shared socket.
     if (_sharedRealtime)
         _sharedRealtime->removeSink(&_events);
-    delete _realtime;
     delete _infoApi;
     delete _historyApi;
     delete _api;
@@ -224,39 +231,67 @@ void PublicBackend::setApiBaseUrlForTests(const QString &url) {
     _infoApi->setBaseUrl(url);
 }
 
-void PublicBackend::setSharedRealtime(SocketModeRealtime *realtime) {
-    _sharedRealtime = realtime;
-}
-
 rpl::producer<AuthState> PublicBackend::authState() const {
     return _authState.value();
 }
 
 Capabilities PublicBackend::capabilities() const {
-    return Capabilities{}; // Phase 5 adds typing/presence via internal path
+    // What the public API path supports today. typing + livePresence stay false:
+    // live "is typing" and realtime presence_change need the internal path
+    // (Phase 5) — the public path only polls presence. Everything else listed
+    // here is already live in the UI, so reporting it true keeps behavior
+    // unchanged now that the UI gates on these flags.
+    Capabilities c;
+    c.huddles       = true;
+    c.canvases      = true;
+    c.slashCommands = true;
+    c.reactions     = true;
+    c.editMessage   = true;
+    c.threads       = true;
+    c.fileUpload    = true;
+    return c;
+}
+
+bool PublicBackend::isSyntheticUser(UserId id) const {
+    // Slack's two built-in pseudo-accounts: USLACKBOT (Slackbot) and USLACK (the
+    // "Slack" workspace/billing notifier). Both are absent from users.list and
+    // both report is_bot=false, so only the fixed ids identify them.
+    return id.value == QLatin1String("USLACKBOT") || id.value == QLatin1String("USLACK");
+}
+
+bool PublicBackend::isBotId(UserId id) const {
+    return id.value.startsWith('B');
+}
+
+bool PublicBackend::isUserId(UserId id) const {
+    return id.value.startsWith('U');
+}
+
+bool PublicBackend::isUnresolvedUserId(const QString &s) const {
+    // Looks like a raw Slack user id ("U0A1B2C3D" / "W…" for enterprise) rather
+    // than a human name — long enough, leading U/W, and otherwise [A-Z0-9].
+    if (s.length() < 9)
+        return false;
+    if (s[0] != 'U' && s[0] != 'W')
+        return false;
+    for (int i = 1; i < s.length(); ++i) {
+        const QChar c = s[i];
+        if (!c.isDigit() && !(c >= 'A' && c <= 'Z'))
+            return false;
+    }
+    return true;
 }
 
 void PublicBackend::connectRealtime() {
-    if (_sharedRealtime) {
-        _sharedRealtime->addSink(&_events);
-        _sharedRealtime->start();
-        return;
-    }
-    if (_xappToken.isEmpty() || _realtime)
-        return;
-    _realtime = new SocketModeRealtime(_xappToken);
-    _realtime->addSink(&_events);
-    _realtime->start();
+    if (!_sharedRealtime)
+        return; // no xapp token configured → no realtime, same as before
+    _sharedRealtime->addSink(&_events);
+    _sharedRealtime->start();
 }
 
 void PublicBackend::disconnectRealtime() {
     if (_sharedRealtime)
         _sharedRealtime->removeSink(&_events);
-    if (_realtime) {
-        _realtime->stop();
-        delete _realtime;
-        _realtime = nullptr;
-    }
 }
 
 // ── Snapshot loads ────────────────────────────────────────────────
@@ -1054,7 +1089,7 @@ void PublicBackend::openDm(
 }
 
 void PublicBackend::subscribePresence(std::vector<UserId> userIds) {
-    SocketModeRealtime *rt = _sharedRealtime ? _sharedRealtime : _realtime;
+    SocketModeRealtime *rt = _sharedRealtime;
     if (!rt)
         return;
     QStringList ids;
@@ -1458,3 +1493,5 @@ void PublicBackend::sendNextCanvasChange(
         }
     );
 }
+
+} // namespace slack

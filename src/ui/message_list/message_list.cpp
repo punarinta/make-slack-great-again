@@ -431,9 +431,10 @@ void MessageListWidget::applyPendingScroll() {
     }
     if (!_pendingLastReadTs.isEmpty()) {
         // First message strictly newer than the read cursor = first unread.
-        // Slack ts strings are zero-padded, so lexicographic compare is valid.
+        // Compare on the dedicated time field (epoch micros), never the id.
+        const qint64 lastReadMicros = decimalTsToMicros(_pendingLastReadTs);
         for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-            if (_items[i].msg.ts > _pendingLastReadTs) {
+            if (_items[i].msg.date > lastReadMicros) {
                 verticalScrollBar()->setValue(qMax(0, _tops[i] - viewport()->height() / 3));
                 _scrollToBottomPending = false;
                 _pendingLastReadTs.clear();
@@ -611,10 +612,10 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
     }
 
     for (const auto &msg : toInsert) {
-        const double ts       = msg.ts.toDouble();
+        const qint64 ts       = msg.date;
         int          insertAt = static_cast<int>(_items.size());
         for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-            if (_items[i].msg.ts.toDouble() > ts) {
+            if (_items[i].msg.date > ts) {
                 insertAt = i;
                 break;
             }
@@ -631,7 +632,9 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
 }
 
 void MessageListWidget::appendMessageDeferred(const Message &msg) {
-    if (_session && msg.author.value.startsWith('B'))
+    // fetchBotIfNeeded no-ops for non-bot ids (it asks the backend), so we don't
+    // inspect the id's shape here — the UI treats it as opaque.
+    if (_session)
         _session->fetchBotIfNeeded(msg.author);
     MessageItem item;
     item.msg = msg;
@@ -683,8 +686,8 @@ bool MessageListWidget::needsDateSep(int index) const {
         return false;
     if (index == 0)
         return true;
-    const QDate d0 = MsgRender::tsToDate(_items[index - 1].msg.ts);
-    const QDate d1 = MsgRender::tsToDate(_items[index].msg.ts);
+    const QDate d0 = MsgRender::tsToDate(_items[index - 1].msg.date);
+    const QDate d1 = MsgRender::tsToDate(_items[index].msg.date);
     return d0 != d1;
 }
 
@@ -821,12 +824,7 @@ bool MessageListWidget::isCollapsed(int index) const {
         return false; // thread roots break the run
     if (curr.replyCount > 0)
         return false;
-    bool   ok1, ok2;
-    double t1 = prev.ts.toDouble(&ok1);
-    double t2 = curr.ts.toDouble(&ok2);
-    if (!ok1 || !ok2)
-        return false;
-    return (t2 - t1) < 300.0; // collapse if within 5 minutes
+    return (curr.date - prev.date) < 300LL * 1000000; // collapse if within 5 minutes
 }
 
 int MessageListWidget::rowHeight(int index) const {

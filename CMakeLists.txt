@@ -68,13 +68,13 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/app/crash_handler.cpp
     src/app/single_instance.cpp
 
-    # Network
-    src/network/web_api_client.cpp
-    src/backend/public_backend/socket_mode_realtime.cpp
+    # Network (transport mechanics, service-agnostic)
+    src/network/http_queue.cpp
 
-    # Auth
+    # Auth (neutral strategy interface + factory; per-service flows live below the seam)
     src/auth/token_store.cpp
-    src/auth/oauth_flow.cpp
+    src/auth/auth_strategy.h # header-only QObject — listed so AUTOMOC picks it up
+    src/auth/auth_strategy_factory.cpp
 
     # LLM service (Settings → AI assistance)
     src/llm/llm_provider.h # header-only QObject — listed so AUTOMOC picks it up
@@ -85,9 +85,17 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/llm/openai_provider.cpp
     src/llm/llm_service.cpp
 
-    # Backend port
-    src/backend/public_backend/public_backend.cpp
-    src/backend/public_backend/json_mappers.cpp
+    # Backend port + factory (neutral)
+    src/backend/backend_factory.cpp
+
+    # Slack backend adapter (below the Backend seam)
+    src/backend/slack/public_backend.cpp
+    src/backend/slack/json_mappers.cpp
+    src/backend/slack/socket_mode_realtime.cpp
+    src/backend/slack/web_api_client.cpp
+    src/backend/slack/shared_realtime.cpp
+    src/backend/slack/slack_auth.cpp
+    src/backend/slack/oauth_flow.cpp
 
     # Text
     src/text/mrkdwn_parser.cpp

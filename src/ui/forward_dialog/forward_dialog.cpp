@@ -52,7 +52,7 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         auto         *nameLabel = new QLabel(
             "<b>" + name.toHtmlEscaped() + "</b>" + "  <span style='color:" +
                 Th::qss(Th::c().text.tertiary) + ";font-size:" + QString::number(Th::c().fonts.sm) +
-                "px'>" + MsgRender::formatTs(msg.ts) + "</span>",
+                "px'>" + MsgRender::formatTs(msg.date) + "</span>",
             _previewCard
         );
         nameLabel->setTextFormat(Qt::RichText);

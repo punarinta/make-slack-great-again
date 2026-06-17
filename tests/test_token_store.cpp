@@ -3,25 +3,26 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
 #include "auth/token_store.h"
 
 // Redirect QSettings("msga","msga") to a temp dir so tests never touch the
 // user's real credentials stored in ~/.config/msga/msga.conf.
-static QTemporaryDir *gTempDir = nullptr;
-
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
 
     QTemporaryDir tempDir;
-    gTempDir = &tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
     return Catch::Session().run(argc, argv);
 }
+
+using TokenStore::WorkspaceRecord;
 
 // Clear settings before and after each test so tests are fully isolated.
 struct TokenStoreFixture {
@@ -34,222 +35,237 @@ struct TokenStoreFixture {
     ~TokenStoreFixture() { clearSettings(); }
 };
 
+static WorkspaceKey slackKey(const QString &id) {
+    return WorkspaceKey{Service::Slack, id};
+}
+static WorkspaceRecord
+rec(const QString &id, const QString &name, const QString &icon = {}, const QByteArray &auth = {}) {
+    return WorkspaceRecord{slackKey(id), name, icon, auth};
+}
+
+// ── WorkspaceKey canonical form ───────────────────────────────────────────────
+
+TEST_CASE("WorkspaceKey round-trips through its canonical string", "[tokenstore][key]") {
+    const auto k = slackKey("T0123ABCD");
+    CHECK(k.toString() == "slack:T0123ABCD");
+    const auto parsed = WorkspaceKey::fromString("slack:T0123ABCD");
+    REQUIRE(parsed.has_value());
+    CHECK(*parsed == k);
+}
+
+TEST_CASE("WorkspaceKey::fromString rejects malformed handles", "[tokenstore][key]") {
+    CHECK_FALSE(WorkspaceKey::fromString("T0123").has_value());       // no service
+    CHECK_FALSE(WorkspaceKey::fromString("bogus:T0123").has_value()); // unknown service
+    CHECK_FALSE(WorkspaceKey::fromString(":T0123").has_value());      // empty service
+    CHECK_FALSE(WorkspaceKey::fromString("slack:").has_value());      // empty id
+}
+
 // ── saveWorkspace / loadWorkspace ─────────────────────────────────────────────
 
 TEST_CASE_METHOD(TokenStoreFixture, "saveWorkspace/loadWorkspace round-trip", "[tokenstore]") {
-    TokenStore::Credentials c{"xoxp-token", "T001", "My Team", "https://icon.example.com/t.png"};
-    TokenStore::saveWorkspace(c);
-    auto loaded = TokenStore::loadWorkspace("T001");
-    CHECK(loaded.xoxp == "xoxp-token");
-    CHECK(loaded.teamId == "T001");
-    CHECK(loaded.teamName == "My Team");
-    CHECK(loaded.iconUrl == "https://icon.example.com/t.png");
-}
-
-TEST_CASE_METHOD(TokenStoreFixture, "saveWorkspace registers id in workspaceIds", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    CHECK(TokenStore::workspaceIds().contains("T001"));
+    TokenStore::saveWorkspace(rec("T001", "My Team", "https://icon.example.com/t.png", "blob"));
+    const auto loaded = TokenStore::loadWorkspace(slackKey("T001"));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->key == slackKey("T001"));
+    CHECK(loaded->displayName == "My Team");
+    CHECK(loaded->iconUrl == "https://icon.example.com/t.png");
+    CHECK(loaded->auth == QByteArray("blob"));
 }
 
 TEST_CASE_METHOD(
-    TokenStoreFixture, "saveWorkspace twice for same id does not duplicate", "[tokenstore]"
+    TokenStoreFixture, "loadWorkspace returns nullopt for unknown key", "[tokenstore]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T001", "Team One v2", ""});
-    auto ids = TokenStore::workspaceIds();
-    CHECK(ids.count("T001") == 1);
-    CHECK(TokenStore::loadWorkspace("T001").xoxp == "xoxp-2");
-    CHECK(TokenStore::loadWorkspace("T001").teamName == "Team One v2");
+    CHECK_FALSE(TokenStore::loadWorkspace(slackKey("T_GHOST")).has_value());
 }
 
 TEST_CASE_METHOD(
-    TokenStoreFixture, "multiple workspaces all appear in workspaceIds", "[tokenstore]"
+    TokenStoreFixture, "saveWorkspace registers key in workspaceKeys", "[tokenstore]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    auto ids = TokenStore::workspaceIds();
-    REQUIRE(ids.size() == 2);
-    CHECK(ids.contains("T001"));
-    CHECK(ids.contains("T002"));
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("T001"));
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "saveWorkspace twice for same key does not duplicate", "[tokenstore]"
+) {
+    TokenStore::saveWorkspace(rec("T001", "Team One", {}, "a"));
+    TokenStore::saveWorkspace(rec("T001", "Team One v2", {}, "b"));
+    CHECK(TokenStore::workspaceKeys().size() == 1);
+    const auto loaded = TokenStore::loadWorkspace(slackKey("T001"));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->displayName == "Team One v2");
+    CHECK(loaded->auth == QByteArray("b"));
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture, "multiple workspaces all appear in workspaceKeys", "[tokenstore]"
+) {
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::saveWorkspace(rec("T002", "Team Two"));
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 2);
+    CHECK(keys[0] == slackKey("T001"));
+    CHECK(keys[1] == slackKey("T002"));
 }
 
 // ── removeWorkspace ───────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(
-    TokenStoreFixture, "removeWorkspace removes id from workspaceIds", "[tokenstore]"
-) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::removeWorkspace("T001");
-    auto ids = TokenStore::workspaceIds();
-    CHECK(!ids.contains("T001"));
-    CHECK(ids.contains("T002"));
-}
-
-TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace clears stored credentials", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::removeWorkspace("T001");
-    auto loaded = TokenStore::loadWorkspace("T001");
-    CHECK(loaded.xoxp.isEmpty());
-    CHECK(loaded.teamName.isEmpty());
+TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace removes key + clears record", "[tokenstore]") {
+    TokenStore::saveWorkspace(rec("T001", "Team One", {}, "a"));
+    TokenStore::saveWorkspace(rec("T002", "Team Two"));
+    TokenStore::removeWorkspace(slackKey("T001"));
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("T002"));
+    CHECK_FALSE(TokenStore::loadWorkspace(slackKey("T001")).has_value());
 }
 
 TEST_CASE_METHOD(
     TokenStoreFixture, "removeWorkspace active shifts to first remaining", "[tokenstore]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::setActiveWorkspace("T001");
-    TokenStore::removeWorkspace("T001");
-    CHECK(TokenStore::activeWorkspaceId() == "T002");
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::saveWorkspace(rec("T002", "Team Two"));
+    TokenStore::setActiveWorkspace(slackKey("T001"));
+    TokenStore::removeWorkspace(slackKey("T001"));
+    const auto active = TokenStore::activeWorkspace();
+    REQUIRE(active.has_value());
+    CHECK(*active == slackKey("T002"));
 }
 
 TEST_CASE_METHOD(
     TokenStoreFixture, "removeWorkspace last workspace clears active", "[tokenstore]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::setActiveWorkspace("T001");
-    TokenStore::removeWorkspace("T001");
-    CHECK(TokenStore::activeWorkspaceId().isEmpty());
-    CHECK(!TokenStore::hasAnyWorkspace());
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::setActiveWorkspace(slackKey("T001"));
+    TokenStore::removeWorkspace(slackKey("T001"));
+    CHECK_FALSE(TokenStore::activeWorkspace().has_value());
+    CHECK_FALSE(TokenStore::hasAnyWorkspace());
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace non-existent id is a no-op", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::removeWorkspace("T_GHOST");
-    REQUIRE(TokenStore::workspaceIds().size() == 1);
-    CHECK(TokenStore::workspaceIds()[0] == "T001");
+TEST_CASE_METHOD(TokenStoreFixture, "removeWorkspace non-existent key is a no-op", "[tokenstore]") {
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::removeWorkspace(slackKey("T_GHOST"));
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("T001"));
 }
 
 // ── active workspace ──────────────────────────────────────────────────────────
 
-TEST_CASE_METHOD(TokenStoreFixture, "activeWorkspaceId empty when nothing set", "[tokenstore]") {
-    CHECK(TokenStore::activeWorkspaceId().isEmpty());
+TEST_CASE_METHOD(TokenStoreFixture, "activeWorkspace empty when nothing set", "[tokenstore]") {
+    CHECK_FALSE(TokenStore::activeWorkspace().has_value());
 }
 
 TEST_CASE_METHOD(
-    TokenStoreFixture, "setActiveWorkspace/activeWorkspaceId round-trip", "[tokenstore]"
+    TokenStoreFixture, "setActiveWorkspace/activeWorkspace round-trip", "[tokenstore]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", ""});
-    TokenStore::setActiveWorkspace("T001");
-    CHECK(TokenStore::activeWorkspaceId() == "T001");
-}
-
-TEST_CASE_METHOD(
-    TokenStoreFixture, "setActiveWorkspace can switch between workspaces", "[tokenstore]"
-) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::setActiveWorkspace("T001");
-    CHECK(TokenStore::activeWorkspaceId() == "T001");
-    TokenStore::setActiveWorkspace("T002");
-    CHECK(TokenStore::activeWorkspaceId() == "T002");
+    TokenStore::saveWorkspace(rec("T001", "Team"));
+    TokenStore::setActiveWorkspace(slackKey("T001"));
+    const auto active = TokenStore::activeWorkspace();
+    REQUIRE(active.has_value());
+    CHECK(*active == slackKey("T001"));
 }
 
 // ── setWorkspaceOrder ─────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder persists new order", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::saveWorkspace({"xoxp-3", "T003", "Team Three", ""});
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::saveWorkspace(rec("T002", "Team Two"));
+    TokenStore::saveWorkspace(rec("T003", "Team Three"));
 
-    TokenStore::setWorkspaceOrder({"T003", "T001", "T002"});
-    CHECK(TokenStore::workspaceIds() == QStringList{"T003", "T001", "T002"});
+    TokenStore::setWorkspaceOrder({slackKey("T003"), slackKey("T001"), slackKey("T002")});
+    CHECK(
+        TokenStore::workspaceKeys() ==
+        std::vector<WorkspaceKey>{slackKey("T003"), slackKey("T001"), slackKey("T002")}
+    );
 }
 
-TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder ignores unknown ids", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
+TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder ignores unknown keys", "[tokenstore]") {
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::saveWorkspace(rec("T002", "Team Two"));
 
-    TokenStore::setWorkspaceOrder({"T002", "T_BOGUS", "T001"});
-    CHECK(TokenStore::workspaceIds() == QStringList{"T002", "T001"});
+    TokenStore::setWorkspaceOrder({slackKey("T002"), slackKey("T_BOGUS"), slackKey("T001")});
+    CHECK(
+        TokenStore::workspaceKeys() == std::vector<WorkspaceKey>{slackKey("T002"), slackKey("T001")}
+    );
 }
 
 TEST_CASE_METHOD(
-    TokenStoreFixture, "setWorkspaceOrder appends known ids missing from the list", "[tokenstore]"
+    TokenStoreFixture, "setWorkspaceOrder appends known keys missing from the list", "[tokenstore]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::saveWorkspace({"xoxp-3", "T003", "Team Three", ""});
+    TokenStore::saveWorkspace(rec("T001", "Team One"));
+    TokenStore::saveWorkspace(rec("T002", "Team Two"));
+    TokenStore::saveWorkspace(rec("T003", "Team Three"));
 
     // A stale/partial order must never drop a workspace.
-    TokenStore::setWorkspaceOrder({"T002"});
-    CHECK(TokenStore::workspaceIds() == QStringList{"T002", "T001", "T003"});
-}
-
-TEST_CASE_METHOD(TokenStoreFixture, "setWorkspaceOrder keeps credentials intact", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::saveWorkspace({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::setActiveWorkspace("T001");
-
-    TokenStore::setWorkspaceOrder({"T002", "T001"});
-    CHECK(TokenStore::loadWorkspace("T001").xoxp == "xoxp-1");
-    CHECK(TokenStore::loadWorkspace("T002").xoxp == "xoxp-2");
-    CHECK(TokenStore::activeWorkspaceId() == "T001");
+    TokenStore::setWorkspaceOrder({slackKey("T002")});
+    CHECK(
+        TokenStore::workspaceKeys() ==
+        std::vector<WorkspaceKey>{slackKey("T002"), slackKey("T001"), slackKey("T003")}
+    );
 }
 
 // ── hasAnyWorkspace ───────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(TokenStoreFixture, "hasAnyWorkspace false when empty", "[tokenstore]") {
-    CHECK(!TokenStore::hasAnyWorkspace());
+    CHECK_FALSE(TokenStore::hasAnyWorkspace());
 }
 
 TEST_CASE_METHOD(TokenStoreFixture, "hasAnyWorkspace true after save", "[tokenstore]") {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", ""});
+    TokenStore::saveWorkspace(rec("T001", "Team"));
     CHECK(TokenStore::hasAnyWorkspace());
 }
 
-TEST_CASE_METHOD(
-    TokenStoreFixture, "hasAnyWorkspace false after removing only workspace", "[tokenstore]"
-) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", ""});
-    TokenStore::removeWorkspace("T001");
-    CHECK(!TokenStore::hasAnyWorkspace());
-}
-
-// ── legacy wrappers ───────────────────────────────────────────────────────────
-
-TEST_CASE_METHOD(
-    TokenStoreFixture, "save() stores credentials and sets active", "[tokenstore][legacy]"
-) {
-    TokenStore::save({"xoxp-1", "T001", "Team One", ""});
-    CHECK(TokenStore::activeWorkspaceId() == "T001");
-    CHECK(TokenStore::load().xoxp == "xoxp-1");
-}
+// ── migration: bare-id (v1) → composite handle (v2) ───────────────────────────
 
 TEST_CASE_METHOD(
     TokenStoreFixture,
-    "load() returns credentials for current active workspace",
-    "[tokenstore][legacy]"
+    "migrates bare-id slack entries to composite handles",
+    "[tokenstore][migrate]"
 ) {
-    TokenStore::save({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::save({"xoxp-2", "T002", "Team Two", ""});
-    TokenStore::setActiveWorkspace("T001");
-    CHECK(TokenStore::load().teamId == "T001");
-    TokenStore::setActiveWorkspace("T002");
-    CHECK(TokenStore::load().teamId == "T002");
+    {
+        QSettings s("msga", "msga");
+        s.setValue("workspaces", QStringList{"T_OLD"});
+        s.setValue("workspace/T_OLD/xoxp", "xoxp-old");
+        s.setValue("workspace/T_OLD/name", "Old Team");
+        s.setValue("workspace/T_OLD/iconUrl", "https://icon/x.png");
+        s.setValue("workspace/T_OLD/refreshToken", "refresh-old");
+        s.setValue("workspace/T_OLD/expiresAt", 1234567890LL);
+        s.setValue("active", "T_OLD");
+        // intentionally no storeVersion → migration runs
+        s.sync();
+    }
+
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("T_OLD"));
+
+    const auto loaded = TokenStore::loadWorkspace(slackKey("T_OLD"));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->displayName == "Old Team");
+    CHECK(loaded->iconUrl == "https://icon/x.png");
+
+    // The token-shaped fields are packed into the opaque auth blob.
+    const auto blob = QJsonDocument::fromJson(loaded->auth).object();
+    CHECK(blob.value("xoxp").toString() == "xoxp-old");
+    CHECK(blob.value("refreshToken").toString() == "refresh-old");
+    CHECK(blob.value("expiresAt").toString() == "1234567890");
+
+    const auto active = TokenStore::activeWorkspace();
+    REQUIRE(active.has_value());
+    CHECK(*active == slackKey("T_OLD"));
+
+    // Old bare-id subtree is gone.
+    QSettings s("msga", "msga");
+    CHECK_FALSE(s.contains("workspace/T_OLD/xoxp"));
 }
+
+// ── migration: legacy single-account auth/* (v0) → v2 ─────────────────────────
 
 TEST_CASE_METHOD(
-    TokenStoreFixture, "clear() removes the active workspace", "[tokenstore][legacy]"
-) {
-    TokenStore::save({"xoxp-1", "T001", "Team One", ""});
-    TokenStore::clear();
-    CHECK(!TokenStore::hasAnyWorkspace());
-}
-
-TEST_CASE_METHOD(TokenStoreFixture, "hasToken mirrors hasAnyWorkspace", "[tokenstore][legacy]") {
-    CHECK(!TokenStore::hasToken());
-    TokenStore::save({"xoxp-1", "T001", "Team", ""});
-    CHECK(TokenStore::hasToken());
-    TokenStore::clear();
-    CHECK(!TokenStore::hasToken());
-}
-
-// ── migration from old auth/* format ─────────────────────────────────────────
-
-TEST_CASE_METHOD(
-    TokenStoreFixture, "workspaceIds migrates old auth/* format", "[tokenstore][migrate]"
+    TokenStoreFixture, "migrates old auth/* single-account format", "[tokenstore][migrate]"
 ) {
     {
         QSettings s("msga", "msga");
@@ -258,12 +274,17 @@ TEST_CASE_METHOD(
         s.setValue("auth/team_name", "Old Team");
         s.sync();
     }
-    auto ids = TokenStore::workspaceIds();
-    REQUIRE(ids.size() == 1);
-    CHECK(ids[0] == "T_OLD");
-    CHECK(TokenStore::loadWorkspace("T_OLD").xoxp == "xoxp-old");
-    CHECK(TokenStore::loadWorkspace("T_OLD").teamName == "Old Team");
-    CHECK(TokenStore::activeWorkspaceId() == "T_OLD");
+
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("T_OLD"));
+    const auto loaded = TokenStore::loadWorkspace(slackKey("T_OLD"));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->displayName == "Old Team");
+    CHECK(QJsonDocument::fromJson(loaded->auth).object().value("xoxp").toString() == "xoxp-old");
+
+    QSettings s("msga", "msga");
+    CHECK_FALSE(s.contains("auth/xoxp"));
 }
 
 TEST_CASE_METHOD(
@@ -276,25 +297,9 @@ TEST_CASE_METHOD(
         s.setValue("auth/team_name", "Old Team");
         s.sync();
     }
-    auto ids = TokenStore::workspaceIds();
-    REQUIRE(ids.size() == 1);
-    CHECK(ids[0] == "legacy");
-    CHECK(TokenStore::loadWorkspace("legacy").xoxp == "xoxp-old");
-}
-
-TEST_CASE_METHOD(TokenStoreFixture, "migration removes old auth/* keys", "[tokenstore][migrate]") {
-    {
-        QSettings s("msga", "msga");
-        s.setValue("auth/xoxp", "xoxp-old");
-        s.setValue("auth/team_id", "T_OLD");
-        s.setValue("auth/team_name", "Old Team");
-        s.sync();
-    }
-    TokenStore::workspaceIds(); // triggers migration
-    QSettings s("msga", "msga");
-    CHECK(!s.contains("auth/xoxp"));
-    CHECK(!s.contains("auth/team_id"));
-    CHECK(!s.contains("auth/team_name"));
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("legacy"));
 }
 
 TEST_CASE_METHOD(
@@ -306,63 +311,18 @@ TEST_CASE_METHOD(
         s.setValue("auth/team_id", "T_EMPTY");
         s.sync();
     }
-    CHECK(TokenStore::workspaceIds().isEmpty());
+    CHECK(TokenStore::workspaceKeys().empty());
 }
 
 TEST_CASE_METHOD(
     TokenStoreFixture,
-    "migration is idempotent when workspaces key already exists",
+    "migration is idempotent once already on the current version",
     "[tokenstore][migrate]"
 ) {
-    TokenStore::saveWorkspace({"xoxp-new", "T_NEW", "New Team", ""});
-    TokenStore::workspaceIds(); // should not alter the already-migrated state
-    auto ids = TokenStore::workspaceIds();
-    REQUIRE(ids.size() == 1);
-    CHECK(ids[0] == "T_NEW");
-}
-
-// ── expiresAt ─────────────────────────────────────────────────────────────────
-
-TEST_CASE_METHOD(
-    TokenStoreFixture, "saveWorkspace/loadWorkspace round-trips expiresAt", "[tokenstore][expiry]"
-) {
-    TokenStore::Credentials c{"xoxp-1", "T001", "Team", "", "refresh-tok", 1234567890LL};
-    TokenStore::saveWorkspace(c);
-    auto loaded = TokenStore::loadWorkspace("T001");
-    CHECK(loaded.expiresAt == 1234567890LL);
-}
-
-TEST_CASE_METHOD(
-    TokenStoreFixture,
-    "loadWorkspace returns expiresAt=0 when key is absent",
-    "[tokenstore][expiry]"
-) {
-    // Write credentials without an expiresAt key (simulates an old install).
-    {
-        QSettings s("msga", "msga");
-        s.setValue("workspaces", QStringList{"T_OLD"});
-        s.setValue("workspace/T_OLD/xoxp", "xoxp-old");
-        s.setValue("workspace/T_OLD/name", "Old Team");
-        s.setValue("workspace/T_OLD/iconUrl", "");
-        s.setValue("workspace/T_OLD/refreshToken", "refresh-old");
-        // intentionally no expiresAt key
-        s.sync();
-    }
-    auto loaded = TokenStore::loadWorkspace("T_OLD");
-    CHECK(loaded.expiresAt == 0);
-}
-
-TEST_CASE_METHOD(
-    TokenStoreFixture, "saveWorkspace overwrites expiresAt on update", "[tokenstore][expiry]"
-) {
-    TokenStore::saveWorkspace({"xoxp-1", "T001", "Team", "", "refresh-1", 1000LL});
-    TokenStore::saveWorkspace({"xoxp-2", "T001", "Team", "", "refresh-2", 9999LL});
-    CHECK(TokenStore::loadWorkspace("T001").expiresAt == 9999LL);
-}
-
-TEST_CASE_METHOD(
-    TokenStoreFixture, "save/load legacy wrappers preserve expiresAt", "[tokenstore][expiry]"
-) {
-    TokenStore::save({"xoxp-1", "T001", "Team", "", "refresh-tok", 7777LL});
-    CHECK(TokenStore::load().expiresAt == 7777LL);
+    TokenStore::saveWorkspace(rec("T_NEW", "New Team", {}, "blob"));
+    TokenStore::workspaceKeys(); // should not alter the already-migrated state
+    const auto keys = TokenStore::workspaceKeys();
+    REQUIRE(keys.size() == 1);
+    CHECK(keys[0] == slackKey("T_NEW"));
+    CHECK(TokenStore::loadWorkspace(slackKey("T_NEW"))->auth == QByteArray("blob"));
 }

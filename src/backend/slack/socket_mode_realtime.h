@@ -25,6 +25,8 @@ class QTimer;
 // shared by all workspace backends; each backend registers its event stream
 // as a sink and every normalized event is broadcast to all sinks. Sinks
 // (Sessions) ignore events for conversations/users they don't know.
+namespace slack {
+
 class SocketModeRealtime : public QObject {
     Q_OBJECT
 public:
@@ -102,3 +104,5 @@ private:
     // users to track, per sink; the union is re-sent on every connect
     QHash<rpl::event_stream<Event> *, QStringList> _presenceIds;
 };
+
+} // namespace slack

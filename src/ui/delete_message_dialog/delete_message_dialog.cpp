@@ -38,7 +38,7 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
         nameFnt.setBold(true);
         nameLabel->setFont(nameFnt);
 
-        _tsLabel = new QLabel(MsgRender::formatTs(msg.ts), _msgCard);
+        _tsLabel = new QLabel(MsgRender::formatTs(msg.date), _msgCard);
 
         headerRow->addWidget(nameLabel);
         headerRow->addWidget(_tsLabel);

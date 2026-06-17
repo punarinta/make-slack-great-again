@@ -58,9 +58,11 @@ struct GifRenderContext {
     const QSet<QString> *collapsed = nullptr; // keys of user-collapsed images
 };
 
-QString formatTs(const Ts &ts);
-QDate   tsToDate(const Ts &ts);
-QString formatDateLabel(const Ts &ts);
+// Take Message::date (epoch microseconds), not a ts string — display reads the
+// dedicated time field so non-Slack ids (which aren't clocks) still render.
+QString formatTs(qint64 dateMicros);
+QDate   tsToDate(qint64 dateMicros);
+QString formatDateLabel(qint64 dateMicros);
 // Slack-style absolute label for the reply bar: "today at 1:12 PM",
 // "yesterday at 9:03 AM" or "March 3 at 4:15 PM".
 QString lastReplyLabel(const Ts &ts);

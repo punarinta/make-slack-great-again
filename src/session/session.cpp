@@ -519,7 +519,7 @@ const User *Session::findUser(UserId id) const {
 }
 
 void Session::fetchBotIfNeeded(UserId botId) {
-    if (botId.value.isEmpty() || !botId.value.startsWith('B'))
+    if (botId.value.isEmpty() || !_backend->isBotId(botId))
         return;
     if (findUser(botId))
         return;
@@ -544,7 +544,7 @@ rpl::producer<UserId> Session::botInfoLoaded() const {
 }
 
 void Session::fetchUserIfNeeded(UserId userId) {
-    if (userId.value.isEmpty() || !userId.value.startsWith('U'))
+    if (userId.value.isEmpty() || !_backend->isUserId(userId))
         return;
     if (findUser(userId))
         return;
@@ -593,11 +593,23 @@ const Conversation *Session::findConversation(ConversationId id) const {
 bool Session::isAppConversation(const Conversation &c) const {
     if (c.kind != ConvKind::Im || !c.dmUser)
         return false;
-    // Slack system accounts report is_bot=false, so the flag check misses them.
-    if (c.dmUser->value == QLatin1String("USLACKBOT") || c.dmUser->value == QLatin1String("USLACK"))
+    // System accounts may report is_bot=false, so the flag check misses them.
+    if (_backend->isSyntheticUser(*c.dmUser))
         return true;
     const User *u = findUser(*c.dmUser);
     return u && u->isBot;
+}
+
+Capabilities Session::capabilities() const {
+    return _backend->capabilities();
+}
+
+bool Session::isSyntheticUser(UserId id) const {
+    return _backend->isSyntheticUser(id);
+}
+
+bool Session::isUnresolvedUserId(const QString &text) const {
+    return _backend->isUnresolvedUserId(text);
 }
 
 const std::vector<User> &Session::currentUsers() const {
@@ -624,6 +636,7 @@ void Session::sendMessage(ConversationId conv, const QString &text, std::optiona
 
     Message optimistic;
     optimistic.ts         = fakeTs;
+    optimistic.date       = decimalTsToMicros(fakeTs); // so it sorts/renders like a real msg
     optimistic.author     = _meUserId;
     optimistic.text       = MrkdwnParser::parse(text);
     optimistic.rawText    = text;
@@ -905,6 +918,7 @@ void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, con
 
     Message optimistic;
     optimistic.ts      = fakeTs;
+    optimistic.date    = decimalTsToMicros(fakeTs); // so it sorts/renders like a real msg
     optimistic.author  = _meUserId;
     optimistic.text    = MrkdwnParser::parse(text);
     optimistic.rawText = text;
@@ -1102,8 +1116,7 @@ void Session::requestPresence(UserId userId) {
     // We only ever render a presence dot for a known human member, so unless we
     // hold such a User record, skip the doomed call instead of spamming retries.
     const User *u = findUser(userId);
-    if (!u || u->isBot || u->isDeactivated || userId.value == QLatin1String("USLACKBOT") ||
-        userId.value == QLatin1String("USLACK"))
+    if (!u || u->isBot || u->isDeactivated || _backend->isSyntheticUser(userId))
         return;
     _backend->loadPresence(userId) | rpl::on_next(
                                          [this, userId](bool active) {

@@ -198,6 +198,7 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
 static QJsonObject toJson(const Message &m) {
     QJsonObject o;
     o["ts"] = m.ts;
+    o["da"] = QString::number(m.date); // epoch micros; string-encoded to avoid JSON double loss
     if (m.threadRoot)
         o["tr"] = *m.threadRoot;
     o["au"] = m.author.value;
@@ -237,7 +238,10 @@ static QJsonObject toJson(const Message &m) {
 }
 static Message messageFromJson(const QJsonObject &o) {
     Message m;
-    m.ts = o["ts"].toString();
+    m.ts   = o["ts"].toString();
+    // Legacy caches predate the field — backfill from the stored ts so old and
+    // new entries agree to the microsecond (no cache-version bump needed).
+    m.date = o.contains("da") ? o["da"].toString().toLongLong() : decimalTsToMicros(m.ts);
     if (o.contains("tr"))
         m.threadRoot = o["tr"].toString();
     m.author       = UserId{o["au"].toString()};
@@ -336,9 +340,22 @@ static Conversation convFromJson(const QJsonObject &o) {
 
 // ── WorkspaceCache ────────────────────────────────────────────────────────────
 
-WorkspaceCache::WorkspaceCache(const QString &teamId) {
+WorkspaceCache::WorkspaceCache(const QString &handle) {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    _dir               = base + "/cache/" + teamId;
+    // `handle` is the WorkspaceKey form ("slack:T0123"). The ':' is illegal in a
+    // path component on Windows, so sanitize it into a safe directory name.
+    QString       safe = handle;
+    safe.replace(QLatin1Char(':'), QLatin1Char('_'));
+    _dir            = base + "/cache/" + safe;
+    // One-time migration: pre-multi-service caches were keyed by the bare id
+    // (the part after the service prefix). Rename it forward so an existing
+    // offline cache survives the upgrade instead of being silently rebuilt.
+    const int colon = handle.indexOf(QLatin1Char(':'));
+    if (colon > 0 && !QDir(_dir).exists()) {
+        const QString legacy = base + "/cache/" + handle.mid(colon + 1);
+        if (QDir(legacy).exists())
+            QDir().rename(legacy, _dir);
+    }
     QDir().mkpath(_dir + "/messages");
     QDir().mkpath(_dir + "/images");
 }

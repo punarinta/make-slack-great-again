@@ -31,16 +31,101 @@ struct UserId {
 // Slack message timestamp — both identity and sort key ("1700000000.000100").
 using Ts = QString;
 
+// Derive epoch microseconds from a decimal "seconds.fraction" timestamp string
+// (e.g. Slack's "1700000000.000100"). Fills Message::date from a Slack ts and
+// backfills it for legacy cached messages that predate the field, so both paths
+// agree to the microsecond. Transitional: once `ts` is treated as fully opaque
+// (the planned Ts→MessageId step), backends produce `date` directly and the
+// cache simply stores/loads it. Integer-parsed (not toDouble) to avoid precision
+// loss on the 16-significant-digit value.
+inline qint64 decimalTsToMicros(const QString &ts) {
+    const int dot = ts.indexOf(QLatin1Char('.'));
+    if (dot < 0)
+        return ts.toLongLong() * 1000000;
+    const qint64 secs = ts.left(dot).toLongLong();
+    QString      frac = ts.mid(dot + 1);
+    frac.truncate(6);
+    while (frac.size() < 6)
+        frac.append(QLatin1Char('0'));
+    return secs * 1000000 + frac.toLongLong();
+}
+
+// --- Services / workspace handle ---
+
+// The messaging services this app can host. Only Slack today; Telegram/Teams/…
+// are added here as backends land. Keep minimal.
+enum class Service { Slack /*, Teams, Telegram, … */ };
+
+// Stable serialization token for a Service. NEVER serialize the enum's integer
+// — reordering the enum later must not corrupt stored workspace handles.
+inline QString serviceToken(Service s) {
+    switch (s) {
+    case Service::Slack:
+        return QStringLiteral("slack");
+    }
+    return QStringLiteral("slack");
+}
+inline std::optional<Service> serviceFromToken(const QString &t) {
+    if (t == QStringLiteral("slack"))
+        return Service::Slack;
+    return std::nullopt;
+}
+
+// Human-facing service name — shown in the add-workspace service picker.
+inline QString serviceDisplayName(Service s) {
+    switch (s) {
+    case Service::Slack:
+        return QStringLiteral("Slack");
+    }
+    return QStringLiteral("Slack");
+}
+
+// App-wide workspace handle. Service ids are unique only *within* a service, so
+// everything that keys a workspace (sessions map, cache dir, storage subtree,
+// active marker) is keyed by (service, id) — not a bare id. Kept as explicit
+// fields; only encoded to/from a string at the QSettings / cache-path boundary.
+struct WorkspaceKey {
+    Service service = Service::Slack;
+    QString id; // service-local id, e.g. Slack team "T0123ABCD"
+    bool    operator==(const WorkspaceKey &) const = default;
+
+    // Canonical form "slack:T0123ABCD" (service token + ':' + id). ':' is a safe
+    // delimiter: no service id format uses it (Slack ids are [A-Z0-9]).
+    QString toString() const { return serviceToken(service) + QLatin1Char(':') + id; }
+
+    static std::optional<WorkspaceKey> fromString(const QString &s) {
+        const int i = s.indexOf(QLatin1Char(':'));
+        if (i <= 0 || i + 1 >= s.size())
+            return std::nullopt;
+        const auto svc = serviceFromToken(s.left(i));
+        if (!svc)
+            return std::nullopt;
+        return WorkspaceKey{*svc, s.mid(i + 1)};
+    }
+};
+
 // --- Enumerations ---
 
 enum class ConvKind { PublicChannel, PrivateChannel, Im, Mpim };
 enum class AuthState { NotLoggedIn, LoggingIn, LoggedIn };
 enum class NotificationLevel { Default, All, Mentions, Mute };
 
+// What a backend supports. EVERY flag defaults false: a feature is opt-in, so a
+// backend that forgets to set a flag silently *hides* the feature rather than
+// claiming one it can't honor. The UI gates Slack-only affordances on these (see
+// the canvas tab and huddle call sites) so a future Telegram/Teams backend that
+// lacks them shows a clean surface with no dead controls.
 struct Capabilities {
-    bool typing       = false;
-    bool livePresence = false;
-    bool huddles      = false;
+    bool typing        = false; // live "user is typing" events (internal path only)
+    bool livePresence  = false; // realtime presence_change (vs. polled presence)
+    bool huddles       = false; // live huddle indicator + join links
+    bool canvases      = false; // channel canvas tab + editing
+    bool slashCommands = false; // listCommands()/runCommand()
+    bool reactions     = false; // add/remove emoji reactions
+    bool editMessage   = false; // edit/delete own messages
+    bool threads       = false; // threaded replies
+    bool fileUpload    = false; // upload + share files
+    bool operator==(const Capabilities &) const = default;
 };
 
 // --- Core domain structs ---
@@ -334,6 +419,13 @@ struct Attachment {
 
 struct Message {
     Ts                    ts;
+    // Wall-clock time AND sort key, in epoch microseconds. The single orderable
+    // time field: `ts` is identity only (equality / dedup / mutation target /
+    // thread linkage), never compared for ordering — on non-Slack services the id
+    // is not a clock. The Slack backend fills this by parsing `ts`; cached
+    // messages backfill it from their stored `ts` on load. Display, sorting,
+    // grouping, and the last-read compare all read `date`.
+    qint64                date = 0;
     std::optional<Ts>     threadRoot;     // set when message is in a thread (reply)
     int                   replyCount = 0; // >0 on thread root messages
     std::vector<UserId>   replyUsers;     // participants (up to 5, from reply_users)

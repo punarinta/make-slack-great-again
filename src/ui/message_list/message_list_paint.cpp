@@ -121,7 +121,7 @@ void MessageListWidget::paintRow(
     // Paint date separator at the top of the row if needed, then shift content down.
     const int sepH = needsDateSep(index) ? kSepH : 0;
     if (sepH > 0)
-        paintDateSep(p, rowTop, ctx.vw, item.msg.ts);
+        paintDateSep(p, rowTop, ctx.vw, item.msg.date);
     const int msgTop = rowTop + sepH;
 
     const int vw        = ctx.vw;
@@ -235,7 +235,7 @@ void MessageListWidget::paintRow(
         p.setFont(tsFont);
         p.setPen(Th::c().text.secondary);
         const QFontMetrics tsFm(tsFont);
-        const QString      tsText = MsgRender::formatTs(item.msg.ts);
+        const QString      tsText = MsgRender::formatTs(item.msg.date);
         // Align timestamp to the same baseline as the bold name
         p.drawText(tsX, headerBaseline, tsText);
 
@@ -359,7 +359,7 @@ void MessageListWidget::paintRow(
         p.save();
         p.setFont(tsFont);
         p.setPen(Th::c().text.secondary);
-        const QString tsText  = MsgRender::formatTs(item.msg.ts);
+        const QString tsText  = MsgRender::formatTs(item.msg.date);
         const int     tsRight = kPadH + kAvSize;
         p.drawText(
             QRect(0, contTop, tsRight, msgH - 2 * kPadVCollapsed),
@@ -1576,8 +1576,8 @@ void MessageListWidget::paintIntro(QPainter &p, int top) const {
     p.restore();
 }
 
-void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, const Ts &ts) const {
-    const QString label = MsgRender::formatDateLabel(ts);
+void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, qint64 dateMicros) const {
+    const QString label = MsgRender::formatDateLabel(dateMicros);
     if (label.isEmpty())
         return;
 

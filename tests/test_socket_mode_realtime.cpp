@@ -19,9 +19,11 @@
 #include <QWebSocketServer>
 #include <QWebSocket>
 
-#include "backend/public_backend/socket_mode_realtime.h"
+#include "backend/slack/socket_mode_realtime.h"
 
 #include "fake_http_server.h"
+
+using slack::SocketModeRealtime;
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);

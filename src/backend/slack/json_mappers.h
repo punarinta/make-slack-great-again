@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
+namespace slack {
 namespace JsonMappers {
 
 User         toUser(const QJsonObject &);
@@ -51,3 +52,4 @@ HuddleRoom readHuddleRoom(const QJsonObject &room);
 std::pair<QString, bool> channelCanvas(const QJsonObject &channel);
 
 } // namespace JsonMappers
+} // namespace slack

@@ -4,7 +4,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include "backend/public_backend/json_mappers.h"
+#include "backend/slack/json_mappers.h"
+
+using namespace slack;
 
 static QJsonObject obj(const char *json) {
     return QJsonDocument::fromJson(json).object();

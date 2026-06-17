@@ -27,12 +27,9 @@
 
 namespace {
 
-QString formatTs(const Ts &ts) {
-    bool   ok   = false;
-    double secs = ts.toDouble(&ok);
-    if (!ok)
-        return ts;
-    return TimeFmt::formatDateTime(static_cast<qint64>(secs));
+// Takes Message::date (epoch micros) — the dedicated time field, not the id.
+QString formatTs(qint64 dateMicros) {
+    return TimeFmt::formatDateTime(dateMicros / 1000000);
 }
 
 } // namespace
@@ -388,7 +385,7 @@ void SearchWidget::populateResults(const std::vector<SearchResult> &results) {
             convLabel = isDm ? name : "#" + name;
         }
 
-        const QString tsLabel = formatTs(r.msg.ts);
+        const QString tsLabel = formatTs(r.msg.date);
         const QString preview = resolvePreview(r.msg.text);
 
         auto *item = new QListWidgetItem(_resultList);

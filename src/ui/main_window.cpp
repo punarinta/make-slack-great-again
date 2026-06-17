@@ -17,9 +17,10 @@
 #include "session/session.h"
 #include "cache/cache_evictor.h"
 #include "auth/token_store.h"
-#include "auth/oauth_flow.h"
-#include "backend/public_backend/public_backend.h"
-#include "backend/public_backend/socket_mode_realtime.h"
+#include "auth/auth_strategy.h"
+#include "auth/auth_strategy_factory.h"
+#include "backend/backend.h"
+#include "backend/backend_factory.h"
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
@@ -35,7 +36,6 @@
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
 #include "update_bar/update_bar.h"
-#include "app_credentials.h"
 
 #include "ui/icon_utils.h"
 #include "util/sound_player.h"
@@ -53,6 +53,7 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QIcon>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QStackedWidget>
 #include <QSystemTrayIcon>
@@ -75,6 +76,17 @@ static constexpr int kResizeBorder  = 6;
 static constexpr int kConvMinWidth  = 160;
 static constexpr int kConvMaxWidth  = 400;
 static constexpr int kConvInitWidth = 240;
+
+// The workspace identifier flowing through MainWindow (_sessions key,
+// _activeTeamId, switcher ids, NavHistory) is the composite WorkspaceKey handle
+// string, e.g. "slack:T0123ABCD". This helper resolves a handle to its neutral
+// registry record (empty record if the handle is malformed or absent).
+static TokenStore::WorkspaceRecord recordForHandle(const QString &handle) {
+    if (const auto key = WorkspaceKey::fromString(handle))
+        if (const auto rec = TokenStore::loadWorkspace(*key))
+            return *rec;
+    return {};
+}
 
 // Thin drag handle between the conv panel and the message area.
 class ConvResizeHandle final : public QWidget {
@@ -187,11 +199,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     if (TokenStore::hasAnyWorkspace()) {
         // Connect every logged-in workspace so unread badges and
         // notifications work without clicking each one first.
-        const auto ids = TokenStore::workspaceIds();
-        for (const auto &id : ids)
-            ensureSession(id);
-        const QString active = TokenStore::activeWorkspaceId();
-        activateWorkspace(active.isEmpty() ? ids.first() : active);
+        const auto keys = TokenStore::workspaceKeys();
+        for (const auto &key : keys)
+            ensureSession(key.toString());
+        const auto    active       = TokenStore::activeWorkspace();
+        const QString activeHandle = active ? active->toString() : keys.front().toString();
+        activateWorkspace(activeHandle);
     } else {
         showLoggedOut();
     }
@@ -429,7 +442,12 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
         _switcher, &WorkspaceSwitcher::workspaceRightClicked, this, &MainWindow::showWorkspaceMenu
     );
     connect(_switcher, &WorkspaceSwitcher::workspacesReordered, this, [](const QStringList &ids) {
-        TokenStore::setWorkspaceOrder(ids);
+        std::vector<WorkspaceKey> keys;
+        keys.reserve(static_cast<size_t>(ids.size()));
+        for (const auto &h : ids)
+            if (auto k = WorkspaceKey::fromString(h))
+                keys.push_back(*k);
+        TokenStore::setWorkspaceOrder(keys);
     });
 
     _settingsDialog = new SettingsDialog(qobject_cast<QWidget *>(_stack->parent()));
@@ -468,7 +486,7 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
     connect(_convFooter, &ConvFooterWidget::manageStatusRequested, this, [this] {
         if (!_session)
             return;
-        const QString workspace = TokenStore::loadWorkspace(_activeTeamId).teamName;
+        const QString workspace = recordForHandle(_activeTeamId).displayName;
         auto         *dlg       = new StatusDialog(_session, _imgCache, workspace, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->open();
@@ -895,19 +913,18 @@ Session *MainWindow::ensureSession(const QString &teamId) {
     if (it != _sessions.end())
         return it->second.session.get();
 
-    const auto    creds  = TokenStore::loadWorkspace(teamId);
-    const auto    appCfg = TokenStore::loadApp();
-    const QString xapp   = qEnvironmentVariable("SLACK_XAPP_TOKEN", appCfg.xapp);
-
-    // One app-level Socket Mode connection serves every workspace: Slack
-    // delivers all installations' events over a single socket and
-    // round-robins between sockets of the same app, so per-workspace
-    // connections would lose events.
-    if (!_sharedRealtime && !xapp.isEmpty())
-        _sharedRealtime = std::make_unique<SocketModeRealtime>(xapp);
-
-    auto backend = std::make_unique<PublicBackend>(creds, appCfg, xapp);
-    backend->setSharedRealtime(_sharedRealtime.get());
+    // teamId is the WorkspaceKey handle. The factory builds the right backend
+    // for the service encoded in the handle; any per-service shared resource
+    // (e.g. the Slack Socket Mode socket) is created lazily by that backend.
+    const auto key = WorkspaceKey::fromString(teamId);
+    if (!key)
+        return nullptr;
+    const auto rec = TokenStore::loadWorkspace(*key);
+    if (!rec)
+        return nullptr;
+    auto backend = makeBackend(*rec);
+    if (!backend)
+        return nullptr;
 
     auto &entry      = _sessions[teamId];
     entry.session    = std::make_unique<Session>(std::move(backend), teamId);
@@ -1017,6 +1034,8 @@ void MainWindow::activateWorkspace(QString teamId) {
 
     _session = ensureSession(teamId);
     _messageList->setSession(_session);
+    if (_convList)
+        _convList->setSession(_session);
     if (_searchWidget)
         _searchWidget->setSession(_session);
     if (_composer)
@@ -1037,12 +1056,13 @@ void MainWindow::activateWorkspace(QString teamId) {
         _convTabs->setCanvasInfo(false);
 
     _activeTeamId = teamId;
-    TokenStore::setActiveWorkspace(teamId);
+    if (const auto key = WorkspaceKey::fromString(teamId))
+        TokenStore::setActiveWorkspace(*key);
 
     // Update switcher + title bar
     refreshSwitcher();
     if (_titleBar)
-        _titleBar->setTitle(TokenStore::loadWorkspace(teamId).teamName);
+        _titleBar->setTitle(recordForHandle(teamId).displayName);
 
     // First load with no cache: hide the conv column and show a spinner in the
     // message area until conversations arrive from the network.
@@ -1084,36 +1104,61 @@ void MainWindow::showLoggedOut() {
     _stack->setCurrentWidget(_loggedOutPage);
 }
 
+std::optional<Service> MainWindow::chooseService() {
+    const auto services = auth::registeredAuthServices();
+    if (services.empty())
+        return std::nullopt;
+    // With a single registered service the picker is pointless — auto-select it.
+    if (services.size() == 1)
+        return services.front();
+
+    QStringList names;
+    for (const Service s : services)
+        names << serviceDisplayName(s);
+    bool          ok     = false;
+    const QString chosen = QInputDialog::getItem(
+        this, tr("Add workspace"), tr("Choose a service:"), names, 0, false, &ok
+    );
+    if (!ok)
+        return std::nullopt;
+    const int idx = names.indexOf(chosen);
+    if (idx < 0)
+        return std::nullopt;
+    return services[static_cast<size_t>(idx)];
+}
+
 bool MainWindow::runLoginFlow() {
-    const auto appCfg = TokenStore::loadApp();
-    if (appCfg.clientId.isEmpty()) {
-        QMessageBox::critical(
-            this,
-            tr("Missing credentials"),
-            tr("App credentials are not configured.\n\n"
-               "Copy credentials.cmake.example to credentials.cmake, "
-               "fill in your Slack app credentials, and rebuild.")
-        );
+    const auto service = chooseService();
+    if (!service)
+        return false; // user cancelled the picker
+
+    // The auth strategy is neutral: it runs the service's own flow (Slack's
+    // OAuth, later Telegram's phone+code, …) and hands back a ready-to-store
+    // WorkspaceRecord. MainWindow never sees a service-specific credential type.
+    auto strategy = auth::makeAuthStrategy(*service, this);
+    if (!strategy) {
+        QMessageBox::critical(this, tr("Login failed"), tr("This service is not supported."));
         return false;
     }
 
-    OAuthFlow flow(appCfg);
-    _activeFlow        = &flow;
+    _activeFlow        = strategy.get();
     bool       success = false;
     QEventLoop loop;
 
-    QObject::connect(&flow, &OAuthFlow::done, [&](TokenStore::Credentials creds) {
-        TokenStore::saveWorkspace(creds);
-        _activeTeamId = creds.teamId;
-        success       = true;
-        loop.quit();
-    });
-    QObject::connect(&flow, &OAuthFlow::failed, [&](const QString &reason) {
+    QObject::connect(
+        strategy.get(), &auth::AuthStrategy::succeeded, [&](TokenStore::WorkspaceRecord rec) {
+            TokenStore::saveWorkspace(rec);
+            _activeTeamId = rec.key.toString();
+            success       = true;
+            loop.quit();
+        }
+    );
+    QObject::connect(strategy.get(), &auth::AuthStrategy::failed, [&](const QString &reason) {
         QMessageBox::critical(this, tr("Login failed"), reason);
         loop.quit();
     });
 
-    flow.start();
+    strategy->start();
     loop.exec();
     _activeFlow = nullptr;
     return success;
@@ -1121,7 +1166,7 @@ bool MainWindow::runLoginFlow() {
 
 void MainWindow::handleOAuthUri(const QUrl &uri) {
     if (_activeFlow)
-        _activeFlow->handleUri(uri);
+        _activeFlow->handleCallbackUri(uri);
 }
 
 // How the user's own presence reads to others — shown on the self-DM header avatar.
@@ -1181,8 +1226,7 @@ void MainWindow::wireConvList() {
     connect(_convList, &ConvListWidget::createChannelRequested, this, [this] {
         if (!_session)
             return;
-        const auto creds = TokenStore::loadWorkspace(_activeTeamId);
-        auto      *dlg   = new CreateChannelDialog(creds.teamName, this);
+        auto *dlg = new CreateChannelDialog(recordForHandle(_activeTeamId).displayName, this);
         if (dlg->exec() == QDialog::Accepted) {
             const QString name = dlg->channelName();
             const bool    priv = dlg->isPrivate();
@@ -1205,8 +1249,7 @@ void MainWindow::openBrowseDialog(int initialTab) {
     connect(dlg, &BrowseChannelsDialog::createChannelRequested, this, [this] {
         if (!_session)
             return;
-        const auto creds = TokenStore::loadWorkspace(_activeTeamId);
-        auto      *cdlg  = new CreateChannelDialog(creds.teamName, this);
+        auto *cdlg = new CreateChannelDialog(recordForHandle(_activeTeamId).displayName, this);
         if (cdlg->exec() == QDialog::Accepted) {
             _session->createChannel(
                 cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
@@ -1568,7 +1611,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     }
     // Say which workspace it came from when it isn't the one on screen.
     if (teamId != _activeTeamId) {
-        const QString teamName = TokenStore::loadWorkspace(teamId).teamName;
+        const QString teamName = recordForHandle(teamId).displayName;
         if (!teamName.isEmpty())
             title = teamName + " · " + title;
     }
@@ -1592,7 +1635,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
             else if (!ev.msg.botAvatarUrl.isEmpty())
                 iconUrl = ev.msg.botAvatarUrl;
         } else {
-            iconUrl = TokenStore::loadWorkspace(teamId).iconUrl;
+            iconUrl = recordForHandle(teamId).iconUrl;
         }
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
@@ -1676,12 +1719,15 @@ void MainWindow::refreshSwitcher() {
     if (!_switcher)
         return;
 
-    const auto                            ids = TokenStore::workspaceIds();
+    const auto                            keys = TokenStore::workspaceKeys();
     std::vector<WorkspaceSwitcher::Entry> entries;
-    entries.reserve(ids.size());
-    for (const auto &id : ids) {
-        const auto c = TokenStore::loadWorkspace(id);
-        entries.push_back({c.teamId, c.teamName, c.iconUrl});
+    entries.reserve(keys.size());
+    for (const auto &key : keys) {
+        const auto    rec    = TokenStore::loadWorkspace(key);
+        const QString handle = key.toString();
+        entries.push_back(
+            {handle, rec ? rec->displayName : QString(), rec ? rec->iconUrl : QString()}
+        );
     }
     _switcher->setWorkspaces(entries);
     _switcher->setActive(_activeTeamId);
@@ -1696,21 +1742,22 @@ void MainWindow::logoutWorkspace(const QString &teamId) {
     dropSession(teamId);
     if (wasActive)
         _activeTeamId.clear();
-    TokenStore::removeWorkspace(teamId);
+    if (const auto key = WorkspaceKey::fromString(teamId))
+        TokenStore::removeWorkspace(*key);
 
-    const auto remaining = TokenStore::workspaceIds();
-    if (remaining.isEmpty()) {
+    const auto remaining = TokenStore::workspaceKeys();
+    if (remaining.empty()) {
         showLoggedOut();
     } else if (wasActive) {
-        activateWorkspace(remaining.first());
+        activateWorkspace(remaining.front().toString());
     } else {
         refreshSwitcher();
     }
 }
 
 void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPos) {
-    const auto creds = TokenStore::loadWorkspace(teamId);
-    auto      *menu  = new ContextMenu(this);
+    const auto rec  = recordForHandle(teamId);
+    auto      *menu = new ContextMenu(this);
 
     // Workspace admins get a shortcut to the Slack admin settings in their browser.
     const auto it = _sessions.find(teamId);
@@ -1727,7 +1774,7 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
     }
 
     menu->addItem(
-        creds.teamName.isEmpty() ? tr("Log out") : tr("Log out from %1").arg(creds.teamName),
+        rec.displayName.isEmpty() ? tr("Log out") : tr("Log out from %1").arg(rec.displayName),
         [this, teamId] { logoutWorkspace(teamId); },
         /*destructive=*/true
     );
@@ -1743,10 +1790,11 @@ void MainWindow::setupTray() {
 
     auto *menu = new QMenu(this);
 
-    const auto ids = TokenStore::workspaceIds();
-    for (const auto &id : ids) {
-        const auto    creds = TokenStore::loadWorkspace(id);
-        const QString label = creds.teamName.isEmpty() ? id : creds.teamName;
+    const auto keys = TokenStore::workspaceKeys();
+    for (const auto &key : keys) {
+        const QString id    = key.toString();
+        const auto    rec   = TokenStore::loadWorkspace(key);
+        const QString label = (rec && !rec->displayName.isEmpty()) ? rec->displayName : id;
         menu->addAction(label, this, [this, id] {
             show();
             raise();
@@ -2100,7 +2148,8 @@ void MainWindow::openConversation(int row) {
         // not_visible. Hide the tab and skip the doomed conversations.info +
         // files.info probe entirely.
         const Conversation *convForCanvas = _session->findConversation(_currentConvId);
-        if (convForCanvas && _session->isAppConversation(*convForCanvas)) {
+        if (!_session->capabilities().canvases ||
+            (convForCanvas && _session->isAppConversation(*convForCanvas))) {
             _currentCanvasFileId.clear();
             _convTabs->setCanvasTabVisible(false);
         } else {
@@ -2211,7 +2260,9 @@ void MainWindow::updateHuddleBanner() {
     const Conversation *conv = (chromeVisible && _session && !_currentConvId.value.isEmpty())
                                    ? _session->findConversation(_currentConvId)
                                    : nullptr;
-    _huddleBanner->setVisible(conv && conv->huddleActive);
+    _huddleBanner->setVisible(
+        conv && conv->huddleActive && _session && _session->capabilities().huddles
+    );
 }
 
 void MainWindow::updateHeaderForConv(const ConversationId &conv) {
@@ -2227,6 +2278,10 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
         _starBtn->setVisible(true);
         updateStarBtn(conversation ? conversation->isStarred : false);
     }
+    // The "start huddle" header button only makes sense on a backend that has
+    // huddles (Slack); a future service without them shows no dead control.
+    if (_huddleBtn)
+        _huddleBtn->setVisible(_session->capabilities().huddles);
     const bool isDm = conversation &&
                       (conversation->kind == ConvKind::Im || conversation->kind == ConvKind::Mpim);
 

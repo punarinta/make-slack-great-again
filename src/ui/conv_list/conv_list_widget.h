@@ -13,6 +13,7 @@
 
 class ImageCache;
 class PopupTooltip;
+class Session;
 
 // Per-user info cached from setUsers().
 struct UserInfo {
@@ -45,6 +46,10 @@ class ConvListWidget : public VirtualListWidget {
 public:
     explicit ConvListWidget(ImageCache *imgCache, QWidget *parent = nullptr);
     ~ConvListWidget() override;
+
+    // The active session — used only to ask the backend opaque-id questions
+    // (synthetic/system accounts, unresolved raw ids). Re-set on workspace switch.
+    void setSession(Session *s) { _session = s; }
 
     void setConversations(std::vector<Conversation> convs);
     // Call with the full user list so DM names, avatars, and status can be resolved.
@@ -166,6 +171,7 @@ protected:
     IconPixmaps   _iconPx;
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr; // hover tooltip for the DM header "+"
+    Session      *_session  = nullptr; // non-owning; for opaque-id queries only
     UserId        _meUserId;
     bool          _selfPhantomAway = false;
 

@@ -23,6 +23,25 @@ public:
     virtual void                     connectRealtime()    = 0;
     virtual void                     disconnectRealtime() = 0;
 
+    // --- Identity helpers: keep ID-shape knowledge below the seam ---
+    // The UI and Session treat IDs as opaque scalars; when they nonetheless need
+    // to answer a question about an id's *kind* (which they used to do with
+    // Slack prefix checks like "U…"/"B…"), they ask the backend instead. Defaults
+    // suit a service with no such notion — a backend that doesn't distinguish
+    // these simply answers "no" and the caller treats every id uniformly.
+    //
+    // A synthetic/system account (e.g. Slack's USLACKBOT / USLACK): shown as an
+    // app, never presence-polled, never offered a user profile.
+    virtual bool isSyntheticUser(UserId) const { return false; }
+    // The id denotes a bot/app integration (resolved via the bot-info path).
+    virtual bool isBotId(UserId) const { return false; }
+    // The id denotes a human user (resolved via the user-info path).
+    virtual bool isUserId(UserId) const { return false; }
+    // `text` is an unresolved raw user id surfacing where a human-readable name
+    // is expected (e.g. a deactivated account whose display name fell back to the
+    // bare id) — so the UI can hide it rather than show a cryptic code.
+    virtual bool isUnresolvedUserId(const QString &) const { return false; }
+
     // Workspace's web base URL (e.g. "https://nisdos.slack.com/"), learned from
     // auth.test's `url` field once loadMe() completes. Empty until then / if
     // unsupported.

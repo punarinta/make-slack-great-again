@@ -18,8 +18,6 @@
 #include <memory>
 
 class Session;
-class SocketModeRealtime;
-class OAuthFlow;
 class ImageCache;
 class MessageListWidget;
 class ComposerWidget;
@@ -42,6 +40,10 @@ class UpdateBar;
 class UpdateChecker;
 
 class QCloseEvent;
+
+namespace auth {
+class AuthStrategy;
+}
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -74,15 +76,18 @@ private:
     // UI at one of them.  Team ids are taken BY VALUE: callers often pass
     // strings owned by structures these functions rebuild (switcher entries,
     // _activeTeamId, the sessions map), which would dangle behind a reference.
-    Session *ensureSession(const QString &teamId);
-    void     activateWorkspace(QString teamId);
-    void     dropSession(QString teamId);
-    void     switchToWorkspace(QString teamId);
-    void     showLoggedOut();
-    bool     runLoginFlow();
-    void     wireConvList(); // one-time Qt signal wiring (lambdas read _session)
-    void     connectToSession();
-    void     restoreLastConv();
+    Session               *ensureSession(const QString &teamId);
+    void                   activateWorkspace(QString teamId);
+    void                   dropSession(QString teamId);
+    void                   switchToWorkspace(QString teamId);
+    void                   showLoggedOut();
+    bool                   runLoginFlow();
+    // Pick which service to add. Auto-selects when only one is registered;
+    // otherwise prompts. Returns nullopt if the user cancels.
+    std::optional<Service> chooseService();
+    void                   wireConvList(); // one-time Qt signal wiring (lambdas read _session)
+    void                   connectToSession();
+    void                   restoreLastConv();
 
     // Workspace management
     void refreshSwitcher();
@@ -136,17 +141,15 @@ private:
         std::unique_ptr<Session> session;
         rpl::lifetime            lifetime; // background subscriptions (badges/notify/auth)
     };
-    // App-level Socket Mode socket shared by every workspace backend — Slack
-    // delivers all workspaces' events over one connection (and round-robins
-    // between sockets of the same app, so per-workspace sockets lose events).
-    // Declared before _sessions: ~PublicBackend unregisters its sink from it,
-    // so it must be destroyed after the sessions.
-    std::unique_ptr<SocketModeRealtime> _sharedRealtime;
+    // _sessions is keyed by the WorkspaceKey handle string ("slack:T0123…").
+    // The app-level Socket Mode socket is no longer owned here: each Slack
+    // backend acquires it from the refcounted slack::SharedRealtime, so it
+    // exists iff ≥1 Slack workspace is live.
     std::map<QString, WorkspaceSession> _sessions;
     Session                            *_session = nullptr; // active workspace's session
 
-    QString    _activeTeamId;
-    OAuthFlow *_activeFlow = nullptr; // non-owning; valid only while runLoginFlow() blocks
+    QString             _activeTeamId;
+    auth::AuthStrategy *_activeFlow = nullptr; // non-owning; valid only while runLoginFlow() blocks
 
     // Window frame
     TitleBar      *_titleBar      = nullptr;

@@ -2,20 +2,22 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "oauth_flow.h"
 
-#include <QDesktopServices>
-#include <QUrl>
-#include <QUrlQuery>
-#include <QRandomGenerator>
+#include <QCoreApplication>
 #include <QCryptographicHash>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QNetworkAccessManager>
+#include <QDateTime>
+#include <QDesktopServices>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QDateTime>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QRandomGenerator>
+#include <QUrlQuery>
 
-OAuthFlow::OAuthFlow(const TokenStore::AppConfig &app, QObject *parent)
-    : QObject(parent), _app(app), _client(this) {}
+namespace slack {
+
+OAuthFlow::OAuthFlow(AppConfig app, QObject *parent)
+    : auth::AuthStrategy(parent), _app(std::move(app)) {}
 
 QStringList OAuthFlow::userScopes() {
     // NOTE: tokens issued before a scope was added here lack it until the user
@@ -33,6 +35,18 @@ QStringList OAuthFlow::userScopes() {
 }
 
 void OAuthFlow::start() {
+    if (_app.clientId.isEmpty()) {
+        emit failed(
+            QCoreApplication::translate(
+                "slack::OAuthFlow",
+                "App credentials are not configured.\n\n"
+                "Copy credentials.cmake.example to credentials.cmake, "
+                "fill in your Slack app credentials, and rebuild."
+            )
+        );
+        return;
+    }
+
     // PKCE: 32 random bytes → base64url (43 chars, within RFC 7636's 43–128 range)
     QByteArray verifierBytes(32, '\0');
     QRandomGenerator::global()->fillRange(reinterpret_cast<quint32 *>(verifierBytes.data()), 8);
@@ -59,7 +73,7 @@ void OAuthFlow::start() {
     QDesktopServices::openUrl(url);
 }
 
-void OAuthFlow::handleUri(const QUrl &uri) {
+void OAuthFlow::handleCallbackUri(const QUrl &uri) {
     // Expected: msga://oauth/callback?code=…&state=…
     if (uri.scheme() != "msga" || uri.host() != "oauth" || uri.path() != "/callback")
         return;
@@ -139,9 +153,15 @@ void OAuthFlow::fetchTeamInfo(
                 auto icon = root.value("team").toObject().value("icon").toObject();
                 iconUrl   = icon.value("image_88").toString();
             }
-            emit done(
-                TokenStore::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken, expiresAt}
+            // Encode the Slack token into the neutral record's opaque blob — the
+            // UI above the seam never touches slack::Credentials.
+            emit succeeded(
+                slack::toRecord(
+                    slack::Credentials{xoxp, teamId, teamName, iconUrl, refreshToken, expiresAt}
+                )
             );
         }
     );
 }
+
+} // namespace slack

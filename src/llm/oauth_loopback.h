@@ -4,7 +4,7 @@
 // opens the browser, runs a one-shot HTTP listener on 127.0.0.1:<port>, then
 // exchanges the code at the provider's token endpoint.
 //
-// Unlike auth/oauth_flow.h (Slack, msga:// custom scheme via SingleInstance),
+// Unlike backend/slack/oauth_flow.h (Slack, msga:// custom scheme via SingleInstance),
 // LLM providers register http://localhost:<port> redirect URIs, so the
 // callback arrives over a local TCP connection instead of the OS.
 #pragma once

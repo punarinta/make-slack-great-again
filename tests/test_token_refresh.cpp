@@ -13,9 +13,20 @@
 #include <QUrlQuery>
 
 #include "auth/token_store.h"
-#include "backend/public_backend/public_backend.h"
-#include "network/web_api_client.h"
+#include "backend/slack/public_backend.h"
+#include "backend/slack/slack_auth.h"
+#include "backend/slack/web_api_client.h"
 #include "rpl/producer.h"
+
+using namespace slack;
+
+// Decode the Slack credentials stored for a team id (the test workspaces are
+// all Slack), so assertions can read xoxp/refreshToken/expiresAt back out of the
+// opaque WorkspaceRecord::auth blob.
+static slack::Credentials loadCreds(const QString &id) {
+    const auto rec = TokenStore::loadWorkspace(WorkspaceKey{Service::Slack, id});
+    return rec ? slack::fromRecord(*rec) : slack::Credentials{};
+}
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -71,7 +82,7 @@ protected:
 
 // ── Per-test credentials fixture ──────────────────────────────────────────────
 
-static const TokenStore::AppConfig kTestApp{"test-client-id", "test-client-secret", ""};
+static const slack::AppConfig kTestApp{"test-client-id", "test-client-secret", ""};
 
 struct RefreshFixture {
     RefreshFixture() { clearSettings(); }
@@ -293,8 +304,8 @@ TEST_CASE_METHOD(
     "[token_refresh][backend]"
 ) {
     // Credentials without a refresh token (rotation not enabled for this install)
-    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "", 0};
-    TestablePublicBackend   backend(creds, kTestApp);
+    slack::Credentials    creds{"xoxp-t", "T001", "Team", "", "", 0};
+    TestablePublicBackend backend(creds, kTestApp);
     QCoreApplication::processEvents();
     CHECK(backend.doRefreshCallCount == 0);
 }
@@ -305,8 +316,8 @@ TEST_CASE_METHOD(
     "[token_refresh][backend]"
 ) {
     // expiresAt=0 means we don't know when the token expires; skip proactive timer
-    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", 0};
-    TestablePublicBackend   backend(creds, kTestApp);
+    slack::Credentials    creds{"xoxp-t", "T001", "Team", "", "refresh-tok", 0};
+    TestablePublicBackend backend(creds, kTestApp);
     QCoreApplication::processEvents();
     CHECK(backend.doRefreshCallCount == 0);
 }
@@ -316,9 +327,9 @@ TEST_CASE_METHOD(
     "PublicBackend: token expires within 1h → doRefresh called immediately on startup",
     "[token_refresh][backend]"
 ) {
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300; // 5 min
-    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
-    TestablePublicBackend   backend(creds, kTestApp);
+    qint64                soonExpiry = QDateTime::currentSecsSinceEpoch() + 300; // 5 min
+    slack::Credentials    creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
+    TestablePublicBackend backend(creds, kTestApp);
 
     REQUIRE(waitFor([&] { return backend.doRefreshCallCount > 0; }));
     CHECK(backend.doRefreshCallCount == 1);
@@ -329,9 +340,9 @@ TEST_CASE_METHOD(
     "PublicBackend: token expires in > 1h → no immediate doRefresh",
     "[token_refresh][backend]"
 ) {
-    qint64                  farExpiry = QDateTime::currentSecsSinceEpoch() + 7200; // 2h
-    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", farExpiry};
-    TestablePublicBackend   backend(creds, kTestApp);
+    qint64                farExpiry = QDateTime::currentSecsSinceEpoch() + 7200; // 2h
+    slack::Credentials    creds{"xoxp-t", "T001", "Team", "", "refresh-tok", farExpiry};
+    TestablePublicBackend backend(creds, kTestApp);
     QCoreApplication::processEvents();
     CHECK(backend.doRefreshCallCount == 0);
 }
@@ -341,9 +352,9 @@ TEST_CASE_METHOD(
     "PublicBackend: proactive doRefresh auth error → authState becomes NotLoggedIn",
     "[token_refresh][backend]"
 ) {
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
-    TestablePublicBackend   backend(creds, kTestApp);
+    qint64                soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials    creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
+    TestablePublicBackend backend(creds, kTestApp);
     backend.doRefreshResult = TestablePublicBackend::RefreshResult::AuthError;
 
     AuthState     lastState = AuthState::LoggedIn;
@@ -358,9 +369,9 @@ TEST_CASE_METHOD(
     "PublicBackend: proactive doRefresh transient error → stays LoggedIn, retried later",
     "[token_refresh][backend]"
 ) {
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
-    TestablePublicBackend   backend(creds, kTestApp);
+    qint64                soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials    creds{"xoxp-t", "T001", "Team", "", "refresh-tok", soonExpiry};
+    TestablePublicBackend backend(creds, kTestApp);
     backend.doRefreshResult = TestablePublicBackend::RefreshResult::TransientError;
 
     AuthState     lastState = AuthState::NotLoggedIn; // start wrong — subscribe corrects it
@@ -386,15 +397,15 @@ TEST_CASE_METHOD(
         R"({"ok":true,"access_token":"xoxp-new","refresh_token":"refresh-new","expires_in":43200})"
     );
 
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
-    TokenStore::saveWorkspace(creds);
+    qint64             soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
+    TokenStore::saveWorkspace(slack::toRecord(creds));
 
     // Pass refreshUrl so doRefresh posts to our local server instead of Slack.
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
+    PublicBackend backend(creds, kTestApp, server.baseUrl() + "oauth.v2.access");
 
-    REQUIRE(waitFor([&] { return TokenStore::loadWorkspace("T001").xoxp == "xoxp-new"; }));
-    CHECK(TokenStore::loadWorkspace("T001").xoxp == "xoxp-new");
+    REQUIRE(waitFor([&] { return loadCreds("T001").xoxp == "xoxp-new"; }));
+    CHECK(loadCreds("T001").xoxp == "xoxp-new");
 }
 
 TEST_CASE_METHOD(
@@ -407,16 +418,14 @@ TEST_CASE_METHOD(
         R"({"ok":true,"access_token":"xoxp-new","refresh_token":"refresh-new","expires_in":43200})"
     );
 
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
-    TokenStore::saveWorkspace(creds);
+    qint64             soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
+    TokenStore::saveWorkspace(slack::toRecord(creds));
 
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
+    PublicBackend backend(creds, kTestApp, server.baseUrl() + "oauth.v2.access");
 
-    REQUIRE(waitFor([&] {
-        return TokenStore::loadWorkspace("T001").refreshToken == "refresh-new";
-    }));
-    CHECK(TokenStore::loadWorkspace("T001").refreshToken == "refresh-new");
+    REQUIRE(waitFor([&] { return loadCreds("T001").refreshToken == "refresh-new"; }));
+    CHECK(loadCreds("T001").refreshToken == "refresh-new");
 }
 
 TEST_CASE_METHOD(
@@ -429,16 +438,16 @@ TEST_CASE_METHOD(
         R"({"ok":true,"access_token":"xoxp-new","refresh_token":"refresh-new","expires_in":43200})"
     );
 
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
-    TokenStore::saveWorkspace(creds);
+    qint64             soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-old", soonExpiry};
+    TokenStore::saveWorkspace(slack::toRecord(creds));
 
     const qint64  before = QDateTime::currentSecsSinceEpoch();
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
+    PublicBackend backend(creds, kTestApp, server.baseUrl() + "oauth.v2.access");
 
-    REQUIRE(waitFor([&] { return TokenStore::loadWorkspace("T001").expiresAt > soonExpiry; }));
+    REQUIRE(waitFor([&] { return loadCreds("T001").expiresAt > soonExpiry; }));
     // expiresAt should be approximately now + 43200 (within a few seconds of tolerance)
-    const qint64 saved = TokenStore::loadWorkspace("T001").expiresAt;
+    const qint64 saved = loadCreds("T001").expiresAt;
     CHECK(saved >= before + 43200);
     CHECK(saved <= before + 43200 + 5);
 }
@@ -451,11 +460,11 @@ TEST_CASE_METHOD(
     FakeHttpServer server;
     server.enqueue(R"({"ok":false,"error":"invalid_refresh_token"})");
 
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-bad", soonExpiry};
-    TokenStore::saveWorkspace(creds);
+    qint64             soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-bad", soonExpiry};
+    TokenStore::saveWorkspace(slack::toRecord(creds));
 
-    PublicBackend backend(creds, kTestApp, {}, server.baseUrl() + "oauth.v2.access");
+    PublicBackend backend(creds, kTestApp, server.baseUrl() + "oauth.v2.access");
 
     AuthState     lastState = AuthState::LoggedIn;
     rpl::lifetime lt;
@@ -472,11 +481,11 @@ TEST_CASE_METHOD(
     // Nothing listens on port 1 — the refresh POST fails with a connection
     // error, which must NOT log the user out (e.g. waking from suspend before
     // the network is back).
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-tok", soonExpiry};
-    TokenStore::saveWorkspace(creds);
+    qint64             soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials creds{"xoxp-old", "T001", "Team", "", "refresh-tok", soonExpiry};
+    TokenStore::saveWorkspace(slack::toRecord(creds));
 
-    PublicBackend backend(creds, kTestApp, {}, "http://127.0.0.1:1/oauth.v2.access");
+    PublicBackend backend(creds, kTestApp, "http://127.0.0.1:1/oauth.v2.access");
 
     AuthState     lastState = AuthState::NotLoggedIn; // start wrong — subscribe corrects it
     rpl::lifetime lt;
@@ -493,11 +502,11 @@ TEST_CASE_METHOD(
 ) {
     // setupTokenRefresh guards on _refreshToken.isEmpty(); no timer is created when it's absent,
     // so the backend makes no refresh attempt even if expiresAt is near.
-    qint64                  soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
-    TokenStore::Credentials creds{"xoxp-old", "T001", "Team", "", "", soonExpiry};
+    qint64             soonExpiry = QDateTime::currentSecsSinceEpoch() + 300;
+    slack::Credentials creds{"xoxp-old", "T001", "Team", "", "", soonExpiry};
 
     // Use a URL that would cause a connection error if doRefresh were called.
-    PublicBackend backend(creds, kTestApp, {}, "http://127.0.0.1:1/should-not-reach");
+    PublicBackend backend(creds, kTestApp, "http://127.0.0.1:1/should-not-reach");
     QCoreApplication::processEvents();
 
     AuthState     currentState = AuthState::NotLoggedIn; // start wrong — subscribe corrects it

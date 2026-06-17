@@ -11,6 +11,7 @@ TextWithEntities plainText(const QString &text) {
 Message makeMessage(const QString &ts, const QString &userId, const QString &text) {
     return Message{
         .ts     = ts,
+        .date   = decimalTsToMicros(ts),
         .author = UserId{userId},
         .text   = plainText(text),
     };

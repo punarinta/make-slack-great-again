@@ -16,6 +16,8 @@
 
 #include <algorithm>
 
+namespace slack {
+
 SocketModeRealtime::SocketModeRealtime(QString xappToken, QObject *parent)
     : QObject(parent), _xappToken(std::move(xappToken)), _nam(new QNetworkAccessManager(this)) {}
 
@@ -399,3 +401,5 @@ std::optional<Event> SocketModeRealtime::huddleEventFor(const QJsonObject &ev) {
     const auto h = JsonMappers::readHuddleRoom(room);
     return EvHuddleChanged{ConversationId{channel}, h.active, h.link, h.participants};
 }
+
+} // namespace slack

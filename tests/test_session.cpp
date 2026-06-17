@@ -54,6 +54,14 @@ struct StubBackend : Backend {
     void                     connectRealtime() override {}
     void                     disconnectRealtime() override {}
 
+    // Mirror the Slack id-shape rules the Session used to hardcode, so the
+    // fetch-routing / synthetic-account tests keep exercising the same paths.
+    bool isSyntheticUser(UserId id) const override {
+        return id.value == QLatin1String("USLACKBOT") || id.value == QLatin1String("USLACK");
+    }
+    bool isBotId(UserId id) const override { return id.value.startsWith('B'); }
+    bool isUserId(UserId id) const override { return id.value.startsWith('U'); }
+
     bool loadMeAlwaysFails    = false; // every call completes empty (auth.test error)
     bool loadMeFirstCallFails = false; // first call completes empty, later ones succeed
     int  loadMeCalls          = 0;

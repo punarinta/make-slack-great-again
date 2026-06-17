@@ -147,24 +147,18 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
     return out;
 }
 
-QString formatTs(const Ts &ts) {
-    bool   ok   = false;
-    double secs = ts.toDouble(&ok);
-    if (!ok)
-        return ts;
-    return TimeFmt::formatTime(static_cast<qint64>(secs));
+// These take Message::date (epoch microseconds) — the single orderable/display
+// time field — so the UI never parses a ts string as a clock.
+QString formatTs(qint64 dateMicros) {
+    return TimeFmt::formatTime(dateMicros / 1000000);
 }
 
-QDate tsToDate(const Ts &ts) {
-    bool   ok;
-    double secs = ts.toDouble(&ok);
-    if (!ok)
-        return {};
-    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(secs)).date();
+QDate tsToDate(qint64 dateMicros) {
+    return QDateTime::fromSecsSinceEpoch(dateMicros / 1000000).date();
 }
 
-QString formatDateLabel(const Ts &ts) {
-    const QDate date = tsToDate(ts);
+QString formatDateLabel(qint64 dateMicros) {
+    const QDate date = tsToDate(dateMicros);
     if (!date.isValid())
         return {};
     const QDate today = QDate::currentDate();
@@ -175,6 +169,9 @@ QString formatDateLabel(const Ts &ts) {
     return TimeFmt::formatDate(date);
 }
 
+// Takes the reply ts directly: latestReply has no dedicated date field like
+// Message::date (Option A added one only for the message itself), so this is the
+// one display site that still derives time from a ts string.
 QString lastReplyLabel(const Ts &ts) {
     bool   ok   = false;
     double secs = ts.toDouble(&ok);

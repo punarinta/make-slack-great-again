@@ -237,6 +237,17 @@ public:
     // tab and its probe are skipped. Mirrors ConvListWidget::isAppConv.
     bool isAppConversation(const Conversation &) const;
 
+    // What the active backend supports; the UI gates Slack-only affordances
+    // (canvas tab, huddle controls) on these so a future service that lacks them
+    // shows a clean surface. See Capabilities.
+    Capabilities capabilities() const;
+
+    // ID-shape questions delegated to the backend so the UI/Session never parse
+    // an id's prefix. isSyntheticUser → a system/pseudo account (rendered as an
+    // app); isUnresolvedUserId → a raw id surfacing where a name is expected.
+    bool isSyntheticUser(UserId) const;
+    bool isUnresolvedUserId(const QString &) const;
+
     // Synchronous snapshot accessors (for autocomplete, etc.)
     const std::vector<User>         &currentUsers() const;
     const std::vector<Conversation> &currentConversations() const;

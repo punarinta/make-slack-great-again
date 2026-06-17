@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 
+namespace slack {
 namespace JsonMappers {
 
 User toUser(const QJsonObject &o) {
@@ -571,8 +572,10 @@ Message toMessage(const QJsonObject &o) {
             botAvatarUrl = msg.value("icon_url").toString();
     }
 
+    const QString ts = msg.value("ts").toString();
     return Message{
-        .ts         = msg.value("ts").toString(),
+        .ts         = ts,
+        .date       = decimalTsToMicros(ts), // epoch micros for sort + display
         .threadRoot = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
                           ? std::optional<Ts>(msg.value("thread_ts").toString())
                           : std::nullopt,
@@ -689,3 +692,4 @@ std::vector<SlashCommand> toSlashCommands(const QJsonValue &v) {
 }
 
 } // namespace JsonMappers
+} // namespace slack

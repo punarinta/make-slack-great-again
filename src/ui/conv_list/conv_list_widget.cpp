@@ -7,6 +7,7 @@
 #include "ui/image_cache.h"
 #include "ui/user_avatar.h"
 #include "ui/message_list/message_render.h"
+#include "session/session.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
 
@@ -127,28 +128,6 @@ void ConvListWidget::scheduleSaveVisitedAt() {
     _saveVisitedTimer.start(1500);
 }
 
-// Returns true if s looks like a raw Slack user ID (e.g. "U0A1B2C3D").
-// Slack's two built-in system accounts. Both are excluded from users.list and
-// both report is_bot=false, so they need explicit handling to render as apps
-// rather than leaking their raw ids into the Direct messages section:
-//   USLACKBOT — "Slackbot"; USLACK — the "Slack" workspace/billing notifier.
-static bool isSlackSystemUser(const QString &id) {
-    return id == QLatin1String("USLACKBOT") || id == QLatin1String("USLACK");
-}
-
-static bool isRawSlackId(const QString &s) {
-    if (s.length() < 9)
-        return false;
-    if (s[0] != 'U' && s[0] != 'W')
-        return false;
-    for (int i = 1; i < s.length(); ++i) {
-        const QChar c = s[i];
-        if (!c.isDigit() && !(c >= 'A' && c <= 'Z'))
-            return false;
-    }
-    return true;
-}
-
 void ConvListWidget::setConversations(std::vector<Conversation> convs) {
     _allConvs = std::move(convs);
     rebuildFilteredConvs();
@@ -198,8 +177,8 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
                 .isDeactivated = u.isDeactivated,
                 .isActive      = u.isActive,
                 .dndEnabled    = u.dndEnabled,
-                // Slack system accounts report is_bot=false in the API; special-case.
-                .isBot         = u.isBot || isSlackSystemUser(u.id.value),
+                // System accounts may report is_bot=false; the backend knows them.
+                .isBot         = u.isBot || (_session && _session->isSyntheticUser(u.id)),
                 .statusEmoji   = u.statusEmoji,
             }
         );
@@ -212,7 +191,7 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
 bool ConvListWidget::isAppConv(const Conversation &c) const {
     if (c.kind != ConvKind::Im || !c.dmUser)
         return false;
-    if (isSlackSystemUser(c.dmUser->value))
+    if (_session && _session->isSyntheticUser(*c.dmUser))
         return true;
     const auto it = _userInfos.constFind(c.dmUser->value);
     return it != _userInfos.constEnd() && it->isBot;
@@ -230,7 +209,7 @@ void ConvListWidget::rebuildFilteredConvs() {
                     continue;
                 if (it->displayName == "deactivateduser")
                     continue;
-                if (isRawSlackId(it->displayName))
+                if (_session && _session->isUnresolvedUserId(it->displayName))
                     continue;
             }
             // User info not yet loaded — let the DM through; it will re-filter
@@ -277,11 +256,15 @@ void ConvListWidget::rebuildRows() {
         const qint64 stamp = _visitedAt.value(c.id.value, -1);
         if (stamp >= cutoff)
             return true;
-        // Slack ts strings are zero-padded fixed-width, so lexicographic max
-        // picks the most recent of the two cursors.
-        const QString &activity = std::max(c.latestTs, c.lastRead);
-        if (!activity.isEmpty())
-            return qint64(activity.toDouble()) >= cutoff;
+        // Most recent of the two activity cursors, compared on epoch micros (the
+        // orderable time) rather than the raw ts — the UI never lexically
+        // compares ids. (Conversation has no dedicated date field like
+        // Message::date yet, so we derive it here via the shared helper.)
+        const qint64 latest   = c.latestTs.isEmpty() ? 0 : decimalTsToMicros(c.latestTs);
+        const qint64 read     = c.lastRead.isEmpty() ? 0 : decimalTsToMicros(c.lastRead);
+        const qint64 activity = std::max(latest, read);
+        if (activity != 0)
+            return activity / 1000000 >= cutoff;
         if (stamp >= 0)
             return false; // stale visit stamp and no newer activity
         return c.kind != ConvKind::Im && c.kind != ConvKind::Mpim;

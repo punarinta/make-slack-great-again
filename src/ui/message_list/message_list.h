@@ -222,7 +222,7 @@ private:
     QRect fileActionBarButtonRect(int btn, const QRect &fileRect) const;
     int   fileActionBarButtonAt(const QPoint &viewportPos) const;
     void  paintIntro(QPainter &p, int top) const;
-    void  paintDateSep(QPainter &p, int top, int vw, const Ts &ts) const;
+    void  paintDateSep(QPainter &p, int top, int vw, qint64 dateMicros) const;
 
     int  introHeight() const;
     bool needsDateSep(int index) const;

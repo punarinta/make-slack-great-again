@@ -83,10 +83,22 @@ add_msga_test(test_mrkdwn
 
 add_msga_test(test_json_mappers
     test_json_mappers.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+)
+
+# Source set for the Slack backend below the seam — shared by the backend /
+# network / factory tests so each lists it once.
+set(SLACK_BACKEND_SRCS
+    ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/web_api_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/public_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/shared_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
 )
 
 add_msga_qt_test(test_workspace_cache
@@ -104,6 +116,30 @@ add_msga_qt_test(test_token_store
     test_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
 )
+
+add_msga_qt_test(test_backend_factory
+    test_backend_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/backend_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${SLACK_BACKEND_SRCS}
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_backend_factory PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_backend_factory PROPERTIES AUTOMOC ON)
+
+add_msga_qt_test(test_auth_strategy
+    test_auth_strategy.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/auth_strategy.h # header-only QObject base — moc it
+    ${CMAKE_SOURCE_DIR}/src/auth/auth_strategy_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/oauth_flow.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
+)
+target_link_libraries(test_auth_strategy PRIVATE Qt6::Gui Qt6::Network)
+set_target_properties(test_auth_strategy PROPERTIES AUTOMOC ON)
 
 add_msga_qt_test(test_time_format
     test_time_format.cpp
@@ -257,10 +293,7 @@ target_link_libraries(test_search_widget PRIVATE Qt6::Test)
 add_msga_qt_test(test_token_refresh
     test_token_refresh.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
-    ${CMAKE_SOURCE_DIR}/src/network/web_api_client.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/public_backend.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
+    ${SLACK_BACKEND_SRCS}
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
@@ -271,8 +304,8 @@ set_target_properties(test_token_refresh PROPERTIES AUTOMOC ON)
 
 add_msga_qt_test(test_socket_mode_realtime
     test_socket_mode_realtime.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
@@ -284,10 +317,7 @@ set_target_properties(test_socket_mode_realtime PROPERTIES AUTOMOC ON)
 add_msga_qt_test(test_send_retry
     test_send_retry.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
-    ${CMAKE_SOURCE_DIR}/src/network/web_api_client.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/public_backend.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
+    ${SLACK_BACKEND_SRCS}
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
