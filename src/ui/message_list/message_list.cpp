@@ -149,7 +149,7 @@ void MessageListWidget::smoothScrollTo(int target) {
 void MessageListWidget::scrollContentsBy(int /*dx*/, int /*dy*/) {
     hideProfileCard(); // anchor moved away from under the card
     viewport()->update();
-    if (verticalScrollBar()->value() <= 200)
+    if (verticalScrollBar()->value() <= loadOlderMargin())
         loadOlderMessages();
 }
 
@@ -449,12 +449,20 @@ void MessageListWidget::applyPendingScroll() {
     _scrollToBottomPending = false;
 }
 
+int MessageListWidget::loadOlderMargin() const {
+    // One viewport height, floored so a tiny window still prefetches a screenful
+    // ahead of the top. A small fixed margin (the old 200px) let a fast scroll or
+    // a coarse wheel step reach the very top before the trigger crossed it, so the
+    // fetch sometimes never fired; prefetching a full screen early hides the load.
+    return std::max(400, viewport()->height());
+}
+
 void MessageListWidget::maybeFillViewport() {
     if (_loading || _loadingOlder || !_olderCursor.has_value())
         return;
-    // +200 so a short scroll-up remains possible once filled; matches the
-    // scrollContentsBy trigger threshold.
-    if (_totalH >= viewport()->height() + 200)
+    // Keep a screenful of headroom above the viewport so a scroll-up always has
+    // somewhere to go; matches the scrollContentsBy trigger threshold.
+    if (_totalH >= viewport()->height() + loadOlderMargin())
         return;
     loadOlderMessages();
 }
@@ -473,8 +481,16 @@ void MessageListWidget::loadOlderMessages() {
     auto producer = _isThreadMode ? _session->backend()->loadThread(conv, _threadRootTs, cur)
                                   : _session->backend()->loadHistory(conv, cur);
 
-    std::move(producer) | rpl::on_next(
-                              [this, conv](MessagePage page) {
+    // A failed history fetch completes the producer with done() but no page (the
+    // backend swallows the error). Without a done handler that would leave
+    // _loadingOlder stuck true and the cursor lost (cleared above), permanently
+    // killing pagination for this conversation. Track delivery so done() can
+    // restore the cursor and let the next scroll retry.
+    auto gotPage = std::make_shared<bool>(false);
+
+    std::move(producer) | rpl::on_next_done(
+                              [this, conv, gotPage](MessagePage page) {
+                                  *gotPage = true;
                                   if (_currentConv != conv) {
                                       _loadingOlder = false;
                                       return;
@@ -503,6 +519,15 @@ void MessageListWidget::loadOlderMessages() {
                                   if (_totalH != prevTotalH)
                                       _scrollAnim.stop();
                                   maybeFillViewport();
+                              },
+                              [this, conv, cur, gotPage] {
+                                  if (*gotPage)
+                                      return;
+                                  // Fetch failed without delivering a page — restore the cursor so
+                                  // a later scroll-up retries instead of pagination dying for good.
+                                  _loadingOlder = false;
+                                  if (_currentConv == conv)
+                                      _olderCursor = cur;
                               },
                               _olderLoadLifetime
                           );

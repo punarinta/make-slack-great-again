@@ -185,6 +185,10 @@ private:
     // Keep loading older pages while the content is shorter than the viewport —
     // the scroll-position trigger can't fire when there is nothing to scroll.
     void               maybeFillViewport();
+    // Distance from the top (px) at which scrolling starts fetching the next
+    // older page — one viewport height (floored) so the page is already in
+    // flight before the very top is reached.
+    int                loadOlderMargin() const;
 
     // Layout
     void rebuildLayout();
