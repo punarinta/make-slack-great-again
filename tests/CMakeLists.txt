@@ -269,6 +269,18 @@ add_msga_qt_test(test_token_refresh
 target_link_libraries(test_token_refresh PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_token_refresh PROPERTIES AUTOMOC ON)
 
+add_msga_qt_test(test_socket_mode_realtime
+    test_socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/public_backend/json_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_socket_mode_realtime PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_socket_mode_realtime PROPERTIES AUTOMOC ON)
+
 add_msga_qt_test(test_send_retry
     test_send_retry.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp

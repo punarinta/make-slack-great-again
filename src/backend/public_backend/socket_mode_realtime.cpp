@@ -10,6 +10,8 @@
 #include <QJsonObject>
 #include <QSet>
 #include <QTimer>
+#include <QDateTime>
+#include <QNetworkInformation>
 #include <QDebug>
 
 #include <algorithm>
@@ -25,7 +27,24 @@ void SocketModeRealtime::start() {
     if (_started)
         return;
     _started = true;
+    if (!_watchdog) {
+        // Slack sends frequent traffic (server pings every few seconds) and we
+        // additionally ping on every tick, so a connection that produces nothing
+        // for ~2.5 ticks (_staleMs) is genuinely dead — not merely idle.
+        _watchdog = new QTimer(this);
+        _watchdog->setInterval(_watchdogMs);
+        connect(_watchdog, &QTimer::timeout, this, &SocketModeRealtime::checkLiveness);
+        _watchdog->start();
+    }
+    setupReachabilityWatch();
     openAndConnect();
+}
+
+void SocketModeRealtime::setWatchdogTimingForTest(int watchdogMs, int staleMs) {
+    _watchdogMs = watchdogMs;
+    _staleMs    = staleMs;
+    if (_watchdog)
+        _watchdog->setInterval(_watchdogMs);
 }
 
 void SocketModeRealtime::addSink(rpl::event_stream<Event> *events) {
@@ -51,7 +70,7 @@ void SocketModeRealtime::stop() {
 // ── Connection setup ──────────────────────────────────────────────────────────
 
 void SocketModeRealtime::openAndConnect() {
-    QNetworkRequest req(QUrl("https://slack.com/api/apps.connections.open"));
+    QNetworkRequest req(_openUrl);
     req.setRawHeader("Authorization", ("Bearer " + _xappToken).toUtf8());
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
@@ -82,6 +101,8 @@ void SocketModeRealtime::connectWs(const QUrl &url) {
     connect(_ws, &QWebSocket::connected, this, &SocketModeRealtime::onConnected);
     connect(_ws, &QWebSocket::disconnected, this, &SocketModeRealtime::onDisconnected);
     connect(_ws, &QWebSocket::textMessageReceived, this, &SocketModeRealtime::onTextMessage);
+    // A pong is proof the socket is still alive even when the workspace is quiet.
+    connect(_ws, &QWebSocket::pong, this, [this](quint64, const QByteArray &) { touchActivity(); });
     _ws->open(url);
 }
 
@@ -92,6 +113,72 @@ void SocketModeRealtime::scheduleReconnect() {
             openAndConnect();
     });
     _reconnectMs = std::min(_reconnectMs * 2, 30000);
+}
+
+void SocketModeRealtime::forceReconnect() {
+    if (_stopped)
+        return;
+    qWarning() << "Socket Mode: connection went silent — forcing reconnect";
+    if (_ws) {
+        // Drop the old socket's signals so its abort()-triggered `disconnected`
+        // doesn't also queue a backoff reconnect and race this one.
+        disconnect(_ws, nullptr, this, nullptr);
+        _ws->abort();
+        _ws->deleteLater();
+        _ws = nullptr;
+    }
+    _reconnectMs = 1000; // fresh start, no inherited backoff
+    openAndConnect();
+}
+
+void SocketModeRealtime::checkLiveness() {
+    if (_stopped || !_ws || _ws->state() != QAbstractSocket::ConnectedState)
+        return; // not connected: onDisconnected / scheduleReconnect own recovery
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (_lastActivityMs && now - _lastActivityMs > _staleMs) {
+        // No frame and no pong for the whole deadline — the socket is a zombie
+        // (typical after a laptop sleep severs TCP silently). Reconnect.
+        forceReconnect();
+        return;
+    }
+    // Probe: a healthy server answers with a pong, which refreshes activity.
+    _ws->ping();
+}
+
+void SocketModeRealtime::touchActivity() {
+    _lastActivityMs = QDateTime::currentMSecsSinceEpoch();
+}
+
+void SocketModeRealtime::setupReachabilityWatch() {
+    if (_reachabilityWatched)
+        return;
+    if (!QNetworkInformation::loadDefaultBackend())
+        return; // platform without a reachability backend — watchdog still covers us
+    auto *ni = QNetworkInformation::instance();
+    if (!ni || !(ni->supportedFeatures() & QNetworkInformation::Feature::Reachability))
+        return;
+    _reachabilityWatched = true;
+    connect(
+        ni,
+        &QNetworkInformation::reachabilityChanged,
+        this,
+        [this](QNetworkInformation::Reachability reachability) {
+            if (_stopped || !_started)
+                return;
+            if (reachability != QNetworkInformation::Reachability::Online)
+                return; // only act when the network comes back
+            if (!_ws || _ws->state() != QAbstractSocket::ConnectedState) {
+                // Network just returned and we're not connected — recover now
+                // rather than waiting out the backoff or the watchdog deadline.
+                qDebug() << "Socket Mode: network reachable — reconnecting now";
+                forceReconnect();
+            } else {
+                // Connection may have silently died across the transition;
+                // probe it so the watchdog reacts immediately if it's stale.
+                _ws->ping();
+            }
+        }
+    );
 }
 
 // ── WebSocket event handlers ──────────────────────────────────────────────────
@@ -119,6 +206,7 @@ void SocketModeRealtime::sendPresenceSub() {
 
 void SocketModeRealtime::onConnected() {
     qDebug() << "Socket Mode: connected";
+    touchActivity();
     sendPresenceSub();
 }
 
@@ -129,6 +217,7 @@ void SocketModeRealtime::onDisconnected() {
 }
 
 void SocketModeRealtime::onTextMessage(const QString &text) {
+    touchActivity(); // any frame proves the socket is alive
     const auto envelope = QJsonDocument::fromJson(text.toUtf8()).object();
     const auto type     = envelope.value("type").toString();
 
