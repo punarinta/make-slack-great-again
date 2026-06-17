@@ -330,3 +330,13 @@ add_msga_qt_test(test_sound_player
     ${_sound_backend}
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
+# Platform-native audio backends need their system frameworks (mirrors the
+# msga target in the top-level CMakeLists): NSSound lives in AppKit on macOS,
+# PlaySound in winmm on Windows.
+if(APPLE)
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/src/util/sound_player_mac.mm
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(test_sound_player PRIVATE "-framework AppKit" "-framework Foundation")
+elseif(WIN32)
+    target_link_libraries(test_sound_player PRIVATE winmm)
+endif()

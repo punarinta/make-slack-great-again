@@ -58,6 +58,8 @@ std::vector<Entry> enumerateSystemSounds() {
     return out;
 }
 
+bool playFile(const QString &path);
+
 bool playSystem(const QString &nativeId) {
     const std::wstring alias = nativeId.toStdWString();
     if (PlaySoundW(alias.c_str(), nullptr, SND_ALIAS | SND_ASYNC | SND_NODEFAULT))
