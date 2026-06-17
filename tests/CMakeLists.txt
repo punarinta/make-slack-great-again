@@ -228,13 +228,14 @@ add_msga_widget_test(test_context_menu
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
 
-add_msga_widget_test(test_typing_indicator
-    test_typing_indicator.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/typing_indicator/typing_indicator.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
-)
-target_link_libraries(test_typing_indicator PRIVATE Qt6::Test)
+# Disabled: the "XXX is typing…" indicator feature is not in use right now.
+# add_msga_widget_test(test_typing_indicator
+#     test_typing_indicator.cpp
+#     ${CMAKE_SOURCE_DIR}/src/ui/typing_indicator/typing_indicator.cpp
+#     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+#     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+# )
+# target_link_libraries(test_typing_indicator PRIVATE Qt6::Test)
 
 add_msga_widget_test(test_search_widget
     test_search_widget.cpp
