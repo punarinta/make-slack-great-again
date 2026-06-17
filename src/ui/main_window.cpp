@@ -1471,6 +1471,30 @@ void MainWindow::applyUpdateAndRestart() {
 #endif
 }
 
+// Center-crop `src` to a square and mask it into a rounded-rect — the same
+// shape avatars take everywhere else in the app — for use as a notification
+// image. Rendered at `side`px (the OS toast rescales as needed). A null input
+// (avatar not cached yet / no URL) yields a null pixmap so the caller can fall
+// back to a no-image toast.
+static QPixmap roundedNotifIcon(const QPixmap &src, int side = 64) {
+    if (src.isNull())
+        return {};
+    const int     s  = qMin(src.width(), src.height());
+    const QPixmap sq = src.copy((src.width() - s) / 2, (src.height() - s) / 2, s, s);
+    const qreal   r  = side * 0.22;
+
+    QPixmap out(side, side);
+    out.fill(Qt::transparent);
+    QPainter p(&out);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath clip;
+    clip.addRoundedRect(QRectF(0, 0, side, side), r, r);
+    p.setClipPath(clip);
+    p.drawPixmap(QRect(0, 0, side, side), sq);
+    return out;
+}
+
 void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     QSettings s("msga", "msga");
     if (!s.value("notifications/enabled", true).toBool())
@@ -1542,9 +1566,35 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     if (body.length() > 100)
         body = body.left(97) + "…";
 
+    // Notification image: the message sender's avatar for DMs, the workspace
+    // icon for channels (and anything else). We only use an already-cached
+    // pixmap — ImageCache::get() kicks off a download but returns null until it
+    // lands, so a not-yet-cached image just means no picture this time (and the
+    // fetch we triggered makes it available for the next one). When no image is
+    // available we fall back to the icon-less toast. showMessage's QIcon
+    // overload is the cross-platform path: honoured on Linux (freedesktop
+    // notifications) and Windows toasts; macOS ignores it and uses the app icon.
+    QPixmap notifPix;
+    if (_imgCache) {
+        QString iconUrl;
+        if (isDm) {
+            if (sender && !sender->avatarUrl.isEmpty())
+                iconUrl = sender->avatarUrl;
+            else if (!ev.msg.botAvatarUrl.isEmpty())
+                iconUrl = ev.msg.botAvatarUrl;
+        } else {
+            iconUrl = TokenStore::loadWorkspace(teamId).iconUrl;
+        }
+        if (!iconUrl.isEmpty())
+            notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
+    }
+
     _pendingNotifTeam = teamId;
     _pendingNotifConv = ev.conv;
-    _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+    if (notifPix.isNull())
+        _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+    else
+        _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
 
     if (s.value("notifications/sound", true).toBool())
         Sound::Player::instance().play(
