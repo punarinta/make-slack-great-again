@@ -17,7 +17,7 @@ A fast native Slack client built in C++ with Qt6.
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-arm64.dmg)
 [![Windows](https://img.shields.io/badge/Windows-x86__64-0078D4?logo=windows&logoColor=white)](https://msga.app/download/msga-windows-x86_64.exe)
 
-## Build your own version
+## Or build your own version
 
 msga does not ship with Slack credentials. You must create your own Slack app and configure it before the client will connect. This is a one-time setup.
 
