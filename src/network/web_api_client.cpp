@@ -226,18 +226,25 @@ void WebApiClient::paginate(
         this, method, arrayKey, params, std::move(onPage), std::move(onDone), std::move(onError)
     });
 
-    // loadPage holds a shared_ptr to its own ctx (self-reference cycle that
-    // keeps the pagination alive across async pages); it MUST be cleared on
-    // every exit or the whole Ctx — and the partial accumulator it captures —
-    // leaks. call() routes both transport failures and Slack `ok:false`
-    // responses to the error handler, so this wrapper is the single place every
-    // failed page lands: break the cycle, then forward the error.
-    auto onPageError = [ctx](QString err) {
-        ctx->loadPage = {};
-        if (ctx->onError)
-            ctx->onError(err);
-    };
-    ctx->loadPage = [ctx, onPageError](QUrlQuery p) {
+    // loadPage is a member of Ctx but captures only a *weak_ptr* to it, so it
+    // never forms a strong self-cycle. Liveness across async pages rides on the
+    // in-flight call's success/error closures below, which hold a shared_ptr:
+    // each page schedules the next call (capturing a fresh shared ref) before
+    // the current closure returns, so a strong owner always exists while the
+    // chain is running. When the chain ends — normally, via error, or because
+    // the client is torn down mid-flight and the pending call's closures are
+    // released — the last shared ref drops and the whole Ctx (plus the partial
+    // accumulator it captures) is freed. A *strong* self-capture here would
+    // instead outlive an interrupted pagination forever, leaking the entire Ctx
+    // graph with no GC root (an all-indirect LeakSanitizer report). call()
+    // routes both transport failures and Slack `ok:false` responses to the
+    // error handler, so that closure is the single place every failed page
+    // lands.
+    std::weak_ptr<Ctx> weak = ctx;
+    ctx->loadPage           = [weak](QUrlQuery p) {
+        auto ctx = weak.lock();
+        if (!ctx)
+            return;
         ctx->self->call(
             ctx->method,
             p,
@@ -255,11 +262,13 @@ void WebApiClient::paginate(
                     next.addQueryItem("cursor", cursor);
                     ctx->loadPage(next);
                 } else {
-                    ctx->loadPage = {};
                     ctx->onDone();
                 }
             },
-            onPageError
+            [ctx](QString err) {
+                if (ctx->onError)
+                    ctx->onError(err);
+            }
         );
     };
     ctx->loadPage(params);
