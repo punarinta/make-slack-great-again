@@ -14,6 +14,7 @@
 
 class QAbstractButton;
 class QFrame;
+class QFileDialog;
 class QMimeData;
 class QScrollArea;
 class QTextEdit;
@@ -123,6 +124,7 @@ private:
     QPushButton       *_dropBtn      = nullptr; // schedule-send dropdown
     QWidget           *_sendGroup    = nullptr; // pill container for send+drop
     QWidget           *_linkPopup    = nullptr; // LinkPopup instance, created lazily
+    QFileDialog       *_attachDialog = nullptr; // persistent native file picker, reused
     Ts                 _editingTs;              // non-empty when in edit mode
 
     QStringList       _pendingFiles;  // local paths of files to upload on send

@@ -41,6 +41,7 @@
 #include <QPixmap>
 #include <QImage>
 #include <QStandardPaths>
+#include <QSettings>
 #include <QDir>
 #include <QDateTime>
 #include <QNetworkAccessManager>
@@ -1600,9 +1601,40 @@ void ComposerWidget::setText(const QString &text) {
 // ── Dialogs ───────────────────────────────────────────────────────────────────
 
 void ComposerWidget::openAttachDialog() {
-    const QStringList paths = QFileDialog::getOpenFileNames(this, tr("Attach File"));
-    for (const QString &p : paths)
-        addPendingFile(p);
+    // Reuse a single dialog instance: the native file picker (xdg-desktop-portal
+    // / GTK plugin on Linux) has a noticeable cold-start the first time it is
+    // shown; keeping the instance alive lets the backend stay warm so every open
+    // after the first is snappier. Opened with open() (async) rather than exec()
+    // so it never spins a nested event loop that could re-enter the composer.
+    if (!_attachDialog) {
+        _attachDialog = new QFileDialog(this, tr("Attach File"));
+        _attachDialog->setFileMode(QFileDialog::ExistingFiles);
+        _attachDialog->setAcceptMode(QFileDialog::AcceptOpen);
+
+        // Restore the last-used folder so the picker never tries to enumerate a
+        // slow/stale location (e.g. a network mount) it was last left in.
+        const QString lastDir =
+            QSettings().value(QStringLiteral("composer/lastAttachDir")).toString();
+        _attachDialog->setDirectory(
+            (!lastDir.isEmpty() && QDir(lastDir).exists())
+                ? lastDir
+                : QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
+        );
+
+        // Connect the result once, at creation — open() is async, so wiring it
+        // per-open would fire addPendingFile() once per previous open.
+        connect(_attachDialog, &QFileDialog::filesSelected, this, [this](const QStringList &paths) {
+            if (!paths.isEmpty()) {
+                QSettings().setValue(
+                    QStringLiteral("composer/lastAttachDir"),
+                    QFileInfo(paths.front()).absolutePath()
+                );
+            }
+            for (const QString &p : paths)
+                addPendingFile(p);
+        });
+    }
+    _attachDialog->open();
 }
 
 void ComposerWidget::openLinkDialog(const QPoint &pos) {
