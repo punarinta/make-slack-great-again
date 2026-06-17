@@ -103,7 +103,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ComposerWidget</name>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="+489"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="+490"/>
         <source>Message #channel</source>
         <translation>Message #channel</translation>
     </message>
@@ -139,22 +139,22 @@ This action cannot be undone.</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+127"/>
+        <location line="+158"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location line="-127"/>
+        <location line="-158"/>
         <source>Schedule</source>
         <translation>Schedule</translation>
     </message>
     <message>
-        <location line="+120"/>
+        <location line="+126"/>
         <source>Attach File</source>
         <translation>Attach File</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+32"/>
         <source>URL</source>
         <translation>URL</translation>
     </message>
@@ -172,7 +172,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvFooterWidget</name>
     <message numerus="yes">
-        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+136"/>
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+137"/>
         <source>%n background task(s) running</source>
         <translation>
             <numerusform>%n background task running</numerusform>
@@ -196,14 +196,24 @@ This action cannot be undone.</translation>
     </message>
     <message>
         <location line="+71"/>
+        <source>Profile &amp; status</source>
+        <translation>Profile &amp; status</translation>
+    </message>
+    <message>
+        <location line="+44"/>
         <source>Manage profile</source>
         <translation>Manage profile</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Manage status</source>
+        <translation>Manage status</translation>
     </message>
 </context>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+517"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+500"/>
         <source>Open a direct message</source>
         <translation>Open a direct message</translation>
     </message>
@@ -613,54 +623,51 @@ This action cannot be undone.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+324"/>
+        <location filename="../src/ui/main_window.cpp" line="+339"/>
         <source>Log in to workspace</source>
         <translation>Log in to workspace</translation>
     </message>
     <message>
-        <location line="+759"/>
-        <source>Missing credentials</source>
-        <translation>Missing credentials</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>App credentials are not configured.
-
-Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
-        <translation>App credentials are not configured.
-
-Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</translation>
-    </message>
-    <message>
-        <location line="+19"/>
+        <location line="+802"/>
+        <location line="+17"/>
         <source>Login failed</source>
         <translation>Login failed</translation>
     </message>
     <message>
-        <location line="+227"/>
-        <location line="+660"/>
+        <location line="-17"/>
+        <source>This service is not supported.</source>
+        <translation>This service is not supported.</translation>
+    </message>
+    <message>
+        <location line="+242"/>
+        <location line="+761"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location line="-654"/>
-        <location line="+732"/>
+        <location line="-755"/>
+        <location line="+834"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location line="-732"/>
-        <location line="+732"/>
+        <location line="-834"/>
+        <location line="+834"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location line="-545"/>
+        <location line="-623"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location line="+133"/>
+        <location line="+185"/>
+        <source>Workspace admin</source>
+        <translation>Workspace admin</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>Log out</source>
         <translation>Log out</translation>
     </message>
@@ -670,7 +677,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Log out from %1</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+32"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
@@ -680,7 +687,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Quit</translation>
     </message>
     <message>
-        <location line="+168"/>
+        <location line="+185"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Opens the huddle in Slack for web</translation>
     </message>
@@ -700,12 +707,22 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Search messages</translation>
     </message>
     <message>
-        <location line="-762"/>
+        <location line="-861"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>You appear away to others — no official Slack client is connected</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="-55"/>
+        <source>Add workspace</source>
+        <translation>Add workspace</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Choose a service:</source>
+        <translation>Choose a service:</translation>
+    </message>
+    <message>
+        <location line="+59"/>
         <source>Active</source>
         <translation>Active</translation>
     </message>
@@ -765,7 +782,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="+1471"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="+1494"/>
         <source>Reply in thread</source>
         <translation>Reply in thread</translation>
     </message>
@@ -968,7 +985,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>MsgRender</name>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="+172"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="+166"/>
         <source>Today</source>
         <translation>Today</translation>
     </message>
@@ -978,7 +995,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Yesterday</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>today at %1</source>
         <translation>today at %1</translation>
     </message>
@@ -1108,7 +1125,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
 <context>
     <name>SearchWidget</name>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="+79"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="+76"/>
         <source>Search messages…</source>
         <translation>Search messages…</translation>
     </message>
@@ -1151,7 +1168,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Couldn&apos;t send message: %1</translation>
     </message>
     <message>
-        <location line="+356"/>
+        <location line="+373"/>
         <source>No such user: %1</source>
         <translation>No such user: %1</translation>
     </message>
@@ -1191,7 +1208,7 @@ Copy credentials.cmake.example to credentials.cmake, fill in your Slack app cred
         <translation>Could not update avatar: %1</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+64"/>
         <source>Upload failed: %1</source>
         <translation>Upload failed: %1</translation>
     </message>
@@ -1566,6 +1583,110 @@ it is stored on this computer and sent only to that provider.</translation>
     </message>
 </context>
 <context>
+    <name>StatusDialog</name>
+    <message>
+        <location filename="../src/ui/status_dialog/status_dialog.cpp" line="+101"/>
+        <source>Set a status</source>
+        <translation>Set a status</translation>
+    </message>
+    <message>
+        <location line="+44"/>
+        <source>What&apos;s your status?</source>
+        <translation>What&apos;s your status?</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>In a meeting</source>
+        <translation>In a meeting</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Commuting</source>
+        <translation>Commuting</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Out sick</source>
+        <translation>Out sick</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Vacationing</source>
+        <translation>Vacationing</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Working remotely</source>
+        <translation>Working remotely</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+40"/>
+        <source>Don&apos;t clear</source>
+        <translation>Don&apos;t clear</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>30 minutes</source>
+        <translation>30 minutes</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>1 hour</source>
+        <translation>1 hour</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>4 hours</source>
+        <translation>4 hours</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>Today</source>
+        <translation>Today</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>This week</source>
+        <translation>This week</translation>
+    </message>
+    <message>
+        <location line="-35"/>
+        <source>Suggestions</source>
+        <translation>Suggestions</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>For %1</source>
+        <translation>For %1</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>Clear after</source>
+        <translation>Clear after</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>Clear status</source>
+        <translation>Clear status</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Save</source>
+        <translation>Save</translation>
+    </message>
+</context>
+<context>
     <name>ThreadPanel</name>
     <message>
         <location filename="../src/ui/thread_panel/thread_panel.cpp" line="+64"/>
@@ -1826,6 +1947,18 @@ it is stored on this computer and sent only to that provider.</translation>
             <numerusform>%n year ago</numerusform>
             <numerusform>%n years ago</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>slack::OAuthFlow</name>
+    <message>
+        <location filename="../src/backend/slack/oauth_flow.cpp" line="+40"/>
+        <source>App credentials are not configured.
+
+Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
+        <translation>App credentials are not configured.
+
+Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</translation>
     </message>
 </context>
 </TS>

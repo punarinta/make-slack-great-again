@@ -103,7 +103,7 @@ This action cannot be undone.</source>
 <context>
     <name>ComposerWidget</name>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="+489"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="+490"/>
         <source>Message #channel</source>
         <translation>#channel へのメッセージ</translation>
     </message>
@@ -139,22 +139,22 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+127"/>
+        <location line="+158"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="-127"/>
+        <location line="-158"/>
         <source>Schedule</source>
         <translation>予約</translation>
     </message>
     <message>
-        <location line="+120"/>
+        <location line="+126"/>
         <source>Attach File</source>
         <translation>ファイルを添付</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+32"/>
         <source>URL</source>
         <translation>URL</translation>
     </message>
@@ -172,7 +172,7 @@ This action cannot be undone.</source>
 <context>
     <name>ConvFooterWidget</name>
     <message numerus="yes">
-        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+136"/>
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+137"/>
         <source>%n background task(s) running</source>
         <translation>
             <numerusform>%n件のバックグラウンドタスクを実行中</numerusform>
@@ -195,14 +195,24 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location line="+71"/>
+        <source>Profile &amp; status</source>
+        <translation>プロフィールとステータス</translation>
+    </message>
+    <message>
+        <location line="+44"/>
         <source>Manage profile</source>
         <translation>プロフィールを管理</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Manage status</source>
+        <translation>ステータスを管理</translation>
     </message>
 </context>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+517"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+500"/>
         <source>Open a direct message</source>
         <translation>ダイレクトメッセージを開く</translation>
     </message>
@@ -612,54 +622,51 @@ This action cannot be undone.</source>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+324"/>
+        <location filename="../src/ui/main_window.cpp" line="+339"/>
         <source>Log in to workspace</source>
         <translation>ワークスペースにログイン</translation>
     </message>
     <message>
-        <location line="+759"/>
-        <source>Missing credentials</source>
-        <translation>認証情報がありません</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>App credentials are not configured.
-
-Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
-        <translation>アプリの認証情報が設定されていません。
-
-credentials.cmake.example を credentials.cmake にコピーし、Slackアプリの認証情報を記入して再ビルドしてください。</translation>
-    </message>
-    <message>
-        <location line="+19"/>
+        <location line="+802"/>
+        <location line="+17"/>
         <source>Login failed</source>
         <translation>ログインに失敗しました</translation>
     </message>
     <message>
-        <location line="+227"/>
-        <location line="+660"/>
+        <location line="-17"/>
+        <source>This service is not supported.</source>
+        <translation>このサービスはサポートされていません。</translation>
+    </message>
+    <message>
+        <location line="+242"/>
+        <location line="+761"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>ここから%1とのダイレクトメッセージの履歴が始まります。</translation>
     </message>
     <message>
-        <location line="-654"/>
-        <location line="+732"/>
+        <location line="-755"/>
+        <location line="+834"/>
         <source>Message</source>
         <translation>メッセージ</translation>
     </message>
     <message>
-        <location line="-732"/>
-        <location line="+732"/>
+        <location line="-834"/>
+        <location line="+834"/>
         <source>Message %1</source>
         <translation>%1へのメッセージ</translation>
     </message>
     <message>
-        <location line="-545"/>
+        <location line="-623"/>
         <source>Someone</source>
         <translation>誰か</translation>
     </message>
     <message>
-        <location line="+133"/>
+        <location line="+185"/>
+        <source>Workspace admin</source>
+        <translation>ワークスペース管理</translation>
+    </message>
+    <message>
+        <location line="+7"/>
         <source>Log out</source>
         <translation>ログアウト</translation>
     </message>
@@ -669,7 +676,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>%1からログアウト</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+32"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
@@ -679,7 +686,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>終了</translation>
     </message>
     <message>
-        <location line="+168"/>
+        <location line="+185"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Slack（ブラウザ版）でハドルを開きます</translation>
     </message>
@@ -699,12 +706,22 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location line="-762"/>
+        <location line="-861"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>公式Slackクライアントが接続されていないため、他のメンバーには離席中と表示されます</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="-55"/>
+        <source>Add workspace</source>
+        <translation>ワークスペースを追加</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Choose a service:</source>
+        <translation>サービスを選択:</translation>
+    </message>
+    <message>
+        <location line="+59"/>
         <source>Active</source>
         <translation>アクティブ</translation>
     </message>
@@ -764,7 +781,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="+1485"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="+1508"/>
         <source>Edit message</source>
         <translation>メッセージを編集</translation>
     </message>
@@ -967,7 +984,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>MsgRender</name>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="+172"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="+166"/>
         <source>Today</source>
         <translation>今日</translation>
     </message>
@@ -977,7 +994,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>昨日</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>today at %1</source>
         <translation>今日 %1</translation>
     </message>
@@ -1107,7 +1124,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
 <context>
     <name>SearchWidget</name>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="+79"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="+76"/>
         <source>Search messages…</source>
         <translation>メッセージを検索…</translation>
     </message>
@@ -1150,7 +1167,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>メッセージを送信できませんでした: %1</translation>
     </message>
     <message>
-        <location line="+356"/>
+        <location line="+373"/>
         <source>No such user: %1</source>
         <translation>ユーザーが見つかりません: %1</translation>
     </message>
@@ -1190,7 +1207,7 @@ credentials.cmake.example を credentials.cmake にコピーし、Slackアプリ
         <translation>アバターを更新できませんでした: %1</translation>
     </message>
     <message>
-        <location line="+63"/>
+        <location line="+64"/>
         <source>Upload failed: %1</source>
         <translation>アップロードに失敗しました: %1</translation>
     </message>
@@ -1565,6 +1582,110 @@ it is stored on this computer and sent only to that provider.</source>
     </message>
 </context>
 <context>
+    <name>StatusDialog</name>
+    <message>
+        <location filename="../src/ui/status_dialog/status_dialog.cpp" line="+101"/>
+        <source>Set a status</source>
+        <translation>ステータスを設定</translation>
+    </message>
+    <message>
+        <location line="+44"/>
+        <source>What&apos;s your status?</source>
+        <translation>ステータスは？</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>In a meeting</source>
+        <translation>会議中</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Commuting</source>
+        <translation>通勤中</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Out sick</source>
+        <translation>体調不良</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Vacationing</source>
+        <translation>休暇中</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Working remotely</source>
+        <translation>リモート勤務</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+40"/>
+        <source>Don&apos;t clear</source>
+        <translation>クリアしない</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>30 minutes</source>
+        <translation>30分</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>1 hour</source>
+        <translation>1時間</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>4 hours</source>
+        <translation>4時間</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>Today</source>
+        <translation>今日</translation>
+    </message>
+    <message>
+        <location line="-39"/>
+        <location line="+40"/>
+        <source>This week</source>
+        <translation>今週</translation>
+    </message>
+    <message>
+        <location line="-35"/>
+        <source>Suggestions</source>
+        <translation>候補</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>For %1</source>
+        <translation>%1向け</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>Clear after</source>
+        <translation>クリアするタイミング</translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <source>Clear status</source>
+        <translation>ステータスをクリア</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Cancel</source>
+        <translation>キャンセル</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+</context>
+<context>
     <name>ThreadPanel</name>
     <message>
         <location filename="../src/ui/thread_panel/thread_panel.cpp" line="+64"/>
@@ -1820,6 +1941,18 @@ it is stored on this computer and sent only to that provider.</source>
         <translation>
             <numerusform>%n年前</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>slack::OAuthFlow</name>
+    <message>
+        <location filename="../src/backend/slack/oauth_flow.cpp" line="+40"/>
+        <source>App credentials are not configured.
+
+Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
+        <translation>アプリの認証情報が設定されていません。
+
+credentials.cmake.example を credentials.cmake にコピーし、Slackアプリの認証情報を記入して再ビルドしてください。</translation>
     </message>
 </context>
 </TS>
