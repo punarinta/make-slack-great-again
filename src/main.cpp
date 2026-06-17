@@ -16,6 +16,7 @@
 #include <QProcess>
 #include <QSettings>
 #include <QTranslator>
+#include <QUrlQuery>
 
 #if defined(Q_OS_LINUX)
 #include <unistd.h>
@@ -143,9 +144,18 @@ int main(int argc, char *argv[]) {
         app.installTranslator(&translator);
 
     MainWindow window;
-    QObject::connect(
-        &singleInstance, &SingleInstance::uriReceived, &window, &MainWindow::handleOAuthUri
-    );
+    // Dispatch incoming msga:// URLs: notification-click activation (Windows
+    // toasts use launch="msga://notif?token=…") opens the conversation; anything
+    // else is an OAuth redirect.
+    auto       routeUri = [&window](const QUrl &uri) {
+        if (uri.host() == "notif") {
+            const QString token = QUrlQuery(uri).queryItemValue("token", QUrl::FullyDecoded);
+            window.handleNotifToken(token);
+        } else {
+            window.handleOAuthUri(uri);
+        }
+    };
+    QObject::connect(&singleInstance, &SingleInstance::uriReceived, &window, routeUri);
     // On Linux, clicking the dock icon when the window is hidden causes the DE to
     // launch a new process. SingleInstance blocks the second process and emits
     // activateRequested so we can show the window instead of doing nothing.
@@ -163,10 +173,21 @@ int main(int argc, char *argv[]) {
         bool eventFilter(QObject *, QEvent *ev) override {
             if (ev->type() == QEvent::FileOpen) {
                 const QUrl url = static_cast<QFileOpenEvent *>(ev)->url();
-                if (url.scheme() == "msga")
-                    QMetaObject::invokeMethod(
-                        _window, "handleOAuthUri", Qt::QueuedConnection, Q_ARG(QUrl, url)
-                    );
+                if (url.scheme() == "msga") {
+                    if (url.host() == "notif")
+                        QMetaObject::invokeMethod(
+                            _window,
+                            "handleNotifToken",
+                            Qt::QueuedConnection,
+                            Q_ARG(
+                                QString, QUrlQuery(url).queryItemValue("token", QUrl::FullyDecoded)
+                            )
+                        );
+                    else
+                        QMetaObject::invokeMethod(
+                            _window, "handleOAuthUri", Qt::QueuedConnection, Q_ARG(QUrl, url)
+                        );
+                }
             }
             return false;
         }

@@ -103,6 +103,9 @@ add_executable(msga MACOSX_BUNDLE WIN32
     # Utilities
     src/util/background_tasks.cpp
     src/util/desktop_integration.cpp
+    # Listed so AUTOMOC processes the Q_OBJECT (the impl TUs are platform-suffixed
+    # — desktop_notifier_{linux,win,mac} — so the basename doesn't match a source).
+    src/util/desktop_notifier.h
     src/util/emoji.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp
@@ -215,6 +218,32 @@ elseif(WIN32)
     target_link_libraries(msga PRIVATE winmm)
 else()
     target_sources(msga PRIVATE src/util/sound_player_linux.cpp)
+endif()
+
+# Desktop notifications with per-message avatars (src/util/desktop_notifier*):
+# each OS needs a different API to put the sender avatar into the notification —
+# Qt's QSystemTrayIcon::showMessage can't on any platform. One backend per TU,
+# shared header; each degrades to the tray fallback when its API is unavailable.
+#   • Linux  — org.freedesktop.Notifications `image-data` hint via QtDBus
+#   • Windows — WinRT toast `appLogoOverride` (raw COM) + AUMID/shortcut/scheme
+#   • macOS  — NSUserNotification.contentImage (UserNotifications)
+if(APPLE)
+    target_sources(msga PRIVATE src/util/desktop_notifier_mac.mm)
+    set_source_files_properties(src/util/desktop_notifier_mac.mm
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+elseif(WIN32)
+    target_sources(msga PRIVATE src/util/desktop_notifier_win.cpp)
+    # runtimeobject: WinRT (RoInitialize/RoGetActivationFactory/HSTRING).
+    # shell32/ole32: Start-Menu shortcut (IShellLink) + COM. uuid: the CLSID_*
+    # / FOLDERID_* GUID symbols. propsys: IPropertyStore plumbing.
+    target_link_libraries(msga PRIVATE runtimeobject propsys shell32 ole32 uuid)
+else()
+    target_sources(msga PRIVATE src/util/desktop_notifier_linux.cpp)
+    find_package(Qt6 QUIET OPTIONAL_COMPONENTS DBus)
+    if(Qt6DBus_FOUND)
+        target_link_libraries(msga PRIVATE Qt6::DBus)
+        target_compile_definitions(msga PRIVATE MSGA_HAS_DBUS)
+    endif()
 endif()
 
 # AddressSanitizer + LeakSanitizer (MSGA_ASAN=ON). Fast (~2x) runtime detection

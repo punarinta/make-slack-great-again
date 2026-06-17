@@ -38,6 +38,7 @@ class PopupTooltip;
 class QSplitter;
 class UpdateBar;
 class UpdateChecker;
+class DesktopNotifier;
 
 class QCloseEvent;
 
@@ -57,6 +58,10 @@ public:
 public slots:
     // Called by SingleInstance when the OS delivers msga://oauth/callback?code=…
     void handleOAuthUri(const QUrl &uri);
+    // Open the conversation a clicked notification points at, from an opaque
+    // "teamId\x1fconvId" token. Both the in-process notifier click signal and the
+    // Windows toast's msga://notif protocol-activation funnel through here.
+    void handleNotifToken(const QString &token);
 
 private:
     // UI construction (called once)
@@ -114,6 +119,9 @@ private:
     // Tray
     void setupTray();
     void maybeNotify(const QString &teamId, const EvMessageNew &ev);
+    // Bring the window forward and open the conversation a clicked notification
+    // points at (shared by the tray and the freedesktop-notifier click paths).
+    void openNotifTarget(const QString &teamId, const ConversationId &conv);
     void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 
@@ -205,6 +213,7 @@ private:
     ImageCache         *_imgCache         = nullptr;
     QLabel             *_errorBanner      = nullptr;
     QSystemTrayIcon    *_trayIcon         = nullptr;
+    DesktopNotifier    *_desktopNotifier  = nullptr;
     QPushButton        *_huddleBtn        = nullptr;
     PopupTooltip       *_huddleBtnTooltip = nullptr;
     QPushButton        *_starBtn          = nullptr;

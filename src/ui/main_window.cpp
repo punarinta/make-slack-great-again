@@ -38,6 +38,7 @@
 #include "update_bar/update_bar.h"
 
 #include "ui/icon_utils.h"
+#include "util/desktop_notifier.h"
 #include "util/sound_player.h"
 
 #include <QDialog>
@@ -1622,10 +1623,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     // icon for channels (and anything else). We only use an already-cached
     // pixmap — ImageCache::get() kicks off a download but returns null until it
     // lands, so a not-yet-cached image just means no picture this time (and the
-    // fetch we triggered makes it available for the next one). When no image is
-    // available we fall back to the icon-less toast. showMessage's QIcon
-    // overload is the cross-platform path: honoured on Linux (freedesktop
-    // notifications) and Windows toasts; macOS ignores it and uses the app icon.
+    // fetch we triggered makes it available for the next one).
     QPixmap notifPix;
     if (_imgCache) {
         QString iconUrl;
@@ -1641,12 +1639,29 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }
 
-    _pendingNotifTeam = teamId;
-    _pendingNotifConv = ev.conv;
-    if (notifPix.isNull())
-        _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
-    else
-        _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+    // Prefer the freedesktop notifier on Linux: it puts the avatar into the OS
+    // notification banner/centre via the `image-data` hint, which Qt's
+    // showMessage can't reach (it only sends the QIcon as `app_icon`, which
+    // GNOME/Ubuntu ignore for the picture). Click-to-open is delivered through
+    // its "default" action. Anywhere it's unavailable (macOS/Windows, no QtDBus,
+    // no notification daemon) we fall back to the tray: showMessage's QIcon
+    // overload is honoured on Windows toasts; macOS ignores it and uses the app
+    // icon, while the image-less toast is the floor everywhere.
+    bool shown = false;
+    if (_desktopNotifier && _desktopNotifier->isAvailable()) {
+        const QString token = teamId + QChar(0x1f) + ev.conv.value;
+        shown               = _desktopNotifier->notify(
+            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), token, 5000
+        );
+    }
+    if (!shown) {
+        _pendingNotifTeam = teamId;
+        _pendingNotifConv = ev.conv;
+        if (notifPix.isNull())
+            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+        else
+            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+    }
 
     if (s.value("notifications/sound", true).toBool())
         Sound::Player::instance().play(
@@ -1837,24 +1852,41 @@ void MainWindow::setupTray() {
     );
 
     connect(_trayIcon, &QSystemTrayIcon::messageClicked, this, [this] {
-        show();
-        raise();
-        activateWindow();
-        if (_pendingNotifConv.value.isEmpty())
-            return;
-        // The notification may belong to a background workspace — bring it up first.
-        if (!_pendingNotifTeam.isEmpty() && _pendingNotifTeam != _activeTeamId)
-            activateWorkspace(_pendingNotifTeam);
-        if (_convList) {
-            const int row = _convList->rowForId(_pendingNotifConv);
-            if (row >= 0)
-                openConversation(row);
-        }
+        openNotifTarget(_pendingNotifTeam, _pendingNotifConv);
         _pendingNotifConv = {};
         _pendingNotifTeam.clear();
     });
 
     _trayIcon->show();
+
+    // Platform notifier (Linux/macOS): clicking a notification fires activated()
+    // with the team\x1fconv token we encoded in maybeNotify(). (Windows delivers
+    // the same token via msga://notif protocol activation → handleNotifToken.)
+    _desktopNotifier = new DesktopNotifier(this);
+    connect(_desktopNotifier, &DesktopNotifier::activated, this, &MainWindow::handleNotifToken);
+}
+
+void MainWindow::handleNotifToken(const QString &token) {
+    const int sep = token.indexOf(QChar(0x1f));
+    if (sep < 0)
+        return;
+    openNotifTarget(token.left(sep), ConversationId{token.mid(sep + 1)});
+}
+
+void MainWindow::openNotifTarget(const QString &teamId, const ConversationId &conv) {
+    show();
+    raise();
+    activateWindow();
+    if (conv.value.isEmpty())
+        return;
+    // The notification may belong to a background workspace — bring it up first.
+    if (!teamId.isEmpty() && teamId != _activeTeamId)
+        activateWorkspace(teamId);
+    if (_convList) {
+        const int row = _convList->rowForId(conv);
+        if (row >= 0)
+            openConversation(row);
+    }
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────
