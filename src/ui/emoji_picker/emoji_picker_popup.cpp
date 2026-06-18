@@ -2,232 +2,69 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "emoji_picker_popup.h"
 #include "session/session.h"
+#include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
+#include "util/emoji_catalog.h"
 #include "util/emoji_font.h"
 
+#include <QHBoxLayout>
+#include <QImage>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPixmap>
+#include <QPushButton>
 #include <QResizeEvent>
+#include <QScreen>
 #include <QScrollBar>
+#include <QSettings>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
 
-// Ordered list of emoji names for grid display — resolved via Emoji::fromName.
-static const QStringList kBaseEmojiNames{
-    // Faces & emotions
-    "smile",
-    "grin",
-    "laughing",
-    "joy",
-    "rofl",
-    "sweat_smile",
-    "wink",
-    "heart_eyes",
-    "kissing_heart",
-    "stuck_out_tongue",
-    "thinking_face",
-    "raised_eyebrow",
-    "neutral_face",
-    "expressionless",
-    "zipper_mouth",
-    "grimacing",
-    "sob",
-    "tired_face",
-    "sleepy",
-    "mask",
-    "sunglasses",
-    "nerd_face",
-    "monocle_face",
-    "confused",
-    "worried",
-    "angry",
-    "rage",
-    "skull",
-    "ghost",
-    "alien",
-    "poop",
-    "clown_face",
-    "partying_face",
-    // Hands & people
-    "wave",
-    "raised_hand",
-    "ok_hand",
-    "thumbsup",
-    "thumbsdown",
-    "clap",
-    "pray",
-    "point_right",
-    "point_left",
-    "point_up",
-    "point_down",
-    "muscle",
-    "handshake",
-    "writing_hand",
-    "selfie",
-    // Hearts & symbols
-    "heart",
-    "orange_heart",
-    "yellow_heart",
-    "green_heart",
-    "blue_heart",
-    "purple_heart",
-    "broken_heart",
-    "sparkling_heart",
-    "two_hearts",
-    "100",
-    "tada",
-    "fire",
-    "star",
-    "star2",
-    "sparkles",
-    "zap",
-    "boom",
-    "eyes",
-    "warning",
-    // Animals
-    "dog",
-    "cat",
-    "mouse",
-    "hamster",
-    "rabbit",
-    "fox_face",
-    "bear",
-    "panda_face",
-    "koala",
-    "tiger",
-    "lion",
-    "cow",
-    "pig",
-    "frog",
-    "monkey_face",
-    "chicken",
-    "penguin",
-    "bird",
-    "hatching_chick",
-    "eagle",
-    "owl",
-    "snake",
-    "turtle",
-    "lizard",
-    "whale",
-    "dolphin",
-    "shark",
-    "octopus",
-    "bee",
-    "butterfly",
-    "palm_tree",
-    "deciduous_tree",
-    "evergreen_tree",
-    "cactus",
-    "sunflower",
-    "rose",
-    // Food
-    "apple",
-    "banana",
-    "watermelon",
-    "grapes",
-    "strawberry",
-    "pizza",
-    "hamburger",
-    "fries",
-    "hot_dog",
-    "taco",
-    "burrito",
-    "sushi",
-    "ramen",
-    "spaghetti",
-    "rice",
-    "bread",
-    "croissant",
-    "cake",
-    "cupcake",
-    "cookie",
-    "chocolate_bar",
-    "candy",
-    "lollipop",
-    "ice_cream",
-    "coffee",
-    "tea",
-    "beer",
-    // Travel & places
-    "rocket",
-    "airplane",
-    "car",
-    "bus",
-    "train",
-    "bicycle",
-    "boat",
-    "house",
-    "office",
-    "school",
-    "hospital",
-    "bank",
-    "sunrise",
-    "city_sunset",
-    "night_with_stars",
-    "earth_americas",
-    "earth_africa",
-    "earth_asia",
-    // Objects & misc
-    "computer",
-    "desktop_computer",
-    "keyboard",
-    "phone",
-    "telephone",
-    "email",
-    "memo",
-    "pencil",
-    "paperclip",
-    "scissors",
-    "lock",
-    "key",
-    "hammer",
-    "wrench",
-    "gear",
-    "bulb",
-    "flashlight",
-    "books",
-    "moneybag",
-    "credit_card",
-    "chart",
-    "trophy",
-    "medal",
-    "gift",
-    "balloon",
-    "confetti_ball",
-    "musical_note",
-    "headphones",
-    "microphone",
-    "camera",
-    "hourglass_flowing_sand",
-    "clock1",
-    "calendar",
-    "x",
-    "question",
-    "exclamation",
-    "bell",
-    "information_source",
-    "white_check_mark",
-    "warning",
-};
+namespace {
 
-// Full popup size; height shrinks below kFullHeight to fit a short filtered list.
-static constexpr int kFullWidth  = 300;
-static constexpr int kFullHeight = 340;
+// Popup chrome size — a fixed Slack-like panel; the grid scrolls inside it.
+constexpr int kFullWidth  = 354;
+constexpr int kFullHeight = 460;
+
+constexpr int kRecentMax = 27; // 3 rows of 9
+
+// Skin-tone modifier glyph for tone 2..6 ("" for 0/default).
+QString toneGlyph(int tone) {
+    return tone >= 2 && tone <= 6 ? Emoji::fromName(QStringLiteral("skin-tone-%1").arg(tone))
+                                  : QString();
+}
+
+// Render an emoji glyph to a crisp pixmap (for icon-style use in buttons).
+QPixmap glyphPixmap(const QString &glyph, int px, qreal dpr) {
+    QImage img(QSize(px, px) * dpr, QImage::Format_ARGB32_Premultiplied);
+    img.setDevicePixelRatio(dpr);
+    img.fill(Qt::transparent);
+    QPainter p(&img);
+    QFont    f = emojiFont(px - 2);
+    p.setFont(f);
+    p.drawText(QRectF(0, 0, px, px), Qt::AlignCenter, glyph);
+    p.end();
+    QPixmap out = QPixmap::fromImage(img);
+    out.setDevicePixelRatio(dpr);
+    return out;
+}
+
+} // namespace
 
 // ── EmojiGrid ────────────────────────────────────────────────────────────────
 
 EmojiGrid::EmojiGrid(QWidget *parent) : VirtualListWidget(parent) {
-    _emojiFont = emojiFont(20);
-    verticalScrollBar()->setSingleStep(kRowH);
+    _emojiFont = emojiFont(22);
+    verticalScrollBar()->setSingleStep(kCell);
 }
 
 void EmojiGrid::setImageCache(ImageCache *cache) {
@@ -246,37 +83,96 @@ void EmojiGrid::setImageCache(ImageCache *cache) {
     }
 }
 
-int EmojiGrid::rowCount() const {
-    return (count() + kCols - 1) / kCols;
+int EmojiGrid::contentHeight() const {
+    return _contentH;
 }
 
-int EmojiGrid::contentHeight() const {
-    const int rows = rowCount();
-    if (rows == 0)
-        return 0;
-    return kMargin * 2 + rows * kCell + (rows - 1) * kSpacing;
+QString EmojiGrid::emittedName(const Cell &c) const {
+    if (_skinTone && c.skinnable)
+        return c.name + QStringLiteral("::skin-tone-%1").arg(_skinTone);
+    return c.name;
+}
+
+QString EmojiGrid::displayGlyph(const Cell &c) const {
+    if (_skinTone && c.skinnable && !c.glyph.isEmpty())
+        return c.glyph + _toneGlyph;
+    return c.glyph;
+}
+
+void EmojiGrid::setSkinTone(int tone) {
+    if (_skinTone == tone)
+        return;
+    _skinTone  = tone;
+    _toneGlyph = toneGlyph(tone);
+    viewport()->update();
+}
+
+void EmojiGrid::relayout() {
+    _rows.clear();
+    int y = kMargin;
+    for (int s = 0; s < _sections.size(); ++s) {
+        const Section &sec = _sections[s];
+        if (sec.cellCount <= 0)
+            continue;
+        if (!sec.label.isEmpty()) {
+            _rows.push_back({y, kHeaderH, true, sec.label, s, 0, 0});
+            y += kHeaderH;
+        }
+        for (int off = 0; off < sec.cellCount; off += kCols) {
+            const int n = std::min(kCols, sec.cellCount - off);
+            _rows.push_back({y, kCell, false, {}, s, sec.firstCell + off, n});
+            y += kCell;
+        }
+    }
+    _contentH = y + kMargin;
+}
+
+void EmojiGrid::setContent(QVector<Cell> cells, QVector<Section> sections) {
+    _cells    = std::move(cells);
+    _sections = std::move(sections);
+    _hover    = -1;
+    _sel      = -1;
+    relayout();
+    verticalScrollBar()->setValue(0);
+    updateScrollRange();
+    _topSection = -1;
+    emitTopSection();
+    viewport()->update();
+}
+
+int EmojiGrid::rowOfCell(int idx) const {
+    for (int r = 0; r < _rows.size(); ++r) {
+        const Row &row = _rows[r];
+        if (!row.header && idx >= row.cellStart && idx < row.cellStart + row.cellCount)
+            return r;
+    }
+    return -1;
 }
 
 QRect EmojiGrid::cellRect(int idx) const {
-    const int row = idx / kCols;
-    const int col = idx % kCols;
-    return QRect(kMargin + col * kRowH, kMargin + row * kRowH, kCell, kCell);
+    const int r = rowOfCell(idx);
+    if (r < 0)
+        return {};
+    const int col = idx - _rows[r].cellStart;
+    return QRect(kMargin + col * kCell, _rows[r].y, kCell, kCell);
 }
 
 int EmojiGrid::cellAt(const QPoint &vp) const {
-    const int x = vp.x() - kMargin;
-    const int y = vp.y() + verticalScrollBar()->value() - kMargin;
-    if (x < 0 || y < 0)
-        return -1;
-    const int col = x / kRowH;
-    const int row = y / kRowH;
-    if (col >= kCols)
-        return -1;
-    // Reject the spacing gutters between cells.
-    if (x % kRowH >= kCell || y % kRowH >= kCell)
-        return -1;
-    const int idx = row * kCols + col;
-    return idx < count() ? idx : -1;
+    const int yc = vp.y() + verticalScrollBar()->value();
+    for (const Row &row : _rows) {
+        if (yc < row.y || yc >= row.y + row.h)
+            continue;
+        if (row.header)
+            return -1;
+        const int x = vp.x() - kMargin;
+        if (x < 0)
+            return -1;
+        const int col = x / kCell;
+        if (col < 0 || col >= row.cellCount)
+            return -1;
+        return row.cellStart + col;
+    }
+    return -1;
 }
 
 void EmojiGrid::updateScrollRange() {
@@ -287,29 +183,50 @@ void EmojiGrid::updateScrollRange() {
 }
 
 void EmojiGrid::ensureVisible(int idx) {
-    if (idx < 0 || idx >= count())
+    const int r = rowOfCell(idx);
+    if (r < 0)
         return;
-    auto       *sb = verticalScrollBar();
-    const QRect cr = cellRect(idx);
-    const int   vh = viewport()->height();
-    if (cr.top() - kMargin < sb->value())
-        sb->setValue(cr.top() - kMargin);
-    else if (cr.bottom() + kMargin > sb->value() + vh)
-        sb->setValue(cr.bottom() + kMargin - vh);
+    auto      *sb  = verticalScrollBar();
+    const int  vh  = viewport()->height();
+    const Row &row = _rows[r];
+    // Reveal the section header too when the cell is in the section's first row.
+    int        top = row.y;
+    if (r > 0 && _rows[r - 1].header && _rows[r - 1].section == row.section)
+        top = _rows[r - 1].y;
+    if (top < sb->value())
+        sb->setValue(top);
+    else if (row.y + row.h > sb->value() + vh)
+        sb->setValue(row.y + row.h - vh);
 }
 
-void EmojiGrid::setCells(QVector<Cell> cells) {
-    _cells = std::move(cells);
-    _hover = -1;
-    verticalScrollBar()->setValue(0);
-    updateScrollRange();
-    // Pre-select the first match so Enter picks the top hit while typing.
-    _sel = _cells.isEmpty() ? -1 : 0;
-    viewport()->update();
+void EmojiGrid::scrollToSection(int sectionIdx) {
+    for (const Row &row : _rows) {
+        if (row.section == sectionIdx) {
+            verticalScrollBar()->setValue(
+                std::min(row.y - kMargin, verticalScrollBar()->maximum())
+            );
+            return;
+        }
+    }
+}
+
+void EmojiGrid::emitTopSection() {
+    const int scrollY = verticalScrollBar()->value();
+    int       sec     = _rows.isEmpty() ? -1 : _rows.front().section;
+    for (const Row &row : _rows) {
+        if (row.y + row.h > scrollY) {
+            sec = row.section;
+            break;
+        }
+    }
+    if (sec != _topSection) {
+        _topSection = sec;
+        emit topSectionChanged(sec);
+    }
 }
 
 void EmojiGrid::setSelected(int idx) {
-    if (idx < 0 || idx >= count()) {
+    if (idx < 0 || idx >= _cells.size()) {
         if (_sel != -1) {
             _sel = -1;
             viewport()->update();
@@ -321,16 +238,35 @@ void EmojiGrid::setSelected(int idx) {
     viewport()->update();
 }
 
-void EmojiGrid::moveSelection(int delta) {
+void EmojiGrid::moveSelection(int dCol, int dRow) {
     if (_cells.isEmpty())
         return;
-    const int base = _sel < 0 ? 0 : _sel;
-    setSelected(std::clamp(base + delta, 0, count() - 1));
+    if (_sel < 0) {
+        setSelected(0);
+        return;
+    }
+    if (dCol != 0) { // left/right walks the flat cell list (crosses sections)
+        setSelected(std::clamp(_sel + dCol, 0, static_cast<int>(_cells.size()) - 1));
+        return;
+    }
+    // up/down: move to the adjacent emoji row, preserving the column.
+    const int r = rowOfCell(_sel);
+    if (r < 0)
+        return;
+    const int col  = _sel - _rows[r].cellStart;
+    const int step = dRow > 0 ? 1 : -1;
+    for (int rr = r + step; rr >= 0 && rr < _rows.size(); rr += step) {
+        if (_rows[rr].header)
+            continue;
+        const int c = std::min(col, _rows[rr].cellCount - 1);
+        setSelected(_rows[rr].cellStart + c);
+        return;
+    }
 }
 
 void EmojiGrid::activateSelected() {
-    if (_sel >= 0 && _sel < count())
-        emit emojiActivated(_cells[_sel].name);
+    if (_sel >= 0 && _sel < _cells.size())
+        emit emojiActivated(emittedName(_cells[_sel]));
 }
 
 void EmojiGrid::doPaint(QPaintEvent *) {
@@ -339,44 +275,58 @@ void EmojiGrid::doPaint(QPaintEvent *) {
     if (_cells.isEmpty())
         return;
 
-    const int scrollY = verticalScrollBar()->value();
-    const int vh      = viewport()->height();
+    const int   scrollY = verticalScrollBar()->value();
+    const int   vh      = viewport()->height();
+    const qreal dpr     = devicePixelRatioF();
 
-    // Only the rows intersecting the viewport are painted.
-    const int firstRow = std::max(0, (scrollY - kMargin) / kRowH);
-    const int lastRow  = (scrollY + vh - kMargin) / kRowH;
-    const int first    = firstRow * kCols;
-    const int last     = std::min(count() - 1, (lastRow + 1) * kCols - 1);
+    QFont headerFont = font();
+    headerFont.setPixelSize(Th::c().fonts.sm);
+    headerFont.setBold(true);
 
-    const qreal dpr = devicePixelRatioF();
+    for (const Row &row : _rows) {
+        const int ry = row.y - scrollY;
+        if (ry + row.h <= 0 || ry >= vh)
+            continue;
 
-    for (int i = first; i <= last; ++i) {
-        const QRect cr = cellRect(i).translated(0, -scrollY);
-
-        if (i == _sel || i == _hover) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().surface.highlight);
-            p.drawRoundedRect(cr, 4, 4);
+        if (row.header) {
+            p.setFont(headerFont);
+            p.setPen(Th::c().text.secondary);
+            p.drawText(
+                QRect(kMargin + 2, ry, viewport()->width() - kMargin * 2, row.h),
+                Qt::AlignVCenter | Qt::AlignLeft,
+                row.label
+            );
+            continue;
         }
 
-        const Cell &c = _cells[i];
-        if (!c.glyph.isEmpty()) {
-            p.setFont(_emojiFont);
-            p.setPen(Th::c().text.primary);
-            p.drawText(cr, Qt::AlignCenter, c.glyph);
-        } else if (!c.imageUrl.isEmpty() && _imgCache) {
-            // Lazily fetched — only visible custom emojis ever hit the cache/network.
-            const QPixmap px = _imgCache->get(c.imageUrl);
-            if (!px.isNull()) {
-                constexpr int side   = 22;
-                QPixmap       scaled = px.scaled(
-                    QSize(side, side) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation
-                );
-                scaled.setDevicePixelRatio(dpr);
-                const QSizeF ls = scaled.deviceIndependentSize();
-                const int    x  = cr.x() + qRound((cr.width() - ls.width()) / 2.0);
-                const int    y  = cr.y() + qRound((cr.height() - ls.height()) / 2.0);
-                p.drawPixmap(QPoint(x, y), scaled);
+        for (int col = 0; col < row.cellCount; ++col) {
+            const int   idx = row.cellStart + col;
+            const QRect cr(kMargin + col * kCell, ry, kCell, kCell);
+
+            if (idx == _sel || idx == _hover) {
+                p.setPen(Qt::NoPen);
+                p.setBrush(Th::c().surface.highlight);
+                p.drawRoundedRect(cr.adjusted(2, 2, -2, -2), 5, 5);
+            }
+
+            const Cell &c = _cells[idx];
+            if (!c.glyph.isEmpty()) {
+                p.setFont(_emojiFont);
+                p.setPen(Th::c().text.primary);
+                p.drawText(cr, Qt::AlignCenter, displayGlyph(c));
+            } else if (!c.imageUrl.isEmpty() && _imgCache) {
+                const QPixmap px = _imgCache->get(c.imageUrl);
+                if (!px.isNull()) {
+                    constexpr int side   = 24;
+                    QPixmap       scaled = px.scaled(
+                        QSize(side, side) * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation
+                    );
+                    scaled.setDevicePixelRatio(dpr);
+                    const QSizeF ls = scaled.deviceIndependentSize();
+                    const int    x  = cr.x() + qRound((cr.width() - ls.width()) / 2.0);
+                    const int    y  = cr.y() + qRound((cr.height() - ls.height()) / 2.0);
+                    p.drawPixmap(QPoint(x, y), scaled);
+                }
             }
         }
     }
@@ -387,7 +337,6 @@ void EmojiGrid::doPaint(QPaintEvent *) {
 void EmojiGrid::doMousePress(QMouseEvent *event) {
     const QPoint pos = event->pos();
 
-    // Scrollbar thumb drag (thin overlay thumb on the right edge).
     const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
     if (pos.x() >= sbHitX && isOnScrollThumb(pos.y(), contentHeight())) {
         _sbDragging        = true;
@@ -441,6 +390,7 @@ void EmojiGrid::scrollContentsBy(int, int) {
     // The hovered index was computed against the old scroll offset; drop it so a
     // wheel scroll doesn't leave a highlight stuck on a cell the cursor left.
     _hover = -1;
+    emitTopSection();
     viewport()->update();
 }
 
@@ -457,44 +407,78 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     setFixedWidth(kFullWidth);
     setFixedHeight(kFullHeight);
 
+    _skinTone = QSettings("msga", "msga").value(QStringLiteral("emoji/skinTone"), 0).toInt();
+    if (_skinTone != 0 && (_skinTone < 2 || _skinTone > 6))
+        _skinTone = 0;
+
     auto *lay = new QVBoxLayout(this);
-    lay->setContentsMargins(8, 8, 8, 8);
+    lay->setContentsMargins(8, 6, 8, 6);
     lay->setSpacing(6);
 
+    // Category icon bar.
+    _catBar      = new QWidget(this);
+    auto *catLay = new QHBoxLayout(_catBar);
+    catLay->setContentsMargins(0, 0, 0, 0);
+    catLay->setSpacing(0);
+    lay->addWidget(_catBar);
+
+    // Search field.
     _search = new QLineEdit(this);
-    _search->setPlaceholderText(tr("Search emoji…"));
-    // Fixed height so the popup's chrome is deterministic when we auto-size it
-    // (QLineEdit::sizeHint doesn't reliably account for the stylesheet padding).
+    _search->setPlaceholderText(tr("Search all emoji"));
     {
         QFont sf = _search->font();
         sf.setPixelSize(Th::c().fonts.md);
         _search->setFont(sf);
-        // 4px top/bottom padding + 1px top/bottom border from the stylesheet.
-        _search->setFixedHeight(QFontMetrics(sf).height() + 8 + 2);
+        _search->setFixedHeight(QFontMetrics(sf).height() + 12 + 2);
     }
     lay->addWidget(_search);
 
     _grid = new EmojiGrid(this);
+    _grid->setSkinTone(_skinTone);
     lay->addWidget(_grid, 1);
 
-    // Drive grid navigation from keys typed in the search field.
+    // Bottom bar: skin-tone selector (right-aligned). The expanded swatches are
+    // an inline row (not a nested Qt::Popup — those don't honour move() on
+    // Wayland, so a popover selector would be unreliable / invisible there).
+    auto *bottom = new QHBoxLayout;
+    bottom->setContentsMargins(2, 0, 2, 0);
+    bottom->setSpacing(2);
+    bottom->addStretch(1);
+    _toneRow      = new QWidget(this);
+    auto *toneLay = new QHBoxLayout(_toneRow);
+    toneLay->setContentsMargins(0, 0, 0, 0);
+    toneLay->setSpacing(2);
+    _toneRow->hide();
+    bottom->addWidget(_toneRow);
+    _skinBtn = new QPushButton(tr("Skin Tone"), this);
+    _skinBtn->setCursor(Qt::PointingHandCursor);
+    _skinBtn->setFlat(true);
+    _skinBtn->setIconSize(QSize(18, 18));
+    bottom->addWidget(_skinBtn);
+    lay->addLayout(bottom);
+    buildSkinToneRow();
+
     _search->installEventFilter(this);
 
     connect(_grid, &EmojiGrid::emojiActivated, this, [this](const QString &name) {
+        // Record the base (tone-stripped) name for the Frequently Used section.
+        const int sep = name.indexOf(QLatin1String("::"));
+        recordUse(sep > 0 ? name.left(sep) : name);
         hide();
         emit emojiSelected(name);
     });
-
+    connect(_grid, &EmojiGrid::topSectionChanged, this, &EmojiPickerPopup::setActiveTab);
     connect(_search, &QLineEdit::textChanged, this, [this](const QString &text) {
         rebuild(text.trimmed());
     });
+    connect(_skinBtn, &QPushButton::clicked, this, &EmojiPickerPopup::toggleSkinToneRow);
 
     applyTheme();
     connect(
         &ThemeManager::instance(), &ThemeManager::themeChanged, this, &EmojiPickerPopup::applyTheme
     );
 
-    rebuild();
+    updateSkinToneButton();
 }
 
 void EmojiPickerPopup::applyTheme() {
@@ -506,21 +490,37 @@ void EmojiPickerPopup::applyTheme() {
                       "}"
                       "QLineEdit {"
                       "  border: 1px solid %2;"
-                      "  border-radius: 4px;"
-                      "  padding: 4px 8px;"
+                      "  border-radius: 6px;"
+                      "  padding: 5px 10px;"
                       "  font-size: %5px;"
                       "  color: %3;"
                       "  background: %1;"
                       "}"
-                      "QLineEdit:focus { border-color: %4; }"
+                      "QLineEdit:focus { border: 1.5px solid %4; }"
+                      "QToolButton {"
+                      "  border: none; background: transparent; padding: 5px;"
+                      "  border-bottom: 2px solid transparent;"
+                      "}"
+                      "QToolButton:hover { background: %6; border-radius: 4px; }"
+                      "QToolButton:checked { border-bottom: 2px solid %4; }"
+                      "QPushButton {"
+                      "  border: none; background: transparent; color: %7;"
+                      "  padding: 3px 6px; font-size: %8px;"
+                      "}"
+                      "QPushButton:hover { color: %3; }"
     )
                       .arg(
                           Th::qss(Th::c().surface.raised),
                           Th::qss(Th::c().divider.strong),
                           Th::qss(Th::c().text.primary),
-                          Th::qss(Th::c().accent.def)
+                          Th::qss(Th::c().accent.def),
+                          QString::number(Th::c().fonts.md),
+                          Th::qss(Th::c().surface.highlight)
                       )
-                      .arg(Th::c().fonts.md));
+                      .arg(Th::qss(Th::c().text.secondary))
+                      .arg(Th::c().fonts.sm));
+    buildCategoryBar(); // re-tint category icons
+    updateSkinToneButton();
 }
 
 void EmojiPickerPopup::setSession(Session *session) {
@@ -533,54 +533,247 @@ void EmojiPickerPopup::setImageCache(ImageCache *cache) {
 
 void EmojiPickerPopup::open(const QPoint &globalPos) {
     _search->clear();
+    _toneRow->hide();
+    _skinBtn->show();
     rebuild();
-    move(globalPos);
+    // Clamp so the panel stays on the screen the anchor is on.
+    QPoint pos = globalPos;
+    if (QScreen *scr = QGuiApplication::screenAt(globalPos)) {
+        const QRect a = scr->availableGeometry();
+        pos.setX(std::clamp(pos.x(), a.left(), a.right() - width()));
+        pos.setY(std::clamp(pos.y(), a.top(), a.bottom() - height()));
+    }
+    move(pos);
     show();
     raise();
     _search->setFocus();
 }
 
+// Build a grid cell for a built-in or custom emoji given its base short-name.
+static EmojiGrid::Cell makeBuiltinCell(const QString &name) {
+    EmojiGrid::Cell c;
+    c.name      = name;
+    c.glyph     = Emoji::fromName(name);
+    c.skinnable = Emoji::supportsSkinTone(name);
+    return c;
+}
+
 void EmojiPickerPopup::rebuild(const QString &filter) {
-    QVector<EmojiGrid::Cell> cells;
+    QVector<EmojiGrid::Cell>    cells;
+    QVector<EmojiGrid::Section> sections;
+    _tabs.clear();
+    _searching = !filter.isEmpty();
 
-    // Custom emoji from the session — shown as downloaded images, pulled lazily
-    // from the shared ImageCache as cells scroll into view.
-    if (_session) {
-        const auto &emap = _session->emojiMap();
-        for (auto it = emap.begin(); it != emap.end(); ++it) {
-            const QString &name = it.key();
-            const QString &url  = it.value();
-            if (url.startsWith("alias:"))
-                continue;
-            if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive))
-                continue;
-            cells.push_back({name, {}, url});
+    // Resolvable custom (workspace) emoji map, used for both the Custom section
+    // and to render recents/search hits that point at workspace emoji.
+    const QHash<QString, QString> *custom = _session ? &_session->emojiMap() : nullptr;
+
+    auto addSection = [&](const QString                  &id,
+                          const QString                  &label,
+                          const QString                  &icon,
+                          const QVector<EmojiGrid::Cell> &secCells) {
+        if (secCells.isEmpty())
+            return;
+        EmojiGrid::Section s{
+            id, label, static_cast<int>(cells.size()), static_cast<int>(secCells.size())
+        };
+        sections.push_back(s);
+        if (!icon.isEmpty())
+            _tabs.push_back({id, icon, static_cast<int>(sections.size() - 1)});
+        cells += secCells;
+    };
+
+    if (_searching) {
+        // Flat "Search Results" section: custom emoji first (workspace-specific),
+        // then the whole built-in database (matching the composer's completion).
+        QVector<EmojiGrid::Cell> hits;
+        if (custom) {
+            for (auto it = custom->begin(); it != custom->end(); ++it) {
+                if (it.value().startsWith(QLatin1String("alias:")))
+                    continue;
+                if (it.key().contains(filter, Qt::CaseInsensitive))
+                    hits.push_back({it.key(), {}, it.value(), false});
+            }
         }
+        for (const QString &name : Emoji::allNames()) {
+            if (!name.contains(filter, Qt::CaseInsensitive))
+                continue;
+            const QString g = Emoji::fromName(name);
+            if (g.startsWith(':'))
+                continue;
+            hits.push_back(makeBuiltinCell(name));
+        }
+        addSection(QStringLiteral("search"), tr("Search Results"), {}, hits);
+        _grid->setContent(std::move(cells), std::move(sections));
+        _grid->setSelected(0); // Enter picks the top hit
+        _catBar->hide();
+        return;
     }
 
-    // Base Unicode emoji. With no filter we show a curated, sensibly-ordered
-    // subset (the default browse view); once the user types we search the whole
-    // built-in database (matching the composer's ":code" completion), so e.g.
-    // "pill" surfaces 💊 even though it's not in the curated list.
-    const QStringList &baseNames = filter.isEmpty() ? kBaseEmojiNames : Emoji::allNames();
-    for (const QString &name : baseNames) {
-        if (!filter.isEmpty() && !name.contains(filter, Qt::CaseInsensitive))
-            continue;
-        const QString ch = Emoji::fromName(name);
-        if (ch.startsWith(':'))
-            continue; // skip unknown names
-        cells.push_back({name, ch, {}});
+    // ── Browse mode ──────────────────────────────────────────────────────────
+    // Frequently Used (persisted MRU of base names).
+    {
+        const QStringList recents =
+            QSettings("msga", "msga").value(QStringLiteral("emoji/recent")).toStringList();
+        QVector<EmojiGrid::Cell> freq;
+        for (const QString &name : recents) {
+            const QString g = Emoji::fromName(name);
+            if (g.startsWith(':')) {
+                // Not a built-in — maybe a workspace custom emoji.
+                if (custom) {
+                    const auto it = custom->constFind(name);
+                    if (it != custom->constEnd() && !it->startsWith(QLatin1String("alias:"))) {
+                        freq.push_back({name, {}, *it, false});
+                        continue;
+                    }
+                }
+                continue;
+            }
+            freq.push_back(makeBuiltinCell(name));
+        }
+        addSection(
+            QStringLiteral("frequent"),
+            tr("Frequently Used"),
+            QStringLiteral(":/ui/clock.svg"),
+            freq
+        );
     }
 
-    _grid->setCells(std::move(cells));
+    // Standard categories from the cached catalog.
+    static const QHash<QString, QString> kCatIcon = {
+        {QStringLiteral("people"), QStringLiteral(":/ui/smile.svg")},
+        {QStringLiteral("nature"), QStringLiteral(":/ui/leaf.svg")},
+        {QStringLiteral("food"), QStringLiteral(":/ui/apple.svg")},
+        {QStringLiteral("travel"), QStringLiteral(":/ui/plane.svg")},
+        {QStringLiteral("activity"), QStringLiteral(":/ui/volleyball.svg")},
+        {QStringLiteral("objects"), QStringLiteral(":/ui/lightbulb.svg")},
+        {QStringLiteral("symbols"), QStringLiteral(":/ui/shapes.svg")},
+        {QStringLiteral("flags"), QStringLiteral(":/ui/flag.svg")},
+    };
+    for (const Emoji::Category &cat : Emoji::categories()) {
+        QVector<EmojiGrid::Cell> catCells;
+        catCells.reserve(cat.names.size());
+        for (const QString &name : cat.names)
+            catCells.push_back(makeBuiltinCell(name));
+        addSection(cat.id, cat.label, kCatIcon.value(cat.id), catCells);
+    }
 
-    // Auto-size the popup height to the rendered grid (capped at the full
-    // height, where the scroll bar takes over) so a short filtered list
-    // doesn't leave empty space below the last row.
-    const int chrome   = 8 + _search->height() + 6 + 8;
-    const int maxGridH = kFullHeight - chrome;
-    const int gridH    = std::max(_grid->contentHeight(), 4);
-    setFixedHeight(chrome + std::min(gridH, maxGridH));
+    // Custom (workspace) emoji.
+    if (custom) {
+        QVector<EmojiGrid::Cell> customCells;
+        for (auto it = custom->begin(); it != custom->end(); ++it) {
+            if (it.value().startsWith(QLatin1String("alias:")))
+                continue;
+            customCells.push_back({it.key(), {}, it.value(), false});
+        }
+        std::sort(customCells.begin(), customCells.end(), [](const auto &a, const auto &b) {
+            return a.name < b.name;
+        });
+        addSection(
+            QStringLiteral("custom"),
+            tr("Custom"),
+            QStringLiteral(":/ui/slack-mark.svg"),
+            customCells
+        );
+    }
+
+    _grid->setContent(std::move(cells), std::move(sections));
+    _catBar->show();
+    buildCategoryBar();
+}
+
+void EmojiPickerPopup::buildCategoryBar() {
+    if (!_catBar)
+        return;
+    auto *lay = static_cast<QHBoxLayout *>(_catBar->layout());
+    // Clear existing buttons.
+    while (QLayoutItem *item = lay->takeAt(0)) {
+        if (item->widget())
+            item->widget()->deleteLater();
+        delete item;
+    }
+    for (int i = 0; i < _tabs.size(); ++i) {
+        const Tab &t   = _tabs[i];
+        auto      *btn = new QToolButton(_catBar);
+        btn->setCheckable(true);
+        btn->setAutoExclusive(true);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setIcon(svgIcon(t.icon, QSize(18, 18), Th::c().icon.def));
+        btn->setIconSize(QSize(18, 18));
+        const int section = t.section;
+        connect(btn, &QToolButton::clicked, this, [this, section] {
+            _grid->scrollToSection(section);
+        });
+        lay->addWidget(btn, 1);
+    }
+    setActiveTab(_grid->selected() >= 0 ? -1 : 0);
+}
+
+void EmojiPickerPopup::setActiveTab(int sectionIdx) {
+    if (_searching)
+        return;
+    auto *lay = static_cast<QHBoxLayout *>(_catBar->layout());
+    for (int i = 0; i < _tabs.size() && i < lay->count(); ++i) {
+        auto *btn = qobject_cast<QToolButton *>(lay->itemAt(i)->widget());
+        if (btn)
+            btn->setChecked(_tabs[i].section == sectionIdx);
+    }
+}
+
+void EmojiPickerPopup::recordUse(const QString &baseName) {
+    QSettings   s("msga", "msga");
+    QStringList recents = s.value(QStringLiteral("emoji/recent")).toStringList();
+    recents.removeAll(baseName);
+    recents.prepend(baseName);
+    while (recents.size() > kRecentMax)
+        recents.removeLast();
+    s.setValue(QStringLiteral("emoji/recent"), recents);
+}
+
+void EmojiPickerPopup::applySkinTone(int tone) {
+    _skinTone = tone;
+    QSettings("msga", "msga").setValue(QStringLiteral("emoji/skinTone"), tone);
+    _grid->setSkinTone(tone);
+    updateSkinToneButton();
+}
+
+void EmojiPickerPopup::updateSkinToneButton() {
+    if (!_skinBtn)
+        return;
+    const QString hand = Emoji::fromName(QStringLiteral("hand")) + toneGlyph(_skinTone);
+    _skinBtn->setIcon(QIcon(glyphPixmap(hand, 18, devicePixelRatioF())));
+}
+
+void EmojiPickerPopup::buildSkinToneRow() {
+    auto *l = static_cast<QHBoxLayout *>(_toneRow->layout());
+    while (QLayoutItem *item = l->takeAt(0)) {
+        if (item->widget())
+            delete item->widget();
+        delete item;
+    }
+    const int tones[] = {0, 2, 3, 4, 5, 6}; // 0 = default (yellow)
+    for (int tone : tones) {
+        const QString glyph = Emoji::fromName(QStringLiteral("hand")) + toneGlyph(tone);
+        auto         *b     = new QToolButton(_toneRow);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setIcon(QIcon(glyphPixmap(glyph, 18, devicePixelRatioF())));
+        b->setIconSize(QSize(18, 18));
+        b->setCheckable(true);
+        b->setChecked(tone == _skinTone);
+        connect(b, &QToolButton::clicked, this, [this, tone] {
+            applySkinTone(tone);
+            _toneRow->hide();
+            _skinBtn->show();
+            buildSkinToneRow(); // refresh checked state for next time
+        });
+        l->addWidget(b);
+    }
+}
+
+void EmojiPickerPopup::toggleSkinToneRow() {
+    const bool show = !_toneRow->isVisible();
+    _toneRow->setVisible(show);
+    _skinBtn->setVisible(!show);
 }
 
 bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
@@ -595,17 +788,23 @@ bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
             _grid->activateSelected();
             return true;
         case Qt::Key_Up:
-            _grid->moveSelection(-_grid->columns());
+            _grid->moveSelection(0, -1);
             return true;
         case Qt::Key_Down:
-            _grid->moveSelection(_grid->columns());
+            _grid->moveSelection(0, 1);
             return true;
         case Qt::Key_Left:
-            _grid->moveSelection(-1);
-            return true;
+            if (_search->cursorPosition() == 0) {
+                _grid->moveSelection(-1, 0);
+                return true;
+            }
+            break;
         case Qt::Key_Right:
-            _grid->moveSelection(1);
-            return true;
+            if (_search->cursorPosition() == _search->text().size()) {
+                _grid->moveSelection(1, 0);
+                return true;
+            }
+            break;
         default:
             break;
         }

@@ -107,6 +107,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     # — desktop_notifier_{linux,win,mac} — so the basename doesn't match a source).
     src/util/desktop_notifier.h
     src/util/emoji.cpp
+    src/util/emoji_catalog.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp
     src/util/sound_player.cpp

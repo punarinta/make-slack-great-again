@@ -18,6 +18,13 @@
         <file alias="ui/send.svg">../gfx/ui/send.svg</file>
         <file alias="ui/paperclip.svg">../gfx/ui/paperclip.svg</file>
         <file alias="ui/smile.svg">../gfx/ui/smile.svg</file>
+        <file alias="ui/leaf.svg">../gfx/ui/leaf.svg</file>
+        <file alias="ui/apple.svg">../gfx/ui/apple.svg</file>
+        <file alias="ui/plane.svg">../gfx/ui/plane.svg</file>
+        <file alias="ui/volleyball.svg">../gfx/ui/volleyball.svg</file>
+        <file alias="ui/lightbulb.svg">../gfx/ui/lightbulb.svg</file>
+        <file alias="ui/shapes.svg">../gfx/ui/shapes.svg</file>
+        <file alias="ui/flag.svg">../gfx/ui/flag.svg</file>
         <file alias="ui/at-sign.svg">../gfx/ui/at-sign.svg</file>
         <file alias="ui/megaphone.svg">../gfx/ui/megaphone.svg</file>
         <file alias="ui/bold.svg">../gfx/ui/bold.svg</file>
