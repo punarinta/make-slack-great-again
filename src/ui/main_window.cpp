@@ -998,6 +998,12 @@ void MainWindow::activateWorkspace(QString teamId) {
         updateRoundedMask();
     }
 
+    // Remember the outgoing chat's scroll position now, while the message list is
+    // still laid out normally. The widget hides below grow its viewport, which
+    // would clamp a slightly-scrolled-up position to a false "at bottom".
+    if (_messageList)
+        _messageList->saveScrollAnchor();
+
     // Detach the UI from the outgoing session — it stays alive in the
     // background and keeps accumulating unreads / firing notifications.
     _uiLifetime = rpl::lifetime();

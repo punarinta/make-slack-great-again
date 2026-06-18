@@ -14,13 +14,15 @@
 #include <QHash>
 #include <QPixmap>
 #include <QStringList>
+#include <QTextDocument> // structs below hold unique_ptr<QTextDocument>; need the
+                         // complete type so their (implicit) destructors are
+                         // instantiable wherever this header is consumed.
 #include <QTimer>
 
 #include <memory>
 #include <vector>
 
 class QMovie;
-class QTextDocument;
 class Session;
 class ImageCache;
 class PopupTooltip;
@@ -91,6 +93,13 @@ public:
     void openThread(ConversationId conv, Ts rootTs);
     void clear();
     void setSession(Session *session);
+
+    // Remember the current conversation's reading position so reopening it (after
+    // a chat or workspace switch) restores exactly where the user was. Must be
+    // called while the list is still laid out normally — before any sibling
+    // widget (composer/header) is hidden, since that grows the viewport and would
+    // clamp a slightly-scrolled-up position to the bottom.
+    void saveScrollAnchor();
 
     // Show/hide a full-area loading spinner independent of conversation state.
     // Used while the conversation list itself is loading (before any conv can be opened).
@@ -172,9 +181,6 @@ private:
     // Apply the pending open-scroll intent (saved position / first unread /
     // bottom) if set.
     void               applyPendingScroll();
-    // Remember the reading position of _currentConv (topmost visible message ts
-    // + viewport offset) so reopening restores it; at-bottom clears the entry.
-    void               saveScrollAnchor();
     // {ts of the message anchoring the viewport top, its offset from the
     // viewport top}, or empty ts when nothing is laid out. Reads the
     // _tops/_topsTs snapshot, so it stays valid when _items was mutated after
@@ -393,18 +399,25 @@ private:
     QSet<QString>     _newMsgTs;
     QVariantAnimation _highlightAnim;
 
-    bool                               _scrollToBottomPending = false;
+    bool _scrollToBottomPending = false;
     // Read cursor of the conversation being opened: while _scrollToBottomPending
     // is set, the initial scroll targets the first message after this ts instead
     // of the bottom. Empty = no unreads, plain scroll-to-bottom.
-    Ts                                 _pendingLastReadTs;
+    Ts   _pendingLastReadTs;
     // Saved reading position of the conversation being opened (takes precedence
     // over the unread target): message ts + its offset from the viewport top.
-    Ts                                 _pendingAnchorTs;
-    int                                _pendingAnchorDelta = 0;
-    // conv.value → saved reading position; entries exist only for conversations
-    // the user left scrolled away from the bottom.
-    QHash<QString, std::pair<Ts, int>> _savedAnchors;
+    Ts   _pendingAnchorTs;
+    int  _pendingAnchorDelta = 0;
+    // conv.value → saved reading position. An entry is written for every chat the
+    // user leaves, so returning to it always restores where they were — including
+    // "at the bottom" (atBottom), which is sticky and overrides the first-unread
+    // placement. Survives conversation and workspace switches (clear() leaves it).
+    struct SavedAnchor {
+        bool atBottom = false; // left at the bottom — restore to the bottom
+        Ts   ts;               // otherwise anchor to this message ts...
+        int  delta = 0;        // ...at this pixel offset from the viewport top
+    };
+    QHash<QString, SavedAnchor> _savedAnchors;
 
     // Text selection state
     TextPos       _selAnchor;              // where the drag started

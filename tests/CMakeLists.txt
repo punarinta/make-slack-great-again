@@ -375,6 +375,38 @@ add_msga_widget_test(test_composer
 )
 
 
+add_msga_widget_test(test_message_list
+    test_message_list.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/loading_indicator/loading_indicator.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/background_tasks.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+
 
 # Sound player: shared logic + the platform-native backend for this OS.
 if(APPLE)

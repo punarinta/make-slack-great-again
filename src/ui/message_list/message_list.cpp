@@ -226,9 +226,22 @@ void MessageListWidget::setWaiting(bool waiting) {
 }
 
 void MessageListWidget::setSession(Session *session) {
-    // Workspace switch arrives here (not openConversation) — keep the reading
-    // position of the chat we're leaving so coming back restores it.
-    saveScrollAnchor();
+    // Workspace switch arrives here (not openConversation). The reading position
+    // of the chat we're leaving is saved by activateWorkspace *before* it hides
+    // the composer/header — doing it here would read a viewport that already grew
+    // (composer hidden), clamping a scrolled-up position to a false "at bottom".
+    //
+    // Snapshot the loaded messages first (same as openConversation): if the user
+    // scrolled up, the view holds paginated *older* messages that aren't in the
+    // plain cache. Without this, returning to the workspace can't find the saved
+    // anchor (it's older than the no-cursor history page) and falls to the bottom.
+    if (!_currentConv.value.isEmpty() && _session && !_isThreadMode && !_items.empty()) {
+        std::vector<Message> msgs;
+        msgs.reserve(_items.size());
+        for (const auto &item : _items)
+            msgs.push_back(item.msg);
+        _session->cacheMessages(_currentConv, msgs);
+    }
     clear();
     _currentConv = {};
     _session     = session;
@@ -271,14 +284,19 @@ void MessageListWidget::openConversation(
     // URLs) while the map was empty must be re-rendered.
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
 
-    // Every open scrolls to the saved reading position (if the chat was left
-    // scrolled away from the bottom), else to the first unread message, else
-    // to the bottom.
+    // If we've shown this chat before, restore exactly where the user left it —
+    // ignoring the unread target so switching chats/workspaces never jumps the
+    // view. Only the first open of a chat lands on the first unread message
+    // (or the bottom if all read).
     _scrollToBottomPending = true;
-    _pendingLastReadTs     = lastReadTs;
     if (const auto it = _savedAnchors.constFind(conv.value); it != _savedAnchors.constEnd()) {
-        _pendingAnchorTs    = it->first;
-        _pendingAnchorDelta = it->second;
+        if (!it->atBottom) {
+            _pendingAnchorTs    = it->ts;
+            _pendingAnchorDelta = it->delta;
+        }
+        // atBottom: leave both targets empty → plain scroll-to-bottom.
+    } else {
+        _pendingLastReadTs = lastReadTs;
     }
 
     // Pre-populate from cache for instant display while network loads.
@@ -395,16 +413,16 @@ void MessageListWidget::saveScrollAnchor() {
         return;
     auto *sb = verticalScrollBar();
     if (sb->value() >= sb->maximum() - 4) {
-        // At the bottom (or nothing shown): the default open placement
-        // (first unread / bottom) is what the user wants on return.
-        _savedAnchors.remove(_currentConv.value);
+        // At the bottom — remember that, so returning sticks to the bottom
+        // (and new messages) rather than jumping up to the first-unread marker.
+        _savedAnchors[_currentConv.value] = {.atBottom = true};
         return;
     }
     const auto anchor = viewportAnchor();
     if (anchor.first.isEmpty())
         _savedAnchors.remove(_currentConv.value);
     else
-        _savedAnchors[_currentConv.value] = anchor;
+        _savedAnchors[_currentConv.value] = {.ts = anchor.first, .delta = anchor.second};
 }
 
 void MessageListWidget::applyPendingScroll() {
