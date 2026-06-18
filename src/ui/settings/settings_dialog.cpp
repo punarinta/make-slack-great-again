@@ -49,17 +49,36 @@ static constexpr int kPanelMinW = 480;
 static constexpr int kPanelMinH = 360;
 static constexpr int kEdge      = 7;
 
+// Our scrollbar design: thin rounded handle, transparent track, no arrows —
+// the same look used by the chats list and the canvas page. Shared so the
+// settings scroll areas re-style on theme change via applyTheme().
+static QString settingsScrollQss() {
+    const auto &th = Th::c();
+    return QString(
+               "QScrollArea { background: transparent; }"
+               "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
+               "QScrollBar::handle:vertical { background: %1; border-radius: 4px;"
+               " min-height: 28px; }"
+               "QScrollBar::handle:vertical:hover { background: %2; }"
+               "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+               "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+               " background: transparent; }"
+    )
+        .arg(Th::qss(th.divider.strong), Th::qss(th.text.secondary));
+}
+
 // Wrap a settings page so it scrolls when it's taller than the panel instead of
 // being squeezed (which clipped the theme cards on Windows, where the taller
 // system font inflates every row past the fixed panel height). Transparent +
 // frameless so the page looks identical when it does fit.
 static QWidget *scrollWrap(QWidget *page) {
     auto *sa = new QScrollArea;
+    sa->setObjectName("settingsScroll");
     sa->setWidgetResizable(true);
     sa->setFrameShape(QFrame::NoFrame);
     sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     sa->viewport()->setAutoFillBackground(false);
-    sa->setStyleSheet("QScrollArea { background: transparent; }");
+    sa->setStyleSheet(settingsScrollQss());
     sa->setWidget(page);
     return sa;
 }
@@ -724,6 +743,12 @@ void SettingsDialog::refreshAiProviders() {
 
 void SettingsDialog::applyTheme() {
     const auto &th = Th::c();
+
+    // Tab pages scroll with our thin rounded scrollbar (like the chats list);
+    // re-style live so a theme switch from the Appearance tab updates them too.
+    const QString scrollQss = settingsScrollQss();
+    for (auto *sa : _panel->findChildren<QScrollArea *>("settingsScroll"))
+        sa->setStyleSheet(scrollQss);
 
     // Panel frame
     _panel->setStyleSheet(QString(
