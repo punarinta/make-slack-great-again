@@ -213,7 +213,11 @@ void SocketModeRealtime::onConnected() {
 }
 
 void SocketModeRealtime::onDisconnected() {
-    qDebug() << "Socket Mode: disconnected";
+    if (_ws)
+        qDebug() << "Socket Mode: disconnected — close code" << _ws->closeCode() << "reason"
+                 << _ws->closeReason();
+    else
+        qDebug() << "Socket Mode: disconnected";
     if (!_stopped)
         scheduleReconnect();
 }
@@ -229,7 +233,17 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
     }
 
     if (type == "disconnect") {
-        qDebug() << "Socket Mode: server requested disconnect";
+        const auto reason = envelope.value("reason").toString();
+        // Slack sends two flavours. "warning" is a heads-up that this socket
+        // will be recycled *soon* — Slack expects us to KEEP handling events on
+        // it until it actually closes (or a refresh_requested follows), so we
+        // must not tear it down here. "refresh_requested" (and "too_many_-
+        // websockets" / anything else) is the real signal to reconnect now.
+        if (reason == "warning") {
+            qDebug() << "Socket Mode: disconnect warning (recycle pending) — keeping socket open";
+            return;
+        }
+        qDebug() << "Socket Mode: server requested disconnect — reason" << reason;
         _ws->close();
         return; // onDisconnected will trigger reconnect
     }
