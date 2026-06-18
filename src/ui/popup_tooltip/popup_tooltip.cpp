@@ -5,6 +5,7 @@
 #include "ui/theme_manager.h"
 #include "util/emoji_font.h"
 
+#include <QHideEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QApplication>
@@ -179,6 +180,12 @@ void PopupTooltip::showReaction(
     _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
     placeGlobal(wx, wy, widgetW, widgetH);
+}
+
+void PopupTooltip::hideEvent(QHideEvent *e) {
+    if (QWidget *p = parentWidget())
+        p->update(geometry());
+    QWidget::hideEvent(e);
 }
 
 void PopupTooltip::paintEvent(QPaintEvent *) {

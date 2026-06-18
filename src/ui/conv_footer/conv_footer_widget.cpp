@@ -161,6 +161,7 @@ void ConvFooterWidget::setSelfPresence(const SelfPresence &sp) {
 }
 
 void ConvFooterWidget::clear() {
+    disconnect(_avatarConn);
     _displayName = {};
     _avatarUrl   = {};
     _avatar      = {};
@@ -174,6 +175,9 @@ void ConvFooterWidget::clear() {
 }
 
 void ConvFooterWidget::loadAvatar() {
+    // Drop any in-flight subscription from a previous URL before starting over.
+    disconnect(_avatarConn);
+
     if (_avatarUrl.isEmpty() || !_imgCache)
         return;
     const QPixmap cached = _imgCache->get(_avatarUrl);
@@ -183,18 +187,18 @@ void ConvFooterWidget::loadAvatar() {
         return;
     }
     const QString url = _avatarUrl;
-    connect(
-        _imgCache,
-        &ImageCache::loaded,
-        this,
-        [this, url](const QString &loadedUrl) {
-            if (loadedUrl != url || url != _avatarUrl)
+    // Persistent connection: keep listening across unrelated `loaded` emissions
+    // until OUR url arrives, then tear ourselves down.
+    _avatarConn =
+        connect(_imgCache, &ImageCache::loaded, this, [this, url](const QString &loadedUrl) {
+            if (loadedUrl != url)
                 return;
+            disconnect(_avatarConn);
+            if (url != _avatarUrl)
+                return; // user changed under us while loading
             _avatar = _imgCache->get(url);
             update();
-        },
-        Qt::SingleShotConnection
-    );
+        });
 }
 
 QString ConvFooterWidget::presenceTooltip() const {

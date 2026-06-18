@@ -23,6 +23,12 @@ public:
     QSize sizeHint() const override;
 
 protected:
+    // Caption band height, derived from the current font's metrics (+ padding)
+    // rather than a fixed constant — so a taller system font (Segoe UI on
+    // Windows) gets the room it needs and descenders clear the bottom edge even
+    // at fractional display scaling, where pixel rounding would otherwise clip.
+    int labelH() const;
+
     void paintEvent(QPaintEvent *) override;
     void enterEvent(QEnterEvent *) override { update(); }
     void leaveEvent(QEvent *) override { update(); }
@@ -32,8 +38,8 @@ private:
     QString          _name;
     const Th::Theme &_preview;
 
-    static constexpr int kCardW  = 148;
-    static constexpr int kMockH  = 92;
-    static constexpr int kLabelH = 24;
-    static constexpr int kRadius = 8;
+    static constexpr int kCardW    = 148;
+    static constexpr int kMockH    = 92;
+    static constexpr int kLabelPad = 12; // vertical breathing room around the caption
+    static constexpr int kRadius   = 8;
 };

@@ -20,6 +20,7 @@
 #include <QFrame>
 #include <QListWidget>
 #include <QStackedWidget>
+#include <QScrollArea>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -45,6 +46,21 @@ static constexpr int kPanelH    = 540;
 static constexpr int kPanelMinW = 480;
 static constexpr int kPanelMinH = 360;
 static constexpr int kEdge      = 7;
+
+// Wrap a settings page so it scrolls when it's taller than the panel instead of
+// being squeezed (which clipped the theme cards on Windows, where the taller
+// system font inflates every row past the fixed panel height). Transparent +
+// frameless so the page looks identical when it does fit.
+static QWidget *scrollWrap(QWidget *page) {
+    auto *sa = new QScrollArea;
+    sa->setWidgetResizable(true);
+    sa->setFrameShape(QFrame::NoFrame);
+    sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sa->viewport()->setAutoFillBackground(false);
+    sa->setStyleSheet("QScrollArea { background: transparent; }");
+    sa->setWidget(page);
+    return sa;
+}
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QWidget(parent) {
     setAutoFillBackground(false);
@@ -155,6 +171,12 @@ void SettingsDialog::buildPanel() {
     // ── Color theme ───────────────────────────────────────────────────
     auto *themeBox = new QGroupBox(tr("Color theme"), appearPage);
     themeBox->setObjectName("themeBox");
+    // Pin to the row's natural height. The cards are fixed-size; with the default
+    // (Preferred) policy the page layout shrinks this box below them when vertical
+    // space is tight — which happens on Windows, where the taller system font
+    // inflates every other row — clipping the cards' captions. sizeHint() already
+    // accounts for the platform's font, so Fixed gives exactly the room needed.
+    themeBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *themeLayout = new QHBoxLayout(themeBox);
     themeLayout->setSpacing(12);
     themeLayout->setContentsMargins(0, 12, 0, 0);
@@ -283,7 +305,7 @@ void SettingsDialog::buildPanel() {
     aBtnRow->addWidget(aSaveBtn);
     alay->addLayout(aBtnRow);
 
-    _stack->addWidget(appearPage);
+    _stack->addWidget(scrollWrap(appearPage));
 
     // ── Notifications page ────────────────────────────────────────────
     auto *notifPage = new QWidget;
@@ -367,10 +389,10 @@ void SettingsDialog::buildPanel() {
     btnRow->addWidget(saveBtn);
     nlay->addLayout(btnRow);
 
-    _stack->addWidget(notifPage);
+    _stack->addWidget(scrollWrap(notifPage));
 
     // ── AI assistance page ────────────────────────────────────────────
-    _stack->addWidget(buildAiPage());
+    _stack->addWidget(scrollWrap(buildAiPage()));
 
     // ── Storage page ──────────────────────────────────────────────────
     auto *storagePage = new QWidget;
@@ -476,7 +498,7 @@ void SettingsDialog::buildPanel() {
 
     slay->addStretch();
 
-    _stack->addWidget(storagePage);
+    _stack->addWidget(scrollWrap(storagePage));
 
     // ── System page ───────────────────────────────────────────────────
     auto *sysPage = new QWidget;
@@ -542,7 +564,7 @@ void SettingsDialog::buildPanel() {
         );
     });
 
-    _stack->addWidget(sysPage);
+    _stack->addWidget(scrollWrap(sysPage));
     root->addWidget(body, 1);
 
     auto *esc = new QShortcut(Qt::Key_Escape, _panel);

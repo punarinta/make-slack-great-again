@@ -25,6 +25,8 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <memory>
+
 namespace {
 constexpr int kMaxStatusLen = 100; // Slack caps status_text at 100 chars
 constexpr int kEmojiBtn     = 30;  // emoji prefix button side
@@ -286,15 +288,21 @@ void StatusDialog::updateEmojiButton() {
             set(px);
         } else {
             const QString want = _emoji;
-            connect(
+            // Persistent (not single-shot): `loaded` fires for every image, so a
+            // single-shot connection would be consumed by the first unrelated
+            // image to finish and we'd miss our own. Tear down once OUR url arrives.
+            auto          conn = std::make_shared<QMetaObject::Connection>();
+            *conn              = connect(
                 _imgCache,
                 &ImageCache::loaded,
                 this,
-                [this, url, set, want](const QString &loadedUrl) {
-                    if (loadedUrl == url && _emoji == want) // still showing this emoji
+                [this, url, set, want, conn](const QString &loadedUrl) {
+                    if (loadedUrl != url)
+                        return;
+                    QObject::disconnect(*conn);
+                    if (_emoji == want) // still showing this emoji
                         set(_imgCache->get(url));
-                },
-                Qt::SingleShotConnection
+                }
             );
         }
         return;

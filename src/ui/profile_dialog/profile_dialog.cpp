@@ -11,6 +11,8 @@
 #include "ui/theme.h"
 
 #include <QApplication>
+
+#include <memory>
 #include <QEnterEvent>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -216,17 +218,18 @@ void ProfileDialog::setAvatarUrl(const QString &url) {
         return;
     }
     _avatar->setAvatar({}, _initial);
-    connect(
-        _imgCache,
-        &ImageCache::loaded,
-        this,
-        [this, url](const QString &loadedUrl) {
-            if (loadedUrl != url || url != _avatarUrl)
+    // Persistent (not single-shot): `loaded` fires for every image, so a
+    // single-shot connection would be consumed by the first unrelated image to
+    // finish, and we'd miss our own. Tear down once OUR url arrives.
+    auto conn = std::make_shared<QMetaObject::Connection>();
+    *conn =
+        connect(_imgCache, &ImageCache::loaded, this, [this, url, conn](const QString &loadedUrl) {
+            if (loadedUrl != url)
                 return;
-            _avatar->setAvatar(_imgCache->get(url), _initial);
-        },
-        Qt::SingleShotConnection
-    );
+            QObject::disconnect(*conn);
+            if (url == _avatarUrl)
+                _avatar->setAvatar(_imgCache->get(url), _initial);
+        });
 }
 
 void ProfileDialog::pickAndUploadPhoto() {

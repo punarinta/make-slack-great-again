@@ -3,6 +3,7 @@
 #include "theme_preview_card.h"
 #include "ui/theme_manager.h"
 
+#include <QFontMetrics>
 #include <QPainter>
 #include <QPainterPath>
 
@@ -13,12 +14,24 @@ ThemePreviewCard::ThemePreviewCard(
       _preview(preview) {
     setCheckable(true);
     setCursor(Qt::PointingHandCursor);
+    // Hard-pin the geometry: the label is painted in a band at the bottom, so the
+    // widget must never be shrunk below its full height. setFixedSize sets min ==
+    // max so no layout can compress it (a Fixed size *policy* alone wasn't enough
+    // on Windows, where the taller system font let the row collapse and clipped
+    // the "Blue"/"Green" captions).
+    setFixedSize(kCardW, kMockH + labelH());
     connect(this, &QAbstractButton::toggled, this, [this] { update(); });
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { update(); });
 }
 
+int ThemePreviewCard::labelH() const {
+    QFont f = font();
+    f.setPixelSize(Th::c().fonts.caption);
+    return QFontMetrics(f).height() + kLabelPad;
+}
+
 QSize ThemePreviewCard::sizeHint() const {
-    return {kCardW, kMockH + kLabelH};
+    return {kCardW, kMockH + labelH()};
 }
 
 void ThemePreviewCard::paintEvent(QPaintEvent *) {
@@ -102,5 +115,11 @@ void ThemePreviewCard::paintEvent(QPaintEvent *) {
     f.setBold(sel);
     p.setFont(f);
     p.setPen(sel ? active.accent.def : active.text.secondary);
-    p.drawText(QRect(0, kMockH, width(), kLabelH), Qt::AlignHCenter | Qt::AlignVCenter, _name);
+    // TextDontClip: never let the band rect shave a descender (the "g" in
+    // "Green") — Segoe UI's taller metrics on Windows sit lower in the band.
+    p.drawText(
+        QRect(0, kMockH, width(), height() - kMockH),
+        Qt::AlignHCenter | Qt::AlignVCenter | Qt::TextDontClip,
+        _name
+    );
 }

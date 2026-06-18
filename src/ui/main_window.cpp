@@ -73,6 +73,8 @@
 #include <QDesktopServices>
 #include <QShortcut>
 
+#include <memory>
+
 static constexpr int kResizeBorder  = 6;
 static constexpr int kConvMinWidth  = 160;
 static constexpr int kConvMaxWidth  = 400;
@@ -1006,6 +1008,13 @@ void MainWindow::activateWorkspace(QString teamId) {
         _mainPage = buildMainPage();
         _stack->addWidget(_mainPage);
         applyTheme();
+        // _rightPanelLayout is born here with zero margins. The earlier
+        // updateRoundedMask() (constructor / window show) ran while it was still
+        // null and skipped it, so the windowed nav.bg border depends on a resize
+        // event landing *after* this point — which doesn't happen when the page
+        // is built after the window is already shown (login, async activation).
+        // Re-run it now so the border is correct regardless of resize timing.
+        updateRoundedMask();
     }
 
     // Detach the UI from the outgoing session — it stays alive in the
@@ -2339,20 +2348,27 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
                     if (!cached.isNull()) {
                         _headerAvatar->setPixmap(cached);
                     } else {
-                        // Not yet in cache — subscribe once and apply when it arrives.
-                        const QString url = u->avatarUrl;
-                        connect(
+                        // Not yet in cache — subscribe and apply when it arrives.
+                        // Persistent (not single-shot): `loaded` fires for every
+                        // image, so a single-shot connection would be consumed by
+                        // the first unrelated image to finish and we'd miss our
+                        // own. Tear down once OUR url arrives.
+                        const QString url  = u->avatarUrl;
+                        auto          conn = std::make_shared<QMetaObject::Connection>();
+                        *conn              = connect(
                             _imgCache,
                             &ImageCache::loaded,
                             this,
-                            [this, url, conv](const QString &loadedUrl) {
-                                if (loadedUrl != url || conv != _currentConvId)
+                            [this, url, conv, conn](const QString &loadedUrl) {
+                                if (loadedUrl != url)
+                                    return;
+                                QObject::disconnect(*conn);
+                                if (conv != _currentConvId)
                                     return;
                                 const QPixmap px = _imgCache->get(url);
                                 if (!px.isNull() && _headerAvatar)
                                     _headerAvatar->setPixmap(px);
-                            },
-                            Qt::SingleShotConnection
+                            }
                         );
                     }
                 }

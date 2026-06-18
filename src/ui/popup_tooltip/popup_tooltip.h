@@ -27,6 +27,12 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *e) override;
+    // Force the host window to repaint the region we vacated. A translucent child
+    // overlay leaves stale pixels in the backing store on hide under Windows (a
+    // thin vertical seam to the right of where the tooltip stood); Linux/macOS
+    // invalidate it for us. update(geometry()) on the parent is a harmless no-op
+    // where it isn't needed.
+    void hideEvent(QHideEvent *e) override;
 
 private:
     QString     _text;

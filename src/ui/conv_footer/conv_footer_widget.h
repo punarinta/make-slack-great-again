@@ -74,15 +74,20 @@ private:
     void           animateTo(bool hidden);
     void           tickAnim();
 
-    ImageCache       *_imgCache = nullptr;
-    PopupTooltip     *_tooltip  = nullptr;
-    QString           _displayName;
-    QString           _avatarUrl;
-    QPixmap           _avatar;
-    UserAvatar::State _state;
-    SelfPresence      _sp;
-    Hot               _hot     = Hot::None;
-    Hot               _pressed = Hot::None;
+    ImageCache             *_imgCache = nullptr;
+    PopupTooltip           *_tooltip  = nullptr;
+    QString                 _displayName;
+    QString                 _avatarUrl;
+    QPixmap                 _avatar;
+    // Live subscription to ImageCache::loaded while our avatar is in flight.
+    // Must NOT be single-shot: `loaded` fires for every image, so a single-shot
+    // connection gets consumed by the first unrelated image that finishes and we
+    // miss our own (a race we reliably lost on Windows — the avatar stayed grey).
+    QMetaObject::Connection _avatarConn;
+    UserAvatar::State       _state;
+    SelfPresence            _sp;
+    Hot                     _hot     = Hot::None;
+    Hot                     _pressed = Hot::None;
 
     // Optimistic toggle-icon cross-fade.
     bool   _displayHidden = false; // which icon is settled/targeted
