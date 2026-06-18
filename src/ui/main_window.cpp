@@ -36,6 +36,7 @@
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
 #include "update_bar/update_bar.h"
+#include "styled_button/styled_button.h"
 
 #include "ui/icon_utils.h"
 #include "util/desktop_notifier.h"
@@ -338,28 +339,8 @@ QWidget *MainWindow::buildLoggedOutPage() {
     titleLayout->addWidget(title);
     titleLayout->addWidget(tagline);
 
-    auto *loginBtn = new QPushButton(tr("Log in to workspace"), inner);
-    loginBtn->setFixedHeight(40);
-    loginBtn->setCursor(Qt::PointingHandCursor);
-    loginBtn->setStyleSheet(QString(
-                                "QPushButton {"
-                                "  background: %1;"
-                                "  color: white;"
-                                "  border: none;"
-                                "  border-radius: 4px;"
-                                "  font-size: %4px;"
-                                "  font-weight: 600;"
-                                "  padding: 0 24px;"
-                                "}"
-                                "QPushButton:hover   { background: %2; }"
-                                "QPushButton:pressed { background: %3; }"
-    )
-                                .arg(
-                                    Th::qss(Th::c().accent.def),
-                                    Th::qss(Th::c().accent.hover),
-                                    Th::qss(Th::c().accent.pressed)
-                                )
-                                .arg(Th::c().fonts.lg));
+    auto *loginBtn =
+        new StyledButton(tr("Log in to workspace"), StyledButton::Variant::Primary, inner);
     connect(loginBtn, &QPushButton::clicked, this, [this] {
         if (runLoginFlow())
             activateWorkspace(_activeTeamId);

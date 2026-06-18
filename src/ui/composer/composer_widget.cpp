@@ -10,6 +10,7 @@
 #include "session/session.h"
 #include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
@@ -220,34 +221,11 @@ public:
         _urlEdit->setMinimumWidth(280);
         _textEdit = new QLineEdit(this);
 
-        auto *insertBtn = new QPushButton(t.insertLabel, this);
-        insertBtn->setCursor(Qt::PointingHandCursor);
-        insertBtn->setStyleSheet(
-            QString(
-                "QPushButton { background:%1; color:white; border:none;"
-                "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
-                "QPushButton:hover   { background:%2; }"
-                "QPushButton:pressed { background:%3; }"
-            )
-                .arg(Th::qss(Th::c().accent.def))
-                .arg(Th::qss(Th::c().accent.hover))
-                .arg(Th::qss(Th::c().accent.pressed))
-                .arg(Th::c().fonts.md)
-        );
+        auto *insertBtn = new StyledButton(t.insertLabel, StyledButton::Variant::Primary, this);
+        insertBtn->setSize(StyledButton::Size::Small);
 
-        auto *cancelBtn = new QPushButton(t.cancelLabel, this);
-        cancelBtn->setCursor(Qt::PointingHandCursor);
-        cancelBtn->setStyleSheet(
-            QString(
-                "QPushButton { background:transparent; color:%1; border:1px solid %2;"
-                "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
-                "QPushButton:hover { background:%3; }"
-            )
-                .arg(Th::qss(Th::c().text.secondary))
-                .arg(Th::qss(Th::c().divider.strong))
-                .arg(Th::qss(Th::c().surface.highlight))
-                .arg(Th::c().fonts.md)
-        );
+        auto *cancelBtn = new StyledButton(t.cancelLabel, StyledButton::Variant::Secondary, this);
+        cancelBtn->setSize(StyledButton::Size::Small);
 
         auto *btnRow = new QHBoxLayout;
         btnRow->setSpacing(8);
@@ -350,33 +328,10 @@ public:
         _dt->setMinimumWidth(240);
         lay->addWidget(_dt);
 
-        auto *cancelBtn  = new QPushButton(cancelLabel, this);
-        auto *confirmBtn = new QPushButton(confirmLabel, this);
-        cancelBtn->setCursor(Qt::PointingHandCursor);
-        confirmBtn->setCursor(Qt::PointingHandCursor);
-        cancelBtn->setStyleSheet(
-            QString(
-                "QPushButton { background:transparent; color:%1; border:1px solid %2;"
-                "  border-radius:4px; padding:4px 14px; font-size:%4px; }"
-                "QPushButton:hover { background:%3; }"
-            )
-                .arg(Th::qss(Th::c().text.secondary))
-                .arg(Th::qss(Th::c().divider.strong))
-                .arg(Th::qss(Th::c().surface.highlight))
-                .arg(Th::c().fonts.md)
-        );
-        confirmBtn->setStyleSheet(
-            QString(
-                "QPushButton { background:%1; color:white; border:none;"
-                "  border-radius:4px; padding:4px 14px; font-size:%4px; font-weight:600; }"
-                "QPushButton:hover   { background:%2; }"
-                "QPushButton:pressed { background:%3; }"
-            )
-                .arg(Th::qss(Th::c().accent.def))
-                .arg(Th::qss(Th::c().accent.hover))
-                .arg(Th::qss(Th::c().accent.pressed))
-                .arg(Th::c().fonts.md)
-        );
+        auto *cancelBtn  = new StyledButton(cancelLabel, StyledButton::Variant::Secondary, this);
+        auto *confirmBtn = new StyledButton(confirmLabel, StyledButton::Variant::Primary, this);
+        cancelBtn->setSize(StyledButton::Size::Small);
+        confirmBtn->setSize(StyledButton::Size::Small);
 
         auto *btnRow = new QHBoxLayout;
         btnRow->addStretch();

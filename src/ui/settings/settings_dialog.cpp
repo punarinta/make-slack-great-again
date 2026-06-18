@@ -3,6 +3,8 @@
 #include "settings_dialog.h"
 #include "theme_preview_card.h"
 #include "ui/update_checker/update_checker.h"
+#include "ui/styled_button/styled_button.h"
+#include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "app_credentials.h"
@@ -293,11 +295,8 @@ void SettingsDialog::buildPanel() {
 
     auto *aBtnRow = new QHBoxLayout;
     aBtnRow->addStretch();
-    auto *aSaveBtn = new QPushButton(tr("Save"), appearPage);
-    aSaveBtn->setObjectName("appearSaveBtn");
-    aSaveBtn->setFixedHeight(34);
+    auto *aSaveBtn = new StyledButton(tr("Save"), StyledButton::Variant::Primary, appearPage);
     aSaveBtn->setMinimumWidth(80);
-    aSaveBtn->setCursor(Qt::PointingHandCursor);
     connect(aSaveBtn, &QPushButton::clicked, this, [this] {
         saveAppearance();
         hide();
@@ -348,8 +347,8 @@ void SettingsDialog::buildPanel() {
     auto *soundLabel  = new QLabel(tr("Sound:"), notifPage);
     _notifSoundChoice = new QComboBox(notifPage);
     _notifSoundChoice->setMinimumWidth(220);
-    _notifSoundPreview = new QPushButton(tr("Preview"), notifPage);
-    _notifSoundPreview->setCursor(Qt::PointingHandCursor);
+    _notifSoundPreview = new StyledButton(tr("Preview"), StyledButton::Variant::Ghost, notifPage);
+    _notifSoundPreview->setSize(StyledButton::Size::Small);
     soundRow->addWidget(soundLabel);
     soundRow->addWidget(_notifSoundChoice, 1);
     soundRow->addWidget(_notifSoundPreview);
@@ -377,11 +376,8 @@ void SettingsDialog::buildPanel() {
 
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
-    auto *saveBtn = new QPushButton(tr("Save"), notifPage);
-    saveBtn->setObjectName("notifSaveBtn");
-    saveBtn->setFixedHeight(34);
+    auto *saveBtn = new StyledButton(tr("Save"), StyledButton::Variant::Primary, notifPage);
     saveBtn->setMinimumWidth(80);
-    saveBtn->setCursor(Qt::PointingHandCursor);
     connect(saveBtn, &QPushButton::clicked, this, [this] {
         saveNotifications();
         hide();
@@ -456,11 +452,10 @@ void SettingsDialog::buildPanel() {
 
     auto *clearCacheRow = new QHBoxLayout;
     clearCacheRow->addStretch();
-    auto *clearCacheBtn = new QPushButton(tr("Clear Cache"), storagePage);
+    auto *clearCacheBtn =
+        new StyledButton(tr("Clear Cache"), StyledButton::Variant::Danger, storagePage);
     clearCacheBtn->setObjectName("clearCacheBtn");
-    clearCacheBtn->setFixedHeight(34);
     clearCacheBtn->setMinimumWidth(110);
-    clearCacheBtn->setCursor(Qt::PointingHandCursor);
     connect(clearCacheBtn, &QPushButton::clicked, this, &SettingsDialog::clearCache);
     clearCacheRow->addWidget(clearCacheBtn);
     slay->addLayout(clearCacheRow);
@@ -487,11 +482,10 @@ void SettingsDialog::buildPanel() {
 
     auto *clearStateRow = new QHBoxLayout;
     clearStateRow->addStretch();
-    auto *clearStateBtn = new QPushButton(tr("Clear State"), storagePage);
+    auto *clearStateBtn =
+        new StyledButton(tr("Clear State"), StyledButton::Variant::Danger, storagePage);
     clearStateBtn->setObjectName("clearStateBtn");
-    clearStateBtn->setFixedHeight(34);
     clearStateBtn->setMinimumWidth(110);
-    clearStateBtn->setCursor(Qt::PointingHandCursor);
     connect(clearStateBtn, &QPushButton::clicked, this, &SettingsDialog::clearState);
     clearStateRow->addWidget(clearStateBtn);
     slay->addLayout(clearStateRow);
@@ -526,9 +520,7 @@ void SettingsDialog::buildPanel() {
     updLayout->setContentsMargins(0, 12, 0, 0);
 
     auto *checkRow = new QHBoxLayout;
-    _checkBtn      = new QPushButton(tr("Check for updates"), updBox);
-    _checkBtn->setFixedHeight(30);
-    _checkBtn->setCursor(Qt::PointingHandCursor);
+    _checkBtn = new StyledButton(tr("Check for updates"), StyledButton::Variant::Ghost, updBox);
     checkRow->addWidget(_checkBtn);
     checkRow->addStretch();
     updLayout->addLayout(checkRow);
@@ -630,38 +622,27 @@ QWidget *SettingsDialog::buildAiPage() {
         bl->addWidget(row.status);
 
         auto *btnRow = new QHBoxLayout;
-        row.oauthBtn = new QPushButton(tr("Connect (OAuth)"), box);
-        row.oauthBtn->setObjectName("aiConnectBtn");
-        row.oauthBtn->setFixedHeight(30);
-        row.oauthBtn->setCursor(Qt::PointingHandCursor);
+        row.oauthBtn = new StyledButton(tr("Connect (OAuth)"), StyledButton::Variant::Primary, box);
         btnRow->addWidget(row.oauthBtn);
 
-        row.disconnectBtn = new QPushButton(tr("Disconnect"), box);
-        row.disconnectBtn->setObjectName("aiDisconnectBtn");
-        row.disconnectBtn->setFixedHeight(30);
-        row.disconnectBtn->setCursor(Qt::PointingHandCursor);
+        row.disconnectBtn = new StyledButton(tr("Disconnect"), StyledButton::Variant::Ghost, box);
         btnRow->addWidget(row.disconnectBtn);
         btnRow->addStretch();
         bl->addLayout(btnRow);
 
         auto *keyRow = new QHBoxLayout;
-        row.keyEdit  = new QLineEdit(box);
-        row.keyEdit->setObjectName("aiKeyEdit");
+        row.keyEdit  = new StyledLineEdit(box);
         row.keyEdit->setPlaceholderText(tr("Paste your API key"));
-        row.keyEdit->setEchoMode(QLineEdit::Password);
+        row.keyEdit->lineEdit()->setEchoMode(QLineEdit::Password);
         keyRow->addWidget(row.keyEdit, 1);
 
-        row.saveKeyBtn = new QPushButton(tr("Save key"), box);
-        row.saveKeyBtn->setObjectName("aiSaveKeyBtn");
-        row.saveKeyBtn->setFixedHeight(30);
-        row.saveKeyBtn->setCursor(Qt::PointingHandCursor);
+        row.saveKeyBtn = new StyledButton(tr("Save key"), StyledButton::Variant::Primary, box);
         keyRow->addWidget(row.saveKeyBtn);
         bl->addLayout(keyRow);
 
-        auto *keyLink = new QPushButton(tr("Get an API key from %1…").arg(p->displayName()), box);
-        keyLink->setObjectName("aiKeyLink");
-        keyLink->setCursor(Qt::PointingHandCursor);
-        keyLink->setFlat(true);
+        auto *keyLink = new StyledButton(
+            tr("Get an API key from %1…").arg(p->displayName()), StyledButton::Variant::Link, box
+        );
         connect(keyLink, &QPushButton::clicked, this, [p] {
             QDesktopServices::openUrl(QUrl(p->apiKeyUrl()));
         });
@@ -685,7 +666,7 @@ QWidget *SettingsDialog::buildAiPage() {
             keyEdit->clear();
         };
         connect(row.saveKeyBtn, &QPushButton::clicked, this, saveKey);
-        connect(row.keyEdit, &QLineEdit::returnPressed, this, saveKey);
+        connect(row.keyEdit, &StyledLineEdit::returnPressed, this, saveKey);
 
         connect(p, &LlmProvider::authStateChanged, this, &SettingsDialog::refreshAiProviders);
         connect(p, &LlmProvider::authFailed, this, [this, p](const QString &reason) {
@@ -895,21 +876,7 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
     }
-    if (auto *w = _panel->findChild<QPushButton *>("appearSaveBtn")) {
-        w->setStyleSheet(
-            QString(
-                "QPushButton {"
-                "  background: %1; color: white; border: none;"
-                "  border-radius: 4px; font-size: %2px; font-weight: 600; padding: 0 16px;"
-                "}"
-                "QPushButton:hover   { background: %3; }"
-                "QPushButton:pressed { background: %4; }"
-            )
-                .arg(Th::qss(th.accent.def))
-                .arg(th.fonts.md)
-                .arg(Th::qss(th.accent.hover), Th::qss(th.accent.pressed))
-        );
-    }
+    // (Save button self-themes — StyledButton)
 
     // ── Notifications page ────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("notifHeading")) {
@@ -939,21 +906,7 @@ void SettingsDialog::applyTheme() {
     _notifSound->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
-    if (auto *w = _panel->findChild<QPushButton *>("notifSaveBtn")) {
-        w->setStyleSheet(
-            QString(
-                "QPushButton {"
-                "  background: %1; color: white; border: none;"
-                "  border-radius: 4px; font-size: %2px; font-weight: 600; padding: 0 16px;"
-                "}"
-                "QPushButton:hover   { background: %3; }"
-                "QPushButton:pressed { background: %4; }"
-            )
-                .arg(Th::qss(th.accent.def))
-                .arg(th.fonts.md)
-                .arg(Th::qss(th.accent.hover), Th::qss(th.accent.pressed))
-        );
-    }
+    // (Save button self-themes — StyledButton)
 
     // ── AI assistance page ────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("aiHeading")) {
@@ -999,67 +952,8 @@ void SettingsDialog::applyTheme() {
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
-    const QString aiAccentBtn = QString(
-                                    "QPushButton {"
-                                    "  background: %1; color: white; border: none;"
-                                    "  border-radius: 4px; font-size: %2px; font-weight: 600;"
-                                    "  padding: 0 14px;"
-                                    "}"
-                                    "QPushButton:hover    { background: %3; }"
-                                    "QPushButton:pressed  { background: %4; }"
-                                    "QPushButton:disabled { background: %5; color: %6; }"
-    )
-                                    .arg(Th::qss(th.accent.def))
-                                    .arg(th.fonts.md)
-                                    .arg(
-                                        Th::qss(th.accent.hover),
-                                        Th::qss(th.accent.pressed),
-                                        Th::qss(th.surface.highlight),
-                                        Th::qss(th.text.tertiary)
-                                    );
-    const QString aiNeutralBtn = QString(
-                                     "QPushButton {"
-                                     "  background: %1; color: %2; border: none;"
-                                     "  border-radius: 4px; font-size: %3px; padding: 0 14px;"
-                                     "}"
-                                     "QPushButton:hover   { background: %4; }"
-                                     "QPushButton:pressed { background: %4; }"
-    )
-                                     .arg(Th::qss(th.surface.highlight), Th::qss(th.text.primary))
-                                     .arg(th.fonts.md)
-                                     .arg(Th::qss(th.surface.highlightStrong));
-    for (auto *w : _panel->findChildren<QPushButton *>("aiConnectBtn"))
-        w->setStyleSheet(aiAccentBtn);
-    for (auto *w : _panel->findChildren<QPushButton *>("aiSaveKeyBtn"))
-        w->setStyleSheet(aiAccentBtn);
-    for (auto *w : _panel->findChildren<QPushButton *>("aiDisconnectBtn"))
-        w->setStyleSheet(aiNeutralBtn);
-    for (auto *w : _panel->findChildren<QLineEdit *>("aiKeyEdit")) {
-        w->setStyleSheet(
-            QString(
-                "QLineEdit {"
-                "  font-size: %1px; color: %2;"
-                "  border: 1px solid %3; border-radius: 4px; padding: 4px 6px;"
-                "}"
-                "QLineEdit:focus { border-color: %4; }"
-            )
-                .arg(th.fonts.md)
-                .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
-        );
-    }
-    for (auto *w : _panel->findChildren<QPushButton *>("aiKeyLink")) {
-        w->setStyleSheet(QString(
-                             "QPushButton {"
-                             "  background: transparent; border: none; padding: 0;"
-                             "  color: %1; font-size: %2px; text-decoration: underline;"
-                             "  text-align: left;"
-                             "}"
-                             "QPushButton:hover { color: %3; }"
-        )
-                             .arg(Th::qss(th.text.link))
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.accent.hover)));
-    }
+    // (AI connect/save/disconnect buttons, the key input and the key link all
+    // self-theme — StyledButton / StyledLineEdit)
     if (_aiError) {
         _aiError->setStyleSheet(QString("font-size: %1px; color: %2;")
                                     .arg(th.fonts.caption)
@@ -1106,22 +1000,7 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
     }
-    if (auto *w = _panel->findChild<QPushButton *>("clearCacheBtn")) {
-        w->setStyleSheet(
-            QString(
-                "QPushButton {"
-                "  background: #CC0000; color: white; border: none;"
-                "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
-                "}"
-                "QPushButton:hover    { background: #E00000; }"
-                "QPushButton:pressed  { background: #AA0000; }"
-                "QPushButton:disabled { background: %2; color: %3; }"
-            )
-                .arg(th.fonts.md)
-                .arg(Th::qss(th.surface.raised))
-                .arg(Th::qss(th.text.secondary))
-        );
-    }
+    // (Clear Cache button self-themes — StyledButton Danger)
     if (auto *w = _panel->findChild<QFrame *>("storageSep")) {
         w->setStyleSheet(QString("color: %1;").arg(Th::qss(th.divider.def)));
     }
@@ -1135,22 +1014,7 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
     }
-    if (auto *w = _panel->findChild<QPushButton *>("clearStateBtn")) {
-        w->setStyleSheet(
-            QString(
-                "QPushButton {"
-                "  background: #CC0000; color: white; border: none;"
-                "  border-radius: 4px; font-size: %1px; font-weight: 600; padding: 0 16px;"
-                "}"
-                "QPushButton:hover    { background: #E00000; }"
-                "QPushButton:pressed  { background: #AA0000; }"
-                "QPushButton:disabled { background: %2; color: %3; }"
-            )
-                .arg(th.fonts.md)
-                .arg(Th::qss(th.surface.raised))
-                .arg(Th::qss(th.text.secondary))
-        );
-    }
+    // (Clear State button self-themes — StyledButton Danger)
 
     // ── System page ───────────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("sysHeading")) {
@@ -1173,20 +1037,7 @@ void SettingsDialog::applyTheme() {
                 .arg(Th::qss(th.text.secondary))
         );
     }
-    _checkBtn->setStyleSheet(
-        QString(
-            "QPushButton {"
-            "  background: %1; color: %2; border: none;"
-            "  border-radius: 4px; font-size: %3px; padding: 0 14px;"
-            "}"
-            "QPushButton:hover   { background: %4; }"
-            "QPushButton:pressed { background: %4; }"
-            "QPushButton:disabled { color: %5; }"
-        )
-            .arg(Th::qss(th.surface.highlight), Th::qss(th.text.primary))
-            .arg(th.fonts.md)
-            .arg(Th::qss(th.surface.highlightStrong), Th::qss(th.text.tertiary))
-    );
+    // (Check-for-updates button self-themes — StyledButton Ghost)
     _updateStatus->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))
     );

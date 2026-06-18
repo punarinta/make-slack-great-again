@@ -7,7 +7,7 @@
 
 class QFrame;
 class QLabel;
-class QPushButton;
+class StyledButton;
 class Session;
 
 // Confirmation dialog shown before deleting a message.
@@ -23,9 +23,9 @@ protected:
     void applyTheme() override;
 
 private:
-    QLabel      *_warnLabel = nullptr;
-    QFrame      *_msgCard   = nullptr;
-    QLabel      *_tsLabel   = nullptr;
-    QPushButton *_cancelBtn = nullptr;
-    QPushButton *_deleteBtn = nullptr;
+    QLabel       *_warnLabel = nullptr;
+    QFrame       *_msgCard   = nullptr;
+    QLabel       *_tsLabel   = nullptr;
+    StyledButton *_cancelBtn = nullptr;
+    StyledButton *_deleteBtn = nullptr;
 };

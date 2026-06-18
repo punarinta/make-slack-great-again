@@ -5,6 +5,7 @@
 #include "ui/composer/composer_widget.h"
 #include "ui/message_list/file_chip_widget.h"
 #include "ui/message_list/message_render.h"
+#include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "session/session.h"
 
@@ -157,13 +158,13 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     auto *btnRow = new QHBoxLayout;
     btnRow->setSpacing(8);
 
-    _copyLinkBtn = new QPushButton(tr("Copy Link"));
+    _copyLinkBtn = new StyledButton(tr("Copy Link"), StyledButton::Variant::Secondary);
     btnRow->addWidget(_copyLinkBtn);
     btnRow->addStretch();
 
-    _cancelBtn = new QPushButton(tr("Cancel"));
+    _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
 
-    _fwdBtn = new QPushButton(tr("Forward"));
+    _fwdBtn = new StyledButton(tr("Forward"), StyledButton::Variant::Primary);
     _fwdBtn->setEnabled(false);
 
     btnRow->addWidget(_cancelBtn);
@@ -212,38 +213,7 @@ void ForwardDialog::applyTheme() {
         )
             .arg(Th::qss(Th::c().surface.highlightStrong), Th::qss(Th::c().message.fileChipBg))
     );
-    _copyLinkBtn->setStyleSheet(QString(
-                                    "QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                    " padding: 6px 14px; background: %2; }"
-                                    "QPushButton:hover { background: %3; }"
-    )
-                                    .arg(
-                                        Th::qss(Th::c().divider.strong),
-                                        Th::qss(Th::c().surface.raised),
-                                        Th::qss(Th::c().surface.sunken)
-                                    ));
-    _cancelBtn->setStyleSheet(QString(
-                                  "QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                  " padding: 6px 18px; background: %2; }"
-                                  "QPushButton:hover { background: %3; }"
-    )
-                                  .arg(
-                                      Th::qss(Th::c().divider.strong),
-                                      Th::qss(Th::c().surface.raised),
-                                      Th::qss(Th::c().surface.sunken)
-                                  ));
-    _fwdBtn->setStyleSheet(QString(
-                               "QPushButton { background: %1; color: %2; border: none;"
-                               " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
-                               "QPushButton:hover { background: %3; }"
-                               "QPushButton:disabled { background: %4; }"
-    )
-                               .arg(
-                                   Th::qss(Th::c().accent.def),
-                                   Th::qss(Th::c().accent.text),
-                                   Th::qss(Th::c().accent.dark),
-                                   Th::qss(Th::c().icon.dim)
-                               ));
+    // Copy Link / Cancel / Forward buttons self-theme (StyledButton).
 }
 
 ConversationId ForwardDialog::targetConv() const {

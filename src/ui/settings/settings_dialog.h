@@ -21,6 +21,8 @@ class QPushButton;
 class QSpinBox;
 class QComboBox;
 class QLineEdit;
+class StyledButton;
+class StyledLineEdit;
 class UpdateChecker;
 class ThemePreviewCard;
 class LlmProvider;
@@ -81,7 +83,7 @@ private:
     QRadioButton *_notifMentions     = nullptr;
     QCheckBox    *_notifSound        = nullptr;
     QComboBox    *_notifSoundChoice  = nullptr;
-    QPushButton  *_notifSoundPreview = nullptr;
+    StyledButton *_notifSoundPreview = nullptr;
 
     // Appearance controls
     QSpinBox                 *_relevantDays    = nullptr;
@@ -96,16 +98,16 @@ private:
 
     // AI assistance controls
     struct AiProviderRow {
-        LlmProvider *provider      = nullptr;
-        QLabel      *status        = nullptr;
-        QPushButton *oauthBtn      = nullptr;
-        QPushButton *disconnectBtn = nullptr;
-        QLineEdit   *keyEdit       = nullptr;
-        QPushButton *saveKeyBtn    = nullptr;
-        // QPushButton styled as a link: rich-text QLabels rasterize at
-        // fractional pixel offsets and show inconsistent stroke weight on
-        // fractionally-scaled displays; plain widget text is pixel-snapped.
-        QPushButton *keyLink       = nullptr;
+        LlmProvider    *provider      = nullptr;
+        QLabel         *status        = nullptr;
+        StyledButton   *oauthBtn      = nullptr;
+        StyledButton   *disconnectBtn = nullptr;
+        StyledLineEdit *keyEdit       = nullptr;
+        StyledButton   *saveKeyBtn    = nullptr;
+        // StyledButton (Link variant): a borderless text link. Plain widget text
+        // is pixel-snapped, unlike rich-text QLabels which show inconsistent
+        // stroke weight on fractionally-scaled displays.
+        StyledButton   *keyLink       = nullptr;
     };
     QList<AiProviderRow> _aiRows;
     QComboBox           *_aiDefault = nullptr;
@@ -119,7 +121,7 @@ private:
     UpdateChecker *_updateChecker = nullptr;
     QLabel        *_updateStatus  = nullptr;
     QLabel        *_lastChecked   = nullptr;
-    QPushButton   *_checkBtn      = nullptr;
+    StyledButton  *_checkBtn      = nullptr;
     QLabel        *_ramLabel      = nullptr;
     QTimer        *_ramTimer      = nullptr;
 

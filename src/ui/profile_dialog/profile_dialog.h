@@ -11,6 +11,7 @@
 class Session;
 class ImageCache;
 class StyledLineEdit;
+class StyledButton;
 class PopupTooltip;
 class QLabel;
 class QPushButton;
@@ -75,8 +76,8 @@ private:
     StyledLineEdit *_emailEdit  = nullptr;
     StyledLineEdit *_phoneEdit  = nullptr;
     QLabel         *_status     = nullptr;
-    QPushButton    *_cancelBtn  = nullptr;
-    QPushButton    *_saveBtn    = nullptr;
+    StyledButton   *_cancelBtn  = nullptr;
+    StyledButton   *_saveBtn    = nullptr;
 
     // Values as loaded from the server — used to send only changed fields
     // (notably: Slack rejects an unchanged-but-present email for self-edits).

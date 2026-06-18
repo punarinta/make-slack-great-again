@@ -9,6 +9,7 @@
 #include "ui/icon_utils.h"
 #include "ui/message_list/message_render.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/clipboard.h"
@@ -221,30 +222,12 @@ public:
         btnRow->setSpacing(8);
         btnRow->addStretch();
 
-        auto *cancelBtn = new QPushButton(QCoreApplication::translate("CanvasPage", "Cancel"));
-        auto *deleteBtn =
-            new QPushButton(QCoreApplication::translate("CanvasPage", "Delete canvas"));
-        cancelBtn->setCursor(Qt::PointingHandCursor);
-        deleteBtn->setCursor(Qt::PointingHandCursor);
-
-        const auto &th = Th::c();
-        cancelBtn->setStyleSheet(QString(
-                                     "QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                     " padding: 6px 18px; background: %2; }"
-                                     "QPushButton:hover { background: %3; }"
-        )
-                                     .arg(
-                                         Th::qss(th.divider.strong),
-                                         Th::qss(th.surface.raised),
-                                         Th::qss(th.surface.sunken)
-                                     ));
-        deleteBtn->setStyleSheet(
-            QString(
-                "QPushButton { border: none; border-radius: 4px;"
-                " padding: 6px 18px; background: %1; color: %2; }"
-                "QPushButton:hover { background: %3; }"
-            )
-                .arg(Th::qss(th.danger.def), Th::qss(th.accent.text), Th::qss(th.danger.hover))
+        auto *cancelBtn = new StyledButton(
+            QCoreApplication::translate("CanvasPage", "Cancel"), StyledButton::Variant::Secondary
+        );
+        auto *deleteBtn = new StyledButton(
+            QCoreApplication::translate("CanvasPage", "Delete canvas"),
+            StyledButton::Variant::Danger
         );
 
         btnRow->addWidget(cancelBtn);

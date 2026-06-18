@@ -9,7 +9,7 @@ class QFrame;
 class Session;
 class ConvSelectorWidget;
 class ComposerWidget;
-class QPushButton;
+class StyledButton;
 
 // Dialog for forwarding a message to another conversation.
 // User picks a target conversation, optionally adds a comment via the composer,
@@ -29,7 +29,7 @@ private:
     ConvSelectorWidget *_selector    = nullptr;
     ComposerWidget     *_composer    = nullptr;
     QFrame             *_previewCard = nullptr;
-    QPushButton        *_copyLinkBtn = nullptr;
-    QPushButton        *_cancelBtn   = nullptr;
-    QPushButton        *_fwdBtn      = nullptr;
+    StyledButton       *_copyLinkBtn = nullptr;
+    StyledButton       *_cancelBtn   = nullptr;
+    StyledButton       *_fwdBtn      = nullptr;
 };

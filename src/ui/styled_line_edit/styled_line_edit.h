@@ -3,6 +3,8 @@
 #pragma once
 
 #include <QFrame>
+#include <QSize>
+#include <QString>
 
 class QHBoxLayout;
 class QLabel;
@@ -16,10 +18,14 @@ public:
     explicit StyledLineEdit(QWidget *parent = nullptr);
 
     void       setPrefix(const QString &text);
+    // Show a tinted SVG glyph at the left edge of the field (e.g. a search
+    // magnifier). Re-tinted on theme change. Pass an empty path to remove it.
+    void       setLeadingIcon(const QString &svgPath, const QSize &size = QSize(16, 16));
     void       setMaxLength(int max);
     void       setPlaceholderText(const QString &text);
     QString    text() const;
     void       setText(const QString &text);
+    void       clear();
     QLineEdit *lineEdit() const { return _edit; }
 
 signals:
@@ -36,9 +42,12 @@ private:
     void updateBorderStyle(bool focused);
 
     QHBoxLayout *_layout       = nullptr;
+    QLabel      *_leadingIcon  = nullptr;
     QLabel      *_prefixLabel  = nullptr;
     QLineEdit   *_edit         = nullptr;
     QLabel      *_counterLabel = nullptr;
-    int          _maxLength    = 0;
-    bool         _focused      = false;
+    QString      _leadingIconPath;
+    QSize        _leadingIconSize = QSize(16, 16);
+    int          _maxLength       = 0;
+    bool         _focused         = false;
 };

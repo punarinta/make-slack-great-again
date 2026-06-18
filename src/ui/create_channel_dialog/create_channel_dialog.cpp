@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "create_channel_dialog.h"
+#include "ui/styled_button/styled_button.h"
 #include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme.h"
 
@@ -52,9 +53,8 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
 
         auto *btnRow = new QHBoxLayout;
         btnRow->addStretch();
-        _nextBtn = new QPushButton(tr("Next"), page1);
+        _nextBtn = new StyledButton(tr("Next"), StyledButton::Variant::Primary, page1);
         _nextBtn->setEnabled(false);
-        _nextBtn->setCursor(Qt::PointingHandCursor);
         btnRow->addWidget(_nextBtn);
         lay->addLayout(btnRow);
     }
@@ -93,10 +93,8 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
 
         auto *btnRow = new QHBoxLayout;
         _stepLabel   = new QLabel(tr("Step 2 of 2"), page2);
-        _backBtn     = new QPushButton(tr("Back"), page2);
-        _createBtn   = new QPushButton(tr("Create"), page2);
-        _backBtn->setCursor(Qt::PointingHandCursor);
-        _createBtn->setCursor(Qt::PointingHandCursor);
+        _backBtn     = new StyledButton(tr("Back"), StyledButton::Variant::Secondary, page2);
+        _createBtn   = new StyledButton(tr("Create"), StyledButton::Variant::Primary, page2);
 
         btnRow->addWidget(_stepLabel);
         btnRow->addStretch();
@@ -163,24 +161,7 @@ void CreateChannelDialog::applyTheme() {
                                         .arg(Th::qss(Th::c().text.secondary))
                                         .arg(Th::c().fonts.sm));
 
-    if (_nextBtn)
-        _nextBtn->setStyleSheet(QString(
-                                    "QPushButton {"
-                                    "  background: %1; color: %2; border: none;"
-                                    "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
-                                    "}"
-                                    "QPushButton:hover { background: %3; }"
-                                    "QPushButton:disabled {"
-                                    "  background: %4; color: %5;"
-                                    "}"
-        )
-                                    .arg(
-                                        Th::qss(Th::c().accent.def),
-                                        Th::qss(Th::c().accent.text),
-                                        Th::qss(Th::c().accent.dark),
-                                        Th::qss(Th::c().surface.highlightStrong),
-                                        Th::qss(Th::c().text.tertiary)
-                                    ));
+    // Next/Back/Create buttons self-theme (StyledButton).
 
     if (_channelSubtitle)
         _channelSubtitle->setStyleSheet(QString("color: %1; font-size: %2px;")
@@ -205,32 +186,4 @@ void CreateChannelDialog::applyTheme() {
         _stepLabel->setStyleSheet(QString("color: %1; font-size: %2px;")
                                       .arg(Th::qss(Th::c().text.secondary))
                                       .arg(Th::c().fonts.sm));
-
-    if (_backBtn)
-        _backBtn->setStyleSheet(QString(
-                                    "QPushButton {"
-                                    "  border: 1px solid %1; border-radius: 6px;"
-                                    "  padding: 8px 20px; background: %2;"
-                                    "}"
-                                    "QPushButton:hover { background: %3; }"
-        )
-                                    .arg(
-                                        Th::qss(Th::c().divider.strong),
-                                        Th::qss(Th::c().surface.raised),
-                                        Th::qss(Th::c().surface.sunken)
-                                    ));
-
-    if (_createBtn)
-        _createBtn->setStyleSheet(QString(
-                                      "QPushButton {"
-                                      "  background: %1; color: %2; border: none;"
-                                      "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
-                                      "}"
-                                      "QPushButton:hover { background: %3; }"
-        )
-                                      .arg(
-                                          Th::qss(Th::c().accent.def),
-                                          Th::qss(Th::c().accent.text),
-                                          Th::qss(Th::c().accent.dark)
-                                      ));
 }

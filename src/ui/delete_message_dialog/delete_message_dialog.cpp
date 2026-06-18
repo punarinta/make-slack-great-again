@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "delete_message_dialog.h"
 #include "ui/message_list/message_render.h"
+#include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "session/session.h"
 
@@ -67,8 +68,8 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     btnRow->setSpacing(8);
     btnRow->addStretch();
 
-    _cancelBtn = new QPushButton(tr("Cancel"));
-    _deleteBtn = new QPushButton(tr("Delete"));
+    _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
+    _deleteBtn = new StyledButton(tr("Delete"), StyledButton::Variant::Danger);
 
     btnRow->addWidget(_cancelBtn);
     btnRow->addWidget(_deleteBtn);
@@ -98,24 +99,5 @@ void DeleteMessageDialog::applyTheme() {
         _tsLabel->setStyleSheet(QString("color: %1; font-size: %2px;")
                                     .arg(Th::qss(Th::c().text.secondary))
                                     .arg(Th::c().fonts.sm));
-    _cancelBtn->setStyleSheet(QString(
-                                  "QPushButton { border: 1px solid %1; border-radius: 4px;"
-                                  " padding: 6px 18px; background: %2; }"
-                                  "QPushButton:hover { background: %3; }"
-    )
-                                  .arg(
-                                      Th::qss(Th::c().divider.strong),
-                                      Th::qss(Th::c().surface.raised),
-                                      Th::qss(Th::c().surface.sunken)
-                                  ));
-    _deleteBtn->setStyleSheet(QString(
-                                  "QPushButton { background: %1; color: %2; border: none;"
-                                  " border-radius: 4px; padding: 6px 18px; font-weight: bold; }"
-                                  "QPushButton:hover { background: %3; }"
-    )
-                                  .arg(
-                                      Th::qss(Th::c().danger.def),
-                                      Th::qss(Th::c().accent.text),
-                                      Th::qss(Th::c().danger.hover)
-                                  ));
+    // Cancel/Delete buttons self-theme (StyledButton).
 }

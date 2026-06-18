@@ -5,9 +5,9 @@
 #include "ui/app_dialog/app_dialog.h"
 
 class QLabel;
-class QPushButton;
 class QRadioButton;
 class QStackedWidget;
+class StyledButton;
 class StyledLineEdit;
 
 // Two-step modal for creating a Slack channel.
@@ -38,7 +38,7 @@ private:
     QLabel         *_nameSectionLabel = nullptr;
     StyledLineEdit *_nameEdit         = nullptr;
     QLabel         *_helperLabel      = nullptr;
-    QPushButton    *_nextBtn          = nullptr;
+    StyledButton   *_nextBtn          = nullptr;
 
     // Step 2 widgets
     QLabel       *_channelSubtitle = nullptr;
@@ -47,8 +47,8 @@ private:
     QRadioButton *_privateRadio    = nullptr;
     QLabel       *_privateDesc     = nullptr;
     QLabel       *_stepLabel       = nullptr;
-    QPushButton  *_backBtn         = nullptr;
-    QPushButton  *_createBtn       = nullptr;
+    StyledButton *_backBtn         = nullptr;
+    StyledButton *_createBtn       = nullptr;
 
     QString _workspaceName;
 };

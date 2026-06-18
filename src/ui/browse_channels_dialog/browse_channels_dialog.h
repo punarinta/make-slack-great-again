@@ -10,9 +10,10 @@
 class BrowseListView;
 class ImageCache;
 class QFrame;
-class QLineEdit;
 class QPushButton;
 class QStackedWidget;
+class StyledButton;
+class StyledLineEdit;
 
 // Modal "Find a channel" dialog.
 // Shows all known channels with search and a People tab.
@@ -51,8 +52,8 @@ private:
     void applyTheme();
 
     QFrame         *_card        = nullptr;
-    QLineEdit      *_searchEdit  = nullptr;
-    QPushButton    *_createBtn   = nullptr;
+    StyledLineEdit *_searchEdit  = nullptr;
+    StyledButton   *_createBtn   = nullptr;
     QPushButton    *_closeBtn    = nullptr;
     QPushButton    *_channelsTab = nullptr;
     QPushButton    *_peopleTab   = nullptr;

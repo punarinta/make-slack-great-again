@@ -6,6 +6,8 @@
 #include "ui/theme_manager.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/styled_button/styled_button.h"
+#include "ui/styled_line_edit/styled_line_edit.h"
 
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
@@ -57,18 +59,14 @@ BrowseChannelsDialog::BrowseChannelsDialog(
         lay->setContentsMargins(kCardPadH, kCardPadT, kCardPadH, 12);
         lay->setSpacing(10);
 
-        _searchEdit = new QLineEdit(topBar);
+        _searchEdit = new StyledLineEdit(topBar);
         _searchEdit->setPlaceholderText(tr("Search for channels"));
-        _searchEdit->setClearButtonEnabled(true);
-        _searchEdit->addAction(
-            svgIcon(":/ui/search.svg", QSize(16, 16), Th::c().text.tertiary),
-            QLineEdit::LeadingPosition
-        );
+        _searchEdit->setLeadingIcon(":/ui/search.svg");
+        _searchEdit->lineEdit()->setClearButtonEnabled(true);
         _searchEdit->setMinimumWidth(200);
         lay->addWidget(_searchEdit, 1);
 
-        _createBtn = new QPushButton(tr("Create Channel"), topBar);
-        _createBtn->setCursor(Qt::PointingHandCursor);
+        _createBtn = new StyledButton(tr("Create Channel"), StyledButton::Variant::Primary, topBar);
         _createBtn->setFocusPolicy(Qt::NoFocus);
         lay->addWidget(_createBtn);
 
@@ -150,13 +148,9 @@ BrowseChannelsDialog::BrowseChannelsDialog(
     });
     connect(_channelsTab, &QPushButton::clicked, this, [this] { selectTab(0); });
     connect(_peopleTab, &QPushButton::clicked, this, [this] { selectTab(1); });
-    connect(_searchEdit, &QLineEdit::textChanged, this, &BrowseChannelsDialog::applyFilter);
+    connect(_searchEdit, &StyledLineEdit::textChanged, this, &BrowseChannelsDialog::applyFilter);
 
     applyTheme();
-
-    // QLineEdit adds internal vertical metrics beyond CSS padding; force the
-    // button to match the input's actual computed height.
-    _createBtn->setFixedHeight(_searchEdit->sizeHint().height());
 
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
         applyTheme();
@@ -253,32 +247,7 @@ void BrowseChannelsDialog::applyTheme() {
         "QFrame#browseCard { background: white; border-radius: 12px; border: none; }"
     );
 
-    _searchEdit->setStyleSheet(QString(
-                                   "QLineEdit {"
-                                   "  border: 1.5px solid %1; border-radius: 8px;"
-                                   "  padding: 6px 8px; background: %2; color: %3;"
-                                   "}"
-                                   "QLineEdit:focus { border-color: %4; }"
-    )
-                                   .arg(
-                                       Th::qss(Th::c().divider.strong),
-                                       Th::qss(Th::c().surface.raised),
-                                       Th::qss(Th::c().text.primary),
-                                       Th::qss(Th::c().accent.def)
-                                   ));
-
-    _createBtn->setStyleSheet(QString(
-                                  "QPushButton {"
-                                  "  background: %1; color: %2; border: 1.5px solid transparent;"
-                                  "  border-radius: 6px; padding: 6px 16px;"
-                                  "}"
-                                  "QPushButton:hover { background: %3; }"
-    )
-                                  .arg(
-                                      Th::qss(Th::c().accent.def),
-                                      Th::qss(Th::c().accent.text),
-                                      Th::qss(Th::c().accent.dark)
-                                  ));
+    // Search input and Create button self-theme (StyledLineEdit / StyledButton).
 
     _closeBtn->setStyleSheet(QString(
                                  "QPushButton {"

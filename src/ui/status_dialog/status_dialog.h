@@ -15,6 +15,7 @@ class QFrame;
 class QLineEdit;
 class QPushButton;
 class QToolButton;
+class StyledButton;
 
 // "Set a status" dialog reached from the conversation-list footer avatar menu.
 // Mirrors Slack's official status sheet: an emoji + text input, a list of preset
@@ -68,13 +69,13 @@ private:
 
     EmojiPickerPopup *_emojiPicker = nullptr;
 
-    QFrame      *_inputBox   = nullptr;
-    QToolButton *_emojiBtn   = nullptr;
-    QLineEdit   *_textEdit   = nullptr;
-    Dropdown    *_clearAfter = nullptr;
-    QPushButton *_clearBtn   = nullptr; // shown only when a status is already set
-    QPushButton *_cancelBtn  = nullptr;
-    QPushButton *_saveBtn    = nullptr;
+    QFrame       *_inputBox   = nullptr;
+    QToolButton  *_emojiBtn   = nullptr;
+    QLineEdit    *_textEdit   = nullptr;
+    Dropdown     *_clearAfter = nullptr;
+    QPushButton  *_clearBtn   = nullptr; // shown only when a status is already set
+    StyledButton *_cancelBtn  = nullptr;
+    StyledButton *_saveBtn    = nullptr;
 
     QString _emoji; // currently chosen emoji bare name ("" = none)
 };

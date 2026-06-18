@@ -9,6 +9,7 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/message_list/message_render.h"
+#include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
@@ -223,10 +224,8 @@ void StatusDialog::buildButtons() {
     _clearBtn->hide(); // shown in the ctor only when a status is set
     btnRow->addWidget(_clearBtn);
     btnRow->addStretch();
-    _cancelBtn = new QPushButton(tr("Cancel"));
-    _cancelBtn->setCursor(Qt::PointingHandCursor);
-    _saveBtn = new QPushButton(tr("Save"));
-    _saveBtn->setCursor(Qt::PointingHandCursor);
+    _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
+    _saveBtn   = new StyledButton(tr("Save"), StyledButton::Variant::Primary);
     btnRow->addWidget(_cancelBtn);
     btnRow->addSpacing(8);
     btnRow->addWidget(_saveBtn);
@@ -402,33 +401,7 @@ void StatusDialog::applyTheme() {
                 .arg(Th::qss(Th::c().text.danger), Th::qss(Th::c().surface.sunken))
         );
 
-    if (_cancelBtn)
-        _cancelBtn->setStyleSheet(QString(
-                                      "QPushButton {"
-                                      "  border: 1px solid %1; border-radius: 6px;"
-                                      "  padding: 8px 20px; background: %2;"
-                                      "}"
-                                      "QPushButton:hover { background: %3; }"
-        )
-                                      .arg(
-                                          Th::qss(Th::c().divider.strong),
-                                          Th::qss(Th::c().surface.raised),
-                                          Th::qss(Th::c().surface.sunken)
-                                      ));
-
-    if (_saveBtn)
-        _saveBtn->setStyleSheet(QString(
-                                    "QPushButton {"
-                                    "  background: %1; color: %2; border: none;"
-                                    "  border-radius: 6px; padding: 8px 20px; font-weight: bold;"
-                                    "}"
-                                    "QPushButton:hover { background: %3; }"
-        )
-                                    .arg(
-                                        Th::qss(Th::c().accent.def),
-                                        Th::qss(Th::c().accent.text),
-                                        Th::qss(Th::c().accent.dark)
-                                    ));
+    // Cancel/Save buttons self-theme (StyledButton).
 }
 
 void StatusDialog::styleInputBox(bool focused) {
