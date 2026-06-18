@@ -92,6 +92,15 @@ static TokenStore::WorkspaceRecord recordForHandle(const QString &handle) {
     return {};
 }
 
+// Global default notification level (Settings → "Notify me about"): applied to
+// conversations whose own level is NotificationLevel::Default. Defaults to "All
+// new posts" (0); 1 = "Just mentions".
+static NotificationLevel globalDefaultNotifLevel() {
+    return QSettings("msga", "msga").value("notifications/level", 0).toInt() == 1
+               ? NotificationLevel::Mentions
+               : NotificationLevel::All;
+}
+
 // Thin drag handle between the conv panel and the message area.
 class ConvResizeHandle final : public QWidget {
 public:
@@ -409,6 +418,15 @@ QWidget *MainWindow::buildMainPage() {
     connect(_settingsDialog, &SettingsDialog::timeFormatChanged, this, [this] {
         _messageList->viewport()->update();
         _threadPanel->refreshTimestamps();
+    });
+    // The global default notification level decides what unconfigured channels
+    // notify/badge about; apply it now and re-resolve everything when it changes.
+    _convList->setDefaultNotifyLevel(globalDefaultNotifLevel());
+    connect(_settingsDialog, &SettingsDialog::notificationsChanged, this, [this] {
+        _convList->setDefaultNotifyLevel(globalDefaultNotifLevel());
+        for (auto &[teamId, ws] : _sessions)
+            if (ws.session)
+                updateUnreadBadges(teamId, ws.session->currentConversations());
     });
 
     return page;
@@ -1574,19 +1592,12 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     const QString &mt          = ev.msg.rawText.isEmpty() ? ev.msg.text.text : ev.msg.rawText;
     const bool     isImportant = isDm || mrkdwnMentions(mt, me);
 
-    // Per-conversation level wins over the global setting (1 = DMs/mentions only).
-    bool notifyAll;
-    switch (conv->notifLevel) {
-    case NotificationLevel::All:
-        notifyAll = true;
-        break;
-    case NotificationLevel::Mentions:
-        notifyAll = false;
-        break;
-    default:
-        notifyAll = s.value("notifications/level", 1).toInt() != 1;
-    }
-    if (!notifyAll && !isImportant)
+    // Per-conversation level wins over the global default ("All new posts" unless
+    // the user changed it). Muted conversations already returned above, so the
+    // effective level here is only ever All or Mentions: "Just mentions" delivers
+    // no notification (no tray, no D-Bus) for a non-DM, non-@mention message.
+    const NotificationLevel lvl = effectiveNotifLevel(*conv, globalDefaultNotifLevel());
+    if (lvl != NotificationLevel::All && !isImportant)
         return;
 
     // Build title and body
@@ -1666,24 +1677,25 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
 }
 
 void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs) {
-    // Official-client semantics: important (red) = DM/MPDM unreads + channel
-    // @mentions — mentions badge even in muted channels; normal (blue) = any
-    // other unread in non-muted channels.
-    int normal = 0, important = 0;
+    // important (red) = DM/MPDM unreads + channel @mentions. normal (blue) = other
+    // *allowed* unread activity — only in channels set to "All new posts". A muted
+    // conversation is fully silent (no red, no blue); a "Just mentions" channel
+    // contributes only its @mentions (red), never blue.
+    const NotificationLevel fallback = globalDefaultNotifLevel();
+    int                     normal = 0, important = 0;
     for (const auto &c : convs) {
         if (!c.isMember)
             continue;
-        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-        if (c.isMuted) {
-            if (!isDm)
-                important += c.mentionCount;
+        const NotificationLevel lvl = effectiveNotifLevel(c, fallback);
+        if (lvl == NotificationLevel::Mute)
             continue;
-        }
+        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
         if (isDm) {
             important += c.unread;
         } else {
             important += c.mentionCount;
-            normal += c.unread;
+            if (lvl == NotificationLevel::All && c.unread > c.mentionCount)
+                normal += c.unread - c.mentionCount;
         }
     }
     const QPair<int, int> counts{normal, important};

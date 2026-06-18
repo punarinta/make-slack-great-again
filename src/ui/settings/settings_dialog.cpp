@@ -1088,7 +1088,7 @@ void SettingsDialog::loadNotifications() {
     QSettings s("msga", "msga");
     _notifEnabled->setChecked(s.value("notifications/enabled", true).toBool());
     _notifSound->setChecked(s.value("notifications/sound", true).toBool());
-    const int level = s.value("notifications/level", 1).toInt();
+    const int level = s.value("notifications/level", 0).toInt();
     (level == 0 ? _notifAll : _notifMentions)->setChecked(true);
 
     // (Re)populate the sound chooser — bundled sounds first, then the
@@ -1124,6 +1124,7 @@ void SettingsDialog::saveNotifications() {
     s.setValue("notifications/level", _notifAll->isChecked() ? 0 : 1);
     if (_notifSoundChoice->currentIndex() >= 0)
         s.setValue("notifications/soundId", _notifSoundChoice->currentData());
+    emit notificationsChanged();
 }
 
 void SettingsDialog::loadAppearance() {

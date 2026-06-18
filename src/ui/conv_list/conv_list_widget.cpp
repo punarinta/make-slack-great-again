@@ -91,6 +91,13 @@ void ConvListWidget::setRelevantDays(int days) {
     rebuildRows();
 }
 
+void ConvListWidget::setDefaultNotifyLevel(NotificationLevel level) {
+    if (_defaultNotify == level)
+        return;
+    _defaultNotify = level;
+    viewport()->update(); // badge visibility/color for Default-level convs may change
+}
+
 void ConvListWidget::resetVisitedAt() {
     _visitedAt.clear();
     // rebuildRows() will auto-seed from current API data (latestTs / unread),
@@ -520,7 +527,7 @@ static void buildNotifySection(
         [self, id] { emit self->setNotificationLevelRequested(id, NotificationLevel::Mentions); },
         false,
         ":/ui/bell.svg",
-        level == NotificationLevel::Mentions || level == NotificationLevel::Default
+        level == NotificationLevel::Mentions
     );
     menu->addItem(
         ConvListWidget::tr("Mute and hide"),
@@ -541,7 +548,7 @@ void ConvListWidget::showChannelContextMenu(int row, QPoint globalPos) {
         [this, id = conv.id, starred] { emit starConversationRequested(id, !starred); }
     );
     menu->addSeparator();
-    buildNotifySection(menu, conv.id, conv.notifLevel, this);
+    buildNotifySection(menu, conv.id, effectiveNotifLevel(conv, _defaultNotify), this);
     menu->addSeparator();
     menu->addItem(
         tr("Leave channel"),
@@ -561,7 +568,7 @@ void ConvListWidget::showMpdmContextMenu(int row, QPoint globalPos) {
         [this, id = conv.id, starred] { emit starConversationRequested(id, !starred); }
     );
     menu->addSeparator();
-    buildNotifySection(menu, conv.id, conv.notifLevel, this);
+    buildNotifySection(menu, conv.id, effectiveNotifLevel(conv, _defaultNotify), this);
     menu->addSeparator();
     menu->addItem(
         tr("Leave conversation"),
@@ -871,9 +878,12 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
     }
 
-    QFont      font       = QApplication::font();
-    const bool isUnread   = conv.unread > 0;
-    const bool isSelected = (row == _selected);
+    QFont                   font       = QApplication::font();
+    // A muted conversation reads as fully silent — no bold/bright "unread"
+    // emphasis even when it holds an @mention.
+    const NotificationLevel lvl        = effectiveNotifLevel(conv, _defaultNotify);
+    const bool              isUnread   = conv.unread > 0 && lvl != NotificationLevel::Mute;
+    const bool              isSelected = (row == _selected);
     font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
     p.setFont(font);
 
@@ -885,10 +895,18 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const QFontMetrics fm(font);
     const int          textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
 
-    const bool isDm           = (conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim);
-    // DMs treat all unreads as high-priority; channels only when there are @mentions.
-    const bool isHighPriority = isDm || conv.mentionCount > 0;
-    const int  badgeW = conv.unread == 0 ? 0 : isHighPriority ? (conv.unread > 9 ? 28 : 20) : 14;
+    const bool isDm     = (conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim);
+    // Red badge = @mentions / DM unreads (only when not muted). Its number is the
+    // count of things you were actually notified about: DM unreads, or channel
+    // @mentions.
+    const int  redCount = isDm ? conv.unread : conv.mentionCount;
+    const bool showRed  = lvl != NotificationLevel::Mute && redCount > 0;
+    // Blue dot = other *allowed* activity: non-@mention unreads, but only in
+    // channels set to "All new posts" (a "Just mentions" or muted channel stays
+    // quiet for regular messages — no badge at all).
+    const bool showBlue =
+        lvl == NotificationLevel::All && !isDm && conv.mentionCount == 0 && conv.unread > 0;
+    const int badgeW = showRed ? (redCount > 9 ? 28 : 20) : showBlue ? 14 : 0;
 
     // Live-huddle indicator (host avatar + accent pill with headphones + count),
     // right-aligned like Slack. Compute its width up front so the name doesn't
@@ -1079,32 +1097,30 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     }
 
     // ── Unread indicator (left of the huddle indicator if both present) ──
-    if (conv.unread > 0) {
-        if (isHighPriority) {
-            // Red numbered badge for DMs and @mentions
-            const QString badge = conv.unread > 99 ? "99+" : QString::number(conv.unread);
-            QFont         bf    = font;
-            bf.setPointSizeF(bf.pointSizeF() * 0.78);
-            bf.setBold(true);
-            p.setFont(bf);
-            const QFontMetrics bfm(bf);
-            const int          bw = bfm.horizontalAdvance(badge) + 10;
-            const int          bh = bfm.height() + 4;
-            const int          bx = rightEdge - bw;
-            const int          by = y + (kRowH - bh) / 2;
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().badge.mention);
-            p.drawRoundedRect(QRect(bx, by, bw, bh), bh / 2, bh / 2);
-            p.setPen(Qt::white);
-            p.drawText(QRect(bx, by, bw, bh), Qt::AlignCenter, badge);
-        } else {
-            // Small dim dot for regular channel unreads (bold text already signals activity)
-            const int dotD = 8;
-            const int bx   = rightEdge - dotD;
-            const int by   = y + (kRowH - dotD) / 2;
-            p.setPen(Qt::NoPen);
-            p.setBrush(QColor(255, 255, 255, 160));
-            p.drawEllipse(bx, by, dotD, dotD);
-        }
+    if (showRed) {
+        // Red numbered badge for DM unreads and channel @mentions.
+        const QString badge = redCount > 99 ? "99+" : QString::number(redCount);
+        QFont         bf    = font;
+        bf.setPointSizeF(bf.pointSizeF() * 0.78);
+        bf.setBold(true);
+        p.setFont(bf);
+        const QFontMetrics bfm(bf);
+        const int          bw = bfm.horizontalAdvance(badge) + 10;
+        const int          bh = bfm.height() + 4;
+        const int          bx = rightEdge - bw;
+        const int          by = y + (kRowH - bh) / 2;
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().badge.mention);
+        p.drawRoundedRect(QRect(bx, by, bw, bh), bh / 2, bh / 2);
+        p.setPen(Qt::white);
+        p.drawText(QRect(bx, by, bw, bh), Qt::AlignCenter, badge);
+    } else if (showBlue) {
+        // Blue dot for other allowed activity in "All new posts" channels.
+        const int dotD = 8;
+        const int bx   = rightEdge - dotD;
+        const int by   = y + (kRowH - dotD) / 2;
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().badge.activity);
+        p.drawEllipse(bx, by, dotD, dotD);
     }
 }

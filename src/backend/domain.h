@@ -217,6 +217,24 @@ struct Conversation {
     bool                operator==(const Conversation &) const = default;
 };
 
+// Resolve a conversation's *effective* notification level — the single source
+// of truth for both OS notifications and unread-badge colors.
+//   • Muted always wins (a muted/"mute and hide" conversation is fully silent:
+//     no notification and no badge, not even for @mentions).
+//   • An explicit per-conversation level (set from the conv right-click menu,
+//     persisted locally) is honoured next.
+//   • Otherwise the user's global default applies. Slack's server-side
+//     per-channel notification prefs are not reachable over the public API, so
+//     the per-conversation level is a purely local override and `fallback` is
+//     the global default — which itself defaults to "All new posts".
+inline NotificationLevel effectiveNotifLevel(const Conversation &c, NotificationLevel fallback) {
+    if (c.isMuted || c.notifLevel == NotificationLevel::Mute)
+        return NotificationLevel::Mute;
+    if (c.notifLevel == NotificationLevel::Default)
+        return fallback;
+    return c.notifLevel;
+}
+
 // One canvases.edit operation. Relative inserts and section ops need a
 // sectionId (the "temp:C:…" ids embedded in the canvas HTML / returned by
 // canvases.sections.lookup); markdown is canvas markdown — real markdown,

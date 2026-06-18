@@ -43,6 +43,9 @@ signals:
     void timeFormatChanged();
     // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
     void stateCleared();
+    // Emitted when notification settings (incl. the global default level) are
+    // saved, so the conv list and unread badges can re-resolve effective levels.
+    void notificationsChanged();
 
 protected:
     void paintEvent(QPaintEvent *) override;

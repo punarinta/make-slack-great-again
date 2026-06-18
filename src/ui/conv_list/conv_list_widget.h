@@ -87,6 +87,9 @@ public:
     // Wipe the in-memory visit history and rebuild rows so auto-seed runs from scratch.
     // Call after the user clears state in Settings.
     void resetVisitedAt();
+    // Global default notification level applied to conversations whose own level
+    // is NotificationLevel::Default. Drives which unread badges (and colors) show.
+    void setDefaultNotifyLevel(NotificationLevel level);
 
 signals:
     void conversationSelected(int row);
@@ -208,4 +211,7 @@ protected:
     int _relevantDays =
         14; // configurable via setRelevantDays(); default matches kDefaultRelevantDays
     static constexpr int kDefaultRelevantDays = 14;
+    // Global default for conversations with NotificationLevel::Default. Mirrors
+    // the Settings "Notify me about" radio (default: All new posts).
+    NotificationLevel    _defaultNotify       = NotificationLevel::All;
 };

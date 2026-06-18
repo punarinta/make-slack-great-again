@@ -103,6 +103,20 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
     app.setOrganizationName("msga");
+    // One-time migration: the default per-conversation notification level changed
+    // from "Just mentions" (1) to "All new posts" (0). Existing installs have the
+    // old default persisted, which would otherwise mask the new one; reset that
+    // leftover value once. A "Just mentions" chosen *after* this still sticks,
+    // because the migration flag stops us from touching it again.
+    // Safe to remove from July 2026 onward (by then ~all installs have migrated).
+    {
+        QSettings s("msga", "msga");
+        if (!s.value("notifications/defaultMigrated", false).toBool()) {
+            if (s.value("notifications/level", 0).toInt() == 1)
+                s.setValue("notifications/level", 0);
+            s.setValue("notifications/defaultMigrated", true);
+        }
+    }
     // A crash now prints a stack trace (stderr + crash.log in AppDataLocation)
     // instead of a bare "Segmentation fault", then still core-dumps as before.
     CrashHandler::install();
