@@ -2087,6 +2087,9 @@ void MainWindow::changeEvent(QEvent *e) {
             _session->refreshSelfPresence();
             // The open conversation is visible again — clear and mark it read.
             _session->setReading(_currentConvId);
+            // Switching back to an open conversation: put the cursor straight in
+            // the composer so the user can start typing without an extra click.
+            focusComposerIfActive();
         } else {
             // Window in background: let the open conversation accrue unreads
             // and fire notifications, like the official client does.
@@ -2104,6 +2107,14 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 
 void MainWindow::populateConversations(const std::vector<Conversation> &convs) {
     _convList->setConversations(convs);
+}
+
+void MainWindow::focusComposerIfActive() {
+    // Skip when the canvas page is up (composer hidden) or nothing is open.
+    if (isActiveWindow() && !_currentConvId.value.isEmpty() && _composer &&
+        _composer->isVisible() && _composer->isEnabled()) {
+        _composer->focusInput();
+    }
 }
 
 void MainWindow::openConversation(int row) {
@@ -2240,6 +2251,7 @@ void MainWindow::openConversation(int row) {
         if (_convTabs)
             _convTabs->show();
         _composer->show();
+        focusComposerIfActive();
         updateHuddleBanner();
     } else {
         // Messages are loading; keep header and composer hidden until the first
@@ -2262,6 +2274,7 @@ void MainWindow::openConversation(int row) {
                     _convTabs->show();
                 if (_composer)
                     _composer->show();
+                focusComposerIfActive();
                 updateHuddleBanner();
             },
             Qt::SingleShotConnection

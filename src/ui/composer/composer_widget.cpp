@@ -836,6 +836,10 @@ void ComposerWidget::setFocused(bool focused) {
     _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), dropColor));
 }
 
+void ComposerWidget::focusInput() {
+    _edit->setFocus();
+}
+
 void ComposerWidget::adjustEditorHeight() {
     const int docH   = qCeil(_edit->document()->size().height());
     const int pad    = 12;

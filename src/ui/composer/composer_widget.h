@@ -62,6 +62,10 @@ public:
     QString currentText() const;
     void    setText(const QString &text);
 
+    // Move keyboard focus to the message editor (e.g. when the window is
+    // brought to the foreground onto an active conversation).
+    void focusInput();
+
     // Pending file list (files queued for upload when the message is sent).
     const QStringList &pendingFiles() const { return _pendingFiles; }
     void               addPendingFile(const QString &filePath);

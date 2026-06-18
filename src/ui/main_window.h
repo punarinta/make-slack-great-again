@@ -142,6 +142,10 @@ private:
     void updateRoundedMask();
     void populateConversations(const std::vector<Conversation> &convs);
     void openConversation(int row);
+    // Put the cursor in the composer when a conversation becomes visible, but
+    // only while the window is foreground — a background workspace switch or
+    // restore must not steal focus from whatever the user is doing.
+    void focusComposerIfActive();
 
     // All logged-in workspaces, alive for the whole app run so unread badges
     // and notifications keep working for workspaces that aren't on screen.
