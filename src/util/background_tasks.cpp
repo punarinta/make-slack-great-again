@@ -7,9 +7,9 @@ BackgroundTasks &BackgroundTasks::instance() {
     return inst;
 }
 
-int BackgroundTasks::begin() {
+int BackgroundTasks::begin(const QString &description) {
     const int id = _nextId++;
-    _active.insert(id);
+    _active.insert(id, description);
     emit countChanged(count());
     return id;
 }
@@ -17,4 +17,12 @@ int BackgroundTasks::begin() {
 void BackgroundTasks::end(int id) {
     if (_active.remove(id))
         emit countChanged(count());
+}
+
+QStringList BackgroundTasks::descriptions() const {
+    QStringList out;
+    for (const QString &d : _active)
+        if (!d.isEmpty())
+            out << d;
+    return out;
 }

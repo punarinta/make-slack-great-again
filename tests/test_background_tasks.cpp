@@ -81,6 +81,38 @@ TEST_CASE("BackgroundTasks tracks the running count", "[background_tasks]") {
         CHECK(seen.size() == emits1);
     }
 
+    SECTION("descriptions list all running tasks in start order and drop on end") {
+        const int a = bt.begin("Downloading a.png");
+        const int b = bt.begin("Copying b.png");
+        const int c = bt.begin("Downloading c.pdf");
+        CHECK(bt.count() == base + 3);
+        CHECK(
+            bt.descriptions() ==
+            QStringList{"Downloading a.png", "Copying b.png", "Downloading c.pdf"}
+        );
+
+        // Completing the middle task removes only its description; order is kept.
+        bt.end(b);
+        CHECK(bt.count() == base + 2);
+        CHECK(bt.descriptions() == QStringList{"Downloading a.png", "Downloading c.pdf"});
+
+        bt.end(a);
+        CHECK(bt.descriptions() == QStringList{"Downloading c.pdf"});
+
+        bt.end(c);
+        CHECK(bt.descriptions().isEmpty());
+    }
+
+    SECTION("description-less tasks count but are omitted from the list") {
+        const int a = bt.begin(); // no description
+        const int b = bt.begin("Copying b.png");
+        CHECK(bt.count() == base + 2);
+        CHECK(bt.descriptions() == QStringList{"Copying b.png"});
+        bt.end(a);
+        bt.end(b);
+        CHECK(bt.descriptions().isEmpty());
+    }
+
     SECTION("a reused-looking id from a finished task does not collide") {
         // ids are monotonic, never recycled, so a stale end() can never take down
         // a later, unrelated task.

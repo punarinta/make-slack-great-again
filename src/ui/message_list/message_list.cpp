@@ -1819,15 +1819,22 @@ void MessageListWidget::downloadFileToUser(const File &file) {
         QFileDialog::getSaveFileName(this, tr("Save file"), QDir::homePath() + "/" + defaultName);
     if (savePath.isEmpty())
         return;
-    const QString url = file.urlPrivate;
+    const QString url  = file.urlPrivate;
+    // Spinner runs from the click until the bytes are on disk (or the download
+    // fails) — same background-task indication used by the image-copy path.
+    const int     task = BackgroundTasks::instance().begin(tr("Downloading %1").arg(defaultName));
     _session->downloadFile(
         url,
-        [savePath](QByteArray data) {
+        [savePath, task](QByteArray data) {
             QFile f(savePath);
             if (f.open(QIODevice::WriteOnly))
                 f.write(data);
+            BackgroundTasks::instance().end(task);
         },
-        [](QString err) { qWarning() << "File download failed:" << err; }
+        [task](QString err) {
+            qWarning() << "File download failed:" << err;
+            BackgroundTasks::instance().end(task);
+        }
     );
 }
 
@@ -1857,7 +1864,8 @@ void MessageListWidget::copyFullImageToClipboard(const File &file) {
     // Spinner runs from the click until the image lands on the clipboard. Every
     // path funnels through decodeImageToClipboardAsync, which decodes off the GUI
     // thread and ends the task (even on empty/invalid bytes).
-    const int task = BackgroundTasks::instance().begin();
+    const QString copyName = file.name.isEmpty() ? tr("image") : file.name;
+    const int     task     = BackgroundTasks::instance().begin(tr("Copying %1").arg(copyName));
 
     // Pending upload — the original bytes live on disk.
     if (file.urlPrivate.startsWith("file://")) {

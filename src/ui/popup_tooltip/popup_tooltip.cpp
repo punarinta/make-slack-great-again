@@ -41,11 +41,21 @@ void PopupTooltip::placeGlobal(int gx, int gy, int w, int h) {
     if (host && parentWidget() != host)
         setParent(host);
 
+    // Re-placing an already-visible tooltip (e.g. the task list re-rendering as a
+    // task completes) may shrink it. The region the smaller box vacates must be
+    // repainted by the host or it leaves a stale remnant — the same translucent-
+    // overlay backing-store issue hideEvent() guards against. Capture the old rect
+    // before moving, then invalidate old∪new on the parent.
+    const bool  wasVisible = isVisible();
+    const QRect oldGeom    = geometry();
+
     setFixedSize(w, h);
     if (host)
         move(host->mapFromGlobal(QPoint(gx, gy)));
     else
         move(gx, gy);
+    if (wasVisible && parentWidget())
+        parentWidget()->update(oldGeom.united(geometry()));
     show();
     raise();
     update();
@@ -55,6 +65,7 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
     _text     = text;
     _rightOf  = false;
     _reaction = false;
+    _taskList = false;
 
     QFont f = QApplication::font();
     f.setWeight(QFont::Weight(500));
@@ -101,6 +112,7 @@ void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRec
     _below    = false;
     _rightOf  = true;
     _reaction = false;
+    _taskList = false;
 
     QFont f = QApplication::font();
     f.setWeight(QFont::Weight(500));
@@ -135,6 +147,7 @@ void PopupTooltip::showReaction(
     const QRect       &targetGlobalRect
 ) {
     _reaction   = true;
+    _taskList   = false;
     _rightOf    = false;
     _emojiGlyph = emojiGlyph;
     _emojiImage = emojiImage;
@@ -182,6 +195,63 @@ void PopupTooltip::showReaction(
     placeGlobal(wx, wy, widgetW, widgetH);
 }
 
+void PopupTooltip::showTaskList(
+    const QString &header, const QStringList &tasks, const QRect &targetGlobalRect
+) {
+    _taskList = true;
+    _reaction = false;
+    _rightOf  = false;
+    _header   = header;
+    _names    = tasks;
+
+    QFont headerF = QApplication::font();
+    headerF.setPointSizeF(headerF.pointSizeF() * 0.82);
+    const QFontMetrics headerFm(headerF);
+
+    QFont taskF = QApplication::font();
+    taskF.setWeight(QFont::Weight(500));
+    const QFontMetrics taskFm(taskF);
+
+    int contentW = headerFm.horizontalAdvance(header);
+    for (const QString &t : tasks)
+        contentW = std::max(contentW, taskFm.horizontalAdvance(t));
+    contentW = std::min(contentW, 320);
+
+    const int contentH =
+        headerFm.height() + kHeaderGapV + static_cast<int>(tasks.size()) * taskFm.height();
+
+    const int bodyW   = contentW + 2 * kPadH;
+    const int bodyH   = contentH + 2 * kPadV;
+    const int widgetW = bodyW + 2 * kShadow;
+    const int widgetH = kShadow + bodyH + kArrowH + kShadow;
+
+    const int arrowTipGX = targetGlobalRect.center().x();
+
+    const QRect avail = availRect();
+
+    const int neededAbove = kShadow + bodyH + kArrowH + kGap;
+    _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
+
+    int wx, wy;
+    if (_below)
+        wy = targetGlobalRect.bottom() + kGap - kShadow;
+    else
+        wy = targetGlobalRect.top() - kGap - (kShadow + bodyH + kArrowH);
+    wx = arrowTipGX - widgetW / 2;
+
+    if (avail.isValid()) {
+        wx = std::max(avail.left(), std::min(wx, avail.right() - widgetW));
+        if (_below)
+            wy = std::min(wy, avail.bottom() - widgetH);
+        else
+            wy = std::max(avail.top(), wy);
+    }
+
+    _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
+
+    placeGlobal(wx, wy, widgetW, widgetH);
+}
+
 void PopupTooltip::hideEvent(QHideEvent *e) {
     if (QWidget *p = parentWidget())
         p->update(geometry());
@@ -194,6 +264,10 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
 
     if (_reaction) {
         paintReaction(p);
+        return;
+    }
+    if (_taskList) {
+        paintTaskList(p);
         return;
     }
 
@@ -335,5 +409,74 @@ void PopupTooltip::paintReaction(QPainter &p) {
         const QString line = nameFm.elidedText(n, Qt::ElideRight, qRound(textW));
         p.drawText(QRectF(body.left() + kPadH, ty, textW, lineH), Qt::AlignCenter, line);
         ty += lineH;
+    }
+}
+
+void PopupTooltip::paintTaskList(QPainter &p) {
+    const int    bodyH = height() - kShadow - kArrowH - kShadow;
+    const QRectF body  = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
+                                : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
+
+    // Light drop shadow around the body only
+    for (int i = kShadow; i >= 2; --i) {
+        const int alpha = (kShadow - i) * 3;
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, alpha));
+        p.drawRoundedRect(
+            body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
+        );
+    }
+
+    // Fill body
+    p.setPen(Qt::NoPen);
+    p.setBrush(Th::c().text.primary);
+    p.drawRoundedRect(body, kRadius, kRadius);
+
+    // Arrow
+    QPolygonF   arrow;
+    const qreal cx = _arrowX;
+    if (_below) {
+        const qreal baseY = body.top();
+        arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
+              << QPointF(cx, kShadow);
+    } else {
+        const qreal baseY = body.bottom();
+        arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
+              << QPointF(cx, baseY + kArrowH);
+    }
+    p.drawPolygon(arrow);
+
+    const qreal textW = body.width() - 2 * kPadH;
+    const qreal textX = body.left() + kPadH;
+
+    // Header — small, dimmed
+    QFont headerF = QApplication::font();
+    headerF.setPointSizeF(headerF.pointSizeF() * 0.82);
+    p.setFont(headerF);
+    const QFontMetrics headerFm(headerF);
+    QColor             dim = Th::c().text.onDark;
+    dim.setAlpha(160);
+    p.setPen(dim);
+    qreal ty = body.top() + kPadV;
+    p.drawText(
+        QRectF(textX, ty, textW, headerFm.height()),
+        Qt::AlignLeft | Qt::AlignVCenter,
+        headerFm.elidedText(_header, Qt::ElideRight, qRound(textW))
+    );
+    ty += headerFm.height() + kHeaderGapV;
+
+    // Task descriptions — one per line, left-aligned
+    QFont taskF = QApplication::font();
+    taskF.setWeight(QFont::Weight(500));
+    p.setFont(taskF);
+    const QFontMetrics taskFm(taskF);
+    p.setPen(Th::c().text.onDark);
+    for (const QString &t : _names) {
+        p.drawText(
+            QRectF(textX, ty, textW, taskFm.height()),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            taskFm.elidedText(t, Qt::ElideRight, qRound(textW))
+        );
+        ty += taskFm.height();
     }
 }

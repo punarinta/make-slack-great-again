@@ -25,6 +25,11 @@ public:
         const QRect       &targetGlobalRect
     );
 
+    // Task list: a small dimmed header line (e.g. "3 background tasks running")
+    // over a left-aligned list of task descriptions.  Positioned like showAbove.
+    void
+    showTaskList(const QString &header, const QStringList &tasks, const QRect &targetGlobalRect);
+
 protected:
     void paintEvent(QPaintEvent *e) override;
     // Force the host window to repaint the region we vacated. A translucent child
@@ -41,11 +46,14 @@ private:
     bool        _below    = false; // true when tooltip is shown below the target
     bool        _rightOf  = false; // true when tooltip is shown to the right of the target
     bool        _reaction = false; // true in reaction-preview mode
+    bool        _taskList = false; // true in task-list mode
     QString     _emojiGlyph;       // unicode emoji glyph (empty when using an image)
     QPixmap     _emojiImage;       // custom-emoji pixmap (null when using a glyph)
-    QStringList _names;            // reactor display names, one per line
+    QString     _header;           // small dimmed header line (task-list mode)
+    QStringList _names;            // reactor display names / task descriptions, one per line
 
     void paintReaction(QPainter &p);
+    void paintTaskList(QPainter &p);
 
     // Reparent onto the top-level window and place at a global position.  Done as
     // an in-window child overlay (not a Qt::ToolTip top-level) because Wayland
@@ -57,8 +65,9 @@ private:
     // rect (so a child overlay is never clipped), falling back to the screen.
     QRect availRect() const;
 
-    static constexpr int kEmojiPx   = 30; // rendered preview emoji side
-    static constexpr int kReactGapV = 8;  // gap between emoji and the name list
+    static constexpr int kEmojiPx    = 30; // rendered preview emoji side
+    static constexpr int kReactGapV  = 8;  // gap between emoji and the name list
+    static constexpr int kHeaderGapV = 5;  // gap between the task-list header and the list
 
     static constexpr int kPadH   = 10;
     static constexpr int kPadV   = 5;

@@ -67,6 +67,8 @@ private:
     void    loadAvatar();
     QString presenceTooltip() const;
     QString tasksTooltip() const;
+    // Shows the task-list popup above the spinner: count header + descriptions.
+    void    showTasksTooltip();
 
     // Cross-fade the toggle icon toward `hidden`. Used both optimistically on
     // click (instant feedback) and to settle on the authoritative state.

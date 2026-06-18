@@ -118,9 +118,7 @@ void ConvFooterWidget::setTaskCount(int count) {
         if (_taskCount == 0)
             setHot(hitTest(mapFromGlobal(QCursor::pos())));
         else
-            _tooltip->showAbove(
-                tasksTooltip(), QRect(mapToGlobal(tasksRect().topLeft()), tasksRect().size())
-            );
+            showTasksTooltip();
     }
     if (wasRunning != (_taskCount > 0))
         update();
@@ -135,6 +133,17 @@ void ConvFooterWidget::tickTaskSpin() {
 
 QString ConvFooterWidget::tasksTooltip() const {
     return tr("%n background task(s) running", "", _taskCount);
+}
+
+void ConvFooterWidget::showTasksTooltip() {
+    if (!hasTasks())
+        return;
+    const QRect r = tasksRect();
+    _tooltip->showTaskList(
+        tasksTooltip(),
+        BackgroundTasks::instance().descriptions(),
+        QRect(mapToGlobal(r.topLeft()), r.size())
+    );
 }
 
 void ConvFooterWidget::setUser(const QString &displayName, const QString &avatarUrl) {
@@ -276,8 +285,7 @@ void ConvFooterWidget::setHot(Hot hot) {
         const QRect r = toggleRect();
         _tooltip->showAbove(presenceTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
     } else if (hot == Hot::Tasks) {
-        const QRect r = tasksRect();
-        _tooltip->showAbove(tasksTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
+        showTasksTooltip();
     } else if (hot == Hot::Avatar) {
         const QRect r = avatarRect();
         _tooltip->showAbove(tr("Profile & status"), QRect(mapToGlobal(r.topLeft()), r.size()));
