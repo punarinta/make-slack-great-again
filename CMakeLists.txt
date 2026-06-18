@@ -203,6 +203,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^
 endif()
 if(WIN32)
     target_link_libraries(msga PRIVATE dbghelp)
+
+    # Windows application icon. windres compiles the .rc into the PE resource
+    # section so Explorer/taskbar/alt-tab show the app icon. The .ico path is
+    # baked in via configure_file (forward slashes — windres treats a backslash
+    # as an escape). The icon is resource id 1 (lowest), which is what the shell
+    # picks as the executable icon. No VERSIONINFO here — the static link already
+    # supplies one and a second would fail windres' .rsrc merge (see msga.rc.in).
+    set(MSGA_ICON_PATH "${CMAKE_SOURCE_DIR}/gfx/win/icon.ico")
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/resources/msga.rc.in"
+        "${CMAKE_BINARY_DIR}/msga.rc"
+        @ONLY
+    )
+    target_sources(msga PRIVATE "${CMAKE_BINARY_DIR}/msga.rc")
 endif()
 
 # Notification sound backend (src/util/sound_player*): platform-native audio,

@@ -1,0 +1,14 @@
+// Windows resource script (configured by CMake from msga.rc.in).
+// Embeds the application icon into msga.exe.
+//
+// Explorer/the taskbar pick the icon with the numerically-lowest resource id,
+// so this stays id 1. The .ico is multi-resolution (16-256 px) so Windows can
+// pick the right size for the taskbar, alt-tab, and the large-icon view.
+//
+// NOTE: do NOT add a VS_VERSION_INFO block here. The static mingw/Qt link
+// already contributes a VERSION resource (name 1, lang 0x409); a second one
+// makes windres' .rsrc merge fail with "duplicate leaf: type VERSION". If we
+// ever want to control the version metadata, do it via Qt's target properties
+// (QT_TARGET_VERSION / QT_TARGET_DESCRIPTION / ...), which feed the single
+// generated resource instead of adding a competing one.
+1 ICON "@MSGA_ICON_PATH@"
