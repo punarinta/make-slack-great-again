@@ -12,12 +12,33 @@
 
 #include <windows.h>
 
-#if defined(MSGA_WINRT_TOAST)
-
+// Registering the msga:// URL scheme is plain Win32 (registry only) and must
+// happen on EVERY Windows build, including the mingw cross builds that lack the
+// WinRT toast headers — otherwise the browser has nowhere to deliver the OAuth
+// redirect (msga://oauth/callback) and sign-in hangs "loading forever". So this
+// lives OUTSIDE the MSGA_WINRT_TOAST guard, unlike the toast machinery below.
 #include <QCoreApplication>
 #include <QDir>
-#include <QFileInfo>
 #include <QSettings>
+
+namespace {
+// Register HKCU\Software\Classes\msga so the OAuth redirect (and the toast's
+// `launch` protocol-activation URL) re-launches us with the msga:// argument —
+// which SingleInstance forwards to the running app. Mirrors the Linux .desktop
+// scheme handler.
+void registerUriScheme() {
+    const QString exe = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    QSettings     cls("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
+    cls.setValue("msga/.", "URL:MSGA Protocol"); // "." → the key's default value
+    cls.setValue("msga/URL Protocol", "");
+    cls.setValue("msga/DefaultIcon/.", QString("\"%1\",0").arg(exe));
+    cls.setValue("msga/shell/open/command/.", QString("\"%1\" \"%2\"").arg(exe, "%1"));
+}
+} // namespace
+
+#if defined(MSGA_WINRT_TOAST)
+
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -53,18 +74,6 @@ QString xmlEscape(const QString &s) {
     out.replace('>', "&gt;");
     out.replace('"', "&quot;");
     return out;
-}
-
-// Register HKCU\Software\Classes\msga so the toast's `launch` URL (protocol
-// activation) re-launches us with the msga:// argument — which SingleInstance
-// forwards to the running app. Mirrors the Linux .desktop scheme handler.
-void registerUriScheme() {
-    const QString exe = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
-    QSettings     cls("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
-    cls.setValue("msga/.", "URL:MSGA Protocol"); // "." → the key's default value
-    cls.setValue("msga/URL Protocol", "");
-    cls.setValue("msga/DefaultIcon/.", QString("\"%1\",0").arg(exe));
-    cls.setValue("msga/shell/open/command/.", QString("\"%1\" \"%2\"").arg(exe, "%1"));
 }
 
 // Unpackaged Win32 apps only get toasts if a Start-Menu shortcut carries the
@@ -158,12 +167,14 @@ bool showToast(const QString &aumid, const QString &xml) {
 #endif // MSGA_WINRT_TOAST
 
 DesktopNotifier::DesktopNotifier(QObject *parent) : QObject(parent) {
+    // Always register the msga:// scheme so OAuth sign-in can complete, even on
+    // builds without WinRT toast support.
+    registerUriScheme();
 #if defined(MSGA_WINRT_TOAST)
     // RoInitialize may already be done by Qt's COM init on this thread — that's
     // fine (RPC_E_CHANGED_MODE just means a different apartment, still usable).
     RoInitialize(RO_INIT_SINGLETHREADED);
     SetCurrentProcessExplicitAppUserModelID(kAumid);
-    registerUriScheme();
     if (ensureStartMenuShortcut()) {
         _aumid     = QString::fromWCharArray(kAumid);
         _available = true;

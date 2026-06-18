@@ -74,6 +74,14 @@ add_msga_test(test_desktop_integration
     ${CMAKE_SOURCE_DIR}/src/util/desktop_integration.cpp
 )
 
+# Static-source guard: scheme registration must stay outside the WinRT guard.
+# Parses the real Windows source (runs on any host), so it needs its path.
+add_msga_test(test_win_uri_scheme
+    test_win_uri_scheme.cpp
+)
+target_compile_definitions(test_win_uri_scheme PRIVATE
+    MSGA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
 add_msga_test(test_mrkdwn
     test_mrkdwn.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
