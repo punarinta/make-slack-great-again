@@ -3,23 +3,24 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "ui/app_dialog/app_dialog.h"
 
-#include <QDialog>
+#include <algorithm>
 #include <vector>
 
 class BrowseListView;
+class IconButton;
 class ImageCache;
-class QFrame;
 class QPushButton;
 class QStackedWidget;
 class StyledButton;
 class StyledLineEdit;
 
-// Modal "Find a channel" dialog.
-// Shows all known channels with search and a People tab.
+// Modal "Find a channel" dialog (custom-chrome AppDialog: a tab bar instead of a
+// title header). Shows all known channels with search and a People tab.
 // "Create Channel" button emits createChannelRequested() — caller should close
 // this dialog and open CreateChannelDialog in response.
-class BrowseChannelsDialog : public QDialog {
+class BrowseChannelsDialog : public AppDialog {
     Q_OBJECT
 public:
     explicit BrowseChannelsDialog(
@@ -38,23 +39,21 @@ signals:
     void userActivated(UserId id);
 
 protected:
-    void paintEvent(QPaintEvent *) override;
-    void showEvent(QShowEvent *) override;
-    void resizeEvent(QResizeEvent *) override;
-    void mousePressEvent(QMouseEvent *) override;
+    void applyTheme() override;
+    int  cardWidth(int availOverlayWidth) const override {
+        return std::min(availOverlayWidth, kCardW);
+    }
+    int minCardHeight() const override { return kCardMinH; }
 
 private:
     void buildChannelItems();
     void buildPeopleItems();
     void applyFilter(const QString &query);
     void selectTab(int tab);
-    void updateCard();
-    void applyTheme();
 
-    QFrame         *_card        = nullptr;
     StyledLineEdit *_searchEdit  = nullptr;
     StyledButton   *_createBtn   = nullptr;
-    QPushButton    *_closeBtn    = nullptr;
+    IconButton     *_closeBtn    = nullptr;
     QPushButton    *_channelsTab = nullptr;
     QPushButton    *_peopleTab   = nullptr;
     QStackedWidget *_stack       = nullptr;

@@ -115,7 +115,8 @@ void ProfileAvatarWidget::mousePressEvent(QMouseEvent *e) {
 
 ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *parent)
     : AppDialog(tr("Profile"), parent), _session(session), _imgCache(imgCache) {
-    auto *cl = contentLayout();
+    auto       *cl = contentLayout();
+    const auto &sp = Th::c().spacing;
 
     // ── Avatar (centered, hover-to-change) ────────────────────────────────
     auto *avatarRow = new QHBoxLayout;
@@ -124,7 +125,7 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
     avatarRow->addWidget(_avatar);
     avatarRow->addStretch();
     cl->addLayout(avatarRow);
-    cl->addSpacing(20);
+    cl->addSpacing(sp.xl);
 
     auto addField = [&](const QString &labelText, QLabel *&label, StyledLineEdit *&edit) {
         label    = new QLabel(labelText);
@@ -134,7 +135,7 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
         cl->addWidget(label);
         edit = new StyledLineEdit;
         cl->addWidget(edit);
-        cl->addSpacing(6);
+        cl->addSpacing(sp.md);
     };
 
     addField(tr("Name"), _nameLabel, _nameEdit);
@@ -150,14 +151,14 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
     _status->setVisible(false);
     cl->addWidget(_status);
 
-    cl->addSpacing(8);
+    cl->addSpacing(sp.md);
 
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
     _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
     _saveBtn   = new StyledButton(tr("Save Changes"), StyledButton::Variant::Primary);
     btnRow->addWidget(_cancelBtn);
-    btnRow->addSpacing(8);
+    btnRow->addSpacing(sp.md);
     btnRow->addWidget(_saveBtn);
     cl->addLayout(btnRow);
 

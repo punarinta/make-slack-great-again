@@ -17,9 +17,10 @@ StyledLineEdit::StyledLineEdit(QWidget *parent) : QFrame(parent) {
     setCursor(Qt::IBeamCursor);
     setFixedHeight(Ui::kControlHeight);
 
-    _layout = new QHBoxLayout(this);
-    _layout->setContentsMargins(12, 0, 12, 0);
-    _layout->setSpacing(6);
+    _layout        = new QHBoxLayout(this);
+    const auto &sp = Th::c().spacing;
+    _layout->setContentsMargins(sp.lg, 0, sp.lg, 0);
+    _layout->setSpacing(sp.md);
 
     _leadingIcon = new QLabel(this);
     _leadingIcon->setAlignment(Qt::AlignCenter);

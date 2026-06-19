@@ -6,6 +6,8 @@
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/paint_utils.h"
+#include "ui/user_avatar.h"
 #include "util/emoji_font.h"
 
 #include <QMovie>
@@ -108,7 +110,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     syncGifPlayback();
 
     // Thin Telegram-style scrollbar overlay
-    paintScrollThumb(p, _totalH, QColor(0, 0, 0, 80));
+    paintScrollThumb(p, _totalH, Th::c().divider.strong);
 }
 
 void MessageListWidget::paintRow(
@@ -428,18 +430,7 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
     if (!avatarUrl.isEmpty() && _imgCache) {
         const QPixmap cached = _imgCache->get(avatarUrl);
         if (!cached.isNull()) {
-            p.save();
-            p.setRenderHint(QPainter::Antialiasing);
-            QPainterPath clip;
-            clip.addRoundedRect(QRectF(rect), 4, 4);
-            p.setClipPath(clip);
-            const qreal dpr    = p.device()->devicePixelRatioF();
-            QPixmap     scaled = cached.scaled(
-                rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
-            );
-            scaled.setDevicePixelRatio(dpr);
-            p.drawPixmap(rect, scaled);
-            p.restore();
+            UserAvatar::paintPhoto(p, rect, cached, p.device()->devicePixelRatioF(), 4);
             return;
         }
     }
@@ -453,20 +444,17 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
 
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
-    p.setBrush(
+    UserAvatar::paintInitial(
+        p,
+        rect,
+        QString(ch),
         QColor::fromHsl(
             hue, Th::c().message.avatarHslSaturation, Th::c().message.avatarHslLightness
-        )
+        ),
+        Qt::white,
+        4,
+        14
     );
-    p.drawRoundedRect(rect, 4, 4);
-
-    p.setPen(Qt::white);
-    QFont f = QApplication::font();
-    f.setBold(true);
-    f.setPointSize(14);
-    p.setFont(f);
-    p.drawText(rect, Qt::AlignCenter, ch.toUpper());
     p.restore();
 }
 
@@ -1364,17 +1352,7 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     const QRectF cardRect(cardLeft, cardTop, cardW, cardH);
-    // Soft drop shadow
-    for (int i = 4; i >= 1; --i) {
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, 5 + (4 - i) * 3));
-        p.drawRoundedRect(
-            cardRect.adjusted(-i, -i, i, i + 1), kToolbarRadius + i, kToolbarRadius + i
-        );
-    }
-    p.setBrush(Qt::white);
-    p.setPen(QColor(0, 0, 0, 18));
-    p.drawRoundedRect(cardRect, kToolbarRadius, kToolbarRadius);
+    Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
     // SVG icons: 0=emoji (smile), 1=forward, 2=more-horizontal
     // NOTE: static — captures Th::c().icon.strong once at first paint (acceptable for V1).
@@ -1509,16 +1487,7 @@ void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) c
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     const QRectF cardRect(cardLeft, cardTop, cardW, cardH);
-    for (int i = 4; i >= 1; --i) {
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, 5 + (4 - i) * 3));
-        p.drawRoundedRect(
-            cardRect.adjusted(-i, -i, i, i + 1), kToolbarRadius + i, kToolbarRadius + i
-        );
-    }
-    p.setBrush(Qt::white);
-    p.setPen(QColor(0, 0, 0, 18));
-    p.drawRoundedRect(cardRect, kToolbarRadius, kToolbarRadius);
+    Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
     // NOTE: static — captures Th::c().icon.strong once at first paint (acceptable for V1).
     static const QSize    kIconSz(16, 16);
@@ -1598,7 +1567,7 @@ void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, qint64 dateMi
     p.setPen(Th::c().divider.def);
     p.setBrush(Th::c().surface.content);
     const QRect pill(pillX, midY - pillH / 2, pillW, pillH);
-    p.drawRoundedRect(pill, pillH / 2, pillH / 2);
+    Paint::pill(p, pill);
 
     p.setFont(font);
     p.setPen(Th::c().text.tertiary);

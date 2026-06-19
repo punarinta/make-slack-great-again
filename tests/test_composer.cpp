@@ -666,16 +666,21 @@ TEST_CASE("completer stays anchored at the colon while typing", "[composer][emoj
 }
 
 TEST_CASE("completer sits above the editor, not far from it", "[composer][emoji]") {
-    ComposerWidget c;
-    c.resize(600, 120);
-    c.show();
-    typeText(&c, ":fir");
-    releaseKey(&c, Qt::Key_R, "r");
-    auto *comp = completerOf(&c);
+    // In production the composer lives at the bottom of a tall msgArea, which is
+    // the completer's parent and gives it the room to float above the trigger.
+    // (A bare standalone composer is shorter than the popup — see the next test.)
+    QWidget host;
+    host.resize(600, 600);
+    auto *c = new ComposerWidget(&host);
+    c->setGeometry(0, 480, 600, 120);
+    host.show();
+    typeText(c, ":fir");
+    releaseKey(c, Qt::Key_R, "r");
+    auto *comp = host.findChild<MentionCompleter *>();
     REQUIRE(comp);
     REQUIRE(comp->isVisible());
 
-    QTextEdit  *ed = editOf(&c);
+    QTextEdit  *ed = editOf(c);
     QTextCursor tc = ed->textCursor();
     tc.setPosition(0); // the ':' trigger
     // Anchor mapped into the completer's parent coordinates, the same space
@@ -689,6 +694,28 @@ TEST_CASE("completer sits above the editor, not far from it", "[composer][emoji]
         qBound(0, anchor.x(), qMax(0, comp->parentWidget()->width() - comp->width()))
     );
     CHECK(comp->pos().y() + comp->height() + 4 == anchor.y());
+    CHECK(comp->pos().y() >= 0); // never clipped off the top of the parent
+}
+
+TEST_CASE(
+    "completer flips below and stays inside the parent with no room above", "[composer][emoji]"
+) {
+    // Composer at the very top of its parent: there is no room above the trigger
+    // for the popup. The old code positioned it at a negative y (top rows clipped
+    // away by the parent widget); placePopup now flips it below and keeps it
+    // fully inside the parent.
+    QWidget host;
+    host.resize(600, 600);
+    auto *c = new ComposerWidget(&host);
+    c->setGeometry(0, 0, 600, 120);
+    host.show();
+    typeText(c, ":fir");
+    releaseKey(c, Qt::Key_R, "r");
+    auto *comp = host.findChild<MentionCompleter *>();
+    REQUIRE(comp);
+    REQUIRE(comp->isVisible());
+    CHECK(comp->pos().y() >= 0);
+    CHECK(comp->pos().y() + comp->height() <= host.height());
 }
 
 // Simulates real typing: KeyPress (which inserts the char via QTextEdit's own

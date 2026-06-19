@@ -22,7 +22,8 @@
 
 ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *parent)
     : AppDialog(tr("Forward this message"), parent) {
-    auto *cl = contentLayout();
+    auto       *cl = contentLayout();
+    const auto &sp = Th::c().spacing;
 
     // ── Conversation selector ──────────────────────────────────────────
     _selector = new ConvSelectorWidget(session);
@@ -44,8 +45,8 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     _previewCard = new QFrame;
     _previewCard->setObjectName("fwdCard");
     auto *cardLay = new QVBoxLayout(_previewCard);
-    cardLay->setContentsMargins(12, 8, 12, 8);
-    cardLay->setSpacing(4);
+    cardLay->setContentsMargins(sp.lg, sp.md, sp.lg, sp.md);
+    cardLay->setSpacing(sp.sm);
 
     if (session) {
         const auto   *user      = session->findUser(msg.author);
@@ -155,21 +156,12 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     cl->addWidget(_previewCard);
 
     // ── Button bar ─────────────────────────────────────────────────────
-    auto *btnRow = new QHBoxLayout;
-    btnRow->setSpacing(8);
-
     _copyLinkBtn = new StyledButton(tr("Copy Link"), StyledButton::Variant::Secondary);
-    btnRow->addWidget(_copyLinkBtn);
-    btnRow->addStretch();
-
-    _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
-
-    _fwdBtn = new StyledButton(tr("Forward"), StyledButton::Variant::Primary);
+    _cancelBtn   = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
+    _fwdBtn      = new StyledButton(tr("Forward"), StyledButton::Variant::Primary);
     _fwdBtn->setEnabled(false);
-
-    btnRow->addWidget(_cancelBtn);
-    btnRow->addWidget(_fwdBtn);
-    cl->addLayout(btnRow);
+    // [Copy Link]  →stretch→  [Cancel] [Forward];  Cancel → reject() wired by base.
+    addButtonRow(_fwdBtn, _cancelBtn, _copyLinkBtn);
 
     connect(
         _selector,
@@ -185,7 +177,6 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
             accept();
     });
 
-    connect(_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     connect(_fwdBtn, &QPushButton::clicked, this, &QDialog::accept);
 
     connect(_copyLinkBtn, &QPushButton::clicked, this, [&msg] {

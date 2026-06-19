@@ -60,9 +60,10 @@ SearchWidget::SearchWidget(QWidget *parent) : QWidget(parent) {
     // Header row: search icon + input + close button
     _header = new QWidget(_card);
     _header->setObjectName("searchHeader");
-    auto *hRow = new QHBoxLayout(_header);
-    hRow->setContentsMargins(12, 8, 8, 8);
-    hRow->setSpacing(8);
+    auto       *hRow = new QHBoxLayout(_header);
+    const auto &sp   = Th::c().spacing;
+    hRow->setContentsMargins(sp.lg, sp.md, sp.md, sp.md);
+    hRow->setSpacing(sp.md);
 
     _searchIconLabel = new QLabel(_header);
     _searchIconLabel->setFixedSize(20, 20);
@@ -407,17 +408,16 @@ void SearchWidget::applyTheme() {
                                "}"
     )
                                .arg(Th::qss(th.surface.raised), Th::qss(th.divider.def)));
-    _queryEdit->setStyleSheet(QString(
-                                  "QLineEdit {"
-                                  "  border: 1px solid %1;"
-                                  "  border-radius: 4px;"
-                                  "  padding: 4px 8px;"
-                                  "  font-size: %3px;"
-                                  "}"
-                                  "QLineEdit:focus { border-color: %2; }"
-    )
-                                  .arg(Th::qss(th.divider.strong), Th::qss(th.text.link))
-                                  .arg(th.fonts.base));
+    // Borderless Spotlight field: the header frame + the separate leading search
+    // icon (with its own hover tooltip) are the chrome — see .rules (UI § search).
+    _queryEdit->setStyleSheet(
+        QString(
+            "QLineEdit { border: none; background: transparent; padding: 4px 0; "
+            "font-size: %1px; color: %2; }"
+        )
+            .arg(th.fonts.base)
+            .arg(Th::qss(th.text.primary))
+    );
     _closeBtn->setStyleSheet(
         "QPushButton#searchCloseBtn { border: none; background: transparent; }"
     );
@@ -433,37 +433,23 @@ void SearchWidget::applyTheme() {
             "QListWidget#searchResultList::item {"
             "  padding: 8px 12px;"
             "  border-bottom: 1px solid %2;"
-            "  color: %6;"
+            "  color: %5;"
             "}"
             "QListWidget#searchResultList::item:hover {"
             "  background: %3;"
             "}"
             "QListWidget#searchResultList::item:selected {"
             "  background: %4;"
-            "  color: %6;"
+            "  color: %5;"
             "}"
-            "QScrollBar:vertical {"
-            "  background: transparent;"
-            "  width: 6px;"
-            "  margin: 2px;"
-            "}"
-            "QScrollBar::handle:vertical {"
-            "  background: %5;"
-            "  border-radius: 3px;"
-            "  min-height: 20px;"
-            "}"
-            "QScrollBar::add-line:vertical,"
-            "QScrollBar::sub-line:vertical { height: 0; }"
-            "QScrollBar::add-page:vertical,"
-            "QScrollBar::sub-page:vertical { background: transparent; }"
         )
             .arg(
                 Th::qss(th.surface.raised),          // %1 list bg
                 Th::qss(th.divider.subtle),          // %2 item separator
                 Th::qss(th.surface.highlight),       // %3 hover
                 Th::qss(th.surface.highlightStrong), // %4 keyboard-selected (no accent blue)
-                Th::qss(th.divider.strong),          // %5 scrollbar handle
-                Th::qss(th.text.primary)             // %6 item text
-            )
+                Th::qss(th.text.primary)             // %5 item text
+            ) +
+        Th::scrollBarQss() // fold the old drifted 6px/r3 bar to the standard 8px/r4
     );
 }

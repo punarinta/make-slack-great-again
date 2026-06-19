@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "context_menu.h"
 #include "ui/icon_utils.h"
+#include "ui/paint_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -198,13 +199,7 @@ void ContextMenu::paintEvent(QPaintEvent *) {
     const QRectF mrf(mr);
 
     // ── Soft shadow (concentric translucent halos) ────────────────────────
-    for (int i = kShadow; i >= 1; --i) {
-        const int alpha = 2 + (kShadow - i) * 2;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, alpha));
-        const qreal r = kRadius + i;
-        p.drawRoundedRect(mrf.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), r, r);
-    }
+    Paint::dropShadow(p, mrf, kRadius, kShadow, 2, 2, /*minLayer*/ 1);
 
     // ── Menu card ─────────────────────────────────────────────────────────
     p.setBrush(Th::c().contextMenu.bg);

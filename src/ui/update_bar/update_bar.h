@@ -5,7 +5,7 @@
 #include <QWidget>
 
 class QLabel;
-class QPushButton;
+class StyledButton;
 
 // Thin bar shown immediately below the title bar when an update has been
 // downloaded. Hidden by default; call showUpdateReady() to display it.
@@ -25,6 +25,6 @@ protected:
 private:
     void applyTheme();
 
-    QLabel      *_label = nullptr;
-    QPushButton *_btn   = nullptr;
+    QLabel       *_label = nullptr;
+    StyledButton *_btn   = nullptr;
 };

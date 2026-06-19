@@ -380,4 +380,27 @@ QString globalQss() {
         .arg(th.fonts.caption);
 }
 
+QString scrollBarQss(int width, int radius) {
+    const auto &th = c();
+    return QString(
+               "QScrollBar:vertical { background: transparent; width: %1px; margin: 0; }"
+               "QScrollBar::handle:vertical { background: %3; border-radius: %2px;"
+               " min-height: 28px; }"
+               "QScrollBar::handle:vertical:hover { background: %4; }"
+               "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+               "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+               " background: transparent; }"
+               "QScrollBar:horizontal { background: transparent; height: %1px; margin: 0; }"
+               "QScrollBar::handle:horizontal { background: %3; border-radius: %2px;"
+               " min-width: 28px; }"
+               "QScrollBar::handle:horizontal:hover { background: %4; }"
+               "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
+               "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+               " background: transparent; }"
+    )
+        .arg(width)
+        .arg(radius)
+        .arg(qss(th.divider.strong), qss(th.text.secondary));
+}
+
 } // namespace Th

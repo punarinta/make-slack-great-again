@@ -44,9 +44,10 @@ public:
         : QWidget(parent) {
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_StyledBackground);
-        auto *row = new QHBoxLayout(this);
-        row->setContentsMargins(8, 5, 8, 5);
-        row->setSpacing(8);
+        auto       *row = new QHBoxLayout(this);
+        const auto &sp  = Th::c().spacing;
+        row->setContentsMargins(sp.md, sp.sm, sp.md, sp.sm);
+        row->setSpacing(sp.md);
 
         auto *glyph = new QLabel(Emoji::fromName(emoji), this);
         glyph->setFont(emojiFont(kPresetEmoji));
@@ -123,15 +124,16 @@ StatusDialog::StatusDialog(
 }
 
 void StatusDialog::buildInput() {
-    auto *cl = contentLayout();
+    auto       *cl = contentLayout();
+    const auto &sp = Th::c().spacing;
 
     // Bordered input box: clickable emoji button + text field (mirrors Slack).
     _inputBox = new QFrame;
     _inputBox->setObjectName("statusInputBox");
     auto *box = _inputBox;
     auto *row = new QHBoxLayout(box);
-    row->setContentsMargins(8, 4, 8, 4);
-    row->setSpacing(6);
+    row->setContentsMargins(sp.md, sp.sm, sp.md, sp.sm);
+    row->setSpacing(sp.md);
 
     _emojiBtn = new QToolButton(box);
     _emojiBtn->setAutoRaise(true);
@@ -151,7 +153,7 @@ void StatusDialog::buildInput() {
     row->addWidget(_textEdit, 1);
 
     cl->addWidget(box);
-    cl->addSpacing(14);
+    cl->addSpacing(sp.lg);
 }
 
 void StatusDialog::buildPresets(const QString &workspaceName) {
@@ -171,8 +173,9 @@ void StatusDialog::buildPresets(const QString &workspaceName) {
         tr("This week")
     };
 
-    auto *cl = contentLayout();
-    auto *header =
+    auto       *cl = contentLayout();
+    const auto &sp = Th::c().spacing;
+    auto       *header =
         new QLabel(workspaceName.isEmpty() ? tr("Suggestions") : tr("For %1").arg(workspaceName));
     header->setObjectName("statusSectionHeader");
     QFont hf = header->font();
@@ -180,21 +183,22 @@ void StatusDialog::buildPresets(const QString &workspaceName) {
     hf.setPixelSize(Th::c().fonts.sm);
     header->setFont(hf);
     cl->addWidget(header);
-    cl->addSpacing(2);
+    cl->addSpacing(sp.xs);
 
     for (const Preset &p : kPresets) {
         auto *roww    = new PresetRow(p.emoji, p.text, kDurations.value(p.clearAfter), this);
         roww->onClick = [this, p] { applyPreset(p); };
         cl->addWidget(roww);
     }
-    cl->addSpacing(14);
+    cl->addSpacing(sp.lg);
 }
 
 void StatusDialog::buildClearAfter() {
-    auto *cl  = contentLayout();
-    auto *row = new QHBoxLayout;
+    auto       *cl  = contentLayout();
+    const auto &sp  = Th::c().spacing;
+    auto       *row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(8);
+    row->setSpacing(sp.md);
 
     auto *lbl = new QLabel(tr("Clear after"));
     lbl->setObjectName("statusClearAfterLabel");
@@ -213,7 +217,7 @@ void StatusDialog::buildClearAfter() {
     row->addWidget(_clearAfter, 1);
 
     cl->addLayout(row);
-    cl->addSpacing(10);
+    cl->addSpacing(sp.md);
 }
 
 void StatusDialog::buildButtons() {
@@ -227,7 +231,7 @@ void StatusDialog::buildButtons() {
     _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
     _saveBtn   = new StyledButton(tr("Save"), StyledButton::Variant::Primary);
     btnRow->addWidget(_cancelBtn);
-    btnRow->addSpacing(8);
+    btnRow->addSpacing(Th::c().spacing.md);
     btnRow->addWidget(_saveBtn);
     cl->addLayout(btnRow);
 

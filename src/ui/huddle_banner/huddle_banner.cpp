@@ -18,9 +18,10 @@ HuddleBanner::HuddleBanner(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground);
     setFixedHeight(34);
 
-    auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(16, 0, 8, 0);
-    lay->setSpacing(8);
+    auto       *lay = new QHBoxLayout(this);
+    const auto &sp  = Th::c().spacing;
+    lay->setContentsMargins(sp.xl, 0, sp.md, 0);
+    lay->setSpacing(sp.md);
 
     _icon = new QLabel(this);
     _icon->setFixedSize(16, 16);

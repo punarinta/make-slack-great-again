@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "app_dialog.h"
+#include "ui/icon_button/icon_button.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -15,19 +16,29 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 static constexpr int kCardMinW = 480;
 static constexpr int kCardMaxW = 560;
 static constexpr int kCardPadH = 28; // left / right padding inside card
 static constexpr int kCardPadT = 24; // top padding
 static constexpr int kCardPadB = 24; // bottom padding
-static constexpr int kRadius   = 12; // card corner radius
 
 AppDialog::AppDialog(const QString &title, QWidget *parent)
     : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint) {
+    buildCard(/*standardHeader=*/true, title);
+}
+
+AppDialog::AppDialog(QWidget *parent, Chrome chrome)
+    : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint) {
+    buildCard(/*standardHeader=*/chrome == Chrome::Standard, QString());
+}
+
+void AppDialog::buildCard(bool standardHeader, const QString &title) {
     setAttribute(Qt::WA_TranslucentBackground);
     setModal(true);
 
-    // ── Card ─────────────────────────────────────────────────────────────────
+    // ── Card (frameless overlay panel + soft shadow) ───────────────────────────
     _card = new QFrame(this);
     _card->setObjectName("appDialogCard");
 
@@ -37,44 +48,45 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     shadow->setColor(QColor(0, 0, 0, 70));
     _card->setGraphicsEffect(shadow);
 
-    auto *cardLayout = new QVBoxLayout(_card);
-    cardLayout->setContentsMargins(kCardPadH, kCardPadT, kCardPadH, kCardPadB);
-    cardLayout->setSpacing(0);
+    _cardLayout    = new QVBoxLayout(_card);
+    const auto &sp = Th::c().spacing;
+    _cardLayout->setSpacing(0);
 
-    // ── Header row ────────────────────────────────────────────────────────────
-    auto *headerRow = new QHBoxLayout;
-    headerRow->setContentsMargins(0, 0, 0, 0);
-    headerRow->setSpacing(12);
+    if (standardHeader) {
+        _cardLayout->setContentsMargins(kCardPadH, kCardPadT, kCardPadH, kCardPadB);
 
-    _titleLabel = new QLabel(title, _card);
-    QFont tf    = _titleLabel->font();
-    tf.setBold(true);
-    tf.setPointSizeF(tf.pointSizeF() * 1.45);
-    _titleLabel->setFont(tf);
+        // ── Header row: bold title + × close ───────────────────────────────────
+        auto *headerRow = new QHBoxLayout;
+        headerRow->setContentsMargins(0, 0, 0, 0);
+        headerRow->setSpacing(sp.lg);
 
-    _closeBtn = new QPushButton(_card);
-    _closeBtn->setFixedSize(32, 32);
-    _closeBtn->setFlat(true);
-    _closeBtn->setCursor(Qt::PointingHandCursor);
-    _closeBtn->setFocusPolicy(Qt::NoFocus);
-    // Draw a plain × glyph via text
-    _closeBtn->setText("✕");
-    QFont cf = _closeBtn->font();
-    cf.setPointSizeF(cf.pointSizeF() * 1.1);
-    _closeBtn->setFont(cf);
+        _titleLabel = new QLabel(title, _card);
+        QFont tf    = _titleLabel->font();
+        tf.setBold(true);
+        tf.setPointSizeF(tf.pointSizeF() * 1.45);
+        _titleLabel->setFont(tf);
 
-    headerRow->addWidget(_titleLabel, 1, Qt::AlignVCenter);
-    headerRow->addWidget(_closeBtn, 0, Qt::AlignTop);
-    cardLayout->addLayout(headerRow);
-    cardLayout->addSpacing(20);
+        _closeBtn = new IconButton(QStringLiteral(":/ui/x.svg"), 32, 14, _card);
 
-    // ── Content placeholder ──────────────────────────────────────────────────
-    _contentLayout = new QVBoxLayout;
-    _contentLayout->setContentsMargins(0, 0, 0, 0);
-    _contentLayout->setSpacing(12);
-    cardLayout->addLayout(_contentLayout);
+        headerRow->addWidget(_titleLabel, 1, Qt::AlignVCenter);
+        headerRow->addWidget(_closeBtn, 0, Qt::AlignTop);
+        _cardLayout->addLayout(headerRow);
+        _cardLayout->addSpacing(sp.xl);
 
-    connect(_closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+        connect(_closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+
+        _contentLayout = new QVBoxLayout;
+        _contentLayout->setContentsMargins(0, 0, 0, 0);
+        _contentLayout->setSpacing(sp.lg);
+        _cardLayout->addLayout(_contentLayout);
+    } else {
+        // Custom chrome: no header, content fills the card edge-to-edge.
+        _cardLayout->setContentsMargins(0, 0, 0, 0);
+        _contentLayout = new QVBoxLayout;
+        _contentLayout->setContentsMargins(0, 0, 0, 0);
+        _contentLayout->setSpacing(0);
+        _cardLayout->addLayout(_contentLayout);
+    }
 
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
@@ -83,38 +95,51 @@ AppDialog::AppDialog(const QString &title, QWidget *parent)
     });
 }
 
+QHBoxLayout *
+AppDialog::addButtonRow(QPushButton *primary, QPushButton *secondary, QWidget *leadingExtra) {
+    auto *row = new QHBoxLayout;
+    row->setSpacing(Th::c().spacing.md);
+    if (leadingExtra)
+        row->addWidget(leadingExtra);
+    row->addStretch();
+    if (secondary) {
+        row->addWidget(secondary);
+        connect(secondary, &QPushButton::clicked, this, &QDialog::reject);
+    }
+    if (primary)
+        row->addWidget(primary);
+    _contentLayout->addLayout(row);
+    return row;
+}
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 void AppDialog::applyTheme() {
     _card->setStyleSheet(
         "QFrame#appDialogCard { background: white; border-radius: 12px; border: none; }"
     );
-    _titleLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
-    _closeBtn->setStyleSheet(QString(
-                                 "QPushButton {"
-                                 "  border: none; border-radius: 16px;"
-                                 "  color: %1; background: transparent;"
-                                 "}"
-                                 "QPushButton:hover { background: %2; color: %3; }"
-    )
-                                 .arg(
-                                     Th::qss(Th::c().text.tertiary),
-                                     Th::qss(Th::c().surface.highlight),
-                                     Th::qss(Th::c().text.secondary)
-                                 ));
+    if (_titleLabel)
+        _titleLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
+    // _closeBtn (IconButton) self-themes.
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
+int AppDialog::cardWidth(int availOverlayWidth) const {
+    return std::clamp(availOverlayWidth, kCardMinW, kCardMaxW);
+}
+
 void AppDialog::updateCard() {
-    // Determine card width: constrained by the available space.
-    const int avail = width() > 0 ? width() - 80 : kCardMaxW;
-    const int cardW = std::clamp(avail, kCardMinW, kCardMaxW);
+    // Determine card width from the available overlay space (big fallback before
+    // the overlay has a real size, so cardWidth() clamps to its own maximum).
+    const int avail = width() > 0 ? width() - 80 : 2000;
+    const int cardW = cardWidth(avail);
     _card->setFixedWidth(cardW);
 
     // Let Qt calculate the preferred height from the current content.
     _card->adjustSize();
-    const int cardH = std::min(_card->sizeHint().height(), std::max(200, height() - 80));
+    const int cardH =
+        std::min(_card->sizeHint().height(), std::max(minCardHeight(), height() - 80));
     _card->resize(cardW, cardH);
 
     // Centre in the overlay.

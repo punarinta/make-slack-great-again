@@ -3,8 +3,11 @@
 #include "mention_completer.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/paint_utils.h"
+#include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "ui/user_avatar.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -89,15 +92,10 @@ protected:
 
         // ── Background ──────────────────────────────────────────────────
         const QRect r = rect();
-        if (_hovered) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().text.link);
-            p.drawRoundedRect(r, 6, 6);
-        } else if (_selected) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().surface.highlight);
-            p.drawRoundedRect(r, 6, 6);
-        }
+        if (_hovered)
+            Paint::rowHighlight(p, r, Th::c().text.link);
+        else if (_selected)
+            Paint::rowHighlight(p, r, Th::c().surface.highlight);
 
         // ── Avatar ──────────────────────────────────────────────────────
         const QRect iconR(kPadX, (kRowH - kIcon) / 2, kIcon, kIcon);
@@ -218,14 +216,7 @@ private:
         QPainterPath clip;
         clip.addRoundedRect(QRectF(iconR), 8, 8);
         if (!px.isNull()) {
-            p.save();
-            p.setClipPath(clip);
-            QPixmap scaled = px.scaled(
-                iconR.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
-            );
-            scaled.setDevicePixelRatio(dpr);
-            p.drawPixmap(iconR, scaled);
-            p.restore();
+            UserAvatar::paintPhoto(p, iconR, px, dpr, 8);
         } else {
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().presence.away);
@@ -295,11 +286,8 @@ protected:
         const QRect r = rect();
 
         // ── Selection fill (subtle gray, not the blue accent) ───────────────
-        if (_selected) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().surface.highlight);
-            p.drawRoundedRect(r, 6, 6);
-        }
+        if (_selected)
+            Paint::rowHighlight(p, r, Th::c().surface.highlight);
 
         // ── Icon (hashtag / padlock) ────────────────────────────────────────
         const QRect   iconR(kPadX, (kRowH - kIcon) / 2, kIcon, kIcon);
@@ -383,8 +371,9 @@ MentionCompleter::MentionCompleter(QWidget *parent) : QFrame(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setFocusPolicy(Qt::NoFocus);
 
-    auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(4, 4, 4, 4);
+    auto       *outer = new QVBoxLayout(this);
+    const auto &sp    = Th::c().spacing;
+    outer->setContentsMargins(sp.sm, sp.sm, sp.sm, sp.sm);
     outer->setSpacing(0);
 
     _scroll = new QScrollArea(this);
@@ -468,11 +457,13 @@ void MentionCompleter::show(const QPoint &globalPos, const QList<Item> &items, C
 
     // Bottom edge sits just above the anchor (the trigger character), in the
     // parent's coordinates; keep the popup inside the parent horizontally.
-    QPoint pos = globalPos - QPoint(0, h + 4);
+    QPoint pos = globalPos - QPoint(0, h + 4); // fallback when unparented
     if (QWidget *par = parentWidget()) {
         const QPoint local = par->mapFromGlobal(globalPos);
-        pos                = local - QPoint(0, h + 4);
-        pos.setX(qBound(0, pos.x(), qMax(0, par->width() - w)));
+        const QRect  bounds(0, 0, par->width(), par->height());
+        pos = Ui::placePopup(
+            QRect(local, QSize(0, 0)), QSize(w, h), bounds, Ui::Edge::Above, 4, Ui::Align::Start
+        );
     }
     move(pos);
     QFrame::show();

@@ -2,8 +2,10 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "user_profile_card.h"
 #include "ui/icon_utils.h"
+#include "ui/paint_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "ui/user_avatar.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
 #include "util/time_format.h"
@@ -210,14 +212,7 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
     const QRect card = cardRect();
 
     // Drop shadow
-    for (int i = kShadow; i >= 2; --i) {
-        const int alpha = (kShadow - i) * 4;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, alpha));
-        p.drawRoundedRect(
-            QRectF(card).adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
-        );
-    }
+    Paint::dropShadow(p, QRectF(card), kRadius, kShadow, 0, 4);
 
     // Card body + border
     p.setPen(Th::c().divider.strong);
@@ -251,31 +246,18 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
     // ── Avatar + name block ────────────────────────────────────────────
     const int   bodyTop = y + kPad;
     const QRect avRect(card.left() + kPad, bodyTop, kAvSize, kAvSize);
-    if (!_avatar.isNull()) {
-        QPainterPath avClip;
-        avClip.addRoundedRect(QRectF(avRect), kAvRadius, kAvRadius);
-        p.save();
-        p.setClipPath(avClip);
-        QPixmap scaled = _avatar.scaled(
-            avRect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
+    if (!_avatar.isNull())
+        UserAvatar::paintPhoto(p, avRect, _avatar, dpr, kAvRadius);
+    else
+        UserAvatar::paintInitial(
+            p,
+            avRect,
+            _user.displayLabel(),
+            Th::c().presence.away,
+            Qt::white,
+            kAvRadius,
+            kAvSize * 0.38
         );
-        scaled.setDevicePixelRatio(dpr);
-        p.drawPixmap(avRect, scaled);
-        p.restore();
-    } else {
-        p.setPen(Qt::NoPen);
-        p.setBrush(Th::c().presence.away);
-        p.drawRoundedRect(avRect, kAvRadius, kAvRadius);
-        const QString initial = _user.displayLabel().left(1).toUpper();
-        if (!initial.isEmpty()) {
-            QFont f = QApplication::font();
-            f.setBold(true);
-            f.setPointSizeF(kAvSize * 0.38);
-            p.setFont(f);
-            p.setPen(Qt::white);
-            p.drawText(avRect, Qt::AlignCenter, initial);
-        }
-    }
 
     const QFont        nFont = nameFont();
     const QFont        dFont = detailFont();

@@ -2,24 +2,20 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "browse_channels_dialog.h"
 #include "browse_list_view.h"
-#include "ui/theme.h"
-#include "ui/theme_manager.h"
+#include "ui/icon_button/icon_button.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/styled_button/styled_button.h"
 #include "ui/styled_line_edit/styled_line_edit.h"
+#include "ui/theme.h"
+#include "ui/theme_manager.h"
 
 #include <QFrame>
-#include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLineEdit>
-#include <QMouseEvent>
-#include <QPainter>
-#include <QPaintEvent>
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QVBoxLayout>
-#include <algorithm>
 
 static constexpr int kCardPadH = 24;
 static constexpr int kCardPadT = 20;
@@ -33,31 +29,21 @@ BrowseChannelsDialog::BrowseChannelsDialog(
     ImageCache                      *imgCache,
     QWidget                         *parent
 )
-    : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint),
-      _conversations(conversations), _users(users), _imgCache(imgCache) {
-    setAttribute(Qt::WA_TranslucentBackground);
-    setModal(true);
-
-    // ── Card ─────────────────────────────────────────────────────────────────
-    _card = new QFrame(this);
-    _card->setObjectName("browseCard");
-    auto *shadow = new QGraphicsDropShadowEffect(_card);
-    shadow->setBlurRadius(40);
-    shadow->setOffset(0, 6);
-    shadow->setColor(QColor(0, 0, 0, 70));
-    _card->setGraphicsEffect(shadow);
-
-    auto *cardLayout = new QVBoxLayout(_card);
-    cardLayout->setContentsMargins(0, 0, 0, 0);
-    cardLayout->setSpacing(0);
+    : AppDialog(parent, Chrome::Custom), _conversations(conversations), _users(users),
+      _imgCache(imgCache) {
+    // The frameless overlay, white card, drop shadow, backdrop dismiss and
+    // centring all come from AppDialog (Chrome::Custom = no title header). We
+    // fill the card with our own chrome (search/create top bar + tab bar + lists).
+    auto *cardLayout = contentLayout();
 
     // ── Top bar: search + Create Channel + close ──────────────────────────────
-    auto *topBar = new QWidget(_card);
+    auto *topBar = new QWidget(card());
     topBar->setStyleSheet("background: transparent;");
     {
-        auto *lay = new QHBoxLayout(topBar);
-        lay->setContentsMargins(kCardPadH, kCardPadT, kCardPadH, 12);
-        lay->setSpacing(10);
+        auto       *lay = new QHBoxLayout(topBar);
+        const auto &sp  = Th::c().spacing;
+        lay->setContentsMargins(kCardPadH, kCardPadT, kCardPadH, sp.lg);
+        lay->setSpacing(sp.md);
 
         _searchEdit = new StyledLineEdit(topBar);
         _searchEdit->setPlaceholderText(tr("Search for channels"));
@@ -70,20 +56,13 @@ BrowseChannelsDialog::BrowseChannelsDialog(
         _createBtn->setFocusPolicy(Qt::NoFocus);
         lay->addWidget(_createBtn);
 
-        _closeBtn = new QPushButton("✕", topBar);
-        _closeBtn->setFixedSize(32, 32);
-        _closeBtn->setFlat(true);
-        _closeBtn->setCursor(Qt::PointingHandCursor);
-        _closeBtn->setFocusPolicy(Qt::NoFocus);
-        QFont cf = _closeBtn->font();
-        cf.setPointSizeF(cf.pointSizeF() * 1.1);
-        _closeBtn->setFont(cf);
+        _closeBtn = new IconButton(QStringLiteral(":/ui/x.svg"), 32, 14, topBar);
         lay->addWidget(_closeBtn, 0, Qt::AlignVCenter);
     }
     cardLayout->addWidget(topBar);
 
     // ── Tab bar ───────────────────────────────────────────────────────────────
-    auto *tabBar = new QWidget(_card);
+    auto *tabBar = new QWidget(card());
     tabBar->setStyleSheet("background: transparent;");
     {
         auto *lay = new QHBoxLayout(tabBar);
@@ -107,14 +86,14 @@ BrowseChannelsDialog::BrowseChannelsDialog(
     }
     cardLayout->addWidget(tabBar);
 
-    auto *tabDivider = new QFrame(_card);
+    auto *tabDivider = new QFrame(card());
     tabDivider->setFrameShape(QFrame::HLine);
     tabDivider->setObjectName("tabDivider");
     tabDivider->setFixedHeight(1);
     cardLayout->addWidget(tabDivider);
 
     // ── Content stack: two virtual lists ───────────────────────────────────────
-    _stack = new QStackedWidget(_card);
+    _stack = new QStackedWidget(card());
     _stack->setMinimumHeight(kListMinH);
 
     _channelList = new BrowseListView(_imgCache, _stack);
@@ -150,12 +129,11 @@ BrowseChannelsDialog::BrowseChannelsDialog(
     connect(_peopleTab, &QPushButton::clicked, this, [this] { selectTab(1); });
     connect(_searchEdit, &StyledLineEdit::textChanged, this, &BrowseChannelsDialog::applyFilter);
 
+    // Base ctor already styled the card and wired themeChanged → applyTheme()
+    // (virtual, dispatches here at runtime). Style our own chrome once now, since
+    // the base ctor's initial applyTheme() ran before these widgets existed.
     applyTheme();
-
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
-        applyTheme();
-        update();
-    });
+    updateCard();
 }
 
 void BrowseChannelsDialog::buildChannelItems() {
@@ -243,24 +221,10 @@ void BrowseChannelsDialog::selectTab(int tab) {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 void BrowseChannelsDialog::applyTheme() {
-    _card->setStyleSheet(
-        "QFrame#browseCard { background: white; border-radius: 12px; border: none; }"
-    );
+    AppDialog::applyTheme(); // white rounded card
 
-    // Search input and Create button self-theme (StyledLineEdit / StyledButton).
-
-    _closeBtn->setStyleSheet(QString(
-                                 "QPushButton {"
-                                 "  border: none; border-radius: 16px;"
-                                 "  color: %1; background: transparent;"
-                                 "}"
-                                 "QPushButton:hover { background: %2; color: %3; }"
-    )
-                                 .arg(
-                                     Th::qss(Th::c().text.tertiary),
-                                     Th::qss(Th::c().surface.highlight),
-                                     Th::qss(Th::c().text.secondary)
-                                 ));
+    // Search input, Create button and close button self-theme
+    // (StyledLineEdit / StyledButton / IconButton).
 
     const QString tabActive = QString(
                                   "QPushButton {"
@@ -287,46 +251,11 @@ void BrowseChannelsDialog::applyTheme() {
     // Divider lines
     const QString lineStyle =
         QString("background: %1; border: none;").arg(Th::qss(Th::c().divider.subtle));
-    for (auto *f : _card->findChildren<QFrame *>()) {
+    for (auto *f : card()->findChildren<QFrame *>()) {
         if (f->frameShape() == QFrame::HLine)
             f->setStyleSheet(lineStyle);
     }
 }
 
-// ── Layout ────────────────────────────────────────────────────────────────────
-
-void BrowseChannelsDialog::updateCard() {
-    const int avail = width() > 0 ? width() - 80 : kCardW;
-    const int cardW = std::min(avail, kCardW);
-    _card->setFixedWidth(cardW);
-    _card->adjustSize();
-    const int cardH = std::min(_card->sizeHint().height(), std::max(kCardMinH, height() - 80));
-    _card->resize(cardW, cardH);
-    _card->move((width() - cardW) / 2, (height() - cardH) / 2);
-}
-
-// ── Events ────────────────────────────────────────────────────────────────────
-
-void BrowseChannelsDialog::paintEvent(QPaintEvent *) {
-    QPainter p(this);
-    p.fillRect(rect(), QColor(0, 0, 0, 140));
-}
-
-void BrowseChannelsDialog::showEvent(QShowEvent *e) {
-    if (QWidget *top = parentWidget() ? parentWidget()->window() : nullptr)
-        setGeometry(top->geometry());
-    updateCard();
-    QDialog::showEvent(e);
-}
-
-void BrowseChannelsDialog::resizeEvent(QResizeEvent *e) {
-    QDialog::resizeEvent(e);
-    updateCard();
-}
-
-void BrowseChannelsDialog::mousePressEvent(QMouseEvent *e) {
-    if (!_card->geometry().contains(e->pos()))
-        reject();
-    else
-        QDialog::mousePressEvent(e);
-}
+// Overlay paint / show / resize / backdrop-dismiss / card centring are all
+// inherited from AppDialog (Chrome::Custom).

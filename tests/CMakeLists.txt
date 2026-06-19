@@ -211,6 +211,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
     ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
@@ -339,6 +340,8 @@ add_msga_widget_test(test_browse_channels_dialog
     test_browse_channels_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
@@ -364,6 +367,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
@@ -390,7 +394,9 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/loading_indicator/loading_indicator.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp

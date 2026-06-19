@@ -24,7 +24,7 @@ ImageViewerOverlay::ImageViewerOverlay(QWidget *windowParent) : QWidget(windowPa
     _bar      = new QWidget(this);
     auto *lay = new QHBoxLayout(_bar);
     lay->setContentsMargins(kMargin, 0, kMargin - 8, 0);
-    lay->setSpacing(4);
+    lay->setSpacing(Th::c().spacing.sm);
 
     _nameLabel = new QLabel(_bar);
     QFont nf   = _nameLabel->font();

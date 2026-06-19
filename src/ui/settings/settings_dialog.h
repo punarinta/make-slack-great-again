@@ -19,8 +19,8 @@ class QCheckBox;
 class QRadioButton;
 class QPushButton;
 class QSpinBox;
-class QComboBox;
 class QLineEdit;
+class Dropdown;
 class StyledButton;
 class StyledLineEdit;
 class UpdateChecker;
@@ -85,12 +85,12 @@ private:
     QRadioButton *_notifAll          = nullptr;
     QRadioButton *_notifMentions     = nullptr;
     QCheckBox    *_notifSound        = nullptr;
-    QComboBox    *_notifSoundChoice  = nullptr;
+    Dropdown     *_notifSoundChoice  = nullptr;
     StyledButton *_notifSoundPreview = nullptr;
 
     // Appearance controls
     QSpinBox                 *_relevantDays    = nullptr;
-    QComboBox                *_language        = nullptr;
+    Dropdown                 *_language        = nullptr;
     QLabel                   *_langRestartNote = nullptr;
     QRadioButton             *_time12          = nullptr;
     QRadioButton             *_time24          = nullptr;
@@ -113,7 +113,7 @@ private:
         StyledButton   *keyLink       = nullptr;
     };
     QList<AiProviderRow> _aiRows;
-    QComboBox           *_aiDefault = nullptr;
+    Dropdown            *_aiDefault = nullptr;
     QLabel              *_aiError   = nullptr;
 
     // Storage controls

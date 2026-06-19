@@ -15,7 +15,8 @@
 
 DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, QWidget *parent)
     : AppDialog(tr("Delete message"), parent) {
-    auto *cl = contentLayout();
+    auto       *cl = contentLayout();
+    const auto &sp = Th::c().spacing;
 
     _warnLabel = new QLabel(tr("This action cannot be undone."));
     cl->addWidget(_warnLabel);
@@ -24,15 +25,15 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     _msgCard = new QFrame;
     _msgCard->setObjectName("msgCard");
     auto *cardLay = new QVBoxLayout(_msgCard);
-    cardLay->setContentsMargins(12, 10, 12, 10);
-    cardLay->setSpacing(4);
+    cardLay->setContentsMargins(sp.lg, sp.md, sp.lg, sp.md);
+    cardLay->setSpacing(sp.sm);
 
     if (session) {
         const auto   *user = session->findUser(msg.author);
         const QString name = user ? user->displayName : msg.author.value;
 
         auto *headerRow = new QHBoxLayout;
-        headerRow->setSpacing(8);
+        headerRow->setSpacing(sp.md);
 
         auto *nameLabel = new QLabel(name.toHtmlEscaped(), _msgCard);
         QFont nameFnt   = nameLabel->font();
@@ -64,18 +65,10 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     cl->addWidget(_msgCard);
 
     // ── Buttons ────────────────────────────────────────────────────────
-    auto *btnRow = new QHBoxLayout;
-    btnRow->setSpacing(8);
-    btnRow->addStretch();
-
     _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
     _deleteBtn = new StyledButton(tr("Delete"), StyledButton::Variant::Danger);
+    addButtonRow(_deleteBtn, _cancelBtn); // Cancel → reject() wired by base
 
-    btnRow->addWidget(_cancelBtn);
-    btnRow->addWidget(_deleteBtn);
-    cl->addLayout(btnRow);
-
-    connect(_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     connect(_deleteBtn, &QPushButton::clicked, this, &QDialog::accept);
 
     applyTheme();

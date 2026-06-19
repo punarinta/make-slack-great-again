@@ -12,7 +12,7 @@ class MessageListWidget;
 class ComposerWidget;
 class ImageCache;
 class QLabel;
-class QPushButton;
+class IconButton;
 
 // Right-side panel showing a Slack thread: root message + replies + composer.
 // Slides in when the user clicks a "N replies" bar in the main message list.
@@ -50,7 +50,7 @@ private:
     QWidget           *_headerWidget = nullptr;
     QWidget           *_leftShadow   = nullptr;
     QLabel            *_header       = nullptr;
-    QPushButton       *_closeBtn     = nullptr;
+    IconButton        *_closeBtn     = nullptr;
     MessageListWidget *_msgList      = nullptr;
     ComposerWidget    *_composer     = nullptr;
 

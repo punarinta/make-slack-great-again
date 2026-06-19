@@ -28,6 +28,51 @@ struct State {
     bool showPresence = true;
 };
 
+// Draws `pixmap` cropped to a rounded-rect of `rect` (corner `cornerRadius`),
+// scaled KeepAspectRatioByExpanding at `dpr` so it fills the box and stays crisp
+// on HiDPI (DPR set *after* scaling — the subtle part this dedups). Saves and
+// restores the painter (sets its own clip). `cornerRadius == rect.width()/2`
+// gives a circle. The shared "draw a real avatar photo" recipe.
+inline void
+paintPhoto(QPainter &p, const QRect &rect, const QPixmap &pixmap, qreal dpr, int cornerRadius) {
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    QPainterPath clip;
+    clip.addRoundedRect(QRectF(rect), cornerRadius, cornerRadius);
+    p.setClipPath(clip);
+    QPixmap scaled =
+        pixmap.scaled(rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    scaled.setDevicePixelRatio(dpr);
+    p.drawPixmap(rect, scaled);
+    p.restore();
+}
+
+// Draws the initial-letter placeholder chip: a rounded-rect filled with `bg` and
+// the uppercased first letter of `initial` (bold, `fg`, `fontPointSize` pt). The
+// caller scales the font to the box (e.g. `rect.height() * 0.38`). Empty
+// `initial` → just the chip. Does NOT save/restore — caller owns painter state.
+inline void paintInitial(
+    QPainter      &p,
+    const QRect   &rect,
+    const QString &initial,
+    const QColor  &bg,
+    const QColor  &fg,
+    int            cornerRadius,
+    qreal          fontPointSize
+) {
+    p.setPen(Qt::NoPen);
+    p.setBrush(bg);
+    p.drawRoundedRect(rect, cornerRadius, cornerRadius);
+    if (initial.isEmpty())
+        return;
+    QFont f = QApplication::font();
+    f.setBold(true);
+    f.setPointSizeF(fontPointSize);
+    p.setFont(f);
+    p.setPen(fg);
+    p.drawText(rect, Qt::AlignCenter, initial.left(1).toUpper());
+}
+
 // Paints a rounded-rect avatar + a 10px presence/DND indicator dot.
 // The dot is placed at the bottom-right corner of `rect`, overhanging it by 3px
 // on each side — callers must allocate that extra space (e.g. a 36×36 widget
@@ -55,29 +100,12 @@ inline void paint(
     p.setRenderHint(QPainter::Antialiasing);
 
     // ── Avatar image or placeholder ────────────────────────────────────
-    if (!pixmap.isNull()) {
-        QPainterPath clip;
-        clip.addRoundedRect(QRectF(rect), cornerRadius, cornerRadius);
-        p.setClipPath(clip);
-        QPixmap scaled = pixmap.scaled(
-            rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
+    if (!pixmap.isNull())
+        paintPhoto(p, rect, pixmap, dpr, cornerRadius);
+    else
+        paintInitial(
+            p, rect, initial, Th::c().presence.away, Qt::white, cornerRadius, rect.height() * 0.38
         );
-        scaled.setDevicePixelRatio(dpr);
-        p.drawPixmap(rect, scaled);
-        p.setClipping(false);
-    } else {
-        p.setPen(Qt::NoPen);
-        p.setBrush(Th::c().presence.away);
-        p.drawRoundedRect(rect, cornerRadius, cornerRadius);
-        if (!initial.isEmpty()) {
-            p.setPen(Qt::white);
-            QFont f = QApplication::font();
-            f.setBold(true);
-            f.setPointSizeF(rect.height() * 0.38);
-            p.setFont(f);
-            p.drawText(rect, Qt::AlignCenter, initial.left(1).toUpper());
-        }
-    }
 
     // ── Presence / DND dot ─────────────────────────────────────────────
     // Apps/bots have no presence; drawing a dot for them is misleading.

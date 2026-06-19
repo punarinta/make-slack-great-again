@@ -11,6 +11,7 @@
 #include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/styled_button/styled_button.h"
+#include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
@@ -192,34 +193,24 @@ public:
                 "  border: 1px solid %2;"
                 "  border-radius: 8px;"
                 "}"
-                "QLabel { border: none; font-size: %6px; color: %3; background: transparent; }"
-                "QLineEdit {"
-                "  border: 1px solid %2;"
-                "  border-radius: 4px;"
-                "  padding: 4px 8px;"
-                "  font-size: %7px;"
-                "  color: %4;"
-                "  background: %1;"
-                "}"
-                "QLineEdit:focus { border-color: %5; }"
+                // The two inputs are StyledLineEdit (self-themed).
+                "QLabel { border: none; font-size: %4px; color: %3; background: transparent; }"
             )
                 .arg(Th::qss(Th::c().surface.raised))
                 .arg(Th::qss(Th::c().divider.strong))
                 .arg(Th::qss(Th::c().text.secondary))
-                .arg(Th::qss(Th::c().text.primary))
-                .arg(Th::qss(Th::c().accent.def))
                 .arg(Th::c().fonts.caption)
-                .arg(Th::c().fonts.md)
         );
 
-        auto *lay = new QVBoxLayout(this);
-        lay->setContentsMargins(12, 12, 12, 12);
-        lay->setSpacing(8);
+        auto       *lay = new QVBoxLayout(this);
+        const auto &sp  = Th::c().spacing;
+        lay->setContentsMargins(sp.lg, sp.lg, sp.lg, sp.lg);
+        lay->setSpacing(sp.md);
 
-        _urlEdit = new QLineEdit(this);
+        _urlEdit = new StyledLineEdit(this);
         _urlEdit->setPlaceholderText("https://");
         _urlEdit->setMinimumWidth(280);
-        _textEdit = new QLineEdit(this);
+        _textEdit = new StyledLineEdit(this);
 
         auto *insertBtn = new StyledButton(t.insertLabel, StyledButton::Variant::Primary, this);
         insertBtn->setSize(StyledButton::Size::Small);
@@ -228,7 +219,7 @@ public:
         cancelBtn->setSize(StyledButton::Size::Small);
 
         auto *btnRow = new QHBoxLayout;
-        btnRow->setSpacing(8);
+        btnRow->setSpacing(sp.md);
         btnRow->addStretch();
         btnRow->addWidget(cancelBtn);
         btnRow->addWidget(insertBtn);
@@ -241,10 +232,10 @@ public:
 
         connect(cancelBtn, &QPushButton::clicked, this, &LinkPopup::close);
         connect(insertBtn, &QPushButton::clicked, this, [this] { tryInsert(); });
-        connect(
-            _urlEdit, &QLineEdit::returnPressed, _textEdit, QOverload<>::of(&QLineEdit::setFocus)
-        );
-        connect(_textEdit, &QLineEdit::returnPressed, this, [this] { tryInsert(); });
+        connect(_urlEdit, &StyledLineEdit::returnPressed, this, [this] {
+            _textEdit->lineEdit()->setFocus();
+        });
+        connect(_textEdit, &StyledLineEdit::returnPressed, this, [this] { tryInsert(); });
     }
 
     void open(const QPoint &belowLeft, const QString &selectedText, Callback cb) {
@@ -255,14 +246,14 @@ public:
         move(belowLeft);
         show();
         raise();
-        _urlEdit->setFocus();
+        _urlEdit->lineEdit()->setFocus();
     }
 
 private:
     void tryInsert() {
         const QString url = _urlEdit->text().trimmed();
         if (url.isEmpty()) {
-            _urlEdit->setFocus();
+            _urlEdit->lineEdit()->setFocus();
             return;
         }
         const QString label = _textEdit->text().trimmed();
@@ -271,9 +262,9 @@ private:
             _cb(url, label);
     }
 
-    QLineEdit *_urlEdit  = nullptr;
-    QLineEdit *_textEdit = nullptr;
-    Callback   _cb;
+    StyledLineEdit *_urlEdit  = nullptr;
+    StyledLineEdit *_textEdit = nullptr;
+    Callback        _cb;
 };
 
 // ── SchedulePopup ─────────────────────────────────────────────────────────────
@@ -315,9 +306,10 @@ public:
                 .arg(Th::c().fonts.md)
         );
 
-        auto *lay = new QVBoxLayout(this);
-        lay->setContentsMargins(12, 12, 12, 12);
-        lay->setSpacing(8);
+        auto       *lay = new QVBoxLayout(this);
+        const auto &sp  = Th::c().spacing;
+        lay->setContentsMargins(sp.lg, sp.lg, sp.lg, sp.lg);
+        lay->setSpacing(sp.md);
 
         lay->addWidget(new QLabel(sendAtLabel, this));
 
@@ -380,8 +372,9 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         _typingPending = true; // re-arm: next keypress will emit again
     });
 
-    auto *outerLayout = new QVBoxLayout(this);
-    outerLayout->setContentsMargins(12, 8, 12, 8);
+    auto       *outerLayout = new QVBoxLayout(this);
+    const auto &sp          = Th::c().spacing;
+    outerLayout->setContentsMargins(sp.lg, sp.md, sp.lg, sp.md);
     outerLayout->setSpacing(0);
 
     _box = new QFrame(this);
@@ -465,8 +458,8 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     _bottomBar->setFixedHeight(36);
     _bottomBar->setStyleSheet("QWidget { background: transparent; }");
     auto *bbLayout = new QHBoxLayout(_bottomBar);
-    bbLayout->setContentsMargins(8, 3, 4, 3);
-    bbLayout->setSpacing(4);
+    bbLayout->setContentsMargins(sp.md, sp.xs, sp.sm, sp.xs);
+    bbLayout->setSpacing(sp.sm);
 
     auto registerTip = [&](QWidget *btn, const QString &text) {
         btn->setAttribute(Qt::WA_Hover);

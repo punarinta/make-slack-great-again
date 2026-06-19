@@ -304,7 +304,8 @@ QWidget *MainWindow::buildLoggedOutPage() {
     );
     _loggedOutPageLayout->addWidget(page);
 
-    auto *outer = new QVBoxLayout(page);
+    auto       *outer = new QVBoxLayout(page);
+    const auto &sp    = Th::c().spacing;
     outer->setAlignment(Qt::AlignCenter);
     outer->setContentsMargins(32, 32, 32, 32);
 
@@ -313,7 +314,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *layout = new QVBoxLayout(inner);
     layout->setAlignment(Qt::AlignCenter);
-    layout->setSpacing(16);
+    layout->setSpacing(sp.xl);
     layout->setContentsMargins(0, 0, 0, 0);
 
     auto *icon = new QLabel(inner);
@@ -324,7 +325,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *titleBlock  = new QWidget(inner);
     auto *titleLayout = new QVBoxLayout(titleBlock);
     titleLayout->setContentsMargins(0, 0, 0, 0);
-    titleLayout->setSpacing(8);
+    titleLayout->setSpacing(sp.md);
 
     auto *title = new QLabel("MSGA", titleBlock);
     title->setAlignment(Qt::AlignCenter);
@@ -357,7 +358,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     layout->addWidget(icon, 0, Qt::AlignCenter);
     layout->addWidget(titleBlock);
-    layout->addSpacing(12);
+    layout->addSpacing(sp.lg);
     layout->addWidget(loginBtn);
 
     outer->addWidget(inner, 0, Qt::AlignCenter);
@@ -513,9 +514,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     msgHeader->setObjectName("msgHeader");
     msgHeader->setAttribute(Qt::WA_StyledBackground);
     msgHeader->setFixedHeight(48);
-    auto *msgHeaderLayout = new QHBoxLayout(msgHeader);
-    msgHeaderLayout->setContentsMargins(16, 0, 8, 0);
-    msgHeaderLayout->setSpacing(6);
+    const auto &sp              = Th::c().spacing;
+    auto       *msgHeaderLayout = new QHBoxLayout(msgHeader);
+    msgHeaderLayout->setContentsMargins(sp.xl, 0, sp.md, 0);
+    msgHeaderLayout->setSpacing(sp.md);
 
     _headerAvatar = new HeaderAvatarWidget(msgHeader);
     _headerAvatar->setVisible(false);
@@ -536,7 +538,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _huddleBtnTooltip = new PopupTooltip(_huddleBtn);
     _huddleBtn->installEventFilter(this);
     msgHeaderLayout->addWidget(_huddleBtn);
-    msgHeaderLayout->addSpacing(2);
+    msgHeaderLayout->addSpacing(sp.xs);
 
     _starBtn = new QPushButton(msgHeader);
     _starBtn->setFixedSize(28, 28);
@@ -547,7 +549,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _starBtnTooltip = new PopupTooltip(_starBtn);
     _starBtn->installEventFilter(this);
     msgHeaderLayout->addWidget(_starBtn);
-    msgHeaderLayout->addSpacing(2);
+    msgHeaderLayout->addSpacing(sp.xs);
 
     _searchBtn = new QPushButton(msgHeader);
     _searchBtn->setObjectName("headerSearchBtn");
@@ -2054,11 +2056,12 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
 void MainWindow::updateRoundedMask() {
     if (!_frame)
         return;
-    const bool windowed = !isMaximized() && !isFullScreen();
+    const bool  windowed = !isMaximized() && !isFullScreen();
+    const auto &sp       = Th::c().spacing;
     if (_rightPanelLayout)
-        _rightPanelLayout->setContentsMargins(0, 0, windowed ? 4 : 0, windowed ? 4 : 0);
+        _rightPanelLayout->setContentsMargins(0, 0, windowed ? sp.sm : 0, windowed ? sp.sm : 0);
     if (_loggedOutPageLayout)
-        _loggedOutPageLayout->setContentsMargins(0, 0, windowed ? 4 : 0, windowed ? 4 : 0);
+        _loggedOutPageLayout->setContentsMargins(0, 0, windowed ? sp.sm : 0, windowed ? sp.sm : 0);
     if (!windowed) {
         _frame->clearMask();
         return;

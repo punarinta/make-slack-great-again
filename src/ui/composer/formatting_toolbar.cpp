@@ -44,9 +44,10 @@ FormattingToolbar::FormattingToolbar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(32);
     _tooltip = new PopupTooltip(this);
 
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(8, 3, 8, 3);
-    layout->setSpacing(5);
+    auto       *layout = new QHBoxLayout(this);
+    const auto &sp     = Th::c().spacing;
+    layout->setContentsMargins(sp.md, sp.xs, sp.md, sp.xs);
+    layout->setSpacing(sp.sm);
 
     auto makeBtn = [&](const QString &svgPath, const QString &tooltipText) {
         auto *btn = new QToolButton(this);

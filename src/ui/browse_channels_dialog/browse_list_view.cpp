@@ -109,7 +109,7 @@ void BrowseListView::doMouseMove(QMouseEvent *e) {
         }
         return;
     }
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const int sbHitX = scrollThumbHitX();
     if (e->pos().x() >= sbHitX && isOnScrollThumb(e->pos().y(), total))
         viewport()->setCursor(Qt::SizeVerCursor);
     else
@@ -121,7 +121,7 @@ void BrowseListView::doMousePress(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton)
         return;
     const int total  = static_cast<int>(_filtered.size()) * kRowH;
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const int sbHitX = scrollThumbHitX();
     if (e->pos().x() >= sbHitX && isOnScrollThumb(e->pos().y(), total)) {
         _sbDragging        = true;
         _sbDragStartY      = e->pos().y();

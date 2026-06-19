@@ -219,7 +219,7 @@ public:
         cl->addWidget(warn);
 
         auto *btnRow = new QHBoxLayout;
-        btnRow->setSpacing(8);
+        btnRow->setSpacing(Th::c().spacing.md);
         btnRow->addStretch();
 
         auto *cancelBtn = new StyledButton(
@@ -252,9 +252,10 @@ CanvasPage::CanvasPage(QWidget *parent) : QWidget(parent) {
 
     _column = new QWidget(this);
     _column->setMaximumWidth(kColumnMaxW);
-    auto *col = new QVBoxLayout(_column);
-    col->setContentsMargins(16, 56, 16, 24);
-    col->setSpacing(12);
+    auto       *col = new QVBoxLayout(_column);
+    const auto &sp  = Th::c().spacing;
+    col->setContentsMargins(sp.xl, 56, sp.xl, sp.xxl);
+    col->setSpacing(sp.lg);
 
     _roNotice = new QLabel(_column); // text set by setReadOnlyUi per cause
     _roNotice->setWordWrap(true);
@@ -744,31 +745,13 @@ void CanvasPage::applyTheme() {
     );
     _body->setStyleSheet(
         QString(
+            // (color is the softer document-body tone, not near-black primary)
             "QTextBrowser { background: transparent; border: none;"
             " font-size: %1px; color: %2; }"
-            // (color is the softer document-body tone, not near-black primary)
-            // Our scrollbar design: thin rounded handle, transparent track, no arrows.
-            "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
-            "QScrollBar::handle:vertical { background: %3; border-radius: 4px;"
-            " min-height: 28px; }"
-            "QScrollBar::handle:vertical:hover { background: %4; }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
-            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-            " background: transparent; }"
-            "QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }"
-            "QScrollBar::handle:horizontal { background: %3; border-radius: 4px;"
-            " min-width: 28px; }"
-            "QScrollBar::handle:horizontal:hover { background: %4; }"
-            "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
-            "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-            " background: transparent; }"
         )
             .arg(th.fonts.lg)
-            .arg(
-                Th::qss(th.text.documentBody),
-                Th::qss(th.divider.strong),
-                Th::qss(th.text.secondary)
-            )
+            .arg(Th::qss(th.text.documentBody)) +
+        Th::scrollBarQss()
     );
     // Heading sizes are applied per-block in styleHeadings() (Qt's rich-text
     // engine ignores font-size on h1..h6 in the default stylesheet), so this

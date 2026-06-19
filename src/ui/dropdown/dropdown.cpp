@@ -43,23 +43,42 @@ void Dropdown::applyStyle() {
     update();
 }
 
-void Dropdown::addItem(const QString &text) {
+void Dropdown::addItem(const QString &text, const QVariant &data) {
     _items.push_back(text);
+    _data.push_back(data);
+    _isSep.push_back(false);
     if (_current < 0)
         _current = 0;
     updateGeometry();
     update();
 }
 
+void Dropdown::addSeparator() {
+    _items.push_back(QString());
+    _data.push_back(QVariant());
+    _isSep.push_back(true);
+}
+
 void Dropdown::setItems(const QStringList &items) {
     _items   = items;
+    _data    = QList<QVariant>(items.size());
+    _isSep   = QList<bool>(items.size(), false);
     _current = items.isEmpty() ? -1 : 0;
     updateGeometry();
     update();
 }
 
+void Dropdown::clear() {
+    _items.clear();
+    _data.clear();
+    _isSep.clear();
+    _current = -1;
+    updateGeometry();
+    update();
+}
+
 void Dropdown::setCurrentIndex(int index) {
-    if (index < 0 || index >= _items.size() || index == _current)
+    if (index < 0 || index >= _items.size() || index == _current || _isSep.at(index))
         return;
     _current = index;
     update();
@@ -68,6 +87,17 @@ void Dropdown::setCurrentIndex(int index) {
 
 QString Dropdown::currentText() const {
     return (_current >= 0 && _current < _items.size()) ? _items.at(_current) : QString();
+}
+
+QVariant Dropdown::currentData() const {
+    return (_current >= 0 && _current < _data.size()) ? _data.at(_current) : QVariant();
+}
+
+int Dropdown::findData(const QVariant &data) const {
+    for (int i = 0; i < _data.size(); ++i)
+        if (!_isSep.at(i) && _data.at(i) == data)
+            return i;
+    return -1;
 }
 
 QSize Dropdown::sizeHint() const {
@@ -125,7 +155,11 @@ void Dropdown::openMenu() {
     if (_items.isEmpty())
         return;
     auto *menu = new ContextMenu(this);
-    for (int i = 0; i < _items.size(); ++i)
+    for (int i = 0; i < _items.size(); ++i) {
+        if (_isSep.at(i)) {
+            menu->addSeparator();
+            continue;
+        }
         menu->addItem(
             _items.at(i),
             [this, i] { setCurrentIndex(i); },
@@ -133,6 +167,7 @@ void Dropdown::openMenu() {
             /*iconPath=*/{},
             /*selected=*/i == _current
         );
+    }
     _open = true;
     applyStyle();
     // The popup self-deletes on close (WA_DeleteOnClose); clear our highlight then.

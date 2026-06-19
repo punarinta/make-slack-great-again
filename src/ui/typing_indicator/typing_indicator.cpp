@@ -19,8 +19,9 @@ constexpr int kPurgeMs  = 1000; // how often we drop stale typers
 TypingIndicatorWidget::TypingIndicatorWidget(QWidget *parent) : QWidget(parent) {
     setObjectName("typingIndicator");
 
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(14, 1, 14, 1);
+    auto       *layout = new QHBoxLayout(this);
+    const auto &sp     = Th::c().spacing;
+    layout->setContentsMargins(sp.lg, 1, sp.lg, 1);
     layout->setSpacing(0);
 
     _label = new QLabel(this);

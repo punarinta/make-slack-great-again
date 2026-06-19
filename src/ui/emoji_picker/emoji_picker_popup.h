@@ -13,6 +13,7 @@ class QLineEdit;
 class QWidget;
 class Session;
 class ImageCache;
+class StyledLineEdit;
 
 // Virtual, sectioned emoji grid — zero-widget, custom-painted scroll area (same
 // approach as the message list, taken from Telegram desktop). Only the rows
@@ -177,7 +178,7 @@ private:
     void applySkinTone(int tone);
     void updateSkinToneButton();
 
-    QLineEdit         *_search  = nullptr;
+    StyledLineEdit    *_search  = nullptr;
     EmojiGrid         *_grid    = nullptr;
     QWidget           *_catBar  = nullptr;
     class QPushButton *_skinBtn = nullptr;

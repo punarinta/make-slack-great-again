@@ -273,4 +273,11 @@ QString qss(const QColor &color);
 // Covers only things that can't be done per-widget (QToolTip, etc.).
 QString globalQss();
 
+// Our scrollbar look: thin rounded handle (`divider.strong`, hover
+// `text.secondary`), transparent track, no arrows — vertical + horizontal.
+// Shared by every content scroll area (canvas, settings, search). Re-emit on
+// themeChanged where it's applied. `width` is the bar thickness, `radius` the
+// handle corner radius.
+QString scrollBarQss(int width = 8, int radius = 4);
+
 } // namespace Th

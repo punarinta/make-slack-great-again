@@ -3,6 +3,7 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "text/mrkdwn_parser.h"
+#include "ui/paint_utils.h"
 #include "ui/theme.h"
 #include "util/emoji.h"
 #include "util/emoji_font.h"
@@ -475,7 +476,7 @@ void paintCodeBlockChrome(QPainter &p, const QTextDocument *doc) {
     p.setPen(QPen(Th::c().message.codeBlockBorder, 1));
     p.setBrush(Th::c().message.codeBlockBg);
     for (const QRectF &r : rects)
-        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+        Paint::borderedRect(p, r, 4);
     p.restore();
 }
 
@@ -641,7 +642,7 @@ void paintBotButtonChrome(QPainter &p, const QTextDocument *doc) {
     p.setPen(QPen(Th::c().message.fileChipBorder, 1));
     p.setBrush(Th::c().surface.raised);
     for (const QRectF &r : rects)
-        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+        Paint::borderedRect(p, r, 4);
     p.restore();
 }
 

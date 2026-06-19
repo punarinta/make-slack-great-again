@@ -162,6 +162,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/forward_dialog/forward_dialog.cpp
     src/ui/styled_line_edit/styled_line_edit.cpp
     src/ui/styled_button/styled_button.cpp
+    src/ui/icon_button/icon_button.cpp
     src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
     src/ui/profile_dialog/profile_dialog.cpp

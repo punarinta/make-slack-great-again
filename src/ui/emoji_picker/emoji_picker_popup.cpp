@@ -4,6 +4,8 @@
 #include "session/session.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/popup_placement.h"
+#include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji.h"
@@ -331,13 +333,13 @@ void EmojiGrid::doPaint(QPaintEvent *) {
         }
     }
 
-    paintScrollThumb(p, contentHeight(), QColor(0, 0, 0, 80));
+    paintScrollThumb(p, contentHeight(), Th::c().divider.strong);
 }
 
 void EmojiGrid::doMousePress(QMouseEvent *event) {
     const QPoint pos = event->pos();
 
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const int sbHitX = scrollThumbHitX();
     if (pos.x() >= sbHitX && isOnScrollThumb(pos.y(), contentHeight())) {
         _sbDragging        = true;
         _sbDragStartY      = pos.y();
@@ -411,9 +413,10 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     if (_skinTone != 0 && (_skinTone < 2 || _skinTone > 6))
         _skinTone = 0;
 
-    auto *lay = new QVBoxLayout(this);
-    lay->setContentsMargins(8, 6, 8, 6);
-    lay->setSpacing(6);
+    auto       *lay = new QVBoxLayout(this);
+    const auto &sp  = Th::c().spacing;
+    lay->setContentsMargins(sp.md, sp.md, sp.md, sp.md);
+    lay->setSpacing(sp.md);
 
     // Category icon bar.
     _catBar      = new QWidget(this);
@@ -423,14 +426,9 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     lay->addWidget(_catBar);
 
     // Search field.
-    _search = new QLineEdit(this);
+    _search = new StyledLineEdit(this);
     _search->setPlaceholderText(tr("Search all emoji"));
-    {
-        QFont sf = _search->font();
-        sf.setPixelSize(Th::c().fonts.md);
-        _search->setFont(sf);
-        _search->setFixedHeight(QFontMetrics(sf).height() + 12 + 2);
-    }
+    _search->setLeadingIcon(QStringLiteral(":/ui/search.svg"));
     lay->addWidget(_search);
 
     _grid = new EmojiGrid(this);
@@ -441,13 +439,13 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     // an inline row (not a nested Qt::Popup — those don't honour move() on
     // Wayland, so a popover selector would be unreliable / invisible there).
     auto *bottom = new QHBoxLayout;
-    bottom->setContentsMargins(2, 0, 2, 0);
-    bottom->setSpacing(2);
+    bottom->setContentsMargins(sp.xs, 0, sp.xs, 0);
+    bottom->setSpacing(sp.xs);
     bottom->addStretch(1);
     _toneRow      = new QWidget(this);
     auto *toneLay = new QHBoxLayout(_toneRow);
     toneLay->setContentsMargins(0, 0, 0, 0);
-    toneLay->setSpacing(2);
+    toneLay->setSpacing(sp.xs);
     _toneRow->hide();
     bottom->addWidget(_toneRow);
     _skinBtn = new QPushButton(tr("Skin Tone"), this);
@@ -458,7 +456,7 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
     lay->addLayout(bottom);
     buildSkinToneRow();
 
-    _search->installEventFilter(this);
+    _search->lineEdit()->installEventFilter(this);
 
     connect(_grid, &EmojiGrid::emojiActivated, this, [this](const QString &name) {
         // Record the base (tone-stripped) name for the Frequently Used section.
@@ -468,7 +466,7 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
         emit emojiSelected(name);
     });
     connect(_grid, &EmojiGrid::topSectionChanged, this, &EmojiPickerPopup::setActiveTab);
-    connect(_search, &QLineEdit::textChanged, this, [this](const QString &text) {
+    connect(_search, &StyledLineEdit::textChanged, this, [this](const QString &text) {
         rebuild(text.trimmed());
     });
     connect(_skinBtn, &QPushButton::clicked, this, &EmojiPickerPopup::toggleSkinToneRow);
@@ -482,42 +480,34 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
 }
 
 void EmojiPickerPopup::applyTheme() {
+    // The search field is a StyledLineEdit (self-themed); only the frame, the
+    // category QToolButtons and the skin-tone QPushButton are styled here.
     setStyleSheet(QString(
                       "QFrame#emojiPicker {"
                       "  background: %1;"
                       "  border: 1px solid %2;"
                       "  border-radius: 8px;"
                       "}"
-                      "QLineEdit {"
-                      "  border: 1px solid %2;"
-                      "  border-radius: 6px;"
-                      "  padding: 5px 10px;"
-                      "  font-size: %5px;"
-                      "  color: %3;"
-                      "  background: %1;"
-                      "}"
-                      "QLineEdit:focus { border: 1.5px solid %4; }"
                       "QToolButton {"
                       "  border: none; background: transparent; padding: 5px;"
                       "  border-bottom: 2px solid transparent;"
                       "}"
-                      "QToolButton:hover { background: %6; border-radius: 4px; }"
-                      "QToolButton:checked { border-bottom: 2px solid %4; }"
+                      "QToolButton:hover { background: %4; border-radius: 4px; }"
+                      "QToolButton:checked { border-bottom: 2px solid %3; }"
                       "QPushButton {"
-                      "  border: none; background: transparent; color: %7;"
-                      "  padding: 3px 6px; font-size: %8px;"
+                      "  border: none; background: transparent; color: %5;"
+                      "  padding: 3px 6px; font-size: %7px;"
                       "}"
-                      "QPushButton:hover { color: %3; }"
+                      "QPushButton:hover { color: %6; }"
     )
                       .arg(
                           Th::qss(Th::c().surface.raised),
                           Th::qss(Th::c().divider.strong),
-                          Th::qss(Th::c().text.primary),
                           Th::qss(Th::c().accent.def),
-                          QString::number(Th::c().fonts.md),
-                          Th::qss(Th::c().surface.highlight)
+                          Th::qss(Th::c().surface.highlight),
+                          Th::qss(Th::c().text.secondary),
+                          Th::qss(Th::c().text.primary)
                       )
-                      .arg(Th::qss(Th::c().text.secondary))
                       .arg(Th::c().fonts.sm));
     buildCategoryBar(); // re-tint category icons
     updateSkinToneButton();
@@ -538,15 +528,12 @@ void EmojiPickerPopup::open(const QPoint &globalPos) {
     rebuild();
     // Clamp so the panel stays on the screen the anchor is on.
     QPoint pos = globalPos;
-    if (QScreen *scr = QGuiApplication::screenAt(globalPos)) {
-        const QRect a = scr->availableGeometry();
-        pos.setX(std::clamp(pos.x(), a.left(), a.right() - width()));
-        pos.setY(std::clamp(pos.y(), a.top(), a.bottom() - height()));
-    }
+    if (QScreen *scr = QGuiApplication::screenAt(globalPos))
+        pos = Ui::clampInto(size(), globalPos, scr->availableGeometry());
     move(pos);
     show();
     raise();
-    _search->setFocus();
+    _search->lineEdit()->setFocus();
 }
 
 // Build a grid cell for a built-in or custom emoji given its base short-name.
@@ -777,7 +764,7 @@ void EmojiPickerPopup::toggleSkinToneRow() {
 }
 
 bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
-    if (obj == _search && event->type() == QEvent::KeyPress) {
+    if (obj == _search->lineEdit() && event->type() == QEvent::KeyPress) {
         auto *ke = static_cast<QKeyEvent *>(event);
         switch (ke->key()) {
         case Qt::Key_Escape:
@@ -794,13 +781,13 @@ bool EmojiPickerPopup::eventFilter(QObject *obj, QEvent *event) {
             _grid->moveSelection(0, 1);
             return true;
         case Qt::Key_Left:
-            if (_search->cursorPosition() == 0) {
+            if (_search->lineEdit()->cursorPosition() == 0) {
                 _grid->moveSelection(-1, 0);
                 return true;
             }
             break;
         case Qt::Key_Right:
-            if (_search->cursorPosition() == _search->text().size()) {
+            if (_search->lineEdit()->cursorPosition() == _search->text().size()) {
                 _grid->moveSelection(1, 0);
                 return true;
             }

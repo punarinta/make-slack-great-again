@@ -3,6 +3,7 @@
 #include "thread_panel.h"
 #include "ui/message_list/message_list.h"
 #include "ui/composer/composer_widget.h"
+#include "ui/icon_button/icon_button.h"
 #include "ui/icon_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -57,18 +58,16 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     _headerWidget = new QWidget(this);
     _headerWidget->setObjectName("threadHeader");
     _headerWidget->setFixedHeight(48);
-    auto *headerLayout = new QHBoxLayout(_headerWidget);
-    headerLayout->setContentsMargins(16, 0, 8, 0);
-    headerLayout->setSpacing(8);
+    auto       *headerLayout = new QHBoxLayout(_headerWidget);
+    const auto &sp           = Th::c().spacing;
+    headerLayout->setContentsMargins(sp.xl, 0, sp.md, 0);
+    headerLayout->setSpacing(sp.md);
 
     _header = new QLabel(tr("Thread"), _headerWidget);
     headerLayout->addWidget(_header, 1);
 
-    _closeBtn = new QPushButton(_headerWidget);
+    _closeBtn = new IconButton(QStringLiteral(":/ui/x.svg"), 32, 18, _headerWidget);
     _closeBtn->setObjectName("threadCloseBtn");
-    _closeBtn->setFixedSize(32, 32);
-    _closeBtn->setIconSize(QSize(18, 18));
-    _closeBtn->setCursor(Qt::PointingHandCursor);
     connect(_closeBtn, &QPushButton::clicked, this, &ThreadPanel::closeRequested);
     headerLayout->addWidget(_closeBtn);
     layout->addWidget(_headerWidget);
@@ -158,15 +157,7 @@ void ThreadPanel::applyTheme() {
     _header->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
                                .arg(Th::c().fonts.lg)
                                .arg(Th::qss(Th::c().text.primary)));
-    _closeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(18, 18), Th::c().icon.def));
-    _closeBtn->setStyleSheet(
-        QString(
-            "QPushButton#threadCloseBtn { border: none; background: transparent;"
-            "  border-radius: 4px; }"
-            "QPushButton#threadCloseBtn:hover { background: %1; }"
-        )
-            .arg(Th::qss(Th::c().surface.highlight))
-    );
+    // _closeBtn (IconButton) self-themes.
 }
 
 void ThreadPanel::layoutShadow() {

@@ -67,3 +67,7 @@ void VirtualListWidget::paintScrollThumb(QPainter &p, int totalH, const QColor &
     p.setBrush(color);
     p.drawRoundedRect(sbX, thumbY, kScrollW, thumbH, kScrollW / 2.0, kScrollW / 2.0);
 }
+
+int VirtualListWidget::scrollThumbHitX() const {
+    return viewport()->width() - kScrollW - 2 - 6;
+}

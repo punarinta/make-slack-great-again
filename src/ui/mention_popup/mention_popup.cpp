@@ -4,8 +4,11 @@
 #include "session/session.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/paint_utils.h"
+#include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "ui/user_avatar.h"
 
 #include <QCoreApplication>
 #include <QFontMetrics>
@@ -103,11 +106,8 @@ protected:
         const QRect r   = rect();
 
         // ── Selection fill (subtle gray, dark text — not the blue accent) ──
-        if (_selected) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().surface.highlight);
-            p.drawRoundedRect(r, 6, 6);
-        }
+        if (_selected)
+            Paint::rowHighlight(p, r, Th::c().surface.highlight);
 
         // ── Avatar / alias icon ─────────────────────────────────────────────
         const QRect iconR(kPadX, (kRowH - kAvatar) / 2, kAvatar, kAvatar);
@@ -231,14 +231,7 @@ private:
         QPainterPath clip;
         clip.addRoundedRect(QRectF(iconR), 6, 6);
         if (!px.isNull()) {
-            p.save();
-            p.setClipPath(clip);
-            QPixmap scaled = px.scaled(
-                iconR.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
-            );
-            scaled.setDevicePixelRatio(dpr);
-            p.drawPixmap(iconR, scaled);
-            p.restore();
+            UserAvatar::paintPhoto(p, iconR, px, dpr, 6);
         } else {
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().presence.away);
@@ -343,9 +336,14 @@ void MentionPopup::open(const QPoint &anchor, const QString &query, bool isDm) {
     // Re-anchor on every call: place the popup so its bottom edge sits just
     // above the '@' that triggered it. When filtering shrinks the list the
     // popup must shrink toward the anchor instead of leaving a gap above it.
-    const QPoint local = parentWidget()->mapFromGlobal(anchor);
-    QPoint       pos   = local - QPoint(0, height() + 4);
-    pos.setX(qBound(0, pos.x(), qMax(0, parentWidget()->width() - width())));
+    QWidget     *par   = parentWidget();
+    const QPoint local = par->mapFromGlobal(anchor);
+    // Bottom edge just above the '@'; flip below + clamp within the parent if
+    // there's no room above (previously y was never clamped → ran off-screen).
+    const QRect  bounds(0, 0, par->width(), par->height());
+    const QPoint pos = Ui::placePopup(
+        QRect(local, QSize(0, 0)), size(), bounds, Ui::Edge::Above, 4, Ui::Align::Start
+    );
     move(pos);
 
     if (!isVisible()) {

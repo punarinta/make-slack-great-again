@@ -25,9 +25,10 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
     // ── Step 1: Name ──────────────────────────────────────────────────────────
     auto *page1 = new QWidget;
     {
-        auto *lay = new QVBoxLayout(page1);
+        auto       *lay = new QVBoxLayout(page1);
+        const auto &sp  = Th::c().spacing;
         lay->setContentsMargins(0, 0, 0, 0);
-        lay->setSpacing(8);
+        lay->setSpacing(sp.md);
 
         _nameSectionLabel = new QLabel(tr("Name"), page1);
         QFont lf          = _nameSectionLabel->font();
@@ -49,7 +50,7 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
         _helperLabel->setWordWrap(true);
         lay->addWidget(_helperLabel);
 
-        lay->addSpacing(8);
+        lay->addSpacing(sp.md);
 
         auto *btnRow = new QHBoxLayout;
         btnRow->addStretch();
@@ -63,14 +64,15 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
     // ── Step 2: Visibility ────────────────────────────────────────────────────
     auto *page2 = new QWidget;
     {
-        auto *lay = new QVBoxLayout(page2);
+        auto       *lay = new QVBoxLayout(page2);
+        const auto &sp  = Th::c().spacing;
         lay->setContentsMargins(0, 0, 0, 0);
-        lay->setSpacing(8);
+        lay->setSpacing(sp.md);
 
         _channelSubtitle = new QLabel(page2);
         lay->addWidget(_channelSubtitle);
 
-        lay->addSpacing(4);
+        lay->addSpacing(sp.sm);
 
         _visSectionLabel = new QLabel(tr("Visibility"), page2);
         QFont lf         = _visSectionLabel->font();
@@ -86,10 +88,10 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
         lay->addWidget(_privateRadio);
 
         _privateDesc = new QLabel(tr("Can only be viewed or joined by invitation"), page2);
-        _privateDesc->setContentsMargins(24, 0, 0, 0);
+        _privateDesc->setContentsMargins(sp.xxl, 0, 0, 0);
         lay->addWidget(_privateDesc);
 
-        lay->addSpacing(8);
+        lay->addSpacing(sp.md);
 
         auto *btnRow = new QHBoxLayout;
         _stepLabel   = new QLabel(tr("Step 2 of 2"), page2);
@@ -99,7 +101,7 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
         btnRow->addWidget(_stepLabel);
         btnRow->addStretch();
         btnRow->addWidget(_backBtn);
-        btnRow->addSpacing(8);
+        btnRow->addSpacing(sp.md);
         btnRow->addWidget(_createBtn);
         lay->addLayout(btnRow);
     }

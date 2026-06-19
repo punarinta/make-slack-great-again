@@ -2,18 +2,21 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "conv_selector_widget.h"
 #include "session/session.h"
+#include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
 #include <QApplication>
 #include <QEvent>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScreen>
 #include <QScrollBar>
 #include <QVBoxLayout>
 
@@ -30,9 +33,10 @@ ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
     _inputFrame->setObjectName("convInput");
     _inputFrame->setFixedHeight(36);
 
-    auto *inputLay = new QHBoxLayout(_inputFrame);
-    inputLay->setContentsMargins(8, 0, 8, 0);
-    inputLay->setSpacing(4);
+    auto       *inputLay = new QHBoxLayout(_inputFrame);
+    const auto &sp       = Th::c().spacing;
+    inputLay->setContentsMargins(sp.md, 0, sp.md, 0);
+    inputLay->setSpacing(sp.sm);
 
     // Search edit (shown when no selection)
     _searchEdit = new QLineEdit(_inputFrame);
@@ -45,7 +49,7 @@ ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
     _chip         = new QWidget(_inputFrame);
     auto *chipLay = new QHBoxLayout(_chip);
     chipLay->setContentsMargins(0, 0, 0, 0);
-    chipLay->setSpacing(4);
+    chipLay->setSpacing(sp.sm);
 
     _chipLabel = new QLabel(_chip);
 
@@ -145,7 +149,7 @@ void ConvSelectorWidget::openDropdown() {
                                      .arg(Th::qss(Th::c().divider.strong)));
 
         auto *lay = new QVBoxLayout(_dropdown);
-        lay->setContentsMargins(0, 2, 0, 2);
+        lay->setContentsMargins(0, Th::c().spacing.xs, 0, Th::c().spacing.xs);
         lay->setSpacing(0);
 
         _dropList = new QListWidget(_dropdown);
@@ -184,12 +188,20 @@ void ConvSelectorWidget::positionDropdown() {
     if (!_dropdown)
         return;
 
-    const QPoint globalPos = _inputFrame->mapToGlobal(QPoint(0, _inputFrame->height()));
-    const int    w         = _inputFrame->width();
-    const int    itemH     = _dropList->sizeHintForRow(0);
-    const int    count     = std::min(_dropList->count(), 6);
-    const int    listH     = count > 0 ? std::min(kDropMaxH, itemH * count + 4) : 40;
-    _dropdown->setGeometry(globalPos.x(), globalPos.y(), w, listH);
+    const QRect anchor(_inputFrame->mapToGlobal(QPoint(0, 0)), _inputFrame->size());
+    const int   w     = _inputFrame->width();
+    const int   itemH = _dropList->sizeHintForRow(0);
+    const int   count = std::min(_dropList->count(), 6);
+    const int   listH = count > 0 ? std::min(kDropMaxH, itemH * count + 4) : 40;
+
+    // Drop below the input, but flip above / clamp on-screen near the viewport
+    // edges (previously this had no bounds check and ran off-screen).
+    QRect bounds;
+    if (QScreen *scr = QGuiApplication::screenAt(anchor.center()))
+        bounds = scr->availableGeometry();
+    const QPoint pos =
+        Ui::placePopup(anchor, QSize(w, listH), bounds, Ui::Edge::Below, 1, Ui::Align::Start);
+    _dropdown->setGeometry(QRect(pos, QSize(w, listH)));
 }
 
 void ConvSelectorWidget::rebuildList(const QString &filter) {

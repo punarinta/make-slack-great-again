@@ -15,12 +15,13 @@
 //   Link      — borderless text link (underlined)
 //
 // Default height matches StyledLineEdit (Ui::kControlHeight) so an input and a
-// button placed in the same row line up; pass Size::Small for compact rows.
+// button placed in the same row line up; pass Size::Small for compact rows, or
+// Size::XSmall (22px, tighter 4px radius) for banner / inline buttons.
 class StyledButton : public QPushButton {
     Q_OBJECT
 public:
     enum class Variant { Primary, Secondary, Ghost, Danger, Link };
-    enum class Size { Normal, Small };
+    enum class Size { Normal, Small, XSmall };
 
     explicit StyledButton(
         const QString &text, Variant variant = Variant::Primary, QWidget *parent = nullptr

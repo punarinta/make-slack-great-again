@@ -13,9 +13,10 @@ EditModeBanner::EditModeBanner(QWidget *parent) : QWidget(parent) {
     setObjectName("editBanner");
     setFixedHeight(30);
 
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(10, 0, 4, 0);
-    layout->setSpacing(4);
+    auto       *layout = new QHBoxLayout(this);
+    const auto &sp     = Th::c().spacing;
+    layout->setContentsMargins(sp.md, 0, sp.sm, 0);
+    layout->setSpacing(sp.sm);
 
     auto *label = new QLabel(tr("Editing message"), this);
     layout->addWidget(label, 1);

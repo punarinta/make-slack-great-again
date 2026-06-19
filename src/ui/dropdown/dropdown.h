@@ -2,7 +2,9 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include <QList>
 #include <QStringList>
+#include <QVariant>
 #include <QWidget>
 
 // Reusable themed dropdown (select) — a rounded, bordered field showing the
@@ -20,11 +22,17 @@ class Dropdown : public QWidget {
 public:
     explicit Dropdown(QWidget *parent = nullptr);
 
-    void    addItem(const QString &text);
-    void    setItems(const QStringList &items);
-    int     currentIndex() const { return _current; }
-    void    setCurrentIndex(int index);
-    QString currentText() const;
+    // Each item carries optional opaque user data (like QComboBox::itemData), so
+    // callers can store a stable id ("system"/"en"/…) independent of the label.
+    void     addItem(const QString &text, const QVariant &data = {});
+    void     addSeparator(); // a non-selectable divider row in the popup
+    void     setItems(const QStringList &items);
+    void     clear();
+    int      currentIndex() const { return _current; }
+    void     setCurrentIndex(int index);
+    QString  currentText() const;
+    QVariant currentData() const;
+    int findData(const QVariant &data) const; // index of the first item whose data == `data`, or -1
 
 signals:
     void currentIndexChanged(int index);
@@ -40,8 +48,10 @@ private:
     void openMenu();
     void applyStyle(); // rebuild the QSS box (border/background) for the current state
 
-    QStringList _items;
-    int         _current = -1;
-    bool        _hover   = false;
-    bool        _open    = false; // popup currently showing → keep the field highlighted
+    QStringList     _items;
+    QList<QVariant> _data;  // parallel to _items; opaque per-item user data
+    QList<bool>     _isSep; // parallel to _items; true → divider, not selectable
+    int             _current = -1;
+    bool            _hover   = false;
+    bool            _open    = false; // popup currently showing → keep the field highlighted
 };

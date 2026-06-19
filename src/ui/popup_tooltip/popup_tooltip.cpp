@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "popup_tooltip.h"
+#include "ui/paint_utils.h"
+#include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "util/emoji_font.h"
@@ -78,33 +80,23 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
-    const QRect avail = availRect();
+    // Prefer above; placePopup flips to below if there isn't room, then clamps
+    // on-screen. _below drives which way the arrow points (see paintEvent).
+    bool         flipped = false;
+    const QPoint wpos    = Ui::placePopup(
+        targetGlobalRect,
+        QSize(widgetW, widgetH),
+        availRect(),
+        Ui::Edge::Above,
+        kGap - kShadow,
+        Ui::Align::Center,
+        &flipped
+    );
+    _below = flipped;
 
-    // Prefer above; fall back to below if there isn't enough room
-    const int neededAbove = kShadow + bodyH + kArrowH + kGap;
-    _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
+    _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
-    int wx, wy;
-    if (_below) {
-        // Arrow tip just below the target's bottom edge; tip is at widget y=kShadow
-        wy = targetGlobalRect.bottom() + kGap - kShadow;
-    } else {
-        // Arrow tip just above the target's top edge; tip is at widget y=kShadow+bodyH+kArrowH
-        wy = targetGlobalRect.top() - kGap - (kShadow + bodyH + kArrowH);
-    }
-    wx = arrowTipGX - widgetW / 2;
-
-    if (avail.isValid()) {
-        wx = std::max(avail.left(), std::min(wx, avail.right() - widgetW));
-        if (_below)
-            wy = std::min(wy, avail.bottom() - widgetH);
-        else
-            wy = std::max(avail.top(), wy);
-    }
-
-    _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
-
-    placeGlobal(wx, wy, widgetW, widgetH);
+    placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
 }
 
 void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRect) {
@@ -170,29 +162,22 @@ void PopupTooltip::showReaction(
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
-    const QRect avail = availRect();
+    // Prefer above; placePopup flips to below and clamps on-screen.
+    bool         flipped = false;
+    const QPoint wpos    = Ui::placePopup(
+        targetGlobalRect,
+        QSize(widgetW, widgetH),
+        availRect(),
+        Ui::Edge::Above,
+        kGap - kShadow,
+        Ui::Align::Center,
+        &flipped
+    );
+    _below = flipped;
 
-    const int neededAbove = kShadow + bodyH + kArrowH + kGap;
-    _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
+    _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
-    int wx, wy;
-    if (_below)
-        wy = targetGlobalRect.bottom() + kGap - kShadow;
-    else
-        wy = targetGlobalRect.top() - kGap - (kShadow + bodyH + kArrowH);
-    wx = arrowTipGX - widgetW / 2;
-
-    if (avail.isValid()) {
-        wx = std::max(avail.left(), std::min(wx, avail.right() - widgetW));
-        if (_below)
-            wy = std::min(wy, avail.bottom() - widgetH);
-        else
-            wy = std::max(avail.top(), wy);
-    }
-
-    _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
-
-    placeGlobal(wx, wy, widgetW, widgetH);
+    placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
 }
 
 void PopupTooltip::showTaskList(
@@ -227,29 +212,22 @@ void PopupTooltip::showTaskList(
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
-    const QRect avail = availRect();
+    // Prefer above; placePopup flips to below and clamps on-screen.
+    bool         flipped = false;
+    const QPoint wpos    = Ui::placePopup(
+        targetGlobalRect,
+        QSize(widgetW, widgetH),
+        availRect(),
+        Ui::Edge::Above,
+        kGap - kShadow,
+        Ui::Align::Center,
+        &flipped
+    );
+    _below = flipped;
 
-    const int neededAbove = kShadow + bodyH + kArrowH + kGap;
-    _below                = avail.isValid() && (targetGlobalRect.top() - avail.top() < neededAbove);
+    _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
-    int wx, wy;
-    if (_below)
-        wy = targetGlobalRect.bottom() + kGap - kShadow;
-    else
-        wy = targetGlobalRect.top() - kGap - (kShadow + bodyH + kArrowH);
-    wx = arrowTipGX - widgetW / 2;
-
-    if (avail.isValid()) {
-        wx = std::max(avail.left(), std::min(wx, avail.right() - widgetW));
-        if (_below)
-            wy = std::min(wy, avail.bottom() - widgetH);
-        else
-            wy = std::max(avail.top(), wy);
-    }
-
-    _arrowX = std::clamp(arrowTipGX - wx, kShadow + kArrowW, widgetW - kShadow - kArrowW);
-
-    placeGlobal(wx, wy, widgetW, widgetH);
+    placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
 }
 
 void PopupTooltip::hideEvent(QHideEvent *e) {
@@ -286,14 +264,7 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
     }
 
     // Light drop shadow around the body only
-    for (int i = kShadow; i >= 2; --i) {
-        const int alpha = (kShadow - i) * 3;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, alpha));
-        p.drawRoundedRect(
-            body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
-        );
-    }
+    Paint::dropShadow(p, body, kRadius, kShadow, 0, 3);
 
     // Fill body
     p.setPen(Qt::NoPen);
@@ -348,14 +319,7 @@ void PopupTooltip::paintReaction(QPainter &p) {
                                 : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
 
     // Light drop shadow around the body only
-    for (int i = kShadow; i >= 2; --i) {
-        const int alpha = (kShadow - i) * 3;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, alpha));
-        p.drawRoundedRect(
-            body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
-        );
-    }
+    Paint::dropShadow(p, body, kRadius, kShadow, 0, 3);
 
     // Fill body
     p.setPen(Qt::NoPen);
@@ -418,14 +382,7 @@ void PopupTooltip::paintTaskList(QPainter &p) {
                                 : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
 
     // Light drop shadow around the body only
-    for (int i = kShadow; i >= 2; --i) {
-        const int alpha = (kShadow - i) * 3;
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0, 0, 0, alpha));
-        p.drawRoundedRect(
-            body.adjusted(-i + 0.5, -i + 0.5, i - 0.5, i - 0.5), kRadius + i, kRadius + i
-        );
-    }
+    Paint::dropShadow(p, body, kRadius, kShadow, 0, 3);
 
     // Fill body
     p.setPen(Qt::NoPen);

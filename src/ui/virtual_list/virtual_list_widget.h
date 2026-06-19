@@ -32,6 +32,11 @@ protected:
     // Paints the Telegram-style overlay scrollbar thumb.
     void paintScrollThumb(QPainter &p, int totalH, const QColor &color) const;
 
+    // Left edge (viewport coords) of the widened thumb grab zone — kept in
+    // lockstep with paintScrollThumb's sbX (6px wider so the thin bar is easy
+    // to grab). Subclasses use it for hit-testing scrollbar drags.
+    int scrollThumbHitX() const;
+
     bool _sbDragging        = false;
     int  _sbDragStartY      = 0;
     int  _sbDragStartScroll = 0;

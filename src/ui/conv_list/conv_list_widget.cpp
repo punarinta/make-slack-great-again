@@ -5,6 +5,7 @@
 #include "ui/theme_manager.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
+#include "ui/paint_utils.h"
 #include "ui/user_avatar.h"
 #include "ui/message_list/message_render.h"
 #include "session/session.h"
@@ -489,7 +490,7 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
         }
         return;
     }
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const int sbHitX = scrollThumbHitX();
     if (e->pos().x() >= sbHitX && VirtualListWidget::isOnScrollThumb(e->pos().y(), total))
         viewport()->setCursor(Qt::SizeVerCursor);
     else
@@ -596,7 +597,7 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton)
         return;
     const int total  = static_cast<int>(_rows.size()) * kRowH;
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const int sbHitX = scrollThumbHitX();
     if (e->pos().x() >= sbHitX && VirtualListWidget::isOnScrollThumb(e->pos().y(), total)) {
         _sbDragging        = true;
         _sbDragStartY      = e->pos().y();
@@ -1060,7 +1061,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         const int pillY = y + (kRowH - pillH) / 2;
         p.setPen(Qt::NoPen);
         p.setBrush(Th::c().accent.def);
-        p.drawRoundedRect(QRect(pillX, pillY, huddlePillW, pillH), pillH / 2, pillH / 2);
+        Paint::pill(p, QRect(pillX, pillY, huddlePillW, pillH));
         p.drawPixmap(pillX + kHuddlePad, pillY + (pillH - kHuddleIcon) / 2, _iconPx.huddle);
         if (!huddleCount.isEmpty()) {
             QFont cf = font;
@@ -1111,7 +1112,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         const int          by = y + (kRowH - bh) / 2;
         p.setPen(Qt::NoPen);
         p.setBrush(Th::c().badge.mention);
-        p.drawRoundedRect(QRect(bx, by, bw, bh), bh / 2, bh / 2);
+        Paint::pill(p, QRect(bx, by, bw, bh));
         p.setPen(Qt::white);
         p.drawText(QRect(bx, by, bw, bh), Qt::AlignCenter, badge);
     } else if (showBlue) {

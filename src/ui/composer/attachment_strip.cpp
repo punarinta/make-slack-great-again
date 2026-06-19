@@ -26,6 +26,14 @@ namespace {
 constexpr QSize kChipSize{160, 92};
 constexpr int   kChipRadius = 8;
 
+// The QFrame chip-card stylesheet, shared by the plain-file (#fileChip) and
+// read-only (#fileChipRO) variants — same border + radius, different bg token.
+QString chipFrameQss(const QString &objName, const QColor &bg) {
+    return QString("QFrame#%1 { background: %2; border: 1px solid %3; border-radius: %4px; }")
+        .arg(objName, Th::qss(bg), Th::qss(Th::c().composer.attachmentChipBorder))
+        .arg(kChipRadius);
+}
+
 // Chip for a pending image file: the image cover-fills the rounded chip
 // (scaled to fill both dimensions, center-cropped, never stretched).
 class ImageChip : public QFrame {
@@ -163,9 +171,10 @@ AttachmentStrip::AttachmentStrip(QWidget *parent) : QWidget(parent) {
 
     _strip = new QWidget;
     _strip->setObjectName("fileStrip");
-    auto *stripLayout = new QHBoxLayout(_strip);
-    stripLayout->setContentsMargins(8, 6, 8, 6);
-    stripLayout->setSpacing(8);
+    auto       *stripLayout = new QHBoxLayout(_strip);
+    const auto &sp          = Th::c().spacing;
+    stripLayout->setContentsMargins(sp.md, sp.md, sp.md, sp.md);
+    stripLayout->setSpacing(sp.md);
     stripLayout->addStretch();
 
     _scroll->setWidget(_strip);
@@ -228,15 +237,7 @@ void AttachmentStrip::addPendingChip(const QString &path) {
     } else {
         chip = new QFrame(_strip);
         chip->setObjectName("fileChip");
-        chip->setStyleSheet(QString(
-                                "QFrame#fileChip {"
-                                "  background: %1; border: 1px solid %2; border-radius: 8px;"
-                                "}"
-        )
-                                .arg(
-                                    Th::qss(Th::c().composer.attachmentChipBg),
-                                    Th::qss(Th::c().composer.attachmentChipBorder)
-                                ));
+        chip->setStyleSheet(chipFrameQss("fileChip", Th::c().composer.attachmentChipBg));
     }
     chip->setFixedSize(kChipSize);
 
@@ -251,9 +252,10 @@ void AttachmentStrip::addPendingChip(const QString &path) {
 
 // Name + secondary line bottom-left on semitransparent plates, shared by all chip kinds.
 void AttachmentStrip::addOverlayLabels(QFrame *chip, const QString &name, const QString &sub) {
-    auto *chipLayout = new QVBoxLayout(chip);
-    chipLayout->setContentsMargins(6, 6, 6, 6);
-    chipLayout->setSpacing(2);
+    auto       *chipLayout = new QVBoxLayout(chip);
+    const auto &sp         = Th::c().spacing;
+    chipLayout->setContentsMargins(sp.md, sp.md, sp.md, sp.md);
+    chipLayout->setSpacing(sp.xs);
 
     const auto plate = [](int fontPx) {
         return QString(
@@ -324,14 +326,7 @@ void AttachmentStrip::addReadOnlyChip(const File &file) {
     auto *chip = new QFrame(_strip);
     chip->setObjectName("fileChipRO");
     chip->setFixedSize(kChipSize);
-    chip->setStyleSheet(
-        QString(
-            "QFrame#fileChipRO {"
-            "  background: %1; border: 1px solid %2; border-radius: 8px;"
-            "}"
-        )
-            .arg(Th::qss(Th::c().surface.highlight), Th::qss(Th::c().composer.attachmentChipBorder))
-    );
+    chip->setStyleSheet(chipFrameQss("fileChipRO", Th::c().surface.highlight));
 
     const QString name = file.name;
     addOverlayLabels(

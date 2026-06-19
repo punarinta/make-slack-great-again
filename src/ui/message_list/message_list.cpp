@@ -1426,7 +1426,7 @@ bool MessageListWidget::tryHandleTripleClick(const QPoint &pos) {
 }
 
 bool MessageListWidget::tryHandleScrollbarPress(const QPoint &pos) {
-    const int sbHitX = viewport()->width() - kScrollW - 2 - 6;
+    const int sbHitX = scrollThumbHitX();
     if (pos.x() < sbHitX || !isOnScrollThumb(pos.y()))
         return false;
     _sbDragging        = true;
@@ -2443,7 +2443,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const bool overLink =
         !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) ||
                          replyBarIndexAt(pos) >= 0 || overDismiss || newHoveredReaction.first >= 0);
-    const int  sbHitX     = viewport()->width() - kScrollW - 2 - 6;
+    const int  sbHitX     = scrollThumbHitX();
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     const bool overText   = !overLink && textHitTest(pos).row >= 0;
     if (overScroll)

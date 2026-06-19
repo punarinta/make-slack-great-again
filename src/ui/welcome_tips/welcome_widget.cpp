@@ -28,8 +28,9 @@ const QString kShift = QStringLiteral("Shift");
 // ── WelcomeWidget ─────────────────────────────────────────────────────────────
 
 WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
-    _content   = new QWidget(this);
-    auto *vbox = new QVBoxLayout(_content);
+    _content         = new QWidget(this);
+    auto       *vbox = new QVBoxLayout(_content);
+    const auto &sp   = Th::c().spacing;
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(0);
 
@@ -37,7 +38,7 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
     _title = new QLabel(tr("Keyboard shortcuts"), _content);
     vbox->addWidget(_title);
 
-    vbox->addSpacing(14);
+    vbox->addSpacing(sp.lg);
 
     // Thin rule beneath the title
     _rule = new QFrame(_content);
@@ -46,7 +47,7 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
     _rule->setFixedHeight(1);
     vbox->addWidget(_rule);
 
-    vbox->addSpacing(8);
+    vbox->addSpacing(sp.md);
 
     // ── Build shortcut rows ───────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
         row->setFixedHeight(36);
         auto *hl = new QHBoxLayout(row);
         hl->setContentsMargins(0, 0, 0, 0);
-        hl->setSpacing(5);
+        hl->setSpacing(sp.sm);
 
         auto *actionLbl = new QLabel(action, row);
         _actionLabels.append(actionLbl);
