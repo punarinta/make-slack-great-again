@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "image_cache.h"
 
+#include "network/shared_nam.h"
+
 #include <QBuffer>
 #include <QImageReader>
 #include <QMovie>
@@ -10,7 +12,64 @@
 #include <QNetworkRequest>
 #include <QUrl>
 
-ImageCache::ImageCache(QObject *parent) : QObject(parent), _nam(new QNetworkAccessManager(this)) {}
+ImageCache::ImageCache(QObject *parent) : QObject(parent), _nam(net::sharedNam()) {}
+
+namespace {
+
+// Resident bytes an entry holds: decoded pixmap (raw device pixels) plus the
+// retained encoded bytes of an animation.
+qint64 entryCost(const QPixmap &px, const QByteArray &animatedBytes) {
+    qint64 c = animatedBytes.size();
+    if (!px.isNull())
+        c += qint64(px.width()) * px.height() * qMax(1, px.depth() / 8);
+    return c;
+}
+
+} // namespace
+
+void ImageCache::account(const QString &url) {
+    auto it = _cache.find(url);
+    if (it == _cache.end())
+        return;
+    const qint64 fresh = entryCost(it->pixmap, it->animatedBytes);
+    _memBytes += fresh - it->cost;
+    it->cost = fresh;
+
+    _lru.removeOne(url);
+    _lru.prepend(url); // most recently used
+
+    evictIfNeeded(url);
+}
+
+void ImageCache::evictIfNeeded(const QString &protectUrl) {
+    while (_memBytes > _memoryCap) {
+        // Walk from the least-recently-used end for the first entry we may drop.
+        int victim = -1;
+        for (int i = _lru.size() - 1; i >= 0; --i) {
+            const QString &u = _lru.at(i);
+            if (u == protectUrl)
+                continue;
+            auto it = _cache.find(u);
+            // A live QMovie is handed out by pointer and cached by callers
+            // (MessageListWidget::_gifMovies) with a frameChanged connection —
+            // deleting it here would dangle. In-flight sentinels must survive so
+            // their finished handler can complete. Both are pinned.
+            if (it == _cache.end() || it->inFlight || it->movie)
+                continue;
+            victim = i;
+            break;
+        }
+        if (victim < 0)
+            break; // everything left is pinned — cap is a soft target
+
+        const QString u  = _lru.takeAt(victim);
+        auto          it = _cache.find(u);
+        if (it != _cache.end()) {
+            _memBytes -= it->cost;
+            _cache.erase(it);
+        }
+    }
+}
 
 bool ImageCache::isAnimatedImage(const QByteArray &bytes) {
     QBuffer buf;
@@ -68,6 +127,7 @@ QPixmap ImageCache::get(const QString &url) {
                 entry.pixmap = px;
                 if (isAnimatedImage(bytes))
                     entry.animatedBytes = bytes;
+                account(url);
                 return px;
             }
         }
@@ -93,6 +153,7 @@ QPixmap ImageCache::get(const QString &url) {
                     _diskSave(url, bytes);
             }
         }
+        account(url); // no-op cost change if the fetch yielded nothing
         emit loaded(url);
     });
 

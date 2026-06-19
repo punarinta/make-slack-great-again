@@ -11,8 +11,8 @@
 #include <QFile>
 #include <QFileOpenEvent>
 #include <QFont>
+#include <QHostInfo>
 #include <QLocale>
-#include <QNetworkAccessManager>
 #include <QProcess>
 #include <QSettings>
 #include <QTranslator>
@@ -138,10 +138,17 @@ int main(int argc, char *argv[]) {
     if (!singleInstance.init(urlArg))
         return 0;
 
-    // Start TLS handshake to slack.com before any UI is built so it can
-    // complete in the background during window construction.
-    QNetworkAccessManager preWarmNam;
-    preWarmNam.connectToHostEncrypted("slack.com", 443);
+    // Pre-resolve slack.com (the API host — WebApiClient::kBaseUrl is
+    // https://slack.com/api/) as early as possible, in parallel with translator
+    // load and window construction. Only DNS is warmed, not a socket: the
+    // keep-alive connection that serves API calls lives on the per-workspace API
+    // client's own QNetworkAccessManager, so a socket opened here could never be
+    // reused — it would just sit idle until reaped. The one thing that does
+    // carry over is the resolved address: Qt's process-global QHostInfo cache is
+    // consulted when the backend later connects (and when PublicBackend fires its
+    // own pool-correct preWarm("slack.com") during ensureSession), so that
+    // connect skips the DNS round-trip. Fire-and-forget; qApp scopes the result.
+    QHostInfo::lookupHost(QStringLiteral("slack.com"), qApp, [](const QHostInfo &) {});
 
     // The language preference from Settings → Appearance overrides the system
     // locale ("system" resolves to it). Changing the preference at runtime

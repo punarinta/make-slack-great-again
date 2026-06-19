@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "update_checker.h"
 #include "app_credentials.h"
+#include "network/shared_nam.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -37,8 +38,7 @@ static constexpr char kBinary[]   = "";
 static constexpr char kManifest[] = "";
 #endif
 
-UpdateChecker::UpdateChecker(QObject *parent)
-    : QObject(parent), _nam(new QNetworkAccessManager(this)) {
+UpdateChecker::UpdateChecker(QObject *parent) : QObject(parent), _nam(net::sharedNam()) {
 #if defined(Q_OS_WIN)
     // Clean up backup left by the previous update's rename-away step.
     QFile::remove(QCoreApplication::applicationFilePath() + ".old");

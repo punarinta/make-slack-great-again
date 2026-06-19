@@ -51,5 +51,4 @@ private:
     AuthState                  _state = AuthState::Disconnected;
     LlmTokenStore::Credentials _creds;
     OAuthLoopbackFlow         *_flow = nullptr;
-    QNetworkAccessManager     *_nam  = nullptr;
 };

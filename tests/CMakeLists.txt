@@ -244,6 +244,11 @@ add_msga_widget_test(test_canvas_emoji
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
 
+add_msga_widget_test(test_image_cache
+    test_image_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
+)
+
 add_msga_widget_test(test_workspace_switcher
     test_workspace_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp

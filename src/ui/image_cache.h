@@ -2,8 +2,10 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <QHash>
+#include <QList>
 #include <QObject>
 #include <QPixmap>
 
@@ -42,6 +44,15 @@ public:
         std::function<void(const QString &, const QByteArray &)> save
     );
 
+    // Soft ceiling on the decoded pixels + animation bytes held in RAM. The map
+    // used to grow unbounded for the whole process lifetime — every avatar,
+    // preview and GIF ever scrolled past stayed resident. Once over the cap the
+    // least-recently-used entries are dropped (see evictIfNeeded for what is
+    // pinned). Default below; the setter exists for tests.
+    static constexpr qint64 kDefaultMemoryCap = 64LL * 1024 * 1024;
+    void                    setMemoryCap(qint64 bytes) { _memoryCap = bytes; }
+    [[nodiscard]] qint64    memoryBytes() const { return _memBytes; }
+
 signals:
     void loaded(const QString &url);
 
@@ -51,9 +62,20 @@ private:
         QByteArray animatedBytes;      // raw bytes, kept only for multi-frame images
         QMovie    *movie    = nullptr; // lazily created from animatedBytes
         bool       inFlight = false;
+        qint64     cost     = 0; // last accounted bytes (pixmap + animatedBytes)
     };
 
+    // Recompute url's memory cost, mark it most-recently-used, then evict down
+    // to the cap. Call after any change to an entry's pixmap/animatedBytes.
+    void account(const QString &url);
+    // Drop LRU entries until under the cap, skipping pinned ones (in-flight, or
+    // backing a live QMovie that callers may still hold a pointer to).
+    void evictIfNeeded(const QString &protectUrl);
+
     QHash<QString, Entry>  _cache;
+    QList<QString>         _lru; // front = most recently used
+    qint64                 _memBytes  = 0;
+    qint64                 _memoryCap = kDefaultMemoryCap;
     QNetworkAccessManager *_nam;
 
     std::function<QByteArray(const QString &)>               _diskLoad;

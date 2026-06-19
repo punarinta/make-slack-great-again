@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "llm_provider_base.h"
 
+#include "network/shared_nam.h"
+
 #include <QNetworkAccessManager>
 #include <QDateTime>
 #include <QJsonObject>
@@ -21,9 +23,7 @@ LlmProvider::AuthMethod LlmProviderBase::authMethod() const {
 }
 
 QNetworkAccessManager *LlmProviderBase::nam() {
-    if (!_nam)
-        _nam = new QNetworkAccessManager(this);
-    return _nam;
+    return net::sharedNam();
 }
 
 QString LlmProviderBase::accountLabelFromToken(const QJsonObject &) const {
