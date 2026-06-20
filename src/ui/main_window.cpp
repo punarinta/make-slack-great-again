@@ -299,8 +299,7 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *page = new QWidget(wrapper);
     page->setObjectName("loggedOutPage");
     page->setAttribute(Qt::WA_StyledBackground);
-    page->setStyleSheet(
-        QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
+    page->setStyleSheet(QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
     );
     _loggedOutPageLayout->addWidget(page);
 
@@ -335,14 +334,12 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *tagline = new QLabel(titleBlock);
     tagline->setAlignment(Qt::AlignCenter);
-    tagline->setText(QString(
-                         "<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
-                         "[<span style='color:%2;'>m</span>ake "
-                         "<span style='color:%2;'>s</span>lack "
-                         "<span style='color:%2;'>g</span>reat "
-                         "<span style='color:%2;'>a</span>gain]"
-                         "</span>"
-    )
+    tagline->setText(QString("<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
+                             "[<span style='color:%2;'>m</span>ake "
+                             "<span style='color:%2;'>s</span>lack "
+                             "<span style='color:%2;'>g</span>reat "
+                             "<span style='color:%2;'>a</span>gain]"
+                             "</span>")
                          .arg(Th::qss(Th::c().text.tertiary), Th::qss(Th::c().text.primary))
                          .arg(Th::c().fonts.sm));
 
@@ -897,14 +894,12 @@ void MainWindow::applyTheme() {
         _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
     }
     if (_errorBanner) {
-        _errorBanner->setStyleSheet(QString(
-                                        "QLabel#errorBanner {"
-                                        "  background: %1;"
-                                        "  color: %2;"
-                                        "  padding: 6px 12px;"
-                                        "  font-size: %3px;"
-                                        "}"
-        )
+        _errorBanner->setStyleSheet(QString("QLabel#errorBanner {"
+                                            "  background: %1;"
+                                            "  color: %2;"
+                                            "  padding: 6px 12px;"
+                                            "  font-size: %3px;"
+                                            "}")
                                         .arg(Th::qss(th.danger.icon), Th::qss(th.surface.raised))
                                         .arg(th.fonts.md));
     }
@@ -1163,7 +1158,9 @@ bool MainWindow::runLoginFlow() {
     QEventLoop loop;
 
     QObject::connect(
-        strategy.get(), &auth::AuthStrategy::succeeded, [&](TokenStore::WorkspaceRecord rec) {
+        strategy.get(),
+        &auth::AuthStrategy::succeeded,
+        [&](TokenStore::WorkspaceRecord rec) {
             TokenStore::saveWorkspace(rec);
             _activeTeamId = rec.key.toString();
             success       = true;
@@ -1217,7 +1214,10 @@ void MainWindow::wireConvList() {
         }
     );
     connect(
-        _convList, &ConvListWidget::leaveConversationRequested, this, [this](ConversationId id) {
+        _convList,
+        &ConvListWidget::leaveConversationRequested,
+        this,
+        [this](ConversationId id) {
             if (_session)
                 _session->leaveConversation(id);
         }
@@ -1269,9 +1269,10 @@ void MainWindow::openBrowseDialog(int initialTab) {
         auto *cdlg = new CreateChannelDialog(recordForHandle(_activeTeamId).displayName, this);
         if (cdlg->exec() == QDialog::Accepted) {
             _session->createChannel(
-                cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
-                    showNetworkError(err);
-                }
+                cdlg->channelName(),
+                cdlg->isPrivate(),
+                {},
+                [this](const QString &err) { showNetworkError(err); }
             );
         }
         cdlg->deleteLater();
@@ -2145,6 +2146,13 @@ void MainWindow::openConversation(int row) {
     if (_typingIndicator)
         _typingIndicator->clearAll();
 
+    // The thread view belongs to the conversation we're leaving; close it so we
+    // don't show another chat's replies alongside the newly-opened one.
+    if (_threadPanel && _threadPanel->isVisible()) {
+        _threadPanel->close();
+        _threadPanel->setVisible(false);
+    }
+
     // Track navigation history.  Jumps applied by navigateHistory() keep the
     // forward stack (like editor undo/redo); direct opens discard it.
     if (_navApplying)
@@ -2210,7 +2218,8 @@ void MainWindow::openConversation(int row) {
             _convTabs->setCanvasTabVisible(true);
             _convTabs->setCanvasInfo(!_currentCanvasFileId.isEmpty());
             _session->loadChannelCanvas(
-                _currentConvId, [this, convId = _currentConvId](QString fileId, bool) {
+                _currentConvId,
+                [this, convId = _currentConvId](QString fileId, bool) {
                     if (_currentConvId != convId)
                         return;
                     _currentCanvasFileId = fileId;
@@ -2293,8 +2302,7 @@ void MainWindow::updateStarBtn(bool starred) {
         return;
     const QString svg =
         starred ? QStringLiteral(":/ui/star-solid.svg") : QStringLiteral(":/ui/star.svg");
-    _starBtn->setIcon(
-        svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
+    _starBtn->setIcon(svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
     );
 }
 
