@@ -3,6 +3,7 @@
 #include "dropdown.h"
 
 #include "ui/context_menu/context_menu.h"
+#include "ui/control_metrics.h"
 #include "ui/icon_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -23,24 +24,38 @@ constexpr int kGap     = 8;  // gap between text and chevron
 Dropdown::Dropdown(QWidget *parent) : QWidget(parent) {
     setCursor(Qt::PointingHandCursor);
     setMouseTracking(true);
+    setFixedHeight(Ui::kControlHeight); // align with StyledButton / StyledLineEdit
     applyStyle();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyStyle(); });
+}
+
+void Dropdown::setSize(Size size) {
+    _size = size;
+    setFixedHeight(size == Size::Small ? Ui::kControlHeightSmall : Ui::kControlHeight);
+    updateGeometry();
 }
 
 // Render the border + background through Qt's stylesheet engine (identical to
 // the dialog's text inputs) rather than a hand-painted stroke — antialiased
 // QPainter strokes read noticeably lighter than QSS-rendered borders.
 void Dropdown::applyStyle() {
-    const bool   active = _hover || _open;
+    const bool   active = isEnabled() && (_hover || _open);
     const QColor border = active ? Th::c().composer.borderFocus : Th::c().composer.border;
+    const QColor bg     = isEnabled() ? Th::c().surface.raised : Th::c().surface.sunken;
     setStyleSheet(QString(
                       "Dropdown {"
                       "  border: %1px solid %2; border-radius: 6px; background: %3;"
                       "}"
     )
                       .arg(active ? 2 : 1)
-                      .arg(Th::qss(border), Th::qss(Th::c().surface.raised)));
+                      .arg(Th::qss(border), Th::qss(bg)));
     update();
+}
+
+void Dropdown::changeEvent(QEvent *e) {
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::EnabledChange)
+        applyStyle(); // repaint border/background + (via update) the dimmed text
 }
 
 void Dropdown::addItem(const QString &text, const QVariant &data) {
@@ -105,7 +120,11 @@ QSize Dropdown::sizeHint() const {
     int                widest = 0;
     for (const QString &s : _items)
         widest = qMax(widest, fm.horizontalAdvance(s));
-    return QSize(kPadH + widest + kGap + kChevron + kPadH, fm.height() + 2 * kPadV);
+    // Height comes from the shared control-height constant (set as fixed height in
+    // the ctor / setSize), so dropdowns line up with the inputs and buttons beside
+    // them instead of being sized by font metrics.
+    const int h = _size == Size::Small ? Ui::kControlHeightSmall : Ui::kControlHeight;
+    return QSize(kPadH + widest + kGap + kChevron + kPadH, h);
 }
 
 void Dropdown::paintEvent(QPaintEvent *) {
@@ -117,9 +136,13 @@ void Dropdown::paintEvent(QPaintEvent *) {
     opt.initFrom(this);
     style()->drawPrimitive(QStyle::PE_Widget, &opt, &p, this);
 
+    // Disabled fields dim their text + chevron so the whole row reads as inactive
+    // (input is already blocked by Qt; this is the matching visual cue).
+    const bool enabled = isEnabled();
+
     // Current selection text (elided to fit before the chevron).
     const QRect textRect(kPadH, 0, width() - 2 * kPadH - kChevron - kGap, height());
-    p.setPen(Th::c().text.primary);
+    p.setPen(enabled ? Th::c().text.primary : Th::c().text.tertiary);
     const QString label =
         p.fontMetrics().elidedText(currentText(), Qt::ElideRight, textRect.width());
     p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, label);
@@ -129,7 +152,7 @@ void Dropdown::paintEvent(QPaintEvent *) {
     const QPixmap chevron = svgPixmapPhys(
         QStringLiteral(":/ui/chevron-down.svg"),
         QSize(kChevron, kChevron),
-        Th::c().text.secondary,
+        enabled ? Th::c().text.secondary : Th::c().text.tertiary,
         dpr
     );
     const QRect chevRect(width() - kPadH - kChevron, (height() - kChevron) / 2, kChevron, kChevron);

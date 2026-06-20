@@ -174,12 +174,12 @@ void SettingsDialog::buildPanel() {
     alay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     alay->setSpacing(sp.xl);
 
-    auto *appearHeading = new QLabel(tr("Appearance"), appearPage);
-    appearHeading->setObjectName("appearHeading");
-    alay->addWidget(appearHeading);
-
     // ── Color theme ───────────────────────────────────────────────────
-    auto *themeBox = new QGroupBox(tr("Color theme"), appearPage);
+    auto *themeHeading = new QLabel(tr("Color theme"), appearPage);
+    themeHeading->setObjectName("sectionHeading");
+    alay->addWidget(themeHeading);
+
+    auto *themeBox = new QGroupBox(appearPage);
     themeBox->setObjectName("themeBox");
     // Pin to the row's natural height. The cards are fixed-size; with the default
     // (Preferred) policy the page layout shrinks this box below them when vertical
@@ -189,7 +189,7 @@ void SettingsDialog::buildPanel() {
     themeBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *themeLayout = new QHBoxLayout(themeBox);
     themeLayout->setSpacing(sp.lg);
-    themeLayout->setContentsMargins(0, sp.lg, 0, 0);
+    themeLayout->setContentsMargins(0, 0, 0, 0);
 
     auto *themeGroup = new QButtonGroup(themeBox);
     themeGroup->setExclusive(true);
@@ -214,11 +214,15 @@ void SettingsDialog::buildPanel() {
     // ── Language ──────────────────────────────────────────────────────
     _startupLanguage = TimeFmt::language();
 
-    auto *langBox = new QGroupBox(tr("Language"), appearPage);
+    auto *langHeading = new QLabel(tr("Language"), appearPage);
+    langHeading->setObjectName("sectionHeading");
+    alay->addWidget(langHeading);
+
+    auto *langBox = new QGroupBox(appearPage);
     langBox->setObjectName("langBox");
     auto *langLayout = new QVBoxLayout(langBox);
     langLayout->setSpacing(sp.md);
-    langLayout->setContentsMargins(0, sp.lg, 0, 0);
+    langLayout->setContentsMargins(0, 0, 0, 0);
 
     auto *langRow   = new QHBoxLayout;
     auto *langLabel = new QLabel(tr("App language"), langBox);
@@ -226,6 +230,7 @@ void SettingsDialog::buildPanel() {
     langRow->addWidget(langLabel);
 
     _language = new Dropdown(langBox);
+    _language->setSize(Dropdown::Size::Small);
     // Language names are intentionally not translated — each stays readable
     // to a speaker of that language regardless of the active locale.
     _language->addItem(tr("System default"), "system");
@@ -252,12 +257,16 @@ void SettingsDialog::buildPanel() {
 
     alay->addWidget(langBox);
 
-    // ── Time format ───────────────────────────────────────────────────
-    auto *timeBox = new QGroupBox(tr("Time format"), appearPage);
+    // ── Date/Time ─────────────────────────────────────────────────────
+    auto *timeHeading = new QLabel(tr("Date/Time"), appearPage);
+    timeHeading->setObjectName("sectionHeading");
+    alay->addWidget(timeHeading);
+
+    auto *timeBox = new QGroupBox(appearPage);
     timeBox->setObjectName("timeBox");
     auto *timeLayout = new QVBoxLayout(timeBox);
     timeLayout->setSpacing(sp.md);
-    timeLayout->setContentsMargins(0, sp.lg, 0, 0);
+    timeLayout->setContentsMargins(0, 0, 0, 0);
 
     _time12 = new QRadioButton(tr("12-hour clock (2:34 PM)"), timeBox);
     _time24 = new QRadioButton(tr("24-hour clock (14:34)"), timeBox);
@@ -270,11 +279,16 @@ void SettingsDialog::buildPanel() {
     timeLayout->addWidget(_time24);
     alay->addWidget(timeBox);
 
-    auto *sidebarBox = new QGroupBox(tr("Conversations sidebar"), appearPage);
+    // ── Conversations ─────────────────────────────────────────────────
+    auto *sidebarHeading = new QLabel(tr("Conversations"), appearPage);
+    sidebarHeading->setObjectName("sectionHeading");
+    alay->addWidget(sidebarHeading);
+
+    auto *sidebarBox = new QGroupBox(appearPage);
     sidebarBox->setObjectName("sidebarBox");
     auto *sidebarLayout = new QVBoxLayout(sidebarBox);
     sidebarLayout->setSpacing(sp.md);
-    sidebarLayout->setContentsMargins(0, sp.lg, 0, 0);
+    sidebarLayout->setContentsMargins(0, 0, 0, 0);
 
     auto *daysRow    = new QHBoxLayout;
     auto *daysPrefix = new QLabel(tr("Show conversations active in the last"), sidebarBox);
@@ -320,18 +334,14 @@ void SettingsDialog::buildPanel() {
     nlay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     nlay->setSpacing(sp.xl);
 
-    auto *notifHeading = new QLabel(tr("Notifications"), notifPage);
-    notifHeading->setObjectName("notifHeading");
-    nlay->addWidget(notifHeading);
-
     _notifEnabled = new QCheckBox(tr("Enable desktop notifications"), notifPage);
     nlay->addWidget(_notifEnabled);
 
-    auto *levelBox = new QGroupBox(tr("Notify me about"), notifPage);
+    auto *levelBox = new QGroupBox(notifPage);
     levelBox->setObjectName("levelBox");
     auto *levelLayout = new QVBoxLayout(levelBox);
     levelLayout->setSpacing(sp.md);
-    levelLayout->setContentsMargins(0, sp.lg, 0, 0);
+    levelLayout->setContentsMargins(0, 0, 0, 0);
 
     _notifAll      = new QRadioButton(tr("All new messages"), levelBox);
     _notifMentions = new QRadioButton(tr("Direct messages and mentions only"), levelBox);
@@ -344,27 +354,60 @@ void SettingsDialog::buildPanel() {
     levelLayout->addWidget(_notifMentions);
     nlay->addWidget(levelBox);
 
+    _notifHuddles = new QCheckBox(tr("Notify me when a huddle starts"), notifPage);
+    nlay->addWidget(_notifHuddles);
+
     _notifSound = new QCheckBox(tr("Play a sound for notifications"), notifPage);
     nlay->addWidget(_notifSound);
 
     // Sound chooser: bundled chime + OS system sounds (enumerated lazily on
     // open), with a preview button. Populated in loadNotifications().
-    auto *soundRow = new QHBoxLayout;
-    soundRow->setContentsMargins(sp.xxl, 0, 0, 0);
+    _notifSoundRow = new QWidget(notifPage);
+    auto *soundRow = new QHBoxLayout(_notifSoundRow);
+    soundRow->setContentsMargins(0, 0, 0, 0);
     soundRow->setSpacing(sp.md);
-    auto *soundLabel  = new QLabel(tr("Sound:"), notifPage);
-    _notifSoundChoice = new Dropdown(notifPage);
+    auto *soundLabel  = new QLabel(tr("Sound:"), _notifSoundRow);
+    _notifSoundChoice = new Dropdown(_notifSoundRow);
+    _notifSoundChoice->setSize(Dropdown::Size::Small);
     _notifSoundChoice->setMinimumWidth(220);
-    _notifSoundPreview = new StyledButton(tr("Preview"), StyledButton::Variant::Ghost, notifPage);
+    _notifSoundPreview =
+        new StyledButton(tr("Test"), StyledButton::Variant::Secondary, _notifSoundRow);
     _notifSoundPreview->setSize(StyledButton::Size::Small);
     soundRow->addWidget(soundLabel);
     soundRow->addWidget(_notifSoundChoice, 1);
     soundRow->addWidget(_notifSoundPreview);
     soundRow->addStretch();
-    nlay->addLayout(soundRow);
+    nlay->addWidget(_notifSoundRow);
 
     connect(_notifSoundPreview, &QPushButton::clicked, this, [this] {
         Sound::Player::instance().play(_notifSoundChoice->currentData().toString());
+    });
+
+    // Sample notifications: fire a representative notification so the user can
+    // see how each kind looks with their current OS/daemon and settings. The
+    // actual delivery lives in MainWindow, so we just emit the request.
+    auto *sampleHeading = new QLabel(tr("Sample notifications"), notifPage);
+    sampleHeading->setObjectName("sectionHeading");
+    nlay->addWidget(sampleHeading);
+
+    auto *sampleRow = new QHBoxLayout;
+    sampleRow->setContentsMargins(0, 0, 0, 0);
+    sampleRow->setSpacing(sp.md);
+    _sampleNotifChoice = new Dropdown(notifPage);
+    _sampleNotifChoice->addItem(tr("New DM"), int(SampleNotif::Dm));
+    _sampleNotifChoice->addItem(tr("New channel message"), int(SampleNotif::Channel));
+    _sampleNotifChoice->addItem(tr("New huddle"), int(SampleNotif::Huddle));
+    _sampleNotifChoice->setSize(Dropdown::Size::Small);
+    _sampleNotifChoice->setMinimumWidth(220);
+    _sampleNotifTest = new StyledButton(tr("Test"), StyledButton::Variant::Secondary, notifPage);
+    _sampleNotifTest->setSize(StyledButton::Size::Small);
+    sampleRow->addWidget(_sampleNotifChoice, 1);
+    sampleRow->addWidget(_sampleNotifTest);
+    sampleRow->addStretch();
+    nlay->addLayout(sampleRow);
+
+    connect(_sampleNotifTest, &QPushButton::clicked, this, [this] {
+        emit testNotificationRequested(_sampleNotifChoice->currentData().toInt());
     });
 
     // Disable level/sound when master toggle is off; the sound chooser also
@@ -373,9 +416,11 @@ void SettingsDialog::buildPanel() {
         const bool on      = _notifEnabled->isChecked();
         const bool soundOn = on && _notifSound->isChecked();
         levelBox->setEnabled(on);
+        _notifHuddles->setEnabled(on);
         _notifSound->setEnabled(on);
-        _notifSoundChoice->setEnabled(soundOn);
-        _notifSoundPreview->setEnabled(soundOn);
+        _notifSoundRow->setEnabled(soundOn);
+        _sampleNotifChoice->setEnabled(on);
+        _sampleNotifTest->setEnabled(on);
     };
     connect(_notifEnabled, &QCheckBox::toggled, this, updateEnabled);
     connect(_notifSound, &QCheckBox::toggled, this, updateEnabled);
@@ -404,9 +449,9 @@ void SettingsDialog::buildPanel() {
     slay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     slay->setSpacing(sp.xl);
 
-    auto *storageHeading = new QLabel(tr("Storage"), storagePage);
-    storageHeading->setObjectName("storageHeading");
-    slay->addWidget(storageHeading);
+    auto *cacheHeading = new QLabel(tr("Cache"), storagePage);
+    cacheHeading->setObjectName("sectionHeading");
+    slay->addWidget(cacheHeading);
 
     auto *sizeRow         = new QHBoxLayout;
     auto *sizePrefixLabel = new QLabel(tr("Cache size:"), storagePage);
@@ -459,24 +504,19 @@ void SettingsDialog::buildPanel() {
     });
 
     auto *clearCacheRow = new QHBoxLayout;
-    clearCacheRow->addStretch();
     auto *clearCacheBtn =
-        new StyledButton(tr("Clear Cache"), StyledButton::Variant::Danger, storagePage);
+        new StyledButton(tr("Clear cache"), StyledButton::Variant::Danger, storagePage);
     clearCacheBtn->setObjectName("clearCacheBtn");
-    clearCacheBtn->setMinimumWidth(110);
+    clearCacheBtn->setSize(StyledButton::Size::Small);
     connect(clearCacheBtn, &QPushButton::clicked, this, &SettingsDialog::clearCache);
     clearCacheRow->addWidget(clearCacheBtn);
+    clearCacheRow->addStretch();
     slay->addLayout(clearCacheRow);
 
-    // Separator
-    auto *sep = new QFrame(storagePage);
-    sep->setObjectName("storageSep");
-    sep->setFrameShape(QFrame::HLine);
-    slay->addWidget(sep);
-
-    // ── App state section ─────────────────────────────────────────────
-    auto *stateHeading = new QLabel(tr("App state"), storagePage);
-    stateHeading->setObjectName("stateHeading");
+    // ── State section ─────────────────────────────────────────────────
+    slay->addSpacing(sp.lg); // breathing room between the Cache and State blocks
+    auto *stateHeading = new QLabel(tr("State"), storagePage);
+    stateHeading->setObjectName("sectionHeading");
     slay->addWidget(stateHeading);
 
     auto *stateDesc = new QLabel(
@@ -489,13 +529,13 @@ void SettingsDialog::buildPanel() {
     slay->addWidget(stateDesc);
 
     auto *clearStateRow = new QHBoxLayout;
-    clearStateRow->addStretch();
     auto *clearStateBtn =
-        new StyledButton(tr("Clear State"), StyledButton::Variant::Danger, storagePage);
+        new StyledButton(tr("Clear state"), StyledButton::Variant::Danger, storagePage);
     clearStateBtn->setObjectName("clearStateBtn");
-    clearStateBtn->setMinimumWidth(110);
+    clearStateBtn->setSize(StyledButton::Size::Small);
     connect(clearStateBtn, &QPushButton::clicked, this, &SettingsDialog::clearState);
     clearStateRow->addWidget(clearStateBtn);
+    clearStateRow->addStretch();
     slay->addLayout(clearStateRow);
 
     slay->addStretch();
@@ -508,11 +548,11 @@ void SettingsDialog::buildPanel() {
     sylay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     sylay->setSpacing(sp.xl);
 
-    auto *sysHeading = new QLabel(tr("System"), sysPage);
-    sysHeading->setObjectName("sysHeading");
-    sylay->addWidget(sysHeading);
+    // ── Version section ───────────────────────────────────────────────
+    auto *versionHeading = new QLabel(tr("Version"), sysPage);
+    versionHeading->setObjectName("sectionHeading");
+    sylay->addWidget(versionHeading);
 
-    // Version info
     const QString buildTs =
         QString(AppCredentials::buildTimestamp).replace('T', ' ').chopped(1); // drop trailing Z
     auto *verLabel =
@@ -520,15 +560,15 @@ void SettingsDialog::buildPanel() {
     verLabel->setObjectName("verLabel");
     sylay->addWidget(verLabel);
 
-    // Update section
-    auto *updBox = new QGroupBox(tr("Updates"), sysPage);
+    auto *updBox = new QGroupBox(sysPage);
     updBox->setObjectName("updBox");
     auto *updLayout = new QVBoxLayout(updBox);
     updLayout->setSpacing(sp.md);
-    updLayout->setContentsMargins(0, sp.lg, 0, 0);
+    updLayout->setContentsMargins(0, 0, 0, 0);
 
     auto *checkRow = new QHBoxLayout;
-    _checkBtn = new StyledButton(tr("Check for updates"), StyledButton::Variant::Ghost, updBox);
+    _checkBtn = new StyledButton(tr("Check for updates"), StyledButton::Variant::Primary, updBox);
+    _checkBtn->setSize(StyledButton::Size::Small);
     checkRow->addWidget(_checkBtn);
     checkRow->addStretch();
     updLayout->addLayout(checkRow);
@@ -542,12 +582,16 @@ void SettingsDialog::buildPanel() {
 
     sylay->addWidget(updBox);
 
-    // Memory section
-    auto *memBox = new QGroupBox(tr("Memory"), sysPage);
+    // ── Memory section ────────────────────────────────────────────────
+    auto *memoryHeading = new QLabel(tr("Memory"), sysPage);
+    memoryHeading->setObjectName("sectionHeading");
+    sylay->addWidget(memoryHeading);
+
+    auto *memBox = new QGroupBox(sysPage);
     memBox->setObjectName("memBox");
     auto *memLayout = new QVBoxLayout(memBox);
     memLayout->setSpacing(sp.sm);
-    memLayout->setContentsMargins(0, sp.lg, 0, 0);
+    memLayout->setContentsMargins(0, 0, 0, 0);
 
     _ramLabel = new QLabel(sysPage);
     _ramLabel->setObjectName("ramLabel");
@@ -583,10 +627,6 @@ QWidget *SettingsDialog::buildAiPage() {
     lay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     lay->setSpacing(sp.xl);
 
-    auto *heading = new QLabel(tr("AI assistance"), page);
-    heading->setObjectName("aiHeading");
-    lay->addWidget(heading);
-
     auto *desc = new QLabel(
         tr("Connect an AI provider to enable assistant features.\n"
            "Create an API key in your own provider account and paste it below —\n"
@@ -595,15 +635,21 @@ QWidget *SettingsDialog::buildAiPage() {
     );
     desc->setObjectName("aiDesc");
     desc->setWordWrap(true);
+
+    auto *providerHeading = new QLabel(tr("AI provider"), page);
+    providerHeading->setObjectName("sectionHeading");
+    lay->addWidget(providerHeading);
+
     lay->addWidget(desc);
 
     // Default provider selector
     auto *defRow   = new QHBoxLayout;
-    auto *defLabel = new QLabel(tr("Default provider:"), page);
+    auto *defLabel = new QLabel(tr("Default:"), page);
     defLabel->setObjectName("aiDefaultLabel");
     defRow->addWidget(defLabel);
 
     _aiDefault = new Dropdown(page);
+    _aiDefault->setSize(Dropdown::Size::Small);
     for (auto *p : svc.providers())
         _aiDefault->addItem(p->displayName(), p->id());
     defRow->addWidget(_aiDefault);
@@ -615,13 +661,17 @@ QWidget *SettingsDialog::buildAiPage() {
             LlmService::instance().setDefaultProviderId(_aiDefault->currentData().toString());
     });
 
-    // One card per provider
+    // One section per provider (Anthropic, OpenAI).
     for (auto *p : svc.providers()) {
-        auto *box = new QGroupBox(p->displayName(), page);
+        auto *heading = new QLabel(p->displayName(), page);
+        heading->setObjectName("sectionHeading");
+        lay->addWidget(heading);
+
+        auto *box = new QGroupBox(page);
         box->setObjectName("aiBox");
         auto *bl = new QVBoxLayout(box);
         bl->setSpacing(sp.md);
-        bl->setContentsMargins(0, sp.lg, 0, 0);
+        bl->setContentsMargins(0, 0, 0, 0);
 
         AiProviderRow row;
         row.provider = p;
@@ -632,20 +682,24 @@ QWidget *SettingsDialog::buildAiPage() {
 
         auto *btnRow = new QHBoxLayout;
         row.oauthBtn = new StyledButton(tr("Connect (OAuth)"), StyledButton::Variant::Primary, box);
+        row.oauthBtn->setSize(StyledButton::Size::Small);
         btnRow->addWidget(row.oauthBtn);
 
-        row.disconnectBtn = new StyledButton(tr("Disconnect"), StyledButton::Variant::Ghost, box);
+        row.disconnectBtn = new StyledButton(tr("Disconnect"), StyledButton::Variant::Danger, box);
+        row.disconnectBtn->setSize(StyledButton::Size::Small);
         btnRow->addWidget(row.disconnectBtn);
         btnRow->addStretch();
         bl->addLayout(btnRow);
 
         auto *keyRow = new QHBoxLayout;
         row.keyEdit  = new StyledLineEdit(box);
+        row.keyEdit->setSize(StyledLineEdit::Size::Small);
         row.keyEdit->setPlaceholderText(tr("Paste your API key"));
         row.keyEdit->lineEdit()->setEchoMode(QLineEdit::Password);
         keyRow->addWidget(row.keyEdit, 1);
 
         row.saveKeyBtn = new StyledButton(tr("Save key"), StyledButton::Variant::Primary, box);
+        row.saveKeyBtn->setSize(StyledButton::Size::Small);
         keyRow->addWidget(row.saveKeyBtn);
         bl->addLayout(keyRow);
 
@@ -801,24 +855,19 @@ void SettingsDialog::applyTheme() {
             .arg(Th::qss(th.surface.highlightStrong), Th::qss(th.surface.highlight))
     );
 
-    // ── Appearance page ───────────────────────────────────────────────
-    if (auto *w = _panel->findChild<QLabel *>("appearHeading")) {
+    // ── Section headings (bold, used across all pages) ─────────────────
+    for (auto *w : _panel->findChildren<QLabel *>("sectionHeading")) {
         w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
                              .arg(th.fonts.base)
                              .arg(Th::qss(th.text.primary)));
     }
+
+    // ── Appearance page ───────────────────────────────────────────────
+    // The section containers are now titleless; just strip the default frame.
     for (const auto &boxName :
          {QString("sidebarBox"), QString("langBox"), QString("timeBox"), QString("themeBox")}) {
-        if (auto *w = _panel->findChild<QGroupBox *>(boxName)) {
-            w->setStyleSheet(
-                QString(
-                    "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                    "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
-                )
-                    .arg(th.fonts.caption)
-                    .arg(Th::qss(th.text.secondary))
-            );
-        }
+        if (auto *w = _panel->findChild<QGroupBox *>(boxName))
+            w->setStyleSheet("QGroupBox { border: none; }");
     }
     if (auto *w = _panel->findChild<QLabel *>("langLabel")) {
         w->setStyleSheet(
@@ -868,28 +917,18 @@ void SettingsDialog::applyTheme() {
     // (Save button self-themes — StyledButton)
 
     // ── Notifications page ────────────────────────────────────────────
-    if (auto *w = _panel->findChild<QLabel *>("notifHeading")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.base)
-                             .arg(Th::qss(th.text.primary)));
-    }
     _notifEnabled->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
-    if (auto *w = _panel->findChild<QGroupBox *>("levelBox")) {
-        w->setStyleSheet(
-            QString(
-                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
-            )
-                .arg(th.fonts.caption)
-                .arg(Th::qss(th.text.secondary))
-        );
-    }
+    if (auto *w = _panel->findChild<QGroupBox *>("levelBox"))
+        w->setStyleSheet("QGroupBox { border: none; }");
     _notifAll->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
     _notifMentions->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+    );
+    _notifHuddles->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
     _notifSound->setStyleSheet(
@@ -898,11 +937,6 @@ void SettingsDialog::applyTheme() {
     // (Save button self-themes — StyledButton)
 
     // ── AI assistance page ────────────────────────────────────────────
-    if (auto *w = _panel->findChild<QLabel *>("aiHeading")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.base)
-                             .arg(Th::qss(th.text.primary)));
-    }
     if (auto *w = _panel->findChild<QLabel *>("aiDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)
@@ -914,16 +948,8 @@ void SettingsDialog::applyTheme() {
         );
     }
     // _aiDefault self-themes (Dropdown).
-    for (auto *w : _panel->findChildren<QGroupBox *>("aiBox")) {
-        w->setStyleSheet(
-            QString(
-                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
-            )
-                .arg(th.fonts.caption)
-                .arg(Th::qss(th.text.secondary))
-        );
-    }
+    for (auto *w : _panel->findChildren<QGroupBox *>("aiBox"))
+        w->setStyleSheet("QGroupBox { border: none; }");
     for (auto *w : _panel->findChildren<QLabel *>("aiStatus")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
@@ -938,11 +964,6 @@ void SettingsDialog::applyTheme() {
     }
 
     // ── Storage page ──────────────────────────────────────────────────
-    if (auto *w = _panel->findChild<QLabel *>("storageHeading")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.base)
-                             .arg(Th::qss(th.text.primary)));
-    }
     if (auto *w = _panel->findChild<QLabel *>("sizePrefixLabel")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
@@ -978,14 +999,6 @@ void SettingsDialog::applyTheme() {
                              .arg(Th::qss(th.text.secondary)));
     }
     // (Clear Cache button self-themes — StyledButton Danger)
-    if (auto *w = _panel->findChild<QFrame *>("storageSep")) {
-        w->setStyleSheet(QString("color: %1;").arg(Th::qss(th.divider.def)));
-    }
-    if (auto *w = _panel->findChild<QLabel *>("stateHeading")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.md)
-                             .arg(Th::qss(th.text.primary)));
-    }
     if (auto *w = _panel->findChild<QLabel *>("stateDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)
@@ -994,26 +1007,13 @@ void SettingsDialog::applyTheme() {
     // (Clear State button self-themes — StyledButton Danger)
 
     // ── System page ───────────────────────────────────────────────────
-    if (auto *w = _panel->findChild<QLabel *>("sysHeading")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.base)
-                             .arg(Th::qss(th.text.primary)));
-    }
     if (auto *w = _panel->findChild<QLabel *>("verLabel")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
         );
     }
-    if (auto *w = _panel->findChild<QGroupBox *>("updBox")) {
-        w->setStyleSheet(
-            QString(
-                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
-            )
-                .arg(th.fonts.caption)
-                .arg(Th::qss(th.text.secondary))
-        );
-    }
+    if (auto *w = _panel->findChild<QGroupBox *>("updBox"))
+        w->setStyleSheet("QGroupBox { border: none; }");
     // (Check-for-updates button self-themes — StyledButton Ghost)
     _updateStatus->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))
@@ -1021,16 +1021,8 @@ void SettingsDialog::applyTheme() {
     _lastChecked->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.sm).arg(Th::qss(th.text.tertiary))
     );
-    if (auto *w = _panel->findChild<QGroupBox *>("memBox")) {
-        w->setStyleSheet(
-            QString(
-                "QGroupBox { font-size: %1px; color: %2; border: none; margin-top: 4px; }"
-                "QGroupBox::title { subcontrol-origin: margin; left: 0; }"
-            )
-                .arg(th.fonts.caption)
-                .arg(Th::qss(th.text.secondary))
-        );
-    }
+    if (auto *w = _panel->findChild<QGroupBox *>("memBox"))
+        w->setStyleSheet("QGroupBox { border: none; }");
     _ramLabel->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
@@ -1039,6 +1031,7 @@ void SettingsDialog::applyTheme() {
 void SettingsDialog::loadNotifications() {
     QSettings s("msga", "msga");
     _notifEnabled->setChecked(s.value("notifications/enabled", true).toBool());
+    _notifHuddles->setChecked(s.value("notifications/huddles", true).toBool());
     _notifSound->setChecked(s.value("notifications/sound", true).toBool());
     const int level = s.value("notifications/level", 0).toInt();
     (level == 0 ? _notifAll : _notifMentions)->setChecked(true);
@@ -1064,14 +1057,15 @@ void SettingsDialog::loadNotifications() {
     const bool on      = _notifEnabled->isChecked();
     const bool soundOn = on && _notifSound->isChecked();
     _notifAll->parentWidget()->setEnabled(on);
+    _notifHuddles->setEnabled(on);
     _notifSound->setEnabled(on);
-    _notifSoundChoice->setEnabled(soundOn);
-    _notifSoundPreview->setEnabled(soundOn);
+    _notifSoundRow->setEnabled(soundOn);
 }
 
 void SettingsDialog::saveNotifications() {
     QSettings s("msga", "msga");
     s.setValue("notifications/enabled", _notifEnabled->isChecked());
+    s.setValue("notifications/huddles", _notifHuddles->isChecked());
     s.setValue("notifications/sound", _notifSound->isChecked());
     s.setValue("notifications/level", _notifAll->isChecked() ? 0 : 1);
     if (_notifSoundChoice->currentIndex() >= 0)

@@ -299,7 +299,8 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *page = new QWidget(wrapper);
     page->setObjectName("loggedOutPage");
     page->setAttribute(Qt::WA_StyledBackground);
-    page->setStyleSheet(QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
+    page->setStyleSheet(
+        QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
     );
     _loggedOutPageLayout->addWidget(page);
 
@@ -334,12 +335,14 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *tagline = new QLabel(titleBlock);
     tagline->setAlignment(Qt::AlignCenter);
-    tagline->setText(QString("<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
-                             "[<span style='color:%2;'>m</span>ake "
-                             "<span style='color:%2;'>s</span>lack "
-                             "<span style='color:%2;'>g</span>reat "
-                             "<span style='color:%2;'>a</span>gain]"
-                             "</span>")
+    tagline->setText(QString(
+                         "<span style='font-size:%3px; color:%1; letter-spacing:0.06em;'>"
+                         "[<span style='color:%2;'>m</span>ake "
+                         "<span style='color:%2;'>s</span>lack "
+                         "<span style='color:%2;'>g</span>reat "
+                         "<span style='color:%2;'>a</span>gain]"
+                         "</span>"
+    )
                          .arg(Th::qss(Th::c().text.tertiary), Th::qss(Th::c().text.primary))
                          .arg(Th::c().fonts.sm));
 
@@ -426,6 +429,12 @@ QWidget *MainWindow::buildMainPage() {
             if (ws.session)
                 updateUnreadBadges(teamId, ws.session->currentConversations());
     });
+    connect(
+        _settingsDialog,
+        &SettingsDialog::testNotificationRequested,
+        this,
+        &MainWindow::showSampleNotification
+    );
 
     return page;
 }
@@ -894,12 +903,14 @@ void MainWindow::applyTheme() {
         _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
     }
     if (_errorBanner) {
-        _errorBanner->setStyleSheet(QString("QLabel#errorBanner {"
-                                            "  background: %1;"
-                                            "  color: %2;"
-                                            "  padding: 6px 12px;"
-                                            "  font-size: %3px;"
-                                            "}")
+        _errorBanner->setStyleSheet(QString(
+                                        "QLabel#errorBanner {"
+                                        "  background: %1;"
+                                        "  color: %2;"
+                                        "  padding: 6px 12px;"
+                                        "  font-size: %3px;"
+                                        "}"
+        )
                                         .arg(Th::qss(th.danger.icon), Th::qss(th.surface.raised))
                                         .arg(th.fonts.md));
     }
@@ -942,6 +953,8 @@ Session *MainWindow::ensureSession(const QString &teamId) {
                             [this, teamId](Event e) {
                                 if (const auto *ev = std::get_if<EvMessageNew>(&e))
                                     maybeNotify(teamId, *ev);
+                                else if (const auto *hv = std::get_if<EvHuddleChanged>(&e))
+                                    maybeNotifyHuddle(teamId, *hv);
                             },
                             entry.lifetime
                         );
@@ -1158,9 +1171,7 @@ bool MainWindow::runLoginFlow() {
     QEventLoop loop;
 
     QObject::connect(
-        strategy.get(),
-        &auth::AuthStrategy::succeeded,
-        [&](TokenStore::WorkspaceRecord rec) {
+        strategy.get(), &auth::AuthStrategy::succeeded, [&](TokenStore::WorkspaceRecord rec) {
             TokenStore::saveWorkspace(rec);
             _activeTeamId = rec.key.toString();
             success       = true;
@@ -1214,10 +1225,7 @@ void MainWindow::wireConvList() {
         }
     );
     connect(
-        _convList,
-        &ConvListWidget::leaveConversationRequested,
-        this,
-        [this](ConversationId id) {
+        _convList, &ConvListWidget::leaveConversationRequested, this, [this](ConversationId id) {
             if (_session)
                 _session->leaveConversation(id);
         }
@@ -1269,10 +1277,9 @@ void MainWindow::openBrowseDialog(int initialTab) {
         auto *cdlg = new CreateChannelDialog(recordForHandle(_activeTeamId).displayName, this);
         if (cdlg->exec() == QDialog::Accepted) {
             _session->createChannel(
-                cdlg->channelName(),
-                cdlg->isPrivate(),
-                {},
-                [this](const QString &err) { showNetworkError(err); }
+                cdlg->channelName(), cdlg->isPrivate(), {}, [this](const QString &err) {
+                    showNetworkError(err);
+                }
             );
         }
         cdlg->deleteLater();
@@ -1580,6 +1587,12 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     if (!me.value.isEmpty() && ev.msg.author == me)
         return;
 
+    // A huddle posts a "huddle_thread" system message that also arrives here;
+    // it gets its own dedicated notification via maybeNotifyHuddle, so don't
+    // double-notify with the raw system message.
+    if (ev.msg.subtype && *ev.msg.subtype == QLatin1String("huddle_thread"))
+        return;
+
     // Skip if this conversation is on screen right now
     if (isActiveWindow() && teamId == _activeTeamId && ev.conv == _currentConvId)
         return;
@@ -1661,7 +1674,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     if (_desktopNotifier && _desktopNotifier->isAvailable()) {
         const QString token = teamId + QChar(0x1f) + ev.conv.value;
         shown               = _desktopNotifier->notify(
-            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), token, 5000
+            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), token, {}, 5000
         );
     }
     if (!shown) {
@@ -1677,6 +1690,170 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
         Sound::Player::instance().play(
             s.value("notifications/soundId", Sound::Player::defaultId()).toString()
         );
+}
+
+void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev) {
+    const QString key = teamId + QChar(0x1f) + ev.conv.value;
+
+    // A huddle ending clears the dedup key so its next start notifies again.
+    // EvHuddleChanged also re-fires on edits / history reconcile / conv-info
+    // refresh, so notify only on the false→true transition we haven't seen yet.
+    if (!ev.active) {
+        _notifiedHuddles.remove(key);
+        return;
+    }
+    if (_notifiedHuddles.contains(key))
+        return;
+
+    QSettings s("msga", "msga");
+    if (!s.value("notifications/enabled", true).toBool() ||
+        !s.value("notifications/huddles", true).toBool())
+        return;
+
+    const auto it = _sessions.find(teamId);
+    if (it == _sessions.end())
+        return;
+    Session *session = it->second.session.get();
+    if (!session->capabilities().huddles)
+        return;
+
+    const UserId me   = session->meUserId();
+    const auto  *conv = session->findConversation(ev.conv);
+    // Member-only, not muted, not a huddle I'm already in, and (for channels)
+    // only when set to "All new posts" — see shouldNotifyHuddleStart.
+    if (!conv || !shouldNotifyHuddleStart(*conv, ev.participants, me, globalDefaultNotifLevel()))
+        return;
+    const bool isDm = (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
+
+    // Already looking at this conversation — the in-window HuddleBanner already
+    // offers Join, so a popup would be redundant.
+    if (isActiveWindow() && teamId == _activeTeamId && ev.conv == _currentConvId) {
+        _notifiedHuddles.insert(key);
+        return;
+    }
+
+    // Record before delivering so a burst of re-fires can't double-notify.
+    _notifiedHuddles.insert(key);
+
+    // Starter = first listed participant (Session fills [host] for a fresh room).
+    const User *starter =
+        ev.participants.empty() ? nullptr : session->findUser(ev.participants.front());
+    const QString starterName =
+        starter ? (starter->displayName.isEmpty() ? starter->name : starter->displayName)
+                : tr("Someone");
+
+    QString title, body;
+    if (isDm) {
+        // Title already names the person, so don't repeat it in the body.
+        title = starterName;
+        body  = tr("Started a huddle");
+    } else {
+        title = "#" + conv->name;
+        body  = tr("%1 started a huddle").arg(starterName);
+    }
+    if (teamId != _activeTeamId) {
+        const QString teamName = recordForHandle(teamId).displayName;
+        if (!teamName.isEmpty())
+            title = teamName + " · " + title;
+    }
+
+    // Notification image: starter avatar for a DM, workspace icon otherwise
+    // (only an already-cached pixmap; a miss just means no picture this time).
+    QPixmap notifPix;
+    if (_imgCache) {
+        QString iconUrl;
+        if (isDm && starter && !starter->avatarUrl.isEmpty())
+            iconUrl = starter->avatarUrl;
+        else
+            iconUrl = recordForHandle(teamId).iconUrl;
+        if (!iconUrl.isEmpty())
+            notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
+    }
+
+    // The room's own huddle_link is the authoritative join URL; fall back to the
+    // ?open=start_huddle deep link (resolved against the huddle's team, which may
+    // not be the active workspace).
+    const QString joinUrl   = ev.link.isEmpty() ? huddleJoinUrl(teamId, ev.conv) : ev.link;
+    const QString bodyToken = key; // body click → open the conversation
+    const QString joinToken = QStringLiteral("join") + QChar(0x1f) + joinUrl;
+
+    bool shown = false;
+    if (_desktopNotifier && _desktopNotifier->isAvailable()) {
+        const QList<NotifAction> actions{{QStringLiteral("join"), tr("Join"), joinToken}};
+        shown = _desktopNotifier->notify(
+            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), bodyToken, actions, 5000
+        );
+    }
+    if (!shown) {
+        // The tray balloon has no action button; a click opens the conversation
+        // (which surfaces the HuddleBanner's Join pill).
+        _pendingNotifTeam = teamId;
+        _pendingNotifConv = ev.conv;
+        if (notifPix.isNull())
+            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+        else
+            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+    }
+
+    if (s.value("notifications/sound", true).toBool())
+        Sound::Player::instance().play(
+            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
+        );
+}
+
+void MainWindow::showSampleNotification(int kind) {
+    // Fire a representative, self-contained notification (no real session/conv)
+    // so the user can see how each kind looks with their OS notifier + settings.
+    const auto    k             = static_cast<SettingsDialog::SampleNotif>(kind);
+    const QString sampleUser    = tr("Sample User");
+    const QString sampleChannel = QStringLiteral("#general");
+
+    QString            title, body;
+    QList<NotifAction> actions;
+    switch (k) {
+    case SettingsDialog::SampleNotif::Dm:
+        title = sampleUser;
+        body  = tr("Hey — do you have a minute?");
+        break;
+    case SettingsDialog::SampleNotif::Channel:
+        title = sampleChannel;
+        body  = tr("%1: Heads up, the deploy is going out at 3pm").arg(sampleUser);
+        break;
+    case SettingsDialog::SampleNotif::Huddle: {
+        title                 = sampleChannel;
+        body                  = tr("%1 started a huddle").arg(sampleUser);
+        const QString joinUrl = (!_activeTeamId.isEmpty() && !_currentConvId.value.isEmpty())
+                                    ? huddleJoinUrl(_currentConvId)
+                                    : QStringLiteral("https://app.slack.com");
+        actions.append(
+            {QStringLiteral("join"), tr("Join"), QStringLiteral("join") + QChar(0x1f) + joinUrl}
+        );
+        break;
+    }
+    }
+
+    // Picture: the active workspace icon when cached (illustrative only).
+    QPixmap notifPix;
+    if (_imgCache && !_activeTeamId.isEmpty()) {
+        const QString iconUrl = recordForHandle(_activeTeamId).iconUrl;
+        if (!iconUrl.isEmpty())
+            notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
+    }
+
+    // Empty body token: clicking just dismisses (no real conversation to open).
+    bool shown = false;
+    if (_desktopNotifier && _desktopNotifier->isAvailable())
+        shown = _desktopNotifier->notify(
+            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), QString(), actions, 5000
+        );
+    if (!shown && _trayIcon) {
+        _pendingNotifTeam.clear();
+        _pendingNotifConv = {};
+        if (notifPix.isNull())
+            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+        else
+            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+    }
 }
 
 void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs) {
@@ -1878,6 +2055,16 @@ void MainWindow::setupTray() {
 }
 
 void MainWindow::handleNotifToken(const QString &token) {
+    // A huddle "Join" button carries "join\x1f<url>": open the huddle straight
+    // in the browser without raising the window (the user asked to join, not to
+    // read the chat). URLs never contain the 0x1f unit separator.
+    static const QString kJoinPrefix = QStringLiteral("join") + QChar(0x1f);
+    if (token.startsWith(kJoinPrefix)) {
+        const QString url = token.mid(kJoinPrefix.size());
+        if (!url.isEmpty())
+            QDesktopServices::openUrl(QUrl(url));
+        return;
+    }
     const int sep = token.indexOf(QChar(0x1f));
     if (sep < 0)
         return;
@@ -2218,8 +2405,7 @@ void MainWindow::openConversation(int row) {
             _convTabs->setCanvasTabVisible(true);
             _convTabs->setCanvasInfo(!_currentCanvasFileId.isEmpty());
             _session->loadChannelCanvas(
-                _currentConvId,
-                [this, convId = _currentConvId](QString fileId, bool) {
+                _currentConvId, [this, convId = _currentConvId](QString fileId, bool) {
                     if (_currentConvId != convId)
                         return;
                     _currentCanvasFileId = fileId;
@@ -2302,15 +2488,22 @@ void MainWindow::updateStarBtn(bool starred) {
         return;
     const QString svg =
         starred ? QStringLiteral(":/ui/star-solid.svg") : QStringLiteral(":/ui/star.svg");
-    _starBtn->setIcon(svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
+    _starBtn->setIcon(
+        svgIcon(svg, QSize(15, 15), starred ? Th::c().icon.starred : Th::c().icon.def)
     );
 }
 
 QString MainWindow::huddleJoinUrl(const ConversationId &conv) const {
+    return huddleJoinUrl(_activeTeamId, conv);
+}
+
+QString MainWindow::huddleJoinUrl(const QString &teamId, const ConversationId &conv) const {
     // Deep link that opens the conversation and triggers the start/join-huddle
     // action in one click (the Slack web client honours ?open=start_huddle).
+    // Takes the team explicitly because a notification may target a background
+    // workspace, not the active one.
     return QStringLiteral("https://app.slack.com/client/%1/%2?open=start_huddle")
-        .arg(_activeTeamId, conv.value);
+        .arg(teamId, conv.value);
 }
 
 void MainWindow::updateHuddleBanner() {

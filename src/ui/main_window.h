@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 #include <QSystemTrayIcon>
 #include <QPushButton>
+#include <QSet>
 #include <QUrl>
 #include <map>
 #include <memory>
@@ -105,8 +106,10 @@ private:
     // Toggle the huddle banner from the open conversation's huddleActive flag.
     void    updateHuddleBanner();
     // Web join URL for a conversation's huddle: the room's own huddle_link if we
-    // have it, else a constructed app.slack.com/huddle link.
+    // have it, else a constructed app.slack.com/huddle link. The teamId overload
+    // is for notifications, whose huddle may be in a background workspace.
     QString huddleJoinUrl(const ConversationId &conv) const;
+    QString huddleJoinUrl(const QString &teamId, const ConversationId &conv) const;
 
     // Search overlay
     void repositionSearch();
@@ -119,6 +122,12 @@ private:
     // Tray
     void setupTray();
     void maybeNotify(const QString &teamId, const EvMessageNew &ev);
+    // Popup notification (with a "Join" action button) when a huddle starts in a
+    // non-muted conversation, even while the window is hidden to the tray.
+    void maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev);
+    // Fire a representative sample notification (Settings → "Sample
+    // notifications" Test button); kind is a SettingsDialog::SampleNotif value.
+    void showSampleNotification(int kind);
     // Bring the window forward and open the conversation a clicked notification
     // points at (shared by the tray and the freedesktop-notifier click paths).
     void openNotifTarget(const QString &teamId, const ConversationId &conv);
@@ -207,6 +216,10 @@ private:
     ConversationId _pendingNavConv; // jump target awaiting the new workspace's conv list
     ConversationId _pendingNotifConv;
     QString        _pendingNotifTeam;
+    // "teamId\x1fconvId" of huddles we've already shown a notification for, so a
+    // re-fired EvHuddleChanged (edit / history reconcile) can't double-notify;
+    // cleared when the huddle ends so its next start notifies again.
+    QSet<QString>  _notifiedHuddles;
     // teamId → {normal unreads (blue), important: DM unreads + mentions (red)}
     QHash<QString, QPair<int, int>> _wsUnreads;
     bool                            _convListWired = false;

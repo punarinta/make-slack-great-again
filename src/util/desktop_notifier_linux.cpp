@@ -79,11 +79,12 @@ DesktopNotifier::DesktopNotifier(QObject *parent) : QObject(parent) {
 DesktopNotifier::~DesktopNotifier() = default;
 
 bool DesktopNotifier::notify(
-    const QString &title,
-    const QString &body,
-    const QImage  &image,
-    const QString &token,
-    int            timeoutMs
+    const QString            &title,
+    const QString            &body,
+    const QImage             &image,
+    const QString            &token,
+    const QList<NotifAction> &actions,
+    int                       timeoutMs
 ) {
     if (!_available)
         return false;
@@ -106,8 +107,11 @@ bool DesktopNotifier::notify(
         hints.insert(QStringLiteral("image-data"), QVariant::fromValue(fd));
     }
 
-    // "default" is the implicit action GNOME fires when the body is clicked.
-    const QStringList actions{QStringLiteral("default"), QString()};
+    // "default" is the implicit action the daemon fires when the body is
+    // clicked; explicit buttons follow as (key, label) pairs.
+    QStringList actionList{QStringLiteral("default"), QString()};
+    for (const auto &a : actions)
+        actionList << a.key << a.label;
 
     QDBusInterface notifier(kService, kPath, kIface, QDBusConnection::sessionBus());
     if (!notifier.isValid())
@@ -119,21 +123,33 @@ bool DesktopNotifier::notify(
         QStringLiteral("msga"),
         title,
         body,
-        actions,
+        actionList,
         hints,
         int(timeoutMs)
     );
     if (!reply.isValid())
         return false;
+    QHash<QString, QString> tokens;
     if (!token.isEmpty())
-        _tokens.insert(reply.value(), token);
+        tokens.insert(QStringLiteral("default"), token);
+    for (const auto &a : actions)
+        if (!a.token.isEmpty())
+            tokens.insert(a.key, a.token);
+    if (!tokens.isEmpty())
+        _tokens.insert(reply.value(), tokens);
     return true;
 }
 
-void DesktopNotifier::onActionInvoked(uint id, const QString &) {
+void DesktopNotifier::onActionInvoked(uint id, const QString &actionKey) {
     const auto it = _tokens.constFind(id);
-    if (it != _tokens.constEnd())
-        emitActivated(it.value());
+    if (it == _tokens.constEnd())
+        return;
+    // Prefer the clicked action's token; fall back to the body ("default") one.
+    const auto act = it->constFind(actionKey);
+    if (act != it->constEnd())
+        emitActivated(act.value());
+    else if (const auto def = it->constFind(QStringLiteral("default")); def != it->constEnd())
+        emitActivated(def.value());
 }
 
 void DesktopNotifier::onNotificationClosed(uint id, uint) {
@@ -146,7 +162,12 @@ DesktopNotifier::DesktopNotifier(QObject *parent) : QObject(parent) {}
 DesktopNotifier::~DesktopNotifier() = default;
 
 bool DesktopNotifier::notify(
-    const QString &, const QString &, const QImage &, const QString &, int
+    const QString &,
+    const QString &,
+    const QImage &,
+    const QString &,
+    const QList<NotifAction> &,
+    int
 ) {
     return false;
 }

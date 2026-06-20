@@ -35,6 +35,10 @@ public:
     void open();
     void setUpdateChecker(UpdateChecker *checker);
 
+    // Which sample notification the "Test" button fires; the int carried by
+    // testNotificationRequested is one of these.
+    enum class SampleNotif { Dm = 0, Channel = 1, Huddle = 2 };
+
 signals:
     // Emitted when appearance settings are saved; carries the new relevantDays value.
     void appearanceChanged(int relevantDays);
@@ -46,6 +50,9 @@ signals:
     // Emitted when notification settings (incl. the global default level) are
     // saved, so the conv list and unread badges can re-resolve effective levels.
     void notificationsChanged();
+    // Emitted when the "Test" button under Sample notifications is clicked; the
+    // int is a SampleNotif value. MainWindow owns the actual delivery.
+    void testNotificationRequested(int kind);
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -84,9 +91,13 @@ private:
     QCheckBox    *_notifEnabled      = nullptr;
     QRadioButton *_notifAll          = nullptr;
     QRadioButton *_notifMentions     = nullptr;
+    QCheckBox    *_notifHuddles      = nullptr;
     QCheckBox    *_notifSound        = nullptr;
+    QWidget      *_notifSoundRow     = nullptr;
     Dropdown     *_notifSoundChoice  = nullptr;
     StyledButton *_notifSoundPreview = nullptr;
+    Dropdown     *_sampleNotifChoice = nullptr;
+    StyledButton *_sampleNotifTest   = nullptr;
 
     // Appearance controls
     QSpinBox                 *_relevantDays    = nullptr;

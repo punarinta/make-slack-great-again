@@ -15,8 +15,13 @@ class QLineEdit;
 class StyledLineEdit : public QFrame {
     Q_OBJECT
 public:
+    // Height matches StyledButton's matching Size so an input + button in the
+    // same row line up: Normal = Ui::kControlHeight, Small = kControlHeightSmall.
+    enum class Size { Normal, Small };
+
     explicit StyledLineEdit(QWidget *parent = nullptr);
 
+    void       setSize(Size size);
     void       setPrefix(const QString &text);
     // Show a tinted SVG glyph at the left edge of the field (e.g. a search
     // magnifier). Re-tinted on theme change. Pass an empty path to remove it.

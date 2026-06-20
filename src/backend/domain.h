@@ -236,6 +236,34 @@ inline NotificationLevel effectiveNotifLevel(const Conversation &c, Notification
     return c.notifLevel;
 }
 
+// Whether a starting huddle in conversation `c` should raise a desktop
+// notification. Pure policy (no UI/settings state) so it's unit-testable:
+//   • member-only, never when muted / level Mute;
+//   • never for a huddle I'm already in (my id is among the participants);
+//   • a DM/MPDM huddle always notifies, a channel huddle only when the conv's
+//     effective level is "All new posts" (a mentions-only channel's huddle is
+//     the same opted-out noise as its messages).
+// The caller still owns the orthogonal gates: the notifications-enabled and
+// per-huddle settings, the huddle capability, the already-notified dedup, and
+// the "conversation already on screen" case.
+inline bool shouldNotifyHuddleStart(
+    const Conversation        &c,
+    const std::vector<UserId> &participants,
+    const UserId              &me,
+    NotificationLevel          fallback
+) {
+    if (!c.isMember || c.isMuted || c.notifLevel == NotificationLevel::Mute)
+        return false;
+    if (!me.value.isEmpty())
+        for (const auto &p : participants)
+            if (p == me)
+                return false;
+    const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+    if (!isDm && effectiveNotifLevel(c, fallback) != NotificationLevel::All)
+        return false;
+    return true;
+}
+
 // One canvases.edit operation. Relative inserts and section ops need a
 // sectionId (the "temp:C:…" ids embedded in the canvas HTML / returned by
 // canvases.sections.lookup); markdown is canvas markdown — real markdown,

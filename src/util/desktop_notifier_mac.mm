@@ -35,7 +35,13 @@
 }
 - (void)userNotificationCenter:(NSUserNotificationCenter *)center
        didActivateNotification:(NSUserNotification *)notification {
-    NSString *token = notification.userInfo[@"token"];
+    // The action button (when present) carries its own token; the body click
+    // (contents/other) falls back to the default token.
+    NSString *token = nil;
+    if (notification.activationType == NSUserNotificationActivationTypeActionButtonClicked)
+        token = notification.userInfo[@"actionToken"];
+    if (!token)
+        token = notification.userInfo[@"token"];
     if (token && _owner)
         _owner->emitActivated(QString::fromNSString(token));
 }
@@ -62,15 +68,28 @@ DesktopNotifier::~DesktopNotifier() {
 }
 
 bool DesktopNotifier::notify(const QString &title, const QString &body, const QImage &image,
-                             const QString &token, int /*timeoutMs*/) {
+                             const QString &token, const QList<NotifAction> &actions,
+                             int /*timeoutMs*/) {
     if (!_available)
         return false;
 
     NSUserNotification *note = [[[NSUserNotification alloc] init] autorelease];
     note.title               = title.toNSString();
     note.informativeText     = body.toNSString();
+
+    // NSUserNotification renders a single action button. Use the first action;
+    // stash both tokens so the delegate can tell a button click from a body one.
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
     if (!token.isEmpty())
-        note.userInfo = @{@"token" : token.toNSString()};
+        info[@"token"] = token.toNSString();
+    if (!actions.isEmpty()) {
+        note.hasActionButton  = YES;
+        note.actionButtonTitle = actions.first().label.toNSString();
+        if (!actions.first().token.isEmpty())
+            info[@"actionToken"] = actions.first().token.toNSString();
+    }
+    if (info.count > 0)
+        note.userInfo = info;
 
     if (!image.isNull()) {
         QByteArray png;

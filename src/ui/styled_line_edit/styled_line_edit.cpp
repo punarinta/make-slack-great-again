@@ -52,6 +52,10 @@ StyledLineEdit::StyledLineEdit(QWidget *parent) : QFrame(parent) {
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
 }
 
+void StyledLineEdit::setSize(Size size) {
+    setFixedHeight(size == Size::Small ? Ui::kControlHeightSmall : Ui::kControlHeight);
+}
+
 void StyledLineEdit::setPrefix(const QString &text) {
     _prefixLabel->setText(text);
     _prefixLabel->setVisible(!text.isEmpty());

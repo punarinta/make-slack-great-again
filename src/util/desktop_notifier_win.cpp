@@ -185,10 +185,11 @@ DesktopNotifier::DesktopNotifier(QObject *parent) : QObject(parent) {
 DesktopNotifier::~DesktopNotifier() = default;
 
 bool DesktopNotifier::notify(
-    const QString &title,
-    const QString &body,
-    const QImage  &image,
-    const QString &token,
+    const QString            &title,
+    const QString            &body,
+    const QImage             &image,
+    const QString            &token,
+    const QList<NotifAction> &actions,
     int /*timeoutMs*/
 ) {
 #if defined(MSGA_WINRT_TOAST)
@@ -212,15 +213,30 @@ bool DesktopNotifier::notify(
     }
 
     // Clicking fires protocol activation of this URL → SingleInstance forwards it.
-    const QString launch = QStringLiteral("msga://notif?token=%1")
-                               .arg(QString::fromLatin1(QUrl::toPercentEncoding(token)));
+    const auto launchUrl = [](const QString &t) {
+        return QStringLiteral("msga://notif?token=%1")
+            .arg(QString::fromLatin1(QUrl::toPercentEncoding(t)));
+    };
 
-    const QString xml = QStringLiteral(
-                            "<toast launch=\"%1\" activationType=\"protocol\"><visual>"
-                            "<binding template=\"ToastGeneric\"><text>%2</text><text>%3</text>%4"
-                            "</binding></visual></toast>"
-    )
-                            .arg(xmlEscape(launch), xmlEscape(title), xmlEscape(body), imgTag);
+    // Each action button is its own protocol-activation button carrying its own
+    // token; the toast-level launch handles the body click.
+    QString actionsTag;
+    for (const auto &a : actions)
+        actionsTag +=
+            QStringLiteral("<action content=\"%1\" arguments=\"%2\" activationType=\"protocol\"/>")
+                .arg(xmlEscape(a.label), xmlEscape(launchUrl(a.token)));
+    if (!actionsTag.isEmpty())
+        actionsTag = QStringLiteral("<actions>%1</actions>").arg(actionsTag);
+
+    const QString xml =
+        QStringLiteral(
+            "<toast launch=\"%1\" activationType=\"protocol\"><visual>"
+            "<binding template=\"ToastGeneric\"><text>%2</text><text>%3</text>%4"
+            "</binding></visual>%5</toast>"
+        )
+            .arg(
+                xmlEscape(launchUrl(token)), xmlEscape(title), xmlEscape(body), imgTag, actionsTag
+            );
 
     return showToast(_aumid, xml);
 #else
@@ -228,6 +244,7 @@ bool DesktopNotifier::notify(
     Q_UNUSED(body);
     Q_UNUSED(image);
     Q_UNUSED(token);
+    Q_UNUSED(actions);
     return false;
 #endif
 }

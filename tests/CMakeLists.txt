@@ -97,6 +97,12 @@ add_msga_test(test_json_mappers
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
+# Pure huddle-notification policy (header-only helper in domain.h).
+add_msga_test(test_huddle_notify
+    test_huddle_notify.cpp
+)
+target_link_libraries(test_huddle_notify PRIVATE Qt6::Gui)
+
 # Source set for the Slack backend below the seam — shared by the backend /
 # network / factory tests so each lists it once.
 set(SLACK_BACKEND_SRCS

@@ -4,7 +4,21 @@
 #include <QObject>
 #include <QString>
 
+#include <QList>
+
 class QImage;
+
+// One optional action button on a notification. `key` is a stable id, `label`
+// is the button text, and `token` is echoed back via activated() when THIS
+// button (rather than the body) is clicked. Not every backend can render
+// buttons (the freedesktop daemon may not support actions, the mingw build
+// lacks WinRT toasts, NSUserNotification allows a single button) — where they
+// can't, the notification still shows and the body click still works.
+struct NotifAction {
+    QString key;
+    QString label;
+    QString token;
+};
 
 // Per-platform desktop-notification client that can put a per-message picture
 // (the sender's avatar) into the OS notification — something Qt's
@@ -37,14 +51,17 @@ public:
 
     // Show a notification. `image` is rendered as the notification picture when
     // non-null (any QImage format; converted internally). `token` is an opaque
-    // string echoed back via activated() if the user clicks the notification.
+    // string echoed back via activated() if the user clicks the notification
+    // body. `actions` add optional buttons, each echoing its own token on click
+    // (see NotifAction); ignored by backends that can't render buttons.
     // Returns false when not delivered, so the caller can fall back to the tray.
     bool notify(
-        const QString &title,
-        const QString &body,
-        const QImage  &image,
-        const QString &token,
-        int            timeoutMs = 5000
+        const QString            &title,
+        const QString            &body,
+        const QImage             &image,
+        const QString            &token,
+        const QList<NotifAction> &actions   = {},
+        int                       timeoutMs = 5000
     );
 
     // Implementation hook: the platform click handler calls this to surface a
@@ -64,7 +81,9 @@ private slots:
     void onNotificationClosed(uint id, uint reason);
 
 private:
-    QHash<uint, QString> _tokens; // live notification id → caller token
+    // live notification id → (action key → caller token). The body click is
+    // stored under the "default" key.
+    QHash<uint, QHash<QString, QString>> _tokens;
 #endif
 
 #if defined(Q_OS_MACOS)

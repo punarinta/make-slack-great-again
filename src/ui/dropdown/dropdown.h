@@ -20,7 +20,14 @@
 class Dropdown : public QWidget {
     Q_OBJECT
 public:
+    // Height matches StyledButton / StyledLineEdit of the same Size so a dropdown
+    // lines up with the inputs and buttons beside it: Normal = Ui::kControlHeight,
+    // Small = kControlHeightSmall.
+    enum class Size { Normal, Small };
+
     explicit Dropdown(QWidget *parent = nullptr);
+
+    void setSize(Size size);
 
     // Each item carries optional opaque user data (like QComboBox::itemData), so
     // callers can store a stable id ("system"/"en"/…) independent of the label.
@@ -42,6 +49,7 @@ protected:
     void  mousePressEvent(QMouseEvent *) override;
     void  enterEvent(QEnterEvent *) override;
     void  leaveEvent(QEvent *) override;
+    void  changeEvent(QEvent *) override; // restyle when enabled/disabled toggles
     QSize sizeHint() const override;
 
 private:
@@ -54,4 +62,5 @@ private:
     int             _current = -1;
     bool            _hover   = false;
     bool            _open    = false; // popup currently showing → keep the field highlighted
+    Size            _size    = Size::Normal;
 };
