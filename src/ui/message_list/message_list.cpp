@@ -2494,12 +2494,19 @@ void MessageListWidget::handleEvent(const Event &e) {
                 return;
         } else if (ev->msg.threadRoot.has_value()) {
             // In channel mode, thread replies don't appear in the main list —
-            // bump the reply count on the root message instead.
-            const int rootIdx = findByTs(*ev->msg.threadRoot);
-            if (rootIdx >= 0) {
-                _items[rootIdx].msg.replyCount++;
-                rebuildLayout();
-                viewport()->update();
+            // bump the reply count on the root message instead. Skip the
+            // optimistic ghost: our own reply arrives twice (the pending ghost
+            // with a fake ts, then the confirmed echo with the real ts), and
+            // since the two carry different ts they can't be deduped against
+            // each other — counting both double-bumps the badge until a
+            // reload heals it. Counting only the confirmed copy keeps it exact.
+            if (!ev->msg.pending) {
+                const int rootIdx = findByTs(*ev->msg.threadRoot);
+                if (rootIdx >= 0) {
+                    _items[rootIdx].msg.replyCount++;
+                    rebuildLayout();
+                    viewport()->update();
+                }
             }
             return;
         }
