@@ -730,6 +730,13 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
     if (w <= 0)
         return;
 
+    // System/activity lines paint their own centered text directly — they carry
+    // no message document, so text hit-testing and selection skip them.
+    if (isSystemEvent(item.msg)) {
+        item.docHeight = 0;
+        return;
+    }
+
     // Custom-emoji images referenced by this message. Registering the cached
     // pixmaps as document resources lets the `<img>` tags emitted by
     // MsgRender::toHtml render; ImageCache::get() also kicks off the download
@@ -836,6 +843,10 @@ bool MessageListWidget::isCollapsed(int index) const {
         return false;
     const auto &prev = _items[index - 1].msg;
     const auto &curr = _items[index].msg;
+    // A system line has its own layout and must never merge with a neighbour,
+    // even when its author id happens to match the adjacent message.
+    if (isSystemEvent(prev) || isSystemEvent(curr))
+        return false;
     if (prev.author != curr.author)
         return false;
     if (prev.replyCount > 0)
@@ -847,8 +858,14 @@ bool MessageListWidget::isCollapsed(int index) const {
 
 int MessageListWidget::rowHeight(int index) const {
     ensureDocLayout(_items[index]);
-    const auto &item      = _items[index];
-    const bool  collapsed = isCollapsed(index);
+    const auto &item = _items[index];
+
+    if (isSystemEvent(item.msg)) {
+        const int sepH = needsDateSep(index) ? kSepH : 0;
+        return sepH + systemRowHeight();
+    }
+
+    const bool collapsed = isCollapsed(index);
 
     int extraH = 0;
 
@@ -1444,6 +1461,8 @@ bool MessageListWidget::tryHandleToolbarPress(const QPoint &pos) {
     const auto &msg = _items[_hoveredRow].msg;
     if (msg.pending) // not on the server yet — no actions available
         return false;
+    if (isSystemRow(_hoveredRow)) // system lines have no actions or toolbar
+        return false;
     const int    scrollY   = verticalScrollBar()->value();
     const int    rowTop    = _tops[_hoveredRow] - scrollY;
     const int    rh        = rowHeight(_hoveredRow);
@@ -1507,7 +1526,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
 
     auto *menu = new ContextMenu(this);
 
-    if (!_isThreadMode) {
+    if (!_isThreadMode && canHostThread(msg)) {
         menu->addItem(
             tr("Reply in thread"),
             "T",
@@ -1669,9 +1688,9 @@ bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
     auto         &reactions = _items[reactMsgIdx].msg.reactions;
     const UserId  me        = _session->meUserId();
     const bool    already   = std::any_of(
-        reactions[reactIdx].users.begin(), reactions[reactIdx].users.end(), [&me](const UserId &u) {
-            return u == me;
-        }
+        reactions[reactIdx].users.begin(),
+        reactions[reactIdx].users.end(),
+        [&me](const UserId &u) { return u == me; }
     );
     if (already) {
         _session->backend()->removeReaction(_currentConv, reactTs, emojiName);
@@ -1969,9 +1988,10 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
             downloadFileToUser(f);
         });
         connect(
-            _imageViewer, &ImageViewerOverlay::forwardRequested, this, [this](const Message &m) {
-                emit forwardMessageRequested(m);
-            }
+            _imageViewer,
+            &ImageViewerOverlay::forwardRequested,
+            this,
+            [this](const Message &m) { emit forwardMessageRequested(m); }
         );
         connect(
             _imageViewer,
@@ -2006,7 +2026,8 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
         }
     }
     _session->downloadFile(
-        file.urlPrivate, [this, id = file.id, url = file.urlPrivate](QByteArray data) {
+        file.urlPrivate,
+        [this, id = file.id, url = file.urlPrivate](QByteArray data) {
             if (_session)
                 _session->cacheImage(url, data);
             QPixmap px;
@@ -2246,7 +2267,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // Detect which toolbar button (if any) is under the cursor — computed
     // directly so we don't depend on the stale _hoveredRow value.
     int newHoveredBtn = -1;
-    if (newHoveredRow >= 0) {
+    if (newHoveredRow >= 0 && !isSystemRow(newHoveredRow)) {
         const int rowTop = _tops[newHoveredRow] - scrollY;
         const int rh     = rowHeight(newHoveredRow);
         const int sep5   = needsDateSep(newHoveredRow) ? kSepH : 0;

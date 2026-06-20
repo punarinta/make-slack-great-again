@@ -55,6 +55,24 @@ static QString withReauthHint(QString msg, const QString &err) {
     return msg;
 }
 
+// Maps a raw Slack send-failure code to a human-readable sentence. Unknown
+// codes fall through to the raw code so nothing is hidden when diagnosing.
+static QString friendlySendError(const QString &err) {
+    if (err == QLatin1String("cannot_reply_to_message"))
+        return QCoreApplication::translate("Session", "You can't reply to this message.");
+    if (err == QLatin1String("not_in_channel"))
+        return QCoreApplication::translate("Session", "You're not a member of this channel.");
+    if (err == QLatin1String("is_archived"))
+        return QCoreApplication::translate("Session", "This conversation is archived.");
+    if (err == QLatin1String("msg_too_long"))
+        return QCoreApplication::translate("Session", "The message is too long.");
+    if (err == QLatin1String("channel_not_found"))
+        return QCoreApplication::translate("Session", "This conversation no longer exists.");
+    if (err == QLatin1String("restricted_action") || err == QLatin1String("no_permission"))
+        return QCoreApplication::translate("Session", "You don't have permission to post here.");
+    return err;
+}
+
 // Parses /dnd durations: "30" / "45m" / "2h" / "1h 30m" / "1 hour" → minutes;
 // "off" / "end" / "resume" → 0 (end snooze); anything else → -1.
 static int parseDndMinutes(const QString &args) {
@@ -354,7 +372,7 @@ void Session::start() {
                     }
                     _errorHub.fire(
                         QCoreApplication::translate("Session", "Couldn't send message: %1")
-                            .arg(ev->reason)
+                            .arg(friendlySendError(ev->reason))
                     );
                 } else if (auto *ev = std::get_if<EvHuddleChanged>(&e)) {
                     // Patch live-huddle state; the conversations() producer
@@ -776,11 +794,9 @@ void Session::runCommand(ConversationId conv, const QString &name, const QString
     if (cmd == QLatin1String("dnd")) {
         const int minutes = parseDndMinutes(args);
         if (minutes < 0) {
-            _errorHub.fire(
-                QCoreApplication::translate(
-                    "Session", "Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume"
-                )
-            );
+            _errorHub.fire(QCoreApplication::translate(
+                "Session", "Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume"
+            ));
             return;
         }
         setDndSnooze(minutes);
@@ -1048,8 +1064,7 @@ void Session::editCanvas(
 ) {
     _backend->editCanvas(canvasId, changes, [this, done](bool ok, QString err) {
         if (!ok)
-            _errorHub.fire(
-                QCoreApplication::translate("Session", "Canvas edit failed: %1").arg(err)
+            _errorHub.fire(QCoreApplication::translate("Session", "Canvas edit failed: %1").arg(err)
             );
         if (done)
             done(ok, std::move(err));

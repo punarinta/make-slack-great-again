@@ -208,6 +208,13 @@ private:
 
     // Painting
     void paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx) const;
+    // Centered single-line rendering for system/activity messages (joins, topic
+    // changes, …). msgTop is the row top after any date separator.
+    void paintSystemRow(QPainter &p, int index, int msgTop, const PaintContext &ctx) const;
+    // Height of a system line's content (no separator), from the active font.
+    int  systemRowHeight() const;
+    // True when the row is a system/activity line rather than a real message.
+    bool isSystemRow(int index) const { return isSystemEvent(_items[index].msg); }
     void paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const;
     void paintReactions(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
@@ -253,9 +260,9 @@ private:
     // otherwise returns an empty string.
     QString avatarUserAt(const QPoint &viewportPos, QRect *outVpRect = nullptr) const;
     // Attachment height helpers
-    int
-    attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
-    int attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
+    int     attachImageH(const Attachment &att
+        ) const; // preview image height (includes kImgGap), 0 if none
+    int     attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
 
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
     const File *fileChipAt(const QPoint &viewportPos) const;
@@ -357,6 +364,9 @@ private:
 
     // Date separator
     static constexpr int kSepH = 32; // total height of date separator band
+
+    // System/activity lines (joins, topic changes, …): centered single line.
+    static constexpr int kSysRowPadV = 6; // vertical padding above and below the line
 
     // Conversation intro header (painted before first message)
     static constexpr int kIntroPadTop = 32; // space above the name line

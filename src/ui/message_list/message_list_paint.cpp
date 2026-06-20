@@ -61,9 +61,8 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
             const qint64 ms = _loadingElapsedTimer.elapsed();
             QString      hint;
             if (ms >= 15000)
-                hint =
-                    tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
-                       "Slack user. Still loading...");
+                hint = tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
+                          "Slack user. Still loading...");
             else if (ms >= 5000)
                 hint = tr("Oh, you must have a lot of co-workers and messages! Still loading...");
             else if (ms >= 1000)
@@ -113,9 +112,8 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     paintScrollThumb(p, _totalH, Th::c().divider.strong);
 }
 
-void MessageListWidget::paintRow(
-    QPainter &p, int index, int rowTop, const PaintContext &ctx
-) const {
+void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx)
+    const {
     const auto &item = _items[index];
     ensureDocLayout(item);
     const bool collapsed = isCollapsed(index);
@@ -125,6 +123,13 @@ void MessageListWidget::paintRow(
     if (sepH > 0)
         paintDateSep(p, rowTop, ctx.vw, item.msg.date);
     const int msgTop = rowTop + sepH;
+
+    // System/activity lines (joins, topic changes, …) get a centered single
+    // line — no avatar, header, hover background, toolbar, reactions or replies.
+    if (isSystemEvent(item.msg)) {
+        paintSystemRow(p, index, msgTop, ctx);
+        return;
+    }
 
     const int vw        = ctx.vw;
     const int textLeft  = ctx.textLeft;
@@ -258,6 +263,12 @@ void MessageListWidget::paintRow(
         QAbstractTextDocumentLayout::PaintContext pCtx;
         pCtx.palette = QApplication::palette();
         pCtx.clip    = QRectF(0, 0, textWidth, item.docHeight);
+
+        // Muted notices (e.g. reminder_add) keep the normal message layout but
+        // grey the body — the default text color drives any span without an
+        // explicit color of its own (plain reminder text has none).
+        if (isMutedMessage(item.msg))
+            pCtx.palette.setColor(QPalette::Text, Th::c().text.secondary);
 
         // Compute normalized selection for this row.
         if (_selAnchor.row >= 0 && _selFocus.row >= 0) {
@@ -1572,5 +1583,42 @@ void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, qint64 dateMi
     p.setFont(font);
     p.setPen(Th::c().text.tertiary);
     p.drawText(pill, Qt::AlignCenter, label);
+    p.restore();
+}
+
+namespace {
+QFont systemLineFont() {
+    QFont font = QApplication::font();
+    font.setPointSizeF(font.pointSizeF() * 0.85);
+    return font;
+}
+} // namespace
+
+int MessageListWidget::systemRowHeight() const {
+    const QFontMetrics fm(systemLineFont());
+    return fm.height() + 2 * kSysRowPadV;
+}
+
+void MessageListWidget::paintSystemRow(QPainter &p, int index, int msgTop, const PaintContext &ctx)
+    const {
+    const Message &msg = _items[index].msg;
+
+    QString text = MsgRender::notificationText(msg.text, _session);
+    if (text.isEmpty() && msg.subtype)
+        text = *msg.subtype; // last-resort label if Slack sent no text
+
+    const QFont        font = systemLineFont();
+    const QFontMetrics fm(font);
+    const int          availW = std::max(0, ctx.vw - 2 * kPadH);
+    const QString      elided = fm.elidedText(text, Qt::ElideRight, availW);
+
+    p.save();
+    p.setFont(font);
+    p.setPen(Th::c().text.tertiary);
+    p.drawText(
+        QRect(kPadH, msgTop + kSysRowPadV, availW, fm.height()),
+        Qt::AlignHCenter | Qt::AlignVCenter,
+        elided
+    );
     p.restore();
 }

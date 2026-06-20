@@ -4,6 +4,7 @@
 // No Slack JSON, no HTTP types, no xoxp tokens above this layer.
 #pragma once
 
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -466,6 +467,47 @@ struct Message {
     bool                    pending                           = false;
     bool                    operator==(const Message &) const = default;
 };
+
+// True for Slack "activity" messages — channel/member lifecycle events (joins,
+// topic/purpose/name changes, archive, integration add/remove, pins, …) rather
+// than real content. These render as centered system lines (no
+// avatar/header/toolbar) and cannot host a thread, so this is a denylist of
+// those subtypes, not an `!subtype` test. Content subtypes that the official
+// client draws as ordinary messages — bot_message, file_share, me_message,
+// thread_broadcast, and reminder_add (a user-authored "/remind" message with an
+// avatar and name) — are NOT system events.
+inline bool isSystemEvent(const Message &m) {
+    if (!m.subtype)
+        return false;
+    static const QSet<QString> kSystemSubtypes = {
+        QStringLiteral("channel_join"),      QStringLiteral("channel_leave"),
+        QStringLiteral("channel_topic"),     QStringLiteral("channel_purpose"),
+        QStringLiteral("channel_name"),      QStringLiteral("channel_archive"),
+        QStringLiteral("channel_unarchive"), QStringLiteral("group_join"),
+        QStringLiteral("group_leave"),       QStringLiteral("group_topic"),
+        QStringLiteral("group_purpose"),     QStringLiteral("group_name"),
+        QStringLiteral("group_archive"),     QStringLiteral("group_unarchive"),
+        QStringLiteral("pinned_item"),       QStringLiteral("unpinned_item"),
+        QStringLiteral("bot_add"),           QStringLiteral("bot_remove"),
+        QStringLiteral("huddle_thread"),
+    };
+    return kSystemSubtypes.contains(*m.subtype);
+}
+
+// True for messages the official client draws as ordinary rows (avatar, name,
+// timestamp) but greys the body of and refuses to thread — e.g. reminder_add,
+// the user-authored "/remind" notice. Distinct from isSystemEvent, which is a
+// centered line with no avatar/header at all.
+inline bool isMutedMessage(const Message &m) {
+    return m.subtype && *m.subtype == QLatin1String("reminder_add");
+}
+
+// True when a message can be the parent of a thread. Slack rejects replies to
+// system/activity and muted notice messages with `cannot_reply_to_message`, so
+// the "Reply in thread" affordance must be hidden for them.
+inline bool canHostThread(const Message &m) {
+    return !isSystemEvent(m) && !isMutedMessage(m);
+}
 
 struct MessagePage {
     std::vector<Message>   messages;
