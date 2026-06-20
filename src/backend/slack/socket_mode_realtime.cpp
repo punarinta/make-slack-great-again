@@ -201,8 +201,7 @@ void SocketModeRealtime::sendPresenceSub() {
                 seen.insert(id);
                 ids.append(id);
             }
-    _ws->sendTextMessage(QJsonDocument(
-                             QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
+    _ws->sendTextMessage(QJsonDocument(QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
     ).toJson(QJsonDocument::Compact));
 }
 
@@ -288,8 +287,14 @@ std::optional<Event> SocketModeRealtime::normalizeSlackEvent(const QJsonObject &
 
     if (type == "message") {
         if (subtype == "message_deleted") {
+            // previous_message carries the deleted message; toMessage derives
+            // threadRoot (set only when it was a reply) so the channel list can
+            // drop the root's reply count.
+            const auto prev = JsonMappers::toMessage(ev.value("previous_message").toObject());
             return EvMessageDeleted{
-                ConversationId{ev.value("channel").toString()}, ev.value("deleted_ts").toString()
+                ConversationId{ev.value("channel").toString()},
+                ev.value("deleted_ts").toString(),
+                prev.threadRoot
             };
         }
         if (subtype == "message_changed" || subtype == "message_replied") {

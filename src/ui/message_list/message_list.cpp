@@ -2554,19 +2554,35 @@ void MessageListWidget::handleEvent(const Event &e) {
     } else if (auto *ev = std::get_if<EvMessageDeleted>(&e)) {
         if (ev->conv != _currentConv)
             return;
+        bool changed = false;
+        // A deleted thread reply contributes to the root's reply count, so drop
+        // it (mirrors the EvMessageNew bump). Most replies have no row of their
+        // own in the channel list — but a "also send to channel" broadcast does,
+        // so don't stop here: still remove its row below if present. Thread mode
+        // shows the reply itself and no count, so it skips this and just removes.
+        if (!_isThreadMode && ev->threadRoot && *ev->threadRoot != ev->ts) {
+            const int rootIdx = findByTs(*ev->threadRoot);
+            if (rootIdx >= 0 && _items[rootIdx].msg.replyCount > 0) {
+                _items[rootIdx].msg.replyCount--;
+                changed = true;
+            }
+        }
         const int i = findByTs(ev->ts);
-        if (i < 0)
-            return;
-        _items.erase(_items.begin() + i);
-        // Row indices shifted — drop hover state; the next mouse move recomputes it.
-        _hoveredRow      = -1;
-        _hoveredToolBtn  = -1;
-        _hoveredAttach   = {-1, -1};
-        _hoveredReplyRow = -1;
-        _hoveredFile     = {-1, -1};
-        _hoveredFileBtn  = -1;
-        rebuildLayout();
-        viewport()->update();
+        if (i >= 0) {
+            _items.erase(_items.begin() + i);
+            // Row indices shifted — drop hover state; the next mouse move recomputes it.
+            _hoveredRow      = -1;
+            _hoveredToolBtn  = -1;
+            _hoveredAttach   = {-1, -1};
+            _hoveredReplyRow = -1;
+            _hoveredFile     = {-1, -1};
+            _hoveredFileBtn  = -1;
+            changed          = true;
+        }
+        if (changed) {
+            rebuildLayout();
+            viewport()->update();
+        }
 
     } else if (auto *ev = std::get_if<EvReactionAdded>(&e)) {
         if (ev->conv != _currentConv)

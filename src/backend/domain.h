@@ -536,8 +536,11 @@ struct EvMessageChanged {
     Message        msg;
 };
 struct EvMessageDeleted {
-    ConversationId conv;
-    Ts             ts;
+    ConversationId    conv;
+    Ts                ts;
+    // Set when the deleted message was a thread reply (its parent's ts), so the
+    // channel list can drop the root's reply count. Empty for root/plain msgs.
+    std::optional<Ts> threadRoot;
 };
 struct EvReactionAdded {
     ConversationId conv;
