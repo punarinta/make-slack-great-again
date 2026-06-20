@@ -1,14 +1,46 @@
 // Windows resource script (configured by CMake from msga.rc.in).
-// Embeds the application icon into msga.exe.
+// Embeds the application icon AND the version metadata into msga.exe.
 //
 // Explorer/the taskbar pick the icon with the numerically-lowest resource id,
 // so this stays id 1. The .ico is multi-resolution (16-256 px) so Windows can
 // pick the right size for the taskbar, alt-tab, and the large-icon view.
 //
-// NOTE: do NOT add a VS_VERSION_INFO block here. The static mingw/Qt link
-// already contributes a VERSION resource (name 1, lang 0x409); a second one
-// makes windres' .rsrc merge fail with "duplicate leaf: type VERSION". If we
-// ever want to control the version metadata, do it via Qt's target properties
-// (QT_TARGET_VERSION / QT_TARGET_DESCRIPTION / ...), which feed the single
-// generated resource instead of adding a competing one.
+// VERSIONINFO — this block defines the app's identity. FileDescription is what
+// Windows shows as the executable's "Description" in Explorer AND what the
+// browser prints in the "Allow this site to open the msga link with ___?"
+// dialog when the OAuth redirect (msga://oauth/callback) fires. Without it the
+// exe inherits winpthread's resource ("POSIX WinThreads for Windows"), which is
+// the string users saw instead of the app name (GitHub issue: app name in the
+// browser). The static link pulls winpthread in via --whole-archive, which used
+// to drag its VERSION resource along too — two VERSION resources at id 1 / lang
+// 0x409 made windres' .rsrc merge fail with "duplicate leaf: type VERSION".
+// release-windows.sh now strips the pure-resource member from libwinpthread.a
+// before linking, so this is the only VERSION resource and there is no clash.
 1 ICON "@MSGA_ICON_PATH@"
+
+1 VERSIONINFO
+FILEVERSION    @MSGA_VERSION@,0,0,0
+PRODUCTVERSION @MSGA_VERSION@,0,0,0
+FILEOS         0x40004L
+FILETYPE       0x1L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "MSGA"
+            VALUE "FileDescription",  "MSGA"
+            VALUE "FileVersion",      "@MSGA_VERSION@.0.0.0"
+            VALUE "InternalName",     "msga"
+            VALUE "LegalCopyright",   "MSGA"
+            VALUE "OriginalFilename", "msga.exe"
+            VALUE "ProductName",      "MSGA"
+            VALUE "ProductVersion",   "@MSGA_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        // 0x0409 = US English, 1200 = Unicode (UTF-16) codepage
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -207,12 +207,15 @@ endif()
 if(WIN32)
     target_link_libraries(msga PRIVATE dbghelp)
 
-    # Windows application icon. windres compiles the .rc into the PE resource
-    # section so Explorer/taskbar/alt-tab show the app icon. The .ico path is
+    # Windows application icon + version metadata. windres compiles the .rc into
+    # the PE resource section so Explorer/taskbar/alt-tab show the app icon and
+    # the shell/browser show the app name (FileDescription). The .ico path is
     # baked in via configure_file (forward slashes — windres treats a backslash
     # as an escape). The icon is resource id 1 (lowest), which is what the shell
-    # picks as the executable icon. No VERSIONINFO here — the static link already
-    # supplies one and a second would fail windres' .rsrc merge (see msga.rc.in).
+    # picks as the executable icon. The .rc also carries the VERSIONINFO block;
+    # release-windows.sh strips winpthread's competing VERSION resource from the
+    # static archive first, so windres' .rsrc merge has no duplicate (see
+    # msga.rc.in). @MSGA_VERSION@ comes from version.cmake (included above).
     set(MSGA_ICON_PATH "${CMAKE_SOURCE_DIR}/gfx/win/icon.ico")
     configure_file(
         "${CMAKE_SOURCE_DIR}/resources/msga.rc.in"
