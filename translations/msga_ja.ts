@@ -4,7 +4,7 @@
 <context>
     <name>AttachmentStrip</name>
     <message>
-        <location filename="../src/ui/composer/attachment_strip.cpp" line="+295"/>
+        <location filename="../src/ui/composer/attachment_strip.cpp" line="+297"/>
         <source>Remove attachment</source>
         <translation>添付ファイルを削除</translation>
     </message>
@@ -12,18 +12,18 @@
 <context>
     <name>BrowseChannelsDialog</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+61"/>
-        <location line="+183"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+49"/>
+        <location line="+167"/>
         <source>Search for channels</source>
         <translation>チャンネルを検索</translation>
     </message>
     <message>
-        <location line="-174"/>
+        <location line="-161"/>
         <source>Create Channel</source>
         <translation>チャンネルを作成</translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+17"/>
         <source>Channels</source>
         <translation>チャンネル</translation>
     </message>
@@ -33,7 +33,7 @@
         <translation>メンバー</translation>
     </message>
     <message>
-        <location line="+80"/>
+        <location line="+75"/>
         <source>%1 %2</source>
         <translation>%1%2</translation>
     </message>
@@ -56,7 +56,7 @@
 <context>
     <name>CanvasPage</name>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="+284"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="+268"/>
         <source>Your canvas title</source>
         <translation>canvasのタイトル</translation>
     </message>
@@ -81,21 +81,21 @@
         <translation>リンクをコピー</translation>
     </message>
     <message>
-        <location line="-486"/>
-        <location line="+20"/>
-        <location line="+475"/>
+        <location line="-469"/>
+        <location line="+22"/>
+        <location line="+456"/>
         <source>Delete canvas</source>
         <translation>canvasを削除</translation>
     </message>
     <message>
-        <location line="-491"/>
+        <location line="-474"/>
         <source>The canvas will be deleted for everyone in the conversation.
 This action cannot be undone.</source>
         <translation>canvasはこの会話の全員に対して削除されます。
 この操作は元に戻せません。</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -103,7 +103,7 @@ This action cannot be undone.</source>
 <context>
     <name>ComposerWidget</name>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="+490"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="+438"/>
         <source>Message #channel</source>
         <translation>#channel へのメッセージ</translation>
     </message>
@@ -133,7 +133,7 @@ This action cannot be undone.</source>
         <translation>送信を予約</translation>
     </message>
     <message>
-        <location line="+915"/>
+        <location line="+919"/>
         <source>Send at</source>
         <translation>送信日時</translation>
     </message>
@@ -172,14 +172,14 @@ This action cannot be undone.</source>
 <context>
     <name>ConvFooterWidget</name>
     <message numerus="yes">
-        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+137"/>
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+135"/>
         <source>%n background task(s) running</source>
         <translation>
             <numerusform>%n件のバックグラウンドタスクを実行中</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+80"/>
         <source>Hidden — you appear away to everyone. Click to use automatic presence.</source>
         <translation>非表示 — 全員に離席中と表示されます。クリックすると自動プレゼンスを使用します。</translation>
     </message>
@@ -194,7 +194,7 @@ This action cannot be undone.</source>
         <translation>表示中 — 自動プレゼンスを使用しています。クリックすると非表示にします。</translation>
     </message>
     <message>
-        <location line="+71"/>
+        <location line="+70"/>
         <source>Profile &amp; status</source>
         <translation>プロフィールとステータス</translation>
     </message>
@@ -212,7 +212,7 @@ This action cannot be undone.</source>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+500"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+508"/>
         <source>Open a direct message</source>
         <translation>ダイレクトメッセージを開く</translation>
     </message>
@@ -312,7 +312,7 @@ This action cannot be undone.</source>
         <translation>チャンネル</translation>
     </message>
     <message>
-        <location line="+156"/>
+        <location line="+167"/>
         <location line="+28"/>
         <source>you</source>
         <translation>自分</translation>
@@ -321,7 +321,7 @@ This action cannot be undone.</source>
 <context>
     <name>ConvSelectorWidget</name>
     <message>
-        <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="+39"/>
+        <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="+43"/>
         <source>Search channels and people…</source>
         <translation>チャンネルやメンバーを検索…</translation>
     </message>
@@ -347,12 +347,12 @@ This action cannot be undone.</source>
 <context>
     <name>CreateChannelDialog</name>
     <message>
-        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="+18"/>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="+19"/>
         <source>Create a channel</source>
         <translation>チャンネルを作成</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>Name</source>
         <translation>名前</translation>
     </message>
@@ -402,7 +402,7 @@ This action cannot be undone.</source>
         <translation>作成</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+40"/>
         <source>this workspace</source>
         <translation>このワークスペース</translation>
     </message>
@@ -415,17 +415,17 @@ This action cannot be undone.</source>
 <context>
     <name>DeleteMessageDialog</name>
     <message>
-        <location filename="../src/ui/delete_message_dialog/delete_message_dialog.cpp" line="+16"/>
+        <location filename="../src/ui/delete_message_dialog/delete_message_dialog.cpp" line="+17"/>
         <source>Delete message</source>
         <translation>メッセージを削除</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>This action cannot be undone.</source>
         <translation>この操作は元に戻せません。</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+47"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -438,7 +438,7 @@ This action cannot be undone.</source>
 <context>
     <name>EditModeBanner</name>
     <message>
-        <location filename="../src/ui/composer/edit_mode_banner.cpp" line="+20"/>
+        <location filename="../src/ui/composer/edit_mode_banner.cpp" line="+21"/>
         <source>Editing message</source>
         <translation>メッセージを編集中</translation>
     </message>
@@ -446,15 +446,35 @@ This action cannot be undone.</source>
 <context>
     <name>EmojiPickerPopup</name>
     <message>
-        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+465"/>
-        <source>Search emoji…</source>
-        <translation>絵文字を検索…</translation>
+        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+430"/>
+        <source>Search all emoji</source>
+        <translation>すべての絵文字を検索</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>Skin Tone</source>
+        <translation>肌の色</translation>
+    </message>
+    <message>
+        <location line="+142"/>
+        <source>Search Results</source>
+        <translation>検索結果</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>Frequently Used</source>
+        <translation>よく使う絵文字</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Custom</source>
+        <translation>カスタム</translation>
     </message>
 </context>
 <context>
     <name>FormattingToolbar</name>
     <message>
-        <location filename="../src/ui/composer/formatting_toolbar.cpp" line="+65"/>
+        <location filename="../src/ui/composer/formatting_toolbar.cpp" line="+66"/>
         <source>Bold</source>
         <translation>太字</translation>
     </message>
@@ -507,27 +527,27 @@ This action cannot be undone.</source>
 <context>
     <name>ForwardDialog</name>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="+23"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="+24"/>
         <source>Forward this message</source>
         <translation>このメッセージを転送</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
         <source>Add a message, if you&apos;d like.</source>
         <translation>必要に応じてメッセージを追加してください。</translation>
     </message>
     <message>
-        <location line="+128"/>
+        <location line="+125"/>
         <source>Copy Link</source>
         <translation>リンクをコピー</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+1"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
         <source>Forward</source>
         <translation>転送</translation>
     </message>
@@ -535,7 +555,7 @@ This action cannot be undone.</source>
 <context>
     <name>HuddleBanner</name>
     <message>
-        <location filename="../src/ui/huddle_banner/huddle_banner.cpp" line="+29"/>
+        <location filename="../src/ui/huddle_banner/huddle_banner.cpp" line="+30"/>
         <source>A huddle is happening</source>
         <translation>ハドルが開催中です</translation>
     </message>
@@ -622,12 +642,12 @@ This action cannot be undone.</source>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+339"/>
+        <location filename="../src/ui/main_window.cpp" line="+354"/>
         <source>Log in to workspace</source>
         <translation>ワークスペースにログイン</translation>
     </message>
     <message>
-        <location line="+802"/>
+        <location line="+812"/>
         <location line="+17"/>
         <source>Login failed</source>
         <translation>ログインに失敗しました</translation>
@@ -639,29 +659,62 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location line="+242"/>
-        <location line="+761"/>
+        <location line="+954"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>ここから%1とのダイレクトメッセージの履歴が始まります。</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+834"/>
+        <location line="-948"/>
+        <location line="+1027"/>
         <source>Message</source>
         <translation>メッセージ</translation>
     </message>
     <message>
-        <location line="-834"/>
-        <location line="+834"/>
+        <location line="-1027"/>
+        <location line="+1027"/>
         <source>Message %1</source>
         <translation>%1へのメッセージ</translation>
     </message>
     <message>
-        <location line="-623"/>
+        <location line="-817"/>
+        <location line="+120"/>
         <source>Someone</source>
         <translation>誰か</translation>
     </message>
     <message>
-        <location line="+185"/>
+        <location line="+6"/>
+        <source>Started a huddle</source>
+        <translation>ハドルを開始しました</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+72"/>
+        <source>%1 started a huddle</source>
+        <translation>%1さんがハドルを開始しました</translation>
+    </message>
+    <message>
+        <location line="-42"/>
+        <location line="+47"/>
+        <source>Join</source>
+        <translation>参加</translation>
+    </message>
+    <message>
+        <location line="-21"/>
+        <source>Sample User</source>
+        <translation>サンプルユーザー</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Hey — do you have a minute?</source>
+        <translation>ちょっといいですか？</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>%1: Heads up, the deploy is going out at 3pm</source>
+        <translation>%1: お知らせ、デプロイは15時に行われます</translation>
+    </message>
+    <message>
+        <location line="+153"/>
         <source>Workspace admin</source>
         <translation>ワークスペース管理</translation>
     </message>
@@ -686,7 +739,7 @@ This action cannot be undone.</source>
         <translation>終了</translation>
     </message>
     <message>
-        <location line="+185"/>
+        <location line="+195"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Slack（ブラウザ版）でハドルを開きます</translation>
     </message>
@@ -706,7 +759,7 @@ This action cannot be undone.</source>
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location line="-861"/>
+        <location line="-1035"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>公式Slackクライアントが接続されていないため、他のメンバーには離席中と表示されます</translation>
     </message>
@@ -734,13 +787,13 @@ This action cannot be undone.</source>
 <context>
     <name>MentionCompleter</name>
     <message>
-        <location filename="../src/ui/composer/mention_completer.cpp" line="+114"/>
-        <location line="+204"/>
+        <location filename="../src/ui/composer/mention_completer.cpp" line="+112"/>
+        <location line="+194"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
     <message>
-        <location line="-155"/>
+        <location line="-145"/>
         <source>App</source>
         <translation>アプリ</translation>
     </message>
@@ -748,7 +801,7 @@ This action cannot be undone.</source>
 <context>
     <name>MentionPopup</name>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+45"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+48"/>
         <source>Notify everyone in this channel</source>
         <translation>このチャンネルの全員に通知</translation>
     </message>
@@ -763,7 +816,7 @@ This action cannot be undone.</source>
         <translation>オンラインのメンバー全員に通知</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+73"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
@@ -773,7 +826,7 @@ This action cannot be undone.</source>
         <translation>アプリ</translation>
     </message>
     <message>
-        <location line="+290"/>
+        <location line="+288"/>
         <source>(you)</source>
         <translation>(あなた)</translation>
     </message>
@@ -781,7 +834,7 @@ This action cannot be undone.</source>
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="+1508"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="+1545"/>
         <source>Edit message</source>
         <translation>メッセージを編集</translation>
     </message>
@@ -817,12 +870,12 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+782"/>
+        <location line="+792"/>
         <source>Forward message</source>
         <translation>メッセージを転送</translation>
     </message>
     <message>
-        <location line="-771"/>
+        <location line="-781"/>
         <source>Delete message…</source>
         <translation>メッセージを削除…</translation>
     </message>
@@ -847,7 +900,22 @@ This action cannot be undone.</source>
         <translation>ファイルを保存</translation>
     </message>
     <message>
-        <location line="+91"/>
+        <location line="+6"/>
+        <source>Downloading %1</source>
+        <translation>%1をダウンロード中</translation>
+    </message>
+    <message>
+        <location line="+42"/>
+        <source>image</source>
+        <translation>画像</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Copying %1</source>
+        <translation>%1をコピー中</translation>
+    </message>
+    <message>
+        <location line="+50"/>
         <source>Copy link to image</source>
         <translation>画像へのリンクをコピー</translation>
     </message>
@@ -872,7 +940,7 @@ This action cannot be undone.</source>
         <translation>ファイルを削除…</translation>
     </message>
     <message>
-        <location line="+448"/>
+        <location line="+450"/>
         <source>Add reaction</source>
         <translation>リアクションを追加</translation>
     </message>
@@ -898,7 +966,7 @@ This action cannot be undone.</source>
         <translation>プレビューを削除</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="+63"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="+64"/>
         <source>Oh my gosh, I really apologize, but your company is a reaaaly active Slack user. Still loading...</source>
         <translation>申し訳ありません。御社は本っ当にSlackをよく使っていますね。まだ読み込み中です...</translation>
     </message>
@@ -913,7 +981,7 @@ This action cannot be undone.</source>
         <translation>データを読み込み中...</translation>
     </message>
     <message>
-        <location line="+98"/>
+        <location line="+104"/>
         <source>Pinned by %1</source>
         <translation>%1がピン留めしました</translation>
     </message>
@@ -933,7 +1001,7 @@ This action cannot be undone.</source>
         <translation>（編集済み）</translation>
     </message>
     <message>
-        <location line="+446"/>
+        <location line="+438"/>
         <source>Loading image…</source>
         <translation>画像を読み込み中…</translation>
     </message>
@@ -984,7 +1052,7 @@ This action cannot be undone.</source>
 <context>
     <name>MsgRender</name>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="+166"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="+167"/>
         <source>Today</source>
         <translation>今日</translation>
     </message>
@@ -1025,7 +1093,7 @@ This action cannot be undone.</source>
 <context>
     <name>ProfileAvatarWidget</name>
     <message>
-        <location filename="../src/ui/profile_dialog/profile_dialog.cpp" line="+94"/>
+        <location filename="../src/ui/profile_dialog/profile_dialog.cpp" line="+97"/>
         <source>Change photo</source>
         <translation>写真を変更</translation>
     </message>
@@ -1038,7 +1106,7 @@ This action cannot be undone.</source>
         <translation>プロフィール</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+24"/>
         <source>Name</source>
         <translation>名前</translation>
     </message>
@@ -1073,7 +1141,7 @@ This action cannot be undone.</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
         <source>Save Changes</source>
         <translation>変更を保存</translation>
     </message>
@@ -1124,7 +1192,7 @@ This action cannot be undone.</source>
 <context>
     <name>SearchWidget</name>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="+76"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="+77"/>
         <source>Search messages…</source>
         <translation>メッセージを検索…</translation>
     </message>
@@ -1162,7 +1230,37 @@ This action cannot be undone.</source>
         <translation> — 新しい権限を付与するには、このワークスペースに再度サインインしてください</translation>
     </message>
     <message>
-        <location line="+304"/>
+        <location line="+10"/>
+        <source>You can&apos;t reply to this message.</source>
+        <translation>このメッセージには返信できません。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>You&apos;re not a member of this channel.</source>
+        <translation>このチャンネルのメンバーではありません。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>This conversation is archived.</source>
+        <translation>この会話はアーカイブされています。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The message is too long.</source>
+        <translation>メッセージが長すぎます。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>This conversation no longer exists.</source>
+        <translation>この会話は存在しません。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>You don&apos;t have permission to post here.</source>
+        <translation>ここに投稿する権限がありません。</translation>
+    </message>
+    <message>
+        <location line="+302"/>
         <source>Couldn&apos;t send message: %1</source>
         <translation>メッセージを送信できませんでした: %1</translation>
     </message>
@@ -1172,12 +1270,12 @@ This action cannot be undone.</source>
         <translation>ユーザーが見つかりません: %1</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+50"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>使い方: /dnd [時間。例: 30m、2h] — 解除は /dnd off</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+15"/>
         <source>Command /%1 failed: %2</source>
         <translation>コマンド /%1 が失敗しました: %2</translation>
     </message>
@@ -1222,7 +1320,7 @@ This action cannot be undone.</source>
         <translation>canvasを作成できませんでした: %1</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+15"/>
         <source>Canvas edit failed: %1</source>
         <translation>canvasの編集に失敗しました: %1</translation>
     </message>
@@ -1235,53 +1333,48 @@ This action cannot be undone.</source>
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="+79"/>
-        <location line="+462"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="+106"/>
+        <location line="+501"/>
         <source>RAM used: %1</source>
         <translation>RAM使用量: %1</translation>
     </message>
     <message>
-        <location line="-431"/>
+        <location line="-469"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location line="+22"/>
-        <location line="+19"/>
+        <location line="+20"/>
         <source>Appearance</source>
         <translation>外観</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+161"/>
+        <location line="+1"/>
         <source>Notifications</source>
         <translation>通知</translation>
     </message>
     <message>
-        <location line="-160"/>
-        <location line="+429"/>
+        <location line="+1"/>
         <source>AI assistance</source>
         <translation>AIアシスタンス</translation>
     </message>
     <message>
-        <location line="-428"/>
-        <location line="+246"/>
+        <location line="+1"/>
         <source>Storage</source>
         <translation>ストレージ</translation>
     </message>
     <message>
-        <location line="-245"/>
-        <location line="+351"/>
+        <location line="+1"/>
         <source>System</source>
         <translation>システム</translation>
     </message>
     <message>
-        <location line="-331"/>
+        <location line="+16"/>
         <source>Color theme</source>
         <translation>カラーテーマ</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+19"/>
         <source>Purple</source>
         <translation>紫</translation>
     </message>
@@ -1301,12 +1394,12 @@ This action cannot be undone.</source>
         <translation>言語</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <source>App language</source>
         <translation>アプリの言語</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+8"/>
         <source>System default</source>
         <translation>システムのデフォルト</translation>
     </message>
@@ -1318,12 +1411,7 @@ Time and date formats update immediately.</source>
 時刻と日付の形式はすぐに更新されます。</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <source>Time format</source>
-        <translation>時刻の形式</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+26"/>
         <source>12-hour clock (2:34 PM)</source>
         <translation>12時間表示（午後2:34）</translation>
     </message>
@@ -1333,12 +1421,7 @@ Time and date formats update immediately.</source>
         <translation>24時間表示（14:34）</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <source>Conversations sidebar</source>
-        <translation>会話サイドバー</translation>
-    </message>
-    <message>
-        <location line="+7"/>
+        <location line="+22"/>
         <source>Show conversations active in the last</source>
         <translation>次の期間内に活動のあった会話を表示:</translation>
     </message>
@@ -1356,22 +1439,17 @@ under an &quot;N more...&quot; row at the bottom of each section.</source>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+84"/>
+        <location line="+112"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location line="-60"/>
+        <location line="-95"/>
         <source>Enable desktop notifications</source>
         <translation>デスクトップ通知を有効にする</translation>
     </message>
     <message>
-        <location line="+3"/>
-        <source>Notify me about</source>
-        <translation>通知対象</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+9"/>
         <source>All new messages</source>
         <translation>すべての新着メッセージ</translation>
     </message>
@@ -1381,22 +1459,17 @@ under an &quot;N more...&quot; row at the bottom of each section.</source>
         <translation>ダイレクトメッセージとメンションのみ</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+13"/>
         <source>Play a sound for notifications</source>
         <translation>通知音を鳴らす</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Sound:</source>
         <translation>サウンド:</translation>
     </message>
     <message>
-        <location line="+3"/>
-        <source>Preview</source>
-        <translation>プレビュー</translation>
-    </message>
-    <message>
-        <location line="+57"/>
+        <location line="+88"/>
         <source>Cache size:</source>
         <translation>キャッシュサイズ:</translation>
     </message>
@@ -1425,49 +1498,29 @@ viewed images are deleted first.</source>
 画像から順に削除されます。</translation>
     </message>
     <message>
-        <location line="+19"/>
-        <source>Clear Cache</source>
-        <translation>キャッシュをクリア</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>App state</source>
-        <translation>アプリの状態</translation>
-    </message>
-    <message>
-        <location line="+5"/>
+        <location line="+34"/>
         <source>Sidebar visit history used to decide which conversations are shown.
 Clear this to let the app re-analyse activity from scratch on next load.</source>
         <translation>どの会話を表示するかの判断に使う、サイドバーの閲覧履歴です。
 クリアすると、次回読み込み時に活動を最初から分析し直します。</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <source>Clear State</source>
-        <translation>状態をクリア</translation>
-    </message>
-    <message>
-        <location line="+27"/>
+        <location line="+36"/>
         <source>Version %1, built %2</source>
         <translation>バージョン %1（ビルド: %2）</translation>
     </message>
     <message>
-        <location line="+5"/>
-        <source>Updates</source>
-        <translation>アップデート</translation>
-    </message>
-    <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <source>Check for updates</source>
         <translation>アップデートを確認</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+16"/>
         <source>Memory</source>
         <translation>メモリ</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+45"/>
         <source>Connect an AI provider to enable assistant features.
 Create an API key in your own provider account and paste it below —
 it is stored on this computer and sent only to that provider.</source>
@@ -1476,22 +1529,93 @@ it is stored on this computer and sent only to that provider.</source>
 キーはこのコンピューターに保存され、そのプロバイダーにのみ送信されます。</translation>
     </message>
     <message>
-        <location line="+11"/>
-        <source>Default provider:</source>
-        <translation>デフォルトのプロバイダー:</translation>
+        <location line="-370"/>
+        <source>Date/Time</source>
+        <translation>日付と時刻</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+22"/>
+        <source>Conversations</source>
+        <translation>会話</translation>
+    </message>
+    <message>
+        <location line="+74"/>
+        <source>Notify me when a huddle starts</source>
+        <translation>ハドルが開始したら通知する</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <location line="+28"/>
+        <source>Test</source>
+        <translation>テスト</translation>
+    </message>
+    <message>
+        <location line="-13"/>
+        <source>Sample notifications</source>
+        <translation>通知のサンプル</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>New DM</source>
+        <translation>新しいダイレクトメッセージ</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New channel message</source>
+        <translation>新しいチャンネルメッセージ</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New huddle</source>
+        <translation>新しいハドル</translation>
+    </message>
+    <message>
+        <location line="+53"/>
+        <source>Cache</source>
+        <translation>キャッシュ</translation>
+    </message>
+    <message>
+        <location line="+56"/>
+        <source>Clear cache</source>
+        <translation>キャッシュをクリア</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>State</source>
+        <translation>状態</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Clear state</source>
+        <translation>状態をクリア</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Version</source>
+        <translation>バージョン</translation>
+    </message>
+    <message>
+        <location line="+87"/>
+        <source>AI provider</source>
+        <translation>AIプロバイダー</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Default:</source>
+        <translation>デフォルト:</translation>
+    </message>
+    <message>
+        <location line="+37"/>
         <source>Connect (OAuth)</source>
         <translation>接続（OAuth）</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+4"/>
         <source>Disconnect</source>
         <translation>切断</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+9"/>
         <source>Paste your API key</source>
         <translation>APIキーを貼り付け</translation>
     </message>
@@ -1501,12 +1625,12 @@ it is stored on this computer and sent only to that provider.</source>
         <translation>キーを保存</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+6"/>
         <source>Get an API key from %1…</source>
         <translation>%1でAPIキーを取得…</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+29"/>
         <source>%1: %2</source>
         <translation>%1: %2</translation>
     </message>
@@ -1531,7 +1655,7 @@ it is stored on this computer and sent only to that provider.</source>
         <translation>未接続</translation>
     </message>
     <message>
-        <location line="+611"/>
+        <location line="+390"/>
         <source>Last checked: %1</source>
         <translation>最終確認: %1</translation>
     </message>
@@ -1584,12 +1708,12 @@ it is stored on this computer and sent only to that provider.</source>
 <context>
     <name>StatusDialog</name>
     <message>
-        <location filename="../src/ui/status_dialog/status_dialog.cpp" line="+101"/>
+        <location filename="../src/ui/status_dialog/status_dialog.cpp" line="+105"/>
         <source>Set a status</source>
         <translation>ステータスを設定</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+45"/>
         <source>What&apos;s your status?</source>
         <translation>ステータスは？</translation>
     </message>
@@ -1620,42 +1744,42 @@ it is stored on this computer and sent only to that provider.</source>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+40"/>
+        <location line="+42"/>
         <source>Don&apos;t clear</source>
         <translation>クリアしない</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>30 minutes</source>
         <translation>30分</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>1 hour</source>
         <translation>1時間</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>4 hours</source>
         <translation>4時間</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>Today</source>
         <translation>今日</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>This week</source>
         <translation>今週</translation>
     </message>
     <message>
-        <location line="-35"/>
+        <location line="-36"/>
         <source>Suggestions</source>
         <translation>候補</translation>
     </message>
@@ -1665,7 +1789,7 @@ it is stored on this computer and sent only to that provider.</source>
         <translation>%1向け</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+24"/>
         <source>Clear after</source>
         <translation>クリアするタイミング</translation>
     </message>
@@ -1680,7 +1804,7 @@ it is stored on this computer and sent only to that provider.</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
@@ -1688,12 +1812,12 @@ it is stored on this computer and sent only to that provider.</source>
 <context>
     <name>ThreadPanel</name>
     <message>
-        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="+64"/>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="+66"/>
         <source>Thread</source>
         <translation>スレッド</translation>
     </message>
     <message>
-        <location line="+72"/>
+        <location line="+69"/>
         <source>Reply in thread…</source>
         <translation>スレッドに返信…</translation>
     </message>
@@ -1714,7 +1838,7 @@ it is stored on this computer and sent only to that provider.</source>
 <context>
     <name>TypingIndicatorWidget</name>
     <message>
-        <location filename="../src/ui/typing_indicator/typing_indicator.cpp" line="+93"/>
+        <location filename="../src/ui/typing_indicator/typing_indicator.cpp" line="+94"/>
         <source>&lt;b&gt;You&lt;/b&gt; are typing on another device…</source>
         <translation>&lt;b&gt;あなた&lt;/b&gt;が別のデバイスで入力中…</translation>
     </message>
@@ -1737,7 +1861,7 @@ it is stored on this computer and sent only to that provider.</source>
 <context>
     <name>UpdateBar</name>
     <message>
-        <location filename="../src/ui/update_bar/update_bar.cpp" line="+73"/>
+        <location filename="../src/ui/update_bar/update_bar.cpp" line="+66"/>
         <source>A new version of msga has been downloaded. Restart to apply.</source>
         <translation>msgaの新しいバージョンをダウンロードしました。適用するには再起動してください。</translation>
     </message>
@@ -1798,7 +1922,7 @@ it is stored on this computer and sent only to that provider.</source>
 <context>
     <name>UserProfileCard</name>
     <message>
-        <location filename="../src/ui/user_profile_card/user_profile_card.cpp" line="+63"/>
+        <location filename="../src/ui/user_profile_card/user_profile_card.cpp" line="+65"/>
         <source>Deactivated account</source>
         <translation>無効化されたアカウント</translation>
     </message>
@@ -1824,7 +1948,7 @@ it is stored on this computer and sent only to that provider.</source>
     </message>
     <message>
         <location line="+37"/>
-        <location line="+285"/>
+        <location line="+265"/>
         <source>Message</source>
         <translation>メッセージ</translation>
     </message>
@@ -1832,7 +1956,7 @@ it is stored on this computer and sent only to that provider.</source>
 <context>
     <name>WelcomeWidget</name>
     <message>
-        <location filename="../src/ui/welcome_tips/welcome_widget.cpp" line="+37"/>
+        <location filename="../src/ui/welcome_tips/welcome_widget.cpp" line="+38"/>
         <source>Keyboard shortcuts</source>
         <translation>キーボードショートカット</translation>
     </message>

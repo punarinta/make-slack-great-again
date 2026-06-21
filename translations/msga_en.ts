@@ -4,7 +4,7 @@
 <context>
     <name>AttachmentStrip</name>
     <message>
-        <location filename="../src/ui/composer/attachment_strip.cpp" line="+295"/>
+        <location filename="../src/ui/composer/attachment_strip.cpp" line="+297"/>
         <source>Remove attachment</source>
         <translation>Remove attachment</translation>
     </message>
@@ -12,18 +12,18 @@
 <context>
     <name>BrowseChannelsDialog</name>
     <message>
-        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+61"/>
-        <location line="+183"/>
+        <location filename="../src/ui/browse_channels_dialog/browse_channels_dialog.cpp" line="+49"/>
+        <location line="+167"/>
         <source>Search for channels</source>
         <translation>Search for channels</translation>
     </message>
     <message>
-        <location line="-174"/>
+        <location line="-161"/>
         <source>Create Channel</source>
         <translation>Create Channel</translation>
     </message>
     <message>
-        <location line="+25"/>
+        <location line="+17"/>
         <source>Channels</source>
         <translation>Channels</translation>
     </message>
@@ -33,7 +33,7 @@
         <translation>People</translation>
     </message>
     <message>
-        <location line="+80"/>
+        <location line="+75"/>
         <source>%1 %2</source>
         <translation>%1 %2</translation>
     </message>
@@ -56,7 +56,7 @@
 <context>
     <name>CanvasPage</name>
     <message>
-        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="+284"/>
+        <location filename="../src/ui/canvas_page/canvas_page.cpp" line="+268"/>
         <source>Your canvas title</source>
         <translation>Your canvas title</translation>
     </message>
@@ -81,21 +81,21 @@
         <translation>Copy link</translation>
     </message>
     <message>
-        <location line="-486"/>
-        <location line="+20"/>
-        <location line="+475"/>
+        <location line="-469"/>
+        <location line="+22"/>
+        <location line="+456"/>
         <source>Delete canvas</source>
         <translation>Delete canvas</translation>
     </message>
     <message>
-        <location line="-491"/>
+        <location line="-474"/>
         <source>The canvas will be deleted for everyone in the conversation.
 This action cannot be undone.</source>
         <translation>The canvas will be deleted for everyone in the conversation.
 This action cannot be undone.</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+15"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
@@ -103,7 +103,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ComposerWidget</name>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="+490"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="+438"/>
         <source>Message #channel</source>
         <translation>Message #channel</translation>
     </message>
@@ -133,7 +133,7 @@ This action cannot be undone.</translation>
         <translation>Schedule send</translation>
     </message>
     <message>
-        <location line="+915"/>
+        <location line="+919"/>
         <source>Send at</source>
         <translation>Send at</translation>
     </message>
@@ -172,7 +172,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvFooterWidget</name>
     <message numerus="yes">
-        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+137"/>
+        <location filename="../src/ui/conv_footer/conv_footer_widget.cpp" line="+135"/>
         <source>%n background task(s) running</source>
         <translation>
             <numerusform>%n background task running</numerusform>
@@ -180,7 +180,7 @@ This action cannot be undone.</translation>
         </translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+80"/>
         <source>Hidden — you appear away to everyone. Click to use automatic presence.</source>
         <translation>Hidden — you appear away to everyone. Click to use automatic presence.</translation>
     </message>
@@ -195,7 +195,7 @@ This action cannot be undone.</translation>
         <translation>Visible — using automatic presence. Click to appear hidden.</translation>
     </message>
     <message>
-        <location line="+71"/>
+        <location line="+70"/>
         <source>Profile &amp; status</source>
         <translation>Profile &amp; status</translation>
     </message>
@@ -213,7 +213,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvListWidget</name>
     <message>
-        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+500"/>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="+508"/>
         <source>Open a direct message</source>
         <translation>Open a direct message</translation>
     </message>
@@ -313,7 +313,7 @@ This action cannot be undone.</translation>
         <translation>channels</translation>
     </message>
     <message>
-        <location line="+156"/>
+        <location line="+167"/>
         <location line="+28"/>
         <source>you</source>
         <translation>you</translation>
@@ -322,7 +322,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ConvSelectorWidget</name>
     <message>
-        <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="+39"/>
+        <location filename="../src/ui/conv_selector/conv_selector_widget.cpp" line="+43"/>
         <source>Search channels and people…</source>
         <translation>Search channels and people…</translation>
     </message>
@@ -348,12 +348,12 @@ This action cannot be undone.</translation>
 <context>
     <name>CreateChannelDialog</name>
     <message>
-        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="+18"/>
+        <location filename="../src/ui/create_channel_dialog/create_channel_dialog.cpp" line="+19"/>
         <source>Create a channel</source>
         <translation>Create a channel</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>Name</source>
         <translation>Name</translation>
     </message>
@@ -403,7 +403,7 @@ This action cannot be undone.</translation>
         <translation>Create</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+40"/>
         <source>this workspace</source>
         <translation>this workspace</translation>
     </message>
@@ -416,17 +416,17 @@ This action cannot be undone.</translation>
 <context>
     <name>DeleteMessageDialog</name>
     <message>
-        <location filename="../src/ui/delete_message_dialog/delete_message_dialog.cpp" line="+16"/>
+        <location filename="../src/ui/delete_message_dialog/delete_message_dialog.cpp" line="+17"/>
         <source>Delete message</source>
         <translation>Delete message</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>This action cannot be undone.</source>
         <translation>This action cannot be undone.</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+47"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
@@ -439,7 +439,7 @@ This action cannot be undone.</translation>
 <context>
     <name>EditModeBanner</name>
     <message>
-        <location filename="../src/ui/composer/edit_mode_banner.cpp" line="+20"/>
+        <location filename="../src/ui/composer/edit_mode_banner.cpp" line="+21"/>
         <source>Editing message</source>
         <translation>Editing message</translation>
     </message>
@@ -447,15 +447,35 @@ This action cannot be undone.</translation>
 <context>
     <name>EmojiPickerPopup</name>
     <message>
-        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+465"/>
-        <source>Search emoji…</source>
-        <translation>Search emoji…</translation>
+        <location filename="../src/ui/emoji_picker/emoji_picker_popup.cpp" line="+430"/>
+        <source>Search all emoji</source>
+        <translation>Search all emoji</translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>Skin Tone</source>
+        <translation>Skin Tone</translation>
+    </message>
+    <message>
+        <location line="+142"/>
+        <source>Search Results</source>
+        <translation>Search Results</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>Frequently Used</source>
+        <translation>Frequently Used</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Custom</source>
+        <translation>Custom</translation>
     </message>
 </context>
 <context>
     <name>FormattingToolbar</name>
     <message>
-        <location filename="../src/ui/composer/formatting_toolbar.cpp" line="+65"/>
+        <location filename="../src/ui/composer/formatting_toolbar.cpp" line="+66"/>
         <source>Bold</source>
         <translation>Bold</translation>
     </message>
@@ -508,27 +528,27 @@ This action cannot be undone.</translation>
 <context>
     <name>ForwardDialog</name>
     <message>
-        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="+23"/>
+        <location filename="../src/ui/forward_dialog/forward_dialog.cpp" line="+24"/>
         <source>Forward this message</source>
         <translation>Forward this message</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
         <source>Add a message, if you&apos;d like.</source>
         <translation>Add a message, if you&apos;d like.</translation>
     </message>
     <message>
-        <location line="+128"/>
+        <location line="+125"/>
         <source>Copy Link</source>
         <translation>Copy Link</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+1"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
         <source>Forward</source>
         <translation>Forward</translation>
     </message>
@@ -536,7 +556,7 @@ This action cannot be undone.</translation>
 <context>
     <name>HuddleBanner</name>
     <message>
-        <location filename="../src/ui/huddle_banner/huddle_banner.cpp" line="+29"/>
+        <location filename="../src/ui/huddle_banner/huddle_banner.cpp" line="+30"/>
         <source>A huddle is happening</source>
         <translation>A huddle is happening</translation>
     </message>
@@ -623,12 +643,12 @@ This action cannot be undone.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="+339"/>
+        <location filename="../src/ui/main_window.cpp" line="+354"/>
         <source>Log in to workspace</source>
         <translation>Log in to workspace</translation>
     </message>
     <message>
-        <location line="+802"/>
+        <location line="+812"/>
         <location line="+17"/>
         <source>Login failed</source>
         <translation>Login failed</translation>
@@ -640,29 +660,62 @@ This action cannot be undone.</translation>
     </message>
     <message>
         <location line="+242"/>
-        <location line="+761"/>
+        <location line="+954"/>
         <source>This is the beginning of your direct message history with %1.</source>
         <translation>This is the beginning of your direct message history with %1.</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+834"/>
+        <location line="-948"/>
+        <location line="+1027"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location line="-834"/>
-        <location line="+834"/>
+        <location line="-1027"/>
+        <location line="+1027"/>
         <source>Message %1</source>
         <translation>Message %1</translation>
     </message>
     <message>
-        <location line="-623"/>
+        <location line="-817"/>
+        <location line="+120"/>
         <source>Someone</source>
         <translation>Someone</translation>
     </message>
     <message>
-        <location line="+185"/>
+        <location line="+6"/>
+        <source>Started a huddle</source>
+        <translation>Started a huddle</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+72"/>
+        <source>%1 started a huddle</source>
+        <translation>%1 started a huddle</translation>
+    </message>
+    <message>
+        <location line="-42"/>
+        <location line="+47"/>
+        <source>Join</source>
+        <translation>Join</translation>
+    </message>
+    <message>
+        <location line="-21"/>
+        <source>Sample User</source>
+        <translation>Sample User</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Hey — do you have a minute?</source>
+        <translation>Hey — do you have a minute?</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>%1: Heads up, the deploy is going out at 3pm</source>
+        <translation>%1: Heads up, the deploy is going out at 3pm</translation>
+    </message>
+    <message>
+        <location line="+153"/>
         <source>Workspace admin</source>
         <translation>Workspace admin</translation>
     </message>
@@ -687,7 +740,7 @@ This action cannot be undone.</translation>
         <translation>Quit</translation>
     </message>
     <message>
-        <location line="+185"/>
+        <location line="+195"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Opens the huddle in Slack for web</translation>
     </message>
@@ -707,7 +760,7 @@ This action cannot be undone.</translation>
         <translation>Search messages</translation>
     </message>
     <message>
-        <location line="-861"/>
+        <location line="-1035"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>You appear away to others — no official Slack client is connected</translation>
     </message>
@@ -735,13 +788,13 @@ This action cannot be undone.</translation>
 <context>
     <name>MentionCompleter</name>
     <message>
-        <location filename="../src/ui/composer/mention_completer.cpp" line="+114"/>
-        <location line="+204"/>
+        <location filename="../src/ui/composer/mention_completer.cpp" line="+112"/>
+        <location line="+194"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
     <message>
-        <location line="-155"/>
+        <location line="-145"/>
         <source>App</source>
         <translation>App</translation>
     </message>
@@ -749,7 +802,7 @@ This action cannot be undone.</translation>
 <context>
     <name>MentionPopup</name>
     <message>
-        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+45"/>
+        <location filename="../src/ui/mention_popup/mention_popup.cpp" line="+48"/>
         <source>Notify everyone in this channel</source>
         <translation>Notify everyone in this channel</translation>
     </message>
@@ -764,7 +817,7 @@ This action cannot be undone.</translation>
         <translation>Notify every online member here</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+73"/>
         <source>Enter</source>
         <translation>Enter</translation>
     </message>
@@ -774,7 +827,7 @@ This action cannot be undone.</translation>
         <translation>APP</translation>
     </message>
     <message>
-        <location line="+290"/>
+        <location line="+288"/>
         <source>(you)</source>
         <translation>(you)</translation>
     </message>
@@ -782,7 +835,7 @@ This action cannot be undone.</translation>
 <context>
     <name>MessageListWidget</name>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="+1494"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="+1531"/>
         <source>Reply in thread</source>
         <translation>Reply in thread</translation>
     </message>
@@ -813,12 +866,12 @@ This action cannot be undone.</translation>
     </message>
     <message>
         <location line="+21"/>
-        <location line="+782"/>
+        <location line="+792"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location line="-771"/>
+        <location line="-781"/>
         <source>Delete message…</source>
         <translation>Delete message…</translation>
     </message>
@@ -848,7 +901,22 @@ This action cannot be undone.</translation>
         <translation>Save file</translation>
     </message>
     <message>
-        <location line="+91"/>
+        <location line="+6"/>
+        <source>Downloading %1</source>
+        <translation>Downloading %1</translation>
+    </message>
+    <message>
+        <location line="+42"/>
+        <source>image</source>
+        <translation>image</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Copying %1</source>
+        <translation>Copying %1</translation>
+    </message>
+    <message>
+        <location line="+50"/>
         <source>Copy link to image</source>
         <translation>Copy link to image</translation>
     </message>
@@ -873,7 +941,7 @@ This action cannot be undone.</translation>
         <translation>Delete file…</translation>
     </message>
     <message>
-        <location line="+448"/>
+        <location line="+450"/>
         <source>Add reaction</source>
         <translation>Add reaction</translation>
     </message>
@@ -899,7 +967,7 @@ This action cannot be undone.</translation>
         <translation>Remove preview</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list_paint.cpp" line="+63"/>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="+64"/>
         <source>Oh my gosh, I really apologize, but your company is a reaaaly active Slack user. Still loading...</source>
         <translation>Oh my gosh, I really apologize, but your company is a reaaaly active Slack user. Still loading...</translation>
     </message>
@@ -914,7 +982,7 @@ This action cannot be undone.</translation>
         <translation>Loading your stuff...</translation>
     </message>
     <message>
-        <location line="+98"/>
+        <location line="+104"/>
         <source>Pinned by %1</source>
         <translation>Pinned by %1</translation>
     </message>
@@ -934,7 +1002,7 @@ This action cannot be undone.</translation>
         <translation>(edited)</translation>
     </message>
     <message>
-        <location line="+446"/>
+        <location line="+438"/>
         <source>Loading image…</source>
         <translation>Loading image…</translation>
     </message>
@@ -985,7 +1053,7 @@ This action cannot be undone.</translation>
 <context>
     <name>MsgRender</name>
     <message>
-        <location filename="../src/ui/message_list/message_render.cpp" line="+166"/>
+        <location filename="../src/ui/message_list/message_render.cpp" line="+167"/>
         <source>Today</source>
         <translation>Today</translation>
     </message>
@@ -1026,7 +1094,7 @@ This action cannot be undone.</translation>
 <context>
     <name>ProfileAvatarWidget</name>
     <message>
-        <location filename="../src/ui/profile_dialog/profile_dialog.cpp" line="+94"/>
+        <location filename="../src/ui/profile_dialog/profile_dialog.cpp" line="+97"/>
         <source>Change photo</source>
         <translation>Change photo</translation>
     </message>
@@ -1039,7 +1107,7 @@ This action cannot be undone.</translation>
         <translation>Profile</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+24"/>
         <source>Name</source>
         <translation>Name</translation>
     </message>
@@ -1074,7 +1142,7 @@ This action cannot be undone.</translation>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
         <source>Save Changes</source>
         <translation>Save Changes</translation>
     </message>
@@ -1125,7 +1193,7 @@ This action cannot be undone.</translation>
 <context>
     <name>SearchWidget</name>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="+76"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="+77"/>
         <source>Search messages…</source>
         <translation>Search messages…</translation>
     </message>
@@ -1163,7 +1231,37 @@ This action cannot be undone.</translation>
         <translation> — sign in to this workspace again to grant the new permission</translation>
     </message>
     <message>
-        <location line="+304"/>
+        <location line="+10"/>
+        <source>You can&apos;t reply to this message.</source>
+        <translation>You can&apos;t reply to this message.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>You&apos;re not a member of this channel.</source>
+        <translation>You&apos;re not a member of this channel.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>This conversation is archived.</source>
+        <translation>This conversation is archived.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The message is too long.</source>
+        <translation>The message is too long.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>This conversation no longer exists.</source>
+        <translation>This conversation no longer exists.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>You don&apos;t have permission to post here.</source>
+        <translation>You don&apos;t have permission to post here.</translation>
+    </message>
+    <message>
+        <location line="+302"/>
         <source>Couldn&apos;t send message: %1</source>
         <translation>Couldn&apos;t send message: %1</translation>
     </message>
@@ -1173,12 +1271,12 @@ This action cannot be undone.</translation>
         <translation>No such user: %1</translation>
     </message>
     <message>
-        <location line="+51"/>
+        <location line="+50"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+15"/>
         <source>Command /%1 failed: %2</source>
         <translation>Command /%1 failed: %2</translation>
     </message>
@@ -1223,7 +1321,7 @@ This action cannot be undone.</translation>
         <translation>Could not create canvas: %1</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+15"/>
         <source>Canvas edit failed: %1</source>
         <translation>Canvas edit failed: %1</translation>
     </message>
@@ -1236,53 +1334,48 @@ This action cannot be undone.</translation>
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="+79"/>
-        <location line="+462"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="+106"/>
+        <location line="+501"/>
         <source>RAM used: %1</source>
         <translation>RAM used: %1</translation>
     </message>
     <message>
-        <location line="-431"/>
+        <location line="-469"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location line="+22"/>
-        <location line="+19"/>
+        <location line="+20"/>
         <source>Appearance</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+161"/>
+        <location line="+1"/>
         <source>Notifications</source>
         <translation>Notifications</translation>
     </message>
     <message>
-        <location line="-160"/>
-        <location line="+429"/>
+        <location line="+1"/>
         <source>AI assistance</source>
         <translation>AI assistance</translation>
     </message>
     <message>
-        <location line="-428"/>
-        <location line="+246"/>
+        <location line="+1"/>
         <source>Storage</source>
         <translation>Storage</translation>
     </message>
     <message>
-        <location line="-245"/>
-        <location line="+351"/>
+        <location line="+1"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location line="-331"/>
+        <location line="+16"/>
         <source>Color theme</source>
         <translation>Color theme</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+19"/>
         <source>Purple</source>
         <translation>Purple</translation>
     </message>
@@ -1302,12 +1395,12 @@ This action cannot be undone.</translation>
         <translation>Language</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <source>App language</source>
         <translation>App language</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+8"/>
         <source>System default</source>
         <translation>System default</translation>
     </message>
@@ -1319,12 +1412,7 @@ Time and date formats update immediately.</source>
 Time and date formats update immediately.</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <source>Time format</source>
-        <translation>Time format</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+26"/>
         <source>12-hour clock (2:34 PM)</source>
         <translation>12-hour clock (2:34 PM)</translation>
     </message>
@@ -1334,12 +1422,7 @@ Time and date formats update immediately.</translation>
         <translation>24-hour clock (14:34)</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <source>Conversations sidebar</source>
-        <translation>Conversations sidebar</translation>
-    </message>
-    <message>
-        <location line="+7"/>
+        <location line="+22"/>
         <source>Show conversations active in the last</source>
         <translation>Show conversations active in the last</translation>
     </message>
@@ -1357,22 +1440,17 @@ under an &quot;N more...&quot; row at the bottom of each section.</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+84"/>
+        <location line="+112"/>
         <source>Save</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location line="-60"/>
+        <location line="-95"/>
         <source>Enable desktop notifications</source>
         <translation>Enable desktop notifications</translation>
     </message>
     <message>
-        <location line="+3"/>
-        <source>Notify me about</source>
-        <translation>Notify me about</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+9"/>
         <source>All new messages</source>
         <translation>All new messages</translation>
     </message>
@@ -1382,22 +1460,17 @@ under an &quot;N more...&quot; row at the bottom of each section.</translation>
         <translation>Direct messages and mentions only</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+13"/>
         <source>Play a sound for notifications</source>
         <translation>Play a sound for notifications</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Sound:</source>
         <translation>Sound:</translation>
     </message>
     <message>
-        <location line="+3"/>
-        <source>Preview</source>
-        <translation>Preview</translation>
-    </message>
-    <message>
-        <location line="+57"/>
+        <location line="+88"/>
         <source>Cache size:</source>
         <translation>Cache size:</translation>
     </message>
@@ -1426,49 +1499,29 @@ viewed images are deleted first.</source>
 viewed images are deleted first.</translation>
     </message>
     <message>
-        <location line="+19"/>
-        <source>Clear Cache</source>
-        <translation>Clear Cache</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>App state</source>
-        <translation>App state</translation>
-    </message>
-    <message>
-        <location line="+5"/>
+        <location line="+34"/>
         <source>Sidebar visit history used to decide which conversations are shown.
 Clear this to let the app re-analyse activity from scratch on next load.</source>
         <translation>Sidebar visit history used to decide which conversations are shown.
 Clear this to let the app re-analyse activity from scratch on next load.</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <source>Clear State</source>
-        <translation>Clear State</translation>
-    </message>
-    <message>
-        <location line="+27"/>
+        <location line="+36"/>
         <source>Version %1, built %2</source>
         <translation>Version %1, built %2</translation>
     </message>
     <message>
-        <location line="+5"/>
-        <source>Updates</source>
-        <translation>Updates</translation>
-    </message>
-    <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <source>Check for updates</source>
         <translation>Check for updates</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+16"/>
         <source>Memory</source>
         <translation>Memory</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+45"/>
         <source>Connect an AI provider to enable assistant features.
 Create an API key in your own provider account and paste it below —
 it is stored on this computer and sent only to that provider.</source>
@@ -1477,22 +1530,93 @@ Create an API key in your own provider account and paste it below —
 it is stored on this computer and sent only to that provider.</translation>
     </message>
     <message>
-        <location line="+11"/>
-        <source>Default provider:</source>
-        <translation>Default provider:</translation>
+        <location line="-370"/>
+        <source>Date/Time</source>
+        <translation>Date/Time</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+22"/>
+        <source>Conversations</source>
+        <translation>Conversations</translation>
+    </message>
+    <message>
+        <location line="+74"/>
+        <source>Notify me when a huddle starts</source>
+        <translation>Notify me when a huddle starts</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <location line="+28"/>
+        <source>Test</source>
+        <translation>Test</translation>
+    </message>
+    <message>
+        <location line="-13"/>
+        <source>Sample notifications</source>
+        <translation>Sample notifications</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>New DM</source>
+        <translation>New DM</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New channel message</source>
+        <translation>New channel message</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New huddle</source>
+        <translation>New huddle</translation>
+    </message>
+    <message>
+        <location line="+53"/>
+        <source>Cache</source>
+        <translation>Cache</translation>
+    </message>
+    <message>
+        <location line="+56"/>
+        <source>Clear cache</source>
+        <translation>Clear cache</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>State</source>
+        <translation>State</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Clear state</source>
+        <translation>Clear state</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Version</source>
+        <translation>Version</translation>
+    </message>
+    <message>
+        <location line="+87"/>
+        <source>AI provider</source>
+        <translation>AI provider</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Default:</source>
+        <translation>Default:</translation>
+    </message>
+    <message>
+        <location line="+37"/>
         <source>Connect (OAuth)</source>
         <translation>Connect (OAuth)</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+4"/>
         <source>Disconnect</source>
         <translation>Disconnect</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+9"/>
         <source>Paste your API key</source>
         <translation>Paste your API key</translation>
     </message>
@@ -1502,12 +1626,12 @@ it is stored on this computer and sent only to that provider.</translation>
         <translation>Save key</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+6"/>
         <source>Get an API key from %1…</source>
         <translation>Get an API key from %1…</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+29"/>
         <source>%1: %2</source>
         <translation>%1: %2</translation>
     </message>
@@ -1532,7 +1656,7 @@ it is stored on this computer and sent only to that provider.</translation>
         <translation>Not connected</translation>
     </message>
     <message>
-        <location line="+611"/>
+        <location line="+390"/>
         <source>Last checked: %1</source>
         <translation>Last checked: %1</translation>
     </message>
@@ -1585,12 +1709,12 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>StatusDialog</name>
     <message>
-        <location filename="../src/ui/status_dialog/status_dialog.cpp" line="+101"/>
+        <location filename="../src/ui/status_dialog/status_dialog.cpp" line="+105"/>
         <source>Set a status</source>
         <translation>Set a status</translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+45"/>
         <source>What&apos;s your status?</source>
         <translation>What&apos;s your status?</translation>
     </message>
@@ -1621,42 +1745,42 @@ it is stored on this computer and sent only to that provider.</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+40"/>
+        <location line="+42"/>
         <source>Don&apos;t clear</source>
         <translation>Don&apos;t clear</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>30 minutes</source>
         <translation>30 minutes</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>1 hour</source>
         <translation>1 hour</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>4 hours</source>
         <translation>4 hours</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>Today</source>
         <translation>Today</translation>
     </message>
     <message>
-        <location line="-39"/>
-        <location line="+40"/>
+        <location line="-41"/>
+        <location line="+42"/>
         <source>This week</source>
         <translation>This week</translation>
     </message>
     <message>
-        <location line="-35"/>
+        <location line="-36"/>
         <source>Suggestions</source>
         <translation>Suggestions</translation>
     </message>
@@ -1666,7 +1790,7 @@ it is stored on this computer and sent only to that provider.</translation>
         <translation>For %1</translation>
     </message>
     <message>
-        <location line="+23"/>
+        <location line="+24"/>
         <source>Clear after</source>
         <translation>Clear after</translation>
     </message>
@@ -1681,7 +1805,7 @@ it is stored on this computer and sent only to that provider.</translation>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+1"/>
         <source>Save</source>
         <translation>Save</translation>
     </message>
@@ -1689,12 +1813,12 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>ThreadPanel</name>
     <message>
-        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="+64"/>
+        <location filename="../src/ui/thread_panel/thread_panel.cpp" line="+66"/>
         <source>Thread</source>
         <translation>Thread</translation>
     </message>
     <message>
-        <location line="+72"/>
+        <location line="+69"/>
         <source>Reply in thread…</source>
         <translation>Reply in thread…</translation>
     </message>
@@ -1715,7 +1839,7 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>TypingIndicatorWidget</name>
     <message>
-        <location filename="../src/ui/typing_indicator/typing_indicator.cpp" line="+93"/>
+        <location filename="../src/ui/typing_indicator/typing_indicator.cpp" line="+94"/>
         <source>&lt;b&gt;You&lt;/b&gt; are typing on another device…</source>
         <translation>&lt;b&gt;You&lt;/b&gt; are typing on another device…</translation>
     </message>
@@ -1738,7 +1862,7 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>UpdateBar</name>
     <message>
-        <location filename="../src/ui/update_bar/update_bar.cpp" line="+73"/>
+        <location filename="../src/ui/update_bar/update_bar.cpp" line="+66"/>
         <source>A new version of msga has been downloaded. Restart to apply.</source>
         <translation>A new version of msga has been downloaded. Restart to apply.</translation>
     </message>
@@ -1799,7 +1923,7 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>UserProfileCard</name>
     <message>
-        <location filename="../src/ui/user_profile_card/user_profile_card.cpp" line="+63"/>
+        <location filename="../src/ui/user_profile_card/user_profile_card.cpp" line="+65"/>
         <source>Deactivated account</source>
         <translation>Deactivated account</translation>
     </message>
@@ -1825,7 +1949,7 @@ it is stored on this computer and sent only to that provider.</translation>
     </message>
     <message>
         <location line="+37"/>
-        <location line="+285"/>
+        <location line="+265"/>
         <source>Message</source>
         <translation>Message</translation>
     </message>
@@ -1833,7 +1957,7 @@ it is stored on this computer and sent only to that provider.</translation>
 <context>
     <name>WelcomeWidget</name>
     <message>
-        <location filename="../src/ui/welcome_tips/welcome_widget.cpp" line="+37"/>
+        <location filename="../src/ui/welcome_tips/welcome_widget.cpp" line="+38"/>
         <source>Keyboard shortcuts</source>
         <translation>Keyboard shortcuts</translation>
     </message>
