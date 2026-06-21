@@ -40,6 +40,7 @@
 
 #include "ui/icon_utils.h"
 #include "util/desktop_notifier.h"
+#include "util/slack_links.h"
 #include "util/sound_player.h"
 
 #include <QDialog>
@@ -2498,12 +2499,14 @@ QString MainWindow::huddleJoinUrl(const ConversationId &conv) const {
 }
 
 QString MainWindow::huddleJoinUrl(const QString &teamId, const ConversationId &conv) const {
-    // Deep link that opens the conversation and triggers the start/join-huddle
-    // action in one click (the Slack web client honours ?open=start_huddle).
-    // Takes the team explicitly because a notification may target a background
+    // Single source of truth for the link shape lives in SlackLinks::huddle().
+    // `teamId` here is the app-wide canonical WorkspaceKey ("slack:TCF2J0TSP"),
+    // but the URL needs the bare Slack team id ("TCF2J0TSP"), so unwrap it. The
+    // team is taken explicitly because a notification may target a background
     // workspace, not the active one.
-    return QStringLiteral("https://app.slack.com/client/%1/%2?open=start_huddle")
-        .arg(teamId, conv.value);
+    const auto    key = WorkspaceKey::fromString(teamId);
+    const QString t   = key ? key->id : teamId;
+    return SlackLinks::huddle(t, conv.value);
 }
 
 void MainWindow::updateHuddleBanner() {
