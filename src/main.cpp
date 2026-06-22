@@ -87,31 +87,43 @@ static QFont detectSystemFont() {
 #endif
 
 int main(int argc, char *argv[]) {
-    // Crisp text at fractional display scale, on every platform. We render
-    // natively at the real fractional devicePixelRatio (e.g. 1.3333 at 133%)
-    // and let the font rasteriser hint glyphs onto the actual device-pixel
-    // grid — the same path Telegram Desktop uses. PassThrough is Qt6's default
-    // rounding policy, but we set it explicitly so no environment variable,
-    // platform theme or style can quietly round the scale factor back to an
-    // integer (which up-sizes the UI) or, worse, force a 2x render that the
-    // compositor then bilinearly downscales (which blurs every glyph).
-    //
-    // The cost of fractional rendering is that Qt rounds each widget's painted
-    // device-pixel region independently, which can leave 1-device-pixel gaps
-    // at sibling boundaries (QTBUG-82601 family). We don't paper over that by
-    // dropping to integer scale (the old fix, which traded blur for seams);
-    // instead the window's backdrop is painted as a colour-matched mirror of
-    // the chrome (see BackdropFrame in main_window.cpp) so any such gap reveals
-    // the same colour as the block beside it rather than a contrasting seam.
-    //
-    // Escape hatch: set MSGA_INTEGER_SCALE=1 to fall back to the old
-    // integer-scale-plus-compositor-downscale path on Wayland, in case a
-    // particular compositor still shows artefacts.
+    // We always set PassThrough so nothing silently rounds the scale factor in a
+    // way that up-sizes the UI; the actual scale we render at is decided on Wayland
+    // by whether the fractional-scale protocol is enabled (below).
     QApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough
     );
 #if defined(Q_OS_LINUX)
-    if (qEnvironmentVariableIntValue("MSGA_INTEGER_SCALE") == 1 &&
+    // Scaling policy on Wayland.
+    //
+    // Native fractional rendering (wp_fractional_scale enabled) gives the crispest
+    // text — Qt renders directly at the real fractional devicePixelRatio (e.g. 1.5
+    // at 150%). But it has a cost: Qt rounds each widget's painted device-pixel
+    // region independently, leaving 1-device-pixel gaps at sibling boundaries
+    // (QTBUG-82601). The window backdrop is painted as a colour-matched mirror to
+    // hide the *static* seams (see BackdropFrame in main_window.cpp), but a
+    // translucent transient overlay (the tooltip) composites onto those gap pixels
+    // and they aren't cleanly restored on hide — no in-window repaint reaches a
+    // gap that lies between widgets — so a faint seam lingers until something else
+    // repaints. We could not find an in-app fix for that transient case.
+    //
+    // So we DISABLE the fractional-scale protocol by default. Qt then renders at
+    // the integer wl_output scale and the compositor downscales as needed. Crucial
+    // property: this is a no-op on integer-scaled outputs (100%/200% render 1:1 and
+    // stay crisp); the only cost — a bilinear downscale that softens glyphs — is
+    // incurred *exactly* on fractionally-scaled outputs, which is precisely where
+    // the seam would otherwise appear. Net: the seam is gone everywhere, and only
+    // fractional displays pay for it (and there, no-seam beats crisp-with-seam).
+    //
+    // We cannot decide this per-display at startup: before a surface exists, the
+    // screen reports only the integer wl_output scale (a 150% output looks like 2),
+    // so the fractional scale is unknowable until it is too late to set this env.
+    // Disabling the protocol unconditionally sidesteps that — it self-targets
+    // fractional outputs via the downscale described above.
+    //
+    // Escape hatch: MSGA_FRACTIONAL_SCALE=1 keeps native fractional rendering
+    // (crisper text, at the price of the tooltip seam on fractional displays).
+    if (qEnvironmentVariableIntValue("MSGA_FRACTIONAL_SCALE") != 1 &&
         !qEnvironmentVariableIsSet("QT_WAYLAND_DISABLED_INTERFACES"))
         qputenv("QT_WAYLAND_DISABLED_INTERFACES", "wp_fractional_scale_manager_v1");
 #endif
