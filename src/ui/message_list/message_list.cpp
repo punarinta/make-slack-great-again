@@ -189,6 +189,9 @@ void MessageListWidget::clear() {
     _topsTs.clear();
     _totalH    = 0;
     _showIntro = false;
+    // Inline thread expansions belong to the conversation being left.
+    _inlineThreads.clear();
+    _openThreadRoot.clear();
     hideProfileCard();
     _hoveredLinkUrl.clear();
     _hoveredLinkRow  = -1;
@@ -196,8 +199,9 @@ void MessageListWidget::clear() {
     _hoveredToolBtn  = -1;
     _hoveredAttach   = {-1, -1};
     _hoveredReplyRow = -1;
-    _hoveredFile     = {-1, -1};
-    _hoveredFileBtn  = -1;
+    _hoveredThreadFooter.clear();
+    _hoveredFile    = {-1, -1};
+    _hoveredFileBtn = -1;
     _convName.clear();
     _convDescription.clear();
     _selAnchor             = {};
@@ -601,6 +605,70 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
         );
 }
 
+void MessageListWidget::setThreadsInline(bool on) {
+    if (_threadsInline == on)
+        return;
+    _threadsInline = on;
+    // Switching modes drops any inline expansions (the panel, if open, stays).
+    _inlineThreads.clear();
+    rebuildLayout();
+    viewport()->update();
+}
+
+void MessageListWidget::setOpenThreadRoot(const Ts &root) {
+    if (_openThreadRoot == root)
+        return;
+    _openThreadRoot = root;
+    viewport()->update(); // reply-bar copy ("View thread" ⇄ "Close thread")
+}
+
+void MessageListWidget::expandInlineThread(ConversationId conv, const Ts &rootTs) {
+    if (!_session)
+        return;
+    auto &th   = _inlineThreads[rootTs]; // inserts → expanded
+    th.loading = true;
+    th.loaded  = false;
+    th.replies.clear();
+    th.lifetime = rpl::lifetime();
+    rebuildLayout();
+    viewport()->update();
+
+    _session->backend()->loadThread(conv, rootTs, std::nullopt) |
+        rpl::on_next(
+            [this, rootTs](MessagePage page) {
+                const auto it = _inlineThreads.find(rootTs);
+                if (it == _inlineThreads.end())
+                    return; // collapsed before the replies arrived
+                auto &th   = it->second;
+                th.loading = false;
+                th.loaded  = true;
+                th.replies.clear();
+                for (auto &m : page.messages) {
+                    if (m.ts == rootTs)
+                        continue; // the root itself is rendered above the bar
+                    if (_session)
+                        _session->fetchBotIfNeeded(m.author);
+                    MessageItem item;
+                    item.msg = m;
+                    th.replies.push_back(std::move(item));
+                }
+                rebuildLayout();
+                viewport()->update();
+            },
+            th.lifetime
+        );
+}
+
+void MessageListWidget::collapseInlineThread(const Ts &rootTs) {
+    if (_inlineThreads.erase(rootTs) == 0)
+        return;
+    rebuildLayout();
+    viewport()->update();
+    // If this thread is also open in the standalone panel, close it too.
+    if (!_openThreadRoot.isEmpty() && _openThreadRoot == rootTs)
+        emit threadCloseRequested();
+}
+
 void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incoming) {
     // Build ts → index map for the items already displayed.
     QHash<QString, int> tsIdx;
@@ -725,8 +793,8 @@ void MessageListWidget::invalidateAllDocs() {
     viewport()->update();
 }
 
-void MessageListWidget::ensureDocLayout(const MessageItem &item) const {
-    const int w = textAreaWidth();
+void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) const {
+    const int w = forWidth < 0 ? textAreaWidth() : forWidth;
     if (w <= 0)
         return;
 
@@ -899,17 +967,21 @@ int MessageListWidget::rowHeight(int index) const {
         extraH += kFileChipH;
     }
 
-    const int reactionH = item.msg.reactions.empty() ? 0 : (kReactH + 2);
-    const int replyBarH =
-        (!_isThreadMode && item.msg.replyCount > 0) ? (kReplyBarGap + kReplyBarH) : 0;
-    const int headerH  = collapsed ? 0 : (kHdrH + kHdrGap);
-    const int pinnedH  = item.msg.pinned ? 18 : 0;
+    const int  reactionH   = item.msg.reactions.empty() ? 0 : (kReactH + 2);
+    const bool hasReplyBar = !_isThreadMode && item.msg.replyCount > 0;
+    const int  replyBarH   = hasReplyBar ? (kReplyBarGap + kReplyBarH) : 0;
+    // Expanded inline thread region grows the row below the reply bar.
+    const int  inlineH  = (hasReplyBar && _threadsInline && _inlineThreads.count(item.msg.ts) > 0)
+                              ? inlineThreadHeight(item.msg.ts)
+                              : 0;
+    const int  headerH  = collapsed ? 0 : (kHdrH + kHdrGap);
+    const int  pinnedH  = item.msg.pinned ? 18 : 0;
     // pinnedH is a banner drawn before padV — kept separate from contentH.
-    const int contentH = headerH + item.docHeight + extraH + reactionH;
-    const int sepH     = needsDateSep(index) ? kSepH : 0;
+    const int  contentH = headerH + item.docHeight + extraH + reactionH;
+    const int  sepH     = needsDateSep(index) ? kSepH : 0;
     if (collapsed)
-        return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH;
-    return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadVBottom + replyBarH;
+        return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH + inlineH;
+    return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadVBottom + replyBarH + inlineH;
 }
 
 void MessageListWidget::rebuildLayout() {
@@ -1367,6 +1439,8 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
         return;
     if (tryHandleReplyBarPress(event->pos()))
         return;
+    if (tryHandleInlineThreadPress(event->pos()))
+        return;
     if (tryHandleLinkPress(event->pos()))
         return;
     if (tryHandleFileActionBarPress(event->pos()))
@@ -1739,8 +1813,99 @@ bool MessageListWidget::tryHandleReplyBarPress(const QPoint &pos) {
     const int replyIdx = replyBarIndexAt(pos);
     if (replyIdx < 0)
         return false;
-    emit threadClicked(_currentConv, _items[replyIdx].msg.ts);
+    const Ts ts = _items[replyIdx].msg.ts;
+    if (_threadsInline) {
+        // Inline mode: the bar toggles the expanded replies under the message.
+        if (_inlineThreads.count(ts) > 0)
+            collapseInlineThread(ts);
+        else
+            expandInlineThread(_currentConv, ts);
+    } else if (!_openThreadRoot.isEmpty() && _openThreadRoot == ts) {
+        // Standalone mode: clicking an already-open thread closes the panel.
+        emit threadCloseRequested();
+    } else {
+        emit threadClicked(_currentConv, ts);
+    }
     return true;
+}
+
+bool MessageListWidget::tryHandleInlineThreadPress(const QPoint &pos) {
+    if (!_threadsInline || _inlineThreads.empty())
+        return false;
+
+    const PaintContext ctx = makePaintContext();
+    const auto         m   = inlineReplyMetrics();
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        if (_items[i].msg.replyCount <= 0)
+            continue;
+        const Ts   ts  = _items[i].msg.ts;
+        const auto itt = _inlineThreads.find(ts);
+        if (itt == _inlineThreads.end())
+            continue;
+
+        const int rowTop = _tops[i] - ctx.scrollY;
+        const int rh     = rowHeight(i);
+        if (rowTop > pos.y())
+            break;
+        if (rowTop + rh <= pos.y())
+            continue;
+
+        const int regionTop = replyBarVpTop(i, ctx) + kReplyBarH;
+        const int regionH   = inlineThreadHeight(ts);
+        if (pos.y() < regionTop || pos.y() >= regionTop + regionH)
+            continue; // click is elsewhere in this row (e.g. the reply bar itself)
+
+        const auto &th = itt->second;
+        int         y  = regionTop + kInlineTopGap;
+
+        if (th.loading && th.replies.empty()) {
+            y += kInlineLoadingH;
+        } else {
+            for (int j = 0; j < (int)th.replies.size(); ++j) {
+                const MessageItem &reply = th.replies[j];
+                const bool         coll  = inlineReplyCollapsed(th.replies, j);
+                const int          hRep  = replyItemHeight(reply, m.textWidth, coll);
+                if (pos.y() >= y && pos.y() < y + hRep) {
+                    // Resolve a link inside this reply's body document.
+                    ensureDocLayout(reply, m.textWidth);
+                    const int contentY = (coll ? y + kPadVCollapsed : y + kPadV + kHdrH + kHdrGap);
+                    if (reply.textDoc && reply.docHeight > 0) {
+                        const QPointF local(pos.x() - m.textLeft, pos.y() - contentY);
+                        if (local.x() >= 0 && local.y() >= 0 && local.y() <= reply.docHeight) {
+                            const QString anchor = reply.textDoc->documentLayout()->anchorAt(local);
+                            if (!anchor.isEmpty()) {
+                                const QString gifKey = MsgRender::gifKeyFromAnchor(anchor);
+                                if (!gifKey.isEmpty()) {
+                                    if (!_collapsedGifs.remove(gifKey))
+                                        _collapsedGifs.insert(gifKey);
+                                    reply.textDoc.reset();
+                                    reply.attachDocs.clear();
+                                    reply.docWidth = -1;
+                                    rebuildLayout();
+                                    viewport()->update();
+                                    return true;
+                                }
+                                openAnchorTarget(anchor, pos);
+                                return true;
+                            }
+                        }
+                    }
+                    return true; // consumed inside the reply (no text-selection inline)
+                }
+                y += hRep;
+            }
+        }
+
+        // "Reply to thread" footer → open the standalone panel.
+        y += kInlineFooterGap;
+        if (QRect(m.textLeft, y, inlineFooterTextWidth(), kInlineFooterH).contains(pos)) {
+            emit threadClicked(_currentConv, ts);
+            return true;
+        }
+        return true; // click landed in the region but not on anything actionable
+    }
+    return false;
 }
 
 bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
@@ -1763,6 +1928,10 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
         }
         return true;
     }
+    return openAnchorTarget(anchor, pos);
+}
+
+bool MessageListWidget::openAnchorTarget(const QString &anchor, const QPoint &pos) {
     const QString uid = MsgRender::userIdFromAnchor(anchor);
     if (!uid.isEmpty()) {
         // Clicking a mention opens the profile card without the hover delay.
@@ -2069,14 +2238,16 @@ void MessageListWidget::doMouseLeave() {
     }
 
     if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1 ||
-        _hoveredReplyRow != -1 || _hoveredFile.first != -1 || _hoveredReaction.first != -1) {
-        _hoveredRow      = -1;
-        _hoveredToolBtn  = -1;
-        _hoveredAttach   = {-1, -1};
-        _hoveredReplyRow = -1;
-        _hoveredFile     = {-1, -1};
-        _hoveredFileBtn  = -1;
-        _hoveredReaction = {-1, -1};
+        _hoveredReplyRow != -1 || _hoveredFile.first != -1 || _hoveredReaction.first != -1 ||
+        !_hoveredThreadFooter.isEmpty()) {
+        _hoveredRow          = -1;
+        _hoveredToolBtn      = -1;
+        _hoveredAttach       = {-1, -1};
+        _hoveredReplyRow     = -1;
+        _hoveredFile         = {-1, -1};
+        _hoveredFileBtn      = -1;
+        _hoveredReaction     = {-1, -1};
+        _hoveredThreadFooter = Ts{};
         viewport()->update();
     }
 }
@@ -2303,7 +2474,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
     }
 
-    const int newHoveredReplyRow = replyBarIndexAt(pos);
+    const int newHoveredReplyRow   = replyBarIndexAt(pos);
+    const Ts  newHoveredThreadFoot = inlineFooterAt(pos);
 
     // Detect which file chip or image (if any) the cursor is over, and which action bar button.
     std::pair<int, int> newHoveredFile    = {-1, -1};
@@ -2338,14 +2510,15 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn ||
         newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow ||
         newHoveredFile != _hoveredFile || newHoveredFileBtn != _hoveredFileBtn ||
-        newHoveredReaction != _hoveredReaction) {
-        _hoveredRow      = newHoveredRow;
-        _hoveredToolBtn  = newHoveredBtn;
-        _hoveredAttach   = newHoveredAttach;
-        _hoveredReplyRow = newHoveredReplyRow;
-        _hoveredFile     = newHoveredFile;
-        _hoveredFileBtn  = newHoveredFileBtn;
-        _hoveredReaction = newHoveredReaction;
+        newHoveredReaction != _hoveredReaction || newHoveredThreadFoot != _hoveredThreadFooter) {
+        _hoveredRow          = newHoveredRow;
+        _hoveredToolBtn      = newHoveredBtn;
+        _hoveredAttach       = newHoveredAttach;
+        _hoveredReplyRow     = newHoveredReplyRow;
+        _hoveredFile         = newHoveredFile;
+        _hoveredFileBtn      = newHoveredFileBtn;
+        _hoveredReaction     = newHoveredReaction;
+        _hoveredThreadFooter = newHoveredThreadFoot;
         viewport()->update();
     }
 
@@ -2460,8 +2633,9 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // File action bar buttons take priority — keep arrow cursor over them even if a chip is below.
     const bool overFileBar = newHoveredFileBtn >= 0;
     const bool overLink =
-        !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) ||
-                         replyBarIndexAt(pos) >= 0 || overDismiss || newHoveredReaction.first >= 0);
+        !overFileBar &&
+        (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) || replyBarIndexAt(pos) >= 0 ||
+         overDismiss || newHoveredReaction.first >= 0 || !newHoveredThreadFoot.isEmpty());
     const int  sbHitX     = scrollThumbHitX();
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     const bool overText   = !overLink && textHitTest(pos).row >= 0;

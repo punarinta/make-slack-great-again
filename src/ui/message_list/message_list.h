@@ -19,6 +19,7 @@
                          // instantiable wherever this header is consumed.
 #include <QTimer>
 
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -94,6 +95,16 @@ public:
     void clear();
     void setSession(Session *session);
 
+    // Threads display mode (Settings → Appearance). When inline, clicking the
+    // reply bar expands the replies underneath the message instead of opening
+    // the standalone panel. Switching modes collapses any inline expansions.
+    void setThreadsInline(bool on);
+    // The thread root currently shown in the standalone panel ({} when none).
+    // Drives the reply-bar "Close thread" copy in standalone mode. Pass {} when
+    // the panel is closed — this only clears the open-root, it never collapses an
+    // inline expansion (the panel may have been opened only to reply inline).
+    void setOpenThreadRoot(const Ts &root);
+
     // Remember the current conversation's reading position so reopening it (after
     // a chat or workspace switch) restores exactly where the user was. Must be
     // called while the list is still laid out normally — before any sibling
@@ -118,6 +129,10 @@ signals:
     void initialPageLoaded();
     // Emitted in channel mode when user clicks the "N replies" bar on a thread root.
     void threadClicked(ConversationId conv, Ts rootTs);
+    // Emitted when the user closes a thread from the message list — either by
+    // clicking "Close thread" on an open reply bar (standalone) or by collapsing
+    // an inline expansion whose panel is also open. The host should hide the panel.
+    void threadCloseRequested();
     // Emitted when "Edit message" is chosen; caller should call composer->enterEditMode().
     void editMessageRequested(Ts ts, QString rawText, std::vector<File> files);
     // Emitted when "Forward message" is chosen.
@@ -147,6 +162,7 @@ private:
     bool tryHandleReactionPress(const QPoint &pos);
     bool tryHandleDismissPress(const QPoint &pos);
     bool tryHandleReplyBarPress(const QPoint &pos);
+    bool tryHandleInlineThreadPress(const QPoint &pos);
     bool tryHandleLinkPress(const QPoint &pos);
     bool tryHandleFileActionBarPress(const QPoint &pos);
     bool tryHandlePreviewPress(const QPoint &pos);
@@ -204,7 +220,13 @@ private:
     void rebuildLayout();
     int  rowHeight(int index) const;
     bool isCollapsed(int index) const; // true if same author within 5 min of previous
-    void ensureDocLayout(const MessageItem &item) const;
+    // Lay out (and lazily build) a message's docs at `forWidth` logical pixels of
+    // text column; forWidth < 0 means the full row width (textAreaWidth()).
+    // Inline thread replies pass the narrower indented width.
+    void ensureDocLayout(const MessageItem &item, int forWidth = -1) const;
+    // Trigger any missing image/attachment downloads for one item (factored out
+    // of triggerMissingDownloads so inline-reply items get fetched too).
+    void requestItemImages(MessageItem &item);
     // Drop every item's rendered docs (and collected emoji URLs) so the next
     // paint rebuilds them — used when emoji resolution inputs change.
     void invalidateAllDocs();
@@ -220,12 +242,57 @@ private:
     // True when the row is a system/activity line rather than a real message.
     bool isSystemRow(int index) const { return isSystemEvent(_items[index].msg); }
     void paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const;
+    // Draw the name + APP badge + timestamp header line at the given text column
+    // left and content top. Shared by full message rows and inline thread replies.
+    void paintMessageHeader(QPainter &p, const MessageItem &item, int textLeft, int contTop) const;
     void paintReactions(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
     ) const;
     void paintReplyBar(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
     ) const;
+    // ── Inline threads ──
+    // Geometry of the indented reply column for an expanded inline thread.
+    struct InlineMetrics {
+        int avatarLeft; // x of each reply's avatar
+        int textLeft;   // x of each reply's text column
+        int textWidth;  // available width of that text column
+    };
+    InlineMetrics inlineReplyMetrics() const;
+    // True if reply `i` collapses into the previous reply (same author, <5 min).
+    bool          inlineReplyCollapsed(const std::vector<MessageItem> &replies, int i) const;
+    // Height of a single inline reply laid out at `width`.
+    int           replyItemHeight(const MessageItem &item, int width, bool collapsed) const;
+    // Total height of the expanded inline region for the thread rooted at `ts`
+    // (loading placeholder or replies, plus the "Reply to thread" footer).
+    int           inlineThreadHeight(const Ts &rootTs) const;
+    // Paint the expanded inline region; `top` is the viewport y just below the
+    // reply bar.
+    void paintInlineThread(QPainter &p, const Ts &rootTs, const PaintContext &ctx, int top) const;
+    // Paint a single inline reply at the indented coordinates; returns nothing,
+    // caller advances by replyItemHeight().
+    void paintReplyItem(
+        QPainter            &p,
+        const MessageItem   &item,
+        const InlineMetrics &m,
+        const PaintContext  &subCtx,
+        int                  top,
+        bool                 collapsed
+    ) const;
+    // Viewport y of the reply bar top for row `i` (mirrors the content walk).
+    int  replyBarVpTop(int i, const PaintContext &ctx) const;
+    // Pixel width of the "Reply to thread" footer label (for hit-test/hover).
+    int  inlineFooterTextWidth() const;
+    // Root ts whose "Reply to thread" footer is under `pos`, or {} if none.
+    Ts   inlineFooterAt(const QPoint &pos) const;
+    // Begin loading + showing the inline replies for a thread root.
+    void expandInlineThread(ConversationId conv, const Ts &rootTs);
+    // Collapse an inline expansion; if its panel is also open, request its close.
+    void collapseInlineThread(const Ts &rootTs);
+    // Resolve a (already-fetched) anchor href: mentions, bot buttons, mailto,
+    // URLs. Returns true if it handled it. Does NOT handle the GIF-collapse
+    // anchor (that needs the owning doc, handled at the call site).
+    bool openAnchorTarget(const QString &anchor, const QPoint &pos);
     void paintAttachments(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
     ) const;
@@ -327,28 +394,34 @@ private:
     }
 
     // Layout constants (all in logical pixels)
-    static constexpr int kPadH          = 16;  // horizontal margin on both sides
-    static constexpr int kPadV          = 8;   // vertical padding above each full-header row
-    static constexpr int kPadVBottom    = 4;   // vertical padding below each full-header row
-    static constexpr int kAvSize        = 36;  // avatar square size
-    static constexpr int kAvGap         = 10;  // gap between avatar and text column
-    static constexpr int kHdrH          = 20;  // height of the name+timestamp header line
-    static constexpr int kHdrGap        = 4;   // gap between header and message body
-    static constexpr int kRowGap        = 0;   // no gap — spacing is entirely in kPadV
-    static constexpr int kPadVCollapsed = 3;   // vertical padding for collapsed (same-author) rows
-    static constexpr int kReactH        = 22;  // height of the reactions strip
-    static constexpr int kReplyBarH     = 36;  // height of the thread-participants bar
-    static constexpr int kReplyBarGap   = 6;   // gap above the reply bar
-    static constexpr int kThreadAvSize  = 24;  // small rounded-square avatar size in reply bar
-    static constexpr int kThreadAvGap   = 3;   // gap between consecutive avatars
-    static constexpr int kAttachGap     = 4;   // gap above each attachment
-    static constexpr int kAttachBarW    = 3;   // width of attachment color bar
-    static constexpr int kAttachBarGap  = 8;   // gap between bar and attachment text
-    static constexpr int kImgMaxW       = 400; // max inline image width
-    static constexpr int kImgMaxH       = 300; // max inline image height
-    static constexpr int kImgGap        = 6;   // gap above each inline image
-    static constexpr int kImgNameH      = 14;  // height of the filename label above each image
-    static constexpr int kFileChipH     = 52;  // height of each non-image file chip
+    static constexpr int kPadH            = 16; // horizontal margin on both sides
+    static constexpr int kPadV            = 8;  // vertical padding above each full-header row
+    static constexpr int kPadVBottom      = 4;  // vertical padding below each full-header row
+    static constexpr int kAvSize          = 36; // avatar square size
+    static constexpr int kAvGap           = 10; // gap between avatar and text column
+    static constexpr int kHdrH            = 20; // height of the name+timestamp header line
+    static constexpr int kHdrGap          = 4;  // gap between header and message body
+    static constexpr int kRowGap          = 0;  // no gap — spacing is entirely in kPadV
+    static constexpr int kPadVCollapsed   = 3;  // vertical padding for collapsed (same-author) rows
+    static constexpr int kReactH          = 22; // height of the reactions strip
+    static constexpr int kReplyBarH       = 36; // height of the thread-participants bar
+    static constexpr int kReplyBarGap     = 6;  // gap above the reply bar
+    static constexpr int kThreadAvSize    = 24; // small rounded-square avatar size in reply bar
+    static constexpr int kThreadAvGap     = 3;  // gap between consecutive avatars
+    // Inline-thread expanded region
+    static constexpr int kInlineTopGap    = 8;   // gap between reply bar and first reply
+    static constexpr int kInlineLoadingH  = 28;  // height of the "Loading replies…" placeholder
+    static constexpr int kInlineFooterGap = 6;   // gap above the "Reply to thread" footer
+    static constexpr int kInlineFooterH   = 24;  // height of the "Reply to thread" footer row
+    static constexpr int kInlineBottomGap = 6;   // gap below the footer
+    static constexpr int kAttachGap       = 4;   // gap above each attachment
+    static constexpr int kAttachBarW      = 3;   // width of attachment color bar
+    static constexpr int kAttachBarGap    = 8;   // gap between bar and attachment text
+    static constexpr int kImgMaxW         = 400; // max inline image width
+    static constexpr int kImgMaxH         = 300; // max inline image height
+    static constexpr int kImgGap          = 6;   // gap above each inline image
+    static constexpr int kImgNameH        = 14;  // height of the filename label above each image
+    static constexpr int kFileChipH       = 52;  // height of each non-image file chip
     static constexpr int kFileChipGap   = 6; // gap before each chip (between chips, or above first)
     static constexpr int kFileChipIconW = 48;  // width of the colored type-icon area
     static constexpr int kFileChipMaxW  = 380; // max chip width (won't span full viewport)
@@ -379,20 +452,35 @@ private:
     static constexpr int kIntroDescH  = 18; // height of description line
     static constexpr int kIntroPadBot = 24; // space below description before first message
 
-    Session                 *_session;
-    ConversationId           _currentConv;
-    bool                     _isThreadMode = false;
-    Ts                       _threadRootTs;
-    QString                  _convName;
-    QString                  _convDescription;
-    bool                     _showIntro = false;
-    std::vector<MessageItem> _items;
-    std::vector<int>         _tops; // document-space top of each row
+    Session       *_session;
+    ConversationId _currentConv;
+    bool           _isThreadMode = false;
+    Ts             _threadRootTs;
+
+    // ── Inline threads (Appearance → Threads = Inline) ──
+    // Loaded replies + load state for one inline-expanded thread.
+    struct InlineThread {
+        std::vector<MessageItem> replies; // root excluded
+        bool                     loading = false;
+        bool                     loaded  = false;
+        rpl::lifetime            lifetime;
+    };
+    bool                       _threadsInline = false;
+    // Keyed by root ts; presence == expanded. std::map (not QHash) because the
+    // value is move-only (holds rpl::lifetime + move-only MessageItems).
+    std::map<Ts, InlineThread> _inlineThreads;
+    // Root ts currently shown in the standalone panel ({} when none).
+    Ts                         _openThreadRoot;
+    QString                    _convName;
+    QString                    _convDescription;
+    bool                       _showIntro = false;
+    std::vector<MessageItem>   _items;
+    std::vector<int>           _tops; // document-space top of each row
     // ts of each row at the time _tops was built — a consistent snapshot of the
     // previous layout used by rebuildLayout() to re-anchor the view (callers
     // mutate _items before calling it, so indexing into _items would misalign).
-    std::vector<Ts>          _topsTs;
-    int                      _totalH = 0;
+    std::vector<Ts>            _topsTs;
+    int                        _totalH = 0;
 
     // Smooth scroll
     QVariantAnimation _scrollAnim;
@@ -452,6 +540,7 @@ private:
     QString             _hoveredLinkUrl;       // URL of the link currently under the mouse cursor
     int                 _hoveredLinkRow  = -1; // row index owning that link (-1 if none)
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
+    Ts                  _hoveredThreadFooter;  // root ts whose inline "Reply to thread" is hovered
     std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.

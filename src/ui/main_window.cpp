@@ -478,6 +478,16 @@ QWidget *MainWindow::buildMainPage() {
         _messageList->viewport()->update();
         _threadPanel->refreshTimestamps();
     });
+    // Threads display mode (standalone panel vs. inline expansion).
+    _messageList->setThreadsInline(
+        QSettings("msga", "msga").value("appearance/threadsInline", false).toBool()
+    );
+    connect(
+        _settingsDialog,
+        &SettingsDialog::threadDisplayChanged,
+        _messageList,
+        &MessageListWidget::setThreadsInline
+    );
     // The global default notification level decides what unconfigured channels
     // notify/badge about; apply it now and re-resolve everything when it changes.
     _convList->setDefaultNotifyLevel(globalDefaultNotifLevel());
@@ -731,16 +741,26 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         [this](ConversationId conv, Ts rootTs) {
             _threadPanel->setVisible(true);
             _threadPanel->openThread(conv, rootTs);
+            _messageList->setOpenThreadRoot(rootTs);
             if (_msgSplitter->sizes().at(1) < 100) {
                 const int total = _msgSplitter->width();
                 _msgSplitter->setSizes({total - 360, 360});
             }
         }
     );
-    connect(_threadPanel, &ThreadPanel::closeRequested, this, [this] {
+    // Hide the panel and clear the list's open-thread state. This does NOT
+    // collapse an inline expansion: the panel can be opened purely to reply to an
+    // inline thread, and closing it (its own ✕) must leave the inline replies in
+    // place. The "close both" case is driven the other way — the reply bar's
+    // "Close thread" collapses the inline region and then emits
+    // threadCloseRequested, so the panel follows the bar, not vice versa.
+    auto closeThreadPanel = [this] {
         _threadPanel->close();
         _threadPanel->setVisible(false);
-    });
+        _messageList->setOpenThreadRoot({});
+    };
+    connect(_threadPanel, &ThreadPanel::closeRequested, this, closeThreadPanel);
+    connect(_messageList, &MessageListWidget::threadCloseRequested, this, closeThreadPanel);
 
     // ── Messages / canvas tabs ────────────────────────────────────────
     connect(_convTabs, &ConvTabsWidget::tabSelected, this, [this](ConvTabsWidget::Tab tab) {

@@ -45,6 +45,9 @@ signals:
     // Emitted when the 12h/24h preference (or language, which affects date
     // patterns) is saved, so timestamp-painting views can repaint.
     void timeFormatChanged();
+    // Emitted when the threads display mode is saved (true = inline, false =
+    // standalone panel), so the message list can switch how "View thread" behaves.
+    void threadDisplayChanged(bool inlineThreads);
     // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
     void stateCleared();
     // Emitted when notification settings (incl. the global default level) are
@@ -100,11 +103,13 @@ private:
     StyledButton *_sampleNotifTest   = nullptr;
 
     // Appearance controls
-    QSpinBox                 *_relevantDays    = nullptr;
-    Dropdown                 *_language        = nullptr;
-    QLabel                   *_langRestartNote = nullptr;
-    QRadioButton             *_time12          = nullptr;
-    QRadioButton             *_time24          = nullptr;
+    QSpinBox                 *_relevantDays     = nullptr;
+    Dropdown                 *_language         = nullptr;
+    QLabel                   *_langRestartNote  = nullptr;
+    QRadioButton             *_time12           = nullptr;
+    QRadioButton             *_time24           = nullptr;
+    QRadioButton             *_threadStandalone = nullptr;
+    QRadioButton             *_threadInline     = nullptr;
     QList<ThemePreviewCard *> _themeCards; // one per registry theme
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.

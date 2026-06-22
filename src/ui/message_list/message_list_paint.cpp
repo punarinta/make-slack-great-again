@@ -202,63 +202,8 @@ void MessageListWidget::paintRow(
     if (!collapsed) {
         // Avatar
         paintAvatar(p, item, QRect(kPadH, contTop + 2, kAvSize, kAvSize));
-
-        // ── Header: name + timestamp ──────────────────────────────────
-        auto         *user = _session->findUser(item.msg.author);
-        const QString name =
-            user ? user->displayName
-                 : (!item.msg.botName.isEmpty() ? item.msg.botName : item.msg.author.value);
-
-        QFont nameFont = QApplication::font();
-        nameFont.setBold(true);
-        p.setFont(nameFont);
-        p.setPen(Th::c().text.primary);
-        const QFontMetrics nameFm(nameFont);
-        const int          headerBaseline = contTop + nameFm.ascent();
-        p.drawText(textLeft, headerBaseline, name);
-        const int nameW = nameFm.horizontalAdvance(name);
-        int       tsX   = textLeft + nameW + 8;
-
-        // Slack-style "APP" tag after bot names
-        const bool isBot = !item.msg.botName.isEmpty() || (user && user->isBot);
-        if (isBot) {
-            QFont badgeFont = QApplication::font();
-            badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.62);
-            badgeFont.setBold(true);
-            const QFontMetrics bFm(badgeFont);
-            const QString      label = tr("APP");
-            const int          bH    = 14;
-            const QRect        bRect(
-                textLeft + nameW + 6,
-                contTop + (nameFm.height() - bH) / 2,
-                bFm.horizontalAdvance(label) + 8,
-                bH
-            );
-            p.save();
-            p.setRenderHint(QPainter::Antialiasing);
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().message.appBadgeBg);
-            p.drawRoundedRect(bRect, 2, 2);
-            p.setFont(badgeFont);
-            p.setPen(Th::c().message.appBadgeText);
-            p.drawText(bRect, Qt::AlignCenter, label);
-            p.restore();
-            tsX = bRect.right() + 8;
-        }
-
-        QFont tsFont = QApplication::font();
-        tsFont.setPointSizeF(tsFont.pointSizeF() * 0.85);
-        p.setFont(tsFont);
-        p.setPen(Th::c().text.secondary);
-        const QFontMetrics tsFm(tsFont);
-        const QString      tsText = MsgRender::formatTs(item.msg.date);
-        // Align timestamp to the same baseline as the bold name
-        p.drawText(tsX, headerBaseline, tsText);
-
-        if (item.msg.edited) {
-            const int tsW = tsFm.horizontalAdvance(tsText);
-            p.drawText(tsX + tsW + 6, headerBaseline, tr("(edited)"));
-        }
+        // ── Header: name + APP badge + timestamp ──────────────────────
+        paintMessageHeader(p, item, textLeft, contTop);
     }
 
     // ── Message text via QTextDocument ───────────────────────────────
@@ -372,6 +317,10 @@ void MessageListWidget::paintRow(
             replyBarTop += kReactH + 2;
         replyBarTop += kReplyBarGap;
         paintReplyBar(p, item, ctx, replyBarTop, index);
+
+        // ── Inline thread region (Appearance → Threads = Inline) ──
+        if (_threadsInline && _inlineThreads.count(item.msg.ts) > 0)
+            paintInlineThread(p, item.msg.ts, ctx, replyBarTop + kReplyBarH);
     }
 
     // ── Collapsed-row timestamp (shown on hover) ──────────────────────
@@ -476,6 +425,66 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
         14
     );
     p.restore();
+}
+
+void MessageListWidget::paintMessageHeader(
+    QPainter &p, const MessageItem &item, int textLeft, int contTop
+) const {
+    auto         *user = _session->findUser(item.msg.author);
+    const QString name =
+        user ? user->displayName
+             : (!item.msg.botName.isEmpty() ? item.msg.botName : item.msg.author.value);
+
+    QFont nameFont = QApplication::font();
+    nameFont.setBold(true);
+    p.setFont(nameFont);
+    p.setPen(Th::c().text.primary);
+    const QFontMetrics nameFm(nameFont);
+    const int          headerBaseline = contTop + nameFm.ascent();
+    p.drawText(textLeft, headerBaseline, name);
+    const int nameW = nameFm.horizontalAdvance(name);
+    int       tsX   = textLeft + nameW + 8;
+
+    // Slack-style "APP" tag after bot names
+    const bool isBot = !item.msg.botName.isEmpty() || (user && user->isBot);
+    if (isBot) {
+        QFont badgeFont = QApplication::font();
+        badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.62);
+        badgeFont.setBold(true);
+        const QFontMetrics bFm(badgeFont);
+        const QString      label = tr("APP");
+        const int          bH    = 14;
+        const QRect        bRect(
+            textLeft + nameW + 6,
+            contTop + (nameFm.height() - bH) / 2,
+            bFm.horizontalAdvance(label) + 8,
+            bH
+        );
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().message.appBadgeBg);
+        p.drawRoundedRect(bRect, 2, 2);
+        p.setFont(badgeFont);
+        p.setPen(Th::c().message.appBadgeText);
+        p.drawText(bRect, Qt::AlignCenter, label);
+        p.restore();
+        tsX = bRect.right() + 8;
+    }
+
+    QFont tsFont = QApplication::font();
+    tsFont.setPointSizeF(tsFont.pointSizeF() * 0.85);
+    p.setFont(tsFont);
+    p.setPen(Th::c().text.secondary);
+    const QFontMetrics tsFm(tsFont);
+    const QString      tsText = MsgRender::formatTs(item.msg.date);
+    // Align timestamp to the same baseline as the bold name
+    p.drawText(tsX, headerBaseline, tsText);
+
+    if (item.msg.edited) {
+        const int tsW = tsFm.horizontalAdvance(tsText);
+        p.drawText(tsX + tsW + 6, headerBaseline, tr("(edited)"));
+    }
 }
 
 // ── Attachments ───────────────────────────────────────────────────────────────
@@ -728,10 +737,25 @@ void MessageListWidget::triggerMissingDownloads() {
         if (rowTop + rowHeight(i) < 0)
             continue;
 
-        auto &item = _items[i];
+        requestItemImages(_items[i]);
 
-        // File image downloads (auth required → via Session::downloadFile).
-        // Results stored in _fileImages (separate from public-URL _imgCache).
+        // Expanded inline replies are on-screen too — fetch their images as well.
+        if (_threadsInline && _items[i].msg.replyCount > 0) {
+            const auto itt = _inlineThreads.find(_items[i].msg.ts);
+            if (itt != _inlineThreads.end())
+                for (auto &reply : itt->second.replies)
+                    requestItemImages(reply);
+        }
+    }
+}
+
+void MessageListWidget::requestItemImages(MessageItem &item) {
+    if (!_session)
+        return;
+
+    // File image downloads (auth required → via Session::downloadFile).
+    // Results stored in _fileImages (separate from public-URL _imgCache).
+    {
         if (!item.fileImgsRequested) {
             bool needsDownload = false;
             for (const auto &f : item.msg.files) {
@@ -1148,7 +1172,30 @@ void MessageListWidget::paintReplyBar(
     p.setFont(normF);
     p.setPen(Th::c().text.secondary);
 
-    if (hovered) {
+    // Open state: inline expanded for this root, or shown in the standalone panel.
+    const bool open = _threadsInline
+                          ? (_inlineThreads.count(item.msg.ts) > 0)
+                          : (!_openThreadRoot.isEmpty() && _openThreadRoot == item.msg.ts);
+
+    if (open) {
+        // Persistent "Close thread" affordance with a downward chevron.
+        p.drawText(
+            x,
+            bar.top(),
+            bar.right() - x - kInnerPad - 16,
+            kReplyBarH,
+            Qt::AlignVCenter | Qt::AlignLeft,
+            tr("Close thread")
+        );
+        p.drawText(
+            bar.right() - kInnerPad - 14,
+            bar.top(),
+            14,
+            kReplyBarH,
+            Qt::AlignVCenter | Qt::AlignRight,
+            "\xC3\x97" // × (U+00D7)
+        );
+    } else if (hovered) {
         p.drawText(
             x,
             bar.top(),
@@ -1163,7 +1210,7 @@ void MessageListWidget::paintReplyBar(
             14,
             kReplyBarH,
             Qt::AlignVCenter | Qt::AlignRight,
-            "›"
+            "\xE2\x80\xBA" // › (U+203A)
         );
     } else {
         QString sub;
@@ -1179,69 +1226,325 @@ void MessageListWidget::paintReplyBar(
     p.restore();
 }
 
+int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
+    const int   scrollY   = ctx.scrollY;
+    const int   textWidth = ctx.textWidth;
+    const int   rowTop    = _tops[i] - scrollY;
+    const auto &item      = _items[i];
+    ensureDocLayout(item);
+    const bool collapsed = isCollapsed(i);
+    const int  padV      = collapsed ? kPadVCollapsed : kPadV;
+    const int  sep3      = needsDateSep(i) ? kSepH : 0;
+    const int  pinnedH3  = item.msg.pinned ? 18 : 0;
+    int y = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+        if (isDismissed(item.msg.ts, ai))
+            continue;
+        y += kAttachGap + attachTotalH(item, ai);
+    }
+
+    // Inline file previews (images + prerendered docs) — mirror paint.
+    const bool hasAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
+    bool       anyImgFiles    = false;
+    for (const auto &f : item.msg.files) {
+        if (!f.hasPreview())
+            continue;
+        anyImgFiles      = true;
+        const int imgGap = hasAboveImages ? kImgGap : 0;
+        y += imgGap + kImgNameH + filePreviewSize(f, textWidth).height();
+    }
+
+    // File chips (files without a preview) — mirror paint.
+    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
+    bool       firstChip     = true;
+    for (const auto &f : item.msg.files) {
+        if (f.hasPreview())
+            continue;
+        if (!firstChip || hasAboveChips)
+            y += kFileChipGap;
+        firstChip = false;
+        y += kFileChipH;
+    }
+
+    if (!item.msg.reactions.empty())
+        y += kReactH + 2;
+    y += kReplyBarGap;
+    return y;
+}
+
 int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
     if (_isThreadMode)
         return -1;
-    const PaintContext ctx       = makePaintContext();
-    const int          scrollY   = ctx.scrollY;
-    const int          textLeft  = ctx.textLeft;
-    const int          textWidth = ctx.textWidth;
+    const PaintContext ctx = makePaintContext();
 
     for (int i = 0; i < (int)_items.size(); ++i) {
         if (_items[i].msg.replyCount <= 0)
             continue;
-        const int rowTop = _tops[i] - scrollY;
+        const int rowTop = _tops[i] - ctx.scrollY;
         const int rh     = rowHeight(i);
         if (rowTop > viewportPos.y())
             break;
         if (rowTop + rh <= viewportPos.y())
             continue;
 
-        ensureDocLayout(_items[i]);
-        const bool collapsed = isCollapsed(i);
-        const int  padV      = collapsed ? kPadVCollapsed : kPadV;
-        const int  sep3      = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH3  = _items[i].msg.pinned ? 18 : 0;
-        int        y         = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) +
-                _items[i].docHeight;
-        for (int ai = 0; ai < (int)_items[i].attachDocs.size(); ++ai) {
-            if (isDismissed(_items[i].msg.ts, ai))
-                continue;
-            y += kAttachGap + attachTotalH(_items[i], ai);
-        }
-
-        // Inline file previews (images + prerendered docs) — mirror paint.
-        const bool hasAboveImages = _items[i].docHeight > 0 || !_items[i].attachDocs.empty();
-        bool       anyImgFiles    = false;
-        for (const auto &f : _items[i].msg.files) {
-            if (!f.hasPreview())
-                continue;
-            anyImgFiles      = true;
-            const int imgGap = hasAboveImages ? kImgGap : 0;
-            y += imgGap + kImgNameH + filePreviewSize(f, textWidth).height();
-        }
-
-        // File chips (files without a preview) — mirror paint.
-        const bool hasAboveChips =
-            _items[i].docHeight > 0 || !_items[i].attachDocs.empty() || anyImgFiles;
-        bool firstChip = true;
-        for (const auto &f : _items[i].msg.files) {
-            if (f.hasPreview())
-                continue;
-            if (!firstChip || hasAboveChips)
-                y += kFileChipGap;
-            firstChip = false;
-            y += kFileChipH;
-        }
-
-        if (!_items[i].msg.reactions.empty())
-            y += kReactH + 2;
-        y += kReplyBarGap;
-
-        if (QRect(textLeft, y, textWidth / 2, kReplyBarH).contains(viewportPos))
+        const int y = replyBarVpTop(i, ctx);
+        if (QRect(ctx.textLeft, y, ctx.textWidth / 2, kReplyBarH).contains(viewportPos))
             return i;
     }
     return -1;
+}
+
+// ── Inline threads ──────────────────────────────────────────────────────────
+
+MessageListWidget::InlineMetrics MessageListWidget::inlineReplyMetrics() const {
+    // Replies are indented so their avatars line up under the root's text column.
+    const int avatarLeft = kPadH + kAvSize + kAvGap;
+    const int textLeft   = avatarLeft + kAvSize + kAvGap;
+    const int textWidth  = std::max(1, viewport()->width() - textLeft - kPadH);
+    return {avatarLeft, textLeft, textWidth};
+}
+
+bool MessageListWidget::inlineReplyCollapsed(const std::vector<MessageItem> &replies, int i) const {
+    if (i <= 0)
+        return false;
+    const auto &prev = replies[i - 1].msg;
+    const auto &curr = replies[i].msg;
+    if (isSystemEvent(prev) || isSystemEvent(curr))
+        return false;
+    if (prev.author != curr.author)
+        return false;
+    return (curr.date - prev.date) < 300LL * 1000000; // 5 minutes
+}
+
+int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool collapsed) const {
+    ensureDocLayout(item, width);
+
+    int extraH = 0;
+    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+        if (isDismissed(item.msg.ts, ai))
+            continue;
+        extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
+    }
+    const bool hasAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
+    bool       anyImgFiles    = false;
+    for (const auto &f : item.msg.files) {
+        if (!f.hasPreview())
+            continue;
+        anyImgFiles = true;
+        extraH += (hasAboveImages ? kImgGap : 0) + kImgNameH + filePreviewSize(f, width).height();
+    }
+    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
+    bool       firstChip     = true;
+    for (const auto &f : item.msg.files) {
+        if (f.hasPreview())
+            continue;
+        if (!firstChip || hasAboveChips)
+            extraH += kFileChipGap;
+        firstChip = false;
+        extraH += kFileChipH;
+    }
+    const int reactionH = item.msg.reactions.empty() ? 0 : (kReactH + 2);
+    const int headerH   = collapsed ? 0 : (kHdrH + kHdrGap);
+    const int contentH  = headerH + item.docHeight + extraH + reactionH;
+    if (collapsed)
+        return kPadVCollapsed + contentH + kPadVCollapsed;
+    return kPadV + std::max(kAvSize, contentH) + kPadVBottom;
+}
+
+int MessageListWidget::inlineThreadHeight(const Ts &rootTs) const {
+    const auto it = _inlineThreads.find(rootTs);
+    if (it == _inlineThreads.end())
+        return 0;
+    const auto &th = it->second;
+    const auto  m  = inlineReplyMetrics();
+
+    int h = kInlineTopGap;
+    if (th.loading && th.replies.empty()) {
+        h += kInlineLoadingH;
+    } else {
+        for (int i = 0; i < (int)th.replies.size(); ++i)
+            h += replyItemHeight(th.replies[i], m.textWidth, inlineReplyCollapsed(th.replies, i));
+    }
+    h += kInlineFooterGap + kInlineFooterH + kInlineBottomGap;
+    return h;
+}
+
+void MessageListWidget::paintReplyItem(
+    QPainter            &p,
+    const MessageItem   &item,
+    const InlineMetrics &m,
+    const PaintContext  &subCtx,
+    int                  top,
+    bool                 collapsed
+) const {
+    ensureDocLayout(item, m.textWidth);
+    const int padV    = collapsed ? kPadVCollapsed : kPadV;
+    const int contTop = top + padV;
+
+    if (!collapsed) {
+        paintAvatar(p, item, QRect(m.avatarLeft, contTop + 2, kAvSize, kAvSize));
+        paintMessageHeader(p, item, m.textLeft, contTop);
+    }
+
+    // Body document (no text-selection inside inline replies).
+    pullGifFrames(item);
+    p.setFont(QApplication::font());
+    int contentY = collapsed ? contTop : (contTop + kHdrH + kHdrGap);
+    if (item.textDoc && item.docHeight > 0) {
+        p.save();
+        p.translate(m.textLeft, contentY);
+        QAbstractTextDocumentLayout::PaintContext pCtx;
+        pCtx.palette = QApplication::palette();
+        pCtx.clip    = QRectF(0, 0, m.textWidth, item.docHeight);
+        if (isMutedMessage(item.msg))
+            pCtx.palette.setColor(QPalette::Text, Th::c().text.secondary);
+        MsgRender::paintCodeBlockChrome(p, item.textDoc.get());
+        MsgRender::paintBotButtonChrome(p, item.textDoc.get());
+        item.textDoc->documentLayout()->draw(&p, pCtx);
+        p.restore();
+    }
+    contentY += item.docHeight;
+
+    // Attachments / inline files / reactions reuse the row helpers with a shifted
+    // context and index -1 (so no hover/dismiss chrome ever matches).
+    paintAttachments(p, item, subCtx, contentY, -1);
+    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+        if (isDismissed(item.msg.ts, ai))
+            continue;
+        contentY += kAttachGap + attachTotalH(item, ai);
+    }
+
+    paintFileImages(p, item, subCtx, contentY);
+    {
+        const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
+        for (const auto &f : item.msg.files) {
+            if (!f.hasPreview())
+                continue;
+            contentY += (hasAbove ? kImgGap : 0) + kImgNameH +
+                        filePreviewSize(f, subCtx.textWidth).height();
+        }
+    }
+
+    paintFileChips(p, item, subCtx, contentY);
+    {
+        bool anyImg = false;
+        for (const auto &f : item.msg.files)
+            if (f.hasPreview()) {
+                anyImg = true;
+                break;
+            }
+        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+        bool       firstChip     = true;
+        for (const auto &f : item.msg.files) {
+            if (f.hasPreview())
+                continue;
+            if (!firstChip || hasAboveChips)
+                contentY += kFileChipGap;
+            firstChip = false;
+            contentY += kFileChipH;
+        }
+    }
+
+    if (!item.msg.reactions.empty())
+        paintReactions(p, item, subCtx, contentY + 2, -1);
+}
+
+void MessageListWidget::paintInlineThread(
+    QPainter &p, const Ts &rootTs, const PaintContext &ctx, int top
+) const {
+    const auto it = _inlineThreads.find(rootTs);
+    if (it == _inlineThreads.end())
+        return;
+    const auto  &th  = it->second;
+    const auto   m   = inlineReplyMetrics();
+    PaintContext sub = ctx;
+    sub.textLeft     = m.textLeft;
+    sub.textWidth    = m.textWidth;
+
+    int y = top + kInlineTopGap;
+
+    if (th.loading && th.replies.empty()) {
+        p.save();
+        QFont f = QApplication::font();
+        f.setPointSizeF(f.pointSizeF() * 0.9);
+        p.setFont(f);
+        p.setPen(Th::c().text.secondary);
+        p.drawText(
+            QRect(m.textLeft, y, m.textWidth, kInlineLoadingH),
+            Qt::AlignVCenter | Qt::AlignLeft,
+            tr("Loading replies…")
+        );
+        p.restore();
+        y += kInlineLoadingH;
+    } else {
+        for (int i = 0; i < (int)th.replies.size(); ++i) {
+            const bool coll = inlineReplyCollapsed(th.replies, i);
+            paintReplyItem(p, th.replies[i], m, sub, y, coll);
+            y += replyItemHeight(th.replies[i], m.textWidth, coll);
+        }
+    }
+
+    // ── "Reply to thread" footer (opens the standalone panel) ──
+    y += kInlineFooterGap;
+    p.save();
+    QFont ff = QApplication::font();
+    ff.setPointSizeF(ff.pointSizeF() * 0.9);
+    ff.setBold(true);
+    ff.setUnderline(_hoveredThreadFooter == rootTs); // hover affordance
+    p.setFont(ff);
+    p.setPen(Th::c().message.replyLink);
+    p.drawText(
+        QRect(m.textLeft, y, m.textWidth, kInlineFooterH),
+        Qt::AlignVCenter | Qt::AlignLeft,
+        tr("Reply to thread")
+    );
+    p.restore();
+}
+
+int MessageListWidget::inlineFooterTextWidth() const {
+    QFont ff = QApplication::font();
+    ff.setPointSizeF(ff.pointSizeF() * 0.9);
+    ff.setBold(true);
+    return QFontMetrics(ff).horizontalAdvance(tr("Reply to thread"));
+}
+
+Ts MessageListWidget::inlineFooterAt(const QPoint &pos) const {
+    if (!_threadsInline || _inlineThreads.empty())
+        return {};
+    const PaintContext ctx = makePaintContext();
+    const auto         m   = inlineReplyMetrics();
+
+    for (int i = 0; i < (int)_items.size(); ++i) {
+        if (_items[i].msg.replyCount <= 0)
+            continue;
+        const Ts   ts  = _items[i].msg.ts;
+        const auto itt = _inlineThreads.find(ts);
+        if (itt == _inlineThreads.end())
+            continue;
+
+        const int rowTop = _tops[i] - ctx.scrollY;
+        const int rh     = rowHeight(i);
+        if (rowTop > pos.y())
+            break;
+        if (rowTop + rh <= pos.y())
+            continue;
+
+        int         y  = replyBarVpTop(i, ctx) + kReplyBarH + kInlineTopGap;
+        const auto &th = itt->second;
+        if (th.loading && th.replies.empty()) {
+            y += kInlineLoadingH;
+        } else {
+            for (int j = 0; j < (int)th.replies.size(); ++j)
+                y += replyItemHeight(
+                    th.replies[j], m.textWidth, inlineReplyCollapsed(th.replies, j)
+                );
+        }
+        y += kInlineFooterGap;
+        if (QRect(m.textLeft, y, inlineFooterTextWidth(), kInlineFooterH).contains(pos))
+            return ts;
+        return {};
+    }
+    return {};
 }
 
 // ── Reaction hit-test ─────────────────────────────────────────────────────────

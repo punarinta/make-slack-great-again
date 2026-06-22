@@ -279,6 +279,29 @@ void SettingsDialog::buildPanel() {
     timeLayout->addWidget(_time24);
     alay->addWidget(timeBox);
 
+    // ── Threads ───────────────────────────────────────────────────────
+    auto *threadHeading = new QLabel(tr("Threads"), appearPage);
+    threadHeading->setObjectName("sectionHeading");
+    alay->addWidget(threadHeading);
+
+    auto *threadBox = new QGroupBox(appearPage);
+    threadBox->setObjectName("threadBox");
+    auto *threadLayout = new QVBoxLayout(threadBox);
+    threadLayout->setSpacing(sp.md);
+    threadLayout->setContentsMargins(0, 0, 0, 0);
+
+    _threadStandalone =
+        new QRadioButton(tr("Standalone (open replies in a side panel)"), threadBox);
+    _threadInline = new QRadioButton(tr("Inline (expand replies under the message)"), threadBox);
+
+    auto *threadGroup = new QButtonGroup(threadBox);
+    threadGroup->addButton(_threadStandalone, 0);
+    threadGroup->addButton(_threadInline, 1);
+
+    threadLayout->addWidget(_threadStandalone);
+    threadLayout->addWidget(_threadInline);
+    alay->addWidget(threadBox);
+
     // ── Conversations ─────────────────────────────────────────────────
     auto *sidebarHeading = new QLabel(tr("Conversations"), appearPage);
     sidebarHeading->setObjectName("sectionHeading");
@@ -865,7 +888,11 @@ void SettingsDialog::applyTheme() {
     // ── Appearance page ───────────────────────────────────────────────
     // The section containers are now titleless; just strip the default frame.
     for (const auto &boxName :
-         {QString("sidebarBox"), QString("langBox"), QString("timeBox"), QString("themeBox")}) {
+         {QString("sidebarBox"),
+          QString("langBox"),
+          QString("timeBox"),
+          QString("themeBox"),
+          QString("threadBox")}) {
         if (auto *w = _panel->findChild<QGroupBox *>(boxName))
             w->setStyleSheet("QGroupBox { border: none; }");
     }
@@ -891,6 +918,12 @@ void SettingsDialog::applyTheme() {
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
     _time24->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+    );
+    _threadStandalone->setStyleSheet(
+        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+    );
+    _threadInline->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
@@ -1082,6 +1115,10 @@ void SettingsDialog::loadAppearance() {
     _langRestartNote->setVisible(_language->currentData().toString() != _startupLanguage);
     (TimeFmt::use24h() ? _time24 : _time12)->setChecked(true);
 
+    const bool inlineThreads =
+        QSettings("msga", "msga").value("appearance/threadsInline", false).toBool();
+    (inlineThreads ? _threadInline : _threadStandalone)->setChecked(true);
+
     for (auto *card : _themeCards)
         card->setChecked(card->themeId() == ThemeManager::instance().themeId());
 }
@@ -1093,8 +1130,12 @@ void SettingsDialog::saveAppearance() {
     TimeFmt::setLanguage(_language->currentData().toString());
     TimeFmt::setUse24h(_time24->isChecked());
 
+    const bool inlineThreads = _threadInline->isChecked();
+    QSettings("msga", "msga").setValue("appearance/threadsInline", inlineThreads);
+
     emit appearanceChanged(days);
     emit timeFormatChanged();
+    emit threadDisplayChanged(inlineThreads);
 }
 
 static QString formatBytes(qint64 bytes) {
