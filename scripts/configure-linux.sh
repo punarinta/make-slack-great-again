@@ -30,6 +30,7 @@ APT_PACKAGES=(
     clang-format      # formatting — matches .clang-format config
     clazy             # Qt-aware linting — provides clazy and clazy-standalone
     gcovr             # test coverage reports — used by scripts/coverage.sh
+    xvfb              # xvfb-run — release-linux-static.sh startup smoke-launch
 )
 
 to_install=()
