@@ -1706,7 +1706,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
             [this, msg] {
                 auto *dlg = new DeleteMessageDialog(msg, _session, window());
                 dlg->setAttribute(Qt::WA_DeleteOnClose);
-                connect(dlg, &QDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
+                connect(dlg, &AppDialog::accepted, this, [this, ts = msg.ts, conv = _currentConv] {
                     if (_session)
                         _session->backend()->deleteMessage(conv, ts);
                 });

@@ -163,7 +163,7 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
     cl->addLayout(btnRow);
 
     connect(_avatar, &ProfileAvatarWidget::clicked, this, &ProfileDialog::pickAndUploadPhoto);
-    connect(_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(_cancelBtn, &QPushButton::clicked, this, &AppDialog::reject);
     connect(_saveBtn, &QPushButton::clicked, this, &ProfileDialog::save);
 
     // Seed the avatar/initial from the already-known user entry so something

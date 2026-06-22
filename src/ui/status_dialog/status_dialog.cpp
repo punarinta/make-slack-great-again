@@ -240,7 +240,7 @@ void StatusDialog::buildButtons() {
             _session->setStatus({}, {}, 0);
         accept();
     });
-    connect(_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(_cancelBtn, &QPushButton::clicked, this, &AppDialog::reject);
     connect(_saveBtn, &QPushButton::clicked, this, &StatusDialog::save);
 }
 

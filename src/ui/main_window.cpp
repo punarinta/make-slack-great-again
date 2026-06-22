@@ -825,7 +825,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
                 return;
             auto *dlg = new ForwardDialog(msg, _session, this);
             dlg->setAttribute(Qt::WA_DeleteOnClose);
-            connect(dlg, &QDialog::accepted, this, [this, dlg, msg] {
+            connect(dlg, &AppDialog::accepted, this, [this, dlg, msg] {
                 const ConversationId target = dlg->targetConv();
                 if (target.value.isEmpty())
                     return;

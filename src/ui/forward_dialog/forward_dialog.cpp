@@ -177,7 +177,7 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
             accept();
     });
 
-    connect(_fwdBtn, &QPushButton::clicked, this, &QDialog::accept);
+    connect(_fwdBtn, &QPushButton::clicked, this, &AppDialog::accept);
 
     connect(_copyLinkBtn, &QPushButton::clicked, this, [&msg] {
         for (const auto &ent : msg.text.entities) {

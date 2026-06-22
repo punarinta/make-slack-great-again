@@ -117,7 +117,7 @@ CreateChannelDialog::CreateChannelDialog(const QString &workspaceName, QWidget *
     });
     connect(_nextBtn, &QPushButton::clicked, this, &CreateChannelDialog::goNext);
     connect(_backBtn, &QPushButton::clicked, this, &CreateChannelDialog::goBack);
-    connect(_createBtn, &QPushButton::clicked, this, &QDialog::accept);
+    connect(_createBtn, &QPushButton::clicked, this, &AppDialog::accept);
 
     applyTheme();
     updateCard();

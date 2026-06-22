@@ -6,13 +6,17 @@
 #include "ui/theme_manager.h"
 
 #include <QApplication>
+#include <QEventLoop>
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
+#include <QHideEvent>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPointer>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -24,21 +28,31 @@ static constexpr int kCardPadH = 28; // left / right padding inside card
 static constexpr int kCardPadT = 24; // top padding
 static constexpr int kCardPadB = 24; // bottom padding
 
-AppDialog::AppDialog(const QString &title, QWidget *parent)
-    : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint) {
+// Resolve the top-level window we should overlay (and parent ourselves to).
+static QWidget *overlayHost(QWidget *parent) {
+    return parent ? parent->window() : nullptr;
+}
+
+AppDialog::AppDialog(const QString &title, QWidget *parent) : QWidget(overlayHost(parent)) {
     buildCard(/*standardHeader=*/true, title);
 }
 
-AppDialog::AppDialog(QWidget *parent, Chrome chrome)
-    : QDialog(parent, Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowSystemMenuHint) {
+AppDialog::AppDialog(QWidget *parent, Chrome chrome) : QWidget(overlayHost(parent)) {
     buildCard(/*standardHeader=*/chrome == Chrome::Standard, QString());
 }
 
 void AppDialog::buildCard(bool standardHeader, const QString &title) {
-    setAttribute(Qt::WA_TranslucentBackground);
-    setModal(true);
+    // In-window child overlay: a free child of the host window, not in any
+    // layout, manually sized to cover the whole window (see coverParent()).
+    // WA_NoSystemBackground lets the semi-transparent backdrop blend over the
+    // window content already in the backing store, exactly like the search bar.
+    setAttribute(Qt::WA_NoSystemBackground);
+    setFocusPolicy(Qt::StrongFocus);
+    hide(); // shown explicitly via exec()/open()
+    if (QWidget *host = parentWidget())
+        host->installEventFilter(this);
 
-    // ── Card (frameless overlay panel + soft shadow) ───────────────────────────
+    // ── Card (rounded panel + soft shadow) ─────────────────────────────────────
     _card = new QFrame(this);
     _card->setObjectName("appDialogCard");
 
@@ -73,7 +87,7 @@ void AppDialog::buildCard(bool standardHeader, const QString &title) {
         _cardLayout->addLayout(headerRow);
         _cardLayout->addSpacing(sp.xl);
 
-        connect(_closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+        connect(_closeBtn, &QPushButton::clicked, this, &AppDialog::reject);
 
         _contentLayout = new QVBoxLayout;
         _contentLayout->setContentsMargins(0, 0, 0, 0);
@@ -104,12 +118,58 @@ AppDialog::addButtonRow(QPushButton *primary, QPushButton *secondary, QWidget *l
     row->addStretch();
     if (secondary) {
         row->addWidget(secondary);
-        connect(secondary, &QPushButton::clicked, this, &QDialog::reject);
+        connect(secondary, &QPushButton::clicked, this, &AppDialog::reject);
     }
     if (primary)
         row->addWidget(primary);
     _contentLayout->addLayout(row);
     return row;
+}
+
+// ── Modal API (QDialog-compatible) ──────────────────────────────────────────────
+
+int AppDialog::exec() {
+    if (isVisible())
+        return _result;
+    QPointer<AppDialog> guard(this);
+    _result = QDialog::Rejected;
+    show();
+
+    QEventLoop loop;
+    _loop = &loop;
+    loop.exec();
+    if (!guard)
+        return QDialog::Rejected; // deleted while running (e.g. WA_DeleteOnClose)
+    _loop = nullptr;
+    return _result;
+}
+
+void AppDialog::open() {
+    _result = QDialog::Rejected;
+    show();
+}
+
+void AppDialog::accept() {
+    done(QDialog::Accepted);
+}
+
+void AppDialog::reject() {
+    done(QDialog::Rejected);
+}
+
+void AppDialog::done(int result) {
+    _result = result;
+    hide(); // fires hideEvent → quits any running exec() loop
+
+    // Emit signals while the object is still alive (mirrors QDialog::done).
+    emit finished(result);
+    if (result == QDialog::Accepted)
+        emit accepted();
+    else if (result == QDialog::Rejected)
+        emit rejected();
+
+    if (testAttribute(Qt::WA_DeleteOnClose))
+        deleteLater();
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -146,6 +206,17 @@ void AppDialog::updateCard() {
     _card->move((width() - cardW) / 2, (height() - cardH) / 2);
 }
 
+void AppDialog::coverParent() {
+    if (QWidget *host = parentWidget()) {
+        // We are a direct child of the host window, so its rect() (origin 0,0)
+        // is exactly the geometry we must occupy — client coordinates, which the
+        // compositor cannot offset.
+        setGeometry(host->rect());
+        raise();
+    }
+    updateCard();
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
 void AppDialog::paintEvent(QPaintEvent *) {
@@ -154,17 +225,32 @@ void AppDialog::paintEvent(QPaintEvent *) {
 }
 
 void AppDialog::showEvent(QShowEvent *e) {
-    // Size the overlay to cover the parent (top-level) window exactly.
-    if (QWidget *top = parentWidget() ? parentWidget()->window() : nullptr) {
-        setGeometry(top->geometry());
-    }
-    updateCard();
-    QDialog::showEvent(e);
+    coverParent();
+    QWidget::showEvent(e);
+    // Pull focus into the dialog so the keyboard (incl. Escape) is captured and
+    // can't reach widgets behind the backdrop, then hand off to the first
+    // focusable child — mirroring QDialog's auto-focus of the first input.
+    setFocus(Qt::PopupFocusReason);
+    focusNextChild();
+}
+
+void AppDialog::hideEvent(QHideEvent *e) {
+    QWidget::hideEvent(e);
+    if (_loop)
+        _loop->quit();
 }
 
 void AppDialog::resizeEvent(QResizeEvent *e) {
-    QDialog::resizeEvent(e);
+    QWidget::resizeEvent(e);
     updateCard();
+}
+
+bool AppDialog::eventFilter(QObject *obj, QEvent *event) {
+    // Track the host window so the overlay always covers it.
+    if (obj == parentWidget() && isVisible() &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Move))
+        coverParent();
+    return QWidget::eventFilter(obj, event);
 }
 
 void AppDialog::mousePressEvent(QMouseEvent *e) {
@@ -172,5 +258,13 @@ void AppDialog::mousePressEvent(QMouseEvent *e) {
     if (!_card->geometry().contains(e->pos()))
         reject();
     else
-        QDialog::mousePressEvent(e);
+        QWidget::mousePressEvent(e);
+}
+
+void AppDialog::keyPressEvent(QKeyEvent *e) {
+    if (e->key() == Qt::Key_Escape) {
+        reject();
+        return;
+    }
+    QWidget::keyPressEvent(e);
 }

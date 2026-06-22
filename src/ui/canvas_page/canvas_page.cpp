@@ -234,8 +234,8 @@ public:
         btnRow->addWidget(deleteBtn);
         cl->addLayout(btnRow);
 
-        connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
-        connect(deleteBtn, &QPushButton::clicked, this, &QDialog::accept);
+        connect(cancelBtn, &QPushButton::clicked, this, &AppDialog::reject);
+        connect(deleteBtn, &QPushButton::clicked, this, &AppDialog::accept);
         updateCard();
     }
 };
@@ -689,7 +689,7 @@ void CanvasPage::showMenu() {
 void CanvasPage::confirmDelete() {
     auto *dlg = new DeleteCanvasDialog(window());
     dlg->setAttribute(Qt::WA_DeleteOnClose);
-    connect(dlg, &QDialog::accepted, this, [this] {
+    connect(dlg, &AppDialog::accepted, this, [this] {
         if (!_session || _fileId.isEmpty())
             return;
         // Drop pending edits — they would re-create content on a dead canvas.

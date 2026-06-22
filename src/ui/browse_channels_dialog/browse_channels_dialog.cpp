@@ -120,7 +120,7 @@ BrowseChannelsDialog::BrowseChannelsDialog(
     buildPeopleItems();
 
     // ── Connections ───────────────────────────────────────────────────────────
-    connect(_closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(_closeBtn, &QPushButton::clicked, this, &AppDialog::reject);
     connect(_createBtn, &QPushButton::clicked, this, [this] {
         reject();
         emit createChannelRequested();

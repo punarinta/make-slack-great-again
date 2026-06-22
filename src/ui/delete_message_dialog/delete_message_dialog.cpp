@@ -69,7 +69,7 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     _deleteBtn = new StyledButton(tr("Delete"), StyledButton::Variant::Danger);
     addButtonRow(_deleteBtn, _cancelBtn); // Cancel → reject() wired by base
 
-    connect(_deleteBtn, &QPushButton::clicked, this, &QDialog::accept);
+    connect(_deleteBtn, &QPushButton::clicked, this, &AppDialog::accept);
 
     applyTheme();
     updateCard();
