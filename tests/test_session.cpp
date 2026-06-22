@@ -892,6 +892,53 @@ TEST_CASE_METHOD(
     CHECK(c->lastRead == "999.000");
 }
 
+// ── EvMemberJoined ────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMemberJoined for self adds a previously-untracked channel to the list",
+    "[session][events]"
+) {
+    // We get added to C9, which isn't in our conversation list. The
+    // conversations.info fixture reports it as a member channel.
+    Conversation joined{
+        .id       = ConversationId{"C9"},
+        .kind     = ConvKind::PublicChannel,
+        .name     = "newcomers",
+        .isMember = true,
+    };
+    stub->infoResults["C9"] = joined;
+
+    REQUIRE(session->findConversation(ConversationId{"C9"}) == nullptr);
+    stub->fireEvent(EvMemberJoined{ConversationId{"C9"}, UserId{"U1"}});
+
+    CHECK(stub->infoRequested.contains("C9"));
+    auto *c = session->findConversation(ConversationId{"C9"});
+    REQUIRE(c != nullptr);
+    CHECK(c->name == "newcomers");
+    CHECK(c->isMember);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMemberJoined for a channel we already track as a member is a no-op",
+    "[session][events]"
+) {
+    // C2 (kRandom) is already in the list as a member, so a member_joined echo
+    // for it must not trigger a redundant conversations.info fetch.
+    stub->fireEvent(EvMemberJoined{ConversationId{"C2"}, UserId{"U1"}});
+    CHECK_FALSE(stub->infoRequested.contains("C2"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "EvMemberJoined for another user is ignored", "[session][events]"
+) {
+    stub->infoResults["C9"] = Conversation{.id = ConversationId{"C9"}, .isMember = true};
+    stub->fireEvent(EvMemberJoined{ConversationId{"C9"}, UserId{"U2"}});
+    CHECK_FALSE(stub->infoRequested.contains("C9"));
+    CHECK(session->findConversation(ConversationId{"C9"}) == nullptr);
+}
+
 // ── EvMessageNew unread logic ─────────────────────────────────────────────────
 
 TEST_CASE_METHOD(

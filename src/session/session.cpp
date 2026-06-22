@@ -331,6 +331,20 @@ void Session::start() {
                     }
                     if (changed)
                         _conversations = std::move(convs);
+                } else if (auto *ev = std::get_if<EvMemberJoined>(&e)) {
+                    // member_joined_channel fires for every member; we only care
+                    // when it's us joining a channel we don't already track as a
+                    // member (we were added/invited). Pull its info so the channel
+                    // slots into the list without a manual refresh.
+                    if (!_meUserId.value.isEmpty() && ev->user == _meUserId) {
+                        const auto &convs = _conversations.current();
+                        const auto  it =
+                            std::find_if(convs.begin(), convs.end(), [&](const Conversation &c) {
+                                return c.id == ev->conv;
+                            });
+                        if (it == convs.end() || !it->isMember)
+                            fetchJoinedConversation(ev->conv);
+                    }
                 } else if (std::get_if<EvRealtimeReconnected>(&e)) {
                     // The socket came back after a gap Slack won't replay.
                     // Refetch the conversation list so unread/mention badges and
@@ -457,6 +471,34 @@ void Session::reloadConversations(bool refreshEmoji) {
                                                 },
                                                 _lifetime
                                             );
+            },
+            _lifetime
+        );
+}
+
+void Session::fetchJoinedConversation(ConversationId id) {
+    // conversations.info reports the freshly-joined channel with is_member=true.
+    // Fold it into the list (or flip an already-present preview to member),
+    // preserving nothing else since this is a channel we weren't tracking.
+    _backend->loadConversationInfo(id) |
+        rpl::on_next(
+            [this](Conversation conv) {
+                if (conv.id.value.isEmpty())
+                    return;
+                auto       convs = _conversations.current();
+                const auto it =
+                    std::find_if(convs.begin(), convs.end(), [&](const Conversation &c) {
+                        return c.id == conv.id;
+                    });
+                if (it != convs.end()) {
+                    if (it->isMember)
+                        return; // a concurrent fetch already added it
+                    *it = std::move(conv);
+                } else {
+                    convs.push_back(std::move(conv));
+                }
+                _cache->saveConversations(convs);
+                _conversations = std::move(convs);
             },
             _lifetime
         );

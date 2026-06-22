@@ -283,6 +283,11 @@ private:
     // badges catch up on events Slack didn't replay.
     void reloadConversations(bool refreshEmoji);
 
+    // Fetch a single channel's conversations.info and slot it into
+    // _conversations — used when a member_joined_channel event tells us we were
+    // added to a channel we weren't already tracking as a member.
+    void fetchJoinedConversation(ConversationId id);
+
     // Background conversations.info sweep over IMs/MPDMs that refreshes their
     // last_read/latest cursors (used for conversation-list relevance). Throttled
     // via the workspace cache; called after each loadConversations() merge.
