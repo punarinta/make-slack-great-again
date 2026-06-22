@@ -276,6 +276,9 @@ void MessageListWidget::openConversation(
 
     _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
+    _session->userInfoLoaded() |
+        rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
+
     _session->botInfoLoaded() | rpl::on_next(
                                     [this](UserId) {
                                         rebuildLayout();
@@ -590,6 +593,9 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
 
     _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
+    _session->userInfoLoaded() |
+        rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
+
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
 
     _session->backend()->loadThread(conv, rootTs, std::nullopt) |
@@ -646,8 +652,16 @@ void MessageListWidget::expandInlineThread(ConversationId conv, const Ts &rootTs
                 for (auto &m : page.messages) {
                     if (m.ts == rootTs)
                         continue; // the root itself is rendered above the bar
-                    if (_session)
+                    if (_session) {
                         _session->fetchBotIfNeeded(m.author);
+                        // Inline replies aren't swept by triggerMissingAvatarDownloads
+                        // (it walks top-level rows only), so resolve their external
+                        // authors + @mentions here.
+                        _session->fetchUserIfNeeded(m.author);
+                        for (const auto &e : m.text.entities)
+                            if (e.type == EntityType::UserMention)
+                                _session->fetchUserIfNeeded(UserId{e.data});
+                    }
                     MessageItem item;
                     item.msg = m;
                     th.replies.push_back(std::move(item));
@@ -779,6 +793,34 @@ bool MessageListWidget::needsDateSep(int index) const {
 
 int MessageListWidget::textAreaWidth() const {
     return viewport()->width() - kPadH - kAvSize - kAvGap - kPadH;
+}
+
+void MessageListWidget::onUserResolved(UserId id) {
+    // True if this message's author or one of its @mentions is `id` — those are
+    // the rows whose rendered text/header can change now that the user is known.
+    const auto references = [&id](const Message &m) {
+        if (m.author == id)
+            return true;
+        for (const auto &e : m.text.entities)
+            if (e.type == EntityType::UserMention && e.data == id.value)
+                return true;
+        return false;
+    };
+    // Mentions are baked into the cached doc, so the doc must be rebuilt; the
+    // author name + avatar are painted live, so a repaint alone refreshes them.
+    const auto refresh = [&references](MessageItem &item) {
+        if (!references(item.msg))
+            return;
+        item.textDoc.reset();
+        item.docWidth = -1;
+    };
+    for (auto &item : _items)
+        refresh(item);
+    for (auto &entry : _inlineThreads)
+        for (auto &reply : entry.second.replies)
+            refresh(reply);
+    rebuildLayout();
+    viewport()->update();
 }
 
 void MessageListWidget::invalidateAllDocs() {
@@ -1738,8 +1780,7 @@ void MessageListWidget::showReactionTooltip(int mi, int ri, const QRect &chipVpR
             names.push_front(tr("You"));
             continue;
         }
-        const User *u = _session->findUser(uid);
-        names.push_back(u ? u->displayLabel() : uid.value);
+        names.push_back(_session->userDisplayName(uid));
     }
     if (names.isEmpty())
         return;

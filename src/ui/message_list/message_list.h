@@ -316,6 +316,11 @@ private:
     // Download any missing user avatars for visible rows (called from doPaint).
     void triggerMissingAvatarDownloads();
 
+    // A user that users.list omitted just resolved (Session::userInfoLoaded):
+    // re-render any rows whose author or @mention is this user so the raw id
+    // becomes a name + avatar.
+    void onUserResolved(UserId id);
+
     // Mouse: returns the href under the given viewport point, or empty.
     QString anchorAt(const QPoint &viewportPos) const;
 

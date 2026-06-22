@@ -216,7 +216,8 @@ void ConvSelectorWidget::rebuildList(const QString &filter) {
         QString label;
         if (conv.kind == ConvKind::Im) {
             const auto *u = conv.dmUser ? _session->findUser(*conv.dmUser) : nullptr;
-            label         = u ? u->displayName : conv.name;
+            label         = u ? u->displayName
+                              : (conv.dmUser ? _session->userDisplayName(*conv.dmUser) : conv.name);
         } else {
             label = "#" + conv.name;
         }

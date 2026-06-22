@@ -394,8 +394,13 @@ QString ConvListWidget::resolvedName(int row) const {
     const auto &conv = _convs[ri.convIdx];
     if (conv.kind == ConvKind::Im && conv.dmUser) {
         const auto it = _userInfos.constFind(conv.dmUser->value);
-        if (it != _userInfos.constEnd() && !it->displayName.isEmpty())
+        if (it != _userInfos.constEnd() && !it->displayName.isEmpty() &&
+            !(_session && _session->isUnresolvedUserId(it->displayName)))
             return it->displayName;
+        // conv.name for an IM is the raw peer id; resolve it (and kick off a
+        // users.info fetch) so the title is never a cryptic "U…/W…".
+        if (_session)
+            return _session->userDisplayName(*conv.dmUser);
     }
     if (conv.kind == ConvKind::Mpim) {
         QStringList names;

@@ -597,11 +597,21 @@ void Session::fetchUserIfNeeded(UserId userId) {
                                          for (const auto &existing : users)
                                              if (existing.id == u.id)
                                                  return;
+                                         const UserId resolved = u.id;
                                          users.push_back(std::move(u));
                                          _users = std::move(users);
+                                         // Tell the message list a previously-raw
+                                         // id now has a name + avatar so it can
+                                         // re-render the author header and any
+                                         // baked-in @mentions of this user.
+                                         _userInfoHub.fire_copy(resolved);
                                      },
                                      _lifetime
                                  );
+}
+
+rpl::producer<UserId> Session::userInfoLoaded() const {
+    return _userInfoHub.events();
 }
 
 void Session::fetchMissingDmUsers() {
@@ -609,9 +619,29 @@ void Session::fetchMissingDmUsers() {
     // load handler calls us again once the full list has arrived.
     if (_users.current().empty())
         return;
-    for (const auto &c : _conversations.current())
+    for (const auto &c : _conversations.current()) {
         if (c.kind == ConvKind::Im && c.dmUser)
             fetchUserIfNeeded(*c.dmUser);
+        // Multi-person DMs name themselves from their members; resolve any that
+        // users.list omitted so the title shows names, not raw ids.
+        if (c.kind == ConvKind::Mpim)
+            for (const auto &uid : c.members)
+                fetchUserIfNeeded(uid);
+    }
+}
+
+QString Session::userDisplayName(UserId id) {
+    if (id.value.isEmpty())
+        return {};
+    if (const User *u = findUser(id)) {
+        const QString label = u->displayLabel();
+        // A cached entry whose label is itself a raw id (e.g. a deactivated
+        // account that fell back to the bare id) is treated as unresolved.
+        if (!label.isEmpty() && !_backend->isUnresolvedUserId(label))
+            return label;
+    }
+    fetchUserIfNeeded(id);
+    return QCoreApplication::translate("Session", "Unknown user");
 }
 
 const Conversation *Session::findConversation(ConversationId id) const {

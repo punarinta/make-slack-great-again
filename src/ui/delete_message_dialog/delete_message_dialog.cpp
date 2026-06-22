@@ -30,7 +30,7 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
 
     if (session) {
         const auto   *user = session->findUser(msg.author);
-        const QString name = user ? user->displayName : msg.author.value;
+        const QString name = user ? user->displayName : session->userDisplayName(msg.author);
 
         auto *headerRow = new QHBoxLayout;
         headerRow->setSpacing(sp.md);

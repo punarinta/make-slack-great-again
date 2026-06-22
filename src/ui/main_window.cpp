@@ -1517,10 +1517,9 @@ void MainWindow::connectToSession() {
                     // arrive here when we type from another client (we never echo
                     // local typing), shown as "You … on another device".
                     if (_typingIndicator && ev->conv == _currentConvId) {
-                        const bool  isSelf = ev->user == _session->meUserId();
-                        const auto *u      = _session->findUser(ev->user);
+                        const bool isSelf = ev->user == _session->meUserId();
                         _typingIndicator->userTyping(
-                            ev->user, u ? u->displayLabel() : ev->user.value, isSelf
+                            ev->user, _session->userDisplayName(ev->user), isSelf
                         );
                     }
                 } else if (const auto *ev = std::get_if<EvMessageNew>(&e)) {
@@ -1685,7 +1684,13 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
         return;
 
     // Build title and body
-    const auto   *sender = session->findUser(ev.msg.author);
+    const auto *sender = session->findUser(ev.msg.author);
+    if (!sender)
+        // External/system sender absent from users.list: resolve it so the next
+        // notification (and the chat) shows a name instead of "Someone". A
+        // background workspace may never open its message list, which is the
+        // other place that would have triggered this.
+        session->fetchUserIfNeeded(ev.msg.author);
     const QString senderName =
         sender ? (sender->displayName.isEmpty() ? sender->name : sender->displayName)
                : tr("Someone");

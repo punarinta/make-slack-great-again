@@ -50,7 +50,7 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
 
     if (session) {
         const auto   *user      = session->findUser(msg.author);
-        const QString name      = user ? user->displayName : msg.author.value;
+        const QString name      = user ? user->displayName : session->userDisplayName(msg.author);
         auto         *nameLabel = new QLabel(
             "<b>" + name.toHtmlEscaped() + "</b>" + "  <span style='color:" +
                 Th::qss(Th::c().text.tertiary) + ";font-size:" + QString::number(Th::c().fonts.sm) +

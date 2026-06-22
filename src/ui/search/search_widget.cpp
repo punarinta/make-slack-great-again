@@ -266,6 +266,19 @@ void SearchWidget::setSession(Session *session) {
     _resultList->hide();
     _results.clear();
     _selectedIdx = -1;
+
+    // A late-resolved external user (Slack Connect / system) means a result's
+    // conv title or a mention in its preview can now show a real name — re-render
+    // the visible results so the raw-id placeholder is replaced.
+    _sessionLifetime = rpl::lifetime();
+    if (_session)
+        _session->userInfoLoaded() | rpl::on_next(
+                                         [this](UserId) {
+                                             if (!_results.empty() && isVisible())
+                                                 populateResults(_results);
+                                         },
+                                         _sessionLifetime
+                                     );
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -313,11 +326,11 @@ QString SearchWidget::resolveConvName(const SearchResult &r) const {
     if (_session) {
         if (const auto *conv = _session->findConversation(r.conv)) {
             // For DMs resolve the other person's display name, not the raw user ID.
-            const bool isDm = (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
-            if (isDm && conv->dmUser) {
-                if (const auto *user = _session->findUser(*conv->dmUser)) {
+            if (conv->kind == ConvKind::Im && conv->dmUser)
+                return _session->userDisplayName(*conv->dmUser);
+            if (conv->kind == ConvKind::Mpim && conv->dmUser) {
+                if (const auto *user = _session->findUser(*conv->dmUser))
                     return user->displayName.isEmpty() ? user->name : user->displayName;
-                }
             }
             if (!conv->name.isEmpty())
                 return conv->name;
@@ -344,7 +357,15 @@ QString SearchWidget::resolvePreview(const TextWithEntities &t) const {
                 const QString name = user->displayName.isEmpty() ? user->name : user->displayName;
                 result += "@" + name;
             } else {
-                result += t.text.mid(e.offset, e.length);
+                // Keep the parser's baked label if it's a real name (<@W|Name>);
+                // only a bare "@U…/@W…" is a raw id worth resolving away.
+                const QString baked  = t.text.mid(e.offset, e.length);
+                QString       bareId = baked;
+                if (bareId.startsWith('@'))
+                    bareId.remove(0, 1);
+                result += _session->isUnresolvedUserId(bareId)
+                              ? ("@" + _session->userDisplayName(uid))
+                              : baked;
             }
         } else {
             result += t.text.mid(e.offset, e.length);

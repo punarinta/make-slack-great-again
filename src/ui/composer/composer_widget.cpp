@@ -740,8 +740,8 @@ void ComposerWidget::setEditorMrkdwn(const QString &text) {
                     _session ? _session->findConversation(ConversationId{m.captured(2)}) : nullptr;
                 display = c ? c->name : m.captured(2);
             } else {
-                const User *u = _session ? _session->findUser(UserId{m.captured(2)}) : nullptr;
-                display       = u ? u->displayLabel() : m.captured(2);
+                display =
+                    _session ? _session->userDisplayName(UserId{m.captured(2)}) : m.captured(2);
             }
         }
         display.prepend(isChannel ? '#' : '@');

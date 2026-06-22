@@ -360,7 +360,12 @@ static QString renderRange(
                     inner + "</a>";
             break;
         case EntityType::UserMention: {
-            const QString label = session ? resolveMentionImpl(e.data, session) : rawInner;
+            // Prefer the live cache; otherwise keep the parser's baked label
+            // (the "<@W|Name>" display part, or "@W…" for a bare mention) rather
+            // than forcing the raw id — an external collaborator's mention reads
+            // as a name the moment users.info resolves it.
+            const User   *u     = session ? session->findUser(UserId{e.data}) : nullptr;
+            const QString label = u ? ("@" + u->displayLabel()) : rawInner;
             const bool    isMe  = session && UserId{e.data} == session->meUserId();
             // Anchor (not span) so the mention is hit-testable for the hover profile card.
             html += "<a href='" + (kUserAnchorPrefix + e.data).toHtmlEscaped() +

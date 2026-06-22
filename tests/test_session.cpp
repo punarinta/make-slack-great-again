@@ -60,7 +60,9 @@ struct StubBackend : Backend {
         return id.value == QLatin1String("USLACKBOT") || id.value == QLatin1String("USLACK");
     }
     bool isBotId(UserId id) const override { return id.value.startsWith('B'); }
-    bool isUserId(UserId id) const override { return id.value.startsWith('U'); }
+    bool isUserId(UserId id) const override {
+        return id.value.startsWith('U') || id.value.startsWith('W');
+    }
 
     bool loadMeAlwaysFails    = false; // every call completes empty (auth.test error)
     bool loadMeFirstCallFails = false; // first call completes empty, later ones succeed
@@ -583,6 +585,94 @@ TEST_CASE("DM peer missing from users.list is resolved via users.info", "[sessio
     const User *u = session.findUser(UserId{"USLACK"});
     REQUIRE(u != nullptr);
     CHECK(u->displayName == "Slack");
+
+    QDir(baseDir).removeRecursively();
+}
+
+// An external Slack Connect collaborator (W-prefixed enterprise id, absent from
+// users.list) surfacing as a message author/mention is resolved on demand via
+// users.info, and userInfoLoaded fires so the message view can re-render it.
+TEST_CASE(
+    "external collaborator resolved via fetchUserIfNeeded fires userInfoLoaded", "[session]"
+) {
+    const QString teamId = "T_SESSION_EXTERNAL";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    User ext{
+        .id          = UserId{"W0EXTERNAL"},
+        .name        = "ext.partner",
+        .displayName = "External Partner",
+        .avatarUrl   = "https://avatars.example/ext_72.png",
+    };
+
+    auto  backend = std::make_unique<StubBackend>();
+    auto *stub    = backend.get();
+    stub->_meId   = UserId{"U1"};
+    stub->_users  = std::vector<User>{kAlice}; // collaborator deliberately absent
+    stub->userInfoResults["W0EXTERNAL"] = ext;
+
+    Session session(std::move(backend), teamId);
+    session.start();
+
+    QList<UserId> resolved;
+    rpl::lifetime lt;
+    session.userInfoLoaded() | rpl::on_next([&](UserId id) { resolved.append(id); }, lt);
+
+    session.fetchUserIfNeeded(UserId{"W0EXTERNAL"});
+
+    CHECK(stub->userInfoRequested.contains("W0EXTERNAL"));
+    const User *u = session.findUser(UserId{"W0EXTERNAL"});
+    REQUIRE(u != nullptr);
+    CHECK(u->displayName == "External Partner");
+    CHECK(u->avatarUrl == "https://avatars.example/ext_72.png");
+    REQUIRE(resolved.size() == 1);
+    CHECK(resolved.first() == UserId{"W0EXTERNAL"});
+
+    // Already cached → no second fetch, no second signal.
+    session.fetchUserIfNeeded(UserId{"W0EXTERNAL"});
+    CHECK(stub->userInfoRequested.count("W0EXTERNAL") == 1);
+    CHECK(resolved.size() == 1);
+
+    QDir(baseDir).removeRecursively();
+}
+
+// userDisplayName never returns the raw id: it resolves the cached name, and for
+// an unknown user returns a placeholder while kicking off a users.info fetch.
+TEST_CASE("userDisplayName never leaks a raw id and resolves in the background", "[session]") {
+    const QString teamId = "T_SESSION_DISPLAYNAME";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    User ext{
+        .id          = UserId{"W0PARTNER"},
+        .name        = "partner",
+        .displayName = "Partner Co",
+    };
+
+    auto  backend                      = std::make_unique<StubBackend>();
+    auto *stub                         = backend.get();
+    stub->_meId                        = UserId{"U1"};
+    stub->_users                       = std::vector<User>{kAlice};
+    stub->userInfoResults["W0PARTNER"] = ext;
+
+    Session session(std::move(backend), teamId);
+    session.start();
+
+    // Known user → cached display label.
+    CHECK(session.userDisplayName(kAlice.id) == kAlice.displayLabel());
+
+    // Unknown user → never the raw id; a fetch is kicked off.
+    const QString placeholder = session.userDisplayName(UserId{"W0PARTNER"});
+    CHECK(placeholder != "W0PARTNER");
+    CHECK_FALSE(placeholder.isEmpty());
+    CHECK(stub->userInfoRequested.contains("W0PARTNER"));
+
+    // After the (synchronous, in this stub) fetch lands, the real name is returned.
+    REQUIRE(session.findUser(UserId{"W0PARTNER"}) != nullptr);
+    CHECK(session.userDisplayName(UserId{"W0PARTNER"}) == "Partner Co");
 
     QDir(baseDir).removeRecursively();
 }

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "rpl/lifetime.h"
 #include <QWidget>
 #include <vector>
 
@@ -66,4 +67,5 @@ private:
     int                 _selectedIdx       = -1;
 
     std::vector<SearchResult> _results;
+    rpl::lifetime             _sessionLifetime; // userInfoLoaded subscription
 };

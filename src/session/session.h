@@ -209,6 +209,11 @@ public:
     // Fires the bot_id whenever a bot's info arrives from the network.
     rpl::producer<UserId> botInfoLoaded() const;
 
+    // Fires a user id whenever fetchUserIfNeeded resolves a user that users.list
+    // omitted (Slack Connect / system / deactivated). Lets the message list
+    // re-render that author's header + avatar and any baked-in @mentions.
+    rpl::producer<UserId> userInfoLoaded() const;
+
     // Flush current unread counts to cache so they survive a restart.
     // Synchronous — call on shutdown or when durability is required now.
     void persistUnreads();
@@ -229,6 +234,15 @@ public:
 
     const User         *findUser(UserId) const;
     const Conversation *findConversation(ConversationId) const;
+
+    // A human-readable name for a user id that is NEVER the raw id. Returns the
+    // cached display label when known; otherwise kicks off a users.info fetch in
+    // the background (so a later repaint shows the real name) and returns a
+    // neutral placeholder. Use this at every UI surface that shows a user name
+    // so external Slack Connect / system / deactivated users — absent from
+    // users.list — never surface as a cryptic "U…/W…" id. Non-const: it may
+    // trigger a fetch.
+    QString userDisplayName(UserId);
 
     // True for a DM with a bot/app user (the conv-list "Agents & apps" section),
     // including the Slack system accounts that report is_bot=false. Such IMs
@@ -319,5 +333,6 @@ private:
     QSet<QString>             _pendingBotFetches;     // bot_ids with an in-flight bots.info request
     QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request
     rpl::event_stream<UserId> _botInfoHub;
+    rpl::event_stream<UserId> _userInfoHub;
     rpl::lifetime             _lifetime;
 };

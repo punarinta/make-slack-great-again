@@ -264,7 +264,12 @@ bool PublicBackend::isBotId(UserId id) const {
 }
 
 bool PublicBackend::isUserId(UserId id) const {
-    return id.value.startsWith('U');
+    // Human users are "U…" on a normal workspace and "W…" on Enterprise Grid;
+    // external Slack Connect collaborators surface with either prefix. Accept
+    // both so they're resolved via the user-info path (mirrors the U/W test in
+    // isUnresolvedUserId) — a W-only omission left Connect partners stuck as a
+    // raw id with no name or avatar.
+    return id.value.startsWith('U') || id.value.startsWith('W');
 }
 
 bool PublicBackend::isUnresolvedUserId(const QString &s) const {

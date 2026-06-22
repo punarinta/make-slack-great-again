@@ -374,17 +374,37 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
         if (top + rowHeight(i) < 0)
             continue;
 
-        auto *user = _session->findUser(_items[i].msg.author);
+        const Message &msg  = _items[i].msg;
+        auto          *user = _session->findUser(msg.author);
         if (user && !user->avatarUrl.isEmpty())
             _imgCache->get(user->avatarUrl);
-        else if (!_items[i].msg.botAvatarUrl.isEmpty())
-            _imgCache->get(_items[i].msg.botAvatarUrl);
+        else if (!msg.botAvatarUrl.isEmpty())
+            _imgCache->get(msg.botAvatarUrl);
+        else if (!user)
+            // Author absent from users.list (Slack Connect / system / deactivated)
+            // — resolve it via users.info so the next paint shows a name + avatar
+            // instead of the raw id. No-ops for ids already known or in flight.
+            _session->fetchUserIfNeeded(msg.author);
 
-        for (const auto &uid : _items[i].msg.replyUsers) {
+        for (const auto &uid : msg.replyUsers) {
             auto *ru = _session->findUser(uid);
             if (ru && !ru->avatarUrl.isEmpty())
                 _imgCache->get(ru->avatarUrl);
+            else if (!ru)
+                _session->fetchUserIfNeeded(uid);
         }
+
+        // Resolve @mentions of external collaborators too, so they render as a
+        // name rather than the bare "@U…/@W…".
+        for (const auto &e : msg.text.entities)
+            if (e.type == EntityType::UserMention && !_session->findUser(UserId{e.data}))
+                _session->fetchUserIfNeeded(UserId{e.data});
+
+        // Reactors, so the who-reacted tooltip shows names by the time it opens.
+        for (const auto &r : msg.reactions)
+            for (const auto &uid : r.users)
+                if (!_session->findUser(uid))
+                    _session->fetchUserIfNeeded(uid);
     }
 }
 
@@ -404,10 +424,13 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
         }
     }
 
-    // Fallback: colored square with initial letter.
+    // Fallback: colored square with initial letter. Never the raw id — an
+    // unresolved author resolves via userDisplayName (fetch already kicked off
+    // by triggerMissingAvatarDownloads).
     const QString initial =
         user ? user->displayName
-             : (!item.msg.botName.isEmpty() ? item.msg.botName : item.msg.author.value);
+             : (!item.msg.botName.isEmpty() ? item.msg.botName
+                                            : _session->userDisplayName(item.msg.author));
     const QChar ch  = initial.isEmpty() ? QChar('?') : initial[0];
     const int   hue = ch.unicode() * 37 % 360;
 
@@ -433,7 +456,8 @@ void MessageListWidget::paintMessageHeader(
     auto         *user = _session->findUser(item.msg.author);
     const QString name =
         user ? user->displayName
-             : (!item.msg.botName.isEmpty() ? item.msg.botName : item.msg.author.value);
+             : (!item.msg.botName.isEmpty() ? item.msg.botName
+                                            : _session->userDisplayName(item.msg.author));
 
     QFont nameFont = QApplication::font();
     nameFont.setBold(true);
@@ -1135,8 +1159,10 @@ void MessageListWidget::paintReplyBar(
             initial = user->displayName;
             if (!user->avatarUrl.isEmpty() && _imgCache)
                 px = _imgCache->get(user->avatarUrl);
-        } else {
-            initial = uid.value;
+        } else if (_session) {
+            // Resolve via users.info (fetch already kicked off for reply
+            // participants by triggerMissingAvatarDownloads) — never the raw id.
+            initial = _session->userDisplayName(uid);
         }
         const QChar ch = initial.isEmpty() ? QChar('?') : initial[0];
         bg             = QColor::fromHsl(
