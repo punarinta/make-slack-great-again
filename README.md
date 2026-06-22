@@ -131,10 +131,41 @@ The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSI
 ./scripts/configure-mac.sh      # for macOS
 ```
 
+On Windows, run the PowerShell script from an **elevated** (Administrator) terminal:
+
+```powershell
+scripts\configure-windows.ps1
+```
+
+If you see _"running scripts is disabled"_, enable local scripts first (one-time, machine-wide):
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
+```
+
+Or bypass the policy for a single run without changing the system setting:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\configure-windows.ps1
+```
+
 ### Step 8. Build and run
 
 ```sh
 ./scripts/build.sh
 ./build/msga                            # for Linux
 ./build/msga.app/Contents/MacOS/msga    # for macOS
+```
+
+On Windows:
+
+```powershell
+scripts\build.ps1
+build\Debug\msga.exe
+```
+
+If you see _"running scripts is disabled"_, see the execution policy note in Step 7, or run directly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```

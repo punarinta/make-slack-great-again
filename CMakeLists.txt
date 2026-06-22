@@ -205,6 +205,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^
     set_property(TARGET msga PROPERTY ENABLE_EXPORTS ON)
 endif()
 if(WIN32)
+    target_compile_definitions(msga PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(msga PRIVATE dbghelp)
 
     # Windows application icon + version metadata. windres compiles the .rc into
