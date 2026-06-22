@@ -9,6 +9,7 @@
 #include <QDeadlineTimer>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QUrlQuery>
 
 #include "auth/token_store.h"
@@ -367,6 +368,41 @@ TEST_CASE_METHOD(SendFixture, "definitive Slack error fires EvSendFailed", "[sen
     CHECK(sendFailedEvent()->reason == "not_in_channel");
     CHECK(newMessageEvent() == nullptr);
     CHECK(server.requestCount == 1);
+}
+
+TEST_CASE_METHOD(
+    SendFixture,
+    "file upload confirms via history reconcile, not just the realtime echo",
+    "[send_retry]"
+) {
+    // files.completeUploadExternal returns no message ts, so the optimistic
+    // ghost can only be replaced by reconciling the shared message from history.
+    QTemporaryFile file;
+    REQUIRE(file.open());
+    file.write("payload");
+    file.flush();
+
+    // 1) getUploadURLExternal  2) raw byte POST to upload_url (on this server)
+    // 3) completeUploadExternal  4) conversations.history reconcile
+    server.enqueue(
+        QString(R"({"ok":true,"upload_url":"%1up","file_id":"F1"})").arg(server.baseUrl()).toUtf8()
+    );
+    server.enqueue(R"(OK)");
+    server.enqueue(R"({"ok":true,"files":[{"id":"F1","title":"x"}]})");
+    server.enqueue(
+        R"({"ok":true,"messages":[{"ts":"200.000","user":"U1","subtype":"file_share",)"
+        R"("files":[{"id":"F1","name":"x"}],"text":""}]})"
+    );
+
+    backend.uploadFiles(ConversationId{"C1"}, {file.fileName()}, "");
+
+    REQUIRE(waitFor([&] { return newMessageEvent() != nullptr; }));
+    CHECK(newMessageEvent()->msg.ts == "200.000");
+    CHECK_FALSE(newMessageEvent()->msg.files.empty());
+    REQUIRE(server.requestPaths.size() == 4);
+    CHECK(server.requestPaths[0] == "/files.getUploadURLExternal");
+    CHECK(server.requestPaths[2] == "/files.completeUploadExternal");
+    CHECK(server.requestPaths[3] == "/conversations.history");
 }
 
 TEST_CASE_METHOD(

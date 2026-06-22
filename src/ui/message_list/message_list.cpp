@@ -1688,9 +1688,9 @@ bool MessageListWidget::tryHandleReactionPress(const QPoint &pos) {
     auto         &reactions = _items[reactMsgIdx].msg.reactions;
     const UserId  me        = _session->meUserId();
     const bool    already   = std::any_of(
-        reactions[reactIdx].users.begin(),
-        reactions[reactIdx].users.end(),
-        [&me](const UserId &u) { return u == me; }
+        reactions[reactIdx].users.begin(), reactions[reactIdx].users.end(), [&me](const UserId &u) {
+            return u == me;
+        }
     );
     if (already) {
         _session->backend()->removeReaction(_currentConv, reactTs, emojiName);
@@ -1988,10 +1988,9 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
             downloadFileToUser(f);
         });
         connect(
-            _imageViewer,
-            &ImageViewerOverlay::forwardRequested,
-            this,
-            [this](const Message &m) { emit forwardMessageRequested(m); }
+            _imageViewer, &ImageViewerOverlay::forwardRequested, this, [this](const Message &m) {
+                emit forwardMessageRequested(m);
+            }
         );
         connect(
             _imageViewer,
@@ -2026,8 +2025,7 @@ void MessageListWidget::openPreviewViewer(const File &file, const Message &msg) 
         }
     }
     _session->downloadFile(
-        file.urlPrivate,
-        [this, id = file.id, url = file.urlPrivate](QByteArray data) {
+        file.urlPrivate, [this, id = file.id, url = file.urlPrivate](QByteArray data) {
             if (_session)
                 _session->cacheImage(url, data);
             QPixmap px;
@@ -2639,5 +2637,43 @@ void MessageListWidget::handleEvent(const Event &e) {
         });
         if (authoredHere)
             viewport()->update();
+
+    } else if (std::get_if<EvRealtimeReconnected>(&e)) {
+        backfillAfterReconnect();
     }
+}
+
+void MessageListWidget::backfillAfterReconnect() {
+    if (!_session || _currentConv.value.isEmpty())
+        return;
+    const auto conv     = _currentConv;
+    auto       producer = _isThreadMode
+                              ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
+                              : _session->backend()->loadHistory(conv, std::nullopt);
+    std::move(producer) |
+        rpl::on_next(
+            [this, conv](MessagePage page) {
+                // Conversation changed out from under the in-flight fetch.
+                // (mergeNetworkMessages dedups by ts, so racing the initial
+                // open load can't produce twins.)
+                if (_currentConv != conv)
+                    return;
+                const bool wasAtBottom =
+                    verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+                mergeNetworkMessages(page.messages);
+                if (_session) {
+                    std::vector<Message> msgs(page.messages.begin(), page.messages.end());
+                    _session->cacheMessages(conv, msgs);
+                }
+                // Reveal anything that landed during the gap, but only if the
+                // user was already pinned to the bottom (don't yank them out of
+                // scrollback they're reading).
+                if (wasAtBottom)
+                    QTimer::singleShot(0, this, [this, conv] {
+                        if (_currentConv == conv)
+                            verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+                    });
+            },
+            _eventLifetime
+        );
 }

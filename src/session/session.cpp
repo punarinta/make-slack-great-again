@@ -124,70 +124,7 @@ void Session::start() {
     QObject::connect(&_saveUnreadsTimer, &QTimer::timeout, [this] { persistUnreads(); });
 
     // Load conversations; update cache on arrival.
-    _backend->loadConversations() |
-        rpl::on_next(
-            [this](std::vector<Conversation> convs) {
-                // Preserve locally-incremented unread/mention counts
-                // accumulated since startup (API returns 0 for
-                // channels).
-                const auto &prev = _conversations.current();
-                for (auto &c : convs) {
-                    for (const auto &old : prev) {
-                        if (old.id != c.id)
-                            continue;
-                        c.unread       = std::max(c.unread, old.unread);
-                        c.mentionCount = std::max(c.mentionCount, old.mentionCount);
-                        // Preserve locally-applied star state: the
-                        // API may not echo is_starred immediately
-                        // after stars.add/stars.remove.
-                        if (old.isStarred != c.isStarred && old.isStarred)
-                            c.isStarred = old.isStarred;
-                        // Preserve locally-set notification level
-                        // (no public read API for per-channel prefs).
-                        if (old.notifLevel != NotificationLevel::Default &&
-                            c.notifLevel == NotificationLevel::Default)
-                            c.notifLevel = old.notifLevel;
-                        // Mute state also lives in client prefs the public
-                        // API can't read — local state wins.
-                        if (old.isMuted)
-                            c.isMuted = true;
-                        // last_read / latest were dropped from conversations.list
-                        // responses; keep the newest value we know (cached from a
-                        // previous run's activity sweep or realtime events).
-                        if (old.lastRead > c.lastRead)
-                            c.lastRead = old.lastRead;
-                        if (old.latestTs > c.latestTs)
-                            c.latestTs = old.latestTs;
-                        // conversations.list carries no `room`, so it can't
-                        // report live huddles — keep whatever the realtime
-                        // huddle_thread events detected (start/end is tracked
-                        // there, not via this reload).
-                        if (old.huddleActive && !c.huddleActive) {
-                            c.huddleActive       = old.huddleActive;
-                            c.huddleLink         = old.huddleLink;
-                            c.huddleParticipants = old.huddleParticipants;
-                        }
-                        break;
-                    }
-                }
-                _cache->saveConversations(convs);
-                _conversations = std::move(convs);
-                enrichDmActivity();
-                fetchMissingDmUsers();
-                // Emoji load is deferred to here so it doesn't queue ahead of
-                // conversations/users. Cache serves emojis until the refresh
-                // arrives and the result is written back to cache.
-                _backend->loadEmojiList() | rpl::on_next(
-                                                [this](QHash<QString, QString> map) {
-                                                    _emojiMap = std::move(map);
-                                                    _cache->saveEmojiMap(_emojiMap);
-                                                    _emojiMapLoadedHub.fire({});
-                                                },
-                                                _lifetime
-                                            );
-            },
-            _lifetime
-        );
+    reloadConversations(/*refreshEmoji=*/true);
 
     // Load users; update cache on arrival.
     _backend->loadUsers() | rpl::on_next(
@@ -394,6 +331,14 @@ void Session::start() {
                     }
                     if (changed)
                         _conversations = std::move(convs);
+                } else if (std::get_if<EvRealtimeReconnected>(&e)) {
+                    // The socket came back after a gap Slack won't replay.
+                    // Refetch the conversation list so unread/mention badges and
+                    // latest-message cursors catch up (refreshEmoji=false: emoji
+                    // rarely changes and shouldn't requeue ahead of this). The
+                    // open MessageList backfills its own history off this same
+                    // event after the re-fire below.
+                    reloadConversations(/*refreshEmoji=*/false);
                 }
                 _eventHub.fire(std::move(e));
             },
@@ -446,6 +391,75 @@ void Session::fetchMe() {
                              },
                              _lifetime
                          );
+}
+
+void Session::reloadConversations(bool refreshEmoji) {
+    _backend->loadConversations() |
+        rpl::on_next(
+            [this, refreshEmoji](std::vector<Conversation> convs) {
+                // Preserve locally-incremented unread/mention counts
+                // accumulated since startup (API returns 0 for
+                // channels).
+                const auto &prev = _conversations.current();
+                for (auto &c : convs) {
+                    for (const auto &old : prev) {
+                        if (old.id != c.id)
+                            continue;
+                        c.unread       = std::max(c.unread, old.unread);
+                        c.mentionCount = std::max(c.mentionCount, old.mentionCount);
+                        // Preserve locally-applied star state: the
+                        // API may not echo is_starred immediately
+                        // after stars.add/stars.remove.
+                        if (old.isStarred != c.isStarred && old.isStarred)
+                            c.isStarred = old.isStarred;
+                        // Preserve locally-set notification level
+                        // (no public read API for per-channel prefs).
+                        if (old.notifLevel != NotificationLevel::Default &&
+                            c.notifLevel == NotificationLevel::Default)
+                            c.notifLevel = old.notifLevel;
+                        // Mute state also lives in client prefs the public
+                        // API can't read — local state wins.
+                        if (old.isMuted)
+                            c.isMuted = true;
+                        // last_read / latest were dropped from conversations.list
+                        // responses; keep the newest value we know (cached from a
+                        // previous run's activity sweep or realtime events).
+                        if (old.lastRead > c.lastRead)
+                            c.lastRead = old.lastRead;
+                        if (old.latestTs > c.latestTs)
+                            c.latestTs = old.latestTs;
+                        // conversations.list carries no `room`, so it can't
+                        // report live huddles — keep whatever the realtime
+                        // huddle_thread events detected (start/end is tracked
+                        // there, not via this reload).
+                        if (old.huddleActive && !c.huddleActive) {
+                            c.huddleActive       = old.huddleActive;
+                            c.huddleLink         = old.huddleLink;
+                            c.huddleParticipants = old.huddleParticipants;
+                        }
+                        break;
+                    }
+                }
+                _cache->saveConversations(convs);
+                _conversations = std::move(convs);
+                enrichDmActivity();
+                fetchMissingDmUsers();
+                if (!refreshEmoji)
+                    return;
+                // Emoji load is deferred to here so it doesn't queue ahead of
+                // conversations/users. Cache serves emojis until the refresh
+                // arrives and the result is written back to cache.
+                _backend->loadEmojiList() | rpl::on_next(
+                                                [this](QHash<QString, QString> map) {
+                                                    _emojiMap = std::move(map);
+                                                    _cache->saveEmojiMap(_emojiMap);
+                                                    _emojiMapLoadedHub.fire({});
+                                                },
+                                                _lifetime
+                                            );
+            },
+            _lifetime
+        );
 }
 
 void Session::enrichDmActivity() {
@@ -794,9 +808,11 @@ void Session::runCommand(ConversationId conv, const QString &name, const QString
     if (cmd == QLatin1String("dnd")) {
         const int minutes = parseDndMinutes(args);
         if (minutes < 0) {
-            _errorHub.fire(QCoreApplication::translate(
-                "Session", "Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume"
-            ));
+            _errorHub.fire(
+                QCoreApplication::translate(
+                    "Session", "Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume"
+                )
+            );
             return;
         }
         setDndSnooze(minutes);
@@ -1064,7 +1080,8 @@ void Session::editCanvas(
 ) {
     _backend->editCanvas(canvasId, changes, [this, done](bool ok, QString err) {
         if (!ok)
-            _errorHub.fire(QCoreApplication::translate("Session", "Canvas edit failed: %1").arg(err)
+            _errorHub.fire(
+                QCoreApplication::translate("Session", "Canvas edit failed: %1").arg(err)
             );
         if (done)
             done(ok, std::move(err));

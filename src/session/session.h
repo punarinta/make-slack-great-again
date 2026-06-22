@@ -261,6 +261,14 @@ private:
     // optimistic send turns into a permanent duplicate ghost.
     void fetchMe();
 
+    // Fetch the conversation list and fold it into _conversations, preserving
+    // locally-tracked state the API can't report (unread/mention counts, star/
+    // mute/notif prefs, last_read/latest cursors, live huddles). Runs at start()
+    // (refreshEmoji=true, which chains the emoji-list load) and again whenever
+    // the realtime socket reconnects after a gap (refreshEmoji=false) so unread
+    // badges catch up on events Slack didn't replay.
+    void reloadConversations(bool refreshEmoji);
+
     // Background conversations.info sweep over IMs/MPDMs that refreshes their
     // last_read/latest cursors (used for conversation-list relevance). Throttled
     // via the workspace cache; called after each loadConversations() merge.

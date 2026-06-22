@@ -909,6 +909,44 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
     );
 }
 
+void PublicBackend::reconcileUpload(const ConversationId &conv, const QSet<QString> &fileIds) {
+    if (fileIds.isEmpty())
+        return;
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    // The share lands at "now"; a small window absorbs clock skew and history
+    // lag without trawling the whole channel.
+    params.addQueryItem("oldest", QString::number(QDateTime::currentSecsSinceEpoch() - 120));
+    params.addQueryItem("limit", "30");
+    _api->call(
+        "conversations.history",
+        params,
+        [this, conv, fileIds](QJsonObject resp) {
+            for (const auto v : resp.value("messages").toArray()) {
+                const auto o = v.toObject();
+                if (!_meUserId.value.isEmpty() && o.value("user").toString() != _meUserId.value)
+                    continue;
+                bool match = false;
+                for (const auto fv : o.value("files").toArray()) {
+                    if (fileIds.contains(fv.toObject().value("id").toString())) {
+                        match = true;
+                        break;
+                    }
+                }
+                if (!match)
+                    continue;
+                // Found the shared message — emit its echo. Session de-ghosts
+                // the optimistic copy and dedups the later realtime echo by ts.
+                _events.fire(EvMessageNew{conv, JsonMappers::toMessage(o)});
+                return;
+            }
+            // Not yet visible (history lag) — the realtime echo or the next
+            // reload still heals the ghost, so don't treat this as an error.
+        },
+        [conv](QString err) { qWarning() << "reconcileUpload error:" << conv.value << err; }
+    );
+}
+
 void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities text) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
@@ -1182,10 +1220,20 @@ void PublicBackend::uploadFiles(
         if (!initialComment.isEmpty())
             body["initial_comment"] = initialComment;
 
+        // Collect the uploaded file ids so the post-upload reconcile can match
+        // the shared message even when there's no initial_comment to compare.
+        QSet<QString> fileIds;
+        for (const auto v : std::as_const(batch->files))
+            fileIds.insert(v.toObject().value("id").toString());
+
         _api->postJson(
             "files.completeUploadExternal",
             body,
-            [settle](QJsonObject) {
+            [this, conv, fileIds, settle](QJsonObject) {
+                // The upload landed but the response carries no message ts;
+                // reconcile from history to emit the echo that de-ghosts the
+                // optimistic copy without waiting on the realtime websocket.
+                reconcileUpload(conv, fileIds);
                 if (*settle)
                     (*settle)(true, {});
             },

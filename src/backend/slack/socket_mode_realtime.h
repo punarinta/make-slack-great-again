@@ -86,6 +86,11 @@ private:
     QWebSocket                             *_ws             = nullptr;
     bool                                    _started        = false;
     bool                                    _stopped        = false;
+    // Set once the first Socket Mode session is live ("hello"). A later "hello"
+    // means the session was re-established after a gap → fire
+    // EvRealtimeReconnected so backends/UI backfill the events Slack didn't
+    // replay. Not fired on the first hello (the initial load already covers it).
+    bool                                    _hadHello       = false;
     int                                     _reconnectMs    = 1000; // exponential backoff, max 30s
     // Liveness watchdog. A sleeping laptop severs the TCP connection silently —
     // QWebSocket can be left half-open ("connected" but dead) so `disconnected`

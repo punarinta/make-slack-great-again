@@ -630,6 +630,16 @@ struct EvHuddleChanged {
     QString             link;         // room.huddle_link
     std::vector<UserId> participants; // current participants, or [host]
 };
+// The realtime websocket re-established after a gap (network blip, server
+// recycle, zombie-socket watchdog, sleep/wake). Slack's Socket Mode does NOT
+// replay events missed while disconnected, so anything posted during the gap
+// (own sends, others' messages) is absent from the live view until a refetch.
+// App-level (the socket is shared by all workspaces), so it carries no conv:
+// every backend/UI re-syncs. Session refetches the conversation list (unread/
+// latest badges); the open MessageList re-fetches + merges its history — i.e.
+// exactly what leaving the chat and coming back already does. Not fired on the
+// first connect (the initial load covers that).
+struct EvRealtimeReconnected {};
 
 // --- Search ---
 
@@ -668,4 +678,5 @@ using Event = std::variant<
     EvMemberJoined,
     EvUserChanged,
     EvSendFailed,
-    EvHuddleChanged>;
+    EvHuddleChanged,
+    EvRealtimeReconnected>;

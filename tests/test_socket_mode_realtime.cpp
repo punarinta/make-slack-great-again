@@ -20,6 +20,7 @@
 #include <QWebSocket>
 
 #include "backend/slack/socket_mode_realtime.h"
+#include "rpl/producer.h"
 
 #include "fake_http_server.h"
 
@@ -122,6 +123,55 @@ TEST_CASE("watchdog reconnects when the socket goes silent") {
     REQUIRE(waitFor([&] { return ws.handshakes >= 2; }));
 
     rt.stop();
+}
+
+TEST_CASE("a re-established socket fires EvRealtimeReconnected; the first hello does not") {
+    // Slack's Socket Mode does not replay events missed while disconnected, so
+    // on every reconnect the higher layers must backfill — driven by an
+    // EvRealtimeReconnected fired on the second (and later) "hello", never the
+    // first. The server sends hello on each connection and recycles the first
+    // one (refresh_requested) so the client reconnects and greets again.
+    QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
+    REQUIRE(ws.listen(QHostAddress::LocalHost));
+    std::vector<QWebSocket *> peers;
+    int                       helloCount = 0;
+    QObject::connect(&ws, &QWebSocketServer::newConnection, &ws, [&] {
+        auto *peer = ws.nextPendingConnection();
+        peers.push_back(peer);
+        peer->sendTextMessage(R"({"type":"hello"})");
+        if (++helloCount == 1)
+            peer->sendTextMessage(R"({"type":"disconnect","reason":"refresh_requested"})");
+    });
+
+    FakeHttpServer http;
+    const QString  wsUrl = QString("ws://127.0.0.1:%1/").arg(ws.serverPort());
+    for (int i = 0; i < 4; ++i)
+        http.enqueue(openOk(wsUrl));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+
+    int                      reconnectedEvents = 0;
+    rpl::lifetime            lt;
+    rpl::event_stream<Event> sink;
+    sink.events() | rpl::on_next(
+                        [&](Event e) {
+                            if (std::get_if<EvRealtimeReconnected>(&e))
+                                ++reconnectedEvents;
+                        },
+                        lt
+                    );
+    rt.addSink(&sink);
+    rt.start();
+
+    // The second hello (after the forced recycle) must produce exactly one event.
+    REQUIRE(waitFor([&] { return reconnectedEvents >= 1; }));
+    CHECK(helloCount >= 2);
+    CHECK(reconnectedEvents == 1);
+
+    rt.stop();
+    for (auto *p : peers)
+        p->deleteLater();
 }
 
 TEST_CASE("watchdog leaves a healthy idle connection alone") {

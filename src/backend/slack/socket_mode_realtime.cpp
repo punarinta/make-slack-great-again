@@ -201,7 +201,8 @@ void SocketModeRealtime::sendPresenceSub() {
                 seen.insert(id);
                 ids.append(id);
             }
-    _ws->sendTextMessage(QJsonDocument(QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
+    _ws->sendTextMessage(QJsonDocument(
+                             QJsonObject{{"type", "presence_sub"}, {"ids", ids}}
     ).toJson(QJsonDocument::Compact));
 }
 
@@ -228,6 +229,16 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
 
     if (type == "hello") {
         qDebug() << "Socket Mode: hello received";
+        if (_hadHello) {
+            // Session re-established after a gap. Slack does not replay missed
+            // events, so tell every backend/UI to backfill (refetch history /
+            // conversation badges). Iterate a copy: a handler may remove a sink.
+            const auto sinks = _sinks;
+            for (auto *sink : sinks)
+                if (std::find(_sinks.begin(), _sinks.end(), sink) != _sinks.end())
+                    sink->fire_copy(Event{EvRealtimeReconnected{}});
+        }
+        _hadHello = true;
         return;
     }
 

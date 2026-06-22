@@ -178,6 +178,10 @@ private:
     void               handleEvent(const Event &e);
     // Merge freshly-loaded network messages into the existing item list.
     void               mergeNetworkMessages(const std::vector<Message> &incoming);
+    // Re-fetch the newest page of the open conversation/thread and merge it,
+    // recovering messages that arrived while the realtime socket was down (Slack
+    // doesn't replay them). Driven by EvRealtimeReconnected.
+    void               backfillAfterReconnect();
     // Apply the pending open-scroll intent (saved position / first unread /
     // bottom) if set.
     void               applyPendingScroll();
@@ -260,9 +264,9 @@ private:
     // otherwise returns an empty string.
     QString avatarUserAt(const QPoint &viewportPos, QRect *outVpRect = nullptr) const;
     // Attachment height helpers
-    int     attachImageH(const Attachment &att
-        ) const; // preview image height (includes kImgGap), 0 if none
-    int     attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
+    int
+    attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
+    int attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
 
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
     const File *fileChipAt(const QPoint &viewportPos) const;
