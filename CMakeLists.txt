@@ -204,6 +204,43 @@ target_link_libraries(msga PRIVATE
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^| )-static( |$)")
     set_property(TARGET msga PROPERTY ENABLE_EXPORTS ON)
 endif()
+
+# Wayland platform plugin import (static builds).
+#
+# On a Wayland desktop, a binary with only the xcb platform plugin runs through
+# XWayland, where a fractionally-scaled output (125%/150%) is rendered at an
+# integer scale and the compositor upscales the whole window — everything looks
+# blurry. The Wayland client plugin makes msga a native Wayland client so the
+# scaling logic in src/main.cpp takes effect and text stays crisp.
+#
+# For a STATIC Qt, a plugin is only usable if it is Q_IMPORT_PLUGIN'd into the
+# binary. Qt's automatic import covers plugins of the modules we link: linking
+# Qt6::Gui pulls in the xcb platform plugin (it lives in qtbase). The Wayland
+# platform plugin and its shell-integration/decoration plugins are registered by
+# the separate Qt6::WaylandClient module, which we don't otherwise link — so they
+# must be found and imported explicitly. The platform plugin alone cannot create
+# windows: it needs a shell integration (xdg-shell on modern compositors), so we
+# import the whole set that exists. No-op on a dynamic build (plugins load from
+# disk at runtime) and when qtwayland isn't present (OPTIONAL_COMPONENTS).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Qt6 QUIET OPTIONAL_COMPONENTS WaylandClient)
+    if(Qt6WaylandClient_FOUND)
+        set(_msga_wayland_plugins "")
+        foreach(_p
+                QWaylandIntegrationPlugin           # the "wayland" platform plugin
+                QWaylandXdgShellIntegrationPlugin   # shell integration (modern compositors)
+                QWaylandWlShellIntegrationPlugin    # shell integration (legacy wl_shell)
+                QWaylandBradientDecorationPlugin)   # client-side window decorations
+            if(TARGET Qt6::${_p})
+                list(APPEND _msga_wayland_plugins Qt6::${_p})
+            endif()
+        endforeach()
+        if(_msga_wayland_plugins)
+            qt6_import_plugins(msga INCLUDE ${_msga_wayland_plugins})
+            message(STATUS "msga: importing Wayland plugins: ${_msga_wayland_plugins}")
+        endif()
+    endif()
+endif()
 if(WIN32)
     target_compile_definitions(msga PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(msga PRIVATE dbghelp)
