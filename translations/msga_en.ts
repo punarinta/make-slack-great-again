@@ -1031,6 +1031,21 @@ This action cannot be undone.</translation>
         <source>Last reply %1</source>
         <translation>Last reply %1</translation>
     </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1214"/>
+        <source>Close thread</source>
+        <translation>Close thread</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1501"/>
+        <source>Loading replies…</source>
+        <translation>Loading replies…</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1534"/>
+        <source>Reply to thread</source>
+        <translation>Reply to thread</translation>
+    </message>
 </context>
 <context>
     <name>MrkdwnParser</name>
@@ -1329,6 +1344,11 @@ This action cannot be undone.</translation>
         <location line="+18"/>
         <source>Canvas deletion failed: %1</source>
         <translation>Canvas deletion failed: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/session/session.cpp" line="686"/>
+        <source>Unknown user</source>
+        <translation>Unknown user</translation>
     </message>
 </context>
 <context>
@@ -1696,6 +1716,21 @@ it is stored on this computer and sent only to that provider.</translation>
         <location line="+9"/>
         <source>Check failed: %1</source>
         <translation>Check failed: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="283"/>
+        <source>Threads</source>
+        <translation>Threads</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="294"/>
+        <source>Standalone (open replies in a side panel)</source>
+        <translation>Standalone (open replies in a side panel)</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="295"/>
+        <source>Inline (expand replies under the message)</source>
+        <translation>Inline (expand replies under the message)</translation>
     </message>
 </context>
 <context>

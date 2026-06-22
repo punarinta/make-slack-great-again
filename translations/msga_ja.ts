@@ -1030,6 +1030,21 @@ This action cannot be undone.</source>
         <source>Last reply %1</source>
         <translation>最後の返信: %1</translation>
     </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1214"/>
+        <source>Close thread</source>
+        <translation>スレッドを閉じる</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1501"/>
+        <source>Loading replies…</source>
+        <translation>返信を読み込み中…</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="1534"/>
+        <source>Reply to thread</source>
+        <translation>スレッドに返信</translation>
+    </message>
 </context>
 <context>
     <name>MrkdwnParser</name>
@@ -1328,6 +1343,11 @@ This action cannot be undone.</source>
         <location line="+18"/>
         <source>Canvas deletion failed: %1</source>
         <translation>canvasの削除に失敗しました: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/session/session.cpp" line="686"/>
+        <source>Unknown user</source>
+        <translation>不明なユーザー</translation>
     </message>
 </context>
 <context>
@@ -1695,6 +1715,21 @@ it is stored on this computer and sent only to that provider.</source>
         <location line="+9"/>
         <source>Check failed: %1</source>
         <translation>確認に失敗しました: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="283"/>
+        <source>Threads</source>
+        <translation>スレッド</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="294"/>
+        <source>Standalone (open replies in a side panel)</source>
+        <translation>スタンドアロン（サイドパネルで返信を開く）</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="295"/>
+        <source>Inline (expand replies under the message)</source>
+        <translation>インライン（メッセージの下に返信を展開）</translation>
     </message>
 </context>
 <context>
