@@ -121,6 +121,7 @@ private:
 
     // Tray
     void setupTray();
+    void restoreFromTray();
     void maybeNotify(const QString &teamId, const EvMessageNew &ev);
     // Popup notification (with a "Join" action button) when a huddle starts in a
     // non-muted conversation, even while the window is hidden to the tray.

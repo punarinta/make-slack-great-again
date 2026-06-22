@@ -2054,6 +2054,35 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
 
 // ── Tray ──────────────────────────────────────────────────────────────────────
 
+void MainWindow::restoreFromTray() {
+    // Bring the window to the front whatever its state (minimized to taskbar,
+    // tucked into the tray, or just behind other windows).
+    //
+    // Un-minimizing is the tricky part: Wayland's xdg_toplevel protocol has a
+    // set_minimized request but NO un-minimize counterpart, so clearing the
+    // minimized state / showNormal() on a still-mapped surface is silently
+    // ignored — clicking a tray item did nothing. The reliable cross-platform
+    // way is to tear the surface down and recreate it: hide() then show*().
+    // On Wayland the compositor can minimize/hide our window without telling Qt:
+    // isMinimized() stays false and the state still reads Maximized/Normal, while
+    // raise()/activateWindow() are silently ignored (no xdg-activation token — a
+    // D-Bus tray click can't grant one). The only reliable way to bring the
+    // window back is to destroy and recreate the surface (hide → show*): a freshly
+    // mapped toplevel is shown by the compositor. The robust signal for "we need
+    // to do this" is that we don't currently hold focus; when already active we
+    // skip the cycle to avoid a needless flicker.
+    if (!isActiveWindow()) {
+        const bool wasMaximized = windowState() & Qt::WindowMaximized;
+        hide();
+        if (wasMaximized)
+            showMaximized();
+        else
+            showNormal();
+    }
+    raise();
+    activateWindow();
+}
+
 void MainWindow::setupTray() {
     _trayIcon = new QSystemTrayIcon(this);
     _trayIcon->setToolTip("MSGA");
@@ -2067,9 +2096,7 @@ void MainWindow::setupTray() {
         const auto    rec   = TokenStore::loadWorkspace(key);
         const QString label = (rec && !rec->displayName.isEmpty()) ? rec->displayName : id;
         menu->addAction(label, this, [this, id] {
-            show();
-            raise();
-            activateWindow();
+            restoreFromTray();
             QMetaObject::invokeMethod(
                 this, [this, id] { switchToWorkspace(id); }, Qt::QueuedConnection
             );
@@ -2078,9 +2105,7 @@ void MainWindow::setupTray() {
 
     menu->addSeparator();
     menu->addAction(tr("Settings"), this, [this] {
-        show();
-        raise();
-        activateWindow();
+        restoreFromTray();
         QMetaObject::invokeMethod(this, [this] { _settingsDialog->open(); }, Qt::QueuedConnection);
     });
     menu->addSeparator();
@@ -2097,12 +2122,15 @@ void MainWindow::setupTray() {
         &QSystemTrayIcon::activated,
         this,
         [this](QSystemTrayIcon::ActivationReason reason) {
-            if (reason == QSystemTrayIcon::Trigger) {
-                _trayIcon->contextMenu()->popup(QCursor::pos());
-            } else if (reason == QSystemTrayIcon::DoubleClick) {
-                show();
-                raise();
-                activateWindow();
+            // Left click (Trigger): restore the window if it's tucked away in the
+            // tray (hidden via closeEvent) or minimized; otherwise do nothing —
+            // matching Telegram Desktop. Right click shows the context menu, which
+            // Qt handles natively (placed next to the icon). The native popup we
+            // used to raise here on Trigger appeared in the wrong style and far
+            // from the icon.
+            if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+                if (!isVisible() || isMinimized())
+                    restoreFromTray();
             }
         }
     );
