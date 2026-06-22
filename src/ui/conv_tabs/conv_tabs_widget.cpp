@@ -51,14 +51,22 @@ void ConvTabsWidget::rebuildIcons() {
     const auto  canvasSvg = _hasCanvas ? QStringLiteral(":/ui/canvas.svg")
                                        : QStringLiteral(":/ui/sticky-note-plus.svg");
 
+    // Rasterise at the DPR we last painted with (set in paintEvent). On Wayland
+    // the surface's fractional scale isn't known at construction — the
+    // compositor reports it only after the first show — so baking once at
+    // construction would freeze the icons at 1× and leave them upscaled (and
+    // pixelated) on a fractional display. paintEvent re-bakes whenever the live
+    // DPR changes. Fall back to the app-global ratio for any pre-first-paint call.
+    const qreal dpr = _iconDpr > 0 ? _iconDpr : (qGuiApp ? qGuiApp->devicePixelRatio() : 1.0);
+
     _tabs[0].text    = tr("Messages");
-    _tabs[0].icon    = svgPixmap(":/ui/message-circle.svg", sz, th.text.secondary);
-    _tabs[0].iconHot = svgPixmap(":/ui/message-circle.svg", sz, th.text.primary);
+    _tabs[0].icon    = svgPixmapPhys(":/ui/message-circle.svg", sz, th.text.secondary, dpr);
+    _tabs[0].iconHot = svgPixmapPhys(":/ui/message-circle.svg", sz, th.text.primary, dpr);
 
     _tabs[1].text =
         _hasCanvas ? (_canvasTitle.isEmpty() ? tr("Untitled") : _canvasTitle) : tr("Add canvas");
-    _tabs[1].icon    = svgPixmap(canvasSvg, sz, th.text.secondary);
-    _tabs[1].iconHot = svgPixmap(canvasSvg, sz, th.text.primary);
+    _tabs[1].icon    = svgPixmapPhys(canvasSvg, sz, th.text.secondary, dpr);
+    _tabs[1].iconHot = svgPixmapPhys(canvasSvg, sz, th.text.primary, dpr);
 
     relayout();
 }
@@ -95,6 +103,15 @@ int ConvTabsWidget::tabAt(const QPoint &pos) const {
 void ConvTabsWidget::paintEvent(QPaintEvent *) {
     QPainter    p(this);
     const auto &th = Th::c();
+
+    // Keep the pre-baked tab icons matched to the surface's live device pixel
+    // ratio (it can change after construction, notably the first Wayland scale
+    // report). Re-bake on change so they stay crisp at fractional scale.
+    const qreal dpr = p.device()->devicePixelRatioF();
+    if (!qFuzzyCompare(dpr, _iconDpr)) {
+        _iconDpr = dpr;
+        rebuildIcons();
+    }
 
     p.fillRect(rect(), th.surface.content);
 

@@ -61,8 +61,9 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
             const qint64 ms = _loadingElapsedTimer.elapsed();
             QString      hint;
             if (ms >= 15000)
-                hint = tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
-                          "Slack user. Still loading...");
+                hint =
+                    tr("Oh my gosh, I really apologize, but your company is a reaaaly active "
+                       "Slack user. Still loading...");
             else if (ms >= 5000)
                 hint = tr("Oh, you must have a lot of co-workers and messages! Still loading...");
             else if (ms >= 1000)
@@ -112,8 +113,9 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     paintScrollThumb(p, _totalH, Th::c().divider.strong);
 }
 
-void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const PaintContext &ctx)
-    const {
+void MessageListWidget::paintRow(
+    QPainter &p, int index, int rowTop, const PaintContext &ctx
+) const {
     const auto &item = _items[index];
     ensureDocLayout(item);
     const bool collapsed = isCollapsed(index);
@@ -162,9 +164,16 @@ void MessageListWidget::paintRow(QPainter &p, int index, int rowTop, const Paint
         p.fillRect(bannerRect, Th::c().message.pinnedBg); // subtle yellow tint
 
         // Pin icon
-        // NOTE: static — captures theme value once at first paint (acceptable for V1).
-        static const QPixmap kPinPx =
-            svgPixmap(":/ui/pin.svg", QSize(12, 12), Th::c().message.attachmentDismiss);
+        // NOTE: captures theme value once at first bake (acceptable for V1), but
+        // re-bakes when the device pixel ratio changes so it stays crisp at
+        // fractional scale (and after a move between differently-scaled monitors).
+        static qreal   kPinDpr = 0;
+        static QPixmap kPinPx;
+        if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kPinDpr)) {
+            kPinDpr = d;
+            kPinPx =
+                svgPixmapPhys(":/ui/pin.svg", QSize(12, 12), Th::c().message.attachmentDismiss, d);
+        }
         if (!kPinPx.isNull())
             p.drawPixmap(kPadH, msgTop + (pinnedBannerH - 12) / 2, kPinPx);
 
@@ -1366,13 +1375,20 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
     // SVG icons: 0=emoji (smile), 1=forward, 2=more-horizontal
-    // NOTE: static — captures Th::c().icon.strong once at first paint (acceptable for V1).
-    static const QSize    kIconSz(16, 16);
-    static const QColor   kIconColor = Th::c().icon.strong;
-    static const QPixmap  kPxSmile   = svgPixmap(":/ui/smile.svg", kIconSz, kIconColor);
-    static const QPixmap  kPxForward = svgPixmap(":/ui/forward.svg", kIconSz, kIconColor);
-    static const QPixmap  kPxMore    = svgPixmap(":/ui/more-horizontal.svg", kIconSz, kIconColor);
-    static const QPixmap *kIcons[]   = {&kPxSmile, &kPxForward, &kPxMore};
+    // NOTE: captures Th::c().icon.strong once at first bake (acceptable for V1),
+    // but re-bakes when the device pixel ratio changes so the icons stay crisp
+    // at fractional scale (and after a move between differently-scaled monitors).
+    static const QSize kIconSz(16, 16);
+    static qreal       kIconDpr = 0;
+    static QPixmap     kPxSmile, kPxForward, kPxMore;
+    if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kIconDpr)) {
+        kIconDpr            = d;
+        const QColor kColor = Th::c().icon.strong;
+        kPxSmile            = svgPixmapPhys(":/ui/smile.svg", kIconSz, kColor, d);
+        kPxForward          = svgPixmapPhys(":/ui/forward.svg", kIconSz, kColor, d);
+        kPxMore             = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, kColor, d);
+    }
+    const QPixmap *kIcons[] = {&kPxSmile, &kPxForward, &kPxMore};
 
     for (int b = 0; b < nButtons; ++b) {
         const QRect br = toolbarButtonRect(b, msgTop, rowH - sep);
@@ -1500,13 +1516,20 @@ void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) c
     const QRectF cardRect(cardLeft, cardTop, cardW, cardH);
     Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
-    // NOTE: static — captures Th::c().icon.strong once at first paint (acceptable for V1).
-    static const QSize    kIconSz(16, 16);
-    static const QColor   kIconColor  = Th::c().icon.strong;
-    static const QPixmap  kPxDownload = svgPixmap(":/ui/download.svg", kIconSz, kIconColor);
-    static const QPixmap  kPxShare    = svgPixmap(":/ui/share-2.svg", kIconSz, kIconColor);
-    static const QPixmap  kPxMore     = svgPixmap(":/ui/more-horizontal.svg", kIconSz, kIconColor);
-    static const QPixmap *kIcons[]    = {&kPxDownload, &kPxShare, &kPxMore};
+    // NOTE: captures Th::c().icon.strong once at first bake (acceptable for V1),
+    // but re-bakes when the device pixel ratio changes so the icons stay crisp
+    // at fractional scale (and after a move between differently-scaled monitors).
+    static const QSize kIconSz(16, 16);
+    static qreal       kIconDpr = 0;
+    static QPixmap     kPxDownload, kPxShare, kPxMore;
+    if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kIconDpr)) {
+        kIconDpr            = d;
+        const QColor kColor = Th::c().icon.strong;
+        kPxDownload         = svgPixmapPhys(":/ui/download.svg", kIconSz, kColor, d);
+        kPxShare            = svgPixmapPhys(":/ui/share-2.svg", kIconSz, kColor, d);
+        kPxMore             = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, kColor, d);
+    }
+    const QPixmap *kIcons[] = {&kPxDownload, &kPxShare, &kPxMore};
 
     for (int b = 0; b < nButtons; ++b) {
         const QRect br = fileActionBarButtonRect(b, fileRect);
@@ -1599,8 +1622,9 @@ int MessageListWidget::systemRowHeight() const {
     return fm.height() + 2 * kSysRowPadV;
 }
 
-void MessageListWidget::paintSystemRow(QPainter &p, int index, int msgTop, const PaintContext &ctx)
-    const {
+void MessageListWidget::paintSystemRow(
+    QPainter &p, int index, int msgTop, const PaintContext &ctx
+) const {
     const Message &msg = _items[index].msg;
 
     QString text = MsgRender::notificationText(msg.text, _session);

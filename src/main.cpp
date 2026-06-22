@@ -87,17 +87,32 @@ static QFont detectSystemFont() {
 #endif
 
 int main(int argc, char *argv[]) {
+    // Crisp text at fractional display scale, on every platform. We render
+    // natively at the real fractional devicePixelRatio (e.g. 1.3333 at 133%)
+    // and let the font rasteriser hint glyphs onto the actual device-pixel
+    // grid — the same path Telegram Desktop uses. PassThrough is Qt6's default
+    // rounding policy, but we set it explicitly so no environment variable,
+    // platform theme or style can quietly round the scale factor back to an
+    // integer (which up-sizes the UI) or, worse, force a 2x render that the
+    // compositor then bilinearly downscales (which blurs every glyph).
+    //
+    // The cost of fractional rendering is that Qt rounds each widget's painted
+    // device-pixel region independently, which can leave 1-device-pixel gaps
+    // at sibling boundaries (QTBUG-82601 family). We don't paper over that by
+    // dropping to integer scale (the old fix, which traded blur for seams);
+    // instead the window's backdrop is painted as a colour-matched mirror of
+    // the chrome (see BackdropFrame in main_window.cpp) so any such gap reveals
+    // the same colour as the block beside it rather than a contrasting seam.
+    //
+    // Escape hatch: set MSGA_INTEGER_SCALE=1 to fall back to the old
+    // integer-scale-plus-compositor-downscale path on Wayland, in case a
+    // particular compositor still shows artefacts.
+    QApplication::setHighDpiScaleFactorRoundingPolicy(
+        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough
+    );
 #if defined(Q_OS_LINUX)
-    // Wayland fractional scaling (wp_fractional_scale_v1) gives widgets a
-    // fractional devicePixelRatio (e.g. 1.3333 at 133%), and Qt's per-widget
-    // region rounding then leaves 1-device-pixel artifacts: hairline seams
-    // between adjacent widgets and stale border pixels after popups hide
-    // (painted vs flushed region mismatch, QTBUG-82601 family). Opting out of
-    // the protocol falls back to the integer wl_output scale: Qt renders at
-    // 2x and the compositor downscales — the same path GTK apps use, with no
-    // fractional rounding anywhere in widget painting. Respect an explicit
-    // user override if the variable is already set.
-    if (!qEnvironmentVariableIsSet("QT_WAYLAND_DISABLED_INTERFACES"))
+    if (qEnvironmentVariableIntValue("MSGA_INTEGER_SCALE") == 1 &&
+        !qEnvironmentVariableIsSet("QT_WAYLAND_DISABLED_INTERFACES"))
         qputenv("QT_WAYLAND_DISABLED_INTERFACES", "wp_fractional_scale_manager_v1");
 #endif
     QApplication app(argc, argv);

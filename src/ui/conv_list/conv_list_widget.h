@@ -172,6 +172,7 @@ protected:
     void          scheduleSaveVisitedAt(); // debounced; serializes off the hot path
     QTimer        _saveVisitedTimer;
     IconPixmaps   _iconPx;
+    qreal         _iconDpr  = 0; // DPR _iconPx was last rasterised at (see doPaint)
     ImageCache   *_imgCache = nullptr;
     PopupTooltip *_tooltip  = nullptr; // hover tooltip for the DM header "+"
     Session      *_session  = nullptr; // non-owning; for opaque-id queries only

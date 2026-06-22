@@ -53,6 +53,7 @@ private:
     bool    _canvasTabVisible = true;
     QString _canvasTitle;
     int     _hovered = -1;
+    qreal   _iconDpr = 0; // DPR the tab icons were last rasterised at (see paintEvent)
 
     TabSpec _tabs[2];
 

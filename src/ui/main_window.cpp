@@ -67,6 +67,7 @@
 #include <QBitmap>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPointer>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QFile>
@@ -176,6 +177,49 @@ private:
     int      _startW   = 0;
 };
 
+// Root container of the frameless window. At fractional display scale Qt rounds
+// each child widget's painted device-pixel region independently, which can leave
+// a 1-device-pixel gap at a sibling boundary; whatever this frame paints there
+// shows through as a hairline seam. A single flat fill can't hide every seam,
+// because the chrome blocks above it differ in colour — a dark nav block on one
+// side, the light message surface on the other; one backdrop colour always
+// contrasts with one of them.
+//
+// So the frame paints a low-fidelity *mirror* of the chrome: the dark nav tone
+// everywhere, then the light content surface under the right-hand panel. A gap
+// then exposes the same colour as the block beside it (dark next to nav, light
+// next to the message area), so the seam vanishes instead of showing a
+// contrasting line. The mirror reads live geometry/theme each paint, so it
+// tracks window resizes, conv-panel drags and theme switches automatically.
+class BackdropFrame final : public QWidget {
+public:
+    using QWidget::QWidget;
+
+    // The light content panel (right of the resize handle) and the handle itself,
+    // so the light region can start at the handle's right edge — the handle is
+    // dark and must stay backed by the nav tone, not the light surface.
+    void setContentSources(QWidget *content, QWidget *handle) {
+        _content = content;
+        _handle  = handle;
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.fillRect(rect(), Th::c().nav.bg);
+        if (_content && _content->isVisible()) {
+            const QPoint tl = _content->mapTo(this, QPoint(0, 0));
+            const int    hw = (_handle && _handle->isVisible()) ? _handle->width() : 0;
+            const QRect  light(tl.x() + hw, tl.y(), _content->width() - hw, _content->height());
+            p.fillRect(light, Th::c().surface.content);
+        }
+    }
+
+private:
+    QPointer<QWidget> _content;
+    QPointer<QWidget> _handle;
+};
+
 MainWindow::~MainWindow() = default;
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
@@ -231,13 +275,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 // ── UI construction ───────────────────────────────────────────────────────────
 
 void MainWindow::buildUi() {
-    _frame = new QWidget(this);
+    _frame = new BackdropFrame(this);
     _frame->setObjectName("windowFrame");
     _frame->setMouseTracking(true);
-    // Solid background via palette (set in applyTheme), not a stylesheet:
-    // setStyleSheet on this root container re-polishes the whole window
-    // subtree on every theme switch (~150 ms on a populated window).
-    _frame->setAutoFillBackground(true);
+    // Background is painted by BackdropFrame::paintEvent (a colour-matched
+    // mirror of the chrome — see its definition), reading the live theme each
+    // paint. No stylesheet on this root container (setStyleSheet here would
+    // re-polish the whole window subtree on every theme switch, ~150 ms on a
+    // populated window) and no autoFillBackground (the paintEvent fills it).
 
     _frameLayout = new QVBoxLayout(_frame);
     _frameLayout->setContentsMargins(0, 0, 0, 0);
@@ -386,13 +431,13 @@ QWidget *MainWindow::buildMainPage() {
 
     root->addWidget(buildConvPanel(page));
 
-    // Wrapper with nav.bg background — right/bottom gap and the resize-handle
-    // strip show it through. Painted via palette (set in applyTheme), not a
-    // stylesheet, so a theme switch recolors it instead of leaving the old
-    // theme's nav.bg behind (the purple-under-the-list seam).
+    // Transparent wrapper: the resize-handle strip and the right panel each
+    // paint their own background fully across it, and the window backdrop
+    // (BackdropFrame) paints the correct colour — nav tone behind the handle,
+    // light surface behind the panel — under any sub-pixel gap between them.
+    // No own fill, so a stale palette colour can never read as a seam.
     auto *rightArea = new QWidget(page);
     rightArea->setObjectName("rightArea");
-    rightArea->setAutoFillBackground(true);
     _rightArea        = rightArea;
     _rightPanelLayout = new QHBoxLayout(rightArea);
     _rightPanelLayout->setContentsMargins(0, 0, 0, 0);
@@ -401,6 +446,18 @@ QWidget *MainWindow::buildMainPage() {
     _rightPanelLayout->addWidget(_convResizeHandle);
     _rightPanelLayout->addWidget(buildRightPanel(rightArea), 1);
     root->addWidget(rightArea, 1);
+
+    // Tell the window backdrop where the light content panel lives so it can
+    // back that region with the message surface (the rest stays nav tone),
+    // eliminating the hairline seam at the dark-chrome/light-content boundary
+    // at fractional display scale. The resize handle is the dark strip on the
+    // content's left edge, so the light fill starts to its right.
+    static_cast<BackdropFrame *>(_frame)->setContentSources(rightArea, _convResizeHandle);
+    // Repaint the backdrop when the content area moves/resizes without the
+    // window itself resizing — i.e. when the conv panel is dragged wider or
+    // shown/hidden — so the mirrored light region tracks it (a window resize
+    // already repaints the frame).
+    rightArea->installEventFilter(this);
 
     // Apply stored appearance setting and keep conv list in sync when settings are saved.
     _convList->setRelevantDays(
@@ -864,23 +921,13 @@ void MainWindow::applyTheme() {
 
     const auto &th = Th::c();
 
-    // nav.bg, not surface.content: at fractional display scale, hairline gaps
-    // between sibling widgets expose this frame — it must blend into the dark
-    // nav blocks (title bar, workspace rail, conv list), and the right-side
-    // panels paint their own light backgrounds over it anyway. Set via palette
-    // (with autoFillBackground), not setStyleSheet, so a theme switch repaints
-    // the frame instead of re-polishing the whole window subtree.
-    QPalette framePal = _frame->palette();
-    framePal.setColor(QPalette::Window, th.nav.bg);
-    _frame->setPalette(framePal);
-
-    // Same nav.bg, same palette-not-stylesheet rationale: this wrapper backs
-    // the resize-handle strip, so a stale color reads as a colored seam.
-    if (_rightArea) {
-        QPalette areaPal = _rightArea->palette();
-        areaPal.setColor(QPalette::Window, th.nav.bg);
-        _rightArea->setPalette(areaPal);
-    }
+    // The window backdrop (nav tone + mirrored light content region) is painted
+    // by BackdropFrame::paintEvent reading the live theme, so a theme switch just
+    // needs a repaint rather than a palette/stylesheet change (which would
+    // re-polish the whole subtree). _rightArea no longer needs its own opaque
+    // nav.bg fill: the backdrop already paints nav tone behind the resize-handle
+    // strip, and the right panel paints its own light surface on top.
+    _frame->update();
 
     if (_msgHeader) {
         _msgHeader->setStyleSheet(
@@ -2120,6 +2167,11 @@ static Qt::CursorShape cursorForEdges(Qt::Edges edges) {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
+    // Keep the window backdrop's mirrored light region aligned with the content
+    // panel when it moves/resizes independently of the window (conv-panel drag,
+    // show/hide). Non-consuming — fall through to the rest of the filter.
+    if (obj == _rightArea && (e->type() == QEvent::Move || e->type() == QEvent::Resize) && _frame)
+        _frame->update();
     // Mouse side buttons anywhere in this window navigate chat history.
     if (e->type() == QEvent::MouseButtonPress) {
         auto *me = static_cast<QMouseEvent *>(e);

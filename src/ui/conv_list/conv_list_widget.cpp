@@ -69,22 +69,29 @@ void ConvListWidget::rebuildIconPixmaps() {
     const QSize big = QSize(kIconSize, kIconSize);
     const QSize sm  = QSize(14, 14);
 
-    _iconPx.chevDown   = svgPixmap(":/ui/chevron-down.svg", big, th.text.onDarkDim);
-    _iconPx.chevRight  = svgPixmap(":/ui/chevron-right.svg", big, th.text.onDarkDim);
-    _iconPx.hash       = svgPixmap(":/ui/hash.svg", big, th.text.onDarkDim);
-    _iconPx.msg        = svgPixmap(":/ui/messages-square.svg", big, th.text.onDarkDim);
-    _iconPx.bot        = svgPixmap(":/ui/bot.svg", big, th.text.onDarkDim);
-    _iconPx.plusDim    = svgPixmap(":/ui/plus.svg", big, th.text.onDarkDim);
-    _iconPx.plusBright = svgPixmap(":/ui/plus.svg", big, th.text.onDark);
+    // Rasterise at the live painted DPR (set in doPaint); fall back to the
+    // app-global ratio before the first paint. See the doPaint comment.
+    const qreal dpr = _iconDpr > 0 ? _iconDpr : (qGuiApp ? qGuiApp->devicePixelRatio() : 1.0);
+    const auto  px  = [&](const QString &path, const QSize &sz, const QColor &c) {
+        return svgPixmapPhys(path, sz, c, dpr);
+    };
 
-    _iconPx.lockDim        = svgPixmap(":/ui/lock.svg", sm, th.text.onDarkDim);
-    _iconPx.lockBright     = svgPixmap(":/ui/lock.svg", sm, th.text.onDark);
-    _iconPx.lockSelected   = svgPixmap(":/ui/lock.svg", sm, th.nav.itemSelectedText);
-    _iconPx.hashSmDim      = svgPixmap(":/ui/hash.svg", sm, th.text.onDarkDim);
-    _iconPx.hashSmBright   = svgPixmap(":/ui/hash.svg", sm, th.text.onDark);
-    _iconPx.hashSmSelected = svgPixmap(":/ui/hash.svg", sm, th.nav.itemSelectedText);
+    _iconPx.chevDown   = px(":/ui/chevron-down.svg", big, th.text.onDarkDim);
+    _iconPx.chevRight  = px(":/ui/chevron-right.svg", big, th.text.onDarkDim);
+    _iconPx.hash       = px(":/ui/hash.svg", big, th.text.onDarkDim);
+    _iconPx.msg        = px(":/ui/messages-square.svg", big, th.text.onDarkDim);
+    _iconPx.bot        = px(":/ui/bot.svg", big, th.text.onDarkDim);
+    _iconPx.plusDim    = px(":/ui/plus.svg", big, th.text.onDarkDim);
+    _iconPx.plusBright = px(":/ui/plus.svg", big, th.text.onDark);
 
-    _iconPx.huddle = svgPixmap(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
+    _iconPx.lockDim        = px(":/ui/lock.svg", sm, th.text.onDarkDim);
+    _iconPx.lockBright     = px(":/ui/lock.svg", sm, th.text.onDark);
+    _iconPx.lockSelected   = px(":/ui/lock.svg", sm, th.nav.itemSelectedText);
+    _iconPx.hashSmDim      = px(":/ui/hash.svg", sm, th.text.onDarkDim);
+    _iconPx.hashSmBright   = px(":/ui/hash.svg", sm, th.text.onDark);
+    _iconPx.hashSmSelected = px(":/ui/hash.svg", sm, th.nav.itemSelectedText);
+
+    _iconPx.huddle = px(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
 }
 
 void ConvListWidget::setRelevantDays(int days) {
@@ -727,6 +734,18 @@ void ConvListWidget::drawUserAvatar(
 void ConvListWidget::doPaint(QPaintEvent *event) {
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
+
+    // Keep the pre-baked nav icons matched to the surface's live device pixel
+    // ratio. They're baked once at construction, but on Wayland the fractional
+    // scale isn't known until after the first show, so a construction-time bake
+    // would leave them upscaled (pixelated) on a fractional display. Re-bake
+    // when the painted DPR changes (also covers moving the window between
+    // monitors of different scale).
+    const qreal dpr = p.device()->devicePixelRatioF();
+    if (!qFuzzyCompare(dpr, _iconDpr)) {
+        _iconDpr = dpr;
+        rebuildIconPixmaps();
+    }
     p.fillRect(
         event->rect(),
         Th::navGradient(viewport(), Th::c().nav.primaryGradTop, Th::c().nav.primaryGradBottom)
