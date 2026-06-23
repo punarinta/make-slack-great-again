@@ -184,11 +184,27 @@ void HttpQueue::handleReply(QNetworkReply *reply, PendingCall c) {
     reply->deleteLater();
     _inflight = false;
 
-    if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 429) {
+    const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    if (httpStatus == 429) {
         int retryAfter = reply->rawHeader("Retry-After").toInt();
         retryAfter     = qMax(retryAfter, 1);
         qDebug() << "HttpQueue: rate-limited, retrying in" << retryAfter << "s";
         requeueWithDelay(std::move(c), retryAfter * 1000);
+        return;
+    }
+
+    // The server responded with a definitive client-error status (4xx). Qt flags
+    // this as reply->error(), but it is NOT a transport failure — the body carries
+    // the API's error envelope. Hand it to handleResponse so an HTTP-status API
+    // (e.g. Microsoft Graph's @odata.error / 401 token refresh) can interpret it,
+    // rather than classifying it as a retryable transport error. Slack never takes
+    // this path (its errors are HTTP 200 + ok:false), so its behavior is unchanged.
+    // 5xx and genuine transport failures (no HTTP status) fall through to the
+    // classification/retry logic below.
+    if (httpStatus >= 400 && httpStatus < 500) {
+        const auto obj = QJsonDocument::fromJson(reply->readAll()).object();
+        handleResponse(obj, std::move(c));
         return;
     }
 

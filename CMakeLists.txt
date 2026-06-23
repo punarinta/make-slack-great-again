@@ -3,7 +3,7 @@ project(msga LANGUAGES CXX)
 
 include("${CMAKE_SOURCE_DIR}/credentials.cmake" OPTIONAL)
 include("${CMAKE_SOURCE_DIR}/version.cmake")
-foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP)
+foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP MSGA_TEAMS_CLIENT_ID)
     if(NOT DEFINED ${_var})
         set(${_var} "")
     endif()
@@ -96,6 +96,13 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/slack/shared_realtime.cpp
     src/backend/slack/slack_auth.cpp
     src/backend/slack/oauth_flow.cpp
+
+    # Microsoft Teams backend adapter (below the Backend seam)
+    src/backend/teams/teams_backend.cpp
+    src/backend/teams/graph_client.cpp
+    src/backend/teams/json_mappers.cpp
+    src/backend/teams/teams_auth.cpp
+    src/backend/teams/oauth_flow.cpp
 
     # Text
     src/text/mrkdwn_parser.cpp

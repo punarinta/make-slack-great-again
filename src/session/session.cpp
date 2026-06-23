@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "session.h"
 #include "backend/backend.h"
+#include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
 #include "text/mrkdwn_parser.h"
 
@@ -24,25 +25,16 @@ Session::~Session() {
         persistUnreads();
 }
 
-// Built-in Slack commands, available even when commands.list is rejected for
-// the token (not_allowed_token_type for OAuth tokens). Deliberately limited to
-// commands Session::runCommand executes natively: anything else would route
-// through chat.command, which the same tokens can't call — never offer a
-// command that is guaranteed to end in an error banner. Names and usage
-// mirror the official client.
-static std::vector<SlashCommand> builtinCommands() {
-    const auto t = [](const char *s) { return QCoreApplication::translate("Session", s); };
-    return {
-        {"active", t("Set yourself to active"), {}, {}},
-        {"away", t("Toggle your away status"), {}, {}},
-        {"dnd", t("Pause or resume notifications"), t("[duration, e.g. 30m or 2h] or off"), {}},
-        {"status", t("Set or clear your status"), t("[:emoji:] [text] or clear"), {}},
-        {"shrug", t("Appends ¯\\_(ツ)_/¯ to your message"), t("[message]"), {}},
-        {"msg", t("Send a direct message"), t("@user [message]"), {}},
-        {"dm", t("Send a direct message"), t("@user [message]"), {}},
-        {"leave", t("Leave a channel or conversation"), {}, {}},
-        {"mute", t("Mute or unmute a channel"), {}, {}},
-    };
+// App-level slash commands: OUR app's own commands, available in every workspace
+// regardless of service. Currently the home for future AI content commands (e.g.
+// /summarize, /rewrite, /ask) routed through LlmService — NOT yet implemented.
+// When added, return the definitions here and gate them on
+// LlmService::instance().availability() so they only appear when an AI provider is
+// connected. Service-specific commands (Slack's /shrug, /away, … and Teams' own,
+// once it has any) live in each backend's nativeCommands(), not here — so a
+// Slack-only command never shows in a Teams composer.
+static std::vector<SlashCommand> appCommands() {
+    return {};
 }
 
 // Tokens issued before a scope was added to OAuthFlow::userScopes() lack it;
@@ -129,6 +121,45 @@ void Session::start() {
     // Load users; update cache on arrival.
     _backend->loadUsers() | rpl::on_next(
                                 [this](std::vector<User> users) {
+                                    // Merge the snapshot into what's already known rather than
+                                    // replacing outright. Some backends (Teams) supply users
+                                    // without avatars (filled in asynchronously via EvUserChanged)
+                                    // and may omit self, so a plain replace briefly blanks names
+                                    // and avatars — an "Unknown user" + no-avatar flicker right
+                                    // after start. The snapshot is authoritative for membership;
+                                    // cached enrichment (avatar, display name, live presence) fills
+                                    // gaps the snapshot leaves, and self is always retained. No-op
+                                    // for Slack, whose users.list snapshot is already complete.
+                                    {
+                                        const auto                   prev = _users.current();
+                                        QHash<QString, const User *> prevById;
+                                        for (const auto &u : prev)
+                                            prevById.insert(u.id.value, &u);
+                                        bool hasSelf = _meUserId.value.isEmpty();
+                                        for (auto &u : users) {
+                                            if (u.id == _meUserId)
+                                                hasSelf = true;
+                                            const auto it = prevById.constFind(u.id.value);
+                                            if (it == prevById.constEnd())
+                                                continue;
+                                            const User &old = *it.value();
+                                            if (u.avatarUrl.isEmpty())
+                                                u.avatarUrl = old.avatarUrl;
+                                            if (u.displayName.isEmpty())
+                                                u.displayName = old.displayName;
+                                            if (u.name.isEmpty())
+                                                u.name = old.name;
+                                            // Presence/DND are polled separately, never carried by
+                                            // loadUsers — keep the live values across the refresh.
+                                            u.isActive   = old.isActive;
+                                            u.dndEnabled = old.dndEnabled;
+                                        }
+                                        if (!hasSelf) {
+                                            const auto it = prevById.constFind(_meUserId.value);
+                                            if (it != prevById.constEnd())
+                                                users.push_back(*it.value());
+                                        }
+                                    }
                                     _cache->saveUsers(users);
                                     _users = std::move(users);
                                     // Update admin flag now that the full user list is available.
@@ -359,25 +390,31 @@ void Session::start() {
             _lifetime
         );
 
-    // Slash commands: built-ins serve immediately; the workspace list
-    // (commands.list — adds app commands) replaces them when it arrives.
-    // Subscribed last so the call queues behind the core data loads.
-    _commands = builtinCommands();
+    // Slash commands come from three sources, each scoped to what's actually
+    // available so a Slack-only command never shows in (say) a Teams composer:
+    //   • app-level — OUR app's own commands (future AI), available everywhere;
+    //   • backend-native — what THIS backend exposes (nativeCommands()): Slack's
+    //     /shrug, /away, … live here; Teams has none yet, so it shows nothing;
+    //   • backend server commands — the async commands.list (Slack app commands).
+    _commands          = appCommands();
+    const auto natives = _backend->nativeCommands();
+    _commands.insert(_commands.end(), natives.begin(), natives.end());
+
+    // commands.list (when supported) adds app commands; keep the app-level and
+    // native commands it doesn't mention. Subscribed last so it queues behind the
+    // core data loads.
     _backend->listCommands() |
         rpl::on_next(
             [this](std::vector<SlashCommand> cmds) {
                 if (cmds.empty())
                     return;
-                // Keep any built-in the server list doesn't mention (it
-                // normally contains all core commands, but don't regress
-                // if it ever returns app commands only).
-                for (const auto &b : builtinCommands()) {
+                for (const auto &existing : _commands) {
                     const bool dup =
-                        std::any_of(cmds.begin(), cmds.end(), [&b](const SlashCommand &c) {
-                            return c.name.compare(b.name, Qt::CaseInsensitive) == 0;
+                        std::any_of(cmds.begin(), cmds.end(), [&existing](const SlashCommand &c) {
+                            return c.name.compare(existing.name, Qt::CaseInsensitive) == 0;
                         });
                     if (!dup)
-                        cmds.push_back(b);
+                        cmds.push_back(existing);
                 }
                 _commands = std::move(cmds);
             },

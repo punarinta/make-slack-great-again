@@ -110,6 +110,7 @@ public:
         std::function<void(bool ok, QString err, QString newAvatarUrl)> done = {}
     ) override;
 
+    std::vector<SlashCommand>                nativeCommands() const override;
     rpl::producer<std::vector<SlashCommand>> listCommands() override;
     void                                     runCommand(
                                             ConversationId,

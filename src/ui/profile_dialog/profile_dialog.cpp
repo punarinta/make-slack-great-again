@@ -16,6 +16,7 @@
 #include <memory>
 #include <QEnterEvent>
 #include <QFileDialog>
+#include <QPointer>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -172,6 +173,12 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
         if (const auto *me = _session->findUser(_session->meUserId())) {
             _initial = me->displayLabel();
             setAvatarUrl(me->avatarUrl);
+            // Show the known display name immediately; loadProfile() refines it
+            // (and fills email/phone) once the async profile fetch returns. Without
+            // this the Name field looks empty while a slow backend (e.g. Teams'
+            // GET /me) is in flight.
+            if (_nameEdit->text().isEmpty() && !me->displayLabel().isEmpty())
+                _nameEdit->setText(me->displayLabel());
         }
     }
 
@@ -184,7 +191,13 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
 void ProfileDialog::loadProfile() {
     if (!_session)
         return;
-    _session->loadMyProfile([this](MyProfile p) {
+    // Guard against the dialog being closed before the async profile load returns
+    // — the backend may answer much later (Teams' GET /me), and touching freed
+    // members here is a use-after-free (ASan-caught crash, profile_dialog.cpp:188).
+    QPointer<ProfileDialog> guard(this);
+    _session->loadMyProfile([this, guard](MyProfile p) {
+        if (!guard)
+            return;
         _loaded            = true;
         _loadedDisplayName = p.displayName;
         _loadedEmail       = p.email;

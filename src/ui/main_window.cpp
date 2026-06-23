@@ -56,7 +56,6 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QIcon>
-#include <QInputDialog>
 #include <QMessageBox>
 #include <QStackedWidget>
 #include <QSystemTrayIcon>
@@ -397,9 +396,8 @@ QWidget *MainWindow::buildLoggedOutPage() {
 
     auto *loginBtn =
         new StyledButton(tr("Log in to workspace"), StyledButton::Variant::Primary, inner);
-    connect(loginBtn, &QPushButton::clicked, this, [this] {
-        if (runLoginFlow())
-            activateWorkspace(_activeTeamId);
+    connect(loginBtn, &QPushButton::clicked, this, [this, loginBtn] {
+        promptAddWorkspace(loginBtn->mapToGlobal(loginBtn->rect().bottomLeft()));
     });
 
     layout->addWidget(icon, 0, Qt::AlignCenter);
@@ -512,8 +510,9 @@ QWidget *MainWindow::buildWorkspaceSwitcher(QWidget *parent) {
     _switcher->setObjectName("workspaceSidebar");
     connect(_switcher, &WorkspaceSwitcher::workspaceClicked, this, &MainWindow::switchToWorkspace);
     connect(_switcher, &WorkspaceSwitcher::addWorkspaceClicked, this, [this] {
-        if (runLoginFlow())
-            activateWorkspace(_activeTeamId);
+        // Anchor the service menu at the add button's right edge (it lives in the
+        // vertical left rail, so the menu opens to its right).
+        promptAddWorkspace(_switcher->addButtonGlobalRect().topRight());
     });
     connect(
         _switcher, &WorkspaceSwitcher::workspaceRightClicked, this, &MainWindow::showWorkspaceMenu
@@ -1197,64 +1196,58 @@ void MainWindow::showLoggedOut() {
     _stack->setCurrentWidget(_loggedOutPage);
 }
 
-std::optional<Service> MainWindow::chooseService() {
+void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
     const auto services = auth::registeredAuthServices();
     if (services.empty())
-        return std::nullopt;
-    // With a single registered service the picker is pointless — auto-select it.
-    if (services.size() == 1)
-        return services.front();
-
-    QStringList names;
-    for (const Service s : services)
-        names << serviceDisplayName(s);
-    bool          ok     = false;
-    const QString chosen = QInputDialog::getItem(
-        this, tr("Add workspace"), tr("Choose a service:"), names, 0, false, &ok
-    );
-    if (!ok)
-        return std::nullopt;
-    const int idx = names.indexOf(chosen);
-    if (idx < 0)
-        return std::nullopt;
-    return services[static_cast<size_t>(idx)];
-}
-
-bool MainWindow::runLoginFlow() {
-    const auto service = chooseService();
-    if (!service)
-        return false; // user cancelled the picker
-
-    // The auth strategy is neutral: it runs the service's own flow (Slack's
-    // OAuth, later Telegram's phone+code, …) and hands back a ready-to-store
-    // WorkspaceRecord. MainWindow never sees a service-specific credential type.
-    auto strategy = auth::makeAuthStrategy(*service, this);
-    if (!strategy) {
-        QMessageBox::critical(this, tr("Login failed"), tr("This service is not supported."));
-        return false;
+        return;
+    // One service → no point in a menu; start it directly.
+    if (services.size() == 1) {
+        loginWithService(services.front());
+        return;
     }
 
-    _activeFlow        = strategy.get();
-    bool       success = false;
-    QEventLoop loop;
+    // Several services → our themed ContextMenu anchored at the add button, one
+    // row per service. Defer the actual login to the next event-loop turn so the
+    // popup finishes dismissing before a browser opens.
+    auto *menu = new ContextMenu(this);
+    menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
+    for (const Service s : services) {
+        menu->addItem(serviceDisplayName(s), [this, s] {
+            QTimer::singleShot(0, this, [this, s] { loginWithService(s); });
+        });
+    }
+    menu->popup(anchorGlobal);
+}
 
-    QObject::connect(
-        strategy.get(), &auth::AuthStrategy::succeeded, [&](TokenStore::WorkspaceRecord rec) {
-            TokenStore::saveWorkspace(rec);
-            _activeTeamId = rec.key.toString();
-            success       = true;
-            loop.quit();
-        }
-    );
-    QObject::connect(strategy.get(), &auth::AuthStrategy::failed, [&](const QString &reason) {
+void MainWindow::loginWithService(Service service) {
+    // The auth strategy is neutral: it runs the service's own flow (Slack's
+    // OAuth, Teams' Auth Code + PKCE, …) and hands back a ready-to-store
+    // WorkspaceRecord. MainWindow never sees a service-specific credential type.
+    auto strategy = auth::makeAuthStrategy(service, this);
+    if (!strategy) {
+        QMessageBox::critical(this, tr("Login failed"), tr("This service is not supported."));
+        return;
+    }
+
+    // Keep the strategy alive across the async flow (parented to this); the
+    // OAuth callback reaches it via handleOAuthUri → _activeFlow.
+    auto *s     = strategy.release();
+    _activeFlow = s;
+
+    connect(s, &auth::AuthStrategy::succeeded, this, [this, s](TokenStore::WorkspaceRecord rec) {
+        TokenStore::saveWorkspace(rec);
+        _activeTeamId = rec.key.toString();
+        _activeFlow   = nullptr;
+        s->deleteLater();
+        activateWorkspace(_activeTeamId);
+    });
+    connect(s, &auth::AuthStrategy::failed, this, [this, s](const QString &reason) {
+        _activeFlow = nullptr;
+        s->deleteLater();
         QMessageBox::critical(this, tr("Login failed"), reason);
-        loop.quit();
     });
 
-    strategy->start();
-    loop.exec();
-    _activeFlow = nullptr;
-    return success;
+    s->start();
 }
 
 void MainWindow::handleOAuthUri(const QUrl &uri) {
@@ -2034,6 +2027,7 @@ void MainWindow::logoutWorkspace(const QString &teamId) {
 void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPos) {
     const auto rec  = recordForHandle(teamId);
     auto      *menu = new ContextMenu(this);
+    menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
 
     // Workspace admins get a shortcut to the Slack admin settings in their browser.
     const auto it = _sessions.find(teamId);

@@ -5,6 +5,7 @@
 #include "slack_auth.h"
 #include "socket_mode_realtime.h"
 #include "auth/token_store.h"
+#include "backend/common_commands.h"
 
 #include <QUrlQuery>
 #include <QFile>
@@ -752,6 +753,15 @@ void PublicBackend::setPhoto(
 // chat.command) and may be rejected for OAuth tokens (missing legacy `post`
 // scope). listCommands degrades to "produce nothing" — the Session merges in
 // its built-in command set; runCommand reports the server error to the caller.
+
+std::vector<SlashCommand> PublicBackend::nativeCommands() const {
+    // The Slack-flavoured commands Session::runCommand executes natively. These are
+    // Slack conventions (incl. /shrug, /mute), so they live here — not app-level —
+    // and never appear in another service's composer.
+    return CommonCommands::select(
+        {"shrug", "mute", "active", "away", "dnd", "status", "msg", "dm", "leave"}
+    );
+}
 
 rpl::producer<std::vector<SlashCommand>> PublicBackend::listCommands() {
     return [this](auto consumer) mutable {

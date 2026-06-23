@@ -189,9 +189,16 @@ public:
             done(false, QStringLiteral("not_supported"), {});
     }
 
-    // List the slash commands available in the workspace (undocumented
-    // commands.list — official-client API). Backends that can't list commands
-    // produce nothing; the Session falls back to the built-in command set.
+    // The slash commands this backend can execute natively (presence/status/DM/…
+    // mapped onto its API). Each service declares its own supported subset — see
+    // CommonCommands for the shared definitions — so a Slack-only command never
+    // shows in another service's composer. The app-level commands (/shrug, /mute,
+    // future AI commands) are owned by Session, not here. Default: none.
+    virtual std::vector<SlashCommand> nativeCommands() const { return {}; }
+
+    // List ADDITIONAL server-side slash commands available in the workspace
+    // (Slack's undocumented commands.list — app commands). Backends without such
+    // a registry produce nothing; nativeCommands() + the app-level set still apply.
     virtual rpl::producer<std::vector<SlashCommand>> listCommands() {
         return [](auto consumer) {
             consumer.put_done();

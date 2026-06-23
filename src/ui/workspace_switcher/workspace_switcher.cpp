@@ -160,6 +160,11 @@ QRect WorkspaceSwitcher::addButtonRect() const {
     return QRect((kW - kAddSize) / 2, y, kAddSize, kAddSize);
 }
 
+QRect WorkspaceSwitcher::addButtonGlobalRect() const {
+    const QRect r = addButtonRect();
+    return QRect(mapToGlobal(r.topLeft()), r.size());
+}
+
 QRect WorkspaceSwitcher::gearButtonRect() const {
     return QRect((kW - kGearSize) / 2, height() - kBottomPad - kGearSize, kGearSize, kGearSize);
 }

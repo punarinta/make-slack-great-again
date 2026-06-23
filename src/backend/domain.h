@@ -55,7 +55,7 @@ inline qint64 decimalTsToMicros(const QString &ts) {
 
 // The messaging services this app can host. Only Slack today; Telegram/Teams/…
 // are added here as backends land. Keep minimal.
-enum class Service { Slack /*, Teams, Telegram, … */ };
+enum class Service { Slack, Teams /*, Telegram, … */ };
 
 // Stable serialization token for a Service. NEVER serialize the enum's integer
 // — reordering the enum later must not corrupt stored workspace handles.
@@ -63,12 +63,16 @@ inline QString serviceToken(Service s) {
     switch (s) {
     case Service::Slack:
         return QStringLiteral("slack");
+    case Service::Teams:
+        return QStringLiteral("teams");
     }
     return QStringLiteral("slack");
 }
 inline std::optional<Service> serviceFromToken(const QString &t) {
     if (t == QStringLiteral("slack"))
         return Service::Slack;
+    if (t == QStringLiteral("teams"))
+        return Service::Teams;
     return std::nullopt;
 }
 
@@ -77,6 +81,8 @@ inline QString serviceDisplayName(Service s) {
     switch (s) {
     case Service::Slack:
         return QStringLiteral("Slack");
+    case Service::Teams:
+        return QStringLiteral("Microsoft Teams");
     }
     return QStringLiteral("Slack");
 }

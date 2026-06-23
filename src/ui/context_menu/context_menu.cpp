@@ -124,12 +124,13 @@ void ContextMenu::updateGeometry(const QPoint &globalPos) {
     const QFontMetrics sfm(shortcutFont);
 
     const int checkInset = _hasChecked ? kCheckW : 0;
-    int       w          = kMinW;
+    int       w          = _widthMode == WidthMode::MinWidth ? kMinW : 0;
     for (const auto &it : _items) {
         if (it.separator || it.header)
             continue;
         const int iconW = it.icon.isNull() ? 0 : (kIconSize + kIconGap);
-        int       itemW = kPadH + checkInset + iconW + fm.horizontalAdvance(it.text) + kPadH;
+        int       itemW =
+            kPadH + checkInset + iconW + fm.horizontalAdvance(it.text) + kLabelSlack + kPadH;
         if (!it.shortcut.isEmpty())
             itemW += kShortcutGap + sfm.horizontalAdvance(it.shortcut) + kPadH;
         if (it.submenu)

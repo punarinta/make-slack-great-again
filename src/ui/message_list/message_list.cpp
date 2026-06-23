@@ -752,6 +752,13 @@ void MessageListWidget::appendMessages(const std::vector<Message> &msgs) {
         return;
     for (const auto &msg : msgs)
         appendMessageDeferred(msg);
+    // appendMessageDeferred preserves input order; keep the list chronological
+    // regardless of the source's order (e.g. a backend that returns newest-first,
+    // or a stale cache written by an older build). Stable so equal-date messages
+    // keep their arrival order. No-op when the input is already sorted (Slack).
+    std::stable_sort(_items.begin(), _items.end(), [](const MessageItem &a, const MessageItem &b) {
+        return a.msg.date < b.msg.date;
+    });
     rebuildLayout();
     viewport()->update();
 }

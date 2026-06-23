@@ -55,6 +55,13 @@ EmojiResolved resolveEmojiRich(const QString &name, const QHash<QString, QString
     const QString unicode = Emoji::fromName(name);
     if (unicode != ":" + name + ":")
         return {unicode, {}};
+    // `name` isn't a known shortcode. If it's already a raw emoji glyph, render it
+    // directly instead of the ":name:" placeholder — MS Teams returns a reaction's
+    // reactionType as the Unicode emoji itself (e.g. "👍"), not a shortcode.
+    // Shortcodes are ASCII; any non-ASCII codepoint means `name` is the glyph.
+    for (const QChar &ch : name)
+        if (ch.unicode() > 0x7F)
+            return {name, {}};
     QString cur = name;
     for (int hops = 0; hops < 8; ++hops) { // bounded alias-chain walk
         const auto it = customMap.constFind(cur);

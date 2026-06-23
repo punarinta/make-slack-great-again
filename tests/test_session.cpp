@@ -12,6 +12,7 @@
 
 #include "session/session.h"
 #include "backend/backend.h"
+#include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
 #include "rpl/producer.h"
 #include "rpl/variable.h"
@@ -49,10 +50,17 @@ struct StubBackend : Backend {
     int            botInfoCallCount = 0;
     QList<QString> botInfoRequested;
 
-    rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities             capabilities() const override { return {}; }
-    void                     connectRealtime() override {}
-    void                     disconnectRealtime() override {}
+    rpl::producer<AuthState>  authState() const override { return _authState.value(); }
+    Capabilities              capabilities() const override { return {}; }
+    // Emulates a Slack-like backend's native command set (Slack conventions —
+    // /shrug, /mute, /away, … — all live in the backend, not app-level).
+    std::vector<SlashCommand> nativeCommands() const override {
+        return CommonCommands::select(
+            {"shrug", "mute", "active", "away", "dnd", "status", "msg", "dm", "leave"}
+        );
+    }
+    void connectRealtime() override {}
+    void disconnectRealtime() override {}
 
     // Mirror the Slack id-shape rules the Session used to hardcode, so the
     // fetch-routing / synthetic-account tests keep exercising the same paths.
@@ -2101,6 +2109,33 @@ TEST_CASE_METHOD(
     // Built-ins are limited to natively-executable commands: /remind would
     // need chat.command, which the fallback path can't call.
     CHECK(session->findCommand("remind") == nullptr);
+}
+
+TEST_CASE("a backend with no native commands surfaces none (e.g. Teams)", "[session][commands]") {
+    // A backend that declares no native commands (and no commands.list) shows no
+    // slash commands at all — the Slack built-ins (/shrug, /away, …) are Slack's
+    // OWN nativeCommands and must never leak into another service's composer. The
+    // app-level set is empty until AI commands are added.
+    struct NoNativeStub : StubBackend {
+        std::vector<SlashCommand>                nativeCommands() const override { return {}; }
+        rpl::producer<std::vector<SlashCommand>> listCommands() override {
+            return [](auto c) {
+                c.put_done();
+                return rpl::lifetime();
+            };
+        }
+    };
+    const QString teamId = "T_NO_CMDS";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    Session session(std::make_unique<NoNativeStub>(), teamId);
+    session.start();
+
+    CHECK(session.findCommand("shrug") == nullptr); // Slack-native — not in Teams
+    CHECK(session.findCommand("away") == nullptr);
+    CHECK(session.currentCommands().empty());
 }
 
 TEST_CASE(

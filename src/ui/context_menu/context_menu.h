@@ -25,7 +25,17 @@ public:
         QPixmap               icon; // optional 16×16 icon rendered to the left of text
     };
 
+    // Controls how the menu width is chosen.
+    //  - Fit:      width is purely content-driven (default). The menu is exactly
+    //              as wide as its longest row needs; never artificially limited.
+    //  - MinWidth: as Fit, but never narrower than kMinW — used for the workspace
+    //              switcher ("tray bar") menus whose rows are short, so they don't
+    //              render as a cramped sliver.
+    enum class WidthMode { Fit, MinWidth };
+
     explicit ContextMenu(QWidget *parent = nullptr);
+
+    void setWidthMode(WidthMode mode) { _widthMode = mode; }
 
     // Non-clickable section label (e.g. "Notify you about…").
     void addHeader(const QString &text);
@@ -77,6 +87,7 @@ private:
     int               _hovered    = -1;
     int               _pressed    = -1;
     bool              _hasChecked = false; // true if any item has selected=true
+    WidthMode         _widthMode  = WidthMode::Fit;
 
     // Layout
     static constexpr int kItemH       = 36;  // row height for a normal item
@@ -87,7 +98,8 @@ private:
     static constexpr int kPadV        = 6;   // top/bottom inner padding
     static constexpr int kRadius      = 8;   // corner radius
     static constexpr int kShadow      = 8;   // shadow halo width (transparent padding)
-    static constexpr int kMinW        = 200; // minimum menu width
+    static constexpr int kMinW        = 140; // floor applied only in WidthMode::MinWidth
+    static constexpr int kLabelSlack  = 4;   // headroom so the widest label never elides
     static constexpr int kShortcutGap = 24;  // min space between label and shortcut
 
     int itemH(int i) const;   // height of item i (kItemH, kHeaderH, or kSepH)

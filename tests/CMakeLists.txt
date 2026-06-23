@@ -97,6 +97,12 @@ add_msga_test(test_json_mappers
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
+# Microsoft Teams JSON mappers (Graph JSON → domain; needs only Qt6::Core).
+add_msga_test(test_teams_mappers
+    test_teams_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/json_mappers.cpp
+)
+
 # Pure huddle-notification policy (header-only helper in domain.h).
 add_msga_test(test_huddle_notify
     test_huddle_notify.cpp
@@ -113,6 +119,15 @@ set(SLACK_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/slack/socket_mode_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/shared_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
+)
+
+# Microsoft Teams backend below the seam (excludes oauth_flow.cpp — added per-test
+# like the Slack set). http_queue.cpp comes from SLACK_BACKEND_SRCS where co-listed.
+set(TEAMS_BACKEND_SRCS
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/graph_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/json_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_auth.cpp
 )
 
 add_msga_qt_test(test_workspace_cache
@@ -136,6 +151,7 @@ add_msga_qt_test(test_backend_factory
     ${CMAKE_SOURCE_DIR}/src/backend/backend_factory.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${SLACK_BACKEND_SRCS}
+    ${TEAMS_BACKEND_SRCS}
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
@@ -151,6 +167,8 @@ add_msga_qt_test(test_auth_strategy
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/oauth_flow.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/oauth_flow.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_auth.cpp
 )
 target_link_libraries(test_auth_strategy PRIVATE Qt6::Gui Qt6::Network)
 set_target_properties(test_auth_strategy PROPERTIES AUTOMOC ON)

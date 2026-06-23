@@ -34,6 +34,9 @@ public:
     QPair<int, int> unreadCounts(const QString &teamId) const;
     // Team ids in current visual (top-to-bottom) order.
     QStringList     workspaceIds() const;
+    // Global-coordinate rect of the "add workspace" button — for anchoring a
+    // popup/menu (e.g. the add-workspace service picker) beside it.
+    QRect           addButtonGlobalRect() const;
 
 signals:
     void workspaceClicked(const QString &teamId);

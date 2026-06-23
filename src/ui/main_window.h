@@ -82,18 +82,22 @@ private:
     // UI at one of them.  Team ids are taken BY VALUE: callers often pass
     // strings owned by structures these functions rebuild (switcher entries,
     // _activeTeamId, the sessions map), which would dangle behind a reference.
-    Session               *ensureSession(const QString &teamId);
-    void                   activateWorkspace(QString teamId);
-    void                   dropSession(QString teamId);
-    void                   switchToWorkspace(QString teamId);
-    void                   showLoggedOut();
-    bool                   runLoginFlow();
-    // Pick which service to add. Auto-selects when only one is registered;
-    // otherwise prompts. Returns nullopt if the user cancels.
-    std::optional<Service> chooseService();
-    void                   wireConvList(); // one-time Qt signal wiring (lambdas read _session)
-    void                   connectToSession();
-    void                   restoreLastConv();
+    Session *ensureSession(const QString &teamId);
+    void     activateWorkspace(QString teamId);
+    void     dropSession(QString teamId);
+    void     switchToWorkspace(QString teamId);
+    void     showLoggedOut();
+    // Add-workspace entry point: with one registered service, starts its login
+    // directly; with several, pops a ContextMenu (anchored at anchorGlobal) to
+    // pick the service, then starts that one. Async — the workspace activates
+    // from the auth strategy's success signal.
+    void     promptAddWorkspace(const QPoint &anchorGlobal);
+    // Runs one service's auth strategy and, on success, saves + activates the
+    // new workspace.
+    void     loginWithService(Service service);
+    void     wireConvList(); // one-time Qt signal wiring (lambdas read _session)
+    void     connectToSession();
+    void     restoreLastConv();
 
     // Workspace management
     void refreshSwitcher();
@@ -171,7 +175,7 @@ private:
     Session                            *_session = nullptr; // active workspace's session
 
     QString             _activeTeamId;
-    auth::AuthStrategy *_activeFlow = nullptr; // non-owning; valid only while runLoginFlow() blocks
+    auth::AuthStrategy *_activeFlow = nullptr; // valid only while a login flow is in progress
 
     // Window frame
     TitleBar      *_titleBar      = nullptr;
