@@ -160,6 +160,7 @@ void SettingsDialog::buildPanel() {
     _tabs->addItem(tr("AI assistance"));
     _tabs->addItem(tr("Storage"));
     _tabs->addItem(tr("System"));
+    _tabs->addItem(tr("About"));
     _tabs->setCurrentRow(0);
     blay->addWidget(_tabs);
 
@@ -632,6 +633,83 @@ void SettingsDialog::buildPanel() {
     });
 
     _stack->addWidget(scrollWrap(sysPage));
+
+    // ── About page ────────────────────────────────────────────────────
+    auto *aboutPage = new QWidget;
+    auto *ablay     = new QVBoxLayout(aboutPage);
+    ablay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
+    ablay->setSpacing(sp.xl);
+
+    // ── License & copyright ───────────────────────────────────────────
+    auto *licenseHeading = new QLabel(tr("License"), aboutPage);
+    licenseHeading->setObjectName("sectionHeading");
+    ablay->addWidget(licenseHeading);
+
+    auto *licenseLabel = new QLabel(
+        tr("MSGA — Make Slack Great Again\n"
+           "Copyright © 2026 Vladimir Osipov\n\n"
+           "This program is free software: you can redistribute it and/or modify "
+           "it under the terms of the GNU General Public License as published by "
+           "the Free Software Foundation, either version 3 of the License, or "
+           "(at your option) any later version (GPL-3.0-or-later)."),
+        aboutPage
+    );
+    licenseLabel->setObjectName("aboutLicense");
+    licenseLabel->setWordWrap(true);
+    ablay->addWidget(licenseLabel);
+
+    auto *licenseLink =
+        new StyledButton(tr("View full license"), StyledButton::Variant::Link, aboutPage);
+    connect(licenseLink, &QPushButton::clicked, this, [] {
+        QDesktopServices::openUrl(
+            QUrl("https://github.com/punarinta/make-slack-great-again/blob/master/LICENSE")
+        );
+    });
+    auto *licenseLinkRow = new QHBoxLayout;
+    licenseLinkRow->addWidget(licenseLink);
+    licenseLinkRow->addStretch();
+    ablay->addLayout(licenseLinkRow);
+
+    // ── Contact ───────────────────────────────────────────────────────
+    auto *contactHeading = new QLabel(tr("Contact"), aboutPage);
+    contactHeading->setObjectName("sectionHeading");
+    ablay->addWidget(contactHeading);
+
+    auto *contactLabel = new QLabel(aboutPage);
+    contactLabel->setObjectName("aboutContact");
+    contactLabel->setText(tr("Questions or feedback: %1")
+                              .arg("<a href=\"mailto:vladimir@msga.app\">vladimir@msga.app</a>"));
+    contactLabel->setTextFormat(Qt::RichText);
+    contactLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    contactLabel->setOpenExternalLinks(true);
+    ablay->addWidget(contactLabel);
+
+    // ── Report a bug ──────────────────────────────────────────────────
+    auto *bugHeading = new QLabel(tr("Found a bug?"), aboutPage);
+    bugHeading->setObjectName("sectionHeading");
+    ablay->addWidget(bugHeading);
+
+    auto *bugDesc =
+        new QLabel(tr("Report it on GitHub so it can be tracked and fixed."), aboutPage);
+    bugDesc->setObjectName("aboutBugDesc");
+    bugDesc->setWordWrap(true);
+    ablay->addWidget(bugDesc);
+
+    auto *bugRow = new QHBoxLayout;
+    auto *bugBtn = new StyledButton(tr("Report a bug"), StyledButton::Variant::Danger, aboutPage);
+    bugBtn->setSize(StyledButton::Size::Small);
+    connect(bugBtn, &QPushButton::clicked, this, [] {
+        QDesktopServices::openUrl(
+            QUrl("https://github.com/punarinta/make-slack-great-again/issues")
+        );
+    });
+    bugRow->addWidget(bugBtn);
+    bugRow->addStretch();
+    ablay->addLayout(bugRow);
+
+    ablay->addStretch();
+
+    _stack->addWidget(scrollWrap(aboutPage));
     root->addWidget(body, 1);
 
     auto *esc = new QShortcut(Qt::Key_Escape, _panel);
@@ -1059,6 +1137,23 @@ void SettingsDialog::applyTheme() {
     _ramLabel->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
+
+    // ── About page ────────────────────────────────────────────────────
+    if (auto *w = _panel->findChild<QLabel *>("aboutLicense")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
+        );
+    }
+    if (auto *w = _panel->findChild<QLabel *>("aboutContact")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
+    if (auto *w = _panel->findChild<QLabel *>("aboutBugDesc")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
 }
 
 void SettingsDialog::loadNotifications() {

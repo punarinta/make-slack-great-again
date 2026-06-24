@@ -1595,6 +1595,57 @@ This action cannot be undone.</source>
         <translation>システム</translation>
     </message>
     <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="163"/>
+        <source>About</source>
+        <translation>情報</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="644"/>
+        <source>License</source>
+        <translation>ライセンス</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="649"/>
+        <source>MSGA — Make Slack Great Again
+Copyright © 2026 Vladimir Osipov
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (GPL-3.0-or-later).</source>
+        <translation>MSGA — Make Slack Great Again
+Copyright © 2026 Vladimir Osipov
+
+本プログラムはフリーソフトウェアです。フリーソフトウェア財団が公開する GNU General Public License（バージョン 3、または任意でそれ以降のバージョン）の条項に基づき、再配布および改変を行うことができます（GPL-3.0-or-later）。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="662"/>
+        <source>View full license</source>
+        <translation>ライセンス全文を表示</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="674"/>
+        <source>Contact</source>
+        <translation>連絡先</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="680"/>
+        <source>Questions or feedback: %1</source>
+        <translation>ご質問・ご意見: %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="688"/>
+        <source>Found a bug?</source>
+        <translation>バグを見つけましたか？</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="693"/>
+        <source>Report it on GitHub so it can be tracked and fixed.</source>
+        <translation>GitHub で報告すると、追跡・修正できます。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="699"/>
+        <source>Report a bug</source>
+        <translation>バグを報告</translation>
+    </message>
+    <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="178"/>
         <source>Color theme</source>
         <translation>カラーテーマ</translation>
