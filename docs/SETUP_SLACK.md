@@ -20,42 +20,51 @@ Under **Redirect URLs**, add exactly:
 http://localhost:17437/cb
 ```
 
-Then scroll down to **User Token Scopes** and add the following scopes:
+The **OAuth & Permissions** page has two scope lists: **Bot Token Scopes** and **User Token Scopes**. msga signs you in as *yourself* — it uses a **user token** (`xoxp-…`) only and never a bot token. Set the two lists accordingly.
+
+### Bot Token Scopes
+
+**Leave this list empty.** msga does not use a bot token, and the live-message events (Step 4) are subscribed *on behalf of users*, which keys off the User Token Scopes below — not bot scopes. Do not add `admin.*` scopes anywhere: they require an Enterprise Grid org-level install by an org owner/admin and will prevent ordinary members from authorizing the app.
+
+### User Token Scopes
+
+Scroll down to **User Token Scopes** and add the following:
 
 <details>
 <summary>Full list of required OAuth scopes</summary>
 
 | Scope | Purpose |
 |---|---|
+| `canvases:read` | Read canvas files (`files.info` gates canvas files behind this) |
+| `canvases:write` | Create, edit and delete canvases |
 | `channels:history` | Read messages in public channels |
 | `channels:read` | List public channels |
+| `channels:write` | Create public channels |
+| `chat:write` | Send messages |
+| `dnd:read` | See other users' Do Not Disturb state (live `dnd_updated_user` events) |
+| `dnd:write` | Pause/resume notifications (`/dnd`) |
+| `emoji:read` | Load custom emoji |
+| `files:read` | Access shared files |
+| `files:write` | Upload files |
 | `groups:history` | Read messages in private channels |
 | `groups:read` | List private channels |
+| `groups:write` | Create private channels |
 | `im:history` | Read direct messages |
 | `im:read` | List direct message conversations |
+| `im:write` | Create direct message conversations |
 | `mpim:history` | Read group direct messages |
 | `mpim:read` | List group direct message conversations |
-| `users:read` | Look up user info |
-| `team:read` | Get workspace info |
-| `emoji:read` | Load custom emoji |
-| `reactions:read` | Read emoji reactions |
-| `files:read` | Access shared files |
-| `users.profile:read` | Read user profile fields |
-| `search:read` | Search messages and files |
-| `chat:write` | Send messages |
-| `reactions:write` | Add/remove reactions |
-| `files:write` | Upload files |
-| `stars:write` | Star/unstar channels and conversations |
-| `stars:read` | List starred channels and conversations |
-| `channels:write` | Create public channels |
-| `groups:write` | Create private channels |
 | `mpim:write` | Create group DM conversations |
-| `im:write` | Create direct message conversations |
-| `users:write` | Set your presence — away/active (`/away`, `/active`) |
+| `pins:write` | Pin/unpin messages |
+| `reactions:read` | Read emoji reactions |
+| `reactions:write` | Add/remove reactions |
+| `search:read` | Search messages and files |
+| `stars:write` | Star/unstar channels and conversations |
+| `team:read` | Get workspace info |
+| `users.profile:read` | Read user profile fields |
 | `users.profile:write` | Set or clear your status (`/status`) |
-| `dnd:write` | Pause/resume notifications (`/dnd`) |
-| `canvases:read` | Look up canvas sections |
-| `canvases:write` | Create, edit and delete canvases |
+| `users:read` | Look up user info |
+| `users:write` | Set your presence — away/active (`/away`, `/active`) |
 
 </details>
 
@@ -77,6 +86,12 @@ Under **Subscribe to events on behalf of users**, add:
 | `message.groups` | Live messages in private channels |
 | `message.im` | Live direct messages |
 | `message.mpim` | Live group direct messages |
+| `reaction_added` | Live reactions as they're added |
+| `reaction_removed` | Live reactions as they're removed |
+| `channel_created` | New channels appear without a refresh |
+| `member_joined_channel` | Live channel membership updates |
+| `user_change` | Live profile, name and avatar updates |
+| `dnd_updated_user` | Live Do Not Disturb changes |
 
 Click **Save Changes**. Slack will prompt you to reinstall the app — do so via **Install App → Reinstall to Workspace**.
 
