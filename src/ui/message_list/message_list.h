@@ -219,6 +219,16 @@ private:
     // Layout
     void rebuildLayout();
     int  rowHeight(int index) const;
+    // Lazy layout: the expensive QTextDocument::size() runs only for rows that
+    // become visible; off-screen rows use a cheap text-length estimate until a
+    // background pass measures them. rowMeasured() == laid out at the current width.
+    bool rowMeasured(const MessageItem &item) const;
+    int  estimatedTextHeight(const QString &text) const;
+    int  estimatedDocHeight(const MessageItem &item) const;
+    int  estimatedAttachHeight(const Attachment &att) const;
+    void measureVisibleRows();         // lay out the on-screen rows (called from doPaint)
+    void scheduleProgressiveLayout();  // kick the background measurement pass
+    void measureLayoutChunk();         // measure one chunk of off-screen rows, then reschedule
     bool isCollapsed(int index) const; // true if same author within 5 min of previous
     // Lay out (and lazily build) a message's docs at `forWidth` logical pixels of
     // text column; forWidth < 0 means the full row width (textAreaWidth()).
@@ -505,6 +515,9 @@ private:
     // New-message highlight: ts → elapsed ms since arrival (driven by _highlightTimer)
     QSet<QString>     _newMsgTs;
     QVariantAnimation _highlightAnim;
+
+    // True while a measureLayoutChunk() tick is queued, so we never stack timers.
+    bool _progressiveLayoutScheduled = false;
 
     bool _scrollToBottomPending = false;
     // Read cursor of the conversation being opened: while _scrollToBottomPending

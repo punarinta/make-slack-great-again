@@ -45,6 +45,12 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     triggerMissingDownloads();
     triggerMissingAvatarDownloads();
 
+    // Lazy layout: rows about to be painted carry only a cheap estimate if they
+    // were off-screen. Lay the visible ones out for real (and fix _tops via an
+    // anchor-preserving rebuild) before computing paint geometry below.
+    if (!_items.empty())
+        measureVisibleRows();
+
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);

@@ -34,6 +34,7 @@
 #include <QTextLayout>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
+#include <QFontMetrics>
 #include <QDesktopServices>
 #include <QClipboard>
 #include <QFileDialog>
@@ -974,7 +975,6 @@ bool MessageListWidget::isCollapsed(int index) const {
 }
 
 int MessageListWidget::rowHeight(int index) const {
-    ensureDocLayout(_items[index]);
     const auto &item = _items[index];
 
     if (isSystemEvent(item.msg)) {
@@ -982,19 +982,32 @@ int MessageListWidget::rowHeight(int index) const {
         return sepH + systemRowHeight();
     }
 
+    // Lazy layout: a visible row is laid out for real (the expensive
+    // QTextDocument::size()); an off-screen row uses a cheap text-length estimate
+    // until the background pass measures it. The arithmetic below is identical
+    // either way — only the text/attachment heights come from a measurement vs an
+    // estimate, so a measured row's height is exactly what it always was.
+    const bool measured = rowMeasured(item);
+    const int  docH     = measured ? item.docHeight : estimatedDocHeight(item);
+
     const bool collapsed = isCollapsed(index);
 
     int extraH = 0;
 
-    // Attachment heights (skip client-dismissed ones)
-    for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+    // Attachment heights (skip client-dismissed ones). Iterate msg.attachments
+    // (not attachDocs, which only exist once measured) so the count is right for
+    // estimated rows too; for measured rows the two are 1:1.
+    const int nAtt = (int)item.msg.attachments.size();
+    for (int ai = 0; ai < nAtt; ++ai) {
         if (isDismissed(item.msg.ts, ai))
             continue;
-        extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
+        const int ah =
+            measured ? attachTotalH(item, ai) : estimatedAttachHeight(item.msg.attachments[ai]);
+        extraH += kAttachGap + std::max(ah, 0);
     }
 
     // Inline file preview heights (images + prerendered docs)
-    const bool hasContentAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
+    const bool hasContentAboveImages = docH > 0 || nAtt > 0;
     bool       anyImgFiles           = false;
     for (const auto &f : item.msg.files) {
         if (!f.hasPreview())
@@ -1005,7 +1018,7 @@ int MessageListWidget::rowHeight(int index) const {
     }
 
     // File chips (files without a preview)
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
+    const bool hasAboveChips = docH > 0 || nAtt > 0 || anyImgFiles;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())
@@ -1026,11 +1039,58 @@ int MessageListWidget::rowHeight(int index) const {
     const int  headerH  = collapsed ? 0 : (kHdrH + kHdrGap);
     const int  pinnedH  = item.msg.pinned ? 18 : 0;
     // pinnedH is a banner drawn before padV — kept separate from contentH.
-    const int  contentH = headerH + item.docHeight + extraH + reactionH;
+    const int  contentH = headerH + docH + extraH + reactionH;
     const int  sepH     = needsDateSep(index) ? kSepH : 0;
     if (collapsed)
         return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH + inlineH;
     return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadVBottom + replyBarH + inlineH;
+}
+
+// "Laid out at the current width" — the cheap proxy for "measured". ensureDocLayout
+// sets docWidth to the layout width; invalidation resets it to -1/0. System rows
+// carry a fixed height and never need a QTextDocument, so treat them as measured.
+bool MessageListWidget::rowMeasured(const MessageItem &item) const {
+    if (isSystemEvent(item.msg))
+        return true;
+    const int w = textAreaWidth();
+    return w > 0 && item.docWidth == w;
+}
+
+// Rough pixel height of `text` at the current column width, without laying out a
+// QTextDocument: wrap each hard line to the average character count. Only used for
+// off-screen rows, where being approximate is fine — the value is replaced by the
+// real height the moment the row is measured.
+int MessageListWidget::estimatedTextHeight(const QString &text) const {
+    if (text.isEmpty())
+        return 0;
+    const int          w = std::max(1, textAreaWidth());
+    const QFontMetrics fm(QApplication::font());
+    const int          lineH = std::max(1, qRound(fm.height() * 1.35));
+    const int          cpl   = std::max(1, w / std::max(1, fm.averageCharWidth()));
+    int                lines = 0, lineStart = 0;
+    const int          n = (int)text.size();
+    for (int i = 0; i <= n; ++i)
+        if (i == n || text[i] == '\n') {
+            lines += std::max(1, (i - lineStart + cpl - 1) / cpl);
+            lineStart = i + 1;
+        }
+    return lines * lineH;
+}
+
+int MessageListWidget::estimatedDocHeight(const MessageItem &item) const {
+    if (!item.msg.text.text.isEmpty())
+        return estimatedTextHeight(item.msg.text.text);
+    // Rich blocks with no plain text (rare) — assume a couple of lines so the row
+    // isn't estimated as empty and then jump tall when measured.
+    if (!item.msg.blocks.empty())
+        return 2 * std::max(1, qRound(QFontMetrics(QApplication::font()).height() * 1.35));
+    return 0;
+}
+
+int MessageListWidget::estimatedAttachHeight(const Attachment &att) const {
+    // Known image height (from cached-pixmap metadata) + a body-text estimate;
+    // refined to the exact height as soon as the row is measured.
+    return attachImageH(att) + estimatedTextHeight(att.text.text);
 }
 
 void MessageListWidget::rebuildLayout() {
@@ -1067,6 +1127,72 @@ void MessageListWidget::rebuildLayout() {
         if (idx >= 0)
             sb->setValue(std::clamp(_tops[idx] - anchorDelta, 0, sb->maximum()));
     }
+
+    // Any rows still carrying an estimate get laid out for real in the
+    // background, a chunk per event-loop tick, so the scrollbar range and
+    // off-screen positions converge without ever blocking the open.
+    scheduleProgressiveLayout();
+}
+
+// Lay out the rows currently on screen for real before they're painted. Called at
+// the top of doPaint: off-screen rows reach paint with only an estimate, and the
+// visible ones must be exact. If measuring corrects any height, rebuildLayout()
+// fixes _tops and re-pins the anchor so the visible content doesn't jump.
+void MessageListWidget::measureVisibleRows() {
+    const int w = textAreaWidth();
+    if (w <= 0 || _items.empty() || _tops.size() != _items.size())
+        return;
+    const int scrollY = verticalScrollBar()->value();
+    const int vh      = viewport()->height();
+    bool      changed = false;
+    for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
+        const int top = _tops[i] - scrollY;
+        if (top > vh)
+            break; // _tops is monotonic — nothing below is on screen
+        if (top + rowHeight(i) < 0)
+            continue; // entirely above the viewport
+        if (!rowMeasured(_items[i])) {
+            ensureDocLayout(_items[i]);
+            changed = true;
+        }
+    }
+    if (changed)
+        rebuildLayout();
+}
+
+// Off-screen rows measured a chunk at a time on the event loop. Each chunk is
+// bounded so a tick stays short even for layout-heavy messages; rebuildLayout()
+// re-pins the anchor and (via its tail) schedules the next chunk until all rows
+// are measured.
+static constexpr int kLayoutChunk = 8;
+
+void MessageListWidget::scheduleProgressiveLayout() {
+    if (_progressiveLayoutScheduled || textAreaWidth() <= 0)
+        return;
+    bool anyUnmeasured = false;
+    for (const auto &it : _items)
+        if (!rowMeasured(it)) {
+            anyUnmeasured = true;
+            break;
+        }
+    if (!anyUnmeasured)
+        return;
+    _progressiveLayoutScheduled = true;
+    QTimer::singleShot(0, this, [this] { measureLayoutChunk(); });
+}
+
+void MessageListWidget::measureLayoutChunk() {
+    _progressiveLayoutScheduled = false;
+    if (textAreaWidth() <= 0 || _items.empty())
+        return;
+    int done = 0;
+    for (int i = 0; i < static_cast<int>(_items.size()) && done < kLayoutChunk; ++i)
+        if (!rowMeasured(_items[i])) {
+            ensureDocLayout(_items[i]);
+            ++done;
+        }
+    if (done > 0)
+        rebuildLayout(); // re-pins the anchor; reschedules the next chunk via its tail
 }
 
 // ── Attachment height helpers ─────────────────────────────────────────────────
