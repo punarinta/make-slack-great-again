@@ -326,12 +326,17 @@ static QString renderRange(
         // Only blockquotes deepen the table-nesting budget (other containers are
         // cheap inline spans/anchors).
         const int     childQuoteDepth = quoteDepth + (e.type == EntityType::Blockquote ? 1 : 0);
-        const QString inner =
-            container ? renderRange(
-                            text, e.offset, e.offset + e.length, kids[idx], ents, kids, session,
-                            childQuoteDepth
-                        )
-                      : rawInner.toHtmlEscaped();
+        const QString inner           = container ? renderRange(
+                                              text,
+                                              e.offset,
+                                              e.offset + e.length,
+                                              kids[idx],
+                                              ents,
+                                              kids,
+                                              session,
+                                              childQuoteDepth
+                                          )
+                                                  : rawInner.toHtmlEscaped();
         switch (e.type) {
         case EntityType::Bold:
             html += "<b>" + inner + "</b>";
