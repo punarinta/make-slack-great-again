@@ -9,18 +9,36 @@
 #include <QApplication>
 #include <QEvent>
 #include <QFrame>
-#include <QGuiApplication>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
 #include <QPushButton>
-#include <QScreen>
 #include <QScrollBar>
+#include <QStringList>
 #include <QVBoxLayout>
 
 static constexpr int kDropMaxH = 200;
+
+// Slack names a group DM "mpdm-alice--bob--carol-1"; pull the member usernames
+// back out so we can show display names instead of the raw id. Mirrors the
+// conversation list's helper of the same name.
+static QStringList parseMpdmUsernames(const QString &name) {
+    QString s = name;
+    if (s.startsWith("mpdm-"))
+        s = s.mid(5);
+    // Strip a trailing numeric suffix like "-1".
+    const int lastDash = s.lastIndexOf('-');
+    if (lastDash > 0) {
+        bool ok = false;
+        s.mid(lastDash + 1).toInt(&ok);
+        if (ok)
+            s = s.left(lastDash);
+    }
+    return s.split("--", Qt::SkipEmptyParts);
+}
 
 ConvSelectorWidget::ConvSelectorWidget(Session *session, QWidget *parent)
     : QWidget(parent), _session(session) {
@@ -136,8 +154,12 @@ void ConvSelectorWidget::applyTheme() {
 
 void ConvSelectorWidget::openDropdown() {
     if (!_dropdown) {
-        _dropdown =
-            new QFrame(window(), Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+        // In-window child overlay of the top-level window — NOT a Qt::Tool
+        // top-level, which the Wayland compositor positions itself (ignoring our
+        // setGeometry), making the list land at the screen's top-left. Same
+        // reason AppDialog / PopupTooltip / the mention popups are child overlays.
+        _dropdown = new QFrame(window());
+        _dropdown->setAttribute(Qt::WA_StyledBackground, true);
         _dropdown->setObjectName("convDropdown");
         _dropdown->setStyleSheet(QString(
                                      "QFrame#convDropdown {"
@@ -155,15 +177,27 @@ void ConvSelectorWidget::openDropdown() {
         _dropList = new QListWidget(_dropdown);
         _dropList->setFrameShape(QFrame::NoFrame);
         _dropList->setStyleSheet(QString(
-                                     "QListWidget { border: none; }"
+                                     "QListWidget { border: none; background: transparent; }"
                                      "QListWidget::item { padding: 6px 12px; }"
                                      "QListWidget::item:hover { background: %1; }"
                                      "QListWidget::item:selected { background: %2; color: %3; }"
+                                     // Thin rounded scrollbar, matching our other lists.
+                                     "QScrollBar:vertical {"
+                                     "  background: transparent; width: 8px; margin: 2px;"
+                                     "}"
+                                     "QScrollBar::handle:vertical {"
+                                     "  background: %4; border-radius: 3px; min-height: 24px;"
+                                     "}"
+                                     "QScrollBar::add-line:vertical,"
+                                     "QScrollBar::sub-line:vertical { height: 0; }"
+                                     "QScrollBar::add-page:vertical,"
+                                     "QScrollBar::sub-page:vertical { background: transparent; }"
         )
                                      .arg(
                                          Th::qss(Th::c().surface.highlight),
                                          Th::qss(Th::c().accent.subtleBg),
-                                         Th::qss(Th::c().message.replyLink)
+                                         Th::qss(Th::c().message.replyLink),
+                                         Th::qss(Th::c().divider.strong)
                                      ));
         _dropList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         lay->addWidget(_dropList);
@@ -174,6 +208,12 @@ void ConvSelectorWidget::openDropdown() {
     }
 
     rebuildList(_searchEdit->text());
+    // An empty result set shows nothing rather than a stray empty box — e.g. "/"
+    // (or any non-matching query) matches no conversation.
+    if (_dropList->count() == 0) {
+        _dropdown->hide();
+        return;
+    }
     positionDropdown();
     _dropdown->show();
     _dropdown->raise();
@@ -188,17 +228,23 @@ void ConvSelectorWidget::positionDropdown() {
     if (!_dropdown)
         return;
 
-    const QRect anchor(_inputFrame->mapToGlobal(QPoint(0, 0)), _inputFrame->size());
-    const int   w     = _inputFrame->width();
-    const int   itemH = _dropList->sizeHintForRow(0);
-    const int   count = std::min(_dropList->count(), 6);
-    const int   listH = count > 0 ? std::min(kDropMaxH, itemH * count + 4) : 40;
+    // The dropdown is a child of the top-level window, so it is positioned in the
+    // window's coordinate space (NOT screen-global): map the input's anchor and
+    // clamp within the window rect.
+    QWidget *win = window();
+    if (!win)
+        return;
+    const QRect anchor(
+        win->mapFromGlobal(_inputFrame->mapToGlobal(QPoint(0, 0))), _inputFrame->size()
+    );
+    const int w     = _inputFrame->width();
+    const int itemH = _dropList->sizeHintForRow(0);
+    const int count = std::min(_dropList->count(), 6);
+    const int listH = count > 0 ? std::min(kDropMaxH, itemH * count + 4) : 40;
 
-    // Drop below the input, but flip above / clamp on-screen near the viewport
-    // edges (previously this had no bounds check and ran off-screen).
-    QRect bounds;
-    if (QScreen *scr = QGuiApplication::screenAt(anchor.center()))
-        bounds = scr->availableGeometry();
+    // Drop below the input, flipping above / clamping within the window if there
+    // is no room (previously this ran off-screen with no bounds check).
+    const QRect  bounds(0, 0, win->width(), win->height());
     const QPoint pos =
         Ui::placePopup(anchor, QSize(w, listH), bounds, Ui::Edge::Below, 1, Ui::Align::Start);
     _dropdown->setGeometry(QRect(pos, QSize(w, listH)));
@@ -212,16 +258,68 @@ void ConvSelectorWidget::rebuildList(const QString &filter) {
     if (!_session)
         return;
 
+    // A leading "#" scopes to channels, "@" to people/DMs (and is stripped from
+    // the text query); anything else is a plain name search across both.
+    enum class Scope { Any, Channels, People } scope = Scope::Any;
+    QString query                                    = filter;
+    if (query.startsWith('#')) {
+        scope = Scope::Channels;
+        query = query.mid(1);
+    } else if (query.startsWith('@')) {
+        scope = Scope::People;
+        query = query.mid(1);
+    }
+
+    // Lowercased username → user, for resolving group-DM members the API names
+    // only by username (built once; the user list is stable during this call).
+    QHash<QString, const User *> userByName;
+    for (const auto &u : _session->currentUsers())
+        userByName.insert(u.name.toLower(), &u);
+
     for (const auto &conv : _session->currentConversations()) {
+        const bool isChannel =
+            conv.kind == ConvKind::PublicChannel || conv.kind == ConvKind::PrivateChannel;
+        const bool isDm = conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim;
+        if (scope == Scope::Channels && !isChannel)
+            continue;
+        if (scope == Scope::People && !isDm)
+            continue;
+
         QString label;
         if (conv.kind == ConvKind::Im) {
             const auto *u = conv.dmUser ? _session->findUser(*conv.dmUser) : nullptr;
             label         = u ? u->displayName
                               : (conv.dmUser ? _session->userDisplayName(*conv.dmUser) : conv.name);
+        } else if (conv.kind == ConvKind::Mpim) {
+            // Group DM: list the members' names (minus self) instead of the raw
+            // "mpdm-alice--bob-1" id. The API often omits conv.members, so fall
+            // back to parsing the usernames out of the name and resolving them.
+            QStringList  names;
+            const UserId me = _session->meUserId();
+            if (!conv.members.empty()) {
+                for (const auto &uid : conv.members) {
+                    if (!me.value.isEmpty() && uid == me)
+                        continue;
+                    const QString n = _session->userDisplayName(uid);
+                    if (!n.isEmpty())
+                        names.append(n);
+                }
+            } else {
+                for (const QString &uname : parseMpdmUsernames(conv.name)) {
+                    const User *u = userByName.value(uname.toLower(), nullptr);
+                    if (u && !me.value.isEmpty() && u->id == me)
+                        continue;
+                    // Unresolved username still beats the full mpdm id.
+                    names.append(u && !u->displayName.isEmpty() ? u->displayName : uname);
+                }
+            }
+            label = names.isEmpty() ? "#" + conv.name : names.join(QStringLiteral(", "));
         } else {
             label = "#" + conv.name;
         }
-        if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive))
+        // Match the bare name (without the leading '#') so "#gen" finds "#general".
+        const QString hay = label.startsWith('#') ? label.mid(1) : label;
+        if (!query.isEmpty() && !hay.contains(query, Qt::CaseInsensitive))
             continue;
         _dropList->addItem(label);
         _listIds.push_back(conv.id);
@@ -265,10 +363,12 @@ bool ConvSelectorWidget::eventFilter(QObject *, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress && _dropdown && _dropdown->isVisible()) {
         const auto  *me   = static_cast<const QMouseEvent *>(event);
         const QPoint gpos = me->globalPosition().toPoint();
-        if (!_dropdown->geometry().contains(gpos) &&
-            !_inputFrame->geometry().contains(_inputFrame->mapFromGlobal(gpos))) {
+        // _dropdown is a child overlay now, so its geometry() is in window-local
+        // coords — compare in global space via each widget's own mapToGlobal.
+        const QRect  dropG(_dropdown->mapToGlobal(QPoint(0, 0)), _dropdown->size());
+        const QRect  inputG(_inputFrame->mapToGlobal(QPoint(0, 0)), _inputFrame->size());
+        if (!dropG.contains(gpos) && !inputG.contains(gpos))
             closeDropdown();
-        }
     }
     return false;
 }
