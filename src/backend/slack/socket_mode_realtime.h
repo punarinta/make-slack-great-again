@@ -11,6 +11,8 @@
 #include <QUrl>
 #include <vector>
 
+class QNetworkReply;
+
 class QTimer;
 
 // Connects to Slack's Socket Mode over WebSocket.
@@ -52,6 +54,11 @@ public:
     void setConnectionsOpenUrlForTest(const QUrl &url) { _openUrl = url; }
     // Speed up the liveness watchdog so tests don't wait tens of seconds.
     void setWatchdogTimingForTest(int watchdogMs, int staleMs);
+    // Trigger an extra connect attempt, as the watchdog/reachability watcher
+    // would. The single-flight guard must coalesce it while one is already
+    // underway (regression test for overlapping reconnects opening competing
+    // sockets — Slack delivers each event to only one connection).
+    void connectNowForTest() { openAndConnect(); }
 
 private slots:
     void onConnected();
@@ -63,6 +70,10 @@ private:
     void                 connectWs(const QUrl &url);
     void                 ack(const QString &envelopeId);
     void                 scheduleReconnect();
+    // Abort any in-flight handshake and the current socket (signals first, so
+    // their teardown can't re-enter our slots) and clear the single-flight
+    // guard. Shared by stop() and forceReconnect().
+    void                 teardownConnection();
     // Tear down the current socket and reconnect immediately (no backoff). Used
     // by the liveness watchdog when the connection has gone silently dead.
     void                 forceReconnect();
@@ -84,6 +95,16 @@ private:
     std::vector<rpl::event_stream<Event> *> _sinks; // non-owning
     QNetworkAccessManager                  *_nam;
     QWebSocket                             *_ws             = nullptr;
+    // The in-flight apps.connections.open reply, or nullptr. Tracked so a
+    // teardown can abort it and the late `finished` handler can detect that it
+    // was superseded (a stale handshake must never establish a competing socket).
+    QNetworkReply                          *_openReply      = nullptr;
+    // Single-flight guard: true from the moment a connect cycle begins (the
+    // apps.connections.open POST is sent) until the socket is established
+    // (onConnected) or the attempt fails. While set, further connect triggers
+    // are ignored — Slack load-balances each event to exactly ONE of an app's
+    // open sockets, so a second, app-unread socket would silently steal events.
+    bool                                    _connecting     = false;
     bool                                    _started        = false;
     bool                                    _stopped        = false;
     // Set once the first Socket Mode session is live ("hello"). A later "hello"

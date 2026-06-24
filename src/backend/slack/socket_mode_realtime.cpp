@@ -3,6 +3,7 @@
 #include "socket_mode_realtime.h"
 #include "json_mappers.h"
 
+#include <QAbstractSocket>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonArray>
@@ -62,40 +63,82 @@ void SocketModeRealtime::removeSink(rpl::event_stream<Event> *events) {
 
 void SocketModeRealtime::stop() {
     _stopped = true;
+    teardownConnection();
+}
+
+void SocketModeRealtime::teardownConnection() {
+    if (_openReply) {
+        // Detach first: the `finished` handler bails when _openReply no longer
+        // matches the reply it captured, so the aborted handshake can't go on to
+        // open a socket.
+        auto *r    = _openReply;
+        _openReply = nullptr;
+        r->abort();
+    }
     if (_ws) {
+        // Drop the socket's signals before aborting so its `disconnected` /
+        // `errorOccurred` can't re-enter our slots and queue a competing reconnect.
+        disconnect(_ws, nullptr, this, nullptr);
         _ws->abort();
         _ws->deleteLater();
         _ws = nullptr;
     }
+    _connecting = false;
 }
 
 // ── Connection setup ──────────────────────────────────────────────────────────
 
 void SocketModeRealtime::openAndConnect() {
+    // One connection cycle at a time. Reconnect can be triggered concurrently
+    // from several places (a real `disconnected`, the liveness watchdog, the
+    // reachability watcher); without this guard those race into multiple
+    // simultaneous handshakes and thus multiple live Slack sockets. Slack
+    // delivers each event to only ONE of an app's sockets, so the ones the app
+    // isn't actively reading silently swallow a share of events.
+    if (_stopped || _connecting)
+        return;
+    _connecting = true;
+
     QNetworkRequest req(_openUrl);
     req.setRawHeader("Authorization", ("Bearer " + _xappToken).toUtf8());
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    // A hung handshake must not wedge the single-flight guard forever; on
+    // timeout `finished` fires with an error and we back off and retry.
+    req.setTransferTimeout(15000);
 
-    auto *reply = _nam->post(req, QByteArray{});
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+    _openReply = _nam->post(req, QByteArray{});
+    connect(_openReply, &QNetworkReply::finished, this, [this, reply = _openReply] {
         reply->deleteLater();
-        if (_stopped)
+        if (_openReply != reply)
+            return; // superseded by a teardown (stop/forceReconnect) — ignore
+        _openReply = nullptr;
+        if (_stopped) {
+            _connecting = false;
             return;
+        }
 
         const auto obj = QJsonDocument::fromJson(reply->readAll()).object();
         if (!obj.value("ok").toBool()) {
             qWarning() << "Socket Mode: apps.connections.open error:"
                        << obj.value("error").toString();
+            _connecting = false;
             scheduleReconnect();
             return;
         }
         _reconnectMs = 1000; // reset backoff on a successful handshake
+        // _connecting stays set until the socket connects (onConnected) or the
+        // attempt fails (onDisconnected / errorOccurred), so a stray reconnect
+        // trigger in the meantime can't open a second socket.
         connectWs(QUrl(obj.value("url").toString()));
     });
 }
 
 void SocketModeRealtime::connectWs(const QUrl &url) {
     if (_ws) {
+        // Drop the old socket's signals BEFORE aborting so its abort-triggered
+        // `disconnected` / `errorOccurred` can't re-enter our slots and queue a
+        // competing reconnect (matches teardownConnection / forceReconnect).
+        disconnect(_ws, nullptr, this, nullptr);
         _ws->abort();
         _ws->deleteLater();
     }
@@ -103,6 +146,18 @@ void SocketModeRealtime::connectWs(const QUrl &url) {
     connect(_ws, &QWebSocket::connected, this, &SocketModeRealtime::onConnected);
     connect(_ws, &QWebSocket::disconnected, this, &SocketModeRealtime::onDisconnected);
     connect(_ws, &QWebSocket::textMessageReceived, this, &SocketModeRealtime::onTextMessage);
+    // A failed handshake/connect would otherwise leave _connecting stuck true
+    // (QWebSocket emits no `disconnected` for a socket that never connected),
+    // wedging the single-flight guard. Release it and back off.
+    connect(_ws, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        if (!_ws || sender() != _ws)
+            return; // a stale/superseded socket — ignore
+        if (_ws->state() == QAbstractSocket::ConnectedState)
+            return; // transient error on a live socket; `disconnected` owns real drops
+        _connecting = false;
+        if (!_stopped)
+            scheduleReconnect();
+    });
     // A pong is proof the socket is still alive even when the workspace is quiet.
     connect(_ws, &QWebSocket::pong, this, [this](quint64, const QByteArray &) { touchActivity(); });
     _ws->open(url);
@@ -121,14 +176,10 @@ void SocketModeRealtime::forceReconnect() {
     if (_stopped)
         return;
     qWarning() << "Socket Mode: connection went silent — forcing reconnect";
-    if (_ws) {
-        // Drop the old socket's signals so its abort()-triggered `disconnected`
-        // doesn't also queue a backoff reconnect and race this one.
-        disconnect(_ws, nullptr, this, nullptr);
-        _ws->abort();
-        _ws->deleteLater();
-        _ws = nullptr;
-    }
+    // Abort the current socket AND any in-flight handshake, and clear the
+    // single-flight guard, so openAndConnect below starts exactly one fresh
+    // connection rather than racing a half-built one.
+    teardownConnection();
     _reconnectMs = 1000; // fresh start, no inherited backoff
     openAndConnect();
 }
@@ -208,11 +259,15 @@ void SocketModeRealtime::sendPresenceSub() {
 
 void SocketModeRealtime::onConnected() {
     qDebug() << "Socket Mode: connected";
+    _connecting = false; // cycle complete — future reconnects may proceed
     touchActivity();
     sendPresenceSub();
 }
 
 void SocketModeRealtime::onDisconnected() {
+    if (sender() && sender() != _ws)
+        return; // a stale/superseded socket's late disconnect — ignore
+    _connecting = false;
     if (_ws)
         qDebug() << "Socket Mode: disconnected — close code" << _ws->closeCode() << "reason"
                  << _ws->closeReason();

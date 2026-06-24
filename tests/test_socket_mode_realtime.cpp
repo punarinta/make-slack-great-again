@@ -104,6 +104,40 @@ static QByteArray openOk(const QString &wsUrl) {
     return QByteArray(R"({"ok":true,"url":")") + wsUrl.toUtf8() + R"("})";
 }
 
+// ── ConnCountingWsServer ────────────────────────────────────────────────────────
+// A healthy WebSocket server that tracks how many connections it has accepted in
+// total and the high-water mark of simultaneously-open connections. Used to prove
+// the client never holds two sockets to the same app at once (Slack would then
+// load-balance events across them and the client would only read one).
+class ConnCountingWsServer {
+public:
+    ConnCountingWsServer() : _server("test", QWebSocketServer::NonSecureMode) {
+        _server.listen(QHostAddress::LocalHost);
+        QObject::connect(&_server, &QWebSocketServer::newConnection, &_server, [this] {
+            auto *peer = _server.nextPendingConnection();
+            _peers.push_back(peer);
+            ++total;
+            ++live;
+            maxLive = std::max(maxLive, live);
+            QObject::connect(peer, &QWebSocket::disconnected, peer, [this] { --live; });
+        });
+    }
+    ~ConnCountingWsServer() {
+        for (auto *p : _peers)
+            p->deleteLater();
+    }
+
+    QString wsUrl() const { return QString("ws://127.0.0.1:%1/").arg(_server.serverPort()); }
+
+    int total   = 0; // connections accepted over the test's lifetime
+    int live    = 0; // currently open
+    int maxLive = 0; // high-water mark of simultaneously open
+
+private:
+    QWebSocketServer          _server;
+    std::vector<QWebSocket *> _peers;
+};
+
 TEST_CASE("watchdog reconnects when the socket goes silent") {
     DeadPeerWsServer ws;
     FakeHttpServer   http;
@@ -172,6 +206,45 @@ TEST_CASE("a re-established socket fires EvRealtimeReconnected; the first hello 
     rt.stop();
     for (auto *p : peers)
         p->deleteLater();
+}
+
+TEST_CASE("overlapping connect triggers never open competing connections") {
+    // Reconnect can be triggered from several places at once (a real disconnect,
+    // the liveness watchdog, the reachability watcher). Each extra trigger that
+    // races an in-flight handshake used to start its own apps.connections.open
+    // and thus its own WebSocket — leaving the app with multiple live sockets.
+    // Slack delivers each event to only ONE of an app's sockets, so the ones the
+    // app isn't actively reading silently swallow a share of messages (the user
+    // sees "1, 3, 5" until a REST history refetch heals the gap). The
+    // single-flight guard must coalesce the extra triggers into one connection.
+    ConnCountingWsServer ws;
+    FakeHttpServer       http;
+    for (int i = 0; i < 6; ++i)
+        http.enqueue(openOk(ws.wsUrl()));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+    rt.start();
+    // Two more reconnect triggers fire while the initial handshake is still in
+    // flight (the POST reply hasn't been processed yet — no event loop has run).
+    rt.connectNowForTest();
+    rt.connectNowForTest();
+
+    REQUIRE(waitFor([&] { return ws.total >= 1; }));
+    // Give any erroneously-queued extra handshakes time to resolve into sockets.
+    waitFor([] { return false; }, 300);
+
+    int opens = 0;
+    for (const QByteArray &p : http.requestPaths)
+        if (p.endsWith("apps.connections.open"))
+            ++opens;
+
+    // Exactly one handshake, one socket ever, and never two at once.
+    CHECK(opens == 1);
+    CHECK(ws.total == 1);
+    CHECK(ws.maxLive == 1);
+
+    rt.stop();
 }
 
 TEST_CASE("watchdog leaves a healthy idle connection alone") {
