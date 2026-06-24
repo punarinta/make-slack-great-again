@@ -73,8 +73,20 @@ static const Conversation kDm = {
     .kind   = ConvKind::Im,
     .dmUser = UserId{"U2"},
 };
-static const User kAlice = {UserId{"U1"}, "alice", "Alice Wonder", {}, false, false, false};
-static const User kBob   = {UserId{"U2"}, "bob", "Bob Builder", {}, false, true, false};
+static const User kAlice = {
+    .id          = UserId{"U1"},
+    .name        = "alice",
+    .displayName = "Alice Wonder",
+    .isBot       = false,
+    .isActive    = false
+};
+static const User kBob = {
+    .id          = UserId{"U2"},
+    .name        = "bob",
+    .displayName = "Bob Builder",
+    .isBot       = false,
+    .isActive    = true
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

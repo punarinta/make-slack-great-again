@@ -135,8 +135,14 @@ struct Fixture {
         stub         = backend.get();
         stub->_meId  = UserId{"U1"};
         stub->_convs = std::vector<Conversation>{kConv};
-        stub->_users = std::vector<User>{{UserId{"U1"}, "me", "Me", {}, false, true, false}};
-        session      = std::make_unique<Session>(std::move(backend), "T_MSGLIST_TEST");
+        stub->_users = std::vector<User>{
+            {.id          = UserId{"U1"},
+             .name        = "me",
+             .displayName = "Me",
+             .isBot       = false,
+             .isActive    = true}
+        };
+        session = std::make_unique<Session>(std::move(backend), "T_MSGLIST_TEST");
         session->start();
     }
     ~Fixture() {

@@ -103,8 +103,20 @@ struct StubBackend : Backend {
 
 // ── Test data ─────────────────────────────────────────────────────────────────
 
-static const User kAlice  = {UserId{"U1"}, "alice", "Alice Wonder", {}, false, true, false};
-static const User kDmUser = {UserId{"U_DM"}, "dmuser", "DM Person", {}, false, false, false};
+static const User kAlice = {
+    .id          = UserId{"U1"},
+    .name        = "alice",
+    .displayName = "Alice Wonder",
+    .isBot       = false,
+    .isActive    = true
+};
+static const User kDmUser = {
+    .id          = UserId{"U_DM"},
+    .name        = "dmuser",
+    .displayName = "DM Person",
+    .isBot       = false,
+    .isActive    = false
+};
 static const Conversation kGeneral = {
     .id       = ConversationId{"C1"},
     .kind     = ConvKind::PublicChannel,

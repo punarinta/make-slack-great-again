@@ -434,51 +434,51 @@ struct StubBackend : Backend {
 // ── SessionFixture ────────────────────────────────────────────────────────────
 
 static const User kAlice = User{
-    UserId{"U1"},
-    "alice",
-    "Alice Wonder",
-    "https://av/alice.png",
-    /*isBot=*/false,
-    /*isActive=*/false,
-    /*isDeactivated=*/false
+    .id            = UserId{"U1"},
+    .name          = "alice",
+    .displayName   = "Alice Wonder",
+    .avatarUrl     = "https://av/alice.png",
+    .isBot         = false,
+    .isActive      = false,
+    .isDeactivated = false,
 };
 static const User kBob = User{
-    UserId{"U2"},
-    "bob",
-    "Bob Builder",
-    "",
-    /*isBot=*/false,
-    /*isActive=*/true,
-    /*isDeactivated=*/false
+    .id            = UserId{"U2"},
+    .name          = "bob",
+    .displayName   = "Bob Builder",
+    .avatarUrl     = "",
+    .isBot         = false,
+    .isActive      = true,
+    .isDeactivated = false,
 };
 // Counterparts that users.getPresence cannot answer for — querying them returns
 // internal_error, so requestPresence must skip them.
 static const User kBotUser = User{
-    UserId{"B1"},
-    "helperbot",
-    "Helper Bot",
-    "",
-    /*isBot=*/true,
-    /*isActive=*/false,
-    /*isDeactivated=*/false
+    .id            = UserId{"B1"},
+    .name          = "helperbot",
+    .displayName   = "Helper Bot",
+    .avatarUrl     = "",
+    .isBot         = true,
+    .isActive      = false,
+    .isDeactivated = false,
 };
 static const User kSlackbot = User{
-    UserId{"USLACKBOT"},
-    "slackbot",
-    "Slackbot",
-    "",
-    /*isBot=*/false,
-    /*isActive=*/false,
-    /*isDeactivated=*/false // Slack reports is_bot=false for Slackbot
+    .id            = UserId{"USLACKBOT"},
+    .name          = "slackbot",
+    .displayName   = "Slackbot",
+    .avatarUrl     = "",
+    .isBot         = false,
+    .isActive      = false,
+    .isDeactivated = false, // Slack reports is_bot=false for Slackbot
 };
 static const User kGone = User{
-    UserId{"U3"},
-    "ghost",
-    "Departed Person",
-    "",
-    /*isBot=*/false,
-    /*isActive=*/false,
-    /*isDeactivated=*/true
+    .id            = UserId{"U3"},
+    .name          = "ghost",
+    .displayName   = "Departed Person",
+    .avatarUrl     = "",
+    .isBot         = false,
+    .isActive      = false,
+    .isDeactivated = true,
 };
 static const Conversation kGeneral = Conversation{
     .id       = ConversationId{"C1"},

@@ -56,10 +56,26 @@ FakeBackend::FakeBackend() : _authState(AuthState::LoggedIn) {
     };
 
     _users = std::vector<User>{
-        {UserId{"U001"}, "bob", "Bob Builder", "", false, true},
-        {UserId{"U002"}, "alice", "Alice Wonder", "", false, false},
-        {UserId{"U003"}, "bot", "HelperBot", "", true, false},
-        {UserId{"U004"}, "charlie", "Charlie Dev", "", false, false},
+        {.id          = UserId{"U001"},
+         .name        = "bob",
+         .displayName = "Bob Builder",
+         .isBot       = false,
+         .isActive    = true},
+        {.id          = UserId{"U002"},
+         .name        = "alice",
+         .displayName = "Alice Wonder",
+         .isBot       = false,
+         .isActive    = false},
+        {.id          = UserId{"U003"},
+         .name        = "bot",
+         .displayName = "HelperBot",
+         .isBot       = true,
+         .isActive    = false},
+        {.id          = UserId{"U004"},
+         .name        = "charlie",
+         .displayName = "Charlie Dev",
+         .isBot       = false,
+         .isActive    = false},
     };
 
     _history["C001"] = {
