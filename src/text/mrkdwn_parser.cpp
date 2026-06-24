@@ -145,10 +145,26 @@ static QString formatDateToken(qint64 secs, const QString &fmt) {
     return out;
 }
 
-TextWithEntities parse(const QString &mrkdwn) {
+// Recursion is bounded two ways. kMaxParseDepth is a hard backstop so crafted,
+// deeply-nested inline marks can neither blow the stack nor the layout. inQuote
+// caps blockquotes at a single level: once inside a quote, a further leading '>'
+// is literal text, not another nested quote. This matches Slack (which renders
+// only one quote level) and, crucially, avoids the layout pathology — every
+// blockquote becomes a nested <table> in the rendered HTML (message_render.cpp),
+// and QTextDocumentLayout's recursive frame layout gets catastrophically slow on
+// deeply nested tables. A message of many stacked '>' marks once froze the whole
+// UI here, deep inside QTextDocument::size() (caught by the hang watchdog).
+static constexpr int kMaxParseDepth = 32;
+
+static TextWithEntities parseImpl(const QString &mrkdwn, int depth, bool inQuote) {
     Builder   b;
     int       i = 0;
     const int n = mrkdwn.size();
+
+    if (depth > kMaxParseDepth) {
+        b.appendPlain(decodeEntities(mrkdwn));
+        return TextWithEntities{b.text, b.entities};
+    }
 
     while (i < n) {
         QChar c = mrkdwn[i];
@@ -188,7 +204,10 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '*') {
             int close = findClose(mrkdwn, i + 1, '*');
             if (close != -1) {
-                b.appendNested(EntityType::Bold, parse(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
+                b.appendNested(
+                    EntityType::Bold,
+                    parseImpl(mrkdwn.mid(i + 1, close - 1 - (i + 1)), depth + 1, inQuote)
+                );
                 i = close;
                 continue;
             }
@@ -199,7 +218,8 @@ TextWithEntities parse(const QString &mrkdwn) {
             int close = findDoubleClose(mrkdwn, i + 2, '_');
             if (close != -1) {
                 b.appendNested(
-                    EntityType::Underline, parse(mrkdwn.mid(i + 2, close - 2 - (i + 2)))
+                    EntityType::Underline,
+                    parseImpl(mrkdwn.mid(i + 2, close - 2 - (i + 2)), depth + 1, inQuote)
                 );
                 i = close;
                 continue;
@@ -210,7 +230,10 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '_') {
             int close = findClose(mrkdwn, i + 1, '_');
             if (close != -1) {
-                b.appendNested(EntityType::Italic, parse(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
+                b.appendNested(
+                    EntityType::Italic,
+                    parseImpl(mrkdwn.mid(i + 1, close - 1 - (i + 1)), depth + 1, inQuote)
+                );
                 i = close;
                 continue;
             }
@@ -220,7 +243,10 @@ TextWithEntities parse(const QString &mrkdwn) {
         if (c == '~') {
             int close = findClose(mrkdwn, i + 1, '~');
             if (close != -1) {
-                b.appendNested(EntityType::Strike, parse(mrkdwn.mid(i + 1, close - 1 - (i + 1))));
+                b.appendNested(
+                    EntityType::Strike,
+                    parseImpl(mrkdwn.mid(i + 1, close - 1 - (i + 1)), depth + 1, inQuote)
+                );
                 i = close;
                 continue;
             }
@@ -336,7 +362,7 @@ TextWithEntities parse(const QString &mrkdwn) {
                 return 1;
             return QStringView{mrkdwn}.mid(pos, 4) == u"&gt;" ? 4 : 0;
         };
-        if ((i == 0 || mrkdwn[i - 1] == '\n') && quoteMarkLen(i) > 0) {
+        if (!inQuote && (i == 0 || mrkdwn[i - 1] == '\n') && quoteMarkLen(i) > 0) {
             // Drop all preceding \n: the block-level table element provides its own line break.
             while (!b.text.isEmpty() && b.text.back() == '\n')
                 b.text.chop(1);
@@ -358,7 +384,7 @@ TextWithEntities parse(const QString &mrkdwn) {
                 if (quoteMarkLen(i) == 0)
                     break;
             }
-            b.appendNested(EntityType::Blockquote, parse(quoted));
+            b.appendNested(EntityType::Blockquote, parseImpl(quoted, depth + 1, true));
             b.appendPlain('\n'); // ensure visual line break after blockquote
             continue;
         }
@@ -387,6 +413,10 @@ TextWithEntities parse(const QString &mrkdwn) {
     }
 
     return TextWithEntities{b.text, b.entities};
+}
+
+TextWithEntities parse(const QString &mrkdwn) {
+    return parseImpl(mrkdwn, /*depth=*/0, /*inQuote=*/false);
 }
 
 } // namespace MrkdwnParser

@@ -218,6 +218,21 @@ TEST_CASE("API-escaped &gt; at line start is a blockquote", "[mrkdwn]") {
     CHECK(r.entities[0].type == EntityType::Blockquote);
 }
 
+TEST_CASE("stacked blockquote marks don't nest (layout-hang guard)", "[mrkdwn]") {
+    // Real Slack renders a single quote level. Each blockquote becomes a nested
+    // <table> in the rendered HTML, and QTextDocumentLayout's recursive frame
+    // layout gets catastrophically slow on deeply nested tables — a message of
+    // many stacked '>' marks once froze the whole UI inside QTextDocument::size()
+    // (caught by the hang watchdog). The parser must cap quote nesting at one.
+    const QString deep   = QString(64, '>') + QStringLiteral(" hi");
+    auto          r      = MrkdwnParser::parse(deep);
+    int           quotes = 0;
+    for (const auto &e : r.entities)
+        if (e.type == EntityType::Blockquote)
+            ++quotes;
+    CHECK(quotes == 1);
+}
+
 // {date_num} of the test timestamp in the machine's local time zone.
 static QString localDateNum(qint64 secs) {
     return QDateTime::fromSecsSinceEpoch(secs).date().toString(Qt::ISODate);

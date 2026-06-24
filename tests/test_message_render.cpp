@@ -116,6 +116,22 @@ TEST_CASE("toHtml without session leaves custom emoji as text", "[render][emoji]
     CHECK(!html.contains("<img"));
 }
 
+// ── toHtml blockquote nesting cap ───────────────────────────────────────────
+
+TEST_CASE("toHtml bounds nested blockquote tables (layout-hang guard)", "[render][quote]") {
+    // A deep email reply chain (the IMAP backend builds one Blockquote entity per
+    // '>' quote level) once produced 15 nested <table>s and hung QTextDocument
+    // layout on the main thread (caught by the hang watchdog). toHtml must cap
+    // nested-table emission no matter how deep the entities nest.
+    TextWithEntities twe;
+    twe.text = QStringLiteral("hello");
+    for (int i = 0; i < 30; ++i)
+        twe.entities.push_back(TextEntity{EntityType::Blockquote, 0, 5, QString()});
+    const QString html = MsgRender::toHtml(twe, nullptr);
+    CHECK(html.count("<table") <= 6); // bounded (cap 4 → ≤5 tables) regardless of 30-deep nesting
+    CHECK(html.contains("hello"));    // content preserved
+}
+
 // ── toHtml code blocks ────────────────────────────────────────────────────────
 
 TEST_CASE("toHtml renders ``` block as one full-width table, not <pre>", "[render][pre]") {

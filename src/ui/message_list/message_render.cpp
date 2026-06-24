@@ -291,6 +291,18 @@ static QString escapeAndBr(const QString &s) {
 // [start,end) of `text`) plus the plain-text gaps between them. Container
 // entities (bold, links, quotes…) recurse into their children, so nested
 // spans like *<url|label>* render as a link inside <b>.
+// Beyond this many nested blockquote levels we stop emitting the nested <table>
+// wrapper and render the content inline. QTextDocumentLayout lays tables out with
+// recursive frame layout whose cost is ~exponential in nesting depth: a quoted
+// email reply chain (the IMAP backend builds one Blockquote entity per '>' level)
+// measured ~16x per +4 levels — depth 16 took ~7.7 s in a plain Debug build (far
+// worse and effectively forever under ASan) and froze the whole UI inside
+// QTextDocument::size(), caught by the hang watchdog. Capping at 4 levels (≤5
+// nested tables) keeps that same message at ~60 ms. A handful of quote bars is all
+// that's ever readable anyway; deeper levels keep their text, just without another
+// bar.
+static constexpr int kMaxQuoteRenderDepth = 4;
+
 static QString renderRange(
     const QString                       &text,
     int                                  start,
@@ -298,7 +310,8 @@ static QString renderRange(
     const std::vector<int>              &nodes,
     const std::vector<TextEntity>       &ents,
     const std::vector<std::vector<int>> &kids,
-    const Session                       *session
+    const Session                       *session,
+    int                                  quoteDepth = 0
 ) {
     QString html;
     int     pos = start;
@@ -310,10 +323,15 @@ static QString renderRange(
         const bool container = e.type == EntityType::Bold || e.type == EntityType::Italic ||
                                e.type == EntityType::Underline || e.type == EntityType::Strike ||
                                e.type == EntityType::Link || e.type == EntityType::Blockquote;
+        // Only blockquotes deepen the table-nesting budget (other containers are
+        // cheap inline spans/anchors).
+        const int     childQuoteDepth = quoteDepth + (e.type == EntityType::Blockquote ? 1 : 0);
         const QString inner =
-            container
-                ? renderRange(text, e.offset, e.offset + e.length, kids[idx], ents, kids, session)
-                : rawInner.toHtmlEscaped();
+            container ? renderRange(
+                            text, e.offset, e.offset + e.length, kids[idx], ents, kids, session,
+                            childQuoteDepth
+                        )
+                      : rawInner.toHtmlEscaped();
         switch (e.type) {
         case EntityType::Bold:
             html += "<b>" + inner + "</b>";
@@ -352,14 +370,23 @@ static QString renderRange(
             break;
         }
         case EntityType::Blockquote:
-            // Use a table so the gray left bar renders reliably in Qt's HTML subset.
-            html += "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:4px 0'>"
+            // Past the nesting cap, drop the <table> wrapper (see kMaxQuoteRenderDepth)
+            // and render the content inline so a deep email reply chain can't make
+            // QTextDocument layout hang. quoteDepth is this quote's own level (its
+            // inner content was already rendered at quoteDepth+1).
+            if (quoteDepth > kMaxQuoteRenderDepth) {
+                html += inner;
+            } else {
+                // Use a table so the gray left bar renders reliably in Qt's HTML subset.
+                html +=
+                    "<table cellspacing='0' cellpadding='0' style='border-spacing:0;margin:4px 0'>"
                     "<tr>"
                     "<td width='3' bgcolor='" +
                     Th::c().message.codeBlockBorder.name() +
                     "' style='padding:0;border-radius:2px'></td>"
                     "<td style='padding:2px 0 2px 10px;color:" +
                     Th::qss(Th::c().message.codeText) + "'>" + inner + "</td></tr></table>";
+            }
             break;
         case EntityType::Link:
             html += "<a href='" + e.data.toHtmlEscaped() +
