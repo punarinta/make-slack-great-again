@@ -496,6 +496,29 @@ void MessageListWidget::paintMessageHeader(
         tsX = bRect.right() + 8;
     }
 
+    // Slack-style "EXT" tag for external (Slack Connect) users
+    if (user && user->isExternal) {
+        QFont badgeFont = QApplication::font();
+        badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.62);
+        badgeFont.setBold(true);
+        const QFontMetrics bFm(badgeFont);
+        const QString      label = tr("EXT");
+        const int          bH    = 14;
+        const QRect        bRect(
+            tsX - 2, contTop + (nameFm.height() - bH) / 2, bFm.horizontalAdvance(label) + 8, bH
+        );
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().message.extBadgeBg);
+        p.drawRoundedRect(bRect, 2, 2);
+        p.setFont(badgeFont);
+        p.setPen(Th::c().message.extBadgeText);
+        p.drawText(bRect, Qt::AlignCenter, label);
+        p.restore();
+        tsX = bRect.right() + 8;
+    }
+
     QFont tsFont = QApplication::font();
     tsFont.setPointSizeF(tsFont.pointSizeF() * 0.85);
     p.setFont(tsFont);

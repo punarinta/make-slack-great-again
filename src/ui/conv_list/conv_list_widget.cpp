@@ -194,6 +194,7 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
                 .dndEnabled    = u.dndEnabled,
                 // System accounts may report is_bot=false; the backend knows them.
                 .isBot         = u.isBot || (_session && _session->isSyntheticUser(u.id)),
+                .isExternal    = u.isExternal,
                 .statusEmoji   = u.statusEmoji,
             }
         );
@@ -1011,7 +1012,17 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
         const int nameX = leftX + kAvatarSize + kAvatarGap;
 
-        int     suffixW = 0;
+        const bool isExternal = (infoIt != _userInfos.constEnd()) && infoIt->isExternal;
+        QFont      extFont    = font;
+        extFont.setPointSizeF(extFont.pointSizeF() * 0.62);
+        extFont.setBold(true);
+        const QFontMetrics extFm(extFont);
+        const QString      extLabel = tr("EXT");
+        const int          extPillW = extFm.horizontalAdvance(extLabel) + 8;
+
+        int suffixW = 0;
+        if (isExternal)
+            suffixW += extPillW + 6;
         QString emojiGlyph;
         if (!emoji.isEmpty() && !infoIt->statusEmoji.isEmpty()) {
             emojiGlyph = emoji;
@@ -1036,6 +1047,23 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.setPen(textColor);
         p.drawText(nameX, textY, name);
         int curX = nameX + fm.horizontalAdvance(name);
+
+        if (isExternal) {
+            curX += 6;
+            const int   bH = 14;
+            const QRect bRect(curX, y + (kRowH - bH) / 2, extPillW, bH);
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(Th::c().nav.extBadgeBg);
+            p.drawRoundedRect(bRect, 2, 2);
+            p.setFont(extFont);
+            p.setPen(Th::c().nav.extBadgeText);
+            p.drawText(bRect, Qt::AlignCenter, extLabel);
+            p.restore();
+            p.setFont(font);
+            curX = bRect.right();
+        }
 
         if (!emojiGlyph.isEmpty()) {
             curX += 4;

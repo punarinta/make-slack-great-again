@@ -379,8 +379,11 @@ rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
             "users.list",
             "members",
             QUrlQuery{},
-            [accum](QJsonArray page) {
+            [accum, myTeam = _teamId](QJsonArray page) {
                 auto batch = JsonMappers::toUsers(page);
+                for (auto &u : batch)
+                    u.isExternal = u.isExternal ||
+                                   (!u.teamId.isEmpty() && !myTeam.isEmpty() && u.teamId != myTeam);
                 accum->insert(accum->end(), batch.begin(), batch.end());
             },
             [consumer, accum]() mutable {
@@ -476,8 +479,11 @@ rpl::producer<User> PublicBackend::loadUser(UserId userId) {
         _api->call(
             "users.info",
             params,
-            [consumer](QJsonObject resp) mutable {
-                consumer.put_next(JsonMappers::toUser(resp.value("user").toObject()));
+            [consumer, myTeam = _teamId](QJsonObject resp) mutable {
+                auto u       = JsonMappers::toUser(resp.value("user").toObject());
+                u.isExternal = u.isExternal ||
+                               (!u.teamId.isEmpty() && !myTeam.isEmpty() && u.teamId != myTeam);
+                consumer.put_next(std::move(u));
                 consumer.put_done();
             },
             [consumer](QString err) mutable {

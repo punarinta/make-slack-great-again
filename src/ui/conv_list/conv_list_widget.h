@@ -24,6 +24,7 @@ struct UserInfo {
     bool    isActive      = false;
     bool    dndEnabled    = false;
     bool    isBot         = false; // bot/app user (incl. Slackbot)
+    bool    isExternal    = false; // Slack Connect external member ("EXT" tag)
     QString statusEmoji;           // resolved emoji name without colons, e.g. "palm_tree"
 };
 

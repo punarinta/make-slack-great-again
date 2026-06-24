@@ -269,6 +269,7 @@ static QJsonObject toJson(const User &u) {
     o["dn"] = u.displayName;
     o["av"] = u.avatarUrl;
     o["bo"] = u.isBot;
+    o["ex"] = u.isExternal;
     o["ac"] = u.isActive;
     o["de"] = u.isDeactivated;
     o["ad"] = u.isAdmin;
@@ -287,6 +288,7 @@ static User userFromJson(const QJsonObject &o) {
     u.displayName   = o["dn"].toString();
     u.avatarUrl     = o["av"].toString();
     u.isBot         = o["bo"].toBool();
+    u.isExternal    = o["ex"].toBool();
     u.isActive      = o["ac"].toBool();
     u.isDeactivated = o["de"].toBool();
     u.isAdmin       = o["ad"].toBool();

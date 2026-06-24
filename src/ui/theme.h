@@ -28,6 +28,8 @@ struct NavColors {
     QColor itemTextDim;      // subdued text (channel names, inactive)
     QColor scrollThumb;      // scrollbar thumb on dark panel
     QColor scrollThumbHover;
+    QColor extBadgeBg;   // "EXT" tag background on the dark sidebar
+    QColor extBadgeText; // "EXT" tag text on the dark sidebar
     // Slack-style sidebar gradient endpoints (vertical, lighter at top). The
     // workspace rail and the conversation list share one continuous gradient
     // anchored to the window; see Th::navGradient(). Derived from bg/primary.
@@ -104,6 +106,8 @@ struct MessageColors {
     QColor replyLink;           // "N replies" link color
     QColor appBadgeBg;          // "APP" tag background next to bot names
     QColor appBadgeText;        // "APP" tag text
+    QColor extBadgeBg;          // "EXT" tag background next to external (Slack Connect) users
+    QColor extBadgeText;        // "EXT" tag text
     int    avatarHslSaturation; // generated avatar HSL saturation
     int    avatarHslLightness;
 };

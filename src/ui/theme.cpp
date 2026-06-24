@@ -83,6 +83,8 @@ const Theme kAubergineBase = {
             .itemTextDim      = QColor("#CFC3CF"),
             .scrollThumb      = QColor(255, 255, 255, 100),
             .scrollThumbHover = QColor(255, 255, 255, 160),
+            .extBadgeBg       = QColor(230, 201, 138, 38),
+            .extBadgeText     = QColor("#E6C98A"),
         },
     .surface =
         {
@@ -152,6 +154,8 @@ const Theme kAubergineBase = {
             .replyLink              = QColor("#1164A3"),
             .appBadgeBg             = QColor(29, 28, 29, 33),
             .appBadgeText           = QColor("#616061"),
+            .extBadgeBg             = QColor(198, 146, 10, 38),
+            .extBadgeText           = QColor("#8A6508"),
             .avatarHslSaturation    = 130,
             .avatarHslLightness     = 100,
         },

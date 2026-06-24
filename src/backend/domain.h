@@ -158,7 +158,10 @@ struct User {
     QString name;
     QString displayName;
     QString avatarUrl;
-    bool    isBot         = false;
+    bool    isBot      = false;
+    bool    isExternal = false; // Slack Connect external member — shows "EXT" tag. Set when
+                                // is_stranger is true or teamId differs from our workspace team.
+    QString teamId;             // home team/workspace (Slack team_id); differs for external users
     bool    isActive      = false; // presence; polled on public path
     bool    isDeactivated = false; // Slack "deleted" flag
     bool    isAdmin       = false; // is_admin || is_owner from users.list
