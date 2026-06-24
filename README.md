@@ -2,6 +2,10 @@
 
 A fast native Slack client built in C++ with Qt6.
 
+## About
+
+msga is primarily a Slack client — that's its main focus and the most complete, battle-tested backend. It also supports other messaging platforms in **experimental mode**: Microsoft Teams and email. The same Slack-like UI is used for all of them, so channels, direct messages and conversations from every connected service share one consistent interface and live side by side in the same workspace rail.
+
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)
 ![C++](https://img.shields.io/badge/language-C%2B%2B20-00599C?logo=cplusplus&logoColor=white)
 ![Qt](https://img.shields.io/badge/Qt-6-41CD52?logo=qt&logoColor=white)
@@ -34,7 +38,7 @@ The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSI
 
 ### Step 2. Configure build environment
 
-> **Prerequisites:** CMake ≥ 3.24, Qt 6.x dev packages, a C++20 compiler (GCC 12+ / Clang 14+ / MSVC 2022+)
+> **Prerequisites:** CMake ≥ 3.24, Qt 6.1+ dev packages, a C++20 compiler (GCC 12+ / Clang 14+ / MSVC 2022+)
 
 ```sh
 ./scripts/configure-linux.sh    # for Linux
