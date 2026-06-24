@@ -340,6 +340,31 @@ if(MSGA_ASAN)
     target_link_options(msga PRIVATE -fsanitize=address)
 endif()
 
+# Main-thread hang watchdog (src/app/crash_handler.cpp + the heartbeat in
+# src/main.cpp). DEV-ONLY: compiled into the Debug builds produced by
+# scripts/build.sh and scripts/run-asan.sh, and never into the shipped packages
+# (every release-*.sh configures -DCMAKE_BUILD_TYPE=Release). It dumps the stuck
+# main thread's backtrace when the GUI event loop stalls — a debugging aid, not
+# something to ship. Linux-only: it relies on POSIX per-process timers
+# (timer_create) targeted at a thread via Linux's SIGEV_THREAD_ID, which macOS
+# does not provide.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR MSGA_ASAN))
+    target_compile_definitions(msga PRIVATE MSGA_HANG_WATCHDOG)
+    # SIGEV_THREAD_ID + the sigev_notify_thread_id member are exposed only under
+    # _GNU_SOURCE, which crash_handler.cpp #defines before any include. The
+    # force-included PCH (-include cmake_pch.hxx) would pull in <signal.h> ahead
+    # of that define and defeat it, so skip the PCH for just this one file —
+    # keeping _GNU_SOURCE scoped to this TU instead of the whole target.
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/app/crash_handler.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    # timer_create lives in librt on glibc < 2.34; in libc on newer glibc and on
+    # musl. Link librt only where it still exists as a separate library.
+    find_library(MSGA_RT_LIB rt)
+    if(MSGA_RT_LIB)
+        target_link_libraries(msga PRIVATE ${MSGA_RT_LIB})
+    endif()
+endif()
+
 if(Qt6LinguistTools_FOUND)
     qt_add_translations(msga
         TS_FILES translations/msga_en.ts translations/msga_ja.ts

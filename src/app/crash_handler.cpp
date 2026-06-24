@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
+
+// The hang watchdog needs SIGEV_THREAD_ID and the sigev_notify_thread_id member
+// macro (glibc gates both behind _GNU_SOURCE; musl exposes them under it too) to
+// target the timer signal at the main thread. Must precede every system header.
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+#endif
+
 #include "app/crash_handler.h"
 
 #include "app_credentials.h"
@@ -22,6 +32,10 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+#include <sys/syscall.h> // SYS_gettid
+#include <time.h>        // timer_create / timer_settime (POSIX per-process timers)
+#endif
 // backtrace()/backtrace_symbols_fd() exist on glibc and macOS but not musl
 // (the static Linux release builds on Alpine). There the libgcc unwinder
 // walks the stack instead and frames print as raw addresses — resolvable
@@ -163,6 +177,108 @@ void fatalSignal(int sig, siginfo_t *info, void *) {
     }
     ::raise(sig); // default action now: terminate + core dump, as before
 }
+
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+// ── Main-thread hang watchdog ───────────────────────────────────────────────
+// A POSIX per-process timer, re-armed to a future deadline by the main thread on
+// every heartbeat(). While the GUI event loop keeps pumping, the deadline is
+// pushed out before it can elapse, so the timer never fires — no idle wakeups,
+// no signals delivered on the healthy path. If the main thread wedges (infinite
+// loop or deadlock) and stops calling heartbeat(), the deadline elapses and the
+// kernel delivers the timer signal *to the main thread itself* (SIGEV_THREAD_ID):
+// the handler then runs on the stuck stack, so the backtrace points straight at
+// the hang. Same async-signal-safe discipline and capture path as the crash
+// handler above. Dev builds only (see MSGA_HANG_WATCHDOG in CMakeLists.txt).
+
+timer_t               gWdTimer;
+bool                  gWdArmed     = false;
+bool                  gWdAbort     = false;
+long                  gWdTimeoutMs = 5000;
+volatile sig_atomic_t gWdReported  = 0; // at most one report per stall episode
+
+// glibc/musl already advance SIGRTMIN past the RT signals they reserve
+// internally; +3 leaves further margin and stays well below SIGRTMAX.
+int watchdogSig() {
+    return SIGRTMIN + 3;
+}
+
+void wdArm(long ms) {
+    struct itimerspec its{}; // it_interval left zero → one-shot
+    its.it_value.tv_sec  = ms / 1000;
+    its.it_value.tv_nsec = (ms % 1000) * 1000000L;
+    ::timer_settime(gWdTimer, 0, &its, nullptr);
+}
+
+void watchdogExpired(int, siginfo_t *, void *) {
+    if (gWdReported)
+        return; // already dumped this stall; heartbeat() clears it on recovery
+    gWdReported = 1;
+
+    void     *frames[kMaxFrames];
+    const int depth = captureFrames(frames, kMaxFrames);
+
+    const int logFd = ::open(gLogPath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const int fds[] = {STDERR_FILENO, logFd};
+    for (const int fd : fds) {
+        if (fd < 0)
+            continue;
+        writeStr(fd, gHeader);
+        writeStr(fd, "main thread unresponsive (hang watchdog)\nstack:\n");
+        writeFrames(fd, frames, depth);
+        writeStr(fd, "==== end of hang report ====\n");
+    }
+    if (logFd >= 0) {
+        ::close(logFd);
+        writeStr(STDERR_FILENO, gLogNote);
+    }
+    // Default: return and let the main thread carry on — a slow-but-finite
+    // operation finishes, a true infinite loop simply resumes (now on record).
+    // MSGA_WATCHDOG_ABORT=1 instead turns a confirmed hang into a clean abort
+    // (core dump via the crash handler) rather than leaving a dead window up.
+    if (gWdAbort)
+        ::abort();
+}
+
+void startWatchdogImpl(int timeoutMs) {
+    if (qEnvironmentVariableIntValue("MSGA_WATCHDOG_DISABLE") == 1)
+        return; // e.g. under a debugger, where a breakpoint freezes main for minutes
+    gWdTimeoutMs = timeoutMs > 0 ? timeoutMs : 5000;
+    gWdAbort     = qEnvironmentVariableIntValue("MSGA_WATCHDOG_ABORT") == 1;
+
+    const int        sig = watchdogSig();
+    struct sigaction sa{};
+    sa.sa_sigaction = watchdogExpired;
+    sa.sa_flags     = SA_SIGINFO | SA_ONSTACK | SA_RESTART; // reuse install()'s altstack
+    sigemptyset(&sa.sa_mask);
+    if (::sigaction(sig, &sa, nullptr) != 0)
+        return;
+
+    struct sigevent sev{};
+    sev.sigev_notify = SIGEV_THREAD_ID; // deliver to one specific thread (the main one)
+    sev.sigev_signo  = sig;
+    // The LWP-id field has no portable accessor: musl exposes the POSIX-style
+    // `sigev_notify_thread_id` macro, while glibc only names the internal union
+    // member `_sigev_un._tid` (it defines macros for the _function/_attributes
+    // members but not this one). Pick whichever the libc provides.
+#if defined(sigev_notify_thread_id)
+    sev.sigev_notify_thread_id = static_cast<pid_t>(::syscall(SYS_gettid));
+#else
+    sev._sigev_un._tid = static_cast<pid_t>(::syscall(SYS_gettid));
+#endif
+    if (::timer_create(CLOCK_MONOTONIC, &sev, &gWdTimer) != 0)
+        return;
+
+    gWdArmed = true;
+    wdArm(gWdTimeoutMs); // open the first window now (covers startup too)
+}
+
+void heartbeatImpl() {
+    if (!gWdArmed)
+        return;
+    gWdReported = 0;     // main thread is alive → ready to report the next stall
+    wdArm(gWdTimeoutMs); // push the deadline out
+}
+#endif // MSGA_HANG_WATCHDOG && __linux__
 
 #else // Q_OS_WIN
 
@@ -311,6 +427,20 @@ void install() {
     std::snprintf(
         gLogNote, sizeof(gLogNote), "crash report appended to %s\n", noteUtf8.constData()
     );
+}
+
+void startWatchdog(int timeoutMs) {
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+    startWatchdogImpl(timeoutMs);
+#else
+    (void)timeoutMs;
+#endif
+}
+
+void heartbeat() {
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+    heartbeatImpl();
+#endif
 }
 
 } // namespace CrashHandler

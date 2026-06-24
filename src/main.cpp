@@ -19,6 +19,7 @@
 #include <QLocale>
 #include <QProcess>
 #include <QSettings>
+#include <QTimer>
 #include <QTranslator>
 #include <QUrlQuery>
 
@@ -151,6 +152,19 @@ int main(int argc, char *argv[]) {
     // A crash now prints a stack trace (stderr + crash.log in AppDataLocation)
     // instead of a bare "Segmentation fault", then still core-dumps as before.
     CrashHandler::install();
+#if defined(MSGA_HANG_WATCHDOG)
+    // Dev builds only: arm the main-thread hang watchdog. If the GUI event loop
+    // stalls past the threshold, it appends the stuck main thread's backtrace to
+    // crash.log (the heartbeat QTimer that proves the loop is alive is started
+    // below). AddressSanitizer makes everything ~5-10x slower, so a 5 s threshold
+    // false-trips on heavy-but-finite work (e.g. laying out a big conversation);
+    // give ASan builds a roomier window so only genuine hangs fire.
+#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+    CrashHandler::startWatchdog(20000);
+#else
+    CrashHandler::startWatchdog(5000);
+#endif
+#endif
 #if defined(Q_OS_LINUX)
     app.setFont(detectSystemFont());
 #endif
@@ -279,6 +293,16 @@ int main(int argc, char *argv[]) {
     // On freedesktop systems, (re)install the .desktop launcher + icon and the
     // msga:// scheme handler in the background. No-op on macOS/Windows.
     DesktopIntegration::installIfSupported();
+
+#if defined(MSGA_HANG_WATCHDOG)
+    // Pet the hang watchdog from the event loop. While the main thread keeps
+    // pumping, this fires every second and re-arms the watchdog's deadline so it
+    // never expires; if the loop wedges, the timer stops and the watchdog dumps
+    // the stuck stack. One timer_settime syscall per second — negligible.
+    QTimer watchdogHeartbeat;
+    QObject::connect(&watchdogHeartbeat, &QTimer::timeout, [] { CrashHandler::heartbeat(); });
+    watchdogHeartbeat.start(1000);
+#endif
 
     const int ret = app.exec();
 
