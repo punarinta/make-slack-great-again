@@ -19,116 +19,27 @@ A fast native Slack client built in C++ with Qt6.
 
 ## Or build your own version
 
-msga does not ship with Slack credentials. You must create your own Slack app and configure it before the client will connect. This is a one-time setup.
+msga does not ship with messaging credentials. You must register your own app with each service you want to connect and configure it before the client will connect. This is a one-time setup.
 
-### Step 1. Create a Slack app
+### Step 1. Set up a messaging backend
 
-Go to [https://api.slack.com/apps](https://api.slack.com/apps) and click **Create New App → From scratch**.
+Pick the service(s) you want and follow the matching guide. Each ends by writing the credentials into `credentials.cmake`:
 
-Give it a name (e.g. "msga") and pick any development workspace to associate it with. The app will work across all your workspaces once installed.
+- **[Slack setup](docs/SETUP_SLACK.md)** — create a Slack app, scopes, socket mode, events.
+- **[Microsoft Teams setup](docs/SETUP_TEAMS.md)** — register an Entra app, Graph permissions, admin consent.
 
-### Step 2. Configure OAuth & permissions
-
-In your app's settings, go to **OAuth & Permissions**.
-
-Under **Redirect URLs**, add exactly:
-
-```
-http://localhost:17437/cb
-```
-
-Then scroll down to **User Token Scopes** and add the following scopes:
-
-<details>
-<summary>Full list of required OAuth scopes</summary>
-
-| Scope | Purpose |
-|---|---|
-| `channels:history` | Read messages in public channels |
-| `channels:read` | List public channels |
-| `groups:history` | Read messages in private channels |
-| `groups:read` | List private channels |
-| `im:history` | Read direct messages |
-| `im:read` | List direct message conversations |
-| `mpim:history` | Read group direct messages |
-| `mpim:read` | List group direct message conversations |
-| `users:read` | Look up user info |
-| `team:read` | Get workspace info |
-| `emoji:read` | Load custom emoji |
-| `reactions:read` | Read emoji reactions |
-| `files:read` | Access shared files |
-| `users.profile:read` | Read user profile fields |
-| `search:read` | Search messages and files |
-| `chat:write` | Send messages |
-| `reactions:write` | Add/remove reactions |
-| `files:write` | Upload files |
-| `stars:write` | Star/unstar channels and conversations |
-| `stars:read` | List starred channels and conversations |
-| `channels:write` | Create public channels |
-| `groups:write` | Create private channels |
-| `mpim:write` | Create group DM conversations |
-| `im:write` | Create direct message conversations |
-| `users:write` | Set your presence — away/active (`/away`, `/active`) |
-| `users.profile:write` | Set or clear your status (`/status`) |
-| `dnd:write` | Pause/resume notifications (`/dnd`) |
-| `canvases:read` | Look up canvas sections |
-| `canvases:write` | Create, edit and delete canvases |
-
-</details>
-
-### Step 3. Enable socket mode
-
-Go to **Socket Mode** in the sidebar and toggle **Enable Socket Mode** on.
-
-Then go to **Basic Information → App-Level Tokens** and click **Generate Token and Scopes**. Name the token anything (e.g. "socket"), add the scope `connections:write`, and click **Generate**. Copy the token — it starts with `xapp-1-`.
-
-### Step 4. Subscribe to events
-
-Go to **Event Subscriptions** in the sidebar and toggle **Enable Events** on.
-
-Under **Subscribe to events on behalf of users**, add:
-
-| Event | Purpose |
-|---|---|
-| `message.channels` | Live messages in public channels |
-| `message.groups` | Live messages in private channels |
-| `message.im` | Live direct messages |
-| `message.mpim` | Live group direct messages |
-
-Click **Save Changes**. Slack will prompt you to reinstall the app — do so via **Install App → Reinstall to Workspace**.
-
-### Step 5. Install the app
-
-Go to **Install App** and click **Install to Workspace**. Authorize the requested permissions.
-
-### Step 6. Add credentials to the build
-
-From **Basic Information**, copy:
-
-- **Client ID** — under *App Credentials*
-- **Client Secret** — under *App Credentials* (click *Show*)
-
-You also need the **App Token** (`xapp-1-…`) from step 3.
-
-Copy `credentials.cmake.example` to `credentials.cmake` in the project root and fill in the three values:
-
-```cmake
-set(MSGA_CLIENT_ID     "your-client-id")
-set(MSGA_CLIENT_SECRET "your-client-secret")
-set(MSGA_XAPP          "xapp-1-...")
-```
-
-`credentials.cmake` is gitignored and never committed. Rebuild after editing it — the values are compiled in.
+You can configure more than one — each fills in its own values in the same `credentials.cmake`, and the workspaces stack in the same rail.
 
 The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSION` there before each public release.
 
-### Step 7. Configure build environment
+### Step 2. Configure build environment
 
 > **Prerequisites:** CMake ≥ 3.24, Qt 6.x dev packages, a C++20 compiler (GCC 12+ / Clang 14+ / MSVC 2022+)
 
 ```sh
 ./scripts/configure-linux.sh    # for Linux
 ./scripts/configure-mac.sh      # for macOS
+scripts/configure-windows.ps1   # for Windows
 ```
 
 On Windows, run the PowerShell script from an **elevated** (Administrator) terminal:
@@ -149,7 +60,7 @@ Or bypass the policy for a single run without changing the system setting:
 powershell -ExecutionPolicy Bypass -File scripts\configure-windows.ps1
 ```
 
-### Step 8. Build and run
+### Step 3. Build and run
 
 ```sh
 ./scripts/build.sh
@@ -164,7 +75,7 @@ scripts\build.ps1
 build\Debug\msga.exe
 ```
 
-If you see _"running scripts is disabled"_, see the execution policy note in Step 7, or run directly:
+If you see _"running scripts is disabled"_, see the execution policy note in Step 2, or run directly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
