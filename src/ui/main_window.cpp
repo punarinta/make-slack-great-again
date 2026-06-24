@@ -727,9 +727,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         if (conv == _currentConvId) {
             _messageList->scrollToTs(ts);
         } else {
-            const int row = _convList->rowForId(conv);
-            if (row >= 0)
-                openConversation(row);
+            // Same coordinated path as a notification open: selectConversation()
+            // moves the list highlight and drives openConversation() via the
+            // signal, so the header and the selected row don't stay on the old
+            // conversation. (It also un-hides a relevance-filtered result.)
+            _convList->selectConversation(conv);
+            if (_currentConvId != conv) {
+                const int row = _convList->rowForId(conv);
+                if (row >= 0)
+                    openConversation(row);
+            }
         }
     });
 
@@ -905,18 +912,12 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         }
     );
 
-    connect(_convList, &ConvListWidget::conversationSelected, this, [this](int row) {
-        const ConversationId id = _convList->conversationId(row);
-        if (id.value.isEmpty())
-            return;
-        const auto *conv = _session ? _session->findConversation(id) : nullptr;
-        if (!conv)
-            return;
-        const QString name = _convList->resolvedName(row);
-        const bool    isDm = conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim;
-        _convNameLabel->setText(isDm ? name : name.isEmpty() ? "" : "#" + name);
-        updateHeaderForConv(id);
-    });
+    // The header title + avatar are updated inside openConversation(), which is
+    // the slot wired to conversationSelected (see buildConvPanel) and the single
+    // point every conversation open passes through — so no separate signal
+    // handler is needed here. Keeping the title update only in the signal path
+    // is what used to leave the header stale on programmatic opens (notification
+    // click, search result), which never emit conversationSelected.
 
     connect(_huddleBtn, &QPushButton::clicked, this, [this] {
         if (_currentConvId.value.isEmpty())
@@ -2192,9 +2193,26 @@ void MainWindow::openNotifTarget(const QString &teamId, const ConversationId &co
     if (!teamId.isEmpty() && teamId != _activeTeamId)
         activateWorkspace(teamId);
     if (_convList) {
-        const int row = _convList->rowForId(conv);
-        if (row >= 0)
-            openConversation(row);
+        // Route through the conv list's selection rather than calling
+        // openConversation(row) directly. selectConversation() moves the list's
+        // highlight to the target and emits conversationSelected, which drives
+        // openConversation() (message list + header) — so the header title, the
+        // header avatar AND the highlighted row all land on the notified
+        // conversation together. Opening the message list directly would switch
+        // the messages but leave the header and the list selection on the
+        // previously-open conversation. selectConversation() also un-collapses
+        // the section and overrides the relevance filter, so a notification for
+        // a conversation the filter has hidden (a DM with no recent activity)
+        // still opens — rowForId() alone would return -1 and silently do nothing.
+        _convList->selectConversation(conv);
+        // selectConversation() suppresses the signal when the target row is
+        // already the selected one (e.g. a stale highlight left over from a
+        // workspace switch); drive the open directly so the view still updates.
+        if (_currentConvId != conv) {
+            const int row = _convList->rowForId(conv);
+            if (row >= 0)
+                openConversation(row);
+        }
     }
 }
 
@@ -2467,6 +2485,15 @@ void MainWindow::openConversation(int row) {
     const auto   *conv = _session->findConversation(_currentConvId);
     const bool    isDm = conv && (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
     const QString displayName = isDm ? name : name.isEmpty() ? "" : "#" + name;
+
+    // Keep the conversation header title in lock-step with the message list no
+    // matter how this open was triggered. Programmatic opens (notification
+    // click, search result, history navigation) reach this slot directly rather
+    // than through the conversationSelected signal, so setting the title here —
+    // the single point every open passes through — is what stops the header
+    // from being left on the previously-open conversation.
+    if (_convNameLabel)
+        _convNameLabel->setText(displayName);
 
     // Build the channel/DM intro description for the message list header.
     QString description;
