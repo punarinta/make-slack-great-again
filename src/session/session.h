@@ -41,10 +41,25 @@ public:
     rpl::producer<QString>                   errors() const;
 
     // Send a message (optionally as a thread reply) and optimistically insert it.
-    void sendMessage(ConversationId conv, const QString &text, std::optional<Ts> threadRoot = {});
+    void sendMessage(
+        ConversationId    conv,
+        const QString    &text,
+        std::optional<Ts> threadRoot = {},
+        const QString    &subject    = {}
+    );
 
     // Edit an existing message.
     void editMessage(ConversationId conv, Ts ts, const QString &newText);
+
+    // Email (Model-D): channels are labels, so forwarding a message to a channel
+    // labels it rather than re-posting. The UI gates the forward path on this.
+    bool channelsAreLabels() const;
+    void labelMessage(
+        ConversationId                            sourceConv,
+        Ts                                        ts,
+        ConversationId                            targetChannel,
+        std::function<void(bool ok, QString err)> done = {}
+    );
 
     // Notify server the user is typing. Internally rate-limited (one call per 3 s).
     void sendTyping(ConversationId conv);

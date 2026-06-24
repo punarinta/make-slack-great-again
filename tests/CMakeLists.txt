@@ -97,6 +97,52 @@ add_msga_test(test_json_mappers
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
+# IMAP MIME / RFC 5322 parser (raw message → text/attachments; Qt6::Core only).
+add_msga_test(test_imap_mime
+    test_imap_mime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/mime_parser.cpp
+)
+
+# IMAP protocol layer: response framing + light parsers (Qt6::Core only).
+add_msga_test(test_imap_protocol
+    test_imap_protocol.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_protocol.cpp
+)
+
+# IMAP ENVELOPE/FLAGS/THREAD S-expression mappers (Qt6::Core only).
+add_msga_test(test_imap_mappers
+    test_imap_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/mime_parser.cpp
+)
+
+# Model-D bucketing engine: thread → DM/MPDM/list-channel grouping (Qt6::Core).
+add_msga_test(test_imap_bucketing
+    test_imap_bucketing.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_bucketing.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/mime_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_providers.cpp
+)
+
+# HTML email → TextWithEntities (Qt6::Core only).
+add_msga_test(test_imap_html
+    test_imap_html.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_html.cpp
+)
+
+# Outgoing MIME message builder (Qt6::Core only).
+add_msga_test(test_imap_compose
+    test_imap_compose.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_compose.cpp
+)
+
+# IMAP provider auto-detection (domain → server settings; Qt6::Core only).
+add_msga_test(test_imap_providers
+    test_imap_providers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_providers.cpp
+)
+
 # Microsoft Teams JSON mappers (Graph JSON → domain; needs only Qt6::Core).
 add_msga_test(test_teams_mappers
     test_teams_mappers.cpp
@@ -130,6 +176,23 @@ set(TEAMS_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_auth.cpp
 )
 
+# Email (IMAP) backend below the seam — used by the factory test.
+set(IMAP_BACKEND_SRCS
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_mappers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_bucketing.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_providers.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_html.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_bimi.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_compose.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_smtp.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/mime_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_protocol.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/oauth_loopback.cpp # OAuth (XOAUTH2) token refresh
+)
+
 add_msga_qt_test(test_workspace_cache
     test_workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
@@ -152,12 +215,14 @@ add_msga_qt_test(test_backend_factory
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${SLACK_BACKEND_SRCS}
     ${TEAMS_BACKEND_SRCS}
+    ${IMAP_BACKEND_SRCS}
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
 )
-target_link_libraries(test_backend_factory PRIVATE Qt6::Network Qt6::WebSockets)
+target_link_libraries(test_backend_factory PRIVATE
+    Qt6::Gui Qt6::Network Qt6::WebSockets Qt6::Concurrent)
 set_target_properties(test_backend_factory PROPERTIES AUTOMOC ON)
 
 add_msga_qt_test(test_auth_strategy
@@ -169,6 +234,8 @@ add_msga_qt_test(test_auth_strategy
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/teams/oauth_flow.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_auth_strategy.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_auth.cpp
 )
 target_link_libraries(test_auth_strategy PRIVATE Qt6::Gui Qt6::Network)
 set_target_properties(test_auth_strategy PROPERTIES AUTOMOC ON)
@@ -397,6 +464,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp

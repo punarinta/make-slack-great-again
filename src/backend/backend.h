@@ -97,6 +97,24 @@ public:
     virtual void sendMessage(ConversationId, OutgoingMessage)      = 0;
     virtual void editMessage(ConversationId, Ts, TextWithEntities) = 0;
     virtual void deleteMessage(ConversationId, Ts)                 = 0;
+
+    // In Model-D email, channels represent labels/folders, so "forwarding" a
+    // message to a channel *labels* the original rather than re-posting its text
+    // (imap-backend-plan §3). Default false: chat services forward content
+    // normally. When true, the UI routes a forward-to-channel through
+    // labelMessage() instead of sendMessage().
+    virtual bool channelsAreLabels() const { return false; }
+    // Apply `targetChannel`'s label to an existing message (Gmail X-GM-LABELS /
+    // IMAP COPY). No-op default.
+    virtual void labelMessage(
+        ConversationId /*sourceConv*/,
+        Ts /*ts*/,
+        ConversationId /*targetChannel*/,
+        std::function<void(bool ok, QString err)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
     virtual void addReaction(ConversationId, Ts, QString emoji)    = 0;
     virtual void removeReaction(ConversationId, Ts, QString emoji) = 0;
     virtual void markRead(ConversationId, Ts)                      = 0;

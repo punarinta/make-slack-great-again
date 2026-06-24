@@ -10,6 +10,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPainter>
+#include <QSvgRenderer>
 #include <QUrl>
 
 ImageCache::ImageCache(QObject *parent) : QObject(parent), _nam(net::sharedNam()) {}
@@ -108,6 +110,29 @@ void ImageCache::setDiskCache(
     _diskSave = std::move(save);
 }
 
+// Decode downloaded bytes to a pixmap. Falls back to explicit SVG rendering for
+// formats QImage can't decode itself (notably BIMI brand-logo SVGs).
+static QPixmap pixmapFromData(const QByteArray &bytes) {
+    QPixmap px;
+    if (px.loadFromData(bytes) && !px.isNull())
+        return px;
+    QSvgRenderer r(bytes);
+    if (r.isValid()) {
+        QSize sz = r.defaultSize();
+        if (sz.isEmpty())
+            sz = QSize(128, 128);
+        const int kMax = 256;
+        if (sz.width() > kMax || sz.height() > kMax)
+            sz.scale(kMax, kMax, Qt::KeepAspectRatio);
+        QPixmap out(sz);
+        out.fill(Qt::transparent);
+        QPainter p(&out);
+        r.render(&p);
+        return out;
+    }
+    return {};
+}
+
 QPixmap ImageCache::get(const QString &url) {
     if (url.isEmpty())
         return {};
@@ -121,8 +146,8 @@ QPixmap ImageCache::get(const QString &url) {
     if (_diskLoad) {
         const auto bytes = _diskLoad(url);
         if (!bytes.isEmpty()) {
-            QPixmap px;
-            if (px.loadFromData(bytes) && !px.isNull()) {
+            QPixmap px = pixmapFromData(bytes);
+            if (!px.isNull()) {
                 auto &entry  = _cache[url];
                 entry.pixmap = px;
                 if (isAnimatedImage(bytes))
@@ -144,8 +169,8 @@ QPixmap ImageCache::get(const QString &url) {
         e.inFlight = false;
         if (reply->error() == QNetworkReply::NoError) {
             const auto bytes = reply->readAll();
-            QPixmap    px;
-            if (px.loadFromData(bytes) && !px.isNull()) {
+            QPixmap    px    = pixmapFromData(bytes);
+            if (!px.isNull()) {
                 e.pixmap = px;
                 if (isAnimatedImage(bytes))
                     e.animatedBytes = bytes;

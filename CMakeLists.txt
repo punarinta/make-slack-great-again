@@ -3,7 +3,8 @@ project(msga LANGUAGES CXX)
 
 include("${CMAKE_SOURCE_DIR}/credentials.cmake" OPTIONAL)
 include("${CMAKE_SOURCE_DIR}/version.cmake")
-foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP MSGA_TEAMS_CLIENT_ID)
+foreach(_var MSGA_CLIENT_ID MSGA_CLIENT_SECRET MSGA_XAPP MSGA_TEAMS_CLIENT_ID
+        MSGA_GOOGLE_CLIENT_ID MSGA_GOOGLE_CLIENT_SECRET)
     if(NOT DEFINED ${_var})
         set(${_var} "")
     endif()
@@ -25,7 +26,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(MSGA_CLAZY "Add 'clazy' target for Qt-aware static analysis" OFF)
 option(MSGA_ASAN "Build with AddressSanitizer + LeakSanitizer" OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Concurrent Test)
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
 
 include(FetchContent)
@@ -104,6 +105,22 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/teams/teams_auth.cpp
     src/backend/teams/oauth_flow.cpp
 
+    # Email (IMAP/SMTP) backend adapter (below the Backend seam)
+    src/backend/imap/mime_parser.cpp
+    src/backend/imap/imap_protocol.cpp
+    src/backend/imap/imap_client.cpp
+    src/backend/imap/imap_mappers.cpp
+    src/backend/imap/imap_bucketing.cpp
+    src/backend/imap/imap_auth.cpp
+    src/backend/imap/imap_auth_strategy.cpp
+    src/backend/imap/imap_providers.cpp
+    src/backend/imap/imap_server_detect.cpp
+    src/backend/imap/imap_html.cpp
+    src/backend/imap/imap_bimi.cpp
+    src/backend/imap/imap_compose.cpp
+    src/backend/imap/imap_smtp.cpp
+    src/backend/imap/imap_backend.cpp
+
     # Text
     src/text/mrkdwn_parser.cpp
 
@@ -172,6 +189,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/icon_button/icon_button.cpp
     src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
+    src/ui/imap_add_account/imap_add_account_dialog.cpp
     src/ui/profile_dialog/profile_dialog.cpp
     src/ui/status_dialog/status_dialog.cpp
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
@@ -200,6 +218,7 @@ target_link_libraries(msga PRIVATE
     Qt6::Network
     Qt6::WebSockets
     Qt6::Svg
+    Qt6::Concurrent
     Microsoft.GSL::GSL
 )
 

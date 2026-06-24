@@ -15,12 +15,13 @@
 class QTcpServer;
 
 struct OAuthConfig {
-    QString                        authorizeUrl;
-    QString                        tokenUrl;
-    QString                        clientId;
-    QString                        scopes;       // space-separated
-    quint16                        port = 0;     // loopback port the client is registered for
-    QString                        callbackPath; // e.g. "/callback"
+    QString authorizeUrl;
+    QString tokenUrl;
+    QString clientId;
+    QString clientSecret; // optional (Google "Desktop app"); empty = PKCE-only
+    QString scopes;       // space-separated
+    quint16 port = 0;     // loopback port the client is registered for
+    QString callbackPath; // e.g. "/callback"
     // Extra query params some providers require on the authorize URL.
     QList<QPair<QString, QString>> extraAuthParams;
     // true → token request body is JSON; false → application/x-www-form-urlencoded

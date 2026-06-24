@@ -29,6 +29,7 @@ class MentionPopup;
 class FormattingToolbar;
 class AttachmentStrip;
 class EditModeBanner;
+class StyledLineEdit;
 
 // Slack-style composer: formatting toolbar + text area + bottom action bar.
 // Enter sends; Shift+Enter inserts a newline.
@@ -41,6 +42,12 @@ public:
 
     // Provide a session for autocomplete and emoji; can be called at any time.
     void setSession(Session *session);
+
+    // Optional subject line for email backends (decision §3 #3): shown only when
+    // the backend declares Capabilities::messageSubjects. The value travels to
+    // Session::sendMessage; it is read during the sendRequested emit and cleared.
+    void    setSubjectVisible(bool visible);
+    QString subjectText() const;
 
     // Image cache for app-command avatars in the slash-command palette.
     void setImageCache(ImageCache *cache) { _imgCache = cache; }
@@ -119,6 +126,8 @@ private:
     void recolorMentionPills();
 
     QFrame            *_box          = nullptr;
+    StyledLineEdit    *_subject      = nullptr; // email subject line (optional)
+    QFrame            *_subjectSep   = nullptr; // horizontal rule under the subject
     FormattingToolbar *_formattingTb = nullptr;
     EditModeBanner    *_editBanner   = nullptr;
     AttachmentStrip   *_attachStrip  = nullptr;

@@ -23,6 +23,9 @@ public:
     // Override the glyph tint (default: theme `icon.def`). Re-applied on theme change.
     void setIconColor(const QColor &color);
 
+    // Swap the glyph (e.g. eye ↔ eye-off for a password reveal toggle).
+    void setSvgPath(const QString &svgPath);
+
 private:
     void applyTheme();
 

@@ -729,6 +729,9 @@ void ConvListWidget::drawUserAvatar(
     // Apps/bots (incl. Slackbot/system accounts) can't go offline — no presence dot.
     if (infoIt != _userInfos.constEnd() && infoIt->isBot)
         state.showPresence = false;
+    // Services without a presence concept (email/IMAP) draw no dot at all.
+    if (!_session || !_session->capabilities().presence)
+        state.showPresence = false;
     UserAvatar::paint(
         p, rect, pixmap, initial, state, kAvatarRadius, p.device()->devicePixelRatioF(), bgColor
     );
@@ -1130,8 +1133,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         bf.setBold(true);
         p.setFont(bf);
         const QFontMetrics bfm(bf);
-        const int          bw = bfm.horizontalAdvance(badge) + 10;
         const int          bh = bfm.height() + 4;
+        // Never narrower than tall: a single-digit badge is a circle (w == h),
+        // multi-digit grows into a pill — instead of a squeezed oval.
+        const int          bw = qMax(bfm.horizontalAdvance(badge) + 10, bh);
         const int          bx = rightEdge - bw;
         const int          by = y + (kRowH - bh) / 2;
         p.setPen(Qt::NoPen);

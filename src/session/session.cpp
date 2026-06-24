@@ -772,7 +772,23 @@ static Ts makeFakeTs() {
     return QString("%1.%2").arg(usec / 1000000).arg(usec % 1000000, 6, 10, QChar('0'));
 }
 
-void Session::sendMessage(ConversationId conv, const QString &text, std::optional<Ts> threadRoot) {
+bool Session::channelsAreLabels() const {
+    return _backend && _backend->channelsAreLabels();
+}
+
+void Session::labelMessage(
+    ConversationId                     sourceConv,
+    Ts                                 ts,
+    ConversationId                     targetChannel,
+    std::function<void(bool, QString)> done
+) {
+    if (_backend)
+        _backend->labelMessage(sourceConv, ts, targetChannel, std::move(done));
+}
+
+void Session::sendMessage(
+    ConversationId conv, const QString &text, std::optional<Ts> threadRoot, const QString &subject
+) {
     const Ts fakeTs = makeFakeTs();
 
     Message optimistic;
@@ -792,6 +808,7 @@ void Session::sendMessage(ConversationId conv, const QString &text, std::optiona
     out.text       = optimistic.text;
     out.rawText    = text;
     out.threadRoot = threadRoot;
+    out.subject    = subject;
     // Anchor for the backend's lost-send reconciliation: only messages newer
     // than this server ts can be the one we are about to post.
     if (const Conversation *c = findConversation(conv))
@@ -1329,11 +1346,19 @@ void Session::setReading(ConversationId conv) {
     auto convs = _conversations.current();
     for (auto &c : convs) {
         if (c.id == conv) {
-            c.unread       = 0;
-            c.mentionCount = 0;
-            // Sync the read cursor to Slack so other clients (and the next
-            // restart) agree this conversation is read.
-            if (!c.latestTs.isEmpty() && c.lastRead < c.latestTs) {
+            const bool hadUnread = c.unread > 0;
+            c.unread             = 0;
+            c.mentionCount       = 0;
+            // Sync the read cursor to the server so other clients (and the next
+            // restart) agree this conversation is read. Fire when there was
+            // anything unread (the reliable, backend-agnostic signal — captured
+            // before the badge is zeroed above), OR the read cursor trails the
+            // latest message. The latter is the ordered-ts shortcut: valid for
+            // Slack/Teams epoch ts, a meaningless string compare for email
+            // Message-IDs — kept only as a backstop for when the badge was already
+            // cleared elsewhere but the cursor still lags. markRead is idempotent,
+            // so a redundant call is a no-op.
+            if (!c.latestTs.isEmpty() && (hadUnread || c.lastRead < c.latestTs)) {
                 c.lastRead = c.latestTs;
                 _backend->markRead(conv, c.latestTs);
             }

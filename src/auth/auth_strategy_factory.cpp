@@ -3,6 +3,7 @@
 #include "auth_strategy_factory.h"
 
 #include "auth/auth_strategy.h"
+#include "backend/imap/imap_auth_strategy.h"
 #include "backend/slack/oauth_flow.h"
 #include "backend/teams/oauth_flow.h"
 #include "backend/teams/teams_auth.h"
@@ -18,13 +19,17 @@ std::unique_ptr<AuthStrategy> makeAuthStrategy(Service service, QObject *parent)
     case Service::Teams:
         // Microsoft Teams: Auth Code + PKCE (public client) over Microsoft identity.
         return std::make_unique<teams::OAuthFlow>(teams::appConfig(), parent);
+    case Service::Imap:
+        // Email (imap-backend-plan §5). The strategy is Widgets-free; the add-
+        // account dialog is injected via imap::AuthStrategy::setPrompt at startup.
+        return std::make_unique<imap::AuthStrategy>(parent);
     }
     return nullptr;
 }
 
 std::vector<Service> registeredAuthServices() {
     // Order = the order the picker offers them.
-    return {Service::Slack, Service::Teams};
+    return {Service::Slack, Service::Teams, Service::Imap};
 }
 
 } // namespace auth

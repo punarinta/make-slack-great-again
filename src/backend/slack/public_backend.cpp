@@ -243,11 +243,13 @@ Capabilities PublicBackend::capabilities() const {
     // here is already live in the UI, so reporting it true keeps behavior
     // unchanged now that the UI gates on these flags.
     Capabilities c;
+    c.presence      = true; // polled presence (users.getPresence) → online/away dots
     c.huddles       = true;
     c.canvases      = true;
     c.slashCommands = true;
     c.reactions     = true;
     c.editMessage   = true;
+    c.deleteMessage = true;
     c.threads       = true;
     c.fileUpload    = true;
     return c;

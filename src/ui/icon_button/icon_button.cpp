@@ -23,6 +23,13 @@ void IconButton::setIconColor(const QColor &color) {
     applyTheme();
 }
 
+void IconButton::setSvgPath(const QString &svgPath) {
+    if (_svgPath == svgPath)
+        return;
+    _svgPath = svgPath;
+    applyTheme();
+}
+
 void IconButton::applyTheme() {
     const QColor tint = _hasColor ? _iconColor : Th::c().icon.def;
     setIcon(svgIcon(_svgPath, QSize(_iconPx, _iconPx), tint));

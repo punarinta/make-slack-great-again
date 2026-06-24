@@ -12,6 +12,8 @@
         <file alias="ui/wc-close.svg">../gfx/ui/wc-close.svg</file>
         <!-- App icons (Lucide — https://lucide.dev/) -->
         <file alias="ui/search.svg">../gfx/ui/search.svg</file>
+        <file alias="ui/eye.svg">../gfx/ui/eye.svg</file>
+        <file alias="ui/eye-off.svg">../gfx/ui/eye-off.svg</file>
         <file alias="ui/headphones.svg">../gfx/ui/headphones.svg</file>
         <file alias="ui/star.svg">../gfx/ui/star.svg</file>
         <file alias="ui/star-solid.svg">../gfx/ui/star-solid.svg</file>

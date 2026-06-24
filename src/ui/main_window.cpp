@@ -828,6 +828,20 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
                 const ConversationId target = dlg->targetConv();
                 if (target.value.isEmpty())
                     return;
+                // Email (Model-D): forwarding to a channel labels the original
+                // message rather than re-posting its text (imap-backend-plan §3).
+                const Conversation *tc        = _session->findConversation(target);
+                const bool          isChannel = tc && (tc->kind == ConvKind::PublicChannel ||
+                                              tc->kind == ConvKind::PrivateChannel);
+                if (isChannel && _session->channelsAreLabels()) {
+                    _session->labelMessage(
+                        _currentConvId, msg.ts, target, [this](bool ok, QString) {
+                            if (!ok)
+                                showNetworkError(tr("Couldn't apply the label."));
+                        }
+                    );
+                    return;
+                }
                 const QString comment = dlg->comment();
                 const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
                 const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
@@ -839,7 +853,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
         if (_session && !_currentConvId.value.isEmpty())
-            _session->sendMessage(_currentConvId, text);
+            _session->sendMessage(_currentConvId, text, std::nullopt, _composer->subjectText());
     });
     connect(
         _composer,
@@ -1244,7 +1258,9 @@ void MainWindow::loginWithService(Service service) {
     connect(s, &auth::AuthStrategy::failed, this, [this, s](const QString &reason) {
         _activeFlow = nullptr;
         s->deleteLater();
-        QMessageBox::critical(this, tr("Login failed"), reason);
+        // A user-initiated cancel is not an error — close silently.
+        if (reason != QLatin1String("cancelled"))
+            QMessageBox::critical(this, tr("Login failed"), reason);
     });
 
     s->start();
@@ -2536,6 +2552,12 @@ void MainWindow::openConversation(int row) {
     }
     _composer->setEnabled(true);
     _composer->setConvKind(convKind);
+    // Email backends compose per-message subjects (decision §3 #3): show the
+    // subject line for DMs/MPDMs (new top-level mail). Channels are reply-only.
+    _composer->setSubjectVisible(
+        _session->capabilities().messageSubjects &&
+        (convKind == ConvKind::Im || convKind == ConvKind::Mpim)
+    );
     _composer->setPlaceholderText(
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );
@@ -2651,8 +2673,11 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
             const auto *u = _session->findUser(*conversation->dmUser);
             if (u) {
                 // Apps/bots have no presence — they can't go offline, so the dot
-                // is meaningless and confusing for them.
-                _headerAvatar->setShowPresence(!_session->isAppConversation(*conversation));
+                // is meaningless and confusing for them. Likewise services with no
+                // presence concept at all (email/IMAP).
+                _headerAvatar->setShowPresence(
+                    _session->capabilities().presence && !_session->isAppConversation(*conversation)
+                );
                 _headerAvatar->setPresence(u->isActive);
                 _headerAvatar->setDnd(u->dndEnabled);
                 const bool isSelf = *conversation->dmUser == _session->meUserId();

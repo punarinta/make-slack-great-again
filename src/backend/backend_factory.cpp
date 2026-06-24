@@ -3,6 +3,8 @@
 #include "backend_factory.h"
 
 #include "backend/backend.h"
+#include "backend/imap/imap_auth.h"
+#include "backend/imap/imap_backend.h"
 #include "backend/slack/public_backend.h"
 #include "backend/slack/slack_auth.h"
 #include "backend/teams/teams_auth.h"
@@ -19,6 +21,10 @@ std::unique_ptr<Backend> makeBackend(const TokenStore::WorkspaceRecord &rec) {
         // Microsoft Teams over Graph (delegated). teams::Backend reads its own
         // compiled-in app-config and decodes the per-service auth blob.
         return std::make_unique<teams::Backend>(teams::fromRecord(rec));
+    case Service::Imap:
+        // Email over IMAP/SMTP (imap-backend-plan §1). imap::Backend decodes its
+        // own credentials blob and connects on construction.
+        return std::make_unique<imap::Backend>(imap::fromRecord(rec));
     }
     return nullptr;
 }

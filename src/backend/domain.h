@@ -55,7 +55,7 @@ inline qint64 decimalTsToMicros(const QString &ts) {
 
 // The messaging services this app can host. Only Slack today; Telegram/Teams/…
 // are added here as backends land. Keep minimal.
-enum class Service { Slack, Teams /*, Telegram, … */ };
+enum class Service { Slack, Teams, Imap /*, Telegram, … */ };
 
 // Stable serialization token for a Service. NEVER serialize the enum's integer
 // — reordering the enum later must not corrupt stored workspace handles.
@@ -65,6 +65,8 @@ inline QString serviceToken(Service s) {
         return QStringLiteral("slack");
     case Service::Teams:
         return QStringLiteral("teams");
+    case Service::Imap:
+        return QStringLiteral("imap");
     }
     return QStringLiteral("slack");
 }
@@ -73,6 +75,8 @@ inline std::optional<Service> serviceFromToken(const QString &t) {
         return Service::Slack;
     if (t == QStringLiteral("teams"))
         return Service::Teams;
+    if (t == QStringLiteral("imap"))
+        return Service::Imap;
     return std::nullopt;
 }
 
@@ -83,6 +87,8 @@ inline QString serviceDisplayName(Service s) {
         return QStringLiteral("Slack");
     case Service::Teams:
         return QStringLiteral("Microsoft Teams");
+    case Service::Imap:
+        return QStringLiteral("Email (IMAP)");
     }
     return QStringLiteral("Slack");
 }
@@ -124,14 +130,24 @@ enum class NotificationLevel { Default, All, Mentions, Mute };
 // lacks them shows a clean surface with no dead controls.
 struct Capabilities {
     bool typing        = false; // live "user is typing" events (internal path only)
+    bool presence      = false; // service has any user presence (online/away dots at all).
+                                // IMAP/email has no presence concept → false → no dot drawn.
     bool livePresence  = false; // realtime presence_change (vs. polled presence)
     bool huddles       = false; // live huddle indicator + join links
     bool canvases      = false; // channel canvas tab + editing
     bool slashCommands = false; // listCommands()/runCommand()
     bool reactions     = false; // add/remove emoji reactions
-    bool editMessage   = false; // edit/delete own messages
-    bool threads       = false; // threaded replies
-    bool fileUpload    = false; // upload + share files
+    bool editMessage   = false; // edit own messages (email cannot — see deleteMessage)
+    bool deleteMessage = false; // delete own messages (split from editMessage: email can delete a
+                                // sent message but never edit it)
+    bool deleteAnyMessage = false; // delete *any* message, not just your own (email: it's your own
+                                   // mailbox, so every message is deletable regardless of author).
+                                   // Requires deleteMessage. Slack/Teams leave this false
+                                   // (own-only, plus the separate admin path).
+    bool threads          = false; // threaded replies
+    bool fileUpload       = false; // upload + share files
+    bool messageSubjects  = false; // per-message subject line (email); shows the composer subject
+                                   // field — see imap-backend-plan §3/§4
     bool operator==(const Capabilities &) const = default;
 };
 
@@ -557,6 +573,9 @@ struct OutgoingMessage {
     // Anchors the duplicate-check window when a send must be reconciled after
     // a connection loss (server-assigned, so immune to local clock skew).
     Ts                sinceTs;
+    // Per-message subject (email backends, gated by Capabilities::messageSubjects;
+    // empty for chat services). On a reply the backend inherits the thread subject.
+    QString           subject;
 };
 
 // --- Realtime events (normalized from both Socket Mode and internal ws) ---

@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "styled_line_edit.h"
 #include "ui/control_metrics.h"
+#include "ui/icon_button/icon_button.h"
 #include "ui/icon_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -54,6 +55,41 @@ StyledLineEdit::StyledLineEdit(QWidget *parent) : QFrame(parent) {
 
 void StyledLineEdit::setSize(Size size) {
     setFixedHeight(size == Size::Small ? Ui::kControlHeightSmall : Ui::kControlHeight);
+}
+
+void StyledLineEdit::setBorderless(bool on) {
+    _borderless = on;
+    updateBorderStyle(_focused);
+}
+
+IconButton *StyledLineEdit::setTrailingIcon(const QString &svgPath) {
+    if (svgPath.isEmpty()) {
+        if (_trailingBtn)
+            _trailingBtn->hide();
+        return _trailingBtn;
+    }
+    if (!_trailingBtn) {
+        _trailingBtn = new IconButton(svgPath, 26, 16, this);
+        _layout->addWidget(_trailingBtn); // right edge, after the counter
+        connect(_trailingBtn, &QPushButton::clicked, this, &StyledLineEdit::trailingClicked);
+    } else {
+        _trailingBtn->setSvgPath(svgPath);
+    }
+    _trailingBtn->show();
+    return _trailingBtn;
+}
+
+void StyledLineEdit::enablePasswordReveal() {
+    _edit->setEchoMode(QLineEdit::Password);
+    _passwordShown = false;
+    setTrailingIcon(QStringLiteral(":/ui/eye.svg"));
+    connect(this, &StyledLineEdit::trailingClicked, this, [this] {
+        _passwordShown = !_passwordShown;
+        _edit->setEchoMode(_passwordShown ? QLineEdit::Normal : QLineEdit::Password);
+        setTrailingIcon(
+            _passwordShown ? QStringLiteral(":/ui/eye-off.svg") : QStringLiteral(":/ui/eye.svg")
+        );
+    });
 }
 
 void StyledLineEdit::setPrefix(const QString &text) {
@@ -143,6 +179,10 @@ void StyledLineEdit::updateCounter() {
 }
 
 void StyledLineEdit::updateBorderStyle(bool focused) {
+    if (_borderless) {
+        setStyleSheet(QStringLiteral("StyledLineEdit { border: none; background: transparent; }"));
+        return;
+    }
     const QColor border = focused ? Th::c().composer.borderFocus : Th::c().composer.border;
     const int    bw     = focused ? 2 : 1;
     setStyleSheet(QString(

@@ -383,6 +383,23 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     boxLayout->setContentsMargins(0, 0, 0, 0);
     boxLayout->setSpacing(0);
 
+    // ── Optional subject line (email backends; shown via setSubjectVisible) ────
+    // Borderless field with its own horizontal rule beneath, so it reads as part
+    // of the composer box rather than a separate boxed input.
+    _subject = new StyledLineEdit(_box);
+    _subject->setPrefix(tr("Subject"));
+    _subject->setBorderless(true);
+    _subject->setVisible(false);
+    boxLayout->addWidget(_subject);
+
+    _subjectSep = new QFrame(_box);
+    _subjectSep->setFrameShape(QFrame::HLine);
+    _subjectSep->setFixedHeight(1);
+    _subjectSep->setStyleSheet(QStringLiteral("QFrame { border: none; background: %1; }")
+                                   .arg(Th::qss(Th::c().composer.toolbarBorder)));
+    _subjectSep->setVisible(false);
+    boxLayout->addWidget(_subjectSep);
+
     // ── Formatting toolbar ────────────────────────────────────────────────────
     _formattingTb = new FormattingToolbar(_box);
     boxLayout->addWidget(_formattingTb);
@@ -637,6 +654,17 @@ void ComposerWidget::setSession(Session *session) {
         _emojiPicker->setSession(session);
     if (_mentionPopup)
         _mentionPopup->setSession(session);
+}
+
+void ComposerWidget::setSubjectVisible(bool visible) {
+    if (_subject)
+        _subject->setVisible(visible);
+    if (_subjectSep)
+        _subjectSep->setVisible(visible);
+}
+
+QString ComposerWidget::subjectText() const {
+    return _subject ? _subject->text() : QString();
 }
 
 void ComposerWidget::setConvKind(ConvKind kind) {
@@ -1419,6 +1447,8 @@ void ComposerWidget::trySend() {
             emit uploadRequested(files, text); // files + text = one message
         else
             emit sendRequested(text);
+        if (_subject)
+            _subject->clear(); // handlers read subjectText() during the emit above
     }
     updateSendState();
 

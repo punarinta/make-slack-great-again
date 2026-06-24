@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "ui/main_window.h"
+
+#include "backend/imap/imap_auth.h"          // dev IMAP env-seed (Phase 1)
+#include "backend/imap/imap_auth_strategy.h" // IMAP add-account prompt hook
+#include "ui/imap_add_account/imap_add_account_dialog.h"
 #include "app/crash_handler.h"
 #include "app/single_instance.h"
 #include "util/desktop_integration.h"
@@ -190,6 +194,14 @@ int main(int argc, char *argv[]) {
                         translator.load(":/translations/msga_" + locale.section('_', 0, 0));
     if (loaded)
         app.installTranslator(&translator);
+
+    // IMAP "Add email account" dialog: injected into the (Widgets-free) auth
+    // strategy as the credential prompt (imap-backend-plan §5).
+    imap::AuthStrategy::setPrompt(&ImapAddAccountDialog::prompt);
+
+    // Dev bridge (Phase 1): also seed an IMAP workspace from IMAP_* env vars when
+    // set, so email can be exercised without the dialog. No-op when unset.
+    imap::seedDevWorkspaceFromEnv();
 
     MainWindow window;
     // Dispatch incoming msga:// URLs: notification-click activation (Windows

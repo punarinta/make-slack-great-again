@@ -203,10 +203,12 @@ rpl::producer<AuthState> Backend::authState() const {
 
 Capabilities Backend::capabilities() const {
     Capabilities c;
-    c.reactions   = true;
-    c.editMessage = true;
-    c.threads     = true;
-    c.fileUpload  = true;
+    c.presence      = true; // Graph presence (polled) → online/away dots
+    c.reactions     = true;
+    c.editMessage   = true;
+    c.deleteMessage = true;
+    c.threads       = true;
+    c.fileUpload    = true;
     // typing / livePresence / huddles / canvases / slashCommands stay false:
     // Graph offers no live typing, canvas, huddle, or slash-command analog for a
     // delegated client. livePresence may flip true once the websocket presence

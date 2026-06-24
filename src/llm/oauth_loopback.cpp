@@ -136,7 +136,11 @@ void OAuthLoopbackFlow::refresh(const QString &refreshToken) {
     });
 }
 
-void OAuthLoopbackFlow::postTokenRequest(const QList<QPair<QString, QString>> &params) {
+void OAuthLoopbackFlow::postTokenRequest(const QList<QPair<QString, QString>> &paramsIn) {
+    QList<QPair<QString, QString>> params = paramsIn;
+    if (!_cfg.clientSecret.isEmpty()) // Google "Desktop app" clients require it
+        params.append({QStringLiteral("client_secret"), _cfg.clientSecret});
+
     auto           *nam = new QNetworkAccessManager(this);
     QNetworkRequest req((QUrl(_cfg.tokenUrl)));
 

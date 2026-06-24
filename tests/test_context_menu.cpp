@@ -32,7 +32,13 @@ static constexpr int kPadV    = 6;
 static constexpr int kItemH   = 36;
 static constexpr int kHeaderH = 26;
 static constexpr int kSepH    = 9;
-static constexpr int kMinW    = 200;
+
+// Horizontal center of the *rendered* menu. Menus default to WidthMode::Fit, so
+// their width is content-driven (short labels → narrow menu); a fixed column can
+// fall outside the menu and hit nothing. Always click the actual center.
+static int menuCenterX(const ContextMenu *m) {
+    return m->width() / 2;
+}
 
 // 'I' = normal item, 'H' = header, 'S' = separator
 static int itemCenterY(const std::vector<char> &types, int idx) {
@@ -163,7 +169,7 @@ TEST_CASE("ContextMenu: clicking a header row fires no action", "[context_menu][
     m->addItem("Normal Item", [&fired] { fired = true; });
     showMenu(m);
 
-    const int cx = kShadow + kMinW / 2;
+    const int cx = menuCenterX(m); // real center: Fit-mode menus are content-narrow
     click(m, QPoint(cx, itemCenterY({'H', 'I'}, 0))); // click on header
 
     CHECK(!fired);
@@ -178,7 +184,7 @@ TEST_CASE("ContextMenu: clicking a normal item fires its action", "[context_menu
     m->addItem("Do Something", [&fired] { fired = true; });
     showMenu(m);
 
-    const int cx = kShadow + kMinW / 2;
+    const int cx = menuCenterX(m); // real center: Fit-mode menus are content-narrow
     click(m, QPoint(cx, itemCenterY({'I'}, 0)));
 
     CHECK(fired);
@@ -194,7 +200,7 @@ TEST_CASE(
     m->addItem("Action", [&fired] { fired = true; });
     showMenu(m);
 
-    const int cx = kShadow + kMinW / 2;
+    const int cx = menuCenterX(m); // real center: Fit-mode menus are content-narrow
     click(m, QPoint(cx, itemCenterY({'H', 'I'}, 1))); // click on item (index 1)
 
     CHECK(fired);
@@ -211,7 +217,7 @@ TEST_CASE(
     m->addItem("Active Level", [&fired] { fired = true; }, false, "", /*selected=*/true);
     showMenu(m);
 
-    const int cx = kShadow + kMinW / 2;
+    const int cx = menuCenterX(m); // real center: Fit-mode menus are content-narrow
     click(m, QPoint(cx, itemCenterY({'I'}, 0)));
 
     CHECK(fired);
@@ -228,7 +234,7 @@ TEST_CASE(
     m->addItem("Third", [&firedIdx] { firedIdx = 2; });
     showMenu(m);
 
-    const int cx = kShadow + kMinW / 2;
+    const int cx = menuCenterX(m); // real center: Fit-mode menus are content-narrow
     click(m, QPoint(cx, itemCenterY({'I', 'I', 'I'}, 1))); // click second item
 
     CHECK(firedIdx == 1);
@@ -245,7 +251,7 @@ TEST_CASE(
     m->addItem("Leave channel", [&fired] { fired = true; }, /*destructive=*/true);
     showMenu(m);
 
-    const int cx = kShadow + kMinW / 2;
+    const int cx = menuCenterX(m); // real center: Fit-mode menus are content-narrow
     click(m, QPoint(cx, itemCenterY({'I'}, 0)));
 
     CHECK(fired);

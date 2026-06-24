@@ -9,6 +9,7 @@
 class QHBoxLayout;
 class QLabel;
 class QLineEdit;
+class IconButton;
 
 // Reusable themed input field with optional prefix label and character counter.
 // Changes border color on focus using composer.border / composer.borderFocus tokens.
@@ -22,6 +23,10 @@ public:
     explicit StyledLineEdit(QWidget *parent = nullptr);
 
     void       setSize(Size size);
+    // Drop the frame: no border, no rounded corners, transparent background — for
+    // a field embedded in another container (e.g. the composer subject line, which
+    // draws its own separator). Idempotent; re-applied across theme changes.
+    void       setBorderless(bool on);
     void       setPrefix(const QString &text);
     // Show a tinted SVG glyph at the left edge of the field (e.g. a search
     // magnifier). Re-tinted on theme change. Pass an empty path to remove it.
@@ -33,9 +38,20 @@ public:
     void       clear();
     QLineEdit *lineEdit() const { return _edit; }
 
+    // Show a clickable tinted SVG button at the right edge; emits trailingClicked().
+    // Lazily created; pass an empty path to hide it. Returns the button so callers
+    // can disable it / show a busy state.
+    IconButton *setTrailingIcon(const QString &svgPath);
+    IconButton *trailingButton() const { return _trailingBtn; }
+
+    // Turn this into a password field with a built-in show/hide eye toggle
+    // (reusable across the app). Sets echo mode to Password initially.
+    void enablePasswordReveal();
+
 signals:
     void textChanged(const QString &text);
     void returnPressed();
+    void trailingClicked();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -51,8 +67,11 @@ private:
     QLabel      *_prefixLabel  = nullptr;
     QLineEdit   *_edit         = nullptr;
     QLabel      *_counterLabel = nullptr;
+    IconButton  *_trailingBtn  = nullptr;
     QString      _leadingIconPath;
     QSize        _leadingIconSize = QSize(16, 16);
     int          _maxLength       = 0;
     bool         _focused         = false;
+    bool         _passwordShown   = false;
+    bool         _borderless      = false;
 };

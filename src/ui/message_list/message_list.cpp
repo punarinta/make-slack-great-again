@@ -1643,9 +1643,15 @@ void MessageListWidget::openEmojiPickerForRow(int row, const QPoint &globalPos) 
 void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint &globalPos) {
     if (msg.pending)
         return;
-    const bool    isOwnMessage = _session && (msg.author == _session->meUserId());
-    const bool    canDelete    = isOwnMessage || (_session && _session->meIsAdmin());
-    const QString linkUrl      = firstLinkInMessage(msg);
+    const Capabilities caps         = _session ? _session->capabilities() : Capabilities{};
+    const bool         isOwnMessage = _session && (msg.author == _session->meUserId());
+    // Edit is own-only and only where the backend supports editing (email can't).
+    const bool         canEdit      = isOwnMessage && caps.editMessage;
+    // Delete needs backend support, then: any message if the backend says so
+    // (email — it's your mailbox), else your own messages or the admin path.
+    const bool         canDelete = caps.deleteMessage && (caps.deleteAnyMessage || isOwnMessage ||
+                                                  (_session && _session->meIsAdmin()));
+    const QString      linkUrl   = firstLinkInMessage(msg);
 
     auto *menu = new ContextMenu(this);
 
@@ -1663,7 +1669,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         menu->addSeparator();
     }
 
-    if (isOwnMessage) {
+    if (canEdit) {
         menu->addItem(
             tr("Edit message"),
             "E",
