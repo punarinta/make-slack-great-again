@@ -102,6 +102,7 @@ private:
     // Workspace management
     void refreshSwitcher();
     void logoutWorkspace(const QString &teamId);
+    void toggleWorkspaceMute(const QString &teamId);
     void showWorkspaceMenu(const QString &teamId, const QPoint &globalPos);
 
     // Header helpers
@@ -225,6 +226,10 @@ private:
     // re-fired EvHuddleChanged (edit / history reconcile) can't double-notify;
     // cleared when the huddle ends so its next start notifies again.
     QSet<QString>  _notifiedHuddles;
+    // teamIds the user muted: no OS notifications, no tray badge contribution
+    // (in-app unread counters/emphasis still apply). Mirrors the persisted
+    // TokenStore mute flag; rebuilt in refreshSwitcher() and on toggle.
+    QSet<QString>  _mutedTeams;
     // teamId → {normal unreads (blue), important: DM unreads + mentions (red)}
     QHash<QString, QPair<int, int>> _wsUnreads;
     bool                            _convListWired = false;

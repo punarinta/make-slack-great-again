@@ -157,6 +157,18 @@ bool TokenStore::hasAnyWorkspace() {
     return !workspaceKeys().empty();
 }
 
+bool TokenStore::isWorkspaceMuted(const WorkspaceKey &key) {
+    return settings().value(recordBase(key) + "/muted", false).toBool();
+}
+
+void TokenStore::setWorkspaceMuted(const WorkspaceKey &key, bool muted) {
+    auto s = settings();
+    if (muted)
+        s.setValue(recordBase(key) + "/muted", true);
+    else
+        s.remove(recordBase(key) + "/muted");
+}
+
 std::optional<WorkspaceKey> TokenStore::activeWorkspace() {
     auto s = settings();
     migrate(s);

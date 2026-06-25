@@ -1654,6 +1654,10 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     if (!s.value("notifications/enabled", true).toBool())
         return;
 
+    // Muted workspace: high-level switch suppresses every OS notification from it.
+    if (_mutedTeams.contains(teamId))
+        return;
+
     const auto it = _sessions.find(teamId);
     if (it == _sessions.end())
         return;
@@ -1791,6 +1795,11 @@ void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged 
     QSettings s("msga", "msga");
     if (!s.value("notifications/enabled", true).toBool() ||
         !s.value("notifications/huddles", true).toBool())
+        return;
+
+    // Muted workspace: no OS notification (the false→true dedup above still ran,
+    // so an unmute mid-huddle won't retroactively fire for an already-seen one).
+    if (_mutedTeams.contains(teamId))
         return;
 
     const auto it = _sessions.find(teamId);
@@ -1975,6 +1984,10 @@ void MainWindow::updateTrayIcon() {
         return;
     int globalTotal = 0, globalMentions = 0;
     for (auto it = _wsUnreads.cbegin(); it != _wsUnreads.cend(); ++it) {
+        // Muted workspaces never tint the tray ball (their in-app unread badges
+        // and chat emphasis are untouched — this is a notification-only switch).
+        if (_mutedTeams.contains(it.key()))
+            continue;
         globalTotal += it.value().first;
         globalMentions += it.value().second;
     }
@@ -2008,9 +2021,12 @@ void MainWindow::refreshSwitcher() {
     const auto                            keys = TokenStore::workspaceKeys();
     std::vector<WorkspaceSwitcher::Entry> entries;
     entries.reserve(keys.size());
+    _mutedTeams.clear();
     for (const auto &key : keys) {
         const auto    rec    = TokenStore::loadWorkspace(key);
         const QString handle = key.toString();
+        if (TokenStore::isWorkspaceMuted(key))
+            _mutedTeams.insert(handle);
         entries.push_back(
             {handle, rec ? rec->displayName : QString(), rec ? rec->iconUrl : QString()}
         );
@@ -2041,6 +2057,21 @@ void MainWindow::logoutWorkspace(const QString &teamId) {
     }
 }
 
+void MainWindow::toggleWorkspaceMute(const QString &teamId) {
+    const auto key = WorkspaceKey::fromString(teamId);
+    if (!key)
+        return;
+    const bool muted = !_mutedTeams.contains(teamId);
+    TokenStore::setWorkspaceMuted(*key, muted);
+    if (muted)
+        _mutedTeams.insert(teamId);
+    else
+        _mutedTeams.remove(teamId);
+    // The mute flag only changes whether this workspace tints the global tray
+    // ball; re-render it now so the change is immediate.
+    updateTrayIcon();
+}
+
 void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPos) {
     const auto rec  = recordForHandle(teamId);
     auto      *menu = new ContextMenu(this);
@@ -2059,6 +2090,10 @@ void MainWindow::showWorkspaceMenu(const QString &teamId, const QPoint &globalPo
             });
         }
     }
+
+    menu->addItem(_mutedTeams.contains(teamId) ? tr("Unmute") : tr("Mute"), [this, teamId] {
+        toggleWorkspaceMute(teamId);
+    });
 
     menu->addItem(
         rec.displayName.isEmpty() ? tr("Log out") : tr("Log out from %1").arg(rec.displayName),

@@ -32,7 +32,15 @@ std::vector<WorkspaceKey>      workspaceKeys();
 // from `ordered` are appended at the end so no workspace is ever lost.
 void                           setWorkspaceOrder(const std::vector<WorkspaceKey> &ordered);
 bool                           hasAnyWorkspace();
-std::optional<WorkspaceKey>    activeWorkspace();
-void                           setActiveWorkspace(const WorkspaceKey &key);
+
+// High-level per-workspace mute switch. Independent of any conversation's own
+// notification settings: while muted, the app suppresses OS notifications and
+// the tray badge for the workspace's events, but in-app unread counters and
+// chat emphasis are unaffected. Stored separately from the credential record so
+// toggling it never has to rewrite the opaque auth blob.
+bool                        isWorkspaceMuted(const WorkspaceKey &key);
+void                        setWorkspaceMuted(const WorkspaceKey &key, bool muted);
+std::optional<WorkspaceKey> activeWorkspace();
+void                        setActiveWorkspace(const WorkspaceKey &key);
 
 } // namespace TokenStore
