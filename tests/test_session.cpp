@@ -61,6 +61,10 @@ struct StubBackend : Backend {
     }
     void connectRealtime() override {}
     void disconnectRealtime() override {}
+    int  verifyRealtimeCalls      = 0;
+    int  reestablishRealtimeCalls = 0;
+    void verifyRealtime() override { ++verifyRealtimeCalls; }
+    void reestablishRealtime() override { ++reestablishRealtimeCalls; }
 
     // Mirror the Slack id-shape rules the Session used to hardcode, so the
     // fetch-routing / synthetic-account tests keep exercising the same paths.
@@ -85,8 +89,12 @@ struct StubBackend : Backend {
         return _meId.value();
     }
 
-    rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
-    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
+    int                                      loadConversationsCalls = 0;
+    rpl::producer<std::vector<Conversation>> loadConversations() override {
+        ++loadConversationsCalls;
+        return _convs.value();
+    }
+    rpl::producer<std::vector<User>> loadUsers() override { return _users.value(); }
 
     int                 loadPresenceCalls = 0; // times loadPresence was actually invoked
     UserId              lastPresenceUser;      // user id of the most recent loadPresence call
@@ -107,8 +115,11 @@ struct StubBackend : Backend {
             };
         return rpl::variable<SelfPresence>(selfPresenceResult).value();
     }
+    // Controllable head page for the realtime safety-net poll. Mutate between
+    // ticks to model a message deleted from another client.
+    std::vector<Message>       historyPage;
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
-        return rpl::variable<MessagePage>({}).value();
+        return rpl::variable<MessagePage>(MessagePage{historyPage, std::nullopt}).value();
     }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
@@ -2528,4 +2539,148 @@ TEST_CASE_METHOD(
     });
     CHECK(handlerCalled);
     CHECK(err.contains("channel_canvas_already_exists"));
+}
+
+// ── Realtime safety-net poll: deletion recovery ─────────────────────────────────
+
+namespace {
+Message pollMsg(const QString &ts) {
+    Message m;
+    m.ts     = ts;
+    m.date   = decimalTsToMicros(ts);
+    m.author = UserId{"U2"};
+    m.text   = TextWithEntities{"hi", {}};
+    return m;
+}
+} // namespace
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "realtime safety poll recovers the NEWEST message deleted from another client",
+    "[session][events][delete]"
+) {
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002"); // the newest — deleted below
+
+    // The poll bails without a latestTs baseline, so seed one by delivering the
+    // two messages first.
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1});
+    stub->fireEvent(EvMessageNew{conv, m2});
+    REQUIRE(session->findConversation(conv)->latestTs == m2.ts);
+
+    stub->historyPage = {m1, m2};
+    session->runRealtimeHealthCheckForTest(); // first tick → baseline snapshot
+
+    // Delete the NEWEST message elsewhere: the head page loses m2 while m2's ts is
+    // still newer than everything that remains. The old upper-bounded window
+    // skipped exactly this case.
+    stub->historyPage = {m1};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    bool sawDelete = false;
+    for (const auto &e : events)
+        if (auto *d = std::get_if<EvMessageDeleted>(&e); d && d->conv == conv && d->ts == m2.ts)
+            sawDelete = true;
+    CHECK(sawDelete);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "realtime safety poll does not synthesize a deletion when nothing changed",
+    "[session][events][delete]"
+) {
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002");
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1});
+    stub->fireEvent(EvMessageNew{conv, m2});
+
+    stub->historyPage = {m1, m2};
+    session->runRealtimeHealthCheckForTest(); // baseline
+
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest(); // identical page → no deletion
+
+    int deletes = 0;
+    for (const auto &e : events)
+        if (std::holds_alternative<EvMessageDeleted>(e))
+            ++deletes;
+    CHECK(deletes == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "realtime safety poll keeps a message that merely fell below the head window",
+    "[session][events][delete]"
+) {
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001"); // oldest; will drop out of the page
+    const Message        m2 = pollMsg("1000.000002");
+    const Message        m3 = pollMsg("1000.000003"); // newer traffic pushes the window up
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1});
+    stub->fireEvent(EvMessageNew{conv, m2});
+
+    stub->historyPage = {m1, m2};
+    session->runRealtimeHealthCheckForTest(); // snapshot {m1, m2}
+
+    // New traffic arrives; the (capped-size) head page now starts at m2 — m1 is
+    // simply below the window, NOT deleted. The poll must not report m1 deleted.
+    stub->fireEvent(EvMessageNew{conv, m3});
+    stub->historyPage = {m2, m3};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    bool m1Deleted = false;
+    for (const auto &e : events)
+        if (auto *d = std::get_if<EvMessageDeleted>(&e); d && d->ts == m1.ts)
+            m1Deleted = true;
+    CHECK_FALSE(m1Deleted); // m1 fell below the window, it wasn't deleted
+}
+
+// ── Rate-limit avoidance: reconnect/reestablish throttling ──────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "repeated realtime reconnects coalesce into one conversation reload",
+    "[session][events][ratelimit]"
+) {
+    // conversations.list is heavily rate-limited; a flapping socket firing
+    // EvRealtimeReconnected repeatedly must not trigger a reload each time.
+    const int before = stub->loadConversationsCalls;
+    stub->fireEvent(EvRealtimeReconnected{});
+    stub->fireEvent(EvRealtimeReconnected{}); // immediately again — within the window
+    stub->fireEvent(EvRealtimeReconnected{});
+    CHECK(stub->loadConversationsCalls == before + 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "safety poll re-establishes the socket at most once per window",
+    "[session][events][ratelimit]"
+) {
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002");
+    const Message        m3 = pollMsg("1000.000003");
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1}); // baseline latestTs
+
+    // First tick sees m2 as a message realtime never delivered → re-establish.
+    stub->historyPage = {m1, m2};
+    session->runRealtimeHealthCheckForTest();
+    REQUIRE(stub->reestablishRealtimeCalls == 1);
+
+    // A second miss (m3) in the same window must NOT trigger another reconnect —
+    // otherwise a persistently sick socket drives a reconnect → reload storm.
+    stub->historyPage = {m1, m2, m3};
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->reestablishRealtimeCalls == 1);
 }

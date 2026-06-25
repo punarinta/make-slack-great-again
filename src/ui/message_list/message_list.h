@@ -175,24 +175,30 @@ private:
     PaintContext makePaintContext() const;
 
     // Data model
-    void               appendMessage(const Message &msg);
+    void appendMessage(const Message &msg);
     // Append without a relayout/repaint — for bulk loads that rebuild once at
     // the end (a per-message rebuildLayout is O(items), so a loop is O(n²)).
-    void               appendMessageDeferred(const Message &msg);
+    void appendMessageDeferred(const Message &msg);
     // Append every message then rebuild layout once. Used by the cache
     // pre-populate and first-page loads.
-    void               appendMessages(const std::vector<Message> &msgs);
-    int                findByTs(const Ts &ts) const; // linear scan, fine for <500 visible
-    void               handleEvent(const Event &e);
-    // Merge freshly-loaded network messages into the existing item list.
-    void               mergeNetworkMessages(const std::vector<Message> &incoming);
+    void appendMessages(const std::vector<Message> &msgs);
+    int  findByTs(const Ts &ts) const; // linear scan, fine for <500 visible
+    void handleEvent(const Event &e);
+    // Merge an authoritative server page into the existing item list: insert new
+    // rows, update changed ones, and drop rows the server no longer has (deleted
+    // from another client). fromHeadPage=true means `incoming` is the latest
+    // (no-cursor) page and therefore the channel head, so a local row newer than
+    // its newest message was deleted, not merely not-yet-fetched; a cursored
+    // (older) page is a middle slice, so deletion reconciliation is capped at its
+    // newest message.
+    void mergeNetworkMessages(const std::vector<Message> &incoming, bool fromHeadPage);
     // Re-fetch the newest page of the open conversation/thread and merge it,
     // recovering messages that arrived while the realtime socket was down (Slack
     // doesn't replay them). Driven by EvRealtimeReconnected.
-    void               backfillAfterReconnect();
+    void backfillAfterReconnect();
     // Apply the pending open-scroll intent (saved position / first unread /
     // bottom) if set.
-    void               applyPendingScroll();
+    void applyPendingScroll();
     // {ts of the message anchoring the viewport top, its offset from the
     // viewport top}, or empty ts when nothing is laid out. Reads the
     // _tops/_topsTs snapshot, so it stays valid when _items was mutated after

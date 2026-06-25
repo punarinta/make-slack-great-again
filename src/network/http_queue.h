@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include <QHash>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QObject>
@@ -122,16 +123,25 @@ protected:
 private:
     void execute(const PendingCall &c);
     void handleReply(QNetworkReply *reply, PendingCall c);
+    // (Re)arm a single timer to pump the queue when the soonest 429 cooldown
+    // expires. Coalesces so repeated rate-limits don't stack timers.
+    void scheduleWake(qint64 targetMs);
 
     QNetworkAccessManager *_nam;
     QString                _token;
     QString                _baseUrl;
     QQueue<PendingCall>    _queue;
-    bool                   _inflight          = false;
-    bool                   _throttled         = false; // waiting out a backoff / refresh
+    bool                   _inflight  = false;
+    bool                   _throttled = false; // global pause: token refresh / transport backoff
     int                    _retryBaseDelayMs  = 1000;
     int                    _transferTimeoutMs = 30000;
     OnTokenExpired         _onTokenExpired;
+    // Per-method 429 backpressure. Slack throttles per method, so a rate-limited
+    // method waits out its Retry-After here while OTHER methods keep flowing —
+    // instead of one 429 head-of-line blocking the whole queue. Value is the
+    // epoch-ms instant the method may run again.
+    QHash<QString, qint64> _methodReadyAtMs;
+    qint64                 _scheduledWakeMs = -1; // epoch ms of the pending wake timer; -1 = none
 };
 
 } // namespace net

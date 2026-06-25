@@ -197,6 +197,138 @@ TEST_CASE(
     CHECK(containsTs(afterSwitch, "1000.000005"));
 }
 
+// Snapshot the live view back through the cache: setSession(nullptr) writes
+// _items to the cache, so what comes back is exactly what the widget is showing.
+static std::vector<Message>
+liveView(MessageListWidget &list, Session *session, const ConversationId &conv) {
+    list.setSession(nullptr);
+    return session->cachedMessages(conv);
+}
+
+TEST_CASE("reopen clears a middle message deleted from another client", "[message_list][delete]") {
+    Fixture f;
+
+    // The cache (shown instantly on open) still holds a message that was deleted
+    // from another client; the realtime message_deleted never arrived. The
+    // authoritative head fetch is the same set MINUS the deleted one.
+    const std::vector<Message> cached = {
+        makeMessage("1000.000001", "one"),
+        makeMessage("1000.000002", "two (deleted elsewhere)"),
+        makeMessage("1000.000003", "three"),
+    };
+    f.session->cacheMessages(kConv.id, cached);
+    f.stub->_historyPage = {cached[0], cached[2]}; // m2 gone
+
+    MessageListWidget list(f.session.get(), /*imgCache*/ nullptr);
+    list.openConversation(kConv.id);
+
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    CHECK(view.size() == 2);
+    CHECK(containsTs(view, "1000.000001"));
+    CHECK_FALSE(containsTs(view, "1000.000002")); // deleted-elsewhere row cleared
+    CHECK(containsTs(view, "1000.000003"));
+}
+
+TEST_CASE(
+    "reopen clears the NEWEST message deleted from another client", "[message_list][delete]"
+) {
+    Fixture f;
+
+    // The decisive case: you delete the most recent message in another client.
+    // Its ts is newer than everything that remains, so an upper-bounded merge
+    // window left it stuck forever. The head page is authoritative above its
+    // newest, so the stale newest row must be dropped.
+    const std::vector<Message> cached = {
+        makeMessage("1000.000001", "one"),
+        makeMessage("1000.000002", "two"),
+        makeMessage("1000.000003", "three (newest, deleted elsewhere)"),
+    };
+    f.session->cacheMessages(kConv.id, cached);
+    f.stub->_historyPage = {cached[0], cached[1]}; // newest gone
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    CHECK(view.size() == 2);
+    CHECK(containsTs(view, "1000.000001"));
+    CHECK(containsTs(view, "1000.000002"));
+    CHECK_FALSE(containsTs(view, "1000.000003")); // deleted newest row cleared
+}
+
+TEST_CASE(
+    "reopen clears the only message when it was deleted from another client",
+    "[message_list][delete]"
+) {
+    Fixture f;
+
+    // Deleting the sole message empties the channel. The head fetch returns an
+    // empty page (a successful fetch, not an error — those don't fire on_next),
+    // which must clear the stale cached row rather than leave it on screen.
+    f.session->cacheMessages(kConv.id, {makeMessage("1000.000001", "the only message")});
+    f.stub->_historyPage = {}; // server now has nothing
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    CHECK(view.empty());
+}
+
+TEST_CASE(
+    "live realtime delete removes the row from the open conversation", "[message_list][delete]"
+) {
+    Fixture f;
+
+    const std::vector<Message> msgs = {
+        makeMessage("1000.000001", "one"),
+        makeMessage("1000.000002", "two"),
+        makeMessage("1000.000003", "three (deleted live)"),
+    };
+    f.stub->_historyPage = msgs;
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    // The socket delivers message_deleted for the newest message; it flows through
+    // the session to the list and the row must vanish immediately.
+    f.stub->_events.fire(Event{EvMessageDeleted{kConv.id, "1000.000003", std::nullopt}});
+
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    CHECK(view.size() == 2);
+    CHECK_FALSE(containsTs(view, "1000.000003"));
+}
+
+TEST_CASE(
+    "mergeNetworkMessages keeps paginated-older messages below the page window",
+    "[message_list][delete]"
+) {
+    Fixture f;
+
+    // Same five-message scrolled-up scenario as the anchor test: m1..m3 were
+    // paginated in (below the no-cursor tail). The tail fetch returning only
+    // m4,m5 must NOT be read as "m1..m3 were deleted" — they're simply older
+    // than the window this page covers.
+    const std::vector<Message> all = {
+        makeMessage("1000.000001", "one"),
+        makeMessage("1000.000002", "two"),
+        makeMessage("1000.000003", "three"),
+        makeMessage("1000.000004", "four"),
+        makeMessage("1000.000005", "five"),
+    };
+    f.session->cacheMessages(kConv.id, all);
+    f.stub->_historyPage = {all[3], all[4]}; // recent tail only
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    list.setSession(nullptr);
+    const auto view = f.session->cachedMessages(kConv.id);
+    CHECK(view.size() == 5); // nothing erased — the older three are out of window
+    CHECK(containsTs(view, "1000.000001"));
+    CHECK(containsTs(view, "1000.000005"));
+}
+
 TEST_CASE(
     "setSession with no conversation open does not touch the cache", "[message_list][scroll]"
 ) {

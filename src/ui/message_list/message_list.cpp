@@ -46,6 +46,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 // ── MessageListWidget ─────────────────────────────────────────────────────────
 
@@ -357,12 +358,15 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                     _session->cacheMessages(conv, msgs);
                 }
 
-                if (hasCached && !page.messages.empty()) {
+                if (hasCached) {
                     // Merge: network data may differ slightly (edits, reactions) but is
                     // mostly the same as the cached view, so the update is imperceptible.
+                    // Runs even for an empty page so a conversation whose only/last
+                    // message was deleted elsewhere clears instead of showing the stale
+                    // cached copy.
                     const bool wasAtBottom =
                         verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                    mergeNetworkMessages(page.messages);
+                    mergeNetworkMessages(page.messages, /*fromHeadPage=*/true);
                     if (_scrollToBottomPending) {
                         applyPendingScroll();
                         // The network page is authoritative — if the saved or
@@ -527,7 +531,9 @@ void MessageListWidget::loadOlderMessages() {
                                   // any running scroll animation, whose absolute target the
                                   // insert invalidated.
                                   const int prevTotalH = _totalH;
-                                  mergeNetworkMessages(page.messages);
+                                  // Cursored older page: a middle slice, not the head,
+                                  // so deletion reconciliation is capped at its window.
+                                  mergeNetworkMessages(page.messages, /*fromHeadPage=*/false);
                                   if (_totalH != prevTotalH)
                                       _scrollAnim.stop();
                                   maybeFillViewport();
@@ -668,7 +674,9 @@ void MessageListWidget::collapseInlineThread(const Ts &rootTs) {
         emit threadCloseRequested();
 }
 
-void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incoming) {
+void MessageListWidget::mergeNetworkMessages(
+    const std::vector<Message> &incoming, bool fromHeadPage
+) {
     // Build ts → index map for the items already displayed.
     QHash<QString, int> tsIdx;
     tsIdx.reserve(static_cast<int>(_items.size()));
@@ -708,6 +716,64 @@ void MessageListWidget::mergeNetworkMessages(const std::vector<Message> &incomin
         MessageItem item;
         item.msg = msg;
         _items.insert(_items.begin() + insertAt, std::move(item));
+    }
+
+    // Reconcile deletions. A message deleted from another client won't appear in
+    // this authoritative page, yet it's still sitting in our list (pre-populated
+    // from cache, or left behind by a realtime message_deleted the socket never
+    // delivered). Drop any local non-pending message that falls inside the span
+    // this page authoritatively covers but is absent from it.
+    //
+    // Lower bound is always the page's oldest message, so paginated-older history
+    // below it is never touched. Upper bound depends on the page kind: a HEAD
+    // page (latest, no cursor) IS the channel head — nothing on the server is
+    // newer than its newest message, so a local row above it was deleted (the
+    // common case: you delete the most recent message). A cursored OLDER page is
+    // only a middle slice, so cap removal at its newest to leave genuinely-newer
+    // rows alone. Optimistic pending ghosts are always spared.
+    // A non-empty page gives a concrete [oldest, newest] span. An EMPTY head page
+    // means the channel head itself is empty — every message there was deleted —
+    // so the reconcile window is fully open and clears the stale rows. (This
+    // lambda only runs on a successful fetch; a failed history load completes
+    // without firing, so an empty page is a real "no messages", not an error.)
+    // An empty cursored (older) page covers no span, so there's nothing to do.
+    const bool haveRange = !incoming.empty();
+    const bool reconcile = haveRange || fromHeadPage;
+    if (reconcile) {
+        QSet<QString> incomingTs;
+        incomingTs.reserve(static_cast<int>(incoming.size()));
+        qint64 oldest = haveRange ? incoming.front().date : 0;
+        qint64 newest = haveRange ? incoming.front().date : 0;
+        for (const auto &msg : incoming) {
+            incomingTs.insert(msg.ts);
+            oldest = std::min(oldest, msg.date);
+            newest = std::max(newest, msg.date);
+        }
+        const qint64 lower   = haveRange ? oldest : std::numeric_limits<qint64>::min();
+        const qint64 upper   = fromHeadPage ? std::numeric_limits<qint64>::max() : newest;
+        bool         removed = false;
+        for (int i = static_cast<int>(_items.size()) - 1; i >= 0; --i) {
+            const auto &m = _items[i].msg;
+            if (m.pending)
+                continue; // optimistic send not yet on the server
+            if (m.date < lower || m.date > upper)
+                continue; // below this page, or above a non-head page's window
+            if (incomingTs.contains(m.ts))
+                continue; // still on the server
+            _items.erase(_items.begin() + i);
+            removed = true;
+            changed = true;
+        }
+        if (removed) {
+            // Row indices shifted — drop hover state; the next mouse move
+            // recomputes it (mirrors the EvMessageDeleted path).
+            _hoveredRow      = -1;
+            _hoveredToolBtn  = -1;
+            _hoveredAttach   = {-1, -1};
+            _hoveredReplyRow = -1;
+            _hoveredFile     = {-1, -1};
+            _hoveredFileBtn  = -1;
+        }
     }
 
     if (changed) {
@@ -2995,7 +3061,9 @@ void MessageListWidget::backfillAfterReconnect() {
                     return;
                 const bool wasAtBottom =
                     verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                mergeNetworkMessages(page.messages);
+                // No-cursor (head) fetch — authoritative for the channel head, so
+                // it also reconciles deletions missed during the socket gap.
+                mergeNetworkMessages(page.messages, /*fromHeadPage=*/true);
                 if (_session) {
                     std::vector<Message> msgs(page.messages.begin(), page.messages.end());
                     _session->cacheMessages(conv, msgs);

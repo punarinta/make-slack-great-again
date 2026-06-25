@@ -285,6 +285,11 @@ public:
 
     Backend *backend() const;
 
+    // Test hook: run one realtime safety-net tick synchronously (normally fired
+    // by the 15 s _realtimeSafetyTimer). Exposed so the missed-message and
+    // deletion-recovery logic is unit-testable without waiting on the timer.
+    void runRealtimeHealthCheckForTest() { checkRealtimeHealth(); }
+
 private:
     // Resolve our own user id via auth.test; persists the result to cache.
     // Called at start() and retried from the loadUsers handler if the first
@@ -353,6 +358,12 @@ private:
     UserId                    _meUserId;          // set via setMe() once auth.test result is known
     bool                      _meIsAdmin = false; // is_admin || is_owner from auth.test
     ConversationId            _readingConv;       // currently open conversation
+    // Authoritative ts → threadRoot ("" if none) from the previous safety poll
+    // of the open conversation. checkRealtimeHealth diffs the next poll against
+    // it to catch a message deleted from another client that the realtime stream
+    // never delivered. Reset whenever the open conversation changes (setReading).
+    ConversationId            _pollSnapshotConv;
+    QHash<QString, QString>   _pollSnapshotTs;
     QHash<QString, QString>   _emojiMap;
     std::vector<SlashCommand> _commands; // built-ins + commands.list result
     // One entry per in-flight optimistic message (text send or file upload).
@@ -367,8 +378,18 @@ private:
     QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
 
     // Throttle the rate-limit notice banner (429s cluster; don't spam).
-    static constexpr qint64   kRateLimitNoticeGapMs  = 15'000;
-    qint64                    _lastRateLimitNoticeMs = 0;
+    static constexpr qint64 kRateLimitNoticeGapMs  = 15'000;
+    qint64                  _lastRateLimitNoticeMs = 0;
+
+    // Throttle reconnect-driven full conversation reloads. conversations.list is
+    // heavily rate-limited, and a flapping socket can fire EvRealtimeReconnected
+    // repeatedly — coalesce those into at most one reload per window.
+    static constexpr qint64   kReconnectReloadGapMs  = 2 * 60'000;
+    qint64                    _lastReconnectReloadMs = 0;
+    // Throttle the safety poll's forced socket re-establish so a persistently
+    // sick socket can't drive a reconnect → reload storm.
+    static constexpr qint64   kReestablishGapMs      = 60'000;
+    qint64                    _lastReestablishMs     = 0;
     QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>             _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request

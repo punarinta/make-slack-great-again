@@ -71,6 +71,59 @@ TEST_CASE("idempotent call retries a dropped connection until it succeeds", "[se
     CHECK(server.requestCount == 3);
 }
 
+TEST_CASE("a 429 is honored via Retry-After and the call eventually succeeds", "[send_retry]") {
+    FakeHttpServer server;
+    server.enqueue429(1);                          // first attempt is rate-limited
+    server.enqueue(R"({"ok":true,"value":"ok"})"); // retry after the cooldown succeeds
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+
+    QString value;
+    client.call("conversations.list", QUrlQuery{}, [&](QJsonObject r) {
+        value = r.value("value").toString();
+    });
+
+    REQUIRE(waitFor([&] { return !value.isEmpty(); }, 4000));
+    CHECK(value == "ok");
+    CHECK(server.requestCount == 2);
+}
+
+TEST_CASE(
+    "a 429 on one method does not block other methods (per-method throttle)", "[send_retry]"
+) {
+    FakeHttpServer server;
+    // Arrival order is deterministic (single-slot FIFO): A is sent first and gets
+    // a 429 with a 2 s cooldown; B is sent next and answers immediately; A retries
+    // only after its cooldown clears.
+    server.enqueue429(2);                         // A: conversations.list — rate-limited 2 s
+    server.enqueue(R"({"ok":true,"value":"B"})"); // B: conversations.history — immediate
+    server.enqueue(R"({"ok":true,"value":"A"})"); // A: succeeds after the cooldown
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+
+    QString aVal, bVal;
+    client.call("conversations.list", QUrlQuery{}, [&](QJsonObject r) {
+        aVal = r.value("value").toString();
+    });
+    client.call("conversations.history", QUrlQuery{}, [&](QJsonObject r) {
+        bVal = r.value("value").toString();
+    });
+
+    // B must finish while A is still serving out its Retry-After — proof that A's
+    // 429 didn't head-of-line block the whole queue (the old global-throttle bug).
+    REQUIRE(waitFor([&] { return !bVal.isEmpty(); }, 1500));
+    CHECK(bVal == "B");
+    CHECK(aVal.isEmpty()); // A is still cooling down, but B got through
+
+    // A recovers on its own once the cooldown elapses.
+    REQUIRE(waitFor([&] { return !aVal.isEmpty(); }, 4000));
+    CHECK(aVal == "A");
+}
+
 TEST_CASE("non-idempotent call is NOT resent after an ambiguous failure", "[send_retry]") {
     FakeHttpServer server;
     server.dropConnections = 1;

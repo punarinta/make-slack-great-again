@@ -22,7 +22,21 @@ public:
 
     QString baseUrl() const { return QString("http://127.0.0.1:%1/").arg(_server.serverPort()); }
 
-    void enqueue(const QByteArray &json) { _pending.append(json); }
+    // Queue a normal 200 OK JSON response (consumed by the next request).
+    void enqueue(const QByteArray &json) { _pending.append(make200(json)); }
+
+    // Queue an HTTP 429 with a Retry-After header (seconds), to exercise the
+    // queue's rate-limit backpressure.
+    void enqueue429(int retryAfterSecs) {
+        const QByteArray body = R"({"ok":false,"error":"ratelimited"})";
+        QByteArray       resp = "HTTP/1.1 429 Too Many Requests\r\n";
+        resp += "Retry-After: " + QByteArray::number(retryAfterSecs) + "\r\n";
+        resp += "Content-Type: application/json\r\n";
+        resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+        resp += "Connection: close\r\n\r\n";
+        resp += body;
+        _pending.append(resp);
+    }
 
     int requestCount    = 0;
     int dropConnections = 0; // close this many requests without responding
@@ -30,6 +44,15 @@ public:
     QList<QByteArray> requestPaths; // "/chat.postMessage" etc., in arrival order
 
 private:
+    static QByteArray make200(const QByteArray &body) {
+        QByteArray resp = "HTTP/1.1 200 OK\r\n";
+        resp += "Content-Type: application/json\r\n";
+        resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+        resp += "Connection: close\r\n\r\n";
+        resp += body;
+        return resp;
+    }
+
     void onNewConnection() {
         auto *sock = _server.nextPendingConnection();
         auto *buf  = new QByteArray;
@@ -62,15 +85,9 @@ private:
                 sock->close(); // simulates a stale/killed connection
                 return;
             }
-            QByteArray body = _pending.isEmpty() ? R"({"ok":false,"error":"no_response_queued"})"
-                                                 : _pending.takeFirst();
-
-            QByteArray resp;
-            resp += "HTTP/1.1 200 OK\r\n";
-            resp += "Content-Type: application/json\r\n";
-            resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-            resp += "Connection: close\r\n\r\n";
-            resp += body;
+            const QByteArray resp = _pending.isEmpty()
+                                        ? make200(R"({"ok":false,"error":"no_response_queued"})")
+                                        : _pending.takeFirst();
             sock->write(resp);
             sock->flush();
         });

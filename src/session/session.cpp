@@ -332,7 +332,17 @@ void Session::start() {
                     // rarely changes and shouldn't requeue ahead of this). The
                     // open MessageList backfills its own history off this same
                     // event after the re-fire below.
-                    reloadConversations(/*refreshEmoji=*/false);
+                    //
+                    // Coalesce: a flapping socket fires this repeatedly, and
+                    // conversations.list is heavily rate-limited — one reload per
+                    // window is plenty for badge catch-up and avoids hammering a
+                    // 429'd endpoint. The MessageList backfill below is cheap
+                    // (single history page) and always runs.
+                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - _lastReconnectReloadMs >= kReconnectReloadGapMs) {
+                        _lastReconnectReloadMs = now;
+                        reloadConversations(/*refreshEmoji=*/false);
+                    }
                 } else if (auto *ev = std::get_if<EvRateLimited>(&e)) {
                     // Surface a transient notice. 429s cluster (background polls
                     // hammer the same window), so throttle to one banner per
@@ -489,13 +499,65 @@ void Session::checkRealtimeHealth() {
                         missed = true; // realtime should have delivered this
                     }
                 }
+                // Detect deletions the realtime stream silently dropped. This poll
+                // always fetches the head (no-cursor) page, which is authoritative
+                // for the channel head: anything in the previous poll's snapshot
+                // that is now gone and is NOT older than this page's oldest message
+                // was deleted from another client. There is no upper bound — the
+                // common case is deleting the most recent message, whose ts is
+                // newer than everything that remains. The lower bound spares a
+                // message that merely fell below the page as newer traffic pushed
+                // the window up. The snapshot is from a prior completed poll (never
+                // concurrent with realtime), so this comparison is race-free.
+                // firstSighting doesn't dedup deletions, but the UI's
+                // EvMessageDeleted handler is a no-op once the row is gone, so a
+                // later realtime echo of the same delete is harmless.
+                if (!page.messages.empty()) {
+                    QSet<QString> nowTs;
+                    nowTs.reserve(static_cast<int>(page.messages.size()));
+                    qint64 oldest = page.messages.front().date;
+                    for (const auto &m : page.messages) {
+                        nowTs.insert(m.ts);
+                        oldest = std::min(oldest, m.date);
+                    }
+                    if (_pollSnapshotConv == conv) {
+                        for (auto it = _pollSnapshotTs.constBegin();
+                             it != _pollSnapshotTs.constEnd();
+                             ++it) {
+                            const qint64 d = decimalTsToMicros(it.key());
+                            if (d < oldest || nowTs.contains(it.key()))
+                                continue;
+                            std::optional<Ts> root;
+                            if (!it.value().isEmpty())
+                                root = it.value();
+                            _eventHub.fire(EvMessageDeleted{conv, it.key(), root});
+                            missed = true; // realtime should have delivered this
+                        }
+                    }
+                    // Record this poll's window as the next baseline.
+                    _pollSnapshotConv = conv;
+                    _pollSnapshotTs.clear();
+                    _pollSnapshotTs.reserve(static_cast<int>(page.messages.size()));
+                    for (const auto &m : page.messages)
+                        _pollSnapshotTs.insert(m.ts, m.threadRoot ? *m.threadRoot : QString());
+                }
+
                 // The realtime stream dropped a message it should have pushed:
                 // the subscription is compromised. Re-establish the socket so
                 // future events (and other conversations' badges) flow again.
+                // Throttle: a persistently sick socket would otherwise have every
+                // 15 s poll force a reconnect, each spawning a conversations.list
+                // reload — exactly the 429 storm we're avoiding. Re-establish at
+                // most once per window; the poll itself keeps recovering messages
+                // meanwhile.
                 if (missed) {
-                    qWarning() << "Session: realtime missed messages in" << conv.value
-                               << "— re-establishing socket";
-                    _backend->reestablishRealtime();
+                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - _lastReestablishMs >= kReestablishGapMs) {
+                        _lastReestablishMs = now;
+                        qWarning() << "Session: realtime missed messages in" << conv.value
+                                   << "— re-establishing socket";
+                        _backend->reestablishRealtime();
+                    }
                 }
             },
             _lifetime
@@ -1422,7 +1484,12 @@ void Session::scheduleSaveUnreads() {
 }
 
 void Session::setReading(ConversationId conv) {
-    _readingConv = conv;
+    _readingConv      = conv;
+    // The deletion-detection baseline belongs to the conversation that was open;
+    // it's meaningless once we switch (and a stale set would mis-fire). The next
+    // poll rebuilds it for the new conversation.
+    _pollSnapshotConv = {};
+    _pollSnapshotTs.clear();
     if (conv.value.isEmpty())
         return;
 

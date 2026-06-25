@@ -350,6 +350,10 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
         QUrlQuery params;
         params.addQueryItem("types", "public_channel,private_channel,im,mpim");
         params.addQueryItem("exclude_archived", "true");
+        // Slack's default page is 100; conversations.list is heavily rate-limited
+        // (Tier 2), so pull the max 1000 per page to minimise the number of calls
+        // a full reload costs (fewer pages = fewer chances to trip a 429).
+        params.addQueryItem("limit", "1000");
 
         _api->paginate(
             "conversations.list",

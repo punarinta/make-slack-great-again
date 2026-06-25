@@ -2,11 +2,14 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "http_queue.h"
 
+#include <QDateTime>
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTimer>
 #include <QDebug>
+
+#include <limits>
 
 namespace net {
 
@@ -121,8 +124,40 @@ void HttpQueue::enqueue(PendingCall c) {
 void HttpQueue::tryNext() {
     if (_inflight || _throttled || _queue.isEmpty())
         return;
+    // Run the first queued call whose method isn't in a 429 cooldown. A throttled
+    // method is skipped (not blocking), so other methods keep flowing; same-method
+    // calls keep their relative order because we always take the earliest eligible.
+    const qint64 now     = QDateTime::currentMSecsSinceEpoch();
+    int          idx     = -1;
+    qint64       soonest = std::numeric_limits<qint64>::max();
+    for (int i = 0; i < _queue.size(); ++i) {
+        const qint64 readyAt = _methodReadyAtMs.value(_queue.at(i).method, 0);
+        if (readyAt <= now) {
+            idx = i;
+            break;
+        }
+        soonest = std::min(soonest, readyAt);
+    }
+    if (idx < 0) {
+        // Everything queued is cooling down — wake when the soonest clears.
+        scheduleWake(soonest);
+        return;
+    }
     _inflight = true;
-    execute(_queue.dequeue());
+    execute(_queue.takeAt(idx));
+}
+
+void HttpQueue::scheduleWake(qint64 targetMs) {
+    if (_scheduledWakeMs >= 0 && _scheduledWakeMs <= targetMs)
+        return; // a wake at or before this instant is already pending
+    _scheduledWakeMs = targetMs;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const int delay = static_cast<int>(qBound<qint64>(qint64(0), targetMs - now, qint64(3600'000)));
+    QTimer::singleShot(delay, this, [this, targetMs] {
+        if (_scheduledWakeMs == targetMs)
+            _scheduledWakeMs = -1;
+        tryNext();
+    });
 }
 
 void HttpQueue::advance() {
@@ -191,7 +226,14 @@ void HttpQueue::handleReply(QNetworkReply *reply, PendingCall c) {
         retryAfter     = qMax(retryAfter, 1);
         qDebug() << "HttpQueue: rate-limited on" << c.method << "retrying in" << retryAfter << "s";
         emit rateLimited(c.method, retryAfter);
-        requeueWithDelay(std::move(c), retryAfter * 1000);
+        // Per-method backpressure (Slack throttles per method): only THIS method
+        // waits out Retry-After. Requeue it at the front so it stays ahead of any
+        // later same-method calls, mark its cooldown, then pump — other methods
+        // run immediately instead of blocking behind the throttled one.
+        _methodReadyAtMs[c.method] =
+            QDateTime::currentMSecsSinceEpoch() + static_cast<qint64>(retryAfter) * 1000;
+        _queue.prepend(std::move(c));
+        tryNext();
         return;
     }
 
