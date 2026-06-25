@@ -148,6 +148,11 @@ struct Capabilities {
     bool fileUpload       = false; // upload + share files
     bool messageSubjects  = false; // per-message subject line (email); shows the composer subject
                                    // field — see imap-backend-plan §3/§4
+    bool collapseQuotedReplies =
+        false; // email: a reply's trailing quoted history + signature is
+               // the previous message(s) already shown above, so collapse
+               // it behind a "show quoted text" toggle (messenger, not mail
+               // client). Chat services quote intentionally → leave false.
     bool operator==(const Capabilities &) const = default;
 };
 
@@ -240,6 +245,10 @@ struct Conversation {
     // (`created_by`) alone for a freshly-started "prewarmed" huddle that nobody
     // has connected to yet.
     std::vector<UserId> huddleParticipants;
+    // Email backends only: the subject a reply into this thread should use
+    // ("Re: <latest subject>"), so the composer can prefill it. Empty for chat
+    // services and for brand-new conversations with no thread yet.
+    QString             replySubject;
     bool                operator==(const Conversation &) const = default;
 };
 

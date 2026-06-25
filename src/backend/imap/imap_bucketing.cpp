@@ -177,6 +177,13 @@ Bucketer::run(const QList<MsgRef> &msgs, const QList<QList<quint32>> &serverThre
         cd.conv.mentionCount = isDm ? unread : 0;
         if (!cd.messages.isEmpty())
             cd.conv.latestTs = cd.messages.last().env.messageId;
+        // Composer prefill: replying into this thread should reuse its subject.
+        if (isDm && !cd.messages.isEmpty()) {
+            QString subj = cd.messages.last().env.subject.trimmed();
+            if (!subj.isEmpty() && !subj.startsWith(QLatin1String("Re:"), Qt::CaseInsensitive))
+                subj = QStringLiteral("Re: ") + subj;
+            cd.conv.replySubject = subj;
+        }
 
         // Names.
         if (cd.conv.kind == ConvKind::Im && cd.conv.dmUser) {
@@ -218,6 +225,31 @@ QList<QString> participantsOf(const Envelope &env, const QSet<QString> &mine) {
             out.append(e);
         }
     std::sort(out.begin(), out.end());
+    return out;
+}
+
+ReplyRecipients replyRecipients(const Envelope &env, const QSet<QString> &mine) {
+    ReplyRecipients out;
+    QSet<QString>   seen; // lowercased emails already placed (To wins over Cc)
+    auto            add = [&](QStringList &dst, const QList<MimeAddress> &xs) {
+        for (const MimeAddress &a : xs) {
+            const QString e  = a.email.trimmed();
+            const QString lo = e.toLower();
+            if (lo.isEmpty() || mine.contains(lo) || seen.contains(lo))
+                continue;
+            seen.insert(lo);
+            dst << e;
+        }
+    };
+    add(out.to, !env.replyTo.isEmpty() ? env.replyTo : env.from);
+    add(out.cc, env.to);
+    add(out.cc, env.cc);
+    if (out.to.isEmpty()) {
+        // The message was from me → address the whole group in To (they're already
+        // in cc, so clear it to avoid listing everyone twice).
+        out.to = participantsOf(env, mine);
+        out.cc.clear();
+    }
     return out;
 }
 

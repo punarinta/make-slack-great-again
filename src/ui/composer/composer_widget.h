@@ -48,6 +48,7 @@ public:
     // Session::sendMessage; it is read during the sendRequested emit and cleared.
     void    setSubjectVisible(bool visible);
     QString subjectText() const;
+    void    setSubjectText(const QString &text); // prefill the reply subject (email)
 
     // Image cache for app-command avatars in the slash-command palette.
     void setImageCache(ImageCache *cache) { _imgCache = cache; }

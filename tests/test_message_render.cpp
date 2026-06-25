@@ -132,6 +132,93 @@ TEST_CASE("toHtml bounds nested blockquote tables (layout-hang guard)", "[render
     CHECK(html.contains("hello"));    // content preserved
 }
 
+// ── email quoted-reply collapsing ───────────────────────────────────────────
+
+TEST_CASE("buildMsgHtml strips an email reply's quoted trailer", "[render][quote]") {
+    TextWithEntities twe;
+    const QString    body   = QStringLiteral("Sounds good, shipping today.\n");
+    const QString    quoted = QStringLiteral("On Mon, Alice wrote:\n") + QString(400, 'q');
+    twe.text                = body + quoted;
+    // A dominant trailing blockquote over the quoted region (>40% of the text,
+    // ending in the tail) is what marks it as quoted history.
+    twe.entities.push_back(
+        TextEntity{EntityType::Blockquote, (int)body.size(), (int)quoted.size(), {}}
+    );
+    Message msg;
+    msg.text = twe;
+    msg.ts   = QStringLiteral("123.456");
+
+    // Email (collapse on): only the sender's new content survives, quote dropped.
+    const QString stripped = MsgRender::buildMsgHtml(msg, nullptr, nullptr, /*collapse=*/true);
+    CHECK(stripped.contains("Sounds good"));
+    CHECK(!stripped.contains("qqqq"));             // quoted history gone
+    CHECK(!stripped.contains("Show quoted text")); // no toggle — not chat-like
+    CHECK(!stripped.contains("<br"));              // trailing blank line trimmed (no gap)
+
+    // Chat service (collapse off): quotes are intentional, keep everything.
+    const QString chat = MsgRender::buildMsgHtml(msg, nullptr, nullptr, /*collapse=*/false);
+    CHECK(chat.contains("qqqq"));
+}
+
+TEST_CASE("quotedTrailerCut catches a localized Outlook From:/Sent:/To: block", "[render][quote]") {
+    TextWithEntities twe; // Chinese Outlook header block, no blockquote or '>' marks
+    const QString    body = QStringLiteral(
+        "Dear Nikita,\n\nThank you for your email.\n\n"
+           "Best regards,\nLeo\n\n"
+    );
+    const QString quoted = QStringLiteral(
+        "发件人: Nikita Bragin <branikita@gmail.com>\n"
+        "发送时间: 2026年6月24日 23:37\n"
+        "收件人: WowRobo - Leo Xiao <leo.xiao@wowrobo.com>\n"
+        "主题: Re: reseller\n\nHello Leo, when do the orders ship?\n"
+    );
+    twe.text = body + quoted;
+    Message msg;
+    msg.text = twe;
+
+    const QString stripped = MsgRender::buildMsgHtml(msg, nullptr, nullptr, /*collapse=*/true);
+    CHECK(stripped.contains("Thank you for your email"));
+    CHECK(!stripped.contains("Hello Leo, when do the orders ship")); // quoted original gone
+    CHECK(!stripped.contains("branikita@gmail.com"));                // header block gone
+}
+
+TEST_CASE("buildMsgHtml collapses a plain-text email reply (> quotes)", "[render][quote]") {
+    TextWithEntities twe; // text/plain path: no entities, quotes are literal '>' lines
+    QString          body = QStringLiteral("Great, thank you!\n\nOn Wed, Jun 24 Leo wrote:\n");
+    QString          quoted;
+    for (int i = 0; i < 12; ++i)
+        quoted += QStringLiteral("> quoted history line that is reasonably long here\n");
+    twe.text = body + quoted;
+    Message msg;
+    msg.text = twe;
+
+    const QString stripped = MsgRender::buildMsgHtml(msg, nullptr, nullptr, /*collapse=*/true);
+    CHECK(stripped.contains("Great, thank you!"));
+    CHECK(!stripped.contains("On Wed, Jun 24"));      // dangling "… wrote:" attribution gone
+    CHECK(!stripped.contains("quoted history line")); // '>' history stripped
+}
+
+TEST_CASE(
+    "quotedTrailerCut strips a '---' signature, attribution and quote together", "[render][quote]"
+) {
+    TextWithEntities twe; // Russian-locale Gmail attribution (no "wrote"), '---' signature
+    twe.text = QStringLiteral(
+                   "Hello, Leo, please let me know when shipping?\n\n"
+                   "---\nNikita Bragin\nPhone: +374 55 934025\n\n"
+                   "чт, 18 июн. 2026 г., 10:07 AM Nikita <branikita@gmail.com>:\n"
+               ) +
+               QString(300, 'z');
+    Message msg;
+    msg.text = twe;
+
+    const QString out = MsgRender::buildMsgHtml(msg, nullptr, nullptr, /*collapse=*/true);
+    CHECK(out.contains("Hello, Leo"));
+    CHECK(!out.contains("Nikita Bragin")); // signature stripped
+    CHECK(!out.contains("Phone"));
+    CHECK(!out.contains("branikita@gmail.com")); // dangling attribution stripped
+    CHECK(!out.contains("zzz"));                 // quoted body stripped
+}
+
 // ── toHtml code blocks ────────────────────────────────────────────────────────
 
 TEST_CASE("toHtml renders ``` block as one full-width table, not <pre>", "[render][pre]") {

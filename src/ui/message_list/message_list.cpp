@@ -915,7 +915,8 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
         item.textDoc->setDefaultStyleSheet(MsgRender::docStyleSheet());
         addImageResources(item.textDoc.get());
         const MsgRender::GifRenderContext gifCtx{item.msg.ts, &_collapsedGifs};
-        const auto html = MsgRender::buildMsgHtml(item.msg, _session, &gifCtx);
+        const bool collapseQuotes = _session && _session->capabilities().collapseQuotedReplies;
+        const auto html = MsgRender::buildMsgHtml(item.msg, _session, &gifCtx, collapseQuotes);
         if (!html.isEmpty())
             item.textDoc->setHtml(html);
     }

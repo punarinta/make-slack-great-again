@@ -667,6 +667,11 @@ QString ComposerWidget::subjectText() const {
     return _subject ? _subject->text() : QString();
 }
 
+void ComposerWidget::setSubjectText(const QString &text) {
+    if (_subject)
+        _subject->setText(text);
+}
+
 void ComposerWidget::setConvKind(ConvKind kind) {
     _convKind = kind;
     if (_mentionPopup)
@@ -1412,6 +1417,13 @@ void ComposerWidget::trySend() {
 
     if (text.isEmpty() && files.isEmpty())
         return;
+
+    // Email backends require a subject (the field is shown only for them). Never
+    // send an empty-subject mail — focus the field so the user fills it.
+    if (_subject && _subject->isVisible() && _subject->text().trimmed().isEmpty()) {
+        _subject->setFocus();
+        return;
+    }
 
     // "/command [args]" runs a slash command instead of posting text — only
     // when the command is known, so a plain message that merely starts with

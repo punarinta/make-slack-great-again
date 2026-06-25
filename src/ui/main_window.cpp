@@ -2520,6 +2520,7 @@ void MainWindow::openConversation(int row) {
     // from it before that point; using `conv` afterwards is a use-after-free.
     const QString  convCanvasFileId = conv ? conv->canvasFileId : QString();
     const ConvKind convKind         = conv ? conv->kind : ConvKind::PublicChannel;
+    const QString  convReplySubject = conv ? conv->replySubject : QString();
 
     _session->setReading(_currentConvId);
     if (_canvasPage)
@@ -2585,6 +2586,10 @@ void MainWindow::openConversation(int row) {
         _session->capabilities().messageSubjects &&
         (convKind == ConvKind::Im || convKind == ConvKind::Mpim)
     );
+    // Prefill the reply subject ("Re: …") so it's never empty and the user sees
+    // which thread they're continuing; still editable, and required to send.
+    if (_session->capabilities().messageSubjects)
+        _composer->setSubjectText(convReplySubject);
     _composer->setPlaceholderText(
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );

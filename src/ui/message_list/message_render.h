@@ -88,8 +88,15 @@ void            paintCodeBlockChrome(QPainter &p, const QTextDocument *doc);
 // pattern as the code-block chrome. Call wherever paintCodeBlockChrome is called.
 QVector<QRectF> botButtonRects(const QTextDocument *doc);
 void            paintBotButtonChrome(QPainter &p, const QTextDocument *doc);
-QString
-buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif = nullptr);
+// collapseQuotedReplies (email only — Capabilities::collapseQuotedReplies): strip
+// the trailing quoted history + signature so a reply shows only what the sender
+// added. Chat services pass false and keep their intentional quotes.
+QString         buildMsgHtml(
+            const Message          &msg,
+            const Session          *session,
+            const GifRenderContext *gif                   = nullptr,
+            bool                    collapseQuotedReplies = false
+        );
 QString buildAttachHtml(
     const Attachment &att, const Session *session, const GifRenderContext *gif = nullptr
 );

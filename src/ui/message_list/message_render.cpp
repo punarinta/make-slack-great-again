@@ -785,7 +785,200 @@ static std::optional<EmojiResolved> soleEmoji(const TextWithEntities &twe, const
 }
 
 // Build the full HTML for a message's main text doc (blocks preferred over text field).
-QString buildMsgHtml(const Message &msg, const Session *session, const GifRenderContext *gif) {
+// Offset where a reply's collapsible trailer (quoted history + a trailing
+// signature) begins, or -1 if there's nothing to collapse. Heuristic, tuned on
+// real mail: the trailer starts at the earliest of (a) a top-level blockquote
+// that dominates the tail — longer than 40% of the text and ending past the 55%
+// mark, i.e. quoted history rather than a short inline quote — and (b) an
+// RFC-3676 "-- " signature delimiter on its own line in the second half.
+static int quotedTrailerCut(const TextWithEntities &twe) {
+    const QString &t = twe.text;
+    const int      n = t.size();
+    if (n < 200)
+        return -1; // too short to be worth collapsing
+    int cut = -1;
+
+    // (a) dominant trailing blockquote (top-level only — skip nested ones)
+    for (const auto &e : twe.entities) {
+        if (e.type != EntityType::Blockquote)
+            continue;
+        bool nested = false;
+        for (const auto &o : twe.entities)
+            if (&o != &e && o.type == EntityType::Blockquote && o.offset <= e.offset &&
+                o.offset + o.length >= e.offset + e.length && o.length > e.length) {
+                nested = true;
+                break;
+            }
+        if (nested)
+            continue;
+        if (e.length > 0.4 * n && (e.offset + e.length) > 0.55 * n && (cut < 0 || e.offset < cut))
+            cut = e.offset;
+    }
+
+    // (b) signature delimiter on its own line: RFC-3676 "-- " plus the common
+    // non-standard all-dashes variants ("---", "—"). Everything from there down is
+    // the signature (and any quote beneath it). Take the earliest such line, but
+    // never the very first line of the message. No latter-half restriction — a big
+    // quote below the signature can push it into the first half of the text.
+    {
+        int ls = 0;
+        for (int i = 0; i <= n; ++i)
+            if (i == n || t[i] == '\n') {
+                if (ls > 0 && (cut < 0 || ls < cut)) {
+                    const QStringView line   = QStringView{t}.mid(ls, i - ls).trimmed();
+                    bool              dashes = line.size() >= 2;
+                    for (qsizetype k = 0; dashes && k < line.size(); ++k)
+                        if (line[k] != QLatin1Char('-') && line[k] != QChar(0x2014))
+                            dashes = false;
+                    if (dashes)
+                        cut = ls;
+                }
+                ls = i + 1;
+            }
+    }
+
+    // (c) plain-text quoted block: a text/plain email body carries no Blockquote
+    // entities — its quoted history is literal '>'-prefixed lines. Walk lines from
+    // the end (skipping blanks) and take the topmost contiguous quoted line as the
+    // cut; the unquoted "On … wrote:" attribution above it stays visible.
+    {
+        std::vector<int> starts{0};
+        for (int i = 0; i < n; ++i)
+            if (t[i] == '\n')
+                starts.push_back(i + 1);
+        auto end    = [&](int li) { return li + 1 < (int)starts.size() ? starts[li + 1] - 1 : n; };
+        auto quoted = [&](int li) {
+            int j = starts[li], e = end(li);
+            while (j < e && (t[j] == ' ' || t[j] == '\t'))
+                ++j;
+            return j < e && t[j] == '>';
+        };
+        auto blank = [&](int li) {
+            for (int j = starts[li], e = end(li); j < e; ++j)
+                if (!t[j].isSpace())
+                    return false;
+            return true;
+        };
+        int topQuoted = -1;
+        for (int li = (int)starts.size() - 1; li >= 0; --li) {
+            if (quoted(li))
+                topQuoted = li;
+            else if (blank(li))
+                continue; // blank lines inside/around the quote don't end it
+            else
+                break; // first unquoted line of real text → quote block starts below
+        }
+        if (topQuoted >= 0) {
+            const int c = starts[topQuoted];
+            if (c > 0 && (n - c) > 0.3 * n && (cut < 0 || c < cut))
+                cut = c;
+        }
+
+        // (d) forwarded/replied header block (Outlook & localized clients): the
+        // quoted original is introduced by a run of "From:/Sent:/To:/Subject:"
+        // lines — there's no blockquote or '>' marking. Rather than match the
+        // many localized labels ("From", "De", "Von", "发件人", "差出人", …), detect
+        // it structurally and locale-independently: ≥3 consecutive "Label: value"
+        // lines with at least one email address among them. Cut at the run start.
+        auto headerLine = [&](int li) {
+            int j = starts[li], e = end(li);
+            while (j < e && (t[j] == ' ' || t[j] == '\t'))
+                ++j;
+            int colon = -1;
+            for (int k = j; k < e && k < j + 31; ++k)
+                if (t[k] == ':') {
+                    colon = k;
+                    break;
+                }
+            if (colon <= j)
+                return false; // no (non-empty) label before a ':'
+            int v = colon + 1;
+            while (v < e && (t[v] == ' ' || t[v] == '\t'))
+                ++v;
+            return v < e; // a non-empty value follows
+        };
+        auto lineHasEmail = [&](int li) {
+            for (int j = starts[li], e = end(li); j < e; ++j)
+                if (t[j] == '@')
+                    return true;
+            return false;
+        };
+        int  runStart = -1, runLen = 0, dcut = -1;
+        bool runHasEmail = false;
+        for (int li = 0; li < (int)starts.size(); ++li) {
+            if (headerLine(li)) {
+                if (runLen == 0)
+                    runStart = li;
+                ++runLen;
+                runHasEmail = runHasEmail || lineHasEmail(li);
+            } else {
+                if (runLen >= 3 && runHasEmail) {
+                    dcut = starts[runStart];
+                    break;
+                }
+                runLen      = 0;
+                runHasEmail = false;
+            }
+        }
+        if (dcut < 0 && runLen >= 3 && runHasEmail)
+            dcut = starts[runStart];
+        if (dcut > 0 && (cut < 0 || dcut < cut))
+            cut = dcut;
+
+        // Pull the cut up over the "On <date>, X <email> wrote:" attribution line
+        // that introduces a quote (plus any blank line between it and the body),
+        // so a stripped reply never ends on a dangling "… wrote:". Header-block
+        // cuts (d) have no such line — the search simply finds none.
+        if (cut > 0) {
+            int li = 0;
+            while (li < (int)starts.size() && starts[li] < cut)
+                ++li;
+            --li; // the line directly above the cut
+            while (li > 0 && blank(li))
+                --li;
+            if (li > 0) {
+                const QStringView ln =
+                    QStringView{t}.mid(starts[li], end(li) - starts[li]).trimmed();
+                const bool attribution =
+                    lineHasEmail(li) ||
+                    ((ln.endsWith(u':') || ln.endsWith(QChar(0xFF1A))) &&
+                     ln.toString().contains(QStringLiteral("wrote"), Qt::CaseInsensitive));
+                if (attribution)
+                    cut = starts[li];
+            }
+        }
+    }
+    return cut;
+}
+
+// A sub-range of a TextWithEntities: substring [from,to) with each entity clipped
+// to the window (offsets rebased to 0). Container entities that straddle the
+// boundary are clipped too, so the body slice never carries a half-open table.
+static TextWithEntities sliceEntities(const TextWithEntities &src, int from, int to) {
+    const int n = src.text.size();
+    from        = std::max(0, std::min(from, n));
+    to          = std::max(from, std::min(to, n));
+    TextWithEntities out;
+    out.text = src.text.mid(from, to - from);
+    for (const auto &e : src.entities) {
+        const int s = std::max(e.offset, from);
+        const int o = std::min(e.offset + e.length, to);
+        if (o <= s)
+            continue;
+        TextEntity ne = e;
+        ne.offset     = s - from;
+        ne.length     = o - s;
+        out.entities.push_back(ne);
+    }
+    return out;
+}
+
+QString buildMsgHtml(
+    const Message          &msg,
+    const Session          *session,
+    const GifRenderContext *gif,
+    bool                    collapseQuotedReplies
+) {
     // Jumbomoji: a message that is nothing but a single emoji renders 50% larger,
     // matching the official client. The lone emoji arrives either as a one-block
     // rich_text payload or in the plain text field — check whichever applies.
@@ -809,6 +1002,25 @@ QString buildMsgHtml(const Message &msg, const Session *session, const GifRender
         if (!html.isEmpty() || anyImage)
             return html;
     }
+
+    // Email: strip the trailing quoted history + signature. It's just the
+    // previous message(s) already shown above in the conversation, and a chat
+    // doesn't repeat them — what the sender actually added is the slice before
+    // the cut. No "show quoted text" toggle: that isn't chat-like, and the quoted
+    // original is the bubble right above. `collapseQuotedReplies` is the email
+    // capability; chat services keep their (intentional) quotes whole.
+    if (collapseQuotedReplies && msg.blocks.empty()) {
+        int end = quotedTrailerCut(msg.text);
+        if (end < 0)
+            end = (int)msg.text.text.size();
+        // Trim trailing blank lines/whitespace so the stripped body doesn't leave
+        // a gap where the quote (or the email's trailing markup) used to be.
+        while (end > 0 && msg.text.text[end - 1].isSpace())
+            --end;
+        if (end > 0 && end < (int)msg.text.text.size())
+            return wrapParagraph(toHtml(sliceEntities(msg.text, 0, end), session), "margin:0");
+    }
+
     return wrapParagraph(toHtml(msg.text, session), "margin:0");
 }
 

@@ -52,6 +52,17 @@ namespace Bucketing {
 // from ∪ to ∪ cc minus `mine`, sorted unique (lowercased emails).
 QList<QString> participantsOf(const Envelope &env, const QSet<QString> &mine);
 
+// Reply-All addressing for `env`, like a normal mail client: To = the message's
+// reply target (Reply-To if set, else From); Cc = its other recipients (To ∪ Cc).
+// Both have `mine` removed and Cc is de-duplicated against To, preserving the
+// senders' original casing/order. If that leaves To empty (the message was from
+// me), To falls back to all participants so the thread stays reachable.
+struct ReplyRecipients {
+    QStringList to;
+    QStringList cc;
+};
+ReplyRecipients replyRecipients(const Envelope &env, const QSet<QString> &mine);
+
 struct Classified {
     QString  convId;
     ConvKind kind = ConvKind::Im;

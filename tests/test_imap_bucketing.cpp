@@ -134,3 +134,45 @@ TEST_CASE("bucket: fallback threading via In-Reply-To when no server THREAD", "[
     CHECK(r.byId["dm:alice@y.com"].messages.size() == 2);
     CHECK(r.byId["dm:alice@y.com"].replyCountOf["<a@x>"] == 1);
 }
+
+// ── replyRecipients: Reply-All To/Cc derivation ─────────────────────────────
+
+TEST_CASE("replyRecipients: To = sender, Cc = other recipients minus me", "[imap][reply]") {
+    Envelope e;
+    e.from       = {addr("Alice", "alice@y.com")};
+    e.to         = {kMe, addr("Bob", "bob@z.com")};
+    e.cc         = {addr("Carol", "carol@w.com")};
+    const auto r = Bucketing::replyRecipients(e, {"me@x.com"});
+    CHECK(r.to == QStringList{"alice@y.com"});                // the sender
+    CHECK(r.cc == (QStringList{"bob@z.com", "carol@w.com"})); // the rest, me removed
+}
+
+TEST_CASE("replyRecipients: Reply-To overrides From", "[imap][reply]") {
+    Envelope e;
+    e.from       = {addr("Alice", "alice@y.com")};
+    e.replyTo    = {addr("Support", "support@y.com")};
+    e.to         = {kMe};
+    const auto r = Bucketing::replyRecipients(e, {"me@x.com"});
+    CHECK(r.to == QStringList{"support@y.com"});
+    CHECK(r.cc.isEmpty()); // only me was on To → nothing left to Cc
+}
+
+TEST_CASE("replyRecipients: never duplicates an address across To and Cc", "[imap][reply]") {
+    Envelope e;
+    e.from       = {addr("Alice", "alice@y.com")};
+    e.to         = {addr("Alice", "alice@y.com"), kMe}; // sender also listed in To
+    const auto r = Bucketing::replyRecipients(e, {"me@x.com"});
+    CHECK(r.to == QStringList{"alice@y.com"});
+    CHECK(r.cc.isEmpty()); // alice already in To, me removed
+}
+
+TEST_CASE(
+    "replyRecipients: replying after my own message addresses the group in To", "[imap][reply]"
+) {
+    Envelope e; // I sent it: From = me, recipients = the group
+    e.from       = {kMe};
+    e.to         = {addr("Alice", "alice@y.com"), addr("Bob", "bob@z.com")};
+    const auto r = Bucketing::replyRecipients(e, {"me@x.com"});
+    CHECK(r.to == (QStringList{"alice@y.com", "bob@z.com"})); // participants (sorted)
+    CHECK(r.cc.isEmpty());                                    // not duplicated into Cc
+}

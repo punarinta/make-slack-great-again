@@ -240,8 +240,9 @@ MessagePage buildPage(
         );
     };
 
-    MessagePage page;
-    QString     prevSubjectKey; // DM/MPDM: detect when the subject changes
+    MessagePage   page;
+    QString       prevSubjectKey;   // DM/MPDM: detect when the subject changes
+    QSet<QString> seenInlineImages; // embedded-image content already shown earlier in this page
     for (const MsgRef &m : refs) {
         Message       msg  = buildMessage(m, bodyByUid.value(m.uid));
         const QString subj = m.env.subject.trimmed();
@@ -260,6 +261,23 @@ MessagePage buildPage(
             if (key != prevSubjectKey)
                 leadWithSubject(msg, subj);
             prevSubjectKey = key;
+        }
+        // A reply re-embeds the quoted original's inline image (its collapsed body
+        // still references the cid), so the same picture would appear in both
+        // bubbles. An attachment belongs to the post where it first appeared —
+        // drop inline images (keyed on the embedded bytes) already shown above.
+        if (!msg.files.empty()) {
+            std::vector<File> kept;
+            kept.reserve(msg.files.size());
+            for (auto &f : msg.files) {
+                if (f.urlPrivate.startsWith(QLatin1String("data:"))) {
+                    if (seenInlineImages.contains(f.urlPrivate))
+                        continue; // same bytes as an earlier message → not shown again
+                    seenInlineImages.insert(f.urlPrivate);
+                }
+                kept.push_back(std::move(f));
+            }
+            msg.files = std::move(kept);
         }
         page.messages.push_back(std::move(msg));
     }
@@ -419,6 +437,7 @@ Capabilities Backend::capabilities() const {
     c.deleteMessage    = true; // Phase 4 (move to Trash / \Deleted)
     c.deleteAnyMessage = true; // it's your own mailbox — any message is deletable, not just yours
     c.messageSubjects  = true; // composer subject field (§4)
+    c.collapseQuotedReplies = true; // hide a reply's quoted history + signature behind a toggle
     // editMessage / reactions / canvases / huddles / slashCommands / typing /
     // livePresence all stay false — email has no such notion.
     return c;
@@ -1198,44 +1217,68 @@ void Backend::submitMail(
         const auto     cdIt = _index.constFind(conv.value);
         const ConvData cd   = cdIt != _index.constEnd() ? cdIt.value() : ConvData{};
 
-        QStringList recipients;
-        QString     subject = subjectIn;
+        QStringList toList, ccList;
+        QString     subject = subjectIn.trimmed();
         QString     inReplyTo;
         QStringList references;
 
+        // The reply target: an explicit thread root, else (for a DM/MPDM) the
+        // latest message in the thread — sending into an existing email thread is
+        // a reply, so it behaves like Reply-All in a normal mail client.
         const MsgRef *root = nullptr;
-        if (threadRoot)
+        if (threadRoot) {
             for (const MsgRef &m : cd.messages)
                 if (msgKeyOf(m) == *threadRoot) {
                     root = &m;
                     break;
                 }
-        if (root) { // reply-all: original participants minus me
-            for (const QString &e : Bucketing::participantsOf(root->env, _myAddresses))
-                recipients << e;
-            inReplyTo = *threadRoot;
-            references << *threadRoot;
+        } else if (conv.value.startsWith(QLatin1String("dm:")) ||
+                   conv.value.startsWith(QLatin1String("mpim:"))) {
+            for (const MsgRef &m : cd.messages)
+                if (!root || m.internalDate > root->internalDate)
+                    root = &m;
+        }
+
+        if (root) {
+            // Reply-All, like a normal mail client (To = sender, Cc = the rest).
+            const auto rr = Bucketing::replyRecipients(root->env, _myAddresses);
+            toList        = rr.to;
+            ccList        = rr.cc;
+            inReplyTo     = !root->env.messageId.isEmpty() ? root->env.messageId : msgKeyOf(*root);
+            references << inReplyTo;
             if (subject.isEmpty()) {
                 subject = root->env.subject.trimmed();
                 if (!subject.startsWith(QLatin1String("Re:"), Qt::CaseInsensitive))
                     subject = QStringLiteral("Re: ") + subject;
             }
         } else if (conv.value.startsWith(QLatin1String("dm:"))) {
-            const QString e = conv.value.mid(3);
-            if (e != QLatin1String("self"))
-                recipients << e;
+            const QString e = conv.value.mid(3).trimmed();
+            if (!e.isEmpty() && e != QLatin1String("self") && !_myAddresses.contains(e.toLower()))
+                toList << e;
         } else if (conv.value.startsWith(QLatin1String("mpim:"))) {
-            recipients = conv.value.mid(5).split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &e : conv.value.mid(5).split(QLatin1Char(','), Qt::SkipEmptyParts))
+                if (!_myAddresses.contains(e.trimmed().toLower()))
+                    toList << e.trimmed();
         }
-        if (recipients.isEmpty()) {
+
+        if (toList.isEmpty() && ccList.isEmpty()) {
             if (done)
                 done(false, QStringLiteral("no_recipients"));
             return;
         }
+        if (subject.isEmpty()) {
+            if (done)
+                done(false, QStringLiteral("subject_required"));
+            return;
+        }
+        // SMTP envelope (RCPT TO) must list To *and* Cc so Cc'd people receive it.
+        QStringList recipients = toList;
+        recipients += ccList;
 
         ComposeParams cp;
         cp.fromEmail         = _creds.user;
-        cp.to                = recipients;
+        cp.to                = toList;
+        cp.cc                = ccList;
         cp.subject           = subject;
         cp.bodyText          = body;
         cp.inReplyTo         = inReplyTo;
