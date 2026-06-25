@@ -39,27 +39,28 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(microsoft_gsl)
 
+# lib_rpl / lib_base are consumed as raw sources (their headers are compiled
+# directly into the msga target), NOT as subprojects. Point SOURCE_SUBDIR at a
+# directory with no CMakeLists.txt so FetchContent_MakeAvailable() only
+# populates the sources and never calls add_subdirectory() on their own build
+# trees. This replaces the deprecated single-argument FetchContent_Populate().
 FetchContent_Declare(
     lib_rpl
     GIT_REPOSITORY https://github.com/desktop-app/lib_rpl.git
     GIT_TAG        master
     GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  _msga_no_configure
 )
-FetchContent_GetProperties(lib_rpl)
-if(NOT lib_rpl_POPULATED)
-    FetchContent_Populate(lib_rpl)
-endif()
+FetchContent_MakeAvailable(lib_rpl)
 
 FetchContent_Declare(
     lib_base
     GIT_REPOSITORY https://github.com/desktop-app/lib_base.git
     GIT_TAG        master
     GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  _msga_no_configure
 )
-FetchContent_GetProperties(lib_base)
-if(NOT lib_base_POPULATED)
-    FetchContent_Populate(lib_base)
-endif()
+FetchContent_MakeAvailable(lib_base)
 
 add_executable(msga MACOSX_BUNDLE WIN32
     src/main.cpp
@@ -207,6 +208,13 @@ target_precompile_headers(msga PRIVATE src/pch.h)
 target_include_directories(msga PRIVATE
     src
     ${CMAKE_BINARY_DIR}
+)
+
+# Third-party sources we vendor via FetchContent. Mark SYSTEM so the compiler
+# doesn't emit (and we don't try to fix) warnings from headers we don't own —
+# e.g. lib_rpl's rpl/variable.h trips C++20's deprecated implicit [=] capture
+# of 'this'. Keeps our own -Wdeprecated output clean and actionable.
+target_include_directories(msga SYSTEM PRIVATE
     ${lib_rpl_SOURCE_DIR}
     ${lib_base_SOURCE_DIR}
 )

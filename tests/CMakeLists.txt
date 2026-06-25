@@ -21,6 +21,12 @@ endif()
 set(TEST_INCLUDES
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}
+)
+
+# Vendored third-party sources — included SYSTEM so their header warnings
+# (e.g. lib_rpl's deprecated C++20 implicit [=] capture) stay out of our build
+# output. Mirrors the SYSTEM treatment in the top-level CMakeLists.txt.
+set(TEST_SYSTEM_INCLUDES
     ${lib_rpl_SOURCE_DIR}
     ${lib_base_SOURCE_DIR}
 )
@@ -28,6 +34,7 @@ set(TEST_INCLUDES
 function(add_msga_test target)
     add_executable(${target} ${ARGN})
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
+    target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE Catch2::Catch2WithMain Qt6::Core Microsoft.GSL::GSL)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
@@ -37,6 +44,7 @@ endfunction()
 function(add_msga_qt_test target)
     add_executable(${target} ${ARGN})
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
+    target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE Catch2::Catch2 Qt6::Core Microsoft.GSL::GSL)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
@@ -46,6 +54,7 @@ function(add_msga_widget_test target)
     add_executable(${target} ${ARGN})
     set_target_properties(${target} PROPERTIES AUTOMOC ON)
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
+    target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE
         Catch2::Catch2
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Svg
