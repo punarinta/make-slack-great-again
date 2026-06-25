@@ -15,6 +15,7 @@
 
 class QPainter;
 class QRect;
+class QTextBrowser;
 class QTextDocument;
 class Session;
 
@@ -100,6 +101,15 @@ QString         buildMsgHtml(
 QString buildAttachHtml(
     const Attachment &att, const Session *session, const GifRenderContext *gif = nullptr
 );
+
+// Apply the shared "message preview" chrome to a read-only QTextBrowser (used by
+// the delete / forward dialogs): no frame, transparent background, the app's thin
+// rounded scrollbar (matching the chats list thumb), no focus stealing, and
+// asymmetric text padding — sp.lg on the left so the text lines up with the card
+// header, 0 on the right so it reaches the edge with only the scrollbar beside it.
+// Call AFTER the content (setHtml / setPlainText) is set: the root-frame margins
+// are applied to the populated document.
+void configurePreviewBrowser(QTextBrowser *browser);
 
 // True when the attachment renders nothing but Block Kit image blocks (the
 // Slack GIF-picker shape) — official clients draw those without the colored

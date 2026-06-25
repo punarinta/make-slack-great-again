@@ -18,6 +18,7 @@
 #include <QPainterPath>
 #include <QPointer>
 #include <QPushButton>
+#include <QShortcut>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -101,6 +102,14 @@ void AppDialog::buildCard(bool standardHeader, const QString &title) {
         _contentLayout->setSpacing(0);
         _cardLayout->addLayout(_contentLayout);
     }
+
+    // Escape closes the dialog from anywhere inside it. keyPressEvent only sees
+    // Escape when the overlay itself is focused; a focused child that swallows
+    // the key (e.g. the read-only QTextBrowser preview) would otherwise eat it.
+    // A WidgetWithChildren shortcut fires for any focused descendant.
+    auto *escShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    escShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(escShortcut, &QShortcut::activated, this, &AppDialog::reject);
 
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {

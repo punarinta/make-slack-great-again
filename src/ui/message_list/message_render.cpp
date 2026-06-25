@@ -20,6 +20,8 @@
 #include <QRect>
 #include <QSet>
 #include <QTextBoundaryFinder>
+#include <QTextBrowser>
+#include <QTextFrame>
 #include <QTextTable>
 #include <optional>
 
@@ -1220,6 +1222,32 @@ void paintFileChip(QPainter &p, const File &f, const QRect &rect) {
         );
     }
     p.restore();
+}
+
+void configurePreviewBrowser(QTextBrowser *browser) {
+    if (!browser)
+        return;
+    const auto &sp = Th::c().spacing;
+
+    browser->setReadOnly(true);
+    browser->setFrameShape(QFrame::NoFrame);
+    browser->setOpenLinks(false);
+    browser->setFocusPolicy(Qt::NoFocus); // read-only preview shouldn't grab focus
+    // Thin rounded scrollbar matching the chats list thumb (4px / radius 2).
+    browser->setStyleSheet(
+        QStringLiteral("QTextBrowser { background: transparent; }") + Th::scrollBarQss(4, 2)
+    );
+
+    // Asymmetric text padding via the root frame (documentMargin is symmetric and
+    // can't do this): left sp.lg so the text lines up with the card header, right 0
+    // so the content reaches the edge with only the thin scrollbar beside it.
+    browser->document()->setDocumentMargin(0);
+    QTextFrameFormat fmt = browser->document()->rootFrame()->frameFormat();
+    fmt.setLeftMargin(sp.lg);
+    fmt.setRightMargin(0);
+    fmt.setTopMargin(0);
+    fmt.setBottomMargin(0);
+    browser->document()->rootFrame()->setFrameFormat(fmt);
 }
 
 } // namespace MsgRender

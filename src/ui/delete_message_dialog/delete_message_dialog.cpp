@@ -25,7 +25,11 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     _msgCard = new QFrame;
     _msgCard->setObjectName("msgCard");
     auto *cardLay = new QVBoxLayout(_msgCard);
-    cardLay->setContentsMargins(sp.lg, sp.md, sp.lg, sp.md);
+    // No horizontal padding on the card: the preview is full-bleed so its
+    // scrollbar hugs the right edge. Children that should be inset (the header)
+    // carry their own sp.lg margins; the preview pads its text via the root
+    // frame so left aligns with the header while the right reaches the edge.
+    cardLay->setContentsMargins(0, sp.md, 0, sp.md);
     cardLay->setSpacing(sp.sm);
 
     if (session) {
@@ -33,6 +37,7 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
         const QString name = user ? user->displayName : session->userDisplayName(msg.author);
 
         auto *headerRow = new QHBoxLayout;
+        headerRow->setContentsMargins(sp.lg, 0, sp.lg, 0);
         headerRow->setSpacing(sp.md);
 
         auto *nameLabel = new QLabel(name.toHtmlEscaped(), _msgCard);
@@ -49,11 +54,7 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     }
 
     auto *preview = new QTextBrowser(_msgCard);
-    preview->setReadOnly(true);
     preview->setMaximumHeight(160);
-    preview->setFrameShape(QFrame::NoFrame);
-    preview->setStyleSheet("QTextBrowser { background: transparent; }");
-    preview->setOpenLinks(false);
 
     const QString html = MsgRender::buildMsgHtml(msg, session);
     if (html.trimmed().isEmpty())
@@ -61,6 +62,9 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
     else
         preview->setHtml(html);
 
+    // Shared preview chrome: thin scrollbar, full-bleed right edge, left text
+    // padding that lines up with the header. Applied after content is set.
+    MsgRender::configurePreviewBrowser(preview);
     cardLay->addWidget(preview);
     cl->addWidget(_msgCard);
 

@@ -45,8 +45,19 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     _previewCard = new QFrame;
     _previewCard->setObjectName("fwdCard");
     auto *cardLay = new QVBoxLayout(_previewCard);
-    cardLay->setContentsMargins(sp.lg, sp.md, sp.lg, sp.md);
+    // No horizontal padding on the card: the preview is full-bleed so its
+    // scrollbar hugs the right edge. Everything else is inset to sp.lg via
+    // addPadded() so it lines up with the preview's left text margin.
+    cardLay->setContentsMargins(0, sp.md, 0, sp.md);
     cardLay->setSpacing(sp.sm);
+
+    auto addPadded = [&](QWidget *w) {
+        auto *row = new QHBoxLayout;
+        row->setContentsMargins(sp.lg, 0, sp.lg, 0);
+        row->addWidget(w);
+        row->addStretch();
+        cardLay->addLayout(row);
+    };
 
     if (session) {
         const auto   *user      = session->findUser(msg.author);
@@ -58,15 +69,11 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
             _previewCard
         );
         nameLabel->setTextFormat(Qt::RichText);
-        cardLay->addWidget(nameLabel);
+        addPadded(nameLabel);
     }
 
     auto *preview = new QTextBrowser(_previewCard);
-    preview->setReadOnly(true);
     preview->setMaximumHeight(140);
-    preview->setFrameShape(QFrame::NoFrame);
-    preview->setStyleSheet("QTextBrowser { background: transparent; }");
-    preview->setOpenLinks(false);
 
     // Message text
     const QString html = MsgRender::buildMsgHtml(msg, session);
@@ -77,6 +84,9 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     else
         preview->hide(); // no text — skip the browser entirely
 
+    // Shared preview chrome: thin scrollbar, full-bleed right edge, left text
+    // padding that lines up with the name. Applied after content is set.
+    MsgRender::configurePreviewBrowser(preview);
     cardLay->addWidget(preview);
 
     // ── Inline previews (filename above, image below — mirrors the message list) ──
@@ -94,7 +104,7 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
             nameLabel->setFont(nf);
         }
         nameLabel->setStyleSheet("color:" + Th::qss(Th::c().message.fileNameDim) + ";");
-        cardLay->addWidget(nameLabel);
+        addPadded(nameLabel);
 
         // Compute placeholder size from metadata (avoids layout jump when image loads)
         int phW = kThumbMaxW, phH = kThumbMaxH;
@@ -113,7 +123,7 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
             "QLabel { background:" + Th::qss(Th::c().message.imagePlaceholderBg) +
             "; border: 1px solid " + Th::qss(Th::c().message.imagePlaceholderBorder) + "; }"
         );
-        cardLay->addWidget(imgLabel);
+        addPadded(imgLabel);
 
         if (session) {
             const QString    url       = f.previewUrl(qCeil(kThumbMaxW * devicePixelRatioF()));
@@ -150,7 +160,7 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
     for (const auto &f : msg.files) {
         if (f.hasPreview())
             continue;
-        cardLay->addWidget(new FileChipWidget(f, _previewCard));
+        addPadded(new FileChipWidget(f, _previewCard));
     }
 
     cl->addWidget(_previewCard);
