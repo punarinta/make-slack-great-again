@@ -349,12 +349,29 @@ private:
     // fit, else the loaded pixmap scaled to fit, else maxW × 24.
     // Single source of truth for rowHeight / paint / hit-test geometry.
     QSize       filePreviewSize(const File &f, int maxW) const;
+
+    // Geometry of a message's inline image/preview region. The single source of
+    // truth shared by rowHeight / paintFileImages / hit-test, so the three never
+    // drift. One preview file → the classic name-label-above-image layout; 2+ →
+    // an equal-tile cover-cropped gallery in wrapping rows (no name labels).
+    struct FileImageLayout {
+        std::vector<QRect> rects;           // per files() index; null for non-preview files
+        int                height  = 0;     // total region height (incl. leading gap)
+        bool               gallery = false; // true when tiles are cover-cropped
+    };
+    // Coordinates are local to the region: x relative to the text-column left,
+    // y relative to the region top. `hasAbove` = content (text/attachments)
+    // precedes the region (adds a leading gap, matching the old per-image gap).
+    FileImageLayout layoutFileImages(const MessageItem &item, int width, bool hasAbove) const;
     // Preview source URLs matching this widget's screen density (DPR-aware).
-    QString     filePreviewUrl(const File &f) const;
-    QString     attachPreviewUrl(const Attachment &att) const;
+    QString         filePreviewUrl(const File &f) const;
+    QString         attachPreviewUrl(const Attachment &att) const;
     // Returns `src` smooth-scaled to `logical` × dpr physical pixels (with the
     // DPR set on the result), cached per key so paints don't rescale every frame.
     QPixmap scaledPreview(const QString &key, const QPixmap &src, QSize logical, qreal dpr) const;
+    // Like scaledPreview, but fills `tile` by scaling `src` to cover and centre-
+    // cropping the overflow (CSS object-fit: cover) — used by the image gallery.
+    QPixmap coverPreview(const QString &key, const QPixmap &src, QSize tile, qreal dpr) const;
     // Returns index of the message whose reply bar is at viewportPos, or -1.
     int     replyBarIndexAt(const QPoint &viewportPos) const;
     // Returns which toolbar button (0-2) is under pos for the hovered row, or -1.
@@ -426,6 +443,12 @@ private:
     static constexpr int kImgMaxH         = 300; // max inline image height
     static constexpr int kImgGap          = 6;   // gap above each inline image
     static constexpr int kImgNameH        = 14;  // height of the filename label above each image
+    // Multi-image gallery (2+ inline previews): equal cover-cropped tiles laid out
+    // in wrapping rows, like the official Slack client. No per-image filename label.
+    static constexpr int kGalleryTileH    = 180; // fixed tile height (the "max height")
+    static constexpr int kGalleryGap      = 8;   // gap between gallery tiles (h & v)
+    static constexpr int kGalleryMaxW     = 520; // max gallery width (wider than single-image cap)
+    static constexpr int kGalleryRadius   = 8;   // rounded-corner radius of gallery tiles
     static constexpr int kFileChipH       = 52;  // height of each non-image file chip
     static constexpr int kFileChipGap   = 6; // gap before each chip (between chips, or above first)
     static constexpr int kFileChipIconW = 48;  // width of the colored type-icon area

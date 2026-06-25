@@ -982,19 +982,15 @@ int MessageListWidget::rowHeight(int index) const {
         extraH += kAttachGap + std::max(ah, 0);
     }
 
-    // Inline file preview heights (images + prerendered docs)
+    // Inline file preview heights (images + prerendered docs). The region height
+    // is width-independent (single-image height comes from capped original dims;
+    // gallery height from tile count), so passing kImgMaxW matches paint exactly.
     const bool hasContentAboveImages = docH > 0 || nAtt > 0;
-    bool       anyImgFiles           = false;
-    for (const auto &f : item.msg.files) {
-        if (!f.hasPreview())
-            continue;
-        anyImgFiles      = true;
-        const int imgGap = hasContentAboveImages ? kImgGap : 0;
-        extraH += imgGap + kImgNameH + filePreviewSize(f, kImgMaxW).height();
-    }
+    const int  imgRegionH = layoutFileImages(item, kImgMaxW, hasContentAboveImages).height;
+    extraH += imgRegionH;
 
     // File chips (files without a preview)
-    const bool hasAboveChips = docH > 0 || nAtt > 0 || anyImgFiles;
+    const bool hasAboveChips = docH > 0 || nAtt > 0 || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())

@@ -286,26 +286,14 @@ void MessageListWidget::paintRow(
 
     // ── Inline file previews (images + prerendered docs) ─────────────
     paintFileImages(p, item, ctx, contentY);
-    {
-        const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
-        for (const auto &f : item.msg.files) {
-            if (!f.hasPreview())
-                continue;
-            const int imgGap = hasAbove ? kImgGap : 0;
-            contentY += imgGap + kImgNameH + filePreviewSize(f, ctx.textWidth).height();
-        }
-    }
+    const bool hasImgAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const int  imgRegionH  = layoutFileImages(item, ctx.textWidth, hasImgAbove).height;
+    contentY += imgRegionH;
 
     // ── File chips (files without a preview) ─────────────────────────
     paintFileChips(p, item, ctx, contentY);
     {
-        bool anyImg = false;
-        for (const auto &f : item.msg.files)
-            if (f.hasPreview()) {
-                anyImg = true;
-                break;
-            }
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -685,6 +673,69 @@ QSize MessageListWidget::filePreviewSize(const File &f, int maxW) const {
     return {std::min(maxW, kImgMaxW), 24};
 }
 
+// Tiles per row for an `n`-image gallery — matches the official client's common
+// arrangements (2 → side by side, 4 → 2×2 grid, 3/5+ → up to three per row).
+static int galleryColumns(int n) {
+    if (n == 4)
+        return 2;
+    return std::min(n, 3);
+}
+
+MessageListWidget::FileImageLayout
+MessageListWidget::layoutFileImages(const MessageItem &item, int width, bool hasAbove) const {
+    FileImageLayout out;
+    out.rects.assign(item.msg.files.size(), QRect());
+
+    std::vector<int> idx; // files-array indices that carry an inline preview
+    for (int i = 0; i < (int)item.msg.files.size(); ++i)
+        if (item.msg.files[i].hasPreview())
+            idx.push_back(i);
+    if (idx.empty())
+        return out;
+
+    const int lead = hasAbove ? kImgGap : 0;
+
+    // Single preview: the classic filename-label-above-image layout (kImgNameH is
+    // always reserved, even when the name is empty, so geometry is unconditional).
+    if (idx.size() == 1) {
+        const int   fi = idx[0];
+        const QSize sz = filePreviewSize(item.msg.files[fi], width);
+        out.rects[fi]  = QRect(0, lead + kImgNameH, sz.width(), sz.height());
+        out.height     = lead + kImgNameH + sz.height();
+        return out;
+    }
+
+    // 2+ previews: equal cover-cropped tiles in wrapping rows. Tile height is
+    // fixed; each row is justified to fill the gallery width (the last, possibly
+    // short, row stretches its tiles wider but keeps the same height — so cover
+    // cropping still applies and the row stays flush with the others).
+    out.gallery       = true;
+    const int regionW = std::min(width, kGalleryMaxW);
+    const int n       = (int)idx.size();
+    const int cols    = galleryColumns(n);
+    const int gap     = kGalleryGap;
+    const int tileH   = kGalleryTileH;
+
+    int y = lead;
+    for (int i = 0; i < n;) {
+        const int rowCount = std::min(cols, n - i);
+        int       x        = 0;
+        for (int c = 0; c < rowCount; ++c) {
+            const int tilesLeft   = rowCount - c;
+            const int avail       = regionW - x - (tilesLeft - 1) * gap;
+            const int tw          = std::max(1, avail / tilesLeft); // last tile absorbs rounding
+            out.rects[idx[i + c]] = QRect(x, y, tw, tileH);
+            x += tw + gap;
+        }
+        i += rowCount;
+        y += tileH;
+        if (i < n)
+            y += gap;
+    }
+    out.height = y;
+    return out;
+}
+
 QString MessageListWidget::filePreviewUrl(const File &f) const {
     return f.previewUrl(qCeil(kImgMaxW * devicePixelRatioF()));
 }
@@ -707,65 +758,114 @@ QPixmap MessageListWidget::scaledPreview(
     return out;
 }
 
+QPixmap MessageListWidget::coverPreview(
+    const QString &key, const QPixmap &src, QSize tile, qreal dpr
+) const {
+    const QSize   phys(qRound(tile.width() * dpr), qRound(tile.height() * dpr));
+    // Distinct cache key from scaledPreview's (url-only), and per tile size so a
+    // gallery and a relayout at a different width don't collide.
+    const QString cacheKey =
+        key + "@cover@" + QString::number(phys.width()) + 'x' + QString::number(phys.height());
+    QPixmap &out = _scaledPreviews[cacheKey];
+    if (out.size() != phys) {
+        // Scale to cover, then centre-crop the overflow to exactly `phys`.
+        QPixmap scaled = src.scaled(phys, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        const int cx   = std::max(0, (scaled.width() - phys.width()) / 2);
+        const int cy   = std::max(0, (scaled.height() - phys.height()) / 2);
+        out            = scaled.copy(cx, cy, phys.width(), phys.height());
+        out.setDevicePixelRatio(dpr);
+    }
+    return out;
+}
+
 void MessageListWidget::paintFileImages(
     QPainter &p, const MessageItem &item, const PaintContext &ctx, int top
 ) const {
     const int  left     = ctx.textLeft;
     const int  width    = ctx.textWidth;
-    int        y        = top;
     const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
-    for (const auto &f : item.msg.files) {
-        if (!f.hasPreview())
+
+    // Single source of truth for the region geometry — rowHeight() and
+    // fileViewportRect() walk the very same layout, so nothing drifts.
+    const FileImageLayout layout = layoutFileImages(item, width, hasAbove);
+    if (layout.height == 0)
+        return;
+
+    const qreal dpr = p.device()->devicePixelRatioF();
+
+    for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
+        const QRect local = layout.rects[fi];
+        if (local.isNull())
             continue;
+        const File   &f      = item.msg.files[fi];
         const QString imgUrl = filePreviewUrl(f);
+        const QRect   rect(left + local.x(), top + local.y(), local.width(), local.height());
 
-        const auto it = _fileImages.constFind(imgUrl);
-        if (hasAbove)
-            y += kImgGap;
-
-        // Filename label
-        if (!f.name.isEmpty()) {
+        // Filename label above the image (single-preview layout only — galleries
+        // omit it, matching the official client).
+        if (!layout.gallery && !f.name.isEmpty()) {
             p.save();
             QFont nameFont = p.font();
             nameFont.setPointSizeF(nameFont.pointSizeF() * 0.82);
             p.setFont(nameFont);
             p.setPen(Th::c().message.fileNameDim);
             p.drawText(
-                QRect(left, y, width, kImgNameH), Qt::AlignVCenter | Qt::TextSingleLine, f.name
+                QRect(left, rect.top() - kImgNameH, width, kImgNameH),
+                Qt::AlignVCenter | Qt::TextSingleLine,
+                f.name
             );
             p.restore();
         }
-        y += kImgNameH;
 
-        // Same geometry for placeholder and loaded image — matches rowHeight(),
-        // so nothing jumps when the download lands.
-        const QSize sz = filePreviewSize(f, width);
-        if (it != _fileImages.constEnd() && !it->isNull()) {
-            p.save();
+        const auto it     = _fileImages.constFind(imgUrl);
+        const bool loaded = it != _fileImages.constEnd() && !it->isNull();
+
+        p.save();
+        if (layout.gallery) {
+            // Rounded tile — clip both the image and the loading placeholder to it.
+            p.setRenderHint(QPainter::Antialiasing);
+            QPainterPath clip;
+            clip.addRoundedRect(QRectF(rect), kGalleryRadius, kGalleryRadius);
+            p.setClipPath(clip);
+        }
+
+        if (loaded) {
             p.setRenderHint(QPainter::SmoothPixmapTransform);
-            const qreal dpr   = p.device()->devicePixelRatioF();
             // Uploaded GIFs animate: draw the current movie frame when one exists.
-            QMovie     *movie = _gifMovies.value(imgUrl, nullptr);
-            QPixmap     frame = movie ? movie->currentPixmap() : QPixmap();
+            QMovie *movie = _gifMovies.value(imgUrl, nullptr);
+            QPixmap frame = movie ? movie->currentPixmap() : QPixmap();
             if (movie)
                 _visibleGifs.insert(imgUrl);
-            if (!frame.isNull())
-                p.drawPixmap(QRect(QPoint(left, y), sz), frame);
-            else
-                p.drawPixmap(
-                    QRect(QPoint(left, y), sz), scaledPreview(imgUrl, it.value(), sz, dpr)
-                );
-            p.restore();
+            if (layout.gallery) {
+                if (!frame.isNull()) {
+                    // Cover-crop the live frame: scale to fill, centre under clip.
+                    QPixmap scaled = frame.scaled(
+                        rect.size() * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation
+                    );
+                    scaled.setDevicePixelRatio(dpr);
+                    const QSize lg = scaled.deviceIndependentSize().toSize();
+                    p.drawPixmap(rect.center() - QPoint(lg.width() / 2, lg.height() / 2), scaled);
+                } else {
+                    p.drawPixmap(
+                        rect.topLeft(), coverPreview(imgUrl, it.value(), rect.size(), dpr)
+                    );
+                }
+            } else if (!frame.isNull()) {
+                p.drawPixmap(rect, frame);
+            } else {
+                p.drawPixmap(rect, scaledPreview(imgUrl, it.value(), rect.size(), dpr));
+            }
         } else {
-            p.save();
             p.setPen(Th::c().message.imagePlaceholderBorder);
             p.setBrush(Th::c().message.imagePlaceholderBg);
-            p.drawRect(QRect(QPoint(left, y), sz));
-            p.setPen(Th::c().text.tertiary);
-            p.drawText(QRect(QPoint(left, y), sz), Qt::AlignCenter, tr("Loading image…"));
-            p.restore();
+            p.drawRect(rect);
+            // The single-image box is wide enough for the label; gallery tiles aren't.
+            if (!layout.gallery) {
+                p.setPen(Th::c().text.tertiary);
+                p.drawText(rect, Qt::AlignCenter, tr("Loading image…"));
+            }
         }
-        y += sz.height();
+        p.restore();
     }
 }
 
@@ -1077,16 +1177,11 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai)
             chipY += kAttachGap + attachTotalH(item, ai);
 
-        const bool hasAbove0 = item.docHeight > 0 || !item.attachDocs.empty();
-        bool       anyImg    = false;
-        for (const auto &f : item.msg.files) {
-            if (!f.hasPreview())
-                continue;
-            anyImg = true;
-            chipY += (hasAbove0 ? kImgGap : 0) + kImgNameH + filePreviewSize(f, textWidth).height();
-        }
+        const bool hasAbove0  = item.docHeight > 0 || !item.attachDocs.empty();
+        const int  imgRegionH = layoutFileImages(item, textWidth, hasAbove0).height;
+        chipY += imgRegionH;
 
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -1305,17 +1400,11 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
 
     // Inline file previews (images + prerendered docs) — mirror paint.
     const bool hasAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
-    bool       anyImgFiles    = false;
-    for (const auto &f : item.msg.files) {
-        if (!f.hasPreview())
-            continue;
-        anyImgFiles      = true;
-        const int imgGap = hasAboveImages ? kImgGap : 0;
-        y += imgGap + kImgNameH + filePreviewSize(f, textWidth).height();
-    }
+    const int  imgRegionH     = layoutFileImages(item, textWidth, hasAboveImages).height;
+    y += imgRegionH;
 
     // File chips (files without a preview) — mirror paint.
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
+    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())
@@ -1386,14 +1475,9 @@ int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool 
         extraH += kAttachGap + std::max(attachTotalH(item, ai), 0);
     }
     const bool hasAboveImages = item.docHeight > 0 || !item.attachDocs.empty();
-    bool       anyImgFiles    = false;
-    for (const auto &f : item.msg.files) {
-        if (!f.hasPreview())
-            continue;
-        anyImgFiles = true;
-        extraH += (hasAboveImages ? kImgGap : 0) + kImgNameH + filePreviewSize(f, width).height();
-    }
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImgFiles;
+    const int  imgRegionH     = layoutFileImages(item, width, hasAboveImages).height;
+    extraH += imgRegionH;
+    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
     bool       firstChip     = true;
     for (const auto &f : item.msg.files) {
         if (f.hasPreview())
@@ -1475,25 +1559,13 @@ void MessageListWidget::paintReplyItem(
     }
 
     paintFileImages(p, item, subCtx, contentY);
-    {
-        const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
-        for (const auto &f : item.msg.files) {
-            if (!f.hasPreview())
-                continue;
-            contentY += (hasAbove ? kImgGap : 0) + kImgNameH +
-                        filePreviewSize(f, subCtx.textWidth).height();
-        }
-    }
+    const bool hasImgAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const int  imgRegionH  = layoutFileImages(item, subCtx.textWidth, hasImgAbove).height;
+    contentY += imgRegionH;
 
     paintFileChips(p, item, subCtx, contentY);
     {
-        bool anyImg = false;
-        for (const auto &f : item.msg.files)
-            if (f.hasPreview()) {
-                anyImg = true;
-                break;
-            }
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -1641,22 +1713,12 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
         }
 
         // File previews
-        const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
-        for (const auto &f : item.msg.files) {
-            if (!f.hasPreview())
-                continue;
-            y += hasAbove ? kImgGap : 0;
-            y += kImgNameH + filePreviewSize(f, textWidth).height();
-        }
+        const bool hasAbove   = item.docHeight > 0 || !item.attachDocs.empty();
+        const int  imgRegionH = layoutFileImages(item, textWidth, hasAbove).height;
+        y += imgRegionH;
 
         // File chips
-        bool anyImg = false;
-        for (const auto &f : item.msg.files)
-            if (f.hasPreview()) {
-                anyImg = true;
-                break;
-            }
-        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+        const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || imgRegionH > 0;
         bool       firstChip     = true;
         for (const auto &f : item.msg.files) {
             if (f.hasPreview())
@@ -1801,30 +1863,20 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
             contentY += kAttachGap + attachTotalH(item, ai);
     }
 
-    // Walk file previews (same logic as paintFileImages).
-    int        y        = contentY;
-    const bool hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
-    for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
-        const auto &f = item.msg.files[fi];
-        if (!f.hasPreview())
-            continue;
-        if (hasAbove)
-            y += kImgGap;
-        y += kImgNameH; // name label height; image starts below this
-        const QSize sz = filePreviewSize(f, width);
-        if (fi == fileIdx)
-            return QRect(left, y, sz.width(), sz.height());
-        y += sz.height();
+    // File previews: the requested file's rect comes straight from the shared
+    // layout (single image or gallery tile), offset into viewport coordinates.
+    const bool            hasAbove = item.docHeight > 0 || !item.attachDocs.empty();
+    const FileImageLayout layout   = layoutFileImages(item, width, hasAbove);
+    if (item.msg.files[fileIdx].hasPreview()) {
+        const QRect r = layout.rects[fileIdx];
+        if (r.isNull())
+            return {};
+        return QRect(left + r.x(), contentY + r.y(), r.width(), r.height());
     }
 
-    // Walk file chips (same logic as paintFileChips).
-    bool anyImg = false;
-    for (const auto &f : item.msg.files)
-        if (f.hasPreview()) {
-            anyImg = true;
-            break;
-        }
-    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || anyImg;
+    // Walk file chips (same logic as paintFileChips), starting past the image region.
+    int        y             = contentY + layout.height;
+    const bool hasAboveChips = item.docHeight > 0 || !item.attachDocs.empty() || layout.height > 0;
     bool       firstChip     = true;
     for (int fi = 0; fi < (int)item.msg.files.size(); ++fi) {
         const auto &f = item.msg.files[fi];
