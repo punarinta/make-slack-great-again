@@ -188,8 +188,7 @@ void MessageListWidget::clear() {
     _items.clear();
     _tops.clear();
     _topsTs.clear();
-    _totalH    = 0;
-    _showIntro = false;
+    _totalH = 0;
     // Inline thread expansions belong to the conversation being left.
     _inlineThreads.clear();
     _openThreadRoot.clear();
@@ -201,10 +200,8 @@ void MessageListWidget::clear() {
     _hoveredAttach   = {-1, -1};
     _hoveredReplyRow = -1;
     _hoveredThreadFooter.clear();
-    _hoveredFile    = {-1, -1};
-    _hoveredFileBtn = -1;
-    _convName.clear();
-    _convDescription.clear();
+    _hoveredFile           = {-1, -1};
+    _hoveredFileBtn        = -1;
     _selAnchor             = {};
     _selFocus              = {};
     _selDragging           = false;
@@ -254,9 +251,7 @@ void MessageListWidget::setSession(Session *session) {
         _emojiPicker->setSession(session);
 }
 
-void MessageListWidget::openConversation(
-    ConversationId conv, const QString &convName, const QString &description, const Ts &lastReadTs
-) {
+void MessageListWidget::openConversation(ConversationId conv, const Ts &lastReadTs) {
     // Persist messages of the conversation we're leaving before discarding them.
     if (!_currentConv.value.isEmpty() && _session && !_items.empty()) {
         std::vector<Message> msgs;
@@ -268,12 +263,9 @@ void MessageListWidget::openConversation(
 
     saveScrollAnchor();
     clear();
-    _currentConv     = conv;
-    _isThreadMode    = false;
-    _threadRootTs    = {};
-    _convName        = convName;
-    _convDescription = description;
-    _showIntro       = true;
+    _currentConv  = conv;
+    _isThreadMode = false;
+    _threadRootTs = {};
 
     _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
@@ -395,13 +387,6 @@ void MessageListWidget::openConversation(
             },
             _loadLifetime
         );
-}
-
-void MessageListWidget::updateConvName(const QString &convName, const QString &description) {
-    _convName        = convName;
-    _convDescription = description;
-    rebuildLayout();
-    viewport()->update();
 }
 
 std::pair<Ts, int> MessageListWidget::viewportAnchor() const {
@@ -580,7 +565,6 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _currentConv           = conv;
     _isThreadMode          = true;
     _threadRootTs          = rootTs;
-    _showIntro             = false;
     _scrollToBottomPending = true;
     _pendingLastReadTs.clear(); // threads always open at the bottom
     _pendingAnchorTs.clear();
@@ -779,15 +763,6 @@ void MessageListWidget::scrollToTs(const Ts &ts) {
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
-
-int MessageListWidget::introHeight() const {
-    if (!_showIntro)
-        return 0;
-    int h = kIntroPadTop + kIntroNameH + kIntroPadBot;
-    if (!_convDescription.isEmpty())
-        h += kIntroGap + kIntroDescH;
-    return h;
-}
 
 bool MessageListWidget::needsDateSep(int index) const {
     if (index < 0 || index >= (int)_items.size())
@@ -1108,16 +1083,25 @@ void MessageListWidget::rebuildLayout() {
 
     _tops.resize(_items.size());
     _topsTs.resize(_items.size());
-    const int ih = introHeight();
-    int       y  = ih + kPadV;
+    int y = kPadV;
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
         _tops[i]   = y;
         _topsTs[i] = _items[i].msg.ts;
         y += rowHeight(i) + kRowGap;
     }
-    _totalH = std::max(y + kPadV, ih + kPadV * 2);
+    const int contentH = y + kPadV;
 
-    const int vh = viewport()->height();
+    // When the whole conversation is shorter than the viewport, sit the messages
+    // at the bottom (against the composer) like the official client instead of
+    // pinning them to the top. Baking the offset into _tops keeps every hit-test
+    // and paint path (which all read _tops) consistent for free.
+    const int vh        = viewport()->height();
+    const int topOffset = std::max(0, vh - contentH);
+    if (topOffset > 0)
+        for (int &t : _tops)
+            t += topOffset;
+    _totalH = contentH + topOffset;
+
     sb->setRange(0, std::max(0, _totalH - vh));
     sb->setPageStep(vh);
 

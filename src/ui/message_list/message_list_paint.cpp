@@ -90,17 +90,22 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
         return;
     }
 
+    // Empty conversation (loaded, nothing to show): a centered placeholder.
+    if (_items.empty()) {
+        _visibleGifs.clear();
+        syncGifPlayback();
+
+        QFont f = QApplication::font();
+        f.setPointSizeF(f.pointSizeF() * 1.5);
+        p.setFont(f);
+        p.setPen(Th::c().text.secondary);
+        p.drawText(viewport()->rect(), Qt::AlignCenter, tr("No messages yet"));
+        return;
+    }
+
     const PaintContext ctx     = makePaintContext();
     const int          scrollY = ctx.scrollY;
     const int          vh      = ctx.vh;
-
-    // Intro header (channel/DM name + description before first message)
-    if (_showIntro) {
-        const int ih         = introHeight();
-        const int introVpTop = -scrollY; // intro lives at document y=0
-        if (introVpTop + ih >= 0 && introVpTop <= vh)
-            paintIntro(p, introVpTop);
-    }
 
     _visibleGifs.clear();
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
@@ -1907,35 +1912,7 @@ void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) c
     p.restore();
 }
 
-// ── Intro header + date separator painting ────────────────────────────────────
-
-void MessageListWidget::paintIntro(QPainter &p, int top) const {
-    const int vw   = viewport()->width();
-    const int padX = kPadH * 2;
-
-    QFont nameFont = QApplication::font();
-    nameFont.setPointSizeF(nameFont.pointSizeF() * 1.55);
-    nameFont.setWeight(QFont::Medium);
-
-    p.save();
-    p.setFont(nameFont);
-    p.setPen(Th::c().text.primary);
-    const QRect nameRect(padX, top + kIntroPadTop, vw - padX * 2, kIntroNameH);
-    p.drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, _convName);
-
-    if (!_convDescription.isEmpty()) {
-        QFont descFont = QApplication::font();
-        p.setFont(descFont);
-        p.setPen(Th::c().text.secondary);
-        const int descY = top + kIntroPadTop + kIntroNameH + kIntroGap;
-        p.drawText(
-            QRect(padX, descY, vw - padX * 2, kIntroDescH),
-            Qt::AlignLeft | Qt::AlignVCenter,
-            _convDescription
-        );
-    }
-    p.restore();
-}
+// ── Date separator painting ───────────────────────────────────────────────────
 
 void MessageListWidget::paintDateSep(QPainter &p, int top, int vw, qint64 dateMicros) const {
     const QString label = MsgRender::formatDateLabel(dateMicros);

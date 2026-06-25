@@ -81,15 +81,7 @@ public:
     // lastReadTs: the conversation's read cursor captured before the open marks
     // it read — when set, the list opens scrolled to the first message after it
     // (the first unread); when empty, it opens scrolled to the bottom.
-    void openConversation(
-        ConversationId conv,
-        const QString &convName    = {},
-        const QString &description = {},
-        const Ts      &lastReadTs  = {}
-    );
-    // Update only the display name / description shown in the intro header without
-    // reloading history (used when user data arrives after the conversation was opened).
-    void updateConvName(const QString &convName, const QString &description);
+    void openConversation(ConversationId conv, const Ts &lastReadTs = {});
     // Open a thread view: loads conversations.replies and filters events accordingly.
     void openThread(ConversationId conv, Ts rootTs);
     void clear();
@@ -315,10 +307,8 @@ private:
     QRect fileViewportRect(int msgIdx, int fileIdx) const;
     QRect fileActionBarButtonRect(int btn, const QRect &fileRect) const;
     int   fileActionBarButtonAt(const QPoint &viewportPos) const;
-    void  paintIntro(QPainter &p, int top) const;
     void  paintDateSep(QPainter &p, int top, int vw, qint64 dateMicros) const;
 
-    int  introHeight() const;
     bool needsDateSep(int index) const;
 
     // Download any missing images for visible rows (called from doPaint).
@@ -460,13 +450,6 @@ private:
     // System/activity lines (joins, topic changes, …): centered single line.
     static constexpr int kSysRowPadV = 6; // vertical padding above and below the line
 
-    // Conversation intro header (painted before first message)
-    static constexpr int kIntroPadTop = 32; // space above the name line
-    static constexpr int kIntroNameH  = 30; // height of the big name line
-    static constexpr int kIntroGap    = 8;  // gap between name and description
-    static constexpr int kIntroDescH  = 18; // height of description line
-    static constexpr int kIntroPadBot = 24; // space below description before first message
-
     Session       *_session;
     ConversationId _currentConv;
     bool           _isThreadMode = false;
@@ -486,9 +469,6 @@ private:
     std::map<Ts, InlineThread> _inlineThreads;
     // Root ts currently shown in the standalone panel ({} when none).
     Ts                         _openThreadRoot;
-    QString                    _convName;
-    QString                    _convDescription;
-    bool                       _showIntro = false;
     std::vector<MessageItem>   _items;
     std::vector<int>           _tops; // document-space top of each row
     // ts of each row at the time _tops was built — a consistent snapshot of the

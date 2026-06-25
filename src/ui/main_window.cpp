@@ -1486,15 +1486,8 @@ void MainWindow::connectToSession() {
                                 const QString name = _convList->resolvedName(row);
                                 if (_convNameLabel)
                                     _convNameLabel->setText(name);
-                                // Also update the message list intro and composer placeholder,
-                                // which were set from the (still-unresolved) user ID on open.
-                                if (_messageList)
-                                    _messageList->updateConvName(
-                                        name,
-                                        tr("This is the beginning of your direct message history "
-                                           "with %1.")
-                                            .arg(name)
-                                    );
+                                // Also update the composer placeholder, which was set
+                                // from the (still-unresolved) user ID on open.
                                 if (_composer)
                                     _composer->setPlaceholderText(
                                         name.isEmpty() ? tr("Message") : tr("Message %1").arg(name)
@@ -2546,18 +2539,6 @@ void MainWindow::openConversation(int row) {
     if (_convNameLabel)
         _convNameLabel->setText(displayName);
 
-    // Build the channel/DM intro description for the message list header.
-    QString description;
-    if (conv) {
-        if (isDm) {
-            if (!name.isEmpty())
-                description =
-                    tr("This is the beginning of your direct message history with %1.").arg(name);
-        } else if (!conv->description.isEmpty()) {
-            description = conv->description;
-        }
-    }
-
     const bool hasCachedMsgs = !_session->cachedMessages(_currentConvId).empty();
 
     // Capture the unread boundary before setReading() advances lastRead, so the
@@ -2578,7 +2559,7 @@ void MainWindow::openConversation(int row) {
         _canvasPage->flushPendingSave(); // outgoing conversation's canvas edits
     if (_contentStack)
         _contentStack->setCurrentWidget(_messageList);
-    _messageList->openConversation(_currentConvId, displayName, description, lastReadTs);
+    _messageList->openConversation(_currentConvId, lastReadTs);
 
     // Reset the tab strip to Messages and look up this conversation's canvas.
     // conversations.list often omits "properties", so the cached Conversation
