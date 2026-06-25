@@ -77,6 +77,11 @@ credentials.cmake に MSGA_TEAMS_CLIENT_ID を設定して再ビルドしてく�
 <context>
     <name>Session</name>
     <message>
+        <location filename="../src/session/session.cpp" line="395"/>
+        <source>Slack is rate-limiting requests — retrying in %n second(s).</source>
+        <translation>Slackがリクエストをレート制限しています — %n 秒後に再試行します。</translation>
+    </message>
+    <message>
         <location filename="../src/session/session.cpp" line="44"/>
         <source> — sign in to this workspace again to grant the new permission</source>
         <translation> — 新しい権限を付与するには、このワークスペースに再度サインインしてください</translation>
@@ -521,6 +526,16 @@ This action cannot be undone.</source>
 </context>
 <context>
     <name>ConvListWidget</name>
+    <message>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="599"/>
+        <source>Mute</source>
+        <translation>ミュート</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="599"/>
+        <source>Unmute</source>
+        <translation>ミュート解除</translation>
+    </message>
     <message>
         <location filename="../src/ui/conv_list/conv_list_widget.cpp" line="521"/>
         <source>Open a direct message</source>
@@ -992,6 +1007,16 @@ This action cannot be undone.</source>
 <context>
     <name>MainWindow</name>
     <message>
+        <location filename="../src/ui/main_window.cpp" line="2103"/>
+        <source>Mute</source>
+        <translation>ミュート</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/main_window.cpp" line="2103"/>
+        <source>Unmute</source>
+        <translation>ミュート解除</translation>
+    </message>
+    <message>
         <location filename="../src/ui/main_window.cpp" line="398"/>
         <source>Log in to workspace</source>
         <translation>ワークスペースにログイン</translation>
@@ -1015,11 +1040,6 @@ This action cannot be undone.</source>
         <location filename="../src/ui/main_window.cpp" line="1264"/>
         <source>Login failed</source>
         <translation>ログインに失敗しました</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/main_window.cpp" line="1485"/>
-        <source>This is the beginning of your direct message history with %1.</source>
-        <translation>ここから%1とのダイレクトメッセージの履歴が始まります。</translation>
     </message>
     <message>
         <location filename="../src/ui/main_window.cpp" line="1491"/>
@@ -1127,11 +1147,6 @@ This action cannot be undone.</source>
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2504"/>
-        <source>This is the beginning of your direct message history with %1.</source>
-        <translation>ここから%1とのダイレクトメッセージの履歴が始まります。</translation>
-    </message>
-    <message>
         <location filename="../src/ui/main_window.cpp" line="2589"/>
         <source>Message</source>
         <translation>メッセージ</translation>
@@ -1177,6 +1192,11 @@ This action cannot be undone.</source>
 </context>
 <context>
     <name>MessageListWidget</name>
+    <message>
+        <location filename="../src/ui/message_list/message_list_paint.cpp" line="102"/>
+        <source>No messages yet</source>
+        <translation>まだメッセージはありません</translation>
+    </message>
     <message>
         <location filename="../src/ui/message_list/message_list.cpp" line="1660"/>
         <source>Reply in thread</source>
