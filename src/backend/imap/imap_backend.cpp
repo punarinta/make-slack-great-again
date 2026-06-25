@@ -50,30 +50,6 @@ qint64 dateMicros(const Envelope &env, const QDateTime &internalDate) {
     return dt.isValid() ? dt.toMSecsSinceEpoch() * 1000 : 0;
 }
 
-// Plain-text body cleanup (the non-HTML branch bypasses htmlToEntities): drop
-// zero-width filler and cap consecutive newlines at 3 (≤2 blank lines) so a
-// plain-text mail with big vertical gaps doesn't render as a giant void.
-QString normalizePlainText(const QString &in) {
-    QString out;
-    out.reserve(in.size());
-    int nl = 0;
-    for (QChar c : in) {
-        const char16_t u = c.unicode();
-        if (u == 0x200B || u == 0x200C || u == 0x200D || u == 0x2060 || u == 0xFEFF || u == 0xAD)
-            continue; // zero-width filler
-        if (c == '\r')
-            continue;
-        if (c == '\n') {
-            if (++nl <= 3)
-                out += c;
-        } else {
-            nl = 0;
-            out += c;
-        }
-    }
-    return out.trimmed();
-}
-
 // A user folder/label that should surface as a channel: selectable, not INBOX,
 // and not a special-use system folder (Sent/Drafts/Trash/Junk/Archive/All) —
 // those are the substrate, not topic channels (§3).

@@ -270,11 +270,21 @@ TextWithEntities htmlToEntities(const QString &html) {
     // Newlines/spaces are buffered, not written immediately, so we can collapse
     // runs and cap blank lines. flush() commits them just before real text — and
     // suppresses leading whitespace so the message never starts with blank lines.
+    //
+    // The cap is enforced against the newlines ALREADY trailing `text`, not just
+    // the pending count: an empty inline element (a social-icon <a> wrapping a
+    // dropped <img>, an empty <b>, …) calls flush() between block boundaries but
+    // contributes no visible text, so without this each boundary would commit a
+    // fresh capped run and the runs would stack into a giant gap.
     auto flush = [&] {
         if (pendingNL > 0) {
-            if (!text.isEmpty()) // suppress leading newlines
-                for (int k = 0; k < pendingNL; ++k)
+            if (!text.isEmpty()) { // suppress leading newlines
+                int trailing = 0;
+                for (int k = text.size() - 1; k >= 0 && text[k] == '\n'; --k)
+                    ++trailing;
+                for (int k = 0; k < pendingNL && trailing + k < kMaxNL; ++k)
                     text += '\n';
+            }
             pendingNL    = 0;
             pendingSpace = false;
         } else if (pendingSpace) {
@@ -478,6 +488,33 @@ TextWithEntities htmlToEntities(const QString &html) {
         }
     }
     return out;
+}
+
+QString normalizePlainText(const QString &in) {
+    QString out;
+    out.reserve(in.size());
+    int     nl = 0;    // consecutive newlines in the current blank run
+    QString pendingWs; // spaces/tabs seen since the last newline or real char
+    for (QChar c : in) {
+        const char16_t u = c.unicode();
+        if (u == 0x200B || u == 0x200C || u == 0x200D || u == 0x2060 || u == 0xFEFF || u == 0xAD)
+            continue; // zero-width filler
+        if (c == '\r')
+            continue;
+        if (c == '\n') {
+            pendingWs.clear(); // trailing whitespace before the break — drop it
+            if (++nl <= 3)
+                out += c;
+        } else if (c == ' ' || c == '\t') {
+            pendingWs += c; // buffer; only kept if real content follows on this line
+        } else {
+            out += pendingWs; // leading indentation of a content line is preserved
+            pendingWs.clear();
+            nl = 0;
+            out += c;
+        }
+    }
+    return out.trimmed();
 }
 
 } // namespace imap

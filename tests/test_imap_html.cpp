@@ -105,6 +105,35 @@ TEST_CASE("html: numeric / literal non-breaking spaces collapse like ASCII space
     );
 }
 
+TEST_CASE("html: empty inline elements between blocks can't stack a giant gap", "[imap][html]") {
+    // An inline open (<a>, <b>, …) flushes the pending newlines; if it then yields
+    // no visible text (a social-icon link wrapping a dropped <img>, an empty <b>),
+    // each block boundary used to commit a fresh capped run and the runs stacked
+    // into a huge void. The cap must hold against the newlines already in `text`.
+    auto run = [](const QString &h) {
+        const QString t      = htmlToEntities(h).text;
+        int           maxRun = 0, cur = 0;
+        for (QChar c : t) {
+            if (c == '\n') {
+                if (++cur > maxRun)
+                    maxRun = cur;
+            } else
+                cur = 0;
+        }
+        return maxRun;
+    };
+    QString links, bolds;
+    for (int i = 0; i < 9; ++i) {
+        links += "<div><a href=\"x\"><img src=\"i.gif\"></a></div>";
+        bolds += "<p><b></b></p>";
+    }
+    CHECK(run("a" + links + "b") <= 3);
+    CHECK(run("a" + bolds + "b") <= 3);
+    // The visible text still survives — only the blank gap is capped.
+    CHECK(htmlToEntities("top" + links + "bottom").text.contains("top"));
+    CHECK(htmlToEntities("top" + links + "bottom").text.contains("bottom"));
+}
+
 TEST_CASE("html: list items get bullets", "[imap][html]") {
     const auto t = htmlToEntities("<ul><li>first</li><li>second</li></ul>");
     CHECK(t.text.contains("• first"));
@@ -169,4 +198,47 @@ TEST_CASE("html: real-ish marketing snippet stays readable", "[imap][html]") {
     CHECK(t.text.contains("Click here to confirm."));
     CHECK(span(t, find(t, EntityType::Bold)) == "Vladimir");
     CHECK(find(t, EntityType::Link).data == "https://l.com");
+}
+
+// ── normalizePlainText: the non-HTML body branch ──────────────────────────────
+
+TEST_CASE("plain: simple body is passed through unchanged", "[imap][plain]") {
+    CHECK(normalizePlainText("Hello\nworld") == "Hello\nworld");
+    CHECK(normalizePlainText("a\n\nb") == "a\n\nb"); // one blank line kept
+}
+
+TEST_CASE("plain: runs of bare newlines cap at 3 (2 blank lines)", "[imap][plain]") {
+    CHECK(normalizePlainText("a\n\n\nb") == "a\n\n\nb");
+    CHECK(normalizePlainText("a\n\n\n\n\n\n\nb") == "a\n\n\nb");
+}
+
+TEST_CASE("plain: whitespace-only lines don't reset the blank-line cap", "[imap][plain]") {
+    // The bug: a marketing mail pads the gap with lines that contain a space, so a
+    // naive counter resets on the space and lets every newline through. Lines of
+    // spaces/tabs must collapse exactly like bare blank lines.
+    CHECK(normalizePlainText("a\n \n \n \n \nb") == "a\n\n\nb");
+    CHECK(normalizePlainText("a\n\t\n  \n\t \nb") == "a\n\n\nb");
+    // A genuinely huge spacer run still collapses to the cap.
+    CHECK(normalizePlainText("a\n \n \n \n \n \n \n \n \nb") == "a\n\n\nb");
+}
+
+TEST_CASE("plain: trailing whitespace is stripped, leading indentation is kept", "[imap][plain]") {
+    CHECK(normalizePlainText("line with trailing   \nnext") == "line with trailing\nnext");
+    CHECK(normalizePlainText("head\n    indented body") == "head\n    indented body");
+    // Inline whitespace within a content line is preserved verbatim.
+    CHECK(normalizePlainText("col1\t\tcol2") == "col1\t\tcol2");
+}
+
+TEST_CASE("plain: zero-width filler and CR are dropped", "[imap][plain]") {
+    CHECK(normalizePlainText("a\r\nb\r\nc") == "a\nb\nc"); // CRLF → LF
+    // Every dropped code point: ZWSP, ZWNJ, ZWJ, word-joiner, BOM, soft-hyphen.
+    QString zw = QStringLiteral("x");
+    for (char16_t u : {0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x00AD})
+        zw += QChar(u);
+    zw += QStringLiteral("y");
+    CHECK(normalizePlainText(zw) == "xy");
+}
+
+TEST_CASE("plain: leading and trailing blank lines are trimmed", "[imap][plain]") {
+    CHECK(normalizePlainText("\n\n \n  body \n \n\n") == "body");
 }
