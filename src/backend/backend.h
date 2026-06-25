@@ -22,6 +22,13 @@ public:
     virtual Capabilities             capabilities() const = 0;
     virtual void                     connectRealtime()    = 0;
     virtual void                     disconnectRealtime() = 0;
+    // Safety-net hooks for the Session's periodic realtime health check.
+    // verifyRealtime() re-establishes the realtime transport only if it has
+    // dropped (a no-op while healthy). reestablishRealtime() forces a fresh
+    // transport, called when the Session detected the stream silently missed
+    // messages. Default no-ops for backends without a realtime connection.
+    virtual void                     verifyRealtime() {}
+    virtual void                     reestablishRealtime() {}
 
     // --- Identity helpers: keep ID-shape knowledge below the seam ---
     // The UI and Session treat IDs as opaque scalars; when they nonetheless need

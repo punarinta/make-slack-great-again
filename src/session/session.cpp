@@ -8,6 +8,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDebug>
 #include <algorithm>
 #include <QFileInfo>
 #include <QImageReader>
@@ -110,6 +111,14 @@ void Session::start() {
     refreshSelfPresence();
     QObject::connect(&_selfPresenceTimer, &QTimer::timeout, [this] { refreshSelfPresence(); });
     _selfPresenceTimer.start(60 * 1000);
+
+    // Safety net for the realtime socket. Its own watchdog only catches a
+    // connection that goes silent; it cannot see one that still answers pings
+    // but to which Slack has quietly stopped delivering events — the cause of
+    // messages sent from another client never showing up. Every 15 s, re-verify
+    // the subscription and poll the open conversation for anything missed.
+    QObject::connect(&_realtimeSafetyTimer, &QTimer::timeout, [this] { checkRealtimeHealth(); });
+    _realtimeSafetyTimer.start(15 * 1000);
 
     // Debounced unread persistence (see scheduleSaveUnreads).
     _saveUnreadsTimer.setSingleShot(true);
@@ -260,70 +269,10 @@ void Session::start() {
                 } else if (auto *ev = std::get_if<EvMessageNew>(&e)) {
                     // The same message can arrive twice — the chat.postMessage
                     // response echo plus the realtime echo, or a Socket Mode
-                    // redelivery of an un-acked envelope. Process and forward
-                    // only the first copy.
-                    if (!firstSighting(ev->conv, ev->msg.ts))
+                    // redelivery of an un-acked envelope. handleNewMessage
+                    // de-dups and patches state; a duplicate isn't forwarded.
+                    if (!handleNewMessage(ev->conv, ev->msg))
                         return;
-                    const bool ownMessage =
-                        !_meUserId.value.isEmpty() && ev->msg.author == _meUserId;
-                    {
-                        auto convs = _conversations.current();
-                        for (auto &c : convs) {
-                            if (c.id != ev->conv)
-                                continue;
-                            c.latestTs = ev->msg.ts;
-                            if (ownMessage || !c.isMember)
-                                break;
-                            if (ev->conv == _readingConv) {
-                                // On screen right now — keep the server-side
-                                // read cursor in sync so other clients (and
-                                // the next restart) agree it's read.
-                                c.lastRead = ev->msg.ts;
-                                _backend->markRead(ev->conv, ev->msg.ts);
-                                break;
-                            }
-                            const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-                            const QString &mt =
-                                ev->msg.rawText.isEmpty() ? ev->msg.text.text : ev->msg.rawText;
-                            const bool isMention = mrkdwnMentions(mt, _meUserId);
-                            // Plain channel thread replies don't mark the
-                            // channel unread (they live in the Threads view);
-                            // mentions and DM replies still count.
-                            if (ev->msg.threadRoot && !isDm && !isMention)
-                                break;
-                            if (!c.isMuted) {
-                                c.unread++;
-                                if (isDm || isMention)
-                                    c.mentionCount++;
-                            } else if (!isDm && isMention) {
-                                // Muted channels stay quiet except for explicit
-                                // mentions, which still badge (official-client
-                                // behavior).
-                                c.unread++;
-                                c.mentionCount++;
-                            }
-                            break;
-                        }
-                        _conversations = std::move(convs);
-                    }
-                    // Remove the matching optimistic copy so the real message
-                    // replaces it instead of appearing as a duplicate. Match
-                    // within the same kind (file message vs plain text) so a
-                    // quick text confirmation can't displace the ghost of a
-                    // still-uploading file batch.
-                    if (ownMessage) {
-                        auto it = _pendingSends.find(ev->conv.value);
-                        if (it != _pendingSends.end() && !it->isEmpty()) {
-                            const bool withFiles = !ev->msg.files.empty();
-                            int        idx       = 0;
-                            while (idx < it->size() && (*it)[idx].withFiles != withFiles)
-                                ++idx;
-                            if (idx == it->size())
-                                idx = 0; // no same-kind entry; fall back to FIFO
-                            const QString fakeTs = it->takeAt(idx).ts;
-                            _eventHub.fire(EvMessageDeleted{ev->conv, fakeTs});
-                        }
-                    }
                 } else if (auto *ev = std::get_if<EvSendFailed>(&e)) {
                     // The send definitively failed (transport problems are
                     // retried before this fires) — drop the translucent
@@ -433,6 +382,121 @@ void Session::start() {
                         cmds.push_back(existing);
                 }
                 _commands = std::move(cmds);
+            },
+            _lifetime
+        );
+}
+
+bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
+    // De-dupe: the chat.postMessage response echo, the realtime echo, a Socket
+    // Mode envelope redelivery, and the periodic safety poll can all surface the
+    // same (conv, ts). Forward only the first sighting.
+    if (!firstSighting(conv, msg.ts))
+        return false;
+    const bool ownMessage = !_meUserId.value.isEmpty() && msg.author == _meUserId;
+    {
+        auto convs = _conversations.current();
+        for (auto &c : convs) {
+            if (c.id != conv)
+                continue;
+            c.latestTs = msg.ts;
+            if (ownMessage || !c.isMember)
+                break;
+            if (conv == _readingConv) {
+                // On screen right now — keep the server-side read cursor in
+                // sync so other clients (and the next restart) agree it's read.
+                c.lastRead = msg.ts;
+                _backend->markRead(conv, msg.ts);
+                break;
+            }
+            const bool     isDm      = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+            const QString &mt        = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+            const bool     isMention = mrkdwnMentions(mt, _meUserId);
+            // Plain channel thread replies don't mark the channel unread (they
+            // live in the Threads view); mentions and DM replies still count.
+            if (msg.threadRoot && !isDm && !isMention)
+                break;
+            if (!c.isMuted) {
+                c.unread++;
+                if (isDm || isMention)
+                    c.mentionCount++;
+            } else if (!isDm && isMention) {
+                // Muted channels stay quiet except for explicit mentions, which
+                // still badge (official-client behavior).
+                c.unread++;
+                c.mentionCount++;
+            }
+            break;
+        }
+        _conversations = std::move(convs);
+    }
+    // Remove the matching optimistic copy so the real message replaces it
+    // instead of appearing as a duplicate. Match within the same kind (file
+    // message vs plain text) so a quick text confirmation can't displace the
+    // ghost of a still-uploading file batch.
+    if (ownMessage) {
+        auto it = _pendingSends.find(conv.value);
+        if (it != _pendingSends.end() && !it->isEmpty()) {
+            const bool withFiles = !msg.files.empty();
+            int        idx       = 0;
+            while (idx < it->size() && (*it)[idx].withFiles != withFiles)
+                ++idx;
+            if (idx == it->size())
+                idx = 0; // no same-kind entry; fall back to FIFO
+            const QString fakeTs = it->takeAt(idx).ts;
+            _eventHub.fire(EvMessageDeleted{conv, fakeTs});
+        }
+    }
+    return true;
+}
+
+void Session::checkRealtimeHealth() {
+    // (1) Subscription intact: reconnect the shared realtime socket if it has
+    // dropped (a no-op while healthy). Covers a reconnect that stalled past the
+    // socket's own liveness watchdog.
+    _backend->verifyRealtime();
+
+    // (2) New messages: the watchdog can't detect a socket that still answers
+    // pings but to which Slack has quietly stopped routing events — so a message
+    // sent from another client silently never arrives. Poll the open
+    // conversation's latest history and inject anything newer than what we've
+    // seen through the normal new-message path (dedup, unread/cursor
+    // bookkeeping, mark-read). firstSighting makes this idempotent against
+    // messages the realtime stream already delivered.
+    if (_readingConv.value.isEmpty())
+        return;
+    const ConversationId conv = _readingConv;
+    Ts                   lastKnown;
+    if (const Conversation *c = findConversation(conv))
+        lastKnown = c->latestTs;
+    if (lastKnown.isEmpty())
+        return; // no baseline to detect "new" against — the open load covers it
+
+    _backend->loadHistory(conv, std::nullopt) |
+        rpl::on_next(
+            [this, conv, lastKnown](MessagePage page) {
+                if (_readingConv != conv)
+                    return; // user navigated away while the fetch was in flight
+                bool missed = false;
+                // page.messages is oldest-first; inject in order so rows append
+                // chronologically. The ts pre-filter keeps the common (nothing
+                // missed) case from running handleNewMessage over the whole page.
+                for (const auto &msg : page.messages) {
+                    if (msg.ts <= lastKnown)
+                        continue;
+                    if (handleNewMessage(conv, msg)) {
+                        _eventHub.fire(EvMessageNew{conv, msg});
+                        missed = true; // realtime should have delivered this
+                    }
+                }
+                // The realtime stream dropped a message it should have pushed:
+                // the subscription is compromised. Re-establish the socket so
+                // future events (and other conversations' badges) flow again.
+                if (missed) {
+                    qWarning() << "Session: realtime missed messages in" << conv.value
+                               << "— re-establishing socket";
+                    _backend->reestablishRealtime();
+                }
             },
             _lifetime
         );

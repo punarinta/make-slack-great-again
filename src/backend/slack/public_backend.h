@@ -43,6 +43,8 @@ public:
     Capabilities             capabilities() const override;
     void                     connectRealtime() override;
     void                     disconnectRealtime() override;
+    void                     verifyRealtime() override;
+    void                     reestablishRealtime() override;
 
     bool isSyntheticUser(UserId) const override;
     bool isBotId(UserId) const override;

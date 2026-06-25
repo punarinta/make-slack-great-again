@@ -39,6 +39,17 @@ public:
     void start();
     void stop();
 
+    // Safety-net health checks driven by the Session's periodic timer (the
+    // watchdog only catches a socket that goes silent; it can't see a socket
+    // that still answers pings but to which Slack has quietly stopped routing
+    // events). ensureConnected() reconnects only if the socket has dropped and
+    // no connect cycle is already underway — a cheap no-op while healthy, it
+    // covers a reconnect that stalled past the watchdog. reconnectNow() forces
+    // a fresh socket unconditionally, used when the app detected the stream had
+    // silently missed events.
+    void ensureConnected();
+    void reconnectNow();
+
     // Register/unregister a backend's event stream. Events are broadcast to
     // all registered sinks.
     void addSink(rpl::event_stream<Event> *events);

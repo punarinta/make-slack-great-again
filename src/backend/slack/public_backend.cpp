@@ -312,6 +312,16 @@ void PublicBackend::disconnectRealtime() {
         _sharedRealtime->removeSink(&_events);
 }
 
+void PublicBackend::verifyRealtime() {
+    if (_sharedRealtime)
+        _sharedRealtime->ensureConnected();
+}
+
+void PublicBackend::reestablishRealtime() {
+    if (_sharedRealtime)
+        _sharedRealtime->reconnectNow();
+}
+
 // ── Snapshot loads ────────────────────────────────────────────────
 
 rpl::producer<UserId> PublicBackend::loadMe() {

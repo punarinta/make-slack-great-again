@@ -172,6 +172,26 @@ void SocketModeRealtime::scheduleReconnect() {
     _reconnectMs = std::min(_reconnectMs * 2, 30000);
 }
 
+void SocketModeRealtime::ensureConnected() {
+    if (!_started || _stopped)
+        return;
+    if (_connecting)
+        return; // a connect cycle is already underway — let it finish
+    if (_ws && _ws->state() == QAbstractSocket::ConnectedState)
+        return; // healthy
+    // Started but not connected and nothing in flight: a reconnect stalled
+    // (e.g. backoff scheduled far out, or the single-flight guard never
+    // cleared). Kick a fresh connect now.
+    qDebug() << "Socket Mode: ensureConnected — not connected, reconnecting";
+    openAndConnect();
+}
+
+void SocketModeRealtime::reconnectNow() {
+    if (!_started || _stopped)
+        return;
+    forceReconnect();
+}
+
 void SocketModeRealtime::forceReconnect() {
     if (_stopped)
         return;

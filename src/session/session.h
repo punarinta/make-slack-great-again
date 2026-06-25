@@ -324,6 +324,19 @@ private:
     // redelivery. Remembers the last 512 sightings.
     bool firstSighting(const ConversationId &conv, const Ts &ts);
 
+    // Apply a new message to in-memory state (latest cursor, unread/mention
+    // badges, mark-read while reading, optimistic-ghost removal) and report
+    // whether it should be forwarded to the UI. Returns false for a duplicate
+    // (firstSighting). Shared by the backend event firehose and the periodic
+    // safety poll, which injects messages the realtime stream missed.
+    bool handleNewMessage(const ConversationId &conv, const Message &msg);
+
+    // Periodic safety net (every 15 s) for the realtime socket: re-verify the
+    // subscription and poll the open conversation for messages the realtime
+    // stream silently failed to deliver. See the implementation for why the
+    // socket's own liveness watchdog can't cover this.
+    void checkRealtimeHealth();
+
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
 
@@ -331,6 +344,7 @@ private:
     rpl::variable<std::vector<User>>         _users;
     rpl::variable<SelfPresence>              _selfPresence;
     QTimer                                   _selfPresenceTimer;
+    QTimer                                   _realtimeSafetyTimer; // 15 s; checkRealtimeHealth()
     QTimer                                   _saveUnreadsTimer; // debounces scheduleSaveUnreads()
     rpl::event_stream<Event>                 _eventHub;
     rpl::event_stream<QString>               _errorHub;
