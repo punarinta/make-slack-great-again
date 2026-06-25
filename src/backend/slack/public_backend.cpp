@@ -39,6 +39,16 @@ PublicBackend::PublicBackend(
     _api->preWarm("slack.com");
     _historyApi->preWarm("slack.com");
 
+    // Surface HTTP 429s to the UI (transient notice). All three clients can be
+    // throttled; the background-sweep _infoApi is the usual culprit. The sending
+    // client is the QObject context, so the connection dies with it.
+    for (WebApiClient *client : {_api, _historyApi, _infoApi})
+        QObject::connect(
+            client, &WebApiClient::rateLimited, client, [this](const QString &method, int secs) {
+                _events.fire(EvRateLimited{method, secs});
+            }
+        );
+
     // Always install the handler so token_expired triggers logout/refresh even
     // when the stored token has no companion refresh token yet.
     setupTokenRefresh(creds, appCfg);
@@ -981,20 +991,54 @@ void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities tex
 }
 
 void PublicBackend::deleteMessage(ConversationId conv, Ts ts) {
+    deleteMessageAttempt(conv, ts, 0);
+}
+
+void PublicBackend::deleteMessageAttempt(ConversationId conv, Ts ts, int attempts) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);
     params.addQueryItem("ts", ts);
-    _api->call("chat.delete", params, {}, [this, conv, ts](QString e) {
-        if (e == QLatin1String("message_not_found")) {
-            // The message is already gone server-side (deleted elsewhere, or a
-            // stale local copy such as an unreconciled optimistic send) — the
-            // user's intent is satisfied either way, so drop it locally as if
-            // the delete succeeded.
+    // POST (non-idempotent): Qt silently retransmits a GET whose connection
+    // died mid-flight, which would fire a second chat.delete that comes back
+    // message_not_found. Deletion is naturally idempotent, but routing it as a
+    // write method keeps it off the auto-retransmit path and consistent with
+    // the other chat.* writes.
+    _api->callNonIdempotent(
+        "chat.delete",
+        params,
+        [this, conv, ts](QJsonObject) {
+            // Confirm the deletion from the response itself rather than waiting
+            // for the realtime message_deleted echo, which may never arrive if
+            // the socket is recycling. Session dedups EvMessageDeleted, so the
+            // later realtime frame collapses into this one harmlessly.
             _events.fire(EvMessageDeleted{conv, ts});
-            return;
+        },
+        [this, conv, ts, attempts](QString e) {
+            if (e == QLatin1String("message_not_found")) {
+                // The message is already gone server-side (deleted elsewhere, or
+                // a stale local copy such as an unreconciled optimistic send) —
+                // the user's intent is satisfied either way, so drop it locally
+                // as if the delete succeeded.
+                _events.fire(EvMessageDeleted{conv, ts});
+                return;
+            }
+            if (e == WebApiClient::kConnectionLost) {
+                // Ambiguous mid-flight failure of a POST. The delete may or may
+                // not have applied, but it is idempotent (a re-delete just yields
+                // message_not_found, handled above), so resending is always safe.
+                // Bounded backoff so a persistent outage doesn't loop forever.
+                constexpr int kMaxDeleteRetries = 6;
+                if (attempts < kMaxDeleteRetries) {
+                    const int delay = qMin(_sendRetryDelayMs << attempts, 60'000);
+                    QTimer::singleShot(delay, _api, [this, conv, ts, attempts] {
+                        deleteMessageAttempt(conv, ts, attempts + 1);
+                    });
+                    return;
+                }
+            }
+            qWarning() << "deleteMessage error:" << e;
         }
-        qWarning() << "deleteMessage error:" << e;
-    });
+    );
 }
 
 void PublicBackend::deleteFile(const QString &fileId) {

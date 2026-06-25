@@ -384,6 +384,22 @@ void Session::start() {
                     // open MessageList backfills its own history off this same
                     // event after the re-fire below.
                     reloadConversations(/*refreshEmoji=*/false);
+                } else if (auto *ev = std::get_if<EvRateLimited>(&e)) {
+                    // Surface a transient notice. 429s cluster (background polls
+                    // hammer the same window), so throttle to one banner per
+                    // window — otherwise a sweep would spam it repeatedly.
+                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - _lastRateLimitNoticeMs >= kRateLimitNoticeGapMs) {
+                        _lastRateLimitNoticeMs = now;
+                        _errorHub.fire(
+                            QCoreApplication::translate(
+                                "Session",
+                                "Slack is rate-limiting requests — retrying in %n second(s).",
+                                nullptr,
+                                ev->retryAfterSecs
+                            )
+                        );
+                    }
                 }
                 _eventHub.fire(std::move(e));
             },

@@ -189,7 +189,8 @@ void HttpQueue::handleReply(QNetworkReply *reply, PendingCall c) {
     if (httpStatus == 429) {
         int retryAfter = reply->rawHeader("Retry-After").toInt();
         retryAfter     = qMax(retryAfter, 1);
-        qDebug() << "HttpQueue: rate-limited, retrying in" << retryAfter << "s";
+        qDebug() << "HttpQueue: rate-limited on" << c.method << "retrying in" << retryAfter << "s";
+        emit rateLimited(c.method, retryAfter);
         requeueWithDelay(std::move(c), retryAfter * 1000);
         return;
     }

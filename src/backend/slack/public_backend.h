@@ -169,6 +169,11 @@ private:
     void postMessageAttempt(std::shared_ptr<SendState> st);
     void reconcileSend(std::shared_ptr<SendState> st);
 
+    // chat.delete posted as a write method (off Qt's GET auto-retransmit path).
+    // Deletion is idempotent, so an ambiguous transport failure is safe to
+    // resend; `attempts` bounds the retries with backoff.
+    void deleteMessageAttempt(ConversationId conv, Ts ts, int attempts);
+
     // files.completeUploadExternal confirms the upload but, unlike
     // chat.postMessage, does NOT return the posted message's ts — so a file
     // send can only confirm + de-ghost via the realtime echo. When that echo

@@ -351,8 +351,12 @@ private:
     QHash<QString, QList<PendingSend>> _pendingSends; // conv.value → FIFO queue
     QSet<QString>                      _seenMsgKeys;  // "conv|ts" of delivered messages
     QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
-    QHash<QString, User>               _botUsers;     // bot_id → User; for bots not in users.list
-    QSet<QString>             _pendingBotFetches;     // bot_ids with an in-flight bots.info request
+
+    // Throttle the rate-limit notice banner (429s cluster; don't spam).
+    static constexpr qint64   kRateLimitNoticeGapMs  = 15'000;
+    qint64                    _lastRateLimitNoticeMs = 0;
+    QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list
+    QSet<QString>             _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request
     rpl::event_stream<UserId> _botInfoHub;
     rpl::event_stream<UserId> _userInfoHub;

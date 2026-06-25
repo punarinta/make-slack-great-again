@@ -684,6 +684,14 @@ struct EvHuddleChanged {
 // first connect (the initial load covers that).
 struct EvRealtimeReconnected {};
 
+// An API request hit HTTP 429 and is being transparently retried after
+// `retryAfterSecs`. Informational — the call still completes; the UI can show a
+// transient "rate-limited" notice. `method` is the throttled API method.
+struct EvRateLimited {
+    QString method;
+    int     retryAfterSecs = 0;
+};
+
 // --- Search ---
 
 struct SearchResult {
@@ -722,4 +730,5 @@ using Event = std::variant<
     EvUserChanged,
     EvSendFailed,
     EvHuddleChanged,
-    EvRealtimeReconnected>;
+    EvRealtimeReconnected,
+    EvRateLimited>;

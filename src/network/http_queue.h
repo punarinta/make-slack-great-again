@@ -74,6 +74,13 @@ public:
     // GET an arbitrary URL with the auth token set. Bypasses the queue.
     void downloadUrl(const QUrl &url, std::function<void(QByteArray)> onData, OnError onError = {});
 
+signals:
+    // A call hit HTTP 429 and was requeued for `retryAfterSecs`. The call still
+    // completes (transparently retried), so this is informational — the UI can
+    // surface a transient "rate-limited" notice. `method` is the API method that
+    // was throttled (e.g. "users.getPresence").
+    void rateLimited(const QString &method, int retryAfterSecs);
+
 protected:
     struct PendingCall {
         QString     method;
