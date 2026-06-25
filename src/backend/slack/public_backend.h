@@ -181,8 +181,11 @@ private:
     // history reload heals it. After a successful upload, scan recent history
     // for the own file_share message bearing one of the uploaded file ids and
     // emit its echo, so de-ghosting no longer depends on the websocket (Session
-    // dedups the later realtime echo by ts, same as for text sends).
-    void reconcileUpload(const ConversationId &conv, const QSet<QString> &fileIds);
+    // dedups the later realtime echo by ts, same as for text sends). A freshly
+    // shared message (especially a heavy one) often hasn't surfaced in
+    // conversations.history the instant the upload completes, so the scan
+    // retries with backoff until the message appears or `attempt` is exhausted.
+    void reconcileUpload(const ConversationId &conv, const QSet<QString> &fileIds, int attempt = 0);
 
     // Re-derive live-huddle state from a freshly-fetched history page. The
     // USLACKBOT "huddle_thread" message carries the authoritative `room`

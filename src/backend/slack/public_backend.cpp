@@ -942,7 +942,9 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
     );
 }
 
-void PublicBackend::reconcileUpload(const ConversationId &conv, const QSet<QString> &fileIds) {
+void PublicBackend::reconcileUpload(
+    const ConversationId &conv, const QSet<QString> &fileIds, int attempt
+) {
     if (fileIds.isEmpty())
         return;
     QUrlQuery params;
@@ -954,7 +956,7 @@ void PublicBackend::reconcileUpload(const ConversationId &conv, const QSet<QStri
     _api->call(
         "conversations.history",
         params,
-        [this, conv, fileIds](QJsonObject resp) {
+        [this, conv, fileIds, attempt](QJsonObject resp) {
             for (const auto v : resp.value("messages").toArray()) {
                 const auto o = v.toObject();
                 if (!_meUserId.value.isEmpty() && o.value("user").toString() != _meUserId.value)
@@ -973,8 +975,18 @@ void PublicBackend::reconcileUpload(const ConversationId &conv, const QSet<QStri
                 _events.fire(EvMessageNew{conv, JsonMappers::toMessage(o)});
                 return;
             }
-            // Not yet visible (history lag) — the realtime echo or the next
-            // reload still heals the ghost, so don't treat this as an error.
+            // Not yet visible — a heavy share routinely lags conversations.history
+            // by a beat. Retry with backoff so de-ghosting doesn't hinge on the
+            // realtime echo (which may be delayed or dropped). The later echo —
+            // from a retry here or from the websocket — is deduped by ts in
+            // Session, so an extra scan is harmless once one path succeeds.
+            constexpr int kMaxUploadReconcileRetries = 6;
+            if (attempt < kMaxUploadReconcileRetries) {
+                const int delay = qMin(_sendRetryDelayMs << attempt, 60'000);
+                QTimer::singleShot(delay, _api, [this, conv, fileIds, attempt] {
+                    reconcileUpload(conv, fileIds, attempt + 1);
+                });
+            }
         },
         [conv](QString err) { qWarning() << "reconcileUpload error:" << conv.value << err; }
     );
