@@ -472,6 +472,10 @@ void Session::reloadConversations(bool refreshEmoji) {
                         // API can't read — local state wins.
                         if (old.isMuted)
                             c.isMuted = true;
+                        // The local "mute this person" switch is ours alone; the
+                        // server never echoes it, so carry it forward.
+                        if (old.locallyMuted)
+                            c.locallyMuted = true;
                         // last_read / latest were dropped from conversations.list
                         // responses; keep the newest value we know (cached from a
                         // previous run's activity sweep or realtime events).
@@ -1498,6 +1502,17 @@ void Session::setNotificationLevel(ConversationId conv, NotificationLevel level)
         if (c.id == conv) {
             c.notifLevel = level;
             c.isMuted    = (level == NotificationLevel::Mute);
+            break;
+        }
+    }
+    _conversations = std::move(convs);
+}
+
+void Session::setConvMuted(ConversationId conv, bool muted) {
+    auto convs = _conversations.current();
+    for (auto &c : convs) {
+        if (c.id == conv) {
+            c.locallyMuted = muted;
             break;
         }
     }

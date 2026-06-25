@@ -102,6 +102,7 @@ signals:
     // Click on a row's live-huddle indicator — open the huddle's web join link.
     void joinHuddleRequested(ConversationId id);
     void setNotificationLevelRequested(ConversationId id, NotificationLevel level);
+    void muteConversationRequested(ConversationId id, bool muted);
     void leaveConversationRequested(ConversationId id);
 
 protected:
@@ -119,6 +120,7 @@ protected:
     void  setSelected(int row); // emits conversationSelected (no-op for non-Conv rows)
     void  showChannelContextMenu(int row, QPoint globalPos);
     void  showMpdmContextMenu(int row, QPoint globalPos);
+    void  showDmContextMenu(int row, QPoint globalPos);
     void  paintRow(QPainter &p, int row, int y) const;
     void  paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
     void  paintAddChannelsRow(QPainter &p, int row, int y) const;

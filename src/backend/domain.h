@@ -225,9 +225,15 @@ struct Conversation {
     int            mentionCount = 0; // @mentions in channels; for DMs treat all unread as mentions
     std::optional<UserId> dmUser;    // set for Im conversations
     std::vector<UserId>   members;   // set for Mpim conversations (all participants)
-    bool                  isMuted    = false;
-    bool                  isStarred  = false;
-    NotificationLevel     notifLevel = NotificationLevel::Default;
+    bool                  isMuted      = false;
+    bool                  isStarred    = false;
+    // Purely local "mute this person" switch (DM context menu). Unlike isMuted /
+    // NotificationLevel::Mute it does NOT silence the chat in the list — the
+    // conversation still shows its bold "unread" emphasis. It only suppresses the
+    // outward signals: no OS notification, no tray ball, no workspace ball, and no
+    // red unread counter. No backend supports it, so it lives only in our cache.
+    bool                  locallyMuted = false;
+    NotificationLevel     notifLevel   = NotificationLevel::Default;
     QString canvasFileId; // channel canvas file id (conversations.info "properties.canvas"); empty
                           // = none
     bool    canvasIsEmpty = false;

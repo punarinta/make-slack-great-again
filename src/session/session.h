@@ -200,6 +200,8 @@ public:
     );
     // Update notification level locally (no public API for per-channel prefs).
     void setNotificationLevel(ConversationId conv, NotificationLevel level);
+    // Toggle the local "mute this person" switch (no backend support; cache-only).
+    void setConvMuted(ConversationId conv, bool muted);
 
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);

@@ -1320,6 +1320,15 @@ void MainWindow::wireConvList() {
                 _session->setNotificationLevel(id, level);
         }
     );
+    connect(
+        _convList,
+        &ConvListWidget::muteConversationRequested,
+        this,
+        [this](ConversationId id, bool muted) {
+            if (_session)
+                _session->setConvMuted(id, muted);
+        }
+    );
     connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
         openBrowseDialog(0);
     });
@@ -1682,7 +1691,8 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
 
     // Unknown conversation → not a member (or another workspace's event from
     // the shared socket); muted → no notification wanted, mentions included.
-    if (!conv || conv->isMuted || !conv->isMember || conv->notifLevel == NotificationLevel::Mute)
+    if (!conv || conv->isMuted || conv->locallyMuted || !conv->isMember ||
+        conv->notifLevel == NotificationLevel::Mute)
         return;
 
     const bool     isDm        = (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
@@ -1812,8 +1822,10 @@ void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged 
     const UserId me   = session->meUserId();
     const auto  *conv = session->findConversation(ev.conv);
     // Member-only, not muted, not a huddle I'm already in, and (for channels)
-    // only when set to "All new posts" — see shouldNotifyHuddleStart.
-    if (!conv || !shouldNotifyHuddleStart(*conv, ev.participants, me, globalDefaultNotifLevel()))
+    // only when set to "All new posts" — see shouldNotifyHuddleStart. A
+    // locally-muted person stays silent here too.
+    if (!conv || conv->locallyMuted ||
+        !shouldNotifyHuddleStart(*conv, ev.participants, me, globalDefaultNotifLevel()))
         return;
     const bool isDm = (conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim);
 
@@ -1957,6 +1969,10 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
     int                     normal = 0, important = 0;
     for (const auto &c : convs) {
         if (!c.isMember)
+            continue;
+        // A locally-muted person contributes to neither ball nor counter (its
+        // in-list bold emphasis is handled by ConvListWidget independently).
+        if (c.locallyMuted)
             continue;
         const NotificationLevel lvl = effectiveNotifLevel(c, fallback);
         if (lvl == NotificationLevel::Mute)

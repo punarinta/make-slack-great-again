@@ -592,6 +592,16 @@ void ConvListWidget::showMpdmContextMenu(int row, QPoint globalPos) {
     menu->popup(globalPos);
 }
 
+void ConvListWidget::showDmContextMenu(int row, QPoint globalPos) {
+    const auto &conv  = _convs[_rows[row].convIdx];
+    auto       *menu  = new ContextMenu(viewport());
+    const bool  muted = conv.locallyMuted;
+    menu->addItem(muted ? tr("Unmute") : tr("Mute"), [this, id = conv.id, muted] {
+        emit muteConversationRequested(id, !muted);
+    });
+    menu->popup(globalPos);
+}
+
 void ConvListWidget::doMousePress(QMouseEvent *e) {
     _tooltip->hide();
     if (e->button() == Qt::RightButton) {
@@ -603,6 +613,8 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
             } else if (conv.kind == ConvKind::PublicChannel ||
                        conv.kind == ConvKind::PrivateChannel) {
                 showChannelContextMenu(row, e->globalPosition().toPoint());
+            } else if (conv.kind == ConvKind::Im) {
+                showDmContextMenu(row, e->globalPosition().toPoint());
             }
         }
         return;
@@ -929,12 +941,14 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     // count of things you were actually notified about: DM unreads, or channel
     // @mentions.
     const int  redCount = isDm ? conv.unread : conv.mentionCount;
-    const bool showRed  = lvl != NotificationLevel::Mute && redCount > 0;
+    // A locally-muted person keeps the bold "unread" emphasis above but shows no
+    // counter badge — the mute kills every outward count, red or blue.
+    const bool showRed  = !conv.locallyMuted && lvl != NotificationLevel::Mute && redCount > 0;
     // Blue dot = other *allowed* activity: non-@mention unreads, but only in
     // channels set to "All new posts" (a "Just mentions" or muted channel stays
     // quiet for regular messages — no badge at all).
-    const bool showBlue =
-        lvl == NotificationLevel::All && !isDm && conv.mentionCount == 0 && conv.unread > 0;
+    const bool showBlue = !conv.locallyMuted && lvl == NotificationLevel::All && !isDm &&
+                          conv.mentionCount == 0 && conv.unread > 0;
     const int badgeW = showRed ? (redCount > 9 ? 28 : 20) : showBlue ? 14 : 0;
 
     // Live-huddle indicator (host avatar + accent pill with headphones + count),
