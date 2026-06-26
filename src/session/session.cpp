@@ -699,12 +699,27 @@ void Session::enrichDmActivity() {
     if (now - _cache->loadActivitySweepAt() < kActivitySweepGapSecs)
         return;
 
+    // conversations.list never prunes a DM: once a D… channel exists it lives on
+    // the account forever, so it keeps returning DMs whose peer was deactivated or
+    // left the org. conversations.info answers channel_not_found for those, so
+    // skip them here — mirroring the liveness filter ConvListWidget already applies
+    // before showing a DM. (MPDMs have no single peer, so they always sweep.)
+    const auto isDeadDm = [this](const Conversation &c) {
+        if (c.kind != ConvKind::Im || !c.dmUser)
+            return false;
+        const User *u = findUser(*c.dmUser);
+        if (!u)
+            return false; // user info not loaded yet — let it through
+        return u->isDeactivated || u->displayName == QLatin1String("deactivateduser") ||
+               isUnresolvedUserId(u->displayName);
+    };
+
     // Unanalyzed DMs/MPDMs start hidden in the conversation list and pop in as
     // their info arrives, so sweep 1:1 DMs first — they matter more — and the
     // lower-priority MPDMs after.
     std::vector<ConversationId> targets;
     for (const auto &c : _conversations.current())
-        if (c.kind == ConvKind::Im)
+        if (c.kind == ConvKind::Im && !isDeadDm(c))
             targets.push_back(c.id);
     for (const auto &c : _conversations.current())
         if (c.kind == ConvKind::Mpim)
