@@ -176,7 +176,6 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
         }
         const auto raw = reply->readAll();
         auto       obj = QJsonDocument::fromJson(raw).object();
-        qDebug() << "[TokenRefresh] refresh response:" << raw;
         if (!obj.value("ok").toBool()) {
             const QString err = obj.value("error").toString();
             qWarning() << "[TokenRefresh] Slack error:" << err;
@@ -191,8 +190,6 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
         }
         const QString newToken   = obj.value("access_token").toString();
         const QString newRefresh = obj.value("refresh_token").toString();
-        qDebug() << "[TokenRefresh] new access_token prefix:" << newToken.left(20)
-                 << "... refresh_token present=" << !newRefresh.isEmpty();
         if (newToken.isEmpty()) {
             qWarning() << "[TokenRefresh] empty access_token in successful response";
             done(RefreshResult::TransientError);
