@@ -247,6 +247,54 @@ TEST_CASE("overlapping connect triggers never open competing connections") {
     rt.stop();
 }
 
+TEST_CASE("a recycle warning opens an overlapping replacement before dropping the old socket") {
+    // Slack recycles Socket Mode connections periodically: it sends a `disconnect`
+    // with reason "warning" shortly before it actually closes the socket, and
+    // expects the client to bring up a replacement and keep reading the warned
+    // socket until the new one is live. Doing so leaves no window without a live
+    // socket — Slack does not replay events missed while disconnected, so a
+    // close-then-reconnect gap silently drops messages. Prove the client opens the
+    // replacement WHILE the warned socket is still open (both live at once), then
+    // converges back to a single live socket once the new one takes over.
+    QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
+    REQUIRE(ws.listen(QHostAddress::LocalHost));
+    std::vector<QWebSocket *> peers;
+    int                       total = 0, live = 0, maxLive = 0, warned = 0;
+    QObject::connect(&ws, &QWebSocketServer::newConnection, &ws, [&] {
+        auto *peer = ws.nextPendingConnection();
+        peers.push_back(peer);
+        ++total;
+        ++live;
+        maxLive = std::max(maxLive, live);
+        QObject::connect(peer, &QWebSocket::disconnected, peer, [&] { --live; });
+        peer->sendTextMessage(R"({"type":"hello"})");
+        // Warn the very first socket of an imminent recycle, but never close it
+        // server-side: the client must drop it itself, and only after its
+        // replacement is connected.
+        if (++warned == 1)
+            peer->sendTextMessage(R"({"type":"disconnect","reason":"warning"})");
+    });
+
+    FakeHttpServer http;
+    const QString  wsUrl = QString("ws://127.0.0.1:%1/").arg(ws.serverPort());
+    for (int i = 0; i < 6; ++i)
+        http.enqueue(openOk(wsUrl));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+    rt.start();
+
+    // Both sockets live at once → a genuine overlap, not close-then-reconnect.
+    REQUIRE(waitFor([&] { return maxLive >= 2; }));
+    // The client then drops the warned socket, converging back to exactly one.
+    REQUIRE(waitFor([&] { return live == 1; }));
+    CHECK(total >= 2);
+
+    rt.stop();
+    for (auto *p : peers)
+        p->deleteLater();
+}
+
 TEST_CASE("watchdog leaves a healthy idle connection alone") {
     // A real QWebSocket server auto-replies to pings with pongs, so the
     // connection keeps showing activity even with no app traffic.

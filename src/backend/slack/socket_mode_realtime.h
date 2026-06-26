@@ -106,6 +106,14 @@ private:
     std::vector<rpl::event_stream<Event> *> _sinks; // non-owning
     QNetworkAccessManager                  *_nam;
     QWebSocket                             *_ws             = nullptr;
+    // A replacement socket being established while _ws is still live. Used for
+    // gapless recycling: when Slack warns it will soon recycle the current
+    // socket, we open this one and keep reading events off _ws until it connects
+    // (onConnected), then promote it to _ws and drop the old one — so the handover
+    // leaves no window without a live socket (Slack does not replay events missed
+    // while disconnected). nullptr when no replacement is in flight; _ws itself is
+    // only ever a fully-connected socket (a not-yet-connected one lives here).
+    QWebSocket                             *_pendingWs      = nullptr;
     // The in-flight apps.connections.open reply, or nullptr. Tracked so a
     // teardown can abort it and the late `finished` handler can detect that it
     // was superseded (a stale handshake must never establish a competing socket).

@@ -75,9 +75,15 @@ void SocketModeRealtime::teardownConnection() {
         _openReply = nullptr;
         r->abort();
     }
+    // Drop each socket's signals before aborting so its `disconnected` /
+    // `errorOccurred` can't re-enter our slots and queue a competing reconnect.
+    if (_pendingWs) {
+        disconnect(_pendingWs, nullptr, this, nullptr);
+        _pendingWs->abort();
+        _pendingWs->deleteLater();
+        _pendingWs = nullptr;
+    }
     if (_ws) {
-        // Drop the socket's signals before aborting so its `disconnected` /
-        // `errorOccurred` can't re-enter our slots and queue a competing reconnect.
         disconnect(_ws, nullptr, this, nullptr);
         _ws->abort();
         _ws->deleteLater();
@@ -134,33 +140,44 @@ void SocketModeRealtime::openAndConnect() {
 }
 
 void SocketModeRealtime::connectWs(const QUrl &url) {
-    if (_ws) {
-        // Drop the old socket's signals BEFORE aborting so its abort-triggered
-        // `disconnected` / `errorOccurred` can't re-enter our slots and queue a
-        // competing reconnect (matches teardownConnection / forceReconnect).
-        disconnect(_ws, nullptr, this, nullptr);
-        _ws->abort();
-        _ws->deleteLater();
+    // Build the new socket into _pendingWs and leave _ws (if any) untouched and
+    // live: onConnected promotes _pendingWs and only then drops the old socket,
+    // so a recycle hands over without a gap. A half-built earlier replacement is
+    // discarded first.
+    if (_pendingWs) {
+        disconnect(_pendingWs, nullptr, this, nullptr);
+        _pendingWs->abort();
+        _pendingWs->deleteLater();
     }
-    _ws = new QWebSocket(QString{}, QWebSocketProtocol::VersionLatest, this);
-    connect(_ws, &QWebSocket::connected, this, &SocketModeRealtime::onConnected);
-    connect(_ws, &QWebSocket::disconnected, this, &SocketModeRealtime::onDisconnected);
-    connect(_ws, &QWebSocket::textMessageReceived, this, &SocketModeRealtime::onTextMessage);
+    auto *sock = new QWebSocket(QString{}, QWebSocketProtocol::VersionLatest, this);
+    _pendingWs = sock;
+    connect(sock, &QWebSocket::connected, this, &SocketModeRealtime::onConnected);
+    connect(sock, &QWebSocket::disconnected, this, &SocketModeRealtime::onDisconnected);
+    connect(sock, &QWebSocket::textMessageReceived, this, &SocketModeRealtime::onTextMessage);
     // A failed handshake/connect would otherwise leave _connecting stuck true
     // (QWebSocket emits no `disconnected` for a socket that never connected),
-    // wedging the single-flight guard. Release it and back off.
-    connect(_ws, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        if (!_ws || sender() != _ws)
+    // wedging the single-flight guard. Release it and back off. The old _ws (if
+    // this was an overlapping recycle replacement) stays live meanwhile.
+    connect(sock, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        auto *s = qobject_cast<QWebSocket *>(sender());
+        if (!s || (s != _ws && s != _pendingWs))
             return; // a stale/superseded socket — ignore
-        if (_ws->state() == QAbstractSocket::ConnectedState)
+        if (s->state() == QAbstractSocket::ConnectedState)
             return; // transient error on a live socket; `disconnected` owns real drops
+        if (s == _pendingWs) {
+            disconnect(_pendingWs, nullptr, this, nullptr);
+            _pendingWs->deleteLater();
+            _pendingWs = nullptr;
+        }
         _connecting = false;
         if (!_stopped)
             scheduleReconnect();
     });
     // A pong is proof the socket is still alive even when the workspace is quiet.
-    connect(_ws, &QWebSocket::pong, this, [this](quint64, const QByteArray &) { touchActivity(); });
-    _ws->open(url);
+    connect(sock, &QWebSocket::pong, this, [this](quint64, const QByteArray &) {
+        touchActivity();
+    });
+    sock->open(url);
 }
 
 void SocketModeRealtime::scheduleReconnect() {
@@ -278,21 +295,46 @@ void SocketModeRealtime::sendPresenceSub() {
 }
 
 void SocketModeRealtime::onConnected() {
-    qDebug() << "Socket Mode: connected";
+    auto *sock = qobject_cast<QWebSocket *>(sender());
+    if (!sock || sock != _pendingWs)
+        return; // a stale/superseded socket connecting late — ignore
+    // Promote the freshly-connected replacement. If an old socket is still live
+    // (a recycle overlap), drop it only now — events kept flowing on it right up
+    // to this point, so the handover is gapless.
+    if (_ws && _ws != sock) {
+        disconnect(_ws, nullptr, this, nullptr);
+        _ws->abort();
+        _ws->deleteLater();
+    }
+    _ws         = sock;
+    _pendingWs  = nullptr;
     _connecting = false; // cycle complete — future reconnects may proceed
+    qDebug() << "Socket Mode: connected";
     touchActivity();
     sendPresenceSub();
 }
 
 void SocketModeRealtime::onDisconnected() {
-    if (sender() && sender() != _ws)
+    auto *sock = qobject_cast<QWebSocket *>(sender());
+    if (sock && sock != _ws)
         return; // a stale/superseded socket's late disconnect — ignore
-    _connecting = false;
-    if (_ws)
-        qDebug() << "Socket Mode: disconnected — close code" << _ws->closeCode() << "reason"
-                 << _ws->closeReason();
-    else
+    // Only the live socket (_ws) ever reaches here: a replacement that never
+    // connected emits errorOccurred, not disconnected. Clean it up — connectWs no
+    // longer recycles _ws, so nothing else will.
+    if (sock) {
+        qDebug() << "Socket Mode: disconnected — close code" << sock->closeCode() << "reason"
+                 << sock->closeReason();
+        disconnect(sock, nullptr, this, nullptr);
+        sock->deleteLater();
+        _ws = nullptr;
+    } else {
         qDebug() << "Socket Mode: disconnected";
+    }
+    // A replacement may already be in flight — an overlapping recycle whose old
+    // socket dropped before the new one connected, or any connect cycle the
+    // single-flight guard is running. Let it finish instead of racing a second.
+    if (_connecting || _pendingWs)
+        return;
     if (!_stopped)
         scheduleReconnect();
 }
@@ -325,7 +367,16 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
         // must not tear it down here. "refresh_requested" (and "too_many_-
         // websockets" / anything else) is the real signal to reconnect now.
         if (reason == "warning") {
-            qDebug() << "Socket Mode: disconnect warning (recycle pending) — keeping socket open";
+            // Slack will recycle this socket soon but keeps it alive a little
+            // longer, expecting us to bring up a replacement now and keep reading
+            // this one until the new socket is live — so the handover drops no
+            // events (Slack does not replay events missed while disconnected).
+            // openAndConnect builds the replacement into _pendingWs; onConnected
+            // promotes it and only then drops this socket. The single-flight guard
+            // coalesces duplicate warnings into one replacement.
+            qDebug() << "Socket Mode: disconnect warning (recycle pending) — opening overlapping "
+                        "replacement";
+            openAndConnect();
             return;
         }
         qDebug() << "Socket Mode: server requested disconnect — reason" << reason;
