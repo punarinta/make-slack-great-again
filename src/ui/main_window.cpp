@@ -1402,6 +1402,11 @@ void MainWindow::openBrowseDialog(int initialTab) {
 void MainWindow::connectToSession() {
     wireConvList();
 
+    // The footer's visible/hidden presence toggle only makes sense on a backend
+    // with a presence concept (Slack); IMAP/email has none, so drop the control.
+    if (_convFooter)
+        _convFooter->setPresenceSupported(_session->capabilities().presence);
+
     // Auth loss, unread badges and notifications are handled by the
     // per-session background subscriptions in ensureSession(); here we only
     // wire what drives the visible UI.
@@ -2733,15 +2738,20 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
     if (_headerAvatar) {
         _headerAvatar->setVisible(isDm);
         _headerAvatar->clearAvatar();
+        // Apps/bots have no presence — they can't go offline, so the dot is
+        // meaningless and confusing for them. Likewise services with no presence
+        // concept at all (email/IMAP). Decide this BEFORE (and outside) the
+        // single-peer DM branch below: clearAvatar() reset the state to the
+        // showPresence=true default, and a multi-person IM (mpim, no dmUser) or
+        // an as-yet-unresolved peer would otherwise skip the branch and paint a
+        // stray offline ring.
+        _headerAvatar->setShowPresence(
+            conversation && _session->capabilities().presence &&
+            !_session->isAppConversation(*conversation)
+        );
         if (isDm && conversation->dmUser) {
             const auto *u = _session->findUser(*conversation->dmUser);
             if (u) {
-                // Apps/bots have no presence — they can't go offline, so the dot
-                // is meaningless and confusing for them. Likewise services with no
-                // presence concept at all (email/IMAP).
-                _headerAvatar->setShowPresence(
-                    _session->capabilities().presence && !_session->isAppConversation(*conversation)
-                );
                 _headerAvatar->setPresence(u->isActive);
                 _headerAvatar->setDnd(u->dndEnabled);
                 const bool isSelf = *conversation->dmUser == _session->meUserId();

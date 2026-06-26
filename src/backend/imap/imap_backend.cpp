@@ -415,7 +415,8 @@ Capabilities Backend::capabilities() const {
     c.messageSubjects  = true; // composer subject field (§4)
     c.collapseQuotedReplies = true; // hide a reply's quoted history + signature behind a toggle
     // editMessage / reactions / canvases / huddles / slashCommands / typing /
-    // livePresence all stay false — email has no such notion.
+    // presence / livePresence all stay false — email has no such notion. With
+    // presence false the conv-footer drops its visible/hidden presence toggle.
     return c;
 }
 

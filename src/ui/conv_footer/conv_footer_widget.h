@@ -33,6 +33,10 @@ public:
     void setUser(const QString &displayName, const QString &avatarUrl);
     // Rich self presence: drives the avatar dot and the toggle icon/tooltip.
     void setSelfPresence(const SelfPresence &sp);
+    // Whether the active backend has a user-presence concept (Capabilities::presence).
+    // When false (e.g. IMAP/email), the visible/hidden presence toggle is dropped
+    // entirely — there's nothing to toggle and the avatar shows no presence dot.
+    void setPresenceSupported(bool supported);
     // Clear on logout / workspace teardown.
     void clear();
 
@@ -88,8 +92,9 @@ private:
     QMetaObject::Connection _avatarConn;
     UserAvatar::State       _state;
     SelfPresence            _sp;
-    Hot                     _hot     = Hot::None;
-    Hot                     _pressed = Hot::None;
+    bool                    _presenceSupported = true; // backend has a presence concept
+    Hot                     _hot               = Hot::None;
+    Hot                     _pressed           = Hot::None;
 
     // Optimistic toggle-icon cross-fade.
     bool   _displayHidden = false; // which icon is settled/targeted

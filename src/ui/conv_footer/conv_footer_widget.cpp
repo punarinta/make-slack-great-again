@@ -83,14 +83,17 @@ QRect ConvFooterWidget::avatarRect() const {
 }
 
 QRect ConvFooterWidget::toggleRect() const {
+    if (!_presenceSupported)
+        return {}; // no presence concept → no toggle (never painted/hit-tested)
     return QRect(width() - kPadH - kBtn, height() - kBottomPad - kBtn, kBtn, kBtn);
 }
 
 QRect ConvFooterWidget::tasksRect() const {
     if (!hasTasks())
         return {};
-    const int x = toggleRect().left() - kTaskGap - kBtn;
-    return QRect(x, height() - kBottomPad - kBtn, kBtn, kBtn);
+    // Sit just left of the toggle, or at the right edge when there's no toggle.
+    const int rightEdge = _presenceSupported ? toggleRect().left() - kTaskGap : width() - kPadH;
+    return QRect(rightEdge - kBtn, height() - kBottomPad - kBtn, kBtn, kBtn);
 }
 
 ConvFooterWidget::Hot ConvFooterWidget::hitTest(const QPoint &pos) const {
@@ -157,11 +160,13 @@ void ConvFooterWidget::setUser(const QString &displayName, const QString &avatar
 }
 
 void ConvFooterWidget::setSelfPresence(const SelfPresence &sp) {
-    _sp                = sp;
-    _state.isActive    = sp.active;
+    _sp                 = sp;
+    _state.isActive     = sp.active;
     // phantomAway() is false while manually away, so an explicit "hidden" shows
     // the hollow offline ring rather than the phantom-away tint.
-    _state.phantomAway = sp.phantomAway();
+    _state.phantomAway  = sp.phantomAway();
+    // No presence concept (IMAP) → no indicator dot on the avatar either.
+    _state.showPresence = _presenceSupported;
     // Authoritative state arrived — stop the safety revert and settle the icon
     // there (a no-op cross-fade if the optimistic guess already matched).
     _confirmTimer.stop();
@@ -169,13 +174,25 @@ void ConvFooterWidget::setSelfPresence(const SelfPresence &sp) {
     update();
 }
 
+void ConvFooterWidget::setPresenceSupported(bool supported) {
+    if (_presenceSupported == supported)
+        return;
+    _presenceSupported  = supported;
+    _state.showPresence = supported; // suppress the avatar's presence dot too
+    // The toggle may have just disappeared from under the cursor — drop a now-stale
+    // hover/tooltip and re-evaluate what's hot.
+    setHot(hitTest(mapFromGlobal(QCursor::pos())));
+    update();
+}
+
 void ConvFooterWidget::clear() {
     disconnect(_avatarConn);
-    _displayName = {};
-    _avatarUrl   = {};
-    _avatar      = {};
-    _sp          = {};
-    _state       = {};
+    _displayName        = {};
+    _avatarUrl          = {};
+    _avatar             = {};
+    _sp                 = {};
+    _state              = {};
+    _state.showPresence = _presenceSupported; // survive the reset to {} default of true
     _animTimer.stop();
     _confirmTimer.stop();
     _displayHidden = false;
@@ -241,18 +258,21 @@ void ConvFooterWidget::paintEvent(QPaintEvent *) {
     );
 
     // Presence toggle — same ghost-button chrome/colors as the workspace bar.
-    const QRectF btnRect = toggleRect();
-    const bool   hov     = (_hot == Hot::Toggle);
-    NavGhostButton::paintChrome(p, btnRect, hov, kRadius);
-    if (_animProgress < 1.0) {
-        // Cross-fade the outgoing icon out and the incoming icon in.
-        p.setOpacity(1.0 - _animProgress);
-        NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_animFrom));
-        p.setOpacity(_animProgress);
-        NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_animTo));
-        p.setOpacity(1.0);
-    } else {
-        NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_displayHidden));
+    // Suppressed entirely on backends with no presence concept (IMAP/email).
+    if (_presenceSupported) {
+        const QRectF btnRect = toggleRect();
+        const bool   hov     = (_hot == Hot::Toggle);
+        NavGhostButton::paintChrome(p, btnRect, hov, kRadius);
+        if (_animProgress < 1.0) {
+            // Cross-fade the outgoing icon out and the incoming icon in.
+            p.setOpacity(1.0 - _animProgress);
+            NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_animFrom));
+            p.setOpacity(_animProgress);
+            NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_animTo));
+            p.setOpacity(1.0);
+        } else {
+            NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_displayHidden));
+        }
     }
 
     // Background-task spinner — same ghost chrome, with a continuously rotating cog.
