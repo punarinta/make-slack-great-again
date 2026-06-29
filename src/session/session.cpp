@@ -468,15 +468,60 @@ void Session::checkRealtimeHealth() {
 
     // (2) New messages: the watchdog can't detect a socket that still answers
     // pings but to which Slack has quietly stopped routing events — so a message
-    // sent from another client silently never arrives. Poll the open
-    // conversation's latest history and inject anything newer than what we've
-    // seen through the normal new-message path (dedup, unread/cursor
-    // bookkeeping, mark-read). firstSighting makes this idempotent against
-    // messages the realtime stream already delivered.
-    if (_readingConv.value.isEmpty())
+    // sent from another client silently never arrives. The socket is shared by
+    // every workspace, so the stall hits ALL of them at once; detecting it
+    // anywhere and reestablishing the socket heals realtime for the whole app.
+    //
+    // Foreground (a conversation is open): poll it every tick. Gate on _openConv,
+    // NOT _readingConv, so an open-but-unfocused chat keeps being polled — a blur
+    // clears _readingConv to stop marking-read, but a reply to the visible chat
+    // must still arrive (when unfocused the injected message flows through
+    // handleNewMessage's not-reading branch: it badges and notifies).
+    if (!_openConv.value.isEmpty()) {
+        pollConversationForMissed(_openConv, /*foreground=*/true);
         return;
-    const ConversationId conv = _readingConv;
-    Ts                   lastKnown;
+    }
+
+    // Background (no conversation open — an inactive workspace, or the welcome
+    // screen): nothing here drives the foreground poll, so a silent stall hitting
+    // THIS workspace goes unnoticed whenever a *different* workspace's open
+    // conversation happens to be quiet (the foreground poll only sees its own
+    // chat). On a slower cadence, poll the single most-recently-active
+    // conversation — the likeliest place a reply lands — for missed messages. A
+    // hit reestablishes the shared socket, restoring realtime for every
+    // workspace; the message itself badges and fires a notification.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - _lastBackgroundPollMs < kBackgroundPollGapMs)
+        return;
+    _lastBackgroundPollMs   = now;
+    const ConversationId bg = mostRecentlyActiveConv();
+    if (!bg.value.isEmpty())
+        pollConversationForMissed(bg, /*foreground=*/false);
+}
+
+ConversationId Session::mostRecentlyActiveConv() const {
+    ConversationId best;
+    Ts             bestTs;
+    for (const auto &c : _conversations.current()) {
+        // Members only (we can't fetch history for channels we're not in), and a
+        // latestTs is required as the "new since" baseline.
+        if (!c.isMember || c.latestTs.isEmpty())
+            continue;
+        if (best.value.isEmpty() || c.latestTs > bestTs) {
+            best   = c.id;
+            bestTs = c.latestTs;
+        }
+    }
+    return best;
+}
+
+void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
+    // Poll a conversation's head history and inject anything newer than what we've
+    // seen through the normal new-message path (dedup, unread/cursor bookkeeping,
+    // mark-read). firstSighting makes this idempotent against messages the
+    // realtime stream already delivered. Deletion detection runs foreground only —
+    // it needs the per-conversation snapshot that only the open chat maintains.
+    Ts lastKnown;
     if (const Conversation *c = findConversation(conv))
         lastKnown = c->latestTs;
     if (lastKnown.isEmpty())
@@ -484,9 +529,13 @@ void Session::checkRealtimeHealth() {
 
     _backend->loadHistory(conv, std::nullopt) |
         rpl::on_next(
-            [this, conv, lastKnown](MessagePage page) {
-                if (_readingConv != conv)
-                    return; // user navigated away while the fetch was in flight
+            [this, conv, lastKnown, foreground](MessagePage page) {
+                // Bail if intent changed while the fetch was in flight: a
+                // foreground poll is stale once the open conversation moves on; a
+                // background poll yields to the foreground path the instant any
+                // conversation is opened.
+                if (foreground ? (_openConv != conv) : !_openConv.value.isEmpty())
+                    return;
                 bool missed = false;
                 // page.messages is oldest-first; inject in order so rows append
                 // chronologically. The ts pre-filter keeps the common (nothing
@@ -512,7 +561,7 @@ void Session::checkRealtimeHealth() {
                 // firstSighting doesn't dedup deletions, but the UI's
                 // EvMessageDeleted handler is a no-op once the row is gone, so a
                 // later realtime echo of the same delete is harmless.
-                if (!page.messages.empty()) {
+                if (foreground && !page.messages.empty()) {
                     QSet<QString> nowTs;
                     nowTs.reserve(static_cast<int>(page.messages.size()));
                     qint64 oldest = page.messages.front().date;
@@ -1498,13 +1547,27 @@ void Session::scheduleSaveUnreads() {
     _saveUnreadsTimer.start(1000);
 }
 
-void Session::setReading(ConversationId conv) {
-    _readingConv      = conv;
+void Session::setOpenConversation(ConversationId conv) {
+    if (_openConv == conv)
+        return;
+    _openConv         = conv;
     // The deletion-detection baseline belongs to the conversation that was open;
     // it's meaningless once we switch (and a stale set would mis-fire). The next
     // poll rebuilds it for the new conversation.
     _pollSnapshotConv = {};
     _pollSnapshotTs.clear();
+}
+
+void Session::setReading(ConversationId conv) {
+    _readingConv = conv;
+    // Reading a conversation means it is open. Keep the focus-independent
+    // open-conversation cursor in sync so the safety poll covers it — but only on
+    // a real open (non-empty id). A blur fires setReading({}) to stop marking
+    // read; that must NOT clear _openConv, or the safety poll would go dark while
+    // the window is in the background (the cause of replies to an open-but-
+    // unfocused chat never arriving until a manual refetch).
+    if (!conv.value.isEmpty())
+        setOpenConversation(conv);
     if (conv.value.isEmpty())
         return;
 

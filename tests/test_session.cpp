@@ -118,7 +118,11 @@ struct StubBackend : Backend {
     // Controllable head page for the realtime safety-net poll. Mutate between
     // ticks to model a message deleted from another client.
     std::vector<Message>       historyPage;
-    rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
+    int                        loadHistoryCalls = 0;
+    ConversationId             lastHistoryConv;
+    rpl::producer<MessagePage> loadHistory(ConversationId c, std::optional<QString>) override {
+        ++loadHistoryCalls;
+        lastHistoryConv = c;
         return rpl::variable<MessagePage>(MessagePage{historyPage, std::nullopt}).value();
     }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
@@ -2683,4 +2687,113 @@ TEST_CASE_METHOD(
     stub->historyPage = {m1, m2, m3};
     session->runRealtimeHealthCheckForTest();
     CHECK(stub->reestablishRealtimeCalls == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "realtime safety poll still recovers messages while the window is unfocused",
+    "[session][events]"
+) {
+    // Regression: a reply to an open-but-unfocused conversation must still arrive.
+    // The window blur fires setReading({}) to stop marking-read, but the chat is
+    // still on screen, so the safety poll must keep covering it. Previously the
+    // poll gated on _readingConv and went dark on blur — so a message Slack
+    // silently stopped routing never showed until the user manually refetched
+    // (switched chats and back). The poll now gates on _openConv instead.
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001"); // baseline
+    const Message        m2 = pollMsg("1000.000002"); // arrives while unfocused
+
+    session->setReading(conv); // open + focused
+    stub->fireEvent(EvMessageNew{conv, m1});
+    REQUIRE(session->findConversation(conv)->latestTs == m1.ts);
+
+    session->setReading({}); // window loses focus — must NOT silence the poll
+
+    stub->historyPage = {m1, m2};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    bool recovered = false;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == m2.ts)
+            recovered = true;
+    CHECK(recovered);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "background safety poll recovers a missed message when no conversation is open",
+    "[session][events]"
+) {
+    // Hardening for a background (inactive) workspace: the shared socket is one
+    // app-wide connection, so a silent stall hits every workspace at once — but
+    // the foreground poll only watches the open chat, so a workspace with nothing
+    // open would never notice unless some OTHER workspace's open chat happened to
+    // catch it. With no conversation open, the health check polls the
+    // most-recently-active conversation instead and recovers the miss.
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001"); // baseline
+    const Message        m2 = pollMsg("1000.000002"); // arrived while we weren't looking
+
+    // Seed C1's latestTs baseline, then leave with no conversation open.
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1});
+    session->setOpenConversation({});
+
+    stub->historyPage = {m1, m2};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    CHECK(stub->lastHistoryConv == conv); // polled the most-recently-active conv
+    bool recovered = false;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == m2.ts)
+            recovered = true;
+    CHECK(recovered);
+    CHECK(stub->reestablishRealtimeCalls == 1); // a hit heals the shared socket
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "background safety poll is throttled to one history fetch per window",
+    "[session][events][ratelimit]"
+) {
+    // The background poll runs on a slow cadence so an idle workspace can't hammer
+    // conversations.history. Two ticks back-to-back must issue only one fetch.
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1});
+    session->setOpenConversation({});
+
+    stub->historyPage      = {m1};
+    stub->loadHistoryCalls = 0;
+    session->runRealtimeHealthCheckForTest();
+    REQUIRE(stub->loadHistoryCalls == 1);
+    session->runRealtimeHealthCheckForTest(); // within the window — must not refetch
+    CHECK(stub->loadHistoryCalls == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "foreground safety poll takes priority over the background poll",
+    "[session][events]"
+) {
+    // When a conversation IS open, the health check must poll THAT conversation
+    // every tick (the 15 s foreground cadence), never the background fallback.
+    const ConversationId conv{"C2"};
+    const Message        m1 = pollMsg("1000.000001");
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, m1});
+
+    stub->historyPage      = {m1};
+    stub->loadHistoryCalls = 0;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->loadHistoryCalls == 1);
+    CHECK(stub->lastHistoryConv == conv);
+    session->runRealtimeHealthCheckForTest(); // foreground polls every tick
+    CHECK(stub->loadHistoryCalls == 2);
 }

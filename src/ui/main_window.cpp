@@ -1118,6 +1118,10 @@ void MainWindow::activateWorkspace(QString teamId) {
     // background and keeps accumulating unreads / firing notifications.
     _uiLifetime = rpl::lifetime();
     if (_session) {
+        // No conversation is open in this session's UI anymore — stop both the
+        // mark-read cursor and the realtime safety poll for it. (A mere window
+        // blur clears only setReading; here the whole session leaves the screen.)
+        _session->setOpenConversation({});
         _session->setReading({});
         // Debounced: the conv-list serialization + file write must not block the
         // switch. A pending save is flushed on drop / shutdown / destruction.
@@ -2466,7 +2470,12 @@ void MainWindow::changeEvent(QEvent *e) {
             focusComposerIfActive();
         } else {
             // Window in background: let the open conversation accrue unreads
-            // and fire notifications, like the official client does.
+            // and fire notifications, like the official client does. Clear only
+            // the mark-read cursor — NOT setOpenConversation — so the realtime
+            // safety poll keeps covering the still-open chat. (A reply to an
+            // open-but-unfocused chat must still arrive even when the realtime
+            // socket silently stopped routing events; the poll is what recovers
+            // it, and it must not go dark just because the window lost focus.)
             _session->setReading({});
         }
     }

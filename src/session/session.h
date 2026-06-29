@@ -173,6 +173,17 @@ public:
     // Call when the user opens a conversation — zeroes its unread count and marks it read on Slack.
     void setReading(ConversationId conv);
 
+    // Which conversation the UI currently has open, INDEPENDENT of window focus.
+    // Drives the realtime safety poll (checkRealtimeHealth): the open conversation
+    // must keep being polled for messages Slack silently stopped routing even while
+    // the window is in the background — otherwise a reply to an open-but-unfocused
+    // chat never arrives until a manual refetch. Distinct from setReading(), which
+    // also means "focused, so mark read" and is correctly cleared on blur.
+    // Reading a conversation implies it is open, so setReading(conv) with a
+    // non-empty id sets this too; pass {} only when no conversation is open at all
+    // (workspace switch / logout), NOT on a mere focus change.
+    void setOpenConversation(ConversationId conv);
+
     // Star / unstar a conversation (optimistic + API call).
     void starConversation(ConversationId conv, bool star);
     // Leave a conversation (optimistic removal + API call).
@@ -337,10 +348,22 @@ private:
     bool handleNewMessage(const ConversationId &conv, const Message &msg);
 
     // Periodic safety net (every 15 s) for the realtime socket: re-verify the
-    // subscription and poll the open conversation for messages the realtime
-    // stream silently failed to deliver. See the implementation for why the
-    // socket's own liveness watchdog can't cover this.
+    // subscription and poll for messages the realtime stream silently failed to
+    // deliver — the open conversation when one is on screen, otherwise (background
+    // workspace) the most-recently-active conversation on a slower cadence. See
+    // the implementation for why the socket's own liveness watchdog can't cover
+    // this, and why a background workspace needs its own poll.
     void checkRealtimeHealth();
+
+    // Poll one conversation's head history for messages the realtime stream
+    // dropped; inject any and reestablish the shared socket on a hit. foreground
+    // also runs deletion detection (needs the open chat's snapshot) and ties its
+    // staleness check to _openConv; background yields the moment a chat is opened.
+    void pollConversationForMissed(ConversationId conv, bool foreground);
+
+    // The member conversation with the newest activity (greatest latestTs) — the
+    // likeliest place a reply lands, used as the background workspace's poll target.
+    ConversationId mostRecentlyActiveConv() const;
 
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
@@ -357,11 +380,13 @@ private:
 
     UserId                    _meUserId;          // set via setMe() once auth.test result is known
     bool                      _meIsAdmin = false; // is_admin || is_owner from auth.test
-    ConversationId            _readingConv;       // currently open conversation
+    ConversationId            _readingConv;       // open AND focused (drives mark-read)
+    ConversationId            _openConv;          // open in the UI regardless of focus
     // Authoritative ts → threadRoot ("" if none) from the previous safety poll
     // of the open conversation. checkRealtimeHealth diffs the next poll against
     // it to catch a message deleted from another client that the realtime stream
-    // never delivered. Reset whenever the open conversation changes (setReading).
+    // never delivered. Reset whenever the open conversation changes
+    // (setOpenConversation).
     ConversationId            _pollSnapshotConv;
     QHash<QString, QString>   _pollSnapshotTs;
     QHash<QString, QString>   _emojiMap;
@@ -390,6 +415,12 @@ private:
     // sick socket can't drive a reconnect → reload storm.
     static constexpr qint64   kReestablishGapMs      = 60'000;
     qint64                    _lastReestablishMs     = 0;
+    // Cadence for the background-workspace stall poll (no conversation open). Much
+    // slower than the 15 s foreground poll: it's a safety net for a workspace the
+    // user isn't looking at, and one history call per workspace per window is
+    // plenty to catch a silently-stalled shared socket without risking rate limits.
+    static constexpr qint64   kBackgroundPollGapMs   = 2 * 60'000;
+    qint64                    _lastBackgroundPollMs  = 0;
     QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>             _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request
