@@ -478,6 +478,16 @@ void Session::checkRealtimeHealth() {
     // must still arrive (when unfocused the injected message flows through
     // handleNewMessage's not-reading branch: it badges and notifies).
     if (!_openConv.value.isEmpty()) {
+        // Throttle to Slack's conversations.history budget (1 req/min for
+        // non-Marketplace apps). Polling on every 15 s tick was 4x over and, with no
+        // cooldown guard, queued duplicate calls that all 429'd — a self-inflicted
+        // rate-limit storm even while the app sat idle on an open chat. The socket
+        // delivers in realtime; this is only the active chat's stalled-socket
+        // backstop, so once a minute is ample.
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - _lastForegroundPollMs < kForegroundPollGapMs)
+            return;
+        _lastForegroundPollMs = now;
         pollConversationForMissed(_openConv, /*foreground=*/true);
         return;
     }

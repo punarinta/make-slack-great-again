@@ -299,7 +299,14 @@ public:
     // Test hook: run one realtime safety-net tick synchronously (normally fired
     // by the 15 s _realtimeSafetyTimer). Exposed so the missed-message and
     // deletion-recovery logic is unit-testable without waiting on the timer.
-    void runRealtimeHealthCheckForTest() { checkRealtimeHealth(); }
+    // resetForegroundGap clears the foreground poll's once-per-minute throttle
+    // first, so back-to-back ticks each exercise the poll logic; pass false to
+    // test the throttle itself.
+    void runRealtimeHealthCheckForTest(bool resetForegroundGap = true) {
+        if (resetForegroundGap)
+            _lastForegroundPollMs = 0;
+        checkRealtimeHealth();
+    }
 
 private:
     // Resolve our own user id via auth.test; persists the result to cache.
@@ -415,10 +422,21 @@ private:
     // sick socket can't drive a reconnect → reload storm.
     static constexpr qint64   kReestablishGapMs      = 60'000;
     qint64                    _lastReestablishMs     = 0;
+    // Cadence for the active-chat realtime fallback poll. The safety timer ticks
+    // every 15 s (to run the cheap, API-free verifyRealtime check), but the history
+    // poll itself must stay within Slack's conversations.history budget: as of
+    // 2025-05-29 non-Marketplace apps get just 1 request/min on that method (max 15
+    // objects), and it answers 429 Retry-After: 60 above that. Polling every tick
+    // was 4x over budget and, with no cooldown guard, piled identical calls into the
+    // HttpQueue — a self-inflicted 429 storm even while idle. The socket is the
+    // primary delivery; this poll is only a backstop for a silently-stalled socket,
+    // so once per minute is plenty. See checkRealtimeHealth().
+    static constexpr qint64   kForegroundPollGapMs   = 60'000;
+    qint64                    _lastForegroundPollMs  = 0;
     // Cadence for the background-workspace stall poll (no conversation open). Much
-    // slower than the 15 s foreground poll: it's a safety net for a workspace the
-    // user isn't looking at, and one history call per workspace per window is
-    // plenty to catch a silently-stalled shared socket without risking rate limits.
+    // slower than the foreground poll: it's a safety net for a workspace the user
+    // isn't looking at, and one history call per workspace per window is plenty to
+    // catch a silently-stalled shared socket without risking rate limits.
     static constexpr qint64   kBackgroundPollGapMs   = 2 * 60'000;
     qint64                    _lastBackgroundPollMs  = 0;
     QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list

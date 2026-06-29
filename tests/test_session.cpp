@@ -2778,11 +2778,13 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     SessionFixture,
-    "foreground safety poll takes priority over the background poll",
-    "[session][events]"
+    "foreground safety poll targets the open conversation, throttled per window",
+    "[session][events][ratelimit]"
 ) {
-    // When a conversation IS open, the health check must poll THAT conversation
-    // every tick (the 15 s foreground cadence), never the background fallback.
+    // When a conversation IS open, the health check polls THAT conversation (never
+    // the background fallback) — but only once per window. conversations.history is
+    // capped at 1 req/min for non-Marketplace apps, so an unthrottled per-tick poll
+    // would 429-storm. Two back-to-back ticks must issue only one fetch.
     const ConversationId conv{"C2"};
     const Message        m1 = pollMsg("1000.000001");
 
@@ -2791,9 +2793,9 @@ TEST_CASE_METHOD(
 
     stub->historyPage      = {m1};
     stub->loadHistoryCalls = 0;
-    session->runRealtimeHealthCheckForTest();
+    session->runRealtimeHealthCheckForTest(/*resetForegroundGap=*/false);
     CHECK(stub->loadHistoryCalls == 1);
     CHECK(stub->lastHistoryConv == conv);
-    session->runRealtimeHealthCheckForTest(); // foreground polls every tick
-    CHECK(stub->loadHistoryCalls == 2);
+    session->runRealtimeHealthCheckForTest(/*resetForegroundGap=*/false); // within window
+    CHECK(stub->loadHistoryCalls == 1);
 }
