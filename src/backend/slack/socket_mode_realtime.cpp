@@ -206,6 +206,28 @@ void SocketModeRealtime::ensureConnected() {
 void SocketModeRealtime::reconnectNow() {
     if (!_started || _stopped)
         return;
+    // Called when the app detected the stream silently missed events — the socket
+    // still answers pings but Slack quietly stopped routing events to it (the
+    // watchdog can't see this). The socket itself is still CONNECTED, so recover
+    // the gapless way Slack's own "warning" recycle does: bring up an OVERLAPPING
+    // replacement (openAndConnect builds it into _pendingWs; onConnected promotes
+    // it and only then aborts the old socket) so no event is lost during the swap.
+    //
+    // A teardown-first forceReconnect() here would instead open a window with no
+    // live socket, and Slack does NOT replay events missed while disconnected — so
+    // it would drop events for EVERY workspace on this shared socket, and the next
+    // safety poll would flag THOSE as missed and re-trigger this, spinning a
+    // self-sustaining reconnect storm. (openAndConnect is a no-op while a connect
+    // cycle is already in flight — the single-flight guard lets it finish.)
+    if (_ws && _ws->state() == QAbstractSocket::ConnectedState) {
+        qWarning() << "Socket Mode: realtime stalled — bringing up overlapping replacement";
+        _reconnectMs = 1000; // fresh start, no inherited backoff
+        openAndConnect();
+        return;
+    }
+    // Not connected (or mid-handshake with no live socket to keep reading): there
+    // is nothing to overlap, so fall back to the hard path that clears any
+    // half-built attempt and starts one fresh connection.
     forceReconnect();
 }
 

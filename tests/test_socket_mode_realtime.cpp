@@ -295,6 +295,58 @@ TEST_CASE("a recycle warning opens an overlapping replacement before dropping th
         p->deleteLater();
 }
 
+TEST_CASE("reconnectNow recovers a silent stall with a gapless overlapping replacement") {
+    // When the safety poll detects the stream silently missed events, it calls
+    // reconnectNow() on a socket that is still CONNECTED (Slack stopped routing
+    // events but the socket still answers pings). A teardown-first reconnect here
+    // would open a window with no live socket; Slack does not replay events missed
+    // while disconnected, so it would drop events for every workspace on this
+    // shared socket — and the next poll would flag THOSE as missed, spinning a
+    // reconnect storm. Prove reconnectNow instead opens the replacement WHILE the
+    // stalled socket is still live (both live at once), then converges to one.
+    QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
+    REQUIRE(ws.listen(QHostAddress::LocalHost));
+    std::vector<QWebSocket *> peers;
+    int                       total = 0, live = 0, maxLive = 0;
+    QObject::connect(&ws, &QWebSocketServer::newConnection, &ws, [&] {
+        auto *peer = ws.nextPendingConnection();
+        peers.push_back(peer);
+        ++total;
+        ++live;
+        maxLive = std::max(maxLive, live);
+        QObject::connect(peer, &QWebSocket::disconnected, peer, [&] { --live; });
+        // The server never closes a socket itself: the client must drop the
+        // stalled one on its own, and only after the replacement is connected.
+        peer->sendTextMessage(R"({"type":"hello"})");
+    });
+
+    FakeHttpServer http;
+    const QString  wsUrl = QString("ws://127.0.0.1:%1/").arg(ws.serverPort());
+    for (int i = 0; i < 6; ++i)
+        http.enqueue(openOk(wsUrl));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+    rt.start();
+
+    // Wait until the socket is actually connected, so reconnectNow() takes the
+    // gapless overlapping path rather than the not-connected fallback.
+    REQUIRE(waitFor([&] { return rt.isConnectedForTest(); }));
+    REQUIRE(total == 1);
+
+    rt.reconnectNow();
+
+    // Both sockets live at once → a genuine overlap, not close-then-reconnect.
+    REQUIRE(waitFor([&] { return maxLive >= 2; }));
+    // The client then drops the stalled socket, converging back to exactly one.
+    REQUIRE(waitFor([&] { return live == 1; }));
+    CHECK(total >= 2);
+
+    rt.stop();
+    for (auto *p : peers)
+        p->deleteLater();
+}
+
 TEST_CASE("watchdog leaves a healthy idle connection alone") {
     // A real QWebSocket server auto-replies to pings with pongs, so the
     // connection keeps showing activity even with no app traffic.

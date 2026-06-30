@@ -44,9 +44,11 @@ public:
     // that still answers pings but to which Slack has quietly stopped routing
     // events). ensureConnected() reconnects only if the socket has dropped and
     // no connect cycle is already underway — a cheap no-op while healthy, it
-    // covers a reconnect that stalled past the watchdog. reconnectNow() forces
-    // a fresh socket unconditionally, used when the app detected the stream had
-    // silently missed events.
+    // covers a reconnect that stalled past the watchdog. reconnectNow() recovers
+    // a silently-stalled-but-still-connected socket via a gapless overlapping
+    // replacement (the old socket keeps being read until the new one connects),
+    // used when the app detected the stream had silently missed events; it would
+    // otherwise drop yet more events during the swap and feed a reconnect storm.
     void ensureConnected();
     void reconnectNow();
 
@@ -70,6 +72,12 @@ public:
     // underway (regression test for overlapping reconnects opening competing
     // sockets — Slack delivers each event to only one connection).
     void connectNowForTest() { openAndConnect(); }
+    // True once the live socket has completed its handshake — lets a test wait
+    // until reconnectNow() will take the gapless overlapping-replacement path
+    // rather than the not-connected fallback.
+    bool isConnectedForTest() const {
+        return _ws && _ws->state() == QAbstractSocket::ConnectedState;
+    }
 
 private slots:
     void onConnected();
