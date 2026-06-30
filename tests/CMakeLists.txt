@@ -580,3 +580,19 @@ if(APPLE)
 elseif(WIN32)
     target_link_libraries(test_sound_player PRIVATE winmm)
 endif()
+
+# Hang-watchdog startup-window regression (logs/2026-06-30_09-55-13.log). The
+# watchdog itself is Linux + dev-build only (POSIX per-process timers targeted
+# at the main thread); mirror the top-level CMakeLists gating so the test
+# exercises the real signal path where it exists and trivially passes elsewhere.
+add_msga_qt_test(test_hang_watchdog
+    test_hang_watchdog.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/crash_handler.cpp
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR MSGA_ASAN))
+    target_compile_definitions(test_hang_watchdog PRIVATE MSGA_HANG_WATCHDOG)
+    find_library(MSGA_RT_LIB_TEST rt)
+    if(MSGA_RT_LIB_TEST)
+        target_link_libraries(test_hang_watchdog PRIVATE ${MSGA_RT_LIB_TEST})
+    endif()
+endif()

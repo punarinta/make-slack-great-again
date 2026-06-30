@@ -28,7 +28,22 @@ void startWatchdog(int timeoutMs = 5000);
 
 // Re-arms the watchdog deadline; proves the GUI event loop is still pumping.
 // Cheap — one timer_settime syscall. No-op until startWatchdog() and on
-// non-Linux. Call only from the main thread.
+// non-Linux. Call only from the main thread. The first call also retires the
+// startup grace window (see watchdogStartupGraceMs) in favour of `timeoutMs`.
 void heartbeat();
+
+// The watchdog's FIRST window — the one covering process startup, before the
+// event-loop heartbeat takes over — is deliberately wider than the steady-state
+// `timeoutMs`. Building and polishing the whole UI tree is one uninterrupted
+// burst of main-thread work with no event-loop turns to heartbeat through, and
+// under AddressSanitizer it can run far longer than any later stall window —
+// long enough to false-trip the watchdog mid-construction. Given the steady
+// timeout, this returns the wider startup grace actually armed at startup.
+// Pure; exposed for tests. Returns `steadyMs` unchanged on non-watchdog builds.
+int watchdogStartupGraceMs(int steadyMs);
+
+// Number of hang reports the watchdog has emitted this process. For tests only;
+// always 0 on builds without the watchdog.
+int watchdogReportCountForTesting();
 
 } // namespace CrashHandler

@@ -191,10 +191,28 @@ void fatalSignal(int sig, siginfo_t *info, void *) {
 // handler above. Dev builds only (see MSGA_HANG_WATCHDOG in CMakeLists.txt).
 
 timer_t               gWdTimer;
-bool                  gWdArmed     = false;
-bool                  gWdAbort     = false;
-long                  gWdTimeoutMs = 5000;
-volatile sig_atomic_t gWdReported  = 0; // at most one report per stall episode
+bool                  gWdArmed       = false;
+bool                  gWdAbort       = false;
+long                  gWdTimeoutMs   = 5000; // steady-state window (event loop alive)
+volatile sig_atomic_t gWdReported    = 0;    // at most one report per stall episode
+volatile sig_atomic_t gWdReportCount = 0;    // total reports this process (tests)
+
+// Startup gets a much wider window than a steady-state stall. Building and
+// polishing the whole UI tree (MainWindow → all sub-widgets, incl. the settings
+// panel's stylesheets) is one long synchronous burst on the main thread — there
+// are no event-loop turns to heartbeat through until app.exec(), so the very
+// first window has to cover all of it in one go. Under AddressSanitizer (esp.
+// with fast_unwind_on_malloc=0, where every allocation captures a full
+// backtrace) that burst can take far longer than any later stall window — long
+// enough to false-trip the watchdog mid-construction. The first heartbeat()
+// (proof the event loop is pumping) drops back to the steady window, so a true
+// forever-hang during startup is still caught, just with a roomier deadline.
+constexpr int kStartupGraceMultiplier = 6;
+
+long watchdogStartupGraceMsImpl(long steadyMs) {
+    const long base = steadyMs > 0 ? steadyMs : 5000;
+    return base * kStartupGraceMultiplier;
+}
 
 // glibc/musl already advance SIGRTMIN past the RT signals they reserve
 // internally; +3 leaves further margin and stays well below SIGRTMAX.
@@ -212,7 +230,8 @@ void wdArm(long ms) {
 void watchdogExpired(int, siginfo_t *, void *) {
     if (gWdReported)
         return; // already dumped this stall; heartbeat() clears it on recovery
-    gWdReported = 1;
+    gWdReported    = 1;
+    gWdReportCount = gWdReportCount + 1;
 
     void     *frames[kMaxFrames];
     const int depth = captureFrames(frames, kMaxFrames);
@@ -245,6 +264,13 @@ void startWatchdogImpl(int timeoutMs) {
     gWdTimeoutMs = timeoutMs > 0 ? timeoutMs : 5000;
     gWdAbort     = qEnvironmentVariableIntValue("MSGA_WATCHDOG_ABORT") == 1;
 
+    // Idempotent: a second startWatchdog() must not leave the previous timer
+    // armed (a leaked, still-pending one-shot would fire a spurious report).
+    if (gWdArmed) {
+        ::timer_delete(gWdTimer);
+        gWdArmed = false;
+    }
+
     const int        sig = watchdogSig();
     struct sigaction sa{};
     sa.sa_sigaction = watchdogExpired;
@@ -269,7 +295,10 @@ void startWatchdogImpl(int timeoutMs) {
         return;
 
     gWdArmed = true;
-    wdArm(gWdTimeoutMs); // open the first window now (covers startup too)
+    // Open the first window now (covers startup, before any heartbeat). Startup
+    // is uninterrupted main-thread work, so it gets the wider grace window; the
+    // first heartbeat() re-arms with the steady window.
+    wdArm(watchdogStartupGraceMsImpl(gWdTimeoutMs));
 }
 
 void heartbeatImpl() {
@@ -440,6 +469,22 @@ void startWatchdog(int timeoutMs) {
 void heartbeat() {
 #if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
     heartbeatImpl();
+#endif
+}
+
+int watchdogStartupGraceMs(int steadyMs) {
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+    return static_cast<int>(watchdogStartupGraceMsImpl(steadyMs));
+#else
+    return steadyMs;
+#endif
+}
+
+int watchdogReportCountForTesting() {
+#if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
+    return gWdReportCount;
+#else
+    return 0;
 #endif
 }
 
