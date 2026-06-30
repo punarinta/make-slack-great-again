@@ -2664,6 +2664,82 @@ TEST_CASE_METHOD(
     CHECK(stub->loadConversationsCalls == before + 1);
 }
 
+// ── Reconnect unread recovery (resyncUnreads) ───────────────────────────────────
+// When the shared socket silently stalls it drops EvMessageNew across many
+// conversations; the reconnect reload (conversations.list) can't recover those
+// unreads (returns 0). On EvRealtimeReconnected, Session re-derives DM/MPDM unread
+// badges from conversations.info, which reports the authed user's real unread count.
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "reconnect recovers a DM unread badge the stalled socket dropped",
+    "[session][events]"
+) {
+    // The DM has no local unread (its message was dropped while the socket was
+    // silent), but conversations.info reports the server's unread count. The
+    // startup activity sweep already fetched D1's cursors and — by design — ignored
+    // this unread; only the reconnect resync trusts it.
+    Conversation info = kDmBob;
+    info.lastRead     = "1700000000.000100";
+    info.latestTs     = "1700000009.000200";
+    info.unread       = 3; // coworker sent 3 messages the socket never delivered
+    stub->infoResults.insert("D1", info);
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob};
+
+    REQUIRE(session->findConversation(ConversationId{"D1"})->unread == 0); // sweep ignored it
+
+    stub->fireEvent(EvRealtimeReconnected{});
+
+    const auto *c = session->findConversation(ConversationId{"D1"});
+    REQUIRE(c != nullptr);
+    CHECK(c->unread == 3);       // badge recovered
+    CHECK(c->mentionCount == 3); // DM unread is a red-badge mention
+    // Channels are not resynced — a missed @mention there needs a history scan.
+    CHECK_FALSE(stub->infoRequested.contains("C1"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "reconnect unread resync merges upward and never lowers a local count",
+    "[session][events]"
+) {
+    // We already counted 5 unread locally (realtime delivered some before the
+    // stall); a momentarily stale server count must not erase them.
+    Conversation info = kDmBob;
+    info.lastRead     = "1700000000.000100";
+    info.latestTs     = "1700000009.000200";
+    info.unread       = 2; // server lags behind what we counted
+    stub->infoResults.insert("D1", info);
+
+    Conversation dm = kDmBob;
+    dm.unread       = 5;
+    stub->_convs    = std::vector<Conversation>{kGeneral, dm};
+
+    stub->fireEvent(EvRealtimeReconnected{});
+
+    CHECK(session->findConversation(ConversationId{"D1"})->unread == 5);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "reconnect unread resync is throttled to one DM sweep per window",
+    "[session][events][ratelimit]"
+) {
+    // A flapping socket fires EvRealtimeReconnected repeatedly; a per-DM
+    // conversations.info sweep each time would be a rate-limit storm.
+    stub->infoResults.insert("D1", kDmBob);
+    stub->_convs = std::vector<Conversation>{kGeneral, kDmBob};
+
+    const int before = stub->infoRequested.count("D1"); // startup sweep ran once
+    stub->fireEvent(EvRealtimeReconnected{});
+    const int afterFirst = stub->infoRequested.count("D1");
+    CHECK(afterFirst == before + 1); // resync swept once
+
+    stub->fireEvent(EvRealtimeReconnected{}); // again, within the window
+    stub->fireEvent(EvRealtimeReconnected{});
+    CHECK(stub->infoRequested.count("D1") == afterFirst); // no further sweeps
+}
+
 TEST_CASE_METHOD(
     SessionFixture,
     "safety poll re-establishes the socket at most once per window",

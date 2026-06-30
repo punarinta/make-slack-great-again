@@ -343,6 +343,13 @@ void Session::start() {
                         _lastReconnectReloadMs = now;
                         reloadConversations(/*refreshEmoji=*/false);
                     }
+                    // conversations.list (above) can't recover unread badges for
+                    // messages the stalled socket dropped — it returns unread_count=0.
+                    // Re-derive DM/MPDM unreads from conversations.info so a coworker's
+                    // missed message surfaces as a badge without the user having to
+                    // open the chat. Self-throttled; upward-merges, so it composes with
+                    // the reload above regardless of which completes first.
+                    resyncUnreads();
                 } else if (auto *ev = std::get_if<EvRateLimited>(&e)) {
                     // Surface a transient notice. 429s cluster (background polls
                     // hammer the same window), so throttle to one banner per
@@ -746,6 +753,96 @@ void Session::fetchJoinedConversation(ConversationId id) {
         );
 }
 
+bool Session::isDeadDm(const Conversation &c) const {
+    // conversations.list never prunes a DM: once a D… channel exists it lives on
+    // the account forever, so it keeps returning DMs whose peer was deactivated or
+    // left the org. conversations.info answers channel_not_found for those, so the
+    // sweeps skip them — mirroring the liveness filter ConvListWidget already applies
+    // before showing a DM. (MPDMs have no single peer, so they always sweep.)
+    if (c.kind != ConvKind::Im || !c.dmUser)
+        return false;
+    const User *u = findUser(*c.dmUser);
+    if (!u)
+        return false; // user info not loaded yet — let it through
+    return u->isDeactivated || u->displayName == QLatin1String("deactivateduser") ||
+           isUnresolvedUserId(u->displayName);
+}
+
+std::vector<ConversationId> Session::dmSweepTargets() const {
+    // Unanalyzed DMs/MPDMs start hidden in the conversation list and pop in as
+    // their info arrives, so sweep 1:1 DMs first — they matter more — and the
+    // lower-priority MPDMs after.
+    std::vector<ConversationId> targets;
+    for (const auto &c : _conversations.current())
+        if (c.kind == ConvKind::Im && !isDeadDm(c))
+            targets.push_back(c.id);
+    for (const auto &c : _conversations.current())
+        if (c.kind == ConvKind::Mpim)
+            targets.push_back(c.id);
+    return targets;
+}
+
+void Session::resyncUnreads() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - _lastUnreadResyncMs < kUnreadResyncGapMs)
+        return;
+    const auto targets = dmSweepTargets();
+    if (targets.empty())
+        return;
+    _lastUnreadResyncMs = now;
+
+    qDebug() << "[UnreadResync] recovering unread for" << targets.size() << "DMs/MPDMs";
+    for (const auto &id : targets) {
+        _backend->loadConversationInfo(id) | rpl::on_next(
+                                                 [this, id](Conversation info) {
+                                                     auto convs   = _conversations.current();
+                                                     bool changed = false;
+                                                     for (auto &c : convs) {
+                                                         if (c.id != id)
+                                                             continue;
+                                                         // Cursors (drive list relevance), same as
+                                                         // the activity sweep.
+                                                         if (info.lastRead > c.lastRead) {
+                                                             c.lastRead = info.lastRead;
+                                                             changed    = true;
+                                                         }
+                                                         if (info.latestTs > c.latestTs) {
+                                                             c.latestTs = info.latestTs;
+                                                             changed    = true;
+                                                         }
+                                                         // Recover the badge the dropped realtime
+                                                         // events never raised. conversations.info
+                                                         // reports the authed user's own unread
+                                                         // count; for a DM/MPDM every unread is a
+                                                         // red-badge "mention" (ConvListWidget
+                                                         // reads conv.unread for these), mirroring
+                                                         // handleNewMessage. Merge UPWARD only so a
+                                                         // unread we already counted locally is
+                                                         // never lowered by a momentarily stale
+                                                         // server response, and so reading the chat
+                                                         // elsewhere (which advances last_read →
+                                                         // server unread 0) doesn't fight a reload
+                                                         // that ran in the other order.
+                                                         if (info.unread > c.unread) {
+                                                             c.unread = info.unread;
+                                                             changed  = true;
+                                                         }
+                                                         if (info.unread > c.mentionCount) {
+                                                             c.mentionCount = info.unread;
+                                                             changed        = true;
+                                                         }
+                                                         break;
+                                                     }
+                                                     if (changed) {
+                                                         _conversations = std::move(convs);
+                                                         scheduleSaveUnreads();
+                                                     }
+                                                 },
+                                                 _lifetime
+                                             );
+    }
+}
+
 void Session::enrichDmActivity() {
     // conversations.list no longer returns last_read / latest, so without extra
     // calls we cannot tell how old a DM or MPDM is. Fetch conversations.info for
@@ -758,31 +855,7 @@ void Session::enrichDmActivity() {
     if (now - _cache->loadActivitySweepAt() < kActivitySweepGapSecs)
         return;
 
-    // conversations.list never prunes a DM: once a D… channel exists it lives on
-    // the account forever, so it keeps returning DMs whose peer was deactivated or
-    // left the org. conversations.info answers channel_not_found for those, so
-    // skip them here — mirroring the liveness filter ConvListWidget already applies
-    // before showing a DM. (MPDMs have no single peer, so they always sweep.)
-    const auto isDeadDm = [this](const Conversation &c) {
-        if (c.kind != ConvKind::Im || !c.dmUser)
-            return false;
-        const User *u = findUser(*c.dmUser);
-        if (!u)
-            return false; // user info not loaded yet — let it through
-        return u->isDeactivated || u->displayName == QLatin1String("deactivateduser") ||
-               isUnresolvedUserId(u->displayName);
-    };
-
-    // Unanalyzed DMs/MPDMs start hidden in the conversation list and pop in as
-    // their info arrives, so sweep 1:1 DMs first — they matter more — and the
-    // lower-priority MPDMs after.
-    std::vector<ConversationId> targets;
-    for (const auto &c : _conversations.current())
-        if (c.kind == ConvKind::Im && !isDeadDm(c))
-            targets.push_back(c.id);
-    for (const auto &c : _conversations.current())
-        if (c.kind == ConvKind::Mpim)
-            targets.push_back(c.id);
+    const auto targets = dmSweepTargets();
     if (targets.empty())
         return;
 

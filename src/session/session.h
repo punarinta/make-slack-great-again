@@ -333,6 +333,30 @@ private:
     // via the workspace cache; called after each loadConversations() merge.
     void enrichDmActivity();
 
+    // Reconnect recovery: re-derive unread/mention badges for DMs/MPDMs from
+    // conversations.info after the shared realtime socket silently stalled. The
+    // stall drops EvMessageNew across many conversations at once; reloadConversations
+    // can't recover them (conversations.list reports unread_count=0 and no cursors,
+    // so its max-merge keeps the zero count and no badge appears). conversations.info
+    // is the only public endpoint that reports the authed user's per-conversation
+    // unread count, so sweep the DMs/MPDMs — where a coworker's direct message lands —
+    // and fold the server count back in. Scoped to DMs/MPDMs and throttled
+    // (kUnreadResyncGapMs): channels need a history scan to tell a "missed" @mention
+    // from ordinary unread traffic, and a flapping socket fires EvRealtimeReconnected
+    // repeatedly. Unlike enrichDmActivity (the idle 12 h cursor sweep that ignores
+    // unread to avoid fabricating badges) we KNOW realtime just dropped events here,
+    // so the server count is exactly the signal we want.
+    void resyncUnreads();
+
+    // A DM whose peer left/was deactivated — conversations.info answers
+    // channel_not_found for these, so the DM/MPDM sweeps skip them. (MPDMs have no
+    // single peer and always sweep.)
+    bool isDeadDm(const Conversation &c) const;
+
+    // Live DMs/MPDMs to sweep with conversations.info, 1:1 DMs first (they matter
+    // more) then MPDMs. Shared by enrichDmActivity() and resyncUnreads().
+    std::vector<ConversationId> dmSweepTargets() const;
+
     // Resolve any DM peer absent from the loaded user list via users.info. No-op
     // until users.list has loaded (so we don't mistake "not loaded yet" for
     // "missing"); called from both the users and conversations load handlers.
@@ -418,6 +442,12 @@ private:
     // repeatedly — coalesce those into at most one reload per window.
     static constexpr qint64   kReconnectReloadGapMs  = 2 * 60'000;
     qint64                    _lastReconnectReloadMs = 0;
+    // Throttle reconnect-driven DM/MPDM unread recovery (resyncUnreads). Same
+    // rationale as the reload throttle: a flapping socket fires EvRealtimeReconnected
+    // repeatedly, and a per-DM conversations.info sweep over 100+ DMs each time would
+    // be a rate-limit storm. Independent of the reload throttle so either can run.
+    static constexpr qint64   kUnreadResyncGapMs     = 2 * 60'000;
+    qint64                    _lastUnreadResyncMs    = 0;
     // Throttle the safety poll's forced socket re-establish so a persistently
     // sick socket can't drive a reconnect → reload storm.
     static constexpr qint64   kReestablishGapMs      = 60'000;
