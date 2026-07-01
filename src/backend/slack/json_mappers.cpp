@@ -35,6 +35,7 @@ User toUser(const QJsonObject &o) {
         .avatarUrl     = profile.value("image_72").toString(),
         .isBot         = o.value("is_bot").toBool(),
         .isExternal    = o.value("is_stranger").toBool(),
+        .isStranger    = o.value("is_stranger").toBool(),
         .teamId        = o.value("team_id").toString(),
         .isActive      = false, // filled by presence poll
         .isDeactivated = o.value("deleted").toBool(),

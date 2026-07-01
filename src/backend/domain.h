@@ -166,6 +166,9 @@ struct User {
     bool    isBot      = false;
     bool    isExternal = false; // Slack Connect external member — shows "EXT" tag. Set when
                                 // is_stranger is true or teamId differs from our workspace team.
+    bool    isStranger = false; // raw Slack is_stranger: a Connect user we share a channel with
+                                // but cannot open a DM to (conversations.open → user_not_found).
+                                // Kept separate from isExternal, which is broadened by team_id.
     QString teamId;             // home team/workspace (Slack team_id); differs for external users
     bool    isActive      = false; // presence; polled on public path
     bool    isDeactivated = false; // Slack "deleted" flag

@@ -175,7 +175,10 @@ void BrowseChannelsDialog::buildChannelItems() {
 void BrowseChannelsDialog::buildPeopleItems() {
     std::vector<const User *> people;
     for (const auto &u : _users) {
-        if (!u.isDeactivated)
+        // Skip Slack Connect "strangers": they surface in users.list only because
+        // they share a channel with us, but conversations.open rejects them with
+        // user_not_found, so listing them as DM targets is a dead end.
+        if (!u.isDeactivated && !u.isStranger)
             people.push_back(&u);
     }
     std::sort(people.begin(), people.end(), [](const User *a, const User *b) {
