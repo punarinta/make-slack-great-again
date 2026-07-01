@@ -222,12 +222,16 @@ void collect(const Part &p, ParsedMessage &msg) {
 
     // Otherwise it's an attachment (or inline image referenced by cid).
     MimeAttachment a;
-    a.filename  = !p.dispFilename.isEmpty() ? p.dispFilename : p.ctParams.value("name");
-    a.mimeType  = p.type + "/" + p.subtype;
-    a.contentId = p.contentId;
-    a.isInline  = p.disposition == "inline" || !p.contentId.isEmpty();
-    a.content   = decodeBody(p);
-    a.size      = a.content.size();
+    // The filename param (Content-Disposition filename= / Content-Type name=) is
+    // frequently RFC 2047 encoded-word for non-ASCII names, just like the subject
+    // and address display-names — decode it so we show "Protokoll_…" not "=?utf-8?B?…?=".
+    const QString  rawName = !p.dispFilename.isEmpty() ? p.dispFilename : p.ctParams.value("name");
+    a.filename             = Mime::decodeEncodedWords(rawName.toLatin1());
+    a.mimeType             = p.type + "/" + p.subtype;
+    a.contentId            = p.contentId;
+    a.isInline             = p.disposition == "inline" || !p.contentId.isEmpty();
+    a.content              = decodeBody(p);
+    a.size                 = a.content.size();
     msg.attachments.append(a);
 }
 

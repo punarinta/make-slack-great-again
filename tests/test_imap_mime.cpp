@@ -147,6 +147,27 @@ TEST_CASE("parse: multipart/mixed with a base64 attachment", "[imap][mime]") {
     CHECK(m.attachments[0].content == "Hello");
 }
 
+TEST_CASE("parse: RFC 2047 encoded-word attachment filename is decoded", "[imap][mime]") {
+    // Non-ASCII filenames arrive as encoded-words in the filename=/name= params,
+    // exactly like subjects and address display-names. They must be decoded, not
+    // shown raw ("=?utf-8?B?…?=").
+    const auto m = Mime::parse(
+        msg("Subject: report\n"
+            "Content-Type: multipart/mixed; boundary=\"MM\"\n"
+            "\n"
+            "--MM\n"
+            "Content-Type: application/pdf; name=\"=?utf-8?B?UHJvdG9rb2xsX8OFcnNtw7Z0ZS5wZGY=?=\"\n"
+            "Content-Disposition: attachment; "
+            "filename=\"=?utf-8?B?UHJvdG9rb2xsX8OFcnNtw7Z0ZS5wZGY=?=\"\n"
+            "Content-Transfer-Encoding: base64\n"
+            "\n"
+            "SGVsbG8=\n"
+            "--MM--\n")
+    );
+    REQUIRE(m.attachments.size() == 1);
+    CHECK(m.attachments[0].filename == QString::fromUtf8("Protokoll_Årsmöte.pdf"));
+}
+
 TEST_CASE("parse: quoted-printable body decoded with charset", "[imap][mime]") {
     const auto m = Mime::parse(
         msg("Subject: =?UTF-8?Q?Caf=C3=A9?=\n"
