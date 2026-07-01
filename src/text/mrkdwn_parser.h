@@ -14,6 +14,14 @@ namespace MrkdwnParser {
 // nested entities are fully contained within their parent's span.
 TextWithEntities parse(const QString &mrkdwn);
 
+// Resolve ONLY Slack's angle-bracket tokens (<@U>, <#C>, <!cmd> incl. <!date^…>,
+// <url|label>) and :emoji: shortcodes in an already-structured text run — e.g. a
+// rich_text "text" element, whose emphasis comes from its style object rather
+// than mrkdwn marks. *, _, ~, ` are left literal. Use this instead of parse()
+// when a bot (or Slack's text→rich_text conversion) leaves such tokens embedded
+// in a plain text element.
+TextWithEntities resolveTokens(const QString &src);
+
 // Decode the HTML entities Slack escapes in every API text field
 // (&lt; &gt; &amp;). parse() applies this itself; use directly for fields
 // that are displayed without going through the parser (titles, footers…).

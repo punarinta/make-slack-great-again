@@ -253,18 +253,28 @@ static void richInlineToTWE(const QJsonObject &el, Builder &b) {
     // Build plain text + entity spans from a structured Slack rich_text element.
     const auto type = el.value("type").toString();
     if (type == "text") {
-        const auto style = el.value("style").toObject();
-        const auto text  = el.value("text").toString();
-        const int  start = b.text.size();
-        b.text += text;
+        const auto             style = el.value("style").toObject();
+        // A text element's emphasis comes from its style object, but Slack's
+        // text→rich_text conversion (and some bots, e.g. Outlook Calendar) leave
+        // <!date^…>, <url|label> and <@user> tokens unexpanded inside the raw
+        // text. resolveTokens() expands those (and :emoji:) without touching *_~`.
+        const TextWithEntities run   = MrkdwnParser::resolveTokens(el.value("text").toString());
+        const int              start = b.text.size();
+        b.text += run.text;
+        // Style span wraps the whole run; token spans nest inside it (the
+        // renderer builds containment from offset/length ordering).
         if (style.value("bold").toBool())
-            b.entities.push_back({EntityType::Bold, start, (int)text.size(), {}});
+            b.entities.push_back({EntityType::Bold, start, (int)run.text.size(), {}});
         else if (style.value("italic").toBool())
-            b.entities.push_back({EntityType::Italic, start, (int)text.size(), {}});
+            b.entities.push_back({EntityType::Italic, start, (int)run.text.size(), {}});
         else if (style.value("strike").toBool())
-            b.entities.push_back({EntityType::Strike, start, (int)text.size(), {}});
+            b.entities.push_back({EntityType::Strike, start, (int)run.text.size(), {}});
         else if (style.value("code").toBool())
-            b.entities.push_back({EntityType::Code, start, (int)text.size(), {}});
+            b.entities.push_back({EntityType::Code, start, (int)run.text.size(), {}});
+        for (auto e : run.entities) {
+            e.offset += start;
+            b.entities.push_back(e);
+        }
     } else if (type == "user") {
         const auto uid   = el.value("user_id").toString();
         const int  start = b.text.size();
@@ -299,10 +309,17 @@ static void richInlineToTWE(const QJsonObject &el, Builder &b) {
             );
         }
     } else {
-        // Unknown inline type — emit raw text if present
+        // Unknown inline type — emit its text (token-resolved) if present.
         const auto text = el.value("text").toString();
-        if (!text.isEmpty())
-            b.text += text;
+        if (!text.isEmpty()) {
+            const TextWithEntities run   = MrkdwnParser::resolveTokens(text);
+            const int              start = b.text.size();
+            b.text += run.text;
+            for (auto e : run.entities) {
+                e.offset += start;
+                b.entities.push_back(e);
+            }
+        }
     }
 }
 

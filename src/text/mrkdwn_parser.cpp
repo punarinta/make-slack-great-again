@@ -145,6 +145,94 @@ static QString formatDateToken(qint64 secs, const QString &fmt) {
     return out;
 }
 
+// A URL carries a scheme we recognise as linkable. Used to tell a real
+// <url|label> token from a literal "<word>" that happens to sit in a
+// rich_text run (see resolveTokens), where '<' is not escaped.
+static bool looksLikeUrl(const QString &s) {
+    return s.contains(QLatin1String("://")) || s.startsWith(QLatin1String("mailto:")) ||
+           s.startsWith(QLatin1String("tel:"));
+}
+
+// Append the resolved content of a single <…> construct: a user/channel
+// mention, an <!command> (incl. <!date^…>), or a <url|label> link. Mutates b.
+// When requireScheme is true a plain link is only linkified if its URL has a
+// scheme — so a bare "<word>" stays literal; parse() passes false because Slack
+// escapes real '<' to &lt; in the mrkdwn fields it handles.
+static void appendAngleConstruct(Builder &b, const QString &inner, bool requireScheme) {
+    // User mention: <@UXXXXX> or <@UXXXXX|name>
+    if (inner.startsWith('@')) {
+        auto parts       = inner.mid(1).split('|');
+        auto uid         = parts[0];
+        auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : ("@" + uid);
+        int  entityStart = b.text.size();
+        b.appendPlain(label);
+        b.addSpan(EntityType::UserMention, entityStart, uid);
+        return;
+    }
+
+    // Channel mention: <#CXXXXX|name>
+    if (inner.startsWith('#')) {
+        auto parts       = inner.mid(1).split('|');
+        auto cid         = parts[0];
+        auto name        = parts.size() > 1 ? decodeEntities(parts[1]) : cid;
+        int  entityStart = b.text.size();
+        b.appendPlain("#" + name);
+        b.addSpan(EntityType::ChannelMention, entityStart, cid);
+        return;
+    }
+
+    // Special commands: <!here>, <!channel>, <!date^…>, <!subteam^S|name>
+    if (inner.startsWith('!')) {
+        auto cmd = inner.mid(1);
+        if (cmd == "here") {
+            int s = b.text.size();
+            b.appendPlain("@here");
+            b.addSpan(EntityType::HereCommand, s);
+        } else if (cmd == "channel") {
+            int s = b.text.size();
+            b.appendPlain("@channel");
+            b.addSpan(EntityType::ChannelCommand, s);
+        } else if (cmd.startsWith(QLatin1String("date^"))) {
+            // <!date^unix-ts^format-string[^link]|fallback>
+            const int     pipe     = cmd.indexOf('|');
+            const QString fallback = pipe >= 0 ? decodeEntities(cmd.mid(pipe + 1)) : QString();
+            const auto    parts    = (pipe >= 0 ? cmd.left(pipe) : cmd).split('^');
+            bool          tsOk     = false;
+            const qint64  secs     = parts.value(1).toLongLong(&tsOk);
+            QString       rendered =
+                tsOk ? formatDateToken(secs, decodeEntities(parts.value(2))) : QString();
+            if (rendered.isEmpty())
+                rendered = fallback;
+            const QString link = parts.size() > 3 ? decodeEntities(parts[3]) : QString();
+            const int     s    = b.text.size();
+            b.appendPlain(rendered);
+            if (!link.isEmpty())
+                b.addSpan(EntityType::Link, s, link);
+        } else {
+            // subteam or unknown: show as @name
+            auto parts = cmd.split('|');
+            auto label = parts.size() > 1 ? decodeEntities(parts.last()) : cmd;
+            int  s     = b.text.size();
+            b.appendPlain("@" + label);
+            b.addSpan(EntityType::HereCommand, s, cmd);
+        }
+        return;
+    }
+
+    // Link: <url|label> or <url>
+    auto parts = inner.split('|');
+    if (requireScheme && !looksLikeUrl(parts[0])) {
+        // Not a Slack token — emit the brackets and content verbatim.
+        b.appendPlain('<' + inner + '>');
+        return;
+    }
+    auto url         = decodeEntities(parts[0]);
+    auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : url;
+    int  entityStart = b.text.size();
+    b.appendPlain(label);
+    b.addSpan(EntityType::Link, entityStart, url);
+}
+
 // Recursion is bounded two ways. kMaxParseDepth is a hard backstop so crafted,
 // deeply-nested inline marks can neither blow the stack nor the layout. inQuote
 // caps blockquotes at a single level: once inside a quote, a further leading '>'
@@ -258,80 +346,8 @@ static TextWithEntities parseImpl(const QString &mrkdwn, int depth, bool inQuote
             if (close != -1) {
                 auto inner = mrkdwn.mid(i + 1, close - i - 1);
                 i          = close + 1;
-
-                // User mention: <@UXXXXX> or <@UXXXXX|name>
-                if (inner.startsWith('@')) {
-                    auto parts       = inner.mid(1).split('|');
-                    auto uid         = parts[0];
-                    auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : ("@" + uid);
-                    int  entityStart = b.text.size();
-                    b.appendPlain(label);
-                    b.addSpan(EntityType::UserMention, entityStart, uid);
-                    continue;
-                }
-
-                // Channel mention: <#CXXXXX|name>
-                if (inner.startsWith('#')) {
-                    auto parts       = inner.mid(1).split('|');
-                    auto cid         = parts[0];
-                    auto name        = parts.size() > 1 ? decodeEntities(parts[1]) : cid;
-                    int  entityStart = b.text.size();
-                    b.appendPlain("#" + name);
-                    b.addSpan(EntityType::ChannelMention, entityStart, cid);
-                    continue;
-                }
-
-                // Special commands: <!here>, <!channel>, <!date^…>, <!subteam^S|name>
-                if (inner.startsWith('!')) {
-                    auto cmd = inner.mid(1);
-                    if (cmd == "here") {
-                        int s = b.text.size();
-                        b.appendPlain("@here");
-                        b.addSpan(EntityType::HereCommand, s);
-                    } else if (cmd == "channel") {
-                        int s = b.text.size();
-                        b.appendPlain("@channel");
-                        b.addSpan(EntityType::ChannelCommand, s);
-                    } else if (cmd.startsWith(QLatin1String("date^"))) {
-                        // <!date^unix-ts^format-string[^link]|fallback>
-                        const int     pipe = cmd.indexOf('|');
-                        const QString fallback =
-                            pipe >= 0 ? decodeEntities(cmd.mid(pipe + 1)) : QString();
-                        const auto   parts = (pipe >= 0 ? cmd.left(pipe) : cmd).split('^');
-                        bool         tsOk  = false;
-                        const qint64 secs  = parts.value(1).toLongLong(&tsOk);
-                        QString      rendered =
-                            tsOk ? formatDateToken(secs, decodeEntities(parts.value(2)))
-                                      : QString();
-                        if (rendered.isEmpty())
-                            rendered = fallback;
-                        const QString link =
-                            parts.size() > 3 ? decodeEntities(parts[3]) : QString();
-                        const int s = b.text.size();
-                        b.appendPlain(rendered);
-                        if (!link.isEmpty())
-                            b.addSpan(EntityType::Link, s, link);
-                    } else {
-                        // subteam or unknown: show as @name
-                        auto parts = cmd.split('|');
-                        auto label = parts.size() > 1 ? decodeEntities(parts.last()) : cmd;
-                        int  s     = b.text.size();
-                        b.appendPlain("@" + label);
-                        b.addSpan(EntityType::HereCommand, s, cmd);
-                    }
-                    continue;
-                }
-
-                // Link: <url|label> or <url>
-                {
-                    auto parts       = inner.split('|');
-                    auto url         = decodeEntities(parts[0]);
-                    auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : url;
-                    int  entityStart = b.text.size();
-                    b.appendPlain(label);
-                    b.addSpan(EntityType::Link, entityStart, url);
-                    continue;
-                }
+                appendAngleConstruct(b, inner, /*requireScheme=*/false);
+                continue;
             }
         }
 
@@ -417,6 +433,54 @@ static TextWithEntities parseImpl(const QString &mrkdwn, int depth, bool inQuote
 
 TextWithEntities parse(const QString &mrkdwn) {
     return parseImpl(mrkdwn, /*depth=*/0, /*inQuote=*/false);
+}
+
+TextWithEntities resolveTokens(const QString &src) {
+    // Resolve ONLY Slack's angle-bracket tokens (<@U>, <#C>, <!cmd>, <url|label>)
+    // and :emoji: shortcodes. Unlike parse(), *, _, ~, ` are left literal: this
+    // runs on already-structured runs (a rich_text "text" element) whose emphasis
+    // comes from a style object, not mrkdwn marks. Slack's own text→rich_text
+    // conversion (and some bots) leave these tokens unexpanded inside a plain text
+    // element — which is why an Outlook Calendar reminder shows a raw
+    // "<!date^…|2:00 PM>" — and Slack's clients resolve them everywhere.
+    Builder   b;
+    const int n = src.size();
+    int       i = 0;
+    while (i < n) {
+        const QChar c = src[i];
+
+        // ── Angular-bracket token <…> ──
+        if (c == '<') {
+            const int close = src.indexOf('>', i + 1);
+            if (close != -1) {
+                // requireScheme: '<' is not escaped in rich_text, so only linkify
+                // a real URL — leave a literal "<word>" as typed.
+                appendAngleConstruct(b, src.mid(i + 1, close - i - 1), /*requireScheme=*/true);
+                i = close + 1;
+                continue;
+            }
+        }
+
+        // ── Emoji :name: ──
+        if (c == ':') {
+            const int close = src.indexOf(':', i + 1);
+            if (close != -1 && close > i + 1) {
+                const auto                name = src.mid(i + 1, close - i - 1);
+                static QRegularExpression validEmoji("^[a-zA-Z0-9_+\\-]+$");
+                if (validEmoji.match(name).hasMatch()) {
+                    const int entityStart = b.text.size();
+                    b.appendPlain(":" + name + ":");
+                    b.addSpan(EntityType::Emoji, entityStart, name);
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+
+        b.appendPlain(c);
+        ++i;
+    }
+    return TextWithEntities{b.text, b.entities};
 }
 
 } // namespace MrkdwnParser

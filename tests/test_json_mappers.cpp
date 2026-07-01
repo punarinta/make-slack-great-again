@@ -850,6 +850,28 @@ TEST_CASE("toBlock rich_text section plain text", "[mappers][block]") {
     CHECK(b.text.entities.empty());
 }
 
+TEST_CASE("toBlock rich_text text run resolves embedded Slack tokens", "[mappers][block]") {
+    // Outlook Calendar reminders arrive as a rich_text "text" element whose raw
+    // text still carries <!date^…> and <url|label> tokens (Slack's text→rich_text
+    // conversion doesn't structure them). They must resolve, not render literally.
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "rich_text",
+        "elements": [{
+            "type": "rich_text_section",
+            "elements": [{
+                "type": "text",
+                "text": "<!date^1782903600^{time}|2:00 PM> <https://outlook.office365.com/owa?x=1|Ny event>"
+            }]
+        }]
+    })"));
+    CHECK_FALSE(b.text.text.contains("<!date"));
+    CHECK(b.text.text.contains("Ny event"));
+    CHECK_FALSE(b.text.text.contains("outlook.office365.com"));
+    REQUIRE(b.text.entities.size() == 1);
+    CHECK(b.text.entities[0].type == EntityType::Link);
+    CHECK(b.text.entities[0].data == "https://outlook.office365.com/owa?x=1");
+}
+
 TEST_CASE("toBlock rich_text section bold inline", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "rich_text",

@@ -266,3 +266,43 @@ TEST_CASE("date token format keeps literal text around tokens", "[mrkdwn]") {
     auto r = MrkdwnParser::parse("<!date^1781248500^due {date_num}!|fb>");
     CHECK(r.text == "due " + localDateNum(1781248500) + "!");
 }
+
+// resolveTokens: rich_text "text" runs carry unexpanded Slack tokens (e.g. an
+// Outlook Calendar reminder). Tokens + emoji resolve; *_~` stay literal.
+TEST_CASE("resolveTokens expands a date token", "[mrkdwn]") {
+    auto r = MrkdwnParser::resolveTokens("<!date^1781248500^{date_num}|6/12/26>");
+    CHECK(r.text == localDateNum(1781248500));
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("resolveTokens linkifies <url|label>", "[mrkdwn]") {
+    auto r = MrkdwnParser::resolveTokens("see <https://example.com/x?a=1|Ny händelse> now");
+    CHECK(r.text == "see Ny händelse now");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::Link);
+    CHECK(r.entities[0].offset == 4);
+    CHECK(r.entities[0].data == "https://example.com/x?a=1");
+}
+
+TEST_CASE("resolveTokens leaves mrkdwn marks literal", "[mrkdwn]") {
+    // Emphasis in rich_text comes from a style object, not from *_~`.
+    auto r = MrkdwnParser::resolveTokens("*Where:* 3 < 5 and a > b");
+    CHECK(r.text == "*Where:* 3 < 5 and a > b");
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("resolveTokens keeps a bare <word> literal", "[mrkdwn]") {
+    auto r = MrkdwnParser::resolveTokens("value <placeholder> here");
+    CHECK(r.text == "value <placeholder> here");
+    CHECK(r.entities.empty());
+}
+
+TEST_CASE("resolveTokens expands mention and emoji", "[mrkdwn]") {
+    auto r = MrkdwnParser::resolveTokens("hi <@U123|bob> :wave:");
+    CHECK(r.text == "hi bob :wave:");
+    REQUIRE(r.entities.size() == 2);
+    CHECK(r.entities[0].type == EntityType::UserMention);
+    CHECK(r.entities[0].data == "U123");
+    CHECK(r.entities[1].type == EntityType::Emoji);
+    CHECK(r.entities[1].data == "wave");
+}
