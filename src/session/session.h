@@ -328,6 +328,18 @@ private:
     // added to a channel we weren't already tracking as a member.
     void fetchJoinedConversation(ConversationId id);
 
+    // A message (EvMessageNew) arrived for a conversation we don't track yet.
+    // The usual cause is a brand-new MPDM/group DM: Slack sends no
+    // channel_created or member_joined_channel for those (channels only), so
+    // that first message is the ONLY signal the conversation exists. Fetch it
+    // via conversations.info, fold it into _conversations, then replay the
+    // queued message(s) through handleNewMessage so they badge and notify like
+    // any other. Messages that arrive while the fetch is in flight queue in
+    // _unknownConvBacklog and drain together on completion. A wrong-workspace id
+    // (the shared socket broadcasts every workspace's events to every sink)
+    // gets channel_not_found and the backlog is simply dropped.
+    void fetchUnknownConversation(ConversationId id, Message msg);
+
     // Background conversations.info sweep over IMs/MPDMs that refreshes their
     // last_read/latest cursors (used for conversation-list relevance). Throttled
     // via the workspace cache; called after each loadConversations() merge.
@@ -430,8 +442,12 @@ private:
         bool    withFiles = false;
     };
     QHash<QString, QList<PendingSend>> _pendingSends; // conv.value → FIFO queue
-    QSet<QString>                      _seenMsgKeys;  // "conv|ts" of delivered messages
-    QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
+    // Messages awaiting a conversations.info fetch for a conversation we don't
+    // track yet (see fetchUnknownConversation). A present key means a fetch is
+    // in flight; the queued messages drain when it completes.
+    QHash<QString, QList<Message>>     _unknownConvBacklog; // conv.value → queued msgs
+    QSet<QString>                      _seenMsgKeys;        // "conv|ts" of delivered messages
+    QQueue<QString>                    _seenMsgOrder;       // FIFO eviction for _seenMsgKeys
 
     // Throttle the rate-limit notice banner (429s cluster; don't spam).
     static constexpr qint64 kRateLimitNoticeGapMs  = 15'000;

@@ -22,6 +22,7 @@ public:
     rpl::producer<std::vector<User>>         loadUsers() override;
     rpl::producer<bool>                      loadPresence(UserId) override;
     rpl::producer<SelfPresence>              loadSelfPresence() override;
+    rpl::producer<Conversation>              loadConversationInfo(ConversationId) override;
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override;
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override;
 
@@ -100,6 +101,10 @@ public:
     // Test helpers — fire events from outside
     void fireEvent(Event e);
 
+    // Test helper — register a Conversation that loadConversationInfo() returns
+    // (an unregistered id completes with no value, like Slack's channel_not_found).
+    void setConversationInfo(Conversation c);
+
     // Test helper — every runCommand() call is recorded here.
     struct RanCommand {
         ConversationId conv;
@@ -113,9 +118,10 @@ private:
     rpl::variable<std::vector<Conversation>>          _conversations;
     rpl::variable<std::vector<User>>                  _users;
     std::unordered_map<QString, std::vector<Message>> _history; // conv id → messages
+    std::unordered_map<QString, Conversation> _convInfo; // conv id → loadConversationInfo() result
     // Canvas fixtures: conv id → canvas file id, file id → HTML body / title.
-    std::unordered_map<QString, QString>              _convCanvas;
-    std::unordered_map<QString, QString>              _canvasHtml;
-    std::unordered_map<QString, QString>              _canvasTitle;
-    rpl::event_stream<Event>                          _events;
+    std::unordered_map<QString, QString>      _convCanvas;
+    std::unordered_map<QString, QString>      _canvasHtml;
+    std::unordered_map<QString, QString>      _canvasTitle;
+    rpl::event_stream<Event>                  _events;
 };

@@ -267,6 +267,17 @@ void Session::start() {
                     }
                     _conversations = std::move(convs);
                 } else if (auto *ev = std::get_if<EvMessageNew>(&e)) {
+                    // A message for a conversation we don't track yet — almost
+                    // always a freshly-created MPDM/group DM, for which Slack
+                    // sends no channel_created/member_joined_channel, only this
+                    // message. Fetch the conversation, then replay the message
+                    // so it lands in the list, badges, and notifies. Don't
+                    // forward now: findConversation is still null, so the UI has
+                    // nothing to attach it to (fetchUnknownConversation re-fires).
+                    if (!findConversation(ev->conv)) {
+                        fetchUnknownConversation(ev->conv, ev->msg);
+                        return;
+                    }
                     // The same message can arrive twice — the chat.postMessage
                     // response echo plus the realtime echo, or a Socket Mode
                     // redelivery of an un-acked envelope. handleNewMessage
@@ -748,6 +759,63 @@ void Session::fetchJoinedConversation(ConversationId id) {
                 }
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
+            },
+            _lifetime
+        );
+}
+
+void Session::fetchUnknownConversation(ConversationId id, Message msg) {
+    // Queue the message; a present key means a fetch is already in flight, so
+    // every message that lands before conversations.info returns rides the same
+    // fetch and drains together (a new MPDM's opening burst is often several
+    // messages back-to-back).
+    const bool alreadyFetching = _unknownConvBacklog.contains(id.value);
+    _unknownConvBacklog[id.value].append(std::move(msg));
+    if (alreadyFetching)
+        return;
+
+    _backend->loadConversationInfo(id) |
+        rpl::on_next_done(
+            [this, id](Conversation info) {
+                // A different workspace's event off the shared socket, or a dead
+                // conversation: loadConversationInfo answers channel_not_found
+                // and completes with no value, so this never runs — on_done then
+                // drops the backlog.
+                if (info.id.value.isEmpty())
+                    return;
+                // Let the replayed messages below do the authoritative
+                // unread/mention counting through handleNewMessage — the same
+                // invariant as every other conversation. conversations.info's
+                // unread_count already includes these messages, so keeping it
+                // and then replaying would double-count.
+                info.unread       = 0;
+                info.mentionCount = 0;
+
+                auto       convs = _conversations.current();
+                const auto it =
+                    std::find_if(convs.begin(), convs.end(), [&](const Conversation &c) {
+                        return c.id == info.id;
+                    });
+                if (it != convs.end())
+                    *it = info; // a concurrent path added it first — refresh in place
+                else
+                    convs.push_back(info);
+                _cache->saveConversations(convs);
+                _conversations = std::move(convs);
+
+                // Replay through the normal path now that the conversation
+                // exists: handleNewMessage badges/marks-read and de-dups, then
+                // forward each to the UI so it renders and notifies.
+                const auto backlog = _unknownConvBacklog.value(id.value);
+                for (const auto &m : backlog) {
+                    if (handleNewMessage(id, m))
+                        _eventHub.fire(EvMessageNew{id, m});
+                }
+            },
+            [this, id] {
+                // Always clear the in-flight marker + backlog, success or
+                // failure, so a later message can trigger a fresh fetch.
+                _unknownConvBacklog.remove(id.value);
             },
             _lifetime
         );

@@ -988,6 +988,81 @@ TEST_CASE_METHOD(
     CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
 }
 
+// ── EvMessageNew for an unknown conversation (new MPDM) ───────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew for an unknown MPDM fetches it, adds it to the list, and badges",
+    "[session][events]"
+) {
+    // A brand-new group DM (G9) we don't track yet: Slack sends no
+    // channel_created/member_joined_channel for MPDMs, only this message. The
+    // conversations.info fixture reports it (with a stale server unread that we
+    // must NOT trust — the replayed message does the authoritative counting).
+    Conversation mpdm{
+        .id       = ConversationId{"G9"},
+        .kind     = ConvKind::Mpim,
+        .name     = "mpdm-alice--bob--u1-1",
+        .isMember = true,
+        .lastRead = "0",
+        .unread   = 5, // server count; zeroed on insert so no double-count
+        .members  = {UserId{"U1"}, UserId{"U2"}, UserId{"U3"}},
+    };
+    stub->infoResults["G9"] = mpdm;
+
+    REQUIRE(session->findConversation(ConversationId{"G9"}) == nullptr);
+
+    auto [events, lt] = collectEvents();
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"G9"}, msg});
+
+    // Conversation was fetched and folded in.
+    CHECK(stub->infoRequested.contains("G9"));
+    auto *c = session->findConversation(ConversationId{"G9"});
+    REQUIRE(c != nullptr);
+    CHECK(c->kind == ConvKind::Mpim);
+    // Counted from the replayed message, not stacked on the server's 5.
+    CHECK(c->unread == 1);
+    CHECK(c->mentionCount == 1); // an MPDM message is always a red-badge mention
+    CHECK(c->latestTs == "500.000");
+
+    // The message is forwarded to the UI so it renders and notifies.
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<EvMessageNew>(events[0]));
+    CHECK(std::get<EvMessageNew>(events[0]).conv == ConversationId{"G9"});
+    CHECK(std::get<EvMessageNew>(events[0]).msg.ts == "500.000");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew for an unknown conversation that can't be fetched is dropped, not stuck",
+    "[session][events]"
+) {
+    // No conversations.info fixture for G9 → the fetch completes with no value
+    // (Slack's channel_not_found; e.g. another workspace's event off the shared
+    // socket). The conversation is not added, nothing is forwarded, and the
+    // in-flight marker is cleared so a later message re-attempts the fetch.
+    auto [events, lt] = collectEvents();
+
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"G9"}, msg});
+
+    CHECK(session->findConversation(ConversationId{"G9"}) == nullptr);
+    CHECK(events.empty());
+    CHECK(stub->infoRequested.count("G9") == 1);
+
+    // A second message re-attempts (the backlog wasn't left stuck).
+    Message msg2;
+    msg2.ts     = "600.000";
+    msg2.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"G9"}, msg2});
+    CHECK(stub->infoRequested.count("G9") == 2);
+}
+
 TEST_CASE_METHOD(
     SessionFixture, "EvMessageNew does not increment unread for muted conv", "[session][events]"
 ) {

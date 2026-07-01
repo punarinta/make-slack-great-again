@@ -122,6 +122,17 @@ rpl::producer<SelfPresence> FakeBackend::loadSelfPresence() {
     return rpl::variable<SelfPresence>(SelfPresence{.loaded = true}).value();
 }
 
+rpl::producer<Conversation> FakeBackend::loadConversationInfo(ConversationId id) {
+    return [this, id](auto consumer) {
+        auto it = _convInfo.find(id.value);
+        if (it != _convInfo.end())
+            consumer.put_next(Conversation(it->second));
+        // Unregistered → complete with no value (Slack's channel_not_found shape).
+        consumer.put_done();
+        return rpl::lifetime();
+    };
+}
+
 rpl::producer<MessagePage>
 FakeBackend::loadHistory(ConversationId conv, std::optional<QString> /*cursor*/) {
     auto it   = _history.find(conv.value);
@@ -147,6 +158,10 @@ rpl::producer<Event> FakeBackend::events() const {
 
 void FakeBackend::fireEvent(Event e) {
     _events.fire(std::move(e));
+}
+
+void FakeBackend::setConversationInfo(Conversation c) {
+    _convInfo[c.id.value] = std::move(c);
 }
 
 rpl::producer<std::vector<SlashCommand>> FakeBackend::listCommands() {
