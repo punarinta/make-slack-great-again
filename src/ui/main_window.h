@@ -111,8 +111,11 @@ private:
     // Toggle the huddle banner from the open conversation's huddleActive flag.
     void    updateHuddleBanner();
     // Web join URL for a conversation's huddle: the room's own huddle_link if we
-    // have it, else a constructed app.slack.com/huddle link. The teamId overload
-    // is for notifications, whose huddle may be in a background workspace.
+    // have it (the only link that reliably works for a DM huddle), else a
+    // constructed app.slack.com/huddle link for a channel, or — for a DM with no
+    // live huddle, where /huddle/ server-errors — the plain open-conversation
+    // link. The teamId overload is for notifications, whose huddle may be in a
+    // background workspace.
     QString huddleJoinUrl(const ConversationId &conv) const;
     QString huddleJoinUrl(const QString &teamId, const ConversationId &conv) const;
 

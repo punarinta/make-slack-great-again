@@ -2698,14 +2698,29 @@ QString MainWindow::huddleJoinUrl(const ConversationId &conv) const {
 }
 
 QString MainWindow::huddleJoinUrl(const QString &teamId, const ConversationId &conv) const {
+    // Prefer the room's own `huddle_link` (Slack's authoritative "Copy huddle
+    // link" URL, delivered on the huddle_thread realtime event / conversations.info
+    // room object). It is the only join URL guaranteed to work — a link we build
+    // by hand only reliably opens a *channel* huddle; the same /huddle/<team>/<id>
+    // shape server-errors for a DM ("D…") id, which is why clicking a live DM
+    // huddle used to land on Slack's "Server Error" page. We only fall back to a
+    // constructed link when we have no authoritative one (e.g. starting a fresh
+    // huddle, or an active huddle we learned about without room detail).
+    const Conversation *c = _session ? _session->findConversation(conv) : nullptr;
+    if (c && !c->huddleLink.isEmpty())
+        return c->huddleLink;
     // Single source of truth for the link shape lives in SlackLinks::huddle().
     // `teamId` here is the app-wide canonical WorkspaceKey ("slack:TCF2J0TSP"),
     // but the URL needs the bare Slack team id ("TCF2J0TSP"), so unwrap it. The
     // team is taken explicitly because a notification may target a background
     // workspace, not the active one.
-    const auto    key = WorkspaceKey::fromString(teamId);
-    const QString t   = key ? key->id : teamId;
-    return SlackLinks::huddle(t, conv.value);
+    const auto    key  = WorkspaceKey::fromString(teamId);
+    const QString t    = key ? key->id : teamId;
+    // A constructed /huddle/ link can only START a huddle for a channel; for a DM
+    // with no live huddle it server-errors (see SlackLinks::huddle). So for a DM
+    // fall back to opening the conversation — the user starts the huddle there.
+    const bool    isDm = c && (c->kind == ConvKind::Im || c->kind == ConvKind::Mpim);
+    return isDm ? SlackLinks::conversation(t, conv.value) : SlackLinks::huddle(t, conv.value);
 }
 
 void MainWindow::updateHuddleBanner() {
