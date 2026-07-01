@@ -1993,9 +1993,19 @@ void MessageListWidget::showReactionTooltip(int mi, int ri, const QRect &chipVpR
     if (names.isEmpty())
         return;
 
-    const auto    emoji = MsgRender::resolveEmojiRich(r.name, _session);
-    const QPixmap img =
+    const auto emoji = MsgRender::resolveEmojiRich(r.name, _session);
+    QPixmap    img =
         (!emoji.imageUrl.isEmpty() && _imgCache) ? _imgCache->get(emoji.imageUrl) : QPixmap();
+    // For an animated custom emoji, prefer the live animation frame over the still
+    // first frame (which is often an odd pose — see paintReactions). The pill's movie
+    // is already running, so this shows the current clinked/mid-motion frame.
+    if (!emoji.imageUrl.isEmpty()) {
+        if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
+            const QPixmap frame = mv->currentPixmap();
+            if (!frame.isNull())
+                img = frame;
+        }
+    }
 
     const QRect chipGlobal(viewport()->mapToGlobal(chipVpRect.topLeft()), chipVpRect.size());
     _tooltip->showReaction(emoji.unicode, img, names, chipGlobal);

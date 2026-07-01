@@ -1074,7 +1074,19 @@ void MessageListWidget::paintReactions(
 
         // Emoji — drawn in fixed left slot (custom emojis as downloaded images)
         if (!emoji.imageUrl.isEmpty()) {
-            const QPixmap px = _imgCache ? _imgCache->get(emoji.imageUrl) : QPixmap();
+            QPixmap px = _imgCache ? _imgCache->get(emoji.imageUrl) : QPixmap();
+            // Animate custom-emoji GIFs (e.g. :beer_cheers:) like Slack does. Without
+            // this the pill shows only the still first frame, which for many animated
+            // emoji is an odd mid-motion pose (beer_cheers frame 0 = the two mugs apart,
+            // read as a "cut/swapped" glyph). gifMovieFor() is non-null only for animated
+            // images; the get() above has populated the bytes it needs. syncGifPlayback()
+            // (end of doPaint) starts/pauses movies by _visibleGifs membership.
+            if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
+                _visibleGifs.insert(emoji.imageUrl);
+                const QPixmap frame = mv->currentPixmap();
+                if (!frame.isNull())
+                    px = frame;
+            }
             if (!px.isNull()) {
                 const QSize tgt = px.size().scaled(kReactEmoji, kReactEmoji, Qt::KeepAspectRatio);
                 p.drawPixmap(
