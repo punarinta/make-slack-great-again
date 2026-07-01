@@ -1064,6 +1064,90 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew for a channel_not_found conversation is remembered and not re-fetched",
+    "[session][events]"
+) {
+    // conversations.info answers channel_not_found (the not-found sentinel):
+    // this conv does not exist for this workspace — e.g. a busy channel in
+    // another workspace whose events arrive over the shared socket. The first
+    // message fetches once; every later message must be dropped WITHOUT another
+    // conversations.info call, so a chatty foreign channel can't spam the API.
+    stub->infoResults["C77"] = Conversation{.id = ConversationId{"C77"}, .notFound = true};
+
+    auto [events, lt] = collectEvents();
+
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C77"}, msg});
+
+    CHECK(session->findConversation(ConversationId{"C77"}) == nullptr);
+    CHECK(events.empty());
+    REQUIRE(stub->infoRequested.count("C77") == 1);
+
+    // Two more messages — neither triggers a fetch now that the id is known dead.
+    Message msg2;
+    msg2.ts     = "600.000";
+    msg2.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C77"}, msg2});
+    Message msg3;
+    msg3.ts     = "700.000";
+    msg3.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C77"}, msg3});
+
+    CHECK(stub->infoRequested.count("C77") == 1); // still just the one call
+    CHECK(events.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a channel_not_found conversation becomes fetchable again once we join it",
+    "[session][events]"
+) {
+    // Blacklist C9 via channel_not_found, then get invited (member_joined_channel
+    // for us). Joining must clear the negative cache so the channel is fetched
+    // and folded in, and subsequent messages notify normally — no lost messages
+    // for a conversation that legitimately becomes ours.
+    stub->infoResults["C9"] = Conversation{.id = ConversationId{"C9"}, .notFound = true};
+
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C9"}, msg});
+    REQUIRE(stub->infoRequested.count("C9") == 1);
+    REQUIRE(session->findConversation(ConversationId{"C9"}) == nullptr);
+
+    // We're added to C9. From now conversations.info reports a real channel.
+    stub->infoResults["C9"] = Conversation{
+        .id       = ConversationId{"C9"},
+        .kind     = ConvKind::PublicChannel,
+        .name     = "just-joined",
+        .isMember = true,
+        .lastRead = "0",
+    };
+    stub->fireEvent(EvMemberJoined{ConversationId{"C9"}, UserId{"U1"}});
+
+    // markConvAlive dropped the dead mark, so the join fetch went through and the
+    // channel is now tracked.
+    CHECK(stub->infoRequested.count("C9") == 2);
+    auto *c = session->findConversation(ConversationId{"C9"});
+    REQUIRE(c != nullptr);
+    CHECK(c->name == "just-joined");
+
+    // A later message now flows through the normal path and is forwarded.
+    auto [events, lt] = collectEvents();
+    Message msg2;
+    msg2.ts     = "800.000";
+    msg2.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C9"}, msg2});
+    REQUIRE(events.size() == 1);
+    CHECK(std::get<EvMessageNew>(events[0]).conv == ConversationId{"C9"});
+    // And no extra conversations.info call — it's tracked, so no unknown-conv fetch.
+    CHECK(stub->infoRequested.count("C9") == 2);
+}
+
+TEST_CASE_METHOD(
     SessionFixture, "EvMessageNew does not increment unread for muted conv", "[session][events]"
 ) {
     Conversation muted;

@@ -752,10 +752,13 @@ void Session::fetchJoinedConversation(ConversationId id) {
     // conversations.info reports the freshly-joined channel with is_member=true.
     // Fold it into the list (or flip an already-present preview to member),
     // preserving nothing else since this is a channel we weren't tracking.
+    // We just joined it, so it's no longer "dead" — drop any stale mark so the
+    // fetch (and future message fetches) go through.
+    markConvAlive(id);
     _backend->loadConversationInfo(id) |
         rpl::on_next(
             [this](Conversation conv) {
-                if (conv.id.value.isEmpty())
+                if (conv.notFound || conv.id.value.isEmpty())
                     return;
                 auto       convs = _conversations.current();
                 const auto it =
@@ -781,6 +784,14 @@ void Session::fetchUnknownConversation(ConversationId id, Message msg) {
     // every message that lands before conversations.info returns rides the same
     // fetch and drains together (a new MPDM's opening burst is often several
     // messages back-to-back).
+    // Known not to exist for this workspace (a previous fetch got
+    // channel_not_found) — a different workspace's conversation off the shared
+    // socket, or a dead conv. Drop the message without another conversations.info
+    // call; a busy foreign conversation would otherwise re-fetch on every
+    // message. Cleared by markConvAlive if we ever legitimately join it.
+    if (_deadConvIds.contains(id.value))
+        return;
+
     const bool alreadyFetching = _unknownConvBacklog.contains(id.value);
     _unknownConvBacklog[id.value].append(std::move(msg));
     if (alreadyFetching)
@@ -791,8 +802,14 @@ void Session::fetchUnknownConversation(ConversationId id, Message msg) {
             [this, id](Conversation info) {
                 // A different workspace's event off the shared socket, or a dead
                 // conversation: loadConversationInfo answers channel_not_found
-                // and completes with no value, so this never runs — on_done then
-                // drops the backlog.
+                // with a not-found sentinel. Remember it so future messages skip
+                // the fetch (above); on_done still drops the backlog. A bare
+                // completion (transient failure) leaves the id fetchable so a
+                // later message retries.
+                if (info.notFound) {
+                    _deadConvIds.insert(id.value);
+                    return;
+                }
                 if (info.id.value.isEmpty())
                     return;
                 // Let the replayed messages below do the authoritative
@@ -833,6 +850,10 @@ void Session::fetchUnknownConversation(ConversationId id, Message msg) {
         );
 }
 
+void Session::markConvAlive(const ConversationId &id) {
+    _deadConvIds.remove(id.value);
+}
+
 bool Session::isDeadDm(const Conversation &c) const {
     // conversations.list never prunes a DM: once a D… channel exists it lives on
     // the account forever, so it keeps returning DMs whose peer was deactivated or
@@ -854,10 +875,10 @@ std::vector<ConversationId> Session::dmSweepTargets() const {
     // lower-priority MPDMs after.
     std::vector<ConversationId> targets;
     for (const auto &c : _conversations.current())
-        if (c.kind == ConvKind::Im && !isDeadDm(c))
+        if (c.kind == ConvKind::Im && !isDeadDm(c) && !_deadConvIds.contains(c.id.value))
             targets.push_back(c.id);
     for (const auto &c : _conversations.current())
-        if (c.kind == ConvKind::Mpim)
+        if (c.kind == ConvKind::Mpim && !_deadConvIds.contains(c.id.value))
             targets.push_back(c.id);
     return targets;
 }
@@ -875,6 +896,14 @@ void Session::resyncUnreads() {
     for (const auto &id : targets) {
         _backend->loadConversationInfo(id) | rpl::on_next(
                                                  [this, id](Conversation info) {
+                                                     // Dead DM/MPDM (peer gone, or
+                                                     // another workspace's conv):
+                                                     // remember it so later sweeps
+                                                     // skip it (dmSweepTargets).
+                                                     if (info.notFound) {
+                                                         _deadConvIds.insert(id.value);
+                                                         return;
+                                                     }
                                                      auto convs   = _conversations.current();
                                                      bool changed = false;
                                                      for (auto &c : convs) {
@@ -945,6 +974,12 @@ void Session::enrichDmActivity() {
         _backend->loadConversationInfo(id) |
             rpl::on_next_done(
                 [this, id](Conversation info) {
+                    // Dead DM/MPDM (peer gone, or another workspace's conv):
+                    // remember it so later sweeps skip it (dmSweepTargets).
+                    if (info.notFound) {
+                        _deadConvIds.insert(id.value);
+                        return;
+                    }
                     // Merge only the activity cursors. The info response lacks
                     // fields the list provides (e.g. MPDM members), and its
                     // unread fallback could fabricate badges — leave the rest
@@ -1826,6 +1861,7 @@ void Session::joinChannel(
     _backend->joinChannel(
         id,
         [this, onSuccess](ConversationId convId) {
+            markConvAlive(convId); // joined — no longer channel_not_found
             _backend->loadConversations() |
                 rpl::on_next(
                     [this](std::vector<Conversation> convs) { _conversations = std::move(convs); },
@@ -1856,6 +1892,7 @@ void Session::openDm(
     _backend->openDm(
         user,
         [this, user, onSuccess](ConversationId convId) {
+            markConvAlive(convId); // DM opened — no longer channel_not_found
             // Insert a minimal conversation so the UI can select it right away;
             // the next conversations.list refresh fills in the rest.
             auto       convs = _conversations.current();

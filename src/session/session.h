@@ -367,6 +367,11 @@ private:
     // so the server count is exactly the signal we want.
     void resyncUnreads();
 
+    // Drop an id from the channel_not_found negative cache (_deadConvIds) —
+    // called whenever a conversation legitimately becomes ours (join, member
+    // added, DM opened) so a previously-foreign id can be fetched again.
+    void markConvAlive(const ConversationId &id);
+
     // A DM whose peer left/was deactivated — conversations.info answers
     // channel_not_found for these, so the DM/MPDM sweeps skip them. (MPDMs have no
     // single peer and always sweep.)
@@ -453,8 +458,19 @@ private:
     // track yet (see fetchUnknownConversation). A present key means a fetch is
     // in flight; the queued messages drain when it completes.
     QHash<QString, QList<Message>>     _unknownConvBacklog; // conv.value → queued msgs
-    QSet<QString>                      _seenMsgKeys;        // "conv|ts" of delivered messages
-    QQueue<QString>                    _seenMsgOrder;       // FIFO eviction for _seenMsgKeys
+    // Conversation ids that answered channel_not_found from conversations.info —
+    // convs that don't exist for this workspace: another workspace's convs
+    // (the shared socket broadcasts every workspace's events to every sink) and
+    // dead DMs (peer left/deactivated). Remembering them stops a busy foreign
+    // conversation re-firing a fetch on every message (fetchUnknownConversation)
+    // and stops the reconnect sweeps re-hitting dead DMs every time
+    // (dmSweepTargets). Never consulted on the handleNewMessage notify path, so
+    // it can't suppress a message for a conversation we actually track. Cleared
+    // for an id the moment it legitimately becomes ours (markConvAlive), so a
+    // channel we're later invited to is not permanently blacklisted.
+    QSet<QString>                      _deadConvIds;  // conv.value → known channel_not_found
+    QSet<QString>                      _seenMsgKeys;  // "conv|ts" of delivered messages
+    QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
     // Muted threads, keyed by threadMuteKey(conv, root). Loaded from cache at
     // start(); persisted immediately on change (tiny payload).
     QSet<QString>                      _mutedThreads;

@@ -258,6 +258,13 @@ struct Conversation {
     // ("Re: <latest subject>"), so the composer can prefill it. Empty for chat
     // services and for brand-new conversations with no thread yet.
     QString             replySubject;
+    // Transient wire-signal, never cached/persisted: set by loadConversationInfo
+    // when conversations.info answers `channel_not_found` (the conversation does
+    // not exist for this workspace — another workspace's conv off the shared
+    // socket, or a dead DM). Lets Session tell a definitive "gone" from a
+    // transient failure and stop re-fetching it, without confusing it for a real
+    // conversation. Only ever true on that sentinel result; a real conv is false.
+    bool                notFound                               = false;
     bool                operator==(const Conversation &) const = default;
 };
 

@@ -386,6 +386,14 @@ rpl::producer<Conversation> PublicBackend::loadConversationInfo(ConversationId i
             },
             [consumer, id](QString err) mutable {
                 qWarning() << "loadConversationInfo error:" << id.value << err;
+                // channel_not_found is definitive: this conversation does not
+                // exist for this workspace. Emit a not-found sentinel so Session
+                // can remember it and stop re-fetching (a busy foreign conv would
+                // otherwise re-fire on every message). Any other error (a
+                // sustained transient that exhausted retries, missing_scope, …)
+                // stays a bare completion so the caller retries as before.
+                if (err == QLatin1String("channel_not_found"))
+                    consumer.put_next(Conversation{.id = id, .notFound = true});
                 consumer.put_done();
             }
         );
