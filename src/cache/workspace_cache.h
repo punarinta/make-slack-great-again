@@ -47,6 +47,10 @@ public:
     void                    saveEmojiMap(const QHash<QString, QString> &map);
     QHash<QString, QString> loadEmojiMap() const;
 
+    // Locally-muted threads, each key "convId\trootTs" (see Session::threadMuteKey).
+    void        saveMutedThreads(const QStringList &keys);
+    QStringList loadMutedThreads() const;
+
     // Persist/retrieve raw downloaded thumbnail bytes, keyed by URL.
     // The URL is hashed to a safe filename. The blob's mtime doubles as its
     // last-used time (loadImage bumps it) so CacheEvictor can drop the least

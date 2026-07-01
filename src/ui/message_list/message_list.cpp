@@ -1828,6 +1828,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
 
     auto *menu = new ContextMenu(this);
 
+    bool addedThreadSection = false;
     if (!_isThreadMode && canHostThread(msg)) {
         menu->addItem(
             tr("Reply in thread"),
@@ -1839,8 +1840,29 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
             false,
             ":/ui/message-square-reply.svg"
         );
-        menu->addSeparator();
+        addedThreadSection = true;
     }
+    // Mute/unmute the thread this message belongs to (root with replies, or a
+    // reply). Threads notify by default; muting silences their replies.
+    if (_session) {
+        if (const auto threadRoot = threadRootOf(msg)) {
+            const bool muted = _session->isThreadMuted(_currentConv, *threadRoot);
+            menu->addItem(
+                muted ? tr("Unmute thread") : tr("Mute thread"),
+                {},
+                [this, conv = _currentConv, root = *threadRoot, muted] {
+                    if (_session)
+                        _session->setThreadMuted(conv, root, !muted);
+                },
+                false,
+                false,
+                muted ? ":/ui/bell.svg" : ":/ui/bell-off.svg"
+            );
+            addedThreadSection = true;
+        }
+    }
+    if (addedThreadSection)
+        menu->addSeparator();
 
     if (canEdit) {
         menu->addItem(

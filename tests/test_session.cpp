@@ -1123,6 +1123,117 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew for a reply to a thread I started badges like a mention",
+    "[session][events]"
+) {
+    // meUserId is U1. U2 replies to a thread whose root I authored — Slack tags
+    // the reply with parent_user_id=U1. Even without an @mention, this must badge
+    // the channel (red mention badge), matching "replies to threads you follow".
+    Message msg;
+    msg.ts           = "501.000";
+    msg.threadRoot   = Ts{"500.000"};
+    msg.parentUserId = UserId{"U1"};
+    msg.author       = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    auto *c = session->findConversation(ConversationId{"C2"});
+    CHECK(c->unread == 1);
+    CHECK(c->mentionCount == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvMessageNew for a reply to someone else's thread does not badge",
+    "[session][events]"
+) {
+    // Reply to a thread U3 started (parent_user_id=U3, not me) with no mention:
+    // stays in the Threads view, no channel badge — unchanged behavior.
+    Message msg;
+    msg.ts           = "501.000";
+    msg.threadRoot   = Ts{"500.000"};
+    msg.parentUserId = UserId{"U3"};
+    msg.author       = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C2"}, msg});
+    CHECK(session->findConversation(ConversationId{"C2"})->unread == 0);
+}
+
+// ── Thread mute ───────────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "muting a thread suppresses its followed-reply badge", "[session][thread]"
+) {
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    CHECK_FALSE(session->isThreadMuted(conv, root));
+    session->setThreadMuted(conv, root, true);
+    CHECK(session->isThreadMuted(conv, root));
+
+    // A reply to my own thread would normally badge (isFollowedThreadReply); the
+    // mute suppresses it.
+    Message reply;
+    reply.ts           = "501.000";
+    reply.threadRoot   = root;
+    reply.parentUserId = UserId{"U1"}; // I started the thread
+    reply.author       = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{conv, reply});
+    CHECK(session->findConversation(conv)->unread == 0);
+
+    // Unmuting lets the next reply badge again.
+    session->setThreadMuted(conv, root, false);
+    Message reply2 = reply;
+    reply2.ts      = "502.000";
+    stub->fireEvent(EvMessageNew{conv, reply2});
+    CHECK(session->findConversation(conv)->unread == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a muted thread still badges an explicit @mention", "[session][thread]"
+) {
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    session->setThreadMuted(conv, root, true);
+
+    Message reply;
+    reply.ts         = "501.000";
+    reply.threadRoot = root;
+    reply.author     = UserId{"U2"};
+    reply.rawText    = "<@U1> please look"; // mentions get through a muted thread
+    stub->fireEvent(EvMessageNew{conv, reply});
+    auto *c = session->findConversation(conv);
+    CHECK(c->unread == 1);
+    CHECK(c->mentionCount == 1);
+}
+
+TEST_CASE("thread mute persists across sessions", "[session][thread]") {
+    const QString teamId = "T_SESSION_THREAD_MUTE";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    {
+        auto backend    = std::make_unique<StubBackend>();
+        backend->_meId  = UserId{"U1"};
+        backend->_convs = std::vector<Conversation>{kRandom};
+        Session session(std::move(backend), teamId);
+        session.start();
+        session.setThreadMuted(conv, root, true);
+    }
+    // A fresh Session on the same workspace loads the mute from cache.
+    {
+        auto backend    = std::make_unique<StubBackend>();
+        backend->_meId  = UserId{"U1"};
+        backend->_convs = std::vector<Conversation>{kRandom};
+        Session session(std::move(backend), teamId);
+        session.start();
+        CHECK(session.isThreadMuted(conv, root));
+        CHECK_FALSE(session.isThreadMuted(conv, Ts{"999.000"}));
+    }
+    QDir(baseDir).removeRecursively();
+}
+
+TEST_CASE_METHOD(
     SessionFixture, "EvMessageNew counts @here broadcast as a mention", "[session][events]"
 ) {
     Message msg;

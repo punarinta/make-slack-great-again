@@ -482,6 +482,27 @@ TEST_CASE("toMessage thread reply sets threadRoot", "[mappers][message]") {
     CHECK(*m.threadRoot == "100.000");
 }
 
+TEST_CASE("toMessage thread reply parses parent_user_id", "[mappers][message]") {
+    auto m = JsonMappers::toMessage(obj(R"({
+        "ts": "200.000", "thread_ts": "100.000", "user": "U2",
+        "parent_user_id": "U1", "text": "reply"
+    })"));
+    CHECK(m.parentUserId == UserId{"U1"}); // author of the thread root
+    // isFollowedThreadReply keys off this: U1's own thread got a reply from U2.
+    CHECK(isFollowedThreadReply(m, UserId{"U1"}));
+    CHECK_FALSE(isFollowedThreadReply(m, UserId{"U2"}));
+}
+
+TEST_CASE(
+    "toMessage non-reply has no parent_user_id, is not a followed reply", "[mappers][message]"
+) {
+    auto m = JsonMappers::toMessage(obj(R"({
+        "ts": "100.000", "user": "U1", "text": "top-level"
+    })"));
+    CHECK(m.parentUserId.value.isEmpty());
+    CHECK_FALSE(isFollowedThreadReply(m, UserId{"U1"}));
+}
+
 TEST_CASE("toMessage thread root ts==thread_ts gives no threadRoot", "[mappers][message]") {
     auto m = JsonMappers::toMessage(obj(R"({
         "ts": "100.000", "thread_ts": "100.000", "user": "U1", "text": "",

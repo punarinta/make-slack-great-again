@@ -520,6 +520,9 @@ struct Message {
     int                   replyCount = 0; // >0 on thread root messages
     std::vector<UserId>   replyUsers;     // participants (up to 5, from reply_users)
     std::optional<Ts>     latestReply;    // ts of the most recent reply
+    UserId                parentUserId;   // author of the thread root (Slack's parent_user_id),
+                                          // set on thread replies; == me identifies a reply to a
+                                          // thread we started (see isFollowedThreadReply)
     UserId                author;
     QString               botName;      // display name for bot_message (from username field)
     QString               botAvatarUrl; // avatar URL for bot_message (from bot_profile or icon_url)
@@ -538,6 +541,17 @@ struct Message {
     bool                    pending                           = false;
     bool                    operator==(const Message &) const = default;
 };
+
+// True when `msg` is a reply to a thread the authed user is "following", so it
+// should notify and badge regardless of the channel's notification level —
+// matching Slack's default-on "Replies to threads you're following". The
+// per-event signal is parent_user_id: a reply carries the thread root's author,
+// so a reply to a thread `me` started is `parentUserId == me`. (Threads `me`
+// only replied to aren't covered here — Slack exposes no per-event flag for
+// that; it would need separate thread-subscription state.)
+inline bool isFollowedThreadReply(const Message &msg, const UserId &me) {
+    return msg.threadRoot.has_value() && !me.value.isEmpty() && msg.parentUserId == me;
+}
 
 // True for Slack "activity" messages — channel/member lifecycle events (joins,
 // topic/purpose/name changes, archive, integration add/remove, pins, …) rather
@@ -578,6 +592,17 @@ inline bool isMutedMessage(const Message &m) {
 // the "Reply in thread" affordance must be hidden for them.
 inline bool canHostThread(const Message &m) {
     return !isSystemEvent(m) && !isMutedMessage(m);
+}
+
+// The thread `m` belongs to, identified by the root's ts: `m` itself when it's a
+// thread root with replies, or its threadRoot when it's a reply. nullopt when
+// `m` isn't part of any thread (so no thread-mute affordance should be shown).
+inline std::optional<Ts> threadRootOf(const Message &m) {
+    if (m.threadRoot)
+        return m.threadRoot; // a reply
+    if (m.replyCount > 0)
+        return m.ts; // a root that has replies
+    return std::nullopt;
 }
 
 struct MessagePage {

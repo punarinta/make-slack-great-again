@@ -214,6 +214,13 @@ public:
     // Toggle the local "mute this person" switch (no backend support; cache-only).
     void setConvMuted(ConversationId conv, bool muted);
 
+    // Per-thread mute (local; no public API). A muted thread's replies stop
+    // badging and notifying — matching Slack's "Mute thread" — except explicit
+    // @mentions, which always get through. `root` is the thread root's ts.
+    // Threads are followed ("All new posts") by default, so absence = not muted.
+    bool isThreadMuted(const ConversationId &conv, const Ts &root) const;
+    void setThreadMuted(const ConversationId &conv, const Ts &root, bool muted);
+
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
 
@@ -448,6 +455,12 @@ private:
     QHash<QString, QList<Message>>     _unknownConvBacklog; // conv.value → queued msgs
     QSet<QString>                      _seenMsgKeys;        // "conv|ts" of delivered messages
     QQueue<QString>                    _seenMsgOrder;       // FIFO eviction for _seenMsgKeys
+    // Muted threads, keyed by threadMuteKey(conv, root). Loaded from cache at
+    // start(); persisted immediately on change (tiny payload).
+    QSet<QString>                      _mutedThreads;
+    static QString                     threadMuteKey(const ConversationId &conv, const Ts &root) {
+        return conv.value + QLatin1Char('\t') + root;
+    }
 
     // Throttle the rate-limit notice banner (429s cluster; don't spam).
     static constexpr qint64 kRateLimitNoticeGapMs  = 15'000;

@@ -92,12 +92,14 @@ void Session::start() {
         auto users = _cache->loadUsers();
         if (!users.empty())
             _users = std::move(users);
-        _botUsers = _cache->loadBots();
-        _emojiMap = _cache->loadEmojiMap();
+        _botUsers        = _cache->loadBots();
+        _emojiMap        = _cache->loadEmojiMap();
+        const auto muted = _cache->loadMutedThreads();
+        _mutedThreads    = QSet<QString>(muted.begin(), muted.end());
         // Seed our own user id from cache so optimistic sends carry the right
         // author (avatar/name, and ghost removal on the realtime echo) even
         // before auth.test answers — or if it fails this run entirely.
-        _meUserId = _cache->loadMeUserId();
+        _meUserId        = _cache->loadMeUserId();
     }
 
     _backend->connectRealtime();
@@ -437,20 +439,30 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
                 _backend->markRead(conv, msg.ts);
                 break;
             }
-            const bool     isDm      = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-            const QString &mt        = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
-            const bool     isMention = mrkdwnMentions(mt, _meUserId);
-            // Plain channel thread replies don't mark the channel unread (they
-            // live in the Threads view); mentions and DM replies still count.
-            if (msg.threadRoot && !isDm && !isMention)
+            const bool     isDm        = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+            const QString &mt          = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+            const bool     isMention   = mrkdwnMentions(mt, _meUserId);
+            // A thread I muted: its replies stop badging (Slack's "Mute thread"),
+            // except an explicit @mention, which always gets through.
+            const bool     threadMuted = msg.threadRoot && isThreadMuted(conv, *msg.threadRoot);
+            // A reply to a thread we started badges like a mention, matching
+            // Slack's "replies to threads you're following" (see maybeNotify) —
+            // unless that thread is muted.
+            const bool     isFollowed  = !threadMuted && isFollowedThreadReply(msg, _meUserId);
+            // Suppress a muted thread's non-mention replies entirely (even in a
+            // DM/MPDM). Otherwise plain channel thread replies don't mark the
+            // channel unread (they live in the Threads view); mentions,
+            // followed-thread replies, and DM replies still count.
+            if (msg.threadRoot && !isMention && !isFollowed && (threadMuted || !isDm))
                 break;
             if (!c.isMuted) {
                 c.unread++;
-                if (isDm || isMention)
+                if (isDm || isMention || isFollowed)
                     c.mentionCount++;
-            } else if (!isDm && isMention) {
-                // Muted channels stay quiet except for explicit mentions, which
-                // still badge (official-client behavior).
+            } else if (!isDm && (isMention || isFollowed)) {
+                // Muted channels stay quiet except for explicit mentions and
+                // followed-thread replies, which still badge (official-client
+                // behavior).
                 c.unread++;
                 c.mentionCount++;
             }
@@ -1893,4 +1905,20 @@ void Session::setConvMuted(ConversationId conv, bool muted) {
         }
     }
     _conversations = std::move(convs);
+}
+
+bool Session::isThreadMuted(const ConversationId &conv, const Ts &root) const {
+    return _mutedThreads.contains(threadMuteKey(conv, root));
+}
+
+void Session::setThreadMuted(const ConversationId &conv, const Ts &root, bool muted) {
+    const QString key = threadMuteKey(conv, root);
+    if (muted == _mutedThreads.contains(key))
+        return; // no change
+    if (muted)
+        _mutedThreads.insert(key);
+    else
+        _mutedThreads.remove(key);
+    if (_cache)
+        _cache->saveMutedThreads(QStringList(_mutedThreads.begin(), _mutedThreads.end()));
 }

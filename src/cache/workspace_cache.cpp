@@ -534,6 +534,20 @@ qint64 WorkspaceCache::loadActivitySweepAt() const {
     return doc.object()["sweepAt"].toVariant().toLongLong();
 }
 
+void WorkspaceCache::saveMutedThreads(const QStringList &keys) {
+    auto o            = QJsonDocument::fromJson(readFile(metaPath())).object();
+    o["mutedThreads"] = QJsonArray::fromStringList(keys);
+    writeJson(metaPath(), QJsonDocument(o));
+}
+
+QStringList WorkspaceCache::loadMutedThreads() const {
+    const auto  doc = QJsonDocument::fromJson(readFile(metaPath()));
+    QStringList out;
+    for (const auto &v : doc.object()["mutedThreads"].toArray())
+        out.append(v.toString());
+    return out;
+}
+
 void WorkspaceCache::saveEmojiMap(const QHash<QString, QString> &map) {
     QJsonObject o;
     for (auto it = map.constBegin(); it != map.constEnd(); ++it)

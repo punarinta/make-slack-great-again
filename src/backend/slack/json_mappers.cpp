@@ -593,6 +593,9 @@ Message toMessage(const QJsonObject &o) {
         .latestReply  = msg.contains("latest_reply")
                             ? std::optional<Ts>(msg.value("latest_reply").toString())
                             : std::nullopt,
+        // Author of the thread root, present on reply events; drives the
+        // "reply to a thread I started" notification (isFollowedThreadReply).
+        .parentUserId = UserId{msg.value("parent_user_id").toString()},
         .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
         .botName      = botName,
         .botAvatarUrl = botAvatarUrl,
