@@ -133,6 +133,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/util/desktop_notifier.h
     src/util/emoji.cpp
     src/util/emoji_catalog.cpp
+    src/util/emoji_data.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp
     src/util/sound_player.cpp
