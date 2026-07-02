@@ -583,9 +583,13 @@ void MessageListWidget::paintAttachments(
                     barColor = c;
             }
             p.save();
+            p.setRenderHint(QPainter::Antialiasing);
             p.setPen(Qt::NoPen);
             p.setBrush(barColor);
-            p.drawRect(QRect(left, y, kAttachBarW, totalH > 0 ? totalH : docH));
+            const qreal radius = kAttachBarW / 2.0;
+            p.drawRoundedRect(
+                QRectF(left, y, kAttachBarW, totalH > 0 ? totalH : docH), radius, radius
+            );
             p.restore();
         }
 
