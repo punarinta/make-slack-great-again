@@ -329,6 +329,87 @@ TEST_CASE(
     CHECK(containsTs(view, "1000.000005"));
 }
 
+static const Reaction *
+findReaction(const std::vector<Message> &msgs, const QString &ts, const QString &name) {
+    for (const auto &m : msgs)
+        if (m.ts == ts)
+            for (const auto &r : m.reactions)
+                if (r.name == name)
+                    return &r;
+    return nullptr;
+}
+
+TEST_CASE(
+    "duplicate reaction_added echo for the same user is not counted twice",
+    "[message_list][reactions]"
+) {
+    Fixture f;
+
+    // The optimistic local add and the Socket Mode echo (or an envelope
+    // redelivery) both report the same (user, emoji) — the pill must show 1,
+    // not briefly 2.
+    f.stub->_historyPage = {makeMessage("1000.000001", "nice")};
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    f.stub->_events.fire(Event{EvReactionAdded{kConv.id, "1000.000001", "+1", UserId{"U1"}}});
+    f.stub->_events.fire(Event{EvReactionAdded{kConv.id, "1000.000001", "+1", UserId{"U1"}}});
+
+    const auto  view = liveView(list, f.session.get(), kConv.id);
+    const auto *r    = findReaction(view, "1000.000001", "+1");
+    REQUIRE(r != nullptr);
+    CHECK(r->count == 1);
+    CHECK(r->users == std::vector<UserId>{UserId{"U1"}});
+}
+
+TEST_CASE(
+    "duplicate reaction_removed echo does not double-decrement others' reactions",
+    "[message_list][reactions]"
+) {
+    Fixture f;
+
+    auto msg             = makeMessage("1000.000001", "nice");
+    msg.reactions        = {{"+1", 2, {UserId{"U1"}, UserId{"U2"}}}};
+    f.stub->_historyPage = {msg};
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    // U1 un-reacts; the echo arrives twice (optimistic remove + socket echo).
+    // U2's like must survive.
+    f.stub->_events.fire(Event{EvReactionRemoved{kConv.id, "1000.000001", "+1", UserId{"U1"}}});
+    f.stub->_events.fire(Event{EvReactionRemoved{kConv.id, "1000.000001", "+1", UserId{"U1"}}});
+
+    const auto  view = liveView(list, f.session.get(), kConv.id);
+    const auto *r    = findReaction(view, "1000.000001", "+1");
+    REQUIRE(r != nullptr);
+    CHECK(r->count == 1);
+    CHECK(r->users == std::vector<UserId>{UserId{"U2"}});
+}
+
+TEST_CASE(
+    "reaction_removed still decrements when the user list is truncated", "[message_list][reactions]"
+) {
+    Fixture f;
+
+    // History reactions can carry count > users.size() (Slack truncates the
+    // users array). A removal by an unlisted user must still drop the count.
+    auto msg             = makeMessage("1000.000001", "popular");
+    msg.reactions        = {{"+1", 3, {UserId{"U1"}}}};
+    f.stub->_historyPage = {msg};
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    f.stub->_events.fire(Event{EvReactionRemoved{kConv.id, "1000.000001", "+1", UserId{"U9"}}});
+
+    const auto  view = liveView(list, f.session.get(), kConv.id);
+    const auto *r    = findReaction(view, "1000.000001", "+1");
+    REQUIRE(r != nullptr);
+    CHECK(r->count == 2);
+}
+
 TEST_CASE(
     "setSession with no conversation open does not touch the cache", "[message_list][scroll]"
 ) {

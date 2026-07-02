@@ -3153,8 +3153,12 @@ void MessageListWidget::handleEvent(const Event &e) {
         bool  found     = false;
         for (auto &r : reactions) {
             if (r.name == ev->name) {
-                r.count++;
-                r.users.push_back(ev->user);
+                // Idempotent vs the optimistic local add: our own reaction echoes
+                // back via Socket Mode after we've already counted it.
+                if (std::find(r.users.begin(), r.users.end(), ev->user) == r.users.end()) {
+                    r.count++;
+                    r.users.push_back(ev->user);
+                }
                 found = true;
                 break;
             }
@@ -3173,9 +3177,14 @@ void MessageListWidget::handleEvent(const Event &e) {
         auto &reactions = _items[i].msg.reactions;
         for (auto rit = reactions.begin(); rit != reactions.end(); ++rit) {
             if (rit->name == ev->name) {
-                rit->count  = std::max(0, rit->count - 1);
-                auto &users = rit->users;
+                auto      &users = rit->users;
+                const auto sz    = users.size();
                 users.erase(std::remove(users.begin(), users.end(), ev->user), users.end());
+                // Idempotent vs the optimistic local remove (own un-react already
+                // decremented). Still decrement when the user list is truncated
+                // (history reactions can carry count > users.size()).
+                if (users.size() != sz || (int)sz < rit->count)
+                    rit->count = std::max(0, rit->count - 1);
                 if (rit->count == 0)
                     reactions.erase(rit);
                 break;
