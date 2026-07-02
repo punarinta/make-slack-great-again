@@ -50,6 +50,12 @@ function(add_msga_qt_test target)
 endfunction()
 
 # Widget test helper: needs QApplication + Qt6::Widgets.
+# ctest runs these headless (offscreen QPA): no windows pop over the developer's
+# desktop mid-run, and results stop depending on the live compositor (Wayland
+# hides parentless popups, focus/expose timing varies per WM — the same reason
+# test_user_profile_card already forced offscreen internally). To watch a test's
+# UI while debugging, run the test binary directly — the property applies only
+# under ctest.
 function(add_msga_widget_test target)
     add_executable(${target} ${ARGN})
     set_target_properties(${target} PROPERTIES AUTOMOC ON)
@@ -60,6 +66,7 @@ function(add_msga_widget_test target)
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Svg
         Microsoft.GSL::GSL)
     add_test(NAME ${target} COMMAND ${target})
+    set_tests_properties(${target} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endfunction()
 
 add_msga_test(test_emoji
