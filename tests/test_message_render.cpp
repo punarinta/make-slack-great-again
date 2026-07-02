@@ -299,6 +299,36 @@ TEST_CASE("buildAttachHtml decodes HTML entities in title and footer", "[render]
     CHECK(html.contains("Bits &amp; Bobs"));
 }
 
+TEST_CASE("buildAttachHtml resolves Slack tokens in the title", "[render][attachment]") {
+    // Outlook Calendar reminders put <!date^…> ranges and the <url|label> event
+    // link in the attachment *title* (no title_link) — they must render resolved,
+    // not as literal tokens.
+    Attachment att;
+    att.title          = "<!date^1782976500^{time}|10:15 AM> - <!date^1782977400^{time}|10:30 AM> "
+                         "<https://outlook.office365.com/owa/?itemid=AAk&amp;exvsurl=1&amp;"
+                         "path=/calendar/item|Hitta Mer Stand-Up>";
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(!html.contains("!date"));      // date tokens resolved to formatted times
+    CHECK(!html.contains("1782976500")); // raw ts gone
+    CHECK(html.contains("font-weight:bold"));
+    CHECK(html.contains("Hitta Mer Stand-Up</a>")); // event link is clickable
+    CHECK(html.contains("https://outlook.office365.com/owa/?itemid=AAk&amp;exvsurl=1"));
+}
+
+TEST_CASE(
+    "buildAttachHtml title tokens collapse to text inside a title_link", "[render][attachment]"
+) {
+    Attachment att;
+    att.title          = "Event <https://example.com/inner|details>";
+    att.titleLink      = "https://example.com/outer";
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    // The whole title is one anchor to title_link; the embedded token collapses
+    // to its label (anchors can't nest).
+    CHECK(html.contains("<a href='https://example.com/outer'"));
+    CHECK(html.contains("Event details</a>"));
+    CHECK(!html.contains("example.com/inner"));
+}
+
 TEST_CASE("buildAttachHtml renders legacy action buttons, skipping fallback", "[render][buttons]") {
     Attachment att;
     att.fallback = "You are unable to respond from here";

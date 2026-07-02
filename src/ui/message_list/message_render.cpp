@@ -146,6 +146,8 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
     for (const auto &att : msg.attachments) {
         if (!att.pretext.isEmpty()) // pretext is parsed as mrkdwn at render time
             addFrom(MrkdwnParser::parse(att.pretext));
+        if (!att.title.isEmpty()) // title is token-resolved at render time
+            addFrom(MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.title)));
         addFrom(att.text);
         for (const auto &f : att.fields)
             addFrom(f.value);
@@ -1036,14 +1038,20 @@ buildAttachHtml(const Attachment &att, const Session *session, const GifRenderCo
         html += "<p style='margin:0;font-size:0.85em;color:" + Th::qss(Th::c().text.tertiary) +
                 "'>" + MrkdwnParser::decodeEntities(att.authorName).toHtmlEscaped() + "</p>";
     if (!att.title.isEmpty()) {
-        const QString title = MrkdwnParser::decodeEntities(att.title).toHtmlEscaped();
+        // Titles don't support mrkdwn marks, but bots (e.g. Outlook Calendar)
+        // embed <!date^…> and <url|label> tokens in them and Slack's clients
+        // resolve those everywhere — so resolve tokens, not full mrkdwn.
+        const TextWithEntities title =
+            MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.title));
         if (!att.titleLink.isEmpty())
+            // The whole title is one link; embedded tokens collapse to their
+            // resolved plain text (anchors can't nest).
             html += "<p style='margin:0;font-weight:bold'><a href='" +
                     MrkdwnParser::decodeEntities(att.titleLink).toHtmlEscaped() +
                     "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
-                    title + "</a></p>";
+                    title.text.toHtmlEscaped() + "</a></p>";
         else
-            html += "<p style='margin:0;font-weight:bold'>" + title + "</p>";
+            html += "<p style='margin:0;font-weight:bold'>" + toHtml(title, session) + "</p>";
     }
     if (!att.text.text.isEmpty())
         html += wrapParagraph(toHtml(att.text, session), "margin:2px 0 0");
