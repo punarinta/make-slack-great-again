@@ -51,6 +51,12 @@ public:
     void        saveMutedThreads(const QStringList &keys);
     QStringList loadMutedThreads() const;
 
+    // The channel_not_found negative cache (Session::_deadConvIds): conversation
+    // ids conversations.info reported as nonexistent for this workspace. Persisted
+    // so a restart doesn't re-probe every foreign/dead conversation from scratch.
+    void        saveDeadConvIds(const QStringList &ids);
+    QStringList loadDeadConvIds() const;
+
     // Persist/retrieve raw downloaded thumbnail bytes, keyed by URL.
     // The URL is hashed to a safe filename. The blob's mtime doubles as its
     // last-used time (loadImage bumps it) so CacheEvictor can drop the least

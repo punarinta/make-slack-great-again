@@ -536,6 +536,21 @@ struct SessionFixture {
         QDir(baseDir).removeRecursively();
     }
 
+    // Tear down the current session (its destructor flushes any debounced cache
+    // saves) and start a fresh one against the same on-disk cache — a simulated
+    // app restart.
+    void restartSession(std::vector<Conversation> convs, std::vector<User> users) {
+        auto  backend = std::make_unique<StubBackend>();
+        auto *fresh   = backend.get();
+        fresh->_meId  = UserId{"U1"};
+        fresh->_convs = std::move(convs);
+        fresh->_users = std::move(users);
+        session.reset();
+        stub    = fresh;
+        session = std::make_unique<Session>(std::move(backend), teamId);
+        session->start();
+    }
+
     // Collect events fired after this helper is called.
     // Usage: auto [events, lt] = collectEvents();  stub->fireEvent(...);
     struct EventCollector {
@@ -1145,6 +1160,96 @@ TEST_CASE_METHOD(
     CHECK(std::get<EvMessageNew>(events[0]).conv == ConversationId{"C9"});
     // And no extra conversations.info call — it's tracked, so no unknown-conv fetch.
     CHECK(stub->infoRequested.count("C9") == 2);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "the channel_not_found negative cache persists across restarts",
+    "[session][events]"
+) {
+    // First run learns C77 is foreign. The set is persisted, so the next run
+    // must NOT re-probe conversations.info for it — previously every launch
+    // re-learned the whole set from scratch, a startup burst of
+    // channel_not_found per workspace.
+    stub->infoResults["C77"] = Conversation{.id = ConversationId{"C77"}, .notFound = true};
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C77"}, msg});
+    REQUIRE(stub->infoRequested.count("C77") == 1);
+
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+
+    Message msg2;
+    msg2.ts     = "600.000";
+    msg2.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C77"}, msg2});
+    CHECK(stub->infoRequested.count("C77") == 0); // remembered from the previous run
+    CHECK(session->findConversation(ConversationId{"C77"}) == nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a persisted dead mark clears when the conversation shows up in conversations.list",
+    "[session][events]"
+) {
+    // C77 went dead in a previous run, then we were invited while the app was
+    // closed — no realtime join event ever reached us, but the next run's
+    // conversations.list includes it. The stale mark must not survive the list
+    // (reconcileDeadConvIds), or the channel would stay excluded from the
+    // sweeps despite being ours.
+    stub->infoResults["C77"] = Conversation{.id = ConversationId{"C77"}, .notFound = true};
+    Message msg;
+    msg.ts     = "500.000";
+    msg.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C77"}, msg});
+    REQUIRE(stub->infoRequested.count("C77") == 1);
+
+    const Conversation joined{
+        .id       = ConversationId{"C77"},
+        .kind     = ConvKind::PublicChannel,
+        .name     = "now-ours",
+        .isMember = true,
+        .lastRead = "0",
+    };
+    restartSession({kGeneral, kRandom, joined}, {kAlice, kBob});
+
+    session.reset(); // flush the reconciled set to disk
+    CHECK(!WorkspaceCache(teamId).loadDeadConvIds().contains("C77"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a dead DM survives list presence but clears when its peer is reactivated",
+    "[session][events]"
+) {
+    // Slack lists a DM forever even when its peer is deactivated and
+    // conversations.info answers channel_not_found, so list presence alone must
+    // NOT clear a DM's dead mark — that would re-probe (and re-mark) every dead
+    // DM on every launch. The peer coming back to life is the real signal.
+    const Conversation dmGone{
+        .id       = ConversationId{"D9"},
+        .kind     = ConvKind::Im,
+        .name     = "ghost",
+        .isMember = true,
+        .lastRead = "0",
+        .dmUser   = UserId{"U3"},
+    };
+    session.reset();
+    WorkspaceCache(teamId).saveDeadConvIds({"D9"});
+
+    restartSession({kGeneral, dmGone}, {kAlice, kGone});
+    SECTION("deactivated peer: the mark stays") {
+        session.reset();
+        CHECK(WorkspaceCache(teamId).loadDeadConvIds().contains("D9"));
+    }
+    SECTION("peer reactivated (EvUserChanged): the mark clears") {
+        User revived          = kGone;
+        revived.isDeactivated = false;
+        stub->fireEvent(EvUserChanged{revived});
+        session.reset();
+        CHECK(!WorkspaceCache(teamId).loadDeadConvIds().contains("D9"));
+    }
 }
 
 TEST_CASE_METHOD(

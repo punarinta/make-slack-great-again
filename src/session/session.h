@@ -372,6 +372,22 @@ private:
     // added, DM opened) so a previously-foreign id can be fetched again.
     void markConvAlive(const ConversationId &id);
 
+    // Add an id to the negative cache. The single mutation point, so every
+    // insert also schedules the debounced persist.
+    void markConvDead(const ConversationId &id);
+
+    // Drop persisted dead marks a fresh conversations.list contradicts: a listed
+    // channel/MPDM provably exists again (invited/unarchived while the app was
+    // closed — the realtime join event that would have called markConvAlive never
+    // reached us). A listed 1:1 DM clears only when its peer is a loaded, active
+    // user: Slack lists dead-peer DMs forever (see isDeadDm), so clearing those on
+    // list presence alone would re-probe and re-mark them every run.
+    void reconcileDeadConvIds(const std::vector<Conversation> &convs);
+
+    // Debounced _deadConvIds persistence: a sweep marks dozens of ids in one
+    // burst; coalesce them into a single meta write. Flushed by the destructor.
+    void scheduleSaveDeadConvIds();
+
     // A DM whose peer left/was deactivated — conversations.info answers
     // channel_not_found for these, so the DM/MPDM sweeps skip them. (MPDMs have no
     // single peer and always sweep.)
@@ -429,9 +445,10 @@ private:
     QTimer                                   _selfPresenceTimer;
     QTimer                                   _realtimeSafetyTimer; // 15 s; checkRealtimeHealth()
     QTimer                                   _saveUnreadsTimer; // debounces scheduleSaveUnreads()
-    rpl::event_stream<Event>                 _eventHub;
-    rpl::event_stream<QString>               _errorHub;
-    rpl::event_stream<>                      _emojiMapLoadedHub;
+    QTimer                     _saveDeadConvsTimer; // debounces scheduleSaveDeadConvIds()
+    rpl::event_stream<Event>   _eventHub;
+    rpl::event_stream<QString> _errorHub;
+    rpl::event_stream<>        _emojiMapLoadedHub;
 
     UserId                    _meUserId;          // set via setMe() once auth.test result is known
     bool                      _meIsAdmin = false; // is_admin || is_owner from auth.test
@@ -465,9 +482,13 @@ private:
     // conversation re-firing a fetch on every message (fetchUnknownConversation)
     // and stops the reconnect sweeps re-hitting dead DMs every time
     // (dmSweepTargets). Never consulted on the handleNewMessage notify path, so
-    // it can't suppress a message for a conversation we actually track. Cleared
-    // for an id the moment it legitimately becomes ours (markConvAlive), so a
-    // channel we're later invited to is not permanently blacklisted.
+    // it can't suppress a message for a conversation we actually track.
+    // Persisted across restarts (loadDeadConvIds/saveDeadConvIds) so startup
+    // doesn't re-probe the whole set. No TTL; instead every way an id can come
+    // back to life clears it: join/member-added/DM-open events (markConvAlive),
+    // presence in a fresh conversations.list (reconcileDeadConvIds — covers
+    // anything that happened while the app was closed), and a DM peer's
+    // reactivation (the EvUserChanged handler).
     QSet<QString>                      _deadConvIds;  // conv.value → known channel_not_found
     QSet<QString>                      _seenMsgKeys;  // "conv|ts" of delivered messages
     QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys

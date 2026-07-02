@@ -548,6 +548,20 @@ QStringList WorkspaceCache::loadMutedThreads() const {
     return out;
 }
 
+void WorkspaceCache::saveDeadConvIds(const QStringList &ids) {
+    auto o           = QJsonDocument::fromJson(readFile(metaPath())).object();
+    o["deadConvIds"] = QJsonArray::fromStringList(ids);
+    writeJson(metaPath(), QJsonDocument(o));
+}
+
+QStringList WorkspaceCache::loadDeadConvIds() const {
+    const auto  doc = QJsonDocument::fromJson(readFile(metaPath()));
+    QStringList out;
+    for (const auto &v : doc.object()["deadConvIds"].toArray())
+        out.append(v.toString());
+    return out;
+}
+
 void WorkspaceCache::saveEmojiMap(const QHash<QString, QString> &map) {
     QJsonObject o;
     for (auto it = map.constBegin(); it != map.constEnd(); ++it)

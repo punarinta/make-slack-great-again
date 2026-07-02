@@ -24,6 +24,8 @@ Session::~Session() {
     // drop, app exit) before the timer fired.
     if (_saveUnreadsTimer.isActive())
         persistUnreads();
+    if (_saveDeadConvsTimer.isActive())
+        _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
 }
 
 // App-level slash commands: OUR app's own commands, available in every workspace
@@ -96,6 +98,12 @@ void Session::start() {
         _emojiMap        = _cache->loadEmojiMap();
         const auto muted = _cache->loadMutedThreads();
         _mutedThreads    = QSet<QString>(muted.begin(), muted.end());
+        // The channel_not_found negative cache survives restarts so startup
+        // doesn't re-probe every foreign/dead conversation. reconcileDeadConvIds
+        // (off the fresh conversations.list) clears whatever came back to life
+        // while the app was closed.
+        const auto dead  = _cache->loadDeadConvIds();
+        _deadConvIds     = QSet<QString>(dead.begin(), dead.end());
         // Seed our own user id from cache so optimistic sends carry the right
         // author (avatar/name, and ghost removal on the realtime echo) even
         // before auth.test answers — or if it fails this run entirely.
@@ -125,6 +133,12 @@ void Session::start() {
     // Debounced unread persistence (see scheduleSaveUnreads).
     _saveUnreadsTimer.setSingleShot(true);
     QObject::connect(&_saveUnreadsTimer, &QTimer::timeout, [this] { persistUnreads(); });
+
+    // Debounced dead-conversation persistence (see scheduleSaveDeadConvIds).
+    _saveDeadConvsTimer.setSingleShot(true);
+    QObject::connect(&_saveDeadConvsTimer, &QTimer::timeout, [this] {
+        _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
+    });
 
     // Load conversations; update cache on arrival.
     reloadConversations(/*refreshEmoji=*/true);
@@ -257,6 +271,14 @@ void Session::start() {
                     }
                     _cache->saveUsers(users);
                     _users = std::move(users);
+                    // A reactivated peer makes their DM answer conversations.info
+                    // again — drop any dead mark so the sweeps resume covering it.
+                    // (conversations.list can't clear DMs: it lists dead-peer DMs
+                    // forever, see reconcileDeadConvIds.)
+                    if (!ev->user.isDeactivated)
+                        for (const auto &c : _conversations.current())
+                            if (c.kind == ConvKind::Im && c.dmUser == ev->user.id)
+                                markConvAlive(c.id);
                 } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {
@@ -726,6 +748,10 @@ void Session::reloadConversations(bool refreshEmoji) {
                         break;
                     }
                 }
+                // Before the sweeps consult _deadConvIds: drop persisted dead
+                // marks this fresh list contradicts (invited/unarchived while
+                // the app was closed).
+                reconcileDeadConvIds(convs);
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
                 enrichDmActivity();
@@ -807,7 +833,7 @@ void Session::fetchUnknownConversation(ConversationId id, Message msg) {
                 // completion (transient failure) leaves the id fetchable so a
                 // later message retries.
                 if (info.notFound) {
-                    _deadConvIds.insert(id.value);
+                    markConvDead(id);
                     return;
                 }
                 if (info.id.value.isEmpty())
@@ -851,7 +877,40 @@ void Session::fetchUnknownConversation(ConversationId id, Message msg) {
 }
 
 void Session::markConvAlive(const ConversationId &id) {
-    _deadConvIds.remove(id.value);
+    if (_deadConvIds.remove(id.value))
+        scheduleSaveDeadConvIds();
+}
+
+void Session::markConvDead(const ConversationId &id) {
+    _deadConvIds.insert(id.value);
+    scheduleSaveDeadConvIds();
+}
+
+void Session::scheduleSaveDeadConvIds() {
+    // ~1 s debounce: a sweep's burst of channel_not_found answers collapses
+    // into one meta write.
+    _saveDeadConvsTimer.start(1000);
+}
+
+void Session::reconcileDeadConvIds(const std::vector<Conversation> &convs) {
+    if (_deadConvIds.isEmpty())
+        return;
+    bool changed = false;
+    for (const auto &c : convs) {
+        if (!_deadConvIds.contains(c.id.value))
+            continue;
+        // A listed channel/MPDM exists by definition — we were invited or it was
+        // unarchived while the app was closed. A 1:1 DM is listed forever even
+        // when conversations.info answers channel_not_found (dead peer), so it
+        // clears only when its peer is loaded and provably active; the
+        // EvUserChanged handler catches a live reactivation.
+        if (c.kind == ConvKind::Im && (!c.dmUser || !findUser(*c.dmUser) || isDeadDm(c)))
+            continue;
+        _deadConvIds.remove(c.id.value);
+        changed = true;
+    }
+    if (changed)
+        scheduleSaveDeadConvIds();
 }
 
 bool Session::isDeadDm(const Conversation &c) const {
@@ -901,7 +960,7 @@ void Session::resyncUnreads() {
                                                      // remember it so later sweeps
                                                      // skip it (dmSweepTargets).
                                                      if (info.notFound) {
-                                                         _deadConvIds.insert(id.value);
+                                                         markConvDead(id);
                                                          return;
                                                      }
                                                      auto convs   = _conversations.current();
@@ -977,7 +1036,7 @@ void Session::enrichDmActivity() {
                     // Dead DM/MPDM (peer gone, or another workspace's conv):
                     // remember it so later sweeps skip it (dmSweepTargets).
                     if (info.notFound) {
-                        _deadConvIds.insert(id.value);
+                        markConvDead(id);
                         return;
                     }
                     // Merge only the activity cursors. The info response lacks
