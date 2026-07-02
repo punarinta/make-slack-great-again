@@ -42,14 +42,21 @@ PaintContext MessageListWidget::makePaintContext() const {
 // ── Paint entry point ─────────────────────────────────────────────────────────
 
 void MessageListWidget::doPaint(QPaintEvent *event) {
+    // Partial paints come from per-frame GIF updates (watchGifMovie) and OS
+    // exposes; scrolls, resizes and layout changes always arrive as full-
+    // viewport updates (scrollContentsBy calls viewport()->update()).
+    const bool fullPaint = event->rect().contains(viewport()->rect());
+
     triggerMissingDownloads();
     triggerMissingAvatarDownloads();
 
     // Lazy layout: rows about to be painted carry only a cheap estimate if they
     // were off-screen. Lay the visible ones out for real (and fix _tops via an
-    // anchor-preserving rebuild) before computing paint geometry below.
-    if (!_items.empty())
-        measureVisibleRows();
+    // anchor-preserving rebuild) before computing paint geometry below. If that
+    // shifted _tops during a partial paint, rows outside the clip now show stale
+    // pixels — schedule a full repaint to fix them up.
+    if (!_items.empty() && measureVisibleRows() && !fullPaint)
+        viewport()->update();
 
     QPainter p(viewport());
     p.setRenderHint(QPainter::Antialiasing);
@@ -59,6 +66,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     if ((_loading || _waiting) && _items.empty()) {
         // Nothing visible — make sure gif players from the previous conversation stop.
         _visibleGifs.clear();
+        _gifRects.clear();
         syncGifPlayback();
 
         _loadingAnim.paint(p, viewport()->rect());
@@ -93,6 +101,7 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     // Empty conversation (loaded, nothing to show): a centered placeholder.
     if (_items.empty()) {
         _visibleGifs.clear();
+        _gifRects.clear();
         syncGifPlayback();
 
         QFont f = QApplication::font();
@@ -107,18 +116,34 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     const int          scrollY = ctx.scrollY;
     const int          vh      = ctx.vh;
 
-    _visibleGifs.clear();
-    for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
+    // The visible-gif set is a property of the whole viewport — only a full
+    // paint sees every row, so only a full paint may rebuild it (a partial one
+    // would drop the gifs outside its clip and syncGifPlayback would pause them).
+    if (fullPaint) {
+        _visibleGifs.clear();
+        _gifRects.clear();
+    }
+    const int clipTop    = event->rect().top();
+    const int clipBottom = event->rect().bottom();
+    for (int i = firstVisibleRow(scrollY); i < static_cast<int>(_items.size()); ++i) {
         const int rowTop = _tops[i] - scrollY;
         const int rh     = rowHeight(i);
         if (rowTop + rh < 0)
             continue;
         if (rowTop > vh)
             break;
+        // On a partial paint, skip rows entirely outside the clip — except the
+        // hovered row, whose toolbar card overhangs its top edge into the row
+        // above and would otherwise be half-erased by that row's repaint.
+        if (!fullPaint && i != _hoveredRow && (rowTop + rh < clipTop || rowTop > clipBottom))
+            continue;
         paintRow(p, i, rowTop, ctx);
     }
     // Animated images: play the ones drawn this pass, pause everything else.
-    syncGifPlayback();
+    // (Partial paints keep the last full pass's set — visibility can't have
+    // changed without a full repaint being queued.)
+    if (fullPaint)
+        syncGifPlayback();
 
     // Thin Telegram-style scrollbar overlay
     paintScrollThumb(p, _totalH, Th::c().divider.strong);
@@ -219,7 +244,7 @@ void MessageListWidget::paintRow(
 
     // ── Message text via QTextDocument ───────────────────────────────
     // Swap current animation frames into the doc image resources first.
-    pullGifFrames(item);
+    pullGifFrames(item, QRect(0, msgTop, vw, msgH));
     p.setFont(QApplication::font());
     int contentY = collapsed ? contTop : (contTop + kHdrH + kHdrGap);
     p.save();
@@ -366,7 +391,7 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(scrollY); i < (int)_items.size(); ++i) {
         const int top = _tops.empty() ? 0 : _tops[i] - scrollY;
         if (top > vh)
             break;
@@ -643,7 +668,7 @@ void MessageListWidget::paintAttachments(
                 QMovie *movie = gifMovieFor(imgUrl);
                 QPixmap frame = movie ? movie->currentPixmap() : QPixmap();
                 if (movie)
-                    _visibleGifs.insert(imgUrl);
+                    markGifVisible(imgUrl, target);
                 if (!frame.isNull())
                     p.drawPixmap(target, frame);
                 else
@@ -839,7 +864,7 @@ void MessageListWidget::paintFileImages(
             QMovie *movie = _gifMovies.value(imgUrl, nullptr);
             QPixmap frame = movie ? movie->currentPixmap() : QPixmap();
             if (movie)
-                _visibleGifs.insert(imgUrl);
+                markGifVisible(imgUrl, rect);
             if (layout.gallery) {
                 if (!frame.isNull()) {
                     // Cover-crop the live frame: scale to fill, centre under clip.
@@ -892,7 +917,7 @@ void MessageListWidget::triggerMissingDownloads() {
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(scrollY); i < (int)_items.size(); ++i) {
         const int rowTop = _tops.empty() ? 0 : _tops[i] - scrollY;
         if (rowTop > vh)
             break;
@@ -1086,7 +1111,7 @@ void MessageListWidget::paintReactions(
             // images; the get() above has populated the bytes it needs. syncGifPlayback()
             // (end of doPaint) starts/pauses movies by _visibleGifs membership.
             if (QMovie *mv = gifMovieFor(emoji.imageUrl)) {
-                _visibleGifs.insert(emoji.imageUrl);
+                markGifVisible(emoji.imageUrl, chip);
                 const QPixmap frame = mv->currentPixmap();
                 if (!frame.isNull())
                     px = frame;
@@ -1163,7 +1188,7 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
     const int          textLeft  = ctx.textLeft;
     const int          textWidth = ctx.textWidth;
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(viewportPos.y() + scrollY); i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i] - scrollY;
         if (rowTop > viewportPos.y())
             break;
@@ -1442,7 +1467,7 @@ int MessageListWidget::replyBarIndexAt(const QPoint &viewportPos) const {
         return -1;
     const PaintContext ctx = makePaintContext();
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(viewportPos.y() + ctx.scrollY); i < (int)_items.size(); ++i) {
         if (_items[i].msg.replyCount <= 0)
             continue;
         const int rowTop = _tops[i] - ctx.scrollY;
@@ -1547,7 +1572,7 @@ void MessageListWidget::paintReplyItem(
     }
 
     // Body document (no text-selection inside inline replies).
-    pullGifFrames(item);
+    pullGifFrames(item, QRect(0, top, subCtx.vw, replyItemHeight(item, m.textWidth, collapsed)));
     p.setFont(QApplication::font());
     int contentY = collapsed ? contTop : (contTop + kHdrH + kHdrGap);
     if (item.textDoc && item.docHeight > 0) {
@@ -1662,7 +1687,7 @@ Ts MessageListWidget::inlineFooterAt(const QPoint &pos) const {
     const PaintContext ctx = makePaintContext();
     const auto         m   = inlineReplyMetrics();
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(pos.y() + ctx.scrollY); i < (int)_items.size(); ++i) {
         if (_items[i].msg.replyCount <= 0)
             continue;
         const Ts   ts  = _items[i].msg.ts;
@@ -1704,7 +1729,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
     const int          textLeft  = ctx.textLeft;
     const int          textWidth = ctx.textWidth;
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(viewportPos.y() + scrollY); i < (int)_items.size(); ++i) {
         if (_items[i].msg.reactions.empty())
             continue;
         const int rowTop = _tops[i] - scrollY;

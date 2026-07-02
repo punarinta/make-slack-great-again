@@ -2468,6 +2468,16 @@ void MainWindow::resizeEvent(QResizeEvent *e) {
 void MainWindow::changeEvent(QEvent *e) {
     if (e->type() == QEvent::WindowStateChange) {
         updateRoundedMask();
+        // Minimize delivers neither hideEvent nor paint events to children, so
+        // the message lists can't notice on their own — stop GIF decoding here
+        // or the QMovies keep burning CPU the whole time the window is down.
+        // Un-minimizing repaints, which restarts the visible players.
+        if (isMinimized()) {
+            if (_messageList)
+                _messageList->pauseGifPlayback();
+            if (_threadPanel)
+                _threadPanel->pauseGifPlayback();
+        }
     } else if (e->type() == QEvent::ActivationChange && _session) {
         if (isActiveWindow()) {
             // Coming back to the app is when "how do I look to others" matters most.

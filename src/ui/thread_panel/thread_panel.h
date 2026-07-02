@@ -26,6 +26,8 @@ public:
     void close();
     // Repaint the embedded message list, e.g. after the time-format setting changed.
     void refreshTimestamps();
+    // Stop the embedded list's GIF decoding (host window minimized).
+    void pauseGifPlayback();
 
 protected:
     void resizeEvent(QResizeEvent *e) override;

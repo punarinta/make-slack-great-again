@@ -146,6 +146,10 @@ void ThreadPanel::refreshTimestamps() {
     _msgList->viewport()->update();
 }
 
+void ThreadPanel::pauseGifPlayback() {
+    _msgList->pauseGifPlayback();
+}
+
 void ThreadPanel::applyTheme() {
     // No left border (a soft shadow stands in for it) and no distinct header
     // background: the panel reads as one continuous surface with the chat. The

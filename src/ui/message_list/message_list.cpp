@@ -1181,18 +1181,27 @@ void MessageListWidget::rebuildLayout() {
     scheduleProgressiveLayout();
 }
 
+// Rows are contiguous (kRowGap = 0), so the row containing document-space y is
+// the last one whose top is <= y; everything before it is fully above.
+int MessageListWidget::firstVisibleRow(int docY) const {
+    if (_tops.empty() || _tops.size() != _items.size())
+        return 0;
+    const auto it = std::upper_bound(_tops.begin(), _tops.end(), docY);
+    return std::max(0, static_cast<int>(it - _tops.begin()) - 1);
+}
+
 // Lay out the rows currently on screen for real before they're painted. Called at
 // the top of doPaint: off-screen rows reach paint with only an estimate, and the
 // visible ones must be exact. If measuring corrects any height, rebuildLayout()
 // fixes _tops and re-pins the anchor so the visible content doesn't jump.
-void MessageListWidget::measureVisibleRows() {
+bool MessageListWidget::measureVisibleRows() {
     const int w = textAreaWidth();
     if (w <= 0 || _items.empty() || _tops.size() != _items.size())
-        return;
+        return false;
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
     bool      changed = false;
-    for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
+    for (int i = firstVisibleRow(scrollY); i < static_cast<int>(_items.size()); ++i) {
         const int top = _tops[i] - scrollY;
         if (top > vh)
             break; // _tops is monotonic — nothing below is on screen
@@ -1205,6 +1214,7 @@ void MessageListWidget::measureVisibleRows() {
     }
     if (changed)
         rebuildLayout();
+    return changed;
 }
 
 // Off-screen rows measured a chunk at a time on the event loop. Each chunk is
@@ -1274,11 +1284,14 @@ QMovie *MessageListWidget::gifMovieFor(const QString &url) const {
 
 void MessageListWidget::watchGifMovie(const QString &url, QMovie *movie) const {
     _gifMovies.insert(url, movie);
-    // Repaint per frame, but only while the gif is actually on screen — an
-    // offscreen movie gets paused by syncGifPlayback on the next paint anyway.
+    // Repaint per frame, but only the region the gif was painted into — a
+    // whole-viewport update would re-rasterize every visible row at the gif's
+    // frame rate. Offscreen movies (no _gifRects entry) get paused by
+    // syncGifPlayback on the next paint anyway.
     connect(movie, &QMovie::frameChanged, this, [this, url](int) {
-        if (_visibleGifs.contains(url))
-            viewport()->update();
+        const auto it = _gifRects.constFind(url);
+        if (it != _gifRects.constEnd() && !it->isEmpty())
+            viewport()->update(*it);
     });
 }
 
@@ -1298,12 +1311,18 @@ void MessageListWidget::maybeCreateFileGifMovie(const QString &url, const QByteA
     watchGifMovie(url, movie);
 }
 
-void MessageListWidget::pullGifFrames(const MessageItem &item) const {
+void MessageListWidget::markGifVisible(const QString &url, const QRect &vpRect) const {
+    _visibleGifs.insert(url);
+    QRect &r = _gifRects[url];
+    r        = r.isNull() ? vpRect : r.united(vpRect);
+}
+
+void MessageListWidget::pullGifFrames(const MessageItem &item, const QRect &vpRect) const {
     for (const auto &url : item.emojiUrls) {
         QMovie *m = gifMovieFor(url);
         if (!m)
             continue;
-        _visibleGifs.insert(url);
+        markGifVisible(url, vpRect);
         const QPixmap frame = m->currentPixmap();
         if (frame.isNull())
             continue;
@@ -1331,10 +1350,16 @@ void MessageListWidget::syncGifPlayback() const {
 }
 
 void MessageListWidget::hideEvent(QHideEvent *event) {
-    // Don't burn CPU decoding frames nobody can see.
-    _visibleGifs.clear();
-    syncGifPlayback();
+    pauseGifPlayback();
     VirtualListWidget::hideEvent(event);
+}
+
+void MessageListWidget::pauseGifPlayback() {
+    // Don't burn CPU decoding frames nobody can see. The next paint pass
+    // re-marks whatever is actually on screen and restarts those players.
+    _visibleGifs.clear();
+    _gifRects.clear();
+    syncGifPlayback();
 }
 
 // Walk all text fragments in a QTextDocument and set underline on those whose
@@ -1383,7 +1408,7 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
     const int          docY     = viewportPos.y() + scrollY;
     const int          textLeft = ctx.textLeft;
 
-    for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
+    for (int i = firstVisibleRow(docY); i < static_cast<int>(_items.size()); ++i) {
         const int rowTop = _tops[i];
         const int rh     = rowHeight(i);
         if (docY < rowTop)
@@ -1448,7 +1473,7 @@ QRect MessageListWidget::userAnchorVpRect(const QPoint &viewportPos, const QStri
     const PaintContext ctx  = makePaintContext();
     const int          docY = viewportPos.y() + ctx.scrollY;
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(docY); i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i];
         const int rh     = rowHeight(i);
         if (docY < rowTop)
@@ -1503,7 +1528,7 @@ QString MessageListWidget::avatarUserAt(const QPoint &viewportPos, QRect *outVpR
     const int scrollY = verticalScrollBar()->value();
     const int docY    = viewportPos.y() + scrollY;
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(docY); i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i];
         const int rh     = rowHeight(i);
         if (docY < rowTop)
@@ -1563,7 +1588,7 @@ std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos
     const int          textLeft = ctx.textLeft;
     const int          btnX     = textLeft - kDismissGap - kDismissW;
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(viewportPos.y() + scrollY); i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i] - scrollY;
         if (rowTop > viewportPos.y())
             break;
@@ -2525,7 +2550,7 @@ TextPos MessageListWidget::textHitTest(const QPoint &viewportPos) const {
     const int          docY     = viewportPos.y() + scrollY;
     const int          textLeft = ctx.textLeft;
 
-    for (int i = 0; i < (int)_items.size(); ++i) {
+    for (int i = firstVisibleRow(docY); i < (int)_items.size(); ++i) {
         const int rowTop = _tops[i];
         const int rh     = rowHeight(i);
         if (docY < rowTop)
@@ -2680,7 +2705,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     // Mouse has left the current row's combined zone — geometric hit-test.
     if (newHoveredRow < 0) {
-        for (int i = 0; i < (int)_items.size(); ++i) {
+        for (int i = firstVisibleRow(pos.y() + scrollY); i < (int)_items.size(); ++i) {
             const int rowTop = _tops[i] - scrollY;
             const int rh     = rowHeight(i);
             if (rowTop > pos.y())

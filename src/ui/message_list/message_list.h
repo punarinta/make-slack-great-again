@@ -114,6 +114,11 @@ public:
     // Smooth-scroll to the message with this timestamp if it is currently loaded.
     void scrollToTs(const Ts &ts);
 
+    // Stop animated-image (GIF) decoding while nothing is on screen. Called by
+    // the host window on minimize — children get no hideEvent/paint then, so the
+    // widget can't notice on its own. Playback resumes on the next paint pass.
+    void pauseGifPlayback();
+
 signals:
     // Fired once when the first page of content for the current conversation is
     // ready to display — immediately if loaded from cache, otherwise when the
@@ -217,6 +222,11 @@ private:
     // Layout
     void rebuildLayout();
     int  rowHeight(int index) const;
+    // Index of the first row whose bottom edge can be at/below document-space y
+    // `docY` — binary search over the monotonic _tops, so paint and hit-test
+    // walks start at the viewport instead of scanning the whole scrollback.
+    // Returns 0 when _tops is stale (callers' skip/break guards still apply).
+    int  firstVisibleRow(int docY) const;
     // Lazy layout: the expensive QTextDocument::size() runs only for rows that
     // become visible; off-screen rows use a cheap text-length estimate until a
     // background pass measures them. rowMeasured() == laid out at the current width.
@@ -224,7 +234,9 @@ private:
     int  estimatedTextHeight(const QString &text) const;
     int  estimatedDocHeight(const MessageItem &item) const;
     int  estimatedAttachHeight(const Attachment &att) const;
-    void measureVisibleRows();         // lay out the on-screen rows (called from doPaint)
+    // Lay out the on-screen rows (called from doPaint). Returns true when a
+    // height changed (i.e. rebuildLayout ran and _tops shifted).
+    bool measureVisibleRows();
     void scheduleProgressiveLayout();  // kick the background measurement pass
     void measureLayoutChunk();         // measure one chunk of off-screen rows, then reschedule
     bool isCollapsed(int index) const; // true if same author within 5 min of previous
@@ -402,7 +414,12 @@ private:
     void    maybeCreateFileGifMovie(const QString &url, const QByteArray &bytes) const;
     // Swap the current movie frame into the item's doc image resources and mark
     // the url visible; called per visible row right before the docs are drawn.
-    void    pullGifFrames(const MessageItem &item) const;
+    // vpRect is the row's viewport rect — the dirty region a frame change of
+    // any of the item's animated emoji must repaint.
+    void    pullGifFrames(const MessageItem &item, const QRect &vpRect) const;
+    // Record an animated url as painted this pass: adds it to _visibleGifs and
+    // grows its per-frame dirty rect (_gifRects) by vpRect.
+    void    markGifVisible(const QString &url, const QRect &vpRect) const;
     // Start players painted this pass, pause the rest — called after each paint.
     void    syncGifPlayback() const;
 
@@ -582,6 +599,10 @@ private:
     mutable QHash<QString, QMovie *> _gifMovies;
     // Urls whose frames were drawn during the current/last paint pass.
     mutable QSet<QString>            _visibleGifs;
+    // Viewport rect each visible animated url was painted into (rebuilt with
+    // _visibleGifs on every full paint) — the frameChanged handler repaints just
+    // this region instead of the whole viewport.
+    mutable QHash<QString, QRect>    _gifRects;
 
     PopupTooltip       *_tooltip = nullptr;
     QDeadlineTimer      _tooltipPin; // while running, hover logic leaves the tooltip alone
