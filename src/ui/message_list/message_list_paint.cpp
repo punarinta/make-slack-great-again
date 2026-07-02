@@ -773,16 +773,23 @@ QString MessageListWidget::attachPreviewUrl(const Attachment &att) const {
     return att.previewUrl(qCeil(kImgMaxW * devicePixelRatioF()));
 }
 
+// Resident bytes of a decoded pixmap (raw device pixels).
+static qint64 pixmapBytes(const QPixmap &px) {
+    return px.isNull() ? 0 : qint64(px.width()) * px.height() * qMax(1, px.depth() / 8);
+}
+
 QPixmap MessageListWidget::scaledPreview(
     const QString &key, const QPixmap &src, QSize logical, qreal dpr
 ) const {
     const QSize phys(qRound(logical.width() * dpr), qRound(logical.height() * dpr));
-    QPixmap    &out = _scaledPreviews[key];
+    QPixmap     out = _scaledPreviews.value(key);
     if (out.size() != phys) {
         // IgnoreAspectRatio: `logical` is derived from the same image, so the
         // aspect already matches up to rounding.
         out = src.scaled(phys, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         out.setDevicePixelRatio(dpr);
+        _scaledPreviews.insert(key, out);
+        enforceScaledPreviewCap(key);
     }
     return out;
 }
@@ -795,7 +802,7 @@ QPixmap MessageListWidget::coverPreview(
     // gallery and a relayout at a different width don't collide.
     const QString cacheKey =
         key + "@cover@" + QString::number(phys.width()) + 'x' + QString::number(phys.height());
-    QPixmap &out = _scaledPreviews[cacheKey];
+    QPixmap out = _scaledPreviews.value(cacheKey);
     if (out.size() != phys) {
         // Scale to cover, then centre-crop the overflow to exactly `phys`.
         QPixmap scaled = src.scaled(phys, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
@@ -803,8 +810,82 @@ QPixmap MessageListWidget::coverPreview(
         const int cy   = std::max(0, (scaled.height() - phys.height()) / 2);
         out            = scaled.copy(cx, cy, phys.width(), phys.height());
         out.setDevicePixelRatio(dpr);
+        _scaledPreviews.insert(cacheKey, out);
+        enforceScaledPreviewCap(cacheKey);
     }
     return out;
+}
+
+void MessageListWidget::enforceScaledPreviewCap(const QString &keepKey) const {
+    qint64 total = 0;
+    for (const auto &px : _scaledPreviews)
+        total += pixmapBytes(px);
+    if (total <= kScaledPreviewCapBytes)
+        return;
+    // Blunt but self-healing: everything except the pixmap just produced
+    // re-scales from its source on the next paint that needs it.
+    const QPixmap kept = _scaledPreviews.take(keepKey);
+    _scaledPreviews.clear();
+    if (!kept.isNull())
+        _scaledPreviews.insert(keepKey, kept);
+}
+
+void MessageListWidget::enforceFileImageCap() const {
+    qint64 total = 0;
+    for (const auto &px : _fileImages)
+        total += pixmapBytes(px);
+    if (total <= kFileImageCapBytes)
+        return;
+
+    // Working set to keep: everything referenced by rows near the viewport
+    // (plus their expanded inline replies) and in-flight null sentinels.
+    QSet<QString> keep;
+    auto          keepItem = [&](const MessageItem &item) {
+        for (const auto &f : item.msg.files)
+            if (f.hasPreview())
+                keep.insert(filePreviewUrl(f));
+    };
+    const int scrollY = verticalScrollBar()->value();
+    const int vh      = viewport()->height();
+    const int margin  = kKeepViewports * std::max(vh, 1);
+    if (_tops.size() == _items.size()) {
+        for (int i = firstVisibleRow(scrollY - margin); i < (int)_items.size(); ++i) {
+            if (_tops[i] - scrollY > vh + margin)
+                break;
+            keepItem(_items[i]);
+            if (_threadsInline && _items[i].msg.replyCount > 0) {
+                const auto itT = _inlineThreads.find(_items[i].msg.ts);
+                if (itT != _inlineThreads.end())
+                    for (const auto &reply : itT->second.replies)
+                        keepItem(reply);
+            }
+        }
+    }
+
+    QStringList evicted;
+    for (auto it = _fileImages.begin(); it != _fileImages.end();) {
+        if (it->isNull() || keep.contains(it.key())) {
+            ++it;
+            continue;
+        }
+        evicted.append(it.key());
+        it = _fileImages.erase(it);
+    }
+    // An evicted animated file loses its player too (outside the loop —
+    // dropGifMovie touches _fileImages itself).
+    for (const auto &url : evicted)
+        dropGifMovie(url);
+
+    // Evicted urls must be re-requested when their rows scroll back in; the
+    // per-item flag is the only gate, so reset it everywhere (cheap walk).
+    for (const auto &item : _items)
+        item.fileImgsRequested = false;
+    for (const auto &kv : _inlineThreads)
+        for (const auto &reply : kv.second.replies)
+            reply.fileImgsRequested = false;
+
+    // Display-scaled copies of evicted images go with them.
+    _scaledPreviews.clear();
 }
 
 void MessageListWidget::paintFileImages(
@@ -971,6 +1052,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         if (!px.isNull() && px.width() > maxSrcW)
                             px = px.scaledToWidth(maxSrcW, Qt::SmoothTransformation);
                         _fileImages[url] = px;
+                        enforceFileImageCap();
                         rebuildLayout();
                         viewport()->update();
                         continue;
@@ -982,6 +1064,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         if (px.loadFromData(cached) && !px.isNull()) {
                             _fileImages[url] = px;
                             maybeCreateFileGifMovie(url, cached);
+                            enforceFileImageCap();
                             rebuildLayout();
                             viewport()->update();
                             continue;
@@ -999,6 +1082,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         _fileImages[url] = px;
                         maybeCreateFileGifMovie(url, data);
                         _scaledPreviews.remove(url);
+                        enforceFileImageCap();
                         rebuildLayout();
                         if (wasAtBottom)
                             verticalScrollBar()->setValue(verticalScrollBar()->maximum());

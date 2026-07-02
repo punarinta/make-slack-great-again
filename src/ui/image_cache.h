@@ -31,7 +31,16 @@ public:
     // url hasn't loaded yet or decodes to a single frame. The QMovie is created
     // lazily, shared between callers and owned by the cache — callers connect
     // to frameChanged() and drive start()/setPaused() by visibility.
+    // Each non-null return is an acquire: the entry is pinned against eviction
+    // until the caller hands it back with releaseMovie(). A caller that stores
+    // the pointer must release it exactly once when done (and drop the pointer).
     QMovie *movie(const QString &url);
+
+    // Release one movie() acquisition. When the last holder releases, the
+    // QMovie (and its decoded frames) is deleted and the entry becomes a
+    // normal LRU citizen again — re-acquiring later recreates the player
+    // from the retained bytes (or a fresh download if evicted meanwhile).
+    void releaseMovie(const QString &url);
 
     // True when bytes decode to a multi-frame animation.
     static bool isAnimatedImage(const QByteArray &bytes);
@@ -58,11 +67,12 @@ signals:
 
 private:
     struct Entry {
-        QPixmap    pixmap;             // first frame for animated images
-        QByteArray animatedBytes;      // raw bytes, kept only for multi-frame images
-        QMovie    *movie    = nullptr; // lazily created from animatedBytes
-        bool       inFlight = false;
-        qint64     cost     = 0; // last accounted bytes (pixmap + animatedBytes)
+        QPixmap    pixmap;              // first frame for animated images
+        QByteArray animatedBytes;       // raw bytes, kept only for multi-frame images
+        QMovie    *movie     = nullptr; // lazily created from animatedBytes
+        int        movieRefs = 0;       // movie() acquisitions not yet released
+        bool       inFlight  = false;
+        qint64     cost      = 0; // last accounted bytes (pixmap + animatedBytes)
     };
 
     // Recompute url's memory cost, mark it most-recently-used, then evict down

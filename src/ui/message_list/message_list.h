@@ -77,6 +77,9 @@ class MessageListWidget : public VirtualListWidget {
     Q_OBJECT
 public:
     explicit MessageListWidget(Session *session, ImageCache *imgCache, QWidget *parent = nullptr);
+    // Hands cache-owned animated players back to ImageCache (releaseGifMovies)
+    // so their entries don't stay pinned past the widget's life.
+    ~MessageListWidget() override;
 
     // lastReadTs: the conversation's read cursor captured before the open marks
     // it read — when set, the list opens scrolled to the first message after it
@@ -422,6 +425,32 @@ private:
     void    markGifVisible(const QString &url, const QRect &vpRect) const;
     // Start players painted this pass, pause the rest — called after each paint.
     void    syncGifPlayback() const;
+    // Release one url's player: a widget-owned movie is deleted together with
+    // its _fileImages pixmap (so a reload recreates both from the disk image
+    // cache); a cache-owned one is handed back via ImageCache::releaseMovie.
+    void    dropGifMovie(const QString &url) const;
+    // Release every player — conversation switch (clear) and widget teardown.
+    // Reopening recreates them from cached bytes; playback restarts at frame 0.
+    void    releaseGifMovies() const;
+
+    // ── Cache bounds (see docs/PERF_AUDIT_2026_07.md §1.3) ──
+    // Rows this many viewport heights above/below the visible area keep their
+    // rendered docs and file images; farther ones are released and rebuilt on
+    // demand (doc rebuild and disk-cache image decode are both cheap).
+    static constexpr int    kKeepViewports         = 4;
+    static constexpr qint64 kFileImageCapBytes     = 32LL * 1024 * 1024;
+    static constexpr qint64 kScaledPreviewCapBytes = 32LL * 1024 * 1024;
+    // Purge _fileImages back to the near-viewport working set once its decoded
+    // bytes exceed the cap; evicted urls reload from the session's disk image
+    // cache when their rows scroll back in. Call after inserting a pixmap.
+    void                    enforceFileImageCap() const;
+    // Same idea for the display-scaled copies: when over the cap, drop all but
+    // the pixmap just produced (keepKey) — the rest re-scale on their next paint.
+    void                    enforceScaledPreviewCap(const QString &keepKey) const;
+    // Release the rendered QTextDocuments of rows far outside the viewport,
+    // keeping their measured heights (docWidth/docHeight) so the layout and
+    // scrollbar stay exact. ensureDocLayout rebuilds a released doc on demand.
+    void                    trimOffscreenDocs();
 
     // Text selection
     TextPos textHitTest(const QPoint &viewportPos) const;
@@ -544,6 +573,10 @@ private:
 
     // True while a measureLayoutChunk() tick is queued, so we never stack timers.
     bool _progressiveLayoutScheduled = false;
+
+    // Debounced doc trim: restarted on every scroll, fires once scrolling has
+    // stopped so rows scrolled far away release their QTextDocuments.
+    QTimer _docTrimTimer;
 
     bool _scrollToBottomPending = false;
     // Read cursor of the conversation being opened: while _scrollToBottomPending

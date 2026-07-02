@@ -54,8 +54,9 @@ void ImageCache::evictIfNeeded(const QString &protectUrl) {
             auto it = _cache.find(u);
             // A live QMovie is handed out by pointer and cached by callers
             // (MessageListWidget::_gifMovies) with a frameChanged connection —
-            // deleting it here would dangle. In-flight sentinels must survive so
-            // their finished handler can complete. Both are pinned.
+            // deleting it here would dangle; it stays pinned until every holder
+            // calls releaseMovie(). In-flight sentinels must survive so their
+            // finished handler can complete. Both are pinned.
             if (it == _cache.end() || it->inFlight || it->movie)
                 continue;
             victim = i;
@@ -97,9 +98,26 @@ QMovie *ImageCache::movie(const QString &url) {
             return nullptr;
         }
         m->setParent(this);
-        it->movie = m;
+        it->movie     = m;
+        it->movieRefs = 0;
     }
+    ++it->movieRefs;
     return it->movie;
+}
+
+void ImageCache::releaseMovie(const QString &url) {
+    auto it = _cache.find(url);
+    if (it == _cache.end() || !it->movie)
+        return;
+    if (--it->movieRefs > 0)
+        return;
+    // Last holder gone: free the player (its QBuffer is a child) and let the
+    // entry be evicted like any other — a paused-forever QMovie was pinning
+    // its raw bytes plus decoded frames past the memory cap indefinitely.
+    delete it->movie;
+    it->movie     = nullptr;
+    it->movieRefs = 0;
+    evictIfNeeded(QString());
 }
 
 void ImageCache::setDiskCache(

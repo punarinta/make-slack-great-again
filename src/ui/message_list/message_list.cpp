@@ -106,6 +106,12 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
 
     _loadingAnim.setUpdateCallback([this] { viewport()->update(); });
 
+    // Once scrolling settles, release the rendered docs of rows now far from
+    // the viewport (deep scroll-back would otherwise keep thousands alive).
+    _docTrimTimer.setSingleShot(true);
+    _docTrimTimer.setInterval(1000);
+    connect(&_docTrimTimer, &QTimer::timeout, this, [this] { trimOffscreenDocs(); });
+
     connect(
         &ThemeManager::instance(),
         &ThemeManager::themeChanged,
@@ -139,6 +145,12 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
     }
 }
 
+MessageListWidget::~MessageListWidget() {
+    // The shared ImageCache outlives this widget — un-pin our movie holds so
+    // its entries return to normal LRU eviction.
+    releaseGifMovies();
+}
+
 void MessageListWidget::smoothScrollTo(int target) {
     if (target == verticalScrollBar()->value())
         return;
@@ -151,6 +163,7 @@ void MessageListWidget::smoothScrollTo(int target) {
 void MessageListWidget::scrollContentsBy(int /*dx*/, int /*dy*/) {
     hideProfileCard(); // anchor moved away from under the card
     viewport()->update();
+    _docTrimTimer.start(); // (re)arm: trim docs once scrolling settles
     if (verticalScrollBar()->value() <= loadOlderMargin())
         loadOlderMessages();
 }
@@ -190,6 +203,11 @@ void MessageListWidget::clear() {
     _tops.clear();
     _topsTs.clear();
     _totalH = 0;
+    // Animated players belong to the conversation being left; keeping them
+    // would pin their ImageCache entries (bytes + decoded frames) forever.
+    // _fileImages/_scaledPreviews stay — they're byte-capped (enforce*Cap) and
+    // keeping them makes switching back to a recent conversation instant.
+    releaseGifMovies();
     // Inline thread expansions belong to the conversation being left.
     _inlineThreads.clear();
     _openThreadRoot.clear();
@@ -320,10 +338,15 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                 if (data.isEmpty())
                     continue;
                 QPixmap px;
-                if (px.loadFromData(data) && !px.isNull())
+                if (px.loadFromData(data) && !px.isNull()) {
                     _fileImages[url] = px;
+                    // clear() released this conversation's players — an animated
+                    // file needs its player back or it repaints as a still.
+                    maybeCreateFileGifMovie(url, data);
+                }
             }
         }
+        enforceFileImageCap();
         return true;
     }();
 
@@ -948,7 +971,10 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
         }
     };
 
-    // Main text doc
+    // Main text doc. `created` matters for docs released by trimOffscreenDocs:
+    // they come back with docWidth already == w, but the fresh QTextDocument
+    // still needs its text width applied.
+    bool created = false;
     if (!item.textDoc) {
         item.textDoc = std::make_unique<QTextDocument>();
         item.textDoc->setDefaultFont(QApplication::font());
@@ -960,8 +986,9 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
         const auto html = MsgRender::buildMsgHtml(item.msg, _session, &gifCtx, collapseQuotes);
         if (!html.isEmpty())
             item.textDoc->setHtml(html);
+        created = true;
     }
-    if (item.docWidth != w) {
+    if (created || item.docWidth != w) {
         item.textDoc->setTextWidth(w);
         item.docWidth  = w;
         item.docHeight = item.textDoc->isEmpty()
@@ -976,7 +1003,8 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
 
     const int attW = w - kAttachBarW - kAttachBarGap;
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
-        auto &ad = item.attachDocs[ai];
+        auto &ad        = item.attachDocs[ai];
+        bool  adCreated = false;
         if (!ad.textDoc) {
             ad.textDoc = std::make_unique<QTextDocument>();
             ad.textDoc->setDefaultFont(QApplication::font());
@@ -989,8 +1017,9 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
             const auto html = MsgRender::buildAttachHtml(attachments[ai], _session, &gifCtx);
             if (!html.isEmpty())
                 ad.textDoc->setHtml(html);
+            adCreated = true;
         }
-        if (ad.docWidth != attW) {
+        if (adCreated || ad.docWidth != attW) {
             ad.textDoc->setTextWidth(attW > 0 ? attW : 1);
             ad.docWidth  = attW;
             ad.docHeight = static_cast<int>(std::ceil(ad.textDoc->size().height()));
@@ -1248,8 +1277,39 @@ void MessageListWidget::measureLayoutChunk() {
             ensureDocLayout(_items[i]);
             ++done;
         }
-    if (done > 0)
+    if (done > 0) {
         rebuildLayout(); // re-pins the anchor; reschedules the next chunk via its tail
+        // The docs were built only to take exact heights — rows far from the
+        // viewport don't need them for painting, so release them right away
+        // instead of accumulating one live QTextDocument per row ever measured.
+        trimOffscreenDocs();
+    }
+}
+
+void MessageListWidget::trimOffscreenDocs() {
+    if (_items.empty() || _tops.size() != _items.size())
+        return;
+    const int scrollY = verticalScrollBar()->value();
+    const int vh      = viewport()->height();
+    if (vh <= 0)
+        return;
+    const int keepTop = scrollY - kKeepViewports * vh;
+    const int keepBot = scrollY + (kKeepViewports + 1) * vh;
+    const int n       = static_cast<int>(_items.size());
+    for (int i = 0; i < n; ++i) {
+        const int top    = _tops[i];
+        const int bottom = (i + 1 < n) ? _tops[i + 1] : _totalH;
+        if (bottom >= keepTop && top <= keepBot)
+            continue; // inside the keep band
+        // Release the rendered docs but keep docWidth/docHeight (and the
+        // collected emoji urls): the row stays "measured", so heights, _tops
+        // and the scrollbar are untouched; ensureDocLayout rebuilds the doc
+        // if the row scrolls back in.
+        auto &item = _items[i];
+        item.textDoc.reset();
+        for (auto &ad : item.attachDocs)
+            ad.textDoc.reset();
+    }
 }
 
 // ── Attachment height helpers ─────────────────────────────────────────────────
@@ -1309,6 +1369,34 @@ void MessageListWidget::maybeCreateFileGifMovie(const QString &url, const QByteA
     }
     movie->setParent(const_cast<MessageListWidget *>(this));
     watchGifMovie(url, movie);
+}
+
+void MessageListWidget::dropGifMovie(const QString &url) const {
+    const auto it = _gifMovies.constFind(url);
+    if (it == _gifMovies.constEnd())
+        return;
+    QMovie *m = it.value();
+    _gifMovies.remove(url);
+    _visibleGifs.remove(url);
+    _gifRects.remove(url);
+    if (m->parent() == this) {
+        // Widget-owned (auth-downloaded file). Drop the decoded pixmap too:
+        // the reload path is what recreates the player (maybeCreateFileGifMovie),
+        // so a kept pixmap would repaint as a frozen frame.
+        delete m;
+        _fileImages.remove(url);
+    } else {
+        // Cache-owned: sever our frameChanged connection and hand the hold back.
+        disconnect(m, nullptr, this, nullptr);
+        if (_imgCache)
+            _imgCache->releaseMovie(url);
+    }
+}
+
+void MessageListWidget::releaseGifMovies() const {
+    const auto urls = _gifMovies.keys();
+    for (const auto &url : urls)
+        dropGifMovie(url);
 }
 
 void MessageListWidget::markGifVisible(const QString &url, const QRect &vpRect) const {
