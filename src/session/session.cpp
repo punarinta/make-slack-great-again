@@ -20,12 +20,16 @@ Session::Session(std::unique_ptr<Backend> backend, const QString &teamId)
     : _backend(std::move(backend)), _cache(std::make_unique<WorkspaceCache>(teamId)) {}
 
 Session::~Session() {
+    // Batched unread merges (_pendingUnreadInfos) are deliberately dropped:
+    // applying them would reassign _conversations and fire UI observers on a
+    // session that is mid-teardown; the next start re-syncs anyway.
     // Don't lose a debounced unread save when the session is torn down (logout,
     // drop, app exit) before the timer fired.
     if (_saveUnreadsTimer.isActive())
         persistUnreads();
     if (_saveDeadConvsTimer.isActive())
         _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
+    flushPendingMsgWrites(); // queued message-cache writes (no-op when empty)
 }
 
 // App-level slash commands: OUR app's own commands, available in every workspace
@@ -139,6 +143,14 @@ void Session::start() {
     QObject::connect(&_saveDeadConvsTimer, &QTimer::timeout, [this] {
         _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
     });
+
+    // Deferred per-conversation message-cache writes (see cacheMessages).
+    _saveMsgsTimer.setSingleShot(true);
+    QObject::connect(&_saveMsgsTimer, &QTimer::timeout, [this] { flushPendingMsgWrites(); });
+
+    // Batched unread-resync merges (see resyncUnreads / applyPendingUnreadInfos).
+    _unreadPatchTimer.setSingleShot(true);
+    QObject::connect(&_unreadPatchTimer, &QTimer::timeout, [this] { applyPendingUnreadInfos(); });
 
     // Load conversations; update cache on arrival.
     reloadConversations(/*refreshEmoji=*/true);
@@ -946,61 +958,74 @@ void Session::resyncUnreads() {
 
     qDebug() << "[UnreadResync] recovering unread for" << targets.size() << "DMs/MPDMs";
     for (const auto &id : targets) {
-        _backend->loadConversationInfo(id) | rpl::on_next(
-                                                 [this, id](Conversation info) {
-                                                     // Dead DM/MPDM (peer gone, or
-                                                     // another workspace's conv):
-                                                     // remember it so later sweeps
-                                                     // skip it (dmSweepTargets).
-                                                     if (info.notFound) {
-                                                         markConvDead(id);
-                                                         return;
-                                                     }
-                                                     auto convs   = _conversations.current();
-                                                     bool changed = false;
-                                                     for (auto &c : convs) {
-                                                         if (c.id != id)
-                                                             continue;
-                                                         // Cursors (drive list relevance), same as
-                                                         // the activity sweep.
-                                                         if (info.lastRead > c.lastRead) {
-                                                             c.lastRead = info.lastRead;
-                                                             changed    = true;
-                                                         }
-                                                         if (info.latestTs > c.latestTs) {
-                                                             c.latestTs = info.latestTs;
-                                                             changed    = true;
-                                                         }
-                                                         // Recover the badge the dropped realtime
-                                                         // events never raised. conversations.info
-                                                         // reports the authed user's own unread
-                                                         // count; for a DM/MPDM every unread is a
-                                                         // red-badge "mention" (ConvListWidget
-                                                         // reads conv.unread for these), mirroring
-                                                         // handleNewMessage. Merge UPWARD only so a
-                                                         // unread we already counted locally is
-                                                         // never lowered by a momentarily stale
-                                                         // server response, and so reading the chat
-                                                         // elsewhere (which advances last_read →
-                                                         // server unread 0) doesn't fight a reload
-                                                         // that ran in the other order.
-                                                         if (info.unread > c.unread) {
-                                                             c.unread = info.unread;
-                                                             changed  = true;
-                                                         }
-                                                         if (info.unread > c.mentionCount) {
-                                                             c.mentionCount = info.unread;
-                                                             changed        = true;
-                                                         }
-                                                         break;
-                                                     }
-                                                     if (changed) {
-                                                         _conversations = std::move(convs);
-                                                         scheduleSaveUnreads();
-                                                     }
-                                                 },
-                                                 _lifetime
-                                             );
+        _backend->loadConversationInfo(id) |
+            rpl::on_next(
+                [this, id](Conversation info) {
+                    // Dead DM/MPDM (peer gone, or
+                    // another workspace's conv):
+                    // remember it so later sweeps
+                    // skip it (dmSweepTargets).
+                    if (info.notFound) {
+                        markConvDead(id);
+                        return;
+                    }
+                    // Batch: merging each reply on
+                    // its own reassigned the whole
+                    // _conversations vector — one
+                    // full conv-list rebuild per DM
+                    // in the sweep.
+                    _pendingUnreadInfos.emplace_back(id, std::move(info));
+                    if (!_unreadPatchTimer.isActive())
+                        _unreadPatchTimer.start(300);
+                },
+                _lifetime
+            );
+    }
+}
+
+void Session::applyPendingUnreadInfos() {
+    _unreadPatchTimer.stop();
+    if (_pendingUnreadInfos.empty())
+        return;
+    auto convs   = _conversations.current();
+    bool changed = false;
+    for (const auto &[id, info] : _pendingUnreadInfos) {
+        for (auto &c : convs) {
+            if (c.id != id)
+                continue;
+            // Cursors (drive list relevance), same as the activity sweep.
+            if (info.lastRead > c.lastRead) {
+                c.lastRead = info.lastRead;
+                changed    = true;
+            }
+            if (info.latestTs > c.latestTs) {
+                c.latestTs = info.latestTs;
+                changed    = true;
+            }
+            // Recover the badge the dropped realtime events never raised.
+            // conversations.info reports the authed user's own unread count;
+            // for a DM/MPDM every unread is a red-badge "mention"
+            // (ConvListWidget reads conv.unread for these), mirroring
+            // handleNewMessage. Merge UPWARD only so an unread we already
+            // counted locally is never lowered by a momentarily stale server
+            // response, and so reading the chat elsewhere (which advances
+            // last_read → server unread 0) doesn't fight a reload that ran in
+            // the other order.
+            if (info.unread > c.unread) {
+                c.unread = info.unread;
+                changed  = true;
+            }
+            if (info.unread > c.mentionCount) {
+                c.mentionCount = info.unread;
+                changed        = true;
+            }
+            break;
+        }
+    }
+    _pendingUnreadInfos.clear();
+    if (changed) {
+        _conversations = std::move(convs);
+        scheduleSaveUnreads();
     }
 }
 
@@ -1706,6 +1731,10 @@ void Session::deleteCanvas(const QString &canvasId, std::function<void(bool ok)>
 }
 
 std::vector<Message> Session::cachedMessages(ConversationId conv) const {
+    // A queued-but-unflushed write is newer than the file.
+    const auto pending = _pendingMsgWrites.constFind(conv.value);
+    if (pending != _pendingMsgWrites.constEnd())
+        return pending.value();
     return _cache->loadMessages(conv);
 }
 
@@ -1716,7 +1745,19 @@ void Session::cacheMessages(ConversationId conv, const std::vector<Message> &msg
     for (const auto &m : msgs)
         if (!m.pending)
             confirmed.push_back(m);
-    _cache->saveMessages(conv, confirmed);
+    // Queue instead of writing: callers sit on the conversation-switch click
+    // path, and the serialization + write is pure persistence — nothing reads
+    // the file before flushPendingMsgWrites() runs (cachedMessages checks the
+    // queue). Re-caching the same conversation just replaces its queued copy.
+    _pendingMsgWrites.insert(conv.value, std::move(confirmed));
+    _saveMsgsTimer.start(300);
+}
+
+void Session::flushPendingMsgWrites() {
+    _saveMsgsTimer.stop();
+    for (auto it = _pendingMsgWrites.constBegin(); it != _pendingMsgWrites.constEnd(); ++it)
+        _cache->saveMessages(ConversationId{it.key()}, it.value());
+    _pendingMsgWrites.clear();
 }
 
 void Session::saveLastConv(ConversationId conv, const QString &displayName) {

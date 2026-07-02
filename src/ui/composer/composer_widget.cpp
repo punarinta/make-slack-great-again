@@ -610,6 +610,12 @@ void ComposerWidget::applyTheme() {
     const auto toolBtns = _bottomBar->findChildren<QToolButton *>();
     for (auto *btn : toolBtns)
         btn->setStyleSheet(bbToolBtnStyle);
+
+    // Send-button colors come from updateSendState — force a restyle with the
+    // new theme's palette (also fixes the pill keeping stale colors until the
+    // next keystroke).
+    _sendActiveState = -1;
+    updateSendState();
 }
 
 void ComposerWidget::recolorMentionPills() {
@@ -880,7 +886,14 @@ void ComposerWidget::resizeEvent(QResizeEvent *event) {
 }
 
 void ComposerWidget::updateSendState() {
-    const bool active = !_edit->toPlainText().trimmed().isEmpty() || !_pendingFiles.isEmpty();
+    // isEmpty() short-circuits the toPlainText() copy for the common empty doc;
+    // the trimmed() check keeps whitespace-only text counting as empty.
+    const bool active =
+        (!_edit->document()->isEmpty() && !_edit->toPlainText().trimmed().isEmpty()) ||
+        !_pendingFiles.isEmpty();
+    if (static_cast<int>(active) == _sendActiveState)
+        return; // styling below only depends on `active` — nothing to redo
+    _sendActiveState = static_cast<int>(active);
 
     _sendBtn->setIcon(
         svgIcon(":/ui/send.svg", QSize(18, 18), active ? Qt::white : Th::c().composer.dropArrow)

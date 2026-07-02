@@ -254,14 +254,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
 
     if (TokenStore::hasAnyWorkspace()) {
-        // Connect every logged-in workspace so unread badges and
-        // notifications work without clicking each one first.
-        const auto keys = TokenStore::workspaceKeys();
-        for (const auto &key : keys)
-            ensureSession(key.toString());
+        const auto    keys         = TokenStore::workspaceKeys();
         const auto    active       = TokenStore::activeWorkspace();
         const QString activeHandle = active ? active->toString() : keys.front().toString();
+        // Only the active workspace starts on the constructor path (its cached
+        // conversation list is what the first paint shows). The rest still
+        // connect — badges and notifications must not depend on clicking each
+        // one — but deferred to after the first frame, one per tick, because
+        // each start() parses that workspace's cache JSON synchronously.
         activateWorkspace(activeHandle);
+        QStringList rest;
+        for (const auto &key : keys)
+            if (key.toString() != activeHandle)
+                rest.append(key.toString());
+        ensureSessionsSequentially(std::move(rest));
     } else {
         showLoggedOut();
     }
@@ -1066,6 +1072,19 @@ Session *MainWindow::ensureSession(const QString &teamId) {
     // network responds).
     session->start();
     return session;
+}
+
+void MainWindow::ensureSessionsSequentially(QStringList pending) {
+    if (pending.isEmpty())
+        return;
+    QTimer::singleShot(100, this, [this, pending]() mutable {
+        const QString teamId = pending.takeFirst();
+        // No-op if the user already activated it meanwhile (ensureSession
+        // returns the existing entry) or logged it out (TokenStore lookup
+        // inside returns nothing).
+        ensureSession(teamId);
+        ensureSessionsSequentially(std::move(pending));
+    });
 }
 
 void MainWindow::dropSession(QString teamId) {

@@ -5,10 +5,12 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTimer>
 
 #include "session/session.h"
 #include "backend/backend.h"
@@ -3045,6 +3047,15 @@ TEST_CASE_METHOD(
 // unreads (returns 0). On EvRealtimeReconnected, Session re-derives DM/MPDM unread
 // badges from conversations.info, which reports the authed user's real unread count.
 
+// The conversations.info replies are merged in one batched _conversations
+// reassignment ~300 ms after the first reply (Session::applyPendingUnreadInfos)
+// instead of one full conv-list rebuild per DM — spin the loop past the window.
+static void waitForUnreadMergeWindow() {
+    QEventLoop loop;
+    QTimer::singleShot(400, &loop, &QEventLoop::quit);
+    loop.exec();
+}
+
 TEST_CASE_METHOD(
     SessionFixture,
     "reconnect recovers a DM unread badge the stalled socket dropped",
@@ -3064,6 +3075,7 @@ TEST_CASE_METHOD(
     REQUIRE(session->findConversation(ConversationId{"D1"})->unread == 0); // sweep ignored it
 
     stub->fireEvent(EvRealtimeReconnected{});
+    waitForUnreadMergeWindow();
 
     const auto *c = session->findConversation(ConversationId{"D1"});
     REQUIRE(c != nullptr);
@@ -3091,6 +3103,7 @@ TEST_CASE_METHOD(
     stub->_convs    = std::vector<Conversation>{kGeneral, dm};
 
     stub->fireEvent(EvRealtimeReconnected{});
+    waitForUnreadMergeWindow(); // without it the merge hasn't run and the CHECK is vacuous
 
     CHECK(session->findConversation(ConversationId{"D1"})->unread == 5);
 }

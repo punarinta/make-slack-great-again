@@ -9,7 +9,9 @@
 
 #include <QHash>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -76,6 +78,14 @@ private:
     QString msgsPath(const ConversationId &conv) const;
     QString metaPath() const;
     QString imgPath(const QString &url) const; // url → hashed filename
+
+    // meta.json parsed once and kept: five loaders read it back-to-back at
+    // startup, and every save was a full read-modify-write of the file.
+    // WorkspaceCache is the sole writer, so the cached object cannot go stale.
+    QJsonObject &metaObject() const;
+    void         writeMeta(); // serialize the cached object back to meta.json
+
+    mutable std::optional<QJsonObject> _meta;
 
     static QByteArray readFile(const QString &path);
     static bool       writeFile(const QString &path, const QByteArray &data);

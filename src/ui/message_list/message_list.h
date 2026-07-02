@@ -51,6 +51,12 @@ struct MessageItem {
         false;                     // true once attachment image/favicon download triggered
     mutable QStringList emojiUrls; // custom-emoji image URLs referenced by this message
     mutable bool        emojiUrlsCollected = false;
+    // Memoized layoutFileImages(…, hasAbove=false).height for rowHeight(),
+    // which runs O(n) per rebuildLayout — computing the full layout (two heap
+    // allocations) each call is measurable. Valid while fileImgGen matches the
+    // widget's _fileImagesGen; reset to -1 when msg is replaced in place.
+    mutable int         fileImgBaseH       = -1;
+    mutable quint32     fileImgGen         = 0;
 };
 
 // Aggregates the constant viewport geometry computed at the start of every paint/hit-test.
@@ -565,7 +571,10 @@ private:
     mutable QHash<QString, QPixmap> _scaledPreviews;
     // DPR the visible previews were requested for; a change (window moved to a
     // screen with a different density) re-triggers downloads at the new density.
-    mutable qreal                   _previewDpr = 0.0;
+    mutable qreal                   _previewDpr    = 0.0;
+    // Bumped on every _fileImages mutation; invalidates the per-item
+    // fileImgBaseH memo (a loaded pixmap can change a preview's size).
+    mutable quint32                 _fileImagesGen = 0;
 
     // New-message highlight: ts → elapsed ms since arrival (driven by _highlightTimer)
     QSet<QString>     _newMsgTs;

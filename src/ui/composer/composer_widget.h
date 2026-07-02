@@ -143,6 +143,11 @@ private:
 
     QStringList       _pendingFiles;  // local paths of files to upload on send
     std::vector<File> _editModeFiles; // existing files shown read-only in edit mode
+    // Last styled send-button state (-1 = unstyled). updateSendState runs on
+    // every keystroke but the pill only changes at the empty↔non-empty boundary;
+    // skipping the redundant setStyleSheet/svgIcon work keeps typing cheap.
+    // applyTheme() resets it so a theme switch restyles with the new colors.
+    int               _sendActiveState = -1;
 
     PopupTooltip                            *_tooltip        = nullptr;
     EmojiPickerPopup                        *_emojiPicker    = nullptr;

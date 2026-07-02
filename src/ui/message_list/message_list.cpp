@@ -340,6 +340,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                 QPixmap px;
                 if (px.loadFromData(data) && !px.isNull()) {
                     _fileImages[url] = px;
+                    ++_fileImagesGen;
                     // clear() released this conversation's players — an animated
                     // file needs its player back or it repaints as a still.
                     maybeCreateFileGifMovie(url, data);
@@ -719,6 +720,7 @@ void MessageListWidget::mergeNetworkMessages(
                 item.docWidth = 0;
                 item.attachDocs.clear();
                 item.fileImgsRequested = false;
+                item.fileImgBaseH      = -1; // files may differ
                 changed                = true;
             }
         } else {
@@ -902,6 +904,7 @@ void MessageListWidget::invalidateAllDocs() {
         item.docWidth = -1;
         item.emojiUrls.clear();
         item.emojiUrlsCollected = false;
+        item.fileImgBaseH       = -1;
     }
     rebuildLayout();
     viewport()->update();
@@ -937,22 +940,22 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
     bool anyImageBlock = hasImageBlock(item.msg.blocks);
     for (const auto &att : item.msg.attachments)
         anyImageBlock = anyImageBlock || hasImageBlock(att.blocks);
-    QPixmap chevDown, chevRight;
-    if (anyImageBlock) {
-        const qreal dpr = devicePixelRatioF();
-        chevDown =
-            svgPixmapPhys(":/ui/chevron-down.svg", QSize(10, 10), Th::c().text.secondary, dpr);
-        chevRight =
-            svgPixmapPhys(":/ui/chevron-right.svg", QSize(10, 10), Th::c().text.secondary, dpr);
-    }
 
+    // Rasterization lives inside the lambda: it only runs when a doc is
+    // actually (re)built below, while ensureDocLayout itself runs on every
+    // paint of the row — rendering the SVGs up here would redo it each frame.
     auto addImageResources = [&](QTextDocument *doc) {
         if (anyImageBlock) {
+            const qreal dpr = devicePixelRatioF();
             doc->addResource(
-                QTextDocument::ImageResource, QUrl(MsgRender::kGifChevronExpandedRes), chevDown
+                QTextDocument::ImageResource,
+                QUrl(MsgRender::kGifChevronExpandedRes),
+                svgPixmapPhys(":/ui/chevron-down.svg", QSize(10, 10), Th::c().text.secondary, dpr)
             );
             doc->addResource(
-                QTextDocument::ImageResource, QUrl(MsgRender::kGifChevronCollapsedRes), chevRight
+                QTextDocument::ImageResource,
+                QUrl(MsgRender::kGifChevronCollapsedRes),
+                svgPixmapPhys(":/ui/chevron-right.svg", QSize(10, 10), Th::c().text.secondary, dpr)
             );
         }
         if (!_imgCache)
@@ -1080,8 +1083,17 @@ int MessageListWidget::rowHeight(int index) const {
     // Inline file preview heights (images + prerendered docs). The region height
     // is width-independent (single-image height comes from capped original dims;
     // gallery height from tile count), so passing kImgMaxW matches paint exactly.
+    // Memoized: rowHeight runs O(n) per rebuildLayout and the full layout heap-
+    // allocates; the base (no-lead) height only changes when the message or a
+    // loaded preview pixmap does (_fileImagesGen tracks the latter).
+    if (item.fileImgBaseH < 0 || item.fileImgGen != _fileImagesGen) {
+        item.fileImgBaseH = layoutFileImages(item, kImgMaxW, false).height;
+        item.fileImgGen   = _fileImagesGen;
+    }
     const bool hasContentAboveImages = docH > 0 || nAtt > 0;
-    const int  imgRegionH = layoutFileImages(item, kImgMaxW, hasContentAboveImages).height;
+    const int  imgRegionH            = (item.fileImgBaseH > 0 && hasContentAboveImages)
+                                           ? item.fileImgBaseH + kImgGap
+                                           : item.fileImgBaseH;
     extraH += imgRegionH;
 
     // File chips (files without a preview)
@@ -1385,6 +1397,7 @@ void MessageListWidget::dropGifMovie(const QString &url) const {
         // so a kept pixmap would repaint as a frozen frame.
         delete m;
         _fileImages.remove(url);
+        ++_fileImagesGen;
     } else {
         // Cache-owned: sever our frameChanged connection and hand the hold back.
         disconnect(m, nullptr, this, nullptr);
@@ -3064,6 +3077,7 @@ void MessageListWidget::handleEvent(const Event &e) {
             _items[existing].docWidth = 0;
             _items[existing].attachDocs.clear();
             _items[existing].fileImgsRequested = false;
+            _items[existing].fileImgBaseH      = -1;
             rebuildLayout();
             viewport()->update();
             return;
@@ -3092,6 +3106,7 @@ void MessageListWidget::handleEvent(const Event &e) {
         _items[i].docWidth = 0;
         _items[i].attachDocs.clear();
         _items[i].fileImgsRequested = false;
+        _items[i].fileImgBaseH      = -1;
         rebuildLayout();
         viewport()->update();
 

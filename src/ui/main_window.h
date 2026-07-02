@@ -83,6 +83,11 @@ private:
     // strings owned by structures these functions rebuild (switcher entries,
     // _activeTeamId, the sessions map), which would dangle behind a reference.
     Session *ensureSession(const QString &teamId);
+    // Bring up background workspaces one per timer tick: each ensureSession()
+    // parses that workspace's cache JSON synchronously (multi-MB users.json for
+    // a large org), so starting them all on the constructor path would block
+    // the first paint N-workspaces wide.
+    void     ensureSessionsSequentially(QStringList pending);
     void     activateWorkspace(QString teamId);
     void     dropSession(QString teamId);
     void     switchToWorkspace(QString teamId);

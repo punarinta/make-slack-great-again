@@ -871,6 +871,8 @@ void MessageListWidget::enforceFileImageCap() const {
         evicted.append(it.key());
         it = _fileImages.erase(it);
     }
+    if (!evicted.isEmpty())
+        ++_fileImagesGen;
     // An evicted animated file loses its player too (outside the loop —
     // dropGifMovie touches _fileImages itself).
     for (const auto &url : evicted)
@@ -1052,6 +1054,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         if (!px.isNull() && px.width() > maxSrcW)
                             px = px.scaledToWidth(maxSrcW, Qt::SmoothTransformation);
                         _fileImages[url] = px;
+                        ++_fileImagesGen;
                         enforceFileImageCap();
                         rebuildLayout();
                         viewport()->update();
@@ -1063,6 +1066,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         QPixmap px;
                         if (px.loadFromData(cached) && !px.isNull()) {
                             _fileImages[url] = px;
+                            ++_fileImagesGen;
                             maybeCreateFileGifMovie(url, cached);
                             enforceFileImageCap();
                             rebuildLayout();
@@ -1080,6 +1084,7 @@ void MessageListWidget::requestItemImages(MessageItem &item) {
                         QPixmap px;
                         px.loadFromData(data);
                         _fileImages[url] = px;
+                        ++_fileImagesGen;
                         maybeCreateFileGifMovie(url, data);
                         _scaledPreviews.remove(url);
                         enforceFileImageCap();

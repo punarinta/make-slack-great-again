@@ -493,71 +493,70 @@ std::vector<Message> WorkspaceCache::loadMessages(const ConversationId &conv) co
     return result;
 }
 
+QJsonObject &WorkspaceCache::metaObject() const {
+    if (!_meta)
+        _meta = QJsonDocument::fromJson(readFile(metaPath())).object();
+    return *_meta;
+}
+
+void WorkspaceCache::writeMeta() {
+    writeJson(metaPath(), QJsonDocument(metaObject()));
+}
+
 void WorkspaceCache::saveLastConv(const ConversationId &conv, const QString &displayName) {
-    // Read-modify-write: meta.json also carries other keys (activity sweep stamp).
-    auto o    = QJsonDocument::fromJson(readFile(metaPath())).object();
+    // meta.json also carries other keys (activity sweep stamp etc.) — they
+    // survive because the cached object is mutated in place, no re-read needed.
+    auto &o   = metaObject();
     o["conv"] = conv.value;
     o["name"] = displayName;
-    writeJson(metaPath(), QJsonDocument(o));
+    writeMeta();
 }
 
 std::pair<ConversationId, QString> WorkspaceCache::loadLastConv() const {
-    const auto data = readFile(metaPath());
-    if (data.isEmpty())
+    const auto &o = metaObject();
+    if (o.isEmpty())
         return {};
-    const auto doc = QJsonDocument::fromJson(data);
-    if (!doc.isObject())
-        return {};
-    const auto o = doc.object();
-    return {ConversationId{o["conv"].toString()}, o["name"].toString()};
+    return {ConversationId{o.value("conv").toString()}, o.value("name").toString()};
 }
 
 void WorkspaceCache::saveMeUserId(const UserId &id) {
-    auto o    = QJsonDocument::fromJson(readFile(metaPath())).object();
-    o["meId"] = id.value;
-    writeJson(metaPath(), QJsonDocument(o));
+    metaObject()["meId"] = id.value;
+    writeMeta();
 }
 
 UserId WorkspaceCache::loadMeUserId() const {
-    const auto doc = QJsonDocument::fromJson(readFile(metaPath()));
-    return UserId{doc.object()["meId"].toString()};
+    return UserId{metaObject().value("meId").toString()};
 }
 
 void WorkspaceCache::saveActivitySweepAt(qint64 unixSecs) {
-    auto o       = QJsonDocument::fromJson(readFile(metaPath())).object();
-    o["sweepAt"] = unixSecs;
-    writeJson(metaPath(), QJsonDocument(o));
+    metaObject()["sweepAt"] = unixSecs;
+    writeMeta();
 }
 
 qint64 WorkspaceCache::loadActivitySweepAt() const {
-    const auto doc = QJsonDocument::fromJson(readFile(metaPath()));
-    return doc.object()["sweepAt"].toVariant().toLongLong();
+    return metaObject().value("sweepAt").toVariant().toLongLong();
 }
 
 void WorkspaceCache::saveMutedThreads(const QStringList &keys) {
-    auto o            = QJsonDocument::fromJson(readFile(metaPath())).object();
-    o["mutedThreads"] = QJsonArray::fromStringList(keys);
-    writeJson(metaPath(), QJsonDocument(o));
+    metaObject()["mutedThreads"] = QJsonArray::fromStringList(keys);
+    writeMeta();
 }
 
 QStringList WorkspaceCache::loadMutedThreads() const {
-    const auto  doc = QJsonDocument::fromJson(readFile(metaPath()));
     QStringList out;
-    for (const auto &v : doc.object()["mutedThreads"].toArray())
+    for (const auto &v : metaObject().value("mutedThreads").toArray())
         out.append(v.toString());
     return out;
 }
 
 void WorkspaceCache::saveDeadConvIds(const QStringList &ids) {
-    auto o           = QJsonDocument::fromJson(readFile(metaPath())).object();
-    o["deadConvIds"] = QJsonArray::fromStringList(ids);
-    writeJson(metaPath(), QJsonDocument(o));
+    metaObject()["deadConvIds"] = QJsonArray::fromStringList(ids);
+    writeMeta();
 }
 
 QStringList WorkspaceCache::loadDeadConvIds() const {
-    const auto  doc = QJsonDocument::fromJson(readFile(metaPath()));
     QStringList out;
-    for (const auto &v : doc.object()["deadConvIds"].toArray())
+    for (const auto &v : metaObject().value("deadConvIds").toArray())
         out.append(v.toString());
     return out;
 }

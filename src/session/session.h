@@ -453,10 +453,24 @@ private:
     QTimer                                   _selfPresenceTimer;
     QTimer                                   _realtimeSafetyTimer; // 15 s; checkRealtimeHealth()
     QTimer                                   _saveUnreadsTimer; // debounces scheduleSaveUnreads()
-    QTimer                     _saveDeadConvsTimer; // debounces scheduleSaveDeadConvIds()
-    rpl::event_stream<Event>   _eventHub;
-    rpl::event_stream<QString> _errorHub;
-    rpl::event_stream<>        _emojiMapLoadedHub;
+    QTimer                               _saveDeadConvsTimer; // debounces scheduleSaveDeadConvIds()
+    // Conversation snapshots queued by cacheMessages(): the JSON serialization
+    // + file write is deferred off the conversation-switch click path. Flushed
+    // by the timer and the destructor; cachedMessages() reads the queue first
+    // so an immediate switch-back never sees a stale file.
+    QHash<QString, std::vector<Message>> _pendingMsgWrites;
+    QTimer                               _saveMsgsTimer;
+    void                                 flushPendingMsgWrites();
+    // resyncUnreads replies batched: merging each conversations.info response
+    // individually reassigned _conversations — one full conv-list rebuild per
+    // DM in the sweep. Replies collect here and merge in one reassignment per
+    // burst (timer-flushed so early replies still land promptly).
+    std::vector<std::pair<ConversationId, Conversation>> _pendingUnreadInfos;
+    QTimer                                               _unreadPatchTimer;
+    void                                                 applyPendingUnreadInfos();
+    rpl::event_stream<Event>                             _eventHub;
+    rpl::event_stream<QString>                           _errorHub;
+    rpl::event_stream<>                                  _emojiMapLoadedHub;
 
     UserId                    _meUserId;          // set via setMe() once auth.test result is known
     bool                      _meIsAdmin = false; // is_admin || is_owner from auth.test

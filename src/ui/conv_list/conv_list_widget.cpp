@@ -46,7 +46,27 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     });
 
     if (_imgCache) {
-        connect(_imgCache, &ImageCache::loaded, this, [this] { viewport()->update(); });
+        // The cache is shared app-wide and fires for every image loaded
+        // anywhere (message previews, emoji, favicons) — repaint only when the
+        // url is the avatar of a row currently on screen.
+        connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
+            const int scrollY = verticalScrollBar()->value();
+            const int vh      = viewport()->height();
+            const int first   = scrollY / kRowH;
+            const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / kRowH);
+            for (int r = first; r <= last; ++r) {
+                const auto &ri = _rows[r];
+                if (ri.kind != RowKind::Conv)
+                    continue;
+                const auto &conv = _convs[ri.convIdx];
+                if (!conv.dmUser)
+                    continue;
+                const auto infoIt = _userInfos.constFind(conv.dmUser->value);
+                if (infoIt == _userInfos.constEnd() || infoIt->avatarUrl != url)
+                    continue;
+                viewport()->update(QRect(0, r * kRowH - scrollY, viewport()->width(), kRowH));
+            }
+        });
     }
     rebuildIconPixmaps();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
