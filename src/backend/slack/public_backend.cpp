@@ -6,6 +6,7 @@
 #include "socket_mode_realtime.h"
 #include "auth/token_store.h"
 #include "backend/common_commands.h"
+#include "network/form_urlencode.h"
 
 #include <QUrlQuery>
 #include <QFile>
@@ -164,7 +165,7 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
     body.addQueryItem("client_id", _appCfg.clientId);
     body.addQueryItem("client_secret", _appCfg.clientSecret);
     body.addQueryItem("refresh_token", _refreshToken);
-    auto *reply = nam->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
+    auto *reply = nam->post(req, net::formUrlEncode(body));
 
     QObject::connect(reply, &QNetworkReply::finished, _api, [this, reply, nam, done]() mutable {
         reply->deleteLater();

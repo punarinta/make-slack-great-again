@@ -237,6 +237,52 @@ TEST_CASE("non-idempotent call does NOT retry a transient Slack error", "[send_r
 }
 
 // =============================================================================
+// WebApiClient — form/query encoding of '+'
+// =============================================================================
+//
+// QUrlQuery::toString(QUrl::FullyEncoded) leaves a literal '+' as-is (legal in
+// an RFC 3986 query), but form-urlencoded decoding — which Slack applies to
+// POST bodies AND query strings — turns '+' into a space. This is the bug that
+// mangled a sent "C++" into "C  ".
+
+TEST_CASE("'+' in a form-body value is percent-encoded, not sent literally", "[send_retry]") {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+
+    QUrlQuery params;
+    params.addQueryItem("channel", "C1");
+    params.addQueryItem("text", "C++ is 100% fun");
+    bool done = false;
+    client.callNonIdempotent("chat.postMessage", params, [&](QJsonObject) { done = true; });
+
+    REQUIRE(waitFor([&] { return done; }));
+    REQUIRE(server.requestBodies.size() == 1);
+    CHECK(server.requestBodies[0] == "channel=C1&text=C%2B%2B%20is%20100%25%20fun");
+}
+
+TEST_CASE("'+' in a GET query value is percent-encoded, not sent literally", "[send_retry]") {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+
+    QUrlQuery params;
+    params.addQueryItem("query", "C++");
+    bool done = false;
+    client.call("search.messages", params, [&](QJsonObject) { done = true; });
+
+    REQUIRE(waitFor([&] { return done; }));
+    REQUIRE(server.requestTargets.size() == 1);
+    CHECK(server.requestTargets[0] == "/search.messages?query=C%2B%2B");
+}
+
+// =============================================================================
 // WebApiClient::paginate — the self-referential ctx cycle is always broken
 // =============================================================================
 //

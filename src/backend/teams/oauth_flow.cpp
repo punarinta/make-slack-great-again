@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "oauth_flow.h"
 
+#include "network/form_urlencode.h"
+
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -117,7 +119,7 @@ void OAuthFlow::exchangeCode(const QString &code) {
     auto           *nam = new QNetworkAccessManager(this);
     QNetworkRequest req(QUrl(authorityBase() + QStringLiteral("/oauth2/v2.0/token")));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    auto *reply = nam->post(req, params.toString(QUrl::FullyEncoded).toUtf8());
+    auto *reply = nam->post(req, net::formUrlEncode(params));
     connect(reply, &QNetworkReply::finished, this, [this, reply, nam] {
         reply->deleteLater();
         nam->deleteLater();

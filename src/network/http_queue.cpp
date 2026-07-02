@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "http_queue.h"
 
+#include "form_urlencode.h"
+
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QNetworkReply>
@@ -202,10 +204,12 @@ void HttpQueue::execute(const PendingCall &c) {
         url.setQuery(QUrlQuery{});
         req.setUrl(url);
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-        reply = _nam->post(req, c.params.toString(QUrl::FullyEncoded).toUtf8());
+        reply = _nam->post(req, net::formUrlEncode(c.params));
     } else {
-        // GET with query params
-        url.setQuery(c.params);
+        // GET with query params. Slack parses query strings with form rules
+        // (literal '+' = space), so these need formUrlEncode too — QUrl keeps
+        // the %2B escapes intact.
+        url.setQuery(QString::fromUtf8(net::formUrlEncode(c.params)), QUrl::TolerantMode);
         req.setUrl(url);
         reply = _nam->get(req);
     }

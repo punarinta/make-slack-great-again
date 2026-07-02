@@ -41,7 +41,9 @@ public:
     int requestCount    = 0;
     int dropConnections = 0; // close this many requests without responding
 
-    QList<QByteArray> requestPaths; // "/chat.postMessage" etc., in arrival order
+    QList<QByteArray> requestPaths;   // "/chat.postMessage" etc., in arrival order
+    QList<QByteArray> requestTargets; // full request-line target incl. query string
+    QList<QByteArray> requestBodies;  // raw POST bodies ("" for GET), in arrival order
 
 private:
     static QByteArray make200(const QByteArray &body) {
@@ -77,8 +79,11 @@ private:
             ++requestCount;
             // Request line: "GET /chat.postMessage?channel=C1 HTTP/1.1"
             const QList<QByteArray> reqLine = headers.left(headers.indexOf("\r\n")).split(' ');
-            if (reqLine.size() >= 2)
+            if (reqLine.size() >= 2) {
                 requestPaths.append(reqLine[1].split('?').first());
+                requestTargets.append(reqLine[1]);
+            }
+            requestBodies.append(buf->mid(headerEnd + 4, contentLength));
 
             if (dropConnections > 0) {
                 --dropConnections;

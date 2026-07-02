@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "oauth_loopback.h"
 
+#include "network/form_urlencode.h"
+
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QDesktopServices>
@@ -155,7 +157,7 @@ void OAuthLoopbackFlow::postTokenRequest(const QList<QPair<QString, QString>> &p
         QUrlQuery q;
         for (const auto &[k, v] : params)
             q.addQueryItem(k, v);
-        payload = q.toString(QUrl::FullyEncoded).toUtf8();
+        payload = net::formUrlEncode(q);
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     }
 

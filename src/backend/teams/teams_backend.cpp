@@ -4,6 +4,7 @@
 
 #include "auth/token_store.h"
 #include "backend/teams/json_mappers.h"
+#include "network/form_urlencode.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -1198,7 +1199,7 @@ void Backend::doRefresh(std::function<void(bool)> done) {
         QUrl(QStringLiteral("https://login.microsoftonline.com/%1/oauth2/v2.0/token").arg(tenant))
     );
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    auto *reply = nam->post(req, params.toString(QUrl::FullyEncoded).toUtf8());
+    auto *reply = nam->post(req, net::formUrlEncode(params));
     QObject::connect(reply, &QNetworkReply::finished, _client, [this, reply, nam] {
         reply->deleteLater();
         nam->deleteLater();
