@@ -55,6 +55,12 @@ public:
     void setConversations(std::vector<Conversation> convs);
     // Call with the full user list so DM names, avatars, and status can be resolved.
     void setUsers(const std::vector<User> &users);
+    // Targeted presence/DND patch: updates one _userInfos entry and repaints
+    // only that user's row(s). Presence events arrive in bursts for the whole
+    // roster (reconnect, morning login) — routing them through setUsers()
+    // would rebuild the entire list once per event.
+    void setUserPresence(const UserId &id, bool active);
+    void setUserDnd(const UserId &id, bool dnd);
     // Set the current user's ID so the "you" label can be shown on self DMs.
     void setMe(UserId id) {
         _meUserId = std::move(id);
@@ -131,6 +137,9 @@ protected:
     // True for 1:1 IMs whose counterpart is a bot/app (incl. Slackbot) —
     // these are grouped under "Agents & apps" instead of "Direct messages".
     bool  isAppConv(const Conversation &c) const;
+    // Schedule a repaint of every visible row whose avatar belongs to `userId`
+    // (DM/MPDM rows use conv.dmUser). Cheap row scan, no rebuild.
+    void  updateRowsForUser(const QString &userId);
     // Rebuild _convs from _allConvs, filtering deactivated / raw-ID DM users.
     void  rebuildFilteredConvs();
     // Rebuild _rows from _convs according to current section collapse state.
@@ -159,10 +168,11 @@ protected:
     // userId → {displayName, avatarUrl, ...}, rebuilt on setUsers().
     QHash<QString, UserInfo>  _userInfos;
     // The exact user list _userInfos was last built from. setUsers() is invoked
-    // on every workspace switch and on every _users re-emission (presence
-    // patches, network refresh); skipping an unchanged list avoids rebuilding
+    // on every workspace switch and on every _users re-emission (profile
+    // changes, network refresh); skipping an unchanged list avoids rebuilding
     // the whole hash (with a per-user Emoji::expandCodes) + a redundant
-    // rebuildRows. QString is implicitly shared, so the copy is cheap.
+    // rebuildRows. Kept presence-truthful by setUserPresence/setUserDnd.
+    // QString is implicitly shared, so the copy is cheap.
     std::vector<User>         _lastUsers;
     // Slack username (user.name) → userId.value, for MPDM name parsing.
     QHash<QString, QString>   _usernameToId;

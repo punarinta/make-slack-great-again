@@ -172,9 +172,10 @@ bool ConvListWidget::selectConversation(ConversationId id) {
 }
 
 void ConvListWidget::setUsers(const std::vector<User> &users) {
-    // No-op re-emissions are common (a presence patch reassigns the whole
-    // _users variable, the network refresh hands back an identical list). Skip
+    // No-op re-emissions are common (the network refresh hands back an
+    // identical list, workspace switches re-emit the current value). Skip
     // the full hash rebuild + rebuildRows when nothing actually changed.
+    // (Presence/DND flips arrive via setUserPresence/setUserDnd, not here.)
     if (users == _lastUsers)
         return;
     _lastUsers = users;
@@ -202,6 +203,52 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
             _usernameToId.insert(u.name, u.id.value);
     }
     rebuildFilteredConvs();
+}
+
+void ConvListWidget::setUserPresence(const UserId &id, bool active) {
+    const auto it = _userInfos.find(id.value);
+    if (it == _userInfos.end() || it->isActive == active)
+        return;
+    it->isActive = active;
+    // Keep the setUsers() no-op guard truthful, or the next identical roster
+    // snapshot would compare unequal and force a full rebuild.
+    for (auto &u : _lastUsers)
+        if (u.id == id) {
+            u.isActive = active;
+            break;
+        }
+    updateRowsForUser(id.value);
+}
+
+void ConvListWidget::setUserDnd(const UserId &id, bool dnd) {
+    const auto it = _userInfos.find(id.value);
+    if (it == _userInfos.end() || it->dndEnabled == dnd)
+        return;
+    it->dndEnabled = dnd;
+    for (auto &u : _lastUsers)
+        if (u.id == id) {
+            u.dndEnabled = dnd;
+            break;
+        }
+    updateRowsForUser(id.value);
+}
+
+void ConvListWidget::updateRowsForUser(const QString &userId) {
+    const int scrollY = verticalScrollBar()->value();
+    const int vw      = viewport()->width();
+    const int vh      = viewport()->height();
+    for (int r = 0; r < static_cast<int>(_rows.size()); ++r) {
+        const auto &ri = _rows[r];
+        if (ri.kind != RowKind::Conv)
+            continue;
+        const auto &conv = _convs[ri.convIdx];
+        if (!conv.dmUser || conv.dmUser->value != userId)
+            continue;
+        const int y = r * kRowH - scrollY;
+        if (y + kRowH < 0 || y > vh)
+            continue;
+        viewport()->update(QRect(0, y, vw, kRowH));
+    }
 }
 
 bool ConvListWidget::isAppConv(const Conversation &c) const {

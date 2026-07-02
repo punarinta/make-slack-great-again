@@ -406,6 +406,14 @@ private:
     // reassigning the variable notifies users() subscribers.
     void patchMeUser(const std::function<void(User &)> &fn);
 
+    // Apply `fn` to one user's entry in _users WITHOUT notifying users()
+    // subscribers. Presence/DND flips arrive in bursts for the whole roster
+    // (reconnect, morning login) and reassigning the variable would rebuild
+    // every user-derived view once per event; the UI tracks these flips via
+    // the targeted EvPresenceChanged/EvDndChanged events instead, and the
+    // silent patch keeps later users() snapshots truthful.
+    void patchUserSilently(const UserId &id, const std::function<void(User &)> &fn);
+
     // False when this (conv, ts) was already delivered once — a duplicate
     // echo (chat.postMessage response + realtime) or a Socket Mode envelope
     // redelivery. Remembers the last 512 sightings.

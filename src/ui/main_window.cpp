@@ -1514,12 +1514,19 @@ void MainWindow::connectToSession() {
         rpl::on_next(
             [this](Event e) {
                 if (const auto *ev = std::get_if<EvPresenceChanged>(&e)) {
+                    // Presence flips no longer re-emit users() (see
+                    // Session::patchUserSilently) — patch the conv list's dot
+                    // directly.
+                    if (_convList)
+                        _convList->setUserPresence(ev->user, ev->active);
                     if (_headerAvatar && _headerAvatar->isVisible()) {
                         const auto *conv = _session->findConversation(_currentConvId);
                         if (conv && conv->dmUser && *conv->dmUser == ev->user)
                             _headerAvatar->setPresence(ev->active);
                     }
                 } else if (const auto *ev = std::get_if<EvDndChanged>(&e)) {
+                    if (_convList)
+                        _convList->setUserDnd(ev->user, ev->dndEnabled);
                     if (_headerAvatar && _headerAvatar->isVisible()) {
                         const auto *conv = _session->findConversation(_currentConvId);
                         if (conv && conv->dmUser && *conv->dmUser == ev->user)

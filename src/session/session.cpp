@@ -233,23 +233,16 @@ void Session::start() {
             [this](Event e) {
                 // Patch in-memory state then forward.
                 if (auto *ev = std::get_if<EvPresenceChanged>(&e)) {
-                    auto users = _users.current();
-                    for (auto &u : users) {
-                        if (u.id == ev->user) {
-                            u.isActive = ev->active;
-                            break;
-                        }
-                    }
-                    _users = std::move(users);
+                    // Silent: the forwarded event below carries the change to
+                    // the UI; a users() re-emission per presence flip would
+                    // rebuild the whole conv list once per roster member.
+                    patchUserSilently(ev->user, [active = ev->active](User &u) {
+                        u.isActive = active;
+                    });
                 } else if (auto *ev = std::get_if<EvDndChanged>(&e)) {
-                    auto users = _users.current();
-                    for (auto &u : users) {
-                        if (u.id == ev->user) {
-                            u.dndEnabled = ev->dndEnabled;
-                            break;
-                        }
-                    }
-                    _users = std::move(users);
+                    patchUserSilently(ev->user, [dnd = ev->dndEnabled](User &u) {
+                        u.dndEnabled = dnd;
+                    });
                 } else if (auto *ev = std::get_if<EvUserChanged>(&e)) {
                     // Profile/avatar update. Take the fresh fields but keep the
                     // live presence/DND state — the user_change payload doesn't
@@ -1436,6 +1429,19 @@ void Session::patchMeUser(const std::function<void(User &)> &fn) {
     _users = std::move(users);
 }
 
+void Session::patchUserSilently(const UserId &id, const std::function<void(User &)> &fn) {
+    // rpl::variable has no mutate-without-notify API; its current() hands out a
+    // const ref to the live storage, which is safe to patch through as the
+    // variable itself is not const.
+    auto &users = const_cast<std::vector<User> &>(_users.current());
+    for (auto &u : users) {
+        if (u.id == id) {
+            fn(u);
+            break;
+        }
+    }
+}
+
 void Session::setPresence(bool away) {
     _backend->setPresence(away, [this, away](bool ok, QString err) {
         if (!ok) {
@@ -1445,7 +1451,7 @@ void Session::setPresence(bool away) {
             ));
             return;
         }
-        patchMeUser([away](User &u) { u.isActive = !away; });
+        patchUserSilently(_meUserId, [away](User &u) { u.isActive = !away; });
         if (!_meUserId.value.isEmpty())
             _eventHub.fire(EvPresenceChanged{_meUserId, !away});
         // The rich self-presence snapshot (manualAway etc.) only comes from the
@@ -1485,7 +1491,7 @@ void Session::setDndSnooze(int minutes) {
             ));
             return;
         }
-        patchMeUser([minutes](User &u) { u.dndEnabled = minutes > 0; });
+        patchUserSilently(_meUserId, [minutes](User &u) { u.dndEnabled = minutes > 0; });
         if (!_meUserId.value.isEmpty())
             _eventHub.fire(EvDndChanged{_meUserId, minutes > 0});
     });
@@ -1743,22 +1749,16 @@ void Session::requestPresence(UserId userId) {
     const User *u = findUser(userId);
     if (!u || u->isBot || u->isDeactivated || _backend->isSyntheticUser(userId))
         return;
-    _backend->loadPresence(userId) | rpl::on_next(
-                                         [this, userId](bool active) {
-                                             // Update user cache and fire event so all listeners
-                                             // see the new state.
-                                             auto users = _users.current();
-                                             for (auto &u : users) {
-                                                 if (u.id == userId) {
-                                                     u.isActive = active;
-                                                     break;
-                                                 }
-                                             }
-                                             _users = std::move(users);
-                                             _eventHub.fire(EvPresenceChanged{userId, active});
-                                         },
-                                         _lifetime
-                                     );
+    _backend->loadPresence(userId) |
+        rpl::on_next(
+            [this, userId](bool active) {
+                // Patch the cached user silently; the event is
+                // how listeners learn the new state.
+                patchUserSilently(userId, [active](User &u) { u.isActive = active; });
+                _eventHub.fire(EvPresenceChanged{userId, active});
+            },
+            _lifetime
+        );
 }
 
 rpl::producer<SelfPresence> Session::selfPresence() const {
@@ -1778,14 +1778,9 @@ void Session::refreshSelfPresence() {
                 // and notify listeners the same way requestPresence() does.
                 const User *me = findUser(_meUserId);
                 if (me && me->isActive != sp.active) {
-                    auto users = _users.current();
-                    for (auto &u : users) {
-                        if (u.id == _meUserId) {
-                            u.isActive = sp.active;
-                            break;
-                        }
-                    }
-                    _users = std::move(users);
+                    patchUserSilently(_meUserId, [active = sp.active](User &u) {
+                        u.isActive = active;
+                    });
                     _eventHub.fire(EvPresenceChanged{_meUserId, sp.active});
                 }
             },
