@@ -201,6 +201,15 @@ protected:
     // each paint (so it tracks scroll); consulted on click to join the huddle.
     mutable QHash<QString, QRect> _huddleHitRects;
 
+    // Visual row → viewport rect of its name text, recorded each paint only when
+    // the name had to be elided. doMouseMove consults it to show a full-name
+    // tooltip over truncated chat names. Cleared and repopulated per paint like
+    // _huddleHitRects, so it always reflects the current scroll offset.
+    mutable QHash<int, QRect> _truncNameRects;
+    // Which row's name tooltip is currently showing (-1 none, -2 the DM "+"
+    // button tooltip). Guards against re-issuing showAbove on every mouse move.
+    int                       _tooltipRow = -1;
+
     int            _hovered  = -1;
     int            _selected = -1;
     ConversationId _selectedId; // survives rebuildRows() calls

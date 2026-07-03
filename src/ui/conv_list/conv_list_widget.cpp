@@ -507,6 +507,7 @@ void ConvListWidget::resizeEvent(QResizeEvent *event) {
 
 void ConvListWidget::wheelEvent(QWheelEvent *event) {
     _tooltip->hide(); // rows shift under the cursor; reappears on next move
+    _tooltipRow      = -1;
     auto        *vsb = verticalScrollBar();
     const QPoint px  = event->pixelDelta();
     if (!px.isNull()) {
@@ -578,18 +579,39 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
     const int row = rowAt(e->pos().y());
     setHovered(row);
 
-    // Tooltip for the "+" on the Direct messages header.
-    bool onPlus = false;
+    // Tooltips: the "+" on the Direct messages header, and the full name over a
+    // truncated (elided) chat name. _tooltipRow tracks what's showing so we only
+    // re-issue showAbove when the target changes (-2 = the "+", else the row).
+    bool tooltipShown = false;
     if (row >= 0 && _rows[row].kind == RowKind::SectionHeader && _rows[row].sectionId == 1) {
         const QRect r = dmPlusRect(row * kRowH - verticalScrollBar()->value());
-        onPlus        = r.contains(e->pos());
-        if (onPlus && !_tooltip->isVisible())
-            _tooltip->showAbove(
-                tr("Open a direct message"), QRect(viewport()->mapToGlobal(r.topLeft()), r.size())
-            );
+        if (r.contains(e->pos())) {
+            if (_tooltipRow != -2) {
+                _tooltip->showAbove(
+                    tr("Open a direct message"),
+                    QRect(viewport()->mapToGlobal(r.topLeft()), r.size())
+                );
+                _tooltipRow = -2;
+            }
+            tooltipShown = true;
+        }
+    } else if (row >= 0 && _rows[row].kind == RowKind::Conv) {
+        const auto it = _truncNameRects.constFind(row);
+        if (it != _truncNameRects.constEnd()) {
+            if (_tooltipRow != row) {
+                const QRect r = it.value();
+                _tooltip->showRightOf(
+                    resolvedName(row), QRect(viewport()->mapToGlobal(r.topLeft()), r.size())
+                );
+                _tooltipRow = row;
+            }
+            tooltipShown = true;
+        }
     }
-    if (!onPlus)
+    if (!tooltipShown) {
         _tooltip->hide();
+        _tooltipRow = -1;
+    }
 }
 
 static void buildNotifySection(
@@ -671,6 +693,7 @@ void ConvListWidget::showDmContextMenu(int row, QPoint globalPos) {
 
 void ConvListWidget::doMousePress(QMouseEvent *e) {
     _tooltip->hide();
+    _tooltipRow = -1;
     if (e->button() == Qt::RightButton) {
         const int row = rowAt(e->pos().y());
         if (row >= 0 && _rows[row].kind == RowKind::Conv) {
@@ -754,6 +777,7 @@ void ConvListWidget::doMouseRelease(QMouseEvent *e) {
 void ConvListWidget::doMouseLeave() {
     setHovered(-1);
     _tooltip->hide();
+    _tooltipRow = -1;
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -846,6 +870,7 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
     const int last  = std::min(static_cast<int>(_rows.size()) - 1, (scrollY + vh) / kRowH);
 
     _huddleHitRects.clear(); // repopulated by paintRow for visible huddle rows
+    _truncNameRects.clear(); // repopulated by paintRow for elided names
     for (int r = first; r <= last; ++r)
         paintRow(p, r, r * kRowH - scrollY);
 
@@ -1075,10 +1100,13 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
         const int     nameX = leftX + kAvatarSize + kAvatarGap;
         const int     maxW  = viewport()->width() - nameX - badgeW - huddleW - 14;
-        const QString name  = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
+        const QString full  = resolvedName(row);
+        const QString name  = fm.elidedText(full, Qt::ElideRight, maxW);
         p.setFont(font);
         p.setPen(textColor);
         p.drawText(nameX, textY, name);
+        if (name != full)
+            _truncNameRects.insert(row, QRect(nameX, y, fm.horizontalAdvance(name), kRowH));
     } else if (conv.kind == ConvKind::Im && conv.dmUser) {
         const int avY = y + (kRowH - kAvatarSize) / 2;
         drawUserAvatar(
@@ -1124,9 +1152,12 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         }
 
         const int     maxW = viewport()->width() - nameX - suffixW - badgeW - huddleW - 14;
-        const QString name = fm.elidedText(resolvedName(row), Qt::ElideRight, maxW);
+        const QString full = resolvedName(row);
+        const QString name = fm.elidedText(full, Qt::ElideRight, maxW);
         p.setPen(textColor);
         p.drawText(nameX, textY, name);
+        if (name != full)
+            _truncNameRects.insert(row, QRect(nameX, y, fm.horizontalAdvance(name), kRowH));
         int curX = nameX + fm.horizontalAdvance(name);
 
         if (isExternal) {
@@ -1184,6 +1215,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         const int     maxW = viewport()->width() - leftX - prefixW - badgeW - huddleW - 14;
         const QString name = fm.elidedText(conv.name, Qt::ElideRight, maxW);
         p.drawText(leftX + prefixW, textY, name);
+        if (name != conv.name)
+            _truncNameRects.insert(
+                row, QRect(leftX + prefixW, y, fm.horizontalAdvance(name), kRowH)
+            );
     }
 
     // ── Right-side indicators (live huddle, then unread) ──────────────
