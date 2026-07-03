@@ -43,3 +43,33 @@ TEST_CASE("detectProvider: case-insensitive, handles bare domain", "[imap][provi
     CHECK(detectProvider("X@GMAIL.COM").imapHost == "imap.gmail.com");
     CHECK(detectProvider("gmail.com").imapHost == "imap.gmail.com"); // no local part
 }
+
+TEST_CASE("isFreemailDomain: consumer providers are recognized", "[imap][providers]") {
+    CHECK(isFreemailDomain("gmail.com"));
+    CHECK(isFreemailDomain("GMAIL.COM")); // case-insensitive
+    CHECK(isFreemailDomain("icloud.com"));
+    CHECK(isFreemailDomain("proton.me"));
+    CHECK(isFreemailDomain("comhem.se"));
+
+    // Multi-TLD families (the reason exact matching isn't enough).
+    CHECK(isFreemailDomain("yahoo.com"));
+    CHECK(isFreemailDomain("yahoo.co.jp"));
+    CHECK(isFreemailDomain("hotmail.co.uk"));
+    CHECK(isFreemailDomain("outlook.de"));
+    CHECK(isFreemailDomain("live.se"));
+    CHECK(isFreemailDomain("gmx.net"));
+
+    // Subdomains of a freemail domain hop to the parent.
+    CHECK(isFreemailDomain("mail.yahoo.com"));
+}
+
+TEST_CASE(
+    "isFreemailDomain: corporate domains stay eligible for domain icons", "[imap][providers]"
+) {
+    CHECK_FALSE(isFreemailDomain("nike.com"));
+    CHECK_FALSE(isFreemailDomain("lingolette.com"));
+    CHECK_FALSE(isFreemailDomain("citycity.se"));
+    CHECK_FALSE(isFreemailDomain("em.newsletter.github.com"));
+    CHECK_FALSE(isFreemailDomain("outlooksucks.com")); // prefix needs the dot boundary
+    CHECK_FALSE(isFreemailDomain(""));
+}

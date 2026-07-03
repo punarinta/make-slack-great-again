@@ -3208,6 +3208,17 @@ void MessageListWidget::handleEvent(const Event &e) {
         if (authoredHere)
             viewport()->update();
 
+    } else if (auto *ev = std::get_if<EvUsersChanged>(&e)) {
+        // Bulk profile/avatar refresh — one repaint if any of them wrote here.
+        QSet<QString> changed;
+        for (const User &u : ev->users)
+            changed.insert(u.id.value);
+        const bool authoredHere = std::any_of(_items.begin(), _items.end(), [&](const auto &it) {
+            return changed.contains(it.msg.author.value);
+        });
+        if (authoredHere)
+            viewport()->update();
+
     } else if (std::get_if<EvRealtimeReconnected>(&e)) {
         backfillAfterReconnect();
     }

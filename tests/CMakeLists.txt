@@ -160,6 +160,15 @@ add_msga_test(test_imap_providers
     ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_providers.cpp
 )
 
+# Favicon fallback resolver — pure parts (<link rel=icon> scan, parent-domain
+# hop, image sniffing). Gui for QImage decode, Network for the resolver class.
+add_msga_test(test_imap_favicon
+    test_imap_favicon.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_favicon.cpp
+)
+target_link_libraries(test_imap_favicon PRIVATE Qt6::Gui Qt6::Network Qt6::Concurrent)
+set_target_properties(test_imap_favicon PROPERTIES AUTOMOC ON)
+
 # Microsoft Teams JSON mappers (Graph JSON → domain; needs only Qt6::Core).
 add_msga_test(test_teams_mappers
     test_teams_mappers.cpp
@@ -203,6 +212,7 @@ set(IMAP_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_providers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_html.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_bimi.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_favicon.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_compose.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_smtp.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/imap/mime_parser.cpp

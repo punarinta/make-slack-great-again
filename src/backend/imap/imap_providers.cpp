@@ -3,6 +3,7 @@
 #include "backend/imap/imap_providers.h"
 
 #include <QCryptographicHash>
+#include <QSet>
 
 namespace imap {
 
@@ -54,6 +55,65 @@ ProviderInfo providerForMxHost(const QString &mxHost) {
             AuthMethod::Password,
             "https://support.apple.com/en-us/102654");
     return p; // known=false if no branch matched
+}
+
+bool isFreemailDomain(const QString &domain) {
+    // Exact consumer-provider domains. Not exhaustive — a miss only means a
+    // freemail user *might* get the provider's icon; the prefix families below
+    // catch the big multi-TLD ones.
+    static const QSet<QString> kExact = {
+        QStringLiteral("gmail.com"),       QStringLiteral("googlemail.com"),
+        QStringLiteral("msn.com"),         QStringLiteral("aol.com"),
+        QStringLiteral("icloud.com"),      QStringLiteral("me.com"),
+        QStringLiteral("mac.com"),         QStringLiteral("proton.me"),
+        QStringLiteral("protonmail.com"),  QStringLiteral("pm.me"),
+        QStringLiteral("web.de"),          QStringLiteral("t-online.de"),
+        QStringLiteral("mail.com"),        QStringLiteral("email.com"),
+        QStringLiteral("mail.ru"),         QStringLiteral("inbox.ru"),
+        QStringLiteral("list.ru"),         QStringLiteral("bk.ru"),
+        QStringLiteral("yandex.ru"),       QStringLiteral("yandex.com"),
+        QStringLiteral("ya.ru"),           QStringLiteral("zoho.com"),
+        QStringLiteral("zohomail.com"),    QStringLiteral("fastmail.com"),
+        QStringLiteral("fastmail.fm"),     QStringLiteral("hey.com"),
+        QStringLiteral("tutanota.com"),    QStringLiteral("tutanota.de"),
+        QStringLiteral("tuta.com"),        QStringLiteral("tuta.io"),
+        QStringLiteral("qq.com"),          QStringLiteral("163.com"),
+        QStringLiteral("126.com"),         QStringLiteral("sina.com"),
+        QStringLiteral("naver.com"),       QStringLiteral("daum.net"),
+        QStringLiteral("hanmail.net"),     QStringLiteral("seznam.cz"),
+        QStringLiteral("wp.pl"),           QStringLiteral("o2.pl"),
+        QStringLiteral("interia.pl"),      QStringLiteral("onet.pl"),
+        QStringLiteral("libero.it"),       QStringLiteral("virgilio.it"),
+        QStringLiteral("orange.fr"),       QStringLiteral("wanadoo.fr"),
+        QStringLiteral("free.fr"),         QStringLiteral("laposte.net"),
+        QStringLiteral("sfr.fr"),          QStringLiteral("comcast.net"),
+        QStringLiteral("verizon.net"),     QStringLiteral("att.net"),
+        QStringLiteral("sbcglobal.net"),   QStringLiteral("cox.net"),
+        QStringLiteral("earthlink.net"),   QStringLiteral("btinternet.com"),
+        QStringLiteral("sky.com"),         QStringLiteral("talktalk.net"),
+        QStringLiteral("telia.com"),       QStringLiteral("comhem.se"),
+        QStringLiteral("bredband2.com"),   QStringLiteral("spray.se"),
+        QStringLiteral("rediffmail.com"),  QStringLiteral("rocketmail.com"),
+        QStringLiteral("ymail.com"),       QStringLiteral("ziggo.nl"),
+        QStringLiteral("xs4all.nl"),       QStringLiteral("bluewin.ch"),
+        QStringLiteral("shaw.ca"),         QStringLiteral("rogers.com"),
+        QStringLiteral("sympatico.ca"),    QStringLiteral("bigpond.com"),
+        QStringLiteral("optusnet.com.au"),
+    };
+    // Provider families spanning many country TLDs (yahoo.co.jp, hotmail.co.uk,
+    // outlook.de, live.se, gmx.net/.de/.at, …).
+    static const char *kFamilies[] = {"yahoo.", "hotmail.", "outlook.", "live.", "gmx."};
+
+    QString d = domain.trimmed().toLower();
+    while (d.contains(QLatin1Char('.'))) { // hop: mail.yahoo.com → yahoo.com → stop
+        if (kExact.contains(d))
+            return true;
+        for (const char *fam : kFamilies)
+            if (d.startsWith(QLatin1String(fam)))
+                return true;
+        d = d.mid(d.indexOf(QLatin1Char('.')) + 1);
+    }
+    return false;
 }
 
 QString gravatarUrl(const QString &email, int size) {

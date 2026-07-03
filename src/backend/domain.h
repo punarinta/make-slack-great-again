@@ -695,6 +695,15 @@ struct EvMemberJoined {
 struct EvUserChanged {
     User user;
 };
+// A batch of EvUserChanged-style updates delivered as ONE event. Emitted when
+// many users refresh at once (e.g. the IMAP domain-icon resolver upgrading
+// avatars for hundreds of senders as probes complete): Session pays one roster
+// merge + one cache write + one re-emission instead of per-user — firing these
+// individually froze the UI, exactly like the per-user loadUsers storm did.
+// Same merge semantics as EvUserChanged (live presence/DND preserved).
+struct EvUsersChanged {
+    std::vector<User> users;
+};
 // A sendMessage definitively failed (Slack rejected it — not a transport
 // problem, those are retried). Session removes the optimistic copy and
 // surfaces the reason to the user.
@@ -767,6 +776,7 @@ using Event = std::variant<
     EvChannelCreated,
     EvMemberJoined,
     EvUserChanged,
+    EvUsersChanged,
     EvSendFailed,
     EvHuddleChanged,
     EvRealtimeReconnected,

@@ -5,6 +5,7 @@
 #include "backend/imap/imap_bimi.h"
 #include "backend/imap/imap_client.h"
 #include "backend/imap/imap_compose.h"
+#include "backend/imap/imap_favicon.h"
 #include "backend/imap/imap_html.h"
 #include "backend/imap/imap_mappers.h"
 #include "backend/imap/imap_providers.h"
@@ -17,7 +18,10 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMimeDatabase>
+#include <QSettings>
 #include <QTimer>
 #include <QUuid>
 #include <QtConcurrent>
@@ -34,6 +38,12 @@ namespace {
 
 constexpr int kScanWindow   = 500; // newest N INBOX messages to index in Phase 1
 constexpr int kFolderWindow = 80;  // newest N messages loaded when a folder channel is opened
+
+// Domain-icon avatars (BIMI/favicon): batch window for the bulk EvUsersChanged
+// emit + cache persist, and how long a probe result (hit or miss) stays valid
+// before the domain is probed again.
+constexpr int    kIconFlushMs       = 400;
+constexpr qint64 kDomainIconTtlSecs = 7 * 24 * 3600;
 
 QByteArray joinUids(const QList<quint32> &uids) {
     QByteArray s;
@@ -364,8 +374,11 @@ void Backend::loginClient(ImapClient *c) {
 }
 
 Backend::~Backend() {
-    delete _idleClient; // deletes its child refresh timer too
+    if (_domainIconsDirty)
+        saveDomainIconCache(); // don't lose probe results to an in-flight flush window
+    delete _idleClient;        // deletes its child refresh timer too
     delete _bimi;
+    delete _favicon;
     delete _client;
 }
 
@@ -381,25 +394,159 @@ void Backend::resolveBimiForUsers(const QHash<QString, User> &users) {
             }
         );
     }
+    loadDomainIconCache();
     QSet<QString> domains;
     for (auto it = users.cbegin(); it != users.cend(); ++it) {
         const int at = it.key().indexOf('@');
         if (at > 0)
             domains.insert(it.key().mid(at + 1));
     }
-    for (const QString &d : domains)
+    for (const QString &d : domains) {
+        // Freemail domains never get a domain-level icon: the provider's brand
+        // is not the person's avatar (Yahoo publishes BIMI — without this every
+        // @yahoo.com peer would wear the Yahoo logo). Gravatar/initials remain.
+        if (isFreemailDomain(d))
+            continue;
+        // Persisted probe result (survives restarts, expired entries dropped on
+        // load): apply a hit right away and skip the DNS + up-to-~6 HTTP probes
+        // this domain would otherwise cost on every app start.
+        const auto cached = _domainIcons.constFind(d);
+        if (cached != _domainIcons.constEnd()) {
+            if (!cached.value().url.isEmpty())
+                applyDomainIcon(d, cached.value().url);
+            continue;
+        }
         _bimi->resolve(d);
+    }
 }
 
 void Backend::onBimiResolved(const QString &domain, const QString &logoUrl) {
-    if (logoUrl.isEmpty())
-        return; // no BIMI logo → keep the Gravatar/initials avatar
+    if (logoUrl.isEmpty()) {
+        // No BIMI record → probe the domain's own web icons instead.
+        if (!_favicon) {
+            _favicon = new FaviconResolver();
+            QObject::connect(
+                _favicon,
+                &FaviconResolver::resolved,
+                _client,
+                [this](const QString &d, const QString &iconUrl) {
+                    // Record even a miss — negative caching is what stops an
+                    // icon-less domain from being re-probed every start.
+                    recordDomainIcon(d, iconUrl);
+                    if (!iconUrl.isEmpty())
+                        applyDomainIcon(d, iconUrl);
+                }
+            );
+        }
+        _favicon->resolve(domain);
+        return;
+    }
+    recordDomainIcon(domain, logoUrl);
+    applyDomainIcon(domain, logoUrl);
+}
+
+void Backend::applyDomainIcon(const QString &domain, const QString &iconUrl) {
     const QString suffix = QLatin1Char('@') + domain;
     for (auto it = _users.begin(); it != _users.end(); ++it)
-        if (it.key().endsWith(suffix) && it.value().avatarUrl != logoUrl) {
-            it.value().avatarUrl = logoUrl; // brand logo wins for the whole domain
-            _events.fire(EvUserChanged{it.value()});
+        if (it.key().endsWith(suffix) && it.value().avatarUrl != iconUrl) {
+            it.value().avatarUrl = iconUrl; // domain icon wins for the whole domain
+            _pendingIconUsers.insert(it.key());
         }
+    // Batched: results trickle in per-domain as probes finish, and a per-user
+    // EvUserChanged costs Session a full roster copy + synchronous cache write
+    // + conv-list rebuild EACH — the storm lagged the UI for seconds after the
+    // scan. One EvUsersChanged per flush window collapses all of it.
+    if (!_pendingIconUsers.isEmpty())
+        scheduleIconFlush();
+}
+
+void Backend::applyCachedDomainIcons() {
+    loadDomainIconCache();
+    if (_domainIcons.isEmpty())
+        return;
+    for (auto it = _users.begin(); it != _users.end(); ++it) {
+        const int at = it.key().indexOf('@');
+        if (at <= 0)
+            continue;
+        const QString d      = it.key().mid(at + 1).toLower(); // cache keys are lowercased
+        const auto    cached = _domainIcons.constFind(d);
+        if (cached == _domainIcons.constEnd() || cached.value().url.isEmpty())
+            continue;
+        if (isFreemailDomain(d))
+            continue; // a stale pre-guard cache entry must not slip through
+        it.value().avatarUrl = cached.value().url;
+    }
+}
+
+void Backend::recordDomainIcon(const QString &domain, const QString &iconUrl) {
+    _domainIcons.insert(domain, {iconUrl, QDateTime::currentSecsSinceEpoch()});
+    _domainIconsDirty = true;
+    scheduleIconFlush();
+}
+
+void Backend::scheduleIconFlush() {
+    if (!_iconFlush) {
+        _iconFlush = new QTimer(_client); // dies with the command connection
+        _iconFlush->setSingleShot(true);
+        _iconFlush->setInterval(kIconFlushMs);
+        QObject::connect(_iconFlush, &QTimer::timeout, _client, [this] { flushIconUpdates(); });
+    }
+    if (!_iconFlush->isActive())
+        _iconFlush->start();
+}
+
+void Backend::flushIconUpdates() {
+    if (!_pendingIconUsers.isEmpty()) {
+        EvUsersChanged ev;
+        ev.users.reserve(size_t(_pendingIconUsers.size()));
+        for (const QString &email : std::as_const(_pendingIconUsers)) {
+            const auto it = _users.constFind(email);
+            if (it != _users.cend())
+                ev.users.push_back(it.value());
+        }
+        _pendingIconUsers.clear();
+        if (!ev.users.empty())
+            _events.fire(std::move(ev));
+    }
+    if (_domainIconsDirty) {
+        _domainIconsDirty = false;
+        saveDomainIconCache();
+    }
+}
+
+void Backend::loadDomainIconCache() {
+    if (_domainIconsLoaded)
+        return;
+    _domainIconsLoaded = true;
+    const QJsonObject root =
+        QJsonDocument::fromJson(
+            QSettings("msga", "msga").value(QStringLiteral("imap/domainIcons")).toByteArray()
+        )
+            .object();
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        const QJsonObject o  = it.value().toObject();
+        const qint64      ts = qint64(o.value(QStringLiteral("ts")).toDouble());
+        if (now - ts > kDomainIconTtlSecs)
+            continue; // expired — re-probe this run, entry dropped on next save
+        _domainIcons.insert(it.key(), {o.value(QStringLiteral("url")).toString(), ts});
+    }
+}
+
+void Backend::saveDomainIconCache() const {
+    QJsonObject root;
+    for (auto it = _domainIcons.cbegin(); it != _domainIcons.cend(); ++it)
+        root.insert(
+            it.key(),
+            QJsonObject{
+                {QStringLiteral("url"), it.value().url},
+                {QStringLiteral("ts"), double(it.value().ts)},
+            }
+        );
+    QSettings("msga", "msga")
+        .setValue(
+            QStringLiteral("imap/domainIcons"), QJsonDocument(root).toJson(QJsonDocument::Compact)
+        );
 }
 
 rpl::producer<AuthState> Backend::authState() const {
@@ -687,6 +834,13 @@ void Backend::scanInboxThen(
                                 _index = br.byId;
                                 for (auto it = br.users.cbegin(); it != br.users.cend(); ++it)
                                     _users.insert(it.key(), it.value());
+                                // Stamp persisted domain icons onto the fresh users BEFORE
+                                // markScanned() delivers the loadUsers snapshot: bucketing
+                                // reset every avatarUrl to Gravatar, and a snapshot carrying
+                                // those would wipe the icons the UI already shows from cache
+                                // until the batched re-apply lands — a visible flicker of
+                                // every avatar on each start.
+                                applyCachedDomainIcons();
                                 // Users reach the UI in ONE bulk loadUsers() emission, not
                                 // a per-user EvUserChanged storm (which froze the UI).
                                 // markScanned() also releases any loadHistory calls that

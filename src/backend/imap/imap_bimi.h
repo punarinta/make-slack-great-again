@@ -4,7 +4,8 @@
 // *domain* may publish a brand logo via a `default._bimi.<domain>` DNS TXT record
 // (`v=BIMI1; l=<https logo svg>; …`); providers like Gmail/Apple Mail render it.
 // This resolves that logo URL per domain (cached, deduped) so brand senders get a
-// real avatar, with Gravatar/initials as the fallback. Below the seam, no UI.
+// real avatar; a miss falls back to the domain favicon (imap_favicon), then
+// Gravatar/initials. Below the seam, no UI.
 #pragma once
 
 #include <QHash>

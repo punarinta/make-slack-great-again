@@ -118,6 +118,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/imap/imap_server_detect.cpp
     src/backend/imap/imap_html.cpp
     src/backend/imap/imap_bimi.cpp
+    src/backend/imap/imap_favicon.cpp
     src/backend/imap/imap_compose.cpp
     src/backend/imap/imap_smtp.cpp
     src/backend/imap/imap_backend.cpp

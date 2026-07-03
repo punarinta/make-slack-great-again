@@ -26,6 +26,7 @@ namespace imap {
 
 class ImapClient;
 class BimiResolver;
+class FaviconResolver;
 class SmtpClient;
 
 class Backend : public ::Backend {
@@ -136,10 +137,27 @@ private:
         std::function<void(bool ok, QString err)> done
     );
 
-    // BIMI avatars: request brand-logo resolution for the domains of `users`, and
-    // on success upgrade matching users' avatarUrl (fires EvUserChanged).
+    // Domain-icon avatars: BIMI brand logo first, the domain's favicon as the
+    // fallback. resolveBimiForUsers() kicks resolution for the domains of
+    // `users` (freemail domains are skipped — a provider's logo must not brand
+    // its human users). Probe results (incl. "no icon") persist in QSettings
+    // with a TTL, so app starts reuse them instead of re-running DNS + HTTP
+    // probes per domain. A hit upgrades matching users' avatarUrl domain-wide;
+    // upgrades are BATCHED into one EvUsersChanged per flush window — firing
+    // per-user EvUserChanged made Session copy + save + re-emit the whole
+    // roster once per user, which lagged the UI for seconds after the scan.
     void    resolveBimiForUsers(const QHash<QString, User> &users);
     void    onBimiResolved(const QString &domain, const QString &logoUrl);
+    void    applyDomainIcon(const QString &domain, const QString &iconUrl);
+    // Stamp persisted icons onto _users in place (no events) — called before the
+    // loadUsers snapshot is delivered so it carries icons instead of the
+    // Gravatar defaults bucketing assigns (which would flicker every avatar).
+    void    applyCachedDomainIcons();
+    void    recordDomainIcon(const QString &domain, const QString &iconUrl);
+    void    loadDomainIconCache();
+    void    saveDomainIconCache() const;
+    void    scheduleIconFlush(); // arm the flush timer (no-op if already armed)
+    void    flushIconUpdates();  // emit pending EvUsersChanged + persist the cache
     // Look up a message's UID within a conversation by its ts (messageId key).
     quint32 uidForTs(const QString &convId, const Ts &ts) const;
     // The mailbox a message's UID is valid in (UIDs are per-mailbox; one
@@ -188,7 +206,21 @@ private:
     QTimer     *_idleRefresh = nullptr;
     quint32     _idleUidNext = 0; // INBOX UIDNEXT baseline; UID >= this is "new"
 
-    BimiResolver *_bimi = nullptr; // brand-logo (BIMI) avatar resolver
+    BimiResolver    *_bimi    = nullptr; // brand-logo (BIMI) avatar resolver
+    FaviconResolver *_favicon = nullptr; // domain-favicon fallback when BIMI misses
+
+    // Domain-icon probe results, persisted app-wide in QSettings ("" = probed,
+    // nothing usable). Entries expire after a TTL so icons/BIMI records picked
+    // up later aren't missed forever; expired ones are dropped on load.
+    struct DomainIcon {
+        QString url;
+        qint64  ts = 0; // secs since epoch when probed
+    };
+    QHash<QString, DomainIcon> _domainIcons;
+    bool                       _domainIconsLoaded = false;
+    bool                       _domainIconsDirty  = false;
+    QSet<QString>              _pendingIconUsers;    // emails awaiting the batched emit
+    QTimer                    *_iconFlush = nullptr; // child of _client
 };
 
 } // namespace imap

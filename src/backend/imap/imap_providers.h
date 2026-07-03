@@ -44,4 +44,11 @@ ProviderInfo providerForMxHost(const QString &mxHost);
 // gravatar.com — standard for mail clients, but a privacy trade-off.)
 QString gravatarUrl(const QString &email, int size = 128);
 
+// True for consumer mailbox providers (gmail.com, yahoo.*, outlook.*, …). Domain-
+// level icons (BIMI logo, favicon) must never be applied to users at these
+// domains: the provider's brand is not the person's avatar — Yahoo publishes
+// BIMI, so without this guard every @yahoo.com peer gets the Yahoo logo.
+// Checks parent domains too (mail.yahoo.com → yahoo.com).
+bool isFreemailDomain(const QString &domain);
+
 } // namespace imap

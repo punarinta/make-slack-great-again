@@ -284,6 +284,30 @@ void Session::start() {
                         for (const auto &c : _conversations.current())
                             if (c.kind == ConvKind::Im && c.dmUser == ev->user.id)
                                 markConvAlive(c.id);
+                } else if (auto *ev = std::get_if<EvUsersChanged>(&e)) {
+                    // Bulk EvUserChanged: same merge, but ONE roster copy, ONE
+                    // synchronous saveUsers and ONE _users re-emission for the
+                    // whole batch. (No markConvAlive sweep here — the only bulk
+                    // sender today is avatar refreshes, not reactivations.)
+                    auto                users = _users.current();
+                    QHash<QString, int> idxById;
+                    for (int i = 0; i < int(users.size()); ++i)
+                        idxById.insert(users[i].id.value, i);
+                    for (const User &nu : ev->users) {
+                        const auto it = idxById.constFind(nu.id.value);
+                        if (it == idxById.constEnd()) {
+                            idxById.insert(nu.id.value, int(users.size()));
+                            users.push_back(nu);
+                            continue;
+                        }
+                        User &old         = users[size_t(it.value())];
+                        User  merged      = nu;
+                        merged.isActive   = old.isActive;
+                        merged.dndEnabled = old.dndEnabled;
+                        old               = std::move(merged);
+                    }
+                    _cache->saveUsers(users);
+                    _users = std::move(users);
                 } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {

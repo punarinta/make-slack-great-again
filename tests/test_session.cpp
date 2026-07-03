@@ -920,6 +920,55 @@ TEST_CASE_METHOD(SessionFixture, "EvUserChanged is forwarded to subscribers", "[
     CHECK(std::holds_alternative<EvUserChanged>(col.events[0]));
 }
 
+// ── EvUsersChanged (bulk) ─────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "EvUsersChanged merges the whole batch in one roster update",
+    "[session][events]"
+) {
+    // Live presence set before the batch must survive the merge (the batch
+    // payload never carries presence, same as EvUserChanged).
+    stub->fireEvent(EvPresenceChanged{UserId{"U1"}, true});
+
+    User alice      = kAlice; // isActive=false in the payload
+    alice.avatarUrl = "https://brand/acme.svg";
+    User bob        = kBob;
+    bob.avatarUrl   = "https://brand/globex.png";
+    User carol{.id = UserId{"U3"}, .name = "carol", .avatarUrl = "https://brand/initech.png"};
+
+    // Count users() re-emissions: the whole point of the bulk event is ONE
+    // rebuild for N users instead of N.
+    int  emissions = 0;
+    auto lt        = rpl::lifetime();
+    session->users() | rpl::on_next([&](const std::vector<User> &) { ++emissions; }, lt);
+    emissions = 0; // discard the initial replay emission
+
+    stub->fireEvent(EvUsersChanged{{alice, bob, carol}});
+
+    CHECK(emissions == 1);
+    const User *a = session->findUser(UserId{"U1"});
+    REQUIRE(a != nullptr);
+    CHECK(a->avatarUrl == "https://brand/acme.svg");
+    CHECK(a->isActive == true); // live presence not clobbered
+    const User *b = session->findUser(UserId{"U2"});
+    REQUIRE(b != nullptr);
+    CHECK(b->avatarUrl == "https://brand/globex.png");
+    const User *c = session->findUser(UserId{"U3"}); // unknown user appended
+    REQUIRE(c != nullptr);
+    CHECK(c->avatarUrl == "https://brand/initech.png");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "EvUsersChanged is forwarded to subscribers", "[session][events]"
+) {
+    auto col = collectEvents();
+    stub->fireEvent(EvUsersChanged{{kAlice, kBob}});
+    REQUIRE(col.events.size() == 1);
+    REQUIRE(std::holds_alternative<EvUsersChanged>(col.events[0]));
+    CHECK(std::get<EvUsersChanged>(col.events[0]).users.size() == 2);
+}
+
 // ── EvConvMarked ──────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(
