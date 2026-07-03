@@ -50,6 +50,10 @@ public:
     QString subjectText() const;
     void    setSubjectText(const QString &text); // prefill the reply subject (email)
 
+    // Show/hide the schedule-send dropdown (chevron beside the send button).
+    // Gated on Capabilities::scheduledSend — only Slack can send at a future time.
+    void setScheduleVisible(bool visible);
+
     // Image cache for app-command avatars in the slash-command palette.
     void setImageCache(ImageCache *cache) { _imgCache = cache; }
 

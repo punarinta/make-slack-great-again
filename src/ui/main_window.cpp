@@ -2681,6 +2681,9 @@ void MainWindow::openConversation(int row) {
     // which thread they're continuing; still editable, and required to send.
     if (_session->capabilities().messageSubjects)
         _composer->setSubjectText(convReplySubject);
+    // Schedule-send is Slack-only (chat.scheduleMessage); hide the dropdown on
+    // backends that can't honor it so the chevron isn't a dead control.
+    _composer->setScheduleVisible(_session->capabilities().scheduledSend);
     _composer->setPlaceholderText(
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );

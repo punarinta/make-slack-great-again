@@ -146,6 +146,10 @@ struct Capabilities {
                                    // (own-only, plus the separate admin path).
     bool threads          = false; // threaded replies
     bool fileUpload       = false; // upload + share files
+    bool scheduledSend    = false; // send a message at a future time (chat.scheduleMessage).
+                                   // Slack-only: Teams' Graph has no delegated scheduled-send and
+                                   // SMTP has no native one, so the composer's schedule-send
+                                   // dropdown is gated on this to avoid a dead control.
     bool messageSubjects  = false; // per-message subject line (email); shows the composer subject
                                    // field — see imap-backend-plan §3/§4
     bool collapseQuotedReplies =

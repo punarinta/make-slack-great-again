@@ -260,6 +260,7 @@ Capabilities PublicBackend::capabilities() const {
     c.deleteMessage = true;
     c.threads       = true;
     c.fileUpload    = true;
+    c.scheduledSend = true; // chat.scheduleMessage
     return c;
 }
 

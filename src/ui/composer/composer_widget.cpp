@@ -526,6 +526,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
 
     // Schedule-send dropdown (chevron beside send button)
     _dropBtn = new QPushButton(_bottomBar);
+    _dropBtn->setObjectName("composerScheduleBtn");
     _dropBtn->setFixedSize(18, 28);
     _dropBtn->setIconSize(QSize(12, 12));
     _dropBtn->setIcon(svgIcon(":/ui/chevron-down.svg", QSize(12, 12), Th::c().composer.dropArrow));
@@ -667,6 +668,11 @@ void ComposerWidget::setSubjectVisible(bool visible) {
         _subject->setVisible(visible);
     if (_subjectSep)
         _subjectSep->setVisible(visible);
+}
+
+void ComposerWidget::setScheduleVisible(bool visible) {
+    if (_dropBtn)
+        _dropBtn->setVisible(visible);
 }
 
 QString ComposerWidget::subjectText() const {

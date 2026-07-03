@@ -928,3 +928,24 @@ TEST_CASE("Up on a non-first line still moves up a line", "[composer][nav]") {
     CHECK(tc.blockNumber() == 0);
     CHECK(tc.position() != 0); // landed inside line 1, not snapped to its start
 }
+
+// ── Schedule-send capability gating ───────────────────────────────────────────
+
+// The schedule-send dropdown (chevron beside Send) is Slack-only; MainWindow
+// hides it on backends whose Capabilities::scheduledSend is false so it isn't a
+// dead control. Verify setScheduleVisible drives the button's visibility.
+TEST_CASE("setScheduleVisible toggles the schedule-send dropdown", "[composer][schedule]") {
+    ComposerWidget c;
+    showWithText(&c, "");
+    auto *drop = c.findChild<QPushButton *>("composerScheduleBtn");
+    REQUIRE(drop);
+
+    // Shown by default (Slack path leaves it visible).
+    CHECK(drop->isVisible());
+
+    c.setScheduleVisible(false);
+    CHECK_FALSE(drop->isVisible());
+
+    c.setScheduleVisible(true);
+    CHECK(drop->isVisible());
+}
