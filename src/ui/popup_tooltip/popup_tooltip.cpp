@@ -5,7 +5,7 @@
 #include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
-#include "util/emoji_font.h"
+#include "util/emoji_pixmap.h"
 
 #include <QHideEvent>
 #include <QPainter>
@@ -356,9 +356,7 @@ void PopupTooltip::paintReaction(QPainter &p) {
             _emojiImage
         );
     } else {
-        p.setFont(emojiFont(kEmojiPx));
-        p.setPen(Th::c().text.onDark);
-        p.drawText(emojiRect, Qt::AlignCenter, _emojiGlyph);
+        EmojiPix::draw(p, emojiRect, _emojiGlyph, kEmojiPx, Th::c().text.onDark);
     }
 
     // Reactor names — one per line below the emoji

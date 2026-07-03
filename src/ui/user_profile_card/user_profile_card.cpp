@@ -7,7 +7,7 @@
 #include "ui/theme_manager.h"
 #include "ui/user_avatar.h"
 #include "util/emoji.h"
-#include "util/emoji_font.h"
+#include "util/emoji_pixmap.h"
 #include "util/time_format.h"
 
 #include <QApplication>
@@ -308,11 +308,10 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
         if (!_user.statusEmoji.isEmpty()) {
             const QString glyph = Emoji::fromName(_user.statusEmoji);
             if (!glyph.isEmpty()) {
-                p.setFont(emojiFont(Th::c().fonts.md));
-                const QFontMetrics emojiFm(p.font());
-                p.setPen(Th::c().text.primary);
-                p.drawText(QRect(sx, ty, textW, _statusH), Qt::AlignLeft | Qt::AlignVCenter, glyph);
-                sx += emojiFm.horizontalAdvance(glyph) + 5;
+                const int px = Th::c().fonts.md;
+                const int w  = EmojiPix::width(glyph, px, devicePixelRatioF());
+                EmojiPix::draw(p, QRect(sx, ty, w, _statusH), glyph, px, Th::c().text.primary);
+                sx += w + 5;
             }
         }
         if (!_user.statusText.isEmpty()) {

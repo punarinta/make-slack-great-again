@@ -10,7 +10,7 @@
 #include "ui/message_list/message_render.h"
 #include "session/session.h"
 #include "util/emoji.h"
-#include "util/emoji_font.h"
+#include "util/emoji_pixmap.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -969,6 +969,24 @@ void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) co
     p.drawText(leftX, textY, label);
 }
 
+const ConvListWidget::NameCache &ConvListWidget::cachedName(
+    const QString &convId, const QString &full, int maxW, const QFont &font
+) const {
+    NameCache &nc = _nameCache[convId];
+    if (nc.full != full || nc.maxW != maxW || nc.weight != font.weight()) {
+        nc.full   = full;
+        nc.maxW   = maxW;
+        nc.weight = font.weight();
+        const QFontMetrics fm(font);
+        nc.elided  = fm.elidedText(full, Qt::ElideRight, maxW);
+        nc.elidedW = fm.horizontalAdvance(nc.elided);
+        nc.st.setTextFormat(Qt::PlainText);
+        nc.st.setText(nc.elided);
+        nc.st.prepare({}, font);
+    }
+    return nc;
+}
+
 void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const auto &ri = _rows[row];
 
@@ -1098,15 +1116,14 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             displayCount > 0 ? QString::number(displayCount) : "+"
         );
 
-        const int     nameX = leftX + kAvatarSize + kAvatarGap;
-        const int     maxW  = viewport()->width() - nameX - badgeW - huddleW - 14;
-        const QString full  = resolvedName(row);
-        const QString name  = fm.elidedText(full, Qt::ElideRight, maxW);
+        const int   nameX = leftX + kAvatarSize + kAvatarGap;
+        const int   maxW  = viewport()->width() - nameX - badgeW - huddleW - 14;
+        const auto &nc    = cachedName(conv.id.value, resolvedName(row), maxW, font);
         p.setFont(font);
         p.setPen(textColor);
-        p.drawText(nameX, textY, name);
-        if (name != full)
-            _truncNameRects.insert(row, QRect(nameX, y, fm.horizontalAdvance(name), kRowH));
+        p.drawStaticText(QPointF(nameX, textY - fm.ascent()), nc.st);
+        if (nc.elided != nc.full)
+            _truncNameRects.insert(row, QRect(nameX, y, nc.elidedW, kRowH));
     } else if (conv.kind == ConvKind::Im && conv.dmUser) {
         const int avY = y + (kRowH - kAvatarSize) / 2;
         drawUserAvatar(
@@ -1132,15 +1149,16 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         int suffixW = 0;
         if (isExternal)
             suffixW += extPillW + 6;
-        QString emojiGlyph;
+        QString   emojiGlyph;
+        const int emojiPx =
+            static_cast<int>(font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height());
+        int emojiW = 0;
         if (!emoji.isEmpty() && !infoIt->statusEmoji.isEmpty()) {
             emojiGlyph = emoji;
-            QFont ef   = emojiFont(
-                static_cast<int>(
-                    font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height()
-                )
-            );
-            suffixW += QFontMetrics(ef).horizontalAdvance(emojiGlyph) + 4;
+            // Cached-pixmap ink width — QFontMetrics::horizontalAdvance on a
+            // color emoji decodes its PNG glyph and answers ~2× the ink anyway.
+            emojiW     = EmojiPix::width(emojiGlyph, emojiPx, devicePixelRatioF());
+            suffixW += emojiW + 4;
         }
         int youW = 0;
         if (isMe) {
@@ -1151,14 +1169,13 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             suffixW += youW;
         }
 
-        const int     maxW = viewport()->width() - nameX - suffixW - badgeW - huddleW - 14;
-        const QString full = resolvedName(row);
-        const QString name = fm.elidedText(full, Qt::ElideRight, maxW);
+        const int   maxW = viewport()->width() - nameX - suffixW - badgeW - huddleW - 14;
+        const auto &nc   = cachedName(conv.id.value, resolvedName(row), maxW, font);
         p.setPen(textColor);
-        p.drawText(nameX, textY, name);
-        if (name != full)
-            _truncNameRects.insert(row, QRect(nameX, y, fm.horizontalAdvance(name), kRowH));
-        int curX = nameX + fm.horizontalAdvance(name);
+        p.drawStaticText(QPointF(nameX, textY - fm.ascent()), nc.st);
+        if (nc.elided != nc.full)
+            _truncNameRects.insert(row, QRect(nameX, y, nc.elidedW, kRowH));
+        int curX = nameX + nc.elidedW;
 
         if (isExternal) {
             curX += 6;
@@ -1179,13 +1196,8 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
         if (!emojiGlyph.isEmpty()) {
             curX += 4;
-            const int emojiPx = static_cast<int>(
-                font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height()
-            );
-            p.setFont(emojiFont(emojiPx));
-            p.setPen(textColor);
-            p.drawText(curX, textY, emojiGlyph);
-            curX += QFontMetrics(p.font()).horizontalAdvance(emojiGlyph);
+            EmojiPix::draw(p, QRect(curX, y, emojiW, kRowH), emojiGlyph, emojiPx, textColor);
+            curX += emojiW;
         }
 
         if (isMe) {
@@ -1212,13 +1224,11 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
             prefixW = 14 + 6;
         }
-        const int     maxW = viewport()->width() - leftX - prefixW - badgeW - huddleW - 14;
-        const QString name = fm.elidedText(conv.name, Qt::ElideRight, maxW);
-        p.drawText(leftX + prefixW, textY, name);
-        if (name != conv.name)
-            _truncNameRects.insert(
-                row, QRect(leftX + prefixW, y, fm.horizontalAdvance(name), kRowH)
-            );
+        const int   maxW = viewport()->width() - leftX - prefixW - badgeW - huddleW - 14;
+        const auto &nc   = cachedName(conv.id.value, conv.name, maxW, font);
+        p.drawStaticText(QPointF(leftX + prefixW, textY - fm.ascent()), nc.st);
+        if (nc.elided != nc.full)
+            _truncNameRects.insert(row, QRect(leftX + prefixW, y, nc.elidedW, kRowH));
     }
 
     // ── Right-side indicators (live huddle, then unread) ──────────────

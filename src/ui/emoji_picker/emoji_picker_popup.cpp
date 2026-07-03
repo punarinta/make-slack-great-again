@@ -11,6 +11,7 @@
 #include "util/emoji.h"
 #include "util/emoji_catalog.h"
 #include "util/emoji_font.h"
+#include "util/emoji_pixmap.h"
 
 #include <QHBoxLayout>
 #include <QImage>
@@ -65,7 +66,6 @@ QPixmap glyphPixmap(const QString &glyph, int px, qreal dpr) {
 // ── EmojiGrid ────────────────────────────────────────────────────────────────
 
 EmojiGrid::EmojiGrid(QWidget *parent) : VirtualListWidget(parent) {
-    _emojiFont = emojiFont(22);
     verticalScrollBar()->setSingleStep(kCell);
 }
 
@@ -313,9 +313,9 @@ void EmojiGrid::doPaint(QPaintEvent *) {
 
             const Cell &c = _cells[idx];
             if (!c.glyph.isEmpty()) {
-                p.setFont(_emojiFont);
-                p.setPen(Th::c().text.primary);
-                p.drawText(cr, Qt::AlignCenter, displayGlyph(c));
+                // Cached pixmap — shaping a full grid of color-emoji glyphs per
+                // frame decodes a PNG per glyph (see util/emoji_pixmap.h).
+                EmojiPix::draw(p, cr, displayGlyph(c), kGlyphPx, Th::c().text.primary);
             } else if (!c.imageUrl.isEmpty() && _imgCache) {
                 const QPixmap px = _imgCache->get(c.imageUrl);
                 if (!px.isNull()) {

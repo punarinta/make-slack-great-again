@@ -12,6 +12,7 @@
 #include <QVariantAnimation>
 #include <QSet>
 #include <QHash>
+#include <QStaticText>
 #include <QPixmap>
 #include <QStringList>
 #include <QTextDocument> // structs below hold unique_ptr<QTextDocument>; need the
@@ -57,6 +58,13 @@ struct MessageItem {
     // widget's _fileImagesGen; reset to -1 when msg is replaced in place.
     mutable int         fileImgBaseH       = -1;
     mutable quint32     fileImgGen         = 0;
+    // Shaped-text caches for the header line (author name, timestamp) —
+    // QPainter::drawText re-shapes its string on every call, and
+    // paintMessageHeader runs per visible row per frame. Keyed by the source
+    // string so a display-name change or time-format switch rebuilds in place.
+    mutable QStaticText stName, stTs;
+    mutable QString     stNameSrc, stTsSrc;
+    mutable int         stNameW = 0;
 };
 
 // Aggregates the constant viewport geometry computed at the start of every paint/hit-test.
@@ -628,6 +636,12 @@ private:
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
     Ts                  _hoveredThreadFooter;  // root ts whose inline "Reply to thread" is hovered
     std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse
+
+    // Header labels shaped once on first paint (a language switch needs an app
+    // restart, so the strings are constants for the run). Members, not
+    // paint-path statics — those must never hold tr() results.
+    mutable QStaticText _stEdited, _stApp, _stExt;
+    mutable int         _appBadgeW = 0, _extBadgeW = 0; // horizontalAdvance of APP / EXT
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;

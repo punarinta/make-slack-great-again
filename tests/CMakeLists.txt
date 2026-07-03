@@ -327,6 +327,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
@@ -368,6 +369,7 @@ add_msga_widget_test(test_workspace_switcher
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
 )
 
 add_msga_widget_test(test_user_profile_card
@@ -377,6 +379,7 @@ add_msga_widget_test(test_user_profile_card
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
@@ -414,6 +417,7 @@ add_msga_widget_test(test_search_widget
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
 )
 target_link_libraries(test_search_widget PRIVATE Qt6::Test)
 
@@ -493,6 +497,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
@@ -528,6 +533,7 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -564,6 +570,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp

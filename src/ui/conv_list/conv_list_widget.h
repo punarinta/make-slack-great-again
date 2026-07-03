@@ -7,6 +7,7 @@
 
 #include <QHash>
 #include <QPixmap>
+#include <QStaticText>
 #include <QTimer>
 #include <QVariantAnimation>
 #include <vector>
@@ -209,6 +210,21 @@ protected:
     // Which row's name tooltip is currently showing (-1 none, -2 the DM "+"
     // button tooltip). Guards against re-issuing showAbove on every mouse move.
     int                       _tooltipRow = -1;
+
+    // Per-conversation cache of the elided + shaped row name. elidedText /
+    // drawText / horizontalAdvance each re-shape the string, so an uncached
+    // name costs three shaping passes per row per frame.
+    struct NameCache {
+        QString     full; // source name the entry was built from
+        int         maxW   = -1;
+        int         weight = -1; // font weight (unread rows go DemiBold)
+        QString     elided;
+        int         elidedW = 0;
+        QStaticText st;
+    };
+    mutable QHash<QString, NameCache> _nameCache; // key: conv id
+    const NameCache &
+    cachedName(const QString &convId, const QString &full, int maxW, const QFont &font) const;
 
     int            _hovered  = -1;
     int            _selected = -1;

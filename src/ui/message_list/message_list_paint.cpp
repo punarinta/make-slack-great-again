@@ -9,6 +9,7 @@
 #include "ui/paint_utils.h"
 #include "ui/user_avatar.h"
 #include "util/emoji_font.h"
+#include "util/emoji_pixmap.h"
 
 #include <QMovie>
 #include <QPainter>
@@ -483,78 +484,108 @@ void MessageListWidget::paintMessageHeader(
              : (!item.msg.botName.isEmpty() ? item.msg.botName
                                             : _session->userDisplayName(item.msg.author));
 
-    QFont nameFont = QApplication::font();
-    nameFont.setBold(true);
-    p.setFont(nameFont);
+    static const QFont kNameFont = [] {
+        QFont f = QApplication::font();
+        f.setBold(true);
+        return f;
+    }();
+    p.setFont(kNameFont);
     p.setPen(Th::c().text.primary);
-    const QFontMetrics nameFm(nameFont);
+    const QFontMetrics nameFm(kNameFont);
     const int          headerBaseline = contTop + nameFm.ascent();
-    p.drawText(textLeft, headerBaseline, name);
-    const int nameW = nameFm.horizontalAdvance(name);
+    if (item.stNameSrc != name) {
+        item.stNameSrc = name;
+        item.stName.setTextFormat(Qt::PlainText);
+        item.stName.setText(name);
+        item.stName.prepare({}, kNameFont);
+        item.stNameW = nameFm.horizontalAdvance(name);
+    }
+    p.drawStaticText(QPointF(textLeft, contTop), item.stName);
+    const int nameW = item.stNameW;
     int       tsX   = textLeft + nameW + 8;
+
+    static const QFont kBadgeFont = [] {
+        QFont f = QApplication::font();
+        f.setPointSizeF(f.pointSizeF() * 0.62);
+        f.setBold(true);
+        return f;
+    }();
+    if (_stApp.text().isEmpty()) { // once — the labels are constants for the run
+        const QFontMetrics bFm(kBadgeFont);
+        auto               prep = [&bFm](QStaticText &st, const QString &text) {
+            st.setTextFormat(Qt::PlainText);
+            st.setText(text);
+            st.prepare({}, kBadgeFont);
+            return bFm.horizontalAdvance(text);
+        };
+        _appBadgeW = prep(_stApp, tr("APP"));
+        _extBadgeW = prep(_stExt, tr("EXT"));
+        _stEdited.setTextFormat(Qt::PlainText);
+        _stEdited.setText(tr("(edited)"));
+    }
+    const auto paintBadge =
+        [&](const QStaticText &st, int badgeW, int x, const QColor &bg, const QColor &fg) {
+            const int   bH = 14;
+            const QRect bRect(x, contTop + (nameFm.height() - bH) / 2, badgeW + 8, bH);
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(bg);
+            p.drawRoundedRect(bRect, 2, 2);
+            p.setFont(kBadgeFont);
+            p.setPen(fg);
+            p.drawStaticText(
+                QPointF(
+                    bRect.x() + (bRect.width() - st.size().width()) / 2.0,
+                    bRect.y() + (bRect.height() - st.size().height()) / 2.0
+                ),
+                st
+            );
+            p.restore();
+            return bRect.right() + 8;
+        };
 
     // Slack-style "APP" tag after bot names
     const bool isBot = !item.msg.botName.isEmpty() || (user && user->isBot);
-    if (isBot) {
-        QFont badgeFont = QApplication::font();
-        badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.62);
-        badgeFont.setBold(true);
-        const QFontMetrics bFm(badgeFont);
-        const QString      label = tr("APP");
-        const int          bH    = 14;
-        const QRect        bRect(
+    if (isBot)
+        tsX = paintBadge(
+            _stApp,
+            _appBadgeW,
             textLeft + nameW + 6,
-            contTop + (nameFm.height() - bH) / 2,
-            bFm.horizontalAdvance(label) + 8,
-            bH
+            Th::c().message.appBadgeBg,
+            Th::c().message.appBadgeText
         );
-        p.save();
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(Qt::NoPen);
-        p.setBrush(Th::c().message.appBadgeBg);
-        p.drawRoundedRect(bRect, 2, 2);
-        p.setFont(badgeFont);
-        p.setPen(Th::c().message.appBadgeText);
-        p.drawText(bRect, Qt::AlignCenter, label);
-        p.restore();
-        tsX = bRect.right() + 8;
-    }
 
     // Slack-style "EXT" tag for external (Slack Connect) users
-    if (user && user->isExternal) {
-        QFont badgeFont = QApplication::font();
-        badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.62);
-        badgeFont.setBold(true);
-        const QFontMetrics bFm(badgeFont);
-        const QString      label = tr("EXT");
-        const int          bH    = 14;
-        const QRect        bRect(
-            tsX - 2, contTop + (nameFm.height() - bH) / 2, bFm.horizontalAdvance(label) + 8, bH
+    if (user && user->isExternal)
+        tsX = paintBadge(
+            _stExt, _extBadgeW, tsX - 2, Th::c().message.extBadgeBg, Th::c().message.extBadgeText
         );
-        p.save();
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(Qt::NoPen);
-        p.setBrush(Th::c().message.extBadgeBg);
-        p.drawRoundedRect(bRect, 2, 2);
-        p.setFont(badgeFont);
-        p.setPen(Th::c().message.extBadgeText);
-        p.drawText(bRect, Qt::AlignCenter, label);
-        p.restore();
-        tsX = bRect.right() + 8;
-    }
 
-    QFont tsFont = QApplication::font();
-    tsFont.setPointSizeF(tsFont.pointSizeF() * 0.85);
-    p.setFont(tsFont);
+    static const QFont kTsFont = [] {
+        QFont f = QApplication::font();
+        f.setPointSizeF(f.pointSizeF() * 0.85);
+        return f;
+    }();
+    p.setFont(kTsFont);
     p.setPen(Th::c().text.secondary);
-    const QFontMetrics tsFm(tsFont);
+    const QFontMetrics tsFm(kTsFont);
+    // The formatted string is still produced every frame (it must follow a live
+    // 12h/24h switch); only the shaping is cached, keyed by the string itself.
     const QString      tsText = MsgRender::formatTs(item.msg.date);
+    if (item.stTsSrc != tsText) {
+        item.stTsSrc = tsText;
+        item.stTs.setTextFormat(Qt::PlainText);
+        item.stTs.setText(tsText);
+        item.stTs.prepare({}, kTsFont);
+    }
     // Align timestamp to the same baseline as the bold name
-    p.drawText(tsX, headerBaseline, tsText);
+    const int tsTop = headerBaseline - tsFm.ascent();
+    p.drawStaticText(QPointF(tsX, tsTop), item.stTs);
 
     if (item.msg.edited) {
-        const int tsW = tsFm.horizontalAdvance(tsText);
-        p.drawText(tsX + tsW + 6, headerBaseline, tr("(edited)"));
+        const int tsW = qCeil(item.stTs.size().width());
+        p.drawStaticText(QPointF(tsX + tsW + 6, tsTop), _stEdited);
     }
 }
 
@@ -1139,7 +1170,15 @@ static int reactChipW(const QString &countStr) {
         f.setPointSizeF(f.pointSizeF() * 0.82);
         return f;
     }();
-    return kReactPad + kEmojiSlot + QFontMetrics(kCntFont).horizontalAdvance(countStr) + kReactPad;
+    // Count strings are a tiny set (" 1", " 2", …) — memoize the advance so a
+    // hover repaint doesn't re-shape every chip's count.
+    static QHash<QString, int> widths;
+    int                        w = widths.value(countStr, -1);
+    if (w < 0) {
+        w = QFontMetrics(kCntFont).horizontalAdvance(countStr);
+        widths.insert(countStr, w);
+    }
+    return kReactPad + kEmojiSlot + w + kReactPad;
 }
 
 void MessageListWidget::paintReactions(
@@ -1150,7 +1189,6 @@ void MessageListWidget::paintReactions(
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
 
-    static const QFont kEmojiF = emojiFont(kReactEmoji);
     static const QFont kCountF = [] {
         QFont f = QApplication::font();
         f.setPointSizeF(f.pointSizeF() * 0.82);
@@ -1218,12 +1256,14 @@ void MessageListWidget::paintReactions(
                 );
             }
         } else {
-            p.setFont(kEmojiF);
-            p.setPen(textCol);
-            p.drawText(
-                QRect(chip.x() + kReactPad, chip.y(), kEmojiSlot, chipH),
-                Qt::AlignVCenter | Qt::AlignLeft,
-                emoji.unicode
+            // Cached pixmap blit — shaping emoji text here decoded the color
+            // font's embedded PNG on every frame (see util/emoji_pixmap.h).
+            EmojiPix::draw(
+                p,
+                QRect(chip.x() + kReactPad, chip.y(), kReactEmoji, chipH),
+                emoji.unicode,
+                kReactEmoji,
+                textCol
             );
         }
 

@@ -86,6 +86,7 @@ protected:
 private:
     static constexpr int kCols    = 9;  // emoji per row
     static constexpr int kCell    = 36; // cell side (logical px)
+    static constexpr int kGlyphPx = 22; // Unicode emoji render size inside a cell
     static constexpr int kMargin  = 6;  // grid edge margin
     static constexpr int kHeaderH = 30; // section header row height
 
@@ -120,7 +121,6 @@ private:
     int              _sel        = -1; // keyboard selection
     int              _hover      = -1; // mouse hover
     int              _topSection = -1;
-    QFont            _emojiFont;
 };
 
 // Floating emoji picker popup — reusable across the whole UI.
