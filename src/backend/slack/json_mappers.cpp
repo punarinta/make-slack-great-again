@@ -44,6 +44,7 @@ User toUser(const QJsonObject &o) {
         .statusEmoji   = rawEmoji,
         .statusText    = profile.value("status_text").toString(),
         .title         = profile.value("title").toString(),
+        .email         = profile.value("email").toString(),
         .hasTz         = o.contains("tz_offset"),
         .tzOffset      = o.value("tz_offset").toInt(),
     };

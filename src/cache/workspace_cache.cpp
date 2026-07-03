@@ -277,6 +277,8 @@ static QJsonObject toJson(const User &u) {
     o["se"] = u.statusEmoji;
     o["st"] = u.statusText;
     o["ti"] = u.title;
+    if (!u.email.isEmpty())
+        o["em"] = u.email;
     if (u.hasTz)
         o["tz"] = u.tzOffset;
     return o;
@@ -296,6 +298,7 @@ static User userFromJson(const QJsonObject &o) {
     u.statusEmoji   = o["se"].toString();
     u.statusText    = o["st"].toString();
     u.title         = o["ti"].toString();
+    u.email         = o["em"].toString();
     u.hasTz         = o.contains("tz");
     u.tzOffset      = o["tz"].toInt();
     return u;

@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
+#include <QClipboard>
 #include <QPixmap>
 #include <QTest>
 
@@ -106,6 +107,41 @@ TEST_CASE("scheduleHide hides after the grace period; hideNow is immediate", "[p
 
     card.hideNow();
     CHECK(!card.isVisible());
+}
+
+TEST_CASE("email row extends the card and click copies the address", "[profile-card]") {
+    UserProfileCard card;
+
+    card.showFor(plainUser(), QPixmap(), kTarget);
+    const int plainH = card.height();
+
+    User mailUser  = plainUser();
+    mailUser.email = "stefan@example.com";
+    card.showFor(mailUser, QPixmap(), kTarget);
+    CHECK(card.height() > plainH); // email row added
+    CHECK(!card.grab().isNull());
+
+    // Click inside the email row (just below the avatar/name block divider).
+    QApplication::clipboard()->clear();
+    QTest::mouseClick(&card, Qt::LeftButton, Qt::NoModifier, QPoint(30, card.height() - 80));
+    // The row spans the card width; probe a couple of plausible y positions so
+    // the test doesn't encode exact metrics.
+    for (int y = 30; y < card.height() && QApplication::clipboard()->text().isEmpty(); y += 6)
+        QTest::mouseClick(&card, Qt::LeftButton, Qt::NoModifier, QPoint(30, y));
+    CHECK(QApplication::clipboard()->text() == "stefan@example.com");
+    CHECK(!card.grab().isNull()); // paints the "Copied" feedback state
+    card.hideNow();
+}
+
+TEST_CASE("presence-less workspaces paint without the dot", "[profile-card]") {
+    UserProfileCard card;
+    User            u = plainUser();
+    u.isActive        = true;
+    card.showFor(u, QPixmap(), kTarget, /*showPresence=*/false);
+    CHECK(!card.grab().isNull());
+    card.setActive(false); // late presence event must not crash a dot-less card
+    CHECK(!card.grab().isNull());
+    card.hideNow();
 }
 
 TEST_CASE("setActive and updateAvatar repaint without crashing", "[profile-card]") {

@@ -1671,9 +1671,11 @@ void MessageListWidget::showProfileCardFor(const QString &userIdStr, const QRect
         avatar = _imgCache->get(user->avatarUrl);
 
     const QRect globalRect(viewport()->mapToGlobal(anchorVpRect.topLeft()), anchorVpRect.size());
-    _profileCard->showFor(*user, avatar, globalRect);
+    const bool  hasPresence = _session->capabilities().presence;
+    _profileCard->showFor(*user, avatar, globalRect, hasPresence);
     // Refresh the presence dot; the result arrives as EvPresenceChanged in handleEvent.
-    _session->requestPresence(user->id);
+    if (hasPresence)
+        _session->requestPresence(user->id);
 }
 
 void MessageListWidget::hideProfileCard() {

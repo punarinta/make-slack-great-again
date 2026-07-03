@@ -9,8 +9,11 @@
 #include <QWidget>
 
 // Floating profile card shown when hovering a user @mention in the message list.
-// Shows: role header (owner/admin/app/deactivated), avatar, name + presence dot,
-// status, job title, the user's local time and a "Message" button.
+// Shows: role header (owner/admin/app/deactivated), avatar, name + presence dot
+// (only when the workspace has any presence concept — email has none), status,
+// job title, email (click to copy — the key affordance on email workspaces,
+// where the address is the user's identity), the user's local time and a
+// "Message" button.
 //
 // Lifetime of one appearance: showFor() positions and reveals the card;
 // scheduleHide() starts a short grace timer so the cursor can travel from the
@@ -23,8 +26,14 @@ public:
 
     // Show the card near targetGlobalRect (the mention chip), above when there
     // is room, otherwise below. avatar may be null — an initial placeholder is
-    // painted until updateAvatar() delivers the real pixmap.
-    void showFor(const User &user, const QPixmap &avatar, const QRect &targetGlobalRect);
+    // painted until updateAvatar() delivers the real pixmap. showPresence
+    // mirrors Capabilities::presence — false suppresses the dot entirely.
+    void showFor(
+        const User    &user,
+        const QPixmap &avatar,
+        const QRect   &targetGlobalRect,
+        bool           showPresence = true
+    );
 
     void updateAvatar(const QPixmap &avatar);
     void setActive(bool active); // live presence update while visible
@@ -54,10 +63,25 @@ private:
     bool    showMessageButton() const { return !_user.isDeactivated; }
 
     // Content rows recomputed by relayout(): heights depend on which optional
-    // rows (role header, status, title, clock) the user actually has.
+    // rows (role header, status, title, email, clock) the user actually has.
     void  relayout();
     QRect cardRect() const; // card body inside the shadow padding
     QRect messageButtonRect() const;
+    QRect emailRowRect() const; // empty when the user has no email
+
+    // Card-local y of the bottom-section rows (below the divider): email,
+    // clock, then the Message button. Keep in sync with relayout()'s bottomH.
+    int bottomTop() const { return _headerH + _bodyH + 1 + 12; }
+    int clockTop() const { return bottomTop() + (_emailH > 0 ? _emailH + 6 : 0); }
+    int buttonTop() const {
+        // The 6px email→clock gap exists only when BOTH rows are present —
+        // don't route through clockTop() here or an email-only card pushes
+        // the button 6px low, eating the bottom padding.
+        int rowsBottom = bottomTop() + _emailH;
+        if (_clockH > 0)
+            rowsBottom += (_emailH > 0 ? 6 : 0) + _clockH;
+        return rowsBottom + ((_emailH > 0 || _clockH > 0) ? 10 : 0);
+    }
 
     User    _user;
     QPixmap _avatar;
@@ -66,13 +90,17 @@ private:
     int _headerH = 0; // role strip height, 0 when absent
     int _statusH = 0; // status emoji+text line, 0 when absent
     int _titleH  = 0; // job-title line, 0 when absent
+    int _emailH  = 0; // email row, 0 when absent
     int _clockH  = 0; // local-time row, 0 when absent
     int _bodyH   = 0; // avatar + name block height (including its padding)
     int _cardH   = 0; // full card height (excluding shadow)
 
-    bool   _btnHovered = false;
-    QTimer _hideTimer;  // grace period after the cursor leaves mention/card
-    QTimer _clockTimer; // refreshes the local-time row while visible
+    bool   _showPresence = true; // Capabilities::presence — no dot when false
+    bool   _btnHovered   = false;
+    bool   _emailHovered = false;
+    QTimer _hideTimer;   // grace period after the cursor leaves mention/card
+    QTimer _clockTimer;  // refreshes the local-time row while visible
+    QTimer _copiedTimer; // "Copied" feedback shown after clicking the email row
 
     static constexpr int kCardW     = 320; // card body width
     static constexpr int kShadow    = 8;   // transparent margin for the drop shadow

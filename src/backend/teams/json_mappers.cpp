@@ -240,6 +240,9 @@ User toUser(const QJsonObject &o) {
     u.name        = o.value(QStringLiteral("userPrincipalName")).toString();
     if (u.name.isEmpty())
         u.name = o.value(QStringLiteral("mail")).toString();
+    u.email = o.value(QStringLiteral("mail")).toString();
+    if (u.email.isEmpty())
+        u.email = o.value(QStringLiteral("userPrincipalName")).toString();
     u.title = o.value(QStringLiteral("jobTitle")).toString();
     return u;
 }
@@ -249,6 +252,7 @@ User toMember(const QJsonObject &m) {
     u.id          = UserId{m.value(QStringLiteral("userId")).toString()};
     u.displayName = m.value(QStringLiteral("displayName")).toString();
     u.name        = m.value(QStringLiteral("email")).toString();
+    u.email       = u.name;
     return u;
 }
 

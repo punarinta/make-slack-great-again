@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "user_profile_card.h"
 #include "ui/icon_utils.h"
+#include "util/clipboard.h"
 #include "ui/paint_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
@@ -57,6 +58,10 @@ UserProfileCard::UserProfileCard(QWidget *parent)
     _clockTimer.setInterval(15000);
     connect(&_clockTimer, &QTimer::timeout, this, QOverload<>::of(&QWidget::update));
 
+    _copiedTimer.setSingleShot(true);
+    _copiedTimer.setInterval(1200);
+    connect(&_copiedTimer, &QTimer::timeout, this, QOverload<>::of(&QWidget::update));
+
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { update(); });
 }
 
@@ -86,17 +91,19 @@ void UserProfileCard::relayout() {
     _statusH =
         (_user.statusText.isEmpty() && _user.statusEmoji.isEmpty()) ? 0 : detailFm.height() + 4;
     _titleH = _user.title.isEmpty() ? 0 : detailFm.height() + 4;
+    _emailH = _user.email.isEmpty() ? 0 : 24;
     _clockH = _user.hasTz ? 24 : 0;
 
     const QFontMetrics nameFm(nameFont());
     const int          textColH = nameFm.height() + _statusH + _titleH;
     _bodyH                      = kPad + std::max(int(kAvSize), textColH) + kPad;
 
+    // Mirrors bottomTop()/clockTop()/buttonTop() — change them together.
     int bottomH = 0;
-    if (_clockH > 0 || showMessageButton()) {
-        bottomH = 12 + _clockH + 12;
+    if (_emailH > 0 || _clockH > 0 || showMessageButton()) {
+        bottomH = 12 + _emailH + (_clockH > 0 ? (_emailH > 0 ? 6 : 0) + _clockH : 0) + 12;
         if (showMessageButton())
-            bottomH += (_clockH > 0 ? 10 : 0) + kBtnH;
+            bottomH += ((_emailH > 0 || _clockH > 0) ? 10 : 0) + kBtnH;
     }
 
     _cardH = _headerH + _bodyH + (bottomH > 0 ? 1 + bottomH : 0);
@@ -116,16 +123,25 @@ QRect UserProfileCard::messageButtonRect() const {
     const int          btnW = 12 + 16 + 8 + fm.horizontalAdvance(tr("Message")) + 12;
 
     const QRect card = cardRect();
-    const int   by   = card.top() + _headerH + _bodyH + 1 + 12 + (_clockH > 0 ? _clockH + 10 : 0);
-    return QRect(card.left() + kPad, by, btnW, kBtnH);
+    return QRect(card.left() + kPad, card.top() + buttonTop(), btnW, kBtnH);
+}
+
+QRect UserProfileCard::emailRowRect() const {
+    if (_emailH <= 0)
+        return {};
+    const QRect card = cardRect();
+    return QRect(card.left() + kPad, card.top() + bottomTop(), card.width() - 2 * kPad, _emailH);
 }
 
 void UserProfileCard::showFor(
-    const User &user, const QPixmap &avatar, const QRect &targetGlobalRect
+    const User &user, const QPixmap &avatar, const QRect &targetGlobalRect, bool showPresence
 ) {
-    _user       = user;
-    _avatar     = avatar;
-    _btnHovered = false;
+    _user         = user;
+    _avatar       = avatar;
+    _showPresence = showPresence;
+    _btnHovered   = false;
+    _emailHovered = false;
+    _copiedTimer.stop();
     _hideTimer.stop();
     relayout();
 
@@ -186,23 +202,33 @@ void UserProfileCard::enterEvent(QEnterEvent *) {
 }
 
 void UserProfileCard::leaveEvent(QEvent *) {
-    _btnHovered = false;
+    _btnHovered   = false;
+    _emailHovered = false;
     update();
     scheduleHide();
 }
 
 void UserProfileCard::mouseMoveEvent(QMouseEvent *e) {
-    const bool hovered = messageButtonRect().contains(e->pos());
-    if (hovered != _btnHovered) {
-        _btnHovered = hovered;
-        setCursor(hovered ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    const bool btnHovered   = messageButtonRect().contains(e->pos());
+    const bool emailHovered = emailRowRect().contains(e->pos());
+    if (btnHovered != _btnHovered || emailHovered != _emailHovered) {
+        _btnHovered   = btnHovered;
+        _emailHovered = emailHovered;
+        setCursor((btnHovered || emailHovered) ? Qt::PointingHandCursor : Qt::ArrowCursor);
         update();
     }
 }
 
 void UserProfileCard::mousePressEvent(QMouseEvent *e) {
-    if (e->button() == Qt::LeftButton && messageButtonRect().contains(e->pos()))
+    if (e->button() != Qt::LeftButton)
+        return;
+    if (messageButtonRect().contains(e->pos())) {
         emit messageRequested(_user.id);
+    } else if (emailRowRect().contains(e->pos())) {
+        Clipboard::setText(_user.email);
+        _copiedTimer.start();
+        update();
+    }
 }
 
 void UserProfileCard::paintEvent(QPaintEvent *) {
@@ -269,16 +295,16 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
     const int textColH = nameFm.height() + _statusH + _titleH;
     int       ty       = bodyTop + std::max(0, (kAvSize - textColH) / 2);
 
-    // Name + presence dot
+    // Name + presence dot (dot only when the workspace has presence at all)
     p.setFont(nFont);
     p.setPen(Th::c().text.primary);
-    constexpr int kDotD   = 8;
-    constexpr int kDotGap = 8;
-    const QString name =
-        nameFm.elidedText(_user.displayLabel(), Qt::ElideRight, textW - kDotGap - kDotD);
-    const int nameW = nameFm.horizontalAdvance(name);
+    constexpr int kDotD     = 8;
+    constexpr int kDotGap   = 8;
+    const int     nameAvail = _showPresence ? textW - kDotGap - kDotD : textW;
+    const QString name      = nameFm.elidedText(_user.displayLabel(), Qt::ElideRight, nameAvail);
+    const int     nameW     = nameFm.horizontalAdvance(name);
     p.drawText(QRect(textX, ty, textW, nameFm.height()), Qt::AlignLeft | Qt::AlignVCenter, name);
-    {
+    if (_showPresence) {
         const int    cy = ty + nameFm.height() / 2;
         const QRectF dot(textX + nameW + kDotGap, cy - kDotD / 2.0, kDotD, kDotD);
         if (_user.dndEnabled) {
@@ -337,15 +363,42 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
         );
     }
 
-    int sy = card.top() + _headerH + _bodyH;
-
-    // ── Bottom section: divider, local time, Message button ───────────
-    if (_clockH > 0 || showMessageButton()) {
+    // ── Bottom section: divider, email, local time, Message button ────
+    if (_emailH > 0 || _clockH > 0 || showMessageButton()) {
+        const int dividerY = card.top() + _headerH + _bodyH;
         p.setPen(Th::c().divider.def);
-        p.drawLine(card.left(), sy, card.right(), sy);
-        sy += 1 + 12;
+        p.drawLine(card.left(), dividerY, card.right(), dividerY);
+
+        if (_emailH > 0) {
+            // Click-to-copy row: mail icon + address, swapped for a check +
+            // "Copied" while the feedback timer runs.
+            const QRect   row    = emailRowRect();
+            const bool    copied = _copiedTimer.isActive();
+            const QColor  fg     = copied          ? Th::c().accent.def
+                                   : _emailHovered ? Th::c().accent.def
+                                                   : Th::c().text.primary;
+            const QPixmap icon   = svgPixmapPhys(
+                copied ? ":/ui/check.svg" : ":/ui/mail.svg",
+                QSize(16, 16),
+                copied ? Th::c().accent.def : Th::c().icon.def,
+                dpr
+            );
+            p.drawPixmap(row.left(), row.top() + (_emailH - 16) / 2, icon);
+            QFont emailFont = dFont;
+            emailFont.setUnderline(_emailHovered && !copied);
+            p.setFont(emailFont);
+            p.setPen(fg);
+            const int textAvail = row.width() - 24;
+            p.drawText(
+                QRect(row.left() + 16 + 8, row.top(), textAvail, _emailH),
+                Qt::AlignLeft | Qt::AlignVCenter,
+                copied ? tr("Copied")
+                       : QFontMetrics(emailFont).elidedText(_user.email, Qt::ElideMiddle, textAvail)
+            );
+        }
 
         if (_clockH > 0) {
+            const int     sy = card.top() + clockTop();
             const QPixmap clock =
                 svgPixmapPhys(":/ui/clock.svg", QSize(16, 16), Th::c().icon.def, dpr);
             p.drawPixmap(card.left() + kPad, sy + (_clockH - 16) / 2, clock);
@@ -356,7 +409,6 @@ void UserProfileCard::paintEvent(QPaintEvent *) {
                 Qt::AlignLeft | Qt::AlignVCenter,
                 localTimeText()
             );
-            sy += _clockH + (showMessageButton() ? 10 : 0);
         }
 
         if (showMessageButton()) {

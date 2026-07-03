@@ -83,6 +83,7 @@ Bucketer::run(const QList<MsgRef> &msgs, const QList<QList<quint32>> &serverThre
             return;
         User &u = result.users[a.email];
         u.id    = UserId{a.email};
+        u.email = a.email;
         if (u.name.isEmpty())
             u.name = a.email;
         if (!a.name.isEmpty())

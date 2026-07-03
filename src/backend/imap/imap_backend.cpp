@@ -752,6 +752,7 @@ rpl::producer<UserId> Backend::loadMe() {
         self.id          = me;
         self.name        = _creds.user;
         self.displayName = _creds.user;
+        self.email       = _creds.user;
         self.avatarUrl   = gravatarUrl(_creds.user);
         _events.fire(EvUserChanged{self});
         consumer.put_next(UserId{me});

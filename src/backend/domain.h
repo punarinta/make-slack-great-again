@@ -182,6 +182,9 @@ struct User {
     QString statusEmoji;           // Slack emoji name without colons, e.g. "palm_tree"
     QString statusText;            // user status text, e.g. "On vacation"
     QString title;                 // job title from profile.title
+    QString email;                 // address for contact-centric services (always set for email
+                                   // backends, where it doubles as the UserId; Slack fills it only
+    // when the token has users:read.email). Shown on the profile card.
     bool    hasTz                          = false; // true when tzOffset is known
     int     tzOffset                       = 0;     // seconds east of UTC (Slack tz_offset)
     bool    operator==(const User &) const = default;

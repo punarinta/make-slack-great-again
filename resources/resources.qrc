@@ -75,6 +75,7 @@
         <file alias="ui/plus.svg">../gfx/ui/plus.svg</file>
         <file alias="ui/check.svg">../gfx/ui/check.svg</file>
         <file alias="ui/clock.svg">../gfx/ui/clock.svg</file>
+        <file alias="ui/mail.svg">../gfx/ui/mail.svg</file>
     </qresource>
     <qresource prefix="/sfx">
         <!-- Notification chime; regenerate with scripts/gen-notify-sound.py -->
