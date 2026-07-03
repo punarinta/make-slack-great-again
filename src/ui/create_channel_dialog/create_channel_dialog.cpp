@@ -174,10 +174,10 @@ void CreateChannelDialog::applyTheme() {
         _visSectionLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
 
     if (_publicRadio)
-        _publicRadio->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
+        _publicRadio->setStyleSheet(Th::radioQss());
 
     if (_privateRadio)
-        _privateRadio->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
+        _privateRadio->setStyleSheet(Th::radioQss());
 
     if (_privateDesc)
         _privateDesc->setStyleSheet(QString("color: %1; font-size: %2px;")

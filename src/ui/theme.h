@@ -179,6 +179,13 @@ struct ContextMenuColors {
     QColor dangerText;
 };
 
+struct TooltipColors {
+    // Bubble fill (text on it is text.onDark). Deliberately near-black in EVERY
+    // theme, including dark ones — a tooltip is a floating dark chip, not a
+    // content surface, so it must not follow surface.* when the content darkens.
+    QColor bg;
+};
+
 struct FontSizes {
     int xs;      // 10 — attachment labels
     int sm;      // 11 — small labels
@@ -228,6 +235,7 @@ struct Theme {
     TitleBarColors    titleBar;
     LoaderColors      loader;
     ContextMenuColors contextMenu;
+    TooltipColors     tooltip;
     FontSizes         fonts;
     FontScales        fontScales;
     Spacing           spacing;
@@ -283,5 +291,14 @@ QString globalQss();
 // themeChanged where it's applied. `width` is the bar thickness, `radius` the
 // handle corner radius.
 QString scrollBarQss(int width = 8, int radius = 4);
+
+// Themed stock form controls. Native QRadioButton/QCheckBox/QSpinBox draw their
+// indicator/field from the OS palette — light-mode white regardless of the
+// theme — so any dialog using them must apply these instead of hand-rolling a
+// color/font-only stylesheet. `fontPx` <= 0 keeps the widget's inherited font
+// size. Re-apply on themeChanged.
+QString radioQss(int fontPx = 0);
+QString checkBoxQss(int fontPx = 0);
+QString spinBoxQss(int fontPx = 0);
 
 } // namespace Th

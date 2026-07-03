@@ -31,6 +31,7 @@ static QString tip(const QString &label, const char *shortcut = nullptr) {
 
 static QFrame *makeVSep(QWidget *parent) {
     auto *sep = new QFrame(parent);
+    sep->setObjectName("composerVSep"); // restyled on theme switch (recolor)
     sep->setFrameShape(QFrame::VLine);
     sep->setFixedSize(1, 16);
     sep->setStyleSheet(
@@ -127,6 +128,11 @@ void FormattingToolbar::recolor(const QColor &color) {
         )
             .arg(Th::qss(Th::c().composer.toolbarBg), Th::qss(Th::c().surface.highlightStrong))
     );
+    const auto vseps = findChildren<QFrame *>(QStringLiteral("composerVSep"));
+    for (auto *sep : vseps)
+        sep->setStyleSheet(
+            QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
+        );
     (void)color; // stylesheet is static; only icons change with color
 }
 

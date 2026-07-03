@@ -164,6 +164,7 @@ static QString tip(const QString &label, const char *shortcut = nullptr) {
 
 static QFrame *makeVSep(QWidget *parent) {
     auto *sep = new QFrame(parent);
+    sep->setObjectName("composerVSep"); // restyled on theme switch (applyTheme)
     sep->setFrameShape(QFrame::VLine);
     sep->setFixedSize(1, 16);
     sep->setStyleSheet("QFrame { color: " + Th::qss(Th::c().composer.toolbarBorder) + "; }");
@@ -186,21 +187,11 @@ public:
     LinkPopup(QWidget *parent, const LinkPopupTexts &t)
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setObjectName("linkPopup");
-        setStyleSheet(
-            QString(
-                "QWidget#linkPopup {"
-                "  background: %1;"
-                "  border: 1px solid %2;"
-                "  border-radius: 8px;"
-                "}"
-                // The two inputs are StyledLineEdit (self-themed).
-                "QLabel { border: none; font-size: %4px; color: %3; background: transparent; }"
-            )
-                .arg(Th::qss(Th::c().surface.raised))
-                .arg(Th::qss(Th::c().divider.strong))
-                .arg(Th::qss(Th::c().text.secondary))
-                .arg(Th::c().fonts.caption)
-        );
+        applyQss();
+        // Cached across opens by the composer — must follow theme switches.
+        connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
+            applyQss();
+        });
 
         auto       *lay = new QVBoxLayout(this);
         const auto &sp  = Th::c().spacing;
@@ -250,6 +241,24 @@ public:
     }
 
 private:
+    void applyQss() {
+        setStyleSheet(
+            QString(
+                "QWidget#linkPopup {"
+                "  background: %1;"
+                "  border: 1px solid %2;"
+                "  border-radius: 8px;"
+                "}"
+                // The two inputs are StyledLineEdit (self-themed).
+                "QLabel { border: none; font-size: %4px; color: %3; background: transparent; }"
+            )
+                .arg(Th::qss(Th::c().surface.raised))
+                .arg(Th::qss(Th::c().divider.strong))
+                .arg(Th::qss(Th::c().text.secondary))
+                .arg(Th::c().fonts.caption)
+        );
+    }
+
     void tryInsert() {
         const QString url = _urlEdit->text().trimmed();
         if (url.isEmpty()) {
@@ -282,29 +291,11 @@ public:
     )
         : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
         setObjectName("schedulePopup");
-        setStyleSheet(
-            QString(
-                "QWidget#schedulePopup {"
-                "  background:%1; border:1px solid %2; border-radius:8px;"
-                "}"
-                "QLabel  { font-size:%6px; color:%3; border:none; background:transparent; }"
-                "QDateTimeEdit {"
-                "  border:1px solid %2; border-radius:4px;"
-                "  padding:4px 8px; font-size:%7px; color:%4; background:%1;"
-                "}"
-                "QDateTimeEdit:focus { border-color:%5; }"
-                "QDateTimeEdit::up-button, QDateTimeEdit::down-button {"
-                "  width:14px;"
-                "}"
-            )
-                .arg(Th::qss(Th::c().surface.raised))
-                .arg(Th::qss(Th::c().divider.strong))
-                .arg(Th::qss(Th::c().text.secondary))
-                .arg(Th::qss(Th::c().text.primary))
-                .arg(Th::qss(Th::c().accent.def))
-                .arg(Th::c().fonts.caption)
-                .arg(Th::c().fonts.md)
-        );
+        applyQss();
+        // Cached across opens by the composer — must follow theme switches.
+        connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
+            applyQss();
+        });
 
         auto       *lay = new QVBoxLayout(this);
         const auto &sp  = Th::c().spacing;
@@ -355,6 +346,32 @@ public:
     }
 
 private:
+    void applyQss() {
+        setStyleSheet(
+            QString(
+                "QWidget#schedulePopup {"
+                "  background:%1; border:1px solid %2; border-radius:8px;"
+                "}"
+                "QLabel  { font-size:%6px; color:%3; border:none; background:transparent; }"
+                "QDateTimeEdit {"
+                "  border:1px solid %2; border-radius:4px;"
+                "  padding:4px 8px; font-size:%7px; color:%4; background:%1;"
+                "}"
+                "QDateTimeEdit:focus { border-color:%5; }"
+                "QDateTimeEdit::up-button, QDateTimeEdit::down-button {"
+                "  width:14px;"
+                "}"
+            )
+                .arg(Th::qss(Th::c().surface.raised))
+                .arg(Th::qss(Th::c().divider.strong))
+                .arg(Th::qss(Th::c().text.secondary))
+                .arg(Th::qss(Th::c().text.primary))
+                .arg(Th::qss(Th::c().accent.def))
+                .arg(Th::c().fonts.caption)
+                .arg(Th::c().fonts.md)
+        );
+    }
+
     QDateTimeEdit *_dt = nullptr;
     Callback       _cb;
 };
@@ -599,6 +616,21 @@ void ComposerWidget::applyTheme() {
                              .arg(Th::qss(Th::c().text.primary)));
 
     recolorMentionPills();
+
+    // The box frame (border + raised background) and the toolbar/bottom-bar
+    // icon tints are owned by setFocused() — re-run it with the current focus
+    // state, otherwise a theme switch keeps the old surface until the next
+    // focus change (visible as a light composer stuck on a dark theme).
+    setFocused(_edit->hasFocus());
+
+    // One-time-styled separators.
+    _subjectSep->setStyleSheet(QStringLiteral("QFrame { border: none; background: %1; }")
+                                   .arg(Th::qss(Th::c().composer.toolbarBorder)));
+    const auto vseps = findChildren<QFrame *>(QStringLiteral("composerVSep"));
+    for (auto *sep : vseps)
+        sep->setStyleSheet(
+            QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
+        );
 
     // Re-apply bottom-bar tool button styles
     const QString bbToolBtnStyle =

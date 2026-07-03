@@ -197,15 +197,16 @@ private:
     QWidget        *_loggedOutPage = nullptr;
     QWidget        *_mainPage      = nullptr; // built lazily
 
-    WorkspaceSwitcher *_switcher            = nullptr;
-    SettingsDialog    *_settingsDialog      = nullptr;
-    QWidget           *_convPanel           = nullptr;
-    QWidget           *_convResizeHandle    = nullptr;
-    QWidget           *_rightArea           = nullptr; // nav.bg wrapper — restyled on theme switch
-    ConvListWidget    *_convList            = nullptr;
-    ConvFooterWidget  *_convFooter          = nullptr;
-    QLabel            *_convNameLabel       = nullptr;
-    QWidget           *_msgHeader           = nullptr;
+    WorkspaceSwitcher *_switcher         = nullptr;
+    SettingsDialog    *_settingsDialog   = nullptr;
+    QWidget           *_convPanel        = nullptr;
+    QWidget           *_convResizeHandle = nullptr;
+    QWidget           *_rightArea        = nullptr; // nav.bg wrapper — restyled on theme switch
+    ConvListWidget    *_convList         = nullptr;
+    ConvFooterWidget  *_convFooter       = nullptr;
+    QLabel            *_convNameLabel    = nullptr;
+    QWidget           *_msgHeader        = nullptr;
+    QWidget           *_rightPanel = nullptr; // content-surface fill — restyled on theme switch
     QHBoxLayout       *_rightPanelLayout    = nullptr; // right-area outer layout — right/bottom gap
     QVBoxLayout       *_loggedOutPageLayout = nullptr; // same border treatment for login screen
     QSplitter         *_msgSplitter         = nullptr;

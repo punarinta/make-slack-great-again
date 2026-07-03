@@ -340,19 +340,14 @@ QWidget *MainWindow::buildLoggedOutPage() {
     auto *wrapper = new QWidget;
     wrapper->setObjectName("loggedOutWrapper");
     wrapper->setAttribute(Qt::WA_StyledBackground);
-    wrapper->setStyleSheet(
-        QString("QWidget#loggedOutWrapper { background: %1; }").arg(Th::qss(Th::c().nav.bg))
-    );
     _loggedOutPageLayout = new QVBoxLayout(wrapper);
     _loggedOutPageLayout->setContentsMargins(0, 0, 0, 0);
     _loggedOutPageLayout->setSpacing(0);
 
+    // Both backgrounds are applied (and re-applied) in applyTheme().
     auto *page = new QWidget(wrapper);
     page->setObjectName("loggedOutPage");
     page->setAttribute(Qt::WA_StyledBackground);
-    page->setStyleSheet(
-        QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
-    );
     _loggedOutPageLayout->addWidget(page);
 
     auto       *outer = new QVBoxLayout(page);
@@ -581,9 +576,7 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
 QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     auto *rightPanel = new QWidget(parent);
     rightPanel->setAttribute(Qt::WA_StyledBackground);
-    rightPanel->setStyleSheet(
-        QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
-    );
+    _rightPanel       = rightPanel; // stylesheet applied (and re-applied) in applyTheme()
     auto *rightLayout = new QVBoxLayout(rightPanel);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
@@ -969,11 +962,33 @@ void MainWindow::applyTheme() {
     // strip, and the right panel paints its own light surface on top.
     _frame->update();
 
-    if (_msgHeader) {
-        _msgHeader->setStyleSheet(
-            QString("QWidget#msgHeader { background: %1; }").arg(Th::qss(th.surface.raised))
+    // The content-surface fill behind the whole right side — the chat header,
+    // the area around the composer, the welcome page. The `QWidget` selector
+    // deliberately cascades to unstyled descendants; anything with its own
+    // stylesheet (banners…) still wins. Must be re-applied here: set only at
+    // build time it kept the previous theme's surface after a light↔dark
+    // switch.
+    if (_rightPanel) {
+        _rightPanel->setStyleSheet(
+            QString("QWidget { background: %1; }").arg(Th::qss(th.surface.content))
         );
     }
+
+    // Same one-time-style trap as the right panel, for the pre-login screen.
+    if (_loggedOutPage) {
+        _loggedOutPage->setStyleSheet(
+            QString("QWidget#loggedOutWrapper { background: %1; }").arg(Th::qss(th.nav.bg))
+        );
+        if (auto *page = _loggedOutPage->findChild<QWidget *>("loggedOutPage")) {
+            page->setStyleSheet(
+                QString("QWidget { background: %1; }").arg(Th::qss(th.surface.content))
+            );
+        }
+    }
+
+    // _msgHeader has no background of its own: it sits directly on the right
+    // panel's content surface (an explicit raised fill read as a boxed band on
+    // dark themes, where raised != content).
     if (_convNameLabel) {
         _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
                                           .arg(th.fonts.xxl)

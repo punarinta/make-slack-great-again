@@ -1561,6 +1561,11 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="199"/>
+        <source>Charcoal</source>
+        <translation>チャコール</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="200"/>
         <source>Blue</source>
         <translation>青</translation>
     </message>

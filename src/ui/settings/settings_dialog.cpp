@@ -70,6 +70,10 @@ static QWidget *scrollWrap(QWidget *page) {
     sa->viewport()->setAutoFillBackground(false);
     sa->setStyleSheet(settingsScrollQss());
     sa->setWidget(page);
+    // setWidget() force-enables autoFillBackground on the page, which would
+    // paint the *palette's* light-grey window color over the themed panel —
+    // invisible on the light themes, a light slab on dark ones.
+    page->setAutoFillBackground(false);
     return sa;
 }
 
@@ -195,10 +199,11 @@ void SettingsDialog::buildPanel() {
     auto *themeGroup = new QButtonGroup(themeBox);
     themeGroup->setExclusive(true);
     for (const auto &info : Th::availableThemes()) {
-        const QString name = info.id == QLatin1String("purple")  ? tr("Purple")
-                             : info.id == QLatin1String("blue")  ? tr("Blue")
-                             : info.id == QLatin1String("green") ? tr("Green")
-                                                                 : info.id;
+        const QString name = info.id == QLatin1String("purple")     ? tr("Purple")
+                             : info.id == QLatin1String("charcoal") ? tr("Charcoal")
+                             : info.id == QLatin1String("blue")     ? tr("Blue")
+                             : info.id == QLatin1String("green")    ? tr("Green")
+                                                                    : info.id;
         auto         *card = new ThemePreviewCard(info.id, name, *info.theme, themeBox);
         themeGroup->addButton(card);
         themeLayout->addWidget(card);
@@ -210,7 +215,25 @@ void SettingsDialog::buildPanel() {
         });
     }
     themeLayout->addStretch();
-    alay->addWidget(themeBox);
+
+    // The card row is wider than the panel's content column now that there are
+    // four themes — scroll it horizontally instead of letting the layout squeeze
+    // the fixed-size cards. Named "settingsScroll" so applyTheme() restyles it
+    // along with the page wraps.
+    auto *themeScroll = new QScrollArea(appearPage);
+    themeScroll->setObjectName("settingsScroll");
+    themeScroll->setWidgetResizable(true);
+    themeScroll->setFrameShape(QFrame::NoFrame);
+    themeScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    themeScroll->viewport()->setAutoFillBackground(false);
+    themeScroll->setStyleSheet(settingsScrollQss());
+    themeScroll->setWidget(themeBox);
+    themeBox->setAutoFillBackground(false); // see scrollWrap()
+    // Vertical scrolling is off and the cards must never be squeezed, so pin the
+    // area's height to the row plus room for the horizontal scrollbar (sizeHint
+    // already accounts for the platform font in the captions).
+    themeScroll->setFixedHeight(themeBox->sizeHint().height() + sp.lg);
+    alay->addWidget(themeScroll);
 
     // ── Language ──────────────────────────────────────────────────────
     _startupLanguage = TimeFmt::language();
@@ -992,34 +1015,19 @@ void SettingsDialog::applyTheme() {
                 Th::qss(th.editBanner.border)
             )
     );
-    _time12->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
-    _time24->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
-    _threadStandalone->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
-    _threadInline->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
+    const QString radioQss = Th::radioQss(th.fonts.md);
+    const QString checkQss = Th::checkBoxQss(th.fonts.md);
+    const QString spinQss  = Th::spinBoxQss(th.fonts.md);
+    _time12->setStyleSheet(radioQss);
+    _time24->setStyleSheet(radioQss);
+    _threadStandalone->setStyleSheet(radioQss);
+    _threadInline->setStyleSheet(radioQss);
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
-    _relevantDays->setStyleSheet(
-        QString(
-            "QSpinBox {"
-            "  font-size: %1px; color: %2;"
-            "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
-            "}"
-            "QSpinBox:focus { border-color: %4; }"
-        )
-            .arg(th.fonts.md)
-            .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
-    );
+    _relevantDays->setStyleSheet(spinQss);
     if (auto *w = _panel->findChild<QLabel *>("daysDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)
@@ -1028,23 +1036,13 @@ void SettingsDialog::applyTheme() {
     // (Save button self-themes — StyledButton)
 
     // ── Notifications page ────────────────────────────────────────────
-    _notifEnabled->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
+    _notifEnabled->setStyleSheet(checkQss);
     if (auto *w = _panel->findChild<QGroupBox *>("levelBox"))
         w->setStyleSheet("QGroupBox { border: none; }");
-    _notifAll->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
-    _notifMentions->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
-    _notifHuddles->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
-    _notifSound->setStyleSheet(
-        QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-    );
+    _notifAll->setStyleSheet(radioQss);
+    _notifMentions->setStyleSheet(radioQss);
+    _notifHuddles->setStyleSheet(checkQss);
+    _notifSound->setStyleSheet(checkQss);
     // (Save button self-themes — StyledButton)
 
     // ── AI assistance page ────────────────────────────────────────────
@@ -1093,17 +1091,7 @@ void SettingsDialog::applyTheme() {
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
-    _cacheCap->setStyleSheet(
-        QString(
-            "QSpinBox {"
-            "  font-size: %1px; color: %2;"
-            "  border: 1px solid %3; border-radius: 4px; padding: 3px 6px;"
-            "}"
-            "QSpinBox:focus { border-color: %4; }"
-        )
-            .arg(th.fonts.md)
-            .arg(Th::qss(th.text.primary), Th::qss(th.divider.strong), Th::qss(th.text.link))
-    );
+    _cacheCap->setStyleSheet(spinQss);
     if (auto *w = _panel->findChild<QLabel *>("capDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)

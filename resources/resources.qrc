@@ -74,6 +74,9 @@
         <file alias="ui/external-link.svg">../gfx/ui/external-link.svg</file>
         <file alias="ui/plus.svg">../gfx/ui/plus.svg</file>
         <file alias="ui/check.svg">../gfx/ui/check.svg</file>
+        <file alias="ui/check-on-accent.svg">../gfx/ui/check-on-accent.svg</file>
+        <file alias="ui/spin-up.svg">../gfx/ui/spin-up.svg</file>
+        <file alias="ui/spin-down.svg">../gfx/ui/spin-down.svg</file>
         <file alias="ui/clock.svg">../gfx/ui/clock.svg</file>
         <file alias="ui/mail.svg">../gfx/ui/mail.svg</file>
     </qresource>

@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #pragma once
 
+#include "theme.h"
+
 #include <QBrush>
 #include <QColor>
 #include <QPainter>
@@ -65,17 +67,18 @@ inline void borderedRect(QPainter &p, const QRectF &rect, qreal radius = 4) {
 
 // The floating action-toolbar card behind the message hover toolbar and the
 // file action bar: a soft drop shadow (integer inset, biased 1px downward so it
-// "sits" on the row), a white fill and a faint hairline. The white/alpha literals
-// match the existing paint-path values (an intentional non-token, like the other
-// runtime-alpha shadows). The caller fills the card's contents afterwards.
+// "sits" on the row), a raised-surface fill and a hairline. The shadow alphas
+// are an intentional non-token (runtime-alpha shadow layers); the fill/hairline
+// read the live theme so the card darkens with a dark content area. The caller
+// fills the card's contents afterwards.
 inline void toolbarCard(QPainter &p, const QRectF &card, qreal radius) {
     p.setPen(Qt::NoPen);
     for (int i = 4; i >= 1; --i) {
         p.setBrush(QColor(0, 0, 0, 5 + (4 - i) * 3));
         p.drawRoundedRect(card.adjusted(-i, -i, i, i + 1), radius + i, radius + i);
     }
-    p.setBrush(Qt::white);
-    p.setPen(QColor(0, 0, 0, 18));
+    p.setBrush(Th::c().surface.raised);
+    p.setPen(Th::c().divider.def);
     p.drawRoundedRect(card, radius, radius);
 }
 

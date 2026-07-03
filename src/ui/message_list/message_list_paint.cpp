@@ -200,16 +200,18 @@ void MessageListWidget::paintRow(
         const QRect bannerRect(0, msgTop, vw, pinnedBannerH);
         p.fillRect(bannerRect, Th::c().message.pinnedBg); // subtle yellow tint
 
-        // Pin icon
-        // NOTE: captures theme value once at first bake (acceptable for V1), but
-        // re-bakes when the device pixel ratio changes so it stays crisp at
-        // fractional scale (and after a move between differently-scaled monitors).
+        // Pin icon — re-baked when the device pixel ratio changes (stays crisp at
+        // fractional scale / after a move between differently-scaled monitors) or
+        // when the theme retints the token (dark vs light content area).
         static qreal   kPinDpr = 0;
+        static QColor  kPinColor;
         static QPixmap kPinPx;
-        if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kPinDpr)) {
-            kPinDpr = d;
-            kPinPx =
-                svgPixmapPhys(":/ui/pin.svg", QSize(12, 12), Th::c().message.attachmentDismiss, d);
+        const QColor   pinColor = Th::c().message.attachmentDismiss;
+        if (const qreal d = p.device()->devicePixelRatioF();
+            !qFuzzyCompare(d, kPinDpr) || pinColor != kPinColor) {
+            kPinDpr   = d;
+            kPinColor = pinColor;
+            kPinPx    = svgPixmapPhys(":/ui/pin.svg", QSize(12, 12), pinColor, d);
         }
         if (!kPinPx.isNull())
             p.drawPixmap(kPadH, msgTop + (pinnedBannerH - 12) / 2, kPinPx);
@@ -255,11 +257,13 @@ void MessageListWidget::paintRow(
         pCtx.palette = QApplication::palette();
         pCtx.clip    = QRectF(0, 0, textWidth, item.docHeight);
 
-        // Muted notices (e.g. reminder_add) keep the normal message layout but
-        // grey the body — the default text color drives any span without an
-        // explicit color of its own (plain reminder text has none).
-        if (isMutedMessage(item.msg))
-            pCtx.palette.setColor(QPalette::Text, Th::c().text.secondary);
+        // The default text color drives any span without an explicit color of
+        // its own — it must come from the theme, not the app palette (which
+        // stays light-mode black under a dark theme). Muted notices (e.g.
+        // reminder_add) keep the normal message layout but grey the body.
+        pCtx.palette.setColor(
+            QPalette::Text, isMutedMessage(item.msg) ? Th::c().text.secondary : Th::c().text.primary
+        );
 
         // Compute normalized selection for this row.
         if (_selAnchor.row >= 0 && _selFocus.row >= 0) {
@@ -677,7 +681,12 @@ void MessageListWidget::paintAttachments(
             p.translate(attX + textIndent, y);
             MsgRender::paintCodeBlockChrome(p, ad.textDoc.get());
             MsgRender::paintBotButtonChrome(p, ad.textDoc.get());
-            ad.textDoc->drawContents(&p, QRectF(0, 0, textW - textIndent, docH));
+            // Not drawContents(): the base text color must come from the theme,
+            // not the app palette (see paintRow).
+            QAbstractTextDocumentLayout::PaintContext pCtx;
+            pCtx.palette.setColor(QPalette::Text, Th::c().text.primary);
+            pCtx.clip = QRectF(0, 0, textW - textIndent, docH);
+            ad.textDoc->documentLayout()->draw(&p, pCtx);
             p.restore();
         }
 
@@ -1710,8 +1719,10 @@ void MessageListWidget::paintReplyItem(
         QAbstractTextDocumentLayout::PaintContext pCtx;
         pCtx.palette = QApplication::palette();
         pCtx.clip    = QRectF(0, 0, m.textWidth, item.docHeight);
-        if (isMutedMessage(item.msg))
-            pCtx.palette.setColor(QPalette::Text, Th::c().text.secondary);
+        // Base text color from the theme, not the app palette (see paintRow).
+        pCtx.palette.setColor(
+            QPalette::Text, isMutedMessage(item.msg) ? Th::c().text.secondary : Th::c().text.primary
+        );
         MsgRender::paintCodeBlockChrome(p, item.textDoc.get());
         MsgRender::paintBotButtonChrome(p, item.textDoc.get());
         item.textDoc->documentLayout()->draw(&p, pCtx);
@@ -1970,18 +1981,21 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
     Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
     // SVG icons: 0=emoji (smile), 1=forward, 2=more-horizontal
-    // NOTE: captures Th::c().icon.strong once at first bake (acceptable for V1),
-    // but re-bakes when the device pixel ratio changes so the icons stay crisp
-    // at fractional scale (and after a move between differently-scaled monitors).
+    // Re-baked when the device pixel ratio changes (stays crisp at fractional
+    // scale / after a move between differently-scaled monitors) or when the
+    // theme retints icon.strong (dark vs light content area).
     static const QSize kIconSz(16, 16);
     static qreal       kIconDpr = 0;
+    static QColor      kIconColor;
     static QPixmap     kPxSmile, kPxForward, kPxMore;
-    if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kIconDpr)) {
-        kIconDpr            = d;
-        const QColor kColor = Th::c().icon.strong;
-        kPxSmile            = svgPixmapPhys(":/ui/smile.svg", kIconSz, kColor, d);
-        kPxForward          = svgPixmapPhys(":/ui/forward.svg", kIconSz, kColor, d);
-        kPxMore             = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, kColor, d);
+    const QColor       iconColor = Th::c().icon.strong;
+    if (const qreal d = p.device()->devicePixelRatioF();
+        !qFuzzyCompare(d, kIconDpr) || iconColor != kIconColor) {
+        kIconDpr   = d;
+        kIconColor = iconColor;
+        kPxSmile   = svgPixmapPhys(":/ui/smile.svg", kIconSz, iconColor, d);
+        kPxForward = svgPixmapPhys(":/ui/forward.svg", kIconSz, iconColor, d);
+        kPxMore    = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, iconColor, d);
     }
     const QPixmap *kIcons[] = {&kPxSmile, &kPxForward, &kPxMore};
 
@@ -1991,7 +2005,7 @@ void MessageListWidget::paintHoverToolbar(QPainter &p, int index, int rowTop, in
         // Hovered button gets a slight tint
         if (b == _hoveredToolBtn) {
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(0, 0, 0, 14));
+            p.setBrush(Th::c().message.hover); // theme-aware: lightens on dark surfaces
             p.drawRoundedRect(QRectF(br).adjusted(1, 1, -1, -1), 5, 5);
         }
 
@@ -2101,18 +2115,21 @@ void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) c
     const QRectF cardRect(cardLeft, cardTop, cardW, cardH);
     Paint::toolbarCard(p, cardRect, kToolbarRadius);
 
-    // NOTE: captures Th::c().icon.strong once at first bake (acceptable for V1),
-    // but re-bakes when the device pixel ratio changes so the icons stay crisp
-    // at fractional scale (and after a move between differently-scaled monitors).
+    // Re-baked when the device pixel ratio changes (stays crisp at fractional
+    // scale / after a move between differently-scaled monitors) or when the
+    // theme retints icon.strong (dark vs light content area).
     static const QSize kIconSz(16, 16);
     static qreal       kIconDpr = 0;
+    static QColor      kIconColor;
     static QPixmap     kPxDownload, kPxShare, kPxMore;
-    if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kIconDpr)) {
-        kIconDpr            = d;
-        const QColor kColor = Th::c().icon.strong;
-        kPxDownload         = svgPixmapPhys(":/ui/download.svg", kIconSz, kColor, d);
-        kPxShare            = svgPixmapPhys(":/ui/share-2.svg", kIconSz, kColor, d);
-        kPxMore             = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, kColor, d);
+    const QColor       iconColor = Th::c().icon.strong;
+    if (const qreal d = p.device()->devicePixelRatioF();
+        !qFuzzyCompare(d, kIconDpr) || iconColor != kIconColor) {
+        kIconDpr    = d;
+        kIconColor  = iconColor;
+        kPxDownload = svgPixmapPhys(":/ui/download.svg", kIconSz, iconColor, d);
+        kPxShare    = svgPixmapPhys(":/ui/share-2.svg", kIconSz, iconColor, d);
+        kPxMore     = svgPixmapPhys(":/ui/more-horizontal.svg", kIconSz, iconColor, d);
     }
     const QPixmap *kIcons[] = {&kPxDownload, &kPxShare, &kPxMore};
 
@@ -2121,7 +2138,7 @@ void MessageListWidget::paintFileActionBar(QPainter &p, const QRect &fileRect) c
 
         if (b == _hoveredFileBtn) {
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(0, 0, 0, 14));
+            p.setBrush(Th::c().message.hover); // theme-aware: lightens on dark surfaces
             p.drawRoundedRect(QRectF(br).adjusted(1, 1, -1, -1), 5, 5);
         }
 

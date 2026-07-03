@@ -268,7 +268,7 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
 
     // Fill body
     p.setPen(Qt::NoPen);
-    p.setBrush(Th::c().text.primary);
+    p.setBrush(Th::c().tooltip.bg);
     p.drawRoundedRect(body, kRadius, kRadius);
 
     // Arrow — base overlaps body by 3px to cover antialiased edge seam
@@ -323,7 +323,7 @@ void PopupTooltip::paintReaction(QPainter &p) {
 
     // Fill body
     p.setPen(Qt::NoPen);
-    p.setBrush(Th::c().text.primary);
+    p.setBrush(Th::c().tooltip.bg);
     p.drawRoundedRect(body, kRadius, kRadius);
 
     // Arrow
@@ -384,7 +384,7 @@ void PopupTooltip::paintTaskList(QPainter &p) {
 
     // Fill body
     p.setPen(Qt::NoPen);
-    p.setBrush(Th::c().text.primary);
+    p.setBrush(Th::c().tooltip.bg);
     p.drawRoundedRect(body, kRadius, kRadius);
 
     // Arrow

@@ -57,10 +57,19 @@ constexpr double kGradBottomFactor = 0.90;
 // rail-dark tone the theme declared as nav.primary becomes the ink for text/icons
 // on the near-white selected pill (nav.itemSelectedText). Then both columns get
 // the shared vertical gradient.
+//
+// Dark themes need a much thinner plate: even 12% white over a near-black rail
+// lands around #404346 — *lighter* than the dark content surface, flipping the
+// sidebar/content depth. With dark content the whole sidebar must stay darker
+// than the content area, so the plate only nudges the list above the rail.
 void finalizeNav(Theme &t) {
-    t.nav.itemSelectedText = t.nav.primary;                // old dark chats tone → pill ink
-    t.nav.primary          = overlayWhite(t.nav.bg, 0.12); // chats surface = rail + 12% white
-    t.nav.itemHover        = overlayWhite(t.nav.bg, 0.24); // hover sits lighter than the surface
+    const bool   darkContent = t.surface.content.lightnessF() < 0.5;
+    const double plate       = darkContent ? 0.03 : 0.12;
+    const double hoverPlate  = darkContent ? 0.10 : 0.24;
+
+    t.nav.itemSelectedText = t.nav.primary;                 // old dark chats tone → pill ink
+    t.nav.primary          = overlayWhite(t.nav.bg, plate); // chats surface = rail + plate
+    t.nav.itemHover = overlayWhite(t.nav.bg, hoverPlate);   // hover sits lighter than the surface
 
     t.nav.bgGradTop         = scaleRgb(t.nav.bg, kGradTopFactor);
     t.nav.bgGradBottom      = scaleRgb(t.nav.bg, kGradBottomFactor);
@@ -236,6 +245,10 @@ const Theme kAubergineBase = {
             .itemTextDim = QColor("#888888"),
             .dangerText  = QColor("#E01E5A"),
         },
+    .tooltip =
+        {
+            .bg = QColor("#1D1C1D"),
+        },
     .fonts =
         {
             .xs      = 10,
@@ -277,6 +290,131 @@ static Theme makeAubergine() {
 }
 
 const Theme kAubergine = makeAubergine();
+
+// ── Charcoal theme: full dark mode ────────────────────────────────────────────
+// Unlike blue/green (chrome-only retints), charcoal also retints every
+// content-side token: dark surfaces, light text, alpha overlays that *lighten*
+// instead of darken. Still copy-and-patch from the aubergine base so any token
+// not repeated here inherits a deliberate value (badges, presence dots, loader
+// and the type scales are shared by construction).
+
+static Theme makeCharcoal() {
+    Theme t = kAubergineBase;
+
+    // Chrome — a neutral near-black rail. The chats-list plate lands just above
+    // this but still *below* the content surface (see finalizeNav's dark-content
+    // path): sidebar darker than content, rail darkest, like Slack's dark mode.
+    t.nav.bg              = QColor("#101214");
+    t.nav.primary         = QColor("#1D1F22"); // → itemSelectedText; chats surface derived from bg
+    t.nav.workspaceBubble = QColor("#33363A");
+    t.nav.itemSelected    = QColor("#E0E1E2"); // near-white selection pill
+    t.nav.itemTextDim     = QColor("#C6C8CA");
+
+    t.surface.content         = QColor("#1A1D21");
+    t.surface.raised          = QColor("#222529");
+    t.surface.sunken          = QColor("#141618");
+    t.surface.highlight       = QColor("#2C2F33");
+    t.surface.highlightStrong = QColor("#34383D");
+
+    t.text.primary      = QColor("#D1D2D3");
+    t.text.documentBody = QColor("#C6C8CA");
+    t.text.secondary    = QColor("#ABABAD");
+    t.text.tertiary     = QColor("#86888A");
+    t.text.onDarkDim    = QColor("#C6C8CA");
+    t.text.link         = QColor("#53B4E5");
+    t.text.danger       = QColor("#E57373");
+    t.text.warning      = QColor("#D9A741");
+
+    // Accent stays charcoal-neutral but sits mid-grey so a filled CTA is
+    // clearly visible against both the dark content and raised surfaces.
+    t.accent.def      = QColor("#5A5F66");
+    t.accent.hover    = QColor("#6A7077");
+    t.accent.pressed  = QColor("#4A4E54");
+    t.accent.dark     = QColor("#3E4247");
+    t.accent.subtleBg = QColor("#31353A");
+
+    t.message.hover                  = QColor(255, 255, 255, 12); // lighten, don't darken
+    t.message.mentionBg              = QColor(29, 155, 209, 46);
+    t.message.mentionSelfBg          = QColor(250, 200, 60, 42);
+    t.message.mentionText            = QColor("#53B4E5");
+    t.message.codeBlockBg            = QColor("#232629");
+    t.message.codeBlockBorder        = QColor("#3E4245");
+    t.message.codeText               = QColor("#B9BBBE");
+    t.message.quoteBorder            = QColor("#4A4D52");
+    t.message.attachmentBg           = QColor("#202327");
+    t.message.attachmentBorder       = QColor("#3A3D42");
+    t.message.attachmentDismiss      = QColor("#9A9CA0");
+    t.message.pinnedBg               = QColor(0xFF, 0xEB, 0x3B, 28);
+    t.message.fileChipBg             = QColor("#202327");
+    t.message.fileChipBorder         = QColor("#3A3D42");
+    t.message.fileNameDim            = QColor("#A5A7AA");
+    t.message.imagePlaceholderBg     = QColor("#232629");
+    t.message.imagePlaceholderBorder = QColor("#3E4245");
+    t.message.replyBarHover          = QColor("#24272B");
+    t.message.replyBarHoverBorder    = QColor("#3E4245");
+    t.message.replyLink              = QColor("#53B4E5");
+    t.message.appBadgeBg             = QColor(255, 255, 255, 30);
+    t.message.appBadgeText           = QColor("#ABABAD");
+    t.message.extBadgeBg             = QColor(230, 201, 138, 30);
+    t.message.extBadgeText           = QColor("#D9B45C");
+
+    t.composer.bg                    = QColor("#222529");
+    t.composer.border                = QColor("#3E4245");
+    t.composer.borderFocus           = QColor("#6A6E75");
+    t.composer.toolbarBg             = QColor("#1E2124");
+    t.composer.toolbarBorder         = QColor("#3A3D42");
+    t.composer.toolbarIcon           = QColor("#9A9CA0");
+    t.composer.toolbarIconActive     = QColor("#D1D2D3");
+    t.composer.attachmentChipBg      = QColor("#26292D");
+    t.composer.attachmentChipBorder  = QColor("#3E4245");
+    t.composer.attachmentOverlayBg   = QColor(34, 37, 41, 210);
+    t.composer.attachmentOverlayText = QColor("#D1D2D3");
+    t.composer.dropArrow             = QColor("#4A4D52");
+
+    t.editBanner.bg     = QColor("#332B18");
+    t.editBanner.border = QColor("#C99A2C");
+    t.editBanner.accent = QColor("#4A3E1E");
+    t.editBanner.text   = QColor("#E3C36B");
+
+    t.updateBanner.bg     = QColor("#33301C");
+    t.updateBanner.accent = QColor("#453E20");
+    t.updateBanner.text   = QColor("#D1D2D3");
+
+    t.danger.hover = QColor("#F02E6A"); // lighten on press-hover, not darken
+    t.danger.icon  = QColor("#E57373");
+    t.danger.text  = QColor("#E57373");
+
+    t.divider.def    = QColor("#3A3D42");
+    t.divider.strong = QColor("#4A4D52");
+    t.divider.subtle = QColor("#2E3134");
+
+    t.icon.def     = QColor("#9A9CA0");
+    t.icon.strong  = QColor("#C6C8CA");
+    t.icon.accent  = QColor("#ABABAD"); // accent tint must stay visible on dark
+    t.icon.danger  = QColor("#E57373");
+    t.icon.warning = QColor("#D9A741");
+    t.icon.starred = QColor("#E0B341");
+    t.icon.dim     = QColor("#4A4D52");
+
+    t.contextMenu.bg          = QColor("#26292E");
+    t.contextMenu.border      = QColor("#4A4D52");
+    t.contextMenu.itemHover   = QColor("#33373C");
+    t.contextMenu.itemText    = QColor("#D1D2D3");
+    t.contextMenu.itemTextDim = QColor("#9A9CA0");
+    t.contextMenu.dangerText  = QColor("#F06A85");
+
+    t.titleBar.bg             = t.nav.bg;
+    t.titleBar.controlDefault = QColor("#C6C8CA"); // drop the aubergine tint
+
+    // Tooltips stay a dark chip, but darker than the dark surfaces they float
+    // over so they still read as a separate layer.
+    t.tooltip.bg = QColor("#0B0C0E");
+
+    finalizeNav(t);
+    return t;
+}
+
+const Theme kCharcoal = makeCharcoal();
 
 // ── Blue theme: same content surfaces, ocean-blue chrome ─────────────────────
 // Copy-and-patch rather than a second 200-line literal: the delta below IS the
@@ -336,6 +474,7 @@ const Theme kForestGreen = makeForestGreen();
 const std::vector<ThemeInfo> &availableThemes() {
     static const std::vector<ThemeInfo> kThemes = {
         {QStringLiteral("purple"), &kAubergine},
+        {QStringLiteral("charcoal"), &kCharcoal},
         {QStringLiteral("blue"), &kOceanBlue},
         {QStringLiteral("green"), &kForestGreen},
     };
@@ -379,7 +518,7 @@ QString globalQss() {
                "  font-size: %3px;"
                "}"
     )
-        .arg(qss(th.text.primary))
+        .arg(qss(th.tooltip.bg))
         .arg(qss(th.text.onDark))
         .arg(th.fonts.caption);
 }
@@ -405,6 +544,60 @@ QString scrollBarQss(int width, int radius) {
         .arg(width)
         .arg(radius)
         .arg(qss(th.divider.strong), qss(th.text.secondary));
+}
+
+static QString fontRule(int fontPx) {
+    return fontPx > 0 ? QString("font-size: %1px;").arg(fontPx) : QString();
+}
+
+QString radioQss(int fontPx) {
+    const auto &th = c();
+    // 16px well + 1px border; checked = accent ring + accent dot with a
+    // well-colored gap (radial gradient keeps the indicator size constant).
+    return QString(
+               "QRadioButton { color: %1; %2 background: transparent; }"
+               "QRadioButton::indicator { width: 16px; height: 16px; border-radius: 9px;"
+               "  border: 1px solid %3; background: %4; }"
+               "QRadioButton::indicator:hover { border-color: %5; }"
+               "QRadioButton::indicator:checked { border-color: %6;"
+               "  background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,"
+               "  stop:0 %6, stop:0.45 %6, stop:0.55 %4, stop:1 %4); }"
+    )
+        .arg(qss(th.text.primary), fontRule(fontPx), qss(th.divider.strong))
+        .arg(qss(th.surface.content), qss(th.text.tertiary), qss(th.accent.def));
+}
+
+QString checkBoxQss(int fontPx) {
+    const auto &th = c();
+    return QString(
+               "QCheckBox { color: %1; %2 background: transparent; }"
+               "QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px;"
+               "  border: 1px solid %3; background: %4; }"
+               "QCheckBox::indicator:hover { border-color: %5; }"
+               "QCheckBox::indicator:checked { border-color: %6; background: %6;"
+               "  image: url(:/ui/check-on-accent.svg); }"
+    )
+        .arg(qss(th.text.primary), fontRule(fontPx), qss(th.divider.strong))
+        .arg(qss(th.surface.content), qss(th.text.tertiary), qss(th.accent.def));
+}
+
+QString spinBoxQss(int fontPx) {
+    const auto &th = c();
+    return QString(
+               "QSpinBox { %1 color: %2; background: %3;"
+               "  border: 1px solid %4; border-radius: 4px; padding: 3px 6px;"
+               "  selection-background-color: %5; selection-color: %6; }"
+               "QSpinBox:focus { border-color: %7; }"
+               "QSpinBox::up-button, QSpinBox::down-button {"
+               "  width: 16px; border: none; background: transparent; }"
+               "QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: %8; }"
+               "QSpinBox::up-arrow { image: url(:/ui/spin-up.svg); width: 10px; height: 10px; }"
+               "QSpinBox::down-arrow { image: url(:/ui/spin-down.svg); width: 10px;"
+               "  height: 10px; }"
+    )
+        .arg(fontRule(fontPx), qss(th.text.primary), qss(th.surface.content))
+        .arg(qss(th.divider.strong), qss(th.accent.def), qss(th.accent.text))
+        .arg(qss(th.text.link), qss(th.surface.highlight));
 }
 
 } // namespace Th

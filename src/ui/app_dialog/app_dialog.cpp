@@ -184,9 +184,11 @@ void AppDialog::done(int result) {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 void AppDialog::applyTheme() {
-    _card->setStyleSheet(
-        "QFrame#appDialogCard { background: white; border-radius: 12px; border: none; }"
-    );
+    _card->setStyleSheet(QString(
+                             "QFrame#appDialogCard { background: %1; border-radius: 12px;"
+                             " border: none; }"
+    )
+                             .arg(Th::qss(Th::c().surface.raised)));
     if (_titleLabel)
         _titleLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
     // _closeBtn (IconButton) self-themes.

@@ -112,12 +112,18 @@ MessageListWidget::MessageListWidget(Session *session, ImageCache *imgCache, QWi
     _docTrimTimer.setInterval(1000);
     connect(&_docTrimTimer, &QTimer::timeout, this, [this] { trimOffscreenDocs(); });
 
-    connect(
-        &ThemeManager::instance(),
-        &ThemeManager::themeChanged,
-        viewport(),
-        QOverload<>::of(&QWidget::update)
-    );
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
+        // Theme colors are baked into the cached docs as inline HTML spans at
+        // build time — a switch to a theme that retints content (dark) must
+        // rebuild them, not just repaint.
+        for (auto &item : _items) {
+            item.textDoc.reset();
+            item.attachDocs.clear();
+            item.docWidth = -1;
+        }
+        rebuildLayout();
+        viewport()->update();
+    });
 
     if (_imgCache) {
         connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
