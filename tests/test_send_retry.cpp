@@ -395,6 +395,12 @@ struct SendFixture {
                 return ev;
         return nullptr;
     }
+    const EvMessageChanged *messageChangedEvent() {
+        for (auto &e : events)
+            if (auto *ev = std::get_if<EvMessageChanged>(&e))
+                return ev;
+        return nullptr;
+    }
 };
 
 } // namespace
@@ -467,6 +473,27 @@ TEST_CASE_METHOD(SendFixture, "definitive Slack error fires EvSendFailed", "[sen
     CHECK(sendFailedEvent()->reason == "not_in_channel");
     CHECK(newMessageEvent() == nullptr);
     CHECK(server.requestCount == 1);
+}
+
+TEST_CASE_METHOD(SendFixture, "edit confirms from the chat.update response", "[send_retry]") {
+    // chat.update returns a sparse message (text/user only, no ts) — the echo
+    // must patch ts from the top level and be marked textOnly so the UI merges
+    // instead of wiping the row's files/reactions/thread state.
+    server.enqueue(
+        R"({"ok":true,"channel":"C1","ts":"123.456","text":"fixed",)"
+        R"("message":{"text":"fixed","user":"U1"}})"
+    );
+
+    backend.editMessage(ConversationId{"C1"}, "123.456", TextWithEntities{"fixed", {}});
+
+    REQUIRE(waitFor([&] { return messageChangedEvent() != nullptr; }));
+    const auto *ev = messageChangedEvent();
+    CHECK(ev->conv.value == "C1");
+    CHECK(ev->msg.ts == "123.456");
+    CHECK(ev->msg.rawText == "fixed");
+    CHECK(ev->msg.edited);
+    CHECK(ev->textOnly);
+    CHECK(server.requestPaths[0] == "/chat.update");
 }
 
 TEST_CASE_METHOD(

@@ -276,6 +276,42 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "textOnly edit echo replaces stale rich_text blocks and keeps reactions", "[message_list][edit]"
+) {
+    Fixture f;
+
+    // The row as delivered by the echo of the original send: Slack attaches a
+    // server-generated rich_text block, which the renderer prefers over the
+    // text field — a merge that only swaps text/rawText keeps showing the
+    // stale block's old text (while "(edited)" updates, painted separately).
+    Message orig = makeMessage("1000.000001", "old text");
+    Block   rt;
+    rt.typeStr = "rich_text";
+    rt.text    = TextWithEntities{"old text", {}};
+    orig.blocks.push_back(rt);
+    orig.reactions.push_back({"thumbsup", 1, {UserId{"U2"}}});
+    f.session->cacheMessages(kConv.id, {orig});
+    f.stub->_historyPage = {orig};
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.openConversation(kConv.id);
+
+    // chat.update response echo: sparse message (new text, no blocks), textOnly.
+    Message sparse = makeMessage("1000.000001", "new text");
+    sparse.rawText = "new text";
+    sparse.edited  = true;
+    f.stub->_events.fire(Event{EvMessageChanged{kConv.id, sparse, /*textOnly=*/true}});
+
+    const auto view = liveView(list, f.session.get(), kConv.id);
+    REQUIRE(view.size() == 1);
+    CHECK(view[0].text.text == "new text");
+    CHECK(view[0].blocks.empty()); // stale rich_text dropped → doc renders the new text
+    CHECK(view[0].edited);
+    REQUIRE(view[0].reactions.size() == 1); // merge keeps the row's reactions
+    CHECK(view[0].reactions[0].name == "thumbsup");
+}
+
+TEST_CASE(
     "live realtime delete removes the row from the open conversation", "[message_list][delete]"
 ) {
     Fixture f;

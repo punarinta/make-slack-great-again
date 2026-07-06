@@ -647,6 +647,11 @@ struct EvMessageNew {
 struct EvMessageChanged {
     ConversationId conv;
     Message        msg;
+    // True when msg carries only the new text (the chat.update response echo —
+    // Slack returns just text/user there). The UI merges text+edited into the
+    // existing row instead of replacing it, which would strip files, reactions
+    // and thread state. False for realtime echoes, which carry the full message.
+    bool           textOnly = false;
 };
 struct EvMessageDeleted {
     ConversationId    conv;

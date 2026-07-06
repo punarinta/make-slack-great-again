@@ -1018,9 +1018,25 @@ void PublicBackend::editMessage(ConversationId conv, Ts ts, TextWithEntities tex
     params.addQueryItem("channel", conv.value);
     params.addQueryItem("ts", ts);
     params.addQueryItem("text", text.text);
-    _api->call("chat.update", params, {}, [](QString e) {
-        qWarning() << "editMessage error:" << e;
-    });
+    _api->call(
+        "chat.update",
+        params,
+        [this, conv, ts](QJsonObject resp) {
+            // Confirm the edit from the response itself rather than waiting for
+            // the realtime message_changed echo, which may never arrive on a
+            // stalled/recycling socket (mirrors chat.delete above). The safety
+            // poll can't recover edits either — an edited message keeps its ts,
+            // so the "newer than last known" filter skips it. chat.update
+            // returns only text/user in `message`, hence textOnly: the UI
+            // merges the new text into the existing row; the realtime echo,
+            // when it does arrive, carries the full message and replaces it.
+            auto msg   = JsonMappers::toMessage(resp.value("message").toObject());
+            msg.ts     = resp.value("ts").toString(ts);
+            msg.edited = true;
+            _events.fire(EvMessageChanged{conv, std::move(msg), /*textOnly=*/true});
+        },
+        [](QString e) { qWarning() << "editMessage error:" << e; }
+    );
 }
 
 void PublicBackend::deleteMessage(ConversationId conv, Ts ts) {

@@ -3109,7 +3109,20 @@ void MessageListWidget::handleEvent(const Event &e) {
         const int i = findByTs(ev->msg.ts);
         if (i < 0)
             return;
-        _items[i].msg = ev->msg;
+        if (ev->textOnly) {
+            // chat.update response echo — carries only the new text; keep the
+            // row's files/reactions/thread state. Blocks must be taken from the
+            // echo too (i.e. cleared): the doc renders from blocks when present,
+            // so the stale rich_text block would keep showing the old text. A
+            // text-only chat.update replaces the blocks server-side as well; the
+            // realtime echo later restores the server-regenerated ones.
+            _items[i].msg.text    = ev->msg.text;
+            _items[i].msg.rawText = ev->msg.rawText;
+            _items[i].msg.blocks  = ev->msg.blocks;
+            _items[i].msg.edited  = true;
+        } else {
+            _items[i].msg = ev->msg;
+        }
         _items[i].textDoc.reset(); // invalidate rendered docs
         _items[i].docWidth = 0;
         _items[i].attachDocs.clear();
