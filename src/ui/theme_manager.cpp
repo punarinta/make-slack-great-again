@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "theme_manager.h"
 
+#include <QCursor>
+#include <QGuiApplication>
 #include <QSettings>
 
 ThemeManager &ThemeManager::instance() {
@@ -23,8 +25,14 @@ ThemeManager::ThemeManager(QObject *parent) : QObject(parent) {
 }
 
 void ThemeManager::setTheme(const Th::Theme &theme) {
+    // Applying a theme re-polishes the whole widget tree synchronously (rebuilt
+    // stylesheets, re-baked pixmaps, reset message docs) and blocks the main
+    // thread for a noticeable beat. Show the wait cursor for the duration so the
+    // switch reads as "working" rather than frozen.
+    QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
     _theme = theme;
     emit themeChanged();
+    QGuiApplication::restoreOverrideCursor();
 }
 
 void ThemeManager::setThemeById(const QString &id) {
