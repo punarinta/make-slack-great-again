@@ -297,6 +297,11 @@ const Theme kAubergine = makeAubergine();
 // instead of darken. Still copy-and-patch from the aubergine base so any token
 // not repeated here inherits a deliberate value (badges, presence dots, loader
 // and the type scales are shared by construction).
+//
+// Palette is pure neutral graphite (R=G=B on every grey, no blue cast),
+// modelled on the sBlack dark Slack theme: near-black chrome (#131313),
+// #222222 content, a mid-grey #545454 selection pill carrying light ink, and
+// bright near-white primary text.
 
 static Theme makeCharcoal() {
     Theme t = kAubergineBase;
@@ -304,72 +309,72 @@ static Theme makeCharcoal() {
     // Chrome — a neutral near-black rail. The chats-list plate lands just above
     // this but still *below* the content surface (see finalizeNav's dark-content
     // path): sidebar darker than content, rail darkest, like Slack's dark mode.
-    t.nav.bg              = QColor("#101214");
-    t.nav.primary         = QColor("#1D1F22"); // → itemSelectedText; chats surface derived from bg
-    t.nav.workspaceBubble = QColor("#33363A");
-    t.nav.itemSelected    = QColor("#E0E1E2"); // near-white selection pill
-    t.nav.itemTextDim     = QColor("#C6C8CA");
+    t.nav.bg              = QColor("#131313");
+    t.nav.primary         = QColor("#DEDEDE"); // → itemSelectedText: light ink on the grey pill
+    t.nav.workspaceBubble = QColor("#333333");
+    t.nav.itemSelected    = QColor("#545454"); // mid-grey selection pill (sBlack-style)
+    t.nav.itemTextDim     = QColor("#C9C9C9");
 
-    t.surface.content         = QColor("#1A1D21");
-    t.surface.raised          = QColor("#222529");
-    t.surface.sunken          = QColor("#141618");
-    t.surface.highlight       = QColor("#2C2F33");
-    t.surface.highlightStrong = QColor("#34383D");
+    t.surface.content         = QColor("#222222");
+    t.surface.raised          = QColor("#2A2A2A");
+    t.surface.sunken          = QColor("#1A1A1A");
+    t.surface.highlight       = QColor("#2E2E2E");
+    t.surface.highlightStrong = QColor("#383838");
 
-    t.text.primary      = QColor("#D1D2D3");
-    t.text.documentBody = QColor("#C6C8CA");
-    t.text.secondary    = QColor("#ABABAD");
-    t.text.tertiary     = QColor("#86888A");
-    t.text.onDarkDim    = QColor("#C6C8CA");
+    t.text.primary      = QColor("#E6E6E6");
+    t.text.documentBody = QColor("#D6D6D6");
+    t.text.secondary    = QColor("#A8A8A8");
+    t.text.tertiary     = QColor("#7B7B7B");
+    t.text.onDarkDim    = QColor("#C9C9C9");
     t.text.link         = QColor("#53B4E5");
     t.text.danger       = QColor("#E57373");
     t.text.warning      = QColor("#D9A741");
 
     // Accent stays charcoal-neutral but sits mid-grey so a filled CTA is
     // clearly visible against both the dark content and raised surfaces.
-    t.accent.def      = QColor("#5A5F66");
-    t.accent.hover    = QColor("#6A7077");
-    t.accent.pressed  = QColor("#4A4E54");
-    t.accent.dark     = QColor("#3E4247");
-    t.accent.subtleBg = QColor("#31353A");
+    t.accent.def      = QColor("#5A5A5A");
+    t.accent.hover    = QColor("#6A6A6A");
+    t.accent.pressed  = QColor("#4A4A4A");
+    t.accent.dark     = QColor("#3E3E3E");
+    t.accent.subtleBg = QColor("#333333");
 
     t.message.hover                  = QColor(255, 255, 255, 12); // lighten, don't darken
     t.message.mentionBg              = QColor(29, 155, 209, 46);
     t.message.mentionSelfBg          = QColor(250, 200, 60, 42);
     t.message.mentionText            = QColor("#53B4E5");
-    t.message.codeBlockBg            = QColor("#232629");
-    t.message.codeBlockBorder        = QColor("#3E4245");
-    t.message.codeText               = QColor("#B9BBBE");
-    t.message.quoteBorder            = QColor("#4A4D52");
-    t.message.attachmentBg           = QColor("#202327");
-    t.message.attachmentBorder       = QColor("#3A3D42");
-    t.message.attachmentDismiss      = QColor("#9A9CA0");
+    t.message.codeBlockBg            = QColor("#262626");
+    t.message.codeBlockBorder        = QColor("#3E3E3E");
+    t.message.codeText               = QColor("#BDBDBD");
+    t.message.quoteBorder            = QColor("#4D4D4D");
+    t.message.attachmentBg           = QColor("#202020");
+    t.message.attachmentBorder       = QColor("#3A3A3A");
+    t.message.attachmentDismiss      = QColor("#9C9C9C");
     t.message.pinnedBg               = QColor(0xFF, 0xEB, 0x3B, 28);
-    t.message.fileChipBg             = QColor("#202327");
-    t.message.fileChipBorder         = QColor("#3A3D42");
-    t.message.fileNameDim            = QColor("#A5A7AA");
-    t.message.imagePlaceholderBg     = QColor("#232629");
-    t.message.imagePlaceholderBorder = QColor("#3E4245");
-    t.message.replyBarHover          = QColor("#24272B");
-    t.message.replyBarHoverBorder    = QColor("#3E4245");
+    t.message.fileChipBg             = QColor("#202020");
+    t.message.fileChipBorder         = QColor("#3A3A3A");
+    t.message.fileNameDim            = QColor("#A6A6A6");
+    t.message.imagePlaceholderBg     = QColor("#262626");
+    t.message.imagePlaceholderBorder = QColor("#3E3E3E");
+    t.message.replyBarHover          = QColor("#282828");
+    t.message.replyBarHoverBorder    = QColor("#3E3E3E");
     t.message.replyLink              = QColor("#53B4E5");
     t.message.appBadgeBg             = QColor(255, 255, 255, 30);
-    t.message.appBadgeText           = QColor("#ABABAD");
+    t.message.appBadgeText           = QColor("#A8A8A8");
     t.message.extBadgeBg             = QColor(230, 201, 138, 30);
     t.message.extBadgeText           = QColor("#D9B45C");
 
-    t.composer.bg                    = QColor("#222529");
-    t.composer.border                = QColor("#3E4245");
-    t.composer.borderFocus           = QColor("#6A6E75");
-    t.composer.toolbarBg             = QColor("#1E2124");
-    t.composer.toolbarBorder         = QColor("#3A3D42");
-    t.composer.toolbarIcon           = QColor("#9A9CA0");
-    t.composer.toolbarIconActive     = QColor("#D1D2D3");
-    t.composer.attachmentChipBg      = QColor("#26292D");
-    t.composer.attachmentChipBorder  = QColor("#3E4245");
-    t.composer.attachmentOverlayBg   = QColor(34, 37, 41, 210);
-    t.composer.attachmentOverlayText = QColor("#D1D2D3");
-    t.composer.dropArrow             = QColor("#4A4D52");
+    t.composer.bg                    = QColor("#222222");
+    t.composer.border                = QColor("#3A3A3A");
+    t.composer.borderFocus           = QColor("#6E6E6E");
+    t.composer.toolbarBg             = QColor("#1B1B1B");
+    t.composer.toolbarBorder         = QColor("#383838");
+    t.composer.toolbarIcon           = QColor("#9C9C9C");
+    t.composer.toolbarIconActive     = QColor("#E6E6E6");
+    t.composer.attachmentChipBg      = QColor("#282828");
+    t.composer.attachmentChipBorder  = QColor("#3E3E3E");
+    t.composer.attachmentOverlayBg   = QColor(34, 34, 34, 210);
+    t.composer.attachmentOverlayText = QColor("#E6E6E6");
+    t.composer.dropArrow             = QColor("#4D4D4D");
 
     t.editBanner.bg     = QColor("#332B18");
     t.editBanner.border = QColor("#C99A2C");
@@ -378,37 +383,37 @@ static Theme makeCharcoal() {
 
     t.updateBanner.bg     = QColor("#33301C");
     t.updateBanner.accent = QColor("#453E20");
-    t.updateBanner.text   = QColor("#D1D2D3");
+    t.updateBanner.text   = QColor("#E6E6E6");
 
     t.danger.hover = QColor("#F02E6A"); // lighten on press-hover, not darken
     t.danger.icon  = QColor("#E57373");
     t.danger.text  = QColor("#E57373");
 
-    t.divider.def    = QColor("#3A3D42");
-    t.divider.strong = QColor("#4A4D52");
-    t.divider.subtle = QColor("#2E3134");
+    t.divider.def    = QColor("#333333");
+    t.divider.strong = QColor("#4D4D4D");
+    t.divider.subtle = QColor("#2A2A2A");
 
-    t.icon.def     = QColor("#9A9CA0");
-    t.icon.strong  = QColor("#C6C8CA");
-    t.icon.accent  = QColor("#ABABAD"); // accent tint must stay visible on dark
+    t.icon.def     = QColor("#9C9C9C");
+    t.icon.strong  = QColor("#C9C9C9");
+    t.icon.accent  = QColor("#A8A8A8"); // accent tint must stay visible on dark
     t.icon.danger  = QColor("#E57373");
     t.icon.warning = QColor("#D9A741");
     t.icon.starred = QColor("#E0B341");
-    t.icon.dim     = QColor("#4A4D52");
+    t.icon.dim     = QColor("#4D4D4D");
 
-    t.contextMenu.bg          = QColor("#26292E");
-    t.contextMenu.border      = QColor("#4A4D52");
-    t.contextMenu.itemHover   = QColor("#33373C");
-    t.contextMenu.itemText    = QColor("#D1D2D3");
-    t.contextMenu.itemTextDim = QColor("#9A9CA0");
+    t.contextMenu.bg          = QColor("#262626");
+    t.contextMenu.border      = QColor("#4D4D4D");
+    t.contextMenu.itemHover   = QColor("#333333");
+    t.contextMenu.itemText    = QColor("#E6E6E6");
+    t.contextMenu.itemTextDim = QColor("#9C9C9C");
     t.contextMenu.dangerText  = QColor("#F06A85");
 
     t.titleBar.bg             = t.nav.bg;
-    t.titleBar.controlDefault = QColor("#C6C8CA"); // drop the aubergine tint
+    t.titleBar.controlDefault = QColor("#C9C9C9"); // drop the aubergine tint
 
     // Tooltips stay a dark chip, but darker than the dark surfaces they float
     // over so they still read as a separate layer.
-    t.tooltip.bg = QColor("#0B0C0E");
+    t.tooltip.bg = QColor("#0A0A0A");
 
     finalizeNav(t);
     return t;
