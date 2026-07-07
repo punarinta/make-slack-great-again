@@ -39,6 +39,8 @@ signals:
     void closeRequested();
     // Forwarded from the embedded message list's mention-hover profile card.
     void openDmRequested(UserId user);
+    // Forwarded from the embedded message list (summarize no-provider notice).
+    void aiSettingsRequested();
 
 private:
     void applyTheme();

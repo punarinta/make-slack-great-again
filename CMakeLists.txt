@@ -86,6 +86,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/llm/anthropic_provider.cpp
     src/llm/openai_provider.cpp
     src/llm/llm_service.cpp
+    src/llm/discussion_summary.cpp
 
     # Backend port + factory (neutral)
     src/backend/backend_factory.cpp
@@ -186,6 +187,8 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/welcome_tips/welcome_widget.cpp
     src/ui/app_dialog/app_dialog.cpp
     src/ui/delete_message_dialog/delete_message_dialog.cpp
+    src/ui/summary_dialog/summary_dialog.cpp
+    src/ui/summary_dialog/summarize_job.cpp
     src/ui/conv_selector/conv_selector_widget.cpp
     src/ui/forward_dialog/forward_dialog.cpp
     src/ui/styled_line_edit/styled_line_edit.cpp

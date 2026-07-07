@@ -153,6 +153,9 @@ signals:
     void forwardMessageRequested(Message msg);
     // Emitted when "Message" is clicked on the mention-hover profile card.
     void openDmRequested(UserId user);
+    // Emitted when "Open settings" is clicked on the summarize no-provider
+    // notice; the host should open Settings → AI assistance.
+    void aiSettingsRequested();
 
 protected:
     void scrollContentsBy(int dx, int dy) override;
@@ -185,6 +188,10 @@ private:
     // Toolbar sub-actions called from tryHandleToolbarPress.
     void         openEmojiPickerForRow(int row, const QPoint &globalPos);
     void         showMessageContextMenu(const Message &msg, const QPoint &globalPos);
+    // "Summarize down": AI-summarize everything from `fromTs` (inclusive) to
+    // the newest loaded message. Runs as a background task (SummarizeJob); the
+    // report appears in a SummaryDialog when ready.
+    void         startSummarizeDown(const Ts &fromTs);
     void         downloadFileToUser(const File &file);
     // Copy the full-resolution image (not the preview thumbnail) to the clipboard,
     // fetching it from disk / cache / network as needed.

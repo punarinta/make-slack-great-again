@@ -14,6 +14,9 @@
 #include "ui/user_profile_card/user_profile_card.h"
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
+#include "ui/summary_dialog/summarize_job.h"
+#include "ui/summary_dialog/summary_dialog.h"
+#include "llm/llm_service.h"
 #include "util/background_tasks.h"
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
@@ -2082,6 +2085,15 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         ":/ui/share-2.svg"
     );
 
+    menu->addItem(
+        tr("Summarize down"),
+        {},
+        [this, ts = msg.ts] { startSummarizeDown(ts); },
+        false,
+        false,
+        ":/ui/sparkles.svg"
+    );
+
     if (canDelete) {
         menu->addSeparator();
         menu->addItem(
@@ -2103,6 +2115,42 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     }
 
     menu->popup(globalPos);
+}
+
+void MessageListWidget::startSummarizeDown(const Ts &fromTs) {
+    if (!_session)
+        return;
+    // Fail fast when no AI provider is connected: no spinner, no thread
+    // fetches — just the notice with a deep link to Settings → AI assistance.
+    if (!LlmService::instance().isAvailable()) {
+        auto *dlg = new SummaryDialog(
+            tr("Summaries need an AI provider. Connect one in Settings → AI assistance."),
+            SummaryDialog::Kind::NoProvider,
+            window()
+        );
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dlg, &SummaryDialog::openSettingsRequested, this, [this] {
+            emit aiSettingsRequested();
+        });
+        dlg->open();
+        return;
+    }
+    const int start = findByTs(fromTs);
+    if (start < 0)
+        return;
+    // Everything from the chosen message down to the newest loaded one — the
+    // pages below a visible message are always already loaded (history arrives
+    // newest-first and paginates upward).
+    std::vector<Message> span;
+    for (int i = start; i < (int)_items.size(); ++i) {
+        const Message &m = _items[i].msg;
+        if (m.pending || isSystemEvent(m))
+            continue;
+        span.push_back(m);
+    }
+    // In a thread view the replies are the span itself; in a channel the roots'
+    // threads are fetched and inlined by the job.
+    SummarizeJob::start(_session, _currentConv, std::move(span), !_isThreadMode, window());
 }
 
 void MessageListWidget::showReactionTooltip(int mi, int ri, const QRect &chipVpRect) {

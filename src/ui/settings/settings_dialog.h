@@ -33,6 +33,11 @@ public:
     explicit SettingsDialog(QWidget *parent);
 
     void open();
+    // Tab pages, in _tabs row order (buildPanel adds them in this sequence).
+    enum class Page { Appearance = 0, Notifications, Ai, Storage, System, About };
+    // open() with a specific tab pre-selected (e.g. the summary no-provider
+    // notice deep-links to AI assistance).
+    void openAt(Page page);
     void setUpdateChecker(UpdateChecker *checker);
 
     // Which sample notification the "Test" button fires; the int carried by

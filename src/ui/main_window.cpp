@@ -813,6 +813,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     connect(_messageList, &MessageListWidget::openDmRequested, this, openDmFor);
     connect(_threadPanel, &ThreadPanel::openDmRequested, this, openDmFor);
 
+    // Summarize's no-provider notice deep-links to Settings → AI assistance.
+    const auto openAiSettings = [this] { _settingsDialog->openAt(SettingsDialog::Page::Ai); };
+    connect(_messageList, &MessageListWidget::aiSettingsRequested, this, openAiSettings);
+    connect(_threadPanel, &ThreadPanel::aiSettingsRequested, this, openAiSettings);
+
     connect(
         _messageList,
         &MessageListWidget::editMessageRequested,

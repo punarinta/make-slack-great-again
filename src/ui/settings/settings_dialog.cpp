@@ -88,6 +88,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QWidget(parent) {
     hide();
 }
 
+void SettingsDialog::openAt(Page page) {
+    open();
+    _tabs->setCurrentRow(static_cast<int>(page));
+}
+
 void SettingsDialog::open() {
     loadAppearance();
     loadNotifications();

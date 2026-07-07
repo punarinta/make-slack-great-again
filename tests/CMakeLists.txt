@@ -272,6 +272,11 @@ add_msga_qt_test(test_time_format
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
 )
 
+add_msga_test(test_discussion_summary
+    test_discussion_summary.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
+)
+
 add_msga_test(test_fake_backend
     test_fake_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
@@ -403,6 +408,18 @@ add_msga_widget_test(test_context_menu
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
+
+add_msga_widget_test(test_summary_dialog
+    test_summary_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_summary_dialog PRIVATE Qt6::Test)
 
 # Disabled: the "XXX is typing…" indicator feature is not in use right now.
 # add_msga_widget_test(test_typing_indicator
@@ -563,6 +580,8 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
@@ -572,6 +591,14 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.h
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider_base.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/oauth_loopback.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/anthropic_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/openai_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp

@@ -66,6 +66,7 @@
         <file alias="ui/edit-3.svg">../gfx/ui/edit-3.svg</file>
         <file alias="ui/trash-2.svg">../gfx/ui/trash-2.svg</file>
         <file alias="ui/share-2.svg">../gfx/ui/share-2.svg</file>
+        <file alias="ui/sparkles.svg">../gfx/ui/sparkles.svg</file>
         <file alias="ui/lock.svg">../gfx/ui/lock.svg</file>
         <file alias="ui/bell.svg">../gfx/ui/bell.svg</file>
         <file alias="ui/bell-off.svg">../gfx/ui/bell-off.svg</file>

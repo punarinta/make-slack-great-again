@@ -88,6 +88,9 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     _msgList = new MessageListWidget(nullptr, imgCache, this);
     layout->addWidget(_msgList, 1);
     connect(_msgList, &MessageListWidget::openDmRequested, this, &ThreadPanel::openDmRequested);
+    connect(
+        _msgList, &MessageListWidget::aiSettingsRequested, this, &ThreadPanel::aiSettingsRequested
+    );
 
     _composer = new ComposerWidget(this);
     _composer->setEnabled(false);
