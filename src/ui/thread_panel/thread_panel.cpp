@@ -89,6 +89,9 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     layout->addWidget(_msgList, 1);
     connect(_msgList, &MessageListWidget::openDmRequested, this, &ThreadPanel::openDmRequested);
     connect(
+        _msgList, &MessageListWidget::openChannelRequested, this, &ThreadPanel::openChannelRequested
+    );
+    connect(
         _msgList, &MessageListWidget::aiSettingsRequested, this, &ThreadPanel::aiSettingsRequested
     );
 

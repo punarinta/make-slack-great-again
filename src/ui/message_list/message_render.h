@@ -136,6 +136,16 @@ inline QString userIdFromAnchor(const QString &href) {
     return href.startsWith(kUserAnchorPrefix) ? href.mid(kUserAnchorPrefix.size()) : QString();
 }
 
+// Channel mentions are anchors with this internal scheme so clicking one
+// navigates to the channel: href = kChannelAnchorPrefix + conversationId.
+inline const QString kChannelAnchorPrefix = QStringLiteral("msga://channel/");
+
+// Returns the conversation ID when href is a channel-mention anchor, else "".
+inline QString channelIdFromAnchor(const QString &href) {
+    return href.startsWith(kChannelAnchorPrefix) ? href.mid(kChannelAnchorPrefix.size())
+                                                 : QString();
+}
+
 // Image-block title lines ("GIF ▾") are anchors with this internal scheme;
 // clicking one toggles the collapse key that follows the prefix.
 inline const QString kGifToggleAnchorPrefix = QStringLiteral("msga://gif/");

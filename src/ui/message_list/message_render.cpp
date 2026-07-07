@@ -420,9 +420,13 @@ static QString renderRange(
         }
         case EntityType::ChannelMention: {
             const QString label = resolveChannelImpl(e.data, rawInner, session);
-            html += "<span style='color:" + Th::qss(Th::c().message.mentionText) +
+            // Anchor (not span) so the chip is clickable — the click handler
+            // navigates to the channel.
+            html += "<a href='" + (kChannelAnchorPrefix + e.data).toHtmlEscaped() +
+                    "' style='color:" + Th::qss(Th::c().message.mentionText) +
                     ";background:" + Th::qss(Th::c().message.mentionBg) +
-                    ";border-radius:3px;padding:0 2px'>" + label.toHtmlEscaped() + "</span>";
+                    ";border-radius:3px;padding:0 2px;text-decoration:none'>" +
+                    label.toHtmlEscaped() + "</a>";
             break;
         }
         case EntityType::HereCommand:

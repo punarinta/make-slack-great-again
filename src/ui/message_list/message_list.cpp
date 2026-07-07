@@ -2380,6 +2380,11 @@ bool MessageListWidget::openAnchorTarget(const QString &anchor, const QPoint &po
         showProfileCardFor(uid, userAnchorVpRect(pos, anchor));
         return true;
     }
+    const QString cid = MsgRender::channelIdFromAnchor(anchor);
+    if (!cid.isEmpty()) {
+        emit openChannelRequested(ConversationId{cid});
+        return true;
+    }
     if (MsgRender::isBotButtonAnchor(anchor)) {
         const QString btnUrl = MsgRender::botButtonUrlFromAnchor(anchor);
         if (!btnUrl.isEmpty()) {
@@ -2966,6 +2971,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     // Compute anchor once and reuse for link hover, tooltip, and cursor
     const QString anchor       = anchorAt(pos);
     const bool    isUserAnchor = !MsgRender::userIdFromAnchor(anchor).isEmpty();
+    const bool    isChanAnchor = !MsgRender::channelIdFromAnchor(anchor).isEmpty();
     const bool    isGifAnchor  = !MsgRender::gifKeyFromAnchor(anchor).isEmpty();
     const bool    isBotBtn     = MsgRender::isBotButtonAnchor(anchor);
 
@@ -2980,7 +2986,8 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
-        if (!anchor.isEmpty() && !isUserAnchor && !isGifAnchor && !isBotBtn && newHoveredRow >= 0) {
+        if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isGifAnchor && !isBotBtn &&
+            newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
             for (auto &ad : _items[newHoveredRow].attachDocs)
                 setDocLinkUnderline(ad.textDoc.get(), anchor, true);
@@ -3034,7 +3041,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect          btnLocal = fileActionBarButtonRect(newHoveredFileBtn, fr);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kFileTips[newHoveredFileBtn], btnGlobal);
-    } else if (!anchor.isEmpty() && !isUserAnchor && !isGifAnchor) {
+    } else if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isGifAnchor) {
         // Collect link display text; skip tooltip when it is identical to the URL.
         QString linkText;
         if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {

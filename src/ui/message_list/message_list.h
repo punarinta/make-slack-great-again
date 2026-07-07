@@ -153,6 +153,9 @@ signals:
     void forwardMessageRequested(Message msg);
     // Emitted when "Message" is clicked on the mention-hover profile card.
     void openDmRequested(UserId user);
+    // Emitted when a #channel mention chip is clicked; the host should
+    // navigate to that conversation (joining it first if not a member).
+    void openChannelRequested(ConversationId conv);
     // Emitted when "Open settings" is clicked on the summarize no-provider
     // notice; the host should open Settings → AI assistance.
     void aiSettingsRequested();

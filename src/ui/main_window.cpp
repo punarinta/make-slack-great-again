@@ -813,6 +813,22 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     connect(_messageList, &MessageListWidget::openDmRequested, this, openDmFor);
     connect(_threadPanel, &ThreadPanel::openDmRequested, this, openDmFor);
 
+    // Clicking a #channel mention navigates to that channel — joining it first
+    // when not yet a member (same flow as the channel browser).
+    const auto openChannelFor = [this](ConversationId conv) {
+        if (_convList->selectConversation(conv))
+            return;
+        if (!_session)
+            return;
+        _session->joinChannel(
+            conv,
+            [this](ConversationId joined) { _convList->selectConversation(joined); },
+            [this](const QString &err) { showNetworkError(err); }
+        );
+    };
+    connect(_messageList, &MessageListWidget::openChannelRequested, this, openChannelFor);
+    connect(_threadPanel, &ThreadPanel::openChannelRequested, this, openChannelFor);
+
     // Summarize's no-provider notice deep-links to Settings → AI assistance.
     const auto openAiSettings = [this] { _settingsDialog->openAt(SettingsDialog::Page::Ai); };
     connect(_messageList, &MessageListWidget::aiSettingsRequested, this, openAiSettings);
