@@ -106,6 +106,29 @@ TEST_CASE("Copy is the only button and copies the raw Markdown") {
     delete host;
 }
 
+TEST_CASE("body renders Markdown as rich text, not literally") {
+    QWidget *host = makeHost();
+    auto    *dlg  = new SummaryDialog(
+        "Deploy **frozen** until *Friday*\n\n- QA signoff", SummaryDialog::Kind::Report, host
+    );
+    dlg->open();
+    QApplication::processEvents();
+
+    // The body is the scroll area's widget (a bare findChild<QLabel*> would
+    // land on the dialog's header title label first).
+    auto *scroll = dlg->findChild<QScrollArea *>();
+    REQUIRE(scroll != nullptr);
+    auto *body = qobject_cast<QLabel *>(scroll->widget());
+    REQUIRE(body != nullptr);
+    CHECK(body->textFormat() == Qt::RichText);
+    // Markdown markers were converted, not shown to the user.
+    CHECK(!body->text().contains("**"));
+    CHECK(body->text().contains("font-weight"));       // **frozen** → bold
+    CHECK(body->text().contains("font-style:italic")); // *Friday* → italic
+    CHECK(body->text().contains("<li"));               // "- QA signoff" → list
+    delete host;
+}
+
 TEST_CASE("failure notice has no buttons and default width") {
     QWidget *host = makeHost();
     auto    *dlg =

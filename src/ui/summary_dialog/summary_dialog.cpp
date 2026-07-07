@@ -8,6 +8,9 @@
 
 #include <QLabel>
 #include <QScrollArea>
+#include <QTextBlockFormat>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -19,13 +22,28 @@ namespace {
 // body height to the host window here (the overlay caps the card at
 // window - 80 anyway, so a too-tall minimum would clip the button row instead
 // of scrolling).
-constexpr int kCardMinW    = 480;
-constexpr int kCardMaxW    = 840;
-constexpr int kBodyH       = 420;
+constexpr int kCardMinW          = 480;
+constexpr int kCardMaxW          = 840;
+constexpr int kBodyH             = 420;
 // Vertical card chrome around the scroll area (paddings + header + button
 // row), deliberately over-estimated: the scroll minimum plus this must stay
 // under AppDialog's window - 80 card cap or the button row gets clipped.
-constexpr int kCardChromeH = 260;
+constexpr int kCardChromeH       = 260;
+// Relaxed body line height (% of the font's natural line). QLabel has no
+// line-height knob for Markdown, so the text goes through a QTextDocument
+// whose blocks carry the height, serialized back to rich text.
+constexpr int kBodyLineHeightPct = 130;
+
+QString markdownToSpacedHtml(const QString &markdown) {
+    QTextDocument doc;
+    doc.setMarkdown(markdown);
+    QTextCursor cursor(&doc);
+    cursor.select(QTextCursor::Document);
+    QTextBlockFormat bf;
+    bf.setLineHeight(kBodyLineHeightPct, QTextBlockFormat::ProportionalHeight);
+    cursor.mergeBlockFormat(bf);
+    return doc.toHtml();
+}
 } // namespace
 
 SummaryDialog::SummaryDialog(const QString &markdown, Kind kind, QWidget *parent)
@@ -33,8 +51,8 @@ SummaryDialog::SummaryDialog(const QString &markdown, Kind kind, QWidget *parent
     auto *cl = contentLayout();
 
     _body = new QLabel;
-    _body->setTextFormat(Qt::MarkdownText);
-    _body->setText(markdown);
+    _body->setTextFormat(Qt::RichText);
+    _body->setText(markdownToSpacedHtml(markdown));
     _body->setWordWrap(true);
     _body->setTextInteractionFlags(Qt::TextSelectableByMouse);
     _body->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -63,7 +81,7 @@ SummaryDialog::SummaryDialog(const QString &markdown, Kind kind, QWidget *parent
             _copyBtn->setText(tr("Copied"));
             QTimer::singleShot(1400, _copyBtn, [this] { _copyBtn->setText(tr("Copy")); });
         });
-        addButtonRow(_copyBtn);
+        addButtonRow(nullptr, nullptr, _copyBtn);
     } else {
         cl->addWidget(_body);
         if (_kind == Kind::NoProvider) {

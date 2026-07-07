@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
-// Builds the LLM request for the "Summarize down" message action: a compact,
-// scannable report (Goal / Key decisions / Open questions) of a discussion
-// span, written in the user's native language. Pure functions — no network,
-// no session — so the prompt/transcript shaping is unit-testable.
+// Builds the LLM request for the "Summarize down" message action: a brief,
+// plain-language recap of a discussion span, written in the user's native
+// language. Structure (bullets/labels) is up to the model, driven by the
+// content — no fixed template. Pure functions — no network, no session — so
+// the prompt/transcript shaping is unit-testable.
 #pragma once
 
 #include "llm_types.h"

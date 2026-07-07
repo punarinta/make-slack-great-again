@@ -88,16 +88,18 @@ Llm::Request buildRequest(const std::vector<Entry> &entries, const QString &lang
     req.maxTokens = 512;
     req.system    = QStringLiteral(
                      "You summarize workplace chat discussions.\n"
-                        "Write in %1 only, no matter what language the transcript is in — "
-                        "the section headers too.\n"
+                        "Write in %1 only, no matter what language the transcript is in.\n"
                         "Use plain, everyday language — short sentences, simple words, like a "
                         "colleague catching someone up. No corporate or bureaucratic phrasing.\n"
-                        "Output exactly this structure, in Markdown, and nothing else:\n"
-                        "**Goal:** one sentence on what the discussion was about.\n"
-                        "**Key decisions:** 2-4 bullet points (\"- \") of what was agreed or "
-                        "done.\n"
-                        "**Open questions / next steps:** 1-3 bullet points of what is still "
-                        "unresolved or to do.\n"
+                        "Say what the discussion was about and the details that matter: anything "
+                        "decided, done, or left open. A short paragraph is usually enough. Use "
+                        "Markdown bullet points or bold labels only when the content genuinely "
+                        "calls for them — never force a fixed template or add a section that "
+                        "would be empty.\n"
+                        "Emphasize the key stuff with Markdown: bold (**…**) the few words that "
+                        "matter most — decisions, deadlines, names, numbers — so the summary can "
+                        "be skimmed. Emphasis, not decoration: a handful of bolded phrases, not "
+                        "whole sentences.\n"
                         "Keep the whole summary under 100 words. No preamble, no closing remarks."
     )
                      .arg(language);

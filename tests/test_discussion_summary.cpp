@@ -29,10 +29,12 @@ TEST_CASE("buildRequest shapes the transcript") {
     // Thread replies are indented and marked.
     CHECK(user.contains("↳ Bob: Yes, pending QA"));
     CHECK(req.maxTokens > 0);
-    // The report format is pinned in the system prompt.
-    CHECK(req.system.contains("Goal:"));
-    CHECK(req.system.contains("Key decisions:"));
-    CHECK(req.system.contains("Open questions / next steps:"));
+    // Structure is content-driven, not a mandated template.
+    CHECK(!req.system.contains("Goal:"));
+    CHECK(!req.system.contains("Key decisions:"));
+    CHECK(req.system.contains("never force a fixed template"));
+    // Key facts are bolded so the summary skims well.
+    CHECK(req.system.contains("bold (**…**)"));
     CHECK(req.system.contains("100 words"));
     // Tone: plain language, not report-speak.
     CHECK(req.system.contains("plain, everyday language"));
