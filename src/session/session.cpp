@@ -159,23 +159,27 @@ void Session::start() {
     _backend->loadUsers() | rpl::on_next(
                                 [this](std::vector<User> users) {
                                     // Merge the snapshot into what's already known rather than
-                                    // replacing outright. Some backends (Teams) supply users
-                                    // without avatars (filled in asynchronously via EvUserChanged)
-                                    // and may omit self, so a plain replace briefly blanks names
-                                    // and avatars — an "Unknown user" + no-avatar flicker right
-                                    // after start. The snapshot is authoritative for membership;
-                                    // cached enrichment (avatar, display name, live presence) fills
-                                    // gaps the snapshot leaves, and self is always retained. No-op
-                                    // for Slack, whose users.list snapshot is already complete.
+                                    // replacing outright. The snapshot is not complete for any
+                                    // backend: Slack's users.list never lists Slack Connect
+                                    // external (EXT) peers, and Teams may omit self and supplies
+                                    // users without avatars (filled in asynchronously via
+                                    // EvUserChanged). A plain replace drops those users until
+                                    // users.info re-resolves them one by one — an "Unknown user"
+                                    // + no-avatar flicker right after start, in both the message
+                                    // list and DM/MPDM titles. So: snapshot rows win, cached
+                                    // enrichment (avatar, display name, live presence) fills the
+                                    // gaps they leave, and known users the snapshot omits are
+                                    // retained. Retention is safe — departed members come back
+                                    // as deleted:true rows, not as absences.
                                     {
                                         const auto                   prev = _users.current();
                                         QHash<QString, const User *> prevById;
                                         for (const auto &u : prev)
                                             prevById.insert(u.id.value, &u);
-                                        bool hasSelf = _meUserId.value.isEmpty();
+                                        QSet<QString> inSnapshot;
+                                        inSnapshot.reserve(int(users.size()));
                                         for (auto &u : users) {
-                                            if (u.id == _meUserId)
-                                                hasSelf = true;
+                                            inSnapshot.insert(u.id.value);
                                             const auto it = prevById.constFind(u.id.value);
                                             if (it == prevById.constEnd())
                                                 continue;
@@ -191,11 +195,9 @@ void Session::start() {
                                             u.isActive   = old.isActive;
                                             u.dndEnabled = old.dndEnabled;
                                         }
-                                        if (!hasSelf) {
-                                            const auto it = prevById.constFind(_meUserId.value);
-                                            if (it != prevById.constEnd())
-                                                users.push_back(*it.value());
-                                        }
+                                        for (const auto &u : prev)
+                                            if (!inSnapshot.contains(u.id.value))
+                                                users.push_back(u);
                                     }
                                     _cache->saveUsers(users);
                                     _users = std::move(users);
@@ -1178,15 +1180,17 @@ void Session::fetchUserIfNeeded(UserId userId) {
                                              return;
                                          // Append to the live user list so the conv
                                          // list (fed by users()) re-resolves the name
-                                         // + avatar. user_change handlers copy-mutate
-                                         // _users, preserving this until the next full
-                                         // users.list reload — cheap to re-fetch then.
+                                         // + avatar, and persist: users.list never
+                                         // returns these (external/system peers), so
+                                         // the cache is the only thing that keeps
+                                         // their names across a restart.
                                          auto users = _users.current();
                                          for (const auto &existing : users)
                                              if (existing.id == u.id)
                                                  return;
                                          const UserId resolved = u.id;
                                          users.push_back(std::move(u));
+                                         _cache->saveUsers(users);
                                          _users = std::move(users);
                                          // Tell the message list a previously-raw
                                          // id now has a name + avatar so it can

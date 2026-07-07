@@ -678,6 +678,59 @@ TEST_CASE(
     QDir(baseDir).removeRecursively();
 }
 
+// A resolved external peer must survive a restart: users.list never returns
+// Slack Connect users, so the cache written by fetchUserIfNeeded is the only
+// startup source of their name, and the users.list merge must retain known
+// users the snapshot omits instead of treating it as complete. Regression:
+// names flickered to "Unknown user" for a few seconds after every start while
+// users.info re-resolved each external peer one by one.
+TEST_CASE("cached external peer survives restart and users.list reload", "[session]") {
+    const QString teamId = "T_SESSION_EXTERNAL_RESTART";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    User ext{
+        .id          = UserId{"W0EXTERNAL"},
+        .name        = "ext.partner",
+        .displayName = "External Partner",
+        .avatarUrl   = "https://avatars.example/ext_72.png",
+    };
+
+    { // First run: resolve the external peer on demand; must persist to cache.
+        auto  backend                       = std::make_unique<StubBackend>();
+        auto *stub                          = backend.get();
+        stub->_meId                         = UserId{"U1"};
+        stub->_users                        = std::vector<User>{kAlice}; // peer deliberately absent
+        stub->userInfoResults["W0EXTERNAL"] = ext;
+
+        Session session(std::move(backend), teamId);
+        session.start();
+        session.fetchUserIfNeeded(UserId{"W0EXTERNAL"});
+        REQUIRE(session.findUser(UserId{"W0EXTERNAL"}) != nullptr);
+    }
+
+    { // Second run: users.info deliberately yields nothing — the cached entry
+      // must resolve the name by itself, and the users.list snapshot (which
+      // still omits the peer) must not evict it.
+        auto  backend = std::make_unique<StubBackend>();
+        auto *stub    = backend.get();
+        stub->_meId   = UserId{"U1"};
+        stub->_users  = std::vector<User>{kAlice};
+
+        Session session(std::move(backend), teamId);
+        session.start();
+
+        const User *u = session.findUser(UserId{"W0EXTERNAL"});
+        REQUIRE(u != nullptr);
+        CHECK(u->displayName == "External Partner");
+        CHECK(session.userDisplayName(UserId{"W0EXTERNAL"}) == "External Partner");
+        CHECK_FALSE(stub->userInfoRequested.contains("W0EXTERNAL"));
+    }
+
+    QDir(baseDir).removeRecursively();
+}
+
 // userDisplayName never returns the raw id: it resolves the cached name, and for
 // an unknown user returns a placeholder while kicking off a users.info fetch.
 TEST_CASE("userDisplayName never leaks a raw id and resolves in the background", "[session]") {
