@@ -25,6 +25,12 @@ public:
     [[nodiscard]] QString defaultProviderId() const;
     void                  setDefaultProviderId(const QString &id);
 
+    // The user's native language (ISO 639-1 code, e.g. "en") — the language AI
+    // features should address the user in. Follows the app UI language until
+    // the user explicitly picks one in Settings; only then is it persisted.
+    [[nodiscard]] QString nativeLanguage() const;
+    void                  setNativeLanguage(const QString &code);
+
     // The provider chat() routes to: the default one if connected, otherwise
     // any connected provider, otherwise nullptr.
     [[nodiscard]] LlmProvider *activeProvider() const;

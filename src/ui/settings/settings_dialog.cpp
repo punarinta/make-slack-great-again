@@ -864,6 +864,62 @@ QWidget *SettingsDialog::buildAiPage() {
         lay->addWidget(box);
     }
 
+    // ── Your language ─────────────────────────────────────────────────
+    auto *langHeading = new QLabel(tr("Your language"), page);
+    langHeading->setObjectName("sectionHeading");
+    lay->addWidget(langHeading);
+
+    auto *langDesc = new QLabel(
+        tr("AI features address you in this language.\n"
+           "It follows the app language until you pick one here."),
+        page
+    );
+    langDesc->setObjectName("aiDesc");
+    langDesc->setWordWrap(true);
+    lay->addWidget(langDesc);
+
+    auto *aiLangRow   = new QHBoxLayout;
+    auto *aiLangLabel = new QLabel(tr("Native language:"), page);
+    aiLangLabel->setObjectName("aiDefaultLabel");
+    aiLangRow->addWidget(aiLangLabel);
+
+    _aiLanguage = new Dropdown(page);
+    _aiLanguage->setSize(Dropdown::Size::Small);
+    // Language names are intentionally not translated — each stays readable
+    // to a speaker of that language regardless of the active locale.
+    static const struct {
+        const char *code;
+        const char *name;
+    } kAiLanguages[] = {
+        {"de", "Deutsch"},
+        {"en", "English"},
+        {"es", "Español"},
+        {"fr", "Français"},
+        {"hi", "हिन्दी"},
+        {"it", "Italiano"},
+        {"ja", "日本語"},
+        {"ko", "한국어"},
+        {"nl", "Nederlands"},
+        {"pl", "Polski"},
+        {"pt", "Português"},
+        {"ru", "Русский"},
+        {"sv", "Svenska"},
+        {"tr", "Türkçe"},
+        {"uk", "Українська"},
+        {"zh", "中文"},
+    };
+    for (const auto &l : kAiLanguages)
+        _aiLanguage->addItem(QString::fromUtf8(l.name), QString::fromUtf8(l.code));
+    _aiLanguage->setFixedWidth(180);
+    aiLangRow->addWidget(_aiLanguage);
+    aiLangRow->addStretch();
+    lay->addLayout(aiLangRow);
+
+    connect(_aiLanguage, &Dropdown::currentIndexChanged, this, [this](int idx) {
+        if (idx >= 0)
+            LlmService::instance().setNativeLanguage(_aiLanguage->currentData().toString());
+    });
+
     _aiError = new QLabel(page);
     _aiError->setObjectName("aiError");
     _aiError->setWordWrap(true);
@@ -907,6 +963,15 @@ void SettingsDialog::refreshAiProviders() {
         idx = 0;
     const QSignalBlocker blocker(_aiDefault);
     _aiDefault->setCurrentIndex(idx);
+
+    // Same for the native-language combo. Its effective value tracks the UI
+    // language until the user ever picks one, so it must not be written back
+    // on load; English stands in when the resolved language isn't offered.
+    int langIdx = _aiLanguage->findData(LlmService::instance().nativeLanguage());
+    if (langIdx < 0)
+        langIdx = std::max(0, _aiLanguage->findData(QStringLiteral("en")));
+    const QSignalBlocker langBlocker(_aiLanguage);
+    _aiLanguage->setCurrentIndex(langIdx);
 }
 
 void SettingsDialog::applyTheme() {
@@ -1046,12 +1111,12 @@ void SettingsDialog::applyTheme() {
     // (Save button self-themes — StyledButton)
 
     // ── AI assistance page ────────────────────────────────────────────
-    if (auto *w = _panel->findChild<QLabel *>("aiDesc")) {
+    for (auto *w : _panel->findChildren<QLabel *>("aiDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
     }
-    if (auto *w = _panel->findChild<QLabel *>("aiDefaultLabel")) {
+    for (auto *w : _panel->findChildren<QLabel *>("aiDefaultLabel")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );

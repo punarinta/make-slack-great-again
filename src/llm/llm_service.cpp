@@ -4,6 +4,7 @@
 
 #include "anthropic_provider.h"
 #include "openai_provider.h"
+#include "util/time_format.h"
 
 #include <QSettings>
 
@@ -32,6 +33,18 @@ QString LlmService::defaultProviderId() const {
 void LlmService::setDefaultProviderId(const QString &id) {
     QSettings("msga", "msga").setValue("llm/defaultProvider", id);
     emit availabilityChanged();
+}
+
+QString LlmService::nativeLanguage() const {
+    const QString stored = QSettings("msga", "msga").value("llm/nativeLanguage").toString();
+    if (!stored.isEmpty())
+        return stored;
+    // Never set → follow the UI language ("system" resolves to the OS locale).
+    return QLocale::languageToCode(TimeFmt::locale().language());
+}
+
+void LlmService::setNativeLanguage(const QString &code) {
+    QSettings("msga", "msga").setValue("llm/nativeLanguage", code);
 }
 
 LlmProvider *LlmService::activeProvider() const {

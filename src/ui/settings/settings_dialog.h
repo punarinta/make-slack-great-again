@@ -129,8 +129,9 @@ private:
         StyledButton   *keyLink       = nullptr;
     };
     QList<AiProviderRow> _aiRows;
-    Dropdown            *_aiDefault = nullptr;
-    QLabel              *_aiError   = nullptr;
+    Dropdown            *_aiDefault  = nullptr;
+    Dropdown            *_aiLanguage = nullptr;
+    QLabel              *_aiError    = nullptr;
 
     // Storage controls
     QLabel   *_cacheSize = nullptr;
