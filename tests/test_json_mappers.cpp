@@ -512,6 +512,22 @@ TEST_CASE("toMessage thread root ts==thread_ts gives no threadRoot", "[mappers][
     CHECK(m.replyCount == 5);
 }
 
+TEST_CASE("toMessage presents huddle_thread as a 'Slack' bot message", "[mappers][message]") {
+    auto m = JsonMappers::toMessage(obj(R"({
+        "ts": "100.000", "user": "USLACKBOT", "subtype": "huddle_thread", "text": "",
+        "room": {"call_family": "huddle", "has_ended": true}
+    })"));
+    // Author is cleared so name/avatar resolution takes the botName path —
+    // USLACKBOT would win the user lookup and render "Slackbot".
+    CHECK(m.author.value.isEmpty());
+    CHECK(m.botName == "Slack");
+    CHECK(m.text.text == "Huddle happened");
+    // An ordinary row, not a centered system line; its thread (the huddle
+    // chat) stays reachable.
+    CHECK_FALSE(isSystemEvent(m));
+    CHECK(canHostThread(m));
+}
+
 TEST_CASE("toMessage message_changed unpacks nested message", "[mappers][message]") {
     auto m = JsonMappers::toMessage(obj(R"({
         "subtype": "message_changed",

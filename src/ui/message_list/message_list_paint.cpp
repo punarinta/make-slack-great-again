@@ -405,6 +405,10 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
 
         const Message &msg  = _items[i].msg;
         auto          *user = _session->findUser(msg.author);
+        // Authorless huddle rows draw Slackbot's avatar (see paintAvatar) —
+        // prefetch that instead; the empty author id has nothing to resolve.
+        if (!user && isHuddleMessage(msg))
+            user = _session->findUser(UserId{QStringLiteral("USLACKBOT")});
         if (user && !user->avatarUrl.isEmpty())
             _imgCache->get(user->avatarUrl);
         else if (!msg.botAvatarUrl.isEmpty())
@@ -413,7 +417,9 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
             // Author absent from users.list (Slack Connect / system / deactivated)
             // — resolve it via users.info so the next paint shows a name + avatar
             // instead of the raw id. No-ops for ids already known or in flight.
-            _session->fetchUserIfNeeded(msg.author);
+            _session->fetchUserIfNeeded(
+                isHuddleMessage(msg) ? UserId{QStringLiteral("USLACKBOT")} : msg.author
+            );
 
         for (const auto &uid : msg.replyUsers) {
             auto *ru = _session->findUser(uid);
@@ -439,6 +445,13 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
 
 void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const {
     auto *user = _session->findUser(item.msg.author);
+
+    // Huddle rows are presented as authorless "Slack" bot messages
+    // (presentHuddleThread). Borrow Slackbot's avatar — every workspace roster
+    // has USLACKBOT — so the row wears Slack's face instead of a letter tile;
+    // the name below still resolves from botName ("Slack"), not this user.
+    if (!user && isHuddleMessage(item.msg))
+        user = _session->findUser(UserId{QStringLiteral("USLACKBOT")});
 
     // Resolve avatar URL: user profile first, then bot_profile / icon_url.
     const QString avatarUrl =

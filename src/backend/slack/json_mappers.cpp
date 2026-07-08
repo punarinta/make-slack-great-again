@@ -594,39 +594,41 @@ Message toMessage(const QJsonObject &o) {
     }
 
     const QString ts = msg.value("ts").toString();
-    return Message{
-        .ts         = ts,
-        .date       = decimalTsToMicros(ts), // epoch micros for sort + display
-        .threadRoot = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
-                          ? std::optional<Ts>(msg.value("thread_ts").toString())
-                          : std::nullopt,
-        .replyCount = msg.value("reply_count").toInt(),
-        .replyUsers =
+    Message       m{
+              .ts         = ts,
+              .date       = decimalTsToMicros(ts), // epoch micros for sort + display
+              .threadRoot = msg.contains("thread_ts") && msg.value("thread_ts") != msg.value("ts")
+                                ? std::optional<Ts>(msg.value("thread_ts").toString())
+                                : std::nullopt,
+              .replyCount = msg.value("reply_count").toInt(),
+              .replyUsers =
             [&] {
                 std::vector<UserId> v;
                 for (const auto &u : msg.value("reply_users").toArray())
                     v.push_back(UserId{u.toString()});
                 return v;
             }(),
-        .latestReply  = msg.contains("latest_reply")
-                            ? std::optional<Ts>(msg.value("latest_reply").toString())
-                            : std::nullopt,
+              .latestReply  = msg.contains("latest_reply")
+                                  ? std::optional<Ts>(msg.value("latest_reply").toString())
+                                  : std::nullopt,
         // Author of the thread root, present on reply events; drives the
         // "reply to a thread I started" notification (isFollowedThreadReply).
-        .parentUserId = UserId{msg.value("parent_user_id").toString()},
-        .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
-        .botName      = botName,
-        .botAvatarUrl = botAvatarUrl,
-        .text         = MrkdwnParser::parse(msg.value("text").toString()),
-        .rawText      = msg.value("text").toString(),
-        .reactions    = parseReactions(msg.value("reactions").toArray()),
-        .edited       = msg.contains("edited"),
-        .subtype = msg.contains("subtype") ? std::optional<QString>(msg.value("subtype").toString())
-                                           : std::nullopt,
-        .files   = std::move(files),
-        .blocks  = std::move(blocks),
-        .attachments = std::move(attachments),
+              .parentUserId = UserId{msg.value("parent_user_id").toString()},
+              .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
+              .botName      = botName,
+              .botAvatarUrl = botAvatarUrl,
+              .text         = MrkdwnParser::parse(msg.value("text").toString()),
+              .rawText      = msg.value("text").toString(),
+              .reactions    = parseReactions(msg.value("reactions").toArray()),
+              .edited       = msg.contains("edited"),
+              .subtype = msg.contains("subtype") ? std::optional<QString>(msg.value("subtype").toString())
+                                                 : std::nullopt,
+              .files       = std::move(files),
+              .blocks      = std::move(blocks),
+              .attachments = std::move(attachments),
     };
+    presentHuddleThread(m);
+    return m;
 }
 
 std::vector<User> toUsers(const QJsonArray &a) {

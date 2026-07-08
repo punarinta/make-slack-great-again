@@ -259,6 +259,10 @@ static Message messageFromJson(const QJsonObject &o) {
         m.blocks.push_back(blockFromJson(v.toObject()));
     for (const auto &v : o["at"].toArray())
         m.attachments.push_back(attachmentFromJson(v.toObject()));
+    // Re-derive the synthesized huddle label on every load — it must follow
+    // the current locale, and rows cached before the transform existed have
+    // empty text.
+    presentHuddleThread(m);
     return m;
 }
 

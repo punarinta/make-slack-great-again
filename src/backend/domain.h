@@ -4,6 +4,7 @@
 // No Slack JSON, no HTTP types, no xoxp tokens above this layer.
 #pragma once
 
+#include <QCoreApplication>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -574,23 +575,57 @@ inline bool isFollowedThreadReply(const Message &msg, const UserId &me) {
 // those subtypes, not an `!subtype` test. Content subtypes that the official
 // client draws as ordinary messages — bot_message, file_share, me_message,
 // thread_broadcast, and reminder_add (a user-authored "/remind" message with an
-// avatar and name) — are NOT system events.
+// avatar and name) — are NOT system events. Neither is huddle_thread: it is
+// presented as an ordinary bot-style row (see presentHuddleThread) so its
+// thread — the huddle's chat — stays reachable.
 inline bool isSystemEvent(const Message &m) {
     if (!m.subtype)
         return false;
     static const QSet<QString> kSystemSubtypes = {
-        QStringLiteral("channel_join"),      QStringLiteral("channel_leave"),
-        QStringLiteral("channel_topic"),     QStringLiteral("channel_purpose"),
-        QStringLiteral("channel_name"),      QStringLiteral("channel_archive"),
-        QStringLiteral("channel_unarchive"), QStringLiteral("group_join"),
-        QStringLiteral("group_leave"),       QStringLiteral("group_topic"),
-        QStringLiteral("group_purpose"),     QStringLiteral("group_name"),
-        QStringLiteral("group_archive"),     QStringLiteral("group_unarchive"),
-        QStringLiteral("pinned_item"),       QStringLiteral("unpinned_item"),
-        QStringLiteral("bot_add"),           QStringLiteral("bot_remove"),
-        QStringLiteral("huddle_thread"),
+        QStringLiteral("channel_join"),
+        QStringLiteral("channel_leave"),
+        QStringLiteral("channel_topic"),
+        QStringLiteral("channel_purpose"),
+        QStringLiteral("channel_name"),
+        QStringLiteral("channel_archive"),
+        QStringLiteral("channel_unarchive"),
+        QStringLiteral("group_join"),
+        QStringLiteral("group_leave"),
+        QStringLiteral("group_topic"),
+        QStringLiteral("group_purpose"),
+        QStringLiteral("group_name"),
+        QStringLiteral("group_archive"),
+        QStringLiteral("group_unarchive"),
+        QStringLiteral("pinned_item"),
+        QStringLiteral("unpinned_item"),
+        QStringLiteral("bot_add"),
+        QStringLiteral("bot_remove"),
     };
     return kSystemSubtypes.contains(*m.subtype);
+}
+
+// Slack announces a huddle by posting a `huddle_thread` message into the
+// channel: authored by USLACKBOT, empty text — the payload is the `room`
+// object, which the backend consumes separately (EvHuddleChanged). Present it
+// as an ordinary bot-style row from "Slack": the author is cleared so
+// name/avatar resolution takes the botName path (the USLACKBOT id would win
+// the lookup and render "Slackbot"), and the label is ALWAYS overwritten —
+// Slack sends no text, and re-deriving on every load keeps a cached copy in
+// the current locale instead of replaying a persisted translation. Applied at
+// both points where messages enter the app: JSON mapping
+// (JsonMappers::toMessage) and cache load (WorkspaceCache::messageFromJson).
+// The avatar is NOT baked here — it's roster state, so the paint layer borrows
+// Slackbot's at draw time (see MessageListWidget::paintAvatar).
+inline bool isHuddleMessage(const Message &m) {
+    return m.subtype && *m.subtype == QLatin1String("huddle_thread");
+}
+
+inline void presentHuddleThread(Message &m) {
+    if (!isHuddleMessage(m))
+        return;
+    m.author  = {};
+    m.botName = QStringLiteral("Slack");
+    m.text    = {QCoreApplication::translate("domain", "Huddle happened")};
 }
 
 // True for messages the official client draws as ordinary rows (avatar, name,

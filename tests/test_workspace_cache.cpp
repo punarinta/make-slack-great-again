@@ -171,6 +171,26 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     CHECK(loaded[0] == m);
 }
 
+TEST_CASE_METHOD(
+    CacheFixture, "huddle_thread label is re-derived on load, not replayed", "[cache][msg]"
+) {
+    // Simulate a row cached before presentHuddleThread existed (or under a
+    // different locale): empty text, USLACKBOT author. Loading must synthesize
+    // the current-locale presentation, not trust the stored fields.
+    Message m;
+    m.ts      = "100.000";
+    m.author  = UserId{"USLACKBOT"};
+    m.subtype = QString{"huddle_thread"};
+
+    ConversationId conv{"C1"};
+    cache.saveMessages(conv, {m});
+    auto loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0].author.value.isEmpty());
+    CHECK(loaded[0].botName == "Slack");
+    CHECK(loaded[0].text.text == "Huddle happened");
+}
+
 TEST_CASE_METHOD(CacheFixture, "saveMessages caps at 50 newest messages", "[cache][msg]") {
     ConversationId       conv{"C2"};
     std::vector<Message> msgs;
