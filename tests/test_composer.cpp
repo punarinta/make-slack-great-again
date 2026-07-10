@@ -16,6 +16,7 @@
 #include <QUrl>
 #include <QImage>
 #include <QMimeData>
+#include <QStandardPaths>
 #include <QTextEdit>
 #include <QWindow>
 
@@ -395,7 +396,16 @@ TEST_CASE("Session::scheduleMessage parses mrkdwn in text", "[session][schedule]
     CHECK(stub->scheduled[0].text == "bold"); // mrkdwn stripped in text field
 }
 
+// Session persists its roster to an on-disk per-team cache, and the roster merge
+// retains cached users the backend snapshot omits (Slack Connect externals). Wipe
+// the team cache so users saved by other cases (or a previous run) can't leak in.
+static void wipeTeamCache(const QString &teamId = QStringLiteral("T_TEST")) {
+    QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId)
+        .removeRecursively();
+}
+
 TEST_CASE("Session::currentUsers returns snapshot", "[session]") {
+    wipeTeamCache();
     auto *stub = new StubBackend2;
     User  u;
     u.id         = UserId{"U1"};
@@ -411,6 +421,7 @@ TEST_CASE("Session::currentUsers returns snapshot", "[session]") {
 }
 
 TEST_CASE("Session::currentConversations returns snapshot", "[session]") {
+    wipeTeamCache();
     auto        *stub = new StubBackend2;
     Conversation c;
     c.id         = ConversationId{"C1"};

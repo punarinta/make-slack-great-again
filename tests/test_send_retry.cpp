@@ -106,18 +106,22 @@ TEST_CASE(
     client.setToken("t");
 
     QString aVal, bVal;
+    bool    aDoneBeforeB = false;
     client.call("conversations.list", QUrlQuery{}, [&](QJsonObject r) {
         aVal = r.value("value").toString();
     });
     client.call("conversations.history", QUrlQuery{}, [&](QJsonObject r) {
-        bVal = r.value("value").toString();
+        bVal         = r.value("value").toString();
+        aDoneBeforeB = !aVal.isEmpty();
     });
 
     // B must finish while A is still serving out its Retry-After — proof that A's
     // 429 didn't head-of-line block the whole queue (the old global-throttle bug).
-    REQUIRE(waitFor([&] { return !bVal.isEmpty(); }, 1500));
+    // The order is captured inside B's callback rather than compared against the
+    // wall clock, so a slow machine can't turn a pass into a flake.
+    REQUIRE(waitFor([&] { return !bVal.isEmpty(); }, 4000));
     CHECK(bVal == "B");
-    CHECK(aVal.isEmpty()); // A is still cooling down, but B got through
+    CHECK_FALSE(aDoneBeforeB); // A was still cooling down when B got through
 
     // A recovers on its own once the cooldown elapses.
     REQUIRE(waitFor([&] { return !aVal.isEmpty(); }, 4000));
