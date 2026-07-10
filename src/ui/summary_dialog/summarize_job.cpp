@@ -137,7 +137,7 @@ void SummarizeJob::runLlm() {
         },
         [self](QString err) {
             if (self)
-                self->finish(self->tr("Couldn't summarize: %1").arg(err), false);
+                self->finish(SummarizeJob::tr("Couldn't summarize: %1").arg(err), false);
         }
     );
 }
