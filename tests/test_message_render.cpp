@@ -340,6 +340,61 @@ TEST_CASE("attachIsTableOnly true for a bare table attachment", "[render][table]
     CHECK(!MsgRender::attachIsTableOnly(noTable));
 }
 
+TEST_CASE("csvToTableBlock parses plain comma CSV", "[render][csv]") {
+    const Block blk = MsgRender::csvToTableBlock("a,b,c\n1,2,3\n");
+    CHECK(blk.typeStr == "table");
+    REQUIRE(blk.tableRows.size() == 2);
+    REQUIRE(blk.tableRows[0].size() == 3);
+    CHECK(blk.tableRows[0][0].text == "a");
+    CHECK(blk.tableRows[1][2].text == "3");
+}
+
+TEST_CASE("csvToTableBlock handles RFC 4180 quoting", "[render][csv]") {
+    // Quoted fields may contain the delimiter, newlines and doubled quotes.
+    const Block blk = MsgRender::csvToTableBlock(
+        "name,notes\n\"Doe, Jane\",\"line1\nline2\"\nx,\"say \"\"hi\"\"\""
+    );
+    REQUIRE(blk.tableRows.size() == 3);
+    CHECK(blk.tableRows[1][0].text == "Doe, Jane");
+    CHECK(blk.tableRows[1][1].text == "line1\nline2");
+    CHECK(blk.tableRows[2][1].text == "say \"hi\"");
+}
+
+TEST_CASE("csvToTableBlock strips BOM and handles CRLF + missing final newline", "[render][csv]") {
+    const Block blk = MsgRender::csvToTableBlock(
+        "\xEF\xBB\xBF"
+        "a,b\r\nc,d"
+    );
+    REQUIRE(blk.tableRows.size() == 2);
+    CHECK(blk.tableRows[0][0].text == "a"); // no U+FEFF prefix
+    CHECK(blk.tableRows[1][1].text == "d"); // last line flushed without trailing newline
+}
+
+TEST_CASE("csvToTableBlock sniffs semicolon and tab delimiters", "[render][csv]") {
+    const Block semi = MsgRender::csvToTableBlock("a;b;c\n1;2;3\n");
+    REQUIRE(semi.tableRows.size() == 2);
+    CHECK(semi.tableRows[0].size() == 3);
+    CHECK(semi.tableRows[0][1].text == "b");
+
+    const Block tabs = MsgRender::csvToTableBlock("a\tb\n1\t2\n");
+    REQUIRE(tabs.tableRows.size() == 2);
+    CHECK(tabs.tableRows[0].size() == 2);
+
+    // A quoted comma in the first line doesn't fool the sniffer into commas.
+    const Block quoted = MsgRender::csvToTableBlock("\"a,x\";b\n1;2\n");
+    CHECK(quoted.tableRows[0].size() == 2);
+    CHECK(quoted.tableRows[0][0].text == "a,x");
+}
+
+TEST_CASE("csvToTableBlock skips blank lines and empty input", "[render][csv]") {
+    const Block blk = MsgRender::csvToTableBlock("a,b\n\n\nc,d\n\n");
+    REQUIRE(blk.tableRows.size() == 2);
+    CHECK(blk.tableRows[1][0].text == "c");
+
+    CHECK(MsgRender::csvToTableBlock("").tableRows.empty());
+    CHECK(MsgRender::csvToTableBlock("\n\n").tableRows.empty());
+}
+
 TEST_CASE("dataTableRects finds data tables but not code/quote/button tables", "[render][table]") {
     const auto    twe = MrkdwnParser::parse("```\ncode here\n```\n> quoted line");
     QTextDocument doc;

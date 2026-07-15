@@ -1299,61 +1299,86 @@ This action cannot be undone.</translation>
     </message>
     <message>
         <location filename="../src/ui/message_list/message_list.cpp" line="2669"/>
+        <source>Preview</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2680"/>
         <source>Copy link to image</source>
         <translation>Copy link to image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2669"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2680"/>
         <source>Copy link to file</source>
         <translation>Copy link to file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2679"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2690"/>
         <source>Copy full image</source>
         <translation>Copy full image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2693"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2704"/>
         <source>Delete image…</source>
         <translation>Delete image…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2693"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2704"/>
         <source>Delete file…</source>
         <translation>Delete file…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3151"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2722"/>
+        <source>file</source>
+        <translation>file</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2724"/>
+        <source>Downloading %1</source>
+        <translation>Downloading %1</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2731"/>
+        <source>This file is empty</source>
+        <translation>This file is empty</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2736"/>
+        <source>Showing the first %1 of %2 rows</source>
+        <translation>Showing the first %1 of %2 rows</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3196"/>
         <source>Add reaction</source>
         <translation>Add reaction</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3151"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3196"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3151"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3196"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3160"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3205"/>
         <source>Download</source>
         <translation>Download</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3160"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3205"/>
         <source>Share</source>
         <translation>Share</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3160"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3205"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3192"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3237"/>
         <source>Remove preview</source>
         <translation>Remove preview</translation>
     </message>
@@ -2534,7 +2559,7 @@ It follows the app language until you pick one here.</translation>
 <context>
     <name>domain</name>
     <message>
-        <location filename="../src/backend/domain.h" line="630"/>
+        <location filename="../src/backend/domain.h" line="634"/>
         <source>Huddle happened</source>
         <translation>Huddle happened</translation>
     </message>

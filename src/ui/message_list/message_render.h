@@ -94,10 +94,22 @@ void            paintBotButtonChrome(QPainter &p, const QTextDocument *doc);
 // table opens in the TableViewerOverlay, like the official client.
 inline constexpr int kMaxInlineTableRows = 10;
 
+// CSV "Preview" caps the table viewer at this many rows — QTextDocument table
+// layout gets slow past a few hundred, and a runaway layout hangs the GUI
+// thread (see the main-thread watchdog).
+inline constexpr int kMaxCsvViewerRows = 400;
+
 // HTML for a "table" block. maxRows <= 0 renders every row (the full-table
 // viewer); otherwise the output is capped at maxRows and, when rows were cut,
 // the last rendered row is shaded as a "there's more" cue.
 QString tableBlockHtml(const Block &blk, const Session *session, int maxRows = -1);
+
+// Parse CSV file bytes into a "table" Block for the TableViewerOverlay (the
+// CSV file chip's "Preview" action). RFC 4180 quoting — quoted fields may
+// contain the delimiter, newlines and doubled quotes — with the delimiter
+// (comma / semicolon / tab) sniffed from the first line and a UTF-8 BOM
+// stripped. Cells are plain text; no entities.
+Block csvToTableBlock(const QByteArray &bytes);
 
 // Geometry (doc coordinates) of every data table in a laid-out message document
 // — the tables tableBlockHtml emits, identified by their border-collapse format

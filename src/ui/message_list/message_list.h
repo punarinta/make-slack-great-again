@@ -218,6 +218,9 @@ private:
     // fetching it from disk / cache / network as needed.
     void         copyFullImageToClipboard(const File &file);
     void         showFileContextMenu(const File &file, const Message &msg, const QPoint &globalPos);
+    // "Preview" on a CSV file chip: download the file, parse it into a table
+    // block and open it in the full-window table viewer.
+    void         openCsvPreview(const File &file);
     // Open the full-window in-app viewer for a file preview (image / PDF page),
     // then fetch the full-resolution image for real images.
     void         openPreviewViewer(const File &file, const Message &msg);

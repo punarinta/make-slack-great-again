@@ -2664,6 +2664,12 @@ void MessageListWidget::showFileContextMenu(
     const bool isImage = file.isImage();
     auto      *menu    = new ContextMenu(this);
 
+    if (file.isCsv() && !file.urlPrivate.isEmpty()) {
+        menu->addItem(
+            tr("Preview"), {}, [this, file] { openCsvPreview(file); }, false, false, ":/ui/eye.svg"
+        );
+    }
+
     const QString linkUrl = file.permalink.isEmpty() ? file.urlPrivate : file.permalink;
     menu->addItem(
         isImage ? tr("Copy link to image") : tr("Copy link to file"),
@@ -2703,6 +2709,40 @@ void MessageListWidget::showFileContextMenu(
     }
 
     menu->popup(globalPos);
+}
+
+void MessageListWidget::openCsvPreview(const File &file) {
+    if (!_session || file.urlPrivate.isEmpty())
+        return;
+    const QString name = file.name.isEmpty() ? tr("file") : file.name;
+    // Spinner runs from the click until the viewer opens (or the download fails).
+    const int     task = BackgroundTasks::instance().begin(tr("Downloading %1").arg(name));
+    _session->downloadFile(
+        file.urlPrivate,
+        [this, task](QByteArray data) {
+            BackgroundTasks::instance().end(task);
+            Block blk = MsgRender::csvToTableBlock(data);
+            if (blk.tableRows.empty())
+                blk.tableRows.push_back({TextWithEntities{tr("This file is empty"), {}}});
+            if ((int)blk.tableRows.size() > MsgRender::kMaxCsvViewerRows) {
+                const int all = (int)blk.tableRows.size();
+                blk.tableRows.resize(MsgRender::kMaxCsvViewerRows);
+                blk.tableRows.push_back({TextWithEntities{
+                    tr("Showing the first %1 of %2 rows")
+                        .arg(MsgRender::kMaxCsvViewerRows)
+                        .arg(all),
+                    {}
+                }});
+            }
+            if (!_tableViewer)
+                _tableViewer = new TableViewerOverlay(window());
+            _tableViewer->open(blk, _session);
+        },
+        [task](QString err) {
+            qWarning() << "CSV preview download failed:" << err;
+            BackgroundTasks::instance().end(task);
+        }
+    );
 }
 
 bool MessageListWidget::tryHandlePreviewPress(const QPoint &pos) {

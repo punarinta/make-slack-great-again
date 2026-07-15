@@ -449,6 +449,10 @@ struct File {
 
     bool isImage() const { return mimeType.startsWith("image/") && imageWidth > 0; }
     bool isPdf() const { return mimeType == "application/pdf"; }
+    // CSV uploads get a "Preview" action that opens them in the table viewer.
+    bool isCsv() const {
+        return mimeType == "text/csv" || name.endsWith(QLatin1String(".csv"), Qt::CaseInsensitive);
+    }
     // True when Slack provides a prerendered preview image: the image itself, or the
     // server-rendered first page of a PDF (thumb_pdf) — no client-side rendering needed.
     bool hasPreview() const { return isImage() || (isPdf() && !thumbUrl.isEmpty()); }

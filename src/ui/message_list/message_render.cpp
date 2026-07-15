@@ -751,6 +751,78 @@ QString tableBlockHtml(const Block &blk, const Session *session, int maxRows) {
            Th::qss(Th::c().message.fileChipBorder) + "'>" + rows + "</table>";
 }
 
+Block csvToTableBlock(const QByteArray &bytes) {
+    QByteArray raw = bytes;
+    if (raw.startsWith("\xEF\xBB\xBF"))
+        raw.remove(0, 3);
+    const QString text = QString::fromUtf8(raw);
+
+    // Sniff the delimiter from the first line: the most frequent of comma /
+    // semicolon / tab outside quotes ("CSV" in the wild covers all three).
+    int  commas = 0, semis = 0, tabs = 0;
+    bool q = false;
+    for (const QChar c : text) {
+        if (c == '"')
+            q = !q;
+        else if (q)
+            continue;
+        else if (c == '\n' || c == '\r')
+            break;
+        else if (c == ',')
+            ++commas;
+        else if (c == ';')
+            ++semis;
+        else if (c == '\t')
+            ++tabs;
+    }
+    const QChar delim = (tabs > commas && tabs > semis) ? QChar('\t')
+                        : (semis > commas)              ? QChar(';')
+                                                        : QChar(',');
+
+    Block blk;
+    blk.typeStr = "table";
+    std::vector<TextWithEntities> row;
+    QString                       cell;
+    bool                          inQuotes = false;
+    for (int i = 0; i < text.size(); ++i) {
+        const QChar c = text[i];
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < text.size() && text[i + 1] == '"') { // "" = literal quote
+                    cell += '"';
+                    ++i;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                cell += c;
+            }
+        } else if (c == '"' && cell.isEmpty()) {
+            inQuotes = true;
+        } else if (c == delim) {
+            row.push_back({cell, {}});
+            cell.clear();
+        } else if (c == '\n' || c == '\r') {
+            if (c == '\r' && i + 1 < text.size() && text[i + 1] == '\n')
+                ++i;
+            if (!row.empty() || !cell.isEmpty()) { // skip blank lines
+                row.push_back({cell, {}});
+                cell.clear();
+                blk.tableRows.push_back(std::move(row));
+                row.clear();
+            }
+        } else {
+            cell += c;
+        }
+    }
+    // Last line without a trailing newline.
+    if (!cell.isEmpty() || !row.empty()) {
+        row.push_back({cell, {}});
+        blk.tableRows.push_back(std::move(row));
+    }
+    return blk;
+}
+
 static void collectDataTables(QTextFrame *frame, QVector<QTextTable *> &out) {
     for (auto it = frame->begin(); it != frame->end(); ++it) {
         QTextFrame *child = it.currentFrame();
