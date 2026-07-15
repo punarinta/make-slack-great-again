@@ -2,7 +2,9 @@
 // Copyright (C) 2026  Vladimir Osipov
 // Per-workspace persistent cache: conversations, users, recent messages per conv,
 // and the last-opened conversation. Stored as JSON under AppDataLocation.
-// All I/O is synchronous but small (<200 KB) so latency is imperceptible.
+// All I/O is synchronous; the big blobs (users.json and conversations.json can
+// reach hundreds of KB) must be written from debounced paths only (Session's
+// scheduleSave* timers), never per-event on the main thread.
 #pragma once
 
 #include "backend/domain.h"

@@ -29,6 +29,8 @@ Session::~Session() {
         persistUnreads();
     if (_saveDeadConvsTimer.isActive())
         _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
+    if (_saveUsersTimer.isActive())
+        _cache->saveUsers(_users.current());
     flushPendingMsgWrites(); // queued message-cache writes (no-op when empty)
 }
 
@@ -144,6 +146,12 @@ void Session::start() {
         _cache->saveDeadConvIds(QStringList(_deadConvIds.begin(), _deadConvIds.end()));
     });
 
+    // Debounced roster persistence (see scheduleSaveUsers).
+    _saveUsersTimer.setSingleShot(true);
+    QObject::connect(&_saveUsersTimer, &QTimer::timeout, [this] {
+        _cache->saveUsers(_users.current());
+    });
+
     // Deferred per-conversation message-cache writes (see cacheMessages).
     _saveMsgsTimer.setSingleShot(true);
     QObject::connect(&_saveMsgsTimer, &QTimer::timeout, [this] { flushPendingMsgWrites(); });
@@ -199,8 +207,8 @@ void Session::start() {
                                             if (!inSnapshot.contains(u.id.value))
                                                 users.push_back(u);
                                     }
-                                    _cache->saveUsers(users);
                                     _users = std::move(users);
+                                    scheduleSaveUsers();
                                     // Update admin flag now that the full user list is available.
                                     if (!_meUserId.value.isEmpty()) {
                                         if (const User *u = findUser(_meUserId))
@@ -276,8 +284,8 @@ void Session::start() {
                     } else {
                         users.push_back(ev->user);
                     }
-                    _cache->saveUsers(users);
                     _users = std::move(users);
+                    scheduleSaveUsers();
                     // A reactivated peer makes their DM answer conversations.info
                     // again — drop any dead mark so the sweeps resume covering it.
                     // (conversations.list can't clear DMs: it lists dead-peer DMs
@@ -287,10 +295,10 @@ void Session::start() {
                             if (c.kind == ConvKind::Im && c.dmUser == ev->user.id)
                                 markConvAlive(c.id);
                 } else if (auto *ev = std::get_if<EvUsersChanged>(&e)) {
-                    // Bulk EvUserChanged: same merge, but ONE roster copy, ONE
-                    // synchronous saveUsers and ONE _users re-emission for the
-                    // whole batch. (No markConvAlive sweep here — the only bulk
-                    // sender today is avatar refreshes, not reactivations.)
+                    // Bulk EvUserChanged: same merge, but ONE roster copy and
+                    // ONE _users re-emission for the whole batch. (No
+                    // markConvAlive sweep here — the only bulk sender today is
+                    // avatar refreshes, not reactivations.)
                     auto                users = _users.current();
                     QHash<QString, int> idxById;
                     for (int i = 0; i < int(users.size()); ++i)
@@ -308,8 +316,8 @@ void Session::start() {
                         merged.dndEnabled = old.dndEnabled;
                         old               = std::move(merged);
                     }
-                    _cache->saveUsers(users);
                     _users = std::move(users);
+                    scheduleSaveUsers();
                 } else if (auto *ev = std::get_if<EvConvMarked>(&e)) {
                     auto convs = _conversations.current();
                     for (auto &c : convs) {
@@ -1190,8 +1198,8 @@ void Session::fetchUserIfNeeded(UserId userId) {
                                                  return;
                                          const UserId resolved = u.id;
                                          users.push_back(std::move(u));
-                                         _cache->saveUsers(users);
                                          _users = std::move(users);
+                                         scheduleSaveUsers();
                                          // Tell the message list a previously-raw
                                          // id now has a name + avatar so it can
                                          // re-render the author header and any
@@ -1866,6 +1874,12 @@ void Session::scheduleSaveUnreads() {
     // ~1 s debounce: a flurry of switches/reads collapses into one write, and
     // the serialization never blocks the triggering interaction.
     _saveUnreadsTimer.start(1000);
+}
+
+void Session::scheduleSaveUsers() {
+    // ~1 s debounce, same rationale as scheduleSaveUnreads() but for the roster
+    // (see the declaration for the watchdog incident this prevents).
+    _saveUsersTimer.start(1000);
 }
 
 void Session::setOpenConversation(ConversationId conv) {

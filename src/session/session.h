@@ -388,6 +388,14 @@ private:
     // burst; coalesce them into a single meta write. Flushed by the destructor.
     void scheduleSaveDeadConvIds();
 
+    // Debounced roster persistence. users.json is the largest cache blob
+    // (hundreds of KB on big workspaces) and user_change arrives in bursts
+    // (reconnect, profile sweeps); re-serializing the whole roster per event
+    // wedged the main thread long enough to trip the hang watchdog and stall
+    // the realtime socket. _users is the in-memory truth, so coalescing writes
+    // is safe. Flushed by the destructor.
+    void scheduleSaveUsers();
+
     // A DM whose peer left/was deactivated — conversations.info answers
     // channel_not_found for these, so the DM/MPDM sweeps skip them. (MPDMs have no
     // single peer and always sweep.)
@@ -454,6 +462,7 @@ private:
     QTimer                                   _realtimeSafetyTimer; // 15 s; checkRealtimeHealth()
     QTimer                                   _saveUnreadsTimer; // debounces scheduleSaveUnreads()
     QTimer                               _saveDeadConvsTimer; // debounces scheduleSaveDeadConvIds()
+    QTimer                               _saveUsersTimer;     // debounces scheduleSaveUsers()
     // Conversation snapshots queued by cacheMessages(): the JSON serialization
     // + file write is deferred off the conversation-switch click path. Flushed
     // by the timer and the destructor; cachedMessages() reads the queue first
