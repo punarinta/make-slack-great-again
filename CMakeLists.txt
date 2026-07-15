@@ -162,6 +162,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/message_list/message_render.cpp
     src/ui/message_list/file_chip_widget.cpp
     src/ui/image_viewer/image_viewer.cpp
+    src/ui/table_viewer/table_viewer.cpp
     src/ui/conv_list/conv_list_widget.cpp
     src/ui/conv_footer/conv_footer_widget.cpp
     src/ui/composer/formatting_toolbar.cpp

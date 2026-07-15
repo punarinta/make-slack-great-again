@@ -471,15 +471,17 @@ struct BotButton {
 // image → imageUrl/altText populated; text may be empty.
 // divider → typeStr == "divider", rest empty.
 // actions → buttons populated; section may also carry an accessory button.
+// table → tableRows populated (cells left empty for the payload's null cells).
 struct Block {
-    QString typeStr; // "section"|"header"|"divider"|"image"|"context"|"rich_text"|"actions"
+    QString typeStr; // "section"|"header"|"divider"|"image"|"context"|"rich_text"|"actions"|"table"
     TextWithEntities       text; // primary displayable text; for "image" blocks this is the title
     QString                imageUrl;        // for "image" blocks
     QString                altText;         // for "image" blocks
     int                    imageWidth  = 0; // for "image" blocks; 0 when not provided
     int                    imageHeight = 0;
-    std::vector<BotButton> buttons; // "actions" elements / section accessory
-    bool                   operator==(const Block &) const = default;
+    std::vector<BotButton> buttons;                       // "actions" elements / section accessory
+    std::vector<std::vector<TextWithEntities>> tableRows; // "table" cells, row-major
+    bool                                       operator==(const Block &) const = default;
 };
 
 // Legacy Slack attachment (link unfurls, bot messages, older integrations).

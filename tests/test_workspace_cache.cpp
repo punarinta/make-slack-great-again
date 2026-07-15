@@ -128,31 +128,41 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     // Note: File.prettyType and File.permalink are NOT cached — leave them empty.
     // Note: Message.replyCount is NOT cached — leave it at default 0.
     Message m;
-    m.ts          = "123.456";
-    m.threadRoot  = QString{"100.000"};
-    m.author      = UserId{"U1"};
-    m.text        = TextWithEntities{"hello world", {TextEntity{EntityType::Bold, 0, 5, ""}}};
-    m.edited      = true;
-    m.subtype     = QString{"bot_message"};
-    m.reactions   = {Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}}};
-    m.files       = {File{
-              .id          = "F1",
-              .name        = "img.png",
-              .mimeType    = "image/png",
-              .urlPrivate  = "https://files.slack.com/img.png",
-              .thumbUrl    = "https://thumb.example.com/img.png",
-              .imageWidth  = 640,
-              .imageHeight = 480,
-              .size        = 12345,
-              .thumbs      = {
+    m.ts         = "123.456";
+    m.threadRoot = QString{"100.000"};
+    m.author     = UserId{"U1"};
+    m.text       = TextWithEntities{"hello world", {TextEntity{EntityType::Bold, 0, 5, ""}}};
+    m.edited     = true;
+    m.subtype    = QString{"bot_message"};
+    m.reactions  = {Reaction{"thumbsup", 2, {UserId{"U1"}, UserId{"U2"}}}};
+    m.files      = {File{
+             .id          = "F1",
+             .name        = "img.png",
+             .mimeType    = "image/png",
+             .urlPrivate  = "https://files.slack.com/img.png",
+             .thumbUrl    = "https://thumb.example.com/img.png",
+             .imageWidth  = 640,
+             .imageHeight = 480,
+             .size        = 12345,
+             .thumbs      = {
             FileThumb{360, 270, "https://thumb.example.com/img_360.png"},
             FileThumb{480, 360, "https://thumb.example.com/img_480.png"}
         },
     }};
-    m.blocks      = {Block{
-             .typeStr = "section",
-             .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
-    }};
+    m.blocks     = {
+        Block{
+                .typeStr = "section",
+                .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
+        },
+        Block{
+                .typeStr   = "table",
+                .tableRows = {
+                {TextWithEntities{"Header", {TextEntity{EntityType::Bold, 0, 6, ""}}},
+                     TextWithEntities{"", {}}},
+                {TextWithEntities{"cell", {}}, TextWithEntities{"18.2", {}}}
+            },
+        },
+    };
     m.attachments = {Attachment{
         .fallback    = "fallback",
         .color       = "#36a64f",

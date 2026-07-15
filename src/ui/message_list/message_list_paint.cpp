@@ -146,8 +146,42 @@ void MessageListWidget::doPaint(QPaintEvent *event) {
     if (fullPaint)
         syncGifPlayback();
 
+    // "Open full table" pill over a hovered data table
+    paintTablePill(p);
+
     // Thin Telegram-style scrollbar overlay
     paintScrollThumb(p, _totalH, Th::c().divider.strong);
+}
+
+void MessageListWidget::paintTablePill(QPainter &p) const {
+    if (!_hoveredTable.valid())
+        return;
+    const QRect r = tablePillRect(_hoveredTable);
+    if (r.isEmpty())
+        return;
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(Th::c().tooltip.bg);
+    p.drawRoundedRect(r, r.height() / 2.0, r.height() / 2.0);
+
+    const int     iconSide = 14;
+    const int     padL     = 10;
+    const QPixmap icon     = svgPixmapPhys(
+        ":/ui/maximize-2.svg",
+        QSize(iconSide, iconSide),
+        Th::c().text.onDark,
+        p.device()->devicePixelRatioF()
+    );
+    const QRectF iconRect(r.left() + padL, r.center().y() - iconSide / 2.0, iconSide, iconSide);
+    p.drawPixmap(iconRect.topLeft(), icon);
+
+    p.setPen(Th::c().text.onDark);
+    p.setFont(QApplication::font());
+    const QRect textRect(r.left() + padL + iconSide + 6, r.top(), r.width(), r.height());
+    p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, tr("Open full table"));
+    p.restore();
 }
 
 void MessageListWidget::paintRow(
@@ -629,13 +663,16 @@ void MessageListWidget::paintAttachments(
         const int imgH   = attachImageH(att);
         const int totalH = docH + imgH;
 
-        // GIF-picker attachments (image blocks only) render bar-less and
-        // un-indented, like the official client.
+        // GIF-picker attachments (image blocks only) and table messages render
+        // bar-less and un-indented, like the official client.
         const bool imageOnly = MsgRender::attachIsImageOnly(att);
-        const int  attX      = imageOnly ? left : textX;
+        const bool tableOnly = MsgRender::attachIsTableOnly(att);
+        const int  attX      = (imageOnly || tableOnly) ? left : textX;
 
-        // Dismiss "×" button — only visible when this specific attachment is hovered
-        if (_hoveredAttach.first == index && _hoveredAttach.second == ai) {
+        // Dismiss "×" button — only visible when this specific attachment is
+        // hovered. Table attachments are message content, not a removable
+        // preview, so they never get one.
+        if (!tableOnly && _hoveredAttach.first == index && _hoveredAttach.second == ai) {
             const int   btnX = left - kDismissGap - kDismissW;
             const QRect btnRect(btnX, y, kDismissW, kDismissW);
             p.save();
@@ -648,7 +685,7 @@ void MessageListWidget::paintAttachments(
         }
 
         // Colored left bar (full attachment height)
-        if (!imageOnly) {
+        if (!imageOnly && !tableOnly) {
             QColor barColor("#AAAAAA");
             if (!att.color.isEmpty()) {
                 QColor c(att.color.startsWith('#') ? att.color : "#" + att.color);

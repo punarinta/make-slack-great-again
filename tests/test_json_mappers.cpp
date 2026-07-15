@@ -829,6 +829,37 @@ TEST_CASE("toBlock context parses mrkdwn elements", "[mappers][block]") {
     CHECK(b.text.entities[0].data == "https://example.com");
 }
 
+TEST_CASE("toBlock table maps rows with rich_text, raw_text and null cells", "[mappers][block]") {
+    // Delimited raw string: the header text "ATC (EDIFACT)" contains )" which
+    // would terminate a plain R"( literal.
+    auto b = JsonMappers::toBlock(obj(R"json({
+        "type": "table",
+        "rows": [
+            [
+                {"type": "rich_text", "elements": [
+                    {"type": "rich_text_section", "elements": [
+                        {"type": "text", "text": "ATC (EDIFACT)", "style": {"bold": true}}
+                    ]}
+                ]},
+                null
+            ],
+            [
+                {"type": "raw_text", "text": "ATC"},
+                {"type": "raw_text", "text": "18.2"}
+            ]
+        ]
+    })json"));
+    CHECK(b.typeStr == "table");
+    REQUIRE(b.tableRows.size() == 2);
+    REQUIRE(b.tableRows[0].size() == 2);
+    CHECK(b.tableRows[0][0].text == "ATC (EDIFACT)");
+    REQUIRE(b.tableRows[0][0].entities.size() == 1);
+    CHECK(b.tableRows[0][0].entities[0].type == EntityType::Bold);
+    CHECK(b.tableRows[0][1].text.isEmpty());
+    CHECK(b.tableRows[1][0].text == "ATC");
+    CHECK(b.tableRows[1][1].text == "18.2");
+}
+
 TEST_CASE("toAttachment maps legacy actions buttons (string text)", "[mappers][attach]") {
     auto a = JsonMappers::toAttachment(obj(R"({
         "fallback": "You are unable to choose",

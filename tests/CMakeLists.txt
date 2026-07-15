@@ -542,6 +542,7 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/src/util/emoji_catalog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
@@ -579,6 +580,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/util/emoji_catalog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp

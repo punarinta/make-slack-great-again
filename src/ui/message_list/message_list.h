@@ -30,6 +30,7 @@ class ImageCache;
 class PopupTooltip;
 class EmojiPickerPopup;
 class ImageViewerOverlay;
+class TableViewerOverlay;
 class UserProfileCard;
 
 // Per-attachment rendered doc (lazy, like the main textDoc).
@@ -187,6 +188,23 @@ private:
     bool tryHandleFileActionBarPress(const QPoint &pos);
     bool tryHandlePreviewPress(const QPoint &pos);
     bool tryHandleFileChipPress(const QPoint &pos);
+    bool tryHandleTablePillPress(const QPoint &pos);
+
+    // A data table under the cursor (message doc or an attachment doc).
+    struct TableHit {
+        int   row       = -1;
+        int   attachIdx = -1; // -1 = the message's own doc
+        int   tableIdx  = -1; // n-th data table within that doc
+        QRect vpRect;         // table rect in viewport coords
+        bool  valid() const { return row >= 0; }
+        bool  operator==(const TableHit &) const = default;
+    };
+    TableHit     tableHitAt(const QPoint &viewportPos) const;
+    // "Open full table" pill rect for a hovered table, in viewport coords.
+    QRect        tablePillRect(const TableHit &hit) const;
+    // The Block a table hit refers to, or nullptr if the model changed.
+    const Block *tableBlockFor(const TableHit &hit) const;
+    void         paintTablePill(QPainter &p) const;
 
     // Toolbar sub-actions called from tryHandleToolbarPress.
     void         openEmojiPickerForRow(int row, const QPoint &globalPos);
@@ -542,6 +560,9 @@ private:
     // Dismiss button for attachments (link previews)
     static constexpr int kDismissW   = 18; // dismiss button size (square)
     static constexpr int kDismissGap = 4;  // gap between dismiss button and attachment left edge
+    static constexpr int kTablePillH = 28; // "Open full table" hover pill height
+    // Pill width beyond the label text: side paddings + expand icon + icon gap.
+    static constexpr int kTablePillIconPad = 40;
 
     // Date separator
     static constexpr int kSepH = 32; // total height of date separator band
@@ -646,6 +667,7 @@ private:
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
     Ts                  _hoveredThreadFooter;  // root ts whose inline "Reply to thread" is hovered
     std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse
+    TableHit            _hoveredTable;               // data table under the mouse (row -1 = none)
 
     // Header labels shaped once on first paint (a language switch needs an app
     // restart, so the strings are constants for the run). Members, not
@@ -674,6 +696,7 @@ private:
     QDeadlineTimer      _tooltipPin; // while running, hover logic leaves the tooltip alone
     EmojiPickerPopup   *_emojiPicker = nullptr;
     ImageViewerOverlay *_imageViewer = nullptr; // lazily created, parented to window()
+    TableViewerOverlay *_tableViewer = nullptr; // lazily created, parented to window()
 
     // Mention hover profile card
     UserProfileCard *_profileCard = nullptr;

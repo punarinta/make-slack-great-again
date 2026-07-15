@@ -13,6 +13,7 @@
 #include "ui/emoji_picker/emoji_picker_popup.h"
 #include "ui/user_profile_card/user_profile_card.h"
 #include "ui/image_viewer/image_viewer.h"
+#include "ui/table_viewer/table_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
 #include "ui/summary_dialog/summarize_job.h"
 #include "ui/summary_dialog/summary_dialog.h"
@@ -226,6 +227,7 @@ void MessageListWidget::clear() {
     _hoveredRow      = -1;
     _hoveredToolBtn  = -1;
     _hoveredAttach   = {-1, -1};
+    _hoveredTable    = {};
     _hoveredReplyRow = -1;
     _hoveredThreadFooter.clear();
     _hoveredFile           = {-1, -1};
@@ -595,6 +597,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _hoveredRow      = -1;
     _hoveredToolBtn  = -1;
     _hoveredAttach   = {-1, -1};
+    _hoveredTable    = {};
     _hoveredReplyRow = -1;
     _hoveredFile     = {-1, -1};
     _hoveredFileBtn  = -1;
@@ -804,6 +807,7 @@ void MessageListWidget::mergeNetworkMessages(
             _hoveredRow      = -1;
             _hoveredToolBtn  = -1;
             _hoveredAttach   = {-1, -1};
+            _hoveredTable    = {};
             _hoveredReplyRow = -1;
             _hoveredFile     = {-1, -1};
             _hoveredFileBtn  = -1;
@@ -1553,9 +1557,10 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
                 continue;
             ay += kAttachGap;
             const auto &ad         = item.attachDocs[ai];
-            // Image-only attachments paint un-indented (no quote bar) — keep
-            // the hit-test x in sync with paintAttachments.
-            const int   attTextX   = MsgRender::attachIsImageOnly(item.msg.attachments[ai])
+            // Image-only and table-only attachments paint un-indented (no quote
+            // bar) — keep the hit-test x in sync with paintAttachments.
+            const int   attTextX   = (MsgRender::attachIsImageOnly(item.msg.attachments[ai]) ||
+                                  MsgRender::attachIsTableOnly(item.msg.attachments[ai]))
                                          ? textLeft
                                          : textLeft + kAttachBarW + kAttachBarGap;
             const int   attTextTop = ay;
@@ -1721,7 +1726,9 @@ std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
             y += kAttachGap;
             if (!isDismissed(item.msg.ts, ai)) {
-                if (QRect(btnX, y, kDismissW, kDismissW).contains(viewportPos))
+                // Table attachments are message content — not dismissable.
+                if (!MsgRender::attachIsTableOnly(item.msg.attachments[ai]) &&
+                    QRect(btnX, y, kDismissW, kDismissW).contains(viewportPos))
                     return {i, ai};
                 y += attachTotalH(item, ai);
             }
@@ -1756,6 +1763,114 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
         }
     }
     return {};
+}
+
+MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewportPos) const {
+    const PaintContext ctx      = makePaintContext();
+    const int          scrollY  = ctx.scrollY;
+    const int          docY     = viewportPos.y() + scrollY;
+    const int          textLeft = ctx.textLeft;
+
+    for (int i = firstVisibleRow(docY); i < static_cast<int>(_items.size()); ++i) {
+        const int rowTop = _tops[i];
+        const int rh     = rowHeight(i);
+        if (docY < rowTop)
+            break;
+        if (docY > rowTop + rh)
+            continue;
+
+        const auto &item = _items[i];
+        ensureDocLayout(item);
+
+        const bool coll    = isCollapsed(i);
+        const int  padV    = coll ? kPadVCollapsed : kPadV;
+        const int  sepH2   = needsDateSep(i) ? kSepH : 0;
+        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  textTop = rowTop + sepH2 + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+
+        // Tables in a laid-out doc at origin (originX, originY): return the
+        // hit table's viewport rect and its index within the doc.
+        const auto hitIn =
+            [&](QTextDocument *doc, int originX, int originY, int attachIdx) -> TableHit {
+            if (!doc)
+                return {};
+            const auto rects = MsgRender::dataTableRects(doc);
+            for (int ti = 0; ti < rects.size(); ++ti) {
+                const QRect vp = rects[ti].translated(originX, originY - scrollY).toAlignedRect();
+                if (vp.contains(viewportPos))
+                    return TableHit{i, attachIdx, ti, vp};
+            }
+            return {};
+        };
+
+        // Main message doc
+        if (TableHit hit = hitIn(item.textDoc.get(), textLeft, textTop, -1); hit.valid())
+            return hit;
+
+        // Attachment docs
+        int ay = textTop + item.docHeight;
+        for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+            if (isDismissed(item.msg.ts, ai))
+                continue;
+            ay += kAttachGap;
+            const auto &att = item.msg.attachments[ai];
+            const int   attTextX =
+                (MsgRender::attachIsImageOnly(att) || MsgRender::attachIsTableOnly(att))
+                      ? textLeft
+                      : textLeft + kAttachBarW + kAttachBarGap;
+            if (TableHit hit = hitIn(item.attachDocs[ai].textDoc.get(), attTextX, ay, ai);
+                hit.valid())
+                return hit;
+            ay += attachTotalH(item, ai);
+        }
+        return {};
+    }
+    return {};
+}
+
+QRect MessageListWidget::tablePillRect(const TableHit &hit) const {
+    if (!hit.valid())
+        return {};
+    // Vertically centred on the VISIBLE part of the table (tables can be taller
+    // than the viewport), inset from the right edge — like the official client.
+    const QRect visible = hit.vpRect.intersected(viewport()->rect());
+    if (visible.isEmpty())
+        return {};
+    const QFontMetrics fm(QApplication::font());
+    const int          w = fm.horizontalAdvance(tr("Open full table")) + kTablePillIconPad;
+    const int          x = hit.vpRect.right() - w - Th::c().spacing.md;
+    return {std::max(hit.vpRect.left(), x), visible.center().y() - kTablePillH / 2, w, kTablePillH};
+}
+
+const Block *MessageListWidget::tableBlockFor(const TableHit &hit) const {
+    if (!hit.valid() || hit.row >= (int)_items.size())
+        return nullptr;
+    const auto               &msg    = _items[hit.row].msg;
+    const std::vector<Block> *blocks = nullptr;
+    if (hit.attachIdx < 0)
+        blocks = &msg.blocks;
+    else if (hit.attachIdx < (int)msg.attachments.size())
+        blocks = &msg.attachments[hit.attachIdx].blocks;
+    if (!blocks)
+        return nullptr;
+    // The n-th data table in the doc is the n-th block with table rows.
+    int ti = 0;
+    for (const auto &b : *blocks)
+        if (!b.tableRows.empty() && ti++ == hit.tableIdx)
+            return &b;
+    return nullptr;
+}
+
+bool MessageListWidget::tryHandleTablePillPress(const QPoint &pos) {
+    if (!_hoveredTable.valid() || !tablePillRect(_hoveredTable).contains(pos))
+        return false;
+    const Block *blk = tableBlockFor(_hoveredTable);
+    if (!blk)
+        return false;
+    if (!_tableViewer)
+        _tableViewer = new TableViewerOverlay(window());
+    _tableViewer->open(*blk, _session);
+    return true;
 }
 
 // Returns the first link URL in the message text entities, or empty string.
@@ -1793,6 +1908,8 @@ void MessageListWidget::doMousePress(QMouseEvent *event) {
     if (tryHandleToolbarPress(event->pos()))
         return;
     if (tryHandleReactionPress(event->pos()))
+        return;
+    if (tryHandleTablePillPress(event->pos()))
         return;
     if (tryHandleDismissPress(event->pos()))
         return;
@@ -2685,7 +2802,7 @@ void MessageListWidget::doMouseLeave() {
 
     if (_hoveredRow != -1 || _hoveredToolBtn != -1 || _hoveredAttach.first != -1 ||
         _hoveredReplyRow != -1 || _hoveredFile.first != -1 || _hoveredReaction.first != -1 ||
-        !_hoveredThreadFooter.isEmpty()) {
+        !_hoveredThreadFooter.isEmpty() || _hoveredTable.valid()) {
         _hoveredRow          = -1;
         _hoveredToolBtn      = -1;
         _hoveredAttach       = {-1, -1};
@@ -2694,6 +2811,7 @@ void MessageListWidget::doMouseLeave() {
         _hoveredFileBtn      = -1;
         _hoveredReaction     = {-1, -1};
         _hoveredThreadFooter = Ts{};
+        _hoveredTable        = {};
         viewport()->update();
     }
 }
@@ -2952,11 +3070,13 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
 
     QRect                     reactionChipRect;
     const std::pair<int, int> newHoveredReaction = reactionAt(pos, &reactionChipRect);
+    const TableHit            newHoveredTable    = tableHitAt(pos);
 
     if (newHoveredRow != _hoveredRow || newHoveredBtn != _hoveredToolBtn ||
         newHoveredAttach != _hoveredAttach || newHoveredReplyRow != _hoveredReplyRow ||
         newHoveredFile != _hoveredFile || newHoveredFileBtn != _hoveredFileBtn ||
-        newHoveredReaction != _hoveredReaction || newHoveredThreadFoot != _hoveredThreadFooter) {
+        newHoveredReaction != _hoveredReaction || newHoveredThreadFoot != _hoveredThreadFooter ||
+        newHoveredTable != _hoveredTable) {
         _hoveredRow          = newHoveredRow;
         _hoveredToolBtn      = newHoveredBtn;
         _hoveredAttach       = newHoveredAttach;
@@ -2965,6 +3085,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         _hoveredFileBtn      = newHoveredFileBtn;
         _hoveredReaction     = newHoveredReaction;
         _hoveredThreadFooter = newHoveredThreadFoot;
+        _hoveredTable        = newHoveredTable;
         viewport()->update();
     }
 
@@ -3078,12 +3199,13 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const auto [dMI, dAI] = dismissButtonAt(pos);
     const bool overDismiss =
         dMI >= 0 && _hoveredAttach.first == dMI && _hoveredAttach.second == dAI;
+    const bool overTablePill = _hoveredTable.valid() && tablePillRect(_hoveredTable).contains(pos);
     // File action bar buttons take priority — keep arrow cursor over them even if a chip is below.
-    const bool overFileBar = newHoveredFileBtn >= 0;
+    const bool overFileBar   = newHoveredFileBtn >= 0;
     const bool overLink =
-        !overFileBar &&
-        (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) || replyBarIndexAt(pos) >= 0 ||
-         overDismiss || newHoveredReaction.first >= 0 || !newHoveredThreadFoot.isEmpty());
+        !overFileBar && (!anchor.isEmpty() || fileChipAt(pos) || previewFileAt(pos) ||
+                         replyBarIndexAt(pos) >= 0 || overDismiss || overTablePill ||
+                         newHoveredReaction.first >= 0 || !newHoveredThreadFoot.isEmpty());
     const int  sbHitX     = scrollThumbHitX();
     const bool overScroll = pos.x() >= sbHitX && isOnScrollThumb(pos.y());
     const bool overText   = !overLink && textHitTest(pos).row >= 0;
@@ -3209,6 +3331,7 @@ void MessageListWidget::handleEvent(const Event &e) {
             _hoveredRow      = -1;
             _hoveredToolBtn  = -1;
             _hoveredAttach   = {-1, -1};
+            _hoveredTable    = {};
             _hoveredReplyRow = -1;
             _hoveredFile     = {-1, -1};
             _hoveredFileBtn  = -1;

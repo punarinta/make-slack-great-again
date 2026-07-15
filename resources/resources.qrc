@@ -73,6 +73,7 @@
         <file alias="ui/log-out.svg">../gfx/ui/log-out.svg</file>
         <file alias="ui/download.svg">../gfx/ui/download.svg</file>
         <file alias="ui/external-link.svg">../gfx/ui/external-link.svg</file>
+        <file alias="ui/maximize-2.svg">../gfx/ui/maximize-2.svg</file>
         <file alias="ui/plus.svg">../gfx/ui/plus.svg</file>
         <file alias="ui/check.svg">../gfx/ui/check.svg</file>
         <file alias="ui/check-on-accent.svg">../gfx/ui/check-on-accent.svg</file>

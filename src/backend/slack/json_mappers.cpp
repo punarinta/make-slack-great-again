@@ -486,6 +486,24 @@ Block toBlock(const QJsonObject &o) {
             }
         }
         b.text = ct;
+    } else if (b.typeStr == "table") {
+        // Table messages (Slack's newer editor). Each row is an array of cells;
+        // a cell is a nested rich_text block, {"type":"raw_text","text":…}, or
+        // null (the header row pads short rows with nulls) → empty cell.
+        for (const auto &rv : o.value("rows").toArray()) {
+            std::vector<TextWithEntities> row;
+            for (const auto &cv : rv.toArray()) {
+                const auto cell = cv.toObject();
+                const auto ct   = cell.value("type").toString();
+                if (ct == "rich_text")
+                    row.push_back(richTextToTWE(cell));
+                else if (ct == "raw_text")
+                    row.push_back(TextWithEntities{cell.value("text").toString(), {}});
+                else
+                    row.push_back({});
+            }
+            b.tableRows.push_back(std::move(row));
+        }
     } else if (b.typeStr == "actions") {
         // Buttons render as inert chips (URL buttons are clickable); other
         // interactive elements (selects, datepickers) aren't representable.

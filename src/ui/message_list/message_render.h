@@ -89,6 +89,21 @@ void            paintCodeBlockChrome(QPainter &p, const QTextDocument *doc);
 // pattern as the code-block chrome. Call wherever paintCodeBlockChrome is called.
 QVector<QRectF> botButtonRects(const QTextDocument *doc);
 void            paintBotButtonChrome(QPainter &p, const QTextDocument *doc);
+
+// Inline table messages cap at this many rows (the last one shaded) — the full
+// table opens in the TableViewerOverlay, like the official client.
+inline constexpr int kMaxInlineTableRows = 10;
+
+// HTML for a "table" block. maxRows <= 0 renders every row (the full-table
+// viewer); otherwise the output is capped at maxRows and, when rows were cut,
+// the last rendered row is shaded as a "there's more" cue.
+QString tableBlockHtml(const Block &blk, const Session *session, int maxRows = -1);
+
+// Geometry (doc coordinates) of every data table in a laid-out message document
+// — the tables tableBlockHtml emits, identified by their border-collapse format
+// (code blocks / blockquotes / button rows never set it). Drives the hover
+// "Open full table" affordance.
+QVector<QRectF> dataTableRects(const QTextDocument *doc);
 // collapseQuotedReplies (email only — Capabilities::collapseQuotedReplies): strip
 // the trailing quoted history + signature so a reply shows only what the sender
 // added. Chat services pass false and keep their intentional quotes.
@@ -114,7 +129,13 @@ void configurePreviewBrowser(QTextBrowser *browser);
 // True when the attachment renders nothing but Block Kit image blocks (the
 // Slack GIF-picker shape) — official clients draw those without the colored
 // quote bar and without the bar indent.
-bool    attachIsImageOnly(const Attachment &att);
+bool attachIsImageOnly(const Attachment &att);
+
+// True when the attachment renders nothing but "table" blocks (Slack's table
+// messages arrive as such an attachment). Official clients draw those without
+// the colored quote bar / indent, and they are message content — not a link
+// preview — so they get no dismiss "×" either.
+bool    attachIsTableOnly(const Attachment &att);
 QColor  fileTypeColor(const File &f);
 QString fileIconLabel(const File &f);
 QString formatFileSize(qint64 bytes);

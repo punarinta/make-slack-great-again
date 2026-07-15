@@ -131,6 +131,16 @@ static QJsonObject toJson(const Block &b) {
         o["at"] = b.altText;
     if (!b.buttons.empty())
         o["bt"] = buttonsToJson(b.buttons);
+    if (!b.tableRows.empty()) {
+        QJsonArray rows;
+        for (const auto &row : b.tableRows) {
+            QJsonArray cells;
+            for (const auto &cell : row)
+                cells.append(toJson(cell));
+            rows.append(cells);
+        }
+        o["tr"] = rows;
+    }
     return o;
 }
 static Block blockFromJson(const QJsonObject &o) {
@@ -140,6 +150,12 @@ static Block blockFromJson(const QJsonObject &o) {
     b.imageUrl = o["iu"].toString();
     b.altText  = o["at"].toString();
     b.buttons  = buttonsFromJson(o["bt"].toArray());
+    for (const auto &rv : o["tr"].toArray()) {
+        std::vector<TextWithEntities> row;
+        for (const auto &cv : rv.toArray())
+            row.push_back(tweFromJson(cv.toObject()));
+        b.tableRows.push_back(std::move(row));
+    }
     return b;
 }
 

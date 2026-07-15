@@ -268,6 +268,93 @@ TEST_CASE("buildAttachHtml footer renders after fallback content", "[render][att
     CHECK(html.indexOf("via Bot") > html.indexOf("fb text"));
 }
 
+TEST_CASE("buildAttachHtml renders a table block instead of the fallback", "[render][attachment]") {
+    // Slack's newer table messages arrive as an attachment whose only content is
+    // a "table" block, with fallback "[no preview available]" — the table must
+    // render and the fallback must not.
+    Attachment att;
+    att.fallback = "[no preview available]";
+    Block blk;
+    blk.typeStr = "table";
+    blk.tableRows.push_back({TextWithEntities{"Header", {}}, TextWithEntities{"", {}}});
+    blk.tableRows.push_back({TextWithEntities{"ATC", {}}, TextWithEntities{"18.2", {}}});
+    att.blocks.push_back(blk);
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(html.contains("<table"));
+    CHECK(html.contains("border-collapse:collapse"));
+    CHECK(html.contains("Header"));
+    CHECK(html.contains("ATC"));
+    CHECK(html.contains("18.2"));
+    CHECK(!html.contains("no preview available"));
+}
+
+static Block makeTable(int rows) {
+    Block blk;
+    blk.typeStr = "table";
+    for (int i = 0; i < rows; ++i)
+        blk.tableRows.push_back(
+            {TextWithEntities{QString("r%1c0").arg(i), {}},
+             TextWithEntities{QString("r%1c1").arg(i), {}}}
+        );
+    return blk;
+}
+
+TEST_CASE("tableBlockHtml caps inline tables at 10 rows and shades the last", "[render][table]") {
+    const Block   blk    = makeTable(15);
+    const QString capped = MsgRender::tableBlockHtml(blk, nullptr, MsgRender::kMaxInlineTableRows);
+    CHECK(capped.count("<tr>") == 10);
+    CHECK(capped.contains("r9c0"));
+    CHECK(!capped.contains("r10c0"));
+    // The 10th row is shaded as the "there's more" cue.
+    CHECK(capped.count("color:") >= 2); // border-color + the shaded cells
+    const int lastRow = capped.lastIndexOf("<tr>");
+    CHECK(capped.indexOf("color:", lastRow) > 0);
+
+    // Full render (the overlay): every row, nothing shaded.
+    const QString full = MsgRender::tableBlockHtml(blk, nullptr, -1);
+    CHECK(full.count("<tr>") == 15);
+    CHECK(full.contains("r14c1"));
+    const int fullLastRow = full.lastIndexOf("<tr>");
+    CHECK(full.indexOf("color:", fullLastRow) < 0);
+}
+
+TEST_CASE("tableBlockHtml renders all rows when not truncated", "[render][table]") {
+    const QString html = MsgRender::tableBlockHtml(makeTable(3), nullptr, 10);
+    CHECK(html.count("<tr>") == 3);
+    const int lastRow = html.lastIndexOf("<tr>");
+    CHECK(html.indexOf("color:", lastRow) < 0); // no shading — nothing was cut
+}
+
+TEST_CASE("attachIsTableOnly true for a bare table attachment", "[render][table]") {
+    Attachment att;
+    att.fallback = "[no preview available]"; // fallback text doesn't count as content
+    att.blocks.push_back(makeTable(3));
+    CHECK(MsgRender::attachIsTableOnly(att));
+
+    Attachment withTitle = att;
+    withTitle.title      = "Report";
+    CHECK(!MsgRender::attachIsTableOnly(withTitle));
+
+    Attachment noTable;
+    noTable.text = TextWithEntities{"plain", {}};
+    CHECK(!MsgRender::attachIsTableOnly(noTable));
+}
+
+TEST_CASE("dataTableRects finds data tables but not code/quote/button tables", "[render][table]") {
+    const auto    twe = MrkdwnParser::parse("```\ncode here\n```\n> quoted line");
+    QTextDocument doc;
+    doc.setHtml(
+        MsgRender::toHtml(twe, nullptr) + MsgRender::tableBlockHtml(makeTable(4), nullptr, 10)
+    );
+    doc.setTextWidth(400);
+    const auto rects = MsgRender::dataTableRects(&doc);
+    REQUIRE(rects.size() == 1);
+    CHECK(rects[0].height() > 10);
+    // The code block is still detected separately (marker overlap would break
+    // its chrome).
+    CHECK(MsgRender::codeBlockRects(&doc).size() == 1);
+}
+
 TEST_CASE("toHtml renders a link nested in bold as <b><a>", "[render][nested]") {
     const auto    twe  = MrkdwnParser::parse("*<https://example.com/e|Stand-Up>*");
     const QString html = MsgRender::toHtml(twe, nullptr);

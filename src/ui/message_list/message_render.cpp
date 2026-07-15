@@ -716,12 +716,80 @@ static bool blockHtml(
     } else if (blk.typeStr == "image") {
         html += imageBlockHtml(blk, session, gif, blockIdx);
         return gif && !blk.imageUrl.isEmpty();
+    } else if (blk.typeStr == "table" && !blk.tableRows.empty()) {
+        html += tableBlockHtml(blk, session, kMaxInlineTableRows);
     } else {
         if (!blk.text.text.isEmpty())
             html += wrapParagraph(toHtml(blk.text, session), "margin:2px 0");
         html += buttonsHtml(blk.buttons);
     }
     return false;
+}
+
+QString tableBlockHtml(const Block &blk, const Session *session, int maxRows) {
+    // Data table (Slack's newer table messages). cellspacing 0 keeps it out of
+    // the bot-button chrome (kBotBtnCellSpacing marker), and the fixed
+    // (non-percentage) width keeps a one-column table out of the code-block
+    // chrome. border-collapse makes Qt draw flat 1px grid lines instead of its
+    // default ridged 3D border — and is what dataTableRects() keys on.
+    const int total = (int)blk.tableRows.size();
+    const int shown = maxRows > 0 ? std::min(total, maxRows) : total;
+    QString   rows;
+    for (int ri = 0; ri < shown; ++ri) {
+        // When rows were cut, the last visible row is shaded — the official
+        // client's "there's more below" cue.
+        const bool    shaded  = shown < total && ri == shown - 1;
+        const QString tdStyle = shaded ? "padding:3px 8px;color:" + Th::qss(Th::c().text.tertiary)
+                                       : QStringLiteral("padding:3px 8px");
+        rows += "<tr>";
+        for (const auto &cell : blk.tableRows[ri])
+            rows += "<td style='" + tdStyle + "'>" + toHtml(cell, session) + "</td>";
+        rows += "</tr>";
+    }
+    return "<table cellspacing='0' cellpadding='0' style='margin:4px 0;"
+           "border-collapse:collapse;border-width:1px;border-style:solid;border-color:" +
+           Th::qss(Th::c().message.fileChipBorder) + "'>" + rows + "</table>";
+}
+
+static void collectDataTables(QTextFrame *frame, QVector<QTextTable *> &out) {
+    for (auto it = frame->begin(); it != frame->end(); ++it) {
+        QTextFrame *child = it.currentFrame();
+        if (!child)
+            continue;
+        if (auto *table = qobject_cast<QTextTable *>(child)) {
+            // Data tables are the only ones tableBlockHtml emits with
+            // border-collapse (code blocks, blockquotes and button rows don't
+            // set it).
+            if (table->format().borderCollapse())
+                out.push_back(table);
+        }
+        collectDataTables(child, out);
+    }
+}
+
+QVector<QRectF> dataTableRects(const QTextDocument *doc) {
+    QVector<QTextTable *> tables;
+    collectDataTables(doc->rootFrame(), tables);
+    QVector<QRectF> rects;
+    rects.reserve(tables.size());
+    auto *layout = doc->documentLayout();
+    for (QTextTable *table : tables) {
+        // frameBoundingRect is unusable for tables (see codeBlockRects) —
+        // rebuild the outer rect from the corner cells' block geometry.
+        const auto tl = table->cellAt(0, 0);
+        const auto br = table->cellAt(table->rows() - 1, table->columns() - 1);
+        if (!tl.isValid() || !br.isValid())
+            continue;
+        const QRectF first = layout->blockBoundingRect(tl.firstCursorPosition().block());
+        const QRectF last  = layout->blockBoundingRect(br.lastCursorPosition().block());
+        const auto   tlf   = tl.format().toTableCellFormat();
+        const auto   brf   = br.format().toTableCellFormat();
+        rects.push_back(QRectF(
+            QPointF(first.left() - tlf.leftPadding(), first.top() - tlf.topPadding()),
+            QPointF(last.right() + brf.rightPadding(), last.bottom() + brf.bottomPadding())
+        ));
+    }
+    return rects;
 }
 
 // True for a code point that anchors an emoji grapheme (the pictographic blocks
@@ -1106,8 +1174,26 @@ bool attachIsImageOnly(const Attachment &att) {
         !att.imageUrl.isEmpty() || !att.thumbUrl.isEmpty() || !att.buttons.empty())
         return false;
     for (const auto &b : att.blocks)
-        if (b.typeStr != "image" &&
-            (b.typeStr == "divider" || !b.text.text.isEmpty() || !b.buttons.empty()))
+        if (b.typeStr != "image" && (b.typeStr == "divider" || !b.text.text.isEmpty() ||
+                                     !b.buttons.empty() || !b.tableRows.empty()))
+            return false;
+    return true;
+}
+
+bool attachIsTableOnly(const Attachment &att) {
+    const bool hasTableBlock =
+        std::any_of(att.blocks.begin(), att.blocks.end(), [](const Block &b) {
+            return !b.tableRows.empty();
+        });
+    if (!hasTableBlock)
+        return false;
+    if (!att.pretext.isEmpty() || !att.authorName.isEmpty() || !att.title.isEmpty() ||
+        !att.text.text.isEmpty() || !att.fields.empty() || !att.footer.isEmpty() ||
+        !att.imageUrl.isEmpty() || !att.thumbUrl.isEmpty() || !att.buttons.empty())
+        return false;
+    for (const auto &b : att.blocks)
+        if (b.tableRows.empty() && (b.typeStr == "divider" || b.typeStr == "image" ||
+                                    !b.text.text.isEmpty() || !b.buttons.empty()))
             return false;
     return true;
 }
