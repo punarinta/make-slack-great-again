@@ -23,7 +23,7 @@ msga is primarily a Slack client — that's its main focus and the most complete
 
 ## Or build your own version
 
-msga does not ship with messaging credentials. You must register your own app with each service you want to connect and configure it before the client will connect. This is a one-time setup.
+If you decide to build your own msga app, you need to register it with each service you want to connect and configure it before the client will connect. This is a one-time setup.
 
 ### Step 1. Set up a messaging backend
 
