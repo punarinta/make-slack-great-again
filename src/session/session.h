@@ -445,12 +445,17 @@ private:
     // Poll one conversation's head history for messages the realtime stream
     // dropped; inject any and reestablish the shared socket on a hit. foreground
     // also runs deletion detection (needs the open chat's snapshot) and ties its
-    // staleness check to _openConv; background yields the moment a chat is opened.
+    // staleness check to _openConv; background yields only if the exact
+    // conversation it targeted became the open one mid-flight (the foreground
+    // path now covers that one instead).
     void pollConversationForMissed(ConversationId conv, bool foreground);
 
-    // The member conversation with the newest activity (greatest latestTs) — the
-    // likeliest place a reply lands, used as the background workspace's poll target.
-    ConversationId mostRecentlyActiveConv() const;
+    // Round-robins through every member conversation with a latestTs (most-
+    // recently-active first), one per background poll tick, skipping `exclude`
+    // (normally _openConv — the foreground path already covers it faster).
+    // Rotating instead of always re-picking the single busiest conversation
+    // guarantees every channel eventually gets checked, not just the top one.
+    ConversationId nextBackgroundPollTarget(const ConversationId &exclude);
 
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
@@ -566,6 +571,10 @@ private:
     // catch a silently-stalled shared socket without risking rate limits.
     static constexpr qint64   kBackgroundPollGapMs   = 2 * 60'000;
     qint64                    _lastBackgroundPollMs  = 0;
+    // Cursor into nextBackgroundPollTarget()'s (re-sorted-each-call) candidate
+    // list, so successive ticks rotate through every member conversation
+    // instead of always re-polling whichever one is most active.
+    int                       _backgroundPollIdx     = 0;
     QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>             _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request

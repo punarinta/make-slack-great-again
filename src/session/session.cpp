@@ -576,44 +576,52 @@ void Session::checkRealtimeHealth() {
         // delivers in realtime; this is only the active chat's stalled-socket
         // backstop, so once a minute is ample.
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (now - _lastForegroundPollMs < kForegroundPollGapMs)
-            return;
-        _lastForegroundPollMs = now;
-        pollConversationForMissed(_openConv, /*foreground=*/true);
-        return;
+        if (now - _lastForegroundPollMs >= kForegroundPollGapMs) {
+            _lastForegroundPollMs = now;
+            pollConversationForMissed(_openConv, /*foreground=*/true);
+        }
     }
 
-    // Background (no conversation open — an inactive workspace, or the welcome
-    // screen): nothing here drives the foreground poll, so a silent stall hitting
-    // THIS workspace goes unnoticed whenever a *different* workspace's open
-    // conversation happens to be quiet (the foreground poll only sees its own
-    // chat). On a slower cadence, poll the single most-recently-active
-    // conversation — the likeliest place a reply lands — for missed messages. A
-    // hit reestablishes the shared socket, restoring realtime for every
+    // Background rotation: sweeps member conversations OTHER than the open one
+    // (if any) on a slower cadence. This used to run only when nothing was open
+    // at all, on the theory that the foreground poll already covers the active
+    // chat — but the foreground poll only ever covers _openConv, so every OTHER
+    // channel went completely unchecked for as long as the app had anything
+    // open, which is most of the time it runs. A stalled shared socket drops
+    // events in every channel at once, not just the visible one, so those other
+    // channels need their own (slower) backstop too. Rotating through every
+    // member conversation instead of always re-picking the single busiest one
+    // guarantees each eventually gets checked rather than only ever the top pick.
+    // A hit reestablishes the shared socket, restoring realtime for every
     // workspace; the message itself badges and fires a notification.
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (now - _lastBackgroundPollMs < kBackgroundPollGapMs)
+    const qint64 now2 = QDateTime::currentMSecsSinceEpoch();
+    if (now2 - _lastBackgroundPollMs < kBackgroundPollGapMs)
         return;
-    _lastBackgroundPollMs   = now;
-    const ConversationId bg = mostRecentlyActiveConv();
+    _lastBackgroundPollMs   = now2;
+    const ConversationId bg = nextBackgroundPollTarget(_openConv);
     if (!bg.value.isEmpty())
         pollConversationForMissed(bg, /*foreground=*/false);
 }
 
-ConversationId Session::mostRecentlyActiveConv() const {
-    ConversationId best;
-    Ts             bestTs;
-    for (const auto &c : _conversations.current()) {
-        // Members only (we can't fetch history for channels we're not in), and a
-        // latestTs is required as the "new since" baseline.
-        if (!c.isMember || c.latestTs.isEmpty())
-            continue;
-        if (best.value.isEmpty() || c.latestTs > bestTs) {
-            best   = c.id;
-            bestTs = c.latestTs;
+ConversationId Session::nextBackgroundPollTarget(const ConversationId &exclude) {
+    // Members only (we can't fetch history for channels we're not in), and a
+    // latestTs is required as the "new since" baseline. Sort most-recently-
+    // active first — the likeliest place a reply lands — but advance a cursor
+    // through the full list rather than always returning index 0, so a quiet
+    // channel eventually gets its turn instead of never being checked at all.
+    std::vector<const Conversation *> candidates;
+    for (const auto &c : _conversations.current())
+        if (c.isMember && !c.latestTs.isEmpty() && c.id != exclude)
+            candidates.push_back(&c);
+    if (candidates.empty())
+        return {};
+    std::sort(
+        candidates.begin(), candidates.end(), [](const Conversation *a, const Conversation *b) {
+            return a->latestTs > b->latestTs;
         }
-    }
-    return best;
+    );
+    _backgroundPollIdx %= static_cast<int>(candidates.size());
+    return candidates[_backgroundPollIdx++]->id;
 }
 
 void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
@@ -632,10 +640,12 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
         rpl::on_next(
             [this, conv, lastKnown, foreground](MessagePage page) {
                 // Bail if intent changed while the fetch was in flight: a
-                // foreground poll is stale once the open conversation moves on; a
-                // background poll yields to the foreground path the instant any
-                // conversation is opened.
-                if (foreground ? (_openConv != conv) : !_openConv.value.isEmpty())
+                // foreground poll is stale once the open conversation moves on;
+                // a background poll yields only if THIS exact conversation
+                // became the open one mid-flight (the foreground path now
+                // covers it, faster) — other conversations opening/closing
+                // don't affect a background poll targeting a different one.
+                if (foreground ? (_openConv != conv) : (_openConv == conv))
                     return;
                 bool missed = false;
                 // page.messages is oldest-first; inject in order so rows append
@@ -1891,6 +1901,16 @@ void Session::setOpenConversation(ConversationId conv) {
     // poll rebuilds it for the new conversation.
     _pollSnapshotConv = {};
     _pollSnapshotTs.clear();
+    // _lastForegroundPollMs is a single timestamp shared by every conversation's
+    // foreground poll, not per-conversation — it exists to keep repeated 15 s
+    // ticks against the SAME open chat under Slack's ~1/min conversations.history
+    // budget. Carrying it across a switch instead starves the newly-opened chat:
+    // its first poll has to wait out whatever's left of the previous chat's
+    // cooldown, and a user hopping between a few conversations can keep pushing
+    // that wait out indefinitely, so a chat can sit missing messages until a
+    // restart. Reset it here so the next 15 s tick always checks the chat that's
+    // actually open now; the 60 s throttle still applies tick-to-tick for it.
+    _lastForegroundPollMs = 0;
 }
 
 void Session::setReading(ConversationId conv) {
