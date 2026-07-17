@@ -77,117 +77,127 @@ Set MSGA_TEAMS_CLIENT_ID in credentials.cmake and rebuild.</translation>
 <context>
     <name>Session</name>
     <message>
-        <location filename="../src/session/session.cpp" line="51"/>
+        <location filename="../src/session/session.cpp" line="53"/>
         <source> — sign in to this workspace again to grant the new permission</source>
         <translation> — sign in to this workspace again to grant the new permission</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="61"/>
+        <location filename="../src/session/session.cpp" line="63"/>
         <source>You can't reply to this message.</source>
         <translation>You can't reply to this message.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="63"/>
+        <location filename="../src/session/session.cpp" line="65"/>
         <source>You're not a member of this channel.</source>
         <translation>You're not a member of this channel.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="65"/>
+        <location filename="../src/session/session.cpp" line="67"/>
         <source>This conversation is archived.</source>
         <translation>This conversation is archived.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="67"/>
+        <location filename="../src/session/session.cpp" line="69"/>
         <source>The message is too long.</source>
         <translation>The message is too long.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="69"/>
+        <location filename="../src/session/session.cpp" line="71"/>
         <source>This conversation no longer exists.</source>
         <translation>This conversation no longer exists.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="71"/>
+        <location filename="../src/session/session.cpp" line="73"/>
         <source>You don't have permission to post here.</source>
         <translation>You don't have permission to post here.</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="357"/>
+        <location filename="../src/session/session.cpp" line="365"/>
         <source>Couldn't send message: %1</source>
         <translation>Couldn't send message: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="427"/>
+        <location filename="../src/session/session.cpp" line="440"/>
+        <source>This Slack app has %n other connection(s) open from another device — nothing on this computer is causing it. Close the app on your other devices to stop the reconnecting.</source>
+        <translation>This Slack app has %n other connection(s) open from another device — nothing on this computer is causing it. Close the app on your other devices to stop the reconnecting.</translation>
+    </message>
+    <message>
+        <location filename="../src/session/session.cpp" line="449"/>
+        <source>Another device running this app is sharing its Slack connection and keeps interrupting it — nothing on this computer is causing it. Close the app on your other devices to stop the reconnecting.</source>
+        <translation>Another device running this app is sharing its Slack connection and keeps interrupting it — nothing on this computer is causing it. Close the app on your other devices to stop the reconnecting.</translation>
+    </message>
+    <message>
+        <location filename="../src/session/session.cpp" line="466"/>
         <source>Slack is rate-limiting requests — retrying in %n second(s).</source>
         <translation>Slack is rate-limiting requests — retrying in %n second(s).</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1236"/>
+        <location filename="../src/session/session.cpp" line="1285"/>
         <source>Unknown user</source>
         <translation>Unknown user</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1400"/>
+        <location filename="../src/session/session.cpp" line="1449"/>
         <source>No such user: %1</source>
         <translation>No such user: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1451"/>
+        <location filename="../src/session/session.cpp" line="1500"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1467"/>
+        <location filename="../src/session/session.cpp" line="1516"/>
         <source>Command /%1 failed: %2</source>
         <translation>Command /%1 failed: %2</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1502"/>
+        <location filename="../src/session/session.cpp" line="1551"/>
         <source>Could not change presence: %1</source>
         <translation>Could not change presence: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1520"/>
+        <location filename="../src/session/session.cpp" line="1569"/>
         <source>Could not set status: %1</source>
         <translation>Could not set status: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1541"/>
+        <location filename="../src/session/session.cpp" line="1590"/>
         <source>Could not update notifications: %1</source>
         <translation>Could not update notifications: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1563"/>
+        <location filename="../src/session/session.cpp" line="1612"/>
         <source>Could not update profile: %1</source>
         <translation>Could not update profile: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1584"/>
+        <location filename="../src/session/session.cpp" line="1633"/>
         <source>Could not update avatar: %1</source>
         <translation>Could not update avatar: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1648"/>
+        <location filename="../src/session/session.cpp" line="1697"/>
         <source>Upload failed: %1</source>
         <translation>Upload failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1689"/>
+        <location filename="../src/session/session.cpp" line="1738"/>
         <source>Could not load canvas: %1</source>
         <translation>Could not load canvas: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1720"/>
+        <location filename="../src/session/session.cpp" line="1769"/>
         <source>Could not create canvas: %1</source>
         <translation>Could not create canvas: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1736"/>
+        <location filename="../src/session/session.cpp" line="1785"/>
         <source>Canvas edit failed: %1</source>
         <translation>Canvas edit failed: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1754"/>
+        <location filename="../src/session/session.cpp" line="1803"/>
         <source>Canvas deletion failed: %1</source>
         <translation>Canvas deletion failed: %1</translation>
     </message>
@@ -1303,82 +1313,82 @@ This action cannot be undone.</translation>
         <translation>Preview</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2680"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2675"/>
         <source>Copy link to image</source>
         <translation>Copy link to image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2680"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2675"/>
         <source>Copy link to file</source>
         <translation>Copy link to file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2690"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2685"/>
         <source>Copy full image</source>
         <translation>Copy full image</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2704"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2699"/>
         <source>Delete image…</source>
         <translation>Delete image…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2704"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2699"/>
         <source>Delete file…</source>
         <translation>Delete file…</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2722"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2717"/>
         <source>file</source>
         <translation>file</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2724"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2719"/>
         <source>Downloading %1</source>
         <translation>Downloading %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2731"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2726"/>
         <source>This file is empty</source>
         <translation>This file is empty</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="2736"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="2731"/>
         <source>Showing the first %1 of %2 rows</source>
         <translation>Showing the first %1 of %2 rows</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3196"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3191"/>
         <source>Add reaction</source>
         <translation>Add reaction</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3196"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3191"/>
         <source>Forward message</source>
         <translation>Forward message</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3196"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3191"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3205"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3200"/>
         <source>Download</source>
         <translation>Download</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3205"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3200"/>
         <source>Share</source>
         <translation>Share</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3205"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3200"/>
         <source>More actions</source>
         <translation>More actions</translation>
     </message>
     <message>
-        <location filename="../src/ui/message_list/message_list.cpp" line="3237"/>
+        <location filename="../src/ui/message_list/message_list.cpp" line="3232"/>
         <source>Remove preview</source>
         <translation>Remove preview</translation>
     </message>

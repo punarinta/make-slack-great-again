@@ -539,6 +539,13 @@ private:
     static constexpr qint64 kRateLimitNoticeGapMs  = 15'000;
     qint64                  _lastRateLimitNoticeMs = 0;
 
+    // Throttle the realtime-contention banner. SocketModeRealtime already rate-
+    // limits how often it raises EvRealtimeContended, but it broadcasts to every
+    // workspace sink, so guard here too so a multi-workspace app shows one banner
+    // per window rather than one per session.
+    static constexpr qint64 kContentionNoticeGapMs  = 5 * 60'000;
+    qint64                  _lastContentionNoticeMs = 0;
+
     // Throttle reconnect-driven full conversation reloads. conversations.list is
     // heavily rate-limited, and a flapping socket can fire EvRealtimeReconnected
     // repeatedly — coalesce those into at most one reload per window.

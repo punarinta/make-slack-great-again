@@ -327,6 +327,10 @@ void SocketModeRealtime::onConnected() {
         disconnect(_ws, nullptr, this, nullptr);
         _ws->abort();
         _ws->deleteLater();
+        // We briefly held two of our own sockets; Slack's next num_connections may
+        // still count the one we just aborted. Note the moment so the hello handler
+        // grants a settle-window allowance instead of flagging false contention.
+        _recentOverlapPromoteMs = QDateTime::currentMSecsSinceEpoch();
     }
     _ws         = sock;
     _pendingWs  = nullptr;
@@ -340,12 +344,23 @@ void SocketModeRealtime::onDisconnected() {
     auto *sock = qobject_cast<QWebSocket *>(sender());
     if (sock && sock != _ws)
         return; // a stale/superseded socket's late disconnect — ignore
+    // Consume the expected-close flag for this disconnect regardless of the path
+    // below (a server-requested close is never an eviction).
+    const bool expected   = _serverRequestedClose;
+    _serverRequestedClose = false;
+    bool bareClose        = false;
     // Only the live socket (_ws) ever reaches here: a replacement that never
     // connected emits errorOccurred, not disconnected. Clean it up — connectWs no
     // longer recycles _ws, so nothing else will.
     if (sock) {
-        qDebug() << "Socket Mode: disconnected — close code" << sock->closeCode() << "reason"
+        const auto code = sock->closeCode();
+        qDebug() << "Socket Mode: disconnected — close code" << code << "reason"
                  << sock->closeReason();
+        // Slack cleanly closing our live socket with the normal code and NO
+        // preceding "disconnect" envelope is an eviction from the app's socket
+        // pool — the contention signature. A close we asked for (refresh_requested)
+        // or an abnormal transport drop (sleep/network, code 1006) is not.
+        bareClose = !expected && code == QWebSocketProtocol::CloseCodeNormal;
         disconnect(sock, nullptr, this, nullptr);
         sock->deleteLater();
         _ws = nullptr;
@@ -355,8 +370,11 @@ void SocketModeRealtime::onDisconnected() {
     // A replacement may already be in flight — an overlapping recycle whose old
     // socket dropped before the new one connected, or any connect cycle the
     // single-flight guard is running. Let it finish instead of racing a second.
+    // (Also skips contention counting: an overlap close isn't an eviction.)
     if (_connecting || _pendingWs)
         return;
+    if (bareClose)
+        noteBareClose();
     if (!_stopped)
         scheduleReconnect();
 }
@@ -367,15 +385,38 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
     const auto type     = envelope.value("type").toString();
 
     if (type == "hello") {
-        qDebug() << "Socket Mode: hello received";
+        // The hello frame reports num_connections: how many WebSocket connections
+        // this app (identified by the xapp token) currently has open across the
+        // whole fleet — not just ours. debug_info.host is Slack's edge host, not
+        // the client, so it can't identify the competitor; the count is what tells
+        // us one exists. Count the sockets WE hold: onConnected has already
+        // promoted this one to _ws (hello arrives after `connected`); a recycle may
+        // still hold _pendingWs. Anything beyond ours belongs to another client.
+        const int    numConnections = envelope.value("num_connections").toInt(1);
+        const auto   host = envelope.value("debug_info").toObject().value("host").toString();
+        const int    ours = (_ws ? 1 : 0) + (_pendingWs ? 1 : 0);
+        const qint64 now  = QDateTime::currentMSecsSinceEpoch();
+        const bool   recentOverlap =
+            _recentOverlapPromoteMs && now - _recentOverlapPromoteMs < _overlapGraceMs;
+        // Right after our own recycle, Slack may momentarily still count the socket
+        // we just aborted — allow one extra so a routine recycle isn't mistaken for
+        // a competitor.
+        const int allowance   = ours + (recentOverlap ? 1 : 0);
+        _lastOtherConnections = std::max(0, numConnections - allowance);
+        qDebug() << "Socket Mode: hello received — num_connections" << numConnections << "(we hold"
+                 << ours << ") host" << host;
+        if (_lastOtherConnections > 0) {
+            // Another client is in the app's pool. msga is single-instance per user
+            // (SingleInstance), so it is NOT a second copy on this computer — it's
+            // another device/account running msga on the same compiled-in xapp
+            // token, and it's stealing/evicting our share of the events.
+            maybeNotifyContention();
+        }
         if (_hadHello) {
             // Session re-established after a gap. Slack does not replay missed
             // events, so tell every backend/UI to backfill (refetch history /
-            // conversation badges). Iterate a copy: a handler may remove a sink.
-            const auto sinks = _sinks;
-            for (auto *sink : sinks)
-                if (std::find(_sinks.begin(), _sinks.end(), sink) != _sinks.end())
-                    sink->fire_copy(Event{EvRealtimeReconnected{}});
+            // conversation badges).
+            broadcast(Event{EvRealtimeReconnected{}});
         }
         _hadHello = true;
         return;
@@ -402,6 +443,15 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
             return;
         }
         qDebug() << "Socket Mode: server requested disconnect — reason" << reason;
+        // Too-many-connections is Slack saying outright that the app's socket pool
+        // is full: unambiguous contention (another instance on the shared xapp
+        // token). Surface it now; the bare-close counter in onDisconnected covers
+        // the case where Slack evicts us with no envelope at all.
+        if (reason == "too_many_connections" || reason == "too_many_websockets")
+            maybeNotifyContention();
+        // This close is one we asked for — mark it so onDisconnected doesn't count
+        // it as an eviction (our close() reports the same code 1000 Slack uses).
+        _serverRequestedClose = true;
         _ws->close();
         return; // onDisconnected will trigger reconnect
     }
@@ -415,27 +465,48 @@ void SocketModeRealtime::onTextMessage(const QString &text) {
 
         // Broadcast to every workspace backend — sinks ignore events for
         // conversations/users they don't know (IDs are globally unique).
-        // Iterate a copy: a handler may remove a sink (session teardown).
-        auto fire = [this](const Event &e) {
-            const auto sinks = _sinks;
-            for (auto *sink : sinks)
-                if (std::find(_sinks.begin(), _sinks.end(), sink) != _sinks.end())
-                    sink->fire_copy(e);
-        };
-
         if (auto ev = normalizeSlackEvent(event))
-            fire(*ev);
+            broadcast(*ev);
         // Huddle detection is ADDITIVE: a huddle_thread message still flows as a
         // normal message above (its notification/chat line are untouched); this
         // fires an extra EvHuddleChanged so the huddle banner can react.
         if (auto huddle = huddleEventFor(event))
-            fire(*huddle);
+            broadcast(*huddle);
     }
 }
 
 void SocketModeRealtime::ack(const QString &envelopeId) {
     const QJsonObject obj{{"envelope_id", envelopeId}};
     _ws->sendTextMessage(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+void SocketModeRealtime::broadcast(const Event &e) {
+    // Iterate a copy: a handler may remove a sink (session teardown).
+    const auto sinks = _sinks;
+    for (auto *sink : sinks)
+        if (std::find(_sinks.begin(), _sinks.end(), sink) != _sinks.end())
+            sink->fire_copy(e);
+}
+
+void SocketModeRealtime::noteBareClose() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    _bareCloseTimes.push_back(now);
+    while (!_bareCloseTimes.empty() && now - _bareCloseTimes.front() > _contentionWindowMs)
+        _bareCloseTimes.pop_front();
+    if (static_cast<int>(_bareCloseTimes.size()) >= _contentionThreshold)
+        maybeNotifyContention();
+}
+
+void SocketModeRealtime::maybeNotifyContention() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (_lastContentionNoticeMs && now - _lastContentionNoticeMs < _contentionNoticeGapMs)
+        return; // already warned recently — don't spam a sustained storm
+    _lastContentionNoticeMs = now;
+    qWarning() << "Socket Mode: connection-pool contention —" << _lastOtherConnections
+               << "other connection(s) open for this app; another msga instance elsewhere is "
+                  "sharing this app's xapp token (nothing local — SingleInstance forbids a second "
+                  "local copy)";
+    broadcast(Event{EvRealtimeContended{_lastOtherConnections}});
 }
 
 // ── Event normalization ───────────────────────────────────────────────────────

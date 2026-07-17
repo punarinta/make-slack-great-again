@@ -424,6 +424,37 @@ void Session::start() {
                     // open the chat. Self-throttled; upward-merges, so it composes with
                     // the reload above regardless of which completes first.
                     resyncUnreads();
+                } else if (auto *ev = std::get_if<EvRealtimeContended>(&e)) {
+                    // Slack keeps evicting our shared socket from the app's
+                    // connection pool — another msga instance is running on the
+                    // same compiled-in app-level xapp token. msga is single-instance
+                    // per user (SingleInstance), so it is NOT a second copy on this
+                    // computer: the cause is another device/account. Name that so
+                    // the user doesn't hunt locally; throttled (kContentionNoticeGapMs).
+                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - _lastContentionNoticeMs >= kContentionNoticeGapMs) {
+                        _lastContentionNoticeMs = now;
+                        const int others        = ev->otherConnections;
+                        _errorHub.fire(
+                            others > 0
+                                ? QCoreApplication::translate(
+                                      "Session",
+                                      "This Slack app has %n other connection(s) open from "
+                                      "another device — nothing on this computer is causing it. "
+                                      "Close the app on your other devices to stop the "
+                                      "reconnecting.",
+                                      nullptr,
+                                      others
+                                  )
+                                : QCoreApplication::translate(
+                                      "Session",
+                                      "Another device running this app is sharing its Slack "
+                                      "connection and keeps interrupting it — nothing on this "
+                                      "computer is causing it. Close the app on your other "
+                                      "devices to stop the reconnecting."
+                                  )
+                        );
+                    }
                 } else if (auto *ev = std::get_if<EvRateLimited>(&e)) {
                     // Surface a transient notice. 429s cluster (background polls
                     // hammer the same window), so throttle to one banner per

@@ -781,6 +781,28 @@ struct EvHuddleChanged {
 // first connect (the initial load covers that).
 struct EvRealtimeReconnected {};
 
+// Slack is repeatedly evicting our live Socket Mode socket from the app's
+// connection pool: it cleanly closes the socket (WebSocket close code 1000, no
+// preceding "disconnect" envelope) several times in a short window, or sends an
+// explicit too-many-connections disconnect. Both mean another client is sharing
+// this app's ≤10-connection pool — Socket Mode connections are keyed by the
+// app-level xapp token, which is compiled into every msga build, so a second
+// instance anywhere (another device, a coworker, a dev/release build) churns the
+// same pool and Slack round-robins us out. The result is a reconnect storm rather
+// than a transport failure. App-level (the socket is shared by all workspaces),
+// so it carries no conv; surfaced so the UI can name the cause instead of the
+// user seeing an unexplained flapping connection. See socket_mode_realtime.h.
+//
+// `otherConnections` is how many connections in the app's pool are NOT ours,
+// read straight from the `hello` frame's num_connections (0 when the count is
+// unknown — e.g. detected only from a burst of bare closes, before any hello).
+// Since msga is single-instance per user (SingleInstance), those connections
+// cannot be a second local copy: they are another device/account on the same
+// compiled-in xapp token. The UI uses this to state the cause is not local.
+struct EvRealtimeContended {
+    int otherConnections = 0;
+};
+
 // An API request hit HTTP 429 and is being transparently retried after
 // `retryAfterSecs`. Informational — the call still completes; the UI can show a
 // transient "rate-limited" notice. `method` is the throttled API method.
@@ -829,4 +851,5 @@ using Event = std::variant<
     EvSendFailed,
     EvHuddleChanged,
     EvRealtimeReconnected,
+    EvRealtimeContended,
     EvRateLimited>;

@@ -347,6 +347,153 @@ TEST_CASE("reconnectNow recovers a silent stall with a gapless overlapping repla
         p->deleteLater();
 }
 
+TEST_CASE("repeated bare code-1000 closes raise EvRealtimeContended") {
+    // Slack cleanly closing our LIVE socket (WebSocket close code 1000) with no
+    // preceding "disconnect" envelope, over and over, is an eviction from the
+    // app's ≤10-connection pool: another instance is sharing the compiled-in
+    // app-level xapp token and Slack round-robins us out. A single such close can
+    // be a routine recycle, so the guard only fires once several cluster in the
+    // window — then the higher layers can tell the user the cause instead of
+    // silently reconnect-storming. Model it with a server that accepts each
+    // connection and immediately closes it cleanly, envelope-free.
+    QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
+    REQUIRE(ws.listen(QHostAddress::LocalHost));
+    std::vector<QWebSocket *> peers;
+    int                       total = 0;
+    QObject::connect(&ws, &QWebSocketServer::newConnection, &ws, [&] {
+        auto *peer = ws.nextPendingConnection();
+        peers.push_back(peer);
+        ++total;
+        // Evict immediately: a clean normal-closure close, no disconnect envelope.
+        peer->close(QWebSocketProtocol::CloseCodeNormal);
+    });
+
+    FakeHttpServer http;
+    const QString  wsUrl = QString("ws://127.0.0.1:%1/").arg(ws.serverPort());
+    for (int i = 0; i < 12; ++i)
+        http.enqueue(openOk(wsUrl));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+
+    int                      contended = 0;
+    rpl::lifetime            lt;
+    rpl::event_stream<Event> sink;
+    sink.events() | rpl::on_next(
+                        [&](Event e) {
+                            if (std::get_if<EvRealtimeContended>(&e))
+                                ++contended;
+                        },
+                        lt
+                    );
+    rt.addSink(&sink);
+    rt.start();
+
+    // Each bare close triggers a ~1 s backoff reconnect (the successful handshake
+    // resets the backoff every cycle), so the third close lands within a few
+    // seconds — give margin over the default timeout.
+    REQUIRE(waitFor([&] { return contended >= 1; }, 15000));
+    // The guard must not fire on the first close — it took a cluster to trip.
+    CHECK(total >= 3);
+
+    rt.stop();
+    for (auto *p : peers)
+        p->deleteLater();
+}
+
+TEST_CASE("a hello reporting num_connections > ours raises EvRealtimeContended") {
+    // The direct detector: Slack's hello frame reports num_connections — how many
+    // sockets the app (xapp token) holds fleet-wide. We hold exactly one here, so
+    // a hello claiming two means another client is on the same token. msga is
+    // single-instance per user, so that client is provably not a second local
+    // copy — the event's otherConnections lets the UI say the cause is elsewhere.
+    QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
+    REQUIRE(ws.listen(QHostAddress::LocalHost));
+    std::vector<QWebSocket *> peers;
+    QObject::connect(&ws, &QWebSocketServer::newConnection, &ws, [&] {
+        auto *peer = ws.nextPendingConnection();
+        peers.push_back(peer);
+        peer->sendTextMessage(
+            R"({"type":"hello","num_connections":2,"debug_info":{"host":"applink-test"}})"
+        );
+    });
+
+    FakeHttpServer http;
+    const QString  wsUrl = QString("ws://127.0.0.1:%1/").arg(ws.serverPort());
+    for (int i = 0; i < 4; ++i)
+        http.enqueue(openOk(wsUrl));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+
+    int                      contended = 0, reportedOthers = -1;
+    rpl::lifetime            lt;
+    rpl::event_stream<Event> sink;
+    sink.events() | rpl::on_next(
+                        [&](Event e) {
+                            if (auto *c = std::get_if<EvRealtimeContended>(&e)) {
+                                ++contended;
+                                reportedOthers = c->otherConnections;
+                            }
+                        },
+                        lt
+                    );
+    rt.addSink(&sink);
+    rt.start();
+
+    // A single hello suffices — no reconnect storm needed.
+    REQUIRE(waitFor([&] { return contended >= 1; }));
+    // num_connections(2) − our one socket = one competitor.
+    CHECK(reportedOthers == 1);
+
+    rt.stop();
+    for (auto *p : peers)
+        p->deleteLater();
+}
+
+TEST_CASE("a hello reporting num_connections == ours does NOT flag contention") {
+    // The healthy baseline: we hold one socket and Slack reports one. This must
+    // never fire — otherwise every normal session would nag about a phantom
+    // competitor.
+    QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
+    REQUIRE(ws.listen(QHostAddress::LocalHost));
+    std::vector<QWebSocket *> peers;
+    QObject::connect(&ws, &QWebSocketServer::newConnection, &ws, [&] {
+        auto *peer = ws.nextPendingConnection();
+        peers.push_back(peer);
+        peer->sendTextMessage(R"({"type":"hello","num_connections":1})");
+    });
+
+    FakeHttpServer http;
+    const QString  wsUrl = QString("ws://127.0.0.1:%1/").arg(ws.serverPort());
+    for (int i = 0; i < 4; ++i)
+        http.enqueue(openOk(wsUrl));
+
+    SocketModeRealtime rt("xapp-test-token");
+    rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+
+    int                      contended = 0;
+    rpl::lifetime            lt;
+    rpl::event_stream<Event> sink;
+    sink.events() | rpl::on_next(
+                        [&](Event e) {
+                            if (std::get_if<EvRealtimeContended>(&e))
+                                ++contended;
+                        },
+                        lt
+                    );
+    rt.addSink(&sink);
+    rt.start();
+
+    // Let the hello be processed and give any erroneous notice time to fire.
+    waitFor([] { return false; }, 300);
+    CHECK(contended == 0);
+
+    rt.stop();
+    for (auto *p : peers)
+        p->deleteLater();
+}
+
 TEST_CASE("watchdog leaves a healthy idle connection alone") {
     // A real QWebSocket server auto-replies to pings with pongs, so the
     // connection keeps showing activity even with no app traffic.

@@ -9,6 +9,7 @@
 #include <QWebSocket>
 #include <QNetworkAccessManager>
 #include <QUrl>
+#include <deque>
 #include <vector>
 
 class QNetworkReply;
@@ -105,6 +106,16 @@ private:
     // the watchdog deadline. Best-effort: no-op if no backend is available.
     void                 setupReachabilityWatch();
     void                 sendPresenceSub();
+    // Broadcast an event to every registered sink (workspace backend).
+    void                 broadcast(const Event &e);
+    // Contention detection: distinguish Slack evicting our socket from the app's
+    // full connection pool (another instance on the shared xapp token) from a
+    // routine drop. noteBareClose() records a bare code-1000 close and, once
+    // enough cluster in the window, raises the notice; maybeNotifyContention()
+    // broadcasts EvRealtimeContended, throttled so a sustained storm warns once
+    // per window. See EvRealtimeContended.
+    void                 noteBareClose();
+    void                 maybeNotifyContention();
     std::optional<Event> normalizeSlackEvent(const QJsonObject &event);
     // Extra huddle-state event for a huddle_thread message (start) or its edit
     // (end); additive — does not replace the message's normal event.
@@ -156,6 +167,39 @@ private:
     QUrl                                    _openUrl{"https://slack.com/api/apps.connections.open"};
     // users to track, per sink; the union is re-sent on every connect
     QHash<rpl::event_stream<Event> *, QStringList> _presenceIds;
+
+    // ── Connection-pool contention detection ─────────────────────────────────
+    // Slack cleanly closing our LIVE socket with code 1000 and NO preceding
+    // "disconnect" envelope is an eviction from the app's ≤10-connection pool —
+    // the signature of another msga instance sharing the compiled-in app-level
+    // xapp token (see EvRealtimeContended). One such close can be a routine server
+    // recycle; several within _contentionWindowMs is contention. Wall-clock ms of
+    // recent bare closes, pruned to the window.
+    std::deque<qint64>   _bareCloseTimes;
+    // True for the brief span between handling a server "disconnect" envelope and
+    // the close it triggers, so onDisconnected knows that close was expected (we
+    // asked for it) and must NOT be counted as a bare eviction. Our own close()
+    // reports the same code 1000, so this flag — not the code — is what tells the
+    // two apart.
+    bool                 _serverRequestedClose   = false;
+    // Wall-clock ms of the last contention notice, throttling it so a sustained
+    // storm raises EvRealtimeContended at most once per _contentionNoticeGapMs.
+    qint64               _lastContentionNoticeMs = 0;
+    // Other clients' share of the app's connection pool: the last hello's
+    // num_connections minus the sockets we hold. >0 means another client is on
+    // the shared xapp token (another device/account — never a second local copy,
+    // which SingleInstance forbids). Carried into EvRealtimeContended.
+    int                  _lastOtherConnections   = 0;
+    // Wall-clock ms of our last overlapping-replacement promotion (a recycle in
+    // which we briefly held two of our OWN sockets). For a short grace window
+    // after it, Slack's num_connections may still count the socket we just
+    // aborted, so we allow one extra before calling it contention — otherwise a
+    // routine recycle would masquerade as a competitor.
+    qint64               _recentOverlapPromoteMs = 0;
+    static constexpr int _contentionWindowMs     = 60'000;  // 1-min sliding window
+    static constexpr int _contentionThreshold    = 3;       // bare closes ⇒ contention
+    static constexpr int _contentionNoticeGapMs  = 300'000; // ≥5 min between notices
+    static constexpr int _overlapGraceMs         = 5'000;   // num_connections settle window
 };
 
 } // namespace slack
