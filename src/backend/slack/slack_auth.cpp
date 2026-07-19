@@ -6,15 +6,56 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSettings>
 
 namespace slack {
 
-AppConfig appConfig() {
+namespace {
+constexpr auto kClientIdKey     = "credentials/slackClientId";
+constexpr auto kClientSecretKey = "credentials/slackClientSecret";
+constexpr auto kXappKey         = "credentials/slackXapp";
+} // namespace
+
+PersonalAppCredentials personalAppCredentials() {
+    QSettings s("msga", "msga");
     return {
+        s.value(QString::fromLatin1(kClientIdKey)).toString(),
+        s.value(QString::fromLatin1(kClientSecretKey)).toString(),
+        s.value(QString::fromLatin1(kXappKey)).toString(),
+    };
+}
+
+void setPersonalAppCredentials(const PersonalAppCredentials &creds) {
+    QSettings  s("msga", "msga");
+    // Store trimmed values; blank a field to fall back to the compiled-in build
+    // credential. Blank fields are removed rather than stored empty.
+    const auto put = [&s](const char *key, const QString &val) {
+        const QString v = val.trimmed();
+        if (v.isEmpty())
+            s.remove(QString::fromLatin1(key));
+        else
+            s.setValue(QString::fromLatin1(key), v);
+    };
+    put(kClientIdKey, creds.clientId);
+    put(kClientSecretKey, creds.clientSecret);
+    put(kXappKey, creds.xapp);
+}
+
+AppConfig appConfig() {
+    AppConfig cfg{
         QString::fromLatin1(AppCredentials::clientId),
         QString::fromLatin1(AppCredentials::clientSecret),
         QString::fromLatin1(AppCredentials::xapp),
     };
+    // Personal credentials override the build defaults, field by field.
+    const PersonalAppCredentials personal = personalAppCredentials();
+    if (!personal.clientId.isEmpty())
+        cfg.clientId = personal.clientId;
+    if (!personal.clientSecret.isEmpty())
+        cfg.clientSecret = personal.clientSecret;
+    if (!personal.xapp.isEmpty())
+        cfg.xapp = personal.xapp;
+    return cfg;
 }
 
 TokenStore::WorkspaceRecord toRecord(const Credentials &creds) {

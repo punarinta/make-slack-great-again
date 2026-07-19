@@ -23,7 +23,7 @@
 #include <QTranslator>
 #include <QUrlQuery>
 
-#if defined(Q_OS_LINUX)
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
 #include <unistd.h>
 #elif defined(Q_OS_WIN)
 #include <QProcess>
@@ -310,7 +310,7 @@ int main(int argc, char *argv[]) {
         // Release the SingleInstance server so the new process can become primary,
         // then re-exec the (already-updated) binary cleanly.
         singleInstance.release();
-#if defined(Q_OS_LINUX)
+#if defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
         const QByteArray exe = QCoreApplication::applicationFilePath().toLocal8Bit();
         ::execv(exe.constData(), argv);
         // execv only returns on error; fall through to normal exit.

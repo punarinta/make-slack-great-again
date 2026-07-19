@@ -39,6 +39,11 @@ public:
     // Fires with a human-readable message whenever a network operation fails
     // without a caller-provided error handler. Subscribe in the UI to show errors.
     rpl::producer<QString>                   errors() const;
+    // Fires when Slack keeps evicting our shared Socket Mode connection because
+    // the same compiled-in app keys are running on another device. The UI shows
+    // a persistent, dismissable notice (not the transient error banner) — the
+    // condition lasts until the user closes the app elsewhere. Throttled.
+    rpl::producer<> parallelUsageNotice() const { return _parallelUsageHub.events(); }
 
     // Send a message (optionally as a thread reply) and optimistically insert it.
     void sendMessage(
@@ -484,6 +489,7 @@ private:
     void                                                 applyPendingUnreadInfos();
     rpl::event_stream<Event>                             _eventHub;
     rpl::event_stream<QString>                           _errorHub;
+    rpl::event_stream<>                                  _parallelUsageHub;
     rpl::event_stream<>                                  _emojiMapLoadedHub;
 
     UserId                    _meUserId;          // set via setMe() once auth.test result is known

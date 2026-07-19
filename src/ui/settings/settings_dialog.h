@@ -61,6 +61,9 @@ signals:
     // Emitted when the "Test" button under Sample notifications is clicked; the
     // int is a SampleNotif value. MainWindow owns the actual delivery.
     void testNotificationRequested(int kind);
+    // Emitted after the user saves personal Slack app credentials — they only
+    // take effect on a fresh start, so MainWindow performs a clean restart.
+    void restartRequested();
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -85,6 +88,8 @@ private:
     void                   refreshCacheSize();
     void                   clearCache();
     void                   clearState();
+    void                   saveAppCredentials();
+    void                   loadAppCredentials();
     void                   refreshLastChecked();
     void                   refreshUpdateStatus();
     void                   updatePanelGeometry();
@@ -149,6 +154,12 @@ private:
     StyledButton  *_checkBtn      = nullptr;
     QLabel        *_ramLabel      = nullptr;
     QTimer        *_ramTimer      = nullptr;
+
+    // Personal Slack app credentials (System page)
+    StyledLineEdit *_credClientId     = nullptr;
+    StyledLineEdit *_credClientSecret = nullptr;
+    StyledLineEdit *_credXapp         = nullptr;
+    QLabel         *_credStatus       = nullptr;
 
     Dir    _resizeDir = Dir::None;
     QPoint _dragStart;

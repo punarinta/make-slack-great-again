@@ -35,6 +35,7 @@
 #include "browse_channels_dialog/browse_channels_dialog.h"
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
+#include "parallel_usage_banner/parallel_usage_banner.h"
 #include "update_bar/update_bar.h"
 #include "styled_button/styled_button.h"
 
@@ -502,6 +503,7 @@ QWidget *MainWindow::buildMainPage() {
         this,
         &MainWindow::showSampleNotification
     );
+    connect(_settingsDialog, &SettingsDialog::restartRequested, this, &MainWindow::restartApp);
 
     return page;
 }
@@ -658,6 +660,11 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _errorBanner->setAlignment(Qt::AlignCenter);
     _errorBanner->hide();
     rightLayout->addWidget(_errorBanner);
+
+    // ── Parallel-usage banner — persistent, dismissable; shown when the same
+    //    app keys run on another device and keep evicting our Socket Mode link ──
+    _parallelUsageBanner = new ParallelUsageBanner(rightPanel);
+    rightLayout->addWidget(_parallelUsageBanner);
 
     // ── Content splitter: message area (left) + thread panel (right) ──
     _msgSplitter = new QSplitter(Qt::Horizontal, rightPanel);
@@ -1633,6 +1640,14 @@ void MainWindow::connectToSession() {
         );
 
     _session->errors() | rpl::on_next([this](QString msg) { showNetworkError(msg); }, _uiLifetime);
+
+    _session->parallelUsageNotice() | rpl::on_next(
+                                          [this] {
+                                              if (_parallelUsageBanner)
+                                                  _parallelUsageBanner->show();
+                                          },
+                                          _uiLifetime
+                                      );
 }
 
 void MainWindow::repositionSearch() {
@@ -1696,6 +1711,12 @@ void MainWindow::applyUpdateAndRestart() {
 #elif defined(Q_OS_MACOS)
     QDesktopServices::openUrl(QUrl::fromLocalFile(_updateChecker->downloadedPath()));
 #endif
+}
+
+void MainWindow::restartApp() {
+    // Same clean re-exec path as an applied update (main() handles kRestartExitCode
+    // on every platform); no download involved.
+    QCoreApplication::exit(kRestartExitCode);
 }
 
 // Center-crop `src` to a square and mask it into a rounded-rect — the same

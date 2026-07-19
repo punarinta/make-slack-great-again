@@ -30,8 +30,22 @@ struct AppConfig {
     QString xapp; // app-level token for Socket Mode (connections:write)
 };
 
-// Reads the compiled-in Slack app credentials.
+// Reads the effective Slack app credentials: the personal ones the user saved in
+// Settings → System (persisted in QSettings) take precedence, field by field,
+// over the values compiled in via credentials.cmake. Lets prebuilt-app users run
+// their own Slack app instead of sharing the build's app keys with everyone else
+// (the parallel-usage / EvRealtimeContended situation).
 AppConfig appConfig();
+
+// Personal Slack app credentials saved in Settings → System. Empty fields fall
+// through to the compiled-in build credentials in appConfig().
+struct PersonalAppCredentials {
+    QString clientId;
+    QString clientSecret;
+    QString xapp;
+};
+PersonalAppCredentials personalAppCredentials();
+void                   setPersonalAppCredentials(const PersonalAppCredentials &creds);
 
 // Encode/decode the Slack credentials to/from the neutral registry record.
 // The auth-blob JSON shape ({xoxp, refreshToken, expiresAt}) is mirrored by the

@@ -1,8 +1,8 @@
 # Slack setup
 
-msga does not ship with Slack credentials. You must create your own Slack app and configure it before the client will connect to Slack. This is a one-time setup.
+msga is shipped with shared Slack credentials. In this mode you share the app quota with other people. This is basically a demo mode, as it limits you A LOT. You must create your own Slack app and configure it before the client will connect to Slack. This is a relatively simple one-time setup and is completely free.
 
-When you're done, you'll have three values to drop into `credentials.cmake` (see [Step 6](#step-6-add-credentials-to-the-build)). After that, follow the build steps in the [README](../README.md).
+When you're done, you'll have three values. If you build your own app, drop them into `credentials.cmake` (see [Step 6](#step-6-add-credentials-to-the-build)). After that, follow the build steps in the [README](../README.md). If you use our prebuilt app and don't want to bother with building, simply go to Settins->System in the app, paste those credentials there and click "Save".
 
 ## Step 1. Create a Slack app
 

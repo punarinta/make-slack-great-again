@@ -15,6 +15,7 @@
 #include "util/time_format.h"
 #include "util/process_stats.h"
 #include "util/sound_player.h"
+#include "backend/slack/slack_auth.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -633,6 +634,74 @@ void SettingsDialog::buildPanel() {
     updLayout->addWidget(_lastChecked);
 
     sylay->addWidget(updBox);
+
+    // ── Slack app keys section ────────────────────────────────────────
+    // Lets prebuilt-app users run their own Slack app instead of sharing the
+    // build's app keys (which causes the parallel-usage connection eviction).
+    auto *credHeading = new QLabel(tr("Slack app keys"), sysPage);
+    credHeading->setObjectName("sectionHeading");
+    sylay->addWidget(credHeading);
+
+    auto *credDesc = new QLabel(
+        tr("Run your own Slack app so you don't share connection keys with other "
+           "devices and users. Leave a field empty to use the built-in default."),
+        sysPage
+    );
+    credDesc->setObjectName("credDesc");
+    credDesc->setWordWrap(true);
+    sylay->addWidget(credDesc);
+
+    auto *credLink =
+        new StyledButton(tr("How to create your Slack app…"), StyledButton::Variant::Link, sysPage);
+    connect(credLink, &QPushButton::clicked, this, [] {
+        QDesktopServices::openUrl(QUrl(QStringLiteral(
+            "https://github.com/punarinta/make-slack-great-again/blob/master/docs/SETUP_SLACK.md"
+        )));
+    });
+    auto *credLinkRow = new QHBoxLayout;
+    credLinkRow->addWidget(credLink);
+    credLinkRow->addStretch();
+    sylay->addLayout(credLinkRow);
+
+    auto *credBox = new QGroupBox(sysPage);
+    credBox->setObjectName("credBox");
+    auto *credLayout = new QVBoxLayout(credBox);
+    credLayout->setSpacing(sp.sm);
+    credLayout->setContentsMargins(0, 0, 0, 0);
+
+    const auto addCredField =
+        [&](const QString &label, const QString &placeholder, bool secret) -> StyledLineEdit * {
+        auto *fieldLabel = new QLabel(label, credBox);
+        credLayout->addWidget(fieldLabel);
+        auto *edit = new StyledLineEdit(credBox);
+        edit->setSize(StyledLineEdit::Size::Small);
+        edit->setPlaceholderText(placeholder);
+        if (secret)
+            edit->lineEdit()->setEchoMode(QLineEdit::Password);
+        credLayout->addWidget(edit);
+        return edit;
+    };
+
+    _credClientId     = addCredField(tr("Client ID"), tr("e.g. 1234567890.1234567890"), false);
+    _credClientSecret = addCredField(tr("Client secret"), tr("Paste your client secret"), true);
+    _credXapp         = addCredField(tr("App-level token"), tr("Paste your xapp- token"), true);
+
+    _credStatus = new QLabel(credBox);
+    _credStatus->setObjectName("credStatus");
+    _credStatus->setWordWrap(true);
+    credLayout->addWidget(_credStatus);
+
+    auto *credSaveRow = new QHBoxLayout;
+    auto *credSaveBtn =
+        new StyledButton(tr("Save and restart"), StyledButton::Variant::Primary, credBox);
+    credSaveBtn->setSize(StyledButton::Size::Small);
+    connect(credSaveBtn, &QPushButton::clicked, this, &SettingsDialog::saveAppCredentials);
+    credSaveRow->addWidget(credSaveBtn);
+    credSaveRow->addStretch();
+    credLayout->addLayout(credSaveRow);
+
+    sylay->addWidget(credBox);
+    loadAppCredentials();
 
     // ── Memory section ────────────────────────────────────────────────
     auto *memoryHeading = new QLabel(tr("Memory"), sysPage);
@@ -1329,6 +1398,36 @@ void SettingsDialog::clearState() {
         btn->setEnabled(false);
     QSettings("msga", "msga").remove("conv/visitedAt");
     emit stateCleared();
+}
+
+void SettingsDialog::loadAppCredentials() {
+    if (!_credClientId)
+        return;
+    const slack::PersonalAppCredentials c = slack::personalAppCredentials();
+    _credClientId->setText(c.clientId);
+    _credClientSecret->setText(c.clientSecret);
+    _credXapp->setText(c.xapp);
+    _credStatus->clear();
+}
+
+void SettingsDialog::saveAppCredentials() {
+    if (!_credClientId)
+        return;
+    const slack::PersonalAppCredentials next{
+        _credClientId->text().trimmed(),
+        _credClientSecret->text().trimmed(),
+        _credXapp->text().trimmed(),
+    };
+    // No-op saves shouldn't kill the session — only restart when something changed.
+    const slack::PersonalAppCredentials cur = slack::personalAppCredentials();
+    if (next.clientId == cur.clientId && next.clientSecret == cur.clientSecret &&
+        next.xapp == cur.xapp) {
+        _credStatus->setText(tr("No changes to save."));
+        return;
+    }
+    slack::setPersonalAppCredentials(next);
+    _credStatus->setText(tr("Saved. Restarting…"));
+    emit restartRequested();
 }
 
 static QString timeAgo(qint64 epochSecs) {

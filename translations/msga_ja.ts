@@ -662,143 +662,143 @@ This action cannot be undone.</source>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="399"/>
+        <location filename="../src/ui/main_window.cpp" line="400"/>
         <source>Log in to workspace</source>
         <translation>ワークスペースにログイン</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="867"/>
+        <location filename="../src/ui/main_window.cpp" line="874"/>
         <source>Couldn&apos;t apply the label.</source>
         <translation>ラベルを適用できませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1302"/>
-        <location filename="../src/ui/main_window.cpp" line="1323"/>
+        <location filename="../src/ui/main_window.cpp" line="1309"/>
+        <location filename="../src/ui/main_window.cpp" line="1330"/>
         <source>Login failed</source>
         <translation>ログインに失敗しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1302"/>
+        <location filename="../src/ui/main_window.cpp" line="1309"/>
         <source>This service is not supported.</source>
         <translation>このサービスはサポートされていません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1557"/>
-        <location filename="../src/ui/main_window.cpp" line="2724"/>
+        <location filename="../src/ui/main_window.cpp" line="1564"/>
+        <location filename="../src/ui/main_window.cpp" line="2745"/>
         <source>Message</source>
         <translation>メッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1557"/>
-        <location filename="../src/ui/main_window.cpp" line="2724"/>
+        <location filename="../src/ui/main_window.cpp" line="1564"/>
+        <location filename="../src/ui/main_window.cpp" line="2745"/>
         <source>Message %1</source>
         <translation>%1へのメッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1793"/>
-        <location filename="../src/ui/main_window.cpp" line="1920"/>
+        <location filename="../src/ui/main_window.cpp" line="1814"/>
+        <location filename="../src/ui/main_window.cpp" line="1941"/>
         <source>Someone</source>
         <translation>誰か</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1926"/>
+        <location filename="../src/ui/main_window.cpp" line="1947"/>
         <source>Started a huddle</source>
         <translation>ハドルを開始しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1929"/>
-        <location filename="../src/ui/main_window.cpp" line="2001"/>
+        <location filename="../src/ui/main_window.cpp" line="1950"/>
+        <location filename="../src/ui/main_window.cpp" line="2022"/>
         <source>%1 started a huddle</source>
         <translation>%1さんがハドルを開始しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1959"/>
-        <location filename="../src/ui/main_window.cpp" line="2006"/>
+        <location filename="../src/ui/main_window.cpp" line="1980"/>
+        <location filename="../src/ui/main_window.cpp" line="2027"/>
         <source>Join</source>
         <translation>参加</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1985"/>
+        <location filename="../src/ui/main_window.cpp" line="2006"/>
         <source>Sample User</source>
         <translation>サンプルユーザー</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1993"/>
+        <location filename="../src/ui/main_window.cpp" line="2014"/>
         <source>Hey — do you have a minute?</source>
         <translation>ちょっといいですか？</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1997"/>
+        <location filename="../src/ui/main_window.cpp" line="2018"/>
         <source>%1: Heads up, the deploy is going out at 3pm</source>
         <translation>%1: お知らせ、デプロイは15時に行われます</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2177"/>
+        <location filename="../src/ui/main_window.cpp" line="2198"/>
         <source>Workspace admin</source>
         <translation>ワークスペース管理</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2183"/>
+        <location filename="../src/ui/main_window.cpp" line="2204"/>
         <source>Unmute</source>
         <translation>ミュート解除</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2183"/>
+        <location filename="../src/ui/main_window.cpp" line="2204"/>
         <source>Mute</source>
         <translation>ミュート</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2188"/>
+        <location filename="../src/ui/main_window.cpp" line="2209"/>
         <source>Log out</source>
         <translation>ログアウト</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2188"/>
+        <location filename="../src/ui/main_window.cpp" line="2209"/>
         <source>Log out from %1</source>
         <translation>%1からログアウト</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2247"/>
+        <location filename="../src/ui/main_window.cpp" line="2268"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2252"/>
+        <location filename="../src/ui/main_window.cpp" line="2273"/>
         <source>Quit</source>
         <translation>終了</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2472"/>
+        <location filename="../src/ui/main_window.cpp" line="2493"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Slack（ブラウザ版）でハドルを開きます</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2482"/>
+        <location filename="../src/ui/main_window.cpp" line="2503"/>
         <source>Unstar conversation</source>
         <translation>会話のスターを外す</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2482"/>
+        <location filename="../src/ui/main_window.cpp" line="2503"/>
         <source>Star conversation</source>
         <translation>会話にスターを付ける</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2493"/>
+        <location filename="../src/ui/main_window.cpp" line="2514"/>
         <source>Search messages</source>
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1337"/>
+        <location filename="../src/ui/main_window.cpp" line="1344"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>公式Slackクライアントが接続されていないため、他のメンバーには離席中と表示されます</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1341"/>
+        <location filename="../src/ui/main_window.cpp" line="1348"/>
         <source>Active</source>
         <translation>アクティブ</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1343"/>
+        <location filename="../src/ui/main_window.cpp" line="1350"/>
         <source>Away</source>
         <translation>離席中</translation>
     </message>
@@ -1179,6 +1179,19 @@ This action cannot be undone.</source>
     </message>
 </context>
 <context>
+    <name>ParallelUsageBanner</name>
+    <message>
+        <location filename="../src/ui/parallel_usage_banner/parallel_usage_banner.cpp" line="34"/>
+        <source>The same app keys are running on another device and keep interrupting your Slack connection.</source>
+        <translation>同じアプリキーが別のデバイスで使用されており、Slack接続が繰り返し中断されています。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/parallel_usage_banner/parallel_usage_banner.cpp" line="36"/>
+        <source>How to solve this?</source>
+        <translation>解決方法は？</translation>
+    </message>
+</context>
+<context>
     <name>ProfileAvatarWidget</name>
     <message>
         <location filename="../src/ui/profile_dialog/profile_dialog.cpp" line="98"/>
@@ -1422,119 +1435,119 @@ This action cannot be undone.</source>
 <context>
     <name>Session</name>
     <message>
-        <location filename="../src/session/session.cpp" line="51"/>
+        <location filename="../src/session/session.cpp" line="53"/>
         <source> — sign in to this workspace again to grant the new permission</source>
         <translation> — 新しい権限を付与するには、このワークスペースに再度サインインしてください</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="61"/>
+        <location filename="../src/session/session.cpp" line="63"/>
         <source>You can&apos;t reply to this message.</source>
         <translation>このメッセージには返信できません。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="63"/>
+        <location filename="../src/session/session.cpp" line="65"/>
         <source>You&apos;re not a member of this channel.</source>
         <translation>このチャンネルのメンバーではありません。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="65"/>
+        <location filename="../src/session/session.cpp" line="67"/>
         <source>This conversation is archived.</source>
         <translation>この会話はアーカイブされています。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="67"/>
+        <location filename="../src/session/session.cpp" line="69"/>
         <source>The message is too long.</source>
         <translation>メッセージが長すぎます。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="69"/>
+        <location filename="../src/session/session.cpp" line="71"/>
         <source>This conversation no longer exists.</source>
         <translation>この会話は存在しません。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="71"/>
+        <location filename="../src/session/session.cpp" line="73"/>
         <source>You don&apos;t have permission to post here.</source>
         <translation>ここに投稿する権限がありません。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="357"/>
+        <location filename="../src/session/session.cpp" line="365"/>
         <source>Couldn&apos;t send message: %1</source>
         <translation>メッセージを送信できませんでした: %1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../src/session/session.cpp" line="427"/>
+        <location filename="../src/session/session.cpp" line="450"/>
         <source>Slack is rate-limiting requests — retrying in %n second(s).</source>
         <translation>
             <numerusform>Slackがリクエストをレート制限しています — %n 秒後に再試行します。</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1236"/>
+        <location filename="../src/session/session.cpp" line="1269"/>
         <source>Unknown user</source>
         <translation>不明なユーザー</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1400"/>
+        <location filename="../src/session/session.cpp" line="1433"/>
         <source>No such user: %1</source>
         <translation>ユーザーが見つかりません: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1451"/>
+        <location filename="../src/session/session.cpp" line="1484"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>使い方: /dnd [時間。例: 30m、2h] — 解除は /dnd off</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1467"/>
+        <location filename="../src/session/session.cpp" line="1500"/>
         <source>Command /%1 failed: %2</source>
         <translation>コマンド /%1 が失敗しました: %2</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1502"/>
+        <location filename="../src/session/session.cpp" line="1535"/>
         <source>Could not change presence: %1</source>
         <translation>プレゼンスを変更できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1520"/>
+        <location filename="../src/session/session.cpp" line="1553"/>
         <source>Could not set status: %1</source>
         <translation>ステータスを設定できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1541"/>
+        <location filename="../src/session/session.cpp" line="1574"/>
         <source>Could not update notifications: %1</source>
         <translation>通知設定を更新できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1563"/>
+        <location filename="../src/session/session.cpp" line="1596"/>
         <source>Could not update profile: %1</source>
         <translation>プロフィールを更新できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1584"/>
+        <location filename="../src/session/session.cpp" line="1617"/>
         <source>Could not update avatar: %1</source>
         <translation>アバターを更新できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1648"/>
+        <location filename="../src/session/session.cpp" line="1681"/>
         <source>Upload failed: %1</source>
         <translation>アップロードに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1689"/>
+        <location filename="../src/session/session.cpp" line="1722"/>
         <source>Could not load canvas: %1</source>
         <translation>canvasを読み込めませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1720"/>
+        <location filename="../src/session/session.cpp" line="1753"/>
         <source>Could not create canvas: %1</source>
         <translation>canvasを作成できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1736"/>
+        <location filename="../src/session/session.cpp" line="1769"/>
         <source>Canvas edit failed: %1</source>
         <translation>canvasの編集に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="1754"/>
+        <location filename="../src/session/session.cpp" line="1787"/>
         <source>Canvas deletion failed: %1</source>
         <translation>canvasの削除に失敗しました: %1</translation>
     </message>
@@ -1542,290 +1555,340 @@ This action cannot be undone.</source>
 <context>
     <name>SettingsDialog</name>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="115"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="659"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="116"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="729"/>
         <source>RAM used: %1</source>
         <translation>RAM使用量: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="147"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="148"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="167"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="168"/>
         <source>Appearance</source>
         <translation>外観</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="168"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="169"/>
         <source>Notifications</source>
         <translation>通知</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="169"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="170"/>
         <source>AI assistance</source>
         <translation>AIアシスタンス</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="170"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="171"/>
         <source>Storage</source>
         <translation>ストレージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="171"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="172"/>
         <source>System</source>
         <translation>システム</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="172"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="173"/>
         <source>About</source>
         <translation>情報</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="188"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="189"/>
         <source>Color theme</source>
         <translation>カラーテーマ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="207"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="208"/>
         <source>Purple</source>
         <translation>紫</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="208"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="209"/>
         <source>Charcoal</source>
         <translation>チャコール</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="209"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="210"/>
         <source>Blue</source>
         <translation>青</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="210"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="211"/>
         <source>Green</source>
         <translation>グリーン</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="246"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="247"/>
         <source>Language</source>
         <translation>言語</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="257"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="258"/>
         <source>App language</source>
         <translation>アプリの言語</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="265"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="266"/>
         <source>System default</source>
         <translation>システムのデフォルト</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="274"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="275"/>
         <source>The new language will be applied the next time MSGA starts.
 Time and date formats update immediately.</source>
         <translation>新しい言語は次回MSGAの起動時に適用されます。
 時刻と日付の形式はすぐに更新されます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="290"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="291"/>
         <source>Date/Time</source>
         <translation>日付と時刻</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="300"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="301"/>
         <source>12-hour clock (2:34 PM)</source>
         <translation>12時間表示（午後2:34）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="301"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="302"/>
         <source>24-hour clock (14:34)</source>
         <translation>24時間表示（14:34）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="312"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="313"/>
         <source>Threads</source>
         <translation>スレッド</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="323"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="324"/>
         <source>Standalone (open replies in a side panel)</source>
         <translation>スタンドアロン（サイドパネルで返信を開く）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="324"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="325"/>
         <source>Inline (expand replies under the message)</source>
         <translation>インライン（メッセージの下に返信を展開）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="335"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="336"/>
         <source>Conversations</source>
         <translation>会話</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="346"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="347"/>
         <source>Show conversations active in the last</source>
         <translation>次の期間内に活動のあった会話を表示:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="352"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="353"/>
         <source> days</source>
         <translation> 日</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="359"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="360"/>
         <source>Conversations with no activity in this period are hidden
 under an &quot;N more...&quot; row at the bottom of each section.</source>
         <translation>この期間に活動がない会話は、各セクション下部の
 「他N件...」の行に隠れます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="372"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="484"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="373"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="485"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="389"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="390"/>
         <source>Enable desktop notifications</source>
         <translation>デスクトップ通知を有効にする</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="398"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="399"/>
         <source>All new messages</source>
         <translation>すべての新着メッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="399"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="400"/>
         <source>Direct messages and mentions only</source>
         <translation>ダイレクトメッセージとメンションのみ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="409"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="410"/>
         <source>Notify me when a huddle starts</source>
         <translation>ハドルが開始したら通知する</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="412"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="413"/>
         <source>Play a sound for notifications</source>
         <translation>通知音を鳴らす</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="421"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="422"/>
         <source>Sound:</source>
         <translation>サウンド:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="426"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="454"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="427"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="455"/>
         <source>Test</source>
         <translation>テスト</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="441"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="442"/>
         <source>Sample notifications</source>
         <translation>通知のサンプル</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="449"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="450"/>
         <source>New DM</source>
         <translation>新しいダイレクトメッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="450"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="451"/>
         <source>New channel message</source>
         <translation>新しいチャンネルメッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="451"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="452"/>
         <source>New huddle</source>
         <translation>新しいハドル</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="504"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="505"/>
         <source>Cache</source>
         <translation>キャッシュ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="509"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="510"/>
         <source>Cache size:</source>
         <translation>キャッシュサイズ:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="519"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="520"/>
         <source>Conversations, user names, message history, and image thumbnails
 stored locally to speed up startup.</source>
         <translation>起動を高速化するため、会話、ユーザー名、メッセージ履歴、
 画像サムネイルをローカルに保存しています。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="528"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="529"/>
         <source>Limit cache to</source>
         <translation>キャッシュ上限:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="534"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="535"/>
         <source> MB</source>
         <translation> MB</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="541"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="542"/>
         <source>When the cache grows past this limit, the least recently
 viewed images are deleted first.</source>
         <translation>キャッシュがこの上限を超えると、最も長く表示されていない
 画像から順に削除されます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="560"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="561"/>
         <source>Clear cache</source>
         <translation>キャッシュをクリア</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="570"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="571"/>
         <source>State</source>
         <translation>状態</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="575"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="576"/>
         <source>Sidebar visit history used to decide which conversations are shown.
 Clear this to let the app re-analyse activity from scratch on next load.</source>
         <translation>どの会話を表示するかの判断に使う、サイドバーの閲覧履歴です。
 クリアすると、次回読み込み時に活動を最初から分析し直します。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="585"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="586"/>
         <source>Clear state</source>
         <translation>状態をクリア</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="604"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="605"/>
         <source>Version</source>
         <translation>バージョン</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="611"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="612"/>
         <source>Version %1, built %2</source>
         <translation>バージョン %1（ビルド: %2）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="622"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="623"/>
         <source>Check for updates</source>
         <translation>アップデートを確認</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="638"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="641"/>
+        <source>Slack app keys</source>
+        <translation>Slackアプリキー</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="646"/>
+        <source>Run your own Slack app so you don&apos;t share connection keys with other devices and users. Leave a field empty to use the built-in default.</source>
+        <translation>独自のSlackアプリを使用すると、接続キーを他のデバイスやユーザーと共有せずに済みます。空欄にすると組み込みの既定値が使用されます。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="655"/>
+        <source>How to create your Slack app…</source>
+        <translation>Slackアプリの作成方法…</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="686"/>
+        <source>Client ID</source>
+        <translation>クライアントID</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="686"/>
+        <source>e.g. 1234567890.1234567890</source>
+        <translation>例: 1234567890.1234567890</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="687"/>
+        <source>Client secret</source>
+        <translation>クライアントシークレット</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="687"/>
+        <source>Paste your client secret</source>
+        <translation>クライアントシークレットを貼り付け</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="688"/>
+        <source>App-level token</source>
+        <translation>アプリレベルトークン</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="688"/>
+        <source>Paste your xapp- token</source>
+        <translation>xapp- トークンを貼り付け</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="697"/>
+        <source>Save and restart</source>
+        <translation>保存して再起動</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="708"/>
         <source>Memory</source>
         <translation>メモリ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="672"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="742"/>
         <source>License</source>
         <translation>ライセンス</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="677"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="747"/>
         <source>MSGA — Make Slack Great Again
 Copyright © 2026 Vladimir Osipov
 
@@ -1836,37 +1899,37 @@ Copyright © 2026 Vladimir Osipov
 本プログラムはフリーソフトウェアです。フリーソフトウェア財団が公開する GNU General Public License（バージョン 3、または任意でそれ以降のバージョン）の条項に基づき、再配布および改変を行うことができます（GPL-3.0-or-later）。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="690"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="760"/>
         <source>View full license</source>
         <translation>ライセンス全文を表示</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="702"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="772"/>
         <source>Contact</source>
         <translation>連絡先</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="708"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="778"/>
         <source>Questions or feedback: %1</source>
         <translation>ご質問・ご意見: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="716"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="786"/>
         <source>Found a bug?</source>
         <translation>バグを見つけましたか？</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="721"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="791"/>
         <source>Report it on GitHub so it can be tracked and fixed.</source>
         <translation>GitHub で報告すると、追跡・修正できます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="727"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="797"/>
         <source>Report a bug</source>
         <translation>バグを報告</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="760"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="830"/>
         <source>Connect an AI provider to enable assistant features.
 Create an API key in your own provider account and paste it below —
 it is stored on this computer and sent only to that provider.</source>
@@ -1875,121 +1938,131 @@ it is stored on this computer and sent only to that provider.</source>
 キーはこのコンピューターに保存され、そのプロバイダーにのみ送信されます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="768"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="838"/>
         <source>AI provider</source>
         <translation>AIプロバイダー</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="776"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="846"/>
         <source>Default:</source>
         <translation>デフォルト:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="813"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="883"/>
         <source>Connect (OAuth)</source>
         <translation>接続（OAuth）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="817"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="887"/>
         <source>Disconnect</source>
         <translation>切断</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="826"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="896"/>
         <source>Paste your API key</source>
         <translation>APIキーを貼り付け</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="830"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="900"/>
         <source>Save key</source>
         <translation>キーを保存</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="836"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="906"/>
         <source>Get an API key from %1…</source>
         <translation>%1でAPIキーを取得…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="865"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="935"/>
         <source>%1: %2</source>
         <translation>%1: %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="873"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="943"/>
         <source>Your language</source>
         <translation>あなたの言語</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="878"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="948"/>
         <source>AI features address you in this language.
 It follows the app language until you pick one here.</source>
         <translation>AI機能はこの言語で応答します。
 ここで選択するまではアプリの言語に従います。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="887"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="957"/>
         <source>Native language:</source>
         <translation>母国語:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="947"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1017"/>
         <source>Connected as %1</source>
         <translation>%1として接続済み</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="948"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1018"/>
         <source>Connected with API key (%1)</source>
         <translation>APIキーで接続済み（%1）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="951"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1021"/>
         <source>Waiting for browser sign-in…</source>
         <translation>ブラウザでのサインインを待っています…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="953"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1023"/>
         <source>Not connected</source>
         <translation>未接続</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1352"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1426"/>
+        <source>No changes to save.</source>
+        <translation>保存する変更はありません。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1430"/>
+        <source>Saved. Restarting…</source>
+        <translation>保存しました。再起動しています…</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1452"/>
         <source>Last checked: %1</source>
         <translation>最終確認: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1360"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1460"/>
         <source>Update checks not available.</source>
         <translation>アップデートの確認は利用できません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1365"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1382"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1465"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1482"/>
         <source>Checking for updates…</source>
         <translation>アップデートを確認中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1368"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1397"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1468"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1497"/>
         <source>Update downloaded — restart the app to apply.</source>
         <translation>アップデートをダウンロードしました — 適用するにはアプリを再起動してください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1386"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1486"/>
         <source>msga is up to date.</source>
         <translation>msgaは最新の状態です。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1390"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1490"/>
         <source>Version %1 available — downloading…</source>
         <translation>バージョン%1が利用可能です — ダウンロード中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1393"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1493"/>
         <source>Downloading update… %1%</source>
         <translation>アップデートをダウンロード中… %1%</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1402"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1502"/>
         <source>Check failed: %1</source>
         <translation>確認に失敗しました: %1</translation>
     </message>

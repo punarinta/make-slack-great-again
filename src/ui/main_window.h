@@ -35,6 +35,7 @@ class CanvasPage;
 class ConvTabsWidget;
 class HeaderAvatarWidget;
 class HuddleBanner;
+class ParallelUsageBanner;
 class PopupTooltip;
 class QSplitter;
 class UpdateBar;
@@ -156,6 +157,9 @@ private:
 
     // Update
     void applyUpdateAndRestart();
+    // Clean restart of the app (used after saving personal Slack app keys, which
+    // only take effect on a fresh start). main() re-execs on kRestartExitCode.
+    void restartApp();
 
     // Event handlers
     bool eventFilter(QObject *o, QEvent *e) override;
@@ -246,17 +250,18 @@ private:
 
     QHash<QString, QString> _drafts; // convId.value → unsent draft text
 
-    ImageCache         *_imgCache         = nullptr;
-    QLabel             *_errorBanner      = nullptr;
-    QSystemTrayIcon    *_trayIcon         = nullptr;
-    DesktopNotifier    *_desktopNotifier  = nullptr;
-    QPushButton        *_huddleBtn        = nullptr;
-    PopupTooltip       *_huddleBtnTooltip = nullptr;
-    QPushButton        *_starBtn          = nullptr;
-    PopupTooltip       *_starBtnTooltip   = nullptr;
-    QPushButton        *_searchBtn        = nullptr;
-    PopupTooltip       *_searchBtnTooltip = nullptr;
-    HeaderAvatarWidget *_headerAvatar     = nullptr;
+    ImageCache          *_imgCache            = nullptr;
+    QLabel              *_errorBanner         = nullptr;
+    ParallelUsageBanner *_parallelUsageBanner = nullptr;
+    QSystemTrayIcon     *_trayIcon            = nullptr;
+    DesktopNotifier     *_desktopNotifier     = nullptr;
+    QPushButton         *_huddleBtn           = nullptr;
+    PopupTooltip        *_huddleBtnTooltip    = nullptr;
+    QPushButton         *_starBtn             = nullptr;
+    PopupTooltip        *_starBtnTooltip      = nullptr;
+    QPushButton         *_searchBtn           = nullptr;
+    PopupTooltip        *_searchBtnTooltip    = nullptr;
+    HeaderAvatarWidget  *_headerAvatar        = nullptr;
 
     // Manual resize state (non-Wayland)
     Qt::Edges _resizeEdges = {};
