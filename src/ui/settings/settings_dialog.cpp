@@ -667,7 +667,8 @@ void SettingsDialog::buildPanel() {
     credBox->setObjectName("credBox");
     auto *credLayout = new QVBoxLayout(credBox);
     credLayout->setSpacing(sp.sm);
-    credLayout->setContentsMargins(0, 0, 0, 0);
+    // Keep the framed box, but inset the fields so they don't touch its border.
+    credLayout->setContentsMargins(sp.lg, sp.lg, sp.lg, sp.lg);
 
     const auto addCredField =
         [&](const QString &label, const QString &placeholder, bool secret) -> StyledLineEdit * {
