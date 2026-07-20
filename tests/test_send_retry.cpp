@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDeadlineTimer>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -238,6 +239,61 @@ TEST_CASE("non-idempotent call does NOT retry a transient Slack error", "[send_r
     CHECK(err == "internal_error"); // surfaced so the caller can reconcile
     pumpFor(100);                   // a blind retry would land here
     CHECK(server.requestCount == 1);
+}
+
+// =============================================================================
+// WebApiClient — paced background lane (bulk sweeps yield to interactive calls)
+// =============================================================================
+
+TEST_CASE("an interactive call preempts already-queued background calls", "[send_retry]") {
+    FakeHttpServer server;
+    // Responses are consumed in arrival order; the bodies just echo which call.
+    server.enqueue(R"({"ok":true,"who":"bg1"})");
+    server.enqueue(R"({"ok":true,"who":"fg"})");
+    server.enqueue(R"({"ok":true,"who":"bg2"})");
+    server.enqueue(R"({"ok":true,"who":"bg3"})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+    client.setBackgroundPaceMs(20); // small, so the test isn't slow
+
+    // Three background calls enqueue together: bg1 dispatches (single slot), bg2/bg3
+    // wait. An interactive call enqueued while bg1 is in flight must jump the queue
+    // ahead of bg2/bg3.
+    client.callBackground("conversations.info", QUrlQuery{}, [](QJsonObject) {});
+    client.callBackground("conversations.info", QUrlQuery{}, [](QJsonObject) {});
+    client.callBackground("conversations.info", QUrlQuery{}, [](QJsonObject) {});
+    client.call("conversations.history", QUrlQuery{}, [](QJsonObject) {});
+
+    REQUIRE(waitFor([&] { return server.requestCount == 4; }, 4000));
+    REQUIRE(server.requestPaths.size() == 4);
+    CHECK(server.requestPaths[0] == "/conversations.info");    // bg1 already in flight
+    CHECK(server.requestPaths[1] == "/conversations.history"); // interactive preempts
+    CHECK(server.requestPaths[2] == "/conversations.info");    // bg lane resumes
+    CHECK(server.requestPaths[3] == "/conversations.info");
+}
+
+TEST_CASE("background calls are paced by the configured interval", "[send_retry]") {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true})");
+    server.enqueue(R"({"ok":true})");
+    server.enqueue(R"({"ok":true})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("t");
+    client.setBackgroundPaceMs(300);
+
+    const qint64 start = QDateTime::currentMSecsSinceEpoch();
+    for (int i = 0; i < 3; ++i)
+        client.callBackground("conversations.info", QUrlQuery{}, [](QJsonObject) {});
+
+    REQUIRE(waitFor([&] { return server.requestCount == 3; }, 4000));
+    // First goes immediately; the next two are each gated by ~300 ms, so the third
+    // can't land before ~2×300 ms. Generous lower bound to avoid flakiness.
+    const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - start;
+    CHECK(elapsed >= 500);
 }
 
 // =============================================================================

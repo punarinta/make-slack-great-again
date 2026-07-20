@@ -35,6 +35,12 @@ PublicBackend::PublicBackend(
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
     _infoApi->setToken(creds.xoxp);
+    // Pace the background lane on the info client: a reconnect enqueues one
+    // conversations.info per DM/MPDM (100+ on a busy workspace), and that method
+    // is Slack Tier 3 (~50/min). ~1.2 s spacing keeps the whole sweep under the
+    // tier so it never 429s, while interactive (Normal) info calls still preempt
+    // and run unpaced.
+    _infoApi->setBackgroundPaceMs(1200);
     // Pre-warm TLS so the first API calls skip the handshake latency. The info
     // client is not pre-warmed: its background sweep starts well after launch.
     _api->preWarm("slack.com");
@@ -375,30 +381,36 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
     };
 }
 
-rpl::producer<Conversation> PublicBackend::loadConversationInfo(ConversationId id) {
-    return [this, id](auto consumer) mutable {
+rpl::producer<Conversation>
+PublicBackend::loadConversationInfo(ConversationId id, bool background) {
+    return [this, id, background](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("channel", id.value);
-        _infoApi->call(
-            "conversations.info",
-            params,
-            [consumer](QJsonObject resp) mutable {
-                consumer.put_next(JsonMappers::toConversation(resp.value("channel").toObject()));
-                consumer.put_done();
-            },
-            [consumer, id](QString err) mutable {
-                qWarning() << "loadConversationInfo error:" << id.value << err;
-                // channel_not_found is definitive: this conversation does not
-                // exist for this workspace. Emit a not-found sentinel so Session
-                // can remember it and stop re-fetching (a busy foreign conv would
-                // otherwise re-fire on every message). Any other error (a
-                // sustained transient that exhausted retries, missing_scope, …)
-                // stays a bare completion so the caller retries as before.
-                if (err == QLatin1String("channel_not_found"))
-                    consumer.put_next(Conversation{.id = id, .notFound = true});
-                consumer.put_done();
-            }
-        );
+        auto onOk = [consumer](QJsonObject resp) mutable {
+            consumer.put_next(JsonMappers::toConversation(resp.value("channel").toObject()));
+            consumer.put_done();
+        };
+        auto onErr = [consumer, id](QString err) mutable {
+            qWarning() << "loadConversationInfo error:" << id.value << err;
+            // channel_not_found is definitive: this conversation does not
+            // exist for this workspace. Emit a not-found sentinel so Session
+            // can remember it and stop re-fetching (a busy foreign conv would
+            // otherwise re-fire on every message). Any other error (a
+            // sustained transient that exhausted retries, missing_scope, …)
+            // stays a bare completion so the caller retries as before.
+            if (err == QLatin1String("channel_not_found"))
+                consumer.put_next(Conversation{.id = id, .notFound = true});
+            consumer.put_done();
+        };
+        // Bulk sweeps ride the paced low-priority lane so they never crowd out an
+        // interactive fetch (a freshly-joined channel, an unknown-conv message)
+        // or burst past conversations.info's rate-limit tier.
+        if (background)
+            _infoApi->callBackground(
+                "conversations.info", params, std::move(onOk), std::move(onErr)
+            );
+        else
+            _infoApi->call("conversations.info", params, std::move(onOk), std::move(onErr));
         return rpl::lifetime();
     };
 }

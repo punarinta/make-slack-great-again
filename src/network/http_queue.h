@@ -38,6 +38,13 @@ public:
     // call: the request MAY have been processed — reconcile, don't resend.
     static const QString kConnectionLost;
 
+    // Interactive calls (Normal) always preempt the background lane; a Normal
+    // call merely cooling down on a 429 is still never overtaken by a Background
+    // one. Background calls are additionally paced (setBackgroundPaceMs) so a
+    // large sweep enqueued at once (e.g. a reconnect's per-DM conversations.info)
+    // trickles out under Slack's per-method tier limit instead of bursting to 429.
+    enum class Priority { Normal, Background };
+
     explicit HttpQueue(QObject *parent = nullptr);
 
     void               setToken(const QString &token) { _token = token; }
@@ -45,6 +52,11 @@ public:
 
     // The API base URL every queued method is appended to (tests override it).
     void setBaseUrl(const QString &url) { _baseUrl = url; }
+
+    // Minimum spacing between consecutive Background-priority calls, in ms
+    // (0 = disabled, the default). Set on a client dedicated to background
+    // sweeps to keep a burst of low-priority calls under a rate-limit tier.
+    void setBackgroundPaceMs(int ms) { _backgroundPaceMs = ms; }
 
     // Pre-warm the TLS connection so the first call skips the handshake.
     void preWarm(const QString &host) { _nam->connectToHostEncrypted(host, 443); }
@@ -92,6 +104,7 @@ protected:
         bool        quietErrors      = false; // skip the generic error warning
         bool        idempotent       = true;  // safe to resend after an ambiguous failure
         int         transportRetries = 0;     // transport/transient retries so far
+        Priority    priority         = Priority::Normal;
     };
 
     void enqueue(PendingCall c);
@@ -141,7 +154,12 @@ private:
     // instead of one 429 head-of-line blocking the whole queue. Value is the
     // epoch-ms instant the method may run again.
     QHash<QString, qint64> _methodReadyAtMs;
-    qint64                 _scheduledWakeMs = -1; // epoch ms of the pending wake timer; -1 = none
+    qint64                 _scheduledWakeMs  = -1; // epoch ms of the pending wake timer; -1 = none
+    // Background-lane pacing. _backgroundReadyAtMs is the earliest epoch-ms a
+    // Background call may dispatch; armed to now+_backgroundPaceMs each time one
+    // starts, so spacing holds regardless of how fast each reply lands.
+    int                    _backgroundPaceMs = 0;
+    qint64                 _backgroundReadyAtMs = 0;
 };
 
 } // namespace net

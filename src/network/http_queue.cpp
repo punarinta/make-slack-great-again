@@ -126,13 +126,23 @@ void HttpQueue::enqueue(PendingCall c) {
 void HttpQueue::tryNext() {
     if (_inflight || _throttled || _queue.isEmpty())
         return;
-    // Run the first queued call whose method isn't in a 429 cooldown. A throttled
-    // method is skipped (not blocking), so other methods keep flowing; same-method
-    // calls keep their relative order because we always take the earliest eligible.
-    const qint64 now     = QDateTime::currentMSecsSinceEpoch();
-    int          idx     = -1;
-    qint64       soonest = std::numeric_limits<qint64>::max();
+    // Run the first eligible queued call whose method isn't in a 429 cooldown. A
+    // throttled method is skipped (not blocking), so other methods keep flowing;
+    // same-method calls keep their relative order because we always take the
+    // earliest eligible one.
+    //
+    // Two lanes, Normal before Background. Interactive work must never wait behind
+    // the paced background sweep: we only dip into the Background lane when NO
+    // Normal call is queued at all — a Normal call that's merely cooling down on a
+    // 429 still parks the background lane so it isn't overtaken.
+    const qint64 now           = QDateTime::currentMSecsSinceEpoch();
+    int          idx           = -1;
+    qint64       soonest       = std::numeric_limits<qint64>::max();
+    bool         normalWaiting = false;
     for (int i = 0; i < _queue.size(); ++i) {
+        if (_queue.at(i).priority != Priority::Normal)
+            continue;
+        normalWaiting        = true;
         const qint64 readyAt = _methodReadyAtMs.value(_queue.at(i).method, 0);
         if (readyAt <= now) {
             idx = i;
@@ -140,11 +150,30 @@ void HttpQueue::tryNext() {
         }
         soonest = std::min(soonest, readyAt);
     }
+    if (idx < 0 && !normalWaiting) {
+        for (int i = 0; i < _queue.size(); ++i) {
+            // Everything here is Background. Gate on both the method's 429 cooldown
+            // and the global pace so the lane trickles out at ≤ one call per
+            // _backgroundPaceMs.
+            const qint64 methodReady = _methodReadyAtMs.value(_queue.at(i).method, 0);
+            const qint64 readyAt     = std::max(methodReady, _backgroundReadyAtMs);
+            if (readyAt <= now) {
+                idx = i;
+                break;
+            }
+            soonest = std::min(soonest, readyAt);
+        }
+    }
     if (idx < 0) {
-        // Everything queued is cooling down — wake when the soonest clears.
-        scheduleWake(soonest);
+        // Nothing runnable right now — wake when the soonest cooldown/pace clears.
+        if (soonest != std::numeric_limits<qint64>::max())
+            scheduleWake(soonest);
         return;
     }
+    // Arm the pace gate before dispatching a Background call, so the next one waits
+    // out the interval no matter how quickly this reply lands.
+    if (_queue.at(idx).priority == Priority::Background && _backgroundPaceMs > 0)
+        _backgroundReadyAtMs = now + _backgroundPaceMs;
     _inflight = true;
     execute(_queue.takeAt(idx));
 }

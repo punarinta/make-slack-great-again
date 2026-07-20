@@ -348,7 +348,8 @@ struct StubBackend : Backend {
     // (producer completes empty, like the real backend on failure).
     QHash<QString, Conversation> infoResults;
     QList<QString>               infoRequested;
-    rpl::producer<Conversation>  loadConversationInfo(ConversationId id) override {
+    rpl::producer<Conversation>
+    loadConversationInfo(ConversationId id, bool /*background*/) override {
         infoRequested.append(id.value);
         const auto it = infoResults.constFind(id.value);
         if (it == infoResults.constEnd())

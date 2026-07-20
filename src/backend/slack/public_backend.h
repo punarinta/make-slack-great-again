@@ -59,8 +59,8 @@ public:
     rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<User>                      loadBotInfo(UserId botId) override;
     rpl::producer<User>                      loadUser(UserId userId) override;
-    rpl::producer<Conversation>              loadConversationInfo(ConversationId) override;
-    rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
+    rpl::producer<Conversation> loadConversationInfo(ConversationId, bool background) override;
+    rpl::producer<MessagePage>  loadHistory(ConversationId, std::optional<QString> cursor) override;
     rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) override;
 

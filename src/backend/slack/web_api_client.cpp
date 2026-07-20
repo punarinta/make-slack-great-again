@@ -43,6 +43,16 @@ void WebApiClient::call(
     enqueue({method, std::move(params), {}, std::move(onSuccess), std::move(onError), quietErrors});
 }
 
+void WebApiClient::callBackground(
+    const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError, bool quietErrors
+) {
+    PendingCall c{
+        method, std::move(params), {}, std::move(onSuccess), std::move(onError), quietErrors
+    };
+    c.priority = Priority::Background;
+    enqueue(std::move(c));
+}
+
 void WebApiClient::callNonIdempotent(
     const QString &method, QUrlQuery params, OnSuccess onSuccess, OnError onError
 ) {

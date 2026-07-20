@@ -1010,15 +1010,20 @@ void Session::resyncUnreads() {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (now - _lastUnreadResyncMs < kUnreadResyncGapMs)
         return;
+    // A previous sweep is still trickling out on the paced background lane — don't
+    // stack a second one that would just re-enqueue the same DMs behind it.
+    if (_unreadResyncInFlight > 0)
+        return;
     const auto targets = dmSweepTargets();
     if (targets.empty())
         return;
-    _lastUnreadResyncMs = now;
+    _lastUnreadResyncMs   = now;
+    _unreadResyncInFlight = int(targets.size());
 
     qDebug() << "[UnreadResync] recovering unread for" << targets.size() << "DMs/MPDMs";
     for (const auto &id : targets) {
-        _backend->loadConversationInfo(id) |
-            rpl::on_next(
+        _backend->loadConversationInfo(id, /*background=*/true) |
+            rpl::on_next_done(
                 [this, id](Conversation info) {
                     // Dead DM/MPDM (peer gone, or
                     // another workspace's conv):
@@ -1036,6 +1041,12 @@ void Session::resyncUnreads() {
                     _pendingUnreadInfos.emplace_back(id, std::move(info));
                     if (!_unreadPatchTimer.isActive())
                         _unreadPatchTimer.start(300);
+                },
+                [this] {
+                    // Fires on success and error alike — one settled call. When the
+                    // batch empties, a later reconnect may start a fresh sweep.
+                    if (_unreadResyncInFlight > 0)
+                        --_unreadResyncInFlight;
                 },
                 _lifetime
             );
@@ -1107,7 +1118,7 @@ void Session::enrichDmActivity() {
     qDebug() << "[ActivitySweep] fetching conversations.info for" << targets.size() << "DMs/MPDMs";
     auto remaining = std::make_shared<int>(int(targets.size()));
     for (const auto &id : targets) {
-        _backend->loadConversationInfo(id) |
+        _backend->loadConversationInfo(id, /*background=*/true) |
             rpl::on_next_done(
                 [this, id](Conversation info) {
                     // Dead DM/MPDM (peer gone, or another workspace's conv):

@@ -563,6 +563,12 @@ private:
     // be a rate-limit storm. Independent of the reload throttle so either can run.
     static constexpr qint64   kUnreadResyncGapMs     = 2 * 60'000;
     qint64                    _lastUnreadResyncMs    = 0;
+    // Number of conversations.info calls from the current unread-resync sweep that
+    // have not yet settled. The sweep is paced (~1.2 s/call), so on a busy
+    // workspace it can still be draining when the throttle window reopens; a fresh
+    // sweep while one is in flight would just re-enqueue the same DMs. Skip until
+    // the outstanding batch finishes so the paced lane can't accumulate duplicates.
+    int                       _unreadResyncInFlight  = 0;
     // Throttle the safety poll's forced socket re-establish so a persistently
     // sick socket can't drive a reconnect → reload storm.
     static constexpr qint64   kReestablishGapMs      = 60'000;

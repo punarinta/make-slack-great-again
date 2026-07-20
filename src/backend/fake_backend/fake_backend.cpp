@@ -122,7 +122,8 @@ rpl::producer<SelfPresence> FakeBackend::loadSelfPresence() {
     return rpl::variable<SelfPresence>(SelfPresence{.loaded = true}).value();
 }
 
-rpl::producer<Conversation> FakeBackend::loadConversationInfo(ConversationId id) {
+rpl::producer<Conversation>
+FakeBackend::loadConversationInfo(ConversationId id, bool /*background*/) {
     return [this, id](auto consumer) {
         auto it = _convInfo.find(id.value);
         if (it != _convInfo.end())

@@ -88,8 +88,12 @@ public:
     // Authoritative per-conversation state (conversations.info): last_read and
     // latest message ts, which conversations.list no longer returns. Used by the
     // Session's background activity sweep to seed conversation-list relevance.
-    // Default no-op for backends that don't support this.
-    virtual rpl::producer<Conversation> loadConversationInfo(ConversationId) {
+    // `background`: route via the paced low-priority lane (bulk sweeps that must
+    // not crowd out interactive calls or trip a rate-limit tier); leave false for
+    // an on-demand, latency-sensitive fetch. Default no-op for backends that
+    // don't support this.
+    virtual rpl::producer<Conversation>
+    loadConversationInfo(ConversationId, bool background = false) {
         return [](auto consumer) {
             consumer.put_done();
             return rpl::lifetime();

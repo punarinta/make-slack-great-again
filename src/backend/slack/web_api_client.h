@@ -37,6 +37,19 @@ public:
         bool           quietErrors = false
     );
 
+    // Like call(), but enqueued on the low-priority background lane: it yields to
+    // every Normal call and is paced by setBackgroundPaceMs. For bulk sweeps (the
+    // per-DM conversations.info resync/activity passes) that must not crowd out
+    // interactive requests or trip a rate-limit tier. Defaults to quietErrors —
+    // routine sweep failures shouldn't spam the log.
+    void callBackground(
+        const QString &method,
+        QUrlQuery      params,
+        OnSuccess      onSuccess,
+        OnError        onError     = {},
+        bool           quietErrors = true
+    );
+
     // Like call(), but for methods whose effect must not be applied twice
     // (chat.postMessage & co). Ambiguous transport failures are NOT retried;
     // onError(kConnectionLost) is fired instead.
