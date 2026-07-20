@@ -124,7 +124,7 @@ private:
     QString                                 _xappToken;
     std::vector<rpl::event_stream<Event> *> _sinks; // non-owning
     QNetworkAccessManager                  *_nam;
-    QWebSocket                             *_ws             = nullptr;
+    QWebSocket                             *_ws          = nullptr;
     // A replacement socket being established while _ws is still live. Used for
     // gapless recycling: when Slack warns it will soon recycle the current
     // socket, we open this one and keep reading events off _ws until it connects
@@ -132,36 +132,51 @@ private:
     // leaves no window without a live socket (Slack does not replay events missed
     // while disconnected). nullptr when no replacement is in flight; _ws itself is
     // only ever a fully-connected socket (a not-yet-connected one lives here).
-    QWebSocket                             *_pendingWs      = nullptr;
+    QWebSocket                             *_pendingWs   = nullptr;
     // The in-flight apps.connections.open reply, or nullptr. Tracked so a
     // teardown can abort it and the late `finished` handler can detect that it
     // was superseded (a stale handshake must never establish a competing socket).
-    QNetworkReply                          *_openReply      = nullptr;
+    QNetworkReply                          *_openReply   = nullptr;
     // Single-flight guard: true from the moment a connect cycle begins (the
     // apps.connections.open POST is sent) until the socket is established
     // (onConnected) or the attempt fails. While set, further connect triggers
     // are ignored — Slack load-balances each event to exactly ONE of an app's
     // open sockets, so a second, app-unread socket would silently steal events.
-    bool                                    _connecting     = false;
-    bool                                    _started        = false;
-    bool                                    _stopped        = false;
+    bool                                    _connecting  = false;
+    bool                                    _started     = false;
+    bool                                    _stopped     = false;
     // Set once the first Socket Mode session is live ("hello"). A later "hello"
     // means the session was re-established after a gap → fire
     // EvRealtimeReconnected so backends/UI backfill the events Slack didn't
     // replay. Not fired on the first hello (the initial load already covers it).
-    bool                                    _hadHello       = false;
-    int                                     _reconnectMs    = 1000; // exponential backoff, max 30s
+    bool                                    _hadHello    = false;
+    int                                     _reconnectMs = 1000; // exponential backoff, max 30s
+    // Wall-clock ms when the live socket connected (0 when not connected). Used in
+    // onDisconnected to reset the backoff only for a connection that PROVED durable
+    // — a socket Slack evicts seconds after "hello" must keep backing off, not
+    // reset to a 1 s retry (that pinned us in a once-per-second reconnect storm).
+    qint64                                  _connectedSinceMs    = 0;
+    // A connection must stay up at least this long to count as durable and reset
+    // the backoff. Below it, the socket was short-lived (eviction/flap) and the
+    // exponential backoff is preserved.
+    int                                     _stableConnectionMs  = 60000;
     // Liveness watchdog. A sleeping laptop severs the TCP connection silently —
     // QWebSocket can be left half-open ("connected" but dead) so `disconnected`
     // never fires and we'd never reconnect. The watchdog pings the socket and,
     // if no frame/pong has arrived within a deadline, forces a reconnect.
+    // NOTE: Slack does NOT reply to our client-initiated WS pings (confirmed: zero
+    // pongs over a healthy multi-minute connection), so on a QUIET workspace
+    // _lastActivityMs never refreshes and this watchdog force-reconnects a
+    // perfectly healthy socket at _staleMs. Slack's OWN server pings keep the TCP
+    // link alive (QWebSocket auto-pongs them) but don't surface here. Liveness
+    // must not depend on a client ping→pong round-trip — see follow-up.
     // `_lastActivityMs` is WALL-CLOCK (QDateTime), not monotonic: monotonic time
     // pauses during system suspend, so a suspend gap would be invisible to it;
     // wall clock makes the post-wake staleness obvious.
-    QTimer                                 *_watchdog       = nullptr;
-    qint64                                  _lastActivityMs = 0;
-    int                                     _watchdogMs     = 20000;
-    int                                     _staleMs        = 50000;
+    QTimer                                 *_watchdog            = nullptr;
+    qint64                                  _lastActivityMs      = 0;
+    int                                     _watchdogMs          = 20000;
+    int                                     _staleMs             = 50000;
     bool                                    _reachabilityWatched = false;
     // apps.connections.open endpoint; overridable for tests.
     QUrl                                    _openUrl{"https://slack.com/api/apps.connections.open"};

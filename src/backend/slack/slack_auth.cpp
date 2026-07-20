@@ -4,6 +4,7 @@
 
 #include "app_credentials.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
@@ -55,6 +56,20 @@ AppConfig appConfig() {
         cfg.clientSecret = personal.clientSecret;
     if (!personal.xapp.isEmpty())
         cfg.xapp = personal.xapp;
+    // Log the effective app identity ONCE so a client_id/xapp mismatch is visible.
+    // The socket uses cfg.xapp's app; sign-in uses cfg.clientId's app — if a user
+    // sets their own xapp but signs in (or stays signed in) under a different app,
+    // that app's Socket Mode connection has nothing to deliver and Slack closes it
+    // after ~10 s. clientId is `<team>.<apppart>`; xapp is `xapp-1-<APPID>-…`.
+    static bool logged = false;
+    if (!logged) {
+        logged            = true;
+        const auto    src = [](const QString &p) { return p.isEmpty() ? "compiled" : "settings"; };
+        const QString xappApp = cfg.xapp.section('-', 2, 2); // A0…
+        qInfo().noquote() << "Slack app identity — clientId" << cfg.clientId.left(20) << "("
+                          << src(personal.clientId) << "), secret (" << src(personal.clientSecret)
+                          << "), xapp app" << xappApp << "(" << src(personal.xapp) << ")";
+    }
     return cfg;
 }
 

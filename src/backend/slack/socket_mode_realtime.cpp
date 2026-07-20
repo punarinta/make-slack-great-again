@@ -131,7 +131,14 @@ void SocketModeRealtime::openAndConnect() {
             scheduleReconnect();
             return;
         }
-        _reconnectMs = 1000; // reset backoff on a successful handshake
+        // NB: do NOT reset the backoff here. A successful apps.connections.open
+        // handshake proves nothing about whether the socket will SURVIVE — Slack
+        // may evict it seconds after "hello" (the bare-1000 contention signature).
+        // Resetting on every handshake pinned the retry gap at 1 s, so an evicted
+        // socket reconnected once per second forever: pointless load, a self-
+        // inflicted conversations.* 429 storm, and it makes a two-client eviction
+        // fight maximally violent. The backoff is instead reset in onDisconnected
+        // only after a connection proved durable (see _stableConnectionMs).
         // _connecting stays set until the socket connects (onConnected) or the
         // attempt fails (onDisconnected / errorOccurred), so a stray reconnect
         // trigger in the meantime can't open a second socket.
@@ -332,9 +339,10 @@ void SocketModeRealtime::onConnected() {
         // grants a settle-window allowance instead of flagging false contention.
         _recentOverlapPromoteMs = QDateTime::currentMSecsSinceEpoch();
     }
-    _ws         = sock;
-    _pendingWs  = nullptr;
-    _connecting = false; // cycle complete — future reconnects may proceed
+    _ws               = sock;
+    _pendingWs        = nullptr;
+    _connecting       = false; // cycle complete — future reconnects may proceed
+    _connectedSinceMs = QDateTime::currentMSecsSinceEpoch();
     qDebug() << "Socket Mode: connected";
     touchActivity();
     sendPresenceSub();
@@ -373,8 +381,26 @@ void SocketModeRealtime::onDisconnected() {
     // (Also skips contention counting: an overlap close isn't an eviction.)
     if (_connecting || _pendingWs)
         return;
-    if (bareClose)
+    // How long did this socket live? A connection Slack evicts seconds after
+    // "hello" (short-lived, over and over) is the external-contention signature;
+    // a long-lived one that finally drops is a routine recycle/network blip.
+    const qint64 nowMs    = QDateTime::currentMSecsSinceEpoch();
+    const qint64 lifetime = _connectedSinceMs ? nowMs - _connectedSinceMs : 0;
+    _connectedSinceMs     = 0;
+    if (bareClose) {
+        // A bare 1000 close (no disconnect envelope) has TWO causes we can't tell
+        // apart from the close alone: another client evicting us from the app's
+        // pool (contention — confirmed only when a hello reports num_connections >
+        // ours), OR Slack idle-closing a socket whose keepalives don't traverse the
+        // network (a middlebox/proxy dropping WS control frames — the signature is
+        // a near-constant ~10 s lifetime with num_connections == ours throughout).
+        qDebug() << "Socket Mode: bare 1000 close after" << lifetime << "ms alive";
         noteBareClose();
+    }
+    // Reset the backoff ONLY when the connection proved durable — otherwise let it
+    // grow exponentially so a flapping/evicted socket stops hammering a 1 s retry.
+    if (lifetime >= _stableConnectionMs)
+        _reconnectMs = 1000;
     if (!_stopped)
         scheduleReconnect();
 }
@@ -502,11 +528,23 @@ void SocketModeRealtime::maybeNotifyContention() {
     if (_lastContentionNoticeMs && now - _lastContentionNoticeMs < _contentionNoticeGapMs)
         return; // already warned recently — don't spam a sustained storm
     _lastContentionNoticeMs = now;
-    qWarning() << "Socket Mode: connection-pool contention —" << _lastOtherConnections
-               << "other connection(s) open for this app; another msga instance elsewhere is "
-                  "sharing this app's xapp token (nothing local — SingleInstance forbids a second "
-                  "local copy)";
-    broadcast(Event{EvRealtimeContended{_lastOtherConnections}});
+    if (_lastOtherConnections > 0) {
+        // Real contention: a hello actually counted other connections on this app.
+        qWarning() << "Socket Mode: connection-pool contention —" << _lastOtherConnections
+                   << "other connection(s) open for this app; another msga instance elsewhere is "
+                      "sharing this app's xapp token (nothing local — SingleInstance forbids a "
+                      "second local copy)";
+        broadcast(Event{EvRealtimeContended{_lastOtherConnections}});
+        return;
+    }
+    // Repeated bare closes but NO other connections were ever counted: this is NOT
+    // contention (claiming "another instance" here was a false alarm). The likely
+    // cause is Slack idle-closing because our WS keepalives don't traverse the
+    // network — a middlebox/proxy/VPN dropping WebSocket control frames. Warn
+    // honestly and do NOT raise EvRealtimeContended (it drives a wrong UI banner).
+    qWarning() << "Socket Mode: socket repeatedly closed by the server with no other connections "
+                  "present — realtime keepalives may be blocked by a proxy/VPN/firewall (WS "
+                  "control frames not traversing the network)";
 }
 
 // ── Event normalization ───────────────────────────────────────────────────────

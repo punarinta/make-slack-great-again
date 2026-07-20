@@ -347,15 +347,17 @@ TEST_CASE("reconnectNow recovers a silent stall with a gapless overlapping repla
         p->deleteLater();
 }
 
-TEST_CASE("repeated bare code-1000 closes raise EvRealtimeContended") {
+TEST_CASE("repeated bare code-1000 closes WITHOUT other connections do NOT flag contention") {
     // Slack cleanly closing our LIVE socket (WebSocket close code 1000) with no
-    // preceding "disconnect" envelope, over and over, is an eviction from the
-    // app's ≤10-connection pool: another instance is sharing the compiled-in
-    // app-level xapp token and Slack round-robins us out. A single such close can
-    // be a routine recycle, so the guard only fires once several cluster in the
-    // window — then the higher layers can tell the user the cause instead of
-    // silently reconnect-storming. Model it with a server that accepts each
-    // connection and immediately closes it cleanly, envelope-free.
+    // preceding "disconnect" envelope, over and over, is ambiguous: it can be an
+    // eviction by another instance sharing the xapp token OR Slack idle-closing a
+    // socket whose keepalives don't traverse the network (a proxy/VPN/firewall
+    // dropping WS control frames — observed as a near-constant ~10 s lifetime with
+    // num_connections == ours). Because the close alone can't distinguish them,
+    // EvRealtimeContended (which tells the user "another device stole your
+    // connection") must NOT fire on bare closes unless a hello actually counted
+    // other connections. Model the network case: a server that accepts each
+    // connection and immediately closes it cleanly, envelope-free and hello-free.
     QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
     REQUIRE(ws.listen(QHostAddress::LocalHost));
     std::vector<QWebSocket *> peers;
@@ -389,12 +391,10 @@ TEST_CASE("repeated bare code-1000 closes raise EvRealtimeContended") {
     rt.addSink(&sink);
     rt.start();
 
-    // Each bare close triggers a ~1 s backoff reconnect (the successful handshake
-    // resets the backoff every cycle), so the third close lands within a few
-    // seconds — give margin over the default timeout.
-    REQUIRE(waitFor([&] { return contended >= 1; }, 15000));
-    // The guard must not fire on the first close — it took a cluster to trip.
-    CHECK(total >= 3);
+    // Let several bare closes cluster (enough to trip the old counter-based guard).
+    REQUIRE(waitFor([&] { return total >= 3; }, 15000));
+    // No hello ever reported other connections, so contention must NOT be flagged.
+    CHECK(contended == 0);
 
     rt.stop();
     for (auto *p : peers)
