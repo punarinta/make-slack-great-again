@@ -97,10 +97,9 @@ private:
     // Tear down the current socket and reconnect immediately (no backoff). Used
     // by the liveness watchdog when the connection has gone silently dead.
     void                 forceReconnect();
-    // Watchdog: pings the socket and forces a reconnect if it has gone silent.
+    // Watchdog: detects a suspend/sleep gap (see the _lastCheckMs comment) and
+    // forces a reconnect; otherwise just sends a keepalive ping.
     void                 checkLiveness();
-    // Record that the socket is alive right now (wall clock).
-    void                 touchActivity();
     // Wire up QNetworkInformation so we reconnect the instant the OS reports the
     // network is reachable again (e.g. right after wake), instead of waiting for
     // the watchdog deadline. Best-effort: no-op if no backend is available.
@@ -160,21 +159,28 @@ private:
     // the backoff. Below it, the socket was short-lived (eviction/flap) and the
     // exponential backoff is preserved.
     int                                     _stableConnectionMs  = 60000;
-    // Liveness watchdog. A sleeping laptop severs the TCP connection silently —
-    // QWebSocket can be left half-open ("connected" but dead) so `disconnected`
-    // never fires and we'd never reconnect. The watchdog pings the socket and,
-    // if no frame/pong has arrived within a deadline, forces a reconnect.
-    // NOTE: Slack does NOT reply to our client-initiated WS pings (confirmed: zero
-    // pongs over a healthy multi-minute connection), so on a QUIET workspace
-    // _lastActivityMs never refreshes and this watchdog force-reconnects a
-    // perfectly healthy socket at _staleMs. Slack's OWN server pings keep the TCP
-    // link alive (QWebSocket auto-pongs them) but don't surface here. Liveness
-    // must not depend on a client ping→pong round-trip — see follow-up.
-    // `_lastActivityMs` is WALL-CLOCK (QDateTime), not monotonic: monotonic time
-    // pauses during system suspend, so a suspend gap would be invisible to it;
-    // wall clock makes the post-wake staleness obvious.
+    // Liveness watchdog. Its ONLY job is the one failure no transport signal
+    // catches: a sleeping laptop severs TCP silently, leaving QWebSocket half-open
+    // ("connected" but dead) so `disconnected` never fires. It detects that via its
+    // OWN cadence — the timer fires every _watchdogMs, so if WALL-CLOCK shows far
+    // more than that elapsed between two ticks (> _staleMs), the process was frozen
+    // (suspend/hibernate) and the connection is presumed dead → reconnect.
+    // `_lastCheckMs` must be wall-clock (QDateTime), not monotonic: monotonic time
+    // pauses during suspend, which would hide the very gap we're looking for.
+    //
+    // It deliberately does NOT reconnect on mere silence. Slack never pongs our
+    // client pings (confirmed: zero pongs over a healthy multi-minute connection)
+    // and its own server pings are auto-ponged by QWebSocket without surfacing, so a
+    // QUIET-but-healthy workspace has no observable activity — indistinguishable from
+    // a dead socket. The old "no activity for _staleMs → reconnect" rule therefore
+    // force-reconnected healthy sockets every ~_staleMs, each firing a conversations.*
+    // catch-up burst that tripped Slack's 1-req/min conversations.history limit.
+    // Genuine drops surface via disconnected/errorOccurred + the reachability watcher;
+    // a socket that stays connected but silently stops DELIVERING events is caught,
+    // with evidence, by Session's history safety-poll (reestablishRealtime() on a real
+    // missed message).
     QTimer                                 *_watchdog            = nullptr;
-    qint64                                  _lastActivityMs      = 0;
+    qint64                                  _lastCheckMs         = 0;
     int                                     _watchdogMs          = 20000;
     int                                     _staleMs             = 50000;
     bool                                    _reachabilityWatched = false;

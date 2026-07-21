@@ -440,19 +440,23 @@ void Session::start() {
                         _parallelUsageHub.fire({});
                     }
                 } else if (auto *ev = std::get_if<EvRateLimited>(&e)) {
-                    // Surface a transient notice. 429s cluster (background polls
-                    // hammer the same window), so throttle to one banner per
-                    // window — otherwise a sweep would spam it repeatedly.
+                    // Surface a transient notice naming the throttled method, so
+                    // it's clear whether it's a background sweep (conversations.info
+                    // /.list/.history on reconnect) or an interactive call. 429s
+                    // cluster (background polls hammer the same window), so throttle
+                    // to one banner per window — otherwise a sweep would spam it
+                    // repeatedly; the banner names whichever method tripped first.
                     const qint64 now = QDateTime::currentMSecsSinceEpoch();
                     if (now - _lastRateLimitNoticeMs >= kRateLimitNoticeGapMs) {
                         _lastRateLimitNoticeMs = now;
                         _errorHub.fire(
                             QCoreApplication::translate(
                                 "Session",
-                                "Slack is rate-limiting requests — retrying in %n second(s).",
+                                "Slack is rate-limiting requests (%1) — retrying in %n second(s).",
                                 nullptr,
                                 ev->retryAfterSecs
                             )
+                                .arg(ev->method)
                         );
                     }
                 }

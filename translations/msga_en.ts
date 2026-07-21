@@ -116,10 +116,13 @@ Set MSGA_TEAMS_CLIENT_ID in credentials.cmake and rebuild.</translation>
         <source>Couldn't send message: %1</source>
         <translation>Couldn't send message: %1</translation>
     </message>
-    <message>
-        <location filename="../src/session/session.cpp" line="450"/>
-        <source>Slack is rate-limiting requests — retrying in %n second(s).</source>
-        <translation>Slack is rate-limiting requests — retrying in %n second(s).</translation>
+    <message numerus="yes">
+        <location filename="../src/session/session.cpp" line="453"/>
+        <source>Slack is rate-limiting requests (%1) — retrying in %n second(s).</source>
+        <translation>
+            <numerusform>Slack is rate-limiting requests (%1) — retrying in %n second.</numerusform>
+            <numerusform>Slack is rate-limiting requests (%1) — retrying in %n seconds.</numerusform>
+        </translation>
     </message>
     <message>
         <location filename="../src/session/session.cpp" line="1269"/>

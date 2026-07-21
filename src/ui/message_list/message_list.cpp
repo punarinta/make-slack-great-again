@@ -3466,10 +3466,17 @@ void MessageListWidget::handleEvent(const Event &e) {
 void MessageListWidget::backfillAfterReconnect() {
     if (!_session || _currentConv.value.isEmpty())
         return;
-    const auto conv     = _currentConv;
-    auto       producer = _isThreadMode
-                              ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
-                              : _session->backend()->loadHistory(conv, std::nullopt);
+    // Collapse a reconnect flap into one head fetch per window (see the member
+    // comment): conversations.history is rate-limited to ~1 req/min, and an
+    // un-gated backfill on every EvRealtimeReconnected was a 429 source.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - _lastReconnectBackfillMs < kReconnectBackfillGapMs)
+        return;
+    _lastReconnectBackfillMs = now;
+    const auto conv          = _currentConv;
+    auto       producer      = _isThreadMode
+                                   ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
+                                   : _session->backend()->loadHistory(conv, std::nullopt);
     std::move(producer) |
         rpl::on_next(
             [this, conv](MessagePage page) {

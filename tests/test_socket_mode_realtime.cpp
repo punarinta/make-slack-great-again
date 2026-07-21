@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 //
-// Covers the Socket Mode liveness watchdog: after a laptop sleeps, the TCP
-// connection backing the WebSocket is severed silently, leaving a half-open
-// ("connected" but dead) socket whose `disconnected` signal never fires. The
-// watchdog pings the socket and, when no frame/pong comes back within the
-// deadline, forces a reconnect. These tests exercise both the positive path
-// (silent peer → reconnect) and the negative path (healthy peer → no churn).
+// Covers the Socket Mode liveness watchdog. Its sole job is the one failure no
+// transport signal reports: after the machine suspends (laptop sleep) TCP is severed
+// silently, leaving a half-open ("connected" but dead) socket whose `disconnected`
+// never fires. The watchdog notices via its OWN tick cadence — a wall-clock gap
+// between ticks far larger than its interval means the process was frozen — and
+// reconnects. It deliberately does NOT reconnect on mere silence (Slack never pongs
+// our client pings, so a quiet-but-healthy socket is indistinguishable from a dead
+// one). These tests exercise the positive path (a simulated suspend gap → reconnect)
+// and the negative path (a healthy, normally-ticking connection → no churn).
 
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -16,6 +19,7 @@
 #include <QDeadlineTimer>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QThread>
 #include <QWebSocketServer>
 #include <QWebSocket>
 
@@ -42,11 +46,12 @@ static bool waitFor(std::function<bool()> pred, int timeoutMs = 5000) {
 }
 
 // ── DeadPeerWsServer ──────────────────────────────────────────────────────────
-// A minimal WebSocket server that completes the opening handshake and then
-// goes completely silent: it never sends frames and never replies to pings.
-// This models the half-open socket a sleeping laptop leaves behind — the kind
-// QWebSocketServer can't simulate, because a live QWebSocket auto-replies to
-// every ping with a pong and would keep the connection looking alive.
+// A minimal WebSocket server that completes the opening handshake and then goes
+// completely silent: it never sends frames and never replies to pings — exactly
+// like real Slack, which does not pong client pings. QWebSocketServer can't model
+// this because a live QWebSocket auto-replies to every ping with a pong. The
+// watchdog leaves such a quiet-but-connected peer alone; only a simulated suspend
+// gap (see the test below) makes it reconnect.
 class DeadPeerWsServer {
 public:
     DeadPeerWsServer() {
@@ -138,7 +143,7 @@ private:
     std::vector<QWebSocket *> _peers;
 };
 
-TEST_CASE("watchdog reconnects when the socket goes silent") {
+TEST_CASE("watchdog reconnects after a suspend gap") {
     DeadPeerWsServer ws;
     FakeHttpServer   http;
     // Each (re)connect performs one apps.connections.open POST; queue several.
@@ -147,13 +152,21 @@ TEST_CASE("watchdog reconnects when the socket goes silent") {
 
     SocketModeRealtime rt("xapp-test-token");
     rt.setConnectionsOpenUrlForTest(QUrl(http.baseUrl() + "apps.connections.open"));
+    // watchdogMs = tick interval; staleMs = the between-tick gap that counts as a
+    // process suspend.
     rt.setWatchdogTimingForTest(/*watchdogMs=*/40, /*staleMs=*/120);
     rt.start();
 
-    // First handshake establishes the connection.
+    // First handshake establishes the connection; let onConnected settle so the
+    // watchdog sees a CONNECTED socket.
     REQUIRE(waitFor([&] { return ws.handshakes >= 1; }));
-    // The peer never pongs, so activity goes stale and the watchdog forces a
-    // reconnect — yielding a second (and further) handshakes.
+    waitFor([] { return false; }, 100);
+
+    // Simulate the process being frozen across a watchdog interval (laptop sleep):
+    // block the event loop past the suspend threshold, so the next tick sees a large
+    // wall-clock gap between ticks and force-reconnects — a second handshake. Mere
+    // silence would NOT do this (the peer never pongs and we don't reconnect on that).
+    QThread::msleep(250);
     REQUIRE(waitFor([&] { return ws.handshakes >= 2; }));
 
     rt.stop();
@@ -495,8 +508,9 @@ TEST_CASE("a hello reporting num_connections == ours does NOT flag contention") 
 }
 
 TEST_CASE("watchdog leaves a healthy idle connection alone") {
-    // A real QWebSocket server auto-replies to pings with pongs, so the
-    // connection keeps showing activity even with no app traffic.
+    // The watchdog reconnects only on a suspend-sized gap between its own ticks, not
+    // on silence. A normally-ticking event loop never produces that gap, so a healthy
+    // idle connection is left completely alone even with no app traffic.
     QWebSocketServer ws("test", QWebSocketServer::NonSecureMode);
     REQUIRE(ws.listen(QHostAddress::LocalHost));
     int                       connections = 0;

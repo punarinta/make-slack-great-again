@@ -573,10 +573,18 @@ private:
     // System/activity lines (joins, topic changes, …): centered single line.
     static constexpr int kSysRowPadV = 6; // vertical padding above and below the line
 
-    Session       *_session;
-    ConversationId _currentConv;
-    bool           _isThreadMode = false;
-    Ts             _threadRootTs;
+    Session                *_session;
+    ConversationId          _currentConv;
+    bool                    _isThreadMode = false;
+    Ts                      _threadRootTs;
+    // Rate-gate for backfillAfterReconnect(): each EvRealtimeReconnected triggers a
+    // head-history (conversations.history) fetch, and a flapping socket fires that
+    // event repeatedly. conversations.history is Slack's tightest budget (~1 req/min
+    // for non-Marketplace apps), so collapse a burst of reconnects into one backfill
+    // per window; a genuine reconnect still refetches, and Session's periodic history
+    // poll covers anything skipped. Wall-clock (matches Session's reconnect gates).
+    qint64                  _lastReconnectBackfillMs = 0;
+    static constexpr qint64 kReconnectBackfillGapMs  = 30'000;
 
     // ── Inline threads (Appearance → Threads = Inline) ──
     // Loaded replies + load state for one inline-expanded thread.

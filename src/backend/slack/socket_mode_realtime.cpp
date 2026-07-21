@@ -31,9 +31,10 @@ void SocketModeRealtime::start() {
         return;
     _started = true;
     if (!_watchdog) {
-        // Slack sends frequent traffic (server pings every few seconds) and we
-        // additionally ping on every tick, so a connection that produces nothing
-        // for ~2.5 ticks (_staleMs) is genuinely dead — not merely idle.
+        // Ticks every _watchdogMs. It force-reconnects ONLY when its own tick cadence
+        // reveals the process was frozen (a suspend gap > _staleMs) — the half-open-
+        // after-sleep case; it does not treat mere idle silence as death. See the
+        // _lastCheckMs comment and checkLiveness().
         _watchdog = new QTimer(this);
         _watchdog->setInterval(_watchdogMs);
         connect(_watchdog, &QTimer::timeout, this, &SocketModeRealtime::checkLiveness);
@@ -180,10 +181,6 @@ void SocketModeRealtime::connectWs(const QUrl &url) {
         if (!_stopped)
             scheduleReconnect();
     });
-    // A pong is proof the socket is still alive even when the workspace is quiet.
-    connect(sock, &QWebSocket::pong, this, [this](quint64, const QByteArray &) {
-        touchActivity();
-    });
     sock->open(url);
 }
 
@@ -251,21 +248,34 @@ void SocketModeRealtime::forceReconnect() {
 }
 
 void SocketModeRealtime::checkLiveness() {
+    // Measure the gap since the previous tick on every fire (even while
+    // disconnected, so a reconnect in progress can't leave a stale baseline that
+    // looks like a suspend on the next connected tick).
+    const qint64 now     = QDateTime::currentMSecsSinceEpoch();
+    const qint64 tickGap = _lastCheckMs ? now - _lastCheckMs : 0;
+    _lastCheckMs         = now;
+
     if (_stopped || !_ws || _ws->state() != QAbstractSocket::ConnectedState)
         return; // not connected: onDisconnected / scheduleReconnect own recovery
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (_lastActivityMs && now - _lastActivityMs > _staleMs) {
-        // No frame and no pong for the whole deadline — the socket is a zombie
-        // (typical after a laptop sleep severs TCP silently). Reconnect.
+
+    // Suspend/sleep detection — the ONLY reason this watchdog force-reconnects. The
+    // timer fires every _watchdogMs; a wall-clock gap far larger than that means the
+    // process was frozen (laptop sleep/hibernate), which silently severs TCP and
+    // leaves QWebSocket half-open ("connected" but dead, so `disconnected` never
+    // fires). That is exactly the case no transport signal catches, so reconnect.
+    if (tickGap > _staleMs) {
+        qWarning() << "Socket Mode: watchdog gap" << tickGap
+                   << "ms — process was suspended, forcing reconnect";
         forceReconnect();
         return;
     }
-    // Probe: a healthy server answers with a pong, which refreshes activity.
-    _ws->ping();
-}
 
-void SocketModeRealtime::touchActivity() {
-    _lastActivityMs = QDateTime::currentMSecsSinceEpoch();
+    // Keepalive only. This ping is NOT a liveness probe: Slack never pongs it (see
+    // the _lastCheckMs comment), so we don't reconnect on its absence — it just keeps
+    // middlebox NAT mappings from idle-dropping the connection. A quiet-but-healthy
+    // socket is deliberately left alone; Session's history poll re-establishes it, on
+    // evidence, if it ever silently stops delivering events.
+    _ws->ping();
 }
 
 void SocketModeRealtime::setupReachabilityWatch() {
@@ -344,7 +354,6 @@ void SocketModeRealtime::onConnected() {
     _connecting       = false; // cycle complete — future reconnects may proceed
     _connectedSinceMs = QDateTime::currentMSecsSinceEpoch();
     qDebug() << "Socket Mode: connected";
-    touchActivity();
     sendPresenceSub();
 }
 
@@ -406,7 +415,6 @@ void SocketModeRealtime::onDisconnected() {
 }
 
 void SocketModeRealtime::onTextMessage(const QString &text) {
-    touchActivity(); // any frame proves the socket is alive
     const auto envelope = QJsonDocument::fromJson(text.toUtf8()).object();
     const auto type     = envelope.value("type").toString();
 

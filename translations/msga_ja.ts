@@ -1475,10 +1475,10 @@ This action cannot be undone.</source>
         <translation>メッセージを送信できませんでした: %1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../src/session/session.cpp" line="450"/>
-        <source>Slack is rate-limiting requests — retrying in %n second(s).</source>
+        <location filename="../src/session/session.cpp" line="453"/>
+        <source>Slack is rate-limiting requests (%1) — retrying in %n second(s).</source>
         <translation>
-            <numerusform>Slackがリクエストをレート制限しています — %n 秒後に再試行します。</numerusform>
+            <numerusform>Slackがリクエストをレート制限しています (%1) — %n 秒後に再試行します。</numerusform>
         </translation>
     </message>
     <message>
