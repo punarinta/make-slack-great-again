@@ -294,6 +294,96 @@ TEST_CASE_METHOD(
     CHECK(server.requestCount <= 4);
 }
 
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "WebApiClient: invalid_auth triggers the token-refresh handler and retries",
+    "[token_refresh][webclient]"
+) {
+    // invalid_auth (not just token_expired) means the token we sent was rejected.
+    // With rotation it can be a token silently superseded by another device, which
+    // a refresh cures — so it must drive the same refresh-and-retry as an expiry,
+    // not leave the app silently loading nothing.
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":false,"error":"invalid_auth"})");
+    server.enqueue(R"({"ok":true})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("stale-token");
+
+    bool handlerCalled = false;
+    bool successCalled = false;
+    client.setOnTokenExpired([&](std::function<void(bool)> done) {
+        handlerCalled = true;
+        client.setToken("fresh-token");
+        done(true);
+    });
+    client.call("some.method", QUrlQuery{}, [&](QJsonObject) { successCalled = true; }, {});
+
+    REQUIRE(waitFor([&] { return successCalled; }));
+    CHECK(handlerCalled);
+    CHECK(server.requestCount == 2); // initial + retry
+}
+
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "WebApiClient: invalid_auth persisting after a refresh fails the call, no refresh loop",
+    "[token_refresh][webclient]"
+) {
+    // The loop guard: if the token stays rejected even after a "successful"
+    // refresh (a dead refresh token, an IP-disallowed request), the call must
+    // give up after ONE refresh attempt instead of pausing → refreshing →
+    // re-failing forever and hammering oauth.v2.access.
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":false,"error":"invalid_auth"})"); // initial
+    server.enqueue(R"({"ok":false,"error":"invalid_auth"})"); // the one retry
+    server.enqueue(R"({"ok":false,"error":"invalid_auth"})"); // must never be reached
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("dead-token");
+
+    int     handlerCalls = 0;
+    int     errorCount   = 0;
+    QString errorMsg;
+    client.setOnTokenExpired([&](std::function<void(bool)> done) {
+        handlerCalls++;
+        done(true); // refresh "succeeds" but the token is still rejected
+    });
+    client.call("some.method", {}, {}, [&](QString e) {
+        errorCount++;
+        errorMsg = e;
+    });
+
+    REQUIRE(waitFor([&] { return errorCount == 1; }));
+    CHECK(errorMsg == "invalid_auth");
+    CHECK(handlerCalls == 1);        // refresh attempted exactly once
+    CHECK(server.requestCount == 2); // initial + one retry, then it gives up
+}
+
+TEST_CASE_METHOD(
+    RefreshFixture,
+    "WebApiClient: invalid_auth without handler is treated as a regular error",
+    "[token_refresh][webclient]"
+) {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":false,"error":"invalid_auth"})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    // No setOnTokenExpired — handler is null, so nothing to refresh with.
+
+    bool    errorCalled = false;
+    QString errorMsg;
+    client.call("method", {}, {}, [&](QString err) {
+        errorCalled = true;
+        errorMsg    = err;
+    });
+
+    REQUIRE(waitFor([&] { return errorCalled; }));
+    CHECK(errorMsg == "invalid_auth");
+}
+
 // =============================================================================
 // PublicBackend — proactive refresh scheduling (via TestablePublicBackend)
 // =============================================================================

@@ -60,9 +60,10 @@ public:
 public slots:
     // Called by SingleInstance when the OS delivers msga://oauth/callback?code=…
     void handleOAuthUri(const QUrl &uri);
-    // Open the conversation a clicked notification points at, from an opaque
-    // "teamId\x1fconvId" token. Both the in-process notifier click signal and the
-    // Windows toast's msga://notif protocol-activation funnel through here.
+    // Open the target a clicked notification points at, from an opaque
+    // encodeNotifToken() string (team + conv, plus a thread root for a reply).
+    // Both the in-process notifier click signal and the Windows toast's
+    // msga://notif protocol-activation funnel through here.
     void handleNotifToken(const QString &token);
 
 private:
@@ -145,7 +146,15 @@ private:
     void showSampleNotification(int kind);
     // Bring the window forward and open the conversation a clicked notification
     // points at (shared by the tray and the freedesktop-notifier click paths).
-    void openNotifTarget(const QString &teamId, const ConversationId &conv);
+    // When threadRoot is non-empty the notified message was a thread reply
+    // (invisible in the channel timeline — conversations.history omits replies),
+    // so open the thread panel at that root, matching what Slack does on click.
+    void
+    openNotifTarget(const QString &teamId, const ConversationId &conv, const Ts &threadRoot = {});
+    // Reveal and load the thread panel for a conversation's thread root, sizing
+    // the splitter if collapsed. Shared by the message-list thread click and the
+    // thread-reply notification click.
+    void openThreadPanel(const ConversationId &conv, const Ts &rootTs);
     void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 
@@ -235,6 +244,9 @@ private:
     ConversationId _pendingNavConv; // jump target awaiting the new workspace's conv list
     ConversationId _pendingNotifConv;
     QString        _pendingNotifTeam;
+    // Thread root of the pending (tray-fallback) notification, empty for a plain
+    // message; carried so a tray click opens the thread the reply lives in.
+    Ts             _pendingNotifThreadRoot;
     // "teamId\x1fconvId" of huddles we've already shown a notification for, so a
     // re-fired EvHuddleChanged (edit / history reconcile) can't double-notify;
     // cleared when the huddle ends so its next start notifies again.

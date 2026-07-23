@@ -101,10 +101,14 @@ protected:
         QJsonObject jsonBody; // non-empty → POST JSON instead of GET with params
         OnSuccess   onSuccess;
         OnError     onError;
-        bool        quietErrors      = false; // skip the generic error warning
-        bool        idempotent       = true;  // safe to resend after an ambiguous failure
-        int         transportRetries = 0;     // transport/transient retries so far
-        Priority    priority         = Priority::Normal;
+        bool        quietErrors        = false; // skip the generic error warning
+        bool        idempotent         = true;  // safe to resend after an ambiguous failure
+        int         transportRetries   = 0;     // transport/transient retries so far
+        // Times this call has paused the queue for a token refresh. Bounded so a
+        // token that stays rejected after a "successful" refresh (e.g. invalid_auth
+        // that a refresh can't cure) fails the call instead of looping the refresh.
+        int         authRefreshRetries = 0;
+        Priority    priority           = Priority::Normal;
     };
 
     void enqueue(PendingCall c);

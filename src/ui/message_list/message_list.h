@@ -249,6 +249,12 @@ private:
     // recovering messages that arrived while the realtime socket was down (Slack
     // doesn't replay them). Driven by EvRealtimeReconnected.
     void backfillAfterReconnect();
+    // Merge an already-fetched head page into the open conversation, caching it
+    // and preserving scroll. Shared by backfillAfterReconnect() (which fetches the
+    // page itself) and the EvHeadRefresh path (where the safety poll already
+    // fetched it — reused so no extra conversations.history call is made). No-ops
+    // unless `conv` is the open conversation and we're not in thread mode.
+    void mergeHeadPage(const ConversationId &conv, const std::vector<Message> &messages);
     // Apply the pending open-scroll intent (saved position / first unread /
     // bottom) if set.
     void applyPendingScroll();

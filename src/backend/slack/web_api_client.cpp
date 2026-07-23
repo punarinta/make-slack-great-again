@@ -31,6 +31,23 @@ bool isTransientSlackError(const QString &err) {
 // failing endpoint, so bound it and surface the error after ~1 min of backoff.
 constexpr int kMaxTransientSlackRetries = 6;
 
+// The token our request carried was rejected outright. `token_expired` is the
+// clean Slack token-rotation signal; `invalid_auth` is what Slack returns when
+// the access token is simply no good — revoked, or (with rotation) silently
+// superseded by a refresh that happened on another device, which also burns our
+// stored refresh token. Both mean "refresh, or make the user sign in again".
+bool isAuthRejection(const QString &err) {
+    return err == "token_expired" || err == "invalid_auth";
+}
+
+// A refresh retries the failing call transparently on success. token_expired
+// can't recur against a freshly-minted token, but invalid_auth can persist
+// (dead refresh token, IP-disallowed), so bound the refresh-and-retry to one
+// attempt per call — otherwise a permanently-rejected token loops the refresh
+// forever, hammering oauth.v2.access. Past the cap the call fails, and a failed
+// refresh already drives AuthState::NotLoggedIn → the login screen.
+constexpr int kMaxAuthRefreshRetries = 1;
+
 } // namespace
 
 WebApiClient::WebApiClient(QObject *parent) : net::HttpQueue(parent) {
@@ -188,10 +205,12 @@ void WebApiClient::handleResponse(const QJsonObject &obj, PendingCall c) {
                        << "| needed:" << obj.value("needed").toString()
                        << "| provided:" << obj.value("provided").toString();
 
-        if (err == "token_expired" && hasTokenExpiredHandler()) {
-            qDebug() << "WebApiClient: token_expired on" << c.method
-                     << "— pausing queue, re-queuing call";
-            pauseForTokenRefresh(std::move(c), "token_expired");
+        if (isAuthRejection(err) && hasTokenExpiredHandler() &&
+            c.authRefreshRetries < kMaxAuthRefreshRetries) {
+            c.authRefreshRetries++;
+            qDebug() << "WebApiClient:" << err << "on" << c.method
+                     << "— pausing queue for token refresh (attempt" << c.authRefreshRetries << ")";
+            pauseForTokenRefresh(std::move(c), err);
         } else {
             if (c.onError)
                 c.onError(err);

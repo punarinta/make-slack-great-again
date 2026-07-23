@@ -322,6 +322,40 @@ inline bool shouldNotifyHuddleStart(
     return true;
 }
 
+// Click-target of an OS notification, round-tripped through the notifier (and,
+// on Windows, an msga:// protocol activation) as a 0x1f-separated token:
+// "teamId\x1fconvId", or "teamId\x1fconvId\x1frootTs" when the notified message
+// is a thread reply. The root matters because conversations.history omits thread
+// replies, so opening the channel alone lands on a timeline the reply isn't in
+// ("notification, but nothing there") — the root routes the click to the thread.
+// Encapsulated + unit-tested because the field splitting is easy to get subtly
+// wrong (e.g. a naive indexOf swallowing the root into the conv id).
+struct NotifTarget {
+    QString        teamId;
+    ConversationId conv;
+    Ts             threadRoot; // empty unless the notified message was a reply
+    bool           operator==(const NotifTarget &) const = default;
+};
+
+inline QString
+encodeNotifToken(const QString &teamId, const ConversationId &conv, const Ts &threadRoot) {
+    QString t = teamId + QChar(0x1f) + conv.value;
+    if (!threadRoot.isEmpty())
+        t += QChar(0x1f) + threadRoot;
+    return t;
+}
+
+inline std::optional<NotifTarget> decodeNotifToken(const QString &token) {
+    const QStringList parts = token.split(QChar(0x1f));
+    if (parts.size() < 2 || parts.at(1).isEmpty())
+        return std::nullopt; // no conversation to open
+    NotifTarget t;
+    t.teamId     = parts.at(0);
+    t.conv       = ConversationId{parts.at(1)};
+    t.threadRoot = parts.size() >= 3 ? parts.at(2) : Ts{};
+    return t;
+}
+
 // One canvases.edit operation. Relative inserts and section ops need a
 // sectionId (the "temp:C:…" ids embedded in the canvas HTML / returned by
 // canvases.sections.lookup); markdown is canvas markdown — real markdown,
@@ -701,6 +735,20 @@ struct EvMessageDeleted {
     // channel list can drop the root's reply count. Empty for root/plain msgs.
     std::optional<Ts> threadRoot;
 };
+// The realtime safety poll re-fetched the open conversation's head page. Unlike
+// EvMessageNew — which the poll fires only for messages NEWER than the latest ts
+// we already hold — this carries the WHOLE head page so the open MessageList can
+// merge it. That fills a *middle* gap: a run of messages the shared socket's
+// round-robin steal dropped, which then got buried under a later message that
+// arrived normally. Once a newer message exists, the "newer than latest" filter
+// can never recover the buried run, so nothing did — the gap sat forever. The
+// merge (mergeNetworkMessages, fromHeadPage) inserts them in order and also
+// reconciles edits/deletions on the head. Open conversation only; the poll fires
+// it foreground-only, where a MessageList is actually showing these rows.
+struct EvHeadRefresh {
+    ConversationId       conv;
+    std::vector<Message> messages;
+};
 struct EvReactionAdded {
     ConversationId conv;
     Ts             ts;
@@ -838,6 +886,7 @@ using Event = std::variant<
     EvMessageNew,
     EvMessageChanged,
     EvMessageDeleted,
+    EvHeadRefresh,
     EvReactionAdded,
     EvReactionRemoved,
     EvConvMarked,

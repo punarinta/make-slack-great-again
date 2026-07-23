@@ -750,15 +750,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         _messageList,
         &MessageListWidget::threadClicked,
         this,
-        [this](ConversationId conv, Ts rootTs) {
-            _threadPanel->setVisible(true);
-            _threadPanel->openThread(conv, rootTs);
-            _messageList->setOpenThreadRoot(rootTs);
-            if (_msgSplitter->sizes().at(1) < 100) {
-                const int total = _msgSplitter->width();
-                _msgSplitter->setSizes({total - 360, 360});
-            }
-        }
+        [this](ConversationId conv, Ts rootTs) { openThreadPanel(conv, rootTs); }
     );
     // Hide the panel and clear the list's open-thread state. This does NOT
     // collapse an inline expansion: the panel can be opened purely to reply to an
@@ -1861,16 +1853,22 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
     // no notification daemon) we fall back to the tray: showMessage's QIcon
     // overload is honoured on Windows toasts; macOS ignores it and uses the app
     // icon, while the image-less toast is the floor everywhere.
+    // A thread reply lives in the thread, not the channel timeline, so carry its
+    // root through the click token: opening the channel alone would land on a
+    // timeline the reply isn't in ("notification, but nothing there").
+    const Ts replyRoot = ev.msg.threadRoot ? *ev.msg.threadRoot : Ts{};
+
     bool shown = false;
     if (_desktopNotifier && _desktopNotifier->isAvailable()) {
-        const QString token = teamId + QChar(0x1f) + ev.conv.value;
+        const QString token = encodeNotifToken(teamId, ev.conv, replyRoot);
         shown               = _desktopNotifier->notify(
             title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), token, {}, 5000
         );
     }
     if (!shown) {
-        _pendingNotifTeam = teamId;
-        _pendingNotifConv = ev.conv;
+        _pendingNotifTeam       = teamId;
+        _pendingNotifConv       = ev.conv;
+        _pendingNotifThreadRoot = replyRoot;
         if (notifPix.isNull())
             _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
         else
@@ -1985,8 +1983,9 @@ void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged 
     if (!shown) {
         // The tray balloon has no action button; a click opens the conversation
         // (which surfaces the HuddleBanner's Join pill).
-        _pendingNotifTeam = teamId;
-        _pendingNotifConv = ev.conv;
+        _pendingNotifTeam       = teamId;
+        _pendingNotifConv       = ev.conv;
+        _pendingNotifThreadRoot = {}; // a huddle isn't a thread
         if (notifPix.isNull())
             _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
         else
@@ -2046,7 +2045,8 @@ void MainWindow::showSampleNotification(int kind) {
         );
     if (!shown && _trayIcon) {
         _pendingNotifTeam.clear();
-        _pendingNotifConv = {};
+        _pendingNotifConv       = {};
+        _pendingNotifThreadRoot = {};
         if (notifPix.isNull())
             _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
         else
@@ -2297,9 +2297,10 @@ void MainWindow::setupTray() {
     );
 
     connect(_trayIcon, &QSystemTrayIcon::messageClicked, this, [this] {
-        openNotifTarget(_pendingNotifTeam, _pendingNotifConv);
+        openNotifTarget(_pendingNotifTeam, _pendingNotifConv, _pendingNotifThreadRoot);
         _pendingNotifConv = {};
         _pendingNotifTeam.clear();
+        _pendingNotifThreadRoot.clear();
     });
 
     _trayIcon->show();
@@ -2322,13 +2323,25 @@ void MainWindow::handleNotifToken(const QString &token) {
             QDesktopServices::openUrl(QUrl(url));
         return;
     }
-    const int sep = token.indexOf(QChar(0x1f));
-    if (sep < 0)
-        return;
-    openNotifTarget(token.left(sep), ConversationId{token.mid(sep + 1)});
+    if (const auto t = decodeNotifToken(token))
+        openNotifTarget(t->teamId, t->conv, t->threadRoot);
 }
 
-void MainWindow::openNotifTarget(const QString &teamId, const ConversationId &conv) {
+void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
+    if (rootTs.isEmpty())
+        return;
+    _threadPanel->setVisible(true);
+    _threadPanel->openThread(conv, rootTs);
+    _messageList->setOpenThreadRoot(rootTs);
+    if (_msgSplitter->sizes().at(1) < 100) {
+        const int total = _msgSplitter->width();
+        _msgSplitter->setSizes({total - 360, 360});
+    }
+}
+
+void MainWindow::openNotifTarget(
+    const QString &teamId, const ConversationId &conv, const Ts &threadRoot
+) {
     show();
     raise();
     activateWindow();
@@ -2359,6 +2372,9 @@ void MainWindow::openNotifTarget(const QString &teamId, const ConversationId &co
                 openConversation(row);
         }
     }
+    // A thread-reply notification: the reply isn't in the channel timeline, so
+    // open the thread it belongs to (no-op for a plain message — empty root).
+    openThreadPanel(conv, threadRoot);
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────

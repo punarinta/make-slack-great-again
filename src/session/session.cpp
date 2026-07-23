@@ -721,6 +721,18 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
                         _pollSnapshotTs.insert(m.ts, m.threadRoot ? *m.threadRoot : QString());
                 }
 
+                // Hand the whole head page to the open MessageList so it can
+                // merge it. The per-message injection above only replays messages
+                // NEWER than lastKnown; it structurally can't recover a run the
+                // socket dropped that a later message has since buried (the
+                // round-robin steal — see EvHeadRefresh / the socket-mode notes).
+                // The merge (fromHeadPage) inserts those in order and reconciles
+                // head edits/deletions the stream missed. Foreground only: this is
+                // the open chat, the only conversation with rows on screen. Skip an
+                // empty page — with no baseline it would look like "all deleted".
+                if (foreground && !page.messages.empty())
+                    _eventHub.fire(EvHeadRefresh{conv, std::move(page.messages)});
+
                 // The realtime stream dropped a message it should have pushed:
                 // the subscription is compromised. Re-establish the socket so
                 // future events (and other conversations' badges) flow again.

@@ -3458,6 +3458,11 @@ void MessageListWidget::handleEvent(const Event &e) {
         if (authoredHere)
             viewport()->update();
 
+    } else if (auto *ev = std::get_if<EvHeadRefresh>(&e)) {
+        // The safety poll re-fetched this conversation's head page. Merge it to
+        // fill any middle gap the socket's round-robin steal left buried under a
+        // later message — the per-message realtime path can't recover that.
+        mergeHeadPage(ev->conv, ev->messages);
     } else if (std::get_if<EvRealtimeReconnected>(&e)) {
         backfillAfterReconnect();
     }
@@ -3477,32 +3482,37 @@ void MessageListWidget::backfillAfterReconnect() {
     auto       producer      = _isThreadMode
                                    ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
                                    : _session->backend()->loadHistory(conv, std::nullopt);
-    std::move(producer) |
-        rpl::on_next(
-            [this, conv](MessagePage page) {
-                // Conversation changed out from under the in-flight fetch.
-                // (mergeNetworkMessages dedups by ts, so racing the initial
-                // open load can't produce twins.)
-                if (_currentConv != conv)
-                    return;
-                const bool wasAtBottom =
-                    verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-                // No-cursor (head) fetch — authoritative for the channel head, so
-                // it also reconciles deletions missed during the socket gap.
-                mergeNetworkMessages(page.messages, /*fromHeadPage=*/true);
-                if (_session) {
-                    std::vector<Message> msgs(page.messages.begin(), page.messages.end());
-                    _session->cacheMessages(conv, msgs);
-                }
-                // Reveal anything that landed during the gap, but only if the
-                // user was already pinned to the bottom (don't yank them out of
-                // scrollback they're reading).
-                if (wasAtBottom)
-                    QTimer::singleShot(0, this, [this, conv] {
-                        if (_currentConv == conv)
-                            verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-                    });
-            },
-            _eventLifetime
-        );
+    std::move(producer) | rpl::on_next(
+                              [this, conv](MessagePage page) {
+                                  // (mergeNetworkMessages dedups by ts, so racing the initial open
+                                  // load can't produce twins.) mergeHeadPage guards _currentConv.
+                                  mergeHeadPage(conv, page.messages);
+                              },
+                              _eventLifetime
+                          );
+}
+
+void MessageListWidget::mergeHeadPage(
+    const ConversationId &conv, const std::vector<Message> &messages
+) {
+    // Conversation changed out from under an in-flight fetch, or the page is for a
+    // thread we're not in (the poll always fetches channel history, never thread
+    // replies — merging it into a thread view would be wrong).
+    if (_currentConv != conv || _isThreadMode)
+        return;
+    const bool wasAtBottom = verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+    // No-cursor (head) fetch — authoritative for the channel head, so it also
+    // reconciles deletions missed during the socket gap.
+    mergeNetworkMessages(messages, /*fromHeadPage=*/true);
+    if (_session) {
+        std::vector<Message> msgs(messages.begin(), messages.end());
+        _session->cacheMessages(conv, msgs);
+    }
+    // Reveal anything that landed during the gap, but only if the user was already
+    // pinned to the bottom (don't yank them out of scrollback they're reading).
+    if (wasAtBottom)
+        QTimer::singleShot(0, this, [this, conv] {
+            if (_currentConv == conv)
+                verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+        });
 }

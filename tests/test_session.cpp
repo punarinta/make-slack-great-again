@@ -3366,3 +3366,45 @@ TEST_CASE_METHOD(
     session->runRealtimeHealthCheckForTest(/*resetForegroundGap=*/false); // within window
     CHECK(stub->loadHistoryCalls == 1);
 }
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "foreground safety poll hands the whole head page to the UI to fill a buried gap",
+    "[session][events]"
+) {
+    // The socket's round-robin steal can drop a run of messages that a later,
+    // normally-delivered message then buries under it. The per-message poll path
+    // only replays messages NEWER than the latest ts we already hold, so it can
+    // NEVER recover the buried run — this was "messages lost even after hours".
+    // The poll must therefore also hand the whole head page to the open
+    // conversation (EvHeadRefresh) so the MessageList merges the gap back in.
+    const ConversationId conv{"C1"};
+    const Message        gap   = pollMsg("1000.000004"); // dropped by realtime
+    const Message        newer = pollMsg("1000.000009"); // arrived normally, buries the gap
+
+    session->setReading(conv);
+    stub->fireEvent(EvMessageNew{conv, newer}); // latestTs jumps past the gap
+    REQUIRE(session->findConversation(conv)->latestTs == newer.ts);
+
+    // The server's head page holds both; `gap` is older than latestTs.
+    stub->historyPage = {gap, newer};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    // The per-message path can't recover the gap (it's older than latestTs)…
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv)
+            CHECK(n->msg.ts != gap.ts);
+
+    // …but the full head page IS delivered so the UI can merge it in.
+    const EvHeadRefresh *refresh = nullptr;
+    for (const auto &e : events)
+        if (auto *r = std::get_if<EvHeadRefresh>(&e); r && r->conv == conv)
+            refresh = r;
+    REQUIRE(refresh != nullptr);
+    bool carriesGap = false;
+    for (const auto &m : refresh->messages)
+        if (m.ts == gap.ts)
+            carriesGap = true;
+    CHECK(carriesGap);
+}

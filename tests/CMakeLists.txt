@@ -181,6 +181,12 @@ add_msga_test(test_huddle_notify
 )
 target_link_libraries(test_huddle_notify PRIVATE Qt6::Gui)
 
+# Notification click-target token codec (encode/decode round-trip, thread root).
+add_msga_test(test_notif_token
+    test_notif_token.cpp
+)
+target_link_libraries(test_notif_token PRIVATE Qt6::Gui)
+
 # Source set for the Slack backend below the seam — shared by the backend /
 # network / factory tests so each lists it once.
 set(SLACK_BACKEND_SRCS
