@@ -21,9 +21,18 @@ msga is primarily a Slack client — that's its main focus and the most complete
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-arm64.dmg)
 [![Windows](https://img.shields.io/badge/Windows-x86__64-0078D4?logo=windows&logoColor=white)](https://msga.app/download/msga-windows-x86_64.exe)
 
+## Connecting to Slack
+
+Grab a [prebuilt build](#download) and you can connect Slack straight away — there are two ways to sign in:
+
+- **Session sign-in (recommended)** — reuse the Slack login you already have in your browser or desktop app. Nothing to register, nothing to build; msga borrows your existing session so everything runs on your own personal quota. New messages arrive within a few seconds.
+- **Your own Slack app** — register a free Slack app for instant real-time push (Socket Mode), then paste its keys into **Settings → System**.
+
+Both are covered step by step in the **[Slack setup guide](docs/SETUP_SLACK.md)**. Most people want session sign-in — it needs no setup at all.
+
 ## Or build your own version
 
-If you decide to build your own msga app, you need to register it with each service you want to connect and configure it before the client will connect. This is a one-time setup.
+If you'd rather build msga yourself (or you want to bake your own app keys into the binary), you register each service you want to connect and configure it before the client will connect. This is a one-time setup. Note that **Slack session sign-in needs none of this** — it works with a plain prebuilt binary.
 
 ### Step 1. Set up a messaging backend
 

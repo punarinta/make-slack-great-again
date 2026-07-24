@@ -1,16 +1,70 @@
 # Slack setup
 
-msga is shipped with shared Slack credentials. In this mode you share the app quota with other people. This is basically a demo mode, as it limits you A LOT. You must create your own Slack app and configure it before the client will connect to Slack. This is a relatively simple one-time setup and is completely free.
+There are **two ways** to connect a Slack workspace to msga. You don't need both — pick whichever suits you:
 
-When you're done, you'll have three values. If you build your own app, drop them into `credentials.cmake` (see [Step 6](#step-6-add-credentials-to-the-build)). After that, follow the build steps in the [README](../README.md). If you use our prebuilt app and don't want to bother with building, simply go to Settins->System in the app, paste those credentials there and click "Save".
+| | **Session sign-in** (recommended) | **Your own Slack app** |
+|---|---|---|
+| Setup effort | None — reuse your existing Slack login | ~10 min one-time app registration |
+| Cost | Free | Free |
+| Rate limits | Your own personal limits | Your app's own limits |
+| Real-time messages | Near-instant (checked every ~5 s) | Instant (live push) |
+| Best for | Almost everyone | Power users who want instant push |
 
-## Step 1. Create a Slack app
+> msga also ships with **shared** built-in credentials as a demo. That's fine for a quick look, but everyone using the prebuilt app shares one small quota, so it throttles heavily. Either option below gives you your own quota instead.
+
+---
+
+## Option A — Session sign-in (recommended)
+
+This reuses the login you already have in your browser (or the Slack desktop app). There's **nothing to register** and no app to build — msga just borrows your existing Slack session, so all your requests count against *your* personal quota instead of a shared one.
+
+The only trade-off: Slack's instant-push channel isn't available to a browser session, so msga fetches new messages by checking every few seconds instead. In practice new messages appear within a few seconds — you won't usually notice the difference.
+
+### If you use the prebuilt app
+
+1. In msga, add a Slack workspace (or go to **Settings → System**).
+2. Choose **Slack session** — it's the default.
+3. Follow the on-screen steps to paste your session cookie (see below).
+
+That's it — no building, no Slack app.
+
+### Getting your session cookie
+
+msga needs one value from your logged-in Slack: the **`d` cookie**. It's a secret (treat it like a password), so your browser hides it from ordinary copy — you grab it from the developer tools:
+
+1. Open **[https://app.slack.com](https://app.slack.com)** in your web browser and make sure you're signed in to your workspace.
+2. Open your browser's developer tools — press **F12** (or right-click the page → **Inspect**).
+3. Go to the **Application** tab (in Firefox it's called **Storage**).
+4. In the left sidebar, expand **Cookies** and click **`https://app.slack.com`**.
+5. Find the cookie named **`d`** and copy its **Value** — it starts with `xoxd-`.
+6. Back in msga, paste that value and type your workspace address (e.g. `myteam.slack.com`). msga works out everything else automatically and signs you in.
+
+> **On Linux**, if you also have the Slack desktop app installed, msga can often skip all of the above and import the session for you with one click. If that isn't available on your system, the manual steps above always work.
+
+### Good to know
+
+- **One cookie covers all your workspaces.** The `d` cookie belongs to your Slack account, so importing it once lets msga connect every workspace you're signed in to.
+- **Logging out rotates it.** If you sign out of Slack in your browser (or change your password), the cookie changes and msga will ask you to import a fresh one.
+- **It's stored locally**, the same way msga stores any other sign-in token — nothing is sent anywhere except Slack.
+- You can switch between session and app-keys mode anytime in **Settings → System**.
+
+If session sign-in works for you, you're done — you can ignore the rest of this guide.
+
+---
+
+## Option B — Your own Slack app (app keys)
+
+Create your own free Slack app if you want Slack's **instant real-time push** (Socket Mode) rather than polling. It's a one-time setup and completely free.
+
+When you're done you'll have three values. If you build your own msga, drop them into `credentials.cmake` (see [Step 6](#step-6-add-credentials-to-the-build)) and follow the build steps in the [README](../README.md). If you use the prebuilt app and don't want to build, just go to **Settings → System**, pick **Slack app keys**, paste the three values there and click **Save**.
+
+### Step 1. Create a Slack app
 
 Go to [https://api.slack.com/apps](https://api.slack.com/apps) and click **Create New App → From scratch**.
 
 Give it a name (e.g. "msga") and pick any development workspace to associate it with. The app will work across all your workspaces once installed.
 
-## Step 2. Configure OAuth & permissions
+### Step 2. Configure OAuth & permissions
 
 In your app's settings, go to **OAuth & Permissions**.
 
@@ -22,11 +76,11 @@ http://localhost:17437/cb
 
 The **OAuth & Permissions** page has two scope lists: **Bot Token Scopes** and **User Token Scopes**. msga signs you in as *yourself* — it uses a **user token** (`xoxp-…`) only and never a bot token. Set the two lists accordingly.
 
-### Bot Token Scopes
+#### Bot Token Scopes
 
 **Leave this list empty.** msga does not use a bot token, and the live-message events (Step 4) are subscribed *on behalf of users*, which keys off the User Token Scopes below — not bot scopes. Do not add `admin.*` scopes anywhere: they require an Enterprise Grid org-level install by an org owner/admin and will prevent ordinary members from authorizing the app.
 
-### User Token Scopes
+#### User Token Scopes
 
 Scroll down to **User Token Scopes** and add the following:
 
@@ -68,13 +122,13 @@ Scroll down to **User Token Scopes** and add the following:
 
 </details>
 
-## Step 3. Enable socket mode
+### Step 3. Enable socket mode
 
 Go to **Socket Mode** in the sidebar and toggle **Enable Socket Mode** on.
 
 Then go to **Basic Information → App-Level Tokens** and click **Generate Token and Scopes**. Name the token anything (e.g. "socket"), add the scope `connections:write`, and click **Generate**. Copy the token — it starts with `xapp-1-`.
 
-## Step 4. Subscribe to events
+### Step 4. Subscribe to events
 
 Go to **Event Subscriptions** in the sidebar and toggle **Enable Events** on.
 
@@ -95,11 +149,11 @@ Under **Subscribe to events on behalf of users**, add:
 
 Click **Save Changes**. Slack will prompt you to reinstall the app — do so via **Install App → Reinstall to Workspace**.
 
-## Step 5. Install the app
+### Step 5. Install the app
 
 Go to **Install App** and click **Install to Workspace**. Authorize the requested permissions.
 
-## Step 6. Add credentials to the build
+### Step 6. Add credentials to the build
 
 From **Basic Information**, copy:
 
