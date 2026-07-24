@@ -134,7 +134,10 @@ void Session::start() {
     // messages sent from another client never showing up. Every 15 s, re-verify
     // the subscription and poll the open conversation for anything missed.
     QObject::connect(&_realtimeSafetyTimer, &QTimer::timeout, [this] { checkRealtimeHealth(); });
-    _realtimeSafetyTimer.start(15 * 1000);
+    // Tick at least as often as the open-conversation poll wants to run. With a
+    // push transport that's the 15 s backstop cadence; a no-realtime backend
+    // (Slack session auth) polls far more often so it must tick faster too.
+    _realtimeSafetyTimer.start(std::min(15'000, _backend->foregroundPollGapMs()));
 
     // Debounced unread persistence (see scheduleSaveUnreads).
     _saveUnreadsTimer.setSingleShot(true);
@@ -576,6 +579,21 @@ void Session::checkRealtimeHealth() {
     // socket's own liveness watchdog.
     _backend->verifyRealtime();
 
+    // (0) Poll-only backends (session auth) have NO realtime events to discover a
+    // new DM/channel or refresh the roster — so a message in a chat not yet in the
+    // list never surfaces, and even an open chat missing from the roster has no
+    // latestTs baseline for the foreground poll below. Periodically reload the
+    // conversation list ourselves: new conversations appear, and each gets a
+    // latestTs the message-poll uses. Push backends get this via
+    // EvRealtimeReconnected instead, so skip it there.
+    if (!_backend->hasRealtimePush()) {
+        const qint64 nowRoster = QDateTime::currentMSecsSinceEpoch();
+        if (nowRoster - _lastRosterReloadMs >= kRosterReloadGapMs) {
+            _lastRosterReloadMs = nowRoster;
+            reloadConversations(/*refreshEmoji=*/false);
+        }
+    }
+
     // (2) New messages: the watchdog can't detect a socket that still answers
     // pings but to which Slack has quietly stopped routing events — so a message
     // sent from another client silently never arrives. The socket is shared by
@@ -595,7 +613,7 @@ void Session::checkRealtimeHealth() {
         // delivers in realtime; this is only the active chat's stalled-socket
         // backstop, so once a minute is ample.
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (now - _lastForegroundPollMs >= kForegroundPollGapMs) {
+        if (now - _lastForegroundPollMs >= _backend->foregroundPollGapMs()) {
             _lastForegroundPollMs = now;
             pollConversationForMissed(_openConv, /*foreground=*/true);
         }
@@ -652,12 +670,22 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
     Ts lastKnown;
     if (const Conversation *c = findConversation(conv))
         lastKnown = c->latestTs;
-    if (lastKnown.isEmpty())
-        return; // no baseline to detect "new" against — the open load covers it
+    // Some conversations (notably certain DMs) come back from conversations.list
+    // with an empty latestTs, which would make the open-chat poll early-return and
+    // never deliver anything. For the FOREGROUND (open) chat, fall back to a
+    // self-maintained baseline: the newest ts we saw on a prior poll. The first
+    // poll with no baseline at all just PRIMES it (records the head's newest ts
+    // without injecting — the open-load already shows those), so later polls
+    // detect genuinely new messages without duplicating.
+    if (lastKnown.isEmpty() && foreground)
+        lastKnown = _fgPollBaseline.value(conv.value);
+    const bool priming = foreground && lastKnown.isEmpty();
+    if (lastKnown.isEmpty() && !priming)
+        return; // background needs a baseline; foreground primes below
 
     _backend->loadHistory(conv, std::nullopt) |
         rpl::on_next(
-            [this, conv, lastKnown, foreground](MessagePage page) {
+            [this, conv, lastKnown, foreground, priming](MessagePage page) {
                 // Bail if intent changed while the fetch was in flight: a
                 // foreground poll is stale once the open conversation moves on;
                 // a background poll yields only if THIS exact conversation
@@ -666,6 +694,13 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
                 // don't affect a background poll targeting a different one.
                 if (foreground ? (_openConv != conv) : (_openConv == conv))
                     return;
+                // Advance the foreground baseline to the head's newest ts (used
+                // when the roster has no latestTs for this conv). messages are
+                // oldest-first, so back() is newest.
+                if (foreground && !page.messages.empty())
+                    _fgPollBaseline[conv.value] = page.messages.back().ts;
+                if (priming)
+                    return; // baseline recorded; open-load already shows these
                 bool missed = false;
                 // page.messages is oldest-first; inject in order so rows append
                 // chronologically. The ts pre-filter keeps the common (nothing

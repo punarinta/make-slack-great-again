@@ -95,10 +95,15 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/slack/public_backend.cpp
     src/backend/slack/json_mappers.cpp
     src/backend/slack/socket_mode_realtime.cpp
+    src/backend/slack/session_realtime.cpp
+    src/backend/slack/slack_events.cpp
     src/backend/slack/web_api_client.cpp
     src/backend/slack/shared_realtime.cpp
     src/backend/slack/slack_auth.cpp
     src/backend/slack/oauth_flow.cpp
+    src/backend/slack/session_import/token_deriver.cpp
+    src/backend/slack/session_import/local_importer.cpp
+    src/backend/slack/session_import/session_migrator.cpp
 
     # Microsoft Teams backend adapter (below the Backend seam)
     src/backend/teams/teams_backend.cpp
@@ -198,6 +203,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
     src/ui/imap_add_account/imap_add_account_dialog.cpp
+    src/ui/session_import_dialog/session_import_dialog.cpp
     src/ui/profile_dialog/profile_dialog.cpp
     src/ui/status_dialog/status_dialog.cpp
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
@@ -343,6 +349,25 @@ else()
     if(Qt6DBus_FOUND)
         target_link_libraries(msga PRIVATE Qt6::DBus)
         target_compile_definitions(msga PRIVATE MSGA_HAS_DBUS)
+    endif()
+endif()
+
+# Optional one-click Slack session import (Settings → System → "Import Slack
+# session"): reads and decrypts the locally-installed Slack desktop app's cookie
+# store. Needs OpenSSL (AES/PBKDF2) and Qt6::Sql (the Chromium cookie SQLite);
+# the keyring lookup additionally uses Qt6::DBus when present. Linux only for now.
+# Without the deps the importer compiles to a graceful stub and the UI offers the
+# guided manual-paste fallback — so the build is green everywhere regardless.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(OpenSSL QUIET COMPONENTS Crypto)
+    find_package(Qt6 QUIET OPTIONAL_COMPONENTS Sql)
+    if(OpenSSL_FOUND AND Qt6Sql_FOUND)
+        target_link_libraries(msga PRIVATE OpenSSL::Crypto Qt6::Sql)
+        target_compile_definitions(msga PRIVATE MSGA_SLACK_SESSION_IMPORT)
+        message(STATUS "Slack session import: enabled (OpenSSL + Qt6::Sql)")
+    else()
+        message(STATUS "Slack session import: disabled — install libssl-dev + Qt6 Sql "
+                       "to enable one-click import (guided manual paste still works)")
     endif()
 endif()
 

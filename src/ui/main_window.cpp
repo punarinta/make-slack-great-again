@@ -18,6 +18,10 @@
 #include "cache/cache_evictor.h"
 #include "auth/token_store.h"
 #include "auth/auth_strategy.h"
+#include "backend/slack/session_import/session_migrator.h"
+#include "backend/slack/session_import/token_deriver.h"
+#include "backend/slack/slack_auth.h"
+#include "ui/session_import_dialog/session_import_dialog.h"
 #include "auth/auth_strategy_factory.h"
 #include "backend/backend.h"
 #include "backend/backend_factory.h"
@@ -504,6 +508,21 @@ QWidget *MainWindow::buildMainPage() {
         &MainWindow::showSampleNotification
     );
     connect(_settingsDialog, &SettingsDialog::restartRequested, this, &MainWindow::restartApp);
+    connect(
+        _settingsDialog,
+        &SettingsDialog::slackWorkspacesImported,
+        this,
+        [this](const QList<TokenStore::WorkspaceRecord> &recs) {
+            if (recs.isEmpty())
+                return;
+            _settingsDialog->hide();
+            addSessionWorkspaces(recs);
+        }
+    );
+    connect(_settingsDialog, &SettingsDialog::migrateSlackToSessionRequested, this, [this] {
+        _settingsDialog->hide();
+        migrateSlackToSession();
+    });
 
     return page;
 }
@@ -1275,7 +1294,10 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
         return;
     // One service → no point in a menu; start it directly.
     if (services.size() == 1) {
-        loginWithService(services.front());
+        if (services.front() == Service::Slack)
+            connectSlack();
+        else
+            loginWithService(services.front());
         return;
     }
 
@@ -1286,10 +1308,151 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
     menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
     for (const Service s : services) {
         menu->addItem(serviceDisplayName(s), [this, s] {
-            QTimer::singleShot(0, this, [this, s] { loginWithService(s); });
+            QTimer::singleShot(0, this, [this, s] {
+                if (s == Service::Slack)
+                    connectSlack();
+                else
+                    loginWithService(s);
+            });
         });
     }
     menu->popup(anchorGlobal);
+}
+
+void MainWindow::connectSlack() {
+    // Session is the default Slack connection method: open the import dialog first.
+    // Its secondary "use app keys" escape falls back to the OAuth flow.
+    auto *dlg = new SessionImportDialog(this);
+    connect(
+        dlg,
+        &SessionImportDialog::imported,
+        this,
+        [this](const QList<TokenStore::WorkspaceRecord> &recs) { addSessionWorkspaces(recs); }
+    );
+    connect(dlg, &SessionImportDialog::useAppKeysRequested, this, [this] {
+        loginWithService(Service::Slack);
+    });
+    connect(dlg, &AppDialog::finished, dlg, [dlg](int) { dlg->deleteLater(); });
+    dlg->open();
+}
+
+void MainWindow::migrateSlackToSession() {
+    // The `d` cookie is per-account, so reuse the one from any session workspace.
+    QString                                      cookie;
+    QList<slack::session::SessionMigrator::Item> items;
+    for (const auto &key : TokenStore::workspaceKeys()) {
+        if (key.service != Service::Slack)
+            continue;
+        const auto rec = TokenStore::loadWorkspace(key);
+        if (!rec)
+            continue;
+        const auto creds = slack::fromRecord(*rec);
+        if (!creds.cookie.isEmpty()) {
+            if (cookie.isEmpty())
+                cookie = creds.cookie;
+        } else {
+            items.append({creds.teamId, creds.teamName, creds.iconUrl, creds.xoxp});
+        }
+    }
+    if (cookie.isEmpty()) {
+        QMessageBox::information(
+            this,
+            tr("Convert to session"),
+            tr("Add one workspace with your Slack session first — its cookie is reused for the "
+               "rest.")
+        );
+        return;
+    }
+    if (items.isEmpty()) {
+        QMessageBox::information(
+            this, tr("Convert to session"), tr("All Slack workspaces already use your session.")
+        );
+        return;
+    }
+    auto *mig = new slack::session::SessionMigrator(this);
+    connect(
+        mig,
+        &slack::session::SessionMigrator::finished,
+        this,
+        [this, mig](const QList<slack::Credentials> &converted, const QString &error) {
+            mig->deleteLater();
+            if (converted.isEmpty()) {
+                QMessageBox::warning(
+                    this,
+                    tr("Convert to session"),
+                    tr("Couldn't convert your workspaces: %1").arg(error)
+                );
+                return;
+            }
+            for (const auto &c : converted)
+                TokenStore::saveWorkspace(slack::toRecord(c));
+            slack::setConnectionMode(slack::ConnectionMode::Session);
+            // Restart to drop Socket Mode and rebuild every backend in session mode.
+            restartApp();
+        }
+    );
+    mig->run(cookie, items);
+}
+
+void MainWindow::addSessionWorkspaces(const QList<TokenStore::WorkspaceRecord> &recs) {
+    if (recs.isEmpty())
+        return;
+    // Connecting via session pins the app into session mode (no app keys / Socket
+    // Mode) — the "mode follows how you connect" rule that keeps the Settings
+    // switch honest.
+    slack::setConnectionMode(slack::ConnectionMode::Session);
+    for (const auto &rec : recs)
+        TokenStore::saveWorkspace(rec);
+    _activeTeamId = recs.first().key.toString();
+
+    // The account-wide `d` cookie rotates on each browser re-login, so importing a
+    // fresh one stales the OTHER session workspaces' stored token+cookie (this is
+    // why adding a workspace disconnected the previous one). Re-mint each other
+    // session workspace's token against the new cookie using its stored URL, then
+    // restart so running backends reload fresh creds. Workspaces with no stored
+    // URL (added before URLs were persisted) can't be auto-healed — re-import once.
+    const QString                      newCookie = slack::fromRecord(recs.first()).cookie;
+    QList<slack::session::TeamSession> stale;
+    if (!newCookie.isEmpty()) {
+        QSet<QString> justAdded;
+        for (const auto &rec : recs)
+            justAdded.insert(rec.key.id);
+        for (const auto &key : TokenStore::workspaceKeys()) {
+            if (key.service != Service::Slack || justAdded.contains(key.id))
+                continue;
+            const auto rec = TokenStore::loadWorkspace(key);
+            if (!rec)
+                continue;
+            const auto c = slack::fromRecord(*rec);
+            if (c.cookie.isEmpty() || c.workspaceUrl.isEmpty() || c.cookie == newCookie)
+                continue; // OAuth, no URL to re-derive from, or already fresh
+            slack::session::TeamSession t;
+            t.workspaceUrl = c.workspaceUrl;
+            t.teamId       = c.teamId;
+            t.teamName     = c.teamName;
+            t.iconUrl      = c.iconUrl;
+            stale.append(t);
+        }
+    }
+    if (stale.isEmpty()) {
+        activateWorkspace(_activeTeamId);
+        return;
+    }
+    if (const auto key = WorkspaceKey::fromString(_activeTeamId))
+        TokenStore::setActiveWorkspace(*key); // persist so the restart lands here
+    auto *deriver = new slack::session::TokenDeriver(this);
+    connect(
+        deriver,
+        &slack::session::TokenDeriver::finished,
+        this,
+        [this, deriver](const QList<slack::Credentials> &valid, const QString &) {
+            deriver->deleteLater();
+            for (const auto &c : valid)
+                TokenStore::saveWorkspace(slack::toRecord(c));
+            restartApp(); // reload every backend with refreshed session creds
+        }
+    );
+    deriver->run(newCookie, stale);
 }
 
 void MainWindow::loginWithService(Service service) {
@@ -1307,13 +1470,21 @@ void MainWindow::loginWithService(Service service) {
     auto *s     = strategy.release();
     _activeFlow = s;
 
-    connect(s, &auth::AuthStrategy::succeeded, this, [this, s](TokenStore::WorkspaceRecord rec) {
-        TokenStore::saveWorkspace(rec);
-        _activeTeamId = rec.key.toString();
-        _activeFlow   = nullptr;
-        s->deleteLater();
-        activateWorkspace(_activeTeamId);
-    });
+    connect(
+        s,
+        &auth::AuthStrategy::succeeded,
+        this,
+        [this, s, service](TokenStore::WorkspaceRecord rec) {
+            // OAuth sign-in ⇒ app-keys mode (Socket Mode on) — mode follows how you connect.
+            if (service == Service::Slack)
+                slack::setConnectionMode(slack::ConnectionMode::AppKeys);
+            TokenStore::saveWorkspace(rec);
+            _activeTeamId = rec.key.toString();
+            _activeFlow   = nullptr;
+            s->deleteLater();
+            activateWorkspace(_activeTeamId);
+        }
+    );
     connect(s, &auth::AuthStrategy::failed, this, [this, s](const QString &reason) {
         _activeFlow = nullptr;
         s->deleteLater();

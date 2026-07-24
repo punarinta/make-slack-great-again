@@ -10,6 +10,8 @@
 #include <QUrlQuery>
 #include <functional>
 
+class QNetworkRequest;
+
 namespace net {
 
 // Protocol-agnostic queued HTTP client — the transport mechanics shared by any
@@ -49,6 +51,12 @@ public:
 
     void               setToken(const QString &token) { _token = token; }
     [[nodiscard]] bool hasToken() const { return !_token.isEmpty(); }
+
+    // Session-auth (Slack xoxc/xoxd): when set, every request additionally carries
+    // `Cookie: d=<cookie>` next to the bearer token — the `d` session cookie is
+    // required alongside an xoxc- token. Empty (the default) for OAuth workspaces,
+    // where no cookie header is emitted at all.
+    void setCookie(const QString &cookie) { _cookie = cookie; }
 
     // The API base URL every queued method is appended to (tests override it).
     void setBaseUrl(const QString &url) { _baseUrl = url; }
@@ -132,6 +140,12 @@ protected:
     // Resume after a self-managed pause (clears throttle, pumps the queue).
     void              advance();
 
+    // Set Authorization (Bearer _token) and, when a session cookie is configured,
+    // the `Cookie: d=…` header on `req`. Shared by every request-build site so
+    // session auth is applied uniformly (base queue, downloadUrl, subclass
+    // multipart uploads).
+    void applyAuth(QNetworkRequest &req) const;
+
     [[nodiscard]] QNetworkAccessManager *nam() const { return _nam; }
     [[nodiscard]] const QString         &token() const { return _token; }
     [[nodiscard]] const QString         &baseUrl() const { return _baseUrl; }
@@ -146,6 +160,7 @@ private:
 
     QNetworkAccessManager *_nam;
     QString                _token;
+    QString                _cookie; // Slack `d` session cookie (session auth); empty for OAuth
     QString                _baseUrl;
     QQueue<PendingCall>    _queue;
     bool                   _inflight  = false;

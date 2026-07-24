@@ -195,6 +195,8 @@ set(SLACK_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/slack/public_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_events.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/shared_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
 )
@@ -469,6 +471,7 @@ set_target_properties(test_token_refresh PROPERTIES AUTOMOC ON)
 add_msga_qt_test(test_socket_mode_realtime
     test_socket_mode_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/socket_mode_realtime.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_events.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
@@ -489,6 +492,34 @@ add_msga_qt_test(test_send_retry
 )
 target_link_libraries(test_send_retry PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_send_retry PROPERTIES AUTOMOC ON)
+
+# Session-token (xoxc/xoxd) sign-in: blob round-trip + Cookie-header emission.
+add_msga_qt_test(test_session_auth
+    test_session_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/web_api_client.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+)
+target_link_libraries(test_session_auth PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_session_auth PROPERTIES AUTOMOC ON)
+
+# SessionImportDialog render/smoke harness (screenshot + card-height regression).
+add_msga_widget_test(test_session_import_dialog
+    test_session_import_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/session_import_dialog/session_import_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/local_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
 
 add_msga_widget_test(test_browse_channels_dialog
     test_browse_channels_dialog.cpp
@@ -663,3 +694,4 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR 
         target_link_libraries(test_hang_watchdog PRIVATE ${MSGA_RT_LIB_TEST})
     endif()
 endif()
+

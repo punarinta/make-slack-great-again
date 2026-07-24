@@ -4,6 +4,7 @@
 #include "json_mappers.h"
 #include "slack_auth.h"
 #include "socket_mode_realtime.h"
+#include "session_realtime.h"
 #include "auth/token_store.h"
 #include "backend/common_commands.h"
 #include "network/form_urlencode.h"
@@ -29,12 +30,39 @@ PublicBackend::PublicBackend(
     : _teamId(creds.teamId), _refreshToken(creds.refreshToken), _refreshUrl(refreshUrl),
       _api(new WebApiClient(nullptr)), _historyApi(new WebApiClient(nullptr)),
       _infoApi(new WebApiClient(nullptr)) {
-    // The shared app-level Socket Mode socket (null if no xapp token is set).
-    _sharedRealtime = _realtimeHandle.socket();
+    // Socket Mode is app-key (xapp) based and only serves OAuth workspaces. A
+    // session-auth workspace has no xapp and polls instead, so it must NOT open
+    // the shared socket — doing so connects with the build's app key and causes
+    // exactly the shared-key contention (bare-1000 closes, "same app keys on
+    // another device" banner) that session auth exists to avoid. Not acquiring the
+    // refcounted handle means: all-session-auth ⇒ socket never opens at all.
+    if (!creds.isSessionAuth()) {
+        _realtimeHandle = std::make_unique<SharedRealtime>();
+        _sharedRealtime = _realtimeHandle->socket();
+    }
 
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
     _infoApi->setToken(creds.xoxp);
+    // Session-authed workspaces (xoxc token) also need the `d` cookie on every
+    // request; no-op for OAuth workspaces where the cookie is empty. These
+    // workspaces have no Socket Mode socket (needs an xapp token), so realtime
+    // falls back to Session's polling — see setupTokenRefresh's proactive guard,
+    // which is naturally skipped since session creds carry no refresh token.
+    if (creds.isSessionAuth()) {
+        _sessionAuth = true;
+        _api->setCookie(creds.cookie);
+        _historyApi->setCookie(creds.cookie);
+        _infoApi->setCookie(creds.cookie);
+        // Realtime for session workspaces is delivered by Session's fast poll
+        // (foregroundPollGapMs() == 5 s), NOT the classic RTM WebSocket: Slack
+        // closes the deprecated rtm.connect ("LEGACY_BOT") socket after a fixed
+        // ~5 s regardless of pings, and rtm.connect is Tier-1 rate-limited, so
+        // reconnecting just churns into a ratelimit. True push would need Slack's
+        // modern (undocumented) "flannel" WSS — a separate effort. SessionRealtime
+        // is kept for that future work but is intentionally NOT started here.
+        // _sessionRealtime = std::make_unique<SessionRealtime>(creds.xoxp, creds.cookie, &_events);
+    }
     // Pace the background lane on the info client: a reconnect enqueues one
     // conversations.info per DM/MPDM (100+ on a busy workspace), and that method
     // is Slack Tier 3 (~50/min). ~1.2 s spacing keeps the whole sweep under the
@@ -306,6 +334,12 @@ bool PublicBackend::isUnresolvedUserId(const QString &s) const {
 }
 
 void PublicBackend::connectRealtime() {
+    // Session auth: per-workspace RTM WebSocket (user-level). Fires straight into
+    // this backend's own event stream (no shared multi-workspace fan-out).
+    if (_sessionRealtime) {
+        _sessionRealtime->start();
+        return;
+    }
     if (!_sharedRealtime)
         return; // no xapp token configured → no realtime, same as before
     _sharedRealtime->addSink(&_events);
@@ -313,16 +347,28 @@ void PublicBackend::connectRealtime() {
 }
 
 void PublicBackend::disconnectRealtime() {
+    if (_sessionRealtime) {
+        _sessionRealtime->stop();
+        return;
+    }
     if (_sharedRealtime)
         _sharedRealtime->removeSink(&_events);
 }
 
 void PublicBackend::verifyRealtime() {
+    if (_sessionRealtime) {
+        _sessionRealtime->ensureConnected();
+        return;
+    }
     if (_sharedRealtime)
         _sharedRealtime->ensureConnected();
 }
 
 void PublicBackend::reestablishRealtime() {
+    if (_sessionRealtime) {
+        _sessionRealtime->reconnectNow();
+        return;
+    }
     if (_sharedRealtime)
         _sharedRealtime->reconnectNow();
 }

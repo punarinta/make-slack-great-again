@@ -207,10 +207,16 @@ void AppDialog::updateCard() {
     const int cardW = cardWidth(avail);
     _card->setFixedWidth(cardW);
 
-    // Let Qt calculate the preferred height from the current content.
+    // Let Qt calculate the preferred height from the current content. sizeHint()
+    // alone ignores height-for-width, so a column of word-wrapped labels reports
+    // its UNWRAPPED (too-short) height and the card clips / overlaps its content
+    // at larger fonts or fractional scaling. Prefer the layout's real
+    // height-for-width at the fixed card width when the content provides it.
     _card->adjustSize();
-    const int cardH =
-        std::min(_card->sizeHint().height(), std::max(minCardHeight(), height() - 80));
+    int wantH = _card->sizeHint().height();
+    if (_card->hasHeightForWidth())
+        wantH = std::max(wantH, _card->heightForWidth(cardW));
+    const int cardH = std::min(wantH, std::max(minCardHeight(), height() - 80));
     _card->resize(cardW, cardH);
 
     // Centre in the overlay.

@@ -90,7 +90,7 @@ void WebApiClient::postMultipart(
     const QString &method, QHttpMultiPart *parts, OnSuccess onSuccess, OnError onError
 ) {
     QNetworkRequest req(QUrl(baseUrl() + method));
-    req.setRawHeader("Authorization", ("Bearer " + token()).toUtf8());
+    applyAuth(req);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );

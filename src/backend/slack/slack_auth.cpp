@@ -12,10 +12,39 @@
 namespace slack {
 
 namespace {
-constexpr auto kClientIdKey     = "credentials/slackClientId";
-constexpr auto kClientSecretKey = "credentials/slackClientSecret";
-constexpr auto kXappKey         = "credentials/slackXapp";
+constexpr auto kClientIdKey       = "credentials/slackClientId";
+constexpr auto kClientSecretKey   = "credentials/slackClientSecret";
+constexpr auto kXappKey           = "credentials/slackXapp";
+constexpr auto kConnectionModeKey = "slack/connectionMode";
 } // namespace
+
+ConnectionMode connectionMode() {
+    QSettings     s("msga", "msga");
+    const QString v = s.value(QString::fromLatin1(kConnectionModeKey)).toString();
+    if (v == QLatin1String("session"))
+        return ConnectionMode::Session;
+    if (v == QLatin1String("appkeys"))
+        return ConnectionMode::AppKeys;
+    // Unset (never chosen): default to Session — the recommended, no-app-keys path.
+    // Exception: an existing OAuth Slack workspace (signed in before the mode
+    // existed) implies app-keys mode; keep it so we don't silently kill live push.
+    for (const auto &key : TokenStore::workspaceKeys()) {
+        if (key.service != Service::Slack)
+            continue;
+        const auto rec = TokenStore::loadWorkspace(key);
+        if (rec && fromRecord(*rec).cookie.isEmpty())
+            return ConnectionMode::AppKeys;
+    }
+    return ConnectionMode::Session;
+}
+
+void setConnectionMode(ConnectionMode mode) {
+    QSettings s("msga", "msga");
+    s.setValue(
+        QString::fromLatin1(kConnectionModeKey),
+        mode == ConnectionMode::Session ? QStringLiteral("session") : QStringLiteral("appkeys")
+    );
+}
 
 PersonalAppCredentials personalAppCredentials() {
     QSettings s("msga", "msga");
@@ -80,6 +109,11 @@ TokenStore::WorkspaceRecord toRecord(const Credentials &creds) {
     // expiresAt as a string — JSON numbers are doubles, and we want an exact
     // qint64 round-trip.
     blob[QStringLiteral("expiresAt")]    = QString::number(creds.expiresAt);
+    // Session `d` cookie — omitted for OAuth workspaces so their blob is unchanged.
+    if (!creds.cookie.isEmpty())
+        blob[QStringLiteral("cookie")] = creds.cookie;
+    if (!creds.workspaceUrl.isEmpty())
+        blob[QStringLiteral("workspaceUrl")] = creds.workspaceUrl;
 
     TokenStore::WorkspaceRecord rec;
     rec.key         = WorkspaceKey{Service::Slack, creds.teamId};
@@ -98,6 +132,8 @@ Credentials fromRecord(const TokenStore::WorkspaceRecord &rec) {
     c.iconUrl      = rec.iconUrl;
     c.refreshToken = blob.value(QStringLiteral("refreshToken")).toString();
     c.expiresAt    = blob.value(QStringLiteral("expiresAt")).toString().toLongLong();
+    c.cookie       = blob.value(QStringLiteral("cookie")).toString();
+    c.workspaceUrl = blob.value(QStringLiteral("workspaceUrl")).toString();
     return c;
 }
 

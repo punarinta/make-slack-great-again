@@ -4,6 +4,9 @@
 // No compositor required; uses Qt's backing-store alpha blending.
 #pragma once
 
+#include "auth/token_store.h"
+
+#include <QList>
 #include <QWidget>
 #include <QPoint>
 #include <QRect>
@@ -64,6 +67,12 @@ signals:
     // Emitted after the user saves personal Slack app credentials — they only
     // take effect on a fresh start, so MainWindow performs a clean restart.
     void restartRequested();
+    // Emitted when the user adds one or more Slack workspaces via session-token
+    // sign-in (the System-page import dialog). MainWindow saves + activates them.
+    void slackWorkspacesImported(const QList<TokenStore::WorkspaceRecord> &records);
+    // Emitted when the user asks to convert their existing app-key (OAuth) Slack
+    // workspaces to session auth. MainWindow runs the migration.
+    void migrateSlackToSessionRequested();
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -90,6 +99,8 @@ private:
     void                   clearState();
     void                   saveAppCredentials();
     void                   loadAppCredentials();
+    void                   openSessionImport();
+    void                   updateSlackModeUi(); // show the box for the selected mode
     void                   refreshLastChecked();
     void                   refreshUpdateStatus();
     void                   updatePanelGeometry();
@@ -154,6 +165,15 @@ private:
     StyledButton  *_checkBtn      = nullptr;
     QLabel        *_ramLabel      = nullptr;
     QTimer        *_ramTimer      = nullptr;
+
+    // Slack connection mode switch (System page): session (cookie) vs app keys (OAuth).
+    QRadioButton *_modeSession        = nullptr;
+    QRadioButton *_modeAppKeys        = nullptr;
+    QWidget      *_sessionBox         = nullptr; // shown in session mode
+    QWidget      *_appKeysBox         = nullptr; // shown in app-keys mode
+    QLabel       *_modeRestartNote    = nullptr;
+    bool          _startupSessionMode = false; // mode the app launched with
+    bool          _buildingSlackMode  = false; // guard: suppress toggle handler during setup
 
     // Personal Slack app credentials (System page)
     StyledLineEdit *_credClientId     = nullptr;

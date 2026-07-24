@@ -16,6 +16,7 @@
 #include "util/process_stats.h"
 #include "util/sound_player.h"
 #include "backend/slack/slack_auth.h"
+#include "ui/session_import_dialog/session_import_dialog.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -635,24 +636,120 @@ void SettingsDialog::buildPanel() {
 
     sylay->addWidget(updBox);
 
-    // ── Slack app keys section ────────────────────────────────────────
+    // ── Slack connection section ──────────────────────────────────────
+    // Global either/or switch: connect with the user's own Slack session (cookie)
+    // or with app keys (OAuth + Socket Mode). Session mode turns app keys and
+    // Socket Mode completely off — no shared-key contention, but no live push
+    // (new messages arrive by polling). See slack::connectionMode().
+    auto *connHeading = new QLabel(tr("Slack connection"), sysPage);
+    connHeading->setObjectName("sectionHeading");
+    sylay->addWidget(connHeading);
+
+    auto *connDesc = new QLabel(tr("Choose how msga connects to Slack."), sysPage);
+    connDesc->setObjectName("credDesc");
+    connDesc->setWordWrap(true);
+    sylay->addWidget(connDesc);
+
+    // The switch — two prominent radio options.
+    auto *modeBox = new QGroupBox(sysPage);
+    modeBox->setObjectName("credBox");
+    auto *modeLay = new QVBoxLayout(modeBox);
+    modeLay->setSpacing(sp.md);
+    modeLay->setContentsMargins(sp.lg, sp.lg, sp.lg, sp.lg);
+    _modeSession = new QRadioButton(
+        tr("Slack session — no app keys, uses your own account's limits"), modeBox
+    );
+    _modeAppKeys =
+        new QRadioButton(tr("Slack app keys — OAuth sign-in with live message push"), modeBox);
+    auto *modeGroup = new QButtonGroup(this);
+    modeGroup->addButton(_modeSession);
+    modeGroup->addButton(_modeAppKeys);
+    modeLay->addWidget(_modeSession);
+    modeLay->addWidget(_modeAppKeys);
+    _modeRestartNote = new QLabel(tr("Restart msga to apply this change."), modeBox);
+    _modeRestartNote->setObjectName("credDesc");
+    _modeRestartNote->setWordWrap(true);
+    _modeRestartNote->setVisible(false);
+    modeLay->addWidget(_modeRestartNote);
+    sylay->addWidget(modeBox);
+
+    // ── Session sub-section (shown in session mode) ──
+    _sessionBox   = new QWidget(sysPage);
+    auto *sessLay = new QVBoxLayout(_sessionBox);
+    sessLay->setContentsMargins(0, 0, 0, 0);
+    sessLay->setSpacing(sp.sm);
+    auto *sessDesc = new QLabel(
+        tr("Add a workspace using your existing Slack session. New messages arrive by "
+           "polling — there's no live push in this mode."),
+        _sessionBox
+    );
+    sessDesc->setObjectName("credDesc");
+    sessDesc->setWordWrap(true);
+    sessLay->addWidget(sessDesc);
+    auto *importRow = new QHBoxLayout;
+    auto *importBtn =
+        new StyledButton(tr("Import Slack session…"), StyledButton::Variant::Primary, _sessionBox);
+    importBtn->setSize(StyledButton::Size::Small);
+    connect(importBtn, &QPushButton::clicked, this, &SettingsDialog::openSessionImport);
+    importRow->addWidget(importBtn);
+    importRow->addStretch();
+    sessLay->addLayout(importRow);
+
+    // If the user still has app-key (OAuth) Slack workspaces, offer one-click
+    // conversion of them to session auth (reuses the one session cookie).
+    int oauthSlackCount = 0;
+    for (const auto &key : TokenStore::workspaceKeys()) {
+        if (key.service != Service::Slack)
+            continue;
+        const auto rec = TokenStore::loadWorkspace(key);
+        if (rec && slack::fromRecord(*rec).cookie.isEmpty())
+            ++oauthSlackCount;
+    }
+    if (oauthSlackCount > 0) {
+        auto *migDesc = new QLabel(
+            tr("You still have %n Slack workspace(s) on app keys. Convert them to session "
+               "so no workspace uses Socket Mode.",
+               nullptr,
+               oauthSlackCount),
+            _sessionBox
+        );
+        migDesc->setObjectName("credDesc");
+        migDesc->setWordWrap(true);
+        sessLay->addWidget(migDesc);
+        auto *migRow = new QHBoxLayout;
+        auto *migBtn = new StyledButton(
+            tr("Convert them to session"), StyledButton::Variant::Secondary, _sessionBox
+        );
+        migBtn->setSize(StyledButton::Size::Small);
+        connect(migBtn, &QPushButton::clicked, this, [this] {
+            emit migrateSlackToSessionRequested();
+        });
+        migRow->addWidget(migBtn);
+        migRow->addStretch();
+        sessLay->addLayout(migRow);
+    }
+    sylay->addWidget(_sessionBox);
+
+    // ── App-keys sub-section (shown in app-keys mode) ──
     // Lets prebuilt-app users run their own Slack app instead of sharing the
     // build's app keys (which causes the parallel-usage connection eviction).
-    auto *credHeading = new QLabel(tr("Slack app keys"), sysPage);
-    credHeading->setObjectName("sectionHeading");
-    sylay->addWidget(credHeading);
+    _appKeysBox = new QWidget(sysPage);
+    auto *akLay = new QVBoxLayout(_appKeysBox);
+    akLay->setContentsMargins(0, 0, 0, 0);
+    akLay->setSpacing(sp.md);
 
     auto *credDesc = new QLabel(
         tr("Run your own Slack app so you don't share connection keys with other "
            "devices and users. Leave a field empty to use the built-in default."),
-        sysPage
+        _appKeysBox
     );
     credDesc->setObjectName("credDesc");
     credDesc->setWordWrap(true);
-    sylay->addWidget(credDesc);
+    akLay->addWidget(credDesc);
 
-    auto *credLink =
-        new StyledButton(tr("How to create your Slack app…"), StyledButton::Variant::Link, sysPage);
+    auto *credLink = new StyledButton(
+        tr("How to create your Slack app…"), StyledButton::Variant::Link, _appKeysBox
+    );
     connect(credLink, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(QUrl(QStringLiteral(
             "https://github.com/punarinta/make-slack-great-again/blob/master/docs/SETUP_SLACK.md"
@@ -661,9 +758,9 @@ void SettingsDialog::buildPanel() {
     auto *credLinkRow = new QHBoxLayout;
     credLinkRow->addWidget(credLink);
     credLinkRow->addStretch();
-    sylay->addLayout(credLinkRow);
+    akLay->addLayout(credLinkRow);
 
-    auto *credBox = new QGroupBox(sysPage);
+    auto *credBox = new QGroupBox(_appKeysBox);
     credBox->setObjectName("credBox");
     auto *credLayout = new QVBoxLayout(credBox);
     credLayout->setSpacing(sp.sm);
@@ -701,7 +798,26 @@ void SettingsDialog::buildPanel() {
     credSaveRow->addStretch();
     credLayout->addLayout(credSaveRow);
 
-    sylay->addWidget(credBox);
+    akLay->addWidget(credBox);
+    sylay->addWidget(_appKeysBox);
+
+    // Initialize the switch from the persisted mode, then wire the toggle. Changing
+    // the mode persists immediately and shows a "restart to apply" note (the socket
+    // gate + backends are decided at launch, same convention as the language note).
+    _buildingSlackMode  = true;
+    _startupSessionMode = (slack::connectionMode() == slack::ConnectionMode::Session);
+    (_startupSessionMode ? _modeSession : _modeAppKeys)->setChecked(true);
+    _buildingSlackMode = false;
+    updateSlackModeUi();
+    connect(modeGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool) {
+        if (_buildingSlackMode)
+            return;
+        slack::setConnectionMode(
+            _modeSession->isChecked() ? slack::ConnectionMode::Session
+                                      : slack::ConnectionMode::AppKeys
+        );
+        updateSlackModeUi();
+    });
     loadAppCredentials();
 
     // ── Memory section ────────────────────────────────────────────────
@@ -1181,6 +1297,10 @@ void SettingsDialog::applyTheme() {
         w->setStyleSheet("QGroupBox { border: none; }");
     _notifAll->setStyleSheet(radioQss);
     _notifMentions->setStyleSheet(radioQss);
+    if (_modeSession)
+        _modeSession->setStyleSheet(radioQss);
+    if (_modeAppKeys)
+        _modeAppKeys->setStyleSheet(radioQss);
     _notifHuddles->setStyleSheet(checkQss);
     _notifSound->setStyleSheet(checkQss);
     // (Save button self-themes — StyledButton)
@@ -1429,6 +1549,32 @@ void SettingsDialog::saveAppCredentials() {
     slack::setPersonalAppCredentials(next);
     _credStatus->setText(tr("Saved. Restarting…"));
     emit restartRequested();
+}
+
+void SettingsDialog::updateSlackModeUi() {
+    if (!_modeSession)
+        return;
+    const bool session = _modeSession->isChecked();
+    _sessionBox->setVisible(session);
+    _appKeysBox->setVisible(!session);
+    // Only a change from the mode the app launched with needs a restart to apply.
+    _modeRestartNote->setVisible(session != _startupSessionMode);
+}
+
+void SettingsDialog::openSessionImport() {
+    // Parent to the top-level window so the overlay covers the whole window
+    // (over this settings overlay), consistent with other AppDialogs.
+    auto *dlg = new SessionImportDialog(this);
+    connect(
+        dlg,
+        &SessionImportDialog::imported,
+        this,
+        [this](const QList<TokenStore::WorkspaceRecord> &records) {
+            emit slackWorkspacesImported(records);
+        }
+    );
+    connect(dlg, &AppDialog::finished, dlg, [dlg](int) { dlg->deleteLater(); });
+    dlg->open();
 }
 
 static QString timeAgo(qint64 epochSecs) {

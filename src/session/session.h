@@ -590,10 +590,19 @@ private:
     // catch a silently-stalled shared socket without risking rate limits.
     static constexpr qint64   kBackgroundPollGapMs   = 2 * 60'000;
     qint64                    _lastBackgroundPollMs  = 0;
+    // Poll-only backends (session auth): cadence for reloading the conversation
+    // roster to discover new chats + refresh latestTs baselines. Push backends
+    // get this via reconnect events instead.
+    static constexpr qint64   kRosterReloadGapMs     = 15'000;
+    qint64                    _lastRosterReloadMs    = 0;
+    // Per-open-conversation poll baseline (newest ts seen), used when the roster
+    // has no latestTs for the open chat (some DMs) so the foreground poll can
+    // still detect new messages. Keyed by ConversationId string.
+    QHash<QString, Ts>        _fgPollBaseline;
     // Cursor into nextBackgroundPollTarget()'s (re-sorted-each-call) candidate
     // list, so successive ticks rotate through every member conversation
     // instead of always re-polling whichever one is most active.
-    int                       _backgroundPollIdx     = 0;
+    int                       _backgroundPollIdx = 0;
     QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>             _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request

@@ -44,6 +44,7 @@ public:
     QList<QByteArray> requestPaths;   // "/chat.postMessage" etc., in arrival order
     QList<QByteArray> requestTargets; // full request-line target incl. query string
     QList<QByteArray> requestBodies;  // raw POST bodies ("" for GET), in arrival order
+    QList<QByteArray> requestHeaders; // raw header block of each request, in arrival order
 
 private:
     static QByteArray make200(const QByteArray &body) {
@@ -84,6 +85,7 @@ private:
                 requestTargets.append(reqLine[1]);
             }
             requestBodies.append(buf->mid(headerEnd + 4, contentLength));
+            requestHeaders.append(headers);
 
             if (dropConnections > 0) {
                 --dropConnections;

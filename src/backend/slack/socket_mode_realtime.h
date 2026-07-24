@@ -86,39 +86,35 @@ private slots:
     void onTextMessage(const QString &text);
 
 private:
-    void                 openAndConnect();
-    void                 connectWs(const QUrl &url);
-    void                 ack(const QString &envelopeId);
-    void                 scheduleReconnect();
+    void openAndConnect();
+    void connectWs(const QUrl &url);
+    void ack(const QString &envelopeId);
+    void scheduleReconnect();
     // Abort any in-flight handshake and the current socket (signals first, so
     // their teardown can't re-enter our slots) and clear the single-flight
     // guard. Shared by stop() and forceReconnect().
-    void                 teardownConnection();
+    void teardownConnection();
     // Tear down the current socket and reconnect immediately (no backoff). Used
     // by the liveness watchdog when the connection has gone silently dead.
-    void                 forceReconnect();
+    void forceReconnect();
     // Watchdog: detects a suspend/sleep gap (see the _lastCheckMs comment) and
     // forces a reconnect; otherwise just sends a keepalive ping.
-    void                 checkLiveness();
+    void checkLiveness();
     // Wire up QNetworkInformation so we reconnect the instant the OS reports the
     // network is reachable again (e.g. right after wake), instead of waiting for
     // the watchdog deadline. Best-effort: no-op if no backend is available.
-    void                 setupReachabilityWatch();
-    void                 sendPresenceSub();
+    void setupReachabilityWatch();
+    void sendPresenceSub();
     // Broadcast an event to every registered sink (workspace backend).
-    void                 broadcast(const Event &e);
+    void broadcast(const Event &e);
     // Contention detection: distinguish Slack evicting our socket from the app's
     // full connection pool (another instance on the shared xapp token) from a
     // routine drop. noteBareClose() records a bare code-1000 close and, once
     // enough cluster in the window, raises the notice; maybeNotifyContention()
     // broadcasts EvRealtimeContended, throttled so a sustained storm warns once
     // per window. See EvRealtimeContended.
-    void                 noteBareClose();
-    void                 maybeNotifyContention();
-    std::optional<Event> normalizeSlackEvent(const QJsonObject &event);
-    // Extra huddle-state event for a huddle_thread message (start) or its edit
-    // (end); additive — does not replace the message's normal event.
-    std::optional<Event> huddleEventFor(const QJsonObject &event);
+    void noteBareClose();
+    void maybeNotifyContention();
 
     QString                                 _xappToken;
     std::vector<rpl::event_stream<Event> *> _sinks; // non-owning

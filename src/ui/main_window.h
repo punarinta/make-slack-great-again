@@ -102,6 +102,15 @@ private:
     // Runs one service's auth strategy and, on success, saves + activates the
     // new workspace.
     void     loginWithService(Service service);
+    // Slack connect entry: opens the session-import dialog (the default), with a
+    // secondary "use app keys" escape into OAuth (loginWithService).
+    void     connectSlack();
+    // Persist session-mode + save + activate imported session workspaces. Shared
+    // by connectSlack() and the Settings import path.
+    void     addSessionWorkspaces(const QList<TokenStore::WorkspaceRecord> &records);
+    // Convert existing app-key (OAuth) Slack workspaces to session auth in bulk,
+    // reusing the `d` cookie from an already-session workspace, then restart.
+    void     migrateSlackToSession();
     void     wireConvList(); // one-time Qt signal wiring (lambdas read _session)
     void     connectToSession();
     void     restoreLastConv();

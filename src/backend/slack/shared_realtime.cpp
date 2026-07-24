@@ -20,6 +20,16 @@ SocketModeRealtime *gSocket   = nullptr;
 
 SharedRealtime::SharedRealtime() {
     if (gRefcount++ == 0) {
+        // Session mode is a hard OFF switch for Socket Mode: the user chose to
+        // connect with their own session (no app keys), so we must NOT open the
+        // app-level socket at all — otherwise the build's compiled xapp connects
+        // and hits the shared-key contention ("same app keys on another device")
+        // that session mode exists to avoid.
+        if (connectionMode() == ConnectionMode::Session) {
+            qInfo().noquote() << "Socket Mode: disabled (Slack session mode — no app keys)";
+            _socket = nullptr;
+            return;
+        }
         // Precedence, highest first: (1) the personal xapp the user saved in
         // Settings → System, (2) the SLACK_XAPP_TOKEN env override (dev), (3) the
         // token compiled in via credentials.cmake. Settings MUST win over the env

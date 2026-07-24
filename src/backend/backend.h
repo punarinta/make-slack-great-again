@@ -30,6 +30,21 @@ public:
     virtual void                     verifyRealtime() {}
     virtual void                     reestablishRealtime() {}
 
+    // How often the Session should poll the OPEN conversation for new messages.
+    // When a live push transport is active this poll is only a stalled-stream
+    // backstop, so the default is conservative (60 s — also Slack app tokens'
+    // conversations.history budget). A backend with NO realtime (e.g. Slack
+    // session auth: no Socket Mode, so the poll IS the delivery mechanism) returns
+    // a much smaller value for a near-live feel — safe because session auth spends
+    // the user's own, far higher, rate limits.
+    virtual int foregroundPollGapMs() const { return 60'000; }
+
+    // True if this backend delivers events via a live push transport (Socket Mode
+    // / a WebSocket). When false (Slack session auth: poll-only), the Session has
+    // no events to discover NEW conversations or refresh the roster, so it must
+    // periodically reload the conversation list itself.
+    virtual bool hasRealtimePush() const { return true; }
+
     // --- Identity helpers: keep ID-shape knowledge below the seam ---
     // The UI and Session treat IDs as opaque scalars; when they nonetheless need
     // to answer a question about an id's *kind* (which they used to do with

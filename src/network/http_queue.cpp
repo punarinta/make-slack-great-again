@@ -60,6 +60,22 @@ FailureClass classifyTransportError(QNetworkReply::NetworkError e) {
 
 HttpQueue::HttpQueue(QObject *parent) : QObject(parent), _nam(new QNetworkAccessManager(this)) {}
 
+void HttpQueue::applyAuth(QNetworkRequest &req) const {
+    req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
+    // Session auth requires the `d` cookie on every call; the token alone is
+    // rejected. Sent verbatim (the stored value already carries its `xoxd-` prefix).
+    if (!_cookie.isEmpty()) {
+        req.setRawHeader("Cookie", ("d=" + _cookie).toUtf8());
+        // QNAM's default cookie handling (CookieLoadControlAttribute == Automatic)
+        // rebuilds the Cookie header from its own (empty) jar and clobbers the one
+        // set above — so without this the cookie never goes out and Slack answers
+        // invalid_auth. Manual mode tells QNAM to leave our header alone (and not
+        // to harvest Set-Cookie into the jar).
+        req.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);
+        req.setAttribute(QNetworkRequest::CookieSaveControlAttribute, QNetworkRequest::Manual);
+    }
+}
+
 void HttpQueue::failAllPending(const QString &error) {
     // Drain into a local queue first: an onError handler may legitimately
     // re-enqueue (a retry), and we must not loop over our own _queue while it's
@@ -100,7 +116,7 @@ void HttpQueue::downloadUrl(
     const QUrl &url, std::function<void(QByteArray)> onData, OnError onError
 ) {
     QNetworkRequest req(url);
-    req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
+    applyAuth(req);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );
@@ -207,7 +223,7 @@ void HttpQueue::requeueWithDelay(PendingCall c, int delayMs) {
 void HttpQueue::execute(const PendingCall &c) {
     QUrl            url(_baseUrl + c.method);
     QNetworkRequest req;
-    req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
+    applyAuth(req);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
     );

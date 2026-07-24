@@ -21,6 +21,7 @@
 namespace slack {
 
 class SocketModeRealtime;
+class SessionRealtime;
 
 // Real Slack backend using the public API + Socket Mode.
 // The app-level Socket Mode socket is supplied by the refcounted slack::
@@ -45,6 +46,13 @@ public:
     void                     disconnectRealtime() override;
     void                     verifyRealtime() override;
     void                     reestablishRealtime() override;
+    // Session auth has no Socket Mode, so the open-conversation poll IS the
+    // delivery path — poll it every few seconds (spends the user's own rate
+    // limits) instead of the 60 s app-token backstop cadence.
+    int  foregroundPollGapMs() const override { return _sessionAuth ? 5'000 : 60'000; }
+    // Session auth has no push (classic RTM is unusable — Slack caps the legacy
+    // socket at ~5 s); the Session drives discovery/roster refresh by polling.
+    bool hasRealtimePush() const override { return !_sessionAuth; }
 
     bool isSyntheticUser(UserId) const override;
     bool isBotId(UserId) const override;
@@ -234,19 +242,25 @@ private:
     void triggerRefresh(std::function<void(bool)> done);
     void maybeProactiveRefresh();
 
-    QString             _teamId;
-    QString             _refreshToken;
-    QString             _refreshUrl;
-    AppConfig           _appCfg;
-    WebApiClient       *_api;
-    WebApiClient       *_historyApi; // dedicated client for loadHistory/loadThread
-    WebApiClient       *_infoApi;    // low-priority client for background conversations.info sweeps
+    QString       _teamId;
+    QString       _refreshToken;
+    QString       _refreshUrl;
+    AppConfig     _appCfg;
+    WebApiClient *_api;
+    WebApiClient *_historyApi; // dedicated client for loadHistory/loadThread
+    WebApiClient *_infoApi;    // low-priority client for background conversations.info sweeps
     // Refcounted app-level Socket Mode socket: created on the first Slack
     // backend, released on the last. _sharedRealtime caches the handle's socket
-    // (null when no xapp token is configured).
-    SharedRealtime      _realtimeHandle;
-    SocketModeRealtime *_sharedRealtime        = nullptr; // non-owning (owned by the handle)
-    QTimer             *_proactiveRefreshTimer = nullptr;
+    // (null when no xapp token is configured). Held only by OAuth workspaces —
+    // session-auth workspaces don't use Socket Mode (they poll), so they never
+    // acquire the handle. If EVERY workspace is session-auth the refcount stays
+    // 0 and the socket is never opened (no shared-app-key contention banner).
+    std::unique_ptr<SharedRealtime>  _realtimeHandle;
+    SocketModeRealtime              *_sharedRealtime = nullptr; // non-owning (owned by the handle)
+    bool                             _sessionAuth = false; // xoxc/cookie workspace (no Socket Mode)
+    // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
+    std::unique_ptr<SessionRealtime> _sessionRealtime;
+    QTimer                          *_proactiveRefreshTimer = nullptr;
 
     // Token refresh deduplication
     bool                                   _refreshInProgress = false;

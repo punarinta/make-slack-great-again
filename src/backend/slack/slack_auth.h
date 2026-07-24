@@ -14,13 +14,33 @@ namespace slack {
 // into the opaque TokenStore::WorkspaceRecord::auth blob; teamName/iconUrl map
 // to the record's neutral displayName/iconUrl, teamId to the WorkspaceKey id.
 struct Credentials {
-    QString xoxp;
+    QString xoxp;          // bearer token: an OAuth xoxp- OR a session xoxc- token
     QString teamId;        // == WorkspaceKey::id
     QString teamName;      // == WorkspaceRecord::displayName
     QString iconUrl;       // == WorkspaceRecord::iconUrl, may be empty
-    QString refreshToken;  // non-empty when token rotation is enabled
+    QString refreshToken;  // non-empty when token rotation is enabled (OAuth only)
     qint64  expiresAt = 0; // Unix ts when the access token expires; 0 = unknown
+    // Session auth: the `d` session cookie (value carries its own xoxd- prefix).
+    // Non-empty ⇒ this workspace is session-authed (xoxc token + cookie) rather
+    // than OAuth; it has no Socket Mode realtime and its token does not rotate.
+    QString cookie;
+    // Session auth: the workspace URL (e.g. "https://team.slack.com/"). Stored so
+    // the xoxc token can be re-derived from a fresh cookie without a live token —
+    // needed because the account-wide `d` cookie rotates on logout/re-login, which
+    // stales every session workspace's token+cookie at once.
+    QString workspaceUrl;
+
+    [[nodiscard]] bool isSessionAuth() const { return !cookie.isEmpty(); }
 };
+
+// How the app connects to Slack, chosen globally by the user in Settings → System.
+//  - AppKeys: OAuth sign-in (xoxp) + app-level Socket Mode realtime (xapp). Default.
+//  - Session: the user's own browser session (xoxc + `d` cookie). NO app keys and
+//    NO Socket Mode at all — realtime is replaced by polling. Picking Session must
+//    make Socket Mode completely inert (no shared-app-key contention).
+enum class ConnectionMode { AppKeys, Session };
+ConnectionMode connectionMode();
+void           setConnectionMode(ConnectionMode mode);
 
 // Slack app registration (compiled in via credentials.cmake). Moved out of
 // TokenStore — app credentials are a Slack-internal concern.
