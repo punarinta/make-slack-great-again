@@ -592,8 +592,11 @@ private:
     qint64                    _lastBackgroundPollMs  = 0;
     // Poll-only backends (session auth): cadence for reloading the conversation
     // roster to discover new chats + refresh latestTs baselines. Push backends
-    // get this via reconnect events instead.
-    static constexpr qint64   kRosterReloadGapMs     = 15'000;
+    // get this via reconnect events instead. Kept slow (60 s): conversations.list
+    // is Tier 2 (as low as ~1/min for a session token), and the open chat streams
+    // via the 5 s foreground poll regardless, so this only paces new-chat/badge
+    // discovery — a tighter cadence just 429s the endpoint.
+    static constexpr qint64   kRosterReloadGapMs     = 60'000;
     qint64                    _lastRosterReloadMs    = 0;
     // Per-open-conversation poll baseline (newest ts seen), used when the roster
     // has no latestTs for the open chat (some DMs) so the foreground poll can
