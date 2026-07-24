@@ -301,4 +301,13 @@ QString radioQss(int fontPx = 0);
 QString checkBoxQss(int fontPx = 0);
 QString spinBoxQss(int fontPx = 0);
 
+// Stylesheet for stock Qt dialogs we don't custom-paint (the widget-based
+// QFileDialog fallback). Their text/selection colors come from the OS palette,
+// which is unreadable whenever the OS theme's lightness differs from the app
+// theme's. Must be a stylesheet, not a QPalette: any ancestor `QWidget {
+// background: … }` rule makes QStyleSheetStyle::polish assign each child its
+// own palette rebuilt from the app palette, silently discarding one set with
+// setPalette().
+QString stockDialogQss();
+
 } // namespace Th

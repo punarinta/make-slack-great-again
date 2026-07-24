@@ -605,4 +605,20 @@ QString spinBoxQss(int fontPx) {
         .arg(qss(th.text.link), qss(th.surface.highlight));
 }
 
+QString stockDialogQss() {
+    const auto &th = c();
+    // One flat rule is enough: with a stylesheet background on every widget the
+    // style renders the dialog flat anyway, so pinning color/selection to the
+    // same theme tokens guarantees contrast on every app-theme × OS-theme
+    // combination. Scrollbars get our usual look instead of the stock boxes.
+    return QString(
+               "QWidget { color: %1; background: %2;"
+               "  selection-background-color: %3; selection-color: %4; }"
+               "QWidget:disabled { color: %5; }"
+           )
+               .arg(qss(th.text.primary), qss(th.surface.content), qss(th.accent.def))
+               .arg(qss(th.accent.text), qss(th.text.tertiary)) +
+           scrollBarQss();
+}
+
 } // namespace Th

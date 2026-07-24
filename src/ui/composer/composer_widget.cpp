@@ -8,6 +8,7 @@
 #include "mention_completer.h"
 #include "ui/mention_popup/mention_popup.h"
 #include "session/session.h"
+#include "ui/file_dialog_utils.h"
 #include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/styled_button/styled_button.h"
@@ -1679,6 +1680,9 @@ void ComposerWidget::openAttachDialog() {
                 addPendingFile(p);
         });
     }
+    // Re-applied on every open, not just at creation: the dialog outlives theme
+    // switches.
+    Ui::applyFileDialogTheme(_attachDialog);
     _attachDialog->open();
 }
 

@@ -157,6 +157,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     # UI
     src/ui/theme.cpp
     src/ui/theme_manager.cpp
+    src/ui/file_dialog_utils.cpp
     src/ui/virtual_list/virtual_list_widget.cpp
     src/ui/image_cache.cpp
     src/ui/main_window.cpp

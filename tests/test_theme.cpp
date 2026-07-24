@@ -3,10 +3,13 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "ui/file_dialog_utils.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
 #include <QApplication>
+#include <QFileDialog>
+#include <QLabel>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -127,4 +130,42 @@ TEST_CASE("ThemeManager switches, persists and ignores unknown ids", "[theme]") 
     CHECK(
         QSettings("msga", "msga").value("appearance/theme").toString() == QStringLiteral("purple")
     );
+}
+
+TEST_CASE("stock file dialog readable whatever the OS palette", "[theme]") {
+    // Issue #18: with no native dialog helper Qt shows its widget-based
+    // QFileDialog, which inherits an ancestor `QWidget { background: … }`
+    // stylesheet (theme surface) while QStyleSheetStyle rebuilds each child's
+    // text colors from the OS palette — white-on-white when the OS theme is
+    // dark and the app theme is light (and inverted for charcoal). The dialog
+    // must pin its text to the same theme its backgrounds come from.
+    const QPalette appPalette = qApp->palette();
+    QPalette       osDark     = appPalette;
+    for (auto role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText})
+        osDark.setColor(role, QColor("#FCFCFC"));
+    qApp->setPalette(osDark);
+
+    for (const auto &info : Th::availableThemes()) {
+        INFO("theme: " << info.id.toStdString());
+        ThemeManager::instance().setTheme(*info.theme);
+
+        // Stand-in for MainWindow's right panel, whose stylesheet cascades
+        // into every parented dialog.
+        QWidget panel;
+        panel.setStyleSheet(
+            QString("QWidget { background: %1; }").arg(Th::qss(Th::c().surface.content))
+        );
+
+        QFileDialog dlg(&panel);
+        dlg.setOption(QFileDialog::DontUseNativeDialog);
+        Ui::applyFileDialogTheme(&dlg);
+        dlg.show();
+
+        auto *label = dlg.findChild<QLabel *>("fileNameLabel");
+        REQUIRE(label != nullptr);
+        CHECK(label->palette().color(QPalette::WindowText) == Th::c().text.primary);
+    }
+
+    qApp->setPalette(appPalette);
+    ThemeManager::instance().setTheme(Th::defaultTheme());
 }

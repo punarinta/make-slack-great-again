@@ -7,6 +7,7 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/file_dialog_utils.h"
 #include "ui/styled_button/styled_button.h"
 #include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme.h"
@@ -15,7 +16,6 @@
 
 #include <memory>
 #include <QEnterEvent>
-#include <QFileDialog>
 #include <QPointer>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -246,8 +246,8 @@ void ProfileDialog::setAvatarUrl(const QString &url) {
 }
 
 void ProfileDialog::pickAndUploadPhoto() {
-    const QString path = QFileDialog::getOpenFileName(
-        this, tr("Choose a profile photo"), {}, tr("Images (*.png *.jpg *.jpeg *.gif)")
+    const QString path = Ui::getOpenFileName(
+        this, tr("Choose a profile photo"), tr("Images (*.png *.jpg *.jpeg *.gif)")
     );
     if (path.isEmpty() || !_session)
         return;

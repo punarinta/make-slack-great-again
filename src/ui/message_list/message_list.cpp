@@ -7,6 +7,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/icon_utils.h"
+#include "ui/file_dialog_utils.h"
 #include "ui/image_cache.h"
 #include "ui/context_menu/context_menu.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
@@ -41,7 +42,7 @@
 #include <QFontMetrics>
 #include <QDesktopServices>
 #include <QClipboard>
-#include <QFileDialog>
+#include <QDir>
 #include <QFile>
 #include <QMessageBox>
 #include <QUrl>
@@ -2567,7 +2568,7 @@ void MessageListWidget::downloadFileToUser(const File &file) {
         return;
     const QString defaultName = file.name.isEmpty() ? tr("file") : file.name;
     const QString savePath =
-        QFileDialog::getSaveFileName(this, tr("Save file"), QDir::homePath() + "/" + defaultName);
+        Ui::getSaveFileName(this, tr("Save file"), QDir::homePath() + "/" + defaultName);
     if (savePath.isEmpty())
         return;
     const QString url  = file.urlPrivate;

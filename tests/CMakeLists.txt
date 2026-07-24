@@ -324,6 +324,7 @@ add_msga_widget_test(test_theme
     test_theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
 )
 
 target_link_libraries(test_theme PRIVATE Qt6::Test)
@@ -540,6 +541,7 @@ add_msga_widget_test(test_composer
     test_composer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
@@ -608,6 +610,7 @@ add_msga_widget_test(test_conv_list_widget
 add_msga_widget_test(test_message_list
     test_message_list.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
