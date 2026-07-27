@@ -245,6 +245,59 @@ target_link_libraries(msga PRIVATE
     Microsoft.GSL::GSL
 )
 
+# macOS app-bundle metadata. CMake's default Info.plist gives the bundle no
+# identifier and — critically — no CFBundleURLTypes, so macOS would not know
+# msga.app handles the msga:// scheme that the OAuth redirect comes back on
+# (the browser then reports "unknown protocol" and sign-in can't complete).
+# Supply our own template (resources/Info.plist.in) that declares the scheme.
+#
+# CMake writes MACOSX_BUNDLE_INFO_PLIST into the .app only at CONFIGURE time —
+# there is no build rule for it. So a plain `cmake --build` after the bundle is
+# recreated (which is every scripts/build.sh run: it reuses the configured dir
+# and only relinks) leaves the app with NO Info.plist, hence no
+# CFBundleIdentifier. That silently breaks two things: codesign falls back to an
+# unstable per-binary ad-hoc identifier (msga-<hash>, different each build), and
+# UNUserNotificationCenter then refuses to register the app — no notification
+# banners, no entry under System Settings ▸ Notifications. To make it robust we
+# generate the plist to a stable build-tree path and re-install + ad-hoc sign it
+# on EVERY build via POST_BUILD, so the identity is always app.msga.msga.
+if(APPLE)
+    set(MACOSX_BUNDLE_EXECUTABLE_NAME      "msga")
+    set(MACOSX_BUNDLE_BUNDLE_NAME          "msga")
+    set(MACOSX_BUNDLE_INFO_STRING          "msga")
+    # App icon (gfx/mac/icon.icns — extracted from the Finder custom icon the
+    # project used pre-source-builds). Referenced by CFBundleIconFile in the
+    # plist template and installed into Contents/Resources below.
+    set(MACOSX_BUNDLE_ICON_FILE            "icon.icns")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER       "app.msga.msga")
+    set(MACOSX_BUNDLE_BUNDLE_VERSION       "${MSGA_VERSION}")
+    set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${MSGA_VERSION}")
+    set(MACOSX_BUNDLE_LONG_VERSION_STRING  "${MSGA_VERSION}")
+
+    # Fully substitute the template now (the template uses ${VAR} placeholders,
+    # so no @ONLY) into a stable location outside the bundle.
+    set(MSGA_INFO_PLIST "${CMAKE_BINARY_DIR}/msga_Info.plist")
+    configure_file("${CMAKE_SOURCE_DIR}/resources/Info.plist.in" "${MSGA_INFO_PLIST}")
+    set_target_properties(msga PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${MSGA_INFO_PLIST}")
+
+    # Guarantee the bundle has its Info.plist + app icon and a stable signature
+    # after every build — including a bare `cmake --build` that never re-runs
+    # configure. (The icon uses the same every-build install as the plist: a
+    # MACOSX_PACKAGE_LOCATION resource would not be re-copied into a bundle
+    # that was recreated without its sources changing.)
+    add_custom_command(TARGET msga POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${MSGA_INFO_PLIST}" "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Info.plist"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/gfx/mac/icon.icns"
+                "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources/${MACOSX_BUNDLE_ICON_FILE}"
+        COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:msga>"
+        VERBATIM
+        COMMENT "Installing Info.plist, app icon and ad-hoc signing msga.app")
+endif()
+
 # Crash reports (src/app/crash_handler.cpp): -rdynamic keeps function names
 # visible to backtrace_symbols on Linux; dbghelp is the Windows symbol engine.
 # A fully static binary (release-linux-static.sh passes -static) has no
