@@ -47,6 +47,9 @@
 #include "util/desktop_notifier.h"
 #include "util/slack_links.h"
 #include "util/sound_player.h"
+#ifdef Q_OS_MACOS
+#include "util/mac_app_badge.h"
+#endif
 
 #include <QDialog>
 #include <QEvent>
@@ -2291,6 +2294,13 @@ void MainWindow::updateTrayIcon() {
     }
     p.end();
     _trayIcon->setIcon(QIcon(px));
+
+#ifdef Q_OS_MACOS
+    // Dock tile badge: the actionable count (DM unreads + @mentions), matching
+    // Slack. Plain channel activity stays off the Dock (it still shows the tray
+    // tint and the in-app blue dot).
+    macSetDockBadge(globalMentions);
+#endif
 }
 
 // ── Workspace management ──────────────────────────────────────────────────────

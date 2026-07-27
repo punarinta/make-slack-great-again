@@ -333,11 +333,13 @@ endif()
 # shared header; each degrades to the tray fallback when its API is unavailable.
 #   • Linux  — org.freedesktop.Notifications `image-data` hint via QtDBus
 #   • Windows — WinRT toast `appLogoOverride` (raw COM) + AUMID/shortcut/scheme
-#   • macOS  — NSUserNotification.contentImage (UserNotifications)
+#   • macOS  — UNUserNotificationCenter banner + attachment (UserNotifications);
+#             the same TU also sets the Dock tile badge (mac_app_badge.h)
 if(APPLE)
     target_sources(msga PRIVATE src/util/desktop_notifier_mac.mm)
     set_source_files_properties(src/util/desktop_notifier_mac.mm
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(msga PRIVATE "-framework UserNotifications")
 elseif(WIN32)
     target_sources(msga PRIVATE src/util/desktop_notifier_win.cpp)
     # runtimeobject: WinRT (RoInitialize/RoGetActivationFactory/HSTRING).
