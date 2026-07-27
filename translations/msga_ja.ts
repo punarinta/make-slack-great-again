@@ -54,29 +54,6 @@
     </message>
 </context>
 <context>
-    <name>BrowserLogin</name>
-    <message>
-        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="396"/>
-        <source>Opening %1…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="433"/>
-        <source>Sign in to Slack in the browser window — msga picks it up automatically.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="605"/>
-        <source>Signed in — finishing up in msga. You can close this.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="646"/>
-        <source>Signed in — looking up your workspaces…</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>CanvasPage</name>
     <message>
         <location filename="../src/ui/canvas_page/canvas_page.cpp" line="268"/>
@@ -699,22 +676,22 @@ This action cannot be undone.</source>
         <location filename="../src/ui/main_window.cpp" line="1368"/>
         <location filename="../src/ui/main_window.cpp" line="1382"/>
         <source>Convert to session</source>
-        <translation type="unfinished"></translation>
+        <translation>セッションに切り替え</translation>
     </message>
     <message>
         <location filename="../src/ui/main_window.cpp" line="1361"/>
         <source>Add one workspace with your Slack session first — its cookie is reused for the rest.</source>
-        <translation type="unfinished"></translation>
+        <translation>まずSlackセッションでワークスペースを1つ追加してください — そのクッキーを残りのワークスペースにも再利用します。</translation>
     </message>
     <message>
         <location filename="../src/ui/main_window.cpp" line="1368"/>
         <source>All Slack workspaces already use your session.</source>
-        <translation type="unfinished"></translation>
+        <translation>すべてのSlackワークスペースはすでにセッションを使用しています。</translation>
     </message>
     <message>
         <location filename="../src/ui/main_window.cpp" line="1383"/>
         <source>Couldn&apos;t convert your workspaces: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>ワークスペースを切り替えられませんでした: %1</translation>
     </message>
     <message>
         <location filename="../src/ui/main_window.cpp" line="1464"/>
@@ -1448,154 +1425,156 @@ This action cannot be undone.</source>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="24"/>
         <source>The Slack desktop app wasn&apos;t found on this computer.</source>
-        <translation type="unfinished"></translation>
+        <translation>このコンピューターにSlackデスクトップアプリが見つかりませんでした。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="26"/>
         <source>Couldn&apos;t read Slack&apos;s data — try quitting the Slack app first.</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackのデータを読み取れませんでした — 先にSlackアプリを終了してみてください。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="28"/>
         <source>Couldn&apos;t read Slack&apos;s saved session automatically.</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackの保存済みセッションを自動で読み取れませんでした。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="30"/>
         <source>Automatic import isn&apos;t available in this build.</source>
-        <translation type="unfinished"></translation>
+        <translation>このビルドでは自動インポートを利用できません。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="31"/>
         <source>Automatic import didn&apos;t work.</source>
-        <translation type="unfinished"></translation>
+        <translation>自動インポートできませんでした。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="37"/>
         <source>No supported browser was found — browser sign-in needs Chrome, Chromium, Brave, Edge or Vivaldi.</source>
-        <translation type="unfinished"></translation>
+        <translation>対応するブラウザが見つかりませんでした — ブラウザでのサインインにはChrome、Chromium、Brave、EdgeまたはVivaldiが必要です。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="42"/>
         <source>Couldn&apos;t start your browser.</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザを起動できませんでした。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="44"/>
         <source>Couldn&apos;t read the session back from the browser window.</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザウィンドウからセッションを読み取れませんでした。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="46"/>
         <source>Browser sign-in was cancelled.</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザでのサインインがキャンセルされました。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="48"/>
         <source>Browser sign-in timed out.</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザでのサインインがタイムアウトしました。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="49"/>
         <source>Browser sign-in didn&apos;t work.</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザでのサインインができませんでした。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="76"/>
         <source>Add Slack workspace with a session token</source>
-        <translation type="unfinished"></translation>
+        <translation>セッショントークンでSlackワークスペースを追加</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="86"/>
         <source>Log in to Slack in a browser window and msga uses that session instead of app keys — so it runs on your account&apos;s own rate limits and avoids the shared-key timeouts. New messages arrive by polling (there&apos;s no live push this way).</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザウィンドウでSlackにログインすると、msgaはアプリキーの代わりにそのセッションを使います — あなたのアカウント自身のレート制限で動くため、キーを共有することによるタイムアウトを避けられます。新しいメッセージはポーリングで届きます（この方式ではリアルタイムのプッシュ配信はありません）。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="92"/>
         <source>Sign in with your existing Slack session instead of app keys — it uses your account&apos;s own rate limits, so it avoids the shared-key timeouts. New messages arrive by polling (there&apos;s no live push this way).</source>
-        <translation type="unfinished"></translation>
+        <translation>アプリキーの代わりに、既存のSlackセッションでサインインします — あなたのアカウント自身のレート制限を使うため、キーを共有することによるタイムアウトを避けられます。新しいメッセージはポーリングで届きます（この方式ではリアルタイムのプッシュ配信はありません）。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="114"/>
         <source>Import from local Slack</source>
-        <translation type="unfinished"></translation>
+        <translation>ローカルのSlackからインポート</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="123"/>
         <source>Paste a session cookie instead</source>
-        <translation type="unfinished"></translation>
+        <translation>代わりにセッションクッキーを貼り付ける</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="141"/>
         <source>1. Sign in to the workspace in your browser.
 2. Open developer tools (F12) → Application → Cookies → https://app.slack.com, and copy the value of the cookie named “d” (it starts with xoxd-) into Cookie. Browsers hide this cookie from scripts, so it has to be copied by hand.
 3. Enter your workspace address.</source>
-        <translation type="unfinished"></translation>
+        <translation>1. ブラウザでワークスペースにサインインします。
+2. 開発者ツール（F12）→ アプリケーション → Cookie → https://app.slack.com を開き、「d」という名前のクッキーの値（xoxd- で始まります）を「クッキー」にコピーします。ブラウザはこのクッキーをスクリプトから隠すため、手作業でコピーする必要があります。
+3. ワークスペースのアドレスを入力します。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="156"/>
         <source>Cookie</source>
-        <translation type="unfinished"></translation>
+        <translation>クッキー</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="164"/>
         <source>Workspace</source>
-        <translation type="unfinished"></translation>
+        <translation>ワークスペース</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="178"/>
         <source>Use app keys (OAuth) instead</source>
-        <translation type="unfinished"></translation>
+        <translation>代わりにアプリキー（OAuth）を使う</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="188"/>
         <source>Add workspace</source>
-        <translation type="unfinished">ワークスペースを追加</translation>
+        <translation>ワークスペースを追加</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="209"/>
         <source>Opening a browser window…</source>
-        <translation type="unfinished"></translation>
+        <translation>ブラウザウィンドウを開いています…</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="237"/>
         <source>Signed in — enter your workspace address.</source>
-        <translation type="unfinished"></translation>
+        <translation>サインインしました — ワークスペースのアドレスを入力してください。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="248"/>
         <source>Importing from local Slack…</source>
-        <translation type="unfinished"></translation>
+        <translation>ローカルのSlackからインポートしています…</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="260"/>
         <source>Found your Slack session — enter your workspace address.</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackセッションが見つかりました — ワークスペースのアドレスを入力してください。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="271"/>
         <source>Paste the “d” cookie value.</source>
-        <translation type="unfinished"></translation>
+        <translation>「d」クッキーの値を貼り付けてください。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="275"/>
         <source>Enter your workspace address (e.g. myteam.slack.com).</source>
-        <translation type="unfinished"></translation>
+        <translation>ワークスペースのアドレスを入力してください（例: myteam.slack.com）。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="287"/>
         <source>Verifying your session…</source>
-        <translation type="unfinished"></translation>
+        <translation>セッションを確認しています…</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="301"/>
         <source>That session was rejected — the cookie may have expired. Sign in to Slack again and copy a fresh cookie.</source>
-        <translation type="unfinished"></translation>
+        <translation>そのセッションは拒否されました — クッキーの有効期限が切れている可能性があります。Slackに再度サインインして、新しいクッキーをコピーしてください。</translation>
     </message>
     <message>
         <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="306"/>
         <source>Couldn&apos;t verify that session. Check the cookie and workspace address and try again.</source>
-        <translation type="unfinished"></translation>
+        <translation>そのセッションを確認できませんでした。クッキーとワークスペースのアドレスを確認して、もう一度お試しください。</translation>
     </message>
 </context>
 <context>
@@ -2029,53 +2008,49 @@ Clear this to let the app re-analyse activity from scratch on next load.</source
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="644"/>
         <source>Slack connection</source>
-        <translation type="unfinished"></translation>
+        <translation>Slack接続</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="648"/>
         <source>Choose how msga connects to Slack.</source>
-        <translation type="unfinished"></translation>
+        <translation>msgaがSlackに接続する方法を選びます。</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="660"/>
         <source>Slack session — no app keys, uses your own account&apos;s limits</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackセッション — アプリキーなし、自分のアカウントの制限を使います</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="663"/>
         <source>Slack app keys — OAuth sign-in with live message push</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackアプリキー — OAuthでサインイン、メッセージはリアルタイムに届きます</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="669"/>
         <source>Restart msga to apply this change.</source>
-        <translation type="unfinished"></translation>
+        <translation>この変更を適用するにはmsgaを再起動してください。</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="682"/>
         <source>Add a workspace using your existing Slack session. New messages arrive by polling — there&apos;s no live push in this mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>既存のSlackセッションを使ってワークスペースを追加します。新しいメッセージはポーリングで届きます — このモードではリアルタイムのプッシュ配信はありません。</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="691"/>
         <source>Import Slack session…</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackセッションをインポート…</translation>
     </message>
     <message numerus="yes">
         <location filename="../src/ui/settings/settings_dialog.cpp" line="710"/>
         <source>You still have %n Slack workspace(s) on app keys. Convert them to session so no workspace uses Socket Mode.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>アプリキーを使っているSlackワークスペースがまだ %n 件あります。すべてセッションに切り替えると、どのワークスペースもSocket Modeを使わなくなります。</numerusform>
         </translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="721"/>
         <source>Convert them to session</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Slack app keys</source>
-        <translation type="vanished">Slackアプリキー</translation>
+        <translation>セッションに切り替える</translation>
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="742"/>
@@ -2750,19 +2725,36 @@ It follows the app language until you pick one here.</source>
 <context>
     <name>slack::OAuthFlow</name>
     <message>
-        <source>App credentials are not configured.
-
-Copy credentials.cmake.example to credentials.cmake, fill in your Slack app credentials, and rebuild.</source>
-        <translation type="vanished">アプリの認証情報が設定されていません。
-
-credentials.cmake.example を credentials.cmake にコピーし、Slackアプリの認証情報を記入して再ビルドしてください。</translation>
-    </message>
-    <message>
         <location filename="../src/backend/slack/oauth_flow.cpp" line="45"/>
         <source>No Slack app keys are set up yet.
 
 Open Settings → System, choose “Slack app keys”, and paste your client ID, client secret and app token. Building msga yourself? Put them in credentials.cmake instead and rebuild.</source>
-        <translation type="unfinished"></translation>
+        <translation>Slackアプリキーがまだ設定されていません。
+
+設定 → システムを開いて「Slackアプリキー」を選び、クライアントID、クライアントシークレット、アプリトークンを貼り付けてください。msgaを自分でビルドしている場合は、代わりに credentials.cmake に記入して再ビルドしてください。</translation>
+    </message>
+</context>
+<context>
+    <name>slack::session::BrowserLogin</name>
+    <message>
+        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="396"/>
+        <source>Opening %1…</source>
+        <translation>%1 を開いています…</translation>
+    </message>
+    <message>
+        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="433"/>
+        <source>Sign in to Slack in the browser window — msga picks it up automatically.</source>
+        <translation>ブラウザウィンドウでSlackにサインインしてください — msgaが自動的に受け取ります。</translation>
+    </message>
+    <message>
+        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="605"/>
+        <source>Signed in — finishing up in msga. You can close this.</source>
+        <translation>サインインしました — msgaで処理を完了しています。このウィンドウは閉じてかまいません。</translation>
+    </message>
+    <message>
+        <location filename="../src/backend/slack/session_import/browser_login.cpp" line="646"/>
+        <source>Signed in — looking up your workspaces…</source>
+        <translation>サインインしました — ワークスペースを検索しています…</translation>
     </message>
 </context>
 <context>
