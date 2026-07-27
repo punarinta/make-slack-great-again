@@ -92,6 +92,9 @@ public:
     // Set how many days of activity qualify a conversation as "relevant" (shown inline).
     // Conversations outside this window appear under "N more..." until expanded.
     void setRelevantDays(int days);
+    // Show/hide the whole "Agents & apps" section (Settings → Appearance).
+    // Hidden app DMs stay reachable through search / browse.
+    void setShowAgentsApps(bool show);
     // Wipe the in-memory visit history and rebuild rows so auto-seed runs from scratch.
     // Call after the user clears state in Settings.
     void resetVisitedAt();
@@ -196,6 +199,7 @@ protected:
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;
     bool _appsCollapsed     = false;
+    bool _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
     bool _showAllChannels   = false; // true after user clicks "N more channels"
 
     // convId.value → viewport rect of the clickable huddle indicator, refreshed

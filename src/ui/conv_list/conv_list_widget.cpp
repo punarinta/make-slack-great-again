@@ -114,6 +114,13 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.huddle = px(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
 }
 
+void ConvListWidget::setShowAgentsApps(bool show) {
+    if (_showAgentsApps == show)
+        return;
+    _showAgentsApps = show;
+    rebuildRows();
+}
+
 void ConvListWidget::setRelevantDays(int days) {
     _relevantDays = std::max(1, days);
     rebuildRows();
@@ -392,8 +399,9 @@ void ConvListWidget::rebuildRows() {
     // Bot/app DMs live here, like in the official client. No relevance
     // filter: open app DMs are few, and unlike human DMs there is no
     // People-tab path to reopen one the filter would hide. The section
-    // disappears entirely when there are no app DMs.
-    if (!apps.empty()) {
+    // disappears entirely when there are no app DMs, or when the user
+    // hides it in Settings → Appearance.
+    if (_showAgentsApps && !apps.empty()) {
         _rows.push_back({RowKind::SectionHeader, -1, 2});
         if (!_appsCollapsed) {
             for (int i : apps)

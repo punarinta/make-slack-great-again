@@ -366,6 +366,9 @@ void SettingsDialog::buildPanel() {
     daysDesc->setWordWrap(true);
     sidebarLayout->addWidget(daysDesc);
 
+    _showAgentsApps = new QCheckBox(tr("Show the Agents && apps section"), sidebarBox);
+    sidebarLayout->addWidget(_showAgentsApps);
+
     alay->addWidget(sidebarBox);
     alay->addStretch();
 
@@ -1278,6 +1281,7 @@ void SettingsDialog::applyTheme() {
     _time24->setStyleSheet(radioQss);
     _threadStandalone->setStyleSheet(radioQss);
     _threadInline->setStyleSheet(radioQss);
+    _showAgentsApps->setStyleSheet(checkQss);
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
@@ -1462,6 +1466,10 @@ void SettingsDialog::loadAppearance() {
         QSettings("msga", "msga").value("appearance/threadsInline", false).toBool();
     (inlineThreads ? _threadInline : _threadStandalone)->setChecked(true);
 
+    _showAgentsApps->setChecked(
+        QSettings("msga", "msga").value("appearance/showAgentsApps", true).toBool()
+    );
+
     for (auto *card : _themeCards)
         card->setChecked(card->themeId() == ThemeManager::instance().themeId());
 }
@@ -1476,9 +1484,13 @@ void SettingsDialog::saveAppearance() {
     const bool inlineThreads = _threadInline->isChecked();
     QSettings("msga", "msga").setValue("appearance/threadsInline", inlineThreads);
 
+    const bool showAgents = _showAgentsApps->isChecked();
+    QSettings("msga", "msga").setValue("appearance/showAgentsApps", showAgents);
+
     emit appearanceChanged(days);
     emit timeFormatChanged();
     emit threadDisplayChanged(inlineThreads);
+    emit agentsAppsVisibilityChanged(showAgents);
 }
 
 static QString formatBytes(qint64 bytes) {
