@@ -505,6 +505,14 @@ add_msga_qt_test(test_session_auth
 target_link_libraries(test_session_auth PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_session_auth PROPERTIES AUTOMOC ON)
 
+# Browser sign-in: the pure parsers (localConfig_v2, host harvesting, /json/version).
+add_msga_qt_test(test_browser_login
+    test_browser_login.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
+)
+target_link_libraries(test_browser_login PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_browser_login PROPERTIES AUTOMOC ON)
+
 # SessionImportDialog render/smoke harness (screenshot + card-height regression).
 add_msga_widget_test(test_session_import_dialog
     test_session_import_dialog.cpp
@@ -517,6 +525,7 @@ add_msga_widget_test(test_session_import_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/local_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc

@@ -4,7 +4,7 @@ There are **two ways** to connect a Slack workspace to msga. You don't need both
 
 | | **Session sign-in** (recommended) | **Your own Slack app** |
 |---|---|---|
-| Setup effort | None — reuse your existing Slack login | ~10 min one-time app registration |
+| Setup effort | None — just log in through a browser | ~10 min one-time app registration |
 | Cost | Free | Free |
 | Rate limits | Your own personal limits | Your app's own limits |
 | Real-time messages | Near-instant (checked every ~5 s) | Instant (live push) |
@@ -16,21 +16,34 @@ There are **two ways** to connect a Slack workspace to msga. You don't need both
 
 ## Option A — Session sign-in (recommended)
 
-This reuses the login you already have in your browser (or the Slack desktop app). There's **nothing to register** and no app to build — msga just borrows your existing Slack session, so all your requests count against *your* personal quota instead of a shared one.
+You log in to Slack the normal way — in a browser — and msga uses that session. There's **nothing to register** and no app to build, and all your requests count against *your* personal quota instead of a shared one.
 
 The only trade-off: Slack's instant-push channel isn't available to a browser session, so msga fetches new messages by checking every few seconds instead. In practice new messages appear within a few seconds — you won't usually notice the difference.
 
-### If you use the prebuilt app
+### The easy way: sign in through a browser
 
 1. In msga, add a Slack workspace (or go to **Settings → System**).
 2. Choose **Slack session** — it's the default.
-3. Follow the on-screen steps to paste your session cookie (see below).
+3. Click **Sign in with &lt;your browser&gt;**.
 
-That's it — no building, no Slack app.
+A browser window opens on Slack's sign-in page. Log in the way you normally would — password,
+email code or SSO. When you're in, msga picks the session up by itself and the window closes; you
+never see a token or a cookie.
 
-### Getting your session cookie
+That window uses a **private, temporary browser profile**: it doesn't touch your normal browsing
+profile or your saved logins, and it's deleted the moment sign-in finishes. Slack's "open the
+desktop app" page can't hijack it either — msga tells the temporary profile to ignore
+`slack://` links.
 
-msga needs one value from your logged-in Slack: the **`d` cookie**. It's a secret (treat it like a password), so your browser hides it from ordinary copy — you grab it from the developer tools:
+This needs Chrome, Chromium, Brave, Edge or Vivaldi installed (Firefox can't be driven this way).
+If none is found, msga skips straight to the manual steps below.
+
+> **On Linux**, if you have the Slack desktop app installed, **Import from local Slack** is even
+> quicker — one click, no browser window at all.
+
+### The manual way: getting your session cookie yourself
+
+You only need this if browser sign-in isn't available (no supported browser, or you'd rather not have msga open one). msga needs one value from your logged-in Slack: the **`d` cookie**. It's a secret (treat it like a password), so your browser hides it from ordinary copy — you grab it from the developer tools:
 
 1. Open **[https://app.slack.com](https://app.slack.com)** in your web browser and make sure you're signed in to your workspace.
 2. Open your browser's developer tools — press **F12** (or right-click the page → **Inspect**).
@@ -38,8 +51,6 @@ msga needs one value from your logged-in Slack: the **`d` cookie**. It's a secre
 4. In the left sidebar, expand **Cookies** and click **`https://app.slack.com`**.
 5. Find the cookie named **`d`** and copy its **Value** — it starts with `xoxd-`.
 6. Back in msga, paste that value and type your workspace address (e.g. `myteam.slack.com`). msga works out everything else automatically and signs you in.
-
-> **On Linux**, if you also have the Slack desktop app installed, msga can often skip all of the above and import the session for you with one click. If that isn't available on your system, the manual steps above always work.
 
 ### Good to know
 

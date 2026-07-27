@@ -101,6 +101,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/slack/shared_realtime.cpp
     src/backend/slack/slack_auth.cpp
     src/backend/slack/oauth_flow.cpp
+    src/backend/slack/session_import/browser_login.cpp
     src/backend/slack/session_import/token_deriver.cpp
     src/backend/slack/session_import/local_importer.cpp
     src/backend/slack/session_import/session_migrator.cpp
