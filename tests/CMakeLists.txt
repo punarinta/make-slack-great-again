@@ -31,8 +31,20 @@ set(TEST_SYSTEM_INCLUDES
     ${lib_base_SOURCE_DIR}
 )
 
+# SecretStore backend for tests: always the QSettings fallback, never the macOS
+# keychain, so test runs stay hermetic — no keychain access prompts, no items
+# left behind on the developer's login keychain. The token/credential stores
+# (token_store.cpp, slack_auth.cpp, llm_token_store.cpp) reference these symbols,
+# so link them into every test target; secret_store_mac.mm is deliberately unused
+# here. Unused in tests that don't touch a store — harmless (no symbol clash).
+set(MSGA_SECRET_STORE_SRCS
+    ${CMAKE_SOURCE_DIR}/src/util/secret_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/secret_store_qsettings.cpp
+)
+
 function(add_msga_test target)
     add_executable(${target} ${ARGN})
+    target_sources(${target} PRIVATE ${MSGA_SECRET_STORE_SRCS})
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
     target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE Catch2::Catch2WithMain Qt6::Core Microsoft.GSL::GSL)
@@ -43,6 +55,7 @@ endfunction()
 # a QCoreApplication must be constructed before Catch2 runs, e.g. QStandardPaths).
 function(add_msga_qt_test target)
     add_executable(${target} ${ARGN})
+    target_sources(${target} PRIVATE ${MSGA_SECRET_STORE_SRCS})
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
     target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE Catch2::Catch2 Qt6::Core Microsoft.GSL::GSL)
@@ -58,6 +71,7 @@ endfunction()
 # under ctest.
 function(add_msga_widget_test target)
     add_executable(${target} ${ARGN})
+    target_sources(${target} PRIVATE ${MSGA_SECRET_STORE_SRCS})
     set_target_properties(${target} PROPERTIES AUTOMOC ON)
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
     target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
