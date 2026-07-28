@@ -251,6 +251,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), true);
     addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), false);
 
+    // Cmd+W (Ctrl+W elsewhere): close the window. Goes through closeEvent, so
+    // it hides to the tray exactly like the titlebar close button — the app
+    // keeps running for badges and notifications.
+    auto *closeShortcut = new QShortcut(QKeySequence::Close, this);
+    connect(closeShortcut, &QShortcut::activated, this, &QWidget::close);
+
     setupTray();
 
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
