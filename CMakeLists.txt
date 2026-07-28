@@ -260,19 +260,32 @@ target_link_libraries(msga PRIVATE
 # UNUserNotificationCenter then refuses to register the app — no notification
 # banners, no entry under System Settings ▸ Notifications. To make it robust we
 # generate the plist to a stable build-tree path and re-install + ad-hoc sign it
-# on EVERY build via POST_BUILD, so the identity is always app.msga.msga.
+# on EVERY build via POST_BUILD, so the identity is always com.nisdos.msga.
+#
+# Everything here must keep matching the plist the release build writes over it
+# (bundle id, CFBundleIconFile, LSMinimumSystemVersion): two bundles claiming
+# msga:// under DIFFERENT ids means LaunchServices can route an OAuth redirect to
+# a stale dev build instead of the installed app.
 if(APPLE)
     set(MACOSX_BUNDLE_EXECUTABLE_NAME      "msga")
     set(MACOSX_BUNDLE_BUNDLE_NAME          "msga")
+    set(MACOSX_BUNDLE_DISPLAY_NAME         "msga")
     set(MACOSX_BUNDLE_INFO_STRING          "msga")
-    # App icon (gfx/mac/icon.icns — extracted from the Finder custom icon the
-    # project used pre-source-builds). Referenced by CFBundleIconFile in the
-    # plist template and installed into Contents/Resources below.
-    set(MACOSX_BUNDLE_ICON_FILE            "icon.icns")
-    set(MACOSX_BUNDLE_GUI_IDENTIFIER       "app.msga.msga")
+    # App icon: gfx/mac/icon.icns, generated from gfx/icon.svg. Installed as
+    # Resources/AppIcon.icns — the name the release build's own icns uses, so a
+    # release bundle ends up with one icon file, not two with one unreferenced.
+    set(MACOSX_BUNDLE_ICON_FILE            "AppIcon")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER       "com.nisdos.msga")
     set(MACOSX_BUNDLE_BUNDLE_VERSION       "${MSGA_VERSION}")
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${MSGA_VERSION}")
     set(MACOSX_BUNDLE_LONG_VERSION_STRING  "${MSGA_VERSION}")
+    # Follow the deployment target when one is passed (the release build sets
+    # it); otherwise state the version releases are built against.
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(MSGA_MACOS_MIN_VERSION "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    else()
+        set(MSGA_MACOS_MIN_VERSION "14.0")
+    endif()
 
     # Fully substitute the template now (the template uses ${VAR} placeholders,
     # so no @ONLY) into a stable location outside the bundle.
@@ -292,7 +305,7 @@ if(APPLE)
                 "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${CMAKE_SOURCE_DIR}/gfx/mac/icon.icns"
-                "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources/${MACOSX_BUNDLE_ICON_FILE}"
+                "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources/${MACOSX_BUNDLE_ICON_FILE}.icns"
         COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:msga>"
         VERBATIM
         COMMENT "Installing Info.plist, app icon and ad-hoc signing msga.app")
