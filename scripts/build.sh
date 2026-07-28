@@ -23,14 +23,24 @@ else
     CMAKE_EXTRA=()
 fi
 
+# Homebrew keeps Qt keg-only (off the default CMake search path), so point
+# find_package(Qt6) at it here instead of relying on the caller to export
+# CMAKE_PREFIX_PATH. No-op where brew or the qt formula is absent (e.g. Linux).
+if command -v brew >/dev/null 2>&1; then
+    QT_PREFIX="$(brew --prefix qt 2>/dev/null || true)"
+    [[ -n "${QT_PREFIX}" ]] && CMAKE_EXTRA+=(-DCMAKE_PREFIX_PATH="${QT_PREFIX}")
+fi
+
 # Only reconfigure when not already a Ninja build.
 # Wipe the directory if it exists but has no build.ninja (stale or wrong generator).
 if [[ ! -f "${BUILD_DIR}/build.ninja" ]]; then
     rm -rf "${BUILD_DIR}"
+    # ${CMAKE_EXTRA[@]+…} guards the empty-array expansion so it doesn't trip
+    # `set -u` on bash 3.2 (the /bin/bash that ships with macOS).
     cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" \
         -G Ninja \
         -DCMAKE_BUILD_TYPE=Debug \
-        "${CMAKE_EXTRA[@]}"
+        "${CMAKE_EXTRA[@]+"${CMAKE_EXTRA[@]}"}"
 fi
 
 cmake --build "$BUILD_DIR" --target msga --parallel "$NPROC"
