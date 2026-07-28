@@ -13,6 +13,7 @@
 #include "conv_list/conv_list_widget.h"
 #include "conv_footer/conv_footer_widget.h"
 #include "context_menu/context_menu.h"
+#include "app_dialog/app_dialog.h"
 #include "workspace_switcher/workspace_switcher.h"
 #include "session/session.h"
 #include "cache/cache_evictor.h"
@@ -251,11 +252,30 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), true);
     addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), false);
 
-    // Cmd+W (Ctrl+W elsewhere): close the window. Goes through closeEvent, so
-    // it hides to the tray exactly like the titlebar close button — the app
-    // keeps running for badges and notifications.
+    // Cmd+W (Ctrl+W elsewhere): close the frontmost thing. Our modal dialogs and
+    // the settings panel are in-window child overlays, not top-level windows, so
+    // nothing else would treat them as closeable — without this the shortcut
+    // would hide the whole window with a dialog still up on it. Dismiss that
+    // first (like macOS closing a sheet before its window); only when nothing is
+    // open does the window itself close, which goes through closeEvent and so
+    // hides to the tray exactly like the titlebar close button — the app keeps
+    // running for badges and notifications.
+    //
+    // One shortcut has to arbitrate all of this: two QShortcuts on the same
+    // sequence in one window (say a competing one owned by AppDialog) both match,
+    // and Qt then reports the press as ambiguous and runs NEITHER handler.
     auto *closeShortcut = new QShortcut(QKeySequence::Close, this);
-    connect(closeShortcut, &QShortcut::activated, this, &QWidget::close);
+    connect(closeShortcut, &QShortcut::activated, this, [this] {
+        if (AppDialog *dialog = AppDialog::topmostVisible(this)) {
+            dialog->reject(); // same path as Escape / the × button / backdrop click
+            return;
+        }
+        if (_settingsDialog && _settingsDialog->isVisible()) {
+            _settingsDialog->hide();
+            return;
+        }
+        close();
+    });
 
     setupTray();
 
