@@ -82,8 +82,12 @@ In your app's settings, go to **OAuth & Permissions**.
 Under **Redirect URLs**, add exactly:
 
 ```
-http://localhost:17437/cb
+msga://oauth/callback
 ```
+
+This must match the redirect URI the client sends verbatim (see `kOAuthRedirectUri`
+in `src/backend/slack/oauth_flow.h`). Slack accepts this custom app scheme; the
+client receives the callback through its registered `msga://` URL handler.
 
 The **OAuth & Permissions** page has two scope lists: **Bot Token Scopes** and **User Token Scopes**. msga signs you in as *yourself* — it uses a **user token** (`xoxp-…`) only and never a bot token. Set the two lists accordingly.
 
