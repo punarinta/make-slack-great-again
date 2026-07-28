@@ -44,11 +44,16 @@ FetchContent_MakeAvailable(microsoft_gsl)
 # directory with no CMakeLists.txt so FetchContent_MakeAvailable() only
 # populates the sources and never calls add_subdirectory() on their own build
 # trees. This replaces the deprecated single-argument FetchContent_Populate().
+#
+# Pinned to exact commits (NOT a moving branch) so a build is reproducible and
+# a compromised/rewritten upstream master can't silently inject code into our
+# binary. To intentionally upgrade: bump the SHA below to a reviewed commit.
+# (GIT_SHALLOW is off for a pinned SHA — a shallow fetch of an arbitrary commit
+# is not reliably supported across Git hosts.)
 FetchContent_Declare(
     lib_rpl
     GIT_REPOSITORY https://github.com/desktop-app/lib_rpl.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
+    GIT_TAG        c57cccffb01d85570decd7fccb88419c9a682e63 # master @ 2026-07-20
     SOURCE_SUBDIR  _msga_no_configure
 )
 FetchContent_MakeAvailable(lib_rpl)
@@ -56,8 +61,7 @@ FetchContent_MakeAvailable(lib_rpl)
 FetchContent_Declare(
     lib_base
     GIT_REPOSITORY https://github.com/desktop-app/lib_base.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
+    GIT_TAG        82d182a275e197fd717fecc86193d9d91f4fc5b5 # master @ 2026-07-20
     SOURCE_SUBDIR  _msga_no_configure
 )
 FetchContent_MakeAvailable(lib_base)
