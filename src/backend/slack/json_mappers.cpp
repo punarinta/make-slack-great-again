@@ -414,7 +414,13 @@ static TextWithEntities parseTextObj(const QJsonObject &o) {
     const auto text = o.value("text").toString();
     if (type == "mrkdwn")
         return MrkdwnParser::parse(text);
-    return TextWithEntities{text, {}};
+    // plain_text: no mrkdwn emphasis (*_~` stay literal), but Slack still expands
+    // :emoji: shortcodes — e.g. a bot header ":mega: Notification" — unless the
+    // object opts out with "emoji": false (default true). resolveTokens does the
+    // emoji pass and leaves marks alone; decodeEntities matches the title path.
+    if (o.value("emoji").toBool(true))
+        return MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(text));
+    return TextWithEntities{MrkdwnParser::decodeEntities(text), {}};
 }
 
 // A button element — Block Kit shape ("text" is a plain_text object) or the

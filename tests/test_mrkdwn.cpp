@@ -306,3 +306,26 @@ TEST_CASE("resolveTokens expands mention and emoji", "[mrkdwn]") {
     CHECK(r.entities[1].type == EntityType::Emoji);
     CHECK(r.entities[1].data == "wave");
 }
+
+TEST_CASE("link label resolves emoji shortcodes", "[mrkdwn]") {
+    // AWS CodePipeline (Amazon Q) sections: *<url|:white_check_mark: Title>*
+    auto r = MrkdwnParser::parse(
+        "*<https://console.aws.example/pipe|:white_check_mark: AWS CodePipeline Notification>*");
+    CHECK(r.text == ":white_check_mark: AWS CodePipeline Notification");
+    REQUIRE(r.entities.size() == 3);
+    // Parent-before-child: Bold wraps Link wraps Emoji.
+    CHECK(r.entities[0].type == EntityType::Bold);
+    CHECK(r.entities[1].type == EntityType::Link);
+    CHECK(r.entities[1].data == "https://console.aws.example/pipe");
+    CHECK(r.entities[2].type == EntityType::Emoji);
+    CHECK(r.entities[2].data == "white_check_mark");
+    CHECK(r.entities[2].offset == 0);
+    CHECK(r.entities[2].length == 18);
+}
+
+TEST_CASE("bare url label is never emoji-scanned", "[mrkdwn]") {
+    auto r = MrkdwnParser::parse("<https://example.com/a:b:c>");
+    CHECK(r.text == "https://example.com/a:b:c");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::Link);
+}
