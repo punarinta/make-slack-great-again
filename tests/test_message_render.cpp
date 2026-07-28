@@ -263,8 +263,8 @@ TEST_CASE("buildAttachHtml linked title substitutes emoji shortcodes", "[render]
     // CI bots (e.g. AWS CodePipeline via Amazon Q) put shortcodes in linked
     // titles; the anchor can't take full mrkdwn but emoji must still resolve.
     Attachment att;
-    att.title     = ":white_check_mark: AWS CodePipeline Notification";
-    att.titleLink = "https://console.aws.example/pipeline";
+    att.title          = ":white_check_mark: AWS CodePipeline Notification";
+    att.titleLink      = "https://console.aws.example/pipeline";
     const QString html = MsgRender::buildAttachHtml(att, nullptr);
     CHECK(html.contains("<a href='https://console.aws.example/pipeline'"));
     CHECK(html.contains(QString::fromUtf8("✅"))); // ✅

@@ -153,15 +153,50 @@ static bool looksLikeUrl(const QString &s) {
            s.startsWith(QLatin1String("tel:"));
 }
 
+// The characters Slack allows in a shortcode name, defined once: the two emoji
+// scanners below (resolveTokens walks colon pairs, a link label global-matches)
+// must accept exactly the same names or the two paths drift.
+static const QString &emojiNameClass() {
+    static const QString cls = QStringLiteral("[a-zA-Z0-9_+\\-]+");
+    return cls;
+}
+
+// Which positions sit inside a URL-looking word: a path or query can carry
+// colon pairs ("…/a:b:c") that are not emoji. Judged per whitespace-delimited
+// word, so a run that mixes a link and a real shortcode keeps the shortcode.
+// Marked in one pass up front — testing each match's word on demand would be
+// quadratic on a colon-heavy message (the pathology kMaxParseDepth guards
+// against elsewhere in this file).
+static std::vector<bool> urlWordMask(const QString &s) {
+    std::vector<bool> mask(s.size(), false);
+    int               i = 0;
+    while (i < s.size()) {
+        while (i < s.size() && s[i].isSpace())
+            ++i;
+        const int start = i;
+        while (i < s.size() && !s[i].isSpace())
+            ++i;
+        if (i > start && looksLikeUrl(s.mid(start, i - start)))
+            for (int k = start; k < i; ++k)
+                mask[k] = true;
+    }
+    return mask;
+}
+
 // Append `s`, adding an Emoji span per :name: shortcode. Link labels carry no
 // mrkdwn marks, but Slack's clients do render emoji in them (CI bots title
 // their notifications ":white_check_mark: …" inside a <url|label> token).
 static void appendPlainWithEmoji(Builder &b, const QString &s) {
-    static const QRegularExpression shortcode(QStringLiteral(":([a-zA-Z0-9_+\\-]+):"));
-    int  pos = 0;
-    auto it  = shortcode.globalMatch(s);
+    static const QRegularExpression shortcode(":(" + emojiNameClass() + "):");
+    const auto                      inUrl = urlWordMask(s);
+    int                             pos   = 0;
+    auto                            it    = shortcode.globalMatch(s);
     while (it.hasNext()) {
         const auto m = it.next();
+        // Not an emoji after all: leave the text to the next plain gap, which
+        // starts before it because pos stays where it is.
+        if (inUrl[m.capturedStart()])
+            continue;
         b.appendPlain(s.mid(pos, m.capturedStart() - pos));
         const int start = b.text.size();
         b.appendPlain(m.captured(0));
@@ -244,8 +279,8 @@ static void appendAngleConstruct(Builder &b, const QString &inner, bool requireS
         b.appendPlain('<' + inner + '>');
         return;
     }
-    auto url   = decodeEntities(parts[0]);
-    auto label = parts.size() > 1 ? decodeEntities(parts[1]) : url;
+    auto    url   = decodeEntities(parts[0]);
+    auto    label = parts.size() > 1 ? decodeEntities(parts[1]) : url;
     // Emoji entities nest inside the Link span (the Link is pushed first so
     // the parent-before-child order holds even when the label is one emoji).
     // Bare <url> displays the URL itself — never emoji-scan that ("/a:b:c"
@@ -468,9 +503,10 @@ TextWithEntities resolveTokens(const QString &src) {
     // conversion (and some bots) leave these tokens unexpanded inside a plain text
     // element — which is why an Outlook Calendar reminder shows a raw
     // "<!date^…|2:00 PM>" — and Slack's clients resolve them everywhere.
-    Builder   b;
-    const int n = src.size();
-    int       i = 0;
+    Builder    b;
+    const auto inUrl = urlWordMask(src);
+    const int  n     = src.size();
+    int        i     = 0;
     while (i < n) {
         const QChar c = src[i];
 
@@ -487,11 +523,13 @@ TextWithEntities resolveTokens(const QString &src) {
         }
 
         // ── Emoji :name: ──
-        if (c == ':') {
+        // Same URL guard as the link-label scanner: an unbracketed URL in a
+        // rich_text run (or an attachment title) can carry a ":b:" path segment.
+        if (c == ':' && !inUrl[i]) {
             const int close = src.indexOf(':', i + 1);
             if (close != -1 && close > i + 1) {
-                const auto                name = src.mid(i + 1, close - i - 1);
-                static QRegularExpression validEmoji("^[a-zA-Z0-9_+\\-]+$");
+                const auto                      name = src.mid(i + 1, close - i - 1);
+                static const QRegularExpression validEmoji("^" + emojiNameClass() + "$");
                 if (validEmoji.match(name).hasMatch()) {
                     const int entityStart = b.text.size();
                     b.appendPlain(":" + name + ":");

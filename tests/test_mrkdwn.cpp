@@ -310,7 +310,8 @@ TEST_CASE("resolveTokens expands mention and emoji", "[mrkdwn]") {
 TEST_CASE("link label resolves emoji shortcodes", "[mrkdwn]") {
     // AWS CodePipeline (Amazon Q) sections: *<url|:white_check_mark: Title>*
     auto r = MrkdwnParser::parse(
-        "*<https://console.aws.example/pipe|:white_check_mark: AWS CodePipeline Notification>*");
+        "*<https://console.aws.example/pipe|:white_check_mark: AWS CodePipeline Notification>*"
+    );
     CHECK(r.text == ":white_check_mark: AWS CodePipeline Notification");
     REQUIRE(r.entities.size() == 3);
     // Parent-before-child: Bold wraps Link wraps Emoji.
@@ -328,4 +329,33 @@ TEST_CASE("bare url label is never emoji-scanned", "[mrkdwn]") {
     CHECK(r.text == "https://example.com/a:b:c");
     REQUIRE(r.entities.size() == 1);
     CHECK(r.entities[0].type == EntityType::Link);
+}
+
+TEST_CASE("a url inside a label is not emoji-scanned either", "[mrkdwn]") {
+    // Bots that link a URL under its own text ("<url|url>") would otherwise turn
+    // a ":b:" path segment into an emoji and render it in the emoji font.
+    auto r = MrkdwnParser::parse("<https://example.com/p|https://example.com/a:b:c>");
+    CHECK(r.text == "https://example.com/a:b:c");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::Link);
+}
+
+TEST_CASE("resolveTokens skips colon pairs inside a raw url", "[mrkdwn]") {
+    // Attachment titles and rich_text runs carry unbracketed URLs.
+    auto r = MrkdwnParser::resolveTokens("build https://ci.example/job/a:b:c :tada:");
+    CHECK(r.text == "build https://ci.example/job/a:b:c :tada:");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::Emoji);
+    CHECK(r.entities[0].data == "tada");
+}
+
+TEST_CASE("a label mixing a url and an emoji keeps the emoji", "[mrkdwn]") {
+    // The URL guard is per-word, so a real shortcode next to a link still resolves.
+    auto r = MrkdwnParser::parse("<https://example.com/p|:tada: see https://example.com/a:b:c>");
+    CHECK(r.text == ":tada: see https://example.com/a:b:c");
+    REQUIRE(r.entities.size() == 2);
+    CHECK(r.entities[0].type == EntityType::Link);
+    CHECK(r.entities[1].type == EntityType::Emoji);
+    CHECK(r.entities[1].data == "tada");
+    CHECK(r.entities[1].offset == 0);
 }
