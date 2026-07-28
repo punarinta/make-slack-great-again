@@ -38,7 +38,7 @@ cmake --build "$BUILD_DIR" --target msga --parallel "$NPROC"
 # macOS 26+ enforces code signing even for local ad-hoc builds. This is done in
 # a CMake POST_BUILD step (see the APPLE block in CMakeLists.txt) so it runs on
 # every build — including a bare `cmake --build` — right after the Info.plist is
-# installed, which is what gives the bundle a stable app.msga.msga identity.
+# installed, which is what gives the bundle a stable com.nisdos.msga identity.
 
 if [[ "$ASAN" == "1" ]]; then
     cat <<EOF
