@@ -418,6 +418,16 @@ add_msga_widget_test(test_context_menu
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
 
+add_msga_widget_test(test_app_dialog
+    test_app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_app_dialog PRIVATE Qt6::Test)
+
 add_msga_widget_test(test_summary_dialog
     test_summary_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
