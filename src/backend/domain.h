@@ -322,6 +322,24 @@ inline bool shouldNotifyHuddleStart(
     return true;
 }
 
+// One conversation's server-side activity/badge state, as reported by a single
+// whole-workspace snapshot call (Slack's `client.counts`). This is the cheap
+// signal a poll-only backend needs: without a push transport, the ONLY way a
+// message in a conversation the user hasn't opened can ever surface is for us to
+// notice the conversation moved and then fetch its history. One request answers
+// that for every conversation at once — vastly cheaper than a per-conversation
+// info sweep, and unlike conversations.list it also reports channels.
+// Fields absent from a given backend's response stay empty/zero; the consumer
+// diffs whatever it does get (see Session::applyActivitySnapshot).
+struct ConvCounts {
+    ConversationId id;
+    Ts             latestTs; // ts of the newest message the server knows
+    Ts             lastRead; // the authed user's read cursor
+    int            unread                               = 0;
+    int            mentionCount                         = 0;
+    bool           operator==(const ConvCounts &) const = default;
+};
+
 // Click-target of an OS notification, round-tripped through the notifier (and,
 // on Windows, an msga:// protocol activation) as a 0x1f-separated token:
 // "teamId\x1fconvId", or "teamId\x1fconvId\x1frootTs" when the notified message
