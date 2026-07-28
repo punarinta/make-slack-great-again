@@ -3,31 +3,53 @@
 
 #include <QBuffer>
 #include <QByteArray>
-#include <QDir>
 #include <QImage>
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
 
+#include <atomic>
+
 // Notifications go through UNUserNotificationCenter (UserNotifications.framework).
-// The older NSUserNotification API this file used to call is not merely
-// deprecated: on modern macOS it delivers nothing and — the symptom that led
-// here — never registers the app under System Settings ▸ Notifications, so the
-// user has no permission toggle and never sees a banner. UNUserNotificationCenter
-// is the supported path; requesting authorization at startup is what registers
-// the app (creating the Settings entry) and prompts the user once.
+// NSUserNotification, which this file used to call, has been deprecated since
+// macOS 11, renders at most ONE action button, and is on its way out. Note that
+// Qt still uses it for QSystemTrayIcon::showMessage, so on macOS the tray
+// fallback is not an independent second path — it is the same old API.
 //
-// UNUserNotificationCenter requires a real, signed .app bundle with a bundle id
-// (CFBundleIdentifier) — currentNotificationCenter raises if the process is an
-// unbundled/unsigned binary. Our CMake bundle sets app.msga.msga and the build
-// ad-hoc signs the .app, so this is satisfied; the @try guard degrades to the
-// tray fallback (isAvailable()==false) anywhere it isn't.
+// Both APIs need the same thing before anything is visible: a properly
+// identified, code-signed .app bundle. Without a CFBundleIdentifier the
+// authorization prompt never appears and the app never gets an entry under
+// System Settings ▸ Notifications (the symptom that led here), and
+// currentNotificationCenter asserts outright for an unbundled process. Our CMake
+// target is a MACOSX_BUNDLE with CFBundleIdentifier com.nisdos.msga, ad-hoc
+// signed after every build, so this holds. The @try below is a best-effort guard
+// for anything else — it wraps a framework assertion, which is not reliably
+// catchable — degrading to isAvailable()==false.
 //
 // This file is compiled under manual reference counting (MRC, the project
 // default for Obj-C++), so retained objects are released explicitly.
 
 namespace {
+// Whether the OS will actually show what we post. Starts true so the very first
+// notification (possibly still racing the authorization prompt) is attempted
+// rather than dropped, then converges on the real setting via the authorization
+// callback and a re-read after every notify(). Written from the framework's
+// callback queues and read on the GUI thread, hence atomic.
+std::atomic<bool> g_authorized{true};
+
+// Fire-and-forget re-read of the OS switch, so denying at the prompt — or
+// revoking (or granting) later in System Settings — is picked up without a
+// restart. UNAuthorizationStatusNotDetermined is not a denial: the prompt is
+// still unanswered.
+void refreshAuthorized(UNUserNotificationCenter *center) {
+    [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+        g_authorized.store(
+            settings.authorizationStatus != UNAuthorizationStatusDenied, std::memory_order_relaxed
+        );
+    }];
+}
+
 // Categories accumulate for the process lifetime: setNotificationCategories:
 // REPLACES the whole set, so we keep every category we've built and re-set the
 // union each time a new one appears. Keyed by category id so a repeat action
@@ -107,11 +129,16 @@ DesktopNotifier::DesktopNotifier(QObject *parent) : QObject(parent) {
     // Badge is included so the app may set the Dock/notification badge; we never
     // attach a sound (the app plays its own), but request it so the user's OS
     // toggle for sound is meaningful should that change.
+    //
+    // A denial is recorded so notify() can report failure instead of posting into
+    // a void: _available stays true (the backend itself works), while
+    // g_authorized tracks whether the user lets anything through.
     [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert |
                                             UNAuthorizationOptionSound | UNAuthorizationOptionBadge
                           completionHandler:^(BOOL granted, NSError *error) {
                               if (error)
                                   NSLog(@"msga: notification authorization error: %@", error);
+                              g_authorized.store(granted, std::memory_order_relaxed);
                           }];
     _available = true;
 }
@@ -131,6 +158,11 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
                              int /*timeoutMs*/) {
     if (!_available)
         return false;
+    // Notifications are switched off for us: report failure so the caller takes
+    // its tray fallback (and, on macOS, at least keeps the Dock badge and the
+    // in-app unread marks meaningful) rather than dropping the message silently.
+    if (!g_authorized.load(std::memory_order_relaxed))
+        return false;
 
     UNMutableNotificationContent *content = [[[UNMutableNotificationContent alloc] init] autorelease];
     content.title                         = title.toNSString();
@@ -143,16 +175,21 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
         info[@"token"] = token.toNSString();
 
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    bool newCategoryPosted           = false;
     if (!actions.isEmpty()) {
         NSString *catId = categoryIdForActions(actions);
         if (!g_categories)
             g_categories = [[NSMutableDictionary alloc] init];
         if (!g_categories[catId]) {
+            // OptionNone, not OptionForeground: an action means "do this thing",
+            // not "come to the front" — the huddle Join button deliberately opens
+            // the browser without raising the window (see handleNotifToken). The
+            // app is running anyway, since it just posted this notification.
             NSMutableArray<UNNotificationAction *> *acts = [NSMutableArray array];
             for (const auto &a : actions)
                 [acts addObject:[UNNotificationAction actionWithIdentifier:a.key.toNSString()
                                                                     title:a.label.toNSString()
-                                                                  options:UNNotificationActionOptionForeground]];
+                                                                  options:UNNotificationActionOptionNone]];
             UNNotificationCategory *cat =
                 [UNNotificationCategory categoryWithIdentifier:catId
                                                        actions:acts
@@ -160,6 +197,7 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
                                                        options:UNNotificationCategoryOptionNone];
             g_categories[catId] = cat;
             [center setNotificationCategories:[NSSet setWithArray:g_categories.allValues]];
+            newCategoryPosted = true;
         }
         content.categoryIdentifier = catId;
         for (const auto &a : actions)
@@ -169,7 +207,9 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
     content.userInfo = info;
 
     // Picture: UNNotificationAttachment needs a file URL, so spool the PNG to a
-    // temp file (the system copies it into its own store on schedule).
+    // temp file. An accepted attachment is MOVED into the system's own store when
+    // the request is scheduled, so there is nothing to clean up afterwards — only
+    // a rejected one leaves the spool file behind.
     if (!image.isNull()) {
         QByteArray png;
         QBuffer    buf(&png);
@@ -187,8 +227,12 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
                                                                    URL:[NSURL fileURLWithPath:path]
                                                                options:nil
                                                                  error:&err];
-                if (att)
+                if (att) {
                     content.attachments = @[att];
+                } else {
+                    NSLog(@"msga: notification attachment rejected (%@)", err);
+                    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+                }
             }
         }
     }
@@ -196,13 +240,29 @@ bool DesktopNotifier::notify(const QString &title, const QString &body, const QI
     NSString *reqId = [[NSProcessInfo processInfo] globallyUniqueString];
     UNNotificationRequest *req =
         [UNNotificationRequest requestWithIdentifier:reqId content:content trigger:nil];
-    [center addNotificationRequest:req withCompletionHandler:nil];
+    if (newCategoryPosted) {
+        // setNotificationCategories: is an async round-trip to the notification
+        // daemon; a request that overtakes it is shown WITHOUT its buttons. Calls
+        // on that connection are ordered, so a getNotificationCategories… reply
+        // proves the set… landed — only the first notification of a given action
+        // set pays for the extra hop. (The block retains center/req under MRC.)
+        auto post = ^(NSSet<UNNotificationCategory *> *) {
+            [center addNotificationRequest:req withCompletionHandler:nil];
+        };
+        [center getNotificationCategoriesWithCompletionHandler:post];
+    } else {
+        [center addNotificationRequest:req withCompletionHandler:nil];
+    }
+    refreshAuthorized(center);
     return true;
 }
 
 // ── Dock tile badge (independent of notification authorization) ───────────────
-// setBadgeLabel needs no permission, so the Dock count works even when the user
-// has notifications turned off. Empty label clears the badge.
+// badgeLabel is plain AppKit and needs no permission, so the Dock count still
+// works when the user has denied notifications; the system just ignores it when
+// "Badge app icon" is off. nil clears the badge. The badge is drawn on the Dock
+// tile, which outlives the process — so it has to be cleared on the way out
+// (~MainWindow) or a stale count sticks to the icon after quitting.
 void macSetDockBadge(int count) {
     NSString *label = count > 0 ? [NSString stringWithFormat:@"%d", count] : nil;
     [NSApp dockTile].badgeLabel = label;
