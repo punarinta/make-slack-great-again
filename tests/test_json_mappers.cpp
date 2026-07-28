@@ -735,6 +735,28 @@ TEST_CASE("toBlock header with plain_text", "[mappers][block]") {
     CHECK(b.text.entities.empty());
 }
 
+TEST_CASE("toBlock header plain_text expands :emoji: shortcodes", "[mappers][block]") {
+    // Bots (e.g. Amazon Q CodePipeline) put :mega: in a plain_text header block.
+    // Slack renders the emoji; the shortcode text stays but gets an Emoji entity.
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "header",
+        "text": {"type": "plain_text", "text": ":mega: AWS CodePipeline Notification"}
+    })"));
+    CHECK(b.text.text == ":mega: AWS CodePipeline Notification");
+    REQUIRE(b.text.entities.size() == 1);
+    CHECK(b.text.entities[0].type == EntityType::Emoji);
+    CHECK(b.text.entities[0].data == "mega");
+}
+
+TEST_CASE("toBlock plain_text with emoji:false leaves shortcode literal", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "header",
+        "text": {"type": "plain_text", "text": ":mega: heads up", "emoji": false}
+    })"));
+    CHECK(b.text.text == ":mega: heads up");
+    CHECK(b.text.entities.empty());
+}
+
 TEST_CASE("toBlock image block", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "image",

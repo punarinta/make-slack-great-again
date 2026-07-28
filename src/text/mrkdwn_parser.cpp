@@ -38,10 +38,10 @@ struct Builder {
     // Append a recursively-parsed fragment, then wrap it in an outer span.
     // The outer entity is pushed BEFORE the shifted inner ones so that a
     // stable offset/length sort keeps the parent first for equal ranges.
-    void appendNested(EntityType type, const TextWithEntities &sub) {
+    void appendNested(EntityType type, const TextWithEntities &sub, const QString &data = {}) {
         const int start = static_cast<int>(text.size());
         text += sub.text;
-        entities.push_back(TextEntity{type, start, static_cast<int>(sub.text.size()), {}});
+        entities.push_back(TextEntity{type, start, static_cast<int>(sub.text.size()), data});
         for (auto e : sub.entities) {
             e.offset += start;
             entities.push_back(e);
@@ -153,6 +153,24 @@ static bool looksLikeUrl(const QString &s) {
            s.startsWith(QLatin1String("tel:"));
 }
 
+// Append `s`, adding an Emoji span per :name: shortcode. Link labels carry no
+// mrkdwn marks, but Slack's clients do render emoji in them (CI bots title
+// their notifications ":white_check_mark: …" inside a <url|label> token).
+static void appendPlainWithEmoji(Builder &b, const QString &s) {
+    static const QRegularExpression shortcode(QStringLiteral(":([a-zA-Z0-9_+\\-]+):"));
+    int  pos = 0;
+    auto it  = shortcode.globalMatch(s);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        b.appendPlain(s.mid(pos, m.capturedStart() - pos));
+        const int start = b.text.size();
+        b.appendPlain(m.captured(0));
+        b.addSpan(EntityType::Emoji, start, m.captured(1));
+        pos = m.capturedEnd();
+    }
+    b.appendPlain(s.mid(pos));
+}
+
 // Append the resolved content of a single <…> construct: a user/channel
 // mention, an <!command> (incl. <!date^…>), or a <url|label> link. Mutates b.
 // When requireScheme is true a plain link is only linkified if its URL has a
@@ -226,11 +244,18 @@ static void appendAngleConstruct(Builder &b, const QString &inner, bool requireS
         b.appendPlain('<' + inner + '>');
         return;
     }
-    auto url         = decodeEntities(parts[0]);
-    auto label       = parts.size() > 1 ? decodeEntities(parts[1]) : url;
-    int  entityStart = b.text.size();
-    b.appendPlain(label);
-    b.addSpan(EntityType::Link, entityStart, url);
+    auto url   = decodeEntities(parts[0]);
+    auto label = parts.size() > 1 ? decodeEntities(parts[1]) : url;
+    // Emoji entities nest inside the Link span (the Link is pushed first so
+    // the parent-before-child order holds even when the label is one emoji).
+    // Bare <url> displays the URL itself — never emoji-scan that ("/a:b:c"
+    // path segments would false-match).
+    Builder sub;
+    if (parts.size() > 1)
+        appendPlainWithEmoji(sub, label);
+    else
+        sub.appendPlain(label);
+    b.appendNested(EntityType::Link, TextWithEntities{sub.text, sub.entities}, url);
 }
 
 // Recursion is bounded two ways. kMaxParseDepth is a hard backstop so crafted,
