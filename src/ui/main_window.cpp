@@ -228,7 +228,13 @@ private:
     QPointer<QWidget> _handle;
 };
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+#ifdef Q_OS_MACOS
+    // The Dock tile outlives the process, so an unread count left on it stays
+    // painted over the icon after we quit. Clear it on the way out.
+    macSetDockBadge(0);
+#endif
+}
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("");
@@ -2290,8 +2296,6 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
 }
 
 void MainWindow::updateTrayIcon() {
-    if (!_trayIcon)
-        return;
     int globalTotal = 0, globalMentions = 0;
     for (auto it = _wsUnreads.cbegin(); it != _wsUnreads.cend(); ++it) {
         // Muted workspaces never tint the tray ball (their in-app unread badges
@@ -2301,6 +2305,18 @@ void MainWindow::updateTrayIcon() {
         globalTotal += it.value().first;
         globalMentions += it.value().second;
     }
+
+#ifdef Q_OS_MACOS
+    // Dock tile badge: the actionable count (DM unreads + @mentions), matching
+    // Slack. Plain channel activity stays off the Dock (it still shows the tray
+    // tint and the in-app blue dot). Set before the tray work below, which bails
+    // out when there is no tray icon — the Dock badge is independent of it.
+    macSetDockBadge(globalMentions);
+#endif
+
+    if (!_trayIcon)
+        return;
+
     // Always render via QSvgRenderer so the alpha channel is preserved in static builds.
     const int    sz = 128;
     QSvgRenderer renderer(QString(":/icon_tray.svg"));
@@ -2320,13 +2336,6 @@ void MainWindow::updateTrayIcon() {
     }
     p.end();
     _trayIcon->setIcon(QIcon(px));
-
-#ifdef Q_OS_MACOS
-    // Dock tile badge: the actionable count (DM unreads + @mentions), matching
-    // Slack. Plain channel activity stays off the Dock (it still shows the tray
-    // tint and the in-app blue dot).
-    macSetDockBadge(globalMentions);
-#endif
 }
 
 // ── Workspace management ──────────────────────────────────────────────────────
