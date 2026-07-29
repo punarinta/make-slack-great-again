@@ -181,6 +181,12 @@ add_msga_test(test_huddle_notify
 )
 target_link_libraries(test_huddle_notify PRIVATE Qt6::Gui)
 
+# Pure notification-freshness policy (header-only helper in domain.h).
+add_msga_test(test_notify_age
+    test_notify_age.cpp
+)
+target_link_libraries(test_notify_age PRIVATE Qt6::Gui)
+
 # Notification click-target token codec (encode/decode round-trip, thread root).
 add_msga_test(test_notif_token
     test_notif_token.cpp

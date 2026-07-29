@@ -1942,6 +1942,13 @@ static QPixmap roundedNotifIcon(const QPixmap &src, int side = 64) {
 }
 
 void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
+    // Too old to announce: a reconnect backfill, a cache replay or a history
+    // sweep can surface month-old messages as fresh EvMessageNew. Drop those
+    // silently — no toast, no sound (see kMaxNotifyAgeDays). Before every other
+    // gate so an ancient message can't reach any surface.
+    if (tooOldToNotify(ev.msg.date))
+        return;
+
     QSettings s("msga", "msga");
     if (!s.value("notifications/enabled", true).toBool())
         return;
@@ -2088,6 +2095,11 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
 }
 
 void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev) {
+    // No kMaxNotifyAgeDays gate here, deliberately: a huddle carries no start
+    // time (conversations.info reports only that a room is live *now*), and its
+    // conversation's latestTs is no proxy — a huddle in a channel that has been
+    // quiet for months is still happening this second. The false→true dedup
+    // below is what keeps a re-fire from replaying an already-seen huddle.
     const QString key = teamId + QChar(0x1f) + ev.conv.value;
 
     // A huddle ending clears the dedup key so its next start notifies again.
@@ -2273,6 +2285,11 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
         // A locally-muted person contributes to neither ball nor counter (its
         // in-list bold emphasis is handled by ConvListWidget independently).
         if (c.locallyMuted)
+            continue;
+        // Everything unread here predates the notification window, so it
+        // contributes to neither the switcher counter nor the tray/dock tint
+        // this feeds (see kMaxNotifyAgeDays).
+        if (tooOldToNotify(c))
             continue;
         const NotificationLevel lvl = effectiveNotifLevel(c, fallback);
         if (lvl == NotificationLevel::Mute)
