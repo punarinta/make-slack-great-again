@@ -136,6 +136,7 @@ public:
                                             ConversationId,
                                             const QStringList                          &filePaths,
                                             const QString                              &initialComment,
+                                            std::optional<Ts> threadRoot = std::nullopt,
                                             std::function<void(bool ok, QString error)> done = {}
                                         ) override;
     void deleteFile(const QString &fileId) override;
@@ -196,7 +197,10 @@ private:
     // shared message (especially a heavy one) often hasn't surfaced in
     // conversations.history the instant the upload completes, so the scan
     // retries with backoff until the message appears or `attempt` is exhausted.
-    void reconcileUpload(const ConversationId &conv, const QSet<QString> &fileIds, int attempt = 0);
+    void reconcileUpload(
+        const ConversationId &conv, const QSet<QString> &fileIds, std::optional<Ts> threadRoot,
+        int attempt = 0
+    );
 
     // Re-derive live-huddle state from a freshly-fetched history page. The
     // USLACKBOT "huddle_thread" message carries the authoritative `room`
