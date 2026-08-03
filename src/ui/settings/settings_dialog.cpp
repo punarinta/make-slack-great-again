@@ -242,6 +242,31 @@ void SettingsDialog::buildPanel() {
     themeScroll->setFixedHeight(themeBox->sizeHint().height() + sp.lg);
     alay->addWidget(themeScroll);
 
+    // ── Font size ─────────────────────────────────────────────────────
+    auto *fontHeading = new QLabel(tr("Font size"), appearPage);
+    fontHeading->setObjectName("sectionHeading");
+    alay->addWidget(fontHeading);
+
+    auto *fontBox = new QGroupBox(appearPage);
+    fontBox->setObjectName("fontBox");
+    auto *fontLayout = new QVBoxLayout(fontBox);
+    fontLayout->setSpacing(sp.md);
+    fontLayout->setContentsMargins(0, 0, 0, 0);
+
+    _fontSmall  = new QRadioButton(tr("Small"), fontBox);
+    _fontMedium = new QRadioButton(tr("Medium (default)"), fontBox);
+    _fontLarge  = new QRadioButton(tr("Large"), fontBox);
+
+    auto *fontGroup = new QButtonGroup(fontBox);
+    fontGroup->addButton(_fontSmall, 0);
+    fontGroup->addButton(_fontMedium, 1);
+    fontGroup->addButton(_fontLarge, 2);
+
+    fontLayout->addWidget(_fontSmall);
+    fontLayout->addWidget(_fontMedium);
+    fontLayout->addWidget(_fontLarge);
+    alay->addWidget(fontBox);
+
     // ── Language ──────────────────────────────────────────────────────
     _startupLanguage = TimeFmt::language();
 
@@ -1252,7 +1277,8 @@ void SettingsDialog::applyTheme() {
           QString("langBox"),
           QString("timeBox"),
           QString("themeBox"),
-          QString("threadBox")}) {
+          QString("threadBox"),
+          QString("fontBox")}) {
         if (auto *w = _panel->findChild<QGroupBox *>(boxName))
             w->setStyleSheet("QGroupBox { border: none; }");
     }
@@ -1281,6 +1307,9 @@ void SettingsDialog::applyTheme() {
     _time24->setStyleSheet(radioQss);
     _threadStandalone->setStyleSheet(radioQss);
     _threadInline->setStyleSheet(radioQss);
+    _fontSmall->setStyleSheet(radioQss);
+    _fontMedium->setStyleSheet(radioQss);
+    _fontLarge->setStyleSheet(radioQss);
     _showAgentsApps->setStyleSheet(checkQss);
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
         w->setStyleSheet(
@@ -1466,6 +1495,12 @@ void SettingsDialog::loadAppearance() {
         QSettings("msga", "msga").value("appearance/threadsInline", false).toBool();
     (inlineThreads ? _threadInline : _threadStandalone)->setChecked(true);
 
+    const QString fontId = ThemeManager::instance().fontSizeId();
+    (fontId == QLatin1String("small")   ? _fontSmall
+     : fontId == QLatin1String("large") ? _fontLarge
+                                        : _fontMedium)
+        ->setChecked(true);
+
     _showAgentsApps->setChecked(
         QSettings("msga", "msga").value("appearance/showAgentsApps", true).toBool()
     );
@@ -1486,6 +1521,13 @@ void SettingsDialog::saveAppearance() {
 
     const bool showAgents = _showAgentsApps->isChecked();
     QSettings("msga", "msga").setValue("appearance/showAgentsApps", showAgents);
+
+    // Applies + persists + re-emits themeChanged (a no-op when unchanged).
+    ThemeManager::instance().setFontSizeId(
+        _fontSmall->isChecked()   ? QStringLiteral("small")
+        : _fontLarge->isChecked() ? QStringLiteral("large")
+                                  : QStringLiteral("medium")
+    );
 
     emit appearanceChanged(days);
     emit timeFormatChanged();

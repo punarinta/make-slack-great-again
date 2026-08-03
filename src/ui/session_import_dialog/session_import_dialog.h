@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
-// "Add Slack workspace with a session token" dialog. Offers one-click import from
-// the locally-installed Slack desktop app (when supported on this platform) and,
-// as the always-available fallback, a guided manual paste of the `d` cookie. Both
+// "Add Slack workspace with a session token" dialog. Offers, in order of how little
+// the user has to do: browser sign-in (drives a throwaway-profile browser and reads
+// the session out of it), one-click import from the locally-installed Slack desktop
+// app, and — always available — a guided manual paste of the `d` cookie. All three
 // paths derive the xoxc- token and validate it, then emit the ready-to-store
-// workspace records. See docs / the session-token sign-in plan.
+// workspace records. See docs/BROWSER_LOGIN_PLAN.md.
 #pragma once
 
 #include "auth/token_store.h"
@@ -19,8 +20,9 @@ class StyledButton;
 class StyledLineEdit;
 
 namespace slack::session {
+class BrowserLogin;
 class TokenDeriver;
-}
+} // namespace slack::session
 
 class SessionImportDialog : public AppDialog {
     Q_OBJECT
@@ -42,6 +44,7 @@ protected:
     int minCardHeight() const override { return 440; }
 
 private:
+    void startBrowserLogin();
     void tryLocalImport();
     void submitManual();
     void revealManual(const QString &notice = {}, bool error = true);
@@ -50,6 +53,7 @@ private:
     void
     deriveAndFinish(const QString &cookie, const QList<slack::session::TeamSession> &candidates);
 
+    StyledButton   *_browserBtn   = nullptr;
     StyledButton   *_importBtn    = nullptr;
     QLabel         *_status       = nullptr;
     StyledButton   *_manualToggle = nullptr;
@@ -58,5 +62,6 @@ private:
     StyledLineEdit *_wsEdit       = nullptr;
     StyledButton   *_manualSubmit = nullptr;
 
+    slack::session::BrowserLogin *_browser = nullptr;
     slack::session::TokenDeriver *_deriver = nullptr;
 };
