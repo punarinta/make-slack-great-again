@@ -70,7 +70,7 @@ public:
                                             ConversationId,
                                             const QStringList &,
                                             const QString &,
-                                            std::optional<Ts> threadRoot,
+                                            std::optional<Ts>                  threadRoot,
                                             std::function<void(bool, QString)> done
                                         ) override; // Phase 4 (stub)
     void downloadFile(

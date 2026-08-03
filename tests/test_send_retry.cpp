@@ -592,9 +592,7 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
-    SendFixture,
-    "threaded file upload posts thread_ts and reconciles via replies",
-    "[send_retry]"
+    SendFixture, "threaded file upload posts thread_ts and reconciles via replies", "[send_retry]"
 ) {
     QTemporaryFile file;
     REQUIRE(file.open());

@@ -1089,8 +1089,10 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
 }
 
 void PublicBackend::reconcileUpload(
-    const ConversationId &conv, const QSet<QString> &fileIds, std::optional<Ts> threadRoot,
-    int attempt
+    const ConversationId &conv,
+    const QSet<QString>  &fileIds,
+    std::optional<Ts>     threadRoot,
+    int                   attempt
 ) {
     if (fileIds.isEmpty())
         return;
@@ -1439,7 +1441,7 @@ void PublicBackend::uploadFiles(
     ConversationId                              conv,
     const QStringList                          &filePaths,
     const QString                              &initialComment,
-    std::optional<Ts> threadRoot,
+    std::optional<Ts>                           threadRoot,
     std::function<void(bool ok, QString error)> done
 ) {
     // Slack external upload flow: per file, files.getUploadURLExternal then a

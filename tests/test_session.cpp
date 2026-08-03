@@ -189,8 +189,8 @@ struct StubBackend : Backend {
                            ConversationId                     c,
                            const QStringList                 &paths,
                            const QString                     &comment,
-                           std::optional<Ts> threadRoot = std::nullopt,
-                           std::function<void(bool, QString)> done = {}
+                           std::optional<Ts>                  threadRoot = std::nullopt,
+                           std::function<void(bool, QString)> done       = {}
                        ) override {
         uploadCalls.push_back({c, paths, comment, threadRoot, std::move(done)});
     }

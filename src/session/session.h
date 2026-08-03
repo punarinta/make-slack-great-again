@@ -114,8 +114,10 @@ public:
 
     // --- Phase 3 ---
     void uploadFiles(
-        ConversationId conv, const QStringList &filePaths, const QString &text,
-        std::optional<Ts> threadRoot = std::nullopt
+        ConversationId     conv,
+        const QStringList &filePaths,
+        const QString     &text,
+        std::optional<Ts>  threadRoot = std::nullopt
     );
     void
     searchMessages(const QString &query, std::function<void(std::vector<SearchResult>)> callback);

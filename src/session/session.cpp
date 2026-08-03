@@ -1865,8 +1865,10 @@ void Session::setPhoto(const QString &filePath, std::function<void(bool, QString
 }
 
 void Session::uploadFiles(
-    ConversationId conv, const QStringList &filePaths, const QString &text,
-    std::optional<Ts> threadRoot
+    ConversationId     conv,
+    const QStringList &filePaths,
+    const QString     &text,
+    std::optional<Ts>  threadRoot
 ) {
     // Uploads can take a while for big files — show the message immediately as
     // a translucent pending copy; the real message arrives via realtime once

@@ -295,7 +295,7 @@ public:
                                             ConversationId,
                                             const QStringList                          &filePaths,
                                             const QString                              &initialComment,
-                                            std::optional<Ts> threadRoot = std::nullopt,
+                                            std::optional<Ts>                           threadRoot = std::nullopt,
                                             std::function<void(bool ok, QString error)> done = {}
                                         ) = 0;
     // Delete a file by its Slack file ID (files.delete). No-op on unsupported backends.
