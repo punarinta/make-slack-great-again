@@ -62,6 +62,7 @@ public:
                                             ConversationId,
                                             const QStringList &,
                                             const QString &,
+                                            std::optional<Ts> = std::nullopt,
                                             std::function<void(bool, QString)> done = {}
                                         ) override {
         if (done)

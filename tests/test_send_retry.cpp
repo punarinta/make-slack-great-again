@@ -592,6 +592,38 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
+    SendFixture,
+    "threaded file upload posts thread_ts and reconciles via replies",
+    "[send_retry]"
+) {
+    QTemporaryFile file;
+    REQUIRE(file.open());
+    file.write("payload");
+    file.flush();
+
+    server.enqueue(
+        QString(R"({"ok":true,"upload_url":"%1up","file_id":"F1"})").arg(server.baseUrl()).toUtf8()
+    );
+    server.enqueue(R"(OK)");
+    server.enqueue(R"({"ok":true,"files":[{"id":"F1","title":"x"}]})");
+    server.enqueue(
+        R"({"ok":true,"messages":[{"ts":"100.000","user":"U1"},)"
+        R"({"ts":"200.000","user":"U1","subtype":"file_share",)"
+        R"("files":[{"id":"F1","name":"x"}],"text":"","thread_ts":"100.000"}]})"
+    );
+
+    backend.uploadFiles(ConversationId{"C1"}, {file.fileName()}, "", Ts{"100.000"});
+
+    REQUIRE(waitFor([&] { return newMessageEvent() != nullptr; }));
+    CHECK(newMessageEvent()->msg.ts == "200.000");
+    REQUIRE(server.requestPaths.size() == 4);
+    CHECK(server.requestPaths[2] == "/files.completeUploadExternal");
+    CHECK(server.requestPaths[3] == "/conversations.replies");
+    CHECK(server.requestBodies[2].contains("thread_ts"));
+    CHECK(server.requestBodies[2].contains("100.000"));
+}
+
+TEST_CASE_METHOD(
     SendFixture, "thread replies reconcile via conversations.replies", "[send_retry]"
 ) {
     server.dropConnections = 1;

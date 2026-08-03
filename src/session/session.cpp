@@ -1689,19 +1689,23 @@ void Session::setPhoto(const QString &filePath, std::function<void(bool, QString
     });
 }
 
-void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text) {
+void Session::uploadFiles(
+    ConversationId conv, const QStringList &filePaths, const QString &text,
+    std::optional<Ts> threadRoot
+) {
     // Uploads can take a while for big files — show the message immediately as
     // a translucent pending copy; the real message arrives via realtime once
     // Slack posts it, replacing the ghost (same flow as plain text sends).
     const Ts fakeTs = makeFakeTs();
 
     Message optimistic;
-    optimistic.ts      = fakeTs;
-    optimistic.date    = decimalTsToMicros(fakeTs); // so it sorts/renders like a real msg
-    optimistic.author  = _meUserId;
-    optimistic.text    = MrkdwnParser::parse(text);
-    optimistic.rawText = text;
-    optimistic.pending = true;
+    optimistic.ts         = fakeTs;
+    optimistic.date       = decimalTsToMicros(fakeTs); // so it sorts/renders like a real msg
+    optimistic.author     = _meUserId;
+    optimistic.text       = MrkdwnParser::parse(text);
+    optimistic.rawText    = text;
+    optimistic.threadRoot = threadRoot;
+    optimistic.pending    = true;
 
     QMimeDatabase mimeDb;
     for (const QString &path : filePaths) {
@@ -1733,15 +1737,17 @@ void Session::uploadFiles(ConversationId conv, const QStringList &filePaths, con
     _eventHub.fire(EvMessageNew{conv, optimistic});
     _pendingSends[conv.value].append({fakeTs, true});
 
-    _backend->uploadFiles(conv, filePaths, text, [this, conv, fakeTs](bool ok, QString error) {
-        if (ok)
-            return; // realtime delivery of the real message removes the ghost
-        auto it = _pendingSends.find(conv.value);
-        if (it != _pendingSends.end())
-            it->removeIf([&](const PendingSend &p) { return p.ts == fakeTs; });
-        _eventHub.fire(EvMessageDeleted{conv, fakeTs});
-        _errorHub.fire(QCoreApplication::translate("Session", "Upload failed: %1").arg(error));
-    });
+    _backend->uploadFiles(
+        conv, filePaths, text, threadRoot, [this, conv, fakeTs](bool ok, QString error) {
+            if (ok)
+                return; // realtime delivery of the real message removes the ghost
+            auto it = _pendingSends.find(conv.value);
+            if (it != _pendingSends.end())
+                it->removeIf([&](const PendingSend &p) { return p.ts == fakeTs; });
+            _eventHub.fire(EvMessageDeleted{conv, fakeTs});
+            _errorHub.fire(QCoreApplication::translate("Session", "Upload failed: %1").arg(error));
+        }
+    );
 }
 
 void Session::searchMessages(

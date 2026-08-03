@@ -113,7 +113,10 @@ public:
     void setPhoto(const QString &filePath, std::function<void(bool ok, QString err)> done = {});
 
     // --- Phase 3 ---
-    void uploadFiles(ConversationId conv, const QStringList &filePaths, const QString &text);
+    void uploadFiles(
+        ConversationId conv, const QStringList &filePaths, const QString &text,
+        std::optional<Ts> threadRoot = std::nullopt
+    );
     void
     searchMessages(const QString &query, std::function<void(std::vector<SearchResult>)> callback);
     void downloadFile(

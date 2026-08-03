@@ -105,6 +105,15 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     });
     connect(
         _composer,
+        &ComposerWidget::uploadRequested,
+        this,
+        [this](const QStringList &filePaths, const QString &text) {
+            if (_session && !_conv.value.isEmpty() && !_rootTs.isEmpty())
+                _session->uploadFiles(_conv, filePaths, text, _rootTs);
+        }
+    );
+    connect(
+        _composer,
         &ComposerWidget::editRequested,
         this,
         [this](const Ts &ts, const QString &newText) {

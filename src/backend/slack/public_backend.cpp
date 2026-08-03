@@ -1022,20 +1022,26 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
 }
 
 void PublicBackend::reconcileUpload(
-    const ConversationId &conv, const QSet<QString> &fileIds, int attempt
+    const ConversationId &conv, const QSet<QString> &fileIds, std::optional<Ts> threadRoot,
+    int attempt
 ) {
     if (fileIds.isEmpty())
         return;
-    QUrlQuery params;
+    const bool inThread = threadRoot.has_value();
+    QUrlQuery  params;
     params.addQueryItem("channel", conv.value);
     // The share lands at "now"; a small window absorbs clock skew and history
     // lag without trawling the whole channel.
     params.addQueryItem("oldest", QString::number(QDateTime::currentSecsSinceEpoch() - 120));
     params.addQueryItem("limit", "30");
+    // A threaded share only surfaces in conversations.replies, never the channel
+    // history — mirror reconcileSend and scan the thread when we have a root.
+    if (inThread)
+        params.addQueryItem("ts", *threadRoot);
     _api->call(
-        "conversations.history",
+        inThread ? "conversations.replies" : "conversations.history",
         params,
-        [this, conv, fileIds, attempt](QJsonObject resp) {
+        [this, conv, fileIds, threadRoot, attempt](QJsonObject resp) {
             for (const auto v : resp.value("messages").toArray()) {
                 const auto o = v.toObject();
                 if (!_meUserId.value.isEmpty() && o.value("user").toString() != _meUserId.value)
@@ -1062,8 +1068,8 @@ void PublicBackend::reconcileUpload(
             constexpr int kMaxUploadReconcileRetries = 6;
             if (attempt < kMaxUploadReconcileRetries) {
                 const int delay = qMin(_sendRetryDelayMs << attempt, 60'000);
-                QTimer::singleShot(delay, _api, [this, conv, fileIds, attempt] {
-                    reconcileUpload(conv, fileIds, attempt + 1);
+                QTimer::singleShot(delay, _api, [this, conv, fileIds, threadRoot, attempt] {
+                    reconcileUpload(conv, fileIds, threadRoot, attempt + 1);
                 });
             }
         },
@@ -1366,6 +1372,7 @@ void PublicBackend::uploadFiles(
     ConversationId                              conv,
     const QStringList                          &filePaths,
     const QString                              &initialComment,
+    std::optional<Ts> threadRoot,
     std::function<void(bool ok, QString error)> done
 ) {
     // Slack external upload flow: per file, files.getUploadURLExternal then a
@@ -1379,7 +1386,7 @@ void PublicBackend::uploadFiles(
     auto batch  = std::make_shared<Batch>();
     auto settle = std::make_shared<std::function<void(bool, QString)>>(std::move(done));
 
-    auto finishOne = [this, conv, initialComment, batch, settle]() {
+    auto finishOne = [this, conv, initialComment, threadRoot, batch, settle]() {
         if (--batch->pending > 0)
             return;
         if (batch->files.isEmpty()) {
@@ -1393,6 +1400,8 @@ void PublicBackend::uploadFiles(
         body["files"]      = batch->files;
         if (!initialComment.isEmpty())
             body["initial_comment"] = initialComment;
+        if (threadRoot)
+            body["thread_ts"] = *threadRoot;
 
         // Collect the uploaded file ids so the post-upload reconcile can match
         // the shared message even when there's no initial_comment to compare.
@@ -1403,11 +1412,11 @@ void PublicBackend::uploadFiles(
         _api->postJson(
             "files.completeUploadExternal",
             body,
-            [this, conv, fileIds, settle](QJsonObject) {
+            [this, conv, fileIds, threadRoot, settle](QJsonObject) {
                 // The upload landed but the response carries no message ts;
                 // reconcile from history to emit the echo that de-ghosts the
                 // optimistic copy without waiting on the realtime websocket.
-                reconcileUpload(conv, fileIds);
+                reconcileUpload(conv, fileIds, threadRoot);
                 if (*settle)
                     (*settle)(true, {});
             },

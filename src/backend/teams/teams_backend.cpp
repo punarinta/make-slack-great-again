@@ -947,6 +947,7 @@ void Backend::uploadFiles(
     ConversationId                     conv,
     const QStringList                 &filePaths,
     const QString                     &initialComment,
+    std::optional<Ts> /*threadRoot*/,
     std::function<void(bool, QString)> done
 ) {
     if (filePaths.isEmpty()) {
