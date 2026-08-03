@@ -21,6 +21,10 @@ Block        toBlock(const QJsonObject &);
 Attachment   toAttachment(const QJsonObject &);
 SearchResult toSearchResult(const QJsonObject &);
 
+// A `client.counts` response: per-conversation unread/activity for the whole
+// workspace, read out of its parallel `channels` / `mpims` / `ims` arrays.
+std::vector<ConvCounts> toConvCounts(const QJsonObject &resp);
+
 // Batch helpers
 std::vector<User>         toUsers(const QJsonArray &);
 std::vector<Conversation> toConversations(const QJsonArray &);

@@ -1063,13 +1063,19 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     // count of things you were actually notified about: DM unreads, or channel
     // @mentions.
     const int  redCount = isDm ? conv.unread : conv.mentionCount;
+    // Nothing here is newer than the notification window, so it counts as
+    // history rather than activity: no badge, red or blue (see
+    // kMaxNotifyAgeDays). Like a local mute, it leaves the bold row emphasis
+    // alone — the row is still unread, it just stops shouting.
+    const bool stale    = tooOldToNotify(conv);
     // A locally-muted person keeps the bold "unread" emphasis above but shows no
     // counter badge — the mute kills every outward count, red or blue.
-    const bool showRed  = !conv.locallyMuted && lvl != NotificationLevel::Mute && redCount > 0;
+    const bool showRed =
+        !stale && !conv.locallyMuted && lvl != NotificationLevel::Mute && redCount > 0;
     // Blue dot = other *allowed* activity: non-@mention unreads, but only in
     // channels set to "All new posts" (a "Just mentions" or muted channel stays
     // quiet for regular messages — no badge at all).
-    const bool showBlue = !conv.locallyMuted && lvl == NotificationLevel::All && !isDm &&
+    const bool showBlue = !stale && !conv.locallyMuted && lvl == NotificationLevel::All && !isDm &&
                           conv.mentionCount == 0 && conv.unread > 0;
     const int badgeW = showRed ? (redCount > 9 ? 28 : 20) : showBlue ? 14 : 0;
 
