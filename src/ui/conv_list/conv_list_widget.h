@@ -238,8 +238,8 @@ protected:
     // Height of every row (uniform). kRowHBase scaled by the font-size setting
     // (ThemeManager::fontFactor) — recomputed in updateRowHeight() on theme
     // change so rows breathe with the text instead of cramping it.
-    static constexpr int kRowHBase     = 30;
-    int                  _rowH         = 30;
+    static constexpr int kRowHBase = 30;
+    int                  _rowH     = 30;
     void                 updateRowHeight();
     static constexpr int kPadH         = 12; // horizontal left padding
     static constexpr int kPadV         = 8;  // vertical padding inside row

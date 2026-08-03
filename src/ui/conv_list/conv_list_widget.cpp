@@ -72,6 +72,11 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
     rebuildIconPixmaps();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
         updateRowHeight(); // the font-size setting scales rows with the text
+        // Elision is measured with the painting font, but the cache is keyed on
+        // (name, maxW, weight) — none of which move when only the font SIZE
+        // changes. Stale entries keep the old elidedW, which is what positions
+        // the EXT pill, the status emoji and the truncation tooltip rects.
+        _nameCache.clear();
         rebuildIconPixmaps();
         updateScrollRange();
         viewport()->update();

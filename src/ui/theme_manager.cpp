@@ -25,17 +25,17 @@ double fontFactorFor(const QString &id) {
 void applyFontScale(Th::Theme &t, double k) {
     if (k == 1.0)
         return;
-    const auto s  = [k](int px) { return std::max(1, qRound(px * k)); };
-    auto      &f  = t.fonts;
-    f.xs          = s(f.xs);
-    f.sm          = s(f.sm);
-    f.caption     = s(f.caption);
-    f.md          = s(f.md);
-    f.base        = s(f.base);
-    f.lg          = s(f.lg);
-    f.xl          = s(f.xl);
-    f.xxl         = s(f.xxl);
-    f.xxxl        = s(f.xxxl);
+    const auto s = [k](int px) { return std::max(1, qRound(px * k)); };
+    auto      &f = t.fonts;
+    f.xs         = s(f.xs);
+    f.sm         = s(f.sm);
+    f.caption    = s(f.caption);
+    f.md         = s(f.md);
+    f.base       = s(f.base);
+    f.lg         = s(f.lg);
+    f.xl         = s(f.xl);
+    f.xxl        = s(f.xxl);
+    f.xxxl       = s(f.xxxl);
 }
 
 } // namespace
@@ -80,6 +80,14 @@ void ThemeManager::applyAppFontScale() {
         else
             f.setPointSizeF(QFontInfo(f).pointSizeF() * k);
     }
+    // A general setFont() clears the per-class font hash the platform theme
+    // installs at startup (QMenu, QSmallFont/QMiniFont on mac, …). On Linux
+    // main() already sets an app font so that ship has sailed, but on Windows
+    // and macOS it hasn't — so don't call it just to re-assign the font we are
+    // already using. Reverting to "medium" still goes through: there the active
+    // font is the scaled one, not _baseAppFont.
+    if (k == 1.0 && QApplication::font() == f)
+        return;
     QApplication::setFont(f);
 }
 
