@@ -11,6 +11,7 @@
 
 #include <QUrlQuery>
 #include <QFile>
+#include <QSet>
 #include <QFileInfo>
 #include <QHttpMultiPart>
 #include <QJsonArray>
@@ -23,6 +24,33 @@
 #include <QDebug>
 
 namespace slack {
+
+namespace {
+
+// Slack error codes that mean "this method is not available to this caller" — as
+// opposed to a passing failure. Used to decide whether an undocumented endpoint
+// (client.counts) should be given up on permanently for a workspace. Deliberately
+// an allowlist: onError also delivers transport failures (kConnectionLost, or a
+// raw Qt error string), and treating one of those as definitive would cost a
+// workspace the endpoint for the whole run over a brief network outage.
+bool isMethodUnavailable(const QString &err) {
+    static const QSet<QString> codes = {
+        QStringLiteral("unknown_method"),
+        QStringLiteral("method_deprecated"),
+        QStringLiteral("method_not_supported_for_channel_type"),
+        QStringLiteral("not_allowed_token_type"),
+        QStringLiteral("missing_scope"),
+        QStringLiteral("no_permission"),
+        QStringLiteral("invalid_arguments"),
+        QStringLiteral("org_login_required"),
+        QStringLiteral("enterprise_is_restricted"),
+        QStringLiteral("user_is_restricted"),
+        QStringLiteral("ekm_access_denied"),
+    };
+    return codes.contains(err);
+}
+
+} // namespace
 
 PublicBackend::PublicBackend(
     const Credentials &creds, const AppConfig &appCfg, const QString &refreshUrl
@@ -55,7 +83,9 @@ PublicBackend::PublicBackend(
         _historyApi->setCookie(creds.cookie);
         _infoApi->setCookie(creds.cookie);
         // Realtime for session workspaces is delivered by Session's fast poll
-        // (foregroundPollGapMs() == 5 s), NOT the classic RTM WebSocket: Slack
+        // (foregroundPollGapMs() == 5 s for the open chat, plus the client.counts
+        // activity snapshot in loadUnreadCounts() that tells it which OTHER
+        // conversations to poll), NOT the classic RTM WebSocket: Slack
         // closes the deprecated rtm.connect ("LEGACY_BOT") socket after a fixed
         // ~5 s regardless of pings, and rtm.connect is Tier-1 rate-limited, so
         // reconnecting just churns into a ratelimit. True push would need Slack's
@@ -457,6 +487,43 @@ PublicBackend::loadConversationInfo(ConversationId id, bool background) {
             );
         else
             _infoApi->call("conversations.info", params, std::move(onOk), std::move(onErr));
+        return rpl::lifetime();
+    };
+}
+
+rpl::producer<std::vector<ConvCounts>> PublicBackend::loadUnreadCounts() {
+    return [this](auto consumer) mutable {
+        // Unsupported: complete WITHOUT a value (the Backend contract's "no
+        // snapshot" signal, which makes the Session fall back to its roster diff).
+        // OAuth workspaces have Socket Mode, so they neither need this nor are
+        // allowed to call it.
+        if (!_sessionAuth || _countsUnavailable) {
+            consumer.put_done();
+            return rpl::lifetime();
+        }
+        _api->call(
+            "client.counts",
+            QUrlQuery{},
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toConvCounts(resp));
+                consumer.put_done();
+            },
+            [this, consumer](QString err) mutable {
+                // Latch only on a Slack error code that says the METHOD is not ours
+                // to call. onError also carries transport failures (kConnectionLost,
+                // or a raw Qt errorString for a DNS/TLS failure), and a workspace
+                // must not lose the mechanism for the rest of the run because the
+                // laptop was briefly offline — those stay unlatched and the Session
+                // degrades on its own after a few empty attempts.
+                if (isMethodUnavailable(err)) {
+                    _countsUnavailable = true;
+                    qWarning() << "client.counts rejected:" << err
+                               << "— unread-counts polling disabled for this workspace";
+                }
+                consumer.put_done();
+            },
+            /*quietErrors=*/true
+        );
         return rpl::lifetime();
     };
 }

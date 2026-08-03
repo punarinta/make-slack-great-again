@@ -39,12 +39,15 @@ QStringList OAuthFlow::userScopes() {
 
 void OAuthFlow::start() {
     if (_app.clientId.isEmpty()) {
+        // Keys can be pasted at runtime (Settings → System → "Slack app keys"), so
+        // lead with that — editing credentials.cmake only applies to your own build.
         emit failed(
             QCoreApplication::translate(
                 "slack::OAuthFlow",
-                "App credentials are not configured.\n\n"
-                "Copy credentials.cmake.example to credentials.cmake, "
-                "fill in your Slack app credentials, and rebuild."
+                "No Slack app keys are set up yet.\n\n"
+                "Open Settings → System, choose “Slack app keys”, and paste your client ID, "
+                "client secret and app token. Building msga yourself? Put them in "
+                "credentials.cmake instead and rebuild."
             )
         );
         return;
