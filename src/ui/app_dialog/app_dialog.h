@@ -66,6 +66,13 @@ public:
     int  exec(); // blocks in a nested event loop; returns the result code
     void open(); // shows without blocking
 
+    // The frontmost dialog currently overlaying `window`, or nullptr if none is
+    // up. Lets the window answer a "close" request (Cmd+W) by dismissing the
+    // dialog on top of it instead of hiding itself out from under it — the
+    // dialogs are in-window children, so they are invisible to the window
+    // system's own close handling.
+    static AppDialog *topmostVisible(QWidget *window);
+
 public slots:
     void accept(); // done(QDialog::Accepted)
     void reject(); // done(QDialog::Rejected)

@@ -13,6 +13,7 @@
 #include "conv_list/conv_list_widget.h"
 #include "conv_footer/conv_footer_widget.h"
 #include "context_menu/context_menu.h"
+#include "app_dialog/app_dialog.h"
 #include "workspace_switcher/workspace_switcher.h"
 #include "session/session.h"
 #include "cache/cache_evictor.h"
@@ -47,6 +48,9 @@
 #include "util/desktop_notifier.h"
 #include "util/slack_links.h"
 #include "util/sound_player.h"
+#ifdef Q_OS_MACOS
+#include "util/mac_app_badge.h"
+#endif
 
 #include <QDialog>
 #include <QEvent>
@@ -224,7 +228,13 @@ private:
     QPointer<QWidget> _handle;
 };
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+#ifdef Q_OS_MACOS
+    // The Dock tile outlives the process, so an unread count left on it stays
+    // painted over the icon after we quit. Clear it on the way out.
+    macSetDockBadge(0);
+#endif
+}
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("");
@@ -250,6 +260,31 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     addNavShortcut(QKeySequence(Qt::Key_Forward), false);
     addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), true);
     addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), false);
+
+    // Cmd+W (Ctrl+W elsewhere): close the frontmost thing. Our modal dialogs and
+    // the settings panel are in-window child overlays, not top-level windows, so
+    // nothing else would treat them as closeable — without this the shortcut
+    // would hide the whole window with a dialog still up on it. Dismiss that
+    // first (like macOS closing a sheet before its window); only when nothing is
+    // open does the window itself close, which goes through closeEvent and so
+    // hides to the tray exactly like the titlebar close button — the app keeps
+    // running for badges and notifications.
+    //
+    // One shortcut has to arbitrate all of this: two QShortcuts on the same
+    // sequence in one window (say a competing one owned by AppDialog) both match,
+    // and Qt then reports the press as ambiguous and runs NEITHER handler.
+    auto *closeShortcut = new QShortcut(QKeySequence::Close, this);
+    connect(closeShortcut, &QShortcut::activated, this, [this] {
+        if (AppDialog *dialog = AppDialog::topmostVisible(this)) {
+            dialog->reject(); // same path as Escape / the × button / backdrop click
+            return;
+        }
+        if (_settingsDialog && _settingsDialog->isVisible()) {
+            _settingsDialog->hide();
+            return;
+        }
+        close();
+    });
 
     setupTray();
 
@@ -1916,6 +1951,13 @@ static QPixmap roundedNotifIcon(const QPixmap &src, int side = 64) {
 }
 
 void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
+    // Too old to announce: a reconnect backfill, a cache replay or a history
+    // sweep can surface month-old messages as fresh EvMessageNew. Drop those
+    // silently — no toast, no sound (see kMaxNotifyAgeDays). Before every other
+    // gate so an ancient message can't reach any surface.
+    if (tooOldToNotify(ev.msg.date))
+        return;
+
     QSettings s("msga", "msga");
     if (!s.value("notifications/enabled", true).toBool())
         return;
@@ -2062,6 +2104,11 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
 }
 
 void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev) {
+    // No kMaxNotifyAgeDays gate here, deliberately: a huddle carries no start
+    // time (conversations.info reports only that a room is live *now*), and its
+    // conversation's latestTs is no proxy — a huddle in a channel that has been
+    // quiet for months is still happening this second. The false→true dedup
+    // below is what keeps a re-fire from replaying an already-seen huddle.
     const QString key = teamId + QChar(0x1f) + ev.conv.value;
 
     // A huddle ending clears the dedup key so its next start notifies again.
@@ -2248,6 +2295,11 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
         // in-list bold emphasis is handled by ConvListWidget independently).
         if (c.locallyMuted)
             continue;
+        // Everything unread here predates the notification window, so it
+        // contributes to neither the switcher counter nor the tray/dock tint
+        // this feeds (see kMaxNotifyAgeDays).
+        if (tooOldToNotify(c))
+            continue;
         const NotificationLevel lvl = effectiveNotifLevel(c, fallback);
         if (lvl == NotificationLevel::Mute)
             continue;
@@ -2270,8 +2322,6 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
 }
 
 void MainWindow::updateTrayIcon() {
-    if (!_trayIcon)
-        return;
     int globalTotal = 0, globalMentions = 0;
     for (auto it = _wsUnreads.cbegin(); it != _wsUnreads.cend(); ++it) {
         // Muted workspaces never tint the tray ball (their in-app unread badges
@@ -2281,6 +2331,18 @@ void MainWindow::updateTrayIcon() {
         globalTotal += it.value().first;
         globalMentions += it.value().second;
     }
+
+#ifdef Q_OS_MACOS
+    // Dock tile badge: the actionable count (DM unreads + @mentions), matching
+    // Slack. Plain channel activity stays off the Dock (it still shows the tray
+    // tint and the in-app blue dot). Set before the tray work below, which bails
+    // out when there is no tray icon — the Dock badge is independent of it.
+    macSetDockBadge(globalMentions);
+#endif
+
+    if (!_trayIcon)
+        return;
+
     // Always render via QSvgRenderer so the alpha channel is preserved in static builds.
     const int    sz = 128;
     QSvgRenderer renderer(QString(":/icon_tray.svg"));

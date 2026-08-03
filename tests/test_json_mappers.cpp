@@ -735,6 +735,28 @@ TEST_CASE("toBlock header with plain_text", "[mappers][block]") {
     CHECK(b.text.entities.empty());
 }
 
+TEST_CASE("toBlock header plain_text expands :emoji: shortcodes", "[mappers][block]") {
+    // Bots (e.g. Amazon Q CodePipeline) put :mega: in a plain_text header block.
+    // Slack renders the emoji; the shortcode text stays but gets an Emoji entity.
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "header",
+        "text": {"type": "plain_text", "text": ":mega: AWS CodePipeline Notification"}
+    })"));
+    CHECK(b.text.text == ":mega: AWS CodePipeline Notification");
+    REQUIRE(b.text.entities.size() == 1);
+    CHECK(b.text.entities[0].type == EntityType::Emoji);
+    CHECK(b.text.entities[0].data == "mega");
+}
+
+TEST_CASE("toBlock plain_text with emoji:false leaves shortcode literal", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "header",
+        "text": {"type": "plain_text", "text": ":mega: heads up", "emoji": false}
+    })"));
+    CHECK(b.text.text == ":mega: heads up");
+    CHECK(b.text.entities.empty());
+}
+
 TEST_CASE("toBlock image block", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "image",
@@ -1390,4 +1412,51 @@ TEST_CASE("toSlashCommands parses an object keyed by command name", "[mappers][c
 TEST_CASE("toSlashCommands tolerates junk input", "[mappers][commands]") {
     CHECK(JsonMappers::toSlashCommands(QJsonValue{}).empty());
     CHECK(JsonMappers::toSlashCommands(arr(R"([{"desc": "nameless"}, 42])")).empty());
+}
+
+// ── toConvCounts (client.counts) ─────────────────────────────────────────────
+
+TEST_CASE("toConvCounts reads all three conversation groups", "[mappers][counts]") {
+    auto counts = JsonMappers::toConvCounts(obj(R"({
+        "ok": true,
+        "channels": [
+            {"id": "C1", "last_read": "100.000001", "latest": "100.000009",
+             "mention_count": 2, "has_unreads": true},
+            {"id": "C2", "last_read": "100.000005", "latest": "100.000005",
+             "mention_count": 0, "has_unreads": false}
+        ],
+        "mpims": [
+            {"id": "G1", "last_read": "0", "latest": "200.000001",
+             "mention_count": 0, "has_unreads": true}
+        ],
+        "ims": [
+            {"id": "D1", "last_read": "0", "latest": "300.000001",
+             "mention_count": 0, "has_unreads": true, "dm_count": 4}
+        ]
+    })"));
+    REQUIRE(counts.size() == 4);
+
+    CHECK(counts[0].id.value == "C1");
+    CHECK(counts[0].latestTs == "100.000009");
+    CHECK(counts[0].lastRead == "100.000001");
+    CHECK(counts[0].mentionCount == 2);
+    CHECK(counts[0].unread == 2);
+
+    // Nothing unread: the diff must see a flat zero, not a phantom rise.
+    CHECK(counts[1].id.value == "C2");
+    CHECK(counts[1].unread == 0);
+    CHECK(counts[1].mentionCount == 0);
+
+    // has_unreads with no count: 1 stands in for "some" (only compared, never shown).
+    CHECK(counts[2].id.value == "G1");
+    CHECK(counts[2].unread == 1);
+
+    // A DM's dm_count is the real number of unread messages.
+    CHECK(counts[3].id.value == "D1");
+    CHECK(counts[3].unread == 4);
+}
+
+TEST_CASE("toConvCounts tolerates missing groups and junk entries", "[mappers][counts]") {
+    CHECK(JsonMappers::toConvCounts(obj(R"({"ok": true})")).empty());
+    CHECK(JsonMappers::toConvCounts(obj(R"({"channels": [{"has_unreads": true}]})")).empty());
 }

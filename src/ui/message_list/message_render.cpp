@@ -1172,6 +1172,31 @@ QString buildMsgHtml(
     return wrapParagraph(toHtml(msg.text, session), "margin:0");
 }
 
+// Escaped inline HTML with ONLY emoji entities substituted; every other entity
+// renders as its plain text. For spots that can't take toHtml()'s full markup —
+// a linked attachment title puts the whole run inside one <a>, where a nested
+// anchor from a Link entity would be invalid.
+static QString emojiOnlyHtml(const TextWithEntities &twe, const Session *session) {
+    std::vector<const TextEntity *> emoji;
+    for (const auto &e : twe.entities)
+        if (e.type == EntityType::Emoji)
+            emoji.push_back(&e);
+    std::sort(emoji.begin(), emoji.end(), [](const TextEntity *a, const TextEntity *b) {
+        return a->offset < b->offset;
+    });
+    QString out;
+    int     pos = 0;
+    for (const TextEntity *e : emoji) {
+        if (e->offset < pos)
+            continue; // defensive: skip any overlapping span
+        out += QStringView{twe.text}.mid(pos, e->offset - pos).toString().toHtmlEscaped();
+        out += emojiHtml(resolveEmojiRich(e->data, session), inlineEmojiPx());
+        pos = e->offset + e->length;
+    }
+    out += QStringView{twe.text}.mid(pos).toString().toHtmlEscaped();
+    return out;
+}
+
 // Attachment text HTML (used inside the colored bar area).
 QString
 buildAttachHtml(const Attachment &att, const Session *session, const GifRenderContext *gif) {
@@ -1189,11 +1214,12 @@ buildAttachHtml(const Attachment &att, const Session *session, const GifRenderCo
             MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.title));
         if (!att.titleLink.isEmpty())
             // The whole title is one link; embedded tokens collapse to their
-            // resolved plain text (anchors can't nest).
+            // resolved plain text (anchors can't nest) — except emoji, which
+            // substitute their glyph/img inline.
             html += "<p style='margin:0;font-weight:bold'><a href='" +
                     MrkdwnParser::decodeEntities(att.titleLink).toHtmlEscaped() +
                     "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
-                    title.text.toHtmlEscaped() + "</a></p>";
+                    emojiOnlyHtml(title, session) + "</a></p>";
         else
             html += "<p style='margin:0;font-weight:bold'>" + toHtml(title, session) + "</p>";
     }

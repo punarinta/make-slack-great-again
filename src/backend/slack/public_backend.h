@@ -68,7 +68,8 @@ public:
     rpl::producer<User>                      loadBotInfo(UserId botId) override;
     rpl::producer<User>                      loadUser(UserId userId) override;
     rpl::producer<Conversation> loadConversationInfo(ConversationId, bool background) override;
-    rpl::producer<MessagePage>  loadHistory(ConversationId, std::optional<QString> cursor) override;
+    rpl::producer<std::vector<ConvCounts>> loadUnreadCounts() override;
+    rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
     rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) override;
 
@@ -258,6 +259,12 @@ private:
     std::unique_ptr<SharedRealtime>  _realtimeHandle;
     SocketModeRealtime              *_sharedRealtime = nullptr; // non-owning (owned by the handle)
     bool                             _sessionAuth = false; // xoxc/cookie workspace (no Socket Mode)
+    // `client.counts` is undocumented and only served to a session (xoxc) token —
+    // an OAuth token gets it rejected outright. Latched on the first Slack-level
+    // rejection so we stop calling a method this workspace provably can't use;
+    // transport failures leave it clear, since those say nothing about the method.
+    // (Same degrade-gracefully rule as the undocumented commands.list/chat.command.)
+    bool                             _countsUnavailable = false;
     // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
     std::unique_ptr<SessionRealtime> _sessionRealtime;
     QTimer                          *_proactiveRefreshTimer = nullptr;

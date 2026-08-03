@@ -414,7 +414,13 @@ static TextWithEntities parseTextObj(const QJsonObject &o) {
     const auto text = o.value("text").toString();
     if (type == "mrkdwn")
         return MrkdwnParser::parse(text);
-    return TextWithEntities{text, {}};
+    // plain_text: no mrkdwn emphasis (*_~` stay literal), but Slack still expands
+    // :emoji: shortcodes — e.g. a bot header ":mega: Notification" — unless the
+    // object opts out with "emoji": false (default true). resolveTokens does the
+    // emoji pass and leaves marks alone; decodeEntities matches the title path.
+    if (o.value("emoji").toBool(true))
+        return MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(text));
+    return TextWithEntities{MrkdwnParser::decodeEntities(text), {}};
 }
 
 // A button element — Block Kit shape ("text" is a plain_text object) or the
@@ -667,6 +673,42 @@ std::vector<Conversation> toConversations(const QJsonArray &a) {
         auto c = toConversation(v.toObject());
         if (!c.id.value.isEmpty())
             out.push_back(std::move(c));
+    }
+    return out;
+}
+
+std::vector<ConvCounts> toConvCounts(const QJsonObject &resp) {
+    // client.counts groups conversations by kind into three arrays of identically
+    // shaped entries. Unlike conversations.list it reports `latest` for CHANNELS
+    // too, which is the whole reason we call it.
+    std::vector<ConvCounts> out;
+    for (const auto *key : {"channels", "mpims", "ims"}) {
+        const auto arr = resp.value(QLatin1String(key)).toArray();
+        out.reserve(out.size() + arr.size());
+        for (const auto v : arr) {
+            const auto o  = v.toObject();
+            const auto id = o.value("id").toString();
+            if (id.isEmpty())
+                continue;
+            // The endpoint reports mentions exactly; for everything else it gives
+            // only the boolean has_unreads (a channel's plain-traffic count is not
+            // exposed). Both DM shapes appear in the wild: `dm_count` on some
+            // responses, has_unreads on all of them. A 1 stands in for "some" —
+            // Session only ever compares counts for movement, never displays them.
+            const int mentions = o.value("mention_count").toInt();
+            const int dmCount  = o.value("dm_count").toInt();
+            const int unread =
+                std::max({mentions, dmCount, o.value("has_unreads").toBool() ? 1 : 0});
+            out.push_back(
+                ConvCounts{
+                    .id           = ConversationId{id},
+                    .latestTs     = o.value("latest").toString(),
+                    .lastRead     = o.value("last_read").toString(),
+                    .unread       = unread,
+                    .mentionCount = mentions,
+                }
+            );
+        }
     }
     return out;
 }
