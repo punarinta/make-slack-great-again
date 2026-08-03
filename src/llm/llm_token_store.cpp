@@ -25,15 +25,11 @@ Credentials load(const QString &providerId) {
 }
 
 void save(const QString &providerId, const Credentials &c) {
-    QSettings  s("msga", "msga");
-    const auto putSecret = [&s](const QString &k, const QString &v) {
-        SecretStore::write(k, v); // empty clears
-        if (SecretStore::isKeychainBacked())
-            s.remove(k); // scrub any plaintext copy
-    };
-    putSecret(key(providerId, "apiKey"), c.apiKey);
-    putSecret(key(providerId, "accessToken"), c.accessToken);
-    putSecret(key(providerId, "refreshToken"), c.refreshToken);
+    QSettings s("msga", "msga");
+    // API key + OAuth tokens are secret → keychain (empty clears).
+    SecretStore::writeScrubbingLegacy(key(providerId, "apiKey"), c.apiKey);
+    SecretStore::writeScrubbingLegacy(key(providerId, "accessToken"), c.accessToken);
+    SecretStore::writeScrubbingLegacy(key(providerId, "refreshToken"), c.refreshToken);
     s.setValue(key(providerId, "expiresAt"), c.expiresAt);
     s.setValue(key(providerId, "accountLabel"), c.accountLabel);
 }

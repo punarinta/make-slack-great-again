@@ -264,6 +264,12 @@ add_msga_qt_test(test_token_store
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
 )
 
+# The backend sources come from MSGA_SECRET_STORE_SRCS via add_msga_qt_test —
+# listing them here too would be a duplicate-symbol link error.
+add_msga_qt_test(test_secret_store
+    test_secret_store.cpp
+)
+
 add_msga_qt_test(test_backend_factory
     test_backend_factory.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/backend_factory.cpp
