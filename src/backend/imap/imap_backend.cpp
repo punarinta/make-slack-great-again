@@ -1656,9 +1656,9 @@ rpl::producer<QHash<QString, QString>> Backend::loadEmojiList() {
 }
 
 void Backend::uploadFiles(
-    ConversationId                     conv,
-    const QStringList                 &filePaths,
-    const QString                     &initialComment,
+    ConversationId     conv,
+    const QStringList &filePaths,
+    const QString     &initialComment,
     std::optional<Ts> /*threadRoot*/,
     std::function<void(bool, QString)> done
 ) {

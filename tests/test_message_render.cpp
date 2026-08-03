@@ -658,7 +658,7 @@ struct RenderStubBackend : Backend {
         ConversationId,
         const QStringList &,
         const QString &,
-        std::optional<Ts> = std::nullopt,
+        std::optional<Ts>                  = std::nullopt,
         std::function<void(bool, QString)> = {}
     ) override {}
     void downloadFile(

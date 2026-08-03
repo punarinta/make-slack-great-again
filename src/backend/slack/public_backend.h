@@ -136,7 +136,7 @@ public:
                                             ConversationId,
                                             const QStringList                          &filePaths,
                                             const QString                              &initialComment,
-                                            std::optional<Ts> threadRoot = std::nullopt,
+                                            std::optional<Ts>                           threadRoot = std::nullopt,
                                             std::function<void(bool ok, QString error)> done = {}
                                         ) override;
     void deleteFile(const QString &fileId) override;
@@ -198,8 +198,10 @@ private:
     // conversations.history the instant the upload completes, so the scan
     // retries with backoff until the message appears or `attempt` is exhausted.
     void reconcileUpload(
-        const ConversationId &conv, const QSet<QString> &fileIds, std::optional<Ts> threadRoot,
-        int attempt = 0
+        const ConversationId &conv,
+        const QSet<QString>  &fileIds,
+        std::optional<Ts>     threadRoot,
+        int                   attempt = 0
     );
 
     // Re-derive live-huddle state from a freshly-fetched history page. The
