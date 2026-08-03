@@ -652,6 +652,64 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
+# ThreadPanel owns a MessageListWidget and a ComposerWidget, so the link set is
+# the union of what test_message_list and test_composer already need.
+add_msga_widget_test(test_thread_panel
+    test_thread_panel.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_catalog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/loading_indicator/loading_indicator.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.h
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider_base.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/oauth_loopback.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/anthropic_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/openai_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/background_tasks.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/mailto_link.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/composer_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/attachment_strip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/formatting_toolbar.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/edit_mode_banner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/composer/mention_completer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_panel.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+
 add_msga_widget_test(test_message_list
     test_message_list.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
