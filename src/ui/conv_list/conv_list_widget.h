@@ -235,7 +235,12 @@ protected:
     int               _selFrom = -1;
     double            _selT    = 1.0;
 
-    static constexpr int kRowH         = 30; // height of every row (uniform)
+    // Height of every row (uniform). kRowHBase scaled by the font-size setting
+    // (ThemeManager::fontFactor) — recomputed in updateRowHeight() on theme
+    // change so rows breathe with the text instead of cramping it.
+    static constexpr int kRowHBase = 30;
+    int                  _rowH     = 30;
+    void                 updateRowHeight();
     static constexpr int kPadH         = 12; // horizontal left padding
     static constexpr int kPadV         = 8;  // vertical padding inside row
     static constexpr int kAvatarSize   = 20; // size of user avatar square

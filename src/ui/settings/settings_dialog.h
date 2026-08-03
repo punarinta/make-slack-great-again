@@ -131,6 +131,9 @@ private:
     QRadioButton             *_time24           = nullptr;
     QRadioButton             *_threadStandalone = nullptr;
     QRadioButton             *_threadInline     = nullptr;
+    QRadioButton             *_fontSmall        = nullptr;
+    QRadioButton             *_fontMedium       = nullptr;
+    QRadioButton             *_fontLarge        = nullptr;
     QList<ThemePreviewCard *> _themeCards; // one per registry theme
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.
