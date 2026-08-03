@@ -56,6 +56,8 @@ signals:
     // Emitted when the threads display mode is saved (true = inline, false =
     // standalone panel), so the message list can switch how "View thread" behaves.
     void threadDisplayChanged(bool inlineThreads);
+    // Emitted when the "Show the Agents & apps section" toggle is saved.
+    void agentsAppsVisibilityChanged(bool visible);
     // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
     void stateCleared();
     // Emitted when notification settings (incl. the global default level) are
@@ -134,6 +136,7 @@ private:
     QRadioButton             *_fontSmall        = nullptr;
     QRadioButton             *_fontMedium       = nullptr;
     QRadioButton             *_fontLarge        = nullptr;
+    QCheckBox                *_showAgentsApps   = nullptr;
     QList<ThemePreviewCard *> _themeCards; // one per registry theme
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.

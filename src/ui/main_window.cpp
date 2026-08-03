@@ -508,6 +508,15 @@ QWidget *MainWindow::buildMainPage() {
         _convList,
         &ConvListWidget::setRelevantDays
     );
+    _convList->setShowAgentsApps(
+        QSettings("msga", "msga").value("appearance/showAgentsApps", true).toBool()
+    );
+    connect(
+        _settingsDialog,
+        &SettingsDialog::agentsAppsVisibilityChanged,
+        _convList,
+        &ConvListWidget::setShowAgentsApps
+    );
     connect(
         _settingsDialog, &SettingsDialog::stateCleared, _convList, &ConvListWidget::resetVisitedAt
     );
