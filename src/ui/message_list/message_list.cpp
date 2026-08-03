@@ -924,6 +924,17 @@ void MessageListWidget::invalidateAllDocs() {
     viewport()->update();
 }
 
+// Register an image under every key a document may look it up by: Qt's
+// rich-text parser does not entity-decode "&amp;" inside an img src attribute,
+// so a URL containing '&' (e.g. a Giphy URL's query string) is requested under
+// its still-escaped spelling.
+static void registerDocImage(QTextDocument *doc, const QString &url, const QPixmap &image) {
+    doc->addResource(QTextDocument::ImageResource, QUrl(url), image);
+    const QString escaped = url.toHtmlEscaped();
+    if (escaped != url)
+        doc->addResource(QTextDocument::ImageResource, QUrl(escaped), image);
+}
+
 void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) const {
     const int w = forWidth < 0 ? textAreaWidth() : forWidth;
     if (w <= 0)
@@ -977,13 +988,13 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
         for (const auto &url : item.emojiUrls) {
             const QPixmap px = _imgCache->get(url);
             if (!px.isNull()) {
-                doc->addResource(QTextDocument::ImageResource, QUrl(url), px);
+                registerDocImage(doc, url, px);
             } else if (anyImageBlock) {
                 // Still downloading: flat placeholder so the reserved image area
                 // doesn't show Qt's broken-image icon (loaded() rebuilds the doc).
                 QPixmap ph(4, 3);
                 ph.fill(Th::c().message.imagePlaceholderBg);
-                doc->addResource(QTextDocument::ImageResource, QUrl(url), ph);
+                registerDocImage(doc, url, ph);
             }
         }
     };
@@ -1442,10 +1453,10 @@ void MessageListWidget::pullGifFrames(const MessageItem &item, const QRect &vpRe
         if (frame.isNull())
             continue;
         if (item.textDoc)
-            item.textDoc->addResource(QTextDocument::ImageResource, QUrl(url), frame);
+            registerDocImage(item.textDoc.get(), url, frame);
         for (auto &ad : item.attachDocs)
             if (ad.textDoc)
-                ad.textDoc->addResource(QTextDocument::ImageResource, QUrl(url), frame);
+                registerDocImage(ad.textDoc.get(), url, frame);
     }
 }
 

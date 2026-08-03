@@ -523,11 +523,19 @@ struct File {
     int                    imageHeight = 0;
     qint64                 size        = 0;
     std::vector<FileThumb> thumbs; // thumbnail ladder, ascending by width
+    // Animated preview ladder (thumb_360_gif/thumb_480_gif): the plain thumb_N
+    // renders of a GIF are static first frames, so these take priority.
+    std::vector<FileThumb> animThumbs;
 
     // Preview source covering physW physical pixels: the smallest thumbnail wide
     // enough, else the largest available (never the original — it can be huge),
     // else the legacy thumbUrl, else the original file.
     QString previewUrl(int physW) const {
+        for (const auto &t : animThumbs)
+            if (t.width >= physW)
+                return t.url;
+        if (!animThumbs.empty())
+            return animThumbs.back().url;
         for (const auto &t : thumbs)
             if (t.width >= physW)
                 return t.url;

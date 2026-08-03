@@ -641,6 +641,24 @@ TEST_CASE("toFile parses thumbnail ladder ascending", "[mappers][file]") {
     CHECK(f.previewUrl(2000) == "https://1024.png");
 }
 
+TEST_CASE("toFile animated GIF thumbs take priority in previewUrl", "[mappers][file]") {
+    auto f = JsonMappers::toFile(obj(R"({
+        "id": "F1", "mimetype": "image/gif", "original_w": 900, "original_h": 600,
+        "thumb_360": "https://360.png", "thumb_360_w": 360, "thumb_360_h": 240,
+        "thumb_480": "https://480.png", "thumb_480_w": 480, "thumb_480_h": 320,
+        "thumb_360_gif": "https://360.gif", "thumb_480_gif": "https://480.gif"
+    })"));
+    REQUIRE(f.animThumbs.size() == 2);
+    CHECK(f.animThumbs[0] == FileThumb{360, 240, "https://360.gif"});
+    CHECK(f.animThumbs[1] == FileThumb{480, 320, "https://480.gif"});
+
+    // The animated variant wins over the (static first frame) thumb ladder,
+    // smallest-covering first, largest as the fallback.
+    CHECK(f.previewUrl(300) == "https://360.gif");
+    CHECK(f.previewUrl(400) == "https://480.gif");
+    CHECK(f.previewUrl(2000) == "https://480.gif");
+}
+
 TEST_CASE("File previewUrl falls back to thumbUrl then urlPrivate", "[mappers][file]") {
     File f;
     f.urlPrivate = "https://orig.png";
