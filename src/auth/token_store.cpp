@@ -2,6 +2,8 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "token_store.h"
 
+#include "util/secret_store.h"
+
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
@@ -99,19 +101,24 @@ void TokenStore::saveWorkspace(const WorkspaceRecord &c) {
     const auto base = recordBase(c.key);
     s.setValue(base + "/displayName", c.displayName);
     s.setValue(base + "/iconUrl", c.iconUrl);
-    s.setValue(base + "/auth", c.auth);
+    // The auth blob carries the tokens/refresh tokens/passwords — hold it in the
+    // OS keychain, out of the plaintext settings file. The blob is always
+    // compact JSON (see the slack::/imap::/teams:: auth units), so the UTF-8
+    // round-trip through QString is lossless.
+    SecretStore::writeScrubbingLegacy(base + "/auth", QString::fromUtf8(c.auth));
 }
 
 std::optional<TokenStore::WorkspaceRecord> TokenStore::loadWorkspace(const WorkspaceKey &key) {
-    auto       s    = settings();
-    const auto base = recordBase(key);
-    if (!s.contains(base + "/displayName") && !s.contains(base + "/auth"))
+    auto          s    = settings();
+    const auto    base = recordBase(key);
+    const QString auth = SecretStore::readMigrating(base + "/auth");
+    if (!s.contains(base + "/displayName") && auth.isEmpty())
         return std::nullopt;
     WorkspaceRecord r;
     r.key         = key;
     r.displayName = s.value(base + "/displayName").toString();
     r.iconUrl     = s.value(base + "/iconUrl").toString();
-    r.auth        = s.value(base + "/auth").toByteArray();
+    r.auth        = auth.toUtf8();
     return r;
 }
 
@@ -122,7 +129,8 @@ void TokenStore::removeWorkspace(const WorkspaceKey &key) {
     auto       ids    = s.value(QStringLiteral("workspaces")).toStringList();
     ids.removeAll(handle);
     s.setValue(QStringLiteral("workspaces"), ids);
-    s.remove(recordBase(key));
+    SecretStore::remove(recordBase(key) + "/auth"); // drop the keychain secret
+    s.remove(recordBase(key));                      // drop metadata (+ any legacy auth)
     if (s.value(QStringLiteral("active")).toString() == handle)
         s.setValue(QStringLiteral("active"), ids.isEmpty() ? QString() : ids.first());
 }
