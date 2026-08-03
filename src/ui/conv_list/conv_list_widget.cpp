@@ -129,7 +129,17 @@ void ConvListWidget::updateRowHeight() {
 void ConvListWidget::setShowAgentsApps(bool show) {
     if (_showAgentsApps == show)
         return;
-    _showAgentsApps = show;
+    _showAgentsApps  = show;
+    // Hiding the section while an app DM is open would otherwise yank the row
+    // out from under the conversation on screen — keep that one listed.
+    _revealedAppConv = {};
+    if (!show && !_selectedId.value.isEmpty()) {
+        const auto it = std::find_if(_convs.begin(), _convs.end(), [this](const Conversation &c) {
+            return c.id == _selectedId;
+        });
+        if (it != _convs.end() && isAppConv(*it))
+            _revealedAppConv = _selectedId;
+    }
     rebuildRows();
 }
 
@@ -199,6 +209,10 @@ bool ConvListWidget::selectConversation(ConversationId id) {
         return false;
     const bool isDm = (it->kind == ConvKind::Im || it->kind == ConvKind::Mpim);
     (isAppConv(*it) ? _appsCollapsed : isDm ? _dmsCollapsed : _channelsCollapsed) = false;
+    // A hidden "Agents & apps" section still has to yield a row for the target,
+    // or the notification / search open paths below find none. See
+    // _revealedAppConv.
+    _revealedAppConv     = (!_showAgentsApps && isAppConv(*it)) ? id : ConversationId{};
     // Stamp before rebuilding so the relevance filter keeps the row visible.
     _visitedAt[id.value] = QDateTime::currentSecsSinceEpoch();
     scheduleSaveVisitedAt();
@@ -419,6 +433,19 @@ void ConvListWidget::rebuildRows() {
             for (int i : apps)
                 _rows.push_back({RowKind::Conv, i, -1});
         }
+    } else if (!_showAgentsApps && !_revealedAppConv.value.isEmpty()) {
+        // Hidden, but one app DM is open — list just that one under the usual
+        // header so it stays selectable and scroll-to-able. Deliberately not
+        // gated on _appsCollapsed: this row exists precisely so the open
+        // conversation has one, and letting a collapse remove it would put us
+        // back to rowForId() == -1.
+        for (int i : apps) {
+            if (_convs[i].id != _revealedAppConv)
+                continue;
+            _rows.push_back({RowKind::SectionHeader, -1, 2});
+            _rows.push_back({RowKind::Conv, i, -1});
+            break;
+        }
     }
 
     // Re-map selection to new visual row indices.
@@ -576,6 +603,14 @@ void ConvListWidget::setSelected(int row) {
     _selAnim.setEndValue(1.0);
     _selAnim.start();
     emit conversationSelected(row);
+
+    // Selecting anything else retires the revealed app DM (see _revealedAppConv).
+    // After the emit on purpose: the connection is direct, so the handler has
+    // already consumed `row` by the time these indices shift.
+    if (!_revealedAppConv.value.isEmpty() && _revealedAppConv != _selectedId) {
+        _revealedAppConv = {};
+        rebuildRows();
+    }
 }
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
