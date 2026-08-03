@@ -87,6 +87,12 @@ static QJsonObject toJson(const File &f) {
             arr.append(QJsonObject{{"w", t.width}, {"h", t.height}, {"u", t.url}});
         o["tb"] = arr;
     }
+    if (!f.animThumbs.empty()) {
+        QJsonArray arr;
+        for (const auto &t : f.animThumbs)
+            arr.append(QJsonObject{{"w", t.width}, {"h", t.height}, {"u", t.url}});
+        o["ta"] = arr;
+    }
     return o;
 }
 static File fileFromJson(const QJsonObject &o) {
@@ -102,6 +108,10 @@ static File fileFromJson(const QJsonObject &o) {
     for (const auto &v : o["tb"].toArray()) {
         const auto t = v.toObject();
         f.thumbs.push_back(FileThumb{t["w"].toInt(), t["h"].toInt(), t["u"].toString()});
+    }
+    for (const auto &v : o["ta"].toArray()) {
+        const auto t = v.toObject();
+        f.animThumbs.push_back(FileThumb{t["w"].toInt(), t["h"].toInt(), t["u"].toString()});
     }
     return f;
 }

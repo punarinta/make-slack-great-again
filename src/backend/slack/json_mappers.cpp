@@ -399,6 +399,21 @@ File toFile(const QJsonObject &o) {
             }
         );
     }
+    // Animated GIF uploads: thumb_N is a static first frame; the thumb_N_gif
+    // variants carry the animation (and share thumb_N's dimensions).
+    static constexpr int kAnimThumbSides[] = {360, 480};
+    for (int side : kAnimThumbSides) {
+        const QString url = o.value(QStringLiteral("thumb_%1_gif").arg(side)).toString();
+        if (url.isEmpty())
+            continue;
+        f.animThumbs.push_back(
+            FileThumb{
+                o.value(QStringLiteral("thumb_%1_w").arg(side)).toInt(side),
+                o.value(QStringLiteral("thumb_%1_h").arg(side)).toInt(),
+                url,
+            }
+        );
+    }
     // PDFs: Slack prerenders the first page server-side (thumb_pdf + thumb_pdf_w/h).
     if (f.thumbUrl.isEmpty() && o.contains("thumb_pdf")) {
         f.thumbUrl    = o.value("thumb_pdf").toString();
