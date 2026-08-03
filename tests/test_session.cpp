@@ -63,6 +63,29 @@ struct StubBackend : Backend {
     }
     void connectRealtime() override {}
     void disconnectRealtime() override {}
+    // false models a poll-only backend (Slack session/cookie auth): no push, so the
+    // Session must drive discovery itself.
+    bool pushEnabled = true;
+    bool hasRealtimePush() const override { return pushEnabled; }
+
+    // Whole-workspace activity snapshot (Slack's client.counts). nullopt models a
+    // backend that cannot serve one — the producer completes WITHOUT a value, which
+    // is the graceful-degrade signal the Session counts failures on.
+    std::optional<std::vector<ConvCounts>> countsResult;
+    int                                    countsCalls = 0;
+    rpl::producer<std::vector<ConvCounts>> loadUnreadCounts() override {
+        ++countsCalls;
+        if (!countsResult)
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return [v = *countsResult](auto consumer) mutable {
+            consumer.put_next(std::move(v));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
     int  verifyRealtimeCalls      = 0;
     int  reestablishRealtimeCalls = 0;
     void verifyRealtime() override { ++verifyRealtimeCalls; }
@@ -122,9 +145,11 @@ struct StubBackend : Backend {
     std::vector<Message>       historyPage;
     int                        loadHistoryCalls = 0;
     ConversationId             lastHistoryConv;
+    QList<QString>             historyConvIds; // every conversation fetched, in order
     rpl::producer<MessagePage> loadHistory(ConversationId c, std::optional<QString>) override {
         ++loadHistoryCalls;
         lastHistoryConv = c;
+        historyConvIds.append(c.value);
         return rpl::variable<MessagePage>(MessagePage{historyPage, std::nullopt}).value();
     }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
@@ -3348,10 +3373,12 @@ TEST_CASE_METHOD(
     "foreground safety poll targets the open conversation, throttled per window",
     "[session][events][ratelimit]"
 ) {
-    // When a conversation IS open, the health check polls THAT conversation (never
-    // the background fallback) — but only once per window. conversations.history is
-    // capped at 1 req/min for non-Marketplace apps, so an unthrottled per-tick poll
-    // would 429-storm. Two back-to-back ticks must issue only one fetch.
+    // When a conversation IS open, the health check polls THAT conversation — but
+    // only once per window. conversations.history is capped at 1 req/min for
+    // non-Marketplace apps, so an unthrottled per-tick poll would 429-storm. The
+    // same tick may additionally spend the (2-minute) background rotation on ONE
+    // other conversation; what must not happen is a second fetch of either while
+    // their windows are still open.
     const ConversationId conv{"C2"};
     const Message        m1 = pollMsg("1000.000001");
 
@@ -3360,11 +3387,13 @@ TEST_CASE_METHOD(
 
     stub->historyPage      = {m1};
     stub->loadHistoryCalls = 0;
+    stub->historyConvIds.clear();
     session->runRealtimeHealthCheckForTest(/*resetForegroundGap=*/false);
-    CHECK(stub->loadHistoryCalls == 1);
-    CHECK(stub->lastHistoryConv == conv);
+    CHECK(stub->historyConvIds.count(conv.value) == 1); // the open chat, exactly once
+    CHECK(stub->loadHistoryCalls <= 2);                 // + at most one rotation pick
+    const int afterFirstTick = stub->loadHistoryCalls;
     session->runRealtimeHealthCheckForTest(/*resetForegroundGap=*/false); // within window
-    CHECK(stub->loadHistoryCalls == 1);
+    CHECK(stub->loadHistoryCalls == afterFirstTick);
 }
 
 TEST_CASE_METHOD(
@@ -3407,4 +3436,269 @@ TEST_CASE_METHOD(
         if (m.ts == gap.ts)
             carriesGap = true;
     CHECK(carriesGap);
+}
+
+// ── Activity diff: how a poll-only (session-auth) workspace discovers messages ──
+// Without a push transport, an EvMessageNew can only ever come from a poll — so
+// what gets polled decides what notifies. These cover the whole-workspace activity
+// snapshot that picks the targets, and its fallbacks.
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity diff polls only the conversation that moved",
+    "[session][events][counts]"
+) {
+    const ConversationId c1{"C1"}, c2{"C2"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002");
+
+    // The FIRST snapshot only primes. It reports where every conversation stands,
+    // not what changed, so polling off it would replay every pre-existing unread as
+    // a brand-new message — a burst of notifications on every launch.
+    stub->countsResult = std::vector<ConvCounts>{
+        ConvCounts{.id = c1, .latestTs = m1.ts}, ConvCounts{.id = c2, .latestTs = m1.ts}
+    };
+    stub->loadHistoryCalls      = 0;
+    auto [primeEvents, primeLt] = collectEvents();
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 0);
+    CHECK(primeEvents.empty());
+
+    // Second snapshot: C1 moved on, C2 is where it was. Only C1 may be fetched.
+    stub->countsResult = std::vector<ConvCounts>{
+        ConvCounts{.id = c1, .latestTs = m2.ts}, ConvCounts{.id = c2, .latestTs = m1.ts}
+    };
+    stub->historyPage = {m1, m2};
+    auto [events, lt] = collectEvents();
+    session->pollUnreadCountsForTest();
+
+    CHECK(stub->loadHistoryCalls == 1);
+    CHECK(stub->lastHistoryConv == c1);
+    // The diff hands the poll the ts C1 stood at before it moved, so exactly the
+    // messages that arrived since are delivered (and can notify).
+    bool delivered = false;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == c1 && n->msg.ts == m2.ts)
+            delivered = true;
+    CHECK(delivered);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity diff detects a rising unread count with no latest ts",
+    "[session][events][counts]"
+) {
+    // A source that reports counts but no cursor (conversations.list) must still
+    // trigger a poll — the count rise alone says something arrived.
+    const ConversationId c1{"C1"};
+    stub->countsResult     = std::vector<ConvCounts>{ConvCounts{.id = c1, .unread = 0}};
+    stub->loadHistoryCalls = 0;
+    session->pollUnreadCountsForTest(); // prime
+
+    stub->countsResult = std::vector<ConvCounts>{ConvCounts{.id = c1, .unread = 2}};
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 1);
+    CHECK(stub->lastHistoryConv == c1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity diff caps polls per tick and drains the rest on later ticks",
+    "[session][events][counts][ratelimit]"
+) {
+    // Waking from suspend reports many moved conversations at once. One history
+    // call each would burst into a 429, so the diff spends a fixed budget per tick
+    // — and must leave the leftovers looking "moved" so they are not lost.
+    const Message             m1 = pollMsg("1000.000001");
+    const Message             m2 = pollMsg("1000.000002");
+    std::vector<Conversation> many;
+    for (int i = 1; i <= 12; ++i) {
+        Conversation c = kGeneral;
+        c.id           = ConversationId{QStringLiteral("C%1").arg(i)};
+        c.name         = QStringLiteral("chan%1").arg(i);
+        many.push_back(c);
+    }
+    restartSession(many, {kAlice, kBob});
+    stub->pushEnabled = false;
+
+    std::vector<ConvCounts> before, after;
+    for (const auto &c : many) {
+        before.push_back(ConvCounts{.id = c.id, .latestTs = m1.ts});
+        after.push_back(ConvCounts{.id = c.id, .latestTs = m2.ts});
+    }
+    stub->countsResult = before;
+    session->pollUnreadCountsForTest(); // prime
+
+    stub->countsResult     = after;
+    stub->historyPage      = {m1, m2};
+    stub->loadHistoryCalls = 0;
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 8); // kMaxDiffPollsPerTick
+
+    // The 4 that missed the budget kept their old snapshot entry, so the next tick
+    // still sees them as moved and finishes the job.
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 12);
+    // …and nothing is re-polled once everything has caught up.
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 12);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "unread-counts snapshot is only asked for when the backend has no push",
+    "[session][events][counts]"
+) {
+    stub->countsResult = std::vector<ConvCounts>{}; // supported, nothing to report
+    stub->countsCalls  = 0;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->countsCalls == 0); // push transport delivers; a snapshot is waste
+
+    stub->pushEnabled = false;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->countsCalls == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "unread-counts polling degrades gracefully when the backend cannot serve it",
+    "[session][events][counts]"
+) {
+    // client.counts is undocumented: a workspace/token that rejects it must not
+    // cost us a request every tick forever. A few empty attempts are tolerated
+    // (offline blips), then we stop asking and fall back to the roster diff.
+    stub->pushEnabled  = false;
+    stub->countsResult = std::nullopt; // completes without a value
+    session->pollUnreadCountsForTest();
+    session->pollUnreadCountsForTest();
+    CHECK_FALSE(session->unreadCountsDisabledForTest()); // still trying
+    session->pollUnreadCountsForTest();
+    CHECK(session->unreadCountsDisabledForTest());
+
+    stub->countsCalls = 0;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->countsCalls == 0); // and the tick stops spending the request
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a successful snapshot resets the degrade counter", "[session][events][counts]"
+) {
+    // Two offline blips either side of a success must not add up to a give-up.
+    stub->pushEnabled  = false;
+    stub->countsResult = std::nullopt;
+    session->pollUnreadCountsForTest();
+    session->pollUnreadCountsForTest();
+    stub->countsResult = std::vector<ConvCounts>{ConvCounts{.id = ConversationId{"C1"}}};
+    session->pollUnreadCountsForTest();
+    stub->countsResult = std::nullopt;
+    session->pollUnreadCountsForTest();
+    session->pollUnreadCountsForTest();
+    CHECK_FALSE(session->unreadCountsDisabledForTest());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "roster reload diffs the SERVER's counts once the snapshot is unavailable",
+    "[session][events][counts]"
+) {
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002");
+
+    stub->pushEnabled  = false;
+    stub->countsResult = std::nullopt;
+    for (int i = 0; i < 3; ++i)
+        session->pollUnreadCountsForTest();
+    REQUIRE(session->unreadCountsDisabledForTest());
+
+    // Prime from the server's own numbers. They are NOT our merged numbers: the
+    // fixture already counted 2 unread locally, and diffing the merge against
+    // itself would poll for messages we had already injected.
+    Conversation served = kGeneral;
+    served.latestTs     = m1.ts;
+    served.unread       = 1;
+    stub->_convs        = std::vector<Conversation>{served, kRandom};
+    session->reloadConversationsForTest();
+
+    // conversations.list carries no `latest`, so a rising unread_count is the only
+    // movement signal this fallback source has. Everything the poll will need is
+    // armed BEFORE the roster changes: assigning the stub's rpl::variable re-fires
+    // every reload subscription taken so far, so the diff runs on assignment too
+    // (a stub artifact — a real backend answers one call at a time).
+    stub->historyPage      = {m1, m2};
+    stub->loadHistoryCalls = 0;
+    auto [events, lt]      = collectEvents();
+    served.unread          = 3;
+    stub->_convs           = std::vector<Conversation>{served, kRandom};
+    session->reloadConversationsForTest();
+
+    // Exactly one fetch however many reload handlers ran: the first to see the
+    // rise records the new snapshot, so the rest find nothing moved.
+    CHECK(stub->loadHistoryCalls == 1);
+    CHECK(stub->lastHistoryConv == conv);
+    bool delivered = false;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == m2.ts)
+            delivered = true;
+    CHECK(delivered);
+}
+
+// ── Poll baseline: a cursor only a poll may move ────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "background poll now covers a conversation that never had a latest cursor",
+    "[session][events]"
+) {
+    // Regression: the rotation used to require a latestTs. conversations.list never
+    // returns `latest`, and the info sweep that backfills it covers DMs only — so
+    // on a poll-only workspace, where the poll IS delivery, channels were never
+    // polled at all until a message happened to arrive while one was open.
+    session->setOpenConversation({});
+    stub->historyPage      = {pollMsg("1000.000001")};
+    stub->loadHistoryCalls = 0;
+    auto [events, lt]      = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    CHECK(stub->loadHistoryCalls == 1); // was 0 — no candidate had a cursor
+    // That first fetch only primes the baseline: a page of history the user has
+    // already lived through must not badge or notify.
+    for (const auto &e : events)
+        CHECK_FALSE(std::holds_alternative<EvMessageNew>(e));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a cursor bump from a sweep cannot swallow a message nobody has seen",
+    "[session][events]"
+) {
+    const ConversationId conv{"C1"};
+    const Message        m1 = pollMsg("1000.000001");
+    const Message        m2 = pollMsg("1000.000002");
+
+    // Establish the poll's own baseline at m1 by letting it scan a head page.
+    session->setReading(conv);
+    stub->historyPage = {m1};
+    session->runRealtimeHealthCheckForTest();
+
+    // A badge/activity sweep (conversations.info, or the roster's cursor as modeled
+    // here) now reports the conversation sitting at m2 — while nobody has seen m2:
+    // those sweeps raise no EvMessageNew. Reading Conversation::latestTs as the poll
+    // baseline meant the `ts > baseline` filter skipped m2 forever after: the badge
+    // appeared, the notification never did.
+    Conversation bumped = kGeneral;
+    bumped.latestTs     = m2.ts;
+    stub->_convs        = std::vector<Conversation>{bumped, kRandom};
+    session->reloadConversationsForTest();
+    REQUIRE(session->findConversation(conv)->latestTs == m2.ts);
+
+    stub->historyPage = {m1, m2};
+    auto [events, lt] = collectEvents();
+    session->runRealtimeHealthCheckForTest();
+
+    bool delivered = false;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == m2.ts)
+            delivered = true;
+    CHECK(delivered);
 }

@@ -195,6 +195,12 @@ add_msga_test(test_huddle_notify
 )
 target_link_libraries(test_huddle_notify PRIVATE Qt6::Gui)
 
+# Pure notification-freshness policy (header-only helper in domain.h).
+add_msga_test(test_notify_age
+    test_notify_age.cpp
+)
+target_link_libraries(test_notify_age PRIVATE Qt6::Gui)
+
 # Notification click-target token codec (encode/decode round-trip, thread root).
 add_msga_test(test_notif_token
     test_notif_token.cpp
@@ -432,6 +438,16 @@ add_msga_widget_test(test_context_menu
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
 
+add_msga_widget_test(test_app_dialog
+    test_app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_app_dialog PRIVATE Qt6::Test)
+
 add_msga_widget_test(test_summary_dialog
     test_summary_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
@@ -519,6 +535,14 @@ add_msga_qt_test(test_session_auth
 target_link_libraries(test_session_auth PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_session_auth PROPERTIES AUTOMOC ON)
 
+# Browser sign-in: the pure parsers (localConfig_v2, host harvesting, /json/version).
+add_msga_qt_test(test_browser_login
+    test_browser_login.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
+)
+target_link_libraries(test_browser_login PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_browser_login PROPERTIES AUTOMOC ON)
+
 # SessionImportDialog render/smoke harness (screenshot + card-height regression).
 add_msga_widget_test(test_session_import_dialog
     test_session_import_dialog.cpp
@@ -531,6 +555,7 @@ add_msga_widget_test(test_session_import_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/local_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc

@@ -592,6 +592,21 @@ void Session::checkRealtimeHealth() {
             _lastRosterReloadMs = nowRoster;
             reloadConversations(/*refreshEmoji=*/false);
         }
+        // (0b) …and the roster alone is not enough. It says a conversation EXISTS,
+        // not that something arrived in it, so discovery still fell to the
+        // background rotation below: one conversation per 2 min, i.e. hours of
+        // latency on a busy workspace — and a mention in a channel effectively
+        // never notified. The unread-counts snapshot closes that: one request
+        // reports every conversation's activity, so the diff can poll exactly the
+        // ones that moved (see applyActivitySnapshot). Self-degrades to the roster
+        // diff when the backend can't serve it.
+        if (!_countsDisabled) {
+            const qint64 nowCounts = QDateTime::currentMSecsSinceEpoch();
+            if (nowCounts - _lastCountsPollMs >= kCountsPollGapMs) {
+                _lastCountsPollMs = nowCounts;
+                pollUnreadCounts();
+            }
+        }
     }
 
     // (2) New messages: the watchdog can't detect a socket that still answers
@@ -641,14 +656,22 @@ void Session::checkRealtimeHealth() {
 }
 
 ConversationId Session::nextBackgroundPollTarget(const ConversationId &exclude) {
-    // Members only (we can't fetch history for channels we're not in), and a
-    // latestTs is required as the "new since" baseline. Sort most-recently-
-    // active first — the likeliest place a reply lands — but advance a cursor
-    // through the full list rather than always returning index 0, so a quiet
-    // channel eventually gets its turn instead of never being checked at all.
+    // Members only (we can't fetch history for channels we're not in). Sort
+    // most-recently-active first — the likeliest place a reply lands — but advance
+    // a cursor through the full list rather than always returning index 0, so a
+    // quiet channel eventually gets its turn instead of never being checked at all.
+    //
+    // A latestTs used to be required here, as the "new since" baseline. That
+    // silently excluded every conversation that never had one: conversations.list
+    // no longer returns `latest`, and the info sweep that backfills it covers only
+    // DMs/MPDMs — so on a poll-only (session-auth) workspace, where the poll IS
+    // the delivery mechanism, CHANNELS were never polled at all until one of their
+    // messages happened to arrive while the channel was open. The poll now primes
+    // its own baseline instead (see pollConversationForMissed), so a conversation
+    // with no cursor yet costs one priming fetch and is covered from then on.
     std::vector<const Conversation *> candidates;
     for (const auto &c : _conversations.current())
-        if (c.isMember && !c.latestTs.isEmpty() && c.id != exclude)
+        if (c.isMember && c.id != exclude)
             candidates.push_back(&c);
     if (candidates.empty())
         return {};
@@ -661,27 +684,32 @@ ConversationId Session::nextBackgroundPollTarget(const ConversationId &exclude) 
     return candidates[_backgroundPollIdx++]->id;
 }
 
-void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
+void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts baselineHint) {
     // Poll a conversation's head history and inject anything newer than what we've
     // seen through the normal new-message path (dedup, unread/cursor bookkeeping,
     // mark-read). firstSighting makes this idempotent against messages the
     // realtime stream already delivered. Deletion detection runs foreground only —
     // it needs the per-conversation snapshot that only the open chat maintains.
-    Ts lastKnown;
-    if (const Conversation *c = findConversation(conv))
-        lastKnown = c->latestTs;
-    // Some conversations (notably certain DMs) come back from conversations.list
-    // with an empty latestTs, which would make the open-chat poll early-return and
-    // never deliver anything. For the FOREGROUND (open) chat, fall back to a
-    // self-maintained baseline: the newest ts we saw on a prior poll. The first
-    // poll with no baseline at all just PRIMES it (records the head's newest ts
-    // without injecting — the open-load already shows those), so later polls
-    // detect genuinely new messages without duplicating.
-    if (lastKnown.isEmpty() && foreground)
-        lastKnown = _fgPollBaseline.value(conv.value);
-    const bool priming = foreground && lastKnown.isEmpty();
-    if (lastKnown.isEmpty() && !priming)
-        return; // background needs a baseline; foreground primes below
+    //
+    // Baseline, in order of trust:
+    //   1. our own baseline — the head we last scanned for this conversation. The
+    //      only value nothing but a poll can move (see _pollBaseline);
+    //   2. the caller's hint — the activity diff knows the exact ts this
+    //      conversation stood at before it moved, so the poll injects precisely
+    //      what arrived since;
+    //   3. Conversation::latestTs — whatever cursor the roster/cache carries;
+    //   4. nothing: PRIME. Record the head's newest ts without injecting. A
+    //      conversation we have never scanned has a whole page of history that is
+    //      old news to the user, and injecting it would badge and notify for every
+    //      message in it. One priming fetch buys a correct baseline, and everything
+    //      arriving after it is delivered normally.
+    Ts lastKnown = _pollBaseline.value(conv.value);
+    if (lastKnown.isEmpty())
+        lastKnown = std::move(baselineHint);
+    if (lastKnown.isEmpty())
+        if (const Conversation *c = findConversation(conv))
+            lastKnown = c->latestTs;
+    const bool priming = lastKnown.isEmpty();
 
     _backend->loadHistory(conv, std::nullopt) |
         rpl::on_next(
@@ -694,13 +722,13 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
                 // don't affect a background poll targeting a different one.
                 if (foreground ? (_openConv != conv) : (_openConv == conv))
                     return;
-                // Advance the foreground baseline to the head's newest ts (used
-                // when the roster has no latestTs for this conv). messages are
-                // oldest-first, so back() is newest.
-                if (foreground && !page.messages.empty())
-                    _fgPollBaseline[conv.value] = page.messages.back().ts;
+                // Advance our baseline to the head's newest ts: everything up to
+                // here has now been scanned (injected below, or already known).
+                // messages are oldest-first, so back() is newest.
+                if (!page.messages.empty())
+                    _pollBaseline[conv.value] = page.messages.back().ts;
                 if (priming)
-                    return; // baseline recorded; open-load already shows these
+                    return; // baseline recorded; nothing here counts as new
                 bool missed = false;
                 // page.messages is oldest-first; inject in order so rows append
                 // chronologically. The ts pre-filter keeps the common (nothing
@@ -790,6 +818,126 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground) {
         );
 }
 
+void Session::pollUnreadCounts() {
+    // `got` distinguishes the two ways the producer can complete: with a snapshot
+    // (success, even an empty one) or without (unsupported / rejected / failed).
+    // The backend latches a definitive rejection itself, so what we guard against
+    // here is a transient blip costing us the mechanism permanently.
+    auto got = std::make_shared<bool>(false);
+    _backend->loadUnreadCounts() |
+        rpl::on_next_done(
+            [this, got](std::vector<ConvCounts> counts) {
+                *got            = true;
+                _countsFailures = 0;
+                applyActivitySnapshot(counts);
+            },
+            [this, got] {
+                if (*got)
+                    return;
+                if (++_countsFailures < kCountsFailureLimit)
+                    return;
+                // Give up for the rest of the run and let the roster reload's diff
+                // take over. Notifications still work, just at the roster cadence
+                // (and only for what conversations.list reports), so this is a
+                // degradation rather than a failure. Drop the snapshot state: the
+                // roster reports different fields, and diffing its numbers against
+                // the counts endpoint's would read as movement everywhere.
+                _countsDisabled = true;
+                _activity.clear();
+                _activityPrimed = false;
+                qWarning() << "Session: unread-counts snapshot unavailable after" << _countsFailures
+                           << "attempts — falling back to roster diff";
+            },
+            _lifetime
+        );
+}
+
+void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
+    if (snapshot.empty())
+        return;
+    const bool priming = !_activityPrimed;
+    _activityPrimed    = true;
+
+    struct Moved {
+        ConversationId conv;
+        Ts             baseline; // where it stood before — the poll's floor
+        ConvCounts     now;      // recorded once we actually poll it
+    };
+    std::vector<Moved> moved;
+
+    // Fold the activity cursors into the conversation list as we go: on a
+    // poll-only workspace this is the only fresh `latest`/`last_read` channels
+    // ever get (conversations.list returns neither), and the list uses them for
+    // relevance ordering. Upward-merge only, like the other sweeps, so a
+    // momentarily stale response can't rewind a cursor. Unread counts are
+    // deliberately NOT merged: the messages the diff below injects do that
+    // through handleNewMessage, which is also what decides mention-vs-plain.
+    auto convs      = _conversations.current();
+    bool convsMoved = false;
+
+    for (const auto &c : snapshot) {
+        for (auto &existing : convs) {
+            if (existing.id != c.id)
+                continue;
+            if (c.latestTs > existing.latestTs) {
+                existing.latestTs = c.latestTs;
+                convsMoved        = true;
+            }
+            if (c.lastRead > existing.lastRead) {
+                existing.lastRead = c.lastRead;
+                convsMoved        = true;
+            }
+            break;
+        }
+
+        const auto it = _activity.constFind(c.id.value);
+        if (priming || it == _activity.constEnd()) {
+            _activity.insert(c.id.value, c); // reference for the next diff
+            continue;
+        }
+        const ConvCounts prev = *it;
+        // Moved = a newer message ts, or a rising unread/mention count. The count
+        // rise matters on its own: a source that reports counts but no `latest`
+        // (conversations.list) still tells us something arrived.
+        if (c.latestTs > prev.latestTs || c.unread > prev.unread ||
+            c.mentionCount > prev.mentionCount)
+            moved.push_back({c.id, prev.latestTs, c});
+        else
+            _activity.insert(c.id.value, c);
+    }
+
+    if (convsMoved) {
+        _conversations = std::move(convs);
+        scheduleSaveUnreads();
+    }
+    if (moved.empty())
+        return;
+
+    // Newest activity first, so a burst that exceeds the per-tick cap spends it
+    // where a reply is most likely waiting.
+    std::sort(moved.begin(), moved.end(), [](const Moved &a, const Moved &b) {
+        return a.now.latestTs > b.now.latestTs;
+    });
+
+    int budget = kMaxDiffPollsPerTick;
+    for (const auto &m : moved) {
+        const Conversation *c = findConversation(m.conv);
+        // Not ours to fetch history for, or fully silent anyway (a muted
+        // conversation raises neither a notification nor a badge — see
+        // effectiveNotifLevel), or already covered far faster by the foreground
+        // poll. Record it as seen so it doesn't re-trigger every tick.
+        if (!c || !c->isMember || c->isMuted || c->notifLevel == NotificationLevel::Mute ||
+            m.conv == _openConv) {
+            _activity.insert(m.conv.value, m.now);
+            continue;
+        }
+        if (budget-- <= 0)
+            break; // entry left stale on purpose: still "moved" next tick
+        _activity.insert(m.conv.value, m.now);
+        pollConversationForMissed(m.conv, /*foreground=*/false, m.baseline);
+    }
+}
+
 QString Session::teamUrl() const {
     return _backend ? _backend->teamUrl() : QString();
 }
@@ -816,6 +964,29 @@ void Session::reloadConversations(bool refreshEmoji) {
     _backend->loadConversations() |
         rpl::on_next(
             [this, refreshEmoji](std::vector<Conversation> convs) {
+                // Snapshot the SERVER's activity numbers before the merge below
+                // folds our local state into them. This is the fallback activity
+                // source for a poll-only backend once the counts snapshot has been
+                // given up on: diffing the merged values would compare our own
+                // locally-incremented counts against themselves and poll for
+                // messages we had already injected. Only meaningful for what
+                // conversations.list actually reports — no `latest`, and
+                // unread_count often 0 for public channels — hence the fallback.
+                std::vector<ConvCounts> serverActivity;
+                if (!_backend->hasRealtimePush() && _countsDisabled) {
+                    serverActivity.reserve(convs.size());
+                    for (const auto &c : convs)
+                        serverActivity.push_back(
+                            ConvCounts{
+                                .id           = c.id,
+                                .latestTs     = c.latestTs,
+                                .lastRead     = c.lastRead,
+                                .unread       = c.unread,
+                                .mentionCount = c.mentionCount,
+                            }
+                        );
+                }
+
                 // Preserve locally-incremented unread/mention counts
                 // accumulated since startup (API returns 0 for
                 // channels).
@@ -869,6 +1040,10 @@ void Session::reloadConversations(bool refreshEmoji) {
                 reconcileDeadConvIds(convs);
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
+                // After the assignment: the diff reads the merged list (membership,
+                // mute state) and may fold cursors back into it.
+                if (!serverActivity.empty())
+                    applyActivitySnapshot(serverActivity);
                 enrichDmActivity();
                 fetchMissingDmUsers();
                 if (!refreshEmoji)
