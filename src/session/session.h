@@ -317,11 +317,27 @@ public:
     // resetForegroundGap clears the foreground poll's once-per-minute throttle
     // first, so back-to-back ticks each exercise the poll logic; pass false to
     // test the throttle itself.
-    void runRealtimeHealthCheckForTest(bool resetForegroundGap = true) {
+    void
+    runRealtimeHealthCheckForTest(bool resetForegroundGap = true, bool resetBackgroundGap = false) {
         if (resetForegroundGap)
             _lastForegroundPollMs = 0;
+        if (resetBackgroundGap)
+            _lastBackgroundPollMs = 0;
         checkRealtimeHealth();
     }
+
+    // Test hook: run one conversation-roster reload synchronously, bypassing the
+    // kRosterReloadGapMs cadence, so the reload's activity diff (and the merge it
+    // feeds) can be exercised twice in a row.
+    void reloadConversationsForTest() { reloadConversations(/*refreshEmoji=*/false); }
+
+    // Test hook: run one unread-counts tick synchronously, bypassing the cadence
+    // throttle (normally paced by kCountsPollGapMs inside checkRealtimeHealth).
+    void pollUnreadCountsForTest() { pollUnreadCounts(); }
+
+    // Test hook: true once the counts snapshot has been given up on and the
+    // Session has fallen back to diffing the conversation-roster reload.
+    [[nodiscard]] bool unreadCountsDisabledForTest() const { return _countsDisabled; }
 
 private:
     // Resolve our own user id via auth.test; persists the result to cache.
@@ -456,14 +472,35 @@ private:
     // staleness check to _openConv; background yields only if the exact
     // conversation it targeted became the open one mid-flight (the foreground
     // path now covers that one instead).
-    void pollConversationForMissed(ConversationId conv, bool foreground);
+    //
+    // `baselineHint` is the newest ts a caller already knows we have seen for this
+    // conversation — the activity diff passes the PREVIOUS snapshot's latest ts, so
+    // the poll injects exactly the messages that arrived since. Used only to seed a
+    // conversation we have no baseline of our own for yet (see _pollBaseline).
+    void pollConversationForMissed(ConversationId conv, bool foreground, Ts baselineHint = {});
 
-    // Round-robins through every member conversation with a latestTs (most-
-    // recently-active first), one per background poll tick, skipping `exclude`
-    // (normally _openConv — the foreground path already covers it faster).
-    // Rotating instead of always re-picking the single busiest conversation
-    // guarantees every channel eventually gets checked, not just the top one.
+    // Round-robins through every member conversation (most-recently-active
+    // first), one per background poll tick, skipping `exclude` (normally
+    // _openConv — the foreground path already covers it faster). Rotating instead
+    // of always re-picking the single busiest conversation guarantees every
+    // channel eventually gets checked, not just the top one.
     ConversationId nextBackgroundPollTarget(const ConversationId &exclude);
+
+    // Ask the backend for a whole-workspace unread/activity snapshot and feed it
+    // to applyActivitySnapshot. Self-degrading: a backend that can't serve one
+    // completes without a value, and after kCountsFailureLimit such attempts we
+    // stop asking (_countsDisabled) and let the roster reload's own diff drive
+    // discovery instead. Poll-only backends only — a push transport already
+    // delivers, so spending a request per tick there would be pure waste.
+    void pollUnreadCounts();
+
+    // Diff a fresh activity snapshot against the previous one and poll the
+    // conversations that actually moved — the mechanism that makes a mention in a
+    // never-opened channel notify on a backend with no push transport. The FIRST
+    // snapshot only primes (it says where every conversation stands, not what
+    // changed, so injecting off it would replay every pre-existing unread as a new
+    // message and fire a burst of notifications).
+    void applyActivitySnapshot(const std::vector<ConvCounts> &snapshot);
 
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
@@ -558,24 +595,24 @@ private:
     // Throttle reconnect-driven full conversation reloads. conversations.list is
     // heavily rate-limited, and a flapping socket can fire EvRealtimeReconnected
     // repeatedly — coalesce those into at most one reload per window.
-    static constexpr qint64   kReconnectReloadGapMs  = 2 * 60'000;
-    qint64                    _lastReconnectReloadMs = 0;
+    static constexpr qint64    kReconnectReloadGapMs  = 2 * 60'000;
+    qint64                     _lastReconnectReloadMs = 0;
     // Throttle reconnect-driven DM/MPDM unread recovery (resyncUnreads). Same
     // rationale as the reload throttle: a flapping socket fires EvRealtimeReconnected
     // repeatedly, and a per-DM conversations.info sweep over 100+ DMs each time would
     // be a rate-limit storm. Independent of the reload throttle so either can run.
-    static constexpr qint64   kUnreadResyncGapMs     = 2 * 60'000;
-    qint64                    _lastUnreadResyncMs    = 0;
+    static constexpr qint64    kUnreadResyncGapMs     = 2 * 60'000;
+    qint64                     _lastUnreadResyncMs    = 0;
     // Number of conversations.info calls from the current unread-resync sweep that
     // have not yet settled. The sweep is paced (~1.2 s/call), so on a busy
     // workspace it can still be draining when the throttle window reopens; a fresh
     // sweep while one is in flight would just re-enqueue the same DMs. Skip until
     // the outstanding batch finishes so the paced lane can't accumulate duplicates.
-    int                       _unreadResyncInFlight  = 0;
+    int                        _unreadResyncInFlight  = 0;
     // Throttle the safety poll's forced socket re-establish so a persistently
     // sick socket can't drive a reconnect → reload storm.
-    static constexpr qint64   kReestablishGapMs      = 60'000;
-    qint64                    _lastReestablishMs     = 0;
+    static constexpr qint64    kReestablishGapMs      = 60'000;
+    qint64                     _lastReestablishMs     = 0;
     // Cadence for the active-chat realtime fallback poll. The safety timer ticks
     // every 15 s (to run the cheap, API-free verifyRealtime check), but the history
     // poll itself must stay within Slack's conversations.history budget: as of
@@ -585,34 +622,68 @@ private:
     // HttpQueue — a self-inflicted 429 storm even while idle. The socket is the
     // primary delivery; this poll is only a backstop for a silently-stalled socket,
     // so once per minute is plenty. See checkRealtimeHealth().
-    static constexpr qint64   kForegroundPollGapMs   = 60'000;
-    qint64                    _lastForegroundPollMs  = 0;
+    static constexpr qint64    kForegroundPollGapMs   = 60'000;
+    qint64                     _lastForegroundPollMs  = 0;
     // Cadence for the background-workspace stall poll (no conversation open). Much
     // slower than the foreground poll: it's a safety net for a workspace the user
     // isn't looking at, and one history call per workspace per window is plenty to
     // catch a silently-stalled shared socket without risking rate limits.
-    static constexpr qint64   kBackgroundPollGapMs   = 2 * 60'000;
-    qint64                    _lastBackgroundPollMs  = 0;
+    static constexpr qint64    kBackgroundPollGapMs   = 2 * 60'000;
+    qint64                     _lastBackgroundPollMs  = 0;
     // Poll-only backends (session auth): cadence for reloading the conversation
     // roster to discover new chats + refresh latestTs baselines. Push backends
     // get this via reconnect events instead. Kept slow (60 s): conversations.list
     // is Tier 2 (as low as ~1/min for a session token), and the open chat streams
     // via the 5 s foreground poll regardless, so this only paces new-chat/badge
     // discovery — a tighter cadence just 429s the endpoint.
-    static constexpr qint64   kRosterReloadGapMs     = 60'000;
-    qint64                    _lastRosterReloadMs    = 0;
-    // Per-open-conversation poll baseline (newest ts seen), used when the roster
-    // has no latestTs for the open chat (some DMs) so the foreground poll can
-    // still detect new messages. Keyed by ConversationId string.
-    QHash<QString, Ts>        _fgPollBaseline;
+    static constexpr qint64    kRosterReloadGapMs     = 60'000;
+    qint64                     _lastRosterReloadMs    = 0;
+    // Per-conversation poll baseline: the newest ts of the last head page THIS
+    // SESSION's poll actually scanned. Keyed by ConversationId string.
+    //
+    // Deliberately not Conversation::latestTs, which the poll used to read
+    // directly: latestTs is also advanced by the badge/activity sweeps
+    // (conversations.info), and those raise no EvMessageNew. A sweep that landed
+    // first therefore pushed the baseline PAST a message nobody had seen, and the
+    // `ts > baseline` filter then skipped it forever — the badge appeared and the
+    // notification was lost for good. A baseline only ever advanced by a poll that
+    // scanned the page cannot swallow anything: at worst a message is re-scanned
+    // and dropped as a duplicate by firstSighting.
+    QHash<QString, Ts>         _pollBaseline;
+    // Last activity snapshot per conversation (see applyActivitySnapshot), the
+    // reference the next snapshot is diffed against. Keyed by ConversationId
+    // string. Fed by ONE source at a time — the counts snapshot while it works,
+    // the roster reload after we give up on it — since the two report different
+    // fields and would otherwise read as spurious movement in each other's gaps.
+    QHash<QString, ConvCounts> _activity;
+    bool                       _activityPrimed      = false;
+    // Cadence of the unread-counts snapshot on a poll-only backend. One request
+    // covers the whole workspace, so this can be far tighter than any
+    // per-conversation poll — it is the app's realtime substitute there.
+    static constexpr qint64    kCountsPollGapMs     = 10'000;
+    qint64                     _lastCountsPollMs    = 0;
+    // Consecutive snapshot attempts that produced nothing, and the latch they
+    // trip. A blip (offline, a 429 that exhausted its retries) must not cost us
+    // the mechanism, but an endpoint this token can't use never will work, so
+    // stop asking and fall back rather than burn a request every tick forever.
+    static constexpr int       kCountsFailureLimit  = 3;
+    int                        _countsFailures      = 0;
+    bool                       _countsDisabled      = false;
+    // Ceiling on conversations polled per activity diff. Waking from suspend (or
+    // a first snapshot after a long stall) can report dozens of moved
+    // conversations at once, and one conversations.history each would burst
+    // straight into a 429. Conversations over the cap keep their OLD snapshot
+    // entry, so the next tick still sees them as moved and they drain over the
+    // following ticks instead of being dropped.
+    static constexpr int       kMaxDiffPollsPerTick = 8;
     // Cursor into nextBackgroundPollTarget()'s (re-sorted-each-call) candidate
     // list, so successive ticks rotate through every member conversation
     // instead of always re-polling whichever one is most active.
-    int                       _backgroundPollIdx = 0;
-    QHash<QString, User>      _botUsers;           // bot_id → User; for bots not in users.list
-    QSet<QString>             _pendingBotFetches;  // bot_ids with an in-flight bots.info request
-    QSet<QString>             _pendingUserFetches; // user ids with an in-flight users.info request
-    rpl::event_stream<UserId> _botInfoHub;
-    rpl::event_stream<UserId> _userInfoHub;
-    rpl::lifetime             _lifetime;
+    int                        _backgroundPollIdx   = 0;
+    QHash<QString, User>       _botUsers;           // bot_id → User; for bots not in users.list
+    QSet<QString>              _pendingBotFetches;  // bot_ids with an in-flight bots.info request
+    QSet<QString>              _pendingUserFetches; // user ids with an in-flight users.info request
+    rpl::event_stream<UserId>  _botInfoHub;
+    rpl::event_stream<UserId>  _userInfoHub;
+    rpl::lifetime              _lifetime;
 };

@@ -120,6 +120,79 @@ TEST_CASE("selectConversation opens a relevance-filtered DM that rowForId cannot
     REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"D1"});
 }
 
+// An app/bot DM: isAppConv() keys off the roster's isBot flag, so the matching
+// User must be registered via setUsers() for the conversation to land in the
+// "Agents & apps" section rather than the human DM section.
+static Conversation appDm(const char *id, const char *userId) {
+    Conversation c;
+    c.id       = ConversationId{id};
+    c.kind     = ConvKind::Im;
+    c.isMember = true;
+    c.dmUser   = UserId{userId};
+    return c;
+}
+
+static User botUser(const char *userId) {
+    User u;
+    u.id          = UserId{userId};
+    u.name        = "ci-bot";
+    u.displayName = "CI bot";
+    u.isBot       = true;
+    return u;
+}
+
+TEST_CASE("selectConversation opens an app DM while the Agents & apps section is hidden") {
+    ConvListWidget list(nullptr);
+    list.setUsers({botUser("B1")});
+    list.setConversations({channel("C1", "general"), appDm("A1", "B1")});
+    SelectionSpy spy(&list);
+
+    // Visible by default: the section is on, so the app DM has a row.
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+
+    // Hide the section (Settings -> Appearance).
+    list.setShowAgentsApps(false);
+    REQUIRE(list.rowForId(ConversationId{"A1"}) < 0);
+
+    // A notification or a search result for this app DM routes through
+    // selectConversation(). It must still produce a row: the callers in
+    // MainWindow open via `rowForId(conv) >= 0`, so a -1 here means clicking
+    // the notification silently does nothing.
+    REQUIRE(list.selectConversation(ConversationId{"A1"}));
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+    REQUIRE(spy.count == 1);
+    REQUIRE(list.conversationId(spy.lastRow) == ConversationId{"A1"});
+}
+
+TEST_CASE("hiding the section keeps the app DM that is currently open") {
+    ConvListWidget list(nullptr);
+    list.setUsers({botUser("B1")});
+    list.setConversations({channel("C1", "general"), appDm("A1", "B1")});
+
+    REQUIRE(list.selectConversation(ConversationId{"A1"}));
+
+    // Turning the section off must not yank the row out from under the
+    // conversation the message list is showing.
+    list.setShowAgentsApps(false);
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+    REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"A1"});
+}
+
+TEST_CASE("the revealed app DM is retired once the selection moves away") {
+    ConvListWidget list(nullptr);
+    list.setUsers({botUser("B1")});
+    list.setConversations({channel("C1", "general"), appDm("A1", "B1")});
+
+    list.setShowAgentsApps(false);
+    REQUIRE(list.selectConversation(ConversationId{"A1"}));
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+
+    // Back to a channel: the section returns to fully hidden.
+    REQUIRE(list.selectConversation(ConversationId{"C1"}));
+    REQUIRE(list.rowForId(ConversationId{"A1"}) < 0);
+    REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"C1"});
+}
+
 TEST_CASE("selectConversation is a no-op for an unknown id") {
     ConvListWidget list(nullptr);
     list.setConversations({channel("C1", "general")});

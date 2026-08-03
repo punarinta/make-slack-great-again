@@ -52,8 +52,8 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
         connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
             const int scrollY = verticalScrollBar()->value();
             const int vh      = viewport()->height();
-            const int first   = scrollY / kRowH;
-            const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / kRowH);
+            const int first   = scrollY / _rowH;
+            const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / _rowH);
             for (int r = first; r <= last; ++r) {
                 const auto &ri = _rows[r];
                 if (ri.kind != RowKind::Conv)
@@ -64,13 +64,21 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
                 const auto infoIt = _userInfos.constFind(conv.dmUser->value);
                 if (infoIt == _userInfos.constEnd() || infoIt->avatarUrl != url)
                     continue;
-                viewport()->update(QRect(0, r * kRowH - scrollY, viewport()->width(), kRowH));
+                viewport()->update(QRect(0, r * _rowH - scrollY, viewport()->width(), _rowH));
             }
         });
     }
+    updateRowHeight();
     rebuildIconPixmaps();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
+        updateRowHeight(); // the font-size setting scales rows with the text
+        // Elision is measured with the painting font, but the cache is keyed on
+        // (name, maxW, weight) — none of which move when only the font SIZE
+        // changes. Stale entries keep the old elidedW, which is what positions
+        // the EXT pill, the status emoji and the truncation tooltip rects.
+        _nameCache.clear();
         rebuildIconPixmaps();
+        updateScrollRange();
         viewport()->update();
     });
 
@@ -112,6 +120,27 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.hashSmSelected = px(":/ui/hash.svg", sm, th.nav.itemSelectedText);
 
     _iconPx.huddle = px(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
+}
+
+void ConvListWidget::updateRowHeight() {
+    _rowH = qRound(kRowHBase * ThemeManager::instance().fontFactor());
+}
+
+void ConvListWidget::setShowAgentsApps(bool show) {
+    if (_showAgentsApps == show)
+        return;
+    _showAgentsApps  = show;
+    // Hiding the section while an app DM is open would otherwise yank the row
+    // out from under the conversation on screen — keep that one listed.
+    _revealedAppConv = {};
+    if (!show && !_selectedId.value.isEmpty()) {
+        const auto it = std::find_if(_convs.begin(), _convs.end(), [this](const Conversation &c) {
+            return c.id == _selectedId;
+        });
+        if (it != _convs.end() && isAppConv(*it))
+            _revealedAppConv = _selectedId;
+    }
+    rebuildRows();
 }
 
 void ConvListWidget::setRelevantDays(int days) {
@@ -180,6 +209,10 @@ bool ConvListWidget::selectConversation(ConversationId id) {
         return false;
     const bool isDm = (it->kind == ConvKind::Im || it->kind == ConvKind::Mpim);
     (isAppConv(*it) ? _appsCollapsed : isDm ? _dmsCollapsed : _channelsCollapsed) = false;
+    // A hidden "Agents & apps" section still has to yield a row for the target,
+    // or the notification / search open paths below find none. See
+    // _revealedAppConv.
+    _revealedAppConv     = (!_showAgentsApps && isAppConv(*it)) ? id : ConversationId{};
     // Stamp before rebuilding so the relevance filter keeps the row visible.
     _visitedAt[id.value] = QDateTime::currentSecsSinceEpoch();
     scheduleSaveVisitedAt();
@@ -264,10 +297,10 @@ void ConvListWidget::updateRowsForUser(const QString &userId) {
         const auto &conv = _convs[ri.convIdx];
         if (!conv.dmUser || conv.dmUser->value != userId)
             continue;
-        const int y = r * kRowH - scrollY;
-        if (y + kRowH < 0 || y > vh)
+        const int y = r * _rowH - scrollY;
+        if (y + _rowH < 0 || y > vh)
             continue;
-        viewport()->update(QRect(0, y, vw, kRowH));
+        viewport()->update(QRect(0, y, vw, _rowH));
     }
 }
 
@@ -392,12 +425,26 @@ void ConvListWidget::rebuildRows() {
     // Bot/app DMs live here, like in the official client. No relevance
     // filter: open app DMs are few, and unlike human DMs there is no
     // People-tab path to reopen one the filter would hide. The section
-    // disappears entirely when there are no app DMs.
-    if (!apps.empty()) {
+    // disappears entirely when there are no app DMs, or when the user
+    // hides it in Settings → Appearance.
+    if (_showAgentsApps && !apps.empty()) {
         _rows.push_back({RowKind::SectionHeader, -1, 2});
         if (!_appsCollapsed) {
             for (int i : apps)
                 _rows.push_back({RowKind::Conv, i, -1});
+        }
+    } else if (!_showAgentsApps && !_revealedAppConv.value.isEmpty()) {
+        // Hidden, but one app DM is open — list just that one under the usual
+        // header so it stays selectable and scroll-to-able. Deliberately not
+        // gated on _appsCollapsed: this row exists precisely so the open
+        // conversation has one, and letting a collapse remove it would put us
+        // back to rowForId() == -1.
+        for (int i : apps) {
+            if (_convs[i].id != _revealedAppConv)
+                continue;
+            _rows.push_back({RowKind::SectionHeader, -1, 2});
+            _rows.push_back({RowKind::Conv, i, -1});
+            break;
         }
     }
 
@@ -514,7 +561,7 @@ void ConvListWidget::wheelEvent(QWheelEvent *event) {
         vsb->setValue(vsb->value() - px.y());
     } else {
         const int steps  = event->angleDelta().y();
-        const int pixels = steps * QApplication::wheelScrollLines() * kRowH / 120;
+        const int pixels = steps * QApplication::wheelScrollLines() * _rowH / 120;
         vsb->setValue(vsb->value() - pixels);
     }
     event->accept();
@@ -524,7 +571,7 @@ void ConvListWidget::wheelEvent(QWheelEvent *event) {
 
 int ConvListWidget::rowAt(int viewportY) const {
     const int docY = viewportY + verticalScrollBar()->value();
-    const int row  = docY / kRowH;
+    const int row  = docY / _rowH;
     if (row < 0 || row >= static_cast<int>(_rows.size()))
         return -1;
     return row;
@@ -556,10 +603,18 @@ void ConvListWidget::setSelected(int row) {
     _selAnim.setEndValue(1.0);
     _selAnim.start();
     emit conversationSelected(row);
+
+    // Selecting anything else retires the revealed app DM (see _revealedAppConv).
+    // After the emit on purpose: the connection is direct, so the handler has
+    // already consumed `row` by the time these indices shift.
+    if (!_revealedAppConv.value.isEmpty() && _revealedAppConv != _selectedId) {
+        _revealedAppConv = {};
+        rebuildRows();
+    }
 }
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
-    const int total = static_cast<int>(_rows.size()) * kRowH;
+    const int total = static_cast<int>(_rows.size()) * _rowH;
     if (_sbDragging) {
         const int vh         = viewport()->height();
         const int thumbH     = std::max(20, vh * vh / total);
@@ -584,7 +639,7 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
     // re-issue showAbove when the target changes (-2 = the "+", else the row).
     bool tooltipShown = false;
     if (row >= 0 && _rows[row].kind == RowKind::SectionHeader && _rows[row].sectionId == 1) {
-        const QRect r = dmPlusRect(row * kRowH - verticalScrollBar()->value());
+        const QRect r = dmPlusRect(row * _rowH - verticalScrollBar()->value());
         if (r.contains(e->pos())) {
             if (_tooltipRow != -2) {
                 _tooltip->showAbove(
@@ -711,7 +766,7 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     }
     if (e->button() != Qt::LeftButton)
         return;
-    const int total  = static_cast<int>(_rows.size()) * kRowH;
+    const int total  = static_cast<int>(_rows.size()) * _rowH;
     const int sbHitX = scrollThumbHitX();
     if (e->pos().x() >= sbHitX && VirtualListWidget::isOnScrollThumb(e->pos().y(), total)) {
         _sbDragging        = true;
@@ -727,7 +782,7 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     switch (ri.kind) {
     case RowKind::SectionHeader:
         if (ri.sectionId == 1 &&
-            dmPlusRect(row * kRowH - verticalScrollBar()->value()).contains(e->pos())) {
+            dmPlusRect(row * _rowH - verticalScrollBar()->value()).contains(e->pos())) {
             emit browsePeopleRequested();
             break;
         }
@@ -783,7 +838,7 @@ void ConvListWidget::doMouseLeave() {
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 void ConvListWidget::updateScrollRange() {
-    const int total = static_cast<int>(_rows.size()) * kRowH;
+    const int total = static_cast<int>(_rows.size()) * _rowH;
     const int vh    = viewport()->height();
     verticalScrollBar()->setRange(0, std::max(0, total - vh));
     verticalScrollBar()->setPageStep(vh);
@@ -796,8 +851,8 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
         return;
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
-    const int first   = scrollY / kRowH;
-    const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / kRowH);
+    const int first   = scrollY / _rowH;
+    const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / _rowH);
 
     for (int r = first; r <= last; ++r) {
         const auto &ri = _rows[r];
@@ -866,17 +921,17 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
     const int scrollY = verticalScrollBar()->value();
     const int vh      = viewport()->height();
 
-    const int first = scrollY / kRowH;
-    const int last  = std::min(static_cast<int>(_rows.size()) - 1, (scrollY + vh) / kRowH);
+    const int first = scrollY / _rowH;
+    const int last  = std::min(static_cast<int>(_rows.size()) - 1, (scrollY + vh) / _rowH);
 
     _huddleHitRects.clear(); // repopulated by paintRow for visible huddle rows
     _truncNameRects.clear(); // repopulated by paintRow for elided names
     for (int r = first; r <= last; ++r)
-        paintRow(p, r, r * kRowH - scrollY);
+        paintRow(p, r, r * _rowH - scrollY);
 
     triggerMissingAvatarDownloads();
 
-    paintScrollThumb(p, static_cast<int>(_rows.size()) * kRowH, Th::c().nav.scrollThumb);
+    paintScrollThumb(p, static_cast<int>(_rows.size()) * _rowH, Th::c().nav.scrollThumb);
 }
 
 void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int sectionId) const {
@@ -886,7 +941,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
                                               : _appsCollapsed;
 
     if (hovered)
-        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
+        p.fillRect(QRect(0, y, viewport()->width(), _rowH), Th::c().nav.itemHover);
 
     // Normally show the section icon; on hover replace it with the chevron that
     // previews what clicking will do (collapsed → down chevron, expanded → right chevron).
@@ -898,7 +953,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     else
         icon = (sectionId == 0) ? &_iconPx.hash : (sectionId == 1) ? &_iconPx.msg : &_iconPx.bot;
 
-    const int iconY = y + (kRowH - kIconSize) / 2;
+    const int iconY = y + (_rowH - kIconSize) / 2;
     int       x     = kPadH;
     p.drawPixmap(x, iconY, *icon);
     x += kIconSize + 6;
@@ -912,7 +967,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     const QString      label = (sectionId == 0)   ? tr("Channels")
                                : (sectionId == 1) ? tr("Direct messages")
                                                   : tr("Agents & apps");
-    p.drawText(x, y + (kRowH - fm.height()) / 2 + fm.ascent(), label);
+    p.drawText(x, y + (_rowH - fm.height()) / 2 + fm.ascent(), label);
 
     // DM section header: a "+" on hover opens the browse dialog on People.
     if (sectionId == 1 && hovered) {
@@ -925,18 +980,18 @@ QRect ConvListWidget::dmPlusRect(int rowY) const {
     // Right-aligned inside the header row, vertically centered. Slightly inset
     // from the scroll thumb gutter.
     const int x = viewport()->width() - kPadH - kIconSize;
-    return QRect(x, rowY + (kRowH - kIconSize) / 2, kIconSize, kIconSize);
+    return QRect(x, rowY + (_rowH - kIconSize) / 2, kIconSize, kIconSize);
 }
 
 void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     const bool hovered = (row == _hovered);
     if (hovered)
-        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
+        p.fillRect(QRect(0, y, viewport()->width(), _rowH), Th::c().nav.itemHover);
 
     const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
 
     const QPixmap &plusPx = hovered ? _iconPx.plusBright : _iconPx.plusDim;
-    p.drawPixmap(kPadH + kGroupIndent, y + (kRowH - kIconSize) / 2, plusPx);
+    p.drawPixmap(kPadH + kGroupIndent, y + (_rowH - kIconSize) / 2, plusPx);
 
     QFont font = QApplication::font();
     font.setWeight(QFont::Normal);
@@ -944,14 +999,14 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     p.setPen(color);
 
     const QFontMetrics fm(font);
-    const int          textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
+    const int          textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
     p.drawText(kPadH + kGroupIndent + kIconSize + 6, textY, tr("Add channels"));
 }
 
 void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) const {
     const bool hovered = (row == _hovered);
     if (hovered)
-        p.fillRect(QRect(0, y, viewport()->width(), kRowH), Th::c().nav.itemHover);
+        p.fillRect(QRect(0, y, viewport()->width(), _rowH), Th::c().nav.itemHover);
 
     const QColor color = hovered ? Th::c().text.onDark : Th::c().text.onDarkDim;
 
@@ -961,7 +1016,7 @@ void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) co
     p.setPen(color);
 
     const QFontMetrics fm(font);
-    const int          textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
+    const int          textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
     const int          leftX = kPadH + kGroupIndent;
 
     const QString label =
@@ -1005,7 +1060,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
     // ── Conv row ──────────────────────────────────────────────────────
     const auto &conv = _convs[ri.convIdx];
-    const QRect rowRect(0, y, viewport()->width(), kRowH);
+    const QRect rowRect(0, y, viewport()->width(), _rowH);
 
     // Background
     QColor rowBg = Th::c().nav.primary;
@@ -1044,20 +1099,26 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     p.setPen(textColor);
 
     const QFontMetrics fm(font);
-    const int          textY = y + (kRowH - fm.height()) / 2 + fm.ascent();
+    const int          textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
 
     const bool isDm     = (conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim);
     // Red badge = @mentions / DM unreads (only when not muted). Its number is the
     // count of things you were actually notified about: DM unreads, or channel
     // @mentions.
     const int  redCount = isDm ? conv.unread : conv.mentionCount;
+    // Nothing here is newer than the notification window, so it counts as
+    // history rather than activity: no badge, red or blue (see
+    // kMaxNotifyAgeDays). Like a local mute, it leaves the bold row emphasis
+    // alone — the row is still unread, it just stops shouting.
+    const bool stale    = tooOldToNotify(conv);
     // A locally-muted person keeps the bold "unread" emphasis above but shows no
     // counter badge — the mute kills every outward count, red or blue.
-    const bool showRed  = !conv.locallyMuted && lvl != NotificationLevel::Mute && redCount > 0;
+    const bool showRed =
+        !stale && !conv.locallyMuted && lvl != NotificationLevel::Mute && redCount > 0;
     // Blue dot = other *allowed* activity: non-@mention unreads, but only in
     // channels set to "All new posts" (a "Just mentions" or muted channel stays
     // quiet for regular messages — no badge at all).
-    const bool showBlue = !conv.locallyMuted && lvl == NotificationLevel::All && !isDm &&
+    const bool showBlue = !stale && !conv.locallyMuted && lvl == NotificationLevel::All && !isDm &&
                           conv.mentionCount == 0 && conv.unread > 0;
     const int badgeW = showRed ? (redCount > 9 ? 28 : 20) : showBlue ? 14 : 0;
 
@@ -1081,7 +1142,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const int leftX = kPadH + kGroupIndent;
     if (conv.kind == ConvKind::Mpim) {
         // Rounded square icon with participant count (excluding self)
-        const int avY          = y + (kRowH - kAvatarSize) / 2;
+        const int avY          = y + (_rowH - kAvatarSize) / 2;
         int       displayCount = 0;
         if (!conv.members.empty()) {
             for (const auto &uid : conv.members) {
@@ -1123,9 +1184,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.setPen(textColor);
         p.drawStaticText(QPointF(nameX, textY - fm.ascent()), nc.st);
         if (nc.elided != nc.full)
-            _truncNameRects.insert(row, QRect(nameX, y, nc.elidedW, kRowH));
+            _truncNameRects.insert(row, QRect(nameX, y, nc.elidedW, _rowH));
     } else if (conv.kind == ConvKind::Im && conv.dmUser) {
-        const int avY = y + (kRowH - kAvatarSize) / 2;
+        const int avY = y + (_rowH - kAvatarSize) / 2;
         drawUserAvatar(
             p, QRect(leftX, avY, kAvatarSize, kAvatarSize), conv.dmUser->value, rowBg, isSelected
         );
@@ -1174,13 +1235,13 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.setPen(textColor);
         p.drawStaticText(QPointF(nameX, textY - fm.ascent()), nc.st);
         if (nc.elided != nc.full)
-            _truncNameRects.insert(row, QRect(nameX, y, nc.elidedW, kRowH));
+            _truncNameRects.insert(row, QRect(nameX, y, nc.elidedW, _rowH));
         int curX = nameX + nc.elidedW;
 
         if (isExternal) {
             curX += 6;
             const int   bH = 14;
-            const QRect bRect(curX, y + (kRowH - bH) / 2, extPillW, bH);
+            const QRect bRect(curX, y + (_rowH - bH) / 2, extPillW, bH);
             p.save();
             p.setRenderHint(QPainter::Antialiasing);
             p.setPen(Qt::NoPen);
@@ -1196,7 +1257,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
         if (!emojiGlyph.isEmpty()) {
             curX += 4;
-            EmojiPix::draw(p, QRect(curX, y, emojiW, kRowH), emojiGlyph, emojiPx, textColor);
+            EmojiPix::draw(p, QRect(curX, y, emojiW, _rowH), emojiGlyph, emojiPx, textColor);
             curX += emojiW;
         }
 
@@ -1215,20 +1276,20 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             const QPixmap &lockPx = isSelected ? _iconPx.lockSelected
                                     : isUnread ? _iconPx.lockBright
                                                : _iconPx.lockDim;
-            p.drawPixmap(leftX, y + (kRowH - 14) / 2, lockPx);
+            p.drawPixmap(leftX, y + (_rowH - 14) / 2, lockPx);
             prefixW = 14 + 6;
         } else {
             const QPixmap &hashPx = isSelected ? _iconPx.hashSmSelected
                                     : isUnread ? _iconPx.hashSmBright
                                                : _iconPx.hashSmDim;
-            p.drawPixmap(leftX, y + (kRowH - 14) / 2, hashPx);
+            p.drawPixmap(leftX, y + (_rowH - 14) / 2, hashPx);
             prefixW = 14 + 6;
         }
         const int   maxW = viewport()->width() - leftX - prefixW - badgeW - huddleW - 14;
         const auto &nc   = cachedName(conv.id.value, conv.name, maxW, font);
         p.drawStaticText(QPointF(leftX + prefixW, textY - fm.ascent()), nc.st);
         if (nc.elided != nc.full)
-            _truncNameRects.insert(row, QRect(leftX + prefixW, y, nc.elidedW, kRowH));
+            _truncNameRects.insert(row, QRect(leftX + prefixW, y, nc.elidedW, _rowH));
     }
 
     // ── Right-side indicators (live huddle, then unread) ──────────────
@@ -1239,7 +1300,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     if (conv.huddleActive) {
         const int pillH = 18;
         const int pillX = rightEdge - huddlePillW;
-        const int pillY = y + (kRowH - pillH) / 2;
+        const int pillY = y + (_rowH - pillH) / 2;
         p.setPen(Qt::NoPen);
         p.setBrush(Th::c().accent.def);
         Paint::pill(p, QRect(pillX, pillY, huddlePillW, pillH));
@@ -1260,7 +1321,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
         if (!conv.huddleParticipants.empty()) {
             const int avX = rightEdge - kAvatarSize;
-            const int avY = y + (kRowH - kAvatarSize) / 2;
+            const int avY = y + (_rowH - kAvatarSize) / 2;
             drawUserAvatar(
                 p,
                 QRect(avX, avY, kAvatarSize, kAvatarSize),
@@ -1274,7 +1335,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         // Whole avatar+pill group is a click target → join the huddle.
         const int groupLeft = rightEdge + kHuddleGap;
         _huddleHitRects.insert(
-            conv.id.value, QRect(groupLeft, y, viewport()->width() - 14 - groupLeft, kRowH)
+            conv.id.value, QRect(groupLeft, y, viewport()->width() - 14 - groupLeft, _rowH)
         );
     }
 
@@ -1292,7 +1353,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         // multi-digit grows into a pill — instead of a squeezed oval.
         const int          bw = qMax(bfm.horizontalAdvance(badge) + 10, bh);
         const int          bx = rightEdge - bw;
-        const int          by = y + (kRowH - bh) / 2;
+        const int          by = y + (_rowH - bh) / 2;
         p.setPen(Qt::NoPen);
         p.setBrush(Th::c().badge.mention);
         Paint::pill(p, QRect(bx, by, bw, bh));
@@ -1302,7 +1363,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         // Blue dot for other allowed activity in "All new posts" channels.
         const int dotD = 8;
         const int bx   = rightEdge - dotD;
-        const int by   = y + (kRowH - dotD) / 2;
+        const int by   = y + (_rowH - dotD) / 2;
         p.setPen(Qt::NoPen);
         p.setBrush(Th::c().badge.activity);
         p.drawEllipse(bx, by, dotD, dotD);

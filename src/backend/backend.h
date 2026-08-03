@@ -114,6 +114,25 @@ public:
             return rpl::lifetime();
         };
     }
+    // Whole-workspace unread/activity snapshot in ONE request (Slack's
+    // `client.counts`). For a backend with no push transport this is what makes a
+    // message in a conversation the user hasn't opened discoverable at all: the
+    // Session diffs consecutive snapshots and polls only the conversations that
+    // moved, instead of rotating blindly through the roster.
+    //
+    // Contract for the graceful-degrade path: emit exactly one value on success
+    // (an empty vector is a legitimate "nothing to report"), or complete WITHOUT
+    // emitting when the snapshot is unavailable — unsupported by this backend,
+    // rejected for this token type, or a failed request. The default is the
+    // unsupported case, so a backend that doesn't implement it simply falls back
+    // to the Session's slower roster diff.
+    virtual rpl::producer<std::vector<ConvCounts>> loadUnreadCounts() {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+
     virtual rpl::producer<MessagePage>
     loadHistory(ConversationId, std::optional<QString> cursor) = 0;
     virtual rpl::producer<MessagePage>

@@ -31,8 +31,20 @@ set(TEST_SYSTEM_INCLUDES
     ${lib_base_SOURCE_DIR}
 )
 
+# SecretStore backend for tests: always the QSettings fallback, never the macOS
+# keychain, so test runs stay hermetic — no keychain access prompts, no items
+# left behind on the developer's login keychain. The token/credential stores
+# (token_store.cpp, slack_auth.cpp, llm_token_store.cpp) reference these symbols,
+# so link them into every test target; secret_store_mac.mm is deliberately unused
+# here. Unused in tests that don't touch a store — harmless (no symbol clash).
+set(MSGA_SECRET_STORE_SRCS
+    ${CMAKE_SOURCE_DIR}/src/util/secret_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/secret_store_qsettings.cpp
+)
+
 function(add_msga_test target)
     add_executable(${target} ${ARGN})
+    target_sources(${target} PRIVATE ${MSGA_SECRET_STORE_SRCS})
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
     target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE Catch2::Catch2WithMain Qt6::Core Microsoft.GSL::GSL)
@@ -43,6 +55,7 @@ endfunction()
 # a QCoreApplication must be constructed before Catch2 runs, e.g. QStandardPaths).
 function(add_msga_qt_test target)
     add_executable(${target} ${ARGN})
+    target_sources(${target} PRIVATE ${MSGA_SECRET_STORE_SRCS})
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
     target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
     target_link_libraries(${target} PRIVATE Catch2::Catch2 Qt6::Core Microsoft.GSL::GSL)
@@ -58,6 +71,7 @@ endfunction()
 # under ctest.
 function(add_msga_widget_test target)
     add_executable(${target} ${ARGN})
+    target_sources(${target} PRIVATE ${MSGA_SECRET_STORE_SRCS})
     set_target_properties(${target} PROPERTIES AUTOMOC ON)
     target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
     target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
@@ -181,6 +195,12 @@ add_msga_test(test_huddle_notify
 )
 target_link_libraries(test_huddle_notify PRIVATE Qt6::Gui)
 
+# Pure notification-freshness policy (header-only helper in domain.h).
+add_msga_test(test_notify_age
+    test_notify_age.cpp
+)
+target_link_libraries(test_notify_age PRIVATE Qt6::Gui)
+
 # Notification click-target token codec (encode/decode round-trip, thread root).
 add_msga_test(test_notif_token
     test_notif_token.cpp
@@ -242,6 +262,12 @@ add_msga_test(test_cache_evictor
 add_msga_qt_test(test_token_store
     test_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+)
+
+# The backend sources come from MSGA_SECRET_STORE_SRCS via add_msga_qt_test —
+# listing them here too would be a duplicate-symbol link error.
+add_msga_qt_test(test_secret_store
+    test_secret_store.cpp
 )
 
 add_msga_qt_test(test_backend_factory
@@ -418,6 +444,16 @@ add_msga_widget_test(test_context_menu
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
 
+add_msga_widget_test(test_app_dialog
+    test_app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_app_dialog PRIVATE Qt6::Test)
+
 add_msga_widget_test(test_summary_dialog
     test_summary_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
@@ -505,6 +541,14 @@ add_msga_qt_test(test_session_auth
 target_link_libraries(test_session_auth PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_session_auth PROPERTIES AUTOMOC ON)
 
+# Browser sign-in: the pure parsers (localConfig_v2, host harvesting, /json/version).
+add_msga_qt_test(test_browser_login
+    test_browser_login.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
+)
+target_link_libraries(test_browser_login PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_browser_login PROPERTIES AUTOMOC ON)
+
 # SessionImportDialog render/smoke harness (screenshot + card-height regression).
 add_msga_widget_test(test_session_import_dialog
     test_session_import_dialog.cpp
@@ -517,6 +561,7 @@ add_msga_widget_test(test_session_import_dialog
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/local_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc

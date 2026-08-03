@@ -158,6 +158,20 @@ void AppDialog::open() {
     show();
 }
 
+AppDialog *AppDialog::topmostVisible(QWidget *window) {
+    if (!window)
+        return nullptr;
+    // Every dialog parents itself to the host window (see overlayHost) and
+    // raise()s on show, and raise() moves a child to the end of the parent's
+    // child list — so among the visible ones the last in child order is the one
+    // painted on top (e.g. the session-import dialog over the settings overlay).
+    const auto dialogs = window->findChildren<AppDialog *>(QString(), Qt::FindDirectChildrenOnly);
+    for (auto it = dialogs.crbegin(); it != dialogs.crend(); ++it)
+        if ((*it)->isVisible())
+            return *it;
+    return nullptr;
+}
+
 void AppDialog::accept() {
     done(QDialog::Accepted);
 }

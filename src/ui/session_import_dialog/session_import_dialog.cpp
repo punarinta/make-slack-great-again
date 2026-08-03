@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "ui/session_import_dialog/session_import_dialog.h"
 
+#include "backend/slack/session_import/browser_login.h"
 #include "backend/slack/session_import/local_importer.h"
 #include "backend/slack/session_import/token_deriver.h"
 #include "backend/slack/slack_auth.h"
@@ -28,6 +29,24 @@ QString friendlyImportError(const QString &reason) {
     if (reason == QLatin1String("unsupported_platform"))
         return QObject::tr("Automatic import isn't available in this build.");
     return QObject::tr("Automatic import didn't work.");
+}
+
+// Same contract for the browser-login reasons (see BrowserLogin::finished).
+QString friendlyBrowserError(const QString &reason) {
+    if (reason == QLatin1String("no_browser"))
+        return QObject::tr(
+            "No supported browser was found — browser sign-in needs Chrome, Chromium, "
+            "Brave, Edge or Vivaldi."
+        );
+    if (reason == QLatin1String("launch_failed"))
+        return QObject::tr("Couldn't start your browser.");
+    if (reason == QLatin1String("no_devtools") || reason == QLatin1String("cdp_failed"))
+        return QObject::tr("Couldn't read the session back from the browser window.");
+    if (reason == QLatin1String("cancelled"))
+        return QObject::tr("Browser sign-in was cancelled.");
+    if (reason == QLatin1String("timeout"))
+        return QObject::tr("Browser sign-in timed out.");
+    return QObject::tr("Browser sign-in didn't work.");
 }
 
 // Normalize a pasted cookie into a bare value (drops a leading "d=" and whitespace).
@@ -59,22 +78,44 @@ SessionImportDialog::SessionImportDialog(QWidget *parent)
     auto       *lay = contentLayout();
     lay->setSpacing(sp.lg);
 
+    // ── Primary: sign in through a real browser window — no DevTools poking ─
+    const bool canBrowser = slack::session::browserLoginSupported();
+    const bool canLocal   = slack::session::localImportSupported();
+
     auto *intro = new QLabel(
-        QObject::tr(
-            "Sign in with your existing Slack session instead of app keys — it uses "
-            "your account's own rate limits, so it avoids the shared-key timeouts. "
-            "New messages arrive by polling (there's no live push this way)."
-        ),
+        canBrowser ? QObject::tr(
+                         "Log in to Slack in a browser window and msga uses that session "
+                         "instead of app keys — so it runs on your account's own rate limits "
+                         "and avoids the shared-key timeouts. New messages arrive by polling "
+                         "(there's no live push this way)."
+                     )
+                   : QObject::tr(
+                         "Sign in with your existing Slack session instead of app keys — it uses "
+                         "your account's own rate limits, so it avoids the shared-key timeouts. "
+                         "New messages arrive by polling (there's no live push this way)."
+                     ),
         this
     );
     intro->setWordWrap(true);
     lay->addWidget(intro);
 
-    // ── Primary: one-click import from the local Slack desktop app ──────────
-    _importBtn = new StyledButton(
-        QObject::tr("Import from local Slack"), StyledButton::Variant::Primary, this
+    _browserBtn = new StyledButton(
+        QObject::tr("Sign in with %1").arg(slack::session::browserLoginName()),
+        StyledButton::Variant::Primary,
+        this
     );
-    _importBtn->setVisible(slack::session::localImportSupported());
+    _browserBtn->setVisible(canBrowser);
+    lay->addWidget(_browserBtn);
+    connect(_browserBtn, &StyledButton::clicked, this, &SessionImportDialog::startBrowserLogin);
+
+    // ── One-click import from the local Slack desktop app (instant when it's
+    // installed, so keep it — it just isn't the headline path anymore) ──────
+    _importBtn = new StyledButton(
+        QObject::tr("Import from local Slack"),
+        canBrowser ? StyledButton::Variant::Secondary : StyledButton::Variant::Primary,
+        this
+    );
+    _importBtn->setVisible(canLocal);
     lay->addWidget(_importBtn);
     connect(_importBtn, &StyledButton::clicked, this, &SessionImportDialog::tryLocalImport);
 
@@ -82,7 +123,15 @@ SessionImportDialog::SessionImportDialog(QWidget *parent)
         QObject::tr("Paste a session cookie instead"), StyledButton::Variant::Link, this
     );
     lay->addWidget(_manualToggle);
-    connect(_manualToggle, &StyledButton::clicked, this, [this] { revealManual(); });
+    connect(_manualToggle, &StyledButton::clicked, this, [this] {
+        // Giving up on the automatic paths: close any browser window we opened so it
+        // can't report back over the manual fields the user is about to fill in.
+        if (_browser) {
+            _browser->deleteLater();
+            _browser = nullptr;
+        }
+        revealManual();
+    });
 
     // ── Guided manual entry: paste the `d` cookie (the one value that can't be
     // scripted — it's HttpOnly) plus the workspace address; the app derives the
@@ -142,8 +191,8 @@ SessionImportDialog::SessionImportDialog(QWidget *parent)
     addButtonRow(_manualSubmit, cancel);
     connect(_manualSubmit, &StyledButton::clicked, this, &SessionImportDialog::submitManual);
 
-    // No local import available → go straight to the guided manual flow.
-    if (!slack::session::localImportSupported())
+    // No automatic path at all → go straight to the guided manual flow.
+    if (!canBrowser && !canLocal)
         revealManual();
 
     updateCard();
@@ -153,6 +202,45 @@ int SessionImportDialog::cardWidth(int availOverlayWidth) const {
     // Deliberately roomy: this dialog carries step-by-step instructions plus
     // inputs. Grow toward 760 but never exceed the available overlay.
     return std::min(760, std::max(600, availOverlayWidth));
+}
+
+void SessionImportDialog::startBrowserLogin() {
+    setBusy(true);
+    setStatus(QObject::tr("Opening a browser window…"), false);
+
+    // Fresh instance per attempt; parented here, so closing the dialog (Cancel)
+    // destroys it, which kills the browser and wipes its throwaway profile.
+    if (_browser)
+        _browser->deleteLater();
+    _browser = new slack::session::BrowserLogin(this);
+    connect(_browser, &slack::session::BrowserLogin::progress, this, [this](const QString &msg) {
+        setStatus(msg, false);
+    });
+    connect(
+        _browser,
+        &slack::session::BrowserLogin::finished,
+        this,
+        [this](
+            const QString                            &cookie,
+            const QList<slack::session::TeamSession> &teams,
+            const QString                            &error
+        ) {
+            if (!error.isEmpty() || cookie.isEmpty()) {
+                setBusy(false);
+                revealManual(friendlyBrowserError(error), error != QLatin1String("cancelled"));
+                return;
+            }
+            // Signed in, but the web client never booted far enough to reveal which
+            // workspaces the account has — ask for the address with the cookie filled in.
+            if (teams.isEmpty()) {
+                _cookieEdit->setText(cookie);
+                revealManual(QObject::tr("Signed in — enter your workspace address."), false);
+                return;
+            }
+            deriveAndFinish(cookie, teams);
+        }
+    );
+    _browser->start();
 }
 
 void SessionImportDialog::tryLocalImport() {
@@ -247,6 +335,7 @@ void SessionImportDialog::revealManual(const QString &notice, bool error) {
 }
 
 void SessionImportDialog::setBusy(bool busy) {
+    _browserBtn->setEnabled(!busy);
     _importBtn->setEnabled(!busy);
     _manualSubmit->setEnabled(!busy);
     _cookieEdit->setEnabled(!busy);

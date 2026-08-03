@@ -3,6 +3,7 @@
 #include "slack_auth.h"
 
 #include "app_credentials.h"
+#include "util/secret_store.h"
 
 #include <QDebug>
 #include <QJsonDocument>
@@ -48,27 +49,32 @@ void setConnectionMode(ConnectionMode mode) {
 
 PersonalAppCredentials personalAppCredentials() {
     QSettings s("msga", "msga");
+    // clientId is a public identifier — plain settings. The secret and the
+    // app-level token are sensitive → keychain (with one-time migration from
+    // any pre-keychain plaintext copy).
     return {
         s.value(QString::fromLatin1(kClientIdKey)).toString(),
-        s.value(QString::fromLatin1(kClientSecretKey)).toString(),
-        s.value(QString::fromLatin1(kXappKey)).toString(),
+        SecretStore::readMigrating(QString::fromLatin1(kClientSecretKey)),
+        SecretStore::readMigrating(QString::fromLatin1(kXappKey)),
     };
 }
 
 void setPersonalAppCredentials(const PersonalAppCredentials &creds) {
-    QSettings  s("msga", "msga");
+    QSettings     s("msga", "msga");
     // Store trimmed values; blank a field to fall back to the compiled-in build
     // credential. Blank fields are removed rather than stored empty.
-    const auto put = [&s](const char *key, const QString &val) {
-        const QString v = val.trimmed();
-        if (v.isEmpty())
-            s.remove(QString::fromLatin1(key));
-        else
-            s.setValue(QString::fromLatin1(key), v);
+    const QString clientId = creds.clientId.trimmed();
+    if (clientId.isEmpty())
+        s.remove(QString::fromLatin1(kClientIdKey));
+    else
+        s.setValue(QString::fromLatin1(kClientIdKey), clientId);
+
+    // clientSecret + xapp are secret → keychain. Blank clears them.
+    const auto putSecret = [](const char *key, const QString &val) {
+        SecretStore::writeScrubbingLegacy(QString::fromLatin1(key), val.trimmed());
     };
-    put(kClientIdKey, creds.clientId);
-    put(kClientSecretKey, creds.clientSecret);
-    put(kXappKey, creds.xapp);
+    putSecret(kClientSecretKey, creds.clientSecret);
+    putSecret(kXappKey, creds.xapp);
 }
 
 AppConfig appConfig() {

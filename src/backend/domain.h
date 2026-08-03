@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -12,6 +13,16 @@
 #include <optional>
 #include <variant>
 #include <vector>
+
+// --- Notification freshness ---
+
+// A notification is only worth raising while the thing it announces is still
+// current. Events older than this window are silently dropped from EVERY
+// notification surface — OS notification, sound, tray/dock icon tint, workspace
+// counters, chat counters — so a long-offline start, a cache replay or a
+// backfill sweep can't replay a month of history at the user. Tune here; this
+// is the single source of truth (see tooOldToNotify below).
+constexpr int kMaxNotifyAgeDays = 30;
 
 // --- Identity types ---
 
@@ -294,6 +305,32 @@ inline NotificationLevel effectiveNotifLevel(const Conversation &c, Notification
     return c.notifLevel;
 }
 
+// Notification freshness policy (see kMaxNotifyAgeDays). Both overloads
+// fail OPEN: they answer "too old" only when the age is positively known, so an
+// unknown/unparseable time never silently swallows a live event.
+//
+// Event form — `dateMicros` is Message::date (epoch microseconds, the one
+// orderable time field). A zero/absent date means "no idea when" → notify.
+inline bool tooOldToNotify(qint64 dateMicros) {
+    if (dateMicros <= 0)
+        return false;
+    const qint64 cutoffSecs =
+        QDateTime::currentSecsSinceEpoch() - qint64(kMaxNotifyAgeDays) * 86400;
+    return dateMicros / 1000000 < cutoffSecs;
+}
+
+// Conversation form — for the badge/counter surfaces, which count server-side
+// unreads rather than individual events. `latestTs` is the newest thing the
+// conversation holds, so when even that is outside the window every unread in
+// it is too. Only Slack's ts is a decimal clock (Teams carries a message id,
+// IMAP a Message-ID header); those parse to 0 or to a nonsense future value,
+// and either way the conversation counts as current.
+inline bool tooOldToNotify(const Conversation &c) {
+    if (c.latestTs.isEmpty())
+        return false;
+    return tooOldToNotify(decimalTsToMicros(c.latestTs));
+}
+
 // Whether a starting huddle in conversation `c` should raise a desktop
 // notification. Pure policy (no UI/settings state) so it's unit-testable:
 //   • member-only, never when muted / level Mute;
@@ -321,6 +358,24 @@ inline bool shouldNotifyHuddleStart(
         return false;
     return true;
 }
+
+// One conversation's server-side activity/badge state, as reported by a single
+// whole-workspace snapshot call (Slack's `client.counts`). This is the cheap
+// signal a poll-only backend needs: without a push transport, the ONLY way a
+// message in a conversation the user hasn't opened can ever surface is for us to
+// notice the conversation moved and then fetch its history. One request answers
+// that for every conversation at once — vastly cheaper than a per-conversation
+// info sweep, and unlike conversations.list it also reports channels.
+// Fields absent from a given backend's response stay empty/zero; the consumer
+// diffs whatever it does get (see Session::applyActivitySnapshot).
+struct ConvCounts {
+    ConversationId id;
+    Ts             latestTs; // ts of the newest message the server knows
+    Ts             lastRead; // the authed user's read cursor
+    int            unread                               = 0;
+    int            mentionCount                         = 0;
+    bool           operator==(const ConvCounts &) const = default;
+};
 
 // Click-target of an OS notification, round-tripped through the notifier (and,
 // on Windows, an msga:// protocol activation) as a 0x1f-separated token:

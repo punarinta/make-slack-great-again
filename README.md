@@ -25,7 +25,7 @@ msga is primarily a Slack client — that's its main focus and the most complete
 
 Grab a [prebuilt build](#download) and you can connect Slack straight away — there are two ways to sign in:
 
-- **Session sign-in (recommended)** — reuse the Slack login you already have in your browser or desktop app. Nothing to register, nothing to build; msga borrows your existing session so everything runs on your own personal quota. New messages arrive within a few seconds.
+- **Session sign-in (recommended)** — click *Sign in with your browser* and log in to Slack the normal way; msga picks the session up from a private, throwaway browser profile and closes the window. Nothing to register, nothing to build, no tokens to copy, and everything runs on your own personal quota. New messages arrive within a few seconds. (Already have the Slack desktop app on Linux? One click imports its session instead.)
 - **Your own Slack app** — register a free Slack app for instant real-time push (Socket Mode), then paste its keys into **Settings → System**.
 
 Both are covered step by step in the **[Slack setup guide](docs/SETUP_SLACK.md)**. Most people want session sign-in — it needs no setup at all.
