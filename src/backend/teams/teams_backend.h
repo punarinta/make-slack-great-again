@@ -102,6 +102,7 @@ public:
                                             ConversationId,
                                             const QStringList                          &filePaths,
                                             const QString                              &initialComment,
+                                            std::optional<Ts> threadRoot,
                                             std::function<void(bool ok, QString error)> done
                                         ) override;
     void downloadFile(

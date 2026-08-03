@@ -156,6 +156,7 @@ struct StubBackend : Backend {
         ConversationId                     conv;
         QStringList                        paths;
         QString                            comment;
+        std::optional<Ts>                  threadRoot;
         std::function<void(bool, QString)> done;
     };
     std::vector<UploadCall> uploadCalls;
@@ -163,9 +164,10 @@ struct StubBackend : Backend {
                            ConversationId                     c,
                            const QStringList                 &paths,
                            const QString                     &comment,
+                           std::optional<Ts> threadRoot = std::nullopt,
                            std::function<void(bool, QString)> done = {}
                        ) override {
-        uploadCalls.push_back({c, paths, comment, std::move(done)});
+        uploadCalls.push_back({c, paths, comment, threadRoot, std::move(done)});
     }
 
     // Canvas fixtures: conv id → file id, file id → HTML.
@@ -1741,6 +1743,32 @@ TEST_CASE_METHOD(
     REQUIRE(col.events.size() == 4);
     REQUIRE(std::holds_alternative<EvMessageDeleted>(col.events[2]));
     CHECK(std::get<EvMessageDeleted>(col.events[2]).ts == textFakeTs);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "uploadFiles in a thread tags the ghost and forwards the thread root",
+    "[session][upload]"
+) {
+    QTemporaryDir dir;
+    const QString path = dir.path() + "/pic.png";
+    {
+        QFile f(path);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("img");
+    }
+
+    auto col = collectEvents();
+    session->uploadFiles(ConversationId{"C1"}, {path}, "in thread", Ts{"100.500"});
+
+    REQUIRE(col.events.size() == 1);
+    const auto &ev = std::get<EvMessageNew>(col.events[0]);
+    REQUIRE(ev.msg.threadRoot.has_value());
+    CHECK(*ev.msg.threadRoot == "100.500");
+
+    REQUIRE(stub->uploadCalls.size() == 1);
+    REQUIRE(stub->uploadCalls[0].threadRoot.has_value());
+    CHECK(*stub->uploadCalls[0].threadRoot == "100.500");
 }
 
 // ── requestPresence ───────────────────────────────────────────────────────────
