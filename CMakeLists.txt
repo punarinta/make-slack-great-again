@@ -398,6 +398,22 @@ else()
     target_sources(msga PRIVATE src/util/sound_player_linux.cpp)
 endif()
 
+# Secret storage (src/util/secret_store*): credentials (tokens, API keys, the
+# personal Slack app secret, IMAP passwords) live in the OS keychain where one
+# exists, never in the plaintext QSettings/plist. macOS uses the Security
+# framework (generic-password items); other platforms fall back to QSettings
+# (documented limitation — see src/util/secret_store.h). secret_store.cpp holds
+# the platform-neutral migration helper and is always compiled.
+target_sources(msga PRIVATE src/util/secret_store.cpp)
+if(APPLE)
+    target_sources(msga PRIVATE src/util/secret_store_mac.mm)
+    set_source_files_properties(src/util/secret_store_mac.mm
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(msga PRIVATE "-framework Security" "-framework CoreFoundation")
+else()
+    target_sources(msga PRIVATE src/util/secret_store_qsettings.cpp)
+endif()
+
 # Desktop notifications with per-message avatars (src/util/desktop_notifier*):
 # each OS needs a different API to put the sender avatar into the notification —
 # Qt's QSystemTrayIcon::showMessage can't on any platform. One backend per TU,
