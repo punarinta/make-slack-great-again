@@ -60,7 +60,7 @@ PersonalAppCredentials personalAppCredentials() {
 }
 
 void setPersonalAppCredentials(const PersonalAppCredentials &creds) {
-    QSettings s("msga", "msga");
+    QSettings     s("msga", "msga");
     // Store trimmed values; blank a field to fall back to the compiled-in build
     // credential. Blank fields are removed rather than stored empty.
     const QString clientId = creds.clientId.trimmed();
@@ -70,10 +70,8 @@ void setPersonalAppCredentials(const PersonalAppCredentials &creds) {
         s.setValue(QString::fromLatin1(kClientIdKey), clientId);
 
     // clientSecret + xapp are secret → keychain. Blank clears them.
-    const auto putSecret = [&s](const char *key, const QString &val) {
-        SecretStore::write(QString::fromLatin1(key), val.trimmed()); // empty clears
-        if (SecretStore::isKeychainBacked())
-            s.remove(QString::fromLatin1(key)); // scrub any plaintext copy
+    const auto putSecret = [](const char *key, const QString &val) {
+        SecretStore::writeScrubbingLegacy(QString::fromLatin1(key), val.trimmed());
     };
     putSecret(kClientSecretKey, creds.clientSecret);
     putSecret(kXappKey, creds.xapp);

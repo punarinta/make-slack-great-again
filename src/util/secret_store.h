@@ -41,6 +41,17 @@ bool isKeychainBacked();
 // yet in the keychain but a legacy plaintext copy exists in QSettings under the
 // same key, it is promoted into the keychain and the plaintext copy is deleted.
 // On the QSettings fallback this is exactly read().
+//
+// A failed promotion keeps the plaintext copy: the keychain can refuse (locked,
+// denied prompt), and scrubbing then would destroy the only copy that exists.
 QString readMigrating(const QString &key);
+
+// The write counterpart every caller wants: write(), and on a keychain platform
+// drop any leftover plaintext copy of the same key once the write has actually
+// succeeded. Use this instead of hand-rolling write() + isKeychainBacked() +
+// QSettings::remove() — on the QSettings fallback that sequence deletes the
+// value it just stored, and on a keychain platform it deletes the plaintext
+// copy even when the keychain write failed.
+bool writeScrubbingLegacy(const QString &key, const QString &value);
 
 } // namespace SecretStore

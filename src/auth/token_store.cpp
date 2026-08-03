@@ -102,12 +102,10 @@ void TokenStore::saveWorkspace(const WorkspaceRecord &c) {
     s.setValue(base + "/displayName", c.displayName);
     s.setValue(base + "/iconUrl", c.iconUrl);
     // The auth blob carries the tokens/refresh tokens/passwords — hold it in the
-    // OS keychain, out of the plaintext settings file. (On the QSettings
-    // fallback SecretStore writes this very key, so only scrub the plaintext
-    // copy when the keychain is actually backing it.)
-    SecretStore::write(base + "/auth", QString::fromUtf8(c.auth));
-    if (SecretStore::isKeychainBacked())
-        s.remove(base + "/auth");
+    // OS keychain, out of the plaintext settings file. The blob is always
+    // compact JSON (see the slack::/imap::/teams:: auth units), so the UTF-8
+    // round-trip through QString is lossless.
+    SecretStore::writeScrubbingLegacy(base + "/auth", QString::fromUtf8(c.auth));
 }
 
 std::optional<TokenStore::WorkspaceRecord> TokenStore::loadWorkspace(const WorkspaceKey &key) {
@@ -132,7 +130,7 @@ void TokenStore::removeWorkspace(const WorkspaceKey &key) {
     ids.removeAll(handle);
     s.setValue(QStringLiteral("workspaces"), ids);
     SecretStore::remove(recordBase(key) + "/auth"); // drop the keychain secret
-    s.remove(recordBase(key));                       // drop metadata (+ any legacy auth)
+    s.remove(recordBase(key));                      // drop metadata (+ any legacy auth)
     if (s.value(QStringLiteral("active")).toString() == handle)
         s.setValue(QStringLiteral("active"), ids.isEmpty() ? QString() : ids.first());
 }
