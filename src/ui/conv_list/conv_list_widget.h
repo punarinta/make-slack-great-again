@@ -233,6 +233,12 @@ protected:
     int            _hovered  = -1;
     int            _selected = -1;
     ConversationId _selectedId; // survives rebuildRows() calls
+    // While the "Agents & apps" section is hidden, the app DM that is actually
+    // open still gets a row. Without it selectConversation() would find none
+    // and return false, and MainWindow opens notifications and search results
+    // through `rowForId(conv) >= 0` — so clicking either would silently do
+    // nothing. Transient (never persisted); cleared once the selection moves.
+    ConversationId _revealedAppConv;
 
     // Selection slide animation: 0.0 = start of slide, 1.0 = settled
     QVariantAnimation _selAnim;
