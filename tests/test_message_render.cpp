@@ -742,3 +742,70 @@ TEST_CASE("notificationText leaves unknown custom emoji as a code", "[render][no
         MsgRender::notificationText(MrkdwnParser::parse("lunch? :no-lunch:"), nullptr);
     CHECK(out.contains(":no-lunch:"));
 }
+
+// ── notificationPreview (whole-message toast body) ────────────────────────────
+
+TEST_CASE("notificationPreview prefers the message text", "[render][notif]") {
+    Message msg;
+    msg.text = MrkdwnParser::parse("deploy finished");
+    Attachment att;
+    att.text = MrkdwnParser::parse("ignored");
+    msg.attachments.push_back(att);
+    CHECK(MsgRender::notificationPreview(msg, nullptr) == "deploy finished");
+}
+
+TEST_CASE(
+    "notificationPreview flattens Block Kit blocks of a textless bot post", "[render][notif]"
+) {
+    // The CodePipeline/Amazon Q shape: no `text`, everything in blocks.
+    Message msg;
+    Block   header;
+    header.typeStr = "header";
+    header.text    = TextWithEntities{"Pipeline failed", {}};
+    Block section;
+    section.typeStr = "section";
+    section.text    = MrkdwnParser::parse("stage *Deploy* on <#C1>");
+    msg.blocks      = {header, section};
+
+    auto         *session = renderSession();
+    const QString out     = MsgRender::notificationPreview(msg, session);
+    CHECK(out == QString::fromUtf8("Pipeline failed · stage Deploy on #general"));
+    delete session;
+}
+
+TEST_CASE("notificationPreview summarises attachment title, text and fields", "[render][notif]") {
+    Message    msg;
+    Attachment att;
+    att.title = "Build &amp; deploy";
+    att.text  = MrkdwnParser::parse("failed after 3m");
+    att.fields.push_back(AttachmentField{"Env &amp; region", MrkdwnParser::parse("prod")});
+    msg.attachments.push_back(att);
+
+    const QString out = MsgRender::notificationPreview(msg, nullptr);
+    CHECK(out == QString::fromUtf8("Build & deploy · failed after 3m · Env & region: prod"));
+}
+
+TEST_CASE("notificationPreview falls back to the attachment fallback text", "[render][notif]") {
+    Message    msg;
+    Attachment att;
+    att.fallback = "New build <https://ci.example/1|#1> ready";
+    msg.attachments.push_back(att);
+    // The fallback is mrkdwn: the link token resolves to its label, not raw markup.
+    CHECK(MsgRender::notificationPreview(msg, nullptr) == "New build #1 ready");
+}
+
+TEST_CASE(
+    "notificationPreview skips a placeholder fallback of a table attachment", "[render][notif]"
+) {
+    // Table messages carry "[no preview available]" as their fallback; the message
+    // list drops it, and the toast must not surface it either.
+    Message    msg;
+    Attachment att;
+    att.fallback = "[no preview available]";
+    Block blk;
+    blk.typeStr = "table";
+    blk.tableRows.push_back({TextWithEntities{"Header", {}}});
+    att.blocks.push_back(blk);
+    msg.attachments.push_back(att);
+    CHECK(MsgRender::notificationPreview(msg, nullptr).isEmpty());
+}
