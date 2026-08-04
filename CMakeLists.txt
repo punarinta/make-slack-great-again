@@ -301,14 +301,47 @@ if(APPLE)
     # App icon. macOS 26 (Tahoe) wants an Icon Composer ".icon", which actool
     # compiles into an asset catalog (Assets.car) carrying the Liquid Glass
     # rendition; the same run also emits a legacy AppIcon.icns for older macOS,
-    # so one source covers every version. actool ships only with full Xcode —
-    # when it's missing (Command Line Tools only) fall back to copying the static
-    # gfx/mac/icon.icns. Detection prefers xcrun; a hard Xcode path is the backup.
+    # so one source covers every version. That input needs Xcode 26's actool: a
+    # Command Line Tools install ships none at all, and an older Xcode's actool
+    # rejects ".icon". Anything else falls back to copying the static
+    # gfx/mac/icon.icns. Failing soft is the point — the icon step runs
+    # POST_BUILD, so a wrong guess here would break every build, not the icon.
+    #
+    # Locate first (xcrun follows the selected developer dir; a full Xcode that
+    # xcode-select doesn't point at is the backup), then prove the binary can
+    # actually compile our .icon.
     execute_process(COMMAND xcrun --find actool
-        OUTPUT_VARIABLE MSGA_ACTOOL OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-    if(NOT MSGA_ACTOOL)
-        find_program(MSGA_ACTOOL actool
+        OUTPUT_VARIABLE MSGA_ACTOOL_PATH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT EXISTS "${MSGA_ACTOOL_PATH}")
+        # Own result variable: find_program is a silent no-op while a normal
+        # variable of its result name exists — and execute_process above defines
+        # MSGA_ACTOOL_PATH even when xcrun fails, as the empty string.
+        find_program(MSGA_ACTOOL_PROGRAM actool
             HINTS /Applications/Xcode.app/Contents/Developer/usr/bin)
+        set(MSGA_ACTOOL_PATH "${MSGA_ACTOOL_PROGRAM}")
+    endif()
+
+    set(MSGA_ACTOOL "")
+    if(EXISTS "${MSGA_ACTOOL_PATH}")
+        # Capability probe rather than a version comparison: run the exact
+        # command the build will run, into a throwaway directory. An actool that
+        # doesn't understand ".icon" exits non-zero here instead of at build time.
+        execute_process(
+            COMMAND "${MSGA_ACTOOL_PATH}" "${CMAKE_SOURCE_DIR}/gfx/mac/AppIcon.icon"
+                    --app-icon "${MACOSX_BUNDLE_ICON_FILE}"
+                    --compile "${CMAKE_BINARY_DIR}/actool_probe"
+                    --platform macosx
+                    --minimum-deployment-target "${MSGA_MACOS_MIN_VERSION}"
+                    --output-partial-info-plist "${CMAKE_BINARY_DIR}/actool_probe.plist"
+            RESULT_VARIABLE MSGA_ACTOOL_PROBE OUTPUT_QUIET ERROR_QUIET)
+        file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/actool_probe"
+                            "${CMAKE_BINARY_DIR}/actool_probe.plist")
+        if(MSGA_ACTOOL_PROBE EQUAL 0)
+            set(MSGA_ACTOOL "${MSGA_ACTOOL_PATH}")
+        else()
+            message(STATUS "msga: ${MSGA_ACTOOL_PATH} cannot compile .icon "
+                           "(needs Xcode 26+) — rc=${MSGA_ACTOOL_PROBE}")
+        endif()
     endif()
     if(MSGA_ACTOOL)
         message(STATUS "msga: app icon via Icon Composer (.icon) → ${MSGA_ACTOOL}")
@@ -320,7 +353,7 @@ if(APPLE)
                     --minimum-deployment-target "${MSGA_MACOS_MIN_VERSION}"
                     --output-partial-info-plist "${CMAKE_BINARY_DIR}/actool_partial.plist")
     else()
-        message(STATUS "msga: actool not found — app icon via static icon.icns")
+        message(STATUS "msga: no Icon Composer-capable actool — app icon via static icon.icns")
         set(MSGA_ICON_STEP
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "${CMAKE_SOURCE_DIR}/gfx/mac/icon.icns"
