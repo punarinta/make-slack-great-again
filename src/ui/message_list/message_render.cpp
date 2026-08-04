@@ -295,7 +295,7 @@ QString notificationPreview(const Message &msg, const Session *session) {
     // blank. When `text` is empty, flatten the same block/attachment content the
     // message list renders into a short plain-text summary.
     const QString primary = notificationText(msg.text, session);
-    if (!primary.isEmpty())
+    if (!primary.trimmed().isEmpty())
         return primary;
 
     QStringList pieces;
@@ -313,6 +313,7 @@ QString notificationPreview(const Message &msg, const Session *session) {
 
     addBlocks(msg.blocks);
     for (const auto &att : msg.attachments) {
+        const int before = pieces.size();
         if (!att.pretext.isEmpty())
             add(MrkdwnParser::parse(att.pretext));
         if (!att.title.isEmpty())
@@ -322,13 +323,23 @@ QString notificationPreview(const Message &msg, const Session *session) {
             const QString val = notificationText(f.value, session).simplified();
             if (val.isEmpty())
                 continue;
-            pieces << (f.title.isEmpty() ? val : f.title.simplified() + ": " + val);
+            // Field titles are plain strings straight off the API, like the
+            // attachment title — decode their HTML escapes as the renderer does.
+            const QString key = MrkdwnParser::decodeEntities(f.title).simplified();
+            pieces << (key.isEmpty() ? val : key + ": " + val);
         }
         addBlocks(att.blocks);
         // Slack authors `fallback` precisely as the notification-safe summary, so
-        // it's the right last resort when an attachment had no richer text above.
-        if (pieces.isEmpty() && !att.fallback.isEmpty())
-            pieces << att.fallback.simplified();
+        // it's the right last resort when this attachment had no richer text above.
+        // It's mrkdwn like any other attachment text, so run it through the parser
+        // rather than showing raw "<url|label>" tokens in the toast. Skipped when
+        // the attachment renders something text can't carry (image, table block,
+        // buttons) — there Slack's fallback is a placeholder like "[no preview
+        // available]", which the message list drops for the same reason.
+        const bool rendersNonText =
+            !att.blocks.empty() || !att.imageUrl.isEmpty() || !att.buttons.empty();
+        if (pieces.size() == before && !rendersNonText && !att.fallback.isEmpty())
+            add(MrkdwnParser::parse(att.fallback));
     }
 
     return pieces.join(QStringLiteral(" · "));
