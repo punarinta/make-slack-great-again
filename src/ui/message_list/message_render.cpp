@@ -287,6 +287,64 @@ QString notificationText(const TextWithEntities &twe, const Session *session) {
     return out;
 }
 
+QString notificationPreview(const Message &msg, const Session *session) {
+    // The OS toast wants one line of readable text. A human's message carries it
+    // in `text`, so use that whenever it's there. Bot integrations (CodePipeline,
+    // Amazon Q, GitHub, …) instead leave `text` empty and put everything in Block
+    // Kit blocks or legacy attachments — which is why those toasts came through
+    // blank. When `text` is empty, flatten the same block/attachment content the
+    // message list renders into a short plain-text summary.
+    const QString primary = notificationText(msg.text, session);
+    if (!primary.trimmed().isEmpty())
+        return primary;
+
+    QStringList pieces;
+    auto        add = [&](const TextWithEntities &twe) {
+        const QString t = notificationText(twe, session).simplified();
+        if (!t.isEmpty())
+            pieces << t;
+    };
+    // Block Kit: header/section/context/rich_text all carry displayable text.
+    // "image"/"divider"/"actions" blocks have none, so add() just skips them.
+    auto addBlocks = [&](const std::vector<Block> &blocks) {
+        for (const auto &b : blocks)
+            add(b.text);
+    };
+
+    addBlocks(msg.blocks);
+    for (const auto &att : msg.attachments) {
+        const int before = pieces.size();
+        if (!att.pretext.isEmpty())
+            add(MrkdwnParser::parse(att.pretext));
+        if (!att.title.isEmpty())
+            add(MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.title)));
+        add(att.text);
+        for (const auto &f : att.fields) {
+            const QString val = notificationText(f.value, session).simplified();
+            if (val.isEmpty())
+                continue;
+            // Field titles are plain strings straight off the API, like the
+            // attachment title — decode their HTML escapes as the renderer does.
+            const QString key = MrkdwnParser::decodeEntities(f.title).simplified();
+            pieces << (key.isEmpty() ? val : key + ": " + val);
+        }
+        addBlocks(att.blocks);
+        // Slack authors `fallback` precisely as the notification-safe summary, so
+        // it's the right last resort when this attachment had no richer text above.
+        // It's mrkdwn like any other attachment text, so run it through the parser
+        // rather than showing raw "<url|label>" tokens in the toast. Skipped when
+        // the attachment renders something text can't carry (image, table block,
+        // buttons) — there Slack's fallback is a placeholder like "[no preview
+        // available]", which the message list drops for the same reason.
+        const bool rendersNonText =
+            !att.blocks.empty() || !att.imageUrl.isEmpty() || !att.buttons.empty();
+        if (pieces.size() == before && !rendersNonText && !att.fallback.isEmpty())
+            add(MrkdwnParser::parse(att.fallback));
+    }
+
+    return pieces.join(QStringLiteral(" · "));
+}
+
 static QString escapeAndBr(const QString &s) {
     return s.toHtmlEscaped().replace("\n", "<br>");
 }
