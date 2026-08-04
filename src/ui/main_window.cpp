@@ -2028,7 +2028,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
                : tr("Someone");
 
     // Resolve mentions/channels/emoji codes to friendly names for the OS toast.
-    const QString preview = MsgRender::notificationText(ev.msg.text, session);
+    const QString preview = MsgRender::notificationPreview(ev.msg, session);
 
     QString title, body;
     if (isDm) {

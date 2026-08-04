@@ -287,6 +287,53 @@ QString notificationText(const TextWithEntities &twe, const Session *session) {
     return out;
 }
 
+QString notificationPreview(const Message &msg, const Session *session) {
+    // The OS toast wants one line of readable text. A human's message carries it
+    // in `text`, so use that whenever it's there. Bot integrations (CodePipeline,
+    // Amazon Q, GitHub, …) instead leave `text` empty and put everything in Block
+    // Kit blocks or legacy attachments — which is why those toasts came through
+    // blank. When `text` is empty, flatten the same block/attachment content the
+    // message list renders into a short plain-text summary.
+    const QString primary = notificationText(msg.text, session);
+    if (!primary.isEmpty())
+        return primary;
+
+    QStringList pieces;
+    auto        add = [&](const TextWithEntities &twe) {
+        const QString t = notificationText(twe, session).simplified();
+        if (!t.isEmpty())
+            pieces << t;
+    };
+    // Block Kit: header/section/context/rich_text all carry displayable text.
+    // "image"/"divider"/"actions" blocks have none, so add() just skips them.
+    auto addBlocks = [&](const std::vector<Block> &blocks) {
+        for (const auto &b : blocks)
+            add(b.text);
+    };
+
+    addBlocks(msg.blocks);
+    for (const auto &att : msg.attachments) {
+        if (!att.pretext.isEmpty())
+            add(MrkdwnParser::parse(att.pretext));
+        if (!att.title.isEmpty())
+            add(MrkdwnParser::resolveTokens(MrkdwnParser::decodeEntities(att.title)));
+        add(att.text);
+        for (const auto &f : att.fields) {
+            const QString val = notificationText(f.value, session).simplified();
+            if (val.isEmpty())
+                continue;
+            pieces << (f.title.isEmpty() ? val : f.title.simplified() + ": " + val);
+        }
+        addBlocks(att.blocks);
+        // Slack authors `fallback` precisely as the notification-safe summary, so
+        // it's the right last resort when an attachment had no richer text above.
+        if (pieces.isEmpty() && !att.fallback.isEmpty())
+            pieces << att.fallback.simplified();
+    }
+
+    return pieces.join(QStringLiteral(" · "));
+}
+
 static QString escapeAndBr(const QString &s) {
     return s.toHtmlEscaped().replace("\n", "<br>");
 }
