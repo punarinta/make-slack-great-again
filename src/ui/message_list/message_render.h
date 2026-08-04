@@ -76,6 +76,12 @@ QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
 // stay as ":name:"). No HTML, no markup — just readable text.
 QString notificationText(const TextWithEntities &twe, const Session *session);
 
+// Notification body for a whole message: the message text when it has any, and
+// otherwise a flattened summary of its Block Kit blocks / legacy attachments so
+// bot posts (CodePipeline, Amazon Q, GitHub, …) that leave `text` empty still
+// show their content in the OS toast instead of a bare "Bot:".
+QString notificationPreview(const Message &msg, const Session *session);
+
 // Geometry (doc coordinates, margins excluded) of every ``` code-block table in a
 // laid-out message document.
 QVector<QRectF> codeBlockRects(const QTextDocument *doc);
