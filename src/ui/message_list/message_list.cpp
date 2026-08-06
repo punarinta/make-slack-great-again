@@ -3474,10 +3474,23 @@ void MessageListWidget::handleEvent(const Event &e) {
         // The safety poll re-fetched this conversation's head page. Merge it to
         // fill any middle gap the socket's round-robin steal left buried under a
         // later message — the per-message realtime path can't recover that.
-        mergeHeadPage(ev->conv, ev->messages);
+        // In thread mode the page is the wrong shape (channel history holds no
+        // replies), so it drives a conversations.replies re-fetch instead.
+        if (_isThreadMode)
+            refreshOpenThread(ev->conv, ev->messages);
+        else
+            mergeHeadPage(ev->conv, ev->messages);
     } else if (std::get_if<EvRealtimeReconnected>(&e)) {
         backfillAfterReconnect();
     }
+}
+
+// Is a conversations.replies page the whole thread? It returns the OLDEST slice
+// first (root, then replies forward), so a cursored page is missing the NEWEST
+// replies — merging it as authoritative would "reconcile" those into deletion.
+// Uncursored, it holds every reply, and deletions can be reconciled safely.
+static bool threadPageIsComplete(const MessagePage &page) {
+    return !page.olderCursor.has_value();
 }
 
 void MessageListWidget::backfillAfterReconnect() {
@@ -3491,32 +3504,85 @@ void MessageListWidget::backfillAfterReconnect() {
         return;
     _lastReconnectBackfillMs = now;
     const auto conv          = _currentConv;
-    auto       producer      = _isThreadMode
-                                   ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
-                                   : _session->backend()->loadHistory(conv, std::nullopt);
-    std::move(producer) | rpl::on_next(
-                              [this, conv](MessagePage page) {
-                                  // (mergeNetworkMessages dedups by ts, so racing the initial open
-                                  // load can't produce twins.) mergeHeadPage guards _currentConv.
-                                  mergeHeadPage(conv, page.messages);
-                              },
-                              _eventLifetime
-                          );
+    const bool threadMode    = _isThreadMode;
+    auto producer = threadMode ? _session->backend()->loadThread(conv, _threadRootTs, std::nullopt)
+                               : _session->backend()->loadHistory(conv, std::nullopt);
+    std::move(producer) |
+        rpl::on_next(
+            [this, conv, threadMode](MessagePage page) {
+                // (mergeNetworkMessages dedups by ts, so racing the initial open
+                // load can't produce twins.) mergeHeadPage guards _currentConv.
+                // A no-cursor loadHistory page IS the channel head; a thread page
+                // is authoritative only when it came back whole.
+                mergeHeadPage(conv, page.messages, !threadMode || threadPageIsComplete(page));
+            },
+            _eventLifetime
+        );
+}
+
+Ts MessageListWidget::newestConfirmedTs() const {
+    // _items is kept chronological, so scan back to the first confirmed row.
+    for (auto it = _items.rbegin(); it != _items.rend(); ++it)
+        if (!it->msg.pending)
+            return it->msg.ts;
+    return {};
+}
+
+void MessageListWidget::refreshOpenThread(
+    const ConversationId &conv, const std::vector<Message> &headPage
+) {
+    if (!_session || _currentConv != conv || _threadRootTs.isEmpty())
+        return;
+    // The head page holds no replies, but it does carry the thread ROOT's
+    // reply bookkeeping — and latest_reply is exactly the "has this thread
+    // moved?" flag. Use it to skip the fetch on the overwhelmingly common
+    // no-change tick, so an open thread panel costs no extra API call while
+    // it's quiet. The root is only in the head page while it's recent; an
+    // older root with an active thread simply isn't there, and then nothing
+    // rules out new replies, so we fetch.
+    for (const auto &m : headPage) {
+        if (m.ts != _threadRootTs)
+            continue;
+        // Identity, not ordering: `ts` is an id, not a clock (see Message::date),
+        // and equality is also the stronger test — it catches the newest reply
+        // being DELETED elsewhere, which moves latest_reply backwards. A thread
+        // with no replies reports no latest_reply, and then the root itself is
+        // the newest thing in it, matching what we hold.
+        // Compare against confirmed rows only: an in-flight optimistic ghost
+        // carries a fake now-ish ts that would mask a real reply behind it.
+        if (m.latestReply.value_or(m.ts) == newestConfirmedTs())
+            return;
+        break;
+    }
+    const auto root = _threadRootTs;
+    _session->backend()->loadThread(conv, root, std::nullopt) |
+        rpl::on_next(
+            [this, conv = conv, root](MessagePage page) {
+                // Thread could have been closed or swapped mid-flight.
+                if (!_isThreadMode || _threadRootTs != root)
+                    return;
+                mergeHeadPage(conv, page.messages, threadPageIsComplete(page));
+            },
+            _eventLifetime
+        );
 }
 
 void MessageListWidget::mergeHeadPage(
-    const ConversationId &conv, const std::vector<Message> &messages
+    const ConversationId &conv, const std::vector<Message> &messages, bool authoritative
 ) {
-    // Conversation changed out from under an in-flight fetch, or the page is for a
-    // thread we're not in (the poll always fetches channel history, never thread
-    // replies — merging it into a thread view would be wrong).
-    if (_currentConv != conv || _isThreadMode)
+    // Conversation changed out from under an in-flight fetch. (Channel history and
+    // thread replies must never be merged into each other's view; that's the
+    // caller's job — see the EvHeadRefresh branch in handleEvent.)
+    if (_currentConv != conv)
         return;
     const bool wasAtBottom = verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
-    // No-cursor (head) fetch — authoritative for the channel head, so it also
+    // A no-cursor (head) fetch is authoritative for the head, so it also
     // reconciles deletions missed during the socket gap.
-    mergeNetworkMessages(messages, /*fromHeadPage=*/true);
-    if (_session) {
+    mergeNetworkMessages(messages, /*fromHeadPage=*/authoritative);
+    // Channel head only: cacheMessages REPLACES the conversation's cached page, so
+    // writing a thread's replies under the same key would clobber the channel's
+    // history with them — the channel would reopen showing nothing but replies.
+    if (_session && !_isThreadMode) {
         std::vector<Message> msgs(messages.begin(), messages.end());
         _session->cacheMessages(conv, msgs);
     }
