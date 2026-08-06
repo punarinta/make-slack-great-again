@@ -298,6 +298,68 @@ if(APPLE)
     configure_file("${CMAKE_SOURCE_DIR}/resources/Info.plist.in" "${MSGA_INFO_PLIST}")
     set_target_properties(msga PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${MSGA_INFO_PLIST}")
 
+    # App icon. macOS 26 (Tahoe) wants an Icon Composer ".icon", which actool
+    # compiles into an asset catalog (Assets.car) carrying the Liquid Glass
+    # rendition; the same run also emits a legacy AppIcon.icns for older macOS,
+    # so one source covers every version. That input needs Xcode 26's actool: a
+    # Command Line Tools install ships none at all, and an older Xcode's actool
+    # rejects ".icon". Anything else falls back to copying the static
+    # gfx/mac/icon.icns. Failing soft is the point — the icon step runs
+    # POST_BUILD, so a wrong guess here would break every build, not the icon.
+    #
+    # Locate first (xcrun follows the selected developer dir; a full Xcode that
+    # xcode-select doesn't point at is the backup), then prove the binary can
+    # actually compile our .icon.
+    execute_process(COMMAND xcrun --find actool
+        OUTPUT_VARIABLE MSGA_ACTOOL_PATH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT EXISTS "${MSGA_ACTOOL_PATH}")
+        # Own result variable: find_program is a silent no-op while a normal
+        # variable of its result name exists — and execute_process above defines
+        # MSGA_ACTOOL_PATH even when xcrun fails, as the empty string.
+        find_program(MSGA_ACTOOL_PROGRAM actool
+            HINTS /Applications/Xcode.app/Contents/Developer/usr/bin)
+        set(MSGA_ACTOOL_PATH "${MSGA_ACTOOL_PROGRAM}")
+    endif()
+
+    set(MSGA_ACTOOL "")
+    if(EXISTS "${MSGA_ACTOOL_PATH}")
+        # Capability probe rather than a version comparison: run the exact
+        # command the build will run, into a throwaway directory. An actool that
+        # doesn't understand ".icon" exits non-zero here instead of at build time.
+        execute_process(
+            COMMAND "${MSGA_ACTOOL_PATH}" "${CMAKE_SOURCE_DIR}/gfx/mac/AppIcon.icon"
+                    --app-icon "${MACOSX_BUNDLE_ICON_FILE}"
+                    --compile "${CMAKE_BINARY_DIR}/actool_probe"
+                    --platform macosx
+                    --minimum-deployment-target "${MSGA_MACOS_MIN_VERSION}"
+                    --output-partial-info-plist "${CMAKE_BINARY_DIR}/actool_probe.plist"
+            RESULT_VARIABLE MSGA_ACTOOL_PROBE OUTPUT_QUIET ERROR_QUIET)
+        file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/actool_probe"
+                            "${CMAKE_BINARY_DIR}/actool_probe.plist")
+        if(MSGA_ACTOOL_PROBE EQUAL 0)
+            set(MSGA_ACTOOL "${MSGA_ACTOOL_PATH}")
+        else()
+            message(STATUS "msga: ${MSGA_ACTOOL_PATH} cannot compile .icon "
+                           "(needs Xcode 26+) — rc=${MSGA_ACTOOL_PROBE}")
+        endif()
+    endif()
+    if(MSGA_ACTOOL)
+        message(STATUS "msga: app icon via Icon Composer (.icon) → ${MSGA_ACTOOL}")
+        set(MSGA_ICON_STEP
+            COMMAND "${MSGA_ACTOOL}" "${CMAKE_SOURCE_DIR}/gfx/mac/AppIcon.icon"
+                    --app-icon "${MACOSX_BUNDLE_ICON_FILE}"
+                    --compile "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources"
+                    --platform macosx
+                    --minimum-deployment-target "${MSGA_MACOS_MIN_VERSION}"
+                    --output-partial-info-plist "${CMAKE_BINARY_DIR}/actool_partial.plist")
+    else()
+        message(STATUS "msga: no Icon Composer-capable actool — app icon via static icon.icns")
+        set(MSGA_ICON_STEP
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${CMAKE_SOURCE_DIR}/gfx/mac/icon.icns"
+                    "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources/${MACOSX_BUNDLE_ICON_FILE}.icns")
+    endif()
+
     # Guarantee the bundle has its Info.plist + app icon and a stable signature
     # after every build — including a bare `cmake --build` that never re-runs
     # configure. (The icon uses the same every-build install as the plist: a
@@ -308,9 +370,7 @@ if(APPLE)
                 "${MSGA_INFO_PLIST}" "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Info.plist"
         COMMAND "${CMAKE_COMMAND}" -E make_directory
                 "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${CMAKE_SOURCE_DIR}/gfx/mac/icon.icns"
-                "$<TARGET_BUNDLE_CONTENT_DIR:msga>/Resources/${MACOSX_BUNDLE_ICON_FILE}.icns"
+        ${MSGA_ICON_STEP}
         COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:msga>"
         VERBATIM
         COMMENT "Installing Info.plist, app icon and ad-hoc signing msga.app")
