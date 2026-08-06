@@ -705,6 +705,82 @@ TEST_CASE("toHtml resolves a bare channel link via the session", "[render][chann
     delete session;
 }
 
+// ── Message-link chips ────────────────────────────────────────────────────────
+
+static const QString kPermalink = QStringLiteral(
+    "https://cityteam.slack.com/archives/C1/"
+    "p1786008939071009"
+);
+
+TEST_CASE("toHtml turns a bare message permalink into a chip", "[render][msglink]") {
+    auto         *session = renderSession();
+    const QString html    = MsgRender::toHtml(MrkdwnParser::parse("<" + kPermalink + ">"), session);
+    // Clickable as an internal target, not as the raw URL: this is what makes the
+    // click jump to the message instead of leaving for the browser.
+    const auto    ref =
+        MsgRender::messageRefFromAnchor(html.section("href='", 1, 1).section('\'', 0, 0));
+    CHECK(ref.isValid());
+    CHECK(ref.conv == "C1");
+    CHECK(ref.ts == "1786008939.071009");
+    // Reads as the conversation, not as a URL.
+    CHECK(html.contains("#general"));
+    CHECK(!html.contains("archives"));
+    CHECK(html.contains(MsgRender::kMessageLinkIconRes));
+    delete session;
+}
+
+TEST_CASE("a message-link chip keeps the thread root of a reply", "[render][msglink]") {
+    auto         *session = renderSession();
+    const QString url     = kPermalink + "?thread_ts=1786008900.000100&amp;cid=C1";
+    const QString html    = MsgRender::toHtml(MrkdwnParser::parse("<" + url + ">"), session);
+    const auto    ref =
+        MsgRender::messageRefFromAnchor(html.section("href='", 1, 1).section('\'', 0, 0));
+    REQUIRE(ref.isValid());
+    CHECK(ref.threadTs == "1786008900.000100");
+    delete session;
+}
+
+TEST_CASE("a permalink the author gave link text stays a plain link", "[render][msglink]") {
+    // "<url|see this>" — the author's words are the message; replacing them with
+    // a chip would delete what they wrote. Same rule the official client follows.
+    auto         *session = renderSession();
+    const QString html =
+        MsgRender::toHtml(MrkdwnParser::parse("<" + kPermalink + "|see this>"), session);
+    CHECK(html.contains("see this"));
+    CHECK(html.contains("href='" + kPermalink));
+    CHECK_FALSE(html.contains(MsgRender::kMessageAnchorPrefix));
+    delete session;
+}
+
+TEST_CASE("an ordinary Slack URL is not a message link", "[render][msglink]") {
+    auto         *session = renderSession();
+    const QString html =
+        MsgRender::toHtml(MrkdwnParser::parse("<https://cityteam.slack.com/home>"), session);
+    CHECK_FALSE(html.contains(MsgRender::kMessageAnchorPrefix));
+    delete session;
+}
+
+TEST_CASE("a link into another workspace still reads as a message", "[render][msglink]") {
+    // C9 isn't a conversation of this workspace, so there is no name to show —
+    // the chip must still say what it is (clicking it opens the permalink).
+    auto         *session = renderSession();
+    const QString url     = "https://other.slack.com/archives/C9/p1786008939071009";
+    const QString html    = MsgRender::toHtml(MrkdwnParser::parse("<" + url + ">"), session);
+    CHECK(html.contains(MsgRender::kMessageAnchorPrefix));
+    CHECK_FALSE(html.contains("C9<"));
+    delete session;
+}
+
+TEST_CASE("hasMessageLink finds a permalink inside an attachment", "[render][msglink]") {
+    Message msg;
+    msg.text = MrkdwnParser::parse("no link here");
+    CHECK_FALSE(MsgRender::hasMessageLink(msg));
+    Attachment att;
+    att.text = MrkdwnParser::parse("<" + kPermalink + ">");
+    msg.attachments.push_back(att);
+    CHECK(MsgRender::hasMessageLink(msg));
+}
+
 // ── notificationText (OS toast preview) ───────────────────────────────────────
 
 TEST_CASE("notificationText converts builtin emoji codes to glyphs", "[render][notif]") {

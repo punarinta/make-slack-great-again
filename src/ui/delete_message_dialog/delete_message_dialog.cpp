@@ -55,6 +55,9 @@ DeleteMessageDialog::DeleteMessageDialog(const Message &msg, Session *session, Q
 
     auto *preview = new QTextBrowser(_msgCard);
     preview->setMaximumHeight(160);
+    // Before setHtml: a resource added afterwards doesn't reach an already
+    // laid-out <img>, and a message-link chip carries one.
+    MsgRender::registerMessageLinkIcon(preview->document(), devicePixelRatioF());
 
     const QString html = MsgRender::buildMsgHtml(msg, session);
     if (html.trimmed().isEmpty())

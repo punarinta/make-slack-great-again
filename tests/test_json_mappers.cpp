@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include "backend/slack/json_mappers.h"
+#include "util/slack_links.h"
 
 using namespace slack;
 
@@ -957,6 +958,61 @@ TEST_CASE("toBlock rich_text text run resolves embedded Slack tokens", "[mappers
     REQUIRE(b.text.entities.size() == 1);
     CHECK(b.text.entities[0].type == EntityType::Link);
     CHECK(b.text.entities[0].data == "https://outlook.office365.com/owa?x=1");
+}
+
+TEST_CASE("toBlock rich_text message_mention becomes a message link", "[mappers][block]") {
+    // Pasting a message permalink into the composer sends a `message_mention`
+    // element, NOT a `link` — it used to fall into the unknown-element branch and
+    // render as the bare URL. The element carries the author, which the URL
+    // alone can't give, so the chip can read "alice in #general".
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "rich_text",
+        "elements": [{
+            "type": "rich_text_quote",
+            "elements": [{
+                "type": "message_mention",
+                "message_ts": "1786008939.071009",
+                "channel_id": "C6HQE8G0Z",
+                "author_id": "U6HQGJ6GZ",
+                "thread_ts": "1786008939.071009",
+                "text": "https://cityteam.slack.com/archives/C6HQE8G0Z/p1786008939071009",
+                "url": "https://cityteam.slack.com/archives/C6HQE8G0Z/p1786008939071009"
+            }]
+        }]
+    })"));
+    REQUIRE(b.text.entities.size() == 2); // the link, inside the quote
+    const auto *link = &b.text.entities[0];
+    if (link->type != EntityType::MessageLink)
+        link = &b.text.entities[1];
+    REQUIRE(link->type == EntityType::MessageLink);
+    const auto ref = SlackLinks::refFromToken(link->data);
+    CHECK(ref.conv == "C6HQE8G0Z");
+    CHECK(ref.ts == "1786008939.071009");
+    CHECK(ref.author == "U6HQGJ6GZ");
+    CHECK(ref.host == "cityteam.slack.com"); // only the URL has it
+    // thread_ts equal to the message's own ts marks a thread ROOT, not a reply.
+    CHECK(ref.threadTs.isEmpty());
+}
+
+TEST_CASE("toBlock rich_text message_mention keeps a real thread root", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "rich_text",
+        "elements": [{
+            "type": "rich_text_section",
+            "elements": [{
+                "type": "message_mention",
+                "message_ts": "1786008999.000200",
+                "channel_id": "C1",
+                "author_id": "U7",
+                "thread_ts": "1786008939.071009",
+                "url": "https://cityteam.slack.com/archives/C1/p1786008999000200"
+            }]
+        }]
+    })"));
+    REQUIRE(b.text.entities.size() == 1);
+    const auto ref = SlackLinks::refFromToken(b.text.entities[0].data);
+    CHECK(ref.ts == "1786008999.000200");
+    CHECK(ref.threadTs == "1786008939.071009");
 }
 
 TEST_CASE("toBlock rich_text section bold inline", "[mappers][block]") {

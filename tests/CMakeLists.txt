@@ -120,6 +120,11 @@ add_msga_test(test_mrkdwn
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
+# Slack deep-link parsing (header-only; Qt6::Core only).
+add_msga_test(test_slack_links
+    test_slack_links.cpp
+)
+
 add_msga_test(test_json_mappers
     test_json_mappers.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp

@@ -164,6 +164,9 @@ private:
     // the splitter if collapsed. Shared by the message-list thread click and the
     // thread-reply notification click.
     void openThreadPanel(const ConversationId &conv, const Ts &rootTs);
+    // Follow a message-link chip: open the conversation (and, for a reply, the
+    // thread it lives in) and move the focus to that message.
+    void openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot);
     void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 

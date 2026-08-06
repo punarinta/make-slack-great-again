@@ -484,6 +484,10 @@ enum class EntityType {
     HereCommand,
     ChannelCommand,
     Emoji, // data = emoji name (e.g. "rocket")
+    // A link to another message, rendered as a chip that jumps to it.
+    // data = SlackLinks::refToToken(ref) — see util/slack_links.h.
+    // NOTE: cached entities store this enum as an int, so new values go LAST.
+    MessageLink,
 };
 
 struct TextEntity {

@@ -793,9 +793,7 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         _searchWidget->closeSearch(); // animated
     });
     connect(_searchWidget, &SearchWidget::resultSelected, this, [this](ConversationId conv, Ts ts) {
-        if (conv == _currentConvId) {
-            _messageList->scrollToTs(ts);
-        } else {
+        if (conv != _currentConvId) {
             // Same coordinated path as a notification open: selectConversation()
             // moves the list highlight and drives openConversation() via the
             // signal, so the header and the selected row don't stay on the old
@@ -807,6 +805,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
                     openConversation(row);
             }
         }
+        // Issued after the open so it outranks the restore-reading-position
+        // intent, and survives the switch: the jump re-targets once the freshly
+        // opened conversation's history page lands.
+        _messageList->jumpToTs(ts);
     });
 
     connect(
@@ -890,6 +892,12 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     };
     connect(_messageList, &MessageListWidget::openChannelRequested, this, openChannelFor);
     connect(_threadPanel, &ThreadPanel::openChannelRequested, this, openChannelFor);
+
+    // Clicking a link to another message jumps to it.
+    connect(
+        _messageList, &MessageListWidget::messageLinkRequested, this, &MainWindow::openMessageTarget
+    );
+    connect(_threadPanel, &ThreadPanel::messageLinkRequested, this, &MainWindow::openMessageTarget);
 
     // Summarize's no-provider notice deep-links to Settings → AI assistance.
     const auto openAiSettings = [this] { _settingsDialog->openAt(SettingsDialog::Page::Ai); };
@@ -2579,6 +2587,44 @@ void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
         const int total = _msgSplitter->width();
         _msgSplitter->setSizes({total - 360, 360});
     }
+}
+
+void MainWindow::openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot) {
+    if (!_convList || conv.value.isEmpty() || ts.isEmpty())
+        return;
+    // Runs once the conversation is the selected row: make the view follow, then
+    // move the focus to the message. A thread reply is never in the channel
+    // timeline (conversations.history omits replies), so it can only be focused
+    // inside its thread.
+    const auto focus = [this, conv, ts, threadRoot] {
+        if (_currentConvId != conv) {
+            const int row = _convList->rowForId(conv);
+            if (row >= 0)
+                openConversation(row);
+        }
+        if (threadRoot.isEmpty()) {
+            _messageList->jumpToTs(ts);
+        } else {
+            openThreadPanel(conv, threadRoot);
+            _threadPanel->jumpToTs(ts);
+        }
+    };
+    if (_convList->selectConversation(conv)) {
+        focus();
+        return;
+    }
+    // Not in the sidebar — a public channel we never joined. Join it first, the
+    // same flow as following a #channel mention.
+    if (!_session)
+        return;
+    _session->joinChannel(
+        conv,
+        [this, focus](ConversationId joined) {
+            _convList->selectConversation(joined);
+            focus();
+        },
+        [this](const QString &err) { showNetworkError(err); }
+    );
 }
 
 void MainWindow::openNotifTarget(

@@ -22,6 +22,7 @@
 #include "util/background_tasks.h"
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
+#include "util/slack_links.h"
 
 #include <QBuffer>
 #include <QImage>
@@ -240,6 +241,7 @@ void MessageListWidget::clear() {
     _pendingLastReadTs.clear();
     _pendingAnchorTs.clear();
     _pendingAnchorDelta = 0;
+    _pendingJumpTs.clear();
     verticalScrollBar()->setRange(0, 0);
     viewport()->update();
 }
@@ -402,14 +404,17 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                     // cached copy.
                     const bool wasAtBottom =
                         verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 4;
+                    const bool retarget = _scrollToBottomPending || !_pendingJumpTs.isEmpty();
                     mergeNetworkMessages(page.messages, /*fromHeadPage=*/true);
-                    if (_scrollToBottomPending) {
+                    if (retarget) {
                         applyPendingScroll();
                         // The network page is authoritative — if the saved or
-                        // unread anchor wasn't found in it, stop retargeting.
+                        // unread anchor (or the jump target) wasn't found in it,
+                        // stop retargeting.
                         _scrollToBottomPending = false;
                         _pendingLastReadTs.clear();
                         _pendingAnchorTs.clear();
+                        _pendingJumpTs.clear();
                     } else if (wasAtBottom) {
                         verticalScrollBar()->setValue(verticalScrollBar()->maximum());
                     }
@@ -421,6 +426,9 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                         if (_currentConv != conv)
                             return;
                         applyPendingScroll();
+                        // This page is authoritative: a jump target missing from
+                        // it isn't going to appear (see _pendingJumpTs).
+                        _pendingJumpTs.clear();
                     });
                 }
                 maybeFillViewport();
@@ -459,7 +467,12 @@ void MessageListWidget::saveScrollAnchor() {
 }
 
 void MessageListWidget::applyPendingScroll() {
-    if (textAreaWidth() <= 0 || _items.empty() || !_scrollToBottomPending)
+    if (textAreaWidth() <= 0 || _items.empty())
+        return;
+    // A jump target outranks the open-scroll intent (see _pendingJumpTs).
+    if (applyPendingJump())
+        return;
+    if (!_scrollToBottomPending)
         return;
     if (!_pendingAnchorTs.isEmpty()) {
         // The user deliberately left this chat scrolled-up — restore that
@@ -611,6 +624,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _scrollToBottomPending = true;
     _pendingLastReadTs.clear(); // threads always open at the bottom
     _pendingAnchorTs.clear();
+    _pendingJumpTs.clear();
 
     if (!_session)
         return;
@@ -633,7 +647,10 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
                 _loadingAnim.stop();
                 _olderCursor = page.olderCursor;
                 appendMessages(page.messages);
-                QTimer::singleShot(0, this, [this] { applyPendingScroll(); });
+                QTimer::singleShot(0, this, [this] {
+                    applyPendingScroll();
+                    _pendingJumpTs.clear(); // the replies page is the whole thread
+                });
             },
             _loadLifetime
         );
@@ -860,11 +877,37 @@ int MessageListWidget::findByTs(const Ts &ts) const {
     return -1;
 }
 
-void MessageListWidget::scrollToTs(const Ts &ts) {
-    const int idx = findByTs(ts);
-    if (idx < 0 || idx >= (int)_tops.size())
+void MessageListWidget::flashTs(const Ts &ts) {
+    _newMsgTs.insert(ts);
+    _highlightAnim.stop();
+    _highlightAnim.setStartValue(1.0);
+    _highlightAnim.setEndValue(0.0);
+    _highlightAnim.start();
+}
+
+void MessageListWidget::jumpToTs(const Ts &ts) {
+    if (ts.isEmpty())
         return;
+    _pendingJumpTs = ts;
+    applyPendingJump();
+}
+
+bool MessageListWidget::applyPendingJump() {
+    if (_pendingJumpTs.isEmpty())
+        return false;
+    const int idx = findByTs(_pendingJumpTs);
+    if (idx < 0 || idx >= (int)_tops.size())
+        return false;
+    const Ts ts            = std::exchange(_pendingJumpTs, {});
+    // An explicit jump overrides the intent queued by opening the conversation
+    // (restore reading position / first unread) — otherwise the pending scroll
+    // would run afterwards and drag the view off the message.
+    _scrollToBottomPending = false;
+    _pendingAnchorTs.clear();
+    _pendingLastReadTs.clear();
     smoothScrollTo(qMax(0, _tops[idx] - viewport()->height() / 3));
+    flashTs(ts);
+    return true;
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -970,8 +1013,13 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
     // actually (re)built below, while ensureDocLayout itself runs on every
     // paint of the row — rendering the SVGs up here would redo it each frame.
     auto addImageResources = [&](QTextDocument *doc) {
+        const qreal dpr = devicePixelRatioF();
+        // Icon inside a message-link chip. Scanning the message for one is done
+        // here (not next to anyImageBlock above) because it only matters when a
+        // doc is actually built — the scan walks every entity of every block.
+        if (MsgRender::hasMessageLink(item.msg))
+            MsgRender::registerMessageLinkIcon(doc, dpr);
         if (anyImageBlock) {
-            const qreal dpr = devicePixelRatioF();
             doc->addResource(
                 QTextDocument::ImageResource,
                 QUrl(MsgRender::kGifChevronExpandedRes),
@@ -1890,6 +1938,10 @@ static QString firstLinkInMessage(const Message &msg) {
     for (const auto &ent : msg.text.entities) {
         if (ent.type == EntityType::Link && !ent.data.isEmpty())
             return ent.data;
+        // A link to another message is a link too — its entity holds the ref, so
+        // rebuild the permalink the user actually sees.
+        if (ent.type == EntityType::MessageLink)
+            return SlackLinks::messagePermalink(SlackLinks::refFromToken(ent.data));
     }
     return {};
 }
@@ -2512,6 +2564,16 @@ bool MessageListWidget::openAnchorTarget(const QString &anchor, const QPoint &po
     const QString cid = MsgRender::channelIdFromAnchor(anchor);
     if (!cid.isEmpty()) {
         emit openChannelRequested(ConversationId{cid});
+        return true;
+    }
+    if (const auto ref = MsgRender::messageRefFromAnchor(anchor); ref.isValid()) {
+        // Only this workspace's conversations can be jumped to; a link into
+        // another team is still a link — hand it to the browser, which is what
+        // clicking it did before it became a chip.
+        if (_session && _session->findConversation(ConversationId{ref.conv}))
+            emit messageLinkRequested(ConversationId{ref.conv}, ref.ts, ref.threadTs);
+        else
+            QDesktopServices::openUrl(QUrl(SlackLinks::messagePermalink(ref)));
         return true;
     }
     if (MsgRender::isBotButtonAnchor(anchor)) {
@@ -3147,9 +3209,10 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const bool    isChanAnchor = !MsgRender::channelIdFromAnchor(anchor).isEmpty();
     const bool    isGifAnchor  = !MsgRender::gifKeyFromAnchor(anchor).isEmpty();
     const bool    isBotBtn     = MsgRender::isBotButtonAnchor(anchor);
+    const bool    isMsgLink    = MsgRender::messageRefFromAnchor(anchor).isValid();
 
-    // Update link hover underline (mention chips, "GIF ▾" toggles and bot
-    // buttons don't get underlined — buttons aren't links)
+    // Update link hover underline (mention chips, message-link chips, "GIF ▾"
+    // toggles and bot buttons don't get underlined — buttons aren't links)
     if (anchor != _hoveredLinkUrl) {
         if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 &&
             _hoveredLinkRow < (int)_items.size()) {
@@ -3160,7 +3223,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
         if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isGifAnchor && !isBotBtn &&
-            newHoveredRow >= 0) {
+            !isMsgLink && newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
             for (auto &ad : _items[newHoveredRow].attachDocs)
                 setDocLinkUnderline(ad.textDoc.get(), anchor, true);
@@ -3321,11 +3384,7 @@ void MessageListWidget::handleEvent(const Event &e) {
         }
         appendMessage(ev->msg);
         // Highlight the new row
-        _newMsgTs.insert(ev->msg.ts);
-        _highlightAnim.stop();
-        _highlightAnim.setStartValue(1.0);
-        _highlightAnim.setEndValue(0.0);
-        _highlightAnim.start();
+        flashTs(ev->msg.ts);
         // Scroll to reveal the new message only if we were already at the bottom
         if (wasAtBottom)
             QTimer::singleShot(0, this, [this] {

@@ -23,6 +23,8 @@ public:
 
     void setSession(Session *session);
     void openThread(ConversationId conv, Ts rootTs);
+    // Move the focus to one reply of the open thread (see MessageListWidget::jumpToTs).
+    void jumpToTs(const Ts &ts);
     void close();
     // Repaint the embedded message list, e.g. after the time-format setting changed.
     void refreshTimestamps();
@@ -43,6 +45,8 @@ signals:
     void openChannelRequested(ConversationId conv);
     // Forwarded from the embedded message list (summarize no-provider notice).
     void aiSettingsRequested();
+    // Forwarded from the embedded message list (message-link chip click).
+    void messageLinkRequested(ConversationId conv, Ts ts, Ts threadTs);
 
 private:
     void applyTheme();
