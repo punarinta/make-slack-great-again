@@ -32,6 +32,7 @@
 #include "rpl/variable.h"
 #include "session/session.h"
 #include "ui/composer/composer_widget.h"
+#include "ui/message_list/message_list.h"
 #include "ui/thread_panel/thread_panel.h"
 
 int main(int argc, char **argv) {
@@ -78,8 +79,15 @@ struct StubBackend : Backend {
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
         return rpl::variable<MessagePage>(MessagePage{}).value();
     }
+    // The thread as the server currently has it. Tests mutate this between
+    // fetches to model a reply arriving, and count the fetches to prove the
+    // refresh is conditional rather than unconditional polling.
+    MessagePage _threadPage;
+    int         threadLoads = 0;
+
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
-        return rpl::variable<MessagePage>({}).value();
+        ++threadLoads;
+        return rpl::variable<MessagePage>(_threadPage).value();
     }
 
     void sendMessage(ConversationId c, OutgoingMessage m) override {
@@ -220,6 +228,166 @@ TEST_CASE("a plain text reply still carries the thread root", "[thread]") {
     REQUIRE(f.stub->sendCalls[0].msg.threadRoot.has_value());
     CHECK(*f.stub->sendCalls[0].msg.threadRoot == kRoot);
     CHECK(f.stub->uploadCalls.empty());
+}
+
+// ── Live refresh of an open thread ────────────────────────────────────────────
+//
+// The bug: an open thread panel never showed replies that arrived after it was
+// opened. Thread replies are absent from conversations.history, so the safety
+// poll — the only delivery mechanism on a session-auth workspace, and the
+// recovery path when the shared socket's round-robin steal drops an event —
+// carried nothing that could reach a thread view, and its EvHeadRefresh was
+// discarded outright in thread mode. The channel's reply bar meanwhile counted
+// up from the root's reply_count in that same page, so the UI stated a reply
+// existed and then refused to show it.
+
+static Message replyMsg(const Ts &ts, const QString &text, const QString &author) {
+    return Message{
+        .ts         = ts,
+        .date       = decimalTsToMicros(ts),
+        .threadRoot = kRoot,
+        .author     = UserId{author},
+        .text       = TextWithEntities{text, {}},
+    };
+}
+
+// The head page the safety poll hands over: just the thread root, carrying the
+// reply bookkeeping that tells an open panel whether the thread has moved.
+static Message rootInHeadPage(const Ts &latestReply, int replyCount) {
+    Message m{
+        .ts     = kRoot,
+        .date   = decimalTsToMicros(kRoot),
+        .author = UserId{"U2"},
+        .text   = TextWithEntities{"root", {}},
+    };
+    m.replyCount  = replyCount;
+    m.latestReply = latestReply;
+    return m;
+}
+
+static MessageListWidget *listOf(ThreadPanel &panel) {
+    auto *l = panel.findChild<MessageListWidget *>();
+    REQUIRE(l != nullptr);
+    return l;
+}
+
+TEST_CASE("a reply arriving while the thread is open appears in the panel", "[thread][refresh]") {
+    Fixture f;
+    // Thread as opened: root + one reply from someone else.
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.600", 1), replyMsg("100.600", "first", "U2")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    REQUIRE(f.stub->threadLoads == 1);
+    // Nothing of ours in the thread yet — the anchor for the assertion below.
+    CHECK_FALSE(listOf(panel)->lastOwnMessage(UserId{"U1"}).has_value());
+
+    // A second reply lands on the server. Only conversations.replies can see it.
+    f.stub->_threadPage = MessagePage{
+        {rootInHeadPage("100.700", 2),
+         replyMsg("100.600", "first", "U2"),
+         replyMsg("100.700", "second", "U1")},
+        {}
+    };
+
+    // The safety poll's head page: the root now advertises the newer reply.
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {rootInHeadPage("100.700", 2)}});
+
+    // Before the fix this was still 1: the head page was dropped on the floor.
+    CHECK(f.stub->threadLoads == 2);
+    const auto latest = listOf(panel)->lastOwnMessage(UserId{"U1"});
+    REQUIRE(latest.has_value());
+    CHECK(latest->ts == QStringLiteral("100.700"));
+}
+
+TEST_CASE("an unchanged thread costs no extra fetch", "[thread][refresh]") {
+    // latest_reply on the root is the "has this thread moved?" flag. A panel
+    // left open on a quiet thread must not burn a conversations.replies call on
+    // every poll tick just to learn nothing changed.
+    Fixture f;
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.600", 1), replyMsg("100.600", "first", "U2")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    REQUIRE(f.stub->threadLoads == 1);
+
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {rootInHeadPage("100.600", 1)}});
+
+    CHECK(f.stub->threadLoads == 1);
+}
+
+TEST_CASE("a thread whose root is off the head page is refreshed anyway", "[thread][refresh]") {
+    // An old root with an active thread isn't in the channel's head page at all,
+    // so there is no latest_reply to compare against — and "can't prove it's
+    // unchanged" must mean fetch, not skip, or exactly the long-running threads
+    // people actually watch would be the ones that never update.
+    Fixture f;
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.600", 1), replyMsg("100.600", "first", "U2")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    REQUIRE(f.stub->threadLoads == 1);
+
+    // Head page holds only unrelated, newer channel traffic.
+    Message other{
+        .ts     = "900.000",
+        .date   = decimalTsToMicros("900.000"),
+        .author = UserId{"U2"},
+        .text   = TextWithEntities{"unrelated", {}},
+    };
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {other}});
+
+    CHECK(f.stub->threadLoads == 2);
+}
+
+TEST_CASE("a head refresh for another conversation leaves the thread alone", "[thread][refresh]") {
+    // Background polls target other conversations; a panel showing C1's thread
+    // must not re-fetch because C2 moved.
+    Fixture f;
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.600", 1), replyMsg("100.600", "first", "U2")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    REQUIRE(f.stub->threadLoads == 1);
+
+    f.stub->_events.fire(EvHeadRefresh{ConversationId{"C2"}, {rootInHeadPage("100.700", 2)}});
+
+    CHECK(f.stub->threadLoads == 1);
+}
+
+TEST_CASE("a thread refresh does not overwrite the channel's cached history", "[thread][refresh]") {
+    // cacheMessages REPLACES a conversation's cached page. Writing the thread's
+    // replies under the channel key would make the channel reopen showing
+    // nothing but replies — so the merge must skip the cache in thread mode.
+    Fixture                    f;
+    const std::vector<Message> channelHistory = {
+        Message{
+            .ts     = "50.000",
+            .date   = decimalTsToMicros("50.000"),
+            .author = UserId{"U2"},
+            .text   = TextWithEntities{"channel message", {}},
+        },
+    };
+    f.session->cacheMessages(kConv.id, channelHistory);
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.600", 1), replyMsg("100.600", "first", "U2")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    f.stub->_events.fire(EvHeadRefresh{kConv.id, {rootInHeadPage("100.700", 2)}});
+
+    const auto cached = f.session->cachedMessages(kConv.id);
+    REQUIRE(cached.size() == 1);
+    CHECK(cached[0].ts == QStringLiteral("50.000"));
 }
 
 TEST_CASE("an upload with no thread open is dropped, not sent to the channel", "[thread]") {

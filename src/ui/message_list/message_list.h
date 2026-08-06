@@ -249,12 +249,23 @@ private:
     // recovering messages that arrived while the realtime socket was down (Slack
     // doesn't replay them). Driven by EvRealtimeReconnected.
     void backfillAfterReconnect();
-    // Merge an already-fetched head page into the open conversation, caching it
+    // Merge an already-fetched page into the open conversation/thread, caching it
     // and preserving scroll. Shared by backfillAfterReconnect() (which fetches the
     // page itself) and the EvHeadRefresh path (where the safety poll already
     // fetched it — reused so no extra conversations.history call is made). No-ops
-    // unless `conv` is the open conversation and we're not in thread mode.
-    void mergeHeadPage(const ConversationId &conv, const std::vector<Message> &messages);
+    // unless `conv` is the open conversation. `authoritative` forwards to
+    // mergeNetworkMessages' fromHeadPage: true only when `messages` really is the
+    // newest page, so a local row above it can be treated as deleted.
+    void mergeHeadPage(
+        const ConversationId &conv, const std::vector<Message> &messages, bool authoritative = true
+    );
+    // Thread-mode counterpart of the EvHeadRefresh merge. The safety poll fetches
+    // conversations.history, which NEVER contains thread replies, so that page
+    // can't refresh an open thread — but the thread root in it can tell us whether
+    // the thread moved, and we re-fetch conversations.replies when it did.
+    void refreshOpenThread(const ConversationId &conv, const std::vector<Message> &headPage);
+    // Newest ts among confirmed (non-pending) rows, or empty when there are none.
+    Ts   newestConfirmedTs() const;
     // Apply the pending open-scroll intent (saved position / first unread /
     // bottom) if set.
     void applyPendingScroll();
