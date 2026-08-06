@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "mrkdwn_parser.h"
 #include "util/relative_time.h"
+#include "util/slack_links.h"
 #include "util/time_format.h"
 
 #include <QCoreApplication>
@@ -279,8 +280,20 @@ static void appendAngleConstruct(Builder &b, const QString &inner, bool requireS
         b.appendPlain('<' + inner + '>');
         return;
     }
-    auto    url   = decodeEntities(parts[0]);
-    auto    label = parts.size() > 1 ? decodeEntities(parts[1]) : url;
+    auto url   = decodeEntities(parts[0]);
+    auto label = parts.size() > 1 ? decodeEntities(parts[1]) : url;
+    // A link to another message renders as a chip that jumps to it — but only
+    // when the URL is all the author wrote. Slack echoes a pasted permalink as
+    // "<url|url>", so an equal label still counts as bare; real link text
+    // ("<url|see this>") is the message and stays a plain link.
+    if (label == url) {
+        if (const auto ref = SlackLinks::parseMessageLink(url); ref.isValid()) {
+            const int s = b.text.size();
+            b.appendPlain(url);
+            b.addSpan(EntityType::MessageLink, s, SlackLinks::refToToken(ref));
+            return;
+        }
+    }
     // Emoji entities nest inside the Link span (the Link is pushed first so
     // the parent-before-child order holds even when the label is one emoji).
     // Bare <url> displays the URL itself — never emoji-scan that ("/a:b:c"

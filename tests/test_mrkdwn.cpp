@@ -2,6 +2,7 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 #include <catch2/catch_test_macros.hpp>
 #include "text/mrkdwn_parser.h"
+#include "util/slack_links.h"
 #include <QDateTime>
 
 // Asserts exactly one entity with the given properties.
@@ -358,4 +359,35 @@ TEST_CASE("a label mixing a url and an emoji keeps the emoji", "[mrkdwn]") {
     CHECK(r.entities[1].type == EntityType::Emoji);
     CHECK(r.entities[1].data == "tada");
     CHECK(r.entities[1].offset == 0);
+}
+
+// ── Links to other messages ───────────────────────────────────────────────────
+
+TEST_CASE("a bare message permalink becomes a message link", "[mrkdwn][msglink]") {
+    // The chip that replaces the URL is driven off this entity, so the parser —
+    // not the renderer — is what recognises the permalink.
+    auto r = MrkdwnParser::parse("<https://cityteam.slack.com/archives/C1/p1786008939071009>");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::MessageLink);
+    const auto ref = SlackLinks::refFromToken(r.entities[0].data);
+    CHECK(ref.conv == "C1");
+    CHECK(ref.ts == "1786008939.071009");
+    CHECK(ref.author.isEmpty()); // a URL never carries one
+}
+
+TEST_CASE("Slack's <url|url> echo of a permalink is still bare", "[mrkdwn][msglink]") {
+    // Pasting a permalink into the composer sends it labelled with itself.
+    const QString u = "https://cityteam.slack.com/archives/C1/p1786008939071009";
+    auto          r = MrkdwnParser::parse("<" + u + "|" + u + ">");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::MessageLink);
+}
+
+TEST_CASE("a permalink with real link text stays a plain link", "[mrkdwn][msglink]") {
+    // The author's words are the message — a chip would delete them.
+    auto r =
+        MrkdwnParser::parse("<https://cityteam.slack.com/archives/C1/p1786008939071009|see this>");
+    CHECK(r.text == "see this");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].type == EntityType::Link);
 }

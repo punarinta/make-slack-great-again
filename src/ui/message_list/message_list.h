@@ -129,8 +129,14 @@ public:
     // Returns the most recent non-system message authored by `me`, or nullopt.
     std::optional<Message> lastOwnMessage(UserId me) const;
 
-    // Smooth-scroll to the message with this timestamp if it is currently loaded.
-    void scrollToTs(const Ts &ts);
+    // Move the focus to a specific message: scroll it into view and flash it, so
+    // the eye finds it among its neighbours. The target is remembered when it
+    // isn't loaded yet — a jump issued right after opening a conversation still
+    // lands once its history arrives. It is given up on if the first
+    // (authoritative) page doesn't contain the message: reaching further back
+    // would need a history fetch centred on the ts, which Slack's cursor
+    // pagination doesn't offer.
+    void jumpToTs(const Ts &ts);
 
     // Stop animated-image (GIF) decoding while nothing is on screen. Called by
     // the host window on minimize — children get no hideEvent/paint then, so the
@@ -157,6 +163,10 @@ signals:
     // Emitted when a #channel mention chip is clicked; the host should
     // navigate to that conversation (joining it first if not a member).
     void openChannelRequested(ConversationId conv);
+    // Emitted when a message-link chip is clicked. The host should open `conv`
+    // (and the thread rooted at `threadTs`, when that is set — a reply is not in
+    // the channel timeline) and jump to `ts`.
+    void messageLinkRequested(ConversationId conv, Ts ts, Ts threadTs);
     // Emitted when "Open settings" is clicked on the summarize no-provider
     // notice; the host should open Settings → AI assistance.
     void aiSettingsRequested();
@@ -269,6 +279,10 @@ private:
     // Apply the pending open-scroll intent (saved position / first unread /
     // bottom) if set.
     void applyPendingScroll();
+    // Consume _pendingJumpTs if that message is laid out; true when it scrolled.
+    bool applyPendingJump();
+    // Briefly tint a row so a jump (or a new arrival) is easy to spot.
+    void flashTs(const Ts &ts);
     // {ts of the message anchoring the viewport top, its offset from the
     // viewport top}, or empty ts when nothing is laid out. Reads the
     // _tops/_topsTs snapshot, so it stays valid when _items was mutated after
@@ -663,6 +677,11 @@ private:
     // over the unread target): message ts + its offset from the viewport top.
     Ts   _pendingAnchorTs;
     int  _pendingAnchorDelta = 0;
+    // jumpToTs() target that isn't loaded yet — a message-link click that also
+    // switched conversations lands here while the first history page is still in
+    // flight. Outranks both pending targets above: the user asked for this exact
+    // message. Dropped once the authoritative page has been merged without it.
+    Ts   _pendingJumpTs;
     // conv.value → saved reading position. An entry is written for every chat the
     // user leaves, so returning to it always restores where they were — including
     // "at the bottom" (atBottom), which is sticky and overrides the first-unread

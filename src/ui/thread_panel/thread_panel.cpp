@@ -94,6 +94,9 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     connect(
         _msgList, &MessageListWidget::aiSettingsRequested, this, &ThreadPanel::aiSettingsRequested
     );
+    connect(
+        _msgList, &MessageListWidget::messageLinkRequested, this, &ThreadPanel::messageLinkRequested
+    );
 
     _composer = new ComposerWidget(this);
     _composer->setEnabled(false);
@@ -148,6 +151,10 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     _msgList->openThread(conv, rootTs);
     _composer->setEnabled(true);
     _composer->setPlaceholderText(tr("Reply in thread…"));
+}
+
+void ThreadPanel::jumpToTs(const Ts &ts) {
+    _msgList->jumpToTs(ts);
 }
 
 void ThreadPanel::close() {

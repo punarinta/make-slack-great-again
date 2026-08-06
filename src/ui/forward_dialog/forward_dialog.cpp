@@ -74,6 +74,9 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
 
     auto *preview = new QTextBrowser(_previewCard);
     preview->setMaximumHeight(140);
+    // Before setHtml: a resource added afterwards doesn't reach an already
+    // laid-out <img>, and a message-link chip carries one.
+    MsgRender::registerMessageLinkIcon(preview->document(), devicePixelRatioF());
 
     // Message text
     const QString html = MsgRender::buildMsgHtml(msg, session);
@@ -193,6 +196,14 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
         for (const auto &ent : msg.text.entities) {
             if (ent.type == EntityType::Link && !ent.data.isEmpty()) {
                 QApplication::clipboard()->setText(ent.data);
+                return;
+            }
+            // A link to another message is a link too — its entity holds the
+            // ref, so rebuild the permalink the user actually sees.
+            if (ent.type == EntityType::MessageLink) {
+                QApplication::clipboard()->setText(
+                    SlackLinks::messagePermalink(SlackLinks::refFromToken(ent.data))
+                );
                 return;
             }
         }

@@ -3,6 +3,7 @@
 #include "message_render.h"
 #include "session/session.h"
 #include "text/mrkdwn_parser.h"
+#include "ui/icon_utils.h"
 #include "ui/paint_utils.h"
 #include "ui/theme.h"
 #include "util/emoji.h"
@@ -227,6 +228,91 @@ resolveChannelImpl(const QString &channelId, const QString &fallback, const Sess
     return fallback;
 }
 
+// Where the linked message lives: "#general", the peer's name for a DM, or
+// nothing when the conversation isn't one this workspace can see.
+static QString messageLinkPlace(const SlackLinks::MessageRef &ref, const Session *session) {
+    const Conversation *c = session ? session->findConversation(ConversationId{ref.conv}) : nullptr;
+    if (!c)
+        return {};
+    if (c->kind == ConvKind::Im && c->dmUser) {
+        // Cache-only lookup (this runs while a document is being built, and a
+        // users.info fetch from here would be a surprise); the id is never shown.
+        const User *u = session->findUser(*c->dmUser);
+        return u ? u->displayLabel() : QString();
+    }
+    // Group DMs carry Slack's internal "mpdm-a--b--c-1" name — never show it.
+    if (c->kind == ConvKind::Mpim)
+        return QCoreApplication::translate("MsgRender", "group message");
+    return c->name.isEmpty() ? QString() : "#" + c->name;
+}
+
+QString messageLinkLabel(const SlackLinks::MessageRef &ref, const Session *session) {
+    const QString place = messageLinkPlace(ref, session);
+    // The author is only known when Slack sent the link as a rich_text
+    // `message_mention`; a plain permalink URL carries no author, and finding
+    // one would mean fetching the linked message.
+    const User   *author =
+        (session && !ref.author.isEmpty()) ? session->findUser(UserId{ref.author}) : nullptr;
+    if (author && !place.isEmpty())
+        return QCoreApplication::translate("MsgRender", "%1 in %2")
+            .arg(author->displayLabel(), place);
+    if (author)
+        return author->displayLabel();
+    if (!place.isEmpty())
+        return place;
+    return QCoreApplication::translate("MsgRender", "message");
+}
+
+bool hasMessageLink(const TextWithEntities &twe) {
+    for (const auto &e : twe.entities)
+        if (e.type == EntityType::MessageLink)
+            return true;
+    return false;
+}
+
+bool hasMessageLink(const Message &msg) {
+    const auto inBlocks = [](const std::vector<Block> &blocks) {
+        for (const auto &b : blocks) {
+            if (hasMessageLink(b.text))
+                return true;
+            for (const auto &row : b.tableRows)
+                for (const auto &cell : row)
+                    if (hasMessageLink(cell))
+                        return true;
+        }
+        return false;
+    };
+    if (hasMessageLink(msg.text) || inBlocks(msg.blocks))
+        return true;
+    for (const auto &att : msg.attachments) {
+        if (hasMessageLink(att.text) || inBlocks(att.blocks))
+            return true;
+        for (const auto &f : att.fields)
+            if (hasMessageLink(f.value))
+                return true;
+    }
+    return false;
+}
+
+void registerMessageLinkIcon(QTextDocument *doc, qreal dpr) {
+    doc->addResource(
+        QTextDocument::ImageResource,
+        QUrl(kMessageLinkIconRes),
+        svgPixmapPhys(":/ui/message-square.svg", QSize(11, 11), Th::c().text.link, dpr)
+    );
+}
+
+// The chip that replaces a bare message permalink: icon + conversation label on
+// a tinted rounded background, the same chrome as a #channel mention.
+static QString messageLinkChipHtml(const SlackLinks::MessageRef &ref, const Session *session) {
+    return "<a href='" + messageAnchor(ref).toHtmlEscaped() +
+           "' style='color:" + Th::qss(Th::c().text.link) +
+           ";background:" + Th::qss(Th::c().message.mentionBg) +
+           ";border-radius:3px;padding:0 2px;text-decoration:none'><img src='" +
+           kMessageLinkIconRes + "' width='11' height='11'>&nbsp;" +
+           messageLinkLabel(ref, session).toHtmlEscaped() + "</a>";
+}
+
 QString notificationText(const TextWithEntities &twe, const Session *session) {
     // Walk the leaf entities that change the displayed text — mentions, channel
     // links and emoji — and substitute their resolved form into the parsed plain
@@ -265,6 +351,13 @@ QString notificationText(const TextWithEntities &twe, const Session *session) {
             repls.push_back({e.offset, e.length, glyph});
             break;
         }
+        case EntityType::MessageLink:
+            // The chip's own words — a toast showing a bare permalink URL says
+            // nothing about what was linked.
+            repls.push_back(
+                {e.offset, e.length, messageLinkLabel(SlackLinks::refFromToken(e.data), session)}
+            );
+            break;
         default:
             break;
         }
@@ -459,6 +552,9 @@ static QString renderRange(
             html += "<a href='" + e.data.toHtmlEscaped() +
                     "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
                     inner + "</a>";
+            break;
+        case EntityType::MessageLink:
+            html += messageLinkChipHtml(SlackLinks::refFromToken(e.data), session);
             break;
         case EntityType::UserMention: {
             // Prefer the live cache; otherwise keep the parser's baked label

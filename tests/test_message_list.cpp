@@ -17,11 +17,17 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QEventLoop>
+#include <QMouseEvent>
+#include <QScrollBar>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTextDocument>
+#include <QTimer>
 
+#include "text/mrkdwn_parser.h"
 #include "ui/message_list/message_list.h"
+#include "util/slack_links.h"
 #include "session/session.h"
 #include "backend/backend.h"
 #include "backend/domain.h"
@@ -60,13 +66,22 @@ struct StubBackend : Backend {
     rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
     rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
 
+    // When set, a no-cursor loadHistory answers nothing until deliverHistory()
+    // is called — the "conversation opened, its first page still in flight"
+    // window that a plain rpl::variable (which fires on subscription) can't model.
+    bool                           _deferHistory = false;
+    rpl::event_stream<MessagePage> _historyStream;
+
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override {
         // A cursored (older) fetch returns nothing here — the test models the
         // older messages as already loaded into the view, not the cache.
         if (cursor.has_value())
             return rpl::variable<MessagePage>(MessagePage{}).value();
+        if (_deferHistory)
+            return _historyStream.events();
         return rpl::variable<MessagePage>(MessagePage{_historyPage, _olderCursor}).value();
     }
+    void deliverHistory() { _historyStream.fire(MessagePage{_historyPage, _olderCursor}); }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
     }
@@ -445,6 +460,157 @@ TEST_CASE(
     const auto *r    = findReaction(view, "1000.000001", "+1");
     REQUIRE(r != nullptr);
     CHECK(r->count == 2);
+}
+
+// ── Message links ─────────────────────────────────────────────────────────────
+
+// Permalink to the message posted at `ts` in the fixture's channel.
+static QString permalinkTo(const QString &ts) {
+    QString digits = ts;
+    digits.remove('.');
+    return "https://cityteam.slack.com/archives/" + kConv.id.value + "/p" + digits;
+}
+
+static Message makeMrkdwnMessage(const QString &ts, const QString &mrkdwn) {
+    Message m = makeMessage(ts, {});
+    m.text    = MrkdwnParser::parse(mrkdwn);
+    return m;
+}
+
+// Let queued work (the post-load QTimer::singleShot) and the 220 ms scroll
+// animation run to completion.
+static void spin(int ms) {
+    QEventLoop loop;
+    QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+    loop.exec();
+}
+
+// Press every point of a coarse grid over the viewport until `hit` turns true.
+// The chip's rectangle depends on font metrics and wrapping, so it can't be
+// computed here — but if no point in the whole message area triggers it, the
+// chip isn't clickable, which is exactly the regression to catch.
+static void pressUntil(MessageListWidget &list, const bool &hit) {
+    QWidget *vp = list.viewport();
+    for (int y = 0; y < vp->height() && !hit; y += 3) {
+        for (int x = 0; x < vp->width() && !hit; x += 3) {
+            const QPointF p(x, y);
+            QMouseEvent   ev(
+                QEvent::MouseButtonPress,
+                p,
+                p,
+                vp->mapToGlobal(p),
+                Qt::LeftButton,
+                Qt::LeftButton,
+                Qt::NoModifier
+            );
+            QApplication::sendEvent(vp, &ev);
+        }
+    }
+}
+
+TEST_CASE("clicking a link to a message asks the host to focus it", "[message_list][msglink]") {
+    Fixture f;
+
+    // The last message is nothing but a permalink to the first one — Slack shows
+    // that as a chip, and clicking it must navigate rather than open a browser.
+    f.stub->_historyPage = {
+        makeMessage("1000.000001", "the message being linked to"),
+        makeMessage("1000.000002", "something else"),
+        makeMrkdwnMessage("1000.000003", "look: <" + permalinkTo("1000.000001") + ">"),
+    };
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(500, 240);
+    list.openConversation(kConv.id);
+
+    bool           hit = false;
+    ConversationId gotConv;
+    Ts             gotTs, gotThread;
+    QObject::connect(
+        &list,
+        &MessageListWidget::messageLinkRequested,
+        [&](ConversationId conv, Ts ts, Ts threadTs) {
+            hit       = true;
+            gotConv   = conv;
+            gotTs     = ts;
+            gotThread = threadTs;
+        }
+    );
+
+    pressUntil(list, hit);
+
+    REQUIRE(hit);
+    CHECK(gotConv == kConv.id);
+    CHECK(gotTs == "1000.000001");
+    CHECK(gotThread.isEmpty());
+}
+
+TEST_CASE("a link to a thread reply carries its thread root", "[message_list][msglink]") {
+    Fixture f;
+
+    const QString reply =
+        permalinkTo("1000.000009") + "?thread_ts=1000.000001&cid=" + kConv.id.value;
+    f.stub->_historyPage = {
+        makeMessage("1000.000001", "thread root"),
+        makeMrkdwnMessage("1000.000003", "<" + reply + ">"),
+    };
+
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(500, 240);
+    list.openConversation(kConv.id);
+
+    bool hit = false;
+    Ts   gotTs, gotThread;
+    QObject::connect(
+        &list, &MessageListWidget::messageLinkRequested, [&](ConversationId, Ts ts, Ts threadTs) {
+            hit       = true;
+            gotTs     = ts;
+            gotThread = threadTs;
+        }
+    );
+
+    pressUntil(list, hit);
+
+    REQUIRE(hit);
+    CHECK(gotTs == "1000.000009");
+    // Without the root the host would open the channel, where a reply isn't
+    // shown at all (conversations.history omits replies).
+    CHECK(gotThread == "1000.000001");
+}
+
+TEST_CASE("a jump issued before the history arrives still lands", "[message_list][msglink]") {
+    Fixture f;
+
+    // 30 messages so the conversation is taller than the viewport.
+    std::vector<Message> msgs;
+    for (int i = 1; i <= 30; ++i)
+        msgs.push_back(
+            makeMessage(QString("1000.0000%1").arg(i, 2, 10, QChar('0')), QString("m%1").arg(i))
+        );
+    f.stub->_historyPage  = msgs;
+    f.stub->_deferHistory = true;
+
+    // Control: no jump — the conversation opens at the bottom.
+    MessageListWidget plain(f.session.get(), nullptr);
+    plain.resize(500, 200);
+    plain.openConversation(kConv.id);
+    f.stub->deliverHistory();
+    spin(400);
+    REQUIRE(plain.verticalScrollBar()->maximum() > 0); // content does overflow
+    CHECK(plain.verticalScrollBar()->value() == plain.verticalScrollBar()->maximum());
+
+    // The click case: the conversation was opened by the click itself, so the
+    // jump target isn't loaded yet. It must be honoured once the page lands.
+    MessageListWidget list(f.session.get(), nullptr);
+    list.resize(500, 200);
+    list.openConversation(kConv.id);
+    list.jumpToTs("1000.000010");
+    f.stub->deliverHistory();
+    spin(400);
+
+    const int v = list.verticalScrollBar()->value();
+    CHECK(v > 0);                                   // not the top
+    CHECK(v < list.verticalScrollBar()->maximum()); // and not the bottom
 }
 
 TEST_CASE(

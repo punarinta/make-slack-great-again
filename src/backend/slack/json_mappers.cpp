@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "json_mappers.h"
 #include "text/mrkdwn_parser.h"
+#include "util/slack_links.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -297,6 +298,30 @@ static void richInlineToTWE(const QJsonObject &el, Builder &b) {
         const int  start = b.text.size();
         b.text += label;
         b.entities.push_back({EntityType::Link, start, (int)b.text.size() - start, url});
+    } else if (type == "message_mention") {
+        // A link to another message, pasted into a rich_text block. Slack sends
+        // the permalink AND the parts it points at — including the author, which
+        // the URL alone can't give us, so the chip can read "alice in #general"
+        // like the official client. `text`/`url` are the permalink; the host only
+        // exists there, so parse it out and let the element's own fields win.
+        auto ref          = SlackLinks::parseMessageLink(el.value("url").toString());
+        ref.conv          = el.value("channel_id").toString(ref.conv);
+        ref.ts            = el.value("message_ts").toString(ref.ts);
+        ref.author        = el.value("author_id").toString();
+        // Slack repeats the message's own ts as thread_ts on a thread ROOT; only
+        // a genuine reply gets a thread target (same rule as parseMessageLink).
+        const auto thread = el.value("thread_ts").toString();
+        ref.threadTs      = (thread.isEmpty() || thread == ref.ts) ? QString() : thread;
+        const int start   = b.text.size();
+        b.text += el.value("text").toString(el.value("url").toString());
+        if (ref.isValid()) {
+            b.entities.push_back(
+                {EntityType::MessageLink,
+                 start,
+                 (int)b.text.size() - start,
+                 SlackLinks::refToToken(ref)}
+            );
+        }
     } else if (type == "broadcast") {
         const auto range = el.value("range").toString();
         const int  start = b.text.size();

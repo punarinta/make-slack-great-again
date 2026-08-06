@@ -3,6 +3,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "util/slack_links.h"
 #include <QString>
 #include <QStringList>
 #include <QColor>
@@ -69,6 +70,18 @@ QString formatDateLabel(qint64 dateMicros);
 QString lastReplyLabel(const Ts &ts);
 QString resolveMention(const QString &userId, const Session *session);
 QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
+
+// The text shown inside a message-link chip: "#channel" for a channel, the peer's
+// name for a DM, and a neutral "message" when the conversation isn't one of this
+// workspace's (a link into another team).
+QString messageLinkLabel(const SlackLinks::MessageRef &ref, const Session *session);
+
+// True when the text renders at least one message-link chip — the doc owner uses
+// this to decide whether the chip's icon has to be registered as a resource. The
+// Message overload covers everything that ends up in its documents: the body,
+// Block Kit blocks and legacy attachments.
+bool hasMessageLink(const TextWithEntities &twe);
+bool hasMessageLink(const Message &msg);
 
 // Plain-text rendering for OS notifications / previews: resolves user and
 // channel mentions to their display names and built-in emoji codes to their
@@ -194,6 +207,31 @@ inline QString gifKeyFromAnchor(const QString &href) {
     return href.startsWith(kGifToggleAnchorPrefix) ? href.mid(kGifToggleAnchorPrefix.size())
                                                    : QString();
 }
+
+// An EntityType::MessageLink renders as a chip rather than a raw URL (the
+// official client does the same); clicking it jumps to that message instead of
+// leaving for the browser. The href is the prefix plus the entity's own
+// SlackLinks::refToToken() payload — the host travels with it so a link into a
+// workspace we are not signed into can be rebuilt and handed to the browser.
+inline const QString kMessageAnchorPrefix = QStringLiteral("msga://msglink/");
+
+inline QString messageAnchor(const SlackLinks::MessageRef &ref) {
+    return kMessageAnchorPrefix + SlackLinks::refToToken(ref);
+}
+
+// Returns the referenced message when href is a message-link anchor; an invalid
+// ref (isValid() == false) otherwise.
+inline SlackLinks::MessageRef messageRefFromAnchor(const QString &href) {
+    if (!href.startsWith(kMessageAnchorPrefix))
+        return {};
+    return SlackLinks::refFromToken(href.mid(kMessageAnchorPrefix.size()));
+}
+
+// QTextDocument resource name for the icon inside a message-link chip. EVERY
+// document that renders message HTML must register it (registerMessageLinkIcon)
+// or the chip's <img> falls back to Qt's broken-image box.
+inline const QString kMessageLinkIconRes = QStringLiteral("msga://msglink-icon/");
+void                 registerMessageLinkIcon(QTextDocument *doc, qreal dpr);
 
 // QTextDocument resource names for the chevron icon on image-block title lines.
 // The doc owner registers theme-colored pixmaps under these urls.
