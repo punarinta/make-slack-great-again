@@ -633,6 +633,7 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
@@ -674,6 +675,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
@@ -730,6 +732,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/image_viewer/image_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/table_viewer/table_viewer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/reminder_dialog/reminder_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summary_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/summary_dialog/summarize_job.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp

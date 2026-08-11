@@ -219,6 +219,9 @@ private:
     // Toolbar sub-actions called from tryHandleToolbarPress.
     void         openEmojiPickerForRow(int row, const QPoint &globalPos);
     void         showMessageContextMenu(const Message &msg, const QPoint &globalPos);
+    // "Remind me" preset picker (In 20 minutes / … / Custom…), opened from the
+    // message context menu.
+    void         showRemindMenu(const Message &msg, const QPoint &globalPos);
     // "Summarize down": AI-summarize everything from `fromTs` (inclusive) to
     // the newest loaded message. Runs as a background task (SummarizeJob); the
     // report appears in a SummaryDialog when ready.
@@ -301,6 +304,13 @@ private:
     // Layout
     void rebuildLayout();
     int  rowHeight(int index) const;
+    // Total height of the mini-banners stacked at the very top of a row (before
+    // padV): the "Pinned by …" strip and/or the reminder "Due …" strip. Every
+    // geometry path (rowHeight, paint, hit-tests) offsets content by this.
+    int  bannersH(const MessageItem &item) const;
+    // The message carries a reminder (Session store; drives the blue row tint,
+    // the due strip and the context-menu entry).
+    bool hasReminder(const MessageItem &item) const;
     // Index of the first row whose bottom edge can be at/below document-space y
     // `docY` — binary search over the monotonic _tops, so paint and hit-test
     // walks start at the viewport instead of scanning the whole scrollback.
@@ -600,6 +610,9 @@ private:
 
     // Date separator
     static constexpr int kSepH = 32; // total height of date separator band
+
+    // Height of one top-of-row mini-banner (pinned / reminder strip).
+    static constexpr int kBannerH = 18;
 
     // System/activity lines (joins, topic changes, …): centered single line.
     static constexpr int kSysRowPadV = 6; // vertical padding above and below the line

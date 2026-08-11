@@ -200,6 +200,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/welcome_tips/welcome_widget.cpp
     src/ui/app_dialog/app_dialog.cpp
     src/ui/delete_message_dialog/delete_message_dialog.cpp
+    src/ui/reminder_dialog/reminder_dialog.cpp
     src/ui/summary_dialog/summary_dialog.cpp
     src/ui/summary_dialog/summarize_job.cpp
     src/ui/conv_selector/conv_selector_widget.cpp

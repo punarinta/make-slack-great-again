@@ -161,6 +161,10 @@ struct Capabilities {
                                    // Separate from `threads`: a backend can support replies
                                    // without any server-side subscribed-threads feed (Slack's
                                    // feed is session-token only; IMAP/Teams have none).
+    bool messageReminders = false; // per-message "Remind me" (Slack's Later / saved items).
+                                   // Rides the internal saved.* API family, which Slack only
+                                   // serves to a session (xoxc) token — OAuth workspaces would
+                                   // get every call rejected, so the menu entry is gated here.
     bool fileUpload       = false; // upload + share files
     bool scheduledSend    = false; // send a message at a future time (chat.scheduleMessage).
                                    // Slack-only: Teams' Graph has no delegated scheduled-send and
@@ -387,20 +391,27 @@ struct ConvCounts {
 // is a thread reply. The root matters because conversations.history omits thread
 // replies, so opening the channel alone lands on a timeline the reply isn't in
 // ("notification, but nothing there") — the root routes the click to the thread.
+// A reminder notification appends a fourth field, the reminded message's own ts
+// ("teamId\x1fconvId\x1frootTs\x1fmsgTs", rootTs left empty for a non-reply), so
+// the click can scroll to the exact message rather than just open the chat.
 // Encapsulated + unit-tested because the field splitting is easy to get subtly
 // wrong (e.g. a naive indexOf swallowing the root into the conv id).
 struct NotifTarget {
     QString        teamId;
     ConversationId conv;
     Ts             threadRoot; // empty unless the notified message was a reply
+    Ts             msgTs;      // set only for reminder clicks: the exact message to focus
     bool           operator==(const NotifTarget &) const = default;
 };
 
-inline QString
-encodeNotifToken(const QString &teamId, const ConversationId &conv, const Ts &threadRoot) {
+inline QString encodeNotifToken(
+    const QString &teamId, const ConversationId &conv, const Ts &threadRoot, const Ts &msgTs = {}
+) {
     QString t = teamId + QChar(0x1f) + conv.value;
-    if (!threadRoot.isEmpty())
-        t += QChar(0x1f) + threadRoot;
+    if (!threadRoot.isEmpty() || !msgTs.isEmpty())
+        t += QChar(0x1f) + threadRoot; // kept empty (not omitted) when only msgTs is set
+    if (!msgTs.isEmpty())
+        t += QChar(0x1f) + msgTs;
     return t;
 }
 
@@ -412,8 +423,27 @@ inline std::optional<NotifTarget> decodeNotifToken(const QString &token) {
     t.teamId     = parts.at(0);
     t.conv       = ConversationId{parts.at(1)};
     t.threadRoot = parts.size() >= 3 ? parts.at(2) : Ts{};
+    t.msgTs      = parts.size() >= 4 ? parts.at(3) : Ts{};
     return t;
 }
+
+// A per-message reminder (Slack's "Save for Later" item with a due date; see
+// Backend::loadMessageReminders). The backend fills conv/ts/dueAt from the
+// server; threadRoot/snippet/fired are local enrichment the Session captures at
+// set time (the server item doesn't carry them) and persists so the reminder's
+// notification can route to the thread and show a preview. `fired` marks a
+// reminder whose notification was already raised, so a restart doesn't
+// re-announce it; the item itself stays (blue tint, "remove reminder") until the
+// user removes it — matching the official client's overdue behaviour.
+struct MessageReminder {
+    ConversationId conv;
+    Ts             ts;
+    qint64         dueAt = 0; // Unix seconds
+    Ts             threadRoot;
+    QString        snippet;
+    bool           fired                                     = false;
+    bool           operator==(const MessageReminder &) const = default;
+};
 
 // One canvases.edit operation. Relative inserts and section ops need a
 // sectionId (the "temp:C:…" ids embedded in the canvas HTML / returned by
@@ -951,6 +981,19 @@ struct EvRateLimited {
     int     retryAfterSecs = 0;
 };
 
+// A message reminder came due. Raised by the Session's local timer, not by any
+// backend transport — Slack delivers NOTHING when a saved-item reminder fires
+// (no Slackbot DM, no event; verified), official clients alarm from their own
+// state. Carries everything the notification needs so the UI never has to look
+// the reminder back up: threadRoot routes the click into the thread when the
+// reminded message is a reply, snippet is the stored message preview.
+struct EvReminderDue {
+    ConversationId conv;
+    Ts             ts;
+    Ts             threadRoot;
+    QString        snippet;
+};
+
 // --- Search ---
 
 struct SearchResult {
@@ -993,4 +1036,5 @@ using Event = std::variant<
     EvHuddleChanged,
     EvRealtimeReconnected,
     EvRealtimeContended,
-    EvRateLimited>;
+    EvRateLimited,
+    EvReminderDue>;

@@ -280,6 +280,46 @@ struct StubBackend : Backend {
 
     rpl::producer<Event> events() const override { return _events.events(); }
 
+    // Message reminders: nullopt models a backend without the saved.* API (the
+    // producer completes WITHOUT a value — local state must survive); a vector
+    // is the authoritative server snapshot (local state is replaced).
+    std::optional<std::vector<MessageReminder>> remindersResult;
+    struct ReminderCall {
+        ConversationId conv;
+        Ts             ts;
+        qint64         dueAt = 0;
+    };
+    std::vector<ReminderCall> setReminderCalls;
+    std::vector<ReminderCall> removeReminderCalls;
+    bool                      reminderWriteFails = false;
+
+    rpl::producer<std::vector<MessageReminder>> loadMessageReminders() override {
+        if (!remindersResult)
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return [v = *remindersResult](auto consumer) mutable {
+            consumer.put_next(std::move(v));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+    void setMessageReminder(
+        ConversationId c, Ts ts, qint64 dueAt, std::function<void(bool, QString)> done
+    ) override {
+        setReminderCalls.push_back({c, ts, dueAt});
+        if (done)
+            done(!reminderWriteFails, reminderWriteFails ? QStringLiteral("boom") : QString());
+    }
+    void removeMessageReminder(
+        ConversationId c, Ts ts, std::function<void(bool, QString)> done
+    ) override {
+        removeReminderCalls.push_back({c, ts});
+        if (done)
+            done(!reminderWriteFails, reminderWriteFails ? QStringLiteral("boom") : QString());
+    }
+
     rpl::producer<User> loadBotInfo(UserId botId) override {
         botInfoCallCount++;
         botInfoRequested.append(botId.value);
@@ -3729,4 +3769,168 @@ TEST_CASE_METHOD(
         if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == m2.ts)
             delivered = true;
     CHECK(delivered);
+}
+
+// ── Message reminders ─────────────────────────────────────────────────────────
+
+static Message reminderMsg(const Ts &ts, const QString &text = "remember me") {
+    Message m;
+    m.ts        = ts;
+    m.text.text = text;
+    return m;
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "setMessageReminder stores locally and calls backend", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    const qint64         due = QDateTime::currentSecsSinceEpoch() + 3600;
+    session->setMessageReminder(conv, reminderMsg("100.000001"), due);
+
+    CHECK(session->hasMessageReminder(conv, "100.000001"));
+    CHECK(session->messageReminderDue(conv, "100.000001") == due);
+    CHECK_FALSE(session->hasMessageReminder(conv, "100.000002"));
+    REQUIRE(stub->setReminderCalls.size() == 1);
+    CHECK(stub->setReminderCalls[0].conv == conv);
+    CHECK(stub->setReminderCalls[0].ts == "100.000001");
+    CHECK(stub->setReminderCalls[0].dueAt == due);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "removeMessageReminder clears locally and calls backend", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    session->setMessageReminder(
+        conv, reminderMsg("100.000001"), QDateTime::currentSecsSinceEpoch() + 3600
+    );
+    session->removeMessageReminder(conv, "100.000001");
+
+    CHECK_FALSE(session->hasMessageReminder(conv, "100.000001"));
+    REQUIRE(stub->removeReminderCalls.size() == 1);
+    CHECK(stub->removeReminderCalls[0].ts == "100.000001");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a rejected reminder write rolls the optimistic entry back",
+    "[session][reminder]"
+) {
+    stub->reminderWriteFails = true;
+    QStringList   errors;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](QString e) { errors.append(std::move(e)); }, lt);
+
+    const ConversationId conv{"C1"};
+    session->setMessageReminder(
+        conv, reminderMsg("100.000001"), QDateTime::currentSecsSinceEpoch() + 3600
+    );
+    CHECK_FALSE(session->hasMessageReminder(conv, "100.000001"));
+    CHECK(errors.size() == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a rejected reminder removal restores the entry", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    const qint64         due = QDateTime::currentSecsSinceEpoch() + 3600;
+    session->setMessageReminder(conv, reminderMsg("100.000001"), due);
+
+    stub->reminderWriteFails = true;
+    session->removeMessageReminder(conv, "100.000001");
+    CHECK(session->hasMessageReminder(conv, "100.000001"));
+    CHECK(session->messageReminderDue(conv, "100.000001") == due);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "reminders survive a restart via the cache", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    const qint64         due = QDateTime::currentSecsSinceEpoch() + 3600;
+    session->setMessageReminder(conv, reminderMsg("100.000001"), due);
+
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+    // The fresh stub's loadMessageReminders completes without a value
+    // (unavailable), so the cached entry must survive the startup sync.
+    CHECK(session->messageReminderDue(conv, "100.000001") == due);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a due reminder fires EvReminderDue once and persists as fired",
+    "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    Message              m = reminderMsg("100.000001", "ship the release");
+    m.threadRoot           = Ts{"99.000001"};
+    // Just-overdue: recent enough to notify, already due so the check fires it.
+    session->setMessageReminder(conv, m, QDateTime::currentSecsSinceEpoch() - 5);
+
+    auto [events, lt] = collectEvents();
+    session->fireDueRemindersForTest();
+
+    int hits = 0;
+    for (const auto &e : events)
+        if (auto *rd = std::get_if<EvReminderDue>(&e)) {
+            ++hits;
+            CHECK(rd->conv == conv);
+            CHECK(rd->ts == "100.000001");
+            CHECK(rd->threadRoot == Ts{"99.000001"});
+            CHECK(rd->snippet == "ship the release");
+        }
+    CHECK(hits == 1);
+    // Still listed (blue tint / "Remove reminder" stay until the user acts)…
+    CHECK(session->hasMessageReminder(conv, "100.000001"));
+
+    // …but never re-announced: not by another check, not by a restart.
+    session->fireDueRemindersForTest();
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+    auto [events2, lt2] = collectEvents();
+    session->fireDueRemindersForTest();
+    for (const auto &e : events2)
+        CHECK(std::get_if<EvReminderDue>(&e) == nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a reminder overdue by over a week is silenced, not announced",
+    "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    session->setMessageReminder(
+        conv, reminderMsg("100.000001"), QDateTime::currentSecsSinceEpoch() - 8 * 24 * 3600
+    );
+
+    auto [events, lt] = collectEvents();
+    session->fireDueRemindersForTest();
+    for (const auto &e : events)
+        CHECK(std::get_if<EvReminderDue>(&e) == nullptr);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "server snapshot replaces local reminder state", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    // Seed the cache with a local entry, then restart against a backend whose
+    // authoritative list has a different reminder — set from another client.
+    session->setMessageReminder(
+        conv, reminderMsg("100.000001"), QDateTime::currentSecsSinceEpoch() + 3600
+    );
+    session.reset();
+
+    auto  backend          = std::make_unique<StubBackend>();
+    auto *fresh            = backend.get();
+    fresh->_meId           = UserId{"U1"};
+    fresh->_convs          = std::vector<Conversation>{kGeneral, kRandom};
+    fresh->_users          = std::vector<User>{kAlice, kBob};
+    const qint64 serverDue = QDateTime::currentSecsSinceEpoch() + 7200;
+    fresh->remindersResult = std::vector<MessageReminder>{
+        MessageReminder{.conv = conv, .ts = "200.000002", .dueAt = serverDue}
+    };
+    stub    = fresh;
+    session = std::make_unique<Session>(std::move(backend), teamId);
+    session->start();
+
+    // The stale cached entry (removed remotely) is gone; the remote one is in.
+    CHECK_FALSE(session->hasMessageReminder(conv, "100.000001"));
+    CHECK(session->messageReminderDue(conv, "200.000002") == serverDue);
 }

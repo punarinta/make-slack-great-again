@@ -151,6 +151,11 @@ private:
     // Popup notification (with a "Join" action button) when a huddle starts in a
     // non-muted conversation, even while the window is hidden to the tray.
     void maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged &ev);
+    // OS notification for a message reminder that came due (EvReminderDue from
+    // the workspace's Session). Deliberately skips the per-conversation gates
+    // maybeNotify applies (mute levels etc.) — the user explicitly asked to be
+    // reminded; only the global notifications switch is honoured.
+    void notifyReminderDue(const QString &teamId, const EvReminderDue &ev);
     // Fire a representative sample notification (Settings → "Sample
     // notifications" Test button); kind is a SettingsDialog::SampleNotif value.
     void showSampleNotification(int kind);
@@ -159,8 +164,14 @@ private:
     // When threadRoot is non-empty the notified message was a thread reply
     // (invisible in the channel timeline — conversations.history omits replies),
     // so open the thread panel at that root, matching what Slack does on click.
-    void
-    openNotifTarget(const QString &teamId, const ConversationId &conv, const Ts &threadRoot = {});
+    // msgTs (reminder clicks) additionally scrolls to and flashes that exact
+    // message — in the channel, or inside the thread when threadRoot is set.
+    void openNotifTarget(
+        const QString        &teamId,
+        const ConversationId &conv,
+        const Ts             &threadRoot = {},
+        const Ts             &msgTs      = {}
+    );
     // Reveal and load the thread panel for a conversation's thread root, sizing
     // the splitter if collapsed. Shared by the message-list thread click and the
     // thread-reply notification click.
@@ -264,6 +275,9 @@ private:
     // Thread root of the pending (tray-fallback) notification, empty for a plain
     // message; carried so a tray click opens the thread the reply lives in.
     Ts             _pendingNotifThreadRoot;
+    // Exact message ts of the pending notification (reminder clicks only) —
+    // scrolls to the reminded message; empty for ordinary notifications.
+    Ts             _pendingNotifMsgTs;
     // "teamId\x1fconvId" of huddles we've already shown a notification for, so a
     // re-fired EvHuddleChanged (edit / history reconcile) can't double-notify;
     // cleared when the huddle ends so its next start notifies again.

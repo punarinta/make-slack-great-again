@@ -153,6 +153,8 @@ const Theme kAubergineBase = {
             .attachmentBorder       = QColor("#DDDDDD"),
             .attachmentDismiss      = QColor("#888888"),
             .pinnedBg               = QColor(0xFF, 0xEB, 0x3B, 60),
+            .reminderBg             = QColor(0x1D, 0x9B, 0xD1, 26),
+            .reminderText           = QColor("#1264A3"),
             .fileChipBg             = QColor("#FAFAFA"),
             .fileChipBorder         = QColor("#DDDDDD"),
             .fileNameDim            = QColor("#666666"),
@@ -350,6 +352,8 @@ static Theme makeCharcoal() {
     t.message.attachmentBorder       = QColor("#3A3A3A");
     t.message.attachmentDismiss      = QColor("#9C9C9C");
     t.message.pinnedBg               = QColor(0xFF, 0xEB, 0x3B, 28);
+    t.message.reminderBg             = QColor(0x1D, 0x9B, 0xD1, 24);
+    t.message.reminderText           = QColor("#53B4E5");
     t.message.fileChipBg             = QColor("#202020");
     t.message.fileChipBorder         = QColor("#3A3A3A");
     t.message.fileNameDim            = QColor("#A6A6A6");

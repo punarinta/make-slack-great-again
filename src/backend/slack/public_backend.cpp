@@ -315,20 +315,24 @@ Capabilities PublicBackend::capabilities() const {
     // here is already live in the UI, so reporting it true keeps behavior
     // unchanged now that the UI gates on these flags.
     Capabilities c;
-    c.presence      = true; // polled presence (users.getPresence) → online/away dots
-    c.huddles       = true;
-    c.canvases      = true;
-    c.slashCommands = true;
-    c.reactions     = true;
-    c.editMessage   = true;
-    c.deleteMessage = true;
-    c.threads       = true;
-    c.fileUpload    = true;
-    c.scheduledSend = true; // chat.scheduleMessage
+    c.presence         = true; // polled presence (users.getPresence) → online/away dots
+    c.huddles          = true;
+    c.canvases         = true;
+    c.slashCommands    = true;
+    c.reactions        = true;
+    c.editMessage      = true;
+    c.deleteMessage    = true;
+    c.threads          = true;
+    c.fileUpload       = true;
+    c.scheduledSend    = true; // chat.scheduleMessage
     // The Threads overview rides subscriptions.thread.getView, which Slack only
     // serves to a session (xoxc) token — an OAuth workspace would get every call
     // rejected, so don't claim the capability there (no dead roster entry).
-    c.threadsView   = _sessionAuth;
+    c.threadsView      = _sessionAuth;
+    // Message reminders ride the saved.* family ("Later"), likewise served only
+    // to a session token. The public reminders.* API is retired and never could
+    // attach a reminder to a message.
+    c.messageReminders = _sessionAuth;
     return c;
 }
 
@@ -805,6 +809,105 @@ void PublicBackend::markThreadRead(ConversationId conv, Ts root, Ts ts) {
         params,
         [](QJsonObject) {},
         [](QString err) { qWarning() << "subscriptions.thread.mark error:" << err; }
+    );
+}
+
+// ── Message reminders (internal saved.* API — "Later") ───────────────────────
+
+rpl::producer<std::vector<MessageReminder>> PublicBackend::loadMessageReminders() {
+    return [this](auto consumer) mutable {
+        // Unsupported: complete WITHOUT a value (same contract as
+        // loadUnreadCounts — see backend.h). Session-token only.
+        if (!_sessionAuth || _savedUnavailable) {
+            consumer.put_done();
+            return rpl::lifetime();
+        }
+        QUrlQuery params;
+        // One page is plenty: the list is the user's pending reminders, a
+        // handful of items in practice. 50 is what Slack's own Later panel
+        // requests — and the endpoint's ceiling is close by (200 answers
+        // invalid_arguments; verified live).
+        params.addQueryItem("limit", "50");
+        params.addQueryItem("filter", "saved");
+        _api->call(
+            "saved.list",
+            params,
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toMessageReminders(resp));
+                consumer.put_done();
+            },
+            [this, consumer](QString err) mutable {
+                // Latch only on a method-level rejection, never on a transport
+                // failure — same reasoning as client.counts above.
+                if (isMethodUnavailable(err)) {
+                    _savedUnavailable = true;
+                    qWarning() << "saved.list rejected:" << err
+                               << "— message reminders disabled for this workspace";
+                }
+                consumer.put_done();
+            },
+            /*quietErrors=*/true
+        );
+        return rpl::lifetime();
+    };
+}
+
+void PublicBackend::setMessageReminder(
+    ConversationId conv, Ts ts, qint64 dueAt, std::function<void(bool, QString)> done
+) {
+    if (!_sessionAuth || _savedUnavailable) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+        return;
+    }
+    QUrlQuery params;
+    params.addQueryItem("item_type", "message");
+    params.addQueryItem("item_id", conv.value);
+    params.addQueryItem("ts", ts);
+    params.addQueryItem("date_due", QString::number(dueAt));
+    _api->callNonIdempotent(
+        "saved.add",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [this, done](QString err) {
+            if (isMethodUnavailable(err))
+                _savedUnavailable = true;
+            qWarning() << "saved.add error:" << err;
+            if (done)
+                done(false, err);
+        }
+    );
+}
+
+void PublicBackend::removeMessageReminder(
+    ConversationId conv, Ts ts, std::function<void(bool, QString)> done
+) {
+    if (!_sessionAuth || _savedUnavailable) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+        return;
+    }
+    QUrlQuery params;
+    params.addQueryItem("item_type", "message");
+    params.addQueryItem("item_id", conv.value);
+    params.addQueryItem("ts", ts);
+    _api->callNonIdempotent(
+        "saved.delete",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [this, done](QString err) {
+            if (isMethodUnavailable(err))
+                _savedUnavailable = true;
+            qWarning() << "saved.delete error:" << err;
+            if (done)
+                done(false, err);
+        }
     );
 }
 

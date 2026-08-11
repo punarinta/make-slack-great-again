@@ -265,6 +265,56 @@ TEST_CASE_METHOD(CacheFixture, "meUserId does not clobber other meta keys", "[ca
     CHECK(cache.loadMeUserId() == UserId{"U777"});
 }
 
+// ── Message reminders ─────────────────────────────────────────────────────────
+
+TEST_CASE_METHOD(CacheFixture, "loadReminders returns empty when no file", "[cache][reminder]") {
+    CHECK(cache.loadReminders().empty());
+}
+
+TEST_CASE_METHOD(CacheFixture, "reminders round-trip all fields", "[cache][reminder]") {
+    const std::vector<MessageReminder> input = {
+        MessageReminder{
+            .conv       = ConversationId{"C1"},
+            .ts         = "1700000000.000100",
+            .dueAt      = 1700003600,
+            .threadRoot = "1699999999.000001",
+            .snippet    = "don't forget this",
+            .fired      = true,
+        },
+        MessageReminder{
+            .conv  = ConversationId{"D2"},
+            .ts    = "1700000001.000200",
+            .dueAt = 1700007200,
+        },
+    };
+    cache.saveReminders(input);
+    const auto out = cache.loadReminders();
+    REQUIRE(out.size() == 2);
+    CHECK(out[0] == input[0]);
+    CHECK(out[1] == input[1]);
+}
+
+TEST_CASE_METHOD(
+    CacheFixture, "reminders with no due date or identity are dropped on load", "[cache][reminder]"
+) {
+    // Guards against a corrupt meta entry resurfacing as a ghost reminder.
+    cache.saveReminders(
+        {MessageReminder{.conv = ConversationId{"C1"}, .ts = "1.2", .dueAt = 0},
+         MessageReminder{.conv = ConversationId{}, .ts = "1.2", .dueAt = 5},
+         MessageReminder{.conv = ConversationId{"C1"}, .ts = "3.4", .dueAt = 9}}
+    );
+    const auto out = cache.loadReminders();
+    REQUIRE(out.size() == 1);
+    CHECK(out[0].ts == "3.4");
+}
+
+TEST_CASE_METHOD(CacheFixture, "reminders do not clobber other meta keys", "[cache][reminder]") {
+    cache.saveMeUserId(UserId{"U777"});
+    cache.saveReminders({MessageReminder{.conv = ConversationId{"C1"}, .ts = "1.2", .dueAt = 5}});
+    CHECK(cache.loadMeUserId() == UserId{"U777"});
+    CHECK(cache.loadReminders().size() == 1);
+}
+
 // ── Images ────────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "image round-trip", "[cache][img]") {

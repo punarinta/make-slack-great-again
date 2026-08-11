@@ -75,6 +75,14 @@ public:
     rpl::producer<ThreadsViewPage> loadThreadsView(const QString &cursor) override;
     void                           markThreadRead(ConversationId, Ts root, Ts ts) override;
 
+    rpl::producer<std::vector<MessageReminder>> loadMessageReminders() override;
+    void                                        setMessageReminder(
+                                               ConversationId, Ts, qint64 dueAt, std::function<void(bool ok, QString err)> done = {}
+                                           ) override;
+    void removeMessageReminder(
+        ConversationId, Ts, std::function<void(bool ok, QString err)> done = {}
+    ) override;
+
     void sendMessage(ConversationId, OutgoingMessage) override;
     void editMessage(ConversationId, Ts, TextWithEntities) override;
     void deleteMessage(ConversationId, Ts) override;
@@ -275,6 +283,8 @@ private:
     bool                             _countsUnavailable      = false;
     // Same latch for subscriptions.thread.getView (the Threads overview feed).
     bool                             _threadsViewUnavailable = false;
+    // Same latch for the saved.* family (message reminders / "Later").
+    bool                             _savedUnavailable       = false;
     // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
     std::unique_ptr<SessionRealtime> _sessionRealtime;
     QTimer                          *_proactiveRefreshTimer = nullptr;

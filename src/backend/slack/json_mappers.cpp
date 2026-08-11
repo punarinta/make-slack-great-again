@@ -795,6 +795,31 @@ ThreadsViewPage toThreadsViewPage(const QJsonObject &resp) {
     return page;
 }
 
+std::vector<MessageReminder> toMessageReminders(const QJsonObject &resp) {
+    std::vector<MessageReminder> out;
+    const auto                   items = resp.value("saved_items").toArray();
+    out.reserve(items.size());
+    for (const auto v : items) {
+        const auto it = v.toObject();
+        // Saved items also cover plain "save for later" (no due date) and files;
+        // a reminder is a message item with a due date that is still pending.
+        if (it.value("item_type").toString() != QLatin1String("message"))
+            continue;
+        if (it.value("state").toString() == QLatin1String("completed") ||
+            it.value("is_archived").toBool())
+            continue;
+        MessageReminder r;
+        r.conv  = ConversationId{it.value("item_id").toString()};
+        r.ts    = it.value("ts").toString();
+        // date_due can exceed int range (Unix seconds) — read as double.
+        r.dueAt = static_cast<qint64>(it.value("date_due").toDouble());
+        if (r.conv.value.isEmpty() || r.ts.isEmpty() || r.dueAt <= 0)
+            continue;
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
 std::vector<Message> toMessages(const QJsonArray &a, bool reverseOrder) {
     std::vector<Message> out;
     out.reserve(a.size());

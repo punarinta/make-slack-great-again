@@ -10,6 +10,7 @@
 #include "ui/user_avatar.h"
 #include "util/emoji_font.h"
 #include "util/emoji_pixmap.h"
+#include "util/time_format.h"
 
 #include <QMovie>
 #include <QPainter>
@@ -211,6 +212,13 @@ void MessageListWidget::paintRow(
     const int rh        = rowHeight(index);
     const int msgH      = rh - sepH;
 
+    const bool reminded = hasReminder(item);
+
+    // Reminder tint covers the whole row (under hover/flash, like Slack's
+    // light-blue "saved for later" rows).
+    if (reminded)
+        p.fillRect(QRect(0, msgTop, vw, msgH), Th::c().message.reminderBg);
+
     // Hover background (message area only, not separator)
     if (index == _hoveredRow)
         p.fillRect(QRect(0, msgTop, vw, msgH), Th::c().message.hover);
@@ -228,10 +236,11 @@ void MessageListWidget::paintRow(
     if (pending)
         p.setOpacity(0.5);
 
-    // ── Pinned banner — sits at the very top of the message, before padding ──
-    const int pinnedBannerH = item.msg.pinned ? 18 : 0;
+    // ── Mini-banners — stacked at the very top of the message, before padding ──
+    const int allBannersH = bannersH(item);
+    int       bannerTop   = msgTop;
     if (item.msg.pinned) {
-        const QRect bannerRect(0, msgTop, vw, pinnedBannerH);
+        const QRect bannerRect(0, bannerTop, vw, kBannerH);
         p.fillRect(bannerRect, Th::c().message.pinnedBg); // subtle yellow tint
 
         // Pin icon — re-baked when the device pixel ratio changes (stays crisp at
@@ -248,7 +257,7 @@ void MessageListWidget::paintRow(
             kPinPx    = svgPixmapPhys(":/ui/pin.svg", QSize(12, 12), pinColor, d);
         }
         if (!kPinPx.isNull())
-            p.drawPixmap(kPadH, msgTop + (pinnedBannerH - 12) / 2, kPinPx);
+            p.drawPixmap(kPadH, bannerTop + (kBannerH - 12) / 2, kPinPx);
 
         // "Pinned by <name>" label
         const auto   *pinner  = _session ? _session->findUser(item.msg.pinnedBy) : nullptr;
@@ -260,17 +269,53 @@ void MessageListWidget::paintRow(
         p.setPen(Th::c().message.attachmentDismiss);
         p.drawText(
             kPadH + 16,
-            msgTop,
+            bannerTop,
             vw - kPadH - 16,
-            pinnedBannerH,
+            kBannerH,
+            Qt::AlignVCenter | Qt::AlignLeft,
+            label
+        );
+        p.restore();
+        bannerTop += kBannerH;
+    }
+    if (reminded) {
+        // Reminder strip: alarm icon + "Due <time>" in the reminder accent.
+        // No extra fill — the row-wide tint above already backs it.
+        const QColor   stripColor = Th::c().message.reminderText;
+        static qreal   kAlarmDpr  = 0;
+        static QColor  kAlarmColor;
+        static QPixmap kAlarmPx;
+        if (const qreal d = p.device()->devicePixelRatioF();
+            !qFuzzyCompare(d, kAlarmDpr) || stripColor != kAlarmColor) {
+            kAlarmDpr   = d;
+            kAlarmColor = stripColor;
+            kAlarmPx    = svgPixmapPhys(":/ui/alarm-clock.svg", QSize(12, 12), stripColor, d);
+        }
+        if (!kAlarmPx.isNull())
+            p.drawPixmap(kPadH, bannerTop + (kBannerH - 12) / 2, kAlarmPx);
+
+        const qint64  due     = _session->messageReminderDue(_currentConv, item.msg.ts);
+        const qint64  now     = QDateTime::currentSecsSinceEpoch();
+        const QString label   = due <= now ? tr("Reminder — past due")
+                                           : tr("Reminder — %1").arg(TimeFmt::formatDateTime(due));
+        QFont         dueFont = QApplication::font();
+        dueFont.setPointSizeF(dueFont.pointSizeF() * 0.78);
+        p.save();
+        p.setFont(dueFont);
+        p.setPen(stripColor);
+        p.drawText(
+            kPadH + 16,
+            bannerTop,
+            vw - kPadH - 16,
+            kBannerH,
             Qt::AlignVCenter | Qt::AlignLeft,
             label
         );
         p.restore();
     }
 
-    // Content starts below banner, then padV
-    const int contTop = msgTop + pinnedBannerH + padV;
+    // Content starts below the banners, then padV
+    const int contTop = msgTop + allBannersH + padV;
 
     if (!collapsed) {
         // Avatar
@@ -1400,7 +1445,7 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         const bool collapsed = isCollapsed(i);
         const int  padV      = collapsed ? kPadVCollapsed : kPadV;
         const int  sep2      = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH2  = item.msg.pinned ? 18 : 0;
+        const int  pinnedH2  = bannersH(item);
         int        chipY =
             rowTop + sep2 + padV + pinnedH2 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai)
@@ -1619,7 +1664,7 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
     const bool collapsed = isCollapsed(i);
     const int  padV      = collapsed ? kPadVCollapsed : kPadV;
     const int  sep3      = needsDateSep(i) ? kSepH : 0;
-    const int  pinnedH3  = item.msg.pinned ? 18 : 0;
+    const int  pinnedH3  = bannersH(item);
     int y = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
         if (isDismissed(item.msg.ts, ai))
@@ -1934,7 +1979,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
         const bool  collapsed = isCollapsed(i);
         const int   padV      = collapsed ? kPadVCollapsed : kPadV;
         const int   sep       = needsDateSep(i) ? kSepH : 0;
-        const int   pinH      = item.msg.pinned ? 18 : 0;
+        const int   pinH      = bannersH(item);
 
         int y = rowTop + sep + pinH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
@@ -2086,7 +2131,7 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
     const bool         collapsed = isCollapsed(msgIdx);
     const int          padV      = collapsed ? kPadVCollapsed : kPadV;
     const int          sep       = needsDateSep(msgIdx) ? kSepH : 0;
-    const int          pinnedH   = item.msg.pinned ? 18 : 0;
+    const int          pinnedH   = bannersH(item);
     const int          rowTop    = _tops[msgIdx] - scrollY;
 
     // Replicate contentY buildup from paintRow up to the file sections.
