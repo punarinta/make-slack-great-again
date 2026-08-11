@@ -55,6 +55,13 @@ public:
     void        saveMutedThreads(const QStringList &keys);
     QStringList loadMutedThreads() const;
 
+    // Message reminders (Session::_reminders): the server list plus the local
+    // enrichment (thread root, snippet, fired flag) the server doesn't store.
+    // Persisted so blue tints paint and overdue reminders still fire on a start
+    // without network.
+    void                         saveReminders(const std::vector<MessageReminder> &reminders);
+    std::vector<MessageReminder> loadReminders() const;
+
     // The channel_not_found negative cache (Session::_deadConvIds): conversation
     // ids conversations.info reported as nonexistent for this workspace. Persisted
     // so a restart doesn't re-probe every foreign/dead conversation from scratch.

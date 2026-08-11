@@ -96,6 +96,8 @@ struct MessageColors {
     QColor attachmentBorder;   // attachment card border
     QColor attachmentDismiss;  // dismiss "×" button color
     QColor pinnedBg;           // pinned message row tint
+    QColor reminderBg;         // "reminder set" message row tint (light blue)
+    QColor reminderText;       // reminder banner text/icon ("Due …")
     QColor fileChipBg;         // non-image file chip background
     QColor fileChipBorder;     // file chip border
     QColor fileNameDim;        // filename label in image section

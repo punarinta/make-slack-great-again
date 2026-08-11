@@ -158,6 +158,38 @@ public:
     // state in the Threads overview. Best-effort; no-op default.
     virtual void markThreadRead(ConversationId, Ts /*root*/, Ts /*ts*/) {}
 
+    // --- Message reminders (Slack's "Later" / saved items; internal saved.* API,
+    // session tokens only — gated by Capabilities::messageReminders) ---
+    // The server stores the reminder (so the official mobile app alarms too and
+    // reminders sync across clients), but delivers NOTHING when it comes due —
+    // the Session raises the notification from its own timer (EvReminderDue).
+    //
+    // The authed user's saved-for-later message reminders. Same graceful-degrade
+    // contract as loadUnreadCounts: emit exactly one snapshot on success (an
+    // empty vector is a legitimate "no reminders"), or complete WITHOUT emitting
+    // when unavailable — so a consumer only replaces its local state on a real
+    // server answer.
+    virtual rpl::producer<std::vector<MessageReminder>> loadMessageReminders() {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+    // Create (or reschedule) a reminder on a message, due at `dueAt` (Unix
+    // seconds). done(ok, err) reports the server's answer.
+    virtual void setMessageReminder(
+        ConversationId, Ts, qint64 /*dueAt*/, std::function<void(bool ok, QString err)> done = {}
+    ) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+    // Remove a message's reminder (drops the whole saved item).
+    virtual void
+    removeMessageReminder(ConversationId, Ts, std::function<void(bool ok, QString err)> done = {}) {
+        if (done)
+            done(false, QStringLiteral("not_supported"));
+    }
+
     // --- Commands (fire-and-reconcile; optimistic UI lives in Session) ---
     virtual void sendMessage(ConversationId, OutgoingMessage)      = 0;
     virtual void editMessage(ConversationId, Ts, TextWithEntities) = 0;

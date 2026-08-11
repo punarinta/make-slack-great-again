@@ -16,6 +16,7 @@
 #include "ui/image_viewer/image_viewer.h"
 #include "ui/table_viewer/table_viewer.h"
 #include "ui/delete_message_dialog/delete_message_dialog.h"
+#include "ui/reminder_dialog/reminder_dialog.h"
 #include "ui/summary_dialog/summarize_job.h"
 #include "ui/summary_dialog/summary_dialog.h"
 #include "llm/llm_service.h"
@@ -316,6 +317,16 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
     // Fresh emoji.list arrived: :codes: that resolved to nothing (or to stale
     // URLs) while the map was empty must be re-rendered.
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
+
+    // Reminder set/removed/synced: rows gain or lose the due strip (height) and
+    // the blue tint — relayout, not just repaint.
+    _session->remindersChanged() | rpl::on_next(
+                                       [this] {
+                                           rebuildLayout();
+                                           viewport()->update();
+                                       },
+                                       _eventLifetime
+                                   );
 
     // If we've shown this chat before, restore exactly where the user left it —
     // ignoring the unread target so switching chats/workspaces never jumps the
@@ -639,6 +650,16 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
         rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
 
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
+
+    // Reminder set/removed/synced: rows gain or lose the due strip (height) and
+    // the blue tint — relayout, not just repaint.
+    _session->remindersChanged() | rpl::on_next(
+                                       [this] {
+                                           rebuildLayout();
+                                           viewport()->update();
+                                       },
+                                       _eventLifetime
+                                   );
 
     _session->backend()->loadThread(conv, rootTs, std::nullopt) |
         rpl::on_next(
@@ -1189,13 +1210,26 @@ int MessageListWidget::rowHeight(int index) const {
                               ? inlineThreadHeight(item.msg.ts)
                               : 0;
     const int  headerH  = collapsed ? 0 : (kHdrH + kHdrGap);
-    const int  pinnedH  = item.msg.pinned ? 18 : 0;
+    const int  pinnedH  = bannersH(item);
     // pinnedH is a banner drawn before padV — kept separate from contentH.
     const int  contentH = headerH + docH + extraH + reactionH;
     const int  sepH     = needsDateSep(index) ? kSepH : 0;
     if (collapsed)
         return sepH + pinnedH + kPadVCollapsed + contentH + kPadVCollapsed + replyBarH + inlineH;
     return sepH + pinnedH + kPadV + std::max(kAvSize, contentH) + kPadVBottom + replyBarH + inlineH;
+}
+
+bool MessageListWidget::hasReminder(const MessageItem &item) const {
+    return _session && _session->hasMessageReminder(_currentConv, item.msg.ts);
+}
+
+int MessageListWidget::bannersH(const MessageItem &item) const {
+    int h = 0;
+    if (item.msg.pinned)
+        h += kBannerH;
+    if (hasReminder(item))
+        h += kBannerH;
+    return h;
 }
 
 // "Laid out at the current width" — the cheap proxy for "measured". ensureDocLayout
@@ -1596,7 +1630,7 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
         const bool coll    = isCollapsed(i);
         const int  padV    = coll ? kPadVCollapsed : kPadV;
         const int  sepH2   = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  pinnedH = bannersH(item);
         const int  textTop = rowTop + sepH2 + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
 
         // Check main message text doc
@@ -1664,7 +1698,7 @@ QRect MessageListWidget::userAnchorVpRect(const QPoint &viewportPos, const QStri
         const bool coll    = isCollapsed(i);
         const int  padV    = coll ? kPadVCollapsed : kPadV;
         const int  sepH    = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  pinnedH = bannersH(item);
         const int  textTop = rowTop + sepH + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
 
         const QPointF local(viewportPos.x() - ctx.textLeft, docY - textTop);
@@ -1718,7 +1752,7 @@ QString MessageListWidget::avatarUserAt(const QPoint &viewportPos, QRect *outVpR
         // (kPadH, contTop + 2) where contTop = rowTop + sepH + pinnedBannerH + kPadV.
         const auto &item    = _items[i];
         const int   sepH    = needsDateSep(i) ? kSepH : 0;
-        const int   pinnedH = item.msg.pinned ? 18 : 0;
+        const int   pinnedH = bannersH(item);
         const int   contTop = rowTop + sepH + pinnedH + kPadV;
         const QRect avVp(kPadH, contTop + 2 - scrollY, kAvSize, kAvSize);
         if (!avVp.contains(viewportPos))
@@ -1780,7 +1814,7 @@ std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos
         const bool collapsed = isCollapsed(i);
         const int  padV      = collapsed ? kPadVCollapsed : kPadV;
         const int  sep       = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH   = item.msg.pinned ? 18 : 0;
+        const int  pinnedH   = bannersH(item);
         int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
@@ -1810,7 +1844,7 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
     const bool         collapsed = isCollapsed(msgIdx);
     const int          padV      = collapsed ? kPadVCollapsed : kPadV;
     const int          sep       = needsDateSep(msgIdx) ? kSepH : 0;
-    const int          pinnedH   = item.msg.pinned ? 18 : 0;
+    const int          pinnedH   = bannersH(item);
     const int          rowTop    = _tops[msgIdx] - scrollY;
     int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
 
@@ -1845,7 +1879,7 @@ MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewport
         const bool coll    = isCollapsed(i);
         const int  padV    = coll ? kPadVCollapsed : kPadV;
         const int  sepH2   = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  pinnedH = bannersH(item);
         const int  textTop = rowTop + sepH2 + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
 
         // Tables in a laid-out doc at origin (originX, originY): return the
@@ -2255,6 +2289,34 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         );
     }
 
+    // "Remind me" / "Remove reminder" — Slack's message reminders ("Later").
+    // Session-token workspaces only (see Capabilities::messageReminders); system
+    // rows can't carry one.
+    if (caps.messageReminders && !isSystemEvent(msg)) {
+        if (_session && _session->hasMessageReminder(_currentConv, msg.ts)) {
+            menu->addItem(
+                tr("Remove reminder"),
+                {},
+                [this, conv = _currentConv, ts = msg.ts] {
+                    if (_session)
+                        _session->removeMessageReminder(conv, ts);
+                },
+                false,
+                false,
+                ":/ui/bookmark-minus.svg"
+            );
+        } else {
+            menu->addItem(
+                tr("Remind me"),
+                /*shortcut=*/{},
+                [this, msg, globalPos] { showRemindMenu(msg, globalPos); },
+                /*destructive=*/false,
+                /*submenu=*/true,
+                ":/ui/alarm-clock.svg"
+            );
+        }
+    }
+
     menu->addSeparator();
 
     menu->addItem(
@@ -2295,6 +2357,52 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         );
     }
 
+    menu->popup(globalPos);
+}
+
+void MessageListWidget::showRemindMenu(const Message &msg, const QPoint &globalPos) {
+    if (!_session)
+        return;
+    auto      *menu      = new ContextMenu(this);
+    const auto addPreset = [&](const QString &label, qint64 dueAt) {
+        menu->addItem(
+            label,
+            [this, conv = _currentConv, msg, dueAt] {
+                if (_session)
+                    _session->setMessageReminder(conv, msg, dueAt);
+            },
+            false,
+            {},
+            false
+        );
+    };
+    const QDateTime now = QDateTime::currentDateTime();
+    menu->addHeader(tr("Remind me about this…"));
+    addPreset(tr("In 20 minutes"), now.addSecs(20 * 60).toSecsSinceEpoch());
+    addPreset(tr("In 1 hour"), now.addSecs(3600).toSecsSinceEpoch());
+    addPreset(tr("In 3 hours"), now.addSecs(3 * 3600).toSecsSinceEpoch());
+    // Tomorrow / next Monday at 9:00 local time — the official client's presets.
+    addPreset(tr("Tomorrow"), QDateTime(now.date().addDays(1), QTime(9, 0)).toSecsSinceEpoch());
+    const int daysToMonday = 8 - now.date().dayOfWeek(); // Mon=1…Sun=7 → 7…1 days ahead
+    addPreset(
+        tr("Next week"), QDateTime(now.date().addDays(daysToMonday), QTime(9, 0)).toSecsSinceEpoch()
+    );
+    menu->addSeparator();
+    menu->addItem(
+        tr("Custom…"),
+        [this, conv = _currentConv, msg] {
+            auto *dlg = new ReminderDialog(window());
+            dlg->setAttribute(Qt::WA_DeleteOnClose);
+            connect(dlg, &AppDialog::accepted, this, [this, conv, msg, dlg] {
+                if (_session)
+                    _session->setMessageReminder(conv, msg, dlg->dueAt());
+            });
+            dlg->exec();
+        },
+        false,
+        {},
+        false
+    );
     menu->popup(globalPos);
 }
 
@@ -2960,7 +3068,7 @@ TextPos MessageListWidget::textHitTest(const QPoint &viewportPos) const {
         const bool coll    = isCollapsed(i);
         const int  padV    = coll ? kPadVCollapsed : kPadV;
         const int  sepH    = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = item.msg.pinned ? 18 : 0;
+        const int  pinnedH = bannersH(item);
         const int  textTop = rowTop + sepH + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
 
         const QPointF local(viewportPos.x() - textLeft, docY - textTop);
@@ -3135,7 +3243,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
             const bool collA = isCollapsed(newHoveredRow);
             const int  padVA = collA ? kPadVCollapsed : kPadV;
             const int  sepA  = needsDateSep(newHoveredRow) ? kSepH : 0;
-            const int  pinHA = item.msg.pinned ? 18 : 0;
+            const int  pinHA = bannersH(item);
             const int  rtA   = _tops[newHoveredRow] - scrollY;
             int ay = rtA + sepA + pinHA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
             for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {

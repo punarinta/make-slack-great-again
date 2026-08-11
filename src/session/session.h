@@ -231,6 +231,33 @@ public:
     bool isThreadMuted(const ConversationId &conv, const Ts &root) const;
     void setThreadMuted(const ConversationId &conv, const Ts &root, bool muted);
 
+    // --- Message reminders ("Remind me about this message") ---
+    // Local mirror of the backend's saved-item reminders, gated by
+    // Capabilities::messageReminders. The server stores the reminder (so it
+    // syncs with the official clients), but delivers nothing when it comes due —
+    // a Session timer raises EvReminderDue instead, and MainWindow turns that
+    // into the OS notification. Set/remove are optimistic: the local entry
+    // changes immediately (blue tint, menu state) and rolls back if the server
+    // rejects the write. Reminders that came due while the app was closed fire
+    // once shortly after start (unless they are stale — see fireDueReminders).
+    // 0 = no reminder on that message.
+    qint64 messageReminderDue(const ConversationId &conv, const Ts &ts) const;
+    bool   hasMessageReminder(const ConversationId &conv, const Ts &ts) const {
+        return messageReminderDue(conv, ts) > 0;
+    }
+    // `msg` supplies ts plus the local enrichment the server doesn't store:
+    // its thread root (routes the notification click into the thread) and a
+    // text snippet (the notification body).
+    void setMessageReminder(const ConversationId &conv, const Message &msg, qint64 dueAt);
+    void removeMessageReminder(const ConversationId &conv, const Ts &ts);
+    // Fires whenever the reminder set changes (set/remove/server sync/fired) —
+    // the message list re-lays out its rows on this (the due-strip adds height).
+    rpl::producer<> remindersChanged() const { return _remindersChangedHub.events(); }
+
+    // Test hook: run the due-reminder check synchronously (normally fired by
+    // the single-shot _reminderTimer).
+    void fireDueRemindersForTest() { fireDueReminders(); }
+
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
 
@@ -582,6 +609,36 @@ private:
     static QString                     threadMuteKey(const ConversationId &conv, const Ts &root) {
         return conv.value + QLatin1Char('\t') + root;
     }
+
+    // --- Message reminders (see the public reminder API above) ---
+    // Arm _reminderTimer for the nearest unfired due time (stopped when none).
+    void armReminderTimer();
+    // Fire EvReminderDue for every reminder now due, mark it fired, re-arm.
+    void fireDueReminders();
+    // Pull the authoritative reminder list from the backend (throttled by
+    // kRemindersRefreshGapMs from checkRealtimeHealth) — picks up reminders
+    // set/removed from other clients. Replaces local state only when the
+    // backend actually answers (unsupported backends never emit).
+    void refreshReminders();
+    // Persist + notify UI + re-arm: every mutation of _reminders funnels here.
+    void reminderStoreChanged();
+
+    static QString reminderKey(const ConversationId &conv, const Ts &ts) {
+        return conv.value + QLatin1Char('\t') + ts;
+    }
+    // Keyed by reminderKey(conv, ts). Loaded from cache at start().
+    QHash<QString, MessageReminder> _reminders;
+    // When each locally-added reminder was created (ms epoch; in-memory only).
+    // A server snapshot requested just before an optimistic add would come back
+    // without it — entries younger than the grace window survive such a sync.
+    QHash<QString, qint64>          _reminderCreatedMs;
+    QTimer                          _reminderTimer; // single-shot, armReminderTimer()
+    rpl::event_stream<>             _remindersChangedHub;
+    static constexpr qint64         kRemindersRefreshGapMs   = 5 * 60'000;
+    qint64                          _lastRemindersRefreshMs  = 0;
+    // A reminder overdue by more than this when discovered (app closed for
+    // days) is marked fired silently instead of raising a stale notification.
+    static constexpr qint64         kMaxReminderLatenessSecs = 7 * 24 * 3600;
 
     // Throttle the rate-limit notice banner (429s cluster; don't spam).
     static constexpr qint64 kRateLimitNoticeGapMs  = 15'000;

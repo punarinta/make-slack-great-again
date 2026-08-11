@@ -104,16 +104,18 @@ void Session::start() {
         _emojiMap        = _cache->loadEmojiMap();
         const auto muted = _cache->loadMutedThreads();
         _mutedThreads    = QSet<QString>(muted.begin(), muted.end());
+        for (auto &r : _cache->loadReminders())
+            _reminders.insert(reminderKey(r.conv, r.ts), std::move(r));
         // The channel_not_found negative cache survives restarts so startup
         // doesn't re-probe every foreign/dead conversation. reconcileDeadConvIds
         // (off the fresh conversations.list) clears whatever came back to life
         // while the app was closed.
-        const auto dead  = _cache->loadDeadConvIds();
-        _deadConvIds     = QSet<QString>(dead.begin(), dead.end());
+        const auto dead = _cache->loadDeadConvIds();
+        _deadConvIds    = QSet<QString>(dead.begin(), dead.end());
         // Seed our own user id from cache so optimistic sends carry the right
         // author (avatar/name, and ghost removal on the realtime echo) even
         // before auth.test answers — or if it fails this run entirely.
-        _meUserId        = _cache->loadMeUserId();
+        _meUserId       = _cache->loadMeUserId();
     }
 
     _backend->connectRealtime();
@@ -162,6 +164,16 @@ void Session::start() {
     // Batched unread-resync merges (see resyncUnreads / applyPendingUnreadInfos).
     _unreadPatchTimer.setSingleShot(true);
     QObject::connect(&_unreadPatchTimer, &QTimer::timeout, [this] { applyPendingUnreadInfos(); });
+
+    // Message reminders: the due timer, plus one startup arm. Reminders that
+    // came due while the app was closed fire from that first (>= 1 s) shot —
+    // after the event loop turns, so MainWindow's event subscription is live.
+    _reminderTimer.setSingleShot(true);
+    QObject::connect(&_reminderTimer, &QTimer::timeout, [this] { fireDueReminders(); });
+    armReminderTimer();
+    // …and the authoritative server list (no-op for backends without the
+    // capability; the periodic re-sync rides checkRealtimeHealth).
+    refreshReminders();
 
     // Load conversations; update cache on arrival.
     reloadConversations(/*refreshEmoji=*/true);
@@ -632,6 +644,16 @@ void Session::checkRealtimeHealth() {
             _lastForegroundPollMs = now;
             pollConversationForMissed(_openConv, /*foreground=*/true);
         }
+    }
+
+    // (3) Message reminders: periodic re-sync with the server list, so a
+    // reminder set or removed from another client (official app, phone) is
+    // reflected here — and its due time fires here too. Cheap (one request),
+    // throttled, and skipped entirely for backends without the capability.
+    if (_backend->capabilities().messageReminders) {
+        const qint64 nowRem = QDateTime::currentMSecsSinceEpoch();
+        if (nowRem - _lastRemindersRefreshMs >= kRemindersRefreshGapMs)
+            refreshReminders();
     }
 
     // Background rotation: sweeps member conversations OTHER than the open one
@@ -2375,4 +2397,155 @@ void Session::setThreadMuted(const ConversationId &conv, const Ts &root, bool mu
         _mutedThreads.remove(key);
     if (_cache)
         _cache->saveMutedThreads(QStringList(_mutedThreads.begin(), _mutedThreads.end()));
+}
+
+// ── Message reminders ─────────────────────────────────────────────────────────
+
+qint64 Session::messageReminderDue(const ConversationId &conv, const Ts &ts) const {
+    const auto it = _reminders.constFind(reminderKey(conv, ts));
+    return it != _reminders.constEnd() ? it->dueAt : 0;
+}
+
+void Session::setMessageReminder(const ConversationId &conv, const Message &msg, qint64 dueAt) {
+    if (dueAt <= 0 || msg.ts.isEmpty())
+        return;
+    const QString   key = reminderKey(conv, msg.ts);
+    MessageReminder r;
+    r.conv       = conv;
+    r.ts         = msg.ts;
+    r.dueAt      = dueAt;
+    r.threadRoot = msg.threadRoot.value_or(Ts{});
+    r.snippet    = msg.text.text.simplified().left(120);
+    _reminders.insert(key, r);
+    _reminderCreatedMs.insert(key, QDateTime::currentMSecsSinceEpoch());
+    reminderStoreChanged();
+
+    _backend->setMessageReminder(conv, msg.ts, dueAt, [this, key, dueAt](bool ok, QString err) {
+        if (ok)
+            return;
+        // Definitive rejection: roll the optimistic entry back (unless the user
+        // already rescheduled it) and say why the blue tint just vanished.
+        const auto it = _reminders.constFind(key);
+        if (it != _reminders.constEnd() && it->dueAt == dueAt) {
+            _reminders.erase(it);
+            reminderStoreChanged();
+        }
+        _errorHub.fire(
+            QCoreApplication::translate("Session", "Couldn't set the reminder: %1").arg(err)
+        );
+    });
+}
+
+void Session::removeMessageReminder(const ConversationId &conv, const Ts &ts) {
+    const QString key = reminderKey(conv, ts);
+    const auto    it  = _reminders.constFind(key);
+    if (it == _reminders.constEnd())
+        return;
+    const MessageReminder removed = *it;
+    _reminders.erase(it);
+    reminderStoreChanged();
+
+    _backend->removeMessageReminder(conv, ts, [this, key, removed](bool ok, QString err) {
+        if (ok)
+            return;
+        // The item still exists server-side — restore it (unless a new reminder
+        // was set on the message meanwhile) so the UI doesn't lie.
+        if (!_reminders.contains(key)) {
+            _reminders.insert(key, removed);
+            reminderStoreChanged();
+        }
+        _errorHub.fire(
+            QCoreApplication::translate("Session", "Couldn't remove the reminder: %1").arg(err)
+        );
+    });
+}
+
+void Session::reminderStoreChanged() {
+    if (_cache) {
+        std::vector<MessageReminder> all;
+        all.reserve(_reminders.size());
+        for (const auto &r : _reminders)
+            all.push_back(r);
+        _cache->saveReminders(all);
+    }
+    _remindersChangedHub.fire({});
+    armReminderTimer();
+}
+
+void Session::armReminderTimer() {
+    qint64 nearest = 0;
+    for (const auto &r : _reminders)
+        if (!r.fired && (nearest == 0 || r.dueAt < nearest))
+            nearest = r.dueAt;
+    if (nearest == 0) {
+        _reminderTimer.stop();
+        return;
+    }
+    // Floor at 1 s so an already-due reminder still fires from the event loop
+    // (not synchronously mid-mutation); cap the arm at 6 h — a longer wait just
+    // re-arms on expiry, which sidesteps QTimer's int-ms range for far-future
+    // dues ("remind me in 3 months").
+    const qint64 now       = QDateTime::currentSecsSinceEpoch();
+    const qint64 delaySecs = std::clamp<qint64>(nearest - now, 1, 6 * 3600);
+    _reminderTimer.start(int(delaySecs * 1000));
+}
+
+void Session::fireDueReminders() {
+    const qint64 now     = QDateTime::currentSecsSinceEpoch();
+    bool         changed = false;
+    for (auto &r : _reminders) {
+        if (r.fired || r.dueAt > now)
+            continue;
+        r.fired = true;
+        changed = true;
+        // Discovered long after the fact (the app was closed for days; the
+        // official clients alarmed ages ago): keep it silently instead of
+        // raising a stale toast — same spirit as tooOldToNotify.
+        if (now - r.dueAt <= kMaxReminderLatenessSecs)
+            _eventHub.fire(EvReminderDue{r.conv, r.ts, r.threadRoot, r.snippet});
+    }
+    if (changed)
+        reminderStoreChanged(); // persists fired flags and re-arms
+    else
+        armReminderTimer(); // the 6 h cap expired short of the due time
+}
+
+void Session::refreshReminders() {
+    _lastRemindersRefreshMs = QDateTime::currentMSecsSinceEpoch();
+    _backend->loadMessageReminders() |
+        rpl::on_next(
+            [this](std::vector<MessageReminder> server) {
+                // The server snapshot is authoritative: it adds reminders set from
+                // other clients and drops ones removed there. Local enrichment
+                // (threadRoot/snippet/fired) is carried over by key; a reschedule
+                // (changed dueAt) clears fired so the new time alarms. Entries
+                // added locally within the grace window survive a snapshot that
+                // raced the optimistic add.
+                constexpr qint64 kAddGraceMs = 2 * 60'000;
+                const qint64     nowMs       = QDateTime::currentMSecsSinceEpoch();
+
+                QHash<QString, MessageReminder> next;
+                next.reserve(int(server.size()));
+                for (auto &r : server) {
+                    const QString key = reminderKey(r.conv, r.ts);
+                    if (const auto it = _reminders.constFind(key); it != _reminders.constEnd()) {
+                        r.threadRoot = it->threadRoot;
+                        r.snippet    = it->snippet;
+                        r.fired      = (it->dueAt == r.dueAt) && it->fired;
+                    }
+                    next.insert(key, std::move(r));
+                }
+                for (auto it = _reminders.constBegin(); it != _reminders.constEnd(); ++it) {
+                    const qint64 createdMs = _reminderCreatedMs.value(it.key(), 0);
+                    if (!next.contains(it.key()) && createdMs > 0 &&
+                        nowMs - createdMs < kAddGraceMs)
+                        next.insert(it.key(), it.value());
+                }
+                if (next == _reminders)
+                    return;
+                _reminders = std::move(next);
+                reminderStoreChanged();
+            },
+            _lifetime
+        );
 }

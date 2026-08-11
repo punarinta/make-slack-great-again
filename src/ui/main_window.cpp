@@ -1173,6 +1173,8 @@ Session *MainWindow::ensureSession(const QString &teamId) {
                                     maybeNotify(teamId, *ev);
                                 else if (const auto *hv = std::get_if<EvHuddleChanged>(&e))
                                     maybeNotifyHuddle(teamId, *hv);
+                                else if (const auto *rd = std::get_if<EvReminderDue>(&e))
+                                    notifyReminderDue(teamId, *rd);
                             },
                             entry.lifetime
                         );
@@ -2130,6 +2132,7 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
         _pendingNotifTeam       = teamId;
         _pendingNotifConv       = ev.conv;
         _pendingNotifThreadRoot = replyRoot;
+        _pendingNotifMsgTs      = {};
         if (notifPix.isNull())
             _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
         else
@@ -2252,6 +2255,69 @@ void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged 
         _pendingNotifTeam       = teamId;
         _pendingNotifConv       = ev.conv;
         _pendingNotifThreadRoot = {}; // a huddle isn't a thread
+        _pendingNotifMsgTs      = {};
+        if (notifPix.isNull())
+            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
+        else
+            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+    }
+
+    if (s.value("notifications/sound", true).toBool())
+        Sound::Player::instance().play(
+            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
+        );
+}
+
+void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &ev) {
+    // Only the global switch gates a reminder: the user explicitly asked for
+    // this one, so per-conversation levels, thread mutes and even the workspace
+    // mute don't apply (matching the official client, which alarms regardless).
+    QSettings s("msga", "msga");
+    if (!s.value("notifications/enabled", true).toBool())
+        return;
+
+    const auto it = _sessions.find(teamId);
+    if (it == _sessions.end())
+        return;
+    Session *session = it->second.session.get();
+
+    const auto   *conv  = session->findConversation(ev.conv);
+    const QString where = conv ? ((conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)
+                                      ? conv->name
+                                      : QStringLiteral("#") + conv->name)
+                               : QString();
+
+    QString title = where.isEmpty() ? tr("Reminder") : tr("Reminder — %1").arg(where);
+    if (teamId != _activeTeamId) {
+        const QString teamName = recordForHandle(teamId).displayName;
+        if (!teamName.isEmpty())
+            title = teamName + " · " + title;
+    }
+    QString body =
+        ev.snippet.isEmpty() ? tr("You asked to be reminded about a message.") : ev.snippet;
+    if (body.length() > 100)
+        body = body.left(97) + "…";
+
+    QPixmap notifPix;
+    if (_imgCache) {
+        const QString iconUrl = recordForHandle(teamId).iconUrl;
+        if (!iconUrl.isEmpty())
+            notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
+    }
+
+    // The token carries the exact message ts so the click scrolls to it.
+    bool shown = false;
+    if (_desktopNotifier && _desktopNotifier->isAvailable()) {
+        const QString token = encodeNotifToken(teamId, ev.conv, ev.threadRoot, ev.ts);
+        shown               = _desktopNotifier->notify(
+            title, body, notifPix.isNull() ? QImage() : notifPix.toImage(), token, {}, 5000
+        );
+    }
+    if (!shown && _trayIcon) {
+        _pendingNotifTeam       = teamId;
+        _pendingNotifConv       = ev.conv;
+        _pendingNotifThreadRoot = ev.threadRoot;
+        _pendingNotifMsgTs      = ev.ts;
         if (notifPix.isNull())
             _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
         else
@@ -2313,6 +2379,7 @@ void MainWindow::showSampleNotification(int kind) {
         _pendingNotifTeam.clear();
         _pendingNotifConv       = {};
         _pendingNotifThreadRoot = {};
+        _pendingNotifMsgTs      = {};
         if (notifPix.isNull())
             _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
         else
@@ -2578,10 +2645,13 @@ void MainWindow::setupTray() {
     );
 
     connect(_trayIcon, &QSystemTrayIcon::messageClicked, this, [this] {
-        openNotifTarget(_pendingNotifTeam, _pendingNotifConv, _pendingNotifThreadRoot);
+        openNotifTarget(
+            _pendingNotifTeam, _pendingNotifConv, _pendingNotifThreadRoot, _pendingNotifMsgTs
+        );
         _pendingNotifConv = {};
         _pendingNotifTeam.clear();
         _pendingNotifThreadRoot.clear();
+        _pendingNotifMsgTs.clear();
     });
 
     _trayIcon->show();
@@ -2605,7 +2675,7 @@ void MainWindow::handleNotifToken(const QString &token) {
         return;
     }
     if (const auto t = decodeNotifToken(token))
-        openNotifTarget(t->teamId, t->conv, t->threadRoot);
+        openNotifTarget(t->teamId, t->conv, t->threadRoot, t->msgTs);
 }
 
 void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
@@ -2709,7 +2779,7 @@ void MainWindow::openMessageTarget(const ConversationId &conv, const Ts &ts, con
 }
 
 void MainWindow::openNotifTarget(
-    const QString &teamId, const ConversationId &conv, const Ts &threadRoot
+    const QString &teamId, const ConversationId &conv, const Ts &threadRoot, const Ts &msgTs
 ) {
     show();
     raise();
@@ -2744,6 +2814,19 @@ void MainWindow::openNotifTarget(
     // A thread-reply notification: the reply isn't in the channel timeline, so
     // open the thread it belongs to (no-op for a plain message — empty root).
     openThreadPanel(conv, threadRoot);
+
+    // A reminder click carries the exact message — scroll to it and flash it.
+    // jumpToTs remembers the target when the history hasn't loaded yet, so the
+    // jump still lands once the open above delivers its first page (best-effort:
+    // a message buried beyond the first page just leaves the chat open).
+    if (!msgTs.isEmpty()) {
+        if (threadRoot.isEmpty()) {
+            if (_messageList)
+                _messageList->jumpToTs(msgTs);
+        } else if (_threadPanel) {
+            _threadPanel->jumpToTs(msgTs);
+        }
+    }
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────

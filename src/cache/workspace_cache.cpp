@@ -582,6 +582,44 @@ QStringList WorkspaceCache::loadMutedThreads() const {
     return out;
 }
 
+void WorkspaceCache::saveReminders(const std::vector<MessageReminder> &reminders) {
+    QJsonArray arr;
+    for (const auto &r : reminders) {
+        QJsonObject o;
+        o["conv"] = r.conv.value;
+        o["ts"]   = r.ts;
+        o["due"]  = r.dueAt;
+        if (!r.threadRoot.isEmpty())
+            o["root"] = r.threadRoot;
+        if (!r.snippet.isEmpty())
+            o["snippet"] = r.snippet;
+        if (r.fired)
+            o["fired"] = true;
+        arr.append(o);
+    }
+    metaObject()["reminders"] = arr;
+    writeMeta();
+}
+
+std::vector<MessageReminder> WorkspaceCache::loadReminders() const {
+    std::vector<MessageReminder> out;
+    const auto                   arr = metaObject().value("reminders").toArray();
+    out.reserve(arr.size());
+    for (const auto &v : arr) {
+        const auto      o = v.toObject();
+        MessageReminder r;
+        r.conv       = ConversationId{o.value("conv").toString()};
+        r.ts         = o.value("ts").toString();
+        r.dueAt      = o.value("due").toVariant().toLongLong();
+        r.threadRoot = o.value("root").toString();
+        r.snippet    = o.value("snippet").toString();
+        r.fired      = o.value("fired").toBool();
+        if (!r.conv.value.isEmpty() && !r.ts.isEmpty() && r.dueAt > 0)
+            out.push_back(std::move(r));
+    }
+    return out;
+}
+
 void WorkspaceCache::saveDeadConvIds(const QStringList &ids) {
     metaObject()["deadConvIds"] = QJsonArray::fromStringList(ids);
     writeMeta();
