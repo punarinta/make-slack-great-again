@@ -393,42 +393,42 @@ This action cannot be undone.</translation>
         <translation>Schedule send</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1530"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1535"/>
         <source>Send at</source>
         <translation>Send at</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1530"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1535"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1530"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1535"/>
         <source>Schedule</source>
         <translation>Schedule</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1656"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1661"/>
         <source>Attach File</source>
         <translation>Attach File</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>URL</source>
         <translation>URL</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>Display text</source>
         <translation>Display text</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>Insert</source>
         <translation>Insert</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
@@ -2749,32 +2749,32 @@ It follows the app language until you pick one here.</translation>
         <translation>%1 and you</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="544"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="547"/>
         <source>Reply in thread…</source>
         <translation>Reply in thread…</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="611"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="614"/>
         <source>Threads</source>
         <translation>Threads</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="634"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="637"/>
         <source>Show more threads</source>
         <translation>Show more threads</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="708"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="711"/>
         <source>Loading threads…</source>
         <translation>Loading threads…</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="738"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="741"/>
         <source>Threads you're following will appear here.</source>
         <translation>Threads you're following will appear here.</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="748"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="751"/>
         <source>Couldn't load threads. Try again later.</source>
         <translation>Couldn't load threads. Try again later.</translation>
     </message>
