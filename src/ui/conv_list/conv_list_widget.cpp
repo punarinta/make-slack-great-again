@@ -1074,8 +1074,11 @@ void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
     // Centred in the kIconSize slot so the label lines up with the section ones.
     p.drawPixmap(kPadH + (kIconSize - kThreadsIcon) / 2, y + (_rowH - kThreadsIcon) / 2, icon);
 
+    // Same face as the section headers ("Channels", …) — this is a top-level
+    // nav entry, not a conversation row.
     QFont font = QApplication::font();
-    font.setWeight(QFont::Normal);
+    font.setWeight(QFont::DemiBold);
+    font.setPointSizeF(font.pointSizeF() * 0.82);
     p.setFont(font);
     p.setPen(
         isSelected ? Th::c().nav.itemSelectedText
