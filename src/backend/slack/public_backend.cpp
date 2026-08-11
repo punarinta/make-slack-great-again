@@ -325,6 +325,10 @@ Capabilities PublicBackend::capabilities() const {
     c.threads       = true;
     c.fileUpload    = true;
     c.scheduledSend = true; // chat.scheduleMessage
+    // The Threads overview rides subscriptions.thread.getView, which Slack only
+    // serves to a session (xoxc) token — an OAuth workspace would get every call
+    // rejected, so don't claim the capability there (no dead roster entry).
+    c.threadsView   = _sessionAuth;
     return c;
 }
 
@@ -747,6 +751,61 @@ PublicBackend::loadThread(ConversationId conv, Ts root, std::optional<QString> c
         );
         return rpl::lifetime();
     };
+}
+
+rpl::producer<ThreadsViewPage> PublicBackend::loadThreadsView(const QString &cursor) {
+    return [this, cursor](auto consumer) mutable {
+        // Unsupported: complete WITHOUT a value (same contract as
+        // loadUnreadCounts — see backend.h). Session-token only.
+        if (!_sessionAuth || _threadsViewUnavailable) {
+            consumer.put_done();
+            return rpl::lifetime();
+        }
+        QUrlQuery params;
+        params.addQueryItem("limit", "10");
+        // Every subscribed thread; other modes ("important") would filter.
+        params.addQueryItem("priority_mode", "all");
+        // Continuation is the previous response's max_ts (no next_cursor here).
+        if (!cursor.isEmpty())
+            params.addQueryItem("current_ts", cursor);
+        _historyApi->call(
+            "subscriptions.thread.getView",
+            params,
+            [consumer](QJsonObject resp) mutable {
+                consumer.put_next(JsonMappers::toThreadsViewPage(resp));
+                consumer.put_done();
+            },
+            [this, consumer](QString err) mutable {
+                // Latch only on a method-level rejection, never on a transport
+                // failure — same reasoning as client.counts above.
+                if (isMethodUnavailable(err)) {
+                    _threadsViewUnavailable = true;
+                    qWarning() << "subscriptions.thread.getView rejected:" << err
+                               << "— Threads overview disabled for this workspace";
+                }
+                consumer.put_done();
+            },
+            /*quietErrors=*/true
+        );
+        return rpl::lifetime();
+    };
+}
+
+void PublicBackend::markThreadRead(ConversationId conv, Ts root, Ts ts) {
+    if (!_sessionAuth || _threadsViewUnavailable)
+        return;
+    QUrlQuery params;
+    params.addQueryItem("channel", conv.value);
+    params.addQueryItem("thread_ts", root);
+    params.addQueryItem("ts", ts);
+    // Best-effort write (a stale read cursor is harmless); non-idempotent lane
+    // like every other write so a dying connection can't double-apply it.
+    _api->callNonIdempotent(
+        "subscriptions.thread.mark",
+        params,
+        [](QJsonObject) {},
+        [](QString err) { qWarning() << "subscriptions.thread.mark error:" << err; }
+    );
 }
 
 // ── Self presence / status ────────────────────────────────────────

@@ -703,6 +703,11 @@ void ComposerWidget::setSubjectVisible(bool visible) {
         _subjectSep->setVisible(visible);
 }
 
+void ComposerWidget::setFlushHorizontalMargins() {
+    const QMargins m = layout()->contentsMargins();
+    layout()->setContentsMargins(0, m.top(), 0, m.bottom());
+}
+
 void ComposerWidget::setScheduleVisible(bool visible) {
     if (_dropBtn)
         _dropBtn->setVisible(visible);

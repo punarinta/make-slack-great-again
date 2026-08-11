@@ -72,6 +72,8 @@ public:
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
     rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) override;
+    rpl::producer<ThreadsViewPage> loadThreadsView(const QString &cursor) override;
+    void                           markThreadRead(ConversationId, Ts root, Ts ts) override;
 
     void sendMessage(ConversationId, OutgoingMessage) override;
     void editMessage(ConversationId, Ts, TextWithEntities) override;
@@ -270,7 +272,9 @@ private:
     // rejection so we stop calling a method this workspace provably can't use;
     // transport failures leave it clear, since those say nothing about the method.
     // (Same degrade-gracefully rule as the undocumented commands.list/chat.command.)
-    bool                             _countsUnavailable = false;
+    bool                             _countsUnavailable      = false;
+    // Same latch for subscriptions.thread.getView (the Threads overview feed).
+    bool                             _threadsViewUnavailable = false;
     // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
     std::unique_ptr<SessionRealtime> _sessionRealtime;
     QTimer                          *_proactiveRefreshTimer = nullptr;

@@ -54,6 +54,11 @@ public:
     // Gated on Capabilities::scheduledSend — only Slack can send at a future time.
     void setScheduleVisible(bool visible);
 
+    // Embedded use (the Threads overview's per-card reply box): drop the outer
+    // horizontal margins so the box aligns flush with the host's content edge
+    // (the message avatars) instead of carrying the chat-footer gutter.
+    void setFlushHorizontalMargins();
+
     // Image cache for app-command avatars in the slash-command palette.
     void setImageCache(ImageCache *cache) { _imgCache = cache; }
 

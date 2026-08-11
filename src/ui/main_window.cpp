@@ -31,6 +31,7 @@
 #include "thread_panel/thread_panel.h"
 #include "message_list/message_render.h"
 #include "canvas_page/canvas_page.h"
+#include "threads_page/threads_page.h"
 #include "conv_tabs/conv_tabs_widget.h"
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
@@ -754,6 +755,29 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     _canvasPage = new CanvasPage(_contentStack);
     _contentStack->addWidget(_canvasPage);
 
+    _threadsPage = new ThreadsPage(_imgCache, _contentStack);
+    _contentStack->addWidget(_threadsPage);
+    // Leaving the overview for a real thread: open its channel (the same
+    // coordinated path as a search result / notification), then the panel.
+    connect(
+        _threadsPage,
+        &ThreadsPage::openThreadRequested,
+        this,
+        [this](ConversationId conv, Ts root) {
+            if (!_convList->selectConversation(conv))
+                return;
+            if (_currentConvId != conv) {
+                const int row = _convList->rowForId(conv);
+                if (row >= 0)
+                    openConversation(row);
+            }
+            openThreadPanel(conv, root);
+        }
+    );
+    connect(_threadsPage, &ThreadsPage::openChannelRequested, this, [this](ConversationId conv) {
+        _convList->selectConversation(conv);
+    });
+
     // Search is an overlay on msgArea — not a stack page, so it doesn't replace the
     // message list.  Show/hide it; the message list stays loaded beneath it.
     _searchWidget = new SearchWidget(msgArea);
@@ -1286,6 +1310,8 @@ void MainWindow::activateWorkspace(QString teamId) {
         _canvasPage->setSession(_session);
         _canvasPage->clear();
     }
+    if (_threadsPage)
+        _threadsPage->setSession(_session); // also drops the old workspace's cards
     _currentCanvasFileId.clear();
     _currentCanvasTitle.clear();
     if (_convTabs)
@@ -1610,6 +1636,7 @@ void MainWindow::wireConvList() {
                 _session->setConvMuted(id, muted);
         }
     );
+    connect(_convList, &ConvListWidget::threadsViewRequested, this, [this] { openThreadsView(); });
     connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
         openBrowseDialog(0);
     });
@@ -1687,6 +1714,10 @@ void MainWindow::connectToSession() {
     // with a presence concept (Slack); IMAP/email has none, so drop the control.
     if (_convFooter)
         _convFooter->setPresenceSupported(_session->capabilities().presence);
+
+    // The "Threads" roster entry needs a workspace-wide threads feed.
+    if (_convList)
+        _convList->setShowThreads(_session->capabilities().threadsView);
 
     // Auth loss, unread badges and notifications are handled by the
     // per-session background subscriptions in ensureSession(); here we only
@@ -2587,6 +2618,56 @@ void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
         const int total = _msgSplitter->width();
         _msgSplitter->setSizes({total - 360, 360});
     }
+}
+
+void MainWindow::openThreadsView() {
+    if (!_session || !_threadsPage)
+        return;
+
+    if (_searchWidget && _searchWidget->isVisible())
+        _searchWidget->hide();
+
+    // Save draft / exit edit mode for the conversation we're leaving — the same
+    // bookkeeping as openConversation(), which restores it on the way back.
+    if (!_currentConvId.value.isEmpty() && _composer) {
+        _composer->exitEditMode();
+        const QString draft = _composer->currentText();
+        if (draft.isEmpty())
+            _drafts.remove(_currentConvId.value);
+        else
+            _drafts[_currentConvId.value] = draft;
+    }
+    _currentConvId = {};
+
+    if (_typingIndicator)
+        _typingIndicator->clearAll();
+    if (_threadPanel && _threadPanel->isVisible()) {
+        _threadPanel->close();
+        _threadPanel->setVisible(false);
+        _messageList->setOpenThreadRoot({});
+    }
+    // No conversation is open while the overview shows — stop the mark-read
+    // cursor and let the realtime safety poll idle (both restored by the next
+    // openConversation).
+    _session->setReading({});
+    _session->setOpenConversation({});
+
+    if (_canvasPage)
+        _canvasPage->flushPendingSave();
+
+    // The overview brings its own header and per-thread reply boxes; the
+    // conversation chrome would all refer to a chat that's no longer on screen.
+    if (_msgHeader)
+        _msgHeader->hide();
+    if (_convTabs)
+        _convTabs->hide();
+    if (_huddleBanner)
+        _huddleBanner->hide();
+    _composer->hide();
+    _composer->setEnabled(false);
+
+    _contentStack->setCurrentWidget(_threadsPage);
+    _threadsPage->open();
 }
 
 void MainWindow::openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot) {

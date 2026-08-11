@@ -138,6 +138,26 @@ public:
     virtual rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) = 0;
 
+    // Workspace-wide "Threads" overview: the threads the authed user is
+    // subscribed to, newest activity first (Slack's undocumented
+    // subscriptions.thread.getView — official-client API). `cursor` is empty
+    // for the first page, the previous page's nextCursor after that. Same
+    // graceful-degrade contract as loadUnreadCounts: emit exactly one page on
+    // success, or complete WITHOUT emitting when the feed is unavailable
+    // (unsupported backend, rejected token type, failed request). The UI gates
+    // the whole feature on Capabilities::threadsView.
+    virtual rpl::producer<ThreadsViewPage> loadThreadsView(const QString & /*cursor*/) {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+
+    // Move the authed user's read cursor inside a thread to `ts` (Slack's
+    // undocumented subscriptions.thread.mark) — what clears a thread's unread
+    // state in the Threads overview. Best-effort; no-op default.
+    virtual void markThreadRead(ConversationId, Ts /*root*/, Ts /*ts*/) {}
+
     // --- Commands (fire-and-reconcile; optimistic UI lives in Session) ---
     virtual void sendMessage(ConversationId, OutgoingMessage)      = 0;
     virtual void editMessage(ConversationId, Ts, TextWithEntities) = 0;
