@@ -138,38 +138,38 @@ This action cannot be undone.</source>
         <translation>送信を予約</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1530"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1535"/>
         <source>Send at</source>
         <translation>送信日時</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1530"/>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1535"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1530"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1535"/>
         <source>Schedule</source>
         <translation>予約</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1656"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1661"/>
         <source>Attach File</source>
         <translation>ファイルを添付</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>URL</source>
         <translation>URL</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>Display text</source>
         <translation>表示テキスト</translation>
     </message>
     <message>
-        <location filename="../src/ui/composer/composer_widget.cpp" line="1691"/>
+        <location filename="../src/ui/composer/composer_widget.cpp" line="1696"/>
         <source>Insert</source>
         <translation>挿入</translation>
     </message>
@@ -2533,7 +2533,7 @@ It follows the app language until you pick one here.</source>
     </message>
     <message>
         <location filename="../src/ui/threads_page/threads_page.cpp" line="370"/>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="544"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="547"/>
         <source>Reply in thread…</source>
         <translation>スレッドに返信…</translation>
     </message>
@@ -2562,27 +2562,27 @@ It follows the app language until you pick one here.</source>
 <context>
     <name>ThreadsPage</name>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="611"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="614"/>
         <source>Threads</source>
         <translation>スレッド</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="634"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="637"/>
         <source>Show more threads</source>
         <translation>さらにスレッドを表示</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="708"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="711"/>
         <source>Loading threads…</source>
         <translation>スレッドを読み込み中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="738"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="741"/>
         <source>Threads you&apos;re following will appear here.</source>
         <translation>フォロー中のスレッドがここに表示されます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/threads_page/threads_page.cpp" line="748"/>
+        <location filename="../src/ui/threads_page/threads_page.cpp" line="751"/>
         <source>Couldn&apos;t load threads. Try again later.</source>
         <translation>スレッドを読み込めませんでした。後でもう一度お試しください。</translation>
     </message>
