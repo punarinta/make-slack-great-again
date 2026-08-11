@@ -50,10 +50,8 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
         // anywhere (message previews, emoji, favicons) — repaint only when the
         // url is the avatar of a row currently on screen.
         connect(_imgCache, &ImageCache::loaded, this, [this](const QString &url) {
-            const int scrollY = verticalScrollBar()->value();
-            const int vh      = viewport()->height();
-            const int first   = scrollY / _rowH;
-            const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / _rowH);
+            const int first = firstVisibleRow();
+            const int last  = lastVisibleRow();
             for (int r = first; r <= last; ++r) {
                 const auto &ri = _rows[r];
                 if (ri.kind != RowKind::Conv)
@@ -64,7 +62,7 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
                 const auto infoIt = _userInfos.constFind(conv.dmUser->value);
                 if (infoIt == _userInfos.constEnd() || infoIt->avatarUrl != url)
                     continue;
-                viewport()->update(QRect(0, r * _rowH - scrollY, viewport()->width(), _rowH));
+                viewport()->update(QRect(0, rowTopView(r), viewport()->width(), _rowH));
             }
         });
     }
@@ -121,9 +119,12 @@ void ConvListWidget::rebuildIconPixmaps() {
 
     _iconPx.huddle = px(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
 
-    _iconPx.threadsDim      = px(":/ui/split.svg", big, th.text.onDarkDim);
-    _iconPx.threadsBright   = px(":/ui/split.svg", big, th.text.onDark);
-    _iconPx.threadsSelected = px(":/ui/split.svg", big, th.nav.itemSelectedText);
+    // Optically matched to the section icons rather than boxed the same — see
+    // kThreadsIcon.
+    const QSize thr         = QSize(kThreadsIcon, kThreadsIcon);
+    _iconPx.threadsDim      = px(":/ui/split.svg", thr, th.text.onDarkDim);
+    _iconPx.threadsBright   = px(":/ui/split.svg", thr, th.text.onDark);
+    _iconPx.threadsSelected = px(":/ui/split.svg", thr, th.nav.itemSelectedText);
 }
 
 void ConvListWidget::updateRowHeight() {
@@ -300,9 +301,8 @@ void ConvListWidget::setUserDnd(const UserId &id, bool dnd) {
 }
 
 void ConvListWidget::updateRowsForUser(const QString &userId) {
-    const int scrollY = verticalScrollBar()->value();
-    const int vw      = viewport()->width();
-    const int vh      = viewport()->height();
+    const int vw = viewport()->width();
+    const int vh = viewport()->height();
     for (int r = 0; r < static_cast<int>(_rows.size()); ++r) {
         const auto &ri = _rows[r];
         if (ri.kind != RowKind::Conv)
@@ -310,7 +310,7 @@ void ConvListWidget::updateRowsForUser(const QString &userId) {
         const auto &conv = _convs[ri.convIdx];
         if (!conv.dmUser || conv.dmUser->value != userId)
             continue;
-        const int y = r * _rowH - scrollY;
+        const int y = rowTopView(r);
         if (y + _rowH < 0 || y > vh)
             continue;
         viewport()->update(QRect(0, y, vw, _rowH));
@@ -594,11 +594,34 @@ void ConvListWidget::wheelEvent(QWheelEvent *event) {
 // ── Mouse ─────────────────────────────────────────────────────────────────────
 
 int ConvListWidget::rowAt(int viewportY) const {
-    const int docY = viewportY + verticalScrollBar()->value();
-    const int row  = docY / _rowH;
-    if (row < 0 || row >= static_cast<int>(_rows.size()))
+    const int docY = viewportY + verticalScrollBar()->value() - kTopPad;
+    if (docY < 0) // inside the top inset — no row there
+        return -1;
+    const int row = docY / _rowH;
+    if (row >= static_cast<int>(_rows.size()))
         return -1;
     return row;
+}
+
+int ConvListWidget::contentHeight() const {
+    return static_cast<int>(_rows.size()) * _rowH + kTopPad;
+}
+
+int ConvListWidget::rowTopDoc(int row) const {
+    return kTopPad + row * _rowH;
+}
+
+int ConvListWidget::rowTopView(int row) const {
+    return rowTopDoc(row) - verticalScrollBar()->value();
+}
+
+int ConvListWidget::firstVisibleRow() const {
+    return std::max(0, (verticalScrollBar()->value() - kTopPad) / _rowH);
+}
+
+int ConvListWidget::lastVisibleRow() const {
+    const int docBottom = verticalScrollBar()->value() + viewport()->height() - kTopPad;
+    return std::min(static_cast<int>(_rows.size()) - 1, docBottom / _rowH);
 }
 
 void ConvListWidget::setHovered(int row) {
@@ -656,7 +679,7 @@ void ConvListWidget::selectThreadsRow(int row) {
 }
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
-    const int total = static_cast<int>(_rows.size()) * _rowH;
+    const int total = contentHeight();
     if (_sbDragging) {
         const int vh         = viewport()->height();
         const int thumbH     = std::max(20, vh * vh / total);
@@ -681,7 +704,7 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
     // re-issue showAbove when the target changes (-2 = the "+", else the row).
     bool tooltipShown = false;
     if (row >= 0 && _rows[row].kind == RowKind::SectionHeader && _rows[row].sectionId == 1) {
-        const QRect r = dmPlusRect(row * _rowH - verticalScrollBar()->value());
+        const QRect r = dmPlusRect(rowTopView(row));
         if (r.contains(e->pos())) {
             if (_tooltipRow != -2) {
                 _tooltip->showAbove(
@@ -808,7 +831,7 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     }
     if (e->button() != Qt::LeftButton)
         return;
-    const int total  = static_cast<int>(_rows.size()) * _rowH;
+    const int total  = contentHeight();
     const int sbHitX = scrollThumbHitX();
     if (e->pos().x() >= sbHitX && VirtualListWidget::isOnScrollThumb(e->pos().y(), total)) {
         _sbDragging        = true;
@@ -826,8 +849,7 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
         selectThreadsRow(row);
         break;
     case RowKind::SectionHeader:
-        if (ri.sectionId == 1 &&
-            dmPlusRect(row * _rowH - verticalScrollBar()->value()).contains(e->pos())) {
+        if (ri.sectionId == 1 && dmPlusRect(rowTopView(row)).contains(e->pos())) {
             emit browsePeopleRequested();
             break;
         }
@@ -883,7 +905,7 @@ void ConvListWidget::doMouseLeave() {
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 void ConvListWidget::updateScrollRange() {
-    const int total = static_cast<int>(_rows.size()) * _rowH;
+    const int total = contentHeight();
     const int vh    = viewport()->height();
     verticalScrollBar()->setRange(0, std::max(0, total - vh));
     verticalScrollBar()->setPageStep(vh);
@@ -894,10 +916,8 @@ void ConvListWidget::updateScrollRange() {
 void ConvListWidget::triggerMissingAvatarDownloads() {
     if (!_imgCache)
         return;
-    const int scrollY = verticalScrollBar()->value();
-    const int vh      = viewport()->height();
-    const int first   = scrollY / _rowH;
-    const int last    = std::min((int)_rows.size() - 1, (scrollY + vh) / _rowH);
+    const int first = firstVisibleRow();
+    const int last  = lastVisibleRow();
 
     for (int r = first; r <= last; ++r) {
         const auto &ri = _rows[r];
@@ -963,20 +983,17 @@ void ConvListWidget::doPaint(QPaintEvent *event) {
         Th::navGradient(viewport(), Th::c().nav.primaryGradTop, Th::c().nav.primaryGradBottom)
     );
 
-    const int scrollY = verticalScrollBar()->value();
-    const int vh      = viewport()->height();
-
-    const int first = scrollY / _rowH;
-    const int last  = std::min(static_cast<int>(_rows.size()) - 1, (scrollY + vh) / _rowH);
+    const int first = firstVisibleRow();
+    const int last  = lastVisibleRow();
 
     _huddleHitRects.clear(); // repopulated by paintRow for visible huddle rows
     _truncNameRects.clear(); // repopulated by paintRow for elided names
     for (int r = first; r <= last; ++r)
-        paintRow(p, r, r * _rowH - scrollY);
+        paintRow(p, r, rowTopView(r));
 
     triggerMissingAvatarDownloads();
 
-    paintScrollThumb(p, static_cast<int>(_rows.size()) * _rowH, Th::c().nav.scrollThumb);
+    paintScrollThumb(p, contentHeight(), Th::c().nav.scrollThumb);
 }
 
 void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int sectionId) const {
@@ -1054,7 +1071,8 @@ void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
     const QPixmap &icon = isSelected ? _iconPx.threadsSelected
                           : hovered  ? _iconPx.threadsBright
                                      : _iconPx.threadsDim;
-    p.drawPixmap(kPadH, y + (_rowH - kIconSize) / 2, icon);
+    // Centred in the kIconSize slot so the label lines up with the section ones.
+    p.drawPixmap(kPadH + (kIconSize - kThreadsIcon) / 2, y + (_rowH - kThreadsIcon) / 2, icon);
 
     QFont font = QApplication::font();
     font.setWeight(QFont::Normal);

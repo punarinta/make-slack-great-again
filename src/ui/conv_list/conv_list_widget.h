@@ -132,6 +132,15 @@ protected:
     void doMouseLeave() override;
 
     int   rowAt(int viewportY) const; // -1 if none
+    // Row geometry in document coords (kTopPad included) and viewport coords
+    // (scroll offset applied). Everything that maps between rows and y must go
+    // through these — a hand-rolled `row * _rowH` silently drops the top inset
+    // and skews hit-testing against what was painted.
+    int   contentHeight() const;
+    int   rowTopDoc(int row) const;
+    int   rowTopView(int row) const;
+    int   firstVisibleRow() const;
+    int   lastVisibleRow() const; // -1 when there are no rows
     void  setHovered(int row);
     void  setSelected(int row);      // emits conversationSelected (no-op for non-Conv rows)
     void  selectThreadsRow(int row); // Threads-row counterpart; emits threadsViewRequested
@@ -266,10 +275,16 @@ protected:
     void                 updateRowHeight();
     static constexpr int kPadH         = 12; // horizontal left padding
     static constexpr int kPadV         = 8;  // vertical padding inside row
+    static constexpr int kTopPad       = 6;  // breathing room above the first row
     static constexpr int kAvatarSize   = 20; // size of user avatar square
     static constexpr int kAvatarRadius = 5;  // corner radius
     static constexpr int kAvatarGap    = 8;  // gap between avatar and name
     static constexpr int kIconSize     = 14; // section / prefix icon size
+    // Lucide's split glyph paints wider inside its 24-unit viewBox than the
+    // section icons (hash, messages-square) do, so an identical box still reads
+    // a size bigger next to them. Bake it one notch down and centre it in the
+    // kIconSize slot — the label keeps its x, the two icons look equal.
+    static constexpr int kThreadsIcon  = 13;
     static constexpr int kHuddleIcon   = 13; // headphones glyph in the huddle pill
     static constexpr int kHuddlePad    = 6;  // horizontal padding inside the huddle pill
     static constexpr int kHuddleGap    = 6;  // gap between huddle avatar and pill
