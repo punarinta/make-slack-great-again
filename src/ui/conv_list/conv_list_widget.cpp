@@ -120,6 +120,10 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.hashSmSelected = px(":/ui/hash.svg", sm, th.nav.itemSelectedText);
 
     _iconPx.huddle = px(":/ui/headphones.svg", QSize(13, 13), th.accent.text);
+
+    _iconPx.threadsDim      = px(":/ui/split.svg", big, th.text.onDarkDim);
+    _iconPx.threadsBright   = px(":/ui/split.svg", big, th.text.onDark);
+    _iconPx.threadsSelected = px(":/ui/split.svg", big, th.nav.itemSelectedText);
 }
 
 void ConvListWidget::updateRowHeight() {
@@ -140,6 +144,15 @@ void ConvListWidget::setShowAgentsApps(bool show) {
         if (it != _convs.end() && isAppConv(*it))
             _revealedAppConv = _selectedId;
     }
+    rebuildRows();
+}
+
+void ConvListWidget::setShowThreads(bool show) {
+    if (_showThreads == show)
+        return;
+    _showThreads = show;
+    if (!show)
+        _threadsSelected = false;
     rebuildRows();
 }
 
@@ -396,6 +409,10 @@ void ConvListWidget::rebuildRows() {
         const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
         (isDm ? (isRelevant(c) ? visDm : hidDm) : (isRelevant(c) ? visCh : hidCh)).push_back(i);
     }
+    // ── Threads entry — fixed, above every section ────────────────────
+    if (_showThreads)
+        _rows.push_back({RowKind::Threads, -1, -1});
+
     // ── Channels section ─────────────────────────────────────────────
     _rows.push_back({RowKind::SectionHeader, -1, 0});
     if (!_channelsCollapsed) {
@@ -453,7 +470,14 @@ void ConvListWidget::rebuildRows() {
     _selT     = 1.0;
     _selFrom  = -1;
     _selected = -1;
-    if (!_selectedId.value.isEmpty()) {
+    if (_threadsSelected) {
+        for (int r = 0; r < (int)_rows.size(); ++r) {
+            if (_rows[r].kind == RowKind::Threads) {
+                _selected = r;
+                break;
+            }
+        }
+    } else if (!_selectedId.value.isEmpty()) {
         for (int r = 0; r < (int)_rows.size(); ++r) {
             if (_rows[r].kind == RowKind::Conv && _convs[_rows[r].convIdx].id == _selectedId) {
                 _selected = r;
@@ -594,6 +618,7 @@ void ConvListWidget::setSelected(int row) {
     _selFrom                      = _selected;
     _selT                         = 0.0;
     _selected                     = row;
+    _threadsSelected              = false;
     _selectedId                   = _convs[_rows[row].convIdx].id;
     // Record visit so this conversation stays visible in future sessions.
     _visitedAt[_selectedId.value] = QDateTime::currentSecsSinceEpoch();
@@ -611,6 +636,23 @@ void ConvListWidget::setSelected(int row) {
         _revealedAppConv = {};
         rebuildRows();
     }
+}
+
+void ConvListWidget::selectThreadsRow(int row) {
+    if (row < 0 || row >= (int)_rows.size() || _rows[row].kind != RowKind::Threads)
+        return;
+    if (row == _selected)
+        return;
+    _selFrom         = _selected;
+    _selT            = 0.0;
+    _selected        = row;
+    _threadsSelected = true;
+    _selectedId      = {}; // no conversation is highlighted while the overview is open
+    _selAnim.stop();
+    _selAnim.setStartValue(0.0);
+    _selAnim.setEndValue(1.0);
+    _selAnim.start();
+    emit threadsViewRequested();
 }
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
@@ -780,6 +822,9 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
         return;
     const auto &ri = _rows[row];
     switch (ri.kind) {
+    case RowKind::Threads:
+        selectThreadsRow(row);
+        break;
     case RowKind::SectionHeader:
         if (ri.sectionId == 1 &&
             dmPlusRect(row * _rowH - verticalScrollBar()->value()).contains(e->pos())) {
@@ -983,6 +1028,46 @@ QRect ConvListWidget::dmPlusRect(int rowY) const {
     return QRect(x, rowY + (_rowH - kIconSize) / 2, kIconSize, kIconSize);
 }
 
+void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
+    const bool  isSelected = (row == _selected);
+    const bool  hovered    = (row == _hovered);
+    const QRect rowRect(0, y, viewport()->width(), _rowH);
+
+    // Same pill highlight (and selection slide) as a conversation row.
+    if (isSelected) {
+        const QColor base = hovered ? Th::c().nav.itemHover : Th::c().nav.primary;
+        const QColor sel  = Th::c().nav.itemSelected;
+        auto lerp = [](int a, int b, double t) { return static_cast<int>(a + (b - a) * t); };
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(
+            lerp(base.red(), sel.red(), _selT),
+            lerp(base.green(), sel.green(), _selT),
+            lerp(base.blue(), sel.blue(), _selT)
+        ));
+        p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
+    } else if (hovered) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(Th::c().nav.itemHover);
+        p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
+    }
+
+    const QPixmap &icon = isSelected ? _iconPx.threadsSelected
+                          : hovered  ? _iconPx.threadsBright
+                                     : _iconPx.threadsDim;
+    p.drawPixmap(kPadH, y + (_rowH - kIconSize) / 2, icon);
+
+    QFont font = QApplication::font();
+    font.setWeight(QFont::Normal);
+    p.setFont(font);
+    p.setPen(
+        isSelected ? Th::c().nav.itemSelectedText
+        : hovered  ? Th::c().text.onDark
+                   : Th::c().text.onDarkDim
+    );
+    const QFontMetrics fm(font);
+    p.drawText(kPadH + kGroupIndent, y + (_rowH - fm.height()) / 2 + fm.ascent(), tr("Threads"));
+}
+
 void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     const bool hovered = (row == _hovered);
     if (hovered)
@@ -1045,6 +1130,10 @@ const ConvListWidget::NameCache &ConvListWidget::cachedName(
 void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     const auto &ri = _rows[row];
 
+    if (ri.kind == RowKind::Threads) {
+        paintThreadsRow(p, row, y);
+        return;
+    }
     if (ri.kind == RowKind::SectionHeader) {
         paintSectionHeader(p, row, y, ri.sectionId);
         return;

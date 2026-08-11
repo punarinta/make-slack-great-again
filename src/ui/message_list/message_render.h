@@ -68,6 +68,10 @@ QString formatDateLabel(qint64 dateMicros);
 // Slack-style absolute label for the reply bar: "today at 1:12 PM",
 // "yesterday at 9:03 AM" or "March 3 at 4:15 PM".
 QString lastReplyLabel(const Ts &ts);
+// Message-row timestamp for digest views (the Threads overview): plain time for
+// today, "yesterday at 9:03 AM" / "March 3 at 4:15 PM" for older messages —
+// rows from different days sit side by side there, so time alone is ambiguous.
+QString dateTimeLabel(qint64 dateMicros);
 QString resolveMention(const QString &userId, const Session *session);
 QString toHtml(const TextWithEntities &twe, const Session *session = nullptr);
 

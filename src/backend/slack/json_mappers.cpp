@@ -753,6 +753,48 @@ std::vector<ConvCounts> toConvCounts(const QJsonObject &resp) {
     return out;
 }
 
+ThreadsViewPage toThreadsViewPage(const QJsonObject &resp) {
+    ThreadsViewPage page;
+    page.totalUnreadReplies = resp.value("total_unread_replies").toInt();
+    page.hasMore            = resp.value("has_more").toBool();
+    // Continuation cursor: the top-level max_ts, passed back as current_ts.
+    // There is no response_metadata.next_cursor on this endpoint.
+    page.nextCursor         = resp.value("max_ts").toString();
+    const auto threads      = resp.value("threads").toArray();
+    page.threads.reserve(threads.size());
+    for (const auto v : threads) {
+        const auto t       = v.toObject();
+        const auto rootObj = t.value("root_msg").toObject();
+        // Only currently-subscribed threads have been observed, but filter
+        // defensively so a future inactive entry can't pollute the view.
+        if (rootObj.contains("subscribed") && !rootObj.value("subscribed").toBool())
+            continue;
+        ThreadOverview item;
+        // root_msg is a complete parent message and — unlike history messages —
+        // carries the channel it lives in.
+        item.conv     = ConversationId{rootObj.value("channel").toString()};
+        item.root     = toMessage(rootObj);
+        item.lastRead = rootObj.value("last_read").toString();
+        if (item.conv.value.isEmpty() || item.root.ts.isEmpty())
+            continue;
+        const auto replies = t.value("latest_replies").toArray();
+        item.latestReplies.reserve(replies.size());
+        for (const auto rv : replies) {
+            auto m = toMessage(rv.toObject());
+            if (!m.ts.isEmpty())
+                item.latestReplies.push_back(std::move(m));
+        }
+        // Oldest-first for display, whatever order the server sent.
+        std::sort(
+            item.latestReplies.begin(),
+            item.latestReplies.end(),
+            [](const Message &a, const Message &b) { return a.date < b.date; }
+        );
+        page.threads.push_back(std::move(item));
+    }
+    return page;
+}
+
 std::vector<Message> toMessages(const QJsonArray &a, bool reverseOrder) {
     std::vector<Message> out;
     out.reserve(a.size());

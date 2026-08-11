@@ -30,7 +30,7 @@ struct UserInfo {
 };
 
 // Visual row kinds in the conversation list.
-enum class RowKind { SectionHeader, Conv, AddChannels, ShowMore };
+enum class RowKind { Threads, SectionHeader, Conv, AddChannels, ShowMore };
 
 // Maps a visual row index to its content.
 struct RowItem {
@@ -95,6 +95,10 @@ public:
     // Show/hide the whole "Agents & apps" section (Settings → Appearance).
     // Hidden app DMs stay reachable through search / browse.
     void setShowAgentsApps(bool show);
+    // Show the fixed "Threads" entry above the Channels section — gated on
+    // Capabilities::threadsView, so it only appears for backends with a
+    // workspace-wide threads feed.
+    void setShowThreads(bool show);
     // Wipe the in-memory visit history and rebuild rows so auto-seed runs from scratch.
     // Call after the user clears state in Settings.
     void resetVisitedAt();
@@ -104,6 +108,8 @@ public:
 
 signals:
     void conversationSelected(int row);
+    // Click on the fixed "Threads" entry — open the threads overview page.
+    void threadsViewRequested();
     void findChannelRequested();
     // "+" on the Direct messages header — open the browse dialog on People.
     void browsePeopleRequested();
@@ -127,12 +133,14 @@ protected:
 
     int   rowAt(int viewportY) const; // -1 if none
     void  setHovered(int row);
-    void  setSelected(int row); // emits conversationSelected (no-op for non-Conv rows)
+    void  setSelected(int row);      // emits conversationSelected (no-op for non-Conv rows)
+    void  selectThreadsRow(int row); // Threads-row counterpart; emits threadsViewRequested
     void  showChannelContextMenu(int row, QPoint globalPos);
     void  showMpdmContextMenu(int row, QPoint globalPos);
     void  showDmContextMenu(int row, QPoint globalPos);
     void  paintRow(QPainter &p, int row, int y) const;
     void  paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
+    void  paintThreadsRow(QPainter &p, int row, int y) const;
     void  paintAddChannelsRow(QPainter &p, int row, int y) const;
     void  paintShowMoreRow(QPainter &p, int row, int y, int count) const;
     // Hit/paint rect of the "+" button on the Direct messages section header.
@@ -157,6 +165,7 @@ protected:
         QPixmap lockDim, lockBright, lockSelected;            // private channel prefix
         QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
         QPixmap huddle;                                       // live-huddle pill icon, onAccent
+        QPixmap threadsDim, threadsBright, threadsSelected;   // "Threads" entry (split icon)
     };
     void rebuildIconPixmaps();
 
@@ -200,7 +209,11 @@ protected:
     bool _dmsCollapsed      = false;
     bool _appsCollapsed     = false;
     bool _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
+    bool _showThreads       = false; // capability gate; see setShowThreads()
     bool _showAllChannels   = false; // true after user clicks "N more channels"
+    // The "Threads" entry is selected (the overview page is open). Mutually
+    // exclusive with _selectedId; survives rebuildRows() like it.
+    bool _threadsSelected   = false;
 
     // convId.value → viewport rect of the clickable huddle indicator, refreshed
     // each paint (so it tracks scroll); consulted on click to join the huddle.

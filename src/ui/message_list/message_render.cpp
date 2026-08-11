@@ -201,6 +201,23 @@ QString lastReplyLabel(const Ts &ts) {
         .arg(TimeFmt::formatDate(dt.date()), time);
 }
 
+QString dateTimeLabel(qint64 dateMicros) {
+    const QDateTime dt      = QDateTime::fromSecsSinceEpoch(dateMicros / 1000000);
+    const QString   time    = TimeFmt::formatTime(dt);
+    const QDate     today   = QDate::currentDate();
+    const qint64    daysAgo = dt.date().daysTo(today);
+    if (daysAgo <= 0)
+        return time;
+    if (daysAgo == 1)
+        return QCoreApplication::translate("MsgRender", "yesterday at %1").arg(time);
+    // Within the week the official client names the day ("Friday at 7:59 PM").
+    if (daysAgo < 7)
+        return QCoreApplication::translate("MsgRender", "%1 at %2")
+            .arg(TimeFmt::locale().dayName(dt.date().dayOfWeek()), time);
+    return QCoreApplication::translate("MsgRender", "%1 at %2")
+        .arg(TimeFmt::formatDate(dt.date()), time);
+}
+
 // Resolve a UserMention entity's display name via entity.data (the user ID).
 static QString resolveMentionImpl(const QString &userId, const Session *session) {
     if (!session)

@@ -81,6 +81,7 @@
         <file alias="ui/spin-down.svg">../gfx/ui/spin-down.svg</file>
         <file alias="ui/clock.svg">../gfx/ui/clock.svg</file>
         <file alias="ui/mail.svg">../gfx/ui/mail.svg</file>
+        <file alias="ui/split.svg">../gfx/ui/split.svg</file>
     </qresource>
     <qresource prefix="/sfx">
         <!-- Notification chime; regenerate with scripts/gen-notify-sound.py -->

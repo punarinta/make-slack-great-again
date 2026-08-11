@@ -25,6 +25,10 @@ SearchResult toSearchResult(const QJsonObject &);
 // workspace, read out of its parallel `channels` / `mpims` / `ims` arrays.
 std::vector<ConvCounts> toConvCounts(const QJsonObject &resp);
 
+// A `subscriptions.thread.getView` response: the Threads overview page. Each
+// entry's root_msg is a complete parent message that also carries its channel.
+ThreadsViewPage toThreadsViewPage(const QJsonObject &resp);
+
 // Batch helpers
 std::vector<User>         toUsers(const QJsonArray &);
 std::vector<Conversation> toConversations(const QJsonArray &);

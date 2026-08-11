@@ -32,6 +32,7 @@ class WelcomeWidget;
 class TitleBar;
 class ThreadPanel;
 class CanvasPage;
+class ThreadsPage;
 class ConvTabsWidget;
 class HeaderAvatarWidget;
 class HuddleBanner;
@@ -164,6 +165,9 @@ private:
     // the splitter if collapsed. Shared by the message-list thread click and the
     // thread-reply notification click.
     void openThreadPanel(const ConversationId &conv, const Ts &rootTs);
+    // Show the workspace-wide Threads overview page in the content stack
+    // (roster "Threads" entry; gated on Capabilities::threadsView).
+    void openThreadsView();
     // Follow a message-link chip: open the conversation (and, for a reply, the
     // thread it lives in) and move the focus to that message.
     void openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot);
@@ -246,6 +250,7 @@ private:
     ConvTabsWidget        *_convTabs        = nullptr;
     HuddleBanner          *_huddleBanner    = nullptr;
     CanvasPage            *_canvasPage      = nullptr;
+    ThreadsPage           *_threadsPage     = nullptr;
     QString                _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
     QString                _currentCanvasTitle;
 

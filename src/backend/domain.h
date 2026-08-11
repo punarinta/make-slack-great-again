@@ -157,6 +157,10 @@ struct Capabilities {
                                    // Requires deleteMessage. Slack/Teams leave this false
                                    // (own-only, plus the separate admin path).
     bool threads          = false; // threaded replies
+    bool threadsView      = false; // workspace-wide "Threads" overview (loadThreadsView).
+                                   // Separate from `threads`: a backend can support replies
+                                   // without any server-side subscribed-threads feed (Slack's
+                                   // feed is session-token only; IMAP/Teams have none).
     bool fileUpload       = false; // upload + share files
     bool scheduledSend    = false; // send a message at a future time (chat.scheduleMessage).
                                    // Slack-only: Teams' Graph has no delegated scheduled-send and
@@ -765,6 +769,27 @@ struct MessagePage {
     std::vector<Message>   messages;
     std::optional<QString> olderCursor; // pass to next loadHistory call
     bool                   operator==(const MessagePage &) const = default;
+};
+
+// One thread in the workspace-wide "Threads" overview (the threads the authed
+// user is subscribed to — started, replied to, or followed). `root` is the
+// complete parent message; `latestReplies` is only the newest few (oldest-first
+// for display) — the full thread stays one loadThread away.
+struct ThreadOverview {
+    ConversationId       conv; // channel hosting the thread
+    Message              root;
+    std::vector<Message> latestReplies;
+    Ts                   lastRead; // the authed user's read cursor inside the thread
+    bool                 operator==(const ThreadOverview &) const = default;
+};
+
+// One page of the Threads overview, newest activity first.
+struct ThreadsViewPage {
+    std::vector<ThreadOverview> threads;
+    int                         totalUnreadReplies = 0; // workspace-wide unread reply count
+    bool                        hasMore            = false;
+    QString                     nextCursor; // pass to the next loadThreadsView call
+    bool                        operator==(const ThreadsViewPage &) const = default;
 };
 
 struct OutgoingMessage {
