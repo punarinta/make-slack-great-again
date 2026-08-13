@@ -1865,7 +1865,7 @@ This action cannot be undone.</source>
     <name>SettingsDialog</name>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="117"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="873"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="890"/>
         <source>RAM used: %1</source>
         <translation>RAM使用量: %1</translation>
     </message>
@@ -2158,113 +2158,125 @@ Clear this to let the app re-analyse activity from scratch on next load.</source
     </message>
     <message>
         <location filename="../src/ui/settings/settings_dialog.cpp" line="652"/>
+        <source>Check for updates automatically</source>
+        <translation>更新を自動的に確認する</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="660"/>
+        <source>When off, msga never contacts the update server on its own — use the
+button below to look for a new version.</source>
+        <translation>オフにすると、msga は自動で更新サーバーに接続しません。
+新しいバージョンを探すときは下のボタンを使ってください。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="669"/>
         <source>Check for updates</source>
         <translation>アップデートを確認</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="672"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="689"/>
         <source>Slack connection</source>
         <translation>Slack接続</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="676"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="693"/>
         <source>Choose how msga connects to Slack.</source>
         <translation>msgaがSlackに接続する方法を選びます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="688"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="705"/>
         <source>Slack session — no app keys, uses your own account&apos;s limits</source>
         <translation>Slackセッション — アプリキーなし、自分のアカウントの制限を使います</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="691"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="708"/>
         <source>Slack app keys — OAuth sign-in with live message push</source>
         <translation>Slackアプリキー — OAuthでサインイン、メッセージはリアルタイムに届きます</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="697"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="714"/>
         <source>Restart msga to apply this change.</source>
         <translation>この変更を適用するにはmsgaを再起動してください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="710"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="727"/>
         <source>Add a workspace using your existing Slack session. New messages arrive by polling — there&apos;s no live push in this mode.</source>
         <translation>既存のSlackセッションを使ってワークスペースを追加します。新しいメッセージはポーリングで届きます — このモードではリアルタイムのプッシュ配信はありません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="719"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="736"/>
         <source>Import Slack session…</source>
         <translation>Slackセッションをインポート…</translation>
     </message>
     <message numerus="yes">
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="738"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="755"/>
         <source>You still have %n Slack workspace(s) on app keys. Convert them to session so no workspace uses Socket Mode.</source>
         <translation>
             <numerusform>アプリキーを使っているSlackワークスペースがまだ %n 件あります。すべてセッションに切り替えると、どのワークスペースもSocket Modeを使わなくなります。</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="749"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="766"/>
         <source>Convert them to session</source>
         <translation>セッションに切り替える</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="770"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="787"/>
         <source>Run your own Slack app so you don&apos;t share connection keys with other devices and users. Leave a field empty to use the built-in default.</source>
         <translation>独自のSlackアプリを使用すると、接続キーを他のデバイスやユーザーと共有せずに済みます。空欄にすると組み込みの既定値が使用されます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="779"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="796"/>
         <source>How to create your Slack app…</source>
         <translation>Slackアプリの作成方法…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="811"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="828"/>
         <source>Client ID</source>
         <translation>クライアントID</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="811"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="828"/>
         <source>e.g. 1234567890.1234567890</source>
         <translation>例: 1234567890.1234567890</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="812"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="829"/>
         <source>Client secret</source>
         <translation>クライアントシークレット</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="812"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="829"/>
         <source>Paste your client secret</source>
         <translation>クライアントシークレットを貼り付け</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="813"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="830"/>
         <source>App-level token</source>
         <translation>アプリレベルトークン</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="813"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="830"/>
         <source>Paste your xapp- token</source>
         <translation>xapp- トークンを貼り付け</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="822"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="839"/>
         <source>Save and restart</source>
         <translation>保存して再起動</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="852"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="869"/>
         <source>Memory</source>
         <translation>メモリ</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="886"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="903"/>
         <source>License</source>
         <translation>ライセンス</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="891"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="908"/>
         <source>MSGA — Make Slack Great Again
 Copyright © 2026 Vladimir Osipov
 
@@ -2275,37 +2287,37 @@ Copyright © 2026 Vladimir Osipov
 本プログラムはフリーソフトウェアです。フリーソフトウェア財団が公開する GNU General Public License（バージョン 3、または任意でそれ以降のバージョン）の条項に基づき、再配布および改変を行うことができます（GPL-3.0-or-later）。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="904"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="921"/>
         <source>View full license</source>
         <translation>ライセンス全文を表示</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="916"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="933"/>
         <source>Contact</source>
         <translation>連絡先</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="922"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="939"/>
         <source>Questions or feedback: %1</source>
         <translation>ご質問・ご意見: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="930"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="947"/>
         <source>Found a bug?</source>
         <translation>バグを見つけましたか？</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="935"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="952"/>
         <source>Report it on GitHub so it can be tracked and fixed.</source>
         <translation>GitHub で報告すると、追跡・修正できます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="941"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="958"/>
         <source>Report a bug</source>
         <translation>バグを報告</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="974"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="991"/>
         <source>Connect an AI provider to enable assistant features.
 Create an API key in your own provider account and paste it below —
 it is stored on this computer and sent only to that provider.</source>
@@ -2314,131 +2326,131 @@ it is stored on this computer and sent only to that provider.</source>
 キーはこのコンピューターに保存され、そのプロバイダーにのみ送信されます。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="982"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="999"/>
         <source>AI provider</source>
         <translation>AIプロバイダー</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="990"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1007"/>
         <source>Default:</source>
         <translation>デフォルト:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1027"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1044"/>
         <source>Connect (OAuth)</source>
         <translation>接続（OAuth）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1031"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1048"/>
         <source>Disconnect</source>
         <translation>切断</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1040"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1057"/>
         <source>Paste your API key</source>
         <translation>APIキーを貼り付け</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1044"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1061"/>
         <source>Save key</source>
         <translation>キーを保存</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1050"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1067"/>
         <source>Get an API key from %1…</source>
         <translation>%1でAPIキーを取得…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1079"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1096"/>
         <source>%1: %2</source>
         <translation>%1: %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1087"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1104"/>
         <source>Your language</source>
         <translation>あなたの言語</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1092"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1109"/>
         <source>AI features address you in this language.
 It follows the app language until you pick one here.</source>
         <translation>AI機能はこの言語で応答します。
 ここで選択するまではアプリの言語に従います。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1101"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1118"/>
         <source>Native language:</source>
         <translation>母国語:</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1161"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1178"/>
         <source>Connected as %1</source>
         <translation>%1として接続済み</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1162"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1179"/>
         <source>Connected with API key (%1)</source>
         <translation>APIキーで接続済み（%1）</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1165"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1182"/>
         <source>Waiting for browser sign-in…</source>
         <translation>ブラウザでのサインインを待っています…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1167"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1184"/>
         <source>Not connected</source>
         <translation>未接続</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1600"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1624"/>
         <source>No changes to save.</source>
         <translation>保存する変更はありません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1604"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1628"/>
         <source>Saved. Restarting…</source>
         <translation>保存しました。再起動しています…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1652"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1676"/>
         <source>Last checked: %1</source>
         <translation>最終確認: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1660"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1684"/>
         <source>Update checks not available.</source>
         <translation>アップデートの確認は利用できません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1665"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1682"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1689"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1706"/>
         <source>Checking for updates…</source>
         <translation>アップデートを確認中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1668"/>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1697"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1692"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1721"/>
         <source>Update downloaded — restart the app to apply.</source>
         <translation>アップデートをダウンロードしました — 適用するにはアプリを再起動してください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1686"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1710"/>
         <source>msga is up to date.</source>
         <translation>msgaは最新の状態です。</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1690"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1714"/>
         <source>Version %1 available — downloading…</source>
         <translation>バージョン%1が利用可能です — ダウンロード中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1693"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1717"/>
         <source>Downloading update… %1%</source>
         <translation>アップデートをダウンロード中… %1%</translation>
     </message>
     <message>
-        <location filename="../src/ui/settings/settings_dialog.cpp" line="1702"/>
+        <location filename="../src/ui/settings/settings_dialog.cpp" line="1726"/>
         <source>Check failed: %1</source>
         <translation>確認に失敗しました: %1</translation>
     </message>
@@ -2757,37 +2769,37 @@ It follows the app language until you pick one here.</source>
 <context>
     <name>UpdateChecker</name>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="83"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="93"/>
         <source>Automatic updates are not supported on this platform.</source>
         <translation>このプラットフォームでは自動アップデートはサポートされていません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="105"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="115"/>
         <source>Could not parse version manifest.</source>
         <translation>バージョンマニフェストを解析できませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="125"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="135"/>
         <source>Cannot write update to %1</source>
         <translation>%1にアップデートを書き込めません</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="152"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="162"/>
         <source>Download failed: %1</source>
         <translation>ダウンロードに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="169"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="179"/>
         <source>Could not replace binary: %1</source>
         <translation>バイナリを置き換えられませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="185"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="195"/>
         <source>Could not move current binary — check file permissions on %1</source>
         <translation>現在のバイナリを移動できませんでした — %1のファイル権限を確認してください</translation>
     </message>
     <message>
-        <location filename="../src/ui/update_checker/update_checker.cpp" line="191"/>
+        <location filename="../src/ui/update_checker/update_checker.cpp" line="201"/>
         <source>Could not place new binary at %1</source>
         <translation>新しいバイナリを%1に配置できませんでした</translation>
     </message>
