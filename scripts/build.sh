@@ -23,13 +23,14 @@ else
     CMAKE_EXTRA=()
 fi
 
-# Homebrew keeps Qt keg-only (off the default CMake search path), so point
-# find_package(Qt6) at it here instead of relying on the caller to export
-# CMAKE_PREFIX_PATH. No-op where brew or the qt formula is absent (e.g. Linux).
-if command -v brew >/dev/null 2>&1; then
+# Point find_package(Qt6) at a Qt that isn't on the default CMake search path.
+# An explicit QT_PREFIX wins (needed on distros whose packaged Qt is older than
+# the 6.5 floor — see README); otherwise fall back to Homebrew, which keeps Qt
+# keg-only. No-op when neither applies. Same variable as run-tests.sh/coverage.sh.
+if [[ -z "${QT_PREFIX:-}" ]] && command -v brew >/dev/null 2>&1; then
     QT_PREFIX="$(brew --prefix qt 2>/dev/null || true)"
-    [[ -n "${QT_PREFIX}" ]] && CMAKE_EXTRA+=(-DCMAKE_PREFIX_PATH="${QT_PREFIX}")
 fi
+[[ -n "${QT_PREFIX:-}" ]] && CMAKE_EXTRA+=(-DCMAKE_PREFIX_PATH="${QT_PREFIX}")
 
 # Only reconfigure when not already a Ninja build.
 # Wipe the directory if it exists but has no build.ninja (stale or wrong generator).
