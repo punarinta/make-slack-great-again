@@ -19,19 +19,19 @@ if ! command -v gcovr >/dev/null 2>&1; then
     exit 1
 fi
 
-CMAKE_EXTRA_ARGS=()
-if [[ -n "${QT_PREFIX:-}" ]]; then
-    CMAKE_EXTRA_ARGS+=("-DCMAKE_PREFIX_PATH=${QT_PREFIX}")
-fi
+source "${SCRIPT_DIR}/qt-prefix.sh"
+msga_resolve_qt_prefix
+msga_qt_cmake_args
+msga_qt_report
 
-if [[ ! -f "${BUILD_DIR}/build.ninja" ]]; then
+if [[ ! -f "${BUILD_DIR}/build.ninja" ]] || msga_qt_prefix_changed "$BUILD_DIR"; then
     rm -rf "${BUILD_DIR}"
     cmake -S "$ROOT" -B "$BUILD_DIR" \
         -G Ninja \
         -DCMAKE_BUILD_TYPE=Debug \
         -DMSGA_BUILD_TESTS=ON \
         -DMSGA_COVERAGE=ON \
-        "${CMAKE_EXTRA_ARGS[@]}"
+        "${MSGA_QT_CMAKE_ARGS[@]+"${MSGA_QT_CMAKE_ARGS[@]}"}"
 fi
 
 cmake --build "$BUILD_DIR" --parallel "$NPROC"

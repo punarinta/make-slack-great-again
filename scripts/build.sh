@@ -23,18 +23,20 @@ else
     CMAKE_EXTRA=()
 fi
 
-# Point find_package(Qt6) at a Qt that isn't on the default CMake search path.
-# An explicit QT_PREFIX wins (needed on distros whose packaged Qt is older than
-# the 6.5 floor — see README); otherwise fall back to Homebrew, which keeps Qt
-# keg-only. No-op when neither applies. Same variable as run-tests.sh/coverage.sh.
-if [[ -z "${QT_PREFIX:-}" ]] && command -v brew >/dev/null 2>&1; then
-    QT_PREFIX="$(brew --prefix qt 2>/dev/null || true)"
-fi
-[[ -n "${QT_PREFIX:-}" ]] && CMAKE_EXTRA+=(-DCMAKE_PREFIX_PATH="${QT_PREFIX}")
+# Point find_package(Qt6) at a Qt that isn't on the default CMake search path
+# (explicit QT_PREFIX, Homebrew's keg-only Qt, an online-installer kit) — see
+# scripts/qt-prefix.sh. Same variable as release.sh/run-tests.sh/coverage.sh.
+source "${SCRIPT_DIR}/qt-prefix.sh"
+msga_resolve_qt_prefix
+msga_qt_cmake_args
+msga_qt_report
+CMAKE_EXTRA+=("${MSGA_QT_CMAKE_ARGS[@]+"${MSGA_QT_CMAKE_ARGS[@]}"}")
 
-# Only reconfigure when not already a Ninja build.
-# Wipe the directory if it exists but has no build.ninja (stale or wrong generator).
-if [[ ! -f "${BUILD_DIR}/build.ninja" ]]; then
+# Only reconfigure when not already a Ninja build, or when the Qt it was
+# configured against changed (setting QT_PREFIX after a failed build must not
+# be silently ignored). Wipe the directory if it exists but has no build.ninja
+# (stale or wrong generator).
+if [[ ! -f "${BUILD_DIR}/build.ninja" ]] || msga_qt_prefix_changed "$BUILD_DIR"; then
     rm -rf "${BUILD_DIR}"
     # ${CMAKE_EXTRA[@]+…} guards the empty-array expansion so it doesn't trip
     # `set -u` on bash 3.2 (the /bin/bash that ships with macOS).

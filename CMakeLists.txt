@@ -30,7 +30,55 @@ option(MSGA_ASAN "Build with AddressSanitizer + LeakSanitizer" OFF)
 # (QAbstractSocket got it much earlier — the two are unrelated modules), and the
 # realtime sockets rely on it. Without the version here the build fails much
 # later with three unexplained "not a member of QWebSocket" errors.
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Concurrent Test)
+set(MSGA_QT_MIN 6.5)
+set(MSGA_QT_COMPONENTS Core Gui Widgets Network WebSockets Svg Concurrent Test)
+
+# The scripts pass -DCMAKE_PREFIX_PATH, but honour $QT_PREFIX here too so a bare
+# `cmake -B build -S .` picks the same Qt as `QT_PREFIX=... ./scripts/build.sh`.
+if(NOT CMAKE_PREFIX_PATH AND DEFINED ENV{QT_PREFIX})
+    set(CMAKE_PREFIX_PATH "$ENV{QT_PREFIX}")
+endif()
+
+# Look it up quietly first: CMake's own failure for a missing component is
+# "package configuration file ... set Qt6_FOUND to FALSE", which tells a first-
+# time builder nothing. Diagnose the two real causes instead — a Qt below the
+# floor, and a Qt missing WebSockets (neither qt6-base-dev nor the online
+# installer's default selection includes it).
+find_package(Qt6 ${MSGA_QT_MIN} QUIET COMPONENTS ${MSGA_QT_COMPONENTS})
+if(NOT Qt6_FOUND)
+    set(_msga_qt_hint "\
+Install Qt ${MSGA_QT_MIN}+ with the WebSockets module:
+  Debian/Ubuntu: sudo apt install qt6-base-dev qt6-websockets-dev qt6-svg-dev
+  macOS:         brew install qt
+  Any distro:    https://www.qt.io/download-qt-installer \
+— tick 'Qt WebSockets', it is NOT selected by default
+Then point the build at it: QT_PREFIX=$ENV{HOME}/Qt/<version>/gcc_64 ./scripts/build.sh
+(scripts/configure-linux.sh checks all of this before you build.)")
+
+    # Retry without the version constraint to learn what is actually installed.
+    find_package(Qt6 QUIET COMPONENTS Core)
+    if(Qt6_FOUND AND Qt6_VERSION VERSION_LESS ${MSGA_QT_MIN})
+        message(FATAL_ERROR
+            "Qt ${Qt6_VERSION} (${Qt6_DIR}) is too old — msga needs Qt ${MSGA_QT_MIN}+ for "
+            "QWebSocket::errorOccurred.\n${_msga_qt_hint}")
+    endif()
+
+    set(_msga_qt_missing "")
+    foreach(_comp IN LISTS MSGA_QT_COMPONENTS)
+        find_package(Qt6${_comp} QUIET)
+        if(NOT Qt6${_comp}_FOUND)
+            list(APPEND _msga_qt_missing ${_comp})
+        endif()
+    endforeach()
+    if(_msga_qt_missing)
+        list(JOIN _msga_qt_missing ", " _msga_qt_missing)
+        message(FATAL_ERROR
+            "Qt 6 is installed but these modules are missing: ${_msga_qt_missing}.\n${_msga_qt_hint}")
+    endif()
+
+    message(FATAL_ERROR "Qt ${MSGA_QT_MIN}+ not found.\n${_msga_qt_hint}")
+endif()
+message(STATUS "Qt ${Qt6_VERSION} (${Qt6_DIR})")
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
 
 include(FetchContent)

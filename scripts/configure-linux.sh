@@ -11,8 +11,9 @@ die()  { printf "  ${RED}error${NC} %s\n" "$1" >&2; shift; (($#)) && printf "   
 CMAKE_MIN_MAJOR=3
 CMAKE_MIN_MINOR=21
 
-QT_MIN_MAJOR=6
-QT_MIN_MINOR=5
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Qt discovery + the 6.5 floor live here, shared with the build scripts.
+source "${SCRIPT_DIR}/qt-prefix.sh"
 
 if ! command -v apt-get &>/dev/null; then
     die "This script requires apt (Debian/Ubuntu)." \
@@ -69,38 +70,32 @@ else
         "  https://apt.kitware.com/"
 fi
 
-# Qt version check. The distro packages installed above are frequently older
-# than our floor (Ubuntu 24.04 LTS ships 6.4.2), and the resulting failure is a
-# compile error deep into the build rather than anything that names Qt.
-qmake_bin=""
-if [[ -n "${QT_PREFIX:-}" && -x "${QT_PREFIX}/bin/qmake6" ]]; then
-    qmake_bin="${QT_PREFIX}/bin/qmake6"
-elif command -v qmake6 &>/dev/null; then
-    qmake_bin="qmake6"
-fi
+# Qt version + module check, shared with the build scripts so this reports
+# exactly the Qt they will use. The distro packages installed above are
+# frequently older than our floor (Ubuntu 24.04 LTS ships 6.4.2) and the
+# resulting failure is a compile error deep into the build that never names Qt;
+# a Qt installed without the WebSockets module fails the same way. Both die here
+# with instructions instead. Resolution order: $QT_PREFIX, system Qt, then the
+# newest ~/Qt kit that qualifies.
+msga_resolve_qt_prefix
 
-if [[ -z "$qmake_bin" ]]; then
-    miss "qmake6 not found — cannot verify the Qt version (need >= ${QT_MIN_MAJOR}.${QT_MIN_MINOR})"
+if [[ -n "${QT_PREFIX:-}" ]]; then
+    ok "Qt ${MSGA_QT_VERSION:-?} at ${QT_PREFIX} (${MSGA_QT_SOURCE}, >= ${MSGA_QT_MIN} required)"
+elif [[ -n "${MSGA_QT_VERSION:-}" ]]; then
+    ok "Qt ${MSGA_QT_VERSION} (system, >= ${MSGA_QT_MIN} required)"
 else
-    qt_ver=$("$qmake_bin" -query QT_VERSION)
-    qt_maj=$(echo "$qt_ver" | cut -d. -f1)
-    qt_min=$(echo "$qt_ver" | cut -d. -f2)
-    if [[ "$qt_maj" -gt "$QT_MIN_MAJOR" ]] || \
-       [[ "$qt_maj" -eq "$QT_MIN_MAJOR" && "$qt_min" -ge "$QT_MIN_MINOR" ]]; then
-        ok "Qt $qt_ver (>= ${QT_MIN_MAJOR}.${QT_MIN_MINOR} required)"
-    else
-        echo ""
-        die "Qt $qt_ver is too old — need >= ${QT_MIN_MAJOR}.${QT_MIN_MINOR} (QWebSocket::errorOccurred)." \
-            "Your distro's Qt packages are behind. Install Qt with the online installer:" \
-            "  https://www.qt.io/download-qt-installer" \
-            "Tick the Qt WebSockets module (it is NOT selected by default), then build with:" \
-            "  QT_PREFIX=\$HOME/Qt/<version>/gcc_64 ./scripts/build.sh"
-    fi
+    miss "qmake6 not found — cannot verify the Qt version (need >= ${MSGA_QT_MIN})"
 fi
 
 git config core.hooksPath .githooks
 ok "git hooks (.githooks/pre-commit)"
 
 echo ""
-echo "All dependencies satisfied. Configure the project with:"
-echo "  cmake -B build -S ."
+echo "All dependencies satisfied. Build with:"
+if [[ -n "${QT_PREFIX:-}" ]]; then
+    # The build scripts re-run this same detection, so the export is only needed
+    # when the kit sits somewhere they don't look.
+    echo "  QT_PREFIX=${QT_PREFIX} ./scripts/build.sh"
+else
+    echo "  ./scripts/build.sh"
+fi
