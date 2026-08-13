@@ -5,10 +5,14 @@ set -euo pipefail
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 ok()   { printf "  ${GREEN}ok${NC}    %s\n" "$*"; }
 miss() { printf "  ${YELLOW}miss${NC}  %s\n" "$*"; }
-die()  { printf "  ${RED}error${NC} %s\n" "$*" >&2; exit 1; }
+# Each argument is one line: "$*" would join a multi-line explanation into one.
+die()  { printf "  ${RED}error${NC} %s\n" "$1" >&2; shift; (($#)) && printf "        %s\n" "$@" >&2; exit 1; }
 
 CMAKE_MIN_MAJOR=3
 CMAKE_MIN_MINOR=21
+
+QT_MIN_MAJOR=6
+QT_MIN_MINOR=5
 
 if ! command -v apt-get &>/dev/null; then
     die "This script requires apt (Debian/Ubuntu)." \
@@ -63,6 +67,35 @@ else
     die "cmake $cmake_ver is too old — need >= ${CMAKE_MIN_MAJOR}.${CMAKE_MIN_MINOR}." \
         "Install a newer version from https://cmake.org/download/ or the Kitware APT PPA:" \
         "  https://apt.kitware.com/"
+fi
+
+# Qt version check. The distro packages installed above are frequently older
+# than our floor (Ubuntu 24.04 LTS ships 6.4.2), and the resulting failure is a
+# compile error deep into the build rather than anything that names Qt.
+qmake_bin=""
+if [[ -n "${QT_PREFIX:-}" && -x "${QT_PREFIX}/bin/qmake6" ]]; then
+    qmake_bin="${QT_PREFIX}/bin/qmake6"
+elif command -v qmake6 &>/dev/null; then
+    qmake_bin="qmake6"
+fi
+
+if [[ -z "$qmake_bin" ]]; then
+    miss "qmake6 not found — cannot verify the Qt version (need >= ${QT_MIN_MAJOR}.${QT_MIN_MINOR})"
+else
+    qt_ver=$("$qmake_bin" -query QT_VERSION)
+    qt_maj=$(echo "$qt_ver" | cut -d. -f1)
+    qt_min=$(echo "$qt_ver" | cut -d. -f2)
+    if [[ "$qt_maj" -gt "$QT_MIN_MAJOR" ]] || \
+       [[ "$qt_maj" -eq "$QT_MIN_MAJOR" && "$qt_min" -ge "$QT_MIN_MINOR" ]]; then
+        ok "Qt $qt_ver (>= ${QT_MIN_MAJOR}.${QT_MIN_MINOR} required)"
+    else
+        echo ""
+        die "Qt $qt_ver is too old — need >= ${QT_MIN_MAJOR}.${QT_MIN_MINOR} (QWebSocket::errorOccurred)." \
+            "Your distro's Qt packages are behind. Install Qt with the online installer:" \
+            "  https://www.qt.io/download-qt-installer" \
+            "Tick the Qt WebSockets module (it is NOT selected by default), then build with:" \
+            "  QT_PREFIX=\$HOME/Qt/<version>/gcc_64 ./scripts/build.sh"
+    fi
 fi
 
 git config core.hooksPath .githooks

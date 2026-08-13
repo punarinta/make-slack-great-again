@@ -26,7 +26,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(MSGA_CLAZY "Add 'clazy' target for Qt-aware static analysis" OFF)
 option(MSGA_ASAN "Build with AddressSanitizer + LeakSanitizer" OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Concurrent Test)
+# 6.5 is a hard floor: QtWebSockets only gained QWebSocket::errorOccurred there
+# (QAbstractSocket got it much earlier — the two are unrelated modules), and the
+# realtime sockets rely on it. Without the version here the build fails much
+# later with three unexplained "not a member of QWebSocket" errors.
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets Svg Concurrent Test)
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
 
 include(FetchContent)

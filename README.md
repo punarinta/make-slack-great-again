@@ -47,7 +47,12 @@ The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSI
 
 ### Step 2. Configure build environment
 
-> **Prerequisites:** CMake ≥ 3.24, Qt 6.1+ dev packages, a C++20 compiler (GCC 12+ / Clang 14+ / MSVC 2022+)
+> **Prerequisites:** CMake ≥ 3.24, Qt 6.5+ dev packages (incl. the WebSockets module), a C++20 compiler (GCC 12+ / Clang 14+ / MSVC 2022+)
+
+> Distro Qt packages are often older than 6.5 (Ubuntu 24.04 ships 6.4). If yours is,
+> install Qt from the [online installer](https://www.qt.io/download-qt-installer) —
+> tick **Qt WebSockets**, it is not selected by default — and point the build at it:
+> `QT_PREFIX=$HOME/Qt/6.9.0/gcc_64 ./scripts/build.sh`.
 
 ```sh
 ./scripts/configure-linux.sh    # for Linux
