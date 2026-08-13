@@ -51,8 +51,13 @@ The app version lives in `version.cmake` (tracked in git). Increment `MSGA_VERSI
 
 > Distro Qt packages are often older than 6.5 (Ubuntu 24.04 ships 6.4). If yours is,
 > install Qt from the [online installer](https://www.qt.io/download-qt-installer) —
-> tick **Qt WebSockets**, it is not selected by default — and point the build at it:
+> tick **Qt WebSockets**, it is not selected by default. A kit under `~/Qt` is picked
+> up automatically; anywhere else, name it with `QT_PREFIX`:
 > `QT_PREFIX=$HOME/Qt/6.9.0/gcc_64 ./scripts/build.sh`.
+>
+> `QT_PREFIX` works the same way for every build script (`build.sh`, `release.sh`,
+> `run-tests.sh`, `coverage.sh`, `build.ps1`) and for a plain `cmake -B build -S .`.
+> Changing it reconfigures the build directory instead of silently reusing the old Qt.
 
 ```sh
 ./scripts/configure-linux.sh    # for Linux
