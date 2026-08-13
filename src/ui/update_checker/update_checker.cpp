@@ -63,7 +63,17 @@ static QString downloadTempPath() {
 #endif
 }
 
+bool UpdateChecker::autoCheckEnabled() {
+    return QSettings("msga", "msga").value("updates/autoCheck", true).toBool();
+}
+
+void UpdateChecker::setAutoCheckEnabled(bool enabled) {
+    QSettings("msga", "msga").setValue("updates/autoCheck", enabled);
+}
+
 void UpdateChecker::checkInBackground() {
+    if (!autoCheckEnabled())
+        return;
     if (_checking || _ready)
         return;
     fetch(/*silent=*/true);

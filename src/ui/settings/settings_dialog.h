@@ -166,6 +166,7 @@ private:
 
     // System / update controls
     UpdateChecker *_updateChecker = nullptr;
+    QCheckBox     *_autoUpdates   = nullptr;
     QLabel        *_updateStatus  = nullptr;
     QLabel        *_lastChecked   = nullptr;
     StyledButton  *_checkBtn      = nullptr;

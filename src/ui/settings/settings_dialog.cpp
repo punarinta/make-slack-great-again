@@ -648,6 +648,23 @@ void SettingsDialog::buildPanel() {
     updLayout->setSpacing(sp.md);
     updLayout->setContentsMargins(0, 0, 0, 0);
 
+    // Persists immediately (same convention as the connection-mode switch below).
+    _autoUpdates = new QCheckBox(tr("Check for updates automatically"), updBox);
+    _autoUpdates->setChecked(UpdateChecker::autoCheckEnabled());
+    connect(_autoUpdates, &QCheckBox::toggled, this, [](bool on) {
+        UpdateChecker::setAutoCheckEnabled(on);
+    });
+    updLayout->addWidget(_autoUpdates);
+
+    auto *autoUpdDesc = new QLabel(
+        tr("When off, msga never contacts the update server on its own — use the\n"
+           "button below to look for a new version."),
+        updBox
+    );
+    autoUpdDesc->setObjectName("autoUpdDesc");
+    autoUpdDesc->setWordWrap(true);
+    updLayout->addWidget(autoUpdDesc);
+
     auto *checkRow = new QHBoxLayout;
     _checkBtn = new StyledButton(tr("Check for updates"), StyledButton::Variant::Primary, updBox);
     _checkBtn->setSize(StyledButton::Size::Small);
@@ -1406,6 +1423,13 @@ void SettingsDialog::applyTheme() {
     }
     if (auto *w = _panel->findChild<QGroupBox *>("updBox"))
         w->setStyleSheet("QGroupBox { border: none; }");
+    if (_autoUpdates)
+        _autoUpdates->setStyleSheet(checkQss);
+    if (auto *w = _panel->findChild<QLabel *>("autoUpdDesc")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
     // (Check-for-updates button self-themes — StyledButton Ghost)
     _updateStatus->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))

@@ -25,6 +25,12 @@ public:
     bool    isReady() const { return _ready; }
     QString downloadedPath() const { return _downloadedPath; }
 
+    // Automatic checks are opt-out (default on). With them off, checkInBackground()
+    // does nothing at all — no network call, so no new-version notification either;
+    // only the explicit checkNow() from the settings button reaches the manifest.
+    static bool autoCheckEnabled();
+    static void setAutoCheckEnabled(bool enabled);
+
 signals:
     void checkStarted();
     void upToDate();
