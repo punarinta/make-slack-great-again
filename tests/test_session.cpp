@@ -3862,6 +3862,9 @@ TEST_CASE_METHOD(
     const ConversationId conv{"C1"};
     Message              m = reminderMsg("100.000001", "ship the release");
     m.threadRoot           = Ts{"99.000001"};
+    m.author               = UserId{"U42"};
+    m.botName              = "Deploy Bot";
+    m.botAvatarUrl         = "https://example.com/bot.png";
     // Just-overdue: recent enough to notify, already due so the check fires it.
     session->setMessageReminder(conv, m, QDateTime::currentSecsSinceEpoch() - 5);
 
@@ -3876,6 +3879,9 @@ TEST_CASE_METHOD(
             CHECK(rd->ts == "100.000001");
             CHECK(rd->threadRoot == Ts{"99.000001"});
             CHECK(rd->snippet == "ship the release");
+            CHECK(rd->author == UserId{"U42"});
+            CHECK(rd->botName == "Deploy Bot");
+            CHECK(rd->botAvatarUrl == "https://example.com/bot.png");
         }
     CHECK(hits == 1);
     // Still listed (blue tint / "Remove reminder" stay until the user acts)…

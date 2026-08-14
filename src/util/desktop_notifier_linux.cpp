@@ -135,8 +135,17 @@ bool DesktopNotifier::notify(
     for (const auto &a : actions)
         if (!a.token.isEmpty())
             tokens.insert(a.key, a.token);
-    if (!tokens.isEmpty())
-        _tokens.insert(reply.value(), tokens);
+    if (!tokens.isEmpty()) {
+        // Keep the last 64 notifications' tokens alive (see the header on why
+        // closed ones must stay clickable for Plasma's history).
+        constexpr int kMaxRetained = 64;
+        const uint    id           = reply.value();
+        if (!_tokens.contains(id))
+            _tokenOrder.append(id);
+        _tokens.insert(id, tokens);
+        while (_tokenOrder.size() > kMaxRetained)
+            _tokens.remove(_tokenOrder.takeFirst());
+    }
     return true;
 }
 
@@ -152,8 +161,13 @@ void DesktopNotifier::onActionInvoked(uint id, const QString &actionKey) {
         emitActivated(def.value());
 }
 
-void DesktopNotifier::onNotificationClosed(uint id, uint) {
-    _tokens.remove(id);
+void DesktopNotifier::onNotificationClosed(uint, uint) {
+    // Deliberately keep the token: an "expired" popup (reason 1) lives on in
+    // Plasma's notification history, and clicking it there re-emits
+    // ActionInvoked with the same id — removing the mapping here is what made
+    // reminders "not clickable" from the KDE history. The daemon reports the
+    // same reason for dismissed popups on some desktops, so we don't
+    // distinguish; the FIFO cap in notify() bounds the retained set.
 }
 
 #else // !MSGA_HAS_DBUS — no freedesktop backend; caller falls back to the tray.

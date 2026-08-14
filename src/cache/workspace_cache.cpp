@@ -593,6 +593,12 @@ void WorkspaceCache::saveReminders(const std::vector<MessageReminder> &reminders
             o["root"] = r.threadRoot;
         if (!r.snippet.isEmpty())
             o["snippet"] = r.snippet;
+        if (!r.author.value.isEmpty())
+            o["author"] = r.author.value;
+        if (!r.botName.isEmpty())
+            o["botName"] = r.botName;
+        if (!r.botAvatarUrl.isEmpty())
+            o["botAvatar"] = r.botAvatarUrl;
         if (r.fired)
             o["fired"] = true;
         arr.append(o);
@@ -608,12 +614,15 @@ std::vector<MessageReminder> WorkspaceCache::loadReminders() const {
     for (const auto &v : arr) {
         const auto      o = v.toObject();
         MessageReminder r;
-        r.conv       = ConversationId{o.value("conv").toString()};
-        r.ts         = o.value("ts").toString();
-        r.dueAt      = o.value("due").toVariant().toLongLong();
-        r.threadRoot = o.value("root").toString();
-        r.snippet    = o.value("snippet").toString();
-        r.fired      = o.value("fired").toBool();
+        r.conv         = ConversationId{o.value("conv").toString()};
+        r.ts           = o.value("ts").toString();
+        r.dueAt        = o.value("due").toVariant().toLongLong();
+        r.threadRoot   = o.value("root").toString();
+        r.snippet      = o.value("snippet").toString();
+        r.author       = UserId{o.value("author").toString()};
+        r.botName      = o.value("botName").toString();
+        r.botAvatarUrl = o.value("botAvatar").toString();
+        r.fired        = o.value("fired").toBool();
         if (!r.conv.value.isEmpty() && !r.ts.isEmpty() && r.dueAt > 0)
             out.push_back(std::move(r));
     }

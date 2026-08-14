@@ -274,12 +274,15 @@ TEST_CASE_METHOD(CacheFixture, "loadReminders returns empty when no file", "[cac
 TEST_CASE_METHOD(CacheFixture, "reminders round-trip all fields", "[cache][reminder]") {
     const std::vector<MessageReminder> input = {
         MessageReminder{
-            .conv       = ConversationId{"C1"},
-            .ts         = "1700000000.000100",
-            .dueAt      = 1700003600,
-            .threadRoot = "1699999999.000001",
-            .snippet    = "don't forget this",
-            .fired      = true,
+            .conv         = ConversationId{"C1"},
+            .ts           = "1700000000.000100",
+            .dueAt        = 1700003600,
+            .threadRoot   = "1699999999.000001",
+            .snippet      = "don't forget this",
+            .author       = UserId{"U42"},
+            .botName      = "Deploy Bot",
+            .botAvatarUrl = "https://example.com/bot.png",
+            .fired        = true,
         },
         MessageReminder{
             .conv  = ConversationId{"D2"},
