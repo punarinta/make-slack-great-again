@@ -4,6 +4,7 @@
 
 #include "backend/backend.h"
 #include "session/session.h"
+#include "text/link_labels.h"
 #include "util/background_tasks.h"
 #include "util/time_format.h"
 
@@ -153,15 +154,19 @@ QString ThreadExportJob::authorLabel(const Message &m) const {
 
 QString ThreadExportJob::transcriptText(const Message &m) const {
     QString text = m.text.text;
-    // Resolve @mention entities to names, back to front so offsets stay valid.
+    // Resolve @mention entities to names and shortened link labels ("host/…/…")
+    // to their full URLs, back to front so offsets stay valid.
     for (auto it = m.text.entities.rbegin(); it != m.text.entities.rend(); ++it) {
-        if (it->type != EntityType::UserMention)
-            continue;
-        text.replace(
-            it->offset,
-            it->length,
-            QStringLiteral("@") + _session->userDisplayName(UserId{it->data})
-        );
+        if (it->type == EntityType::UserMention) {
+            text.replace(
+                it->offset,
+                it->length,
+                QStringLiteral("@") + _session->userDisplayName(UserId{it->data})
+            );
+        } else if (it->type == EntityType::Link && !it->data.isEmpty() &&
+                   LinkLabels::isShortenedUrlLabel(text.mid(it->offset, it->length), it->data)) {
+            text.replace(it->offset, it->length, it->data);
+        }
     }
     return text.trimmed();
 }

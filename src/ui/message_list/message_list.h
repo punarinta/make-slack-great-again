@@ -195,6 +195,8 @@ private:
     bool tryHandleReplyBarPress(const QPoint &pos);
     bool tryHandleInlineThreadPress(const QPoint &pos);
     bool tryHandleLinkPress(const QPoint &pos);
+    // Right-click on a link: "Open link" / "Copy link" (full URL) menu.
+    bool tryShowLinkContextMenu(const QPoint &pos);
     bool tryHandleFileActionBarPress(const QPoint &pos);
     bool tryHandlePreviewPress(const QPoint &pos);
     bool tryHandleFileChipPress(const QPoint &pos);

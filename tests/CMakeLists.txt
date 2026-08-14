@@ -120,6 +120,12 @@ add_msga_test(test_mrkdwn
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
 )
 
+# Shortened link labels ("host/…/…") — detection, display expansion, copy text.
+add_msga_test(test_link_labels
+    test_link_labels.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
+)
+
 # Slack deep-link parsing (header-only; Qt6::Core only).
 add_msga_test(test_slack_links
     test_slack_links.cpp
@@ -338,6 +344,7 @@ target_link_libraries(test_session PRIVATE Qt6::Gui)
 add_msga_widget_test(test_message_render
     test_message_render.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
@@ -372,6 +379,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
@@ -398,6 +406,7 @@ add_msga_widget_test(test_canvas_emoji
     test_canvas_emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/canvas_page/canvas_emoji.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji.cpp
@@ -624,6 +633,7 @@ add_msga_widget_test(test_conv_list_widget
     test_conv_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/conv_list/conv_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
@@ -666,6 +676,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
@@ -724,6 +735,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_render.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/link_labels.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/context_menu/context_menu.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp

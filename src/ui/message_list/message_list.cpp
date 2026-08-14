@@ -20,6 +20,7 @@
 #include "ui/summary_dialog/summarize_job.h"
 #include "ui/summary_dialog/summary_dialog.h"
 #include "llm/llm_service.h"
+#include "text/link_labels.h"
 #include "util/background_tasks.h"
 #include "util/clipboard.h"
 #include "util/mailto_link.h"
@@ -1981,6 +1982,10 @@ static QString firstLinkInMessage(const Message &msg) {
 }
 
 void MessageListWidget::doMousePress(QMouseEvent *event) {
+    if (event->button() == Qt::RightButton) {
+        tryShowLinkContextMenu(event->pos());
+        return;
+    }
     if (event->button() != Qt::LeftButton)
         return;
 
@@ -2244,7 +2249,9 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     menu->addItem(
         tr("Copy message"),
         "Ctrl+C",
-        [text = msg.text.text] { Clipboard::setText(text); },
+        // Shortened link labels ("host/…/…") copy as the full URL — the visible
+        // text is useless off-screen.
+        [text = LinkLabels::plainTextWithFullUrls(msg.text)] { Clipboard::setText(text); },
         false,
         false,
         ":/ui/copy.svg"
@@ -2636,6 +2643,39 @@ bool MessageListWidget::tryHandleInlineThreadPress(const QPoint &pos) {
         return true; // click landed in the region but not on anything actionable
     }
     return false;
+}
+
+// Right-click on a link: a small menu to open it or copy the full URL. Needed
+// because Slack shortens pasted-URL labels, so selecting the visible text
+// can't recover the link.
+bool MessageListWidget::tryShowLinkContextMenu(const QPoint &pos) {
+    const QString anchor = anchorAt(pos);
+    if (anchor.isEmpty())
+        return false;
+    // Only anchors that resolve to a real URL — mention/channel chips and
+    // GIF-collapse title lines have nothing to copy.
+    QString url;
+    if (const auto ref = MsgRender::messageRefFromAnchor(anchor); ref.isValid())
+        url = SlackLinks::messagePermalink(ref);
+    else if (MsgRender::isBotButtonAnchor(anchor))
+        url = MsgRender::botButtonUrlFromAnchor(anchor);
+    else if (MsgRender::userIdFromAnchor(anchor).isEmpty() &&
+             MsgRender::channelIdFromAnchor(anchor).isEmpty() &&
+             MsgRender::gifKeyFromAnchor(anchor).isEmpty())
+        url = anchor;
+    if (url.isEmpty())
+        return false;
+
+    auto *menu = new ContextMenu(this);
+    menu->addItem(
+        tr("Open link"),
+        [this, anchor, pos] { openAnchorTarget(anchor, pos); },
+        false,
+        ":/ui/external-link.svg"
+    );
+    menu->addItem(tr("Copy link"), [url] { Clipboard::setText(url); }, false, ":/ui/link.svg");
+    menu->popup(viewport()->mapToGlobal(pos));
+    return true;
 }
 
 bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {

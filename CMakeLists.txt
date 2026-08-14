@@ -187,6 +187,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/imap/imap_backend.cpp
 
     # Text
+    src/text/link_labels.cpp
     src/text/mrkdwn_parser.cpp
 
     # Utilities
