@@ -777,18 +777,31 @@ ThreadsViewPage toThreadsViewPage(const QJsonObject &resp) {
         item.lastRead = rootObj.value("last_read").toString();
         if (item.conv.value.isEmpty() || item.root.ts.isEmpty())
             continue;
-        const auto replies = t.value("latest_replies").toArray();
-        item.latestReplies.reserve(replies.size());
-        for (const auto rv : replies) {
-            auto m = toMessage(rv.toObject());
-            if (!m.ts.isEmpty())
-                item.latestReplies.push_back(std::move(m));
+        // The replies key varies by read state: `latest_replies` on a fully-read
+        // thread, `unread_replies` (with NO latest_replies at all) when there
+        // are replies past last_read. Merge both — a partially-read thread
+        // plausibly carries both — and dedup by ts.
+        for (const auto key : {"latest_replies", "unread_replies"}) {
+            const auto replies = t.value(QLatin1String(key)).toArray();
+            for (const auto rv : replies) {
+                auto m = toMessage(rv.toObject());
+                if (!m.ts.isEmpty())
+                    item.latestReplies.push_back(std::move(m));
+            }
         }
         // Oldest-first for display, whatever order the server sent.
         std::sort(
             item.latestReplies.begin(),
             item.latestReplies.end(),
             [](const Message &a, const Message &b) { return a.date < b.date; }
+        );
+        item.latestReplies.erase(
+            std::unique(
+                item.latestReplies.begin(),
+                item.latestReplies.end(),
+                [](const Message &a, const Message &b) { return a.ts == b.ts; }
+            ),
+            item.latestReplies.end()
         );
         page.threads.push_back(std::move(item));
     }

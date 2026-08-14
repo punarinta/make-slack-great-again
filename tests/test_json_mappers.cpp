@@ -1568,3 +1568,58 @@ TEST_CASE("toMessageReminders tolerates an empty or junk response", "[mappers][r
     CHECK(JsonMappers::toMessageReminders(obj(R"({"ok": true})")).empty());
     CHECK(JsonMappers::toMessageReminders(obj(R"({"saved_items": [{}]})")).empty());
 }
+
+TEST_CASE(
+    "toThreadsViewPage reads replies from latest_replies and unread_replies", "[mappers][threads]"
+) {
+    // The replies key varies by read state (issue #39): a fully-read thread
+    // carries `latest_replies`, an unread one carries ONLY `unread_replies`,
+    // and a partially-read one plausibly both (overlap must dedup by ts).
+    auto page = JsonMappers::toThreadsViewPage(obj(R"({
+        "ok": true,
+        "total_unread_replies": 1,
+        "has_more": false,
+        "max_ts": "1786691602.401059",
+        "threads": [
+            {"root_msg": {"channel": "C1", "ts": "100.000001", "user": "U1",
+                          "text": "read root", "reply_count": 1,
+                          "latest_reply": "100.000002", "last_read": "100.000002",
+                          "subscribed": true},
+             "latest_replies": [
+                {"ts": "100.000002", "user": "U2", "text": "read reply"}
+             ]},
+            {"root_msg": {"channel": "C2", "ts": "200.000001", "user": "U1",
+                          "text": "unread root", "reply_count": 1,
+                          "latest_reply": "200.000002", "last_read": "200.000001",
+                          "subscribed": true},
+             "unread_replies": [
+                {"ts": "200.000002", "user": "U2", "text": "unread reply"}
+             ]},
+            {"root_msg": {"channel": "C3", "ts": "300.000001", "user": "U1",
+                          "text": "partially read root", "reply_count": 2,
+                          "latest_reply": "300.000003", "last_read": "300.000002",
+                          "subscribed": true},
+             "latest_replies": [
+                {"ts": "300.000002", "user": "U2", "text": "read reply"}
+             ],
+             "unread_replies": [
+                {"ts": "300.000002", "user": "U2", "text": "read reply"},
+                {"ts": "300.000003", "user": "U3", "text": "new reply"}
+             ]}
+        ]
+    })"));
+    REQUIRE(page.threads.size() == 3);
+    CHECK(page.totalUnreadReplies == 1);
+
+    REQUIRE(page.threads[0].latestReplies.size() == 1);
+    CHECK(page.threads[0].latestReplies[0].ts == "100.000002");
+
+    // The unread-only thread must not lose its replies (the issue #39 bug).
+    REQUIRE(page.threads[1].latestReplies.size() == 1);
+    CHECK(page.threads[1].latestReplies[0].ts == "200.000002");
+
+    // Both keys merged, overlap deduped, oldest-first.
+    REQUIRE(page.threads[2].latestReplies.size() == 2);
+    CHECK(page.threads[2].latestReplies[0].ts == "300.000002");
+    CHECK(page.threads[2].latestReplies[1].ts == "300.000003");
+}
