@@ -2281,11 +2281,36 @@ void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &e
         return;
     Session *session = it->second.session.get();
 
-    const auto   *conv  = session->findConversation(ev.conv);
-    const QString where = conv ? ((conv->kind == ConvKind::Im || conv->kind == ConvKind::Mpim)
-                                      ? conv->name
-                                      : QStringLiteral("#") + conv->name)
-                               : QString();
+    // Where the reminded message lives, in human terms — never a raw id. A DM's
+    // conv->name IS the raw peer id (see ConvListWidget), so resolve it through
+    // the user cache; an MPDM names itself from its members.
+    const auto *conv = session->findConversation(ev.conv);
+    QString     where;
+    if (conv) {
+        if (conv->kind == ConvKind::Im) {
+            if (conv->dmUser)
+                where = session->userDisplayName(*conv->dmUser);
+        } else if (conv->kind == ConvKind::Mpim) {
+            QStringList  names;
+            const UserId me = session->meUserId();
+            for (const auto &uid : conv->members) {
+                if (uid == me)
+                    continue;
+                if (const User *u = session->findUser(uid)) {
+                    const QString n = u->displayName.isEmpty() ? u->name : u->displayName;
+                    if (!n.isEmpty())
+                        names << n;
+                } else {
+                    session->fetchUserIfNeeded(uid);
+                }
+                if (names.size() == 3)
+                    break;
+            }
+            where = names.join(QStringLiteral(", "));
+        } else {
+            where = QStringLiteral("#") + conv->name;
+        }
+    }
 
     QString title = where.isEmpty() ? tr("Reminder") : tr("Reminder — %1").arg(where);
     if (teamId != _activeTeamId) {
@@ -2293,14 +2318,41 @@ void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &e
         if (!teamName.isEmpty())
             title = teamName + " · " + title;
     }
+
+    // Say who wrote the reminded message. The author's name resolves live from
+    // the user cache (bot posts carry their name in the event instead); a
+    // reminder set from another client has no author — plain snippet then.
+    const User *author = ev.author.value.isEmpty() ? nullptr : session->findUser(ev.author);
+    if (!author && !ev.author.value.isEmpty())
+        session->fetchUserIfNeeded(ev.author);
+    QString authorName =
+        author ? (author->displayName.isEmpty() ? author->name : author->displayName) : QString();
+    if (authorName.isEmpty())
+        authorName = ev.botName;
+
     QString body =
         ev.snippet.isEmpty() ? tr("You asked to be reminded about a message.") : ev.snippet;
+    if (!authorName.isEmpty() && !ev.snippet.isEmpty())
+        body = authorName + ": " + body;
     if (body.length() > 100)
         body = body.left(97) + "…";
 
+    // Picture: the reminded message's author (user avatar, else bot avatar),
+    // falling back to the DM peer and finally the workspace icon. Cache-only,
+    // same as maybeNotify — a miss just means no picture this time.
     QPixmap notifPix;
     if (_imgCache) {
-        const QString iconUrl = recordForHandle(teamId).iconUrl;
+        QString iconUrl;
+        if (author && !author->avatarUrl.isEmpty())
+            iconUrl = author->avatarUrl;
+        else if (!ev.botAvatarUrl.isEmpty())
+            iconUrl = ev.botAvatarUrl;
+        else if (conv && conv->kind == ConvKind::Im && conv->dmUser) {
+            if (const User *peer = session->findUser(*conv->dmUser))
+                iconUrl = peer->avatarUrl;
+        }
+        if (iconUrl.isEmpty())
+            iconUrl = recordForHandle(teamId).iconUrl;
         if (!iconUrl.isEmpty())
             notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
     }

@@ -81,9 +81,13 @@ private slots:
     void onNotificationClosed(uint id, uint reason);
 
 private:
-    // live notification id → (action key → caller token). The body click is
-    // stored under the "default" key.
+    // notification id → (action key → caller token). The body click is stored
+    // under the "default" key. Entries survive NotificationClosed on purpose:
+    // Plasma keeps expired popups in its history and re-emits ActionInvoked
+    // when one is clicked there, so dropping the token on close would make
+    // history entries dead (issue #40). Bounded FIFO eviction instead.
     QHash<uint, QHash<QString, QString>> _tokens;
+    QList<uint>                          _tokenOrder; // insertion order, oldest first
 #endif
 
 #if defined(Q_OS_MACOS)

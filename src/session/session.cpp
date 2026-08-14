@@ -2411,11 +2411,14 @@ void Session::setMessageReminder(const ConversationId &conv, const Message &msg,
         return;
     const QString   key = reminderKey(conv, msg.ts);
     MessageReminder r;
-    r.conv       = conv;
-    r.ts         = msg.ts;
-    r.dueAt      = dueAt;
-    r.threadRoot = msg.threadRoot.value_or(Ts{});
-    r.snippet    = msg.text.text.simplified().left(120);
+    r.conv         = conv;
+    r.ts           = msg.ts;
+    r.dueAt        = dueAt;
+    r.threadRoot   = msg.threadRoot.value_or(Ts{});
+    r.snippet      = msg.text.text.simplified().left(120);
+    r.author       = msg.author;
+    r.botName      = msg.botName;
+    r.botAvatarUrl = msg.botAvatarUrl;
     _reminders.insert(key, r);
     _reminderCreatedMs.insert(key, QDateTime::currentMSecsSinceEpoch());
     reminderStoreChanged();
@@ -2502,7 +2505,11 @@ void Session::fireDueReminders() {
         // official clients alarmed ages ago): keep it silently instead of
         // raising a stale toast — same spirit as tooOldToNotify.
         if (now - r.dueAt <= kMaxReminderLatenessSecs)
-            _eventHub.fire(EvReminderDue{r.conv, r.ts, r.threadRoot, r.snippet});
+            _eventHub.fire(
+                EvReminderDue{
+                    r.conv, r.ts, r.threadRoot, r.snippet, r.author, r.botName, r.botAvatarUrl
+                }
+            );
     }
     if (changed)
         reminderStoreChanged(); // persists fired flags and re-arms
@@ -2529,9 +2536,12 @@ void Session::refreshReminders() {
                 for (auto &r : server) {
                     const QString key = reminderKey(r.conv, r.ts);
                     if (const auto it = _reminders.constFind(key); it != _reminders.constEnd()) {
-                        r.threadRoot = it->threadRoot;
-                        r.snippet    = it->snippet;
-                        r.fired      = (it->dueAt == r.dueAt) && it->fired;
+                        r.threadRoot   = it->threadRoot;
+                        r.snippet      = it->snippet;
+                        r.author       = it->author;
+                        r.botName      = it->botName;
+                        r.botAvatarUrl = it->botAvatarUrl;
+                        r.fired        = (it->dueAt == r.dueAt) && it->fired;
                     }
                     next.insert(key, std::move(r));
                 }

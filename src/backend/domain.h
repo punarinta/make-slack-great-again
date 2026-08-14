@@ -429,18 +429,22 @@ inline std::optional<NotifTarget> decodeNotifToken(const QString &token) {
 
 // A per-message reminder (Slack's "Save for Later" item with a due date; see
 // Backend::loadMessageReminders). The backend fills conv/ts/dueAt from the
-// server; threadRoot/snippet/fired are local enrichment the Session captures at
-// set time (the server item doesn't carry them) and persists so the reminder's
-// notification can route to the thread and show a preview. `fired` marks a
-// reminder whose notification was already raised, so a restart doesn't
-// re-announce it; the item itself stays (blue tint, "remove reminder") until the
-// user removes it — matching the official client's overdue behaviour.
+// server; threadRoot/snippet/author/bot* /fired are local enrichment the Session
+// captures at set time (the server item doesn't carry them) and persists so the
+// reminder's notification can route to the thread, show a preview, and show who
+// wrote the message. `fired` marks a reminder whose notification was already
+// raised, so a restart doesn't re-announce it; the item itself stays (blue tint,
+// "remove reminder") until the user removes it — matching the official client's
+// overdue behaviour.
 struct MessageReminder {
     ConversationId conv;
     Ts             ts;
     qint64         dueAt = 0; // Unix seconds
     Ts             threadRoot;
     QString        snippet;
+    UserId         author;       // message author; empty for authorless bot posts
+    QString        botName;      // bot_message display name (author is empty then)
+    QString        botAvatarUrl; // bot_message avatar; users resolve theirs live
     bool           fired                                     = false;
     bool           operator==(const MessageReminder &) const = default;
 };
@@ -986,12 +990,18 @@ struct EvRateLimited {
 // (no Slackbot DM, no event; verified), official clients alarm from their own
 // state. Carries everything the notification needs so the UI never has to look
 // the reminder back up: threadRoot routes the click into the thread when the
-// reminded message is a reply, snippet is the stored message preview.
+// reminded message is a reply, snippet is the stored message preview, and
+// author/bot* identify who wrote it (for the notification's name and avatar).
+// All enrichment fields may be empty for a reminder set from another client —
+// the server item carries none of them.
 struct EvReminderDue {
     ConversationId conv;
     Ts             ts;
     Ts             threadRoot;
     QString        snippet;
+    UserId         author;
+    QString        botName;
+    QString        botAvatarUrl;
 };
 
 // --- Search ---
