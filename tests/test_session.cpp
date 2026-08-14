@@ -2399,6 +2399,57 @@ TEST_CASE_METHOD(
     );
 }
 
+// The per-conversation level lives ONLY in our cache (Slack's per-channel prefs
+// aren't readable over the public API), so anything that loses it loses it for
+// good — and the conversation silently falls back to the global default ("All new
+// posts"). These pin the two ways that used to happen.
+
+TEST_CASE_METHOD(
+    SessionFixture, "notifLevel and local mute survive a restart", "[session][notif][cache]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::Mentions);
+    session->setConvMuted(ConversationId{"C2"}, true);
+
+    // Nothing else touched the cache in between: the setters must schedule the
+    // save themselves.
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+
+    CHECK(
+        session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::Mentions
+    );
+    CHECK(session->findConversation(ConversationId{"C2"})->locallyMuted == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "joinChannel refresh preserves other conversations' notifLevel",
+    "[session][notif][joinChannel]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::Mentions);
+
+    stub->joinChannelResultId = ConversationId{"C3"};
+    session->joinChannel(ConversationId{"C3"});
+
+    CHECK(
+        session->findConversation(ConversationId{"C1"})->notifLevel == NotificationLevel::Mentions
+    );
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "createChannel refresh preserves other conversations' notifLevel",
+    "[session][notif][createChannel]"
+) {
+    session->setNotificationLevel(ConversationId{"C1"}, NotificationLevel::Mute);
+
+    stub->createChannelResultId = ConversationId{"C_NEW"};
+    session->createChannel("new-channel", false);
+
+    const auto *c1 = session->findConversation(ConversationId{"C1"});
+    CHECK(c1->notifLevel == NotificationLevel::Mute);
+    CHECK(c1->isMuted == true);
+}
+
 // ── createChannel ─────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(
