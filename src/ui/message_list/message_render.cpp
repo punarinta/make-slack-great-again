@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "message_render.h"
 #include "session/session.h"
+#include "text/link_labels.h"
 #include "text/mrkdwn_parser.h"
 #include "ui/icon_utils.h"
 #include "ui/paint_utils.h"
@@ -565,11 +566,21 @@ static QString renderRange(
                     Th::qss(Th::c().message.codeText) + "'>" + inner + "</td></tr></table>";
             }
             break;
-        case EntityType::Link:
+        case EntityType::Link: {
+            // Slack's composer stores pasted-URL labels aggressively truncated
+            // ("host/…/…"); rebuild a longer one from the full URL. Capped by
+            // characters, not layout width — the HTML is built once per doc and
+            // survives resizes, so it can't know the final line width.
+            constexpr int kMaxLinkLabelChars = 96;
+            const QString label =
+                LinkLabels::isShortenedUrlLabel(rawInner, e.data)
+                    ? LinkLabels::expandedLabel(e.data, kMaxLinkLabelChars).toHtmlEscaped()
+                    : inner;
             html += "<a href='" + e.data.toHtmlEscaped() +
                     "' style='color:" + Th::qss(Th::c().text.link) + ";text-decoration:none'>" +
-                    inner + "</a>";
+                    label + "</a>";
             break;
+        }
         case EntityType::MessageLink:
             html += messageLinkChipHtml(SlackLinks::refFromToken(e.data), session);
             break;
