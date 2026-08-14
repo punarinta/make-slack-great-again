@@ -3,12 +3,17 @@
 #include "thread_panel.h"
 #include "ui/message_list/message_list.h"
 #include "ui/composer/composer_widget.h"
+#include "ui/file_dialog_utils.h"
 #include "ui/icon_button/icon_button.h"
 #include "ui/icon_utils.h"
+#include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
+#include "ui/thread_panel/thread_export_job.h"
 #include "session/session.h"
 
+#include <QDateTime>
+#include <QDir>
 #include <QLabel>
 #include <QHideEvent>
 #include <QLinearGradient>
@@ -65,6 +70,14 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
 
     _header = new QLabel(tr("Thread"), _headerWidget);
     headerLayout->addWidget(_header, 1);
+
+    _tooltip = new PopupTooltip(this);
+
+    _downloadBtn = new IconButton(QStringLiteral(":/ui/download.svg"), 32, 18, _headerWidget);
+    _downloadBtn->setObjectName("threadDownloadBtn");
+    _downloadBtn->installEventFilter(this);
+    connect(_downloadBtn, &QPushButton::clicked, this, &ThreadPanel::downloadThread);
+    headerLayout->addWidget(_downloadBtn);
 
     _closeBtn = new IconButton(QStringLiteral(":/ui/x.svg"), 32, 18, _headerWidget);
     _closeBtn->setObjectName("threadCloseBtn");
@@ -184,6 +197,44 @@ void ThreadPanel::applyTheme() {
                                .arg(Th::c().fonts.lg)
                                .arg(Th::qss(Th::c().text.primary)));
     // _closeBtn (IconButton) self-themes.
+}
+
+void ThreadPanel::downloadThread() {
+    if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
+        return;
+    // Copy the label out right away — findConversation pointers don't survive
+    // Session mutations.
+    QString title;
+    if (const Conversation *c = _session->findConversation(_conv)) {
+        if (c->kind == ConvKind::Im && c->dmUser)
+            title = _session->userDisplayName(*c->dmUser);
+        else if (c->kind == ConvKind::PublicChannel || c->kind == ConvKind::PrivateChannel)
+            title = QStringLiteral("#") + c->name;
+        else
+            title = c->name;
+    }
+    const qint64  rootSecs = _rootTs.section(QLatin1Char('.'), 0, 0).toLongLong();
+    const QString defaultName =
+        QStringLiteral("thread-%1.txt")
+            .arg(QDateTime::fromSecsSinceEpoch(rootSecs).toString(QStringLiteral("yyyy-MM-dd")));
+    const QString savePath =
+        Ui::getSaveFileName(this, tr("Save thread"), QDir::homePath() + "/" + defaultName);
+    if (savePath.isEmpty())
+        return;
+    ThreadExportJob::start(_session, _conv, _rootTs, title, savePath, window());
+}
+
+bool ThreadPanel::eventFilter(QObject *watched, QEvent *e) {
+    if (watched == _downloadBtn) {
+        if (e->type() == QEvent::Enter)
+            _tooltip->showAbove(
+                tr("Download thread as text"),
+                QRect(_downloadBtn->mapToGlobal(QPoint(0, 0)), _downloadBtn->size())
+            );
+        else if (e->type() == QEvent::Leave || e->type() == QEvent::MouseButtonPress)
+            _tooltip->hide();
+    }
+    return QWidget::eventFilter(watched, e);
 }
 
 void ThreadPanel::layoutShadow() {
