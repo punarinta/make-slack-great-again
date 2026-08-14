@@ -982,108 +982,122 @@ void Session::fetchMe() {
                          );
 }
 
-void Session::reloadConversations(bool refreshEmoji) {
-    _backend->loadConversations() |
-        rpl::on_next(
-            [this, refreshEmoji](std::vector<Conversation> convs) {
-                // Snapshot the SERVER's activity numbers before the merge below
-                // folds our local state into them. This is the fallback activity
-                // source for a poll-only backend once the counts snapshot has been
-                // given up on: diffing the merged values would compare our own
-                // locally-incremented counts against themselves and poll for
-                // messages we had already injected. Only meaningful for what
-                // conversations.list actually reports — no `latest`, and
-                // unread_count often 0 for public channels — hence the fallback.
-                std::vector<ConvCounts> serverActivity;
-                if (!_backend->hasRealtimePush() && _countsDisabled) {
-                    serverActivity.reserve(convs.size());
-                    for (const auto &c : convs)
-                        serverActivity.push_back(
-                            ConvCounts{
-                                .id           = c.id,
-                                .latestTs     = c.latestTs,
-                                .lastRead     = c.lastRead,
-                                .unread       = c.unread,
-                                .mentionCount = c.mentionCount,
-                            }
-                        );
-                }
+// Carry every piece of state the API can't tell us about from `old` into a
+// freshly fetched `fresh` copy of the same conversation. Any path that replaces
+// a Conversation with an API result MUST go through this — a bare assignment
+// silently resets the per-channel notification level (→ Default → the global
+// "All new posts" default), unmutes the chat and drops the local badge, and the
+// next cache write makes that permanent.
+static void carryLocalConvState(Conversation &fresh, const Conversation &old) {
+    // Locally-incremented unread/mention counts accumulated since startup (the
+    // API returns 0 for channels).
+    fresh.unread       = std::max(fresh.unread, old.unread);
+    fresh.mentionCount = std::max(fresh.mentionCount, old.mentionCount);
+    // Locally-applied star state: the API may not echo is_starred immediately
+    // after stars.add/stars.remove.
+    if (old.isStarred && !fresh.isStarred)
+        fresh.isStarred = old.isStarred;
+    // Per-channel notification level: no public read API for those prefs, so the
+    // local value is the only one there is.
+    if (old.notifLevel != NotificationLevel::Default &&
+        fresh.notifLevel == NotificationLevel::Default)
+        fresh.notifLevel = old.notifLevel;
+    // Mute state also lives in client prefs the public API can't read — local
+    // state wins.
+    if (old.isMuted)
+        fresh.isMuted = true;
+    // The local "mute this person" switch is ours alone; the server never echoes
+    // it, so carry it forward.
+    if (old.locallyMuted)
+        fresh.locallyMuted = true;
+    // last_read / latest were dropped from conversations.list responses; keep the
+    // newest value we know (cached from a previous run's activity sweep or
+    // realtime events).
+    if (old.lastRead > fresh.lastRead)
+        fresh.lastRead = old.lastRead;
+    if (old.latestTs > fresh.latestTs)
+        fresh.latestTs = old.latestTs;
+    // conversations.list carries no `room`, so it can't report live huddles —
+    // keep whatever the realtime huddle_thread events detected (start/end is
+    // tracked there, not via a reload).
+    if (old.huddleActive && !fresh.huddleActive) {
+        fresh.huddleActive       = old.huddleActive;
+        fresh.huddleLink         = old.huddleLink;
+        fresh.huddleParticipants = old.huddleParticipants;
+    }
+}
 
-                // Preserve locally-incremented unread/mention counts
-                // accumulated since startup (API returns 0 for
-                // channels).
-                const auto &prev = _conversations.current();
-                for (auto &c : convs) {
-                    for (const auto &old : prev) {
-                        if (old.id != c.id)
-                            continue;
-                        c.unread       = std::max(c.unread, old.unread);
-                        c.mentionCount = std::max(c.mentionCount, old.mentionCount);
-                        // Preserve locally-applied star state: the
-                        // API may not echo is_starred immediately
-                        // after stars.add/stars.remove.
-                        if (old.isStarred != c.isStarred && old.isStarred)
-                            c.isStarred = old.isStarred;
-                        // Preserve locally-set notification level
-                        // (no public read API for per-channel prefs).
-                        if (old.notifLevel != NotificationLevel::Default &&
-                            c.notifLevel == NotificationLevel::Default)
-                            c.notifLevel = old.notifLevel;
-                        // Mute state also lives in client prefs the public
-                        // API can't read — local state wins.
-                        if (old.isMuted)
-                            c.isMuted = true;
-                        // The local "mute this person" switch is ours alone; the
-                        // server never echoes it, so carry it forward.
-                        if (old.locallyMuted)
-                            c.locallyMuted = true;
-                        // last_read / latest were dropped from conversations.list
-                        // responses; keep the newest value we know (cached from a
-                        // previous run's activity sweep or realtime events).
-                        if (old.lastRead > c.lastRead)
-                            c.lastRead = old.lastRead;
-                        if (old.latestTs > c.latestTs)
-                            c.latestTs = old.latestTs;
-                        // conversations.list carries no `room`, so it can't
-                        // report live huddles — keep whatever the realtime
-                        // huddle_thread events detected (start/end is tracked
-                        // there, not via this reload).
-                        if (old.huddleActive && !c.huddleActive) {
-                            c.huddleActive       = old.huddleActive;
-                            c.huddleLink         = old.huddleLink;
-                            c.huddleParticipants = old.huddleParticipants;
-                        }
-                        break;
-                    }
-                }
-                // Before the sweeps consult _deadConvIds: drop persisted dead
-                // marks this fresh list contradicts (invited/unarchived while
-                // the app was closed).
-                reconcileDeadConvIds(convs);
-                _cache->saveConversations(convs);
-                _conversations = std::move(convs);
-                // After the assignment: the diff reads the merged list (membership,
-                // mute state) and may fold cursors back into it.
-                if (!serverActivity.empty())
-                    applyActivitySnapshot(serverActivity);
-                enrichDmActivity();
-                fetchMissingDmUsers();
-                if (!refreshEmoji)
-                    return;
-                // Emoji load is deferred to here so it doesn't queue ahead of
-                // conversations/users. Cache serves emojis until the refresh
-                // arrives and the result is written back to cache.
-                _backend->loadEmojiList() | rpl::on_next(
-                                                [this](QHash<QString, QString> map) {
-                                                    _emojiMap = std::move(map);
-                                                    _cache->saveEmojiMap(_emojiMap);
-                                                    _emojiMapLoadedHub.fire({});
-                                                },
-                                                _lifetime
-                                            );
-            },
-            _lifetime
-        );
+void Session::reloadConversations(bool refreshEmoji) {
+    _backend->loadConversations() | rpl::on_next(
+                                        [this, refreshEmoji](std::vector<Conversation> convs) {
+                                            // Snapshot the SERVER's activity numbers before the
+                                            // merge below folds our local state into them. This is
+                                            // the fallback activity source for a poll-only backend
+                                            // once the counts snapshot has been given up on:
+                                            // diffing the merged values would compare our own
+                                            // locally-incremented counts against themselves and
+                                            // poll for messages we had already injected. Only
+                                            // meaningful for what conversations.list actually
+                                            // reports — no `latest`, and unread_count often 0 for
+                                            // public channels — hence the fallback.
+                                            std::vector<ConvCounts> serverActivity;
+                                            if (!_backend->hasRealtimePush() && _countsDisabled) {
+                                                serverActivity.reserve(convs.size());
+                                                for (const auto &c : convs)
+                                                    serverActivity.push_back(
+                                                        ConvCounts{
+                                                            .id           = c.id,
+                                                            .latestTs     = c.latestTs,
+                                                            .lastRead     = c.lastRead,
+                                                            .unread       = c.unread,
+                                                            .mentionCount = c.mentionCount,
+                                                        }
+                                                    );
+                                            }
+
+                                            // Fold each already-known conversation's local-only
+                                            // state (notification level, mute, badges, cursors,
+                                            // live huddle) into its fresh copy.
+                                            const auto &prev = _conversations.current();
+                                            for (auto &c : convs) {
+                                                for (const auto &old : prev) {
+                                                    if (old.id != c.id)
+                                                        continue;
+                                                    carryLocalConvState(c, old);
+                                                    break;
+                                                }
+                                            }
+                                            // Before the sweeps consult _deadConvIds: drop
+                                            // persisted dead marks this fresh list contradicts
+                                            // (invited/unarchived while the app was closed).
+                                            reconcileDeadConvIds(convs);
+                                            _cache->saveConversations(convs);
+                                            _conversations = std::move(convs);
+                                            // After the assignment: the diff reads the merged list
+                                            // (membership, mute state) and may fold cursors back
+                                            // into it.
+                                            if (!serverActivity.empty())
+                                                applyActivitySnapshot(serverActivity);
+                                            enrichDmActivity();
+                                            fetchMissingDmUsers();
+                                            if (!refreshEmoji)
+                                                return;
+                                            // Emoji load is deferred to here so it doesn't queue
+                                            // ahead of conversations/users. Cache serves emojis
+                                            // until the refresh arrives and the result is written
+                                            // back to cache.
+                                            _backend->loadEmojiList() |
+                                                rpl::on_next(
+                                                    [this](QHash<QString, QString> map) {
+                                                        _emojiMap = std::move(map);
+                                                        _cache->saveEmojiMap(_emojiMap);
+                                                        _emojiMapLoadedHub.fire({});
+                                                    },
+                                                    _lifetime
+                                                );
+                                        },
+                                        _lifetime
+                                    );
 }
 
 void Session::fetchJoinedConversation(ConversationId id) {
@@ -1106,6 +1120,9 @@ void Session::fetchJoinedConversation(ConversationId id) {
                 if (it != convs.end()) {
                     if (it->isMember)
                         return; // a concurrent fetch already added it
+                    // It was a non-member preview: keep whatever local state it
+                    // already carried (e.g. a level set from the browse list).
+                    carryLocalConvState(conv, *it);
                     *it = std::move(conv);
                 } else {
                     convs.push_back(std::move(conv));
@@ -1163,9 +1180,12 @@ void Session::fetchUnknownConversation(ConversationId id, Message msg) {
                     std::find_if(convs.begin(), convs.end(), [&](const Conversation &c) {
                         return c.id == info.id;
                     });
-                if (it != convs.end())
-                    *it = info; // a concurrent path added it first — refresh in place
-                else
+                if (it != convs.end()) {
+                    // A concurrent path added it first — refresh in place, but
+                    // not at the cost of the local-only state it already holds.
+                    carryLocalConvState(info, *it);
+                    *it = info;
+                } else
                     convs.push_back(info);
                 _cache->saveConversations(convs);
                 _conversations = std::move(convs);
@@ -2274,12 +2294,12 @@ void Session::createChannel(
         name,
         isPrivate,
         [this, onSuccess](ConversationId id) {
-            // Refresh conversation list so the new channel appears.
-            _backend->loadConversations() |
-                rpl::on_next(
-                    [this](std::vector<Conversation> convs) { _conversations = std::move(convs); },
-                    _lifetime
-                );
+            // Refresh the conversation list so the new channel appears. This must
+            // be the MERGING reload, not a bare loadConversations assignment: the
+            // API result carries none of the local-only state, so assigning it
+            // wholesale wipes every conversation's notification level and mute —
+            // and the next cache write makes that permanent.
+            reloadConversations(/*refreshEmoji=*/false);
             if (onSuccess)
                 onSuccess(id);
         },
@@ -2301,11 +2321,8 @@ void Session::joinChannel(
         id,
         [this, onSuccess](ConversationId convId) {
             markConvAlive(convId); // joined — no longer channel_not_found
-            _backend->loadConversations() |
-                rpl::on_next(
-                    [this](std::vector<Conversation> convs) { _conversations = std::move(convs); },
-                    _lifetime
-                );
+            // Merging reload, for the same reason as in createChannel above.
+            reloadConversations(/*refreshEmoji=*/false);
             if (onSuccess)
                 onSuccess(convId);
         },
@@ -2370,6 +2387,10 @@ void Session::setNotificationLevel(ConversationId conv, NotificationLevel level)
         }
     }
     _conversations = std::move(convs);
+    // No backend can store this (Slack's per-channel prefs aren't reachable over
+    // the public API), so our cache is the ONLY copy — persist it now instead of
+    // waiting for some unrelated save to come along.
+    scheduleSaveUnreads();
 }
 
 void Session::setConvMuted(ConversationId conv, bool muted) {
@@ -2381,6 +2402,7 @@ void Session::setConvMuted(ConversationId conv, bool muted) {
         }
     }
     _conversations = std::move(convs);
+    scheduleSaveUnreads(); // local-only state, same as setNotificationLevel
 }
 
 bool Session::isThreadMuted(const ConversationId &conv, const Ts &root) const {
