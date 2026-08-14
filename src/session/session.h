@@ -245,6 +245,9 @@ public:
     bool   hasMessageReminder(const ConversationId &conv, const Ts &ts) const {
         return messageReminderDue(conv, ts) > 0;
     }
+    // Every reminder, soonest due first (the "Saved messages" page's data; fired
+    // ones stay listed until removed, matching the blue tint in the chat).
+    std::vector<MessageReminder> messageReminders() const;
     // `msg` supplies ts plus the local enrichment the server doesn't store:
     // its thread root (routes the notification click into the thread) and a
     // text snippet (the notification body).

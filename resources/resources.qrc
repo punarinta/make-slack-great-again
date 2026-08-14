@@ -82,6 +82,7 @@
         <file alias="ui/clock.svg">../gfx/ui/clock.svg</file>
         <file alias="ui/alarm-clock.svg">../gfx/ui/alarm-clock.svg</file>
         <file alias="ui/bookmark-minus.svg">../gfx/ui/bookmark-minus.svg</file>
+        <file alias="ui/bookmark.svg">../gfx/ui/bookmark.svg</file>
         <file alias="ui/mail.svg">../gfx/ui/mail.svg</file>
         <file alias="ui/split.svg">../gfx/ui/split.svg</file>
     </qresource>

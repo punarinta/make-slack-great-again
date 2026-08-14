@@ -32,6 +32,7 @@
 #include "message_list/message_render.h"
 #include "canvas_page/canvas_page.h"
 #include "threads_page/threads_page.h"
+#include "saved_page/saved_messages_page.h"
 #include "conv_tabs/conv_tabs_widget.h"
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
@@ -778,6 +779,22 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         _convList->selectConversation(conv);
     });
 
+    _savedPage = new SavedMessagesPage(_imgCache, _contentStack);
+    _contentStack->addWidget(_savedPage);
+    // A saved-message click jumps to the exact message (same coordinated path
+    // as a message-link chip / reminder notification).
+    connect(
+        _savedPage,
+        &SavedMessagesPage::openMessageRequested,
+        this,
+        [this](ConversationId conv, Ts ts, Ts root) { openMessageTarget(conv, ts, root); }
+    );
+    connect(
+        _savedPage, &SavedMessagesPage::openChannelRequested, this, [this](ConversationId conv) {
+            _convList->selectConversation(conv);
+        }
+    );
+
     // Search is an overlay on msgArea — not a stack page, so it doesn't replace the
     // message list.  Show/hide it; the message list stays loaded beneath it.
     _searchWidget = new SearchWidget(msgArea);
@@ -1314,6 +1331,8 @@ void MainWindow::activateWorkspace(QString teamId) {
     }
     if (_threadsPage)
         _threadsPage->setSession(_session); // also drops the old workspace's cards
+    if (_savedPage)
+        _savedPage->setSession(_session);
     _currentCanvasFileId.clear();
     _currentCanvasTitle.clear();
     if (_convTabs)
@@ -1639,6 +1658,9 @@ void MainWindow::wireConvList() {
         }
     );
     connect(_convList, &ConvListWidget::threadsViewRequested, this, [this] { openThreadsView(); });
+    connect(_convList, &ConvListWidget::savedMessagesRequested, this, [this] {
+        openSavedMessagesView();
+    });
     connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
         openBrowseDialog(0);
     });
@@ -1720,6 +1742,11 @@ void MainWindow::connectToSession() {
     // The "Threads" roster entry needs a workspace-wide threads feed.
     if (_convList)
         _convList->setShowThreads(_session->capabilities().threadsView);
+
+    // The "Saved messages" entry only shows while there is something saved.
+    updateSavedMessagesEntry();
+    _session->remindersChanged() |
+        rpl::on_next([this] { updateSavedMessagesEntry(); }, _uiLifetime);
 
     // Auth loss, unread badges and notifications are handled by the
     // per-session background subscriptions in ensureSession(); here we only
@@ -2790,6 +2817,58 @@ void MainWindow::openThreadsView() {
 
     _contentStack->setCurrentWidget(_threadsPage);
     _threadsPage->open();
+}
+
+void MainWindow::openSavedMessagesView() {
+    if (!_session || !_savedPage)
+        return;
+
+    if (_searchWidget && _searchWidget->isVisible())
+        _searchWidget->hide();
+
+    // Same leave-the-conversation bookkeeping as openThreadsView().
+    if (!_currentConvId.value.isEmpty() && _composer) {
+        _composer->exitEditMode();
+        const QString draft = _composer->currentText();
+        if (draft.isEmpty())
+            _drafts.remove(_currentConvId.value);
+        else
+            _drafts[_currentConvId.value] = draft;
+    }
+    _currentConvId = {};
+
+    if (_typingIndicator)
+        _typingIndicator->clearAll();
+    if (_threadPanel && _threadPanel->isVisible()) {
+        _threadPanel->close();
+        _threadPanel->setVisible(false);
+        _messageList->setOpenThreadRoot({});
+    }
+    _session->setReading({});
+    _session->setOpenConversation({});
+
+    if (_canvasPage)
+        _canvasPage->flushPendingSave();
+
+    if (_msgHeader)
+        _msgHeader->hide();
+    if (_convTabs)
+        _convTabs->hide();
+    if (_huddleBanner)
+        _huddleBanner->hide();
+    _composer->hide();
+    _composer->setEnabled(false);
+
+    _contentStack->setCurrentWidget(_savedPage);
+    _savedPage->open();
+}
+
+void MainWindow::updateSavedMessagesEntry() {
+    if (!_convList || !_session)
+        return;
+    _convList->setShowSavedMessages(
+        _session->capabilities().messageReminders && !_session->messageReminders().empty()
+    );
 }
 
 void MainWindow::openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot) {

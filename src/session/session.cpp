@@ -2406,6 +2406,17 @@ qint64 Session::messageReminderDue(const ConversationId &conv, const Ts &ts) con
     return it != _reminders.constEnd() ? it->dueAt : 0;
 }
 
+std::vector<MessageReminder> Session::messageReminders() const {
+    std::vector<MessageReminder> out;
+    out.reserve(_reminders.size());
+    for (const auto &r : _reminders)
+        out.push_back(r);
+    std::sort(out.begin(), out.end(), [](const MessageReminder &a, const MessageReminder &b) {
+        return a.dueAt < b.dueAt;
+    });
+    return out;
+}
+
 void Session::setMessageReminder(const ConversationId &conv, const Message &msg, qint64 dueAt) {
     if (dueAt <= 0 || msg.ts.isEmpty())
         return;

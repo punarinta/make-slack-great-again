@@ -32,6 +32,7 @@ class WelcomeWidget;
 class TitleBar;
 class ThreadPanel;
 class CanvasPage;
+class SavedMessagesPage;
 class ThreadsPage;
 class ConvTabsWidget;
 class HeaderAvatarWidget;
@@ -179,6 +180,11 @@ private:
     // Show the workspace-wide Threads overview page in the content stack
     // (roster "Threads" entry; gated on Capabilities::threadsView).
     void openThreadsView();
+    // Show the "Saved messages" page (roster entry; only visible while the
+    // session has reminders).
+    void openSavedMessagesView();
+    // Show/hide the roster "Saved messages" entry to match the reminder list.
+    void updateSavedMessagesEntry();
     // Follow a message-link chip: open the conversation (and, for a reply, the
     // thread it lives in) and move the focus to that message.
     void openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot);
@@ -262,6 +268,7 @@ private:
     HuddleBanner          *_huddleBanner    = nullptr;
     CanvasPage            *_canvasPage      = nullptr;
     ThreadsPage           *_threadsPage     = nullptr;
+    SavedMessagesPage     *_savedPage       = nullptr;
     QString                _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
     QString                _currentCanvasTitle;
 
