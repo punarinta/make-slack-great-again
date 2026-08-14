@@ -714,6 +714,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/composer/mention_completer.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_panel.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_export_job.cpp
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 

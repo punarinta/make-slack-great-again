@@ -244,6 +244,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/settings/theme_preview_card.cpp
     src/ui/search/search_widget.cpp
     src/ui/thread_panel/thread_panel.cpp
+    src/ui/thread_panel/thread_export_job.cpp
     src/ui/threads_page/threads_page.cpp
     src/ui/saved_page/saved_messages_page.cpp
     src/ui/canvas_page/canvas_page.cpp

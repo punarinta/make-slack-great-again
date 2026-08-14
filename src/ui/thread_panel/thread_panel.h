@@ -13,6 +13,7 @@ class ComposerWidget;
 class ImageCache;
 class QLabel;
 class IconButton;
+class PopupTooltip;
 
 // Right-side panel showing a Slack thread: root message + replies + composer.
 // Slides in when the user clicks a "N replies" bar in the main message list.
@@ -36,6 +37,7 @@ protected:
     void moveEvent(QMoveEvent *e) override;
     void showEvent(QShowEvent *e) override;
     void hideEvent(QHideEvent *e) override;
+    bool eventFilter(QObject *watched, QEvent *e) override;
 
 signals:
     void closeRequested();
@@ -52,6 +54,9 @@ private:
     void applyTheme();
     // Keep the outward left-edge shadow positioned just left of the panel.
     void layoutShadow();
+    // Ask for a save path and hand off to a ThreadExportJob, which re-fetches
+    // the whole thread from the API (the open view may only hold its head).
+    void downloadThread();
 
     Session       *_session = nullptr;
     ConversationId _conv;
@@ -60,7 +65,9 @@ private:
     QWidget           *_headerWidget = nullptr;
     QWidget           *_leftShadow   = nullptr;
     QLabel            *_header       = nullptr;
+    IconButton        *_downloadBtn  = nullptr;
     IconButton        *_closeBtn     = nullptr;
+    PopupTooltip      *_tooltip      = nullptr;
     MessageListWidget *_msgList      = nullptr;
     ComposerWidget    *_composer     = nullptr;
 
