@@ -30,7 +30,7 @@ struct UserInfo {
 };
 
 // Visual row kinds in the conversation list.
-enum class RowKind { Threads, SectionHeader, Conv, AddChannels, ShowMore };
+enum class RowKind { Threads, SavedMsgs, SectionHeader, Conv, AddChannels, ShowMore };
 
 // Maps a visual row index to its content.
 struct RowItem {
@@ -99,6 +99,10 @@ public:
     // Capabilities::threadsView, so it only appears for backends with a
     // workspace-wide threads feed.
     void setShowThreads(bool show);
+    // Show the fixed "Saved messages" entry (under Threads) — gated on
+    // Capabilities::messageReminders AND the saved list being non-empty, so it
+    // only appears while there is something to show.
+    void setShowSavedMessages(bool show);
     // Wipe the in-memory visit history and rebuild rows so auto-seed runs from scratch.
     // Call after the user clears state in Settings.
     void resetVisitedAt();
@@ -110,6 +114,8 @@ signals:
     void conversationSelected(int row);
     // Click on the fixed "Threads" entry — open the threads overview page.
     void threadsViewRequested();
+    // Click on the fixed "Saved messages" entry — open the saved messages page.
+    void savedMessagesRequested();
     void findChannelRequested();
     // "+" on the Direct messages header — open the browse dialog on People.
     void browsePeopleRequested();
@@ -131,25 +137,31 @@ protected:
     void doMouseRelease(QMouseEvent *e) override;
     void doMouseLeave() override;
 
-    int   rowAt(int viewportY) const; // -1 if none
+    int  rowAt(int viewportY) const; // -1 if none
     // Row geometry in document coords (kTopPad included) and viewport coords
     // (scroll offset applied). Everything that maps between rows and y must go
     // through these — a hand-rolled `row * _rowH` silently drops the top inset
     // and skews hit-testing against what was painted.
-    int   contentHeight() const;
-    int   rowTopDoc(int row) const;
-    int   rowTopView(int row) const;
-    int   firstVisibleRow() const;
-    int   lastVisibleRow() const; // -1 when there are no rows
-    void  setHovered(int row);
-    void  setSelected(int row);      // emits conversationSelected (no-op for non-Conv rows)
-    void  selectThreadsRow(int row); // Threads-row counterpart; emits threadsViewRequested
-    void  showChannelContextMenu(int row, QPoint globalPos);
-    void  showMpdmContextMenu(int row, QPoint globalPos);
-    void  showDmContextMenu(int row, QPoint globalPos);
-    void  paintRow(QPainter &p, int row, int y) const;
-    void  paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
-    void  paintThreadsRow(QPainter &p, int row, int y) const;
+    int  contentHeight() const;
+    int  rowTopDoc(int row) const;
+    int  rowTopView(int row) const;
+    int  firstVisibleRow() const;
+    int  lastVisibleRow() const; // -1 when there are no rows
+    void setHovered(int row);
+    void setSelected(int row);        // emits conversationSelected (no-op for non-Conv rows)
+    void selectThreadsRow(int row);   // Threads-row counterpart; emits threadsViewRequested
+    void selectSavedMsgsRow(int row); // "Saved messages" counterpart; emits savedMessagesRequested
+    void showChannelContextMenu(int row, QPoint globalPos);
+    void showMpdmContextMenu(int row, QPoint globalPos);
+    void showDmContextMenu(int row, QPoint globalPos);
+    void paintRow(QPainter &p, int row, int y) const;
+    void paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
+    void paintThreadsRow(QPainter &p, int row, int y) const;
+    void paintSavedMsgsRow(QPainter &p, int row, int y) const;
+    // Shared face of the fixed nav entries (Threads, Saved messages): pill
+    // highlight + icon centred in the kIconSize slot + section-header label.
+    void
+    paintNavEntryRow(QPainter &p, int row, int y, const QPixmap &icon, const QString &label) const;
     void  paintAddChannelsRow(QPainter &p, int row, int y) const;
     void  paintShowMoreRow(QPainter &p, int row, int y, int count) const;
     // Hit/paint rect of the "+" button on the Direct messages section header.
@@ -175,6 +187,7 @@ protected:
         QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
         QPixmap huddle;                                       // live-huddle pill icon, onAccent
         QPixmap threadsDim, threadsBright, threadsSelected;   // "Threads" entry (split icon)
+        QPixmap savedDim, savedBright, savedSelected;         // "Saved messages" (bookmark)
     };
     void rebuildIconPixmaps();
 
@@ -219,10 +232,13 @@ protected:
     bool _appsCollapsed     = false;
     bool _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
     bool _showThreads       = false; // capability gate; see setShowThreads()
+    bool _showSavedMsgs     = false; // gate; see setShowSavedMessages()
     bool _showAllChannels   = false; // true after user clicks "N more channels"
     // The "Threads" entry is selected (the overview page is open). Mutually
     // exclusive with _selectedId; survives rebuildRows() like it.
     bool _threadsSelected   = false;
+    // Same for the "Saved messages" entry; mutually exclusive with both.
+    bool _savedMsgsSelected = false;
 
     // convId.value → viewport rect of the clickable huddle indicator, refreshed
     // each paint (so it tracks scroll); consulted on click to join the huddle.

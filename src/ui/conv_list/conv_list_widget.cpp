@@ -125,6 +125,11 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.threadsDim      = px(":/ui/split.svg", thr, th.text.onDarkDim);
     _iconPx.threadsBright   = px(":/ui/split.svg", thr, th.text.onDark);
     _iconPx.threadsSelected = px(":/ui/split.svg", thr, th.nav.itemSelectedText);
+
+    // Same optical size as the Threads entry it sits under.
+    _iconPx.savedDim      = px(":/ui/bookmark.svg", thr, th.text.onDarkDim);
+    _iconPx.savedBright   = px(":/ui/bookmark.svg", thr, th.text.onDark);
+    _iconPx.savedSelected = px(":/ui/bookmark.svg", thr, th.nav.itemSelectedText);
 }
 
 void ConvListWidget::updateRowHeight() {
@@ -154,6 +159,15 @@ void ConvListWidget::setShowThreads(bool show) {
     _showThreads = show;
     if (!show)
         _threadsSelected = false;
+    rebuildRows();
+}
+
+void ConvListWidget::setShowSavedMessages(bool show) {
+    if (_showSavedMsgs == show)
+        return;
+    _showSavedMsgs = show;
+    if (!show)
+        _savedMsgsSelected = false;
     rebuildRows();
 }
 
@@ -409,9 +423,11 @@ void ConvListWidget::rebuildRows() {
         const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
         (isDm ? (isRelevant(c) ? visDm : hidDm) : (isRelevant(c) ? visCh : hidCh)).push_back(i);
     }
-    // ── Threads entry — fixed, above every section ────────────────────
+    // ── Threads / Saved messages entries — fixed, above every section ─
     if (_showThreads)
         _rows.push_back({RowKind::Threads, -1, -1});
+    if (_showSavedMsgs)
+        _rows.push_back({RowKind::SavedMsgs, -1, -1});
 
     // ── Channels section ─────────────────────────────────────────────
     _rows.push_back({RowKind::SectionHeader, -1, 0});
@@ -473,6 +489,13 @@ void ConvListWidget::rebuildRows() {
     if (_threadsSelected) {
         for (int r = 0; r < (int)_rows.size(); ++r) {
             if (_rows[r].kind == RowKind::Threads) {
+                _selected = r;
+                break;
+            }
+        }
+    } else if (_savedMsgsSelected) {
+        for (int r = 0; r < (int)_rows.size(); ++r) {
+            if (_rows[r].kind == RowKind::SavedMsgs) {
                 _selected = r;
                 break;
             }
@@ -642,6 +665,7 @@ void ConvListWidget::setSelected(int row) {
     _selT                         = 0.0;
     _selected                     = row;
     _threadsSelected              = false;
+    _savedMsgsSelected            = false;
     _selectedId                   = _convs[_rows[row].convIdx].id;
     // Record visit so this conversation stays visible in future sessions.
     _visitedAt[_selectedId.value] = QDateTime::currentSecsSinceEpoch();
@@ -666,16 +690,35 @@ void ConvListWidget::selectThreadsRow(int row) {
         return;
     if (row == _selected)
         return;
-    _selFrom         = _selected;
-    _selT            = 0.0;
-    _selected        = row;
-    _threadsSelected = true;
-    _selectedId      = {}; // no conversation is highlighted while the overview is open
+    _selFrom           = _selected;
+    _selT              = 0.0;
+    _selected          = row;
+    _threadsSelected   = true;
+    _savedMsgsSelected = false;
+    _selectedId        = {}; // no conversation is highlighted while the overview is open
     _selAnim.stop();
     _selAnim.setStartValue(0.0);
     _selAnim.setEndValue(1.0);
     _selAnim.start();
     emit threadsViewRequested();
+}
+
+void ConvListWidget::selectSavedMsgsRow(int row) {
+    if (row < 0 || row >= (int)_rows.size() || _rows[row].kind != RowKind::SavedMsgs)
+        return;
+    if (row == _selected)
+        return;
+    _selFrom           = _selected;
+    _selT              = 0.0;
+    _selected          = row;
+    _threadsSelected   = false;
+    _savedMsgsSelected = true;
+    _selectedId        = {}; // no conversation is highlighted while the page is open
+    _selAnim.stop();
+    _selAnim.setStartValue(0.0);
+    _selAnim.setEndValue(1.0);
+    _selAnim.start();
+    emit savedMessagesRequested();
 }
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
@@ -847,6 +890,9 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     switch (ri.kind) {
     case RowKind::Threads:
         selectThreadsRow(row);
+        break;
+    case RowKind::SavedMsgs:
+        selectSavedMsgsRow(row);
         break;
     case RowKind::SectionHeader:
         if (ri.sectionId == 1 && dmPlusRect(rowTopView(row)).contains(e->pos())) {
@@ -1045,7 +1091,9 @@ QRect ConvListWidget::dmPlusRect(int rowY) const {
     return QRect(x, rowY + (_rowH - kIconSize) / 2, kIconSize, kIconSize);
 }
 
-void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
+void ConvListWidget::paintNavEntryRow(
+    QPainter &p, int row, int y, const QPixmap &icon, const QString &label
+) const {
     const bool  isSelected = (row == _selected);
     const bool  hovered    = (row == _hovered);
     const QRect rowRect(0, y, viewport()->width(), _rowH);
@@ -1068,9 +1116,6 @@ void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
         p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
     }
 
-    const QPixmap &icon = isSelected ? _iconPx.threadsSelected
-                          : hovered  ? _iconPx.threadsBright
-                                     : _iconPx.threadsDim;
     // Centred in the kIconSize slot so the label lines up with the section ones.
     p.drawPixmap(kPadH + (kIconSize - kThreadsIcon) / 2, y + (_rowH - kThreadsIcon) / 2, icon);
 
@@ -1086,7 +1131,25 @@ void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
                    : Th::c().text.onDarkDim
     );
     const QFontMetrics fm(font);
-    p.drawText(kPadH + kGroupIndent, y + (_rowH - fm.height()) / 2 + fm.ascent(), tr("Threads"));
+    p.drawText(kPadH + kGroupIndent, y + (_rowH - fm.height()) / 2 + fm.ascent(), label);
+}
+
+void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
+    const bool     isSelected = (row == _selected);
+    const bool     hovered    = (row == _hovered);
+    const QPixmap &icon       = isSelected ? _iconPx.threadsSelected
+                                : hovered  ? _iconPx.threadsBright
+                                           : _iconPx.threadsDim;
+    paintNavEntryRow(p, row, y, icon, tr("Threads"));
+}
+
+void ConvListWidget::paintSavedMsgsRow(QPainter &p, int row, int y) const {
+    const bool     isSelected = (row == _selected);
+    const bool     hovered    = (row == _hovered);
+    const QPixmap &icon       = isSelected ? _iconPx.savedSelected
+                                : hovered  ? _iconPx.savedBright
+                                           : _iconPx.savedDim;
+    paintNavEntryRow(p, row, y, icon, tr("Saved messages"));
 }
 
 void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
@@ -1153,6 +1216,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
     if (ri.kind == RowKind::Threads) {
         paintThreadsRow(p, row, y);
+        return;
+    }
+    if (ri.kind == RowKind::SavedMsgs) {
+        paintSavedMsgsRow(p, row, y);
         return;
     }
     if (ri.kind == RowKind::SectionHeader) {
