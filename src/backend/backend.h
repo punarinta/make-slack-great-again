@@ -13,6 +13,14 @@
 #include <functional>
 #include <memory>
 
+// The error code a write's `done(ok, err)` carries when the request's fate is
+// genuinely unknown: the connection died mid-flight, so the write may or may not
+// have landed (there is no idempotency key to ask with — see WebApiClient).
+// Callers must NOT roll optimistic state back on it; keep the optimistic entry
+// and let the next server snapshot reconcile, or a write that actually succeeded
+// leaves its local state stranded.
+inline const QString kAmbiguousWriteFailure = QStringLiteral("ambiguous_failure");
+
 class Backend {
 public:
     virtual ~Backend() = default;
@@ -138,6 +146,23 @@ public:
     virtual rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) = 0;
 
+    // ONE message by ts, whatever kind it is — a channel message, a thread root
+    // or a thread reply — without having to know which (Slack: conversations.
+    // replies with limit 1 answers all three; plain history cannot see replies
+    // at all). For filling in a message we hold nothing but a reference to, such
+    // as a reminder set on another client. Routed on the paced background lane:
+    // callers are bulk sweeps, never a user waiting on a click.
+    //
+    // Same graceful-degrade contract as loadUnreadCounts: emit exactly one
+    // Message, or complete WITHOUT emitting when it can't be had (unsupported
+    // backend, deleted message, no access, failed request).
+    virtual rpl::producer<Message> loadMessageAt(ConversationId, Ts) {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
+
     // Workspace-wide "Threads" overview: the threads the authed user is
     // subscribed to, newest activity first (Slack's undocumented
     // subscriptions.thread.getView — official-client API). `cursor` is empty
@@ -176,7 +201,8 @@ public:
         };
     }
     // Create (or reschedule) a reminder on a message, due at `dueAt` (Unix
-    // seconds). done(ok, err) reports the server's answer.
+    // seconds). done(ok, err) reports the server's answer; err ==
+    // kAmbiguousWriteFailure means the write may have landed anyway.
     virtual void setMessageReminder(
         ConversationId, Ts, qint64 /*dueAt*/, std::function<void(bool ok, QString err)> done = {}
     ) {

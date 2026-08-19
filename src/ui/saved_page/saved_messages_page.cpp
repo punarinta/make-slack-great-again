@@ -374,6 +374,11 @@ void SavedMessagesPage::setSession(Session *session) {
 
 void SavedMessagesPage::open() {
     rebuild();
+    // Cards whose reminder carries no preview (set from another client, or its
+    // enrichment lost) fetch their message now; remindersChanged() rebuilds
+    // them as the answers land.
+    if (_session)
+        _session->resolveReminderPreviews();
 }
 
 void SavedMessagesPage::clear() {

@@ -291,7 +291,16 @@ struct StubBackend : Backend {
     };
     std::vector<ReminderCall> setReminderCalls;
     std::vector<ReminderCall> removeReminderCalls;
-    bool                      reminderWriteFails = false;
+    bool                      reminderWriteFails     = false;
+    // The write's fate is unknown (connection died mid-flight) — takes
+    // precedence over reminderWriteFails when set.
+    bool                      reminderWriteAmbiguous = false;
+
+    // loadMessageAt: what the "fetch the reminded message" resolver finds.
+    // A key that isn't here models a deleted / unreadable message (the producer
+    // completes without a value).
+    QHash<QString, Message> messagesAt;     // "conv|ts" → message
+    QStringList             messageAtCalls; // same keys, in call order
 
     rpl::producer<std::vector<MessageReminder>> loadMessageReminders() override {
         if (!remindersResult)
@@ -309,15 +318,35 @@ struct StubBackend : Backend {
         ConversationId c, Ts ts, qint64 dueAt, std::function<void(bool, QString)> done
     ) override {
         setReminderCalls.push_back({c, ts, dueAt});
-        if (done)
-            done(!reminderWriteFails, reminderWriteFails ? QStringLiteral("boom") : QString());
+        reportReminderWrite(done);
     }
     void removeMessageReminder(
         ConversationId c, Ts ts, std::function<void(bool, QString)> done
     ) override {
         removeReminderCalls.push_back({c, ts});
-        if (done)
+        reportReminderWrite(done);
+    }
+    void reportReminderWrite(const std::function<void(bool, QString)> &done) {
+        if (!done)
+            return;
+        if (reminderWriteAmbiguous)
+            done(false, kAmbiguousWriteFailure);
+        else
             done(!reminderWriteFails, reminderWriteFails ? QStringLiteral("boom") : QString());
+    }
+
+    rpl::producer<Message> loadMessageAt(ConversationId c, Ts ts) override {
+        const QString key = c.value + "|" + ts;
+        messageAtCalls.append(key);
+        std::optional<Message> found;
+        if (const auto it = messagesAt.constFind(key); it != messagesAt.constEnd())
+            found = *it;
+        return [found](auto consumer) mutable {
+            if (found)
+                consumer.put_next(std::move(*found));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
     }
 
     rpl::producer<User> loadBotInfo(UserId botId) override {
@@ -3990,4 +4019,161 @@ TEST_CASE_METHOD(
     // The stale cached entry (removed remotely) is gone; the remote one is in.
     CHECK_FALSE(session->hasMessageReminder(conv, "100.000001"));
     CHECK(session->messageReminderDue(conv, "200.000002") == serverDue);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "an ambiguous reminder write keeps the optimistic entry", "[session][reminder]"
+) {
+    // The connection died mid-flight: the reminder may well exist server-side,
+    // so the entry (and its preview) stays and the next sync reconciles. Rolling
+    // back here is what used to leave the item re-added from the server bare.
+    stub->reminderWriteAmbiguous = true;
+    QStringList   errors;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](QString e) { errors.append(std::move(e)); }, lt);
+
+    const ConversationId conv{"C1"};
+    const qint64         due = QDateTime::currentSecsSinceEpoch() + 3600;
+    session->setMessageReminder(conv, reminderMsg("100.000001"), due);
+
+    CHECK(session->messageReminderDue(conv, "100.000001") == due);
+    CHECK(errors.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "an ambiguous reminder removal keeps the row gone", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    session->setMessageReminder(
+        conv, reminderMsg("100.000001"), QDateTime::currentSecsSinceEpoch() + 3600
+    );
+
+    stub->reminderWriteAmbiguous = true;
+    session->removeMessageReminder(conv, "100.000001");
+    CHECK_FALSE(session->hasMessageReminder(conv, "100.000001"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a reminder the server re-adds keeps the preview it was set with",
+    "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    Message              m = reminderMsg("100.000001", "ship the release");
+    m.author               = UserId{"U42"};
+    m.threadRoot           = Ts{"99.000001"};
+    session->setMessageReminder(conv, m, QDateTime::currentSecsSinceEpoch() + 3600);
+    // The row leaves the local list (here: a removal; in the wild also an
+    // ambiguous write or a lost cache) — the shadow preview outlives it.
+    session->removeMessageReminder(conv, "100.000001");
+    session.reset();
+
+    auto  backend          = std::make_unique<StubBackend>();
+    auto *fresh            = backend.get();
+    fresh->_meId           = UserId{"U1"};
+    fresh->_convs          = std::vector<Conversation>{kGeneral, kRandom};
+    fresh->_users          = std::vector<User>{kAlice, kBob};
+    const qint64 serverDue = QDateTime::currentSecsSinceEpoch() + 7200;
+    // The server still lists it — and its saved item carries no text or author.
+    fresh->remindersResult = std::vector<MessageReminder>{
+        MessageReminder{.conv = conv, .ts = "100.000001", .dueAt = serverDue}
+    };
+    stub    = fresh;
+    session = std::make_unique<Session>(std::move(backend), teamId);
+    session->start();
+
+    const auto all = session->messageReminders();
+    REQUIRE(all.size() == 1);
+    CHECK(all[0].dueAt == serverDue);            // the server's copy of what it knows…
+    CHECK(all[0].snippet == "ship the release"); // …ours of what it doesn't
+    CHECK(all[0].author == UserId{"U42"});
+    CHECK(all[0].threadRoot == Ts{"99.000001"});
+    // Nothing to fetch: the preview was already there.
+    CHECK(stub->messageAtCalls.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "resolveReminderPreviews fills a bare reminder from its message",
+    "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    // A reminder set from another client: conv + ts + due, nothing else.
+    stub->remindersResult = std::vector<MessageReminder>{MessageReminder{
+        .conv = conv, .ts = "100.000001", .dueAt = QDateTime::currentSecsSinceEpoch() + 3600
+    }};
+    Message m             = reminderMsg("100.000001", "  the actual   text  ");
+    m.author              = UserId{"U42"};
+    m.botName             = "Deploy Bot";
+    m.botAvatarUrl        = "https://example.com/bot.png";
+    stub->messagesAt.insert("C1|100.000001", m);
+    session->refreshRemindersForTest();
+    REQUIRE(session->messageReminders().size() == 1);
+    CHECK(session->messageReminders()[0].snippet.isEmpty());
+
+    session->resolveReminderPreviews();
+
+    const auto all = session->messageReminders();
+    REQUIRE(all.size() == 1);
+    CHECK(all[0].snippet == "the actual text"); // simplified()
+    CHECK(all[0].author == UserId{"U42"});
+    CHECK(all[0].botName == "Deploy Bot");
+    CHECK(all[0].botAvatarUrl == "https://example.com/bot.png");
+    REQUIRE(stub->messageAtCalls.size() == 1);
+
+    // A second pass costs nothing — and a message that can't be fetched is
+    // tried once, not on every visit to the page.
+    session->resolveReminderPreviews();
+    CHECK(stub->messageAtCalls.size() == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a bare reminder fetches its message before announcing it",
+    "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    stub->remindersResult = std::vector<MessageReminder>{MessageReminder{
+        .conv = conv, .ts = "100.000001", .dueAt = QDateTime::currentSecsSinceEpoch() - 5
+    }};
+    Message m             = reminderMsg("100.000001", "ship the release");
+    m.author              = UserId{"U42"};
+    m.threadRoot          = Ts{"99.000001"};
+    stub->messagesAt.insert("C1|100.000001", m);
+    session->refreshRemindersForTest();
+
+    auto [events, lt] = collectEvents();
+    session->fireDueRemindersForTest();
+
+    int hits = 0;
+    for (const auto &e : events)
+        if (auto *rd = std::get_if<EvReminderDue>(&e)) {
+            ++hits;
+            CHECK(rd->snippet == "ship the release");
+            CHECK(rd->author == UserId{"U42"});
+            CHECK(rd->threadRoot == Ts{"99.000001"});
+        }
+    CHECK(hits == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a reminder whose message is gone still announces, once", "[session][reminder]"
+) {
+    const ConversationId conv{"C1"};
+    stub->remindersResult = std::vector<MessageReminder>{MessageReminder{
+        .conv = conv, .ts = "100.000001", .dueAt = QDateTime::currentSecsSinceEpoch() - 5
+    }};
+    session->refreshRemindersForTest(); // messagesAt is empty: nothing to fetch
+
+    auto [events, lt] = collectEvents();
+    session->fireDueRemindersForTest();
+
+    int hits = 0;
+    for (const auto &e : events)
+        if (auto *rd = std::get_if<EvReminderDue>(&e)) {
+            ++hits;
+            CHECK(rd->snippet.isEmpty()); // MainWindow falls back to a generic body
+        }
+    CHECK(hits == 1);
+    CHECK(stub->messageAtCalls.size() == 1);
 }

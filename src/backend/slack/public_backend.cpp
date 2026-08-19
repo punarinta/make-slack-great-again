@@ -50,6 +50,13 @@ bool isMethodUnavailable(const QString &err) {
     return codes.contains(err);
 }
 
+// Translate a non-idempotent write's failure for the Session: a connection that
+// died mid-flight says nothing about whether the write landed, so it travels up
+// as kAmbiguousWriteFailure (do not roll back) rather than as a rejection.
+QString ambiguousOrReal(const QString &err) {
+    return err == WebApiClient::kConnectionLost ? kAmbiguousWriteFailure : err;
+}
+
 } // namespace
 
 PublicBackend::PublicBackend(
@@ -757,6 +764,41 @@ PublicBackend::loadThread(ConversationId conv, Ts root, std::optional<QString> c
     };
 }
 
+rpl::producer<Message> PublicBackend::loadMessageAt(ConversationId conv, Ts ts) {
+    return [this, conv, ts](auto consumer) mutable {
+        if (conv.value.isEmpty() || ts.isEmpty()) {
+            consumer.put_done();
+            return rpl::lifetime();
+        }
+        // conversations.replies answers for any ts in the conversation: a plain
+        // message and a thread root come back as messages[0] (limit 1 truncates
+        // the rest of the thread), and a reply's own ts returns just that reply
+        // — which conversations.history cannot do at all, it never lists
+        // replies. Verified live against both shapes.
+        QUrlQuery params;
+        params.addQueryItem("channel", conv.value);
+        params.addQueryItem("ts", ts);
+        params.addQueryItem("limit", "1");
+        _infoApi->callBackground(
+            "conversations.replies",
+            params,
+            [consumer, ts](QJsonObject resp) mutable {
+                for (const auto v : resp.value("messages").toArray()) {
+                    auto m = JsonMappers::toMessage(v.toObject());
+                    if (m.ts != ts)
+                        continue; // a thread root came back instead of the reply
+                    consumer.put_next(std::move(m));
+                    break;
+                }
+                consumer.put_done();
+            },
+            // Gone, or not ours to read: complete without a value (see backend.h).
+            [consumer](QString) mutable { consumer.put_done(); }
+        );
+        return rpl::lifetime();
+    };
+}
+
 rpl::producer<ThreadsViewPage> PublicBackend::loadThreadsView(const QString &cursor) {
     return [this, cursor](auto consumer) mutable {
         // Unsupported: complete WITHOUT a value (same contract as
@@ -877,7 +919,7 @@ void PublicBackend::setMessageReminder(
                 _savedUnavailable = true;
             qWarning() << "saved.add error:" << err;
             if (done)
-                done(false, err);
+                done(false, ambiguousOrReal(err));
         }
     );
 }
@@ -906,7 +948,7 @@ void PublicBackend::removeMessageReminder(
                 _savedUnavailable = true;
             qWarning() << "saved.delete error:" << err;
             if (done)
-                done(false, err);
+                done(false, ambiguousOrReal(err));
         }
     );
 }

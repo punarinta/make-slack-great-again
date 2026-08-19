@@ -257,9 +257,20 @@ public:
     // the message list re-lays out its rows on this (the due-strip adds height).
     rpl::producer<> remindersChanged() const { return _remindersChangedHub.events(); }
 
+    // Fill in the preview (snippet + author) of every reminder that carries
+    // none: one set from another client, or one whose enrichment was lost.
+    // Reads the message cache first and only then the network, on the paced
+    // background lane, once per reminder per run — so calling it whenever the
+    // "Saved messages" page opens is cheap. Fires remindersChanged() as answers
+    // land, and persists what it learns.
+    void resolveReminderPreviews();
+
     // Test hook: run the due-reminder check synchronously (normally fired by
     // the single-shot _reminderTimer).
     void fireDueRemindersForTest() { fireDueReminders(); }
+    // Test hook: pull the server's reminder list now (normally throttled behind
+    // checkRealtimeHealth).
+    void refreshRemindersForTest() { refreshReminders(); }
 
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
@@ -625,12 +636,40 @@ private:
     void refreshReminders();
     // Persist + notify UI + re-arm: every mutation of _reminders funnels here.
     void reminderStoreChanged();
+    // Coalesced reminderStoreChanged() for the preview resolver, whose answers
+    // trickle in one background request at a time.
+    void scheduleReminderStoreFlush();
+
+    // --- Reminder previews (see ReminderPreview in domain.h) ---
+    // Copy r's enrichment into the shadow map / back out of it into a record
+    // that is missing it. The map is the reason a server snapshot can re-add an
+    // item without stranding it as a blank card.
+    void rememberReminderPreview(const MessageReminder &r);
+    void applyReminderPreview(const QString &key, MessageReminder &r) const;
+    // Drop previews for reminders that no longer exist anywhere (keeps the map
+    // bounded); no-op — and no cache write — when nothing goes.
+    void pruneReminderPreviews(const QHash<QString, MessageReminder> &live);
+    // Fetch the reminded message and enrich the record from it, then `done`
+    // (called whether or not anything was found).
+    void resolveReminderPreview(const QString &key, std::function<void()> done = {});
+    // Raise EvReminderDue for `key`, resolving its preview first when it has
+    // none — a notification body of "You asked to be reminded about a message"
+    // is a poor substitute for the message.
+    void announceReminderDue(const QString &key);
+    void emitReminderDue(const QString &key);
 
     static QString reminderKey(const ConversationId &conv, const Ts &ts) {
         return conv.value + QLatin1Char('\t') + ts;
     }
     // Keyed by reminderKey(conv, ts). Loaded from cache at start().
     QHash<QString, MessageReminder> _reminders;
+    // Enrichment by the same key, kept whether or not the reminder is currently
+    // in _reminders, and persisted separately (see ReminderPreview).
+    QHash<QString, ReminderPreview> _reminderPreviews;
+    // Keys resolveReminderPreview already tried this run — a deleted message
+    // must not be re-fetched every time the Saved messages page opens.
+    QSet<QString>                   _reminderResolveTried;
+    QTimer                          _reminderFlushTimer; // debounced store-changed
     // When each locally-added reminder was created (ms epoch; in-memory only).
     // A server snapshot requested just before an optimistic add would come back
     // without it — entries younger than the grace window survive such a sync.

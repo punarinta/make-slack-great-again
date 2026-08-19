@@ -62,6 +62,13 @@ public:
     void                         saveReminders(const std::vector<MessageReminder> &reminders);
     std::vector<MessageReminder> loadReminders() const;
 
+    // The reminder previews shadow map (Session::_reminderPreviews), keyed by
+    // the Session's reminder key — an opaque string here. Persisted separately
+    // from the reminder list precisely so it survives a reminder record that the
+    // server snapshot briefly drops and re-adds bare.
+    void                            saveReminderPreviews(const QHash<QString, ReminderPreview> &);
+    QHash<QString, ReminderPreview> loadReminderPreviews() const;
+
     // The channel_not_found negative cache (Session::_deadConvIds): conversation
     // ids conversations.info reported as nonexistent for this workspace. Persisted
     // so a restart doesn't re-probe every foreign/dead conversation from scratch.
