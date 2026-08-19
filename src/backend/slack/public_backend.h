@@ -72,6 +72,7 @@ public:
     rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString> cursor) override;
     rpl::producer<MessagePage>
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) override;
+    rpl::producer<Message>         loadMessageAt(ConversationId, Ts) override;
     rpl::producer<ThreadsViewPage> loadThreadsView(const QString &cursor) override;
     void                           markThreadRead(ConversationId, Ts root, Ts ts) override;
 

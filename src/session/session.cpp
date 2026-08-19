@@ -100,12 +100,16 @@ void Session::start() {
         auto users = _cache->loadUsers();
         if (!users.empty())
             _users = std::move(users);
-        _botUsers        = _cache->loadBots();
-        _emojiMap        = _cache->loadEmojiMap();
-        const auto muted = _cache->loadMutedThreads();
-        _mutedThreads    = QSet<QString>(muted.begin(), muted.end());
-        for (auto &r : _cache->loadReminders())
-            _reminders.insert(reminderKey(r.conv, r.ts), std::move(r));
+        _botUsers         = _cache->loadBots();
+        _emojiMap         = _cache->loadEmojiMap();
+        const auto muted  = _cache->loadMutedThreads();
+        _mutedThreads     = QSet<QString>(muted.begin(), muted.end());
+        _reminderPreviews = _cache->loadReminderPreviews();
+        for (auto &r : _cache->loadReminders()) {
+            const QString key = reminderKey(r.conv, r.ts);
+            applyReminderPreview(key, r); // a bare record from an older run
+            _reminders.insert(key, std::move(r));
+        }
         // The channel_not_found negative cache survives restarts so startup
         // doesn't re-probe every foreign/dead conversation. reconcileDeadConvIds
         // (off the fresh conversations.list) clears whatever came back to life
@@ -170,6 +174,8 @@ void Session::start() {
     // after the event loop turns, so MainWindow's event subscription is live.
     _reminderTimer.setSingleShot(true);
     QObject::connect(&_reminderTimer, &QTimer::timeout, [this] { fireDueReminders(); });
+    _reminderFlushTimer.setSingleShot(true);
+    QObject::connect(&_reminderFlushTimer, &QTimer::timeout, [this] { reminderStoreChanged(); });
     armReminderTimer();
     // …and the authoritative server list (no-op for backends without the
     // capability; the periodic re-sync rides checkRealtimeHealth).
@@ -2453,11 +2459,18 @@ void Session::setMessageReminder(const ConversationId &conv, const Message &msg,
     r.botName      = msg.botName;
     r.botAvatarUrl = msg.botAvatarUrl;
     _reminders.insert(key, r);
+    rememberReminderPreview(r);
     _reminderCreatedMs.insert(key, QDateTime::currentMSecsSinceEpoch());
     reminderStoreChanged();
 
     _backend->setMessageReminder(conv, msg.ts, dueAt, [this, key, dueAt](bool ok, QString err) {
         if (ok)
+            return;
+        // The write's fate is unknown — the reminder may well exist server-side.
+        // Rolling back here would drop the entry AND its preview, and the next
+        // server sync would re-add it as a blank card; leave it and let that
+        // sync decide instead.
+        if (err == kAmbiguousWriteFailure)
             return;
         // Definitive rejection: roll the optimistic entry back (unless the user
         // already rescheduled it) and say why the blue tint just vanished.
@@ -2484,6 +2497,11 @@ void Session::removeMessageReminder(const ConversationId &conv, const Ts &ts) {
     _backend->removeMessageReminder(conv, ts, [this, key, removed](bool ok, QString err) {
         if (ok)
             return;
+        // Unknown fate: the delete may have landed. Leave the row gone — the
+        // next server sync restores it if it didn't, and the preview is still
+        // in the shadow map either way.
+        if (err == kAmbiguousWriteFailure)
+            return;
         // The item still exists server-side — restore it (unless a new reminder
         // was set on the message meanwhile) so the UI doesn't lie.
         if (!_reminders.contains(key)) {
@@ -2497,15 +2515,22 @@ void Session::removeMessageReminder(const ConversationId &conv, const Ts &ts) {
 }
 
 void Session::reminderStoreChanged() {
+    _reminderFlushTimer.stop(); // this write covers whatever it was waiting for
     if (_cache) {
         std::vector<MessageReminder> all;
         all.reserve(_reminders.size());
         for (const auto &r : _reminders)
             all.push_back(r);
         _cache->saveReminders(all);
+        _cache->saveReminderPreviews(_reminderPreviews);
     }
     _remindersChangedHub.fire({});
     armReminderTimer();
+}
+
+void Session::scheduleReminderStoreFlush() {
+    if (!_reminderFlushTimer.isActive())
+        _reminderFlushTimer.start(250);
 }
 
 void Session::armReminderTimer() {
@@ -2529,25 +2554,48 @@ void Session::armReminderTimer() {
 void Session::fireDueReminders() {
     const qint64 now     = QDateTime::currentSecsSinceEpoch();
     bool         changed = false;
-    for (auto &r : _reminders) {
-        if (r.fired || r.dueAt > now)
+    QStringList  due;
+    for (auto it = _reminders.begin(); it != _reminders.end(); ++it) {
+        if (it->fired || it->dueAt > now)
             continue;
-        r.fired = true;
-        changed = true;
+        it->fired = true;
+        changed   = true;
         // Discovered long after the fact (the app was closed for days; the
         // official clients alarmed ages ago): keep it silently instead of
         // raising a stale toast — same spirit as tooOldToNotify.
-        if (now - r.dueAt <= kMaxReminderLatenessSecs)
-            _eventHub.fire(
-                EvReminderDue{
-                    r.conv, r.ts, r.threadRoot, r.snippet, r.author, r.botName, r.botAvatarUrl
-                }
-            );
+        if (now - it->dueAt <= kMaxReminderLatenessSecs)
+            due.append(it.key());
     }
     if (changed)
         reminderStoreChanged(); // persists fired flags and re-arms
     else
         armReminderTimer(); // the 6 h cap expired short of the due time
+    // Announce after the store settled: a preview fetch may run first, and it
+    // mutates _reminders.
+    for (const auto &key : due)
+        announceReminderDue(key);
+}
+
+void Session::announceReminderDue(const QString &key) {
+    const auto it = _reminders.constFind(key);
+    if (it == _reminders.constEnd())
+        return;
+    if (it->snippet.isEmpty() && !_reminderResolveTried.contains(key)) {
+        resolveReminderPreview(key, [this, key] { emitReminderDue(key); });
+        return;
+    }
+    emitReminderDue(key);
+}
+
+void Session::emitReminderDue(const QString &key) {
+    const auto it = _reminders.constFind(key);
+    if (it == _reminders.constEnd())
+        return; // removed while its preview was being fetched
+    _eventHub.fire(
+        EvReminderDue{
+            it->conv, it->ts, it->threadRoot, it->snippet, it->author, it->botName, it->botAvatarUrl
+        }
+    );
 }
 
 void Session::refreshReminders() {
@@ -2576,6 +2624,12 @@ void Session::refreshReminders() {
                         r.botAvatarUrl = it->botAvatarUrl;
                         r.fired        = (it->dueAt == r.dueAt) && it->fired;
                     }
+                    // Whatever the local record couldn't supply — because there
+                    // is none, or it lost its enrichment — comes from the
+                    // shadow map. Without this, an item the server re-adds
+                    // (after an ambiguous write, a cache loss, a removal that
+                    // failed) would be stranded as a blank card for good.
+                    applyReminderPreview(key, r);
                     next.insert(key, std::move(r));
                 }
                 for (auto it = _reminders.constBegin(); it != _reminders.constEnd(); ++it) {
@@ -2584,6 +2638,9 @@ void Session::refreshReminders() {
                         nowMs - createdMs < kAddGraceMs)
                         next.insert(it.key(), it.value());
                 }
+                // Reminders gone from the server for good take their preview
+                // with them.
+                pruneReminderPreviews(next);
                 if (next == _reminders)
                     return;
                 _reminders = std::move(next);
@@ -2591,4 +2648,107 @@ void Session::refreshReminders() {
             },
             _lifetime
         );
+}
+
+// ── Reminder previews ─────────────────────────────────────────────────────────
+
+void Session::rememberReminderPreview(const MessageReminder &r) {
+    ReminderPreview p;
+    p.threadRoot   = r.threadRoot;
+    p.snippet      = r.snippet;
+    p.author       = r.author;
+    p.botName      = r.botName;
+    p.botAvatarUrl = r.botAvatarUrl;
+    if (p.isEmpty())
+        return; // nothing worth shadowing (and never overwrite a real one with it)
+    _reminderPreviews.insert(reminderKey(r.conv, r.ts), std::move(p));
+}
+
+void Session::applyReminderPreview(const QString &key, MessageReminder &r) const {
+    const auto it = _reminderPreviews.constFind(key);
+    if (it == _reminderPreviews.constEnd())
+        return;
+    // Field by field: the record wins wherever it has something, so a fresher
+    // local capture is never overwritten by an older shadow copy.
+    if (r.threadRoot.isEmpty())
+        r.threadRoot = it->threadRoot;
+    if (r.snippet.isEmpty())
+        r.snippet = it->snippet;
+    if (r.author.value.isEmpty())
+        r.author = it->author;
+    if (r.botName.isEmpty())
+        r.botName = it->botName;
+    if (r.botAvatarUrl.isEmpty())
+        r.botAvatarUrl = it->botAvatarUrl;
+}
+
+void Session::pruneReminderPreviews(const QHash<QString, MessageReminder> &live) {
+    bool dropped = false;
+    for (auto it = _reminderPreviews.begin(); it != _reminderPreviews.end();) {
+        if (live.contains(it.key())) {
+            ++it;
+            continue;
+        }
+        it      = _reminderPreviews.erase(it);
+        dropped = true;
+    }
+    if (dropped && _cache)
+        _cache->saveReminderPreviews(_reminderPreviews);
+}
+
+void Session::resolveReminderPreviews() {
+    for (auto it = _reminders.constBegin(); it != _reminders.constEnd(); ++it)
+        if (it->snippet.isEmpty() && !_reminderResolveTried.contains(it.key()))
+            resolveReminderPreview(it.key());
+}
+
+void Session::resolveReminderPreview(const QString &key, std::function<void()> done) {
+    const auto it = _reminders.constFind(key);
+    if (it == _reminders.constEnd()) {
+        if (done)
+            done();
+        return;
+    }
+    _reminderResolveTried.insert(key);
+    const ConversationId conv = it->conv;
+    const Ts             ts   = it->ts;
+
+    // Enrich from `msg` and report whether anything came of it.
+    const auto enrich = [this, key](const Message &msg) {
+        const auto rec = _reminders.find(key);
+        if (rec == _reminders.end())
+            return; // removed while the fetch was in flight
+        if (rec->snippet.isEmpty())
+            rec->snippet = msg.text.text.simplified().left(120);
+        if (rec->threadRoot.isEmpty())
+            rec->threadRoot = msg.threadRoot.value_or(Ts{});
+        if (rec->author.value.isEmpty())
+            rec->author = msg.author;
+        if (rec->botName.isEmpty())
+            rec->botName = msg.botName;
+        if (rec->botAvatarUrl.isEmpty())
+            rec->botAvatarUrl = msg.botAvatarUrl;
+        rememberReminderPreview(*rec);
+        scheduleReminderStoreFlush();
+    };
+
+    // The cached history of that conversation may already hold it — free, and
+    // synchronous, which also keeps a due notification instant.
+    for (const auto &m : cachedMessages(conv)) {
+        if (m.ts != ts)
+            continue;
+        enrich(m);
+        if (done)
+            done();
+        return;
+    }
+
+    _backend->loadMessageAt(conv, ts) | rpl::on_next_done(
+                                            [enrich](Message msg) { enrich(msg); },
+                                            [done] {
+                                                if (done)
+                                                    done();
+                                            },
+                                            _lifetime
+                                        );
 }

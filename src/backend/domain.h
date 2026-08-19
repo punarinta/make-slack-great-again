@@ -449,6 +449,27 @@ struct MessageReminder {
     bool           operator==(const MessageReminder &) const = default;
 };
 
+// A reminder's local enrichment on its own — everything in MessageReminder that
+// the server's saved item does NOT carry. The Session keeps these in a shadow
+// map that outlives the reminder record itself, so an item that momentarily
+// leaves the local list (an ambiguous write, a cache loss, a server snapshot
+// that raced an optimistic add) comes back with its preview instead of as a
+// blank "No preview available" card. What is still missing after that — a
+// reminder set from another client, say — is fetched from the message itself
+// (Session::resolveReminderPreviews).
+struct ReminderPreview {
+    Ts      threadRoot;
+    QString snippet;
+    UserId  author;
+    QString botName;
+    QString botAvatarUrl;
+
+    bool isEmpty() const {
+        return snippet.isEmpty() && author.value.isEmpty() && botName.isEmpty();
+    }
+    bool operator==(const ReminderPreview &) const = default;
+};
+
 // One canvases.edit operation. Relative inserts and section ops need a
 // sectionId (the "temp:C:…" ids embedded in the canvas HTML / returned by
 // canvases.sections.lookup); markdown is canvas markdown — real markdown,

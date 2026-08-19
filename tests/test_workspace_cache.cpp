@@ -327,6 +327,27 @@ TEST_CASE_METHOD(CacheFixture, "reminders round-trip all fields", "[cache][remin
     CHECK(out[1] == input[1]);
 }
 
+TEST_CASE_METHOD(CacheFixture, "reminder previews round-trip", "[cache][reminder]") {
+    QHash<QString, ReminderPreview> input;
+    input.insert(
+        "C1\t1700000000.000100",
+        ReminderPreview{
+            .threadRoot   = "1699999999.000001",
+            .snippet      = "don't forget this",
+            .author       = UserId{"U42"},
+            .botName      = "Deploy Bot",
+            .botAvatarUrl = "https://example.com/bot.png",
+        }
+    );
+    // Nothing worth remembering: dropped rather than stored as an empty shell.
+    input.insert("C1\t1700000000.000200", ReminderPreview{});
+
+    cache.saveReminderPreviews(input);
+    const auto out = cache.loadReminderPreviews();
+    REQUIRE(out.size() == 1);
+    CHECK(out.value("C1\t1700000000.000100") == input.value("C1\t1700000000.000100"));
+}
+
 TEST_CASE_METHOD(
     CacheFixture, "reminders with no due date or identity are dropped on load", "[cache][reminder]"
 ) {

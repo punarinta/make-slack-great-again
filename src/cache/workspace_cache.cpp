@@ -655,6 +655,49 @@ std::vector<MessageReminder> WorkspaceCache::loadReminders() const {
     return out;
 }
 
+void WorkspaceCache::saveReminderPreviews(const QHash<QString, ReminderPreview> &previews) {
+    QJsonArray arr;
+    for (auto it = previews.constBegin(); it != previews.constEnd(); ++it) {
+        const auto &p = it.value();
+        if (p.isEmpty())
+            continue;
+        QJsonObject o;
+        o["key"] = it.key();
+        if (!p.threadRoot.isEmpty())
+            o["root"] = p.threadRoot;
+        if (!p.snippet.isEmpty())
+            o["snippet"] = p.snippet;
+        if (!p.author.value.isEmpty())
+            o["author"] = p.author.value;
+        if (!p.botName.isEmpty())
+            o["botName"] = p.botName;
+        if (!p.botAvatarUrl.isEmpty())
+            o["botAvatar"] = p.botAvatarUrl;
+        arr.append(o);
+    }
+    metaObject()["reminderPreviews"] = arr;
+    writeMeta();
+}
+
+QHash<QString, ReminderPreview> WorkspaceCache::loadReminderPreviews() const {
+    QHash<QString, ReminderPreview> out;
+    for (const auto &v : metaObject().value("reminderPreviews").toArray()) {
+        const auto    o   = v.toObject();
+        const QString key = o.value("key").toString();
+        if (key.isEmpty())
+            continue;
+        ReminderPreview p;
+        p.threadRoot   = o.value("root").toString();
+        p.snippet      = o.value("snippet").toString();
+        p.author       = UserId{o.value("author").toString()};
+        p.botName      = o.value("botName").toString();
+        p.botAvatarUrl = o.value("botAvatar").toString();
+        if (!p.isEmpty())
+            out.insert(key, std::move(p));
+    }
+    return out;
+}
+
 void WorkspaceCache::saveDeadConvIds(const QStringList &ids) {
     metaObject()["deadConvIds"] = QJsonArray::fromStringList(ids);
     writeMeta();
