@@ -113,6 +113,26 @@ TEST_CASE("emoji :name:", "[mrkdwn]") {
     checkOne(MrkdwnParser::parse(":rocket:"), ":rocket:", EntityType::Emoji, 0, 8, "rocket");
 }
 
+TEST_CASE("a time is not emoji", "[mrkdwn]") {
+    // "14:43:34" parsed ":43:" as a shortcode, which the renderer then drew in the
+    // emoji font at line-height size.
+    for (const QString &s :
+         {QStringLiteral("Yesterday, 14:43:34"),
+          QStringLiteral("1:2:3"),
+          QStringLiteral("score 3:100:2")}) {
+        CHECK(MrkdwnParser::parse(s).entities.empty());
+        CHECK(MrkdwnParser::resolveTokens(s).entities.empty());
+        CHECK(MrkdwnParser::parse("<https://e.com/p|" + s + ">").entities.size() == 1);
+    }
+}
+
+TEST_CASE("digit-only shortcode away from digits still resolves", "[mrkdwn]") {
+    checkOne(MrkdwnParser::parse("this :100:"), "this :100:", EntityType::Emoji, 5, 5, "100");
+    auto r = MrkdwnParser::resolveTokens("this :100:");
+    REQUIRE(r.entities.size() == 1);
+    CHECK(r.entities[0].data == "100");
+}
+
 TEST_CASE("single-line blockquote", "[mrkdwn]") {
     auto r = MrkdwnParser::parse("> hello");
     // Parser appends \n after blockquote span to ensure visual line-break in HTML.

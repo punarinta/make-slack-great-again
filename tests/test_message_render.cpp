@@ -17,6 +17,7 @@
 
 #include "ui/message_list/message_render.h"
 #include "text/mrkdwn_parser.h"
+#include "util/emoji_font.h"
 #include "session/session.h"
 #include "backend/backend.h"
 #include "rpl/variable.h"
@@ -114,6 +115,10 @@ TEST_CASE("toHtml without session leaves custom emoji as text", "[render][emoji]
     const QString html = MsgRender::toHtml(twe, nullptr);
     CHECK(html.contains(":no-lunch:"));
     CHECK(!html.contains("<img"));
+    // …in the body font: the emoji font at line-height size renders ":name:" as
+    // oversized, spaced-out characters (the "14:43:34" bug).
+    CHECK(!html.contains(emojiFontFamily()));
+    CHECK(!html.contains(QString("font-size:%1px").arg(MsgRender::inlineEmojiPx())));
 }
 
 // ── toHtml blockquote nesting cap ───────────────────────────────────────────
