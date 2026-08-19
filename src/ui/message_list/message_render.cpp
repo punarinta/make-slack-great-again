@@ -42,7 +42,7 @@ EmojiResolved resolveEmojiRich(const QString &name, const QHash<QString, QString
     if (sep > 0) {
         const QString baseName    = name.left(sep);
         EmojiResolved base        = resolveEmojiRich(baseName, customMap);
-        const bool    baseIsGlyph = !base.unicode.isEmpty() && base.unicode != ":" + baseName + ":";
+        const bool    baseIsGlyph = base.resolved && !base.unicode.isEmpty();
         if (baseIsGlyph) {
             QString out = base.unicode;
             for (const QString &mod :
@@ -80,7 +80,7 @@ EmojiResolved resolveEmojiRich(const QString &name, const QHash<QString, QString
         }
         return {{}, *it};
     }
-    return {unicode, {}};
+    return {unicode, {}, /*resolved=*/false};
 }
 
 EmojiResolved resolveEmojiRich(const QString &name, const Session *session) {
@@ -103,6 +103,11 @@ int inlineEmojiPx() {
 // (the image resource is registered on the QTextDocument by the caller), built-in
 // emoji as a span in the platform color-emoji font.
 static QString emojiHtml(const EmojiResolved &er, int px) {
+    // Unknown name: it's text, not emoji. Keep it in the body font — the emoji
+    // font at line-height size turned a plain "14:43:34" into a giant spaced-out
+    // ":43:" (and does the same to any custom emoji not loaded yet).
+    if (!er.resolved)
+        return er.unicode.toHtmlEscaped();
     const QString s = QString::number(px);
     if (!er.imageUrl.isEmpty())
         return "<img src='" + er.imageUrl.toHtmlEscaped() + "' width='" + s + "' height='" + s +
@@ -1102,8 +1107,12 @@ static std::optional<EmojiResolved> soleEmoji(const TextWithEntities &twe, const
     if (twe.entities.size() == 1 && twe.entities[0].type == EntityType::Emoji) {
         const auto &e = twe.entities[0];
         if (QStringView{twe.text}.left(e.offset).trimmed().isEmpty() &&
-            QStringView{twe.text}.mid(e.offset + e.length).trimmed().isEmpty())
-            return resolveEmojiRich(e.data, session);
+            QStringView{twe.text}.mid(e.offset + e.length).trimmed().isEmpty()) {
+            const auto er = resolveEmojiRich(e.data, session);
+            if (er.resolved)
+                return er;
+            return std::nullopt; // ":unknown:" is text — don't jumbo it
+        }
     }
     // A raw unicode emoji typed directly (the mrkdwn parser leaves it as plain text).
     if (twe.entities.empty()) {

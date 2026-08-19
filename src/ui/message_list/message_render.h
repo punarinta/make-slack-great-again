@@ -32,6 +32,9 @@ QString resolveEmoji(const QString &name);
 struct EmojiResolved {
     QString unicode;
     QString imageUrl;
+    // False when the name matched nothing (unicode is the ":name:" placeholder):
+    // callers must render it as ordinary text, never in the emoji font.
+    bool    resolved = true;
 };
 EmojiResolved resolveEmojiRich(const QString &name, const Session *session);
 // Same, against an explicit custom-emoji map (name → URL or "alias:name").

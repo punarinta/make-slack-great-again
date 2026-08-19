@@ -162,6 +162,19 @@ static const QString &emojiNameClass() {
     return cls;
 }
 
+// True if the colon pair at [openColon, closeColon] is part of a number rather
+// than a shortcode: an all-digit "name" touching a digit on either side, i.e.
+// "14:43:34" (a time), "1:2:3", scores and ratios. Slack's own text→rich_text
+// conversion never marks these as emoji either. A real digit-only shortcode
+// (":100:") is unaffected as long as it isn't glued to a number.
+static bool numericColonRun(const QString &s, int openColon, int closeColon) {
+    for (int k = openColon + 1; k < closeColon; ++k)
+        if (s[k] < QLatin1Char('0') || s[k] > QLatin1Char('9'))
+            return false;
+    return (openColon > 0 && s[openColon - 1].isDigit()) ||
+           (closeColon + 1 < s.size() && s[closeColon + 1].isDigit());
+}
+
 // Which positions sit inside a URL-looking word: a path or query can carry
 // colon pairs ("…/a:b:c") that are not emoji. Judged per whitespace-delimited
 // word, so a run that mixes a link and a real shortcode keeps the shortcode.
@@ -196,7 +209,7 @@ static void appendPlainWithEmoji(Builder &b, const QString &s) {
         const auto m = it.next();
         // Not an emoji after all: leave the text to the next plain gap, which
         // starts before it because pos stays where it is.
-        if (inUrl[m.capturedStart()])
+        if (inUrl[m.capturedStart()] || numericColonRun(s, m.capturedStart(), m.capturedEnd() - 1))
             continue;
         b.appendPlain(s.mid(pos, m.capturedStart() - pos));
         const int start = b.text.size();
@@ -431,7 +444,7 @@ static TextWithEntities parseImpl(const QString &mrkdwn, int depth, bool inQuote
                 auto                      name = mrkdwn.mid(i + 1, close - i - 1);
                 // Validate: emoji names are [a-z0-9_+-]+
                 static QRegularExpression validEmoji("^[a-zA-Z0-9_+\\-]+$");
-                if (validEmoji.match(name).hasMatch()) {
+                if (validEmoji.match(name).hasMatch() && !numericColonRun(mrkdwn, i, close)) {
                     int entityStart = b.text.size();
                     b.appendPlain(":" + name + ":");
                     b.addSpan(EntityType::Emoji, entityStart, name);
@@ -543,7 +556,7 @@ TextWithEntities resolveTokens(const QString &src) {
             if (close != -1 && close > i + 1) {
                 const auto                      name = src.mid(i + 1, close - i - 1);
                 static const QRegularExpression validEmoji("^" + emojiNameClass() + "$");
-                if (validEmoji.match(name).hasMatch()) {
+                if (validEmoji.match(name).hasMatch() && !numericColonRun(src, i, close)) {
                     const int entityStart = b.text.size();
                     b.appendPlain(":" + name + ":");
                     b.addSpan(EntityType::Emoji, entityStart, name);
