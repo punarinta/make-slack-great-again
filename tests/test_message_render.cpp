@@ -306,6 +306,72 @@ TEST_CASE("buildAttachHtml renders a table block instead of the fallback", "[ren
     CHECK(!html.contains("no preview available"));
 }
 
+// A shared-message unfurl of a bot post whose body is one long section block.
+static Attachment makeMsgUnfurl() {
+    Attachment att;
+    att.isMsgUnfurl   = true;
+    att.authorName    = "CityCity";
+    att.authorSubname = "citycity"; // set only for app posts → "APP" badge
+    att.authorIcon    = "https://a.slack-edge.com/img/bot_48.png";
+    att.channelId     = "C0401QDC20K";
+    att.msgDate       = 1787145280873039LL;
+    att.text          = MrkdwnParser::parse("Pre-booking error");
+    att.footer        = "Slack Conversation"; // Slack's fallback footer, never shown
+    Block body;
+    body.typeStr = "section";
+    body.text    = MrkdwnParser::parse("*Pre-booking error*\n" + QString("zz ").repeated(700));
+    att.blocks.push_back(body);
+    return att;
+}
+
+TEST_CASE("buildAttachHtml message unfurl document holds only the body", "[render][unfurl]") {
+    // The card's chrome — avatar, name, APP tag, time, "Posted in", file chips —
+    // is PAINTED by MessageListWidget with the message-row painters. Rebuilding it
+    // in HTML would fork the app's styling, so none of it belongs in the document.
+    Attachment att = makeMsgUnfurl();
+    File       f;
+    f.name = "file.txt.json";
+    att.files.push_back(f);
+    QSet<QString>               expanded;
+    MsgRender::GifRenderContext ctx{"1787145435.348159/a0", nullptr, &expanded};
+    const QString               html = MsgRender::buildAttachHtml(att, nullptr, &ctx);
+
+    CHECK(html.contains("Pre-booking error"));   // the quoted body
+    CHECK(!html.contains("CityCity"));           // author header: painted
+    CHECK(!html.contains("APP"));                // tag pill: painted
+    CHECK(!html.contains("file.txt.json"));      // file chip: painted
+    CHECK(!html.contains("Slack Conversation")); // Slack's fallback footer is never shown
+    CHECK(MsgRender::attachIsBarless(att));      // no colored quote bar either
+
+    // Long body renders truncated with a "Show more" toggle keyed to the card.
+    CHECK(html.contains(MsgRender::kUnfurlToggleAnchorPrefix + "1787145435.348159/a0"));
+    CHECK(html.count("zz") < 700);
+
+    // Expanded: full body, and the toggle flips to "Show less".
+    expanded.insert("1787145435.348159/a0");
+    const QString full = MsgRender::buildAttachHtml(att, nullptr, &ctx);
+    CHECK(full.count("zz") > 600);
+    CHECK(full.contains(MsgRender::kUnfurlToggleAnchorPrefix + "1787145435.348159/a0"));
+}
+
+TEST_CASE("buildAttachHtml message unfurl without a toggle host stays cut", "[render][unfurl]") {
+    // Preview dialogs pass no expand set: the card must not offer a dead toggle.
+    const Attachment att  = makeMsgUnfurl();
+    const QString    html = MsgRender::buildAttachHtml(att, nullptr, nullptr);
+    CHECK(html.count("zz") < 700);
+    CHECK(!html.contains(MsgRender::kUnfurlToggleAnchorPrefix));
+}
+
+TEST_CASE("isToggleAnchor covers both inline toggles", "[render][unfurl]") {
+    CHECK(MsgRender::isToggleAnchor(MsgRender::kGifToggleAnchorPrefix + "1.2/b0"));
+    CHECK(MsgRender::isToggleAnchor(MsgRender::kUnfurlToggleAnchorPrefix + "1.2/a0"));
+    CHECK(!MsgRender::isToggleAnchor("https://example.com"));
+    CHECK(
+        MsgRender::unfurlKeyFromAnchor(MsgRender::kUnfurlToggleAnchorPrefix + "1.2/a0") == "1.2/a0"
+    );
+    CHECK(MsgRender::unfurlKeyFromAnchor("https://example.com").isEmpty());
+}
+
 static Block makeTable(int rows) {
     Block blk;
     blk.typeStr = "table";

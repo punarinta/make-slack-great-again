@@ -1099,10 +1099,11 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
     if (item.attachDocs.size() != attachments.size())
         item.attachDocs.resize(attachments.size());
 
-    const int attW = w - kAttachBarW - kAttachBarGap;
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
-        auto &ad        = item.attachDocs[ai];
-        bool  adCreated = false;
+        const Attachment &att       = attachments[ai];
+        auto             &ad        = item.attachDocs[ai];
+        const int         attW      = attachDocWidth(att, w);
+        bool              adCreated = false;
         if (!ad.textDoc) {
             ad.textDoc = std::make_unique<QTextDocument>();
             ad.textDoc->setDefaultFont(QApplication::font());
@@ -1110,9 +1111,9 @@ void MessageListWidget::ensureDocLayout(const MessageItem &item, int forWidth) c
             ad.textDoc->setDefaultStyleSheet(MsgRender::docStyleSheet());
             addImageResources(ad.textDoc.get());
             const MsgRender::GifRenderContext gifCtx{
-                item.msg.ts + "/a" + QString::number(ai), &_collapsedGifs
+                item.msg.ts + "/a" + QString::number(ai), &_collapsedGifs, &_expandedUnfurls
             };
-            const auto html = MsgRender::buildAttachHtml(attachments[ai], _session, &gifCtx);
+            const auto html = MsgRender::buildAttachHtml(att, _session, &gifCtx);
             if (!html.isEmpty())
                 ad.textDoc->setHtml(html);
             adCreated = true;
@@ -1277,7 +1278,21 @@ int MessageListWidget::estimatedDocHeight(const MessageItem &item) const {
 int MessageListWidget::estimatedAttachHeight(const Attachment &att) const {
     // Known image height (from cached-pixmap metadata) + a body-text estimate;
     // refined to the exact height as soon as the row is measured.
-    return attachImageH(att) + estimatedTextHeight(att.text.text);
+    int h = attachImageH(att) + estimatedTextHeight(att.text.text);
+    // A message-unfurl card also carries the painted header, the card padding and
+    // its file chips, and its body comes from blocks (the `text` estimate above
+    // misses it) — without this the row is estimated far too short.
+    if (att.isMsgUnfurl) {
+        h += attachDocOffset(att).y() + MsgRender::kUnfurlCardPad + attachFilesH(att);
+        int bodyH = 0;
+        for (const auto &b : att.blocks)
+            bodyH += estimatedTextHeight(b.text.text);
+        // The body renders truncated to its preview, so cap the estimate the same
+        // way (a quoted bot post can be hundreds of lines of source text).
+        const int lineH = std::max(1, qRound(QFontMetrics(QApplication::font()).height() * 1.35));
+        h += std::min(bodyH, lineH * (MsgRender::kUnfurlPreviewLines + 2));
+    }
+    return h;
 }
 
 void MessageListWidget::rebuildLayout() {
@@ -1447,7 +1462,15 @@ int MessageListWidget::attachImageH(const Attachment &att) const {
 }
 
 int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
-    return item.attachDocs[ai].docHeight + attachImageH(item.msg.attachments[ai]);
+    const Attachment &att = item.msg.attachments[ai];
+    // Document box + whatever the shape paints around it: a message-unfurl card
+    // adds its header above (attachDocOffset), its file chips below, and the
+    // card's bottom padding.
+    int h = attachDocOffset(att).y() + item.attachDocs[ai].docHeight + attachFilesH(att) +
+            attachImageH(att);
+    if (att.isMsgUnfurl)
+        h += MsgRender::kUnfurlCardPad;
+    return h;
 }
 
 // ── Animated images (GIF / animated WebP) ─────────────────────────────────────
@@ -1645,23 +1668,25 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
         }
 
         // Check attachment text docs
-        const int attW = textAreaWidth() - kAttachBarW - kAttachBarGap;
-        int       ay   = textTop + item.docHeight;
+        int ay = textTop + item.docHeight;
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
             if (isDismissed(item.msg.ts, ai))
                 continue;
             ay += kAttachGap;
-            const auto &ad         = item.attachDocs[ai];
-            // Image-only and table-only attachments paint un-indented (no quote
-            // bar) — keep the hit-test x in sync with paintAttachments.
-            const int   attTextX   = (MsgRender::attachIsImageOnly(item.msg.attachments[ai]) ||
-                                  MsgRender::attachIsTableOnly(item.msg.attachments[ai]))
-                                         ? textLeft
-                                         : textLeft + kAttachBarW + kAttachBarGap;
-            const int   attTextTop = ay;
+            const auto       &ad  = item.attachDocs[ai];
+            const Attachment &att = item.msg.attachments[ai];
+            // Bar-less attachments paint un-indented, and a card's document sits
+            // inside its frame — keep the hit-test origin in sync with
+            // paintAttachments.
+            const QPoint      off = attachDocOffset(att);
+            const int         attTextX =
+                (MsgRender::attachIsBarless(att) ? textLeft
+                                                 : textLeft + kAttachBarW + kAttachBarGap) +
+                off.x();
+            const int attTextTop = ay + off.y();
             if (docY >= attTextTop && docY < attTextTop + ad.docHeight && ad.textDoc) {
                 const QPointF local(viewportPos.x() - attTextX, docY - attTextTop);
-                if (local.x() >= 0 && local.x() < attW) {
+                if (local.x() >= 0 && local.x() < ad.docWidth) {
                     const QString href = ad.textDoc->documentLayout()->anchorAt(local);
                     if (!href.isEmpty())
                         return href;
@@ -1908,12 +1933,13 @@ MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewport
             if (isDismissed(item.msg.ts, ai))
                 continue;
             ay += kAttachGap;
-            const auto &att = item.msg.attachments[ai];
-            const int   attTextX =
-                (MsgRender::attachIsImageOnly(att) || MsgRender::attachIsTableOnly(att))
-                      ? textLeft
-                      : textLeft + kAttachBarW + kAttachBarGap;
-            if (TableHit hit = hitIn(item.attachDocs[ai].textDoc.get(), attTextX, ay, ai);
+            const auto  &att = item.msg.attachments[ai];
+            const QPoint off = attachDocOffset(att);
+            const int    attTextX =
+                (MsgRender::attachIsBarless(att) ? textLeft
+                                                 : textLeft + kAttachBarW + kAttachBarGap) +
+                off.x();
+            if (TableHit hit = hitIn(item.attachDocs[ai].textDoc.get(), attTextX, ay + off.y(), ai);
                 hit.valid())
                 return hit;
             ay += attachTotalH(item, ai);
@@ -2612,10 +2638,15 @@ bool MessageListWidget::tryHandleInlineThreadPress(const QPoint &pos) {
                         if (local.x() >= 0 && local.y() >= 0 && local.y() <= reply.docHeight) {
                             const QString anchor = reply.textDoc->documentLayout()->anchorAt(local);
                             if (!anchor.isEmpty()) {
-                                const QString gifKey = MsgRender::gifKeyFromAnchor(anchor);
-                                if (!gifKey.isEmpty()) {
-                                    if (!_collapsedGifs.remove(gifKey))
+                                const QString gifKey    = MsgRender::gifKeyFromAnchor(anchor);
+                                const QString unfurlKey = MsgRender::unfurlKeyFromAnchor(anchor);
+                                if (!gifKey.isEmpty() || !unfurlKey.isEmpty()) {
+                                    if (gifKey.isEmpty()) {
+                                        if (!_expandedUnfurls.remove(unfurlKey))
+                                            _expandedUnfurls.insert(unfurlKey);
+                                    } else if (!_collapsedGifs.remove(gifKey)) {
                                         _collapsedGifs.insert(gifKey);
+                                    }
                                     reply.textDoc.reset();
                                     reply.attachDocs.clear();
                                     reply.docWidth = -1;
@@ -2660,8 +2691,7 @@ bool MessageListWidget::tryShowLinkContextMenu(const QPoint &pos) {
     else if (MsgRender::isBotButtonAnchor(anchor))
         url = MsgRender::botButtonUrlFromAnchor(anchor);
     else if (MsgRender::userIdFromAnchor(anchor).isEmpty() &&
-             MsgRender::channelIdFromAnchor(anchor).isEmpty() &&
-             MsgRender::gifKeyFromAnchor(anchor).isEmpty())
+             MsgRender::channelIdFromAnchor(anchor).isEmpty() && !MsgRender::isToggleAnchor(anchor))
         url = anchor;
     if (url.isEmpty())
         return false;
@@ -2682,12 +2712,16 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
     const QString anchor = anchorAt(pos);
     if (anchor.isEmpty())
         return false;
-    const QString gifKey = MsgRender::gifKeyFromAnchor(anchor);
-    if (!gifKey.isEmpty()) {
-        // "GIF ▾" title line: collapse/expand the image block below it.
-        if (!_collapsedGifs.remove(gifKey))
-            _collapsedGifs.insert(gifKey);
-        const int idx = findByTs(gifKey.section('/', 0, 0));
+    // Inline toggles ("GIF ▾" title lines, an unfurl card's "Show more") flip a
+    // key and re-render the row they live in; they navigate nowhere.
+    const QString gifKey    = MsgRender::gifKeyFromAnchor(anchor);
+    const QString unfurlKey = MsgRender::unfurlKeyFromAnchor(anchor);
+    if (!gifKey.isEmpty() || !unfurlKey.isEmpty()) {
+        const QString &key = gifKey.isEmpty() ? unfurlKey : gifKey;
+        QSet<QString> &set = gifKey.isEmpty() ? _expandedUnfurls : _collapsedGifs;
+        if (!set.remove(key))
+            set.insert(key);
+        const int idx = findByTs(key.section('/', 0, 0));
         if (idx >= 0) {
             auto &item = _items[idx];
             item.textDoc.reset();
@@ -3355,11 +3389,11 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
     const QString anchor       = anchorAt(pos);
     const bool    isUserAnchor = !MsgRender::userIdFromAnchor(anchor).isEmpty();
     const bool    isChanAnchor = !MsgRender::channelIdFromAnchor(anchor).isEmpty();
-    const bool    isGifAnchor  = !MsgRender::gifKeyFromAnchor(anchor).isEmpty();
+    const bool    isToggle     = MsgRender::isToggleAnchor(anchor);
     const bool    isBotBtn     = MsgRender::isBotButtonAnchor(anchor);
     const bool    isMsgLink    = MsgRender::messageRefFromAnchor(anchor).isValid();
 
-    // Update link hover underline (mention chips, message-link chips, "GIF ▾"
+    // Update link hover underline (mention chips, message-link chips, inline
     // toggles and bot buttons don't get underlined — buttons aren't links)
     if (anchor != _hoveredLinkUrl) {
         if (!_hoveredLinkUrl.isEmpty() && _hoveredLinkRow >= 0 &&
@@ -3370,7 +3404,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
-        if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isGifAnchor && !isBotBtn &&
+        if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isToggle && !isBotBtn &&
             !isMsgLink && newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);
             for (auto &ad : _items[newHoveredRow].attachDocs)
@@ -3425,7 +3459,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const QRect          btnLocal = fileActionBarButtonRect(newHoveredFileBtn, fr);
         const QRect btnGlobal(viewport()->mapToGlobal(btnLocal.topLeft()), btnLocal.size());
         _tooltip->showAbove(kFileTips[newHoveredFileBtn], btnGlobal);
-    } else if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isGifAnchor) {
+    } else if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isToggle) {
         // Collect link display text; skip tooltip when it is identical to the URL.
         QString linkText;
         if (_hoveredLinkRow >= 0 && _hoveredLinkRow < (int)_items.size()) {

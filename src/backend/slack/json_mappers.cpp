@@ -357,16 +357,23 @@ static TextWithEntities richTextToTWE(const QJsonObject &block) {
         const auto stype   = section.value("type").toString();
         const auto elems   = section.value("elements").toArray();
 
-        if (stype == "rich_text_preformatted") {
+        if (stype == "rich_text_preformatted" || stype == "rich_text_quote") {
             const int start = b.text.size();
+            // The wrapping entity must land BEFORE the ones its content emits:
+            // the renderer derives containment from (offset, length) with ties
+            // broken by insertion order, so a quote spanning exactly one child
+            // (e.g. a lone pasted message link) would otherwise become the CHILD
+            // and be dropped — the quote bar silently disappeared.
+            const int at    = (int)b.entities.size();
             for (const auto &ev : elems)
                 richInlineToTWE(ev.toObject(), b);
-            b.entities.push_back({EntityType::Pre, start, (int)b.text.size() - start, {}});
-        } else if (stype == "rich_text_quote") {
-            const int start = b.text.size();
-            for (const auto &ev : elems)
-                richInlineToTWE(ev.toObject(), b);
-            b.entities.push_back({EntityType::Blockquote, start, (int)b.text.size() - start, {}});
+            b.entities.insert(
+                b.entities.begin() + at,
+                {stype == "rich_text_quote" ? EntityType::Blockquote : EntityType::Pre,
+                 start,
+                 (int)b.text.size() - start,
+                 {}}
+            );
         } else if (stype == "rich_text_list") {
             const auto style   = section.value("style").toString(); // "bullet" or "ordered"
             int        itemIdx = 0;
@@ -582,25 +589,41 @@ Attachment toAttachment(const QJsonObject &o) {
             }
         );
     }
+    // Shared-message unfurl: the attachment describes a quoted Slack message, so
+    // its own `files` array (the quoted message's uploads) matters too.
+    const bool        isMsgUnfurl = o.value("is_msg_unfurl").toBool();
+    std::vector<File> files;
+    if (isMsgUnfurl)
+        for (const auto &fv : o.value("files").toArray())
+            files.push_back(toFile(fv.toObject()));
+
     return Attachment{
-        .fallback    = o.value("fallback").toString(),
-        .color       = o.value("color").toString(),
-        .pretext     = o.value("pretext").toString(),
-        .authorName  = o.value("author_name").toString(),
-        .title       = o.value("title").toString(),
-        .titleLink   = o.value("title_link").toString(),
-        .text        = MrkdwnParser::parse(o.value("text").toString()),
-        .imageUrl    = o.value("image_url").toString(),
-        .thumbUrl    = o.value("thumb_url").toString(),
-        .faviconUrl  = o.value("service_icon").toString(),
-        .footer      = o.value("footer").toString(),
-        .imageWidth  = o.value("image_width").toInt(),
-        .imageHeight = o.value("image_height").toInt(),
-        .thumbWidth  = o.value("thumb_width").toInt(),
-        .thumbHeight = o.value("thumb_height").toInt(),
-        .fields      = std::move(fields),
-        .blocks      = std::move(blocks),
-        .buttons     = std::move(buttons),
+        .fallback      = o.value("fallback").toString(),
+        .color         = o.value("color").toString(),
+        .pretext       = o.value("pretext").toString(),
+        .authorName    = o.value("author_name").toString(),
+        .title         = o.value("title").toString(),
+        .titleLink     = o.value("title_link").toString(),
+        .text          = MrkdwnParser::parse(o.value("text").toString()),
+        .imageUrl      = o.value("image_url").toString(),
+        .thumbUrl      = o.value("thumb_url").toString(),
+        .faviconUrl    = o.value("service_icon").toString(),
+        .footer        = o.value("footer").toString(),
+        .imageWidth    = o.value("image_width").toInt(),
+        .imageHeight   = o.value("image_height").toInt(),
+        .thumbWidth    = o.value("thumb_width").toInt(),
+        .thumbHeight   = o.value("thumb_height").toInt(),
+        .fields        = std::move(fields),
+        .blocks        = std::move(blocks),
+        .buttons       = std::move(buttons),
+        // `ts` on a message unfurl is the QUOTED message's ts (the unfurling
+        // message has its own) — the card shows it as the quote's time.
+        .isMsgUnfurl   = isMsgUnfurl,
+        .authorIcon    = o.value("author_icon").toString(),
+        .authorSubname = o.value("author_subname").toString(),
+        .channelId     = o.value("channel_id").toString(),
+        .msgDate       = isMsgUnfurl ? decimalTsToMicros(o.value("ts").toString()) : 0,
+        .files         = std::move(files),
     };
 }
 

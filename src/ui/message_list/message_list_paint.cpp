@@ -3,6 +3,7 @@
 #include "message_list.h"
 #include "message_render.h"
 #include "session/session.h"
+#include "text/mrkdwn_parser.h"
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
@@ -522,39 +523,69 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
     }
 }
 
-void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const {
-    auto *user = _session->findUser(item.msg.author);
+// ── Shared header pieces (message rows and quoted-message cards) ─────────────
 
-    // Huddle rows are presented as authorless "Slack" bot messages
-    // (presentHuddleThread). Borrow Slackbot's avatar — every workspace roster
-    // has USLACKBOT — so the row wears Slack's face instead of a letter tile;
-    // the name below still resolves from botName ("Slack"), not this user.
-    if (!user && isHuddleMessage(item.msg))
-        user = _session->findUser(UserId{QStringLiteral("USLACKBOT")});
+// Type of a message header line. Static because the app font only changes on
+// restart; hoisted out of paintMessageHeader so a quoted message's card header
+// draws with exactly the same fonts.
+static const QFont &msgNameFont() {
+    static const QFont f = [] {
+        QFont x = QApplication::font();
+        x.setBold(true);
+        return x;
+    }();
+    return f;
+}
+static const QFont &msgTsFont() {
+    static const QFont f = [] {
+        QFont x = QApplication::font();
+        x.setPointSizeF(x.pointSizeF() * 0.85);
+        return x;
+    }();
+    return f;
+}
+static const QFont &tagBadgeFont() {
+    static const QFont f = [] {
+        QFont x = QApplication::font();
+        x.setPointSizeF(x.pointSizeF() * 0.62);
+        x.setBold(true);
+        return x;
+    }();
+    return f;
+}
 
-    // Resolve avatar URL: user profile first, then bot_profile / icon_url.
-    const QString avatarUrl =
-        (user && !user->avatarUrl.isEmpty()) ? user->avatarUrl : item.msg.botAvatarUrl;
+// The Slack-style tag pill that follows a name ("APP", "EXT"): 14px tall, 2px
+// radius, vertically centred in a `lineH`-tall line starting at `top`. Returns
+// the x to continue drawing at.
+static int paintTagBadge(
+    QPainter &p, int x, int top, int lineH, const QString &text, const QColor &bg, const QColor &fg
+) {
+    constexpr int      bH = 14;
+    const QFontMetrics fm(tagBadgeFont());
+    const QRect        r(x, top + (lineH - bH) / 2, fm.horizontalAdvance(text) + 8, bH);
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(bg);
+    p.drawRoundedRect(r, 2, 2);
+    p.setFont(tagBadgeFont());
+    p.setPen(fg);
+    p.drawText(r, Qt::AlignCenter, text);
+    p.restore();
+    return r.right() + 8;
+}
 
-    // Try to draw a real photo if cached.
-    if (!avatarUrl.isEmpty() && _imgCache) {
-        const QPixmap cached = _imgCache->get(avatarUrl);
-        if (!cached.isNull()) {
-            UserAvatar::paintPhoto(p, rect, cached, p.device()->devicePixelRatioF(), 4);
-            return;
-        }
+// The avatar recipe: the cached photo when there is one, else the coloured
+// initial-letter tile. `name` only feeds the letter and its hue.
+static void paintAvatarPhotoOrInitial(
+    QPainter &p, const QRect &rect, const QPixmap &photo, const QString &name
+) {
+    if (!photo.isNull()) {
+        UserAvatar::paintPhoto(p, rect, photo, p.device()->devicePixelRatioF(), 4);
+        return;
     }
-
-    // Fallback: colored square with initial letter. Never the raw id — an
-    // unresolved author resolves via userDisplayName (fetch already kicked off
-    // by triggerMissingAvatarDownloads).
-    const QString initial =
-        user ? user->displayName
-             : (!item.msg.botName.isEmpty() ? item.msg.botName
-                                            : _session->userDisplayName(item.msg.author));
-    const QChar ch  = initial.isEmpty() ? QChar('?') : initial[0];
+    const QChar ch  = name.isEmpty() ? QChar('?') : name[0];
     const int   hue = ch.unicode() * 37 % 360;
-
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     UserAvatar::paintInitial(
@@ -571,6 +602,32 @@ void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect 
     p.restore();
 }
 
+void MessageListWidget::paintAvatar(QPainter &p, const MessageItem &item, QRect rect) const {
+    auto *user = _session->findUser(item.msg.author);
+
+    // Huddle rows are presented as authorless "Slack" bot messages
+    // (presentHuddleThread). Borrow Slackbot's avatar — every workspace roster
+    // has USLACKBOT — so the row wears Slack's face instead of a letter tile;
+    // the name below still resolves from botName ("Slack"), not this user.
+    if (!user && isHuddleMessage(item.msg))
+        user = _session->findUser(UserId{QStringLiteral("USLACKBOT")});
+
+    // Resolve avatar URL: user profile first, then bot_profile / icon_url.
+    const QString avatarUrl =
+        (user && !user->avatarUrl.isEmpty()) ? user->avatarUrl : item.msg.botAvatarUrl;
+
+    // Letter-tile fallback text: never the raw id — an unresolved author resolves
+    // via userDisplayName (fetch already kicked off by
+    // triggerMissingAvatarDownloads).
+    const QString initial =
+        user ? user->displayName
+             : (!item.msg.botName.isEmpty() ? item.msg.botName
+                                            : _session->userDisplayName(item.msg.author));
+    const QPixmap photo =
+        (!avatarUrl.isEmpty() && _imgCache) ? _imgCache->get(avatarUrl) : QPixmap();
+    paintAvatarPhotoOrInitial(p, rect, photo, initial);
+}
+
 void MessageListWidget::paintMessageHeader(
     QPainter &p, const MessageItem &item, int textLeft, int contTop
 ) const {
@@ -580,92 +637,54 @@ void MessageListWidget::paintMessageHeader(
              : (!item.msg.botName.isEmpty() ? item.msg.botName
                                             : _session->userDisplayName(item.msg.author));
 
-    static const QFont kNameFont = [] {
-        QFont f = QApplication::font();
-        f.setBold(true);
-        return f;
-    }();
-    p.setFont(kNameFont);
+    p.setFont(msgNameFont());
     p.setPen(Th::c().text.primary);
-    const QFontMetrics nameFm(kNameFont);
+    const QFontMetrics nameFm(msgNameFont());
     const int          headerBaseline = contTop + nameFm.ascent();
     if (item.stNameSrc != name) {
         item.stNameSrc = name;
         item.stName.setTextFormat(Qt::PlainText);
         item.stName.setText(name);
-        item.stName.prepare({}, kNameFont);
+        item.stName.prepare({}, msgNameFont());
         item.stNameW = nameFm.horizontalAdvance(name);
     }
     p.drawStaticText(QPointF(textLeft, contTop), item.stName);
     const int nameW = item.stNameW;
     int       tsX   = textLeft + nameW + 8;
 
-    static const QFont kBadgeFont = [] {
-        QFont f = QApplication::font();
-        f.setPointSizeF(f.pointSizeF() * 0.62);
-        f.setBold(true);
-        return f;
-    }();
-    if (_stApp.text().isEmpty()) { // once — the labels are constants for the run
-        const QFontMetrics bFm(kBadgeFont);
-        auto               prep = [&bFm](QStaticText &st, const QString &text) {
-            st.setTextFormat(Qt::PlainText);
-            st.setText(text);
-            st.prepare({}, kBadgeFont);
-            return bFm.horizontalAdvance(text);
-        };
-        _appBadgeW = prep(_stApp, tr("APP"));
-        _extBadgeW = prep(_stExt, tr("EXT"));
+    if (_stEdited.text().isEmpty()) { // once — the label is a constant for the run
         _stEdited.setTextFormat(Qt::PlainText);
         _stEdited.setText(tr("(edited)"));
     }
-    const auto paintBadge =
-        [&](const QStaticText &st, int badgeW, int x, const QColor &bg, const QColor &fg) {
-            const int   bH = 14;
-            const QRect bRect(x, contTop + (nameFm.height() - bH) / 2, badgeW + 8, bH);
-            p.save();
-            p.setRenderHint(QPainter::Antialiasing);
-            p.setPen(Qt::NoPen);
-            p.setBrush(bg);
-            p.drawRoundedRect(bRect, 2, 2);
-            p.setFont(kBadgeFont);
-            p.setPen(fg);
-            p.drawStaticText(
-                QPointF(
-                    bRect.x() + (bRect.width() - st.size().width()) / 2.0,
-                    bRect.y() + (bRect.height() - st.size().height()) / 2.0
-                ),
-                st
-            );
-            p.restore();
-            return bRect.right() + 8;
-        };
 
     // Slack-style "APP" tag after bot names
     const bool isBot = !item.msg.botName.isEmpty() || (user && user->isBot);
     if (isBot)
-        tsX = paintBadge(
-            _stApp,
-            _appBadgeW,
+        tsX = paintTagBadge(
+            p,
             textLeft + nameW + 6,
+            contTop,
+            nameFm.height(),
+            tr("APP"),
             Th::c().message.appBadgeBg,
             Th::c().message.appBadgeText
         );
 
     // Slack-style "EXT" tag for external (Slack Connect) users
     if (user && user->isExternal)
-        tsX = paintBadge(
-            _stExt, _extBadgeW, tsX - 2, Th::c().message.extBadgeBg, Th::c().message.extBadgeText
+        tsX = paintTagBadge(
+            p,
+            tsX - 2,
+            contTop,
+            nameFm.height(),
+            tr("EXT"),
+            Th::c().message.extBadgeBg,
+            Th::c().message.extBadgeText
         );
 
-    static const QFont kTsFont = [] {
-        QFont f = QApplication::font();
-        f.setPointSizeF(f.pointSizeF() * 0.85);
-        return f;
-    }();
-    p.setFont(kTsFont);
+    p.setFont(msgTsFont());
     p.setPen(Th::c().text.secondary);
-    const QFontMetrics tsFm(kTsFont);
+    const QFontMetrics tsFm(msgTsFont());
     // The formatted string is still produced every frame (it must follow a live
     // 12h/24h switch); only the shaping is cached, keyed by the string itself.
     const QString      tsText = MsgRender::formatTs(item.msg.date);
@@ -673,7 +692,7 @@ void MessageListWidget::paintMessageHeader(
         item.stTsSrc = tsText;
         item.stTs.setTextFormat(Qt::PlainText);
         item.stTs.setText(tsText);
-        item.stTs.prepare({}, kTsFont);
+        item.stTs.prepare({}, msgTsFont());
     }
     // Align timestamp to the same baseline as the bold name
     const int tsTop = headerBaseline - tsFm.ascent();
@@ -687,6 +706,99 @@ void MessageListWidget::paintMessageHeader(
 
 // ── Attachments ───────────────────────────────────────────────────────────────
 
+QPoint MessageListWidget::attachDocOffset(const Attachment &att) const {
+    if (!att.isMsgUnfurl)
+        return {0, 0};
+    return {MsgRender::kUnfurlCardPad, MsgRender::kUnfurlCardPad + unfurlHeaderH() + kUnfurlHdrGap};
+}
+
+int MessageListWidget::attachDocWidth(const Attachment &att, int columnW) const {
+    // A card spans the whole text column (its own frame replaces the bar indent);
+    // every other shape leaves room for the colored bar.
+    return att.isMsgUnfurl ? columnW - 2 * MsgRender::kUnfurlCardPad
+                           : columnW - kAttachBarW - kAttachBarGap;
+}
+
+int MessageListWidget::attachFilesH(const Attachment &att) const {
+    return (int)att.files.size() * (kFileChipGap + kFileChipH);
+}
+
+QRect MessageListWidget::attachFileChipRect(int fileIdx, const QRect &docRect) const {
+    return {
+        docRect.x(),
+        docRect.y() + docRect.height() + (fileIdx + 1) * kFileChipGap + fileIdx * kFileChipH,
+        std::min(docRect.width(), kFileChipMaxW),
+        kFileChipH
+    };
+}
+
+int MessageListWidget::unfurlHeaderH() const {
+    // The avatar, or the two text lines beside it when the font makes them taller.
+    const QFontMetrics nameFm(msgNameFont());
+    const QFontMetrics subFm(msgTsFont());
+    return std::max(kAvSize, nameFm.height() + 2 + subFm.height());
+}
+
+void MessageListWidget::paintUnfurlHeader(
+    QPainter &p, const Attachment &att, const QRect &box
+) const {
+    // Same avatar recipe, same tag pill, same name/time fonts as a real message
+    // row's header — a quoted message should read exactly like one.
+    const QString name = att.authorName.isEmpty() ? tr("Unknown user")
+                                                  : MrkdwnParser::decodeEntities(att.authorName);
+    const QPixmap photo =
+        (_imgCache && !att.authorIcon.isEmpty()) ? _imgCache->get(att.authorIcon) : QPixmap();
+    paintAvatarPhotoOrInitial(p, QRect(box.x(), box.y(), kAvSize, kAvSize), photo, name);
+
+    const int          textX = box.x() + kAvSize + kAvGap;
+    const QFontMetrics nameFm(msgNameFont());
+    const QFontMetrics subFm(msgTsFont());
+    const int          nameW = std::max(0, box.right() - textX);
+
+    p.save();
+    p.setFont(msgNameFont());
+    p.setPen(Th::c().text.primary);
+    const QString elided = nameFm.elidedText(name, Qt::ElideRight, nameW);
+    p.drawText(QRect(textX, box.y(), nameW, nameFm.height()), Qt::AlignVCenter, elided);
+    int x = textX + nameFm.horizontalAdvance(elided) + 6;
+
+    // author_subname is set only for app posts — the same "APP" tag bot names get.
+    if (!att.authorSubname.isEmpty())
+        x = paintTagBadge(
+            p,
+            x,
+            box.y(),
+            nameFm.height(),
+            tr("APP"),
+            Th::c().message.appBadgeBg,
+            Th::c().message.appBadgeText
+        );
+
+    p.setFont(msgTsFont());
+    p.setPen(Th::c().text.secondary);
+    if (att.msgDate > 0) {
+        // Share the bold name's baseline, exactly like a message row's timestamp.
+        const int tsTop = box.y() + nameFm.ascent() - subFm.ascent();
+        p.drawText(
+            QRect(x + 2, tsTop, std::max(0, box.right() - x - 2), subFm.height()),
+            Qt::AlignVCenter,
+            MsgRender::formatTs(att.msgDate)
+        );
+    }
+
+    // "Posted in #channel" — omitted when the conversation isn't one we can see.
+    const QString place = MsgRender::convPlaceLabel(att.channelId, _session);
+    if (!place.isEmpty()) {
+        const QRect line(textX, box.y() + nameFm.height() + 2, nameW, subFm.height());
+        p.drawText(
+            line,
+            Qt::AlignVCenter,
+            subFm.elidedText(tr("Posted in %1").arg(place), Qt::ElideRight, nameW)
+        );
+    }
+    p.restore();
+}
+
 void MessageListWidget::paintAttachments(
     QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
 ) const {
@@ -694,7 +806,6 @@ void MessageListWidget::paintAttachments(
     const int   left        = ctx.textLeft;
     const int   width       = ctx.textWidth;
     const int   textX       = left + kAttachBarW + kAttachBarGap;
-    const int   textW       = width - kAttachBarW - kAttachBarGap;
     int         y           = top;
     for (int ai = 0; ai < (int)attachments.size(); ++ai) {
         if (isDismissed(item.msg.ts, ai))
@@ -706,13 +817,17 @@ void MessageListWidget::paintAttachments(
 
         const int docH   = ad.docHeight;
         const int imgH   = attachImageH(att);
-        const int totalH = docH + imgH;
+        const int totalH = attachTotalH(item, ai);
 
-        // GIF-picker attachments (image blocks only) and table messages render
-        // bar-less and un-indented, like the official client.
-        const bool imageOnly = MsgRender::attachIsImageOnly(att);
-        const bool tableOnly = MsgRender::attachIsTableOnly(att);
-        const int  attX      = (imageOnly || tableOnly) ? left : textX;
+        // GIF-picker attachments (image blocks only), table messages and quoted
+        // Slack messages render bar-less and un-indented, like the official
+        // client — the last of those draws its own card frame instead.
+        const bool   imageOnly = MsgRender::attachIsImageOnly(att);
+        const bool   tableOnly = MsgRender::attachIsTableOnly(att);
+        const bool   unfurl    = att.isMsgUnfurl;
+        const int    attX      = MsgRender::attachIsBarless(att) ? left : textX;
+        const QPoint docOff    = attachDocOffset(att);
+        const QRect  docRect(attX + docOff.x(), y + docOff.y(), ad.docWidth, docH);
 
         // Dismiss "×" button — only visible when this specific attachment is
         // hovered. Table attachments are message content, not a removable
@@ -729,8 +844,22 @@ void MessageListWidget::paintAttachments(
             p.restore();
         }
 
-        // Colored left bar (full attachment height)
-        if (!imageOnly && !tableOnly) {
+        if (unfurl) {
+            // Shared-message unfurl: a bordered card around the quoted author's
+            // header, the body document and the quoted message's file chips.
+            p.save();
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(QPen(Th::c().message.attachmentBorder, 1));
+            p.setBrush(Th::c().message.attachmentBg);
+            Paint::borderedRect(p, QRectF(attX, y, width, totalH), MsgRender::kUnfurlCardRadius);
+            p.restore();
+            paintUnfurlHeader(
+                p,
+                att,
+                QRect(docRect.x(), y + MsgRender::kUnfurlCardPad, docRect.width(), unfurlHeaderH())
+            );
+        } else if (!MsgRender::attachIsBarless(att)) {
+            // Colored left bar (full attachment height)
             QColor barColor("#AAAAAA");
             if (!att.color.isEmpty()) {
                 QColor c(att.color.startsWith('#') ? att.color : "#" + att.color);
@@ -773,17 +902,21 @@ void MessageListWidget::paintAttachments(
         // Attachment text doc
         if (ad.textDoc && docH > 0) {
             p.save();
-            p.translate(attX + textIndent, y);
+            p.translate(docRect.x() + textIndent, docRect.y());
             MsgRender::paintCodeBlockChrome(p, ad.textDoc.get());
             MsgRender::paintBotButtonChrome(p, ad.textDoc.get());
             // Not drawContents(): the base text color must come from the theme,
             // not the app palette (see paintRow).
             QAbstractTextDocumentLayout::PaintContext pCtx;
             pCtx.palette.setColor(QPalette::Text, Th::c().text.primary);
-            pCtx.clip = QRectF(0, 0, textW - textIndent, docH);
+            pCtx.clip = QRectF(0, 0, ad.docWidth - textIndent, docH);
             ad.textDoc->documentLayout()->draw(&p, pCtx);
             p.restore();
         }
+
+        // A quoted message's uploads, as the app's canonical file chips.
+        for (int fi = 0; fi < (int)att.files.size(); ++fi)
+            MsgRender::paintFileChip(p, att.files[fi], attachFileChipRect(fi, docRect));
 
         // Preview image (thumbnail when large enough for this DPR, else full image)
         if (imgH > 0 && _imgCache) {
@@ -794,7 +927,7 @@ void MessageListWidget::paintAttachments(
                     1.0, std::min((double)kImgMaxW / img.width(), (double)kImgMaxH / img.height())
                 );
                 const QSize sz((int)(img.width() * scale), (int)(img.height() * scale));
-                const QRect target(QPoint(attX, y + docH + kImgGap), sz);
+                const QRect target(QPoint(attX, docRect.y() + docH + kImgGap), sz);
                 const qreal dpr = p.device()->devicePixelRatioF();
                 p.save();
                 p.setRenderHint(QPainter::SmoothPixmapTransform);
@@ -1430,13 +1563,16 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
 
         const auto &item = _items[i];
 
-        // Quick check: are there any files rendered as chips?
+        // Quick check: are there any files rendered as chips — the message's own,
+        // or a quoted message's inside an unfurl card?
         bool hasChips = false;
         for (const auto &f : item.msg.files)
             if (!f.hasPreview()) {
                 hasChips = true;
                 break;
             }
+        for (const auto &att : item.msg.attachments)
+            hasChips = hasChips || !att.files.empty();
         if (!hasChips)
             continue;
 
@@ -1448,8 +1584,27 @@ const File *MessageListWidget::fileChipAt(const QPoint &viewportPos) const {
         const int  pinnedH2  = bannersH(item);
         int        chipY =
             rowTop + sep2 + padV + pinnedH2 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
-        for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai)
-            chipY += kAttachGap + attachTotalH(item, ai);
+        const int attX = textLeft; // cards are un-indented (attachIsBarless)
+        for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
+            if (isDismissed(item.msg.ts, ai))
+                continue;
+            chipY += kAttachGap;
+            // A quoted message's chips live inside the card, under its body.
+            const auto &att = item.msg.attachments[ai];
+            if (!att.files.empty()) {
+                const QPoint off = attachDocOffset(att);
+                const QRect  docRect(
+                    attX + off.x(),
+                    chipY + off.y(),
+                    item.attachDocs[ai].docWidth,
+                    item.attachDocs[ai].docHeight
+                );
+                for (int fi = 0; fi < (int)att.files.size(); ++fi)
+                    if (attachFileChipRect(fi, docRect).contains(viewportPos))
+                        return &att.files[fi];
+            }
+            chipY += attachTotalH(item, ai);
+        }
 
         const bool hasAbove0  = item.docHeight > 0 || !item.attachDocs.empty();
         const int  imgRegionH = layoutFileImages(item, textWidth, hasAbove0).height;
