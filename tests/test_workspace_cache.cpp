@@ -125,7 +125,6 @@ TEST_CASE_METHOD(CacheFixture, "loadMessages returns empty when no file", "[cach
 
 TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cache][msg]") {
     // Build a message that exercises every serialized sub-type.
-    // Note: File.prettyType and File.permalink are NOT cached — leave them empty.
     // Note: Message.replyCount is NOT cached — leave it at default 0.
     Message m;
     m.ts         = "123.456";
@@ -175,6 +174,37 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
     }};
 
     ConversationId conv{"C1"};
+    cache.saveMessages(conv, {m});
+    auto loaded = cache.loadMessages(conv);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0] == m);
+}
+
+TEST_CASE_METHOD(CacheFixture, "message unfurl survives a cache round trip", "[cache][msg]") {
+    // The card needs the quoted author/channel/time and the quoted message's
+    // files — dropping them on load would silently demote the card to a bare
+    // preview for every message read back from disk.
+    Message m;
+    m.ts          = "200.000";
+    m.author      = UserId{"U1"};
+    m.attachments = {Attachment{
+        .authorName    = "CityCity",
+        .text          = TextWithEntities{"Pre-booking error", {}},
+        .isMsgUnfurl   = true,
+        .authorIcon    = "https://a.slack-edge.com/img/bot_48.png",
+        .authorSubname = "citycity",
+        .channelId     = "C0401QDC20K",
+        .msgDate       = 1787145280873039LL,
+        .files         = {File{
+                    .name       = "file.txt.json",
+                    .mimeType   = "text/plain",
+                    .prettyType = "JSON",
+                    .permalink  = "https://team.slack.com/files/U1/F1/file.txt.json",
+                    .size       = 375,
+        }},
+    }};
+
+    ConversationId conv{"C3"};
     cache.saveMessages(conv, {m});
     auto loaded = cache.loadMessages(conv);
     REQUIRE(loaded.size() == 1);

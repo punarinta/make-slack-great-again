@@ -654,7 +654,22 @@ struct Attachment {
     std::vector<AttachmentField> fields;  // bold-titled key/value rows (classic bot format)
     std::vector<Block>           blocks;  // Block Kit blocks embedded in this attachment
     std::vector<BotButton>       buttons; // legacy "actions" buttons (classic bot format)
-    bool                         operator==(const Attachment &) const = default;
+
+    // --- Shared-message unfurl (Slack's `is_msg_unfurl`) ---
+    // A message quoted into another conversation by pasting its permalink. The
+    // fields above then describe the QUOTED message, not a link preview:
+    // authorName/authorIcon are its author, `blocks`/`text` its body, `files` its
+    // uploads. Official clients render it as a card with the author's avatar,
+    // name, time and "Posted in #channel" — not as a colored-bar preview — so the
+    // renderer needs to tell the two shapes apart.
+    bool              isMsgUnfurl = false;
+    QString           authorIcon;    // author_icon: the quoted author's avatar
+    QString           authorSubname; // author_subname: bot username; set only for app posts
+    QString           channelId;     // channel_id: where the quoted message lives
+    qint64            msgDate = 0;   // the quoted message's wall clock, epoch micros
+    std::vector<File> files;         // files attached to the quoted message
+
+    bool operator==(const Attachment &) const = default;
 
     // Preview source covering physW physical pixels: the thumbnail when it is
     // large enough (or its size is unknown), the full image otherwise.

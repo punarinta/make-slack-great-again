@@ -447,7 +447,25 @@ private:
     // Attachment height helpers
     int
     attachImageH(const Attachment &att) const; // preview image height (includes kImgGap), 0 if none
-    int attachTotalH(const MessageItem &item, int ai) const; // docH + imageH
+    int attachTotalH(const MessageItem &item, int ai) const; // whole attachment box
+
+    // Layout of one attachment box. A shared-message unfurl is a card: the frame,
+    // the quoted author's header and its file chips are painted around a document
+    // that holds only the quoted body — so the document is inset and the box is
+    // taller than the document. Every other shape puts its document at the box's
+    // top-left. Paint, hit-testing and the height sum all go through these, so
+    // they cannot drift apart.
+    QPoint attachDocOffset(const Attachment &att) const;
+    int    attachDocWidth(const Attachment &att, int columnW) const;
+    // Height of the quoted message's file chips painted under the body (0 if none).
+    int    attachFilesH(const Attachment &att) const;
+    // Chip #fileIdx of a quoted message, laid out under `docRect` (the document's
+    // rect in the same coordinate space the caller wants the chip in).
+    QRect  attachFileChipRect(int fileIdx, const QRect &docRect) const;
+    // Height of a card's painted header (avatar beside the name/place lines).
+    int    unfurlHeaderH() const;
+    // Paint that header into `box`, reusing the message-row avatar/badge/fonts.
+    void   paintUnfurlHeader(QPainter &p, const Attachment &att, const QRect &box) const;
 
     // Returns pointer to the non-image File chip under viewportPos, or nullptr.
     const File *fileChipAt(const QPoint &viewportPos) const;
@@ -571,14 +589,17 @@ private:
     static constexpr int kThreadAvSize    = 24; // small rounded-square avatar size in reply bar
     static constexpr int kThreadAvGap     = 3;  // gap between consecutive avatars
     // Inline-thread expanded region
-    static constexpr int kInlineTopGap    = 8;   // gap between reply bar and first reply
-    static constexpr int kInlineLoadingH  = 28;  // height of the "Loading replies…" placeholder
-    static constexpr int kInlineFooterGap = 6;   // gap above the "Reply to thread" footer
-    static constexpr int kInlineFooterH   = 24;  // height of the "Reply to thread" footer row
-    static constexpr int kInlineBottomGap = 6;   // gap below the footer
-    static constexpr int kAttachGap       = 4;   // gap above each attachment
-    static constexpr int kAttachBarW      = 3;   // width of attachment color bar
-    static constexpr int kAttachBarGap    = 8;   // gap between bar and attachment text
+    static constexpr int kInlineTopGap    = 8;  // gap between reply bar and first reply
+    static constexpr int kInlineLoadingH  = 28; // height of the "Loading replies…" placeholder
+    static constexpr int kInlineFooterGap = 6;  // gap above the "Reply to thread" footer
+    static constexpr int kInlineFooterH   = 24; // height of the "Reply to thread" footer row
+    static constexpr int kInlineBottomGap = 6;  // gap below the footer
+    static constexpr int kAttachGap       = 4;  // gap above each attachment
+    static constexpr int kAttachBarW      = 3;  // width of attachment color bar
+    static constexpr int kAttachBarGap    = 8;  // gap between bar and attachment text
+    // Shared-message unfurl card: gap between its painted author header and the
+    // quoted body document.
+    static constexpr int kUnfurlHdrGap    = 6;
     static constexpr int kImgMaxW         = 400; // max inline image width
     static constexpr int kImgMaxH         = 300; // max inline image height
     static constexpr int kImgGap          = 6;   // gap above each inline image
@@ -731,11 +752,10 @@ private:
     std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse
     TableHit            _hoveredTable;               // data table under the mouse (row -1 = none)
 
-    // Header labels shaped once on first paint (a language switch needs an app
-    // restart, so the strings are constants for the run). Members, not
-    // paint-path statics — those must never hold tr() results.
-    mutable QStaticText _stEdited, _stApp, _stExt;
-    mutable int         _appBadgeW = 0, _extBadgeW = 0; // horizontalAdvance of APP / EXT
+    // "(edited)" shaped once on first paint (a language switch needs an app
+    // restart, so the string is a constant for the run). A member, not a
+    // paint-path static — those must never hold tr() results.
+    mutable QStaticText _stEdited;
 
     // Client-side dismissed link previews: key is ts + "/" + attachIndex.
     QSet<QString> _dismissedAttachments;
@@ -743,6 +763,10 @@ private:
     // Image blocks the user collapsed via their "GIF ▾" title line.
     // Key: ts [+ "/a" + attachIndex] + "/b" + blockIndex (see GifRenderContext).
     QSet<QString> _collapsedGifs;
+
+    // Shared-message unfurls the user expanded past their preview cut, via the
+    // card's "Show more". Key: ts + "/a" + attachIndex.
+    QSet<QString> _expandedUnfurls;
 
     // Animated image players by url — ImageCache-owned for public URLs,
     // widget-owned (parented to this) for auth-downloaded files.

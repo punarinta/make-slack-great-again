@@ -61,6 +61,10 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session);
 struct GifRenderContext {
     QString              keyPrefix;           // message ts, + "/a<idx>" inside attachment docs
     const QSet<QString> *collapsed = nullptr; // keys of user-collapsed images
+    // Keys of shared-message unfurls the user expanded past their preview cut
+    // (opposite default to `collapsed`: an unfurl body starts truncated). Null in
+    // hosts that can't toggle — those render the preview with no "Show more".
+    const QSet<QString> *expanded  = nullptr;
 };
 
 // Take Message::date (epoch microseconds), not a ts string — display reads the
@@ -173,7 +177,30 @@ bool attachIsImageOnly(const Attachment &att);
 // messages arrive as such an attachment). Official clients draw those without
 // the colored quote bar / indent, and they are message content — not a link
 // preview — so they get no dismiss "×" either.
-bool    attachIsTableOnly(const Attachment &att);
+bool attachIsTableOnly(const Attachment &att);
+
+// True when the attachment paints without the colored quote bar and without its
+// indent: image-only, table-only, and shared-message unfurls (which draw their
+// own bordered card instead). Paint, hit-testing and selection all key on this,
+// so they stay in sync.
+bool attachIsBarless(const Attachment &att);
+
+// Padding between a shared-message unfurl card's border and its content. Only
+// the quoted BODY is a document; the frame, the author header and the file chips
+// are painted by MessageListWidget with the same painters message rows use.
+inline constexpr int kUnfurlCardPad      = 10;
+inline constexpr int kUnfurlCardRadius   = 8;
+// The quoted body renders capped at this much text, with the rest behind "Show
+// more" — as in the official client, and because a quoted bot post can run to
+// hundreds of lines inside somebody else's message.
+inline constexpr int kUnfurlPreviewChars = 400;
+inline constexpr int kUnfurlPreviewLines = 6;
+
+// Where a conversation is, as shown to the user: "#general", the peer's name for
+// a DM, "group message" for an MPDM, and nothing when it isn't one this
+// workspace can see. Cache-only, so it's safe on a paint path.
+QString convPlaceLabel(const QString &convId, const Session *session);
+
 QColor  fileTypeColor(const File &f);
 QString fileIconLabel(const File &f);
 QString formatFileSize(qint64 bytes);
@@ -213,6 +240,23 @@ inline const QString kGifToggleAnchorPrefix = QStringLiteral("msga://gif/");
 inline QString gifKeyFromAnchor(const QString &href) {
     return href.startsWith(kGifToggleAnchorPrefix) ? href.mid(kGifToggleAnchorPrefix.size())
                                                    : QString();
+}
+
+// A shared-message unfurl's "Show more" / "Show less" line is an anchor with this
+// scheme; clicking it toggles the expand key that follows the prefix (the key is
+// the attachment's own "<ts>/a<idx>").
+inline const QString kUnfurlToggleAnchorPrefix = QStringLiteral("msga://unfurl/");
+
+// Returns the expand key when href is an unfurl "Show more" anchor, else "".
+inline QString unfurlKeyFromAnchor(const QString &href) {
+    return href.startsWith(kUnfurlToggleAnchorPrefix) ? href.mid(kUnfurlToggleAnchorPrefix.size())
+                                                      : QString();
+}
+
+// True for the anchors that toggle inline state instead of navigating anywhere:
+// they get no link underline on hover and no "Copy link" context menu.
+inline bool isToggleAnchor(const QString &href) {
+    return href.startsWith(kGifToggleAnchorPrefix) || href.startsWith(kUnfurlToggleAnchorPrefix);
 }
 
 // An EntityType::MessageLink renders as a chip rather than a raw URL (the

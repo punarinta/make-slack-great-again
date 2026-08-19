@@ -981,9 +981,11 @@ TEST_CASE("toBlock rich_text message_mention becomes a message link", "[mappers]
         }]
     })"));
     REQUIRE(b.text.entities.size() == 2); // the link, inside the quote
-    const auto *link = &b.text.entities[0];
-    if (link->type != EntityType::MessageLink)
-        link = &b.text.entities[1];
+    // The quote wraps the link over the SAME range, so containment can only be
+    // read from the order: the wrapping entity must come first, or the renderer
+    // treats the quote as the link's child and drops the quote bar.
+    CHECK(b.text.entities[0].type == EntityType::Blockquote);
+    const auto *link = &b.text.entities[1];
     REQUIRE(link->type == EntityType::MessageLink);
     const auto ref = SlackLinks::refFromToken(link->data);
     CHECK(ref.conv == "C6HQE8G0Z");
@@ -1156,6 +1158,42 @@ TEST_CASE("toAttachment all fields", "[mappers][attachment]") {
     CHECK(a.imageUrl == "https://img.example.com/img.png");
     CHECK(a.thumbUrl == "https://img.example.com/thumb.png");
     CHECK(a.footer == "Posted via App");
+}
+
+TEST_CASE("toAttachment reads a shared-message unfurl", "[mappers][attachment]") {
+    // Pasting a permalink makes Slack attach the QUOTED message: its author,
+    // channel, ts, blocks and uploads. `ts` here is the quoted message's, not the
+    // quoting one's, and drives the card's time.
+    auto a = JsonMappers::toAttachment(obj(R"({
+        "fallback": "[August 19th, 2026 6:14 AM] citycity: Pre-booking error",
+        "is_msg_unfurl": true,
+        "ts": "1787145280.873039",
+        "author_id": "U07EUPRE28J",
+        "author_name": "CityCity",
+        "author_subname": "citycity",
+        "author_icon": "https://a.slack-edge.com/img/bot_48.png",
+        "channel_id": "C0401QDC20K",
+        "text": "Pre-booking error",
+        "footer": "Slack Conversation",
+        "files": [{"id": "F1", "name": "file.txt.json", "mimetype": "text/plain",
+                   "pretty_type": "JSON", "size": 375,
+                   "permalink": "https://team.slack.com/files/U1/F1/file.txt.json"}]
+    })"));
+    CHECK(a.isMsgUnfurl);
+    CHECK(a.authorName == "CityCity");
+    CHECK(a.authorSubname == "citycity");
+    CHECK(a.authorIcon == "https://a.slack-edge.com/img/bot_48.png");
+    CHECK(a.channelId == "C0401QDC20K");
+    CHECK(a.msgDate == 1787145280873039LL);
+    REQUIRE(a.files.size() == 1);
+    CHECK(a.files[0].name == "file.txt.json");
+    CHECK(a.files[0].prettyType == "JSON");
+
+    // An ordinary link unfurl carries neither flag nor files.
+    auto plain = JsonMappers::toAttachment(obj(R"({"title": "Link", "ts": "1787145280.873039"})"));
+    CHECK(!plain.isMsgUnfurl);
+    CHECK(plain.msgDate == 0);
+    CHECK(plain.files.empty());
 }
 
 TEST_CASE("toAttachment image and thumb dimensions", "[mappers][attachment]") {

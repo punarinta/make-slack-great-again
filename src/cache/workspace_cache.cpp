@@ -76,7 +76,9 @@ static QJsonObject toJson(const File &f) {
     o["id"] = f.id;
     o["na"] = f.name;
     o["mi"] = f.mimeType;
+    o["pt"] = f.prettyType;
     o["up"] = f.urlPrivate;
+    o["pl"] = f.permalink;
     o["th"] = f.thumbUrl;
     o["iw"] = f.imageWidth;
     o["ih"] = f.imageHeight;
@@ -100,7 +102,9 @@ static File fileFromJson(const QJsonObject &o) {
     f.id          = o["id"].toString();
     f.name        = o["na"].toString();
     f.mimeType    = o["mi"].toString();
+    f.prettyType  = o["pt"].toString();
     f.urlPrivate  = o["up"].toString();
+    f.permalink   = o["pl"].toString();
     f.thumbUrl    = o["th"].toString();
     f.imageWidth  = o["iw"].toInt();
     f.imageHeight = o["ih"].toInt();
@@ -197,6 +201,19 @@ static QJsonObject toJson(const Attachment &a) {
     }
     if (!a.buttons.empty())
         o["bt"] = buttonsToJson(a.buttons);
+    if (a.isMsgUnfurl) {
+        o["mu"] = true;
+        o["ai"] = a.authorIcon;
+        o["as"] = a.authorSubname;
+        o["ci"] = a.channelId;
+        o["md"] = QString::number(a.msgDate); // epoch micros; string-encoded like Message::date
+        if (!a.files.empty()) {
+            QJsonArray arr;
+            for (const auto &f : a.files)
+                arr.append(toJson(f));
+            o["fi"] = arr;
+        }
+    }
     return o;
 }
 static Attachment attachmentFromJson(const QJsonObject &o) {
@@ -217,7 +234,16 @@ static Attachment attachmentFromJson(const QJsonObject &o) {
     a.thumbHeight = o["tg"].toInt();
     for (const auto &v : o["bl"].toArray())
         a.blocks.push_back(blockFromJson(v.toObject()));
-    a.buttons = buttonsFromJson(o["bt"].toArray());
+    a.buttons     = buttonsFromJson(o["bt"].toArray());
+    a.isMsgUnfurl = o["mu"].toBool();
+    if (a.isMsgUnfurl) {
+        a.authorIcon    = o["ai"].toString();
+        a.authorSubname = o["as"].toString();
+        a.channelId     = o["ci"].toString();
+        a.msgDate       = o["md"].toString().toLongLong();
+        for (const auto &v : o["fi"].toArray())
+            a.files.push_back(fileFromJson(v.toObject()));
+    }
     return a;
 }
 

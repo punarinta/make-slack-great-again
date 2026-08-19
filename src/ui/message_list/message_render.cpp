@@ -23,8 +23,10 @@
 #include <QSet>
 #include <QTextBoundaryFinder>
 #include <QTextBrowser>
+#include <QTextDocument>
 #include <QTextFrame>
 #include <QTextTable>
+#include <limits>
 #include <optional>
 
 namespace MsgRender {
@@ -162,6 +164,14 @@ QStringList collectEmojiImageUrls(const Message &msg, const Session *session) {
             addFrom(b.text);
             addBlockImage(b);
         }
+        // A message unfurl's card paints the quoted author's avatar. It's not an
+        // <img> in the document, but it's fetched from the same cache — listing it
+        // here is what kicks off the download and repaints the row once it
+        // arrives, exactly like a custom emoji.
+        if (att.isMsgUnfurl && !att.authorIcon.isEmpty() && !seen.contains(att.authorIcon)) {
+            seen.insert(att.authorIcon);
+            out << att.authorIcon;
+        }
     }
     return out;
 }
@@ -251,10 +261,8 @@ resolveChannelImpl(const QString &channelId, const QString &fallback, const Sess
     return fallback;
 }
 
-// Where the linked message lives: "#general", the peer's name for a DM, or
-// nothing when the conversation isn't one this workspace can see.
-static QString messageLinkPlace(const SlackLinks::MessageRef &ref, const Session *session) {
-    const Conversation *c = session ? session->findConversation(ConversationId{ref.conv}) : nullptr;
+QString convPlaceLabel(const QString &convId, const Session *session) {
+    const Conversation *c = session ? session->findConversation(ConversationId{convId}) : nullptr;
     if (!c)
         return {};
     if (c->kind == ConvKind::Im && c->dmUser) {
@@ -270,7 +278,7 @@ static QString messageLinkPlace(const SlackLinks::MessageRef &ref, const Session
 }
 
 QString messageLinkLabel(const SlackLinks::MessageRef &ref, const Session *session) {
-    const QString place = messageLinkPlace(ref, session);
+    const QString place = convPlaceLabel(ref.conv, session);
     // The author is only known when Slack sent the link as a rich_text
     // `message_mention`; a plain permalink URL carries no author, and finding
     // one would mean fetching the linked message.
@@ -1388,9 +1396,89 @@ static QString emojiOnlyHtml(const TextWithEntities &twe, const Session *session
     return out;
 }
 
+// ── Shared-message unfurl card ────────────────────────────────────────────────
+
+// Index to cut `text` at so it stays inside the char/line budget; -1 when it fits.
+static int previewCut(const QString &text, int maxChars, int maxLines) {
+    int lines = 1;
+    for (int i = 0; i < text.size(); ++i) {
+        if (i >= maxChars)
+            return i;
+        if (text[i] == QLatin1Char('\n') && ++lines > maxLines)
+            return i;
+    }
+    return -1;
+}
+
+// The quoted message's body — the only part of a message-unfurl card that is a
+// document. Its chrome (frame, author header, file chips) is painted by
+// MessageListWidget with the same painters a real message row uses, so the card
+// can't drift from the rest of the app; this only has to produce the text.
+static QString
+msgUnfurlHtml(const Attachment &att, const Session *session, const GifRenderContext *gif) {
+    QString    html;
+    const bool expanded = gif && gif->expanded && gif->expanded->contains(gif->keyPrefix);
+
+    // The quoted message's blocks (its real content) or, lacking those, the
+    // unfurl's flat text. Truncation runs across blocks on one shared budget.
+    int  chars     = expanded ? std::numeric_limits<int>::max() : kUnfurlPreviewChars;
+    int  lines     = expanded ? std::numeric_limits<int>::max() : kUnfurlPreviewLines;
+    bool truncated = false;
+
+    auto addText = [&](const TextWithEntities &twe) {
+        const int cut = previewCut(twe.text, chars, lines);
+        if (cut < 0) {
+            html += wrapParagraph(toHtml(twe, session), "margin:2px 0");
+            chars -= (int)twe.text.size();
+            lines -= (int)twe.text.count(QLatin1Char('\n'));
+            return;
+        }
+        truncated = true;
+        if (cut > 0)
+            html += wrapParagraph(
+                toHtml(sliceEntities(twe, 0, cut), session) + "\xE2\x80\xA6", "margin:2px 0"
+            );
+        chars = 0;
+        lines = 0;
+    };
+
+    if (!att.blocks.empty()) {
+        for (int bi = 0; bi < (int)att.blocks.size() && !truncated; ++bi) {
+            const Block &blk       = att.blocks[bi];
+            // Section/rich_text/header text goes through the budget; images,
+            // tables and button rows render whole (they're one visual unit).
+            const bool   plainText = blk.typeStr != QLatin1String("image") &&
+                                   blk.typeStr != QLatin1String("table") && blk.buttons.empty() &&
+                                   !blk.text.text.isEmpty();
+            if (plainText)
+                addText(blk.text);
+            else
+                blockHtml(html, blk, session, gif, bi);
+        }
+    } else if (!att.text.text.isEmpty()) {
+        addText(att.text);
+    }
+
+    // The toggle needs a host that owns the expand state; without one (preview
+    // dialogs) the card just shows its preview.
+    if ((truncated || expanded) && gif && gif->expanded)
+        html += "<p style='margin:2px 0 0'><a href='" +
+                (kUnfurlToggleAnchorPrefix + gif->keyPrefix).toHtmlEscaped() +
+                "' style='color:" + Th::qss(Th::c().text.link) +
+                ";font-weight:bold;text-decoration:none'>" +
+                (expanded ? QCoreApplication::translate("MsgRender", "Show less")
+                          : QCoreApplication::translate("MsgRender", "Show more")) +
+                "</a></p>";
+    return html;
+}
+
 // Attachment text HTML (used inside the colored bar area).
 QString
 buildAttachHtml(const Attachment &att, const Session *session, const GifRenderContext *gif) {
+    // A quoted Slack message is a card of its own, not a link preview.
+    if (att.isMsgUnfurl)
+        return msgUnfurlHtml(att, session, gif);
+
     QString html;
     if (!att.pretext.isEmpty()) // pretext is mrkdwn, like text
         html += wrapParagraph(toHtml(MrkdwnParser::parse(att.pretext), session), "margin:0 0 2px");
@@ -1485,6 +1573,10 @@ bool attachIsTableOnly(const Attachment &att) {
                                     !b.text.text.isEmpty() || !b.buttons.empty()))
             return false;
     return true;
+}
+
+bool attachIsBarless(const Attachment &att) {
+    return att.isMsgUnfurl || attachIsImageOnly(att) || attachIsTableOnly(att);
 }
 
 QColor fileTypeColor(const File &f) {
