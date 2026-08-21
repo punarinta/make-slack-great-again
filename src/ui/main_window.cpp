@@ -957,37 +957,9 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         _messageList,
         &MessageListWidget::forwardMessageRequested,
         this,
-        [this](const Message &msg) {
-            if (!_session)
-                return;
-            auto *dlg = new ForwardDialog(msg, _session, this);
-            dlg->setAttribute(Qt::WA_DeleteOnClose);
-            connect(dlg, &AppDialog::accepted, this, [this, dlg, msg] {
-                const ConversationId target = dlg->targetConv();
-                if (target.value.isEmpty())
-                    return;
-                // Email (Model-D): forwarding to a channel labels the original
-                // message rather than re-posting its text (imap-backend-plan §3).
-                const Conversation *tc        = _session->findConversation(target);
-                const bool          isChannel = tc && (tc->kind == ConvKind::PublicChannel ||
-                                              tc->kind == ConvKind::PrivateChannel);
-                if (isChannel && _session->channelsAreLabels()) {
-                    _session->labelMessage(
-                        _currentConvId, msg.ts, target, [this](bool ok, QString) {
-                            if (!ok)
-                                showNetworkError(tr("Couldn't apply the label."));
-                        }
-                    );
-                    return;
-                }
-                const QString comment = dlg->comment();
-                const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
-                const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
-                _session->sendMessage(target, full);
-            });
-            dlg->open();
-        }
+        [this](const Message &msg) { forwardMessage(_currentConvId, msg); }
     );
+    connect(_threadPanel, &ThreadPanel::forwardMessageRequested, this, &MainWindow::forwardMessage);
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
         if (_session && !_currentConvId.value.isEmpty())
@@ -2755,6 +2727,35 @@ void MainWindow::handleNotifToken(const QString &token) {
     }
     if (const auto t = decodeNotifToken(token))
         openNotifTarget(t->teamId, t->conv, t->threadRoot, t->msgTs);
+}
+
+void MainWindow::forwardMessage(const ConversationId &sourceConv, const Message &msg) {
+    if (!_session)
+        return;
+    auto *dlg = new ForwardDialog(msg, _session, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dlg, &AppDialog::accepted, this, [this, dlg, msg, sourceConv] {
+        const ConversationId target = dlg->targetConv();
+        if (target.value.isEmpty())
+            return;
+        // Email (Model-D): forwarding to a channel labels the original
+        // message rather than re-posting its text (imap-backend-plan §3).
+        const Conversation *tc = _session->findConversation(target);
+        const bool          isChannel =
+            tc && (tc->kind == ConvKind::PublicChannel || tc->kind == ConvKind::PrivateChannel);
+        if (isChannel && _session->channelsAreLabels()) {
+            _session->labelMessage(sourceConv, msg.ts, target, [this](bool ok, QString) {
+                if (!ok)
+                    showNetworkError(tr("Couldn't apply the label."));
+            });
+            return;
+        }
+        const QString comment = dlg->comment();
+        const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+        const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
+        _session->sendMessage(target, full);
+    });
+    dlg->open();
 }
 
 void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {

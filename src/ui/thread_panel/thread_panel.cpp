@@ -110,6 +110,10 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     connect(
         _msgList, &MessageListWidget::messageLinkRequested, this, &ThreadPanel::messageLinkRequested
     );
+    // "Forward message" has no local handling — the host owns the picker dialog.
+    connect(_msgList, &MessageListWidget::forwardMessageRequested, this, [this](const Message &m) {
+        emit forwardMessageRequested(_conv, m);
+    });
 
     _composer = new ComposerWidget(this);
     _composer->setEnabled(false);
@@ -146,6 +150,17 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
         const QString text = msg->rawText.isEmpty() ? msg->text.text : msg->rawText;
         _composer->enterEditMode(msg->ts, text, msg->files);
     });
+    // The other route into edit mode: "Edit message" from a reply's context
+    // menu. editLastRequested (↑ in an empty editor) only ever reaches the
+    // newest own message, so without this wire every older reply is uneditable.
+    connect(
+        _msgList,
+        &MessageListWidget::editMessageRequested,
+        this,
+        [this](const Ts &ts, const QString &rawText, const std::vector<File> &files) {
+            _composer->enterEditMode(ts, rawText, files);
+        }
+    );
     connect(_composer, &ComposerWidget::typingStarted, this, [this] {
         if (_session && !_conv.value.isEmpty())
             _session->sendTyping(_conv);
@@ -159,6 +174,11 @@ void ThreadPanel::setSession(Session *session) {
 }
 
 void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
+    // A pending edit belongs to the thread being left: its ts would be applied
+    // to the new thread's conversation on the next Enter. Re-opening the same
+    // thread (a second click on the same reply bar) leaves the edit intact.
+    if (_conv != conv || _rootTs != rootTs)
+        _composer->exitEditMode();
     _conv   = conv;
     _rootTs = rootTs;
     _msgList->openThread(conv, rootTs);
@@ -174,6 +194,7 @@ void ThreadPanel::close() {
     _conv   = {};
     _rootTs = {};
     _msgList->clear();
+    _composer->exitEditMode();
     _composer->setEnabled(false);
 }
 
