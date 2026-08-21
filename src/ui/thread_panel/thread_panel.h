@@ -49,6 +49,10 @@ signals:
     void aiSettingsRequested();
     // Forwarded from the embedded message list (message-link chip click).
     void messageLinkRequested(ConversationId conv, Ts ts, Ts threadTs);
+    // Forwarded from the embedded message list ("Forward message"). Carries the
+    // conversation the reply lives in — the host can't assume it is the one on
+    // screen, since a thread panel outlives a navigation away from its channel.
+    void forwardMessageRequested(ConversationId conv, Message msg);
 
 private:
     void applyTheme();

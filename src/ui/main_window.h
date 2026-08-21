@@ -188,6 +188,10 @@ private:
     // Follow a message-link chip: open the conversation (and, for a reply, the
     // thread it lives in) and move the focus to that message.
     void openMessageTarget(const ConversationId &conv, const Ts &ts, const Ts &threadRoot);
+    // "Forward message": ask for a target, then re-post (or, on a label-based
+    // backend, label) the message. `sourceConv` is where the message lives —
+    // the thread panel can be showing a different conversation than the chat.
+    void forwardMessage(const ConversationId &sourceConv, const Message &msg);
     void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 //
-// Regression tests for what ThreadPanel wires up between its composer and the
-// session.
+// Regression tests for what ThreadPanel wires up between its embedded message
+// list, its composer, and the session.
 //
 // The bug these exist for: attaching an image to a thread reply silently did
 // nothing — no message, no error, and the composer emptied so it looked sent.
@@ -23,8 +23,10 @@
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QKeyEvent>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTextEdit>
 
 #include "backend/backend.h"
 #include "backend/domain.h"
@@ -93,7 +95,16 @@ struct StubBackend : Backend {
     void sendMessage(ConversationId c, OutgoingMessage m) override {
         sendCalls.push_back({c, std::move(m)});
     }
-    void editMessage(ConversationId, Ts, TextWithEntities) override {}
+    struct EditCall {
+        ConversationId   conv;
+        Ts               ts;
+        TextWithEntities text;
+    };
+    std::vector<EditCall> editCalls;
+
+    void editMessage(ConversationId c, Ts ts, TextWithEntities t) override {
+        editCalls.push_back({c, ts, std::move(t)});
+    }
     void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
@@ -402,4 +413,117 @@ TEST_CASE("an upload with no thread open is dropped, not sent to the channel", "
     emit composerOf(panel)->uploadRequested({f.filePath}, QStringLiteral("stray"));
 
     CHECK(f.stub->uploadCalls.empty());
+}
+
+// ── Editing a reply from the thread panel ─────────────────────────────────────
+//
+// The bug (issue #44): in a thread, "Edit message" from the context menu did
+// nothing at all, and only the newest own reply could be edited — by pressing ↑
+// in an empty composer. Two separate wires reach the composer's edit mode:
+// editLastRequested (the ↑ key) and the list's editMessageRequested (the menu
+// item, and the only way to reach anything but the last message). ThreadPanel
+// connected the first and not the second, so the menu item emitted into
+// nothing: no edit mode, no request, no error.
+
+TEST_CASE("Edit message on a thread reply loads it into the thread composer", "[thread][edit]") {
+    Fixture f;
+    f.stub->_threadPage = MessagePage{
+        {rootInHeadPage("100.700", 2),
+         replyMsg("100.600", "older reply", "U1"),
+         replyMsg("100.700", "newest reply", "U1")},
+        {}
+    };
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    // What the context menu emits for an older reply — not the last one, which
+    // is the only message the ↑ path can ever reach.
+    emit listOf(panel)->editMessageRequested(QStringLiteral("100.600"), "older reply", {});
+
+    // Before the fix the composer stayed empty: the signal had no receiver.
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("older reply"));
+}
+
+TEST_CASE("editing an older thread reply reaches the backend", "[thread][edit]") {
+    // The whole chain, end to end: menu → composer edit mode → Enter → API,
+    // carrying the ts of the message the user actually picked. Enter only emits
+    // editRequested while the composer is in edit mode, so a dead menu wire
+    // makes this post a brand-new reply instead of updating anything.
+    Fixture f;
+    f.stub->_threadPage = MessagePage{
+        {rootInHeadPage("100.700", 2),
+         replyMsg("100.600", "older reply", "U1"),
+         replyMsg("100.700", "newest reply", "U1")},
+        {}
+    };
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    emit listOf(panel)->editMessageRequested(QStringLiteral("100.600"), "older reply", {});
+
+    auto *ed = composerOf(panel)->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(ed != nullptr);
+    ed->setPlainText(QStringLiteral("fixed it"));
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(ed, &enter);
+
+    REQUIRE(f.stub->editCalls.size() == 1);
+    CHECK(f.stub->editCalls[0].conv == kConv.id);
+    CHECK(f.stub->editCalls[0].ts == QStringLiteral("100.600"));
+    CHECK(f.stub->editCalls[0].text.text == QStringLiteral("fixed it"));
+    // Not a new reply: an unwired menu item leaves the composer in plain send
+    // mode, where the same Enter posts "fixed it" as a fresh message.
+    CHECK(f.stub->sendCalls.empty());
+}
+
+TEST_CASE("the ↑ path still edits the newest own reply", "[thread][edit]") {
+    // The control: the one edit route that did work must keep working.
+    Fixture f;
+    f.stub->_threadPage = MessagePage{
+        {rootInHeadPage("100.700", 2),
+         replyMsg("100.600", "older reply", "U1"),
+         replyMsg("100.700", "newest reply", "U1")},
+        {}
+    };
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    emit composerOf(panel)->editLastRequested();
+
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("newest reply"));
+}
+
+TEST_CASE("Forward message on a thread reply reaches the host", "[thread][forward]") {
+    // Same dead-wire class: the list's forward signal (context menu, hover
+    // toolbar, and the image viewer) had no receiver in the panel either, so
+    // forwarding from a thread silently did nothing.
+    Fixture f;
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.600", 1), replyMsg("100.600", "older reply", "U1")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    std::vector<std::pair<ConversationId, Message>> forwarded;
+    QObject::connect(
+        &panel,
+        &ThreadPanel::forwardMessageRequested,
+        &panel,
+        [&](const ConversationId &c, const Message &m) { forwarded.emplace_back(c, m); }
+    );
+
+    emit listOf(panel)->forwardMessageRequested(replyMsg("100.600", "older reply", "U1"));
+
+    REQUIRE(forwarded.size() == 1);
+    // The host needs the source conversation: the label path (email) reads the
+    // message from it, and the panel is not always on the conversation shown.
+    CHECK(forwarded[0].first == kConv.id);
+    CHECK(forwarded[0].second.ts == QStringLiteral("100.600"));
 }
