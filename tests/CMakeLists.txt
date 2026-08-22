@@ -560,7 +560,8 @@ add_msga_qt_test(test_browser_login
     test_browser_login.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
 )
-target_link_libraries(test_browser_login PRIVATE Qt6::Network Qt6::WebSockets)
+# Qt6::Gui: browser_login sizes the sign-in window against the screen work area.
+target_link_libraries(test_browser_login PRIVATE Qt6::Gui Qt6::Network Qt6::WebSockets)
 set_target_properties(test_browser_login PROPERTIES AUTOMOC ON)
 
 # SessionImportDialog render/smoke harness (screenshot + card-height regression).

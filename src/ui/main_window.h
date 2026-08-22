@@ -45,6 +45,7 @@ class UpdateChecker;
 class DesktopNotifier;
 
 class QCloseEvent;
+class QShowEvent;
 
 namespace auth {
 class AuthStrategy;
@@ -207,11 +208,19 @@ private:
     // only take effect on a fresh start). main() re-execs on kRestartExitCode.
     void restartApp();
 
+    // Pull the window inside the work area of the screen it sits on. Shrink-only:
+    // a display roomier than the window changes nothing at all (size or position).
+    void fitToScreen();
+    // Tray rescue for a window that has ended up unreachable: back to the default
+    // size, fitted to the current screen, and centred on it.
+    void resetWindowGeometry();
+
     // Event handlers
     bool eventFilter(QObject *o, QEvent *e) override;
     void changeEvent(QEvent *e) override;
     void closeEvent(QCloseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
+    void showEvent(QShowEvent *e) override;
     void updateRoundedMask();
     void populateConversations(const std::vector<Conversation> &convs);
     void openConversation(int row);
@@ -322,4 +331,8 @@ private:
     QPoint    _resizeDragStart;
     QRect     _resizeWinAtDrag;
     bool      _resizeHoverCursor = false;
+
+    // Screen-fit wiring (QWindow::screenChanged) is only possible once the
+    // window handle exists, i.e. from the first showEvent onwards.
+    bool _screenFitWired = false;
 };
