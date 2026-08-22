@@ -10,6 +10,7 @@ class QFrame;
 class QHBoxLayout;
 class QLabel;
 class QPushButton;
+class QScrollArea;
 class QVBoxLayout;
 class IconButton;
 
@@ -44,7 +45,15 @@ class IconButton;
 class AppDialog : public QWidget {
     Q_OBJECT
 public:
-    explicit AppDialog(const QString &title, QWidget *parent = nullptr);
+    // Whether the card's content is wrapped in a scroll area (the default) so a
+    // card too tall for the window scrolls rather than clipping. Dialogs that
+    // already scroll their own body — and size the card around it — pass
+    // Disabled to avoid nesting one scroll area inside another.
+    enum class Scroll { Enabled, Disabled };
+
+    explicit AppDialog(
+        const QString &title, QWidget *parent = nullptr, Scroll scroll = Scroll::Enabled
+    );
 
     // Returns the VBox inside the card where subclasses add content.
     QVBoxLayout *contentLayout() const { return _contentLayout; }
@@ -86,7 +95,7 @@ signals:
 protected:
     enum class Chrome { Standard, Custom };
     // Custom-chrome ctor for subclasses that build their own header.
-    explicit AppDialog(QWidget *parent, Chrome chrome);
+    explicit AppDialog(QWidget *parent, Chrome chrome, Scroll scroll = Scroll::Enabled);
 
     void paintEvent(QPaintEvent *) override;
     void showEvent(QShowEvent *) override;
@@ -108,7 +117,7 @@ protected:
     QVBoxLayout *cardLayout() const { return _cardLayout; }
 
 private:
-    void buildCard(bool standardHeader, const QString &title);
+    void buildCard(bool standardHeader, const QString &title, Scroll scroll);
     // Re-cover the parent window's client rect and re-centre the card.
     void coverParent();
 
@@ -117,6 +126,11 @@ private:
     IconButton  *_closeBtn      = nullptr;
     QVBoxLayout *_cardLayout    = nullptr;
     QVBoxLayout *_contentLayout = nullptr;
+    // With Scroll::Enabled, contentLayout() lives on _contentHost inside _scroll,
+    // so a card the window is too short to show in full scrolls instead of
+    // clipping. Both stay null with Scroll::Disabled.
+    QScrollArea *_scroll        = nullptr;
+    QWidget     *_contentHost   = nullptr;
 
     QEventLoop *_loop   = nullptr;
     int         _result = QDialog::Rejected;

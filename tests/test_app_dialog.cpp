@@ -9,6 +9,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
+#include <QLabel>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include "ui/app_dialog/app_dialog.h"
@@ -24,11 +28,25 @@ int main(int argc, char **argv) {
 
 namespace {
 
-QWidget *makeHost() {
+QWidget *makeHost(int w = 1200, int h = 800) {
     auto *host = new QWidget;
-    host->resize(1200, 800);
+    host->resize(w, h);
     host->show();
     return host;
+}
+
+// A column of wrapped labels — content whose height the card has to measure.
+// Hidden ones model the guided-flow pattern: built up front, revealed later.
+QList<QLabel *> fillWithLines(AppDialog *dlg, int lines, bool hidden = false) {
+    QList<QLabel *> out;
+    for (int i = 0; i < lines; ++i) {
+        auto *l = new QLabel(QString("content line %1").arg(i));
+        l->setWordWrap(true);
+        l->setVisible(!hidden);
+        dlg->contentLayout()->addWidget(l);
+        out.append(l);
+    }
+    return out;
 }
 
 } // namespace
@@ -90,5 +108,70 @@ TEST_CASE("a dialog on another window is not reported") {
     CHECK(AppDialog::topmostVisible(other) == dlg);
     CHECK(AppDialog::topmostVisible(host) == nullptr);
     delete other;
+    delete host;
+}
+
+// ── Fitting a window too small for the card ──────────────────────────────────
+// The main window shrinks itself to fit small screens (issue #45), so a card can
+// now find itself in a window shorter or narrower than it wants to be.
+
+TEST_CASE("content taller than the window scrolls instead of being clipped") {
+    QWidget *host = makeHost(700, 420);
+    auto    *dlg  = new AppDialog("Tall", host);
+    fillWithLines(dlg, 40);
+    dlg->open();
+    QApplication::processEvents();
+
+    auto *card = dlg->findChild<QWidget *>("appDialogCard");
+    REQUIRE(card != nullptr);
+    CHECK(card->height() <= host->height());
+
+    auto *scroll = dlg->findChild<QScrollArea *>();
+    REQUIRE(scroll != nullptr);
+    // Everything below the fold is reachable rather than cut off.
+    CHECK(scroll->widget()->height() > scroll->viewport()->height());
+    CHECK(scroll->verticalScrollBar()->maximum() > 0);
+    delete host;
+}
+
+TEST_CASE("the card never grows wider than the window holding it") {
+    QWidget *host = makeHost(400, 600);
+    auto    *dlg  = new AppDialog("Narrow", host);
+    fillWithLines(dlg, 3);
+    dlg->open();
+    QApplication::processEvents();
+
+    auto *card = dlg->findChild<QWidget *>("appDialogCard");
+    REQUIRE(card != nullptr);
+    CHECK(card->width() <= host->width());
+    delete host;
+}
+
+TEST_CASE("a roomy window grows the card instead of scrolling it") {
+    QWidget *host = makeHost(1200, 800);
+    auto    *dlg  = new AppDialog("Roomy", host);
+    fillWithLines(dlg, 3);
+    const QList<QLabel *> hidden = fillWithLines(dlg, 15, /*hidden=*/true);
+    dlg->open();
+    QApplication::processEvents();
+
+    auto *card = dlg->findChild<QWidget *>("appDialogCard");
+    REQUIRE(card != nullptr);
+    const int shortH = card->height();
+
+    // Content revealed after the fact (the guided-flow pattern): the card must
+    // re-measure it. A scroll area does not pass its content's new size hint up
+    // to the card's layout on its own, so updateCard() has to invalidate it.
+    for (QLabel *l : hidden)
+        l->setVisible(true);
+    dlg->updateCard();
+    QApplication::processEvents();
+
+    CHECK(card->height() > shortH);
+    CHECK(card->height() <= host->height());
+    auto *scroll = dlg->findChild<QScrollArea *>();
+    REQUIRE(scroll != nullptr);
+    // Room to show it all → no scrolling.
+    CHECK(scroll->verticalScrollBar()->maximum() == 0);
     delete host;
 }

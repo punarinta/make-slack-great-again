@@ -18,6 +18,7 @@
 #include <QPainterPath>
 #include <QPointer>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QShortcut>
 #include <QVBoxLayout>
 
@@ -29,20 +30,43 @@ static constexpr int kCardPadH = 28; // left / right padding inside card
 static constexpr int kCardPadT = 24; // top padding
 static constexpr int kCardPadB = 24; // bottom padding
 
+// Scroll host for the card content. QScrollArea's own sizeHint is capped at
+// 36x24 character cells and it never forwards height-for-width, so the card
+// would size itself from a truncated, unwrapped guess — exactly the two things
+// updateCard() works hard to get right. Report the real content metrics instead;
+// the scrolling then only ever engages once updateCard() has had to clamp the
+// card to a window too short to show it whole.
+class CardScrollArea final : public QScrollArea {
+public:
+    explicit CardScrollArea(QWidget *parent) : QScrollArea(parent) {}
+
+    QSize sizeHint() const override {
+        if (const QWidget *w = widget())
+            return w->sizeHint();
+        return QScrollArea::sizeHint();
+    }
+    QSize minimumSizeHint() const override { return QSize(0, 0); }
+    bool  hasHeightForWidth() const override { return widget() && widget()->hasHeightForWidth(); }
+    int   heightForWidth(int w) const override {
+        return widget() ? widget()->heightForWidth(w) : QScrollArea::heightForWidth(w);
+    }
+};
+
 // Resolve the top-level window we should overlay (and parent ourselves to).
 static QWidget *overlayHost(QWidget *parent) {
     return parent ? parent->window() : nullptr;
 }
 
-AppDialog::AppDialog(const QString &title, QWidget *parent) : QWidget(overlayHost(parent)) {
-    buildCard(/*standardHeader=*/true, title);
+AppDialog::AppDialog(const QString &title, QWidget *parent, Scroll scroll)
+    : QWidget(overlayHost(parent)) {
+    buildCard(/*standardHeader=*/true, title, scroll);
 }
 
-AppDialog::AppDialog(QWidget *parent, Chrome chrome) : QWidget(overlayHost(parent)) {
-    buildCard(/*standardHeader=*/chrome == Chrome::Standard, QString());
+AppDialog::AppDialog(QWidget *parent, Chrome chrome, Scroll scroll) : QWidget(overlayHost(parent)) {
+    buildCard(/*standardHeader=*/chrome == Chrome::Standard, QString(), scroll);
 }
 
-void AppDialog::buildCard(bool standardHeader, const QString &title) {
+void AppDialog::buildCard(bool standardHeader, const QString &title, Scroll scroll) {
     // In-window child overlay: a free child of the host window, not in any
     // layout, manually sized to cover the whole window (see coverParent()).
     // WA_NoSystemBackground lets the semi-transparent backdrop blend over the
@@ -67,6 +91,39 @@ void AppDialog::buildCard(bool standardHeader, const QString &title) {
     const auto &sp = Th::c().spacing;
     _cardLayout->setSpacing(0);
 
+    // Unless the subclass scrolls its own body (Scroll::Disabled), content goes
+    // inside a scroll area so a card the window is too short to show whole
+    // scrolls instead of clipping its bottom — a real case now that the main
+    // window shrinks itself to fit small screens. widgetResizable keeps the
+    // no-overflow case pixel-identical: the host is stretched to the viewport,
+    // so expanding children (lists, stretches) still fill the card.
+    const auto buildContent = [this, scroll](int spacing) {
+        if (scroll == Scroll::Disabled) {
+            _contentLayout = new QVBoxLayout;
+            _contentLayout->setContentsMargins(0, 0, 0, 0);
+            _contentLayout->setSpacing(spacing);
+            _cardLayout->addLayout(_contentLayout);
+            return;
+        }
+        _contentHost   = new QWidget;
+        _contentLayout = new QVBoxLayout(_contentHost);
+        _contentLayout->setContentsMargins(0, 0, 0, 0);
+        _contentLayout->setSpacing(spacing);
+
+        _scroll = new CardScrollArea(_card);
+        _scroll->setFrameShape(QFrame::NoFrame);
+        _scroll->setWidgetResizable(true);
+        _scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        _scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        // Don't join the tab chain — the dialog's own controls own it. Wheel and
+        // focus-follows scrolling work regardless.
+        _scroll->setFocusPolicy(Qt::NoFocus);
+        _scroll->viewport()->setAutoFillBackground(false);
+        _scroll->setWidget(_contentHost);
+        _contentHost->installEventFilter(this);
+        _cardLayout->addWidget(_scroll, 1);
+    };
+
     if (standardHeader) {
         _cardLayout->setContentsMargins(kCardPadH, kCardPadT, kCardPadH, kCardPadB);
 
@@ -90,17 +147,11 @@ void AppDialog::buildCard(bool standardHeader, const QString &title) {
 
         connect(_closeBtn, &QPushButton::clicked, this, &AppDialog::reject);
 
-        _contentLayout = new QVBoxLayout;
-        _contentLayout->setContentsMargins(0, 0, 0, 0);
-        _contentLayout->setSpacing(sp.lg);
-        _cardLayout->addLayout(_contentLayout);
+        buildContent(sp.lg);
     } else {
         // Custom chrome: no header, content fills the card edge-to-edge.
         _cardLayout->setContentsMargins(0, 0, 0, 0);
-        _contentLayout = new QVBoxLayout;
-        _contentLayout->setContentsMargins(0, 0, 0, 0);
-        _contentLayout->setSpacing(0);
-        _cardLayout->addLayout(_contentLayout);
+        buildContent(0);
     }
 
     // Escape closes the dialog from anywhere inside it. keyPressEvent only sees
@@ -205,13 +256,27 @@ void AppDialog::applyTheme() {
                              .arg(Th::qss(Th::c().surface.raised)));
     if (_titleLabel)
         _titleLabel->setStyleSheet(QString("color: %1;").arg(Th::qss(Th::c().text.primary)));
+    if (_scroll) {
+        // Transparent all the way down so the card's rounded fill shows through
+        // (the viewport is its own widget, hence the descendant selector).
+        _scroll->setStyleSheet(
+            QStringLiteral(
+                "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }"
+                "QScrollArea { border: none; }"
+            ) +
+            Th::scrollBarQss()
+        );
+    }
     // _closeBtn (IconButton) self-themes.
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 int AppDialog::cardWidth(int availOverlayWidth) const {
-    return std::clamp(availOverlayWidth, kCardMinW, kCardMaxW);
+    // The floor gives way on a window too narrow to hold it — a card wider than
+    // the window it sits in loses its own edges.
+    const int minW = std::min(kCardMinW, std::max(availOverlayWidth, 1));
+    return std::clamp(availOverlayWidth, minW, kCardMaxW);
 }
 
 void AppDialog::updateCard() {
@@ -226,11 +291,22 @@ void AppDialog::updateCard() {
     // its UNWRAPPED (too-short) height and the card clips / overlaps its content
     // at larger fonts or fractional scaling. Prefer the layout's real
     // height-for-width at the fixed card width when the content provides it.
+    // A QScrollArea does not react when the widget inside it changes size hint,
+    // so the card's layout would still be holding the hints it cached before a
+    // subclass revealed or swapped content. updateGeometry() invalidates that
+    // cache up the parent chain synchronously — without it the card measures the
+    // old content and scrolls when it should have grown.
+    if (_scroll)
+        _scroll->updateGeometry();
     _card->adjustSize();
     int wantH = _card->sizeHint().height();
     if (_card->hasHeightForWidth())
         wantH = std::max(wantH, _card->heightForWidth(cardW));
-    const int cardH = std::min(wantH, std::max(minCardHeight(), height() - 80));
+    // Same for the height floor: prefer minCardHeight() and the 80px breathing
+    // room around the card, but never let either push the card past the window.
+    // Content that no longer fits scrolls (see the CardScrollArea in buildCard).
+    const int maxH  = std::max(std::min(minCardHeight(), height()), height() - 80);
+    const int cardH = std::min(wantH, maxH);
     _card->resize(cardW, cardH);
 
     // Centre in the overlay.
@@ -281,6 +357,11 @@ bool AppDialog::eventFilter(QObject *obj, QEvent *event) {
     if (obj == parentWidget() && isVisible() &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Move))
         coverParent();
+    // Content grew or shrank on its own (an async status line, a swapped page):
+    // pass that up through the scroll area, which otherwise hides it from the
+    // card's layout. The card itself only resizes on the next updateCard().
+    if (obj == _contentHost && event->type() == QEvent::LayoutRequest && _scroll)
+        _scroll->updateGeometry();
     return QWidget::eventFilter(obj, event);
 }
 

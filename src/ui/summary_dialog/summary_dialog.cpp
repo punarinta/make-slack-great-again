@@ -47,7 +47,14 @@ QString markdownToSpacedHtml(const QString &markdown) {
 } // namespace
 
 SummaryDialog::SummaryDialog(const QString &markdown, Kind kind, QWidget *parent)
-    : AppDialog(tr("Discussion summary"), parent), _kind(kind), _markdown(markdown) {
+    // Report scrolls its own body below and sizes the card around it (kCardChromeH),
+    // so it opts out of AppDialog's content scroll area rather than nesting two.
+    : AppDialog(
+          tr("Discussion summary"),
+          parent,
+          kind == Kind::Report ? Scroll::Disabled : Scroll::Enabled
+      ),
+      _kind(kind), _markdown(markdown) {
     auto *cl = contentLayout();
 
     _body = new QLabel;

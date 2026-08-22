@@ -3,10 +3,12 @@
 #include "backend/slack/session_import/browser_login.h"
 
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -15,12 +17,15 @@
 #include <QNetworkRequest>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
 #include <QWebSocket>
+
+#include <algorithm>
 
 #if defined(Q_OS_UNIX)
 #include <csignal>
@@ -323,6 +328,27 @@ BrowserLogin::~BrowserLogin() {
     }
 }
 
+// Chromium's --window-size is a fixed guess like any other: 1024x768 does not fit
+// a laptop whose work area is shorter than that (a 1920x1080 panel at 150% leaves
+// 1280x720 of it). Shrink it to what the screen can hold, never grow it.
+//
+// Only the size, not the position: --window-position is in Chromium's own DIP
+// space, which on Linux is usually raw pixels while Qt reports scaled logical
+// coordinates. Placing by our numbers would put the window on the wrong monitor
+// as often as on the right one, so leave placement to the browser.
+static QSize loginWindowSize() {
+    const QSize want(1024, 768);
+    QScreen    *scr = QGuiApplication::screenAt(QCursor::pos());
+    if (!scr)
+        scr = QGuiApplication::primaryScreen();
+    if (!scr)
+        return want;
+    const QRect avail = scr->availableGeometry();
+    if (avail.isEmpty())
+        return want;
+    return QSize(std::min(want.width(), avail.width()), std::min(want.height(), avail.height()));
+}
+
 void BrowserLogin::start() {
     const Browser browser = pickBrowser();
     if (browser.exe.isEmpty()) {
@@ -344,6 +370,7 @@ void BrowserLogin::start() {
     // Throwaway profile + a known DevTools port. The flags suppress first-run UI and
     // anything that would pop an OS credential prompt; --remote-allow-origins keeps
     // Chromium ≥111 from rejecting our websocket handshake.
+    const QSize       winSize = loginWindowSize();
     const QStringList args{
         QStringLiteral("--user-data-dir=") + _profile->path(),
         QStringLiteral("--remote-debugging-port=") + QString::number(_port),
@@ -357,7 +384,7 @@ void BrowserLogin::start() {
         QStringLiteral("--hide-crash-restore-bubble"),
         QStringLiteral("--password-store=basic"), // Linux: no keyring prompt
         QStringLiteral("--use-mock-keychain"),    // macOS: ditto (ignored elsewhere)
-        QStringLiteral("--window-size=1024,768"),
+        QStringLiteral("--window-size=%1,%2").arg(winSize.width()).arg(winSize.height()),
         QString::fromLatin1(kSignInUrl),
     };
 

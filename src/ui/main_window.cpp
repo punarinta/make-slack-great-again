@@ -85,10 +85,18 @@
 #include <QTimer>
 #include <QDesktopServices>
 #include <QShortcut>
+#include <QScreen>
+#include <QShowEvent>
 
 #include <memory>
 
-static constexpr int kResizeBorder  = 6;
+static constexpr int kResizeBorder = 6;
+
+// What the window asks for before the display gets a say. fitToScreen() only
+// ever shrinks these — see its definition for why the minimum is negotiable.
+static constexpr QSize kDefaultWindowSize{1200, 800};
+static constexpr QSize kPreferredMinSize{800, 600};
+
 static constexpr int kConvMinWidth  = 160;
 static constexpr int kConvMaxWidth  = 400;
 static constexpr int kConvInitWidth = 240;
@@ -243,8 +251,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
-    setMinimumSize(800, 600);
-    resize(1200, 800);
+    setMinimumSize(kPreferredMinSize);
+    resize(kDefaultWindowSize);
     buildUi();
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
@@ -317,6 +325,19 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     const QByteArray geo = QSettings("msga", "msga").value("window/geometry").toByteArray();
     if (!geo.isEmpty())
         restoreGeometry(geo);
+
+    // Both paths above can hand us a window the display can't hold: the default
+    // size is a fixed guess, and a restored one was measured on whatever monitor
+    // was attached last time.
+    fitToScreen();
+
+    // Displays come and go. Unplugging the external monitor of a two-screen setup
+    // strands us at a size — or on coordinates — that no remaining screen can
+    // hold. Re-fit once the windowing system has finished reshuffling, hence the
+    // queued hop: geometry right at screenRemoved is still the pre-removal one.
+    connect(qApp, &QGuiApplication::screenRemoved, this, [this](QScreen *) {
+        QMetaObject::invokeMethod(this, [this] { fitToScreen(); }, Qt::QueuedConnection);
+    });
 }
 
 // ── UI construction ───────────────────────────────────────────────────────────
@@ -2668,6 +2689,13 @@ void MainWindow::setupTray() {
         restoreFromTray();
         QMetaObject::invokeMethod(this, [this] { _settingsDialog->open(); }, Qt::QueuedConnection);
     });
+    // We are frameless, so a window that ends up off-screen or oversized has no
+    // WM affordance to recover it — the titlebar with our own move/resize handles
+    // may itself be out of reach. The tray always is reachable.
+    menu->addAction(tr("Reset window size"), this, [this] {
+        restoreFromTray();
+        QMetaObject::invokeMethod(this, [this] { resetWindowGeometry(); }, Qt::QueuedConnection);
+    });
     menu->addSeparator();
     auto *quitAct = menu->addAction(tr("Quit"));
     // Defer quit so the menu closes fully before the event loop exits;
@@ -3146,6 +3174,132 @@ void MainWindow::updateRoundedMask() {
 void MainWindow::resizeEvent(QResizeEvent *e) {
     QMainWindow::resizeEvent(e);
     updateRoundedMask();
+}
+
+// ── Screen fit ────────────────────────────────────────────────────────────────
+
+// The screen a window rect belongs to: the one it overlaps most, falling back to
+// the one under the pointer (where a not-yet-mapped window will most likely land)
+// and finally the primary.
+static QScreen *screenForRect(const QRect &r) {
+    QScreen *best     = nullptr;
+    int      bestArea = 0;
+    for (QScreen *s : QGuiApplication::screens()) {
+        const QRect i = s->geometry().intersected(r);
+        const int   a = i.width() * i.height();
+        if (a > bestArea) {
+            bestArea = a;
+            best     = s;
+        }
+    }
+    if (!best)
+        best = QGuiApplication::screenAt(QCursor::pos());
+    return best ? best : QGuiApplication::primaryScreen();
+}
+
+// Shrink-only fit. A screen roomier than the window is left alone entirely — no
+// resize, no recentring, no maximizing on the user's behalf; only a window that
+// does NOT fit gets pulled in.
+//
+// This matters more for us than for a decorated app: frameless means the only
+// resize affordances are our own 6px hot border (resizeEdgesAt) and the titlebar
+// buttons. A window taller than the work area has its bottom border below the
+// screen and, depending on where the WM parks it, its titlebar above the top —
+// at which point there is nothing left to grab and the user is stuck with it.
+// That was issue #45 ("login window too big for my laptop screen and could not
+// resize it": a 1200x800 default against, say, 1920x1080 at 150% scaling, which
+// is 1280x720 of logical room).
+void MainWindow::fitToScreen() {
+    // Maximized/fullscreen geometry is the windowing system's business, and
+    // saveGeometry/restoreGeometry carry the normal geometry separately.
+    if (isMaximized() || isFullScreen())
+        return;
+
+    const QScreen *scr = screenForRect(frameGeometry());
+    if (!scr)
+        return;
+    const QRect avail = scr->availableGeometry();
+    if (avail.isEmpty())
+        return;
+
+    // The minimum has to give way first: a floor bigger than the screen makes the
+    // window unshrinkable by construction, whatever we then do to its size. Both
+    // panels have real minimums of their own (kConvMinWidth et al), so the layout
+    // squeezes rather than clips.
+    setMinimumSize(
+        std::min(kPreferredMinSize.width(), avail.width()),
+        std::min(kPreferredMinSize.height(), avail.height())
+    );
+
+    // Frame margins are zero while frameless, but don't bake that in: resize()
+    // and move() speak client coordinates, the fit is about the frame.
+    const QSize  frameExtra = frameGeometry().size() - size();
+    const QPoint frameOff   = geometry().topLeft() - frameGeometry().topLeft();
+
+    const QSize want(
+        std::min(frameGeometry().width(), avail.width()),
+        std::min(frameGeometry().height(), avail.height())
+    );
+    if (want != frameGeometry().size())
+        resize(want - frameExtra);
+
+    // Only nudge a window that is actually hanging off the work area; one that
+    // fits stays exactly where the user (or the WM) put it. No-op on Wayland,
+    // where move() is ignored — but there the compositor keeps us on screen
+    // anyway, and it is the resize above that does the real work.
+    const QRect  f = frameGeometry();
+    const QPoint p(
+        std::clamp(f.left(), avail.left(), std::max(avail.left(), avail.right() - f.width() + 1)),
+        std::clamp(f.top(), avail.top(), std::max(avail.top(), avail.bottom() - f.height() + 1))
+    );
+    if (p != f.topLeft())
+        move(p + frameOff);
+}
+
+// Tray rescue: back to the default size (fitted), centred on the current screen.
+// Unlike fitToScreen() this one is a deliberate user request, so it may grow the
+// window as well as move it.
+void MainWindow::resetWindowGeometry() {
+    if (isMaximized() || isFullScreen())
+        showNormal();
+    resize(kDefaultWindowSize);
+    fitToScreen();
+    if (const QScreen *scr = screenForRect(frameGeometry())) {
+        const QRect avail = scr->availableGeometry();
+        const QRect f     = frameGeometry();
+        move(
+            avail.center() - QPoint(f.width() / 2, f.height() / 2) +
+            (geometry().topLeft() - f.topLeft())
+        );
+    }
+}
+
+void MainWindow::showEvent(QShowEvent *e) {
+    QMainWindow::showEvent(e);
+    if (!_screenFitWired) {
+        if (QWindow *h = windowHandle()) {
+            _screenFitWired = true;
+            // Dragged to a smaller monitor, or the current one changed resolution
+            // / gained a panel: re-fit either way.
+            connect(h, &QWindow::screenChanged, this, [this](QScreen *) { fitToScreen(); });
+            connect(qApp, &QGuiApplication::primaryScreenChanged, this, [this](QScreen *) {
+                fitToScreen();
+            });
+            // A screen can also shrink under us without the window moving: a
+            // resolution change, or a panel/taskbar appearing.
+            const auto wireScreen = [this](QScreen *s) {
+                connect(s, &QScreen::availableGeometryChanged, this, [this](const QRect &) {
+                    fitToScreen();
+                });
+            };
+            for (QScreen *s : QGuiApplication::screens())
+                wireScreen(s);
+            connect(qApp, &QGuiApplication::screenAdded, this, wireScreen);
+        }
+    }
+    // The constructor's fit ran before the window had a handle, so on some
+    // platforms it was working from a placeholder geometry. Now it is real.
+    fitToScreen();
 }
 
 void MainWindow::changeEvent(QEvent *e) {
