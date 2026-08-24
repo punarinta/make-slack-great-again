@@ -297,16 +297,24 @@ void SessionImportDialog::deriveAndFinish(
         [this](const QList<slack::Credentials> &valid, const QString &error) {
             setBusy(false);
             if (valid.isEmpty()) {
-                const QString why = error == QLatin1String("invalid_auth")
-                                        ? QObject::tr(
-                                              "That session was rejected — the cookie may "
-                                              "have expired. Sign in to Slack again and "
-                                              "copy a fresh cookie."
-                                          )
-                                        : QObject::tr(
-                                              "Couldn't verify that session. Check the "
-                                              "cookie and workspace address and try again."
-                                          );
+                QString why = QObject::tr(
+                    "Couldn't verify that session. Check the cookie and workspace "
+                    "address and try again."
+                );
+                if (error == QLatin1String("invalid_auth"))
+                    why = QObject::tr(
+                        "That session was rejected — the cookie may have expired. Sign in "
+                        "to Slack again and copy a fresh cookie."
+                    );
+                else if (error == QLatin1String("token_not_found"))
+                    // The boot page loaded but carried no token: the cookie is stale, or
+                    // it belongs to an account that isn't a member of that workspace.
+                    why = QObject::tr(
+                        "That workspace loaded but Slack didn't hand out a session token — "
+                        "the cookie has probably expired, or it belongs to an account "
+                        "without access to that workspace. Sign in to Slack again and copy "
+                        "a fresh cookie."
+                    );
                 revealManual(why);
                 return;
             }

@@ -1697,12 +1697,17 @@ This action cannot be undone.</source>
         <translation>セッションを確認しています…</translation>
     </message>
     <message>
-        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="301"/>
+        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="305"/>
         <source>That session was rejected — the cookie may have expired. Sign in to Slack again and copy a fresh cookie.</source>
         <translation>そのセッションは拒否されました — クッキーの有効期限が切れている可能性があります。Slackに再度サインインして、新しいクッキーをコピーしてください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="306"/>
+        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="312"/>
+        <source>That workspace loaded but Slack didn&apos;t hand out a session token — the cookie has probably expired, or it belongs to an account without access to that workspace. Sign in to Slack again and copy a fresh cookie.</source>
+        <translation>ワークスペースは読み込めましたが、Slackがセッショントークンを返しませんでした — クッキーの有効期限が切れているか、そのワークスペースにアクセスできないアカウントのクッキーである可能性があります。Slackに再度サインインして、新しいクッキーをコピーしてください。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="300"/>
         <source>Couldn&apos;t verify that session. Check the cookie and workspace address and try again.</source>
         <translation>そのセッションを確認できませんでした。クッキーとワークスペースのアドレスを確認して、もう一度お試しください。</translation>
     </message>

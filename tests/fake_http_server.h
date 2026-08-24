@@ -25,6 +25,19 @@ public:
     // Queue a normal 200 OK JSON response (consumed by the next request).
     void enqueue(const QByteArray &json) { _pending.append(make200(json)); }
 
+    // Queue a response with an arbitrary status and content type — e.g. the HTML
+    // boot page Slack serves with a 403, which still carries the session token.
+    void enqueueStatus(
+        int status, const QByteArray &reason, const QByteArray &contentType, const QByteArray &body
+    ) {
+        QByteArray resp = "HTTP/1.1 " + QByteArray::number(status) + " " + reason + "\r\n";
+        resp += "Content-Type: " + contentType + "\r\n";
+        resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+        resp += "Connection: close\r\n\r\n";
+        resp += body;
+        _pending.append(resp);
+    }
+
     // Queue an HTTP 429 with a Retry-After header (seconds), to exercise the
     // queue's rate-limit backpressure.
     void enqueue429(int retryAfterSecs) {
