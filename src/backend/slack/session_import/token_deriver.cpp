@@ -79,9 +79,9 @@ void TokenDeriver::processNext() {
         validate(cand, cand.token);
         return;
     }
-    deriveToken(cand, [this, cand](QString token) {
+    deriveToken(cand, [this, cand](QString token, QString reason) {
         if (token.isEmpty()) {
-            _lastError = QStringLiteral("token_not_found");
+            _lastError = reason;
             ++_idx;
             processNext();
             return;
@@ -90,9 +90,11 @@ void TokenDeriver::processNext() {
     });
 }
 
-void TokenDeriver::deriveToken(const TeamSession &cand, std::function<void(QString)> onToken) {
+void TokenDeriver::deriveToken(
+    const TeamSession &cand, std::function<void(QString, QString)> onToken
+) {
     if (cand.workspaceUrl.isEmpty()) {
-        onToken(QString());
+        onToken(QString(), QStringLiteral("no_workspace_url"));
         return;
     }
     QNetworkRequest req{QUrl(cand.workspaceUrl)};
@@ -104,16 +106,24 @@ void TokenDeriver::deriveToken(const TeamSession &cand, std::function<void(QStri
     auto *reply = _nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, onToken]() {
         reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            onToken(QString());
+        // NEVER gate the scrape on reply->error(): Slack serves the *logged-in* boot
+        // page of a workspace root with HTTP 403 (Qt: ContentAccessDenied), token and
+        // all. Bailing on the status threw away a perfectly good token and reported
+        // it as an unverifiable session — which broke every manual cookie sign-in.
+        // A body is the only thing that matters; a logged-out page has no xoxc- run
+        // in it ("api_token":null), so a stale cookie still fails, just accurately.
+        const QByteArray body = reply->readAll();
+        if (body.isEmpty()) {
+            onToken(QString(), QStringLiteral("network"));
             return;
         }
-        onToken(scrapeToken(reply->readAll()));
+        const QString token = scrapeToken(body);
+        onToken(token, token.isEmpty() ? QStringLiteral("token_not_found") : QString());
     });
 }
 
 void TokenDeriver::validate(const TeamSession &cand, const QString &token) {
-    QNetworkRequest req{QUrl(QStringLiteral("https://slack.com/api/auth.test"))};
+    QNetworkRequest req{QUrl(_apiBase + QStringLiteral("auth.test"))};
     req.setRawHeader("Authorization", QByteArray("Bearer ") + token.toUtf8());
     req.setTransferTimeout(kTransferTimeoutMs); // `d` cookie supplied by the jar
     auto *reply = _nam->get(req);
@@ -144,7 +154,7 @@ void TokenDeriver::fetchIconThenCommit(slack::Credentials creds) {
         commit(std::move(creds));
         return;
     }
-    QNetworkRequest req{QUrl(QStringLiteral("https://slack.com/api/team.info"))};
+    QNetworkRequest req{QUrl(_apiBase + QStringLiteral("team.info"))};
     req.setRawHeader("Authorization", QByteArray("Bearer ") + creds.xoxp.toUtf8());
     req.setTransferTimeout(kTransferTimeoutMs); // `d` cookie supplied by the jar
     auto *reply = _nam->get(req);

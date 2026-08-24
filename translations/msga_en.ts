@@ -2082,14 +2082,19 @@ This action cannot be undone.</translation>
         <translation>Verifying your session…</translation>
     </message>
     <message>
-        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="301"/>
+        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="300"/>
+        <source>Couldn't verify that session. Check the cookie and workspace address and try again.</source>
+        <translation>Couldn't verify that session. Check the cookie and workspace address and try again.</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="305"/>
         <source>That session was rejected — the cookie may have expired. Sign in to Slack again and copy a fresh cookie.</source>
         <translation>That session was rejected — the cookie may have expired. Sign in to Slack again and copy a fresh cookie.</translation>
     </message>
     <message>
-        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="306"/>
-        <source>Couldn't verify that session. Check the cookie and workspace address and try again.</source>
-        <translation>Couldn't verify that session. Check the cookie and workspace address and try again.</translation>
+        <location filename="../src/ui/session_import_dialog/session_import_dialog.cpp" line="312"/>
+        <source>That workspace loaded but Slack didn't hand out a session token — the cookie has probably expired, or it belongs to an account without access to that workspace. Sign in to Slack again and copy a fresh cookie.</source>
+        <translation>That workspace loaded but Slack didn't hand out a session token — the cookie has probably expired, or it belongs to an account without access to that workspace. Sign in to Slack again and copy a fresh cookie.</translation>
     </message>
 </context>
 <context>

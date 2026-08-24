@@ -27,20 +27,27 @@ public:
 
     // Derive+validate all candidates against the given `d` cookie. Emits finished()
     // exactly once. Validated workspaces come back in `valid` (possibly fewer than
-    // requested); `error` is set only when nothing could be validated at all.
+    // requested); `error` is set only when nothing could be validated at all
+    // ("token_not_found" = boot page loaded but carried no token, i.e. stale cookie;
+    // "network" = the page never arrived; anything else is Slack's own API error).
     void run(const QString &cookie, const QList<TeamSession> &candidates);
+
+    // Test seam: point auth.test/team.info at a local server (trailing slash).
+    void setApiBase(const QString &base) { _apiBase = base; }
 
 signals:
     void finished(const QList<slack::Credentials> &valid, const QString &error);
 
 private:
     void processNext();
-    void deriveToken(const TeamSession &cand, std::function<void(QString)> onToken);
+    // onToken(token, reason): token empty ⇒ reason says why (see run()).
+    void deriveToken(const TeamSession &cand, std::function<void(QString, QString)> onToken);
     void validate(const TeamSession &cand, const QString &token);
     void fetchIconThenCommit(slack::Credentials creds);
     void commit(slack::Credentials creds);
 
     QNetworkAccessManager    *_nam;
+    QString                   _apiBase = QStringLiteral("https://slack.com/api/");
     QString                   _cookie;
     QList<TeamSession>        _queue;
     int                       _idx = 0;
