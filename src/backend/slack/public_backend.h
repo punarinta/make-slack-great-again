@@ -77,9 +77,12 @@ public:
     void                           markThreadRead(ConversationId, Ts root, Ts ts) override;
 
     rpl::producer<std::vector<MessageReminder>> loadMessageReminders() override;
-    void                                        setMessageReminder(
-                                               ConversationId, Ts, qint64 dueAt, std::function<void(bool ok, QString err)> done = {}
-                                           ) override;
+
+    rpl::producer<std::vector<ConversationId>> loadStarredConversations() override;
+
+    void setMessageReminder(
+        ConversationId, Ts, qint64 dueAt, std::function<void(bool ok, QString err)> done = {}
+    ) override;
     void removeMessageReminder(
         ConversationId, Ts, std::function<void(bool ok, QString err)> done = {}
     ) override;
@@ -286,6 +289,10 @@ private:
     bool                             _threadsViewUnavailable = false;
     // Same latch for the saved.* family (message reminders / "Later").
     bool                             _savedUnavailable       = false;
+    // Same latch for stars.list — deprecated but still served; an OAuth token
+    // additionally needs the `stars:read` scope, which tokens issued before it
+    // was requested lack (→ missing_scope until the user re-authorises).
+    bool                             _starsUnavailable       = false;
     // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
     std::unique_ptr<SessionRealtime> _sessionRealtime;
     QTimer                          *_proactiveRefreshTimer = nullptr;

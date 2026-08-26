@@ -128,6 +128,7 @@ Scroll down to **User Token Scopes** and add the following:
 | `reactions:read` | Read emoji reactions |
 | `reactions:write` | Add/remove reactions |
 | `search:read` | Search messages and files |
+| `stars:read` | Read which channels and conversations are starred (the sidebar's Starred section) |
 | `stars:write` | Star/unstar channels and conversations |
 | `team:read` | Get workspace info |
 | `users.profile:read` | Read user profile fields |

@@ -84,6 +84,29 @@ TEST_CASE_METHOD(
     CHECK(!loaded[0].dmUser.has_value());
 }
 
+TEST_CASE_METHOD(CacheFixture, "conversation star survives a round-trip", "[cache][conv][star]") {
+    // No conversation listing reports is_starred, so the cache is what carries a
+    // star across a restart (issue #48).
+    std::vector<Conversation> input = {
+        Conversation{
+            .id        = ConversationId{"C1"},
+            .kind      = ConvKind::PublicChannel,
+            .name      = "general",
+            .isStarred = true,
+        },
+        Conversation{
+            .id   = ConversationId{"C2"},
+            .kind = ConvKind::PublicChannel,
+            .name = "random",
+        },
+    };
+    cache.saveConversations(input);
+    auto loaded = cache.loadConversations();
+    REQUIRE(loaded.size() == 2);
+    CHECK(loaded[0].isStarred == true);
+    CHECK(loaded[1].isStarred == false);
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(CacheFixture, "loadUsers returns empty when no file", "[cache][user]") {

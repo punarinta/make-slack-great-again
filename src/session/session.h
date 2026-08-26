@@ -271,6 +271,9 @@ public:
     // Test hook: pull the server's reminder list now (normally throttled behind
     // checkRealtimeHealth).
     void refreshRemindersForTest() { refreshReminders(); }
+    // Test hook: pull the server's starred-conversation list now (normally
+    // throttled behind checkRealtimeHealth).
+    void refreshStarredForTest() { refreshStarred(); }
 
     // Fetch presence for a user from the network and fire EvPresenceChanged.
     void requestPresence(UserId userId);
@@ -634,6 +637,12 @@ private:
     // set/removed from other clients. Replaces local state only when the
     // backend actually answers (unsupported backends never emit).
     void refreshReminders();
+    // Pull the authoritative starred-conversation list from the backend
+    // (throttled by kStarredRefreshGapMs from checkRealtimeHealth). Nothing in
+    // the conversation listing reports the star, so this is what makes it
+    // survive a restart and what picks up a star set from another client.
+    // Replaces local state only when the backend actually answers.
+    void refreshStarred();
     // Persist + notify UI + re-arm: every mutation of _reminders funnels here.
     void reminderStoreChanged();
     // Coalesced reminderStoreChanged() for the preview resolver, whose answers
@@ -676,8 +685,15 @@ private:
     QHash<QString, qint64>          _reminderCreatedMs;
     QTimer                          _reminderTimer; // single-shot, armReminderTimer()
     rpl::event_stream<>             _remindersChangedHub;
-    static constexpr qint64         kRemindersRefreshGapMs   = 5 * 60'000;
-    qint64                          _lastRemindersRefreshMs  = 0;
+    static constexpr qint64         kRemindersRefreshGapMs  = 5 * 60'000;
+    qint64                          _lastRemindersRefreshMs = 0;
+    static constexpr qint64         kStarredRefreshGapMs    = 5 * 60'000;
+    qint64                          _lastStarredRefreshMs   = 0;
+    // convId → ms epoch of the last star toggled from THIS client. A snapshot
+    // already in flight when the user starred comes back without it; honouring
+    // it would flip the row straight back. In-memory only.
+    QHash<QString, qint64>          _starChangedMs;
+    static constexpr qint64         kStarGraceMs             = 60'000;
     // A reminder overdue by more than this when discovered (app closed for
     // days) is marked fired silently instead of raising a stale notification.
     static constexpr qint64         kMaxReminderLatenessSecs = 7 * 24 * 3600;

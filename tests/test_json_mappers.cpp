@@ -1414,6 +1414,43 @@ TEST_CASE("toConversation is_starred absent defaults to false", "[mappers][conv]
     CHECK(c.isStarred == false);
 }
 
+// ── toStarredConversationIds (stars.list) ─────────────────────────────────────
+
+TEST_CASE("toStarredConversationIds keeps every conversation kind", "[mappers][star]") {
+    auto ids = JsonMappers::toStarredConversationIds(arr(R"([
+        {"type":"channel","channel":"C1","date_create":1},
+        {"type":"group",  "channel":"G1","date_create":2},
+        {"type":"im",     "channel":"D1","date_create":3},
+        {"type":"mpim",   "channel":"G2","date_create":4}
+    ])"));
+    REQUIRE(ids.size() == 4);
+    CHECK(ids[0] == ConversationId{"C1"});
+    CHECK(ids[1] == ConversationId{"G1"});
+    CHECK(ids[2] == ConversationId{"D1"});
+    CHECK(ids[3] == ConversationId{"G2"});
+}
+
+TEST_CASE("toStarredConversationIds skips starred messages and files", "[mappers][star]") {
+    // A starred message carries the hosting `channel` too — mistaking it for a
+    // starred conversation would star the whole chat in the sidebar.
+    auto ids = JsonMappers::toStarredConversationIds(arr(R"([
+        {"type":"message","channel":"C1","message":{"ts":"1.0","text":"hi"}},
+        {"type":"file","file":{"id":"F1"}},
+        {"type":"file_comment","file":{"id":"F1"},"comment":{"id":"Fc1"}},
+        {"type":"channel","channel":"C2"}
+    ])"));
+    REQUIRE(ids.size() == 1);
+    CHECK(ids[0] == ConversationId{"C2"});
+}
+
+TEST_CASE("toStarredConversationIds skips entries with no channel", "[mappers][star]") {
+    auto ids = JsonMappers::toStarredConversationIds(arr(R"([
+        {"type":"channel","channel":""},
+        {"type":"channel"}
+    ])"));
+    CHECK(ids.empty());
+}
+
 // ── notification_preference ───────────────────────────────────────────────────
 
 TEST_CASE("toConversation notification_preference=everything → All", "[mappers][conv][notif]") {

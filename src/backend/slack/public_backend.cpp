@@ -1504,6 +1504,44 @@ void PublicBackend::starConversation(ConversationId conv, bool star) {
     });
 }
 
+rpl::producer<std::vector<ConversationId>> PublicBackend::loadStarredConversations() {
+    return [this](auto consumer) mutable {
+        // Unsupported: complete WITHOUT a value (see backend.h) so the caller
+        // keeps whatever star state it already has instead of wiping it.
+        if (_starsUnavailable) {
+            consumer.put_done();
+            return rpl::lifetime();
+        }
+        auto acc = std::make_shared<std::vector<ConversationId>>();
+        _api->paginate(
+            "stars.list",
+            "items",
+            {},
+            [acc](QJsonArray page) {
+                auto ids = JsonMappers::toStarredConversationIds(page);
+                acc->insert(acc->end(), ids.begin(), ids.end());
+            },
+            [acc, consumer]() mutable {
+                consumer.put_next(std::move(*acc));
+                consumer.put_done();
+            },
+            [this, consumer](QString err) mutable {
+                // Latch only on a method-level rejection, never on a transport
+                // failure — same reasoning as client.counts above. stars.list is
+                // deprecated, so `method_deprecated` is a plausible future answer
+                // and belongs in the same bucket as a missing `stars:read` scope.
+                if (isMethodUnavailable(err)) {
+                    _starsUnavailable = true;
+                    qWarning() << "stars.list rejected:" << err
+                               << "— starred conversations disabled for this workspace";
+                }
+                consumer.put_done();
+            }
+        );
+        return rpl::lifetime();
+    };
+}
+
 void PublicBackend::leaveConversation(ConversationId conv) {
     QUrlQuery params;
     params.addQueryItem("channel", conv.value);

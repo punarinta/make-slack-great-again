@@ -371,6 +371,25 @@ struct StubBackend : Backend {
     void starConversation(ConversationId id, bool star) override {
         starCalls.push_back({id, star});
     }
+
+    // std::nullopt models a backend that can't serve stars.list (completes
+    // without a value); an empty vector is a real "nothing is starred".
+    std::optional<std::vector<ConversationId>> starredResult;
+    int                                        starredCalls = 0;
+
+    rpl::producer<std::vector<ConversationId>> loadStarredConversations() override {
+        ++starredCalls;
+        if (!starredResult)
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return [v = *starredResult](auto consumer) mutable {
+            consumer.put_next(std::move(v));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
     void leaveConversation(ConversationId id) override { leaveCalls.push_back(id); }
 
     struct CreateChannelCall {
@@ -2314,6 +2333,73 @@ TEST_CASE_METHOD(SessionFixture, "starConversation delegates to backend", "[sess
     session->starConversation(ConversationId{"C1"}, false);
     REQUIRE(stub->starCalls.size() == 2);
     CHECK(stub->starCalls[1].star == false);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "starConversation persists so the star survives a restart", "[session][star]"
+) {
+    // Nothing in conversations.list/info reports is_starred, so the cache is the
+    // only thing that can carry a star across a restart (issue #48).
+    session->starConversation(ConversationId{"C1"}, true);
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == true);
+}
+
+// ── refreshStarred (stars.list) ───────────────────────────────────────────────
+
+TEST_CASE_METHOD(
+    SessionFixture, "refreshStarred applies the server's starred list", "[session][star]"
+) {
+    REQUIRE(!session->findConversation(ConversationId{"C2"})->isStarred);
+    stub->starredResult = std::vector<ConversationId>{ConversationId{"C2"}};
+    session->refreshStarredForTest();
+    CHECK(session->findConversation(ConversationId{"C2"})->isStarred == true);
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == false);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "refreshStarred clears a star the server no longer reports", "[session][star]"
+) {
+    stub->starredResult = std::vector<ConversationId>{ConversationId{"C2"}};
+    session->refreshStarredForTest();
+    REQUIRE(session->findConversation(ConversationId{"C2"})->isStarred == true);
+
+    // Unstarred from another client.
+    stub->starredResult = std::vector<ConversationId>{};
+    session->refreshStarredForTest();
+    CHECK(session->findConversation(ConversationId{"C2"})->isStarred == false);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "refreshStarred leaves local state alone when the backend cannot answer",
+    "[session][star]"
+) {
+    session->starConversation(ConversationId{"C1"}, true);
+    stub->starredResult.reset(); // completes without a value
+    session->refreshStarredForTest();
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == true);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "refreshStarred does not undo a star set moments ago", "[session][star]"
+) {
+    // A snapshot already in flight when the user starred comes back without it.
+    session->starConversation(ConversationId{"C1"}, true);
+    stub->starredResult = std::vector<ConversationId>{};
+    session->refreshStarredForTest();
+    CHECK(session->findConversation(ConversationId{"C1"})->isStarred == true);
+}
+
+TEST_CASE_METHOD(SessionFixture, "refreshStarred persists what it learns", "[session][star]") {
+    stub->starredResult = std::vector<ConversationId>{ConversationId{"C2"}};
+    session->refreshStarredForTest();
+    restartSession({kGeneral, kRandom}, {kAlice, kBob});
+    CHECK(session->findConversation(ConversationId{"C2"})->isStarred == true);
+}
+
+TEST_CASE_METHOD(SessionFixture, "start() syncs the starred list", "[session][star]") {
+    CHECK(stub->starredCalls >= 1);
 }
 
 // ── leaveConversation ─────────────────────────────────────────────────────────

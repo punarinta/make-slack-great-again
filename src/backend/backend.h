@@ -252,6 +252,20 @@ public:
 
     // Star / unstar a conversation (stars.add / stars.remove).
     virtual void starConversation(ConversationId, bool star) {}
+    // The authed user's starred conversations. Nothing in the conversation
+    // listing carries the star (neither conversations.list nor conversations.info
+    // reports `is_starred`), so this is the only way to learn the state back —
+    // without it a star lives only in memory and dies with the process.
+    // Same graceful-degrade contract as loadUnreadCounts / loadMessageReminders:
+    // emit exactly one snapshot on success (an empty vector is a legitimate
+    // "nothing starred"), or complete WITHOUT emitting when unavailable — so a
+    // consumer only replaces its local state on a real server answer.
+    virtual rpl::producer<std::vector<ConversationId>> loadStarredConversations() {
+        return [](auto consumer) {
+            consumer.put_done();
+            return rpl::lifetime();
+        };
+    }
     // Leave a conversation (conversations.leave).
     virtual void leaveConversation(ConversationId) {}
     // Create a new channel (conversations.create). No-op on unsupported backends.
