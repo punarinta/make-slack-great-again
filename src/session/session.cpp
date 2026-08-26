@@ -184,6 +184,12 @@ void Session::start() {
     // Load conversations; update cache on arrival.
     reloadConversations(/*refreshEmoji=*/true);
 
+    // …and the stars that go with them. Neither conversations.list nor
+    // conversations.info reports `is_starred`, so this is the only read path:
+    // without it the cached star state is never corrected and a star set from
+    // another client never shows up.
+    refreshStarred();
+
     // Load users; update cache on arrival.
     _backend->loadUsers() | rpl::on_next(
                                 [this](std::vector<User> users) {
@@ -660,6 +666,15 @@ void Session::checkRealtimeHealth() {
         const qint64 nowRem = QDateTime::currentMSecsSinceEpoch();
         if (nowRem - _lastRemindersRefreshMs >= kRemindersRefreshGapMs)
             refreshReminders();
+    }
+
+    // (3b) Starred conversations: same deal — a star set or cleared in the
+    // official client should reach the sidebar without a restart. One request,
+    // throttled, and a no-op for backends that don't serve it.
+    {
+        const qint64 nowStar = QDateTime::currentMSecsSinceEpoch();
+        if (nowStar - _lastStarredRefreshMs >= kStarredRefreshGapMs)
+            refreshStarred();
     }
 
     // Background rotation: sweeps member conversations OTHER than the open one
@@ -2273,7 +2288,12 @@ void Session::starConversation(ConversationId conv, bool star) {
             break;
         }
     }
-    _conversations = std::move(convs);
+    // Persist right away: the star is not reported by any conversation listing,
+    // so an unsaved one is lost the moment the app closes (and the server list
+    // only refreshes every kStarredRefreshGapMs).
+    _cache->saveConversations(convs);
+    _conversations             = std::move(convs);
+    _starChangedMs[conv.value] = QDateTime::currentMSecsSinceEpoch();
     _backend->starConversation(conv, star);
 }
 
@@ -2596,6 +2616,44 @@ void Session::emitReminderDue(const QString &key) {
             it->conv, it->ts, it->threadRoot, it->snippet, it->author, it->botName, it->botAvatarUrl
         }
     );
+}
+
+void Session::refreshStarred() {
+    _lastStarredRefreshMs = QDateTime::currentMSecsSinceEpoch();
+    _backend->loadStarredConversations() |
+        rpl::on_next(
+            [this](std::vector<ConversationId> starred) {
+                // The server snapshot is authoritative in BOTH directions: a star
+                // added on another client appears, and one removed there goes.
+                // Backends that can't answer never emit (see backend.h), so the
+                // local/cached state is only ever replaced by a real answer.
+                QSet<QString> ids;
+                ids.reserve(int(starred.size()));
+                for (const auto &id : starred)
+                    ids.insert(id.value);
+
+                const qint64 nowMs   = QDateTime::currentMSecsSinceEpoch();
+                auto         convs   = _conversations.current();
+                bool         changed = false;
+                for (auto &c : convs) {
+                    const bool star = ids.contains(c.id.value);
+                    if (c.isStarred == star)
+                        continue;
+                    // A star toggled here moments ago won't be in a snapshot that
+                    // was already in flight; honouring it would flip the row right
+                    // back. The next sync settles whatever the server really has.
+                    if (nowMs - _starChangedMs.value(c.id.value, 0) < kStarGraceMs)
+                        continue;
+                    c.isStarred = star;
+                    changed     = true;
+                }
+                if (!changed)
+                    return;
+                _cache->saveConversations(convs);
+                _conversations = std::move(convs);
+            },
+            _lifetime
+        );
 }
 
 void Session::refreshReminders() {

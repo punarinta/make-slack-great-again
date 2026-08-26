@@ -34,6 +34,13 @@ ThreadsViewPage toThreadsViewPage(const QJsonObject &resp);
 // item's item_id is the hosting channel and ts the message's ts.
 std::vector<MessageReminder> toMessageReminders(const QJsonObject &resp);
 
+// One page of a `stars.list` response: the CONVERSATION stars among the items.
+// Slack's stars list mixes starred messages/files in with starred chats — the
+// conversation ones are the entries whose type is a channel kind ("channel",
+// "im", "group", "mpim"); a starred message shares the `channel` field but
+// carries its own `message` object, so it must not be mistaken for one.
+std::vector<ConversationId> toStarredConversationIds(const QJsonArray &items);
+
 // Batch helpers
 std::vector<User>         toUsers(const QJsonArray &);
 std::vector<Conversation> toConversations(const QJsonArray &);

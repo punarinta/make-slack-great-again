@@ -6,6 +6,7 @@
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QSet>
 
 namespace slack {
 namespace JsonMappers {
@@ -852,6 +853,31 @@ std::vector<MessageReminder> toMessageReminders(const QJsonObject &resp) {
         if (r.conv.value.isEmpty() || r.ts.isEmpty() || r.dueAt <= 0)
             continue;
         out.push_back(std::move(r));
+    }
+    return out;
+}
+
+std::vector<ConversationId> toStarredConversationIds(const QJsonArray &items) {
+    static const QSet<QString> convTypes = {
+        QStringLiteral("channel"),
+        QStringLiteral("im"),
+        QStringLiteral("group"),
+        QStringLiteral("mpim"),
+    };
+    std::vector<ConversationId> out;
+    out.reserve(items.size());
+    for (const auto v : items) {
+        const auto it = v.toObject();
+        if (!convTypes.contains(it.value("type").toString()))
+            continue;
+        // Defensive: a message/file star also carries `channel`, so never let one
+        // through on the strength of that field alone.
+        if (it.contains("message") || it.contains("file") || it.contains("comment"))
+            continue;
+        const QString id = it.value("channel").toString();
+        if (id.isEmpty())
+            continue;
+        out.push_back(ConversationId{id});
     }
     return out;
 }

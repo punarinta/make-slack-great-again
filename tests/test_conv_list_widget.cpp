@@ -219,3 +219,61 @@ TEST_CASE("re-selecting the current conversation does not re-emit") {
     REQUIRE(spy.count == 1);
     REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"C2"});
 }
+
+// ── Starred section (issue #48) ────────────────────────────────────────────────
+
+static Conversation starred(Conversation c) {
+    c.isStarred = true;
+    return c;
+}
+
+TEST_CASE("a starred conversation is listed once, in the Starred section") {
+    ConvListWidget list(nullptr);
+    list.setConversations({starred(channel("C1", "general")), channel("C2", "random")});
+
+    // It has a row…
+    const int row = list.rowForId(ConversationId{"C1"});
+    REQUIRE(row >= 0);
+    // …above the unstarred channel, because the Starred section comes first…
+    REQUIRE(row < list.rowForId(ConversationId{"C2"}));
+    // …and only one, so a star never duplicates the chat into two sections.
+    int hits = 0;
+    for (int r = 0; r < list.rowCount(); ++r)
+        if (list.conversationId(r) == ConversationId{"C1"})
+            ++hits;
+    REQUIRE(hits == 1);
+}
+
+TEST_CASE("starring a relevance-filtered DM makes it visible") {
+    // A fresh id: _visitedAt is process-wide (QSettings-backed), so a DM another
+    // test opened is permanently "relevant" and would fail the precondition.
+    ConvListWidget list(nullptr);
+    list.setConversations({channel("C1", "general"), hiddenDm("D_STAR", "U9")});
+    REQUIRE(list.rowForId(ConversationId{"D_STAR"}) < 0);
+
+    // Starring is an explicit "keep this in front of me" — the relevance filter
+    // must not be able to hide it again.
+    list.setConversations({channel("C1", "general"), starred(hiddenDm("D_STAR", "U9"))});
+    REQUIRE(list.rowForId(ConversationId{"D_STAR"}) >= 0);
+}
+
+TEST_CASE("a starred app DM shows even while Agents & apps is hidden") {
+    ConvListWidget list(nullptr);
+    list.setUsers({botUser("B1")});
+    list.setShowAgentsApps(false);
+    list.setConversations({channel("C1", "general"), starred(appDm("A1", "B1"))});
+
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+    REQUIRE(list.selectConversation(ConversationId{"A1"}));
+    REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"A1"});
+}
+
+TEST_CASE("no Starred section header exists while nothing is starred") {
+    ConvListWidget list(nullptr);
+    list.setConversations({channel("C1", "general"), channel("C2", "random")});
+    const int before = list.rowCount();
+
+    list.setConversations({starred(channel("C1", "general")), channel("C2", "random")});
+    // Exactly one extra row: the "Starred" header. The channel itself just moved.
+    REQUIRE(list.rowCount() == before + 1);
+}

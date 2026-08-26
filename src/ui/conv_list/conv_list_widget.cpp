@@ -107,6 +107,7 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.hash       = px(":/ui/hash.svg", big, th.text.onDarkDim);
     _iconPx.msg        = px(":/ui/messages-square.svg", big, th.text.onDarkDim);
     _iconPx.bot        = px(":/ui/bot.svg", big, th.text.onDarkDim);
+    _iconPx.star       = px(":/ui/star.svg", big, th.text.onDarkDim);
     _iconPx.plusDim    = px(":/ui/plus.svg", big, th.text.onDarkDim);
     _iconPx.plusBright = px(":/ui/plus.svg", big, th.text.onDark);
 
@@ -236,11 +237,17 @@ bool ConvListWidget::selectConversation(ConversationId id) {
     if (it == _convs.end())
         return false;
     const bool isDm = (it->kind == ConvKind::Im || it->kind == ConvKind::Mpim);
-    (isAppConv(*it) ? _appsCollapsed : isDm ? _dmsCollapsed : _channelsCollapsed) = false;
+    // Starred conversations live in their own section (see rebuildRows), so that
+    // is the one to expand — expanding Channels/DMs would leave the row hidden.
+    if (it->isStarred)
+        _starredCollapsed = false;
+    else
+        (isAppConv(*it) ? _appsCollapsed : isDm ? _dmsCollapsed : _channelsCollapsed) = false;
     // A hidden "Agents & apps" section still has to yield a row for the target,
     // or the notification / search open paths below find none. See
     // _revealedAppConv.
-    _revealedAppConv     = (!_showAgentsApps && isAppConv(*it)) ? id : ConversationId{};
+    _revealedAppConv =
+        (!_showAgentsApps && isAppConv(*it) && !it->isStarred) ? id : ConversationId{};
     // Stamp before rebuilding so the relevance filter keeps the row visible.
     _visitedAt[id.value] = QDateTime::currentSecsSinceEpoch();
     scheduleSaveVisitedAt();
@@ -413,9 +420,17 @@ void ConvListWidget::rebuildRows() {
         return c.kind != ConvKind::Im && c.kind != ConvKind::Mpim;
     };
 
-    std::vector<int> visCh, hidCh, visDm, hidDm, apps;
+    std::vector<int> starred, visCh, hidCh, visDm, hidDm, apps;
     for (int i = 0; i < (int)_convs.size(); ++i) {
         const auto &c = _convs[i];
+        // Starred conversations move OUT of their normal section and into the
+        // Starred one — as in the official client, and so a star never leaves a
+        // chat listed twice. The relevance filter doesn't apply: starring one is
+        // an explicit "keep this in front of me".
+        if (c.isStarred) {
+            starred.push_back(i);
+            continue;
+        }
         if (isAppConv(c)) {
             apps.push_back(i);
             continue;
@@ -428,6 +443,17 @@ void ConvListWidget::rebuildRows() {
         _rows.push_back({RowKind::Threads, -1, -1});
     if (_showSavedMsgs)
         _rows.push_back({RowKind::SavedMsgs, -1, -1});
+
+    // ── Starred section ───────────────────────────────────────────────
+    // Only exists while something is starred (an empty header would just be
+    // noise on the many workspaces where the feature is never used).
+    if (!starred.empty()) {
+        _rows.push_back({RowKind::SectionHeader, -1, 3});
+        if (!_starredCollapsed) {
+            for (int i : starred)
+                _rows.push_back({RowKind::Conv, i, -1});
+        }
+    }
 
     // ── Channels section ─────────────────────────────────────────────
     _rows.push_back({RowKind::SectionHeader, -1, 0});
@@ -903,6 +929,8 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
             _channelsCollapsed = !_channelsCollapsed;
         else if (ri.sectionId == 1)
             _dmsCollapsed = !_dmsCollapsed;
+        else if (ri.sectionId == 3)
+            _starredCollapsed = !_starredCollapsed;
         else
             _appsCollapsed = !_appsCollapsed;
         rebuildRows();
@@ -1046,6 +1074,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     const bool hovered   = (row == _hovered);
     const bool collapsed = (sectionId == 0)   ? _channelsCollapsed
                            : (sectionId == 1) ? _dmsCollapsed
+                           : (sectionId == 3) ? _starredCollapsed
                                               : _appsCollapsed;
 
     if (hovered)
@@ -1059,7 +1088,10 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     if (hovered)
         icon = collapsed ? &_iconPx.chevRight : &_iconPx.chevDown;
     else
-        icon = (sectionId == 0) ? &_iconPx.hash : (sectionId == 1) ? &_iconPx.msg : &_iconPx.bot;
+        icon = (sectionId == 0)   ? &_iconPx.hash
+               : (sectionId == 1) ? &_iconPx.msg
+               : (sectionId == 3) ? &_iconPx.star
+                                  : &_iconPx.bot;
 
     const int iconY = y + (_rowH - kIconSize) / 2;
     int       x     = kPadH;
@@ -1074,6 +1106,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     const QFontMetrics fm(font);
     const QString      label = (sectionId == 0)   ? tr("Channels")
                                : (sectionId == 1) ? tr("Direct messages")
+                               : (sectionId == 3) ? tr("Starred")
                                                   : tr("Agents & apps");
     p.drawText(x, y + (_rowH - fm.height()) / 2 + fm.ascent(), label);
 

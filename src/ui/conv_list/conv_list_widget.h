@@ -36,8 +36,8 @@ enum class RowKind { Threads, SavedMsgs, SectionHeader, Conv, AddChannels, ShowM
 struct RowItem {
     RowKind kind;
     int     convIdx   = -1; // index into _convs, valid when kind == Conv
-    int     sectionId = -1; // 0 = Channels, 1 = Direct messages, 2 = Agents & apps;
-                            // valid for SectionHeader/AddChannels/ShowMore
+    int     sectionId = -1; // 0 = Channels, 1 = Direct messages, 2 = Agents & apps,
+                            // 3 = Starred; valid for SectionHeader/AddChannels/ShowMore
     int     count     = 0;  // for ShowMore: number of hidden items
 };
 
@@ -78,6 +78,9 @@ public:
     // Resolved display name for a visual row (DMs → user displayName, channels → conv.name).
     QString        resolvedName(int row) const;
     int            selectedIndex() const { return _selected; }
+    // Number of visual rows currently laid out (conversations plus the section
+    // headers and action rows between them).
+    int            rowCount() const { return int(_rows.size()); }
     // Resolved ConversationId for a visual row (-1 safe: returns empty id).
     ConversationId conversationId(int row) const;
     // Visual row for a given id; -1 if not found or section is collapsed.
@@ -182,6 +185,7 @@ protected:
     // themeChanged — a static-local cache would keep the old theme's tint.
     struct IconPixmaps {
         QPixmap chevDown, chevRight, hash, msg, bot, plusDim; // section headers, onDarkDim
+        QPixmap star;                                         // Starred section header
         QPixmap plusBright;                                   // add-channels hover, onDark
         QPixmap lockDim, lockBright, lockSelected;            // private channel prefix
         QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
@@ -227,6 +231,7 @@ protected:
     UserId        _meUserId;
     bool          _selfPhantomAway = false;
 
+    bool _starredCollapsed  = false;
     bool _channelsCollapsed = false;
     bool _dmsCollapsed      = false;
     bool _appsCollapsed     = false;

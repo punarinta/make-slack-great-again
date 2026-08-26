@@ -376,6 +376,8 @@ static QJsonObject toJson(const Conversation &c) {
         o["dm"] = c.dmUser->value;
     if (c.isMuted)
         o["mu"] = true;
+    if (c.isStarred)
+        o["st"] = true;
     if (c.locallyMuted)
         o["lm"] = true;
     if (c.notifLevel != NotificationLevel::Default)
@@ -396,6 +398,8 @@ static Conversation convFromJson(const QJsonObject &o) {
         c.dmUser = UserId{o["dm"].toString()};
     if (o.contains("mu"))
         c.isMuted = o["mu"].toBool();
+    if (o.contains("st"))
+        c.isStarred = o["st"].toBool();
     if (o.contains("lm"))
         c.locallyMuted = o["lm"].toBool();
     if (o.contains("nl"))
