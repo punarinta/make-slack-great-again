@@ -191,8 +191,11 @@ int main(int argc, char *argv[]) {
     // reused — it would just sit idle until reaped. The one thing that does
     // carry over is the resolved address: Qt's process-global QHostInfo cache is
     // consulted when the backend later connects (and when PublicBackend fires its
-    // own pool-correct preWarm("slack.com") during ensureSession), so that
-    // connect skips the DNS round-trip. Fire-and-forget; qApp scopes the result.
+    // own pool-correct preWarm for its API host during ensureSession), so that
+    // connect skips the DNS round-trip. A session workspace addresses its own
+    // <team>.slack.com host instead (see apiBaseFor) and warms that one itself;
+    // slack.com is still the host for OAuth workspaces and for sign-in.
+    // Fire-and-forget; qApp scopes the result.
     QHostInfo::lookupHost(QStringLiteral("slack.com"), qApp, [](const QHostInfo &) {});
 
     // The language preference from Settings → Appearance overrides the system

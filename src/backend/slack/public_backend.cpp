@@ -50,6 +50,21 @@ bool isMethodUnavailable(const QString &err) {
     return codes.contains(err);
 }
 
+// Slack resolves a session (xoxc) token in the context of the HOST the call is
+// made on. On Enterprise Grid, bare slack.com/api has no workspace to resolve
+// to, so the call lands in the ORG context and every workspace-scoped method is
+// refused with `enterprise_is_restricted` — which is exactly why a Grid sign-in
+// came up with an empty conversation list (issue #49). The web client never
+// calls slack.com/api either: it talks to its own workspace host. Do the same
+// whenever we know the host — for a single-workspace team the two hosts are
+// interchangeable, so this costs non-Grid workspaces nothing.
+QString apiBaseFor(const QString &workspaceUrl) {
+    const QUrl url(workspaceUrl.trimmed());
+    if (!url.isValid() || url.scheme() != QLatin1String("https") || url.host().isEmpty())
+        return WebApiClient::kBaseUrl;
+    return QStringLiteral("https://") + url.host() + QStringLiteral("/api/");
+}
+
 // Translate a non-idempotent write's failure for the Session: a connection that
 // died mid-flight says nothing about whether the write landed, so it travels up
 // as kAmbiguousWriteFailure (do not roll back) rather than as a rejection.
@@ -99,6 +114,10 @@ PublicBackend::PublicBackend(
         // modern (undocumented) "flannel" WSS — a separate effort. SessionRealtime
         // is kept for that future work but is intentionally NOT started here.
         // _sessionRealtime = std::make_unique<SessionRealtime>(creds.xoxp, creds.cookie, &_events);
+        // Pin every call to this workspace's own host (see apiBaseFor). Only
+        // session auth: an OAuth token is workspace-scoped by construction, so
+        // the shared slack.com base already resolves it unambiguously.
+        applyApiBase(apiBaseFor(creds.workspaceUrl));
     }
     // Pace the background lane on the info client: a reconnect enqueues one
     // conversations.info per DM/MPDM (100+ on a busy workspace), and that method
@@ -108,8 +127,9 @@ PublicBackend::PublicBackend(
     _infoApi->setBackgroundPaceMs(1200);
     // Pre-warm TLS so the first API calls skip the handshake latency. The info
     // client is not pre-warmed: its background sweep starts well after launch.
-    _api->preWarm("slack.com");
-    _historyApi->preWarm("slack.com");
+    const QString apiHost = QUrl(_apiBase).host();
+    _api->preWarm(apiHost);
+    _historyApi->preWarm(apiHost);
 
     // Surface HTTP 429s to the UI (transient notice). All three clients can be
     // throttled; the background-sweep _infoApi is the usual culprit. The sending
@@ -306,9 +326,17 @@ PublicBackend::~PublicBackend() {
 }
 
 void PublicBackend::setApiBaseUrlForTests(const QString &url) {
-    _api->setBaseUrl(url);
-    _historyApi->setBaseUrl(url);
-    _infoApi->setBaseUrl(url);
+    applyApiBase(url);
+    _apiBasePinned = true; // auth.test's `url` must not steer the fake server away
+}
+
+void PublicBackend::applyApiBase(const QString &base) {
+    if (base.isEmpty() || base == _apiBase || _apiBasePinned)
+        return;
+    _apiBase = base;
+    _api->setBaseUrl(base);
+    _historyApi->setBaseUrl(base);
+    _infoApi->setBaseUrl(base);
 }
 
 rpl::producer<AuthState> PublicBackend::authState() const {
@@ -428,6 +456,15 @@ rpl::producer<UserId> PublicBackend::loadMe() {
             [this, consumer](QJsonObject resp) mutable {
                 _meUserId = UserId{resp.value("user_id").toString()};
                 _teamUrl  = resp.value("url").toString();
+                // auth.test's `url` is the authoritative workspace host. Adopt it
+                // for a session workspace whose stored credentials predate
+                // workspaceUrl (or carry a stale one) — see apiBaseFor.
+                if (_sessionAuth)
+                    applyApiBase(apiBaseFor(_teamUrl));
+                if (!resp.value("enterprise_id").toString().isEmpty())
+                    qInfo().noquote()
+                        << "Slack workspace" << _teamId << "is part of Enterprise Grid org"
+                        << resp.value("enterprise_id").toString();
                 consumer.put_next(UserId{resp.value("user_id").toString()});
                 consumer.put_done();
             },
@@ -442,6 +479,21 @@ rpl::producer<UserId> PublicBackend::loadMe() {
 
 rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
     return [this](auto consumer) mutable {
+        auto deliver = [consumer](std::vector<Conversation> convs) mutable {
+            consumer.put_next(std::move(convs));
+            consumer.put_done();
+        };
+        // Session::reloadConversations REPLACES the roster with whatever arrives,
+        // so a failed load must complete without a value rather than hand over an
+        // empty list (which would wipe the sidebar and the cache with it).
+        auto fail = [consumer]() mutable { consumer.put_done(); };
+        // A Grid workspace never gets a usable answer out of conversations.list,
+        // so once it has told us so we go straight to the web-client route.
+        if (_convListRestricted) {
+            loadConversationsViaWebClient(deliver, fail);
+            return rpl::lifetime();
+        }
+
         auto      accum = std::make_shared<std::vector<Conversation>>();
         QUrlQuery params;
         params.addQueryItem("types", "public_channel,private_channel,im,mpim");
@@ -450,6 +502,10 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
         // (Tier 2), so pull the max 1000 per page to minimise the number of calls
         // a full reload costs (fewer pages = fewer chances to trip a 429).
         params.addQueryItem("limit", "1000");
+        // Required when the token resolves as org-level (Enterprise Grid), and
+        // documented as ignored for a workspace-level one — so it is always safe.
+        if (!_teamId.isEmpty())
+            params.addQueryItem("team_id", _teamId);
 
         _api->paginate(
             "conversations.list",
@@ -459,17 +515,112 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
                 auto batch = JsonMappers::toConversations(page);
                 accum->insert(accum->end(), batch.begin(), batch.end());
             },
-            [consumer, accum]() mutable {
-                consumer.put_next(std::move(*accum));
-                consumer.put_done();
-            },
-            [consumer](QString err) mutable {
+            [deliver, accum]() mutable { deliver(std::move(*accum)); },
+            [this, deliver, fail](QString err) mutable {
+                // "The method cannot be called from an Enterprise": conversations.list
+                // is simply not served to a Grid session token. Latch it and take the
+                // route the web client itself takes (see loadConversationsViaWebClient)
+                // — this is the whole of issue #49.
+                if (err == QLatin1String("enterprise_is_restricted")) {
+                    if (!_convListRestricted) {
+                        _convListRestricted = true;
+                        qInfo() << "conversations.list is restricted on this Enterprise Grid "
+                                   "workspace — falling back to client.userBoot + im.list";
+                    }
+                    loadConversationsViaWebClient(deliver, fail);
+                    return;
+                }
                 qWarning() << "loadConversations error:" << err;
-                consumer.put_done();
+                fail();
             }
         );
         return rpl::lifetime();
     };
+}
+
+void PublicBackend::loadConversationsViaWebClient(
+    std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
+) {
+    // Two calls, exactly as Slack's own client boots: client.userBoot for every
+    // channel/private channel/MPDM the user belongs to, im.list for every DM
+    // (userBoot only carries the handful of DMs that are currently open). Both
+    // are undocumented web-client endpoints — served to a session token, and the
+    // only conversation listing a Grid workspace hands one out.
+    //
+    // Two known gaps vs. conversations.list, both benign here: no unread state
+    // (client.counts already supplies that for session auth) and no public
+    // channels the user has NOT joined, which only thins the browse dialog. The
+    // endpoint that would restore those (search.modules.channels) pages the whole
+    // org directory — tens of thousands of channels on a Grid — so it is
+    // deliberately not part of a startup load.
+    // Both halves must land: handing the Session channels-without-DMs (or the
+    // reverse) would replace the roster with a half of itself. One failure ⇒ the
+    // whole load fails, exactly as a mid-pagination conversations.list error did.
+    struct Accum {
+        std::vector<Conversation>                      convs;
+        int                                            pending  = 2;
+        int                                            failures = 0;
+        std::function<void(std::vector<Conversation>)> done;
+        std::function<void()>                          fail;
+        void                                           finish() {
+            if (--pending > 0)
+                return;
+            if (failures > 0)
+                fail();
+            else
+                done(std::move(convs));
+        }
+    };
+    auto acc  = std::make_shared<Accum>();
+    acc->done = std::move(done);
+    acc->fail = std::move(fail);
+
+    QUrlQuery bootParams;
+    bootParams.addQueryItem("min_channel_updated", "0");
+    _api->call(
+        "client.userBoot",
+        bootParams,
+        [acc](QJsonObject resp) {
+            // conversations.list was asked for exclude_archived; userBoot has no
+            // such switch, so drop archived channels here to keep parity.
+            QJsonArray live;
+            for (const auto v : resp.value("channels").toArray())
+                if (!v.toObject().value("is_archived").toBool())
+                    live.append(v);
+            auto batch = JsonMappers::toConversations(live);
+            acc->convs.insert(acc->convs.end(), batch.begin(), batch.end());
+            acc->finish();
+        },
+        [acc](QString err) mutable {
+            qWarning() << "loadConversations (client.userBoot) error:" << err;
+            ++acc->failures;
+            acc->finish();
+        }
+    );
+
+    QUrlQuery imParams;
+    imParams.addQueryItem("get_latest", "true");
+    imParams.addQueryItem("get_read_state", "true");
+    imParams.addQueryItem("limit", "1000");
+    _api->paginate(
+        "im.list",
+        "ims",
+        imParams,
+        [acc](QJsonArray page) {
+            QJsonArray live;
+            for (const auto v : page)
+                if (!v.toObject().value("is_archived").toBool())
+                    live.append(v);
+            auto batch = JsonMappers::toConversations(live);
+            acc->convs.insert(acc->convs.end(), batch.begin(), batch.end());
+        },
+        [acc]() { acc->finish(); },
+        [acc](QString err) mutable {
+            qWarning() << "loadConversations (im.list) error:" << err;
+            ++acc->failures;
+            acc->finish();
+        }
+    );
 }
 
 rpl::producer<Conversation>
@@ -545,11 +696,16 @@ rpl::producer<std::vector<ConvCounts>> PublicBackend::loadUnreadCounts() {
 
 rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
     return [this](auto consumer) mutable {
-        auto accum = std::make_shared<std::vector<User>>();
+        auto      accum = std::make_shared<std::vector<User>>();
+        QUrlQuery params;
+        // Same org-token rule as conversations.list: required for an org-level
+        // token, ignored for a workspace-level one.
+        if (!_teamId.isEmpty())
+            params.addQueryItem("team_id", _teamId);
         _historyApi->paginate(
             "users.list",
             "members",
-            QUrlQuery{},
+            params,
             [accum, myTeam = _teamId](QJsonArray page) {
                 auto batch = JsonMappers::toUsers(page);
                 for (auto &u : batch)
