@@ -185,8 +185,9 @@ public:
 
     // Tests only: point the API clients at a local fake server / shrink the
     // send-reconcile backoff.
-    void setApiBaseUrlForTests(const QString &url);
-    void setSendRetryDelayMsForTests(int ms) { _sendRetryDelayMs = ms; }
+    void                  setApiBaseUrlForTests(const QString &url);
+    [[nodiscard]] QString apiBaseUrlForTests() const { return _apiBase; }
+    void                  setSendRetryDelayMsForTests(int ms) { _sendRetryDelayMs = ms; }
 
 private:
     // One in-flight sendMessage with enough context to verify delivery and
@@ -260,10 +261,24 @@ protected:
 
 private:
     void setupTokenRefresh(const Credentials &creds, const AppConfig &appCfg);
+    // Repoint every Web API client at `base` (the workspace's own /api/ host).
+    void applyApiBase(const QString &base);
+    // Enterprise Grid conversation listing: client.userBoot + im.list, the pair
+    // the web client itself boots with. Used when conversations.list is refused
+    // with `enterprise_is_restricted`.
+    void loadConversationsViaWebClient(
+        std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
+    );
     void triggerRefresh(std::function<void(bool)> done);
     void maybeProactiveRefresh();
 
     QString       _teamId;
+    // Web API base every call is appended to. Defaults to the shared
+    // slack.com/api/; a session workspace pins its own host instead, because on
+    // Enterprise Grid the shared host resolves the token in the ORG context and
+    // refuses workspace-scoped methods (see apiBaseFor).
+    QString       _apiBase       = WebApiClient::kBaseUrl;
+    bool          _apiBasePinned = false; // set by setApiBaseUrlForTests
     QString       _refreshToken;
     QString       _refreshUrl;
     AppConfig     _appCfg;
@@ -289,6 +304,11 @@ private:
     bool                             _threadsViewUnavailable = false;
     // Same latch for the saved.* family (message reminders / "Later").
     bool                             _savedUnavailable       = false;
+    // conversations.list is not served to a session token on an Enterprise Grid
+    // workspace ("The method cannot be called from an Enterprise"). Latched on
+    // the first `enterprise_is_restricted` so later reloads skip straight to
+    // loadConversationsViaWebClient instead of burning a rejected call first.
+    bool                             _convListRestricted     = false;
     // Same latch for stars.list — deprecated but still served; an OAuth token
     // additionally needs the `stars:read` scope, which tokens issued before it
     // was requested lack (→ missing_scope until the user re-authorises).
