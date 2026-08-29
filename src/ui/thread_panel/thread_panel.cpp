@@ -167,20 +167,61 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     });
 }
 
+// The stash key must be workspace-qualified: two workspaces can (in principle)
+// carry the same conversation id and root ts, and a reply drafted in one must
+// never surface in the other.
+static QString threadDraftKey(Session *session, const ConversationId &conv, const Ts &rootTs) {
+    return (session ? session->teamId() : QString()) + QLatin1Char('\x1f') + conv.value +
+           QLatin1Char('\x1f') + rootTs;
+}
+
+void ThreadPanel::stashDraft() {
+    if (!_composer)
+        return;
+    // Always take: emptying the composer is the point, even when the input has
+    // no thread to be filed under (then it is discarded).
+    const ComposerDraft draft = _composer->takeDraft();
+    if (!_session || _conv.value.isEmpty() || _rootTs.isEmpty())
+        return;
+    const QString key = threadDraftKey(_session, _conv, _rootTs);
+    if (draft.isEmpty())
+        _drafts.remove(key);
+    else
+        _drafts.insert(key, draft);
+}
+
+void ThreadPanel::purgeDrafts(const QString &teamId) {
+    const QString prefix = teamId + QLatin1Char('\x1f');
+    _drafts.removeIf([&prefix](const auto &it) { return it.key().startsWith(prefix); });
+}
+
 void ThreadPanel::setSession(Session *session) {
+    if (session != _session) {
+        // Stash under the OLD session's key while it is still current, and
+        // forget the open thread — it belongs to the outgoing workspace, and a
+        // later close()/openThread must not file anything under its ids.
+        stashDraft();
+        _conv   = {};
+        _rootTs = {};
+    }
     _session = session;
     _msgList->setSession(session);
     _composer->setSession(session);
 }
 
 void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
-    // A pending edit belongs to the thread being left: its ts would be applied
-    // to the new thread's conversation on the next Enter. Re-opening the same
-    // thread (a second click on the same reply bar) leaves the edit intact.
-    if (_conv != conv || _rootTs != rootTs)
-        _composer->exitEditMode();
+    // Re-opening the same thread (a second click on the same reply bar) leaves
+    // the composer — including a pending edit — intact. Opening a different one
+    // stashes the old thread's unsent reply (a pending edit is dropped: its ts
+    // would be applied to the new thread's conversation on the next Enter) and
+    // restores whatever was staged for the new thread.
+    const bool changed = (_conv != conv || _rootTs != rootTs);
+    if (changed)
+        stashDraft();
     _conv   = conv;
     _rootTs = rootTs;
+    if (changed)
+        _composer->restoreDraft(_drafts.value(threadDraftKey(_session, _conv, _rootTs)));
     _msgList->openThread(conv, rootTs);
     _composer->setEnabled(true);
     _composer->setPlaceholderText(tr("Reply in thread…"));
@@ -191,10 +232,10 @@ void ThreadPanel::jumpToTs(const Ts &ts) {
 }
 
 void ThreadPanel::close() {
+    stashDraft(); // before _conv/_rootTs clear — the stash is filed under them
     _conv   = {};
     _rootTs = {};
     _msgList->clear();
-    _composer->exitEditMode();
     _composer->setEnabled(false);
 }
 

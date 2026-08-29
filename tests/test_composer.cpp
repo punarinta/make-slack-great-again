@@ -13,6 +13,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFile>
+#include <QKeyEvent>
 #include <QUrl>
 #include <QImage>
 #include <QMimeData>
@@ -298,6 +299,136 @@ TEST_CASE("setText restores a saved draft", "[composer][draft]") {
     ComposerWidget c;
     c.setText("saved draft");
     CHECK(c.currentText() == "saved draft");
+}
+
+// ── Draft stash: takeDraft / restoreDraft ─────────────────────────────────────
+//
+// The conversation-switch contract, and a security boundary: input staged for
+// one chat (text, attachments, subject) must never be able to ride into a send
+// from another chat. takeDraft() is the single leave-a-conversation entry point
+// and must leave the composer provably empty; restoreDraft() must replace the
+// composer's content wholesale, never merge into it.
+
+TEST_CASE("takeDraft returns the staged input and empties the composer", "[composer][draft]") {
+    ComposerWidget c;
+    typeText(&c, "unsent secret");
+    c.addPendingFile("/tmp/secret.png");
+
+    const ComposerDraft d = c.takeDraft();
+    CHECK(d.text == "unsent secret");
+    CHECK(d.files == QStringList{"/tmp/secret.png"});
+
+    // The security half: nothing staged survives inside the composer.
+    CHECK(c.currentText().isEmpty());
+    CHECK(c.pendingFiles().isEmpty());
+
+    // And a second take finds nothing left to carry anywhere.
+    CHECK(c.takeDraft().isEmpty());
+}
+
+TEST_CASE("Enter after takeDraft sends nothing", "[composer][draft]") {
+    // The end of the leak: even if the user hits Enter right after a switch,
+    // there is nothing left in the composer that could go out.
+    ComposerWidget c;
+    typeText(&c, "secret");
+    c.addPendingFile("/tmp/secret.png");
+
+    int sends = 0, uploads = 0;
+    QObject::connect(&c, &ComposerWidget::sendRequested, &c, [&](const QString &) { ++sends; });
+    QObject::connect(
+        &c, &ComposerWidget::uploadRequested, &c, [&](const QStringList &, const QString &) {
+            ++uploads;
+        }
+    );
+
+    c.takeDraft();
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editOf(&c), &enter);
+
+    CHECK(sends == 0);
+    CHECK(uploads == 0);
+}
+
+TEST_CASE("restoreDraft replaces any leftover content wholesale", "[composer][draft]") {
+    // Defense in depth: even if some leave-path missed its takeDraft(), the
+    // restore on open must make the composer hold exactly the incoming
+    // conversation's draft — not a merge with whatever was left behind.
+    ComposerWidget c;
+    typeText(&c, "text that was never stashed");
+    c.addPendingFile("/tmp/leftover.png");
+
+    ComposerDraft d;
+    d.text  = "the right draft";
+    d.files = QStringList{"/tmp/right.png"};
+    c.restoreDraft(d);
+
+    CHECK(c.currentText() == "the right draft");
+    CHECK(c.pendingFiles() == QStringList{"/tmp/right.png"});
+}
+
+TEST_CASE("restoring an empty draft leaves an empty composer", "[composer][draft]") {
+    ComposerWidget c;
+    typeText(&c, "leftover");
+    c.addPendingFile("/tmp/leftover.png");
+
+    c.restoreDraft({});
+
+    CHECK(c.currentText().isEmpty());
+    CHECK(c.pendingFiles().isEmpty());
+}
+
+TEST_CASE("take/restore round-trips mention tokens unchanged", "[composer][draft]") {
+    ComposerWidget c;
+    c.setText("ping <@U123> now");
+    const ComposerDraft d = c.takeDraft();
+    CHECK(d.text == "ping <@U123> now");
+    c.restoreDraft(d);
+    CHECK(c.currentText() == "ping <@U123> now");
+}
+
+TEST_CASE("takeDraft discards an in-progress edit instead of stashing it", "[composer][draft]") {
+    // Edit-mode text belongs to an existing message, not to unsent input;
+    // stashing it would resurface that message as "your draft" elsewhere. Files
+    // attached while editing are new user content and do travel.
+    ComposerWidget c;
+    c.enterEditMode("100.000", "someone's published message");
+    typeText(&c, "half-finished correction");
+    c.addPendingFile("/tmp/new-file.png");
+
+    const ComposerDraft d = c.takeDraft();
+    CHECK(d.text.isEmpty());
+    CHECK(d.files == QStringList{"/tmp/new-file.png"});
+    CHECK(c.currentText().isEmpty());
+}
+
+TEST_CASE("the subject line travels with the draft and is cleared by take", "[composer][draft]") {
+    ComposerWidget c;
+    c.setSubjectVisible(true);
+    c.setSubjectText("Custom subject");
+    typeText(&c, "mail body");
+
+    const ComposerDraft d = c.takeDraft();
+    CHECK(d.subject == "Custom subject");
+    CHECK(c.subjectText().isEmpty()); // must not ride into the next conversation
+
+    c.restoreDraft(d);
+    CHECK(c.subjectText() == "Custom subject");
+    CHECK(c.currentText() == "mail body");
+}
+
+TEST_CASE("a subject-less draft keeps the host's reply prefill", "[composer][draft]") {
+    // openConversation() prefills "Re: …" for the incoming conversation before
+    // restoring; a draft without a subject of its own must not wipe it.
+    ComposerWidget c;
+    c.setSubjectVisible(true);
+    c.setSubjectText("Re: incoming thread");
+
+    ComposerDraft d;
+    d.text = "body only";
+    c.restoreDraft(d);
+
+    CHECK(c.subjectText() == "Re: incoming thread");
+    CHECK(c.currentText() == "body only");
 }
 
 // ── Session: new methods ──────────────────────────────────────────────────────

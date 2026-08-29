@@ -17,7 +17,8 @@
 #include <QUrl>
 
 Session::Session(std::unique_ptr<Backend> backend, const QString &teamId)
-    : _backend(std::move(backend)), _cache(std::make_unique<WorkspaceCache>(teamId)) {}
+    : _backend(std::move(backend)), _cache(std::make_unique<WorkspaceCache>(teamId)),
+      _teamId(teamId) {}
 
 Session::~Session() {
     // Batched unread merges (_pendingUnreadInfos) are deliberately dropped:

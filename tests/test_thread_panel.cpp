@@ -499,6 +499,174 @@ TEST_CASE("the ↑ path still edits the newest own reply", "[thread][edit]") {
     CHECK(composerOf(panel)->currentText() == QStringLiteral("newest reply"));
 }
 
+// ── Draft stashing across threads ─────────────────────────────────────────────
+//
+// Security-boundary tests: input staged in one thread (text + attachments) must
+// never send into another thread, another conversation, or another workspace —
+// and must come back intact when the user returns to where it was typed. The
+// failure mode these guard against is the worst kind: a reply drafted for one
+// audience silently posted to a different one.
+
+static void typeInto(ComposerWidget *c, const QString &text) {
+    auto *ed = c->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(ed != nullptr);
+    ed->setPlainText(text);
+}
+
+static void pressEnter(ComposerWidget *c) {
+    auto *ed = c->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(ed != nullptr);
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(ed, &enter);
+}
+
+static const Ts kRoot2 = QStringLiteral("200.500");
+
+TEST_CASE("input staged in one thread never sends into another", "[thread][draft]") {
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    auto *c = composerOf(panel);
+    typeInto(c, "secret for thread A");
+    c->addPendingFile(f.filePath);
+
+    // Another thread — and also another conversation entirely: both must find
+    // the composer empty.
+    panel.openThread(ConversationId{"C2"}, kRoot2);
+    CHECK(c->currentText().isEmpty());
+    CHECK(c->pendingFiles().isEmpty());
+
+    // Enter with leftover state would have posted A's text and file here.
+    pressEnter(c);
+    CHECK(f.stub->sendCalls.empty());
+    CHECK(f.stub->uploadCalls.empty());
+
+    // A genuine reply in the other thread carries neither A's text nor A's
+    // file: had the pending file leaked, this send would be an upload instead.
+    panel.openThread(kConv.id, kRoot2);
+    typeInto(c, "hello B");
+    pressEnter(c);
+    REQUIRE(f.stub->sendCalls.size() == 1);
+    CHECK(f.stub->sendCalls[0].conv == kConv.id);
+    CHECK(f.stub->sendCalls[0].msg.text.text == QStringLiteral("hello B"));
+    REQUIRE(f.stub->sendCalls[0].msg.threadRoot.has_value());
+    CHECK(*f.stub->sendCalls[0].msg.threadRoot == kRoot2);
+    CHECK(f.stub->uploadCalls.empty());
+}
+
+TEST_CASE("returning to a thread restores its stashed input", "[thread][draft]") {
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    auto *c = composerOf(panel);
+    typeInto(c, "wip reply");
+    c->addPendingFile(f.filePath);
+
+    panel.openThread(kConv.id, kRoot2); // away…
+    panel.openThread(kConv.id, kRoot);  // …and back
+
+    CHECK(c->currentText() == QStringLiteral("wip reply"));
+    CHECK(c->pendingFiles() == QStringList{f.filePath});
+
+    // The restored draft sends into ITS thread, file and text as one message.
+    pressEnter(c);
+    REQUIRE(f.stub->uploadCalls.size() == 1);
+    CHECK(f.stub->uploadCalls[0].conv == kConv.id);
+    CHECK(f.stub->uploadCalls[0].paths == QStringList{f.filePath});
+    CHECK(f.stub->uploadCalls[0].comment == QStringLiteral("wip reply"));
+    REQUIRE(f.stub->uploadCalls[0].threadRoot.has_value());
+    CHECK(*f.stub->uploadCalls[0].threadRoot == kRoot);
+    CHECK(f.stub->sendCalls.empty());
+}
+
+TEST_CASE("two threads in the same conversation stash separately", "[thread][draft]") {
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+
+    panel.openThread(kConv.id, kRoot);
+    typeInto(composerOf(panel), "for root one");
+
+    panel.openThread(kConv.id, kRoot2);
+    CHECK(composerOf(panel)->currentText().isEmpty());
+    typeInto(composerOf(panel), "for root two");
+
+    panel.openThread(kConv.id, kRoot);
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("for root one"));
+    panel.openThread(kConv.id, kRoot2);
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("for root two"));
+}
+
+TEST_CASE("closing the panel stashes the reply draft", "[thread][draft]") {
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    typeInto(composerOf(panel), "typed then closed");
+    composerOf(panel)->addPendingFile(f.filePath);
+
+    panel.close();
+    CHECK(composerOf(panel)->currentText().isEmpty());
+    CHECK(composerOf(panel)->pendingFiles().isEmpty());
+
+    panel.openThread(kConv.id, kRoot);
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("typed then closed"));
+    CHECK(composerOf(panel)->pendingFiles() == QStringList{f.filePath});
+}
+
+TEST_CASE("identical thread ids in another workspace see none of the input", "[thread][draft]") {
+    // Ids are only unique within a workspace; the stash key must be
+    // workspace-qualified or a reply drafted in one workspace could surface —
+    // and send — in another that happens to reuse the same conv id and root ts.
+    Fixture f;
+    auto    backend2 = std::make_unique<StubBackend>();
+    auto   *stub2    = backend2.get();
+    stub2->_meId     = UserId{"U9"};
+    stub2->_convs    = std::vector<Conversation>{kConv}; // same "C1"
+    Session session2(std::move(backend2), "T_THREAD_PANEL_TEST_B");
+    session2.start();
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    typeInto(composerOf(panel), "workspace A secret");
+    composerOf(panel)->addPendingFile(f.filePath);
+
+    // Same conversation id, same root ts — different workspace.
+    panel.setSession(&session2);
+    panel.openThread(kConv.id, kRoot);
+    CHECK(composerOf(panel)->currentText().isEmpty());
+    CHECK(composerOf(panel)->pendingFiles().isEmpty());
+
+    pressEnter(composerOf(panel));
+    CHECK(stub2->sendCalls.empty());
+    CHECK(stub2->uploadCalls.empty());
+
+    // Back in workspace A the draft is exactly where it was left.
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    CHECK(composerOf(panel)->currentText() == QStringLiteral("workspace A secret"));
+    CHECK(composerOf(panel)->pendingFiles() == QStringList{f.filePath});
+}
+
+TEST_CASE("purgeDrafts forgets a logged-out workspace's reply drafts", "[thread][draft]") {
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    typeInto(composerOf(panel), "must not survive logout");
+
+    panel.close(); // stashes
+    panel.purgeDrafts(f.session->teamId());
+
+    panel.openThread(kConv.id, kRoot);
+    CHECK(composerOf(panel)->currentText().isEmpty());
+}
+
 TEST_CASE("Forward message on a thread reply reaches the host", "[thread][forward]") {
     // Same dead-wire class: the list's forward signal (context menu, hover
     // toolbar, and the image viewer) had no receiver in the panel either, so

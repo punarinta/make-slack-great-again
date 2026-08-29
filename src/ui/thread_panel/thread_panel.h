@@ -4,7 +4,9 @@
 
 #include "backend/domain.h"
 #include "rpl/lifetime.h"
+#include "ui/composer/composer_draft.h"
 
+#include <QHash>
 #include <QWidget>
 
 class Session;
@@ -23,6 +25,9 @@ public:
     explicit ThreadPanel(ImageCache *imgCache, QWidget *parent = nullptr);
 
     void setSession(Session *session);
+    // Forget every stashed reply draft belonging to a workspace — called when
+    // it logs out, so the same team re-added later starts clean.
+    void purgeDrafts(const QString &teamId);
     void openThread(ConversationId conv, Ts rootTs);
     // Move the focus to one reply of the open thread (see MessageListWidget::jumpToTs).
     void jumpToTs(const Ts &ts);
@@ -56,15 +61,24 @@ signals:
 
 private:
     void applyTheme();
+    // Empty the reply composer and file its unsent input under the open thread
+    // (workspace + conversation + root ts). Runs on every way out of a thread —
+    // opening another one, close(), a session switch — so a reply staged for
+    // one thread can never be sent into another; input held while no thread is
+    // open is discarded.
+    void stashDraft();
     // Keep the outward left-edge shadow positioned just left of the panel.
     void layoutShadow();
     // Ask for a save path and hand off to a ThreadExportJob, which re-fetches
     // the whole thread from the API (the open view may only hold its head).
     void downloadThread();
 
-    Session       *_session = nullptr;
-    ConversationId _conv;
-    Ts             _rootTs;
+    Session                      *_session = nullptr;
+    ConversationId                _conv;
+    Ts                            _rootTs;
+    // "teamId\x1fconvId\x1frootTs" → stashed reply input, so switching threads
+    // (or workspaces and back) resumes where the user left off. See stashDraft().
+    QHash<QString, ComposerDraft> _drafts;
 
     QWidget           *_headerWidget = nullptr;
     QWidget           *_leftShadow   = nullptr;

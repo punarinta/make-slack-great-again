@@ -3,6 +3,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "ui/composer/composer_draft.h"
 
 #include <QColor>
 #include <QHash>
@@ -78,6 +79,21 @@ public:
     // raw <@U…> tokens, so the outgoing message format never changes.
     QString currentText() const;
     void    setText(const QString &text);
+
+    // Conversation-switch stash. takeDraft() captures the whole unsent state
+    // (text, pending attachments, subject) and empties the composer in the same
+    // step — the single leave-a-conversation entry point. Its guarantee is the
+    // security property: after it returns, nothing previously staged can ride
+    // into whatever conversation is shown next. An in-progress message edit is
+    // discarded, never turned into a draft (its text belongs to an existing
+    // message); files attached while editing are new content and are captured.
+    ComposerDraft takeDraft();
+    // Make the composer show exactly `draft`: text and attachments are replaced
+    // wholesale (an empty draft leaves an empty composer). The subject is only
+    // overwritten when the draft carries one, so a host-set reply prefill
+    // ("Re: …") applied for the incoming conversation survives restoring a
+    // subject-less draft.
+    void          restoreDraft(const ComposerDraft &draft);
 
     // Move keyboard focus to the message editor (e.g. when the window is
     // brought to the foreground onto an active conversation).
