@@ -105,6 +105,12 @@ static constexpr int kConvInitWidth = 240;
 // _activeTeamId, switcher ids, NavHistory) is the composite WorkspaceKey handle
 // string, e.g. "slack:T0123ABCD". This helper resolves a handle to its neutral
 // registry record (empty record if the handle is malformed or absent).
+// Key for _drafts: workspace-qualified so identical conversation ids in two
+// workspaces stay separate stashes (same separator convention as _notifiedHuddles).
+static QString draftKey(const QString &teamId, const ConversationId &conv) {
+    return teamId + QLatin1Char('\x1f') + conv.value;
+}
+
 static TokenStore::WorkspaceRecord recordForHandle(const QString &handle) {
     if (const auto key = WorkspaceKey::fromString(handle))
         if (const auto rec = TokenStore::loadWorkspace(*key))
@@ -1234,6 +1240,17 @@ void MainWindow::dropSession(QString teamId) {
     if (it == _sessions.end())
         return;
     if (it->second.session.get() == _session) {
+        // The composers may still hold input for this workspace; the workspace
+        // is going away, so take it and let it fall on the floor. The thread
+        // panel is also detached here — its Session pointer would dangle the
+        // moment the erase below destroys the session.
+        if (_composer)
+            _composer->takeDraft();
+        if (_threadPanel) {
+            _threadPanel->close();
+            _threadPanel->setVisible(false);
+            _threadPanel->setSession(nullptr);
+        }
         _uiLifetime = rpl::lifetime();
         _session    = nullptr;
         if (_messageList)
@@ -1241,6 +1258,12 @@ void MainWindow::dropSession(QString teamId) {
         _currentConvId  = {};
         _pendingNavConv = {};
     }
+    // A logged-out workspace's drafts must not linger: the same team could be
+    // added again later (possibly by someone else's account).
+    const QString prefix = draftKey(teamId, ConversationId{});
+    _drafts.removeIf([&prefix](const auto &it) { return it.key().startsWith(prefix); });
+    if (_threadPanel)
+        _threadPanel->purgeDrafts(teamId);
     _navHistory.purgeTeam(teamId);
     _sessions.erase(it);
     _wsUnreads.remove(teamId);
@@ -1274,6 +1297,11 @@ void MainWindow::activateWorkspace(QString teamId) {
     // would clamp a slightly-scrolled-up position to a false "at bottom".
     if (_messageList)
         _messageList->saveScrollAnchor();
+
+    // Stash the outgoing workspace's unsent composer input while _activeTeamId
+    // and _currentConvId still name it — switching workspaces must neither lose
+    // a draft nor carry it (or its attachments) into the incoming workspace.
+    stashComposerDraft();
 
     // Detach the UI from the outgoing session — it stays alive in the
     // background and keeps accumulating unreads / firing notifications.
@@ -1365,6 +1393,7 @@ void MainWindow::switchToWorkspace(QString teamId) {
 void MainWindow::showLoggedOut() {
     // Detach the UI only — background sessions for other workspaces (if any)
     // keep running and keep their badges/notifications.
+    stashComposerDraft();
     _uiLifetime = rpl::lifetime();
     _session    = nullptr;
     if (_messageList)
@@ -2805,16 +2834,9 @@ void MainWindow::openThreadsView() {
     if (_searchWidget && _searchWidget->isVisible())
         _searchWidget->hide();
 
-    // Save draft / exit edit mode for the conversation we're leaving — the same
-    // bookkeeping as openConversation(), which restores it on the way back.
-    if (!_currentConvId.value.isEmpty() && _composer) {
-        _composer->exitEditMode();
-        const QString draft = _composer->currentText();
-        if (draft.isEmpty())
-            _drafts.remove(_currentConvId.value);
-        else
-            _drafts[_currentConvId.value] = draft;
-    }
+    // Stash the leaving conversation's unsent input — the same bookkeeping as
+    // openConversation(), which restores it on the way back.
+    stashComposerDraft();
     _currentConvId = {};
 
     if (_typingIndicator)
@@ -2856,14 +2878,7 @@ void MainWindow::openSavedMessagesView() {
         _searchWidget->hide();
 
     // Same leave-the-conversation bookkeeping as openThreadsView().
-    if (!_currentConvId.value.isEmpty() && _composer) {
-        _composer->exitEditMode();
-        const QString draft = _composer->currentText();
-        if (draft.isEmpty())
-            _drafts.remove(_currentConvId.value);
-        else
-            _drafts[_currentConvId.value] = draft;
-    }
+    stashComposerDraft();
     _currentConvId = {};
 
     if (_typingIndicator)
@@ -3356,6 +3371,21 @@ void MainWindow::focusComposerIfActive() {
     }
 }
 
+void MainWindow::stashComposerDraft() {
+    if (!_composer)
+        return;
+    // Always take, even when nothing is open: emptying the composer is the
+    // point — whatever it held must not survive into the next conversation.
+    const ComposerDraft draft = _composer->takeDraft();
+    if (_activeTeamId.isEmpty() || _currentConvId.value.isEmpty())
+        return; // no conversation to file it under: discard
+    const QString key = draftKey(_activeTeamId, _currentConvId);
+    if (draft.isEmpty())
+        _drafts.remove(key);
+    else
+        _drafts.insert(key, draft);
+}
+
 void MainWindow::openConversation(int row) {
     if (!_session)
         return;
@@ -3363,15 +3393,8 @@ void MainWindow::openConversation(int row) {
     if (_searchWidget && _searchWidget->isVisible())
         _searchWidget->hide();
 
-    // Save draft / exit edit mode for the outgoing conversation.
-    if (!_currentConvId.value.isEmpty() && _composer) {
-        _composer->exitEditMode();
-        const QString draft = _composer->currentText();
-        if (draft.isEmpty())
-            _drafts.remove(_currentConvId.value);
-        else
-            _drafts[_currentConvId.value] = draft;
-    }
+    // Stash the outgoing conversation's unsent input (also exits edit mode).
+    stashComposerDraft();
 
     _currentConvId = _convList->conversationId(row);
     if (_currentConvId.value.isEmpty())
@@ -3499,8 +3522,10 @@ void MainWindow::openConversation(int row) {
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );
 
-    // Restore any unsent draft for this conversation.
-    _composer->setText(_drafts.value(_currentConvId.value));
+    // Restore this conversation's unsent input (text + attachments). Applied
+    // wholesale even when there is no stash, so nothing staged elsewhere and
+    // missed by a stash call could still be sitting in the composer.
+    _composer->restoreDraft(_drafts.value(draftKey(_activeTeamId, _currentConvId)));
 
     if (hasCachedMsgs) {
         if (_msgHeader)

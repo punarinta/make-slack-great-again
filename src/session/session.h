@@ -31,6 +31,11 @@ public:
     // Call once after construction; begins loading data and connecting realtime.
     void start();
 
+    // The workspace handle this session was created for (the WorkspaceKey
+    // string, e.g. "slack:T0123"). Stable for the session's lifetime; lets UI
+    // code key per-workspace state (composer drafts) without asking the host.
+    QString teamId() const { return _teamId; }
+
     // --- Read interface for UI ---
     rpl::producer<std::vector<Conversation>> conversations() const;
     rpl::producer<std::vector<User>>         users() const;
@@ -550,6 +555,7 @@ private:
 
     std::unique_ptr<Backend>        _backend;
     std::unique_ptr<WorkspaceCache> _cache;
+    const QString                   _teamId;
 
     rpl::variable<std::vector<Conversation>> _conversations;
     rpl::variable<std::vector<User>>         _users;

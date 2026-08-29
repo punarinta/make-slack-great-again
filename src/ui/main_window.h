@@ -4,6 +4,7 @@
 
 #include "backend/domain.h"
 #include "auth/token_store.h"
+#include "ui/composer/composer_draft.h"
 #include "ui/nav_history.h"
 #include "rpl/lifetime.h"
 
@@ -224,6 +225,13 @@ private:
     void updateRoundedMask();
     void populateConversations(const std::vector<Conversation> &convs);
     void openConversation(int row);
+    // Empty the composer (text + attachments + subject) and file the content
+    // under the conversation being left, keyed by workspace AND conversation.
+    // Every path that leaves a conversation — opening another one, the threads/
+    // saved overviews, a workspace switch, logout — must run this so staged
+    // input can never be sent into whatever is shown next. Content with no home
+    // (no conversation open) is discarded rather than kept.
+    void stashComposerDraft();
     // Put the cursor in the composer when a conversation becomes visible, but
     // only while the window is foreground — a background workspace switch or
     // restore must not steal focus from whatever the user is doing.
@@ -311,7 +319,11 @@ private:
     bool                            _convListWired = false;
     rpl::lifetime                   _uiLifetime; // active-workspace UI subscriptions
 
-    QHash<QString, QString> _drafts; // convId.value → unsent draft text
+    // "teamId\x1fconvId" → unsent composer input (text, attachments, subject),
+    // written/read only by stashComposerDraft() and the openConversation()
+    // restore. Workspace-qualified so identical conversation ids in two
+    // workspaces can never surface each other's input.
+    QHash<QString, ComposerDraft> _drafts;
 
     ImageCache          *_imgCache            = nullptr;
     QLabel              *_errorBanner         = nullptr;

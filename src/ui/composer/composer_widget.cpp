@@ -1649,6 +1649,38 @@ void ComposerWidget::setText(const QString &text) {
     }
 }
 
+ComposerDraft ComposerWidget::takeDraft() {
+    // An in-progress edit is not a draft: its text is an existing message's,
+    // and stashing it would resurface that message as "your unsent input"
+    // somewhere else. Exiting first drops the edit text and the read-only file
+    // chips; the user's own pending attachments survive into the capture below.
+    exitEditMode();
+
+    ComposerDraft draft;
+    draft.text  = currentText();
+    draft.files = _pendingFiles;
+    if (_subject && !_subject->isHidden())
+        draft.subject = _subject->text();
+
+    _edit->clear();
+    _pendingFiles.clear();
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    if (_subject)
+        _subject->clear();
+    updateSendState();
+    return draft;
+}
+
+void ComposerWidget::restoreDraft(const ComposerDraft &draft) {
+    exitEditMode();
+    setText(draft.text);
+    _pendingFiles = draft.files;
+    _attachStrip->rebuild(_pendingFiles, _editModeFiles);
+    if (_subject && !draft.subject.isEmpty())
+        _subject->setText(draft.subject);
+    updateSendState();
+}
+
 // ── Dialogs ───────────────────────────────────────────────────────────────────
 
 void ComposerWidget::openAttachDialog() {
