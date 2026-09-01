@@ -668,6 +668,12 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
                 _loading = false;
                 _loadingAnim.stop();
                 _olderCursor = page.olderCursor;
+                // Showing the thread reads it: move its read cursor to the newest
+                // message on screen (page.messages is oldest-first). Keeps the
+                // official clients in sync and, more importantly here, stops the
+                // Threads-feed poll from ever re-delivering these as new.
+                if (!page.messages.empty())
+                    _session->markThreadRead(_currentConv, _threadRootTs, page.messages.back().ts);
                 appendMessages(page.messages);
                 QTimer::singleShot(0, this, [this] {
                     applyPendingScroll();

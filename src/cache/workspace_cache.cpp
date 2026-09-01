@@ -612,6 +612,18 @@ QStringList WorkspaceCache::loadMutedThreads() const {
     return out;
 }
 
+void WorkspaceCache::saveFollowedThreads(const QStringList &keys) {
+    metaObject()["followedThreads"] = QJsonArray::fromStringList(keys);
+    writeMeta();
+}
+
+QStringList WorkspaceCache::loadFollowedThreads() const {
+    QStringList out;
+    for (const auto &v : metaObject().value("followedThreads").toArray())
+        out.append(v.toString());
+    return out;
+}
+
 void WorkspaceCache::saveReminders(const std::vector<MessageReminder> &reminders) {
     QJsonArray arr;
     for (const auto &r : reminders) {

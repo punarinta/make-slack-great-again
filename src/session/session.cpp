@@ -101,10 +101,19 @@ void Session::start() {
         auto users = _cache->loadUsers();
         if (!users.empty())
             _users = std::move(users);
-        _botUsers         = _cache->loadBots();
-        _emojiMap         = _cache->loadEmojiMap();
-        const auto muted  = _cache->loadMutedThreads();
-        _mutedThreads     = QSet<QString>(muted.begin(), muted.end());
+        _botUsers        = _cache->loadBots();
+        _emojiMap        = _cache->loadEmojiMap();
+        const auto muted = _cache->loadMutedThreads();
+        _mutedThreads    = QSet<QString>(muted.begin(), muted.end());
+        // Followed threads carry no per-entry time on disk (only their order
+        // matters); seed them all at "now", newest-first order preserved by
+        // walking the list backwards so the next prune keeps the same tail.
+        {
+            const auto followed = _cache->loadFollowedThreads();
+            qint64     stamp    = QDateTime::currentMSecsSinceEpoch() - followed.size();
+            for (auto it = followed.crbegin(); it != followed.crend(); ++it)
+                _followedThreads.insert(*it, stamp++);
+        }
         _reminderPreviews = _cache->loadReminderPreviews();
         for (auto &r : _cache->loadReminders()) {
             const QString key = reminderKey(r.conv, r.ts);
@@ -532,6 +541,12 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
     if (!firstSighting(conv, msg.ts))
         return false;
     const bool ownMessage = !_meUserId.value.isEmpty() && msg.author == _meUserId;
+    // Replying subscribes us to the thread (Slack does the same server-side), so
+    // the peer's answer notifies as a followed-thread reply. Covers a reply sent
+    // from another client too — this runs for every own message we ever see, not
+    // just the ones composed here.
+    if (ownMessage && msg.threadRoot)
+        markThreadFollowed(conv, *msg.threadRoot);
     {
         auto convs = _conversations.current();
         for (auto &c : convs) {
@@ -553,10 +568,13 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
             // A thread I muted: its replies stop badging (Slack's "Mute thread"),
             // except an explicit @mention, which always gets through.
             const bool     threadMuted = msg.threadRoot && isThreadMuted(conv, *msg.threadRoot);
-            // A reply to a thread we started badges like a mention, matching
-            // Slack's "replies to threads you're following" (see maybeNotify) —
-            // unless that thread is muted.
-            const bool     isFollowed  = !threadMuted && isFollowedThreadReply(msg, _meUserId);
+            // A reply in a thread we follow — one we started (parent_user_id)
+            // or one we replied in / the Threads feed reports as subscribed —
+            // badges like a mention, matching Slack's "replies to threads you're
+            // following" (see maybeNotify). Unless that thread is muted.
+            const bool     isFollowed =
+                !threadMuted && msg.threadRoot &&
+                (isFollowedThreadReply(msg, _meUserId) || isThreadFollowed(conv, *msg.threadRoot));
             // Suppress a muted thread's non-mention replies entirely (even in a
             // DM/MPDM). Otherwise plain channel thread replies don't mark the
             // channel unread (they live in the Threads view); mentions,
@@ -630,6 +648,19 @@ void Session::checkRealtimeHealth() {
             if (nowCounts - _lastCountsPollMs >= kCountsPollGapMs) {
                 _lastCountsPollMs = nowCounts;
                 pollUnreadCounts();
+            }
+        }
+        // (0c) …and neither the roster nor the counts snapshot can see a THREAD
+        // reply: conversations.history omits replies entirely, and a reply moves
+        // no channel's `latest`. So on a poll-only workspace every reply in every
+        // thread was undeliverable — no event, hence no notification, no sound and
+        // no badge (issue #51). The subscribed-threads feed is the one endpoint
+        // that reports them, whole-workspace, in a single request.
+        if (_backend->capabilities().threadsView) {
+            const qint64 nowThreads = QDateTime::currentMSecsSinceEpoch();
+            if (nowThreads - _lastThreadsPollMs >= kThreadsPollGapMs) {
+                _lastThreadsPollMs = nowThreads;
+                pollThreadReplies();
             }
         }
     }
@@ -856,6 +887,84 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts
                                    << "— re-establishing socket";
                         _backend->reestablishRealtime();
                     }
+                }
+            },
+            _lifetime
+        );
+}
+
+void Session::pollThreadReplies() {
+    _backend->loadThreadsView(/*cursor=*/{}) |
+        rpl::on_next(
+            [this](ThreadsViewPage page) {
+                const bool priming = !_threadsPrimed;
+                _threadsPrimed     = true;
+                int injected       = 0;
+                for (const auto &t : page.threads) {
+                    if (t.conv.value.isEmpty() || t.root.ts.isEmpty())
+                        continue;
+                    // Everything the feed returns is a thread we're subscribed to
+                    // — the authoritative answer to "am I following this?", which
+                    // parent_user_id alone can't give for a thread we only replied
+                    // in. Do this before any early exit below so the followed set
+                    // is right even for a thread we inject nothing from.
+                    markThreadFollowed(t.conv, t.root.ts);
+
+                    const QString key = threadKey(t.conv, t.root.ts);
+                    Ts            newest;
+                    for (const auto &r : t.latestReplies)
+                        if (r.ts > newest)
+                            newest = r.ts;
+
+                    Ts baseline = _threadPollBaseline.value(key);
+                    if (baseline.isEmpty()) {
+                        // No baseline yet. On the first page of the run, prime:
+                        // the feed reports where every thread stands, and
+                        // injecting that backlog would replay old replies as new
+                        // messages. Later, a thread appearing for the first time
+                        // means it just moved into the page — its own read cursor
+                        // is then the honest floor, so the replies past it (the
+                        // ones the feed calls unread) still notify.
+                        baseline = priming ? newest : t.lastRead;
+                        if (baseline.isEmpty()) {
+                            _threadPollBaseline.insert(key, newest);
+                            continue;
+                        }
+                    }
+
+                    // Announce at most the newest few of a backlog (see
+                    // kMaxThreadBacklogReplies): lifting the floor to just under
+                    // them drops the older ones silently rather than firing a
+                    // burst of notifications for a thread the user let pile up.
+                    std::vector<Ts> unseen;
+                    for (const auto &r : t.latestReplies)
+                        if (r.ts > baseline)
+                            unseen.push_back(r.ts);
+                    if (unseen.size() > size_t(kMaxThreadBacklogReplies))
+                        baseline = unseen[unseen.size() - kMaxThreadBacklogReplies - 1];
+
+                    for (const auto &r : t.latestReplies) {
+                        if (r.ts <= baseline)
+                            continue;
+                        if (injected >= kMaxThreadInjectsPerTick) {
+                            // Leave the baseline where it is: the rest of this
+                            // thread drains on the next tick instead of being
+                            // silently skipped.
+                            newest = baseline;
+                            break;
+                        }
+                        // Same path as the history poll: handleNewMessage badges
+                        // and de-dups (a thread_broadcast reply also reaches us
+                        // through conversations.history), the event notifies and
+                        // lands in an open thread panel.
+                        if (handleNewMessage(t.conv, r)) {
+                            _eventHub.fire(EvMessageNew{t.conv, r});
+                            ++injected;
+                        }
+                    }
+                    if (newest > baseline)
+                        baseline = newest;
+                    _threadPollBaseline.insert(key, baseline);
                 }
             },
             _lifetime
@@ -1637,6 +1746,8 @@ void Session::sendMessage(
     ConversationId conv, const QString &text, std::optional<Ts> threadRoot, const QString &subject
 ) {
     const Ts fakeTs = makeFakeTs();
+    if (threadRoot)
+        markThreadFollowed(conv, *threadRoot);
 
     Message optimistic;
     optimistic.ts         = fakeTs;
@@ -1938,6 +2049,8 @@ void Session::uploadFiles(
     // a translucent pending copy; the real message arrives via realtime once
     // Slack posts it, replacing the ghost (same flow as plain text sends).
     const Ts fakeTs = makeFakeTs();
+    if (threadRoot)
+        markThreadFollowed(conv, *threadRoot);
 
     Message optimistic;
     optimistic.ts         = fakeTs;
@@ -2433,11 +2546,11 @@ void Session::setConvMuted(ConversationId conv, bool muted) {
 }
 
 bool Session::isThreadMuted(const ConversationId &conv, const Ts &root) const {
-    return _mutedThreads.contains(threadMuteKey(conv, root));
+    return _mutedThreads.contains(threadKey(conv, root));
 }
 
 void Session::setThreadMuted(const ConversationId &conv, const Ts &root, bool muted) {
-    const QString key = threadMuteKey(conv, root);
+    const QString key = threadKey(conv, root);
     if (muted == _mutedThreads.contains(key))
         return; // no change
     if (muted)
@@ -2446,6 +2559,46 @@ void Session::setThreadMuted(const ConversationId &conv, const Ts &root, bool mu
         _mutedThreads.remove(key);
     if (_cache)
         _cache->saveMutedThreads(QStringList(_mutedThreads.begin(), _mutedThreads.end()));
+}
+
+bool Session::isThreadFollowed(const ConversationId &conv, const Ts &root) const {
+    return _followedThreads.contains(threadKey(conv, root));
+}
+
+void Session::markThreadFollowed(const ConversationId &conv, const Ts &root) {
+    if (conv.value.isEmpty() || root.isEmpty())
+        return;
+    const QString key   = threadKey(conv, root);
+    const bool    fresh = !_followedThreads.contains(key);
+    _followedThreads.insert(key, QDateTime::currentMSecsSinceEpoch());
+    if (fresh)
+        saveFollowedThreads(); // only the membership matters on disk, not the touch
+}
+
+void Session::markThreadRead(const ConversationId &conv, const Ts &root, const Ts &upTo) {
+    if (conv.value.isEmpty() || root.isEmpty() || upTo.isEmpty())
+        return;
+    Ts &baseline = _threadPollBaseline[threadKey(conv, root)];
+    if (upTo > baseline)
+        baseline = upTo;
+    _backend->markThreadRead(conv, root, upTo);
+}
+
+void Session::saveFollowedThreads() {
+    if (!_cache)
+        return;
+    // Newest first, capped: the set is append-only over a long run, and the
+    // oldest entries are threads nobody will reply in again.
+    QStringList keys = _followedThreads.keys();
+    std::sort(keys.begin(), keys.end(), [this](const QString &a, const QString &b) {
+        return _followedThreads.value(a) > _followedThreads.value(b);
+    });
+    if (keys.size() > kMaxFollowedThreads) {
+        for (const auto &gone : keys.mid(kMaxFollowedThreads))
+            _followedThreads.remove(gone);
+        keys = keys.mid(0, kMaxFollowedThreads);
+    }
+    _cache->saveFollowedThreads(keys);
 }
 
 // ── Message reminders ─────────────────────────────────────────────────────────
