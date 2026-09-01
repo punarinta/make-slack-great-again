@@ -236,6 +236,23 @@ public:
     bool isThreadMuted(const ConversationId &conv, const Ts &root) const;
     void setThreadMuted(const ConversationId &conv, const Ts &root, bool muted);
 
+    // Threads the user is subscribed to — started, replied to, or reported as
+    // subscribed by the Threads feed. Slack's default-on "Replies to threads
+    // you're following" notifies for these whatever the channel's level is, and
+    // they badge like a mention. parent_user_id only identifies threads we
+    // STARTED, so this set is what covers a thread we merely replied in.
+    bool isThreadFollowed(const ConversationId &conv, const Ts &root) const;
+    void markThreadFollowed(const ConversationId &conv, const Ts &root);
+
+    // The user read this thread up to `upTo`: move the server-side thread read
+    // cursor (so the official clients agree) and record it as the Threads-feed
+    // poll's floor for that thread. The floor is the important half — a thread
+    // read here but not yet marked on the server would otherwise have its whole
+    // seen backlog injected as new the next time a reply pushes it into the feed.
+    // Reading is not following: Slack subscribes you when you REPLY, so this
+    // deliberately doesn't touch the followed set.
+    void markThreadRead(const ConversationId &conv, const Ts &root, const Ts &upTo);
+
     // --- Message reminders ("Remind me about this message") ---
     // Local mirror of the backend's saved-item reminders, gated by
     // Capabilities::messageReminders. The server stores the reminder (so it
@@ -389,6 +406,10 @@ public:
     // Test hook: true once the counts snapshot has been given up on and the
     // Session has fallen back to diffing the conversation-roster reload.
     [[nodiscard]] bool unreadCountsDisabledForTest() const { return _countsDisabled; }
+
+    // Test hook: run one Threads-feed tick synchronously, bypassing the cadence
+    // throttle (normally paced by kThreadsPollGapMs inside checkRealtimeHealth).
+    void pollThreadRepliesForTest() { pollThreadReplies(); }
 
 private:
     // Resolve our own user id via auth.test; persists the result to cache.
@@ -545,6 +566,17 @@ private:
     // delivers, so spending a request per tick there would be pure waste.
     void pollUnreadCounts();
 
+    // Poll the workspace-wide Threads feed (subscriptions.thread.getView) and
+    // inject the replies it reports that we have not seen. Thread replies are
+    // invisible to conversations.history, so on a poll-only workspace this is
+    // the ONLY thing that can deliver one: without it a reply raised no event at
+    // all — no notification, no sound, no badge (issue #51). One request covers
+    // every followed thread in the workspace. Like the activity snapshot, the
+    // FIRST page only primes: it says where each thread stands, not what changed,
+    // so injecting off it would replay whole threads as new messages. Backends
+    // without Capabilities::threadsView never call this.
+    void pollThreadReplies();
+
     // Diff a fresh activity snapshot against the previous one and poll the
     // conversations that actually moved — the mechanism that makes a mention in a
     // never-opened channel notify on a backend with no push transport. The FIRST
@@ -626,12 +658,20 @@ private:
     QSet<QString>                      _deadConvIds;  // conv.value → known channel_not_found
     QSet<QString>                      _seenMsgKeys;  // "conv|ts" of delivered messages
     QQueue<QString>                    _seenMsgOrder; // FIFO eviction for _seenMsgKeys
-    // Muted threads, keyed by threadMuteKey(conv, root). Loaded from cache at
+    // Muted threads, keyed by threadKey(conv, root). Loaded from cache at
     // start(); persisted immediately on change (tiny payload).
     QSet<QString>                      _mutedThreads;
-    static QString                     threadMuteKey(const ConversationId &conv, const Ts &root) {
+    static QString                     threadKey(const ConversationId &conv, const Ts &root) {
         return conv.value + QLatin1Char('\t') + root;
     }
+    // Followed threads (see isThreadFollowed), keyed by threadKey → the epoch ms
+    // we last touched the entry. The timestamp is only an eviction order: the set
+    // grows with every thread the user ever replies in, so saves keep the newest
+    // kMaxFollowedThreads and drop the rest (an ancient thread that comes back to
+    // life re-enters through the Threads feed anyway).
+    QHash<QString, qint64> _followedThreads;
+    static constexpr int   kMaxFollowedThreads = 200;
+    void                   saveFollowedThreads();
 
     // --- Message reminders (see the public reminder API above) ---
     // Arm _reminderTimer for the nearest unfired due time (stopped when none).
@@ -799,10 +839,29 @@ private:
     // entry, so the next tick still sees them as moved and they drain over the
     // following ticks instead of being dropped.
     static constexpr int       kMaxDiffPollsPerTick = 8;
+    // Cadence of the Threads-feed poll on a poll-only backend, and the per-thread
+    // baselines it diffs against (threadKey → newest reply ts already scanned).
+    // Slower than the counts snapshot: it is a second whole-workspace request and
+    // thread replies are rarer than channel messages, but still tight enough that
+    // a reply notifies while it is worth notifying about.
+    static constexpr qint64    kThreadsPollGapMs    = 20'000;
+    qint64                     _lastThreadsPollMs   = 0;
+    QHash<QString, Ts>         _threadPollBaseline;
+    bool                       _threadsPrimed           = false;
+    // Ceiling on replies injected per Threads-feed tick, for the same reason
+    // kMaxDiffPollsPerTick exists: waking from suspend can report a page of
+    // threads that all moved at once, and a burst of notifications is worse than
+    // a delayed one. What is left over keeps its old baseline and drains next tick.
+    static constexpr int       kMaxThreadInjectsPerTick = 12;
+    // Per-thread ceiling on a BACKLOG: a thread rejoining the feed can carry a
+    // pile of replies the user never read here, and announcing all of them at
+    // once is worse than announcing the newest few — the rest are one thread-open
+    // away. Only the newest this many are injected; the baseline skips the others.
+    static constexpr int       kMaxThreadBacklogReplies = 3;
     // Cursor into nextBackgroundPollTarget()'s (re-sorted-each-call) candidate
     // list, so successive ticks rotate through every member conversation
     // instead of always re-polling whichever one is most active.
-    int                        _backgroundPollIdx   = 0;
+    int                        _backgroundPollIdx       = 0;
     QHash<QString, User>       _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>              _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>              _pendingUserFetches; // user ids with an in-flight users.info request

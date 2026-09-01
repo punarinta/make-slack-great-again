@@ -53,7 +53,9 @@ struct StubBackend : Backend {
     QList<QString> botInfoRequested;
 
     rpl::producer<AuthState>  authState() const override { return _authState.value(); }
-    Capabilities              capabilities() const override { return {}; }
+    // Mutable so a test can turn on a capability-gated feature (the Threads feed).
+    Capabilities              caps;
+    Capabilities              capabilities() const override { return caps; }
     // Emulates a Slack-like backend's native command set (Slack conventions —
     // /shrug, /mute, /away, … — all live in the backend, not app-level).
     std::vector<SlashCommand> nativeCommands() const override {
@@ -154,6 +156,25 @@ struct StubBackend : Backend {
     }
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
+    }
+
+    // Subscribed-threads feed (Slack's subscriptions.thread.getView). nullopt
+    // models a backend that can't serve one: the producer completes WITHOUT a
+    // value, the graceful-degrade signal from backend.h.
+    std::optional<ThreadsViewPage> threadsViewResult;
+    int                            threadsViewCalls = 0;
+    rpl::producer<ThreadsViewPage> loadThreadsView(const QString &) override {
+        ++threadsViewCalls;
+        if (!threadsViewResult)
+            return [](auto consumer) {
+                consumer.put_done();
+                return rpl::lifetime();
+            };
+        return [v = *threadsViewResult](auto consumer) mutable {
+            consumer.put_next(std::move(v));
+            consumer.put_done();
+            return rpl::lifetime();
+        };
     }
 
     void sendMessage(ConversationId c, OutgoingMessage m) override {
@@ -3676,6 +3697,242 @@ TEST_CASE_METHOD(
 // Without a push transport, an EvMessageNew can only ever come from a poll — so
 // what gets polled decides what notifies. These cover the whole-workspace activity
 // snapshot that picks the targets, and its fallbacks.
+
+// ── Followed threads + the Threads-feed poll (issue #51) ────────────────────
+
+namespace {
+// A reply in `root`'s thread, authored by someone else.
+Message threadReply(const QString &ts, const QString &root, const QString &author = "U2") {
+    Message m    = pollMsg(ts);
+    m.author     = UserId{author};
+    m.threadRoot = root;
+    return m;
+}
+ThreadOverview overview(
+    const ConversationId &conv,
+    const QString        &root,
+    std::vector<Message>  replies,
+    const Ts             &lastRead = {}
+) {
+    ThreadOverview t;
+    t.conv          = conv;
+    t.root          = pollMsg(root);
+    t.latestReplies = std::move(replies);
+    t.lastRead      = lastRead;
+    return t;
+}
+} // namespace
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a reply in a thread we replied in badges like a mention",
+    "[session][thread][follow]"
+) {
+    // The reported bug: I reply in someone else's thread, they answer, and
+    // nothing happens. parent_user_id names THEM (they started the thread), so
+    // the followed-thread test used to miss it entirely.
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    session->sendMessage(conv, "my reply", root);
+
+    Message peer      = threadReply("600.000", root);
+    peer.parentUserId = UserId{"U2"}; // their thread, not ours
+    stub->fireEvent(EvMessageNew{conv, peer});
+
+    const auto *c = session->findConversation(conv);
+    CHECK(c->unread == 1);
+    CHECK(c->mentionCount == 1); // followed-thread replies badge like a mention
+    CHECK(session->isThreadFollowed(conv, root));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a reply in a thread we never touched stays out of the channel badge",
+    "[session][thread][follow]"
+) {
+    // Unfollowed channel threads live in the Threads view, not the channel.
+    const ConversationId conv{"C2"};
+    Message              other = threadReply("600.000", "500.000");
+    other.parentUserId         = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{conv, other});
+    const auto *c = session->findConversation(conv);
+    CHECK(c->unread == 0);
+    CHECK(c->mentionCount == 0);
+}
+
+TEST_CASE("a followed thread survives a restart", "[session][thread][follow]") {
+    const QString teamId = "T_SESSION_THREAD_FOLLOW";
+    const QString baseDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId;
+    QDir(baseDir).removeRecursively();
+
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    {
+        auto backend    = std::make_unique<StubBackend>();
+        backend->_meId  = UserId{"U1"};
+        backend->_convs = std::vector<Conversation>{kRandom};
+        Session session(std::move(backend), teamId);
+        session.start();
+        session.sendMessage(conv, "my reply", root);
+    }
+    {
+        auto backend    = std::make_unique<StubBackend>();
+        backend->_meId  = UserId{"U1"};
+        backend->_convs = std::vector<Conversation>{kRandom};
+        Session session(std::move(backend), teamId);
+        session.start();
+        CHECK(session.isThreadFollowed(conv, root));
+        CHECK_FALSE(session.isThreadFollowed(conv, Ts{"999.000"}));
+    }
+    QDir(baseDir).removeRecursively();
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "Threads feed primes first, then delivers replies conversations.history cannot see",
+    "[session][thread][poll]"
+) {
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    const Message        r1 = threadReply("600.000", root);
+    const Message        r2 = threadReply("700.000", root);
+
+    // Priming page: everything it reports is backlog, not news.
+    stub->threadsViewResult     = ThreadsViewPage{{overview(conv, root, {r1})}, 1, false, {}};
+    auto [primeEvents, primeLt] = collectEvents();
+    session->pollThreadRepliesForTest();
+    CHECK(primeEvents.empty());
+    CHECK(session->isThreadFollowed(conv, root)); // the feed IS the subscription list
+
+    // Second page: one new reply. It is invisible to conversations.history, so
+    // this poll is the only thing that can deliver (and notify for) it.
+    stub->threadsViewResult = ThreadsViewPage{{overview(conv, root, {r1, r2})}, 1, false, {}};
+    auto [events, lt]       = collectEvents();
+    session->pollThreadRepliesForTest();
+
+    int delivered = 0;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv && n->msg.ts == r2.ts)
+            ++delivered;
+    CHECK(delivered == 1);
+    CHECK(session->findConversation(conv)->unread == 1);
+
+    // Same page again: already scanned, so nothing is replayed.
+    auto [again, againLt] = collectEvents();
+    session->pollThreadRepliesForTest();
+    CHECK(again.empty());
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a thread entering the feed after priming delivers what is past its read cursor",
+    "[session][thread][poll]"
+) {
+    // A thread only shows up in the (paged) feed once it moves. Priming it like a
+    // first-run thread would swallow exactly the reply that put it there, so its
+    // own read cursor is the floor instead.
+    const ConversationId conv{"C2"};
+    stub->threadsViewResult = ThreadsViewPage{};
+    session->pollThreadRepliesForTest(); // prime with an empty feed
+
+    const Ts      root{"500.000"};
+    const Message seen   = threadReply("600.000", root);
+    const Message unseen = threadReply("700.000", root);
+    stub->threadsViewResult =
+        ThreadsViewPage{{overview(conv, root, {seen, unseen}, Ts{"600.000"})}, 1, false, {}};
+
+    auto [events, lt] = collectEvents();
+    session->pollThreadRepliesForTest();
+
+    std::vector<QString> got;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e))
+            got.push_back(n->msg.ts);
+    CHECK(got == std::vector<QString>{unseen.ts});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "a thread rejoining the feed announces only the newest of its backlog",
+    "[session][thread][poll]"
+) {
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    stub->threadsViewResult = ThreadsViewPage{};
+    session->pollThreadRepliesForTest(); // prime with an empty feed
+
+    // Six replies past the thread's read cursor: the newest three are announced,
+    // the older ones are skipped rather than fired as a burst of notifications.
+    std::vector<Message> replies;
+    for (int i = 1; i <= 6; ++i)
+        replies.push_back(threadReply(QString("60%1.000").arg(i), root));
+    stub->threadsViewResult =
+        ThreadsViewPage{{overview(conv, root, replies, Ts{"600.000"})}, 6, false, {}};
+
+    auto [events, lt] = collectEvents();
+    session->pollThreadRepliesForTest();
+
+    std::vector<QString> got;
+    for (const auto &e : events)
+        if (auto *n = std::get_if<EvMessageNew>(&e))
+            got.push_back(n->msg.ts);
+    CHECK(got == std::vector<QString>{"604.000", "605.000", "606.000"});
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "reading a thread stops the feed re-delivering what was on screen",
+    "[session][thread][poll]"
+) {
+    // The thread panel marks the thread read locally even when the server cursor
+    // lags (Slack only learns about it through subscriptions.thread.mark). Without
+    // the local floor, the next feed page — which still reports those replies as
+    // unread — would badge and notify for messages the user just read.
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    const Message        r1 = threadReply("600.000", root);
+    const Message        r2 = threadReply("700.000", root);
+
+    stub->threadsViewResult = ThreadsViewPage{};
+    session->pollThreadRepliesForTest(); // prime with an empty feed
+
+    session->markThreadRead(conv, root, r2.ts);
+
+    stub->threadsViewResult =
+        ThreadsViewPage{{overview(conv, root, {r1, r2}, Ts{"0"})}, 2, false, {}};
+    auto [events, lt] = collectEvents();
+    session->pollThreadRepliesForTest();
+    CHECK(events.empty());
+    CHECK(session->findConversation(conv)->unread == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "the Threads feed is polled only on a poll-only backend that serves it",
+    "[session][thread][poll]"
+) {
+    stub->threadsViewResult = ThreadsViewPage{};
+
+    // Push backend: the socket delivers thread replies itself.
+    stub->pushEnabled      = true;
+    stub->caps.threadsView = true;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->threadsViewCalls == 0);
+
+    // Poll-only but no feed (OAuth token): nothing to ask.
+    stub->pushEnabled      = false;
+    stub->caps.threadsView = false;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->threadsViewCalls == 0);
+
+    stub->caps.threadsView = true;
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->threadsViewCalls == 1);
+    // …and throttled: a second tick inside the window costs no request.
+    session->runRealtimeHealthCheckForTest();
+    CHECK(stub->threadsViewCalls == 1);
+}
 
 TEST_CASE_METHOD(
     SessionFixture,

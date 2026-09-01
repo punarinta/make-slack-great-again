@@ -2093,9 +2093,14 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev) {
         !mrkdwnMentions(mt, me))
         return;
 
-    // A reply to a thread we started notifies regardless of the channel's level,
-    // matching Slack's default-on "Replies to threads you're following".
-    const bool isImportant = isDm || mrkdwnMentions(mt, me) || isFollowedThreadReply(ev.msg, me);
+    // A reply in a thread we follow notifies regardless of the channel's level,
+    // matching Slack's default-on "Replies to threads you're following" — the
+    // thread we started (parent_user_id) and, from the session's followed set,
+    // the thread we merely replied in.
+    const bool followedReply =
+        ev.msg.threadRoot && (isFollowedThreadReply(ev.msg, me) ||
+                              session->isThreadFollowed(ev.conv, *ev.msg.threadRoot));
+    const bool isImportant = isDm || mrkdwnMentions(mt, me) || followedReply;
 
     // Per-conversation level wins over the global default ("All new posts" unless
     // the user changed it). Muted conversations already returned above, so the

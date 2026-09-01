@@ -51,9 +51,15 @@ public:
     void                    saveEmojiMap(const QHash<QString, QString> &map);
     QHash<QString, QString> loadEmojiMap() const;
 
-    // Locally-muted threads, each key "convId\trootTs" (see Session::threadMuteKey).
+    // Locally-muted threads, each key "convId\trootTs" (see Session::threadKey).
     void        saveMutedThreads(const QStringList &keys);
     QStringList loadMutedThreads() const;
+
+    // Threads the user follows (replied to / started), same key shape. Persisted
+    // so a reply arriving right after a restart still badges and notifies as a
+    // followed-thread reply instead of a plain channel message.
+    void        saveFollowedThreads(const QStringList &keys);
+    QStringList loadFollowedThreads() const;
 
     // Message reminders (Session::_reminders): the server list plus the local
     // enrichment (thread root, snippet, fired flag) the server doesn't store.

@@ -514,7 +514,7 @@ private:
         if (!_session)
             return;
         const Ts upTo = _latestTs.isEmpty() ? _item.root.ts : _latestTs;
-        _session->backend()->markThreadRead(_item.conv, _item.root.ts, upTo);
+        _session->markThreadRead(_item.conv, _item.root.ts, upTo);
         _item.lastRead = upTo;
         _newPill->hide();
     }
