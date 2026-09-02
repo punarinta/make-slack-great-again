@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "welcome_widget.h"
+#include "ui/shortcuts.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include <QLabel>
@@ -9,21 +10,6 @@
 #include <QHBoxLayout>
 #include <QResizeEvent>
 #include <QShowEvent>
-#include <QCoreApplication>
-
-namespace {
-
-// ── Platform key labels ───────────────────────────────────────────────────────
-
-#ifdef Q_OS_MAC
-const QString kMod   = QString(QChar(0x2318)); // ⌘
-const QString kShift = QString(QChar(0x21E7)); // ⇧
-#else
-const QString kMod   = QStringLiteral("Ctrl");
-const QString kShift = QStringLiteral("Shift");
-#endif
-
-} // namespace
 
 // ── WelcomeWidget ─────────────────────────────────────────────────────────────
 
@@ -50,8 +36,6 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
     vbox->addSpacing(sp.md);
 
     // ── Build shortcut rows ───────────────────────────────────────────────────
-
-    const QString up = QString(QChar(0x2191)); // ↑
 
     // Helper lambdas that build widgets and register them for applyTheme().
     auto makeChip = [this](const QString &text, QWidget *parent) -> QLabel * {
@@ -88,18 +72,17 @@ WelcomeWidget::WelcomeWidget(QWidget *parent) : QWidget(parent) {
         }
 
         vbox->addWidget(row);
+        _rows.append(row);
     };
 
-    addRow(QCoreApplication::translate("WelcomeWidget", "Send message"), {"Enter"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "New line in message"), {kShift, "Enter"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Edit last message"), {up});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Bold"), {kMod, "B"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Italic"), {kMod, "I"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Strikethrough"), {kMod, kShift, "X"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Inline code"), {kMod, kShift, "C"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Attach file"), {kMod, "O"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Emoji picker"), {kMod, kShift, "\\"});
-    addRow(QCoreApplication::translate("WelcomeWidget", "Cancel / exit edit"), {"Esc"});
+    // Generated from the shortcut registry (ui/shortcuts.h) in table order —
+    // this panel used to be a hand-typed list and had silently fallen behind the
+    // real bindings.
+    for (const auto &def : Ui::Shortcuts::all()) {
+        if (!def.inHelp)
+            continue;
+        addRow(Ui::Shortcuts::label(def.id), Ui::Shortcuts::keyChips(def.id));
+    }
 
     applyTheme();
     connect(
@@ -165,6 +148,16 @@ void WelcomeWidget::repositionContent() {
     const int hMargin  = 48;
     const int contentW = qMax(300, qMin(420, width() - 2 * hMargin));
     _content->setFixedWidth(contentW);
+
+    // The panel is a fixed list in a container it doesn't get to grow: at the
+    // 800x600 minimum window size the message area is shorter than the full set
+    // of rows. Drop rows from the bottom (the registry lists them in descending
+    // usefulness) instead of clipping them mid-glyph.
+    const int available = qMax(0, height() - 2 * hMargin);
+    for (int i = 0; i < _rows.size(); ++i)
+        _rows.at(i)->setVisible(true);
+    for (int i = _rows.size() - 1; i >= 0 && _content->sizeHint().height() > available; --i)
+        _rows.at(i)->setVisible(false);
 
     const int contentH = _content->sizeHint().height();
     const int x        = (width() - contentW) / 2;

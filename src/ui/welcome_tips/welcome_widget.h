@@ -20,10 +20,13 @@ private:
     void applyTheme();
     void repositionContent();
 
-    QWidget        *_content = nullptr;
-    QLabel         *_title   = nullptr;
-    QFrame         *_rule    = nullptr;
-    QList<QLabel *> _chipLabels;
-    QList<QLabel *> _plusLabels;
-    QList<QLabel *> _actionLabels;
+    QWidget         *_content = nullptr;
+    QLabel          *_title   = nullptr;
+    QFrame          *_rule    = nullptr;
+    QList<QLabel *>  _chipLabels;
+    QList<QLabel *>  _plusLabels;
+    QList<QLabel *>  _actionLabels;
+    // One widget per shortcut row, in registry order — repositionContent() hides
+    // trailing ones when the panel is taller than the space it has.
+    QList<QWidget *> _rows;
 };

@@ -579,7 +579,10 @@ QString ConvListWidget::resolvedName(int row) const {
     const auto &ri = _rows[row];
     if (ri.kind != RowKind::Conv)
         return {};
-    const auto &conv = _convs[ri.convIdx];
+    return resolvedConvName(_convs[ri.convIdx]);
+}
+
+QString ConvListWidget::resolvedConvName(const Conversation &conv) const {
     if (conv.kind == ConvKind::Im && conv.dmUser) {
         const auto it = _userInfos.constFind(conv.dmUser->value);
         if (it != _userInfos.constEnd() && !it->displayName.isEmpty() &&
@@ -616,6 +619,39 @@ QString ConvListWidget::resolvedName(int row) const {
             return names.join(", ");
     }
     return Emoji::expandCodes(conv.name);
+}
+
+qint64 ConvListWidget::activitySeconds(const Conversation &c) const {
+    // Epoch seconds throughout: _visitedAt is already stamped in seconds, the
+    // two ts cursors are decimal micros (see the relevance filter).
+    const qint64 visited = _visitedAt.value(c.id.value, 0);
+    const qint64 latest  = c.latestTs.isEmpty() ? 0 : decimalTsToMicros(c.latestTs) / 1000000;
+    const qint64 read    = c.lastRead.isEmpty() ? 0 : decimalTsToMicros(c.lastRead) / 1000000;
+    return std::max({visited, latest, read});
+}
+
+std::vector<NamedConversation> ConvListWidget::namedConversations() const {
+    std::vector<NamedConversation> out;
+    out.reserve(_convs.size());
+    for (const auto &c : _convs) {
+        NamedConversation nc;
+        nc.id              = c.id;
+        nc.name            = resolvedConvName(c);
+        nc.kind            = c.kind;
+        nc.activitySeconds = activitySeconds(c);
+        if (c.kind == ConvKind::Im && c.dmUser) {
+            const auto it = _userInfos.constFind(c.dmUser->value);
+            if (it != _userInfos.constEnd())
+                nc.avatarUrl = it->avatarUrl;
+        }
+        out.push_back(std::move(nc));
+    }
+    std::sort(out.begin(), out.end(), [](const NamedConversation &a, const NamedConversation &b) {
+        if (a.activitySeconds != b.activitySeconds)
+            return a.activitySeconds > b.activitySeconds; // most recent first
+        return a.name.localeAwareCompare(b.name) < 0;
+    });
+    return out;
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────

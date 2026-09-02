@@ -43,6 +43,17 @@ public:
     int     visibleCount() const { return static_cast<int>(_filtered.size()); }
     QString idAt(int visibleRow) const; // id of the nth visible row, or empty
 
+    // ── Keyboard selection (opt-in) ───────────────────────────────────────────
+    // Off by default: with no selection set the list paints exactly as it always
+    // has (hover highlight only), so the browse dialog is unaffected. A caller
+    // that drives the list from a search field (the quick switcher) sets a row
+    // and moves it with the arrow keys.
+    int     selectedRow() const { return _selected; }
+    QString selectedId() const { return idAt(_selected); }
+    void    setSelectedRow(int visibleRow); // clamped; -1 clears
+    void    moveSelection(int delta);       // wraps at both ends
+    void    activateSelected();             // fires onActivated for the selected row
+
     // Invoked with the item id when a row is activated (clicked).
     std::function<void(const QString &id)> onActivated;
 
@@ -60,13 +71,15 @@ private:
     void updateScrollRange();
     int  rowAt(int vpY) const;
     void setHovered(int row);
-    void paintRow(QPainter &p, const Item &it, int y, bool hovered);
+    void paintRow(QPainter &p, const Item &it, int y, bool hovered, bool selected);
+    void scrollRowIntoView(int row);
 
     ImageCache       *_imgCache = nullptr;
     std::vector<Item> _items;
     std::vector<int>  _filtered; // indices into _items passing the current filter
     QString           _filterText;
-    int               _hovered = -1;
+    int               _hovered  = -1;
+    int               _selected = -1; // keyboard selection; -1 = none
     QPixmap           _hashPx, _lockPx, _checkPx;
 
     static constexpr int kRowH       = 60;

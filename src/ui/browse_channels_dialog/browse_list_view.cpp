@@ -42,10 +42,51 @@ void BrowseListView::applyFilter(const QString &query) {
         if (q.isEmpty() || _items[i].searchKey.contains(q))
             _filtered.push_back(i);
     }
-    _hovered = -1;
+    _hovered  = -1;
+    _selected = -1; // a re-filtered list has a different nth row
     verticalScrollBar()->setValue(0);
     updateScrollRange();
     viewport()->update();
+}
+
+void BrowseListView::setSelectedRow(int visibleRow) {
+    const int count = static_cast<int>(_filtered.size());
+    const int row   = (visibleRow < 0 || count == 0) ? -1 : std::min(visibleRow, count - 1);
+    if (row == _selected)
+        return;
+    _selected = row;
+    scrollRowIntoView(_selected);
+    viewport()->update();
+}
+
+void BrowseListView::moveSelection(int delta) {
+    const int count = static_cast<int>(_filtered.size());
+    if (count == 0 || delta == 0)
+        return;
+    // Wrap, so Up from the top lands on the last match (Slack's switcher does).
+    const int from = _selected < 0 ? (delta > 0 ? -1 : 0) : _selected;
+    setSelectedRow(((from + delta) % count + count) % count);
+}
+
+void BrowseListView::activateSelected() {
+    if (_selected < 0 || _selected >= static_cast<int>(_filtered.size()) || !onActivated)
+        return;
+    onActivated(_items[_filtered[_selected]].id);
+}
+
+void BrowseListView::scrollRowIntoView(int row) {
+    const int vh = viewport()->height();
+    // Before the first layout the viewport has no height, and "row 0 doesn't fit"
+    // would then be true of every row — scrolling the list a row down before it
+    // is ever shown. resizeEvent re-runs this once the geometry is real.
+    if (row < 0 || vh <= 0)
+        return;
+    auto     *vsb = verticalScrollBar();
+    const int top = row * kRowH;
+    if (top < vsb->value())
+        vsb->setValue(top);
+    else if (top + kRowH > vsb->value() + vh)
+        vsb->setValue(top + kRowH - vh);
 }
 
 QString BrowseListView::idAt(int visibleRow) const {
@@ -82,6 +123,7 @@ void BrowseListView::setHovered(int row) {
 void BrowseListView::resizeEvent(QResizeEvent *e) {
     QAbstractScrollArea::resizeEvent(e);
     updateScrollRange();
+    scrollRowIntoView(_selected); // the pre-layout call was a no-op
 }
 
 void BrowseListView::wheelEvent(QWheelEvent *e) {
@@ -158,14 +200,18 @@ void BrowseListView::doPaint(QPaintEvent *) {
     const int first = std::max(0, scrollY / kRowH);
     const int last  = std::min(count - 1, (scrollY + vh) / kRowH);
     for (int r = first; r <= last; ++r)
-        paintRow(p, _items[_filtered[r]], r * kRowH - scrollY, r == _hovered);
+        paintRow(p, _items[_filtered[r]], r * kRowH - scrollY, r == _hovered, r == _selected);
 
     paintScrollThumb(p, count * kRowH, Th::c().nav.scrollThumb);
 }
 
-void BrowseListView::paintRow(QPainter &p, const Item &it, int y, bool hovered) {
+void BrowseListView::paintRow(QPainter &p, const Item &it, int y, bool hovered, bool selected) {
     const int vw = viewport()->width();
-    if (hovered)
+    // Keyboard selection reads stronger than hover (same pairing the search
+    // overlay uses), so the arrow-key position stays findable under the mouse.
+    if (selected)
+        p.fillRect(QRect(0, y, vw, kRowH), Th::c().surface.highlightStrong);
+    else if (hovered)
         p.fillRect(QRect(0, y, vw, kRowH), Th::c().surface.highlight);
 
     QFont nameFont = QApplication::font();

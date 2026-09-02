@@ -3,6 +3,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "ui/conv_list/named_conversation.h"
 #include "ui/virtual_list/virtual_list_widget.h"
 
 #include <QHash>
@@ -76,21 +77,23 @@ public:
         viewport()->update();
     }
     // Resolved display name for a visual row (DMs → user displayName, channels → conv.name).
-    QString        resolvedName(int row) const;
-    int            selectedIndex() const { return _selected; }
+    QString                        resolvedName(int row) const;
+    // Every conversation held, name-resolved and ordered most-recent first.
+    std::vector<NamedConversation> namedConversations() const;
+    int                            selectedIndex() const { return _selected; }
     // Number of visual rows currently laid out (conversations plus the section
     // headers and action rows between them).
-    int            rowCount() const { return int(_rows.size()); }
+    int                            rowCount() const { return int(_rows.size()); }
     // Resolved ConversationId for a visual row (-1 safe: returns empty id).
-    ConversationId conversationId(int row) const;
+    ConversationId                 conversationId(int row) const;
     // Visual row for a given id; -1 if not found or section is collapsed.
-    int            rowForId(ConversationId id) const;
+    int                            rowForId(ConversationId id) const;
     // Programmatically select a row; emits conversationSelected.
-    void           selectRow(int row);
+    void                           selectRow(int row);
     // Select a conversation even if it is currently hidden by the relevance
     // filter: stamps it visited (making it relevant), expands its section,
     // then selects its row. Returns false if the id is not in the list at all.
-    bool           selectConversation(ConversationId id);
+    bool                           selectConversation(ConversationId id);
 
     // Set how many days of activity qualify a conversation as "relevant" (shown inline).
     // Conversations outside this window appear under "N more..." until expanded.
@@ -165,21 +168,25 @@ protected:
     // highlight + icon centred in the kIconSize slot + section-header label.
     void
     paintNavEntryRow(QPainter &p, int row, int y, const QPixmap &icon, const QString &label) const;
-    void  paintAddChannelsRow(QPainter &p, int row, int y) const;
-    void  paintShowMoreRow(QPainter &p, int row, int y, int count) const;
+    void    paintAddChannelsRow(QPainter &p, int row, int y) const;
+    void    paintShowMoreRow(QPainter &p, int row, int y, int count) const;
     // Hit/paint rect of the "+" button on the Direct messages section header.
-    QRect dmPlusRect(int rowY) const;
-    void  updateScrollRange();
+    QRect   dmPlusRect(int rowY) const;
+    void    updateScrollRange();
     // True for 1:1 IMs whose counterpart is a bot/app (incl. Slackbot) —
     // these are grouped under "Agents & apps" instead of "Direct messages".
-    bool  isAppConv(const Conversation &c) const;
+    bool    isAppConv(const Conversation &c) const;
+    // Name resolution for one conversation, independent of any visual row.
+    QString resolvedConvName(const Conversation &c) const;
+    // Ordering signal: the later of the visit stamp and the conv's own activity.
+    qint64  activitySeconds(const Conversation &c) const;
     // Schedule a repaint of every visible row whose avatar belongs to `userId`
     // (DM/MPDM rows use conv.dmUser). Cheap row scan, no rebuild.
-    void  updateRowsForUser(const QString &userId);
+    void    updateRowsForUser(const QString &userId);
     // Rebuild _convs from _allConvs, filtering deactivated / raw-ID DM users.
-    void  rebuildFilteredConvs();
+    void    rebuildFilteredConvs();
     // Rebuild _rows from _convs according to current section collapse state.
-    void  rebuildRows();
+    void    rebuildRows();
 
     // Icon pixmaps colorized with nav-side theme tokens. Rebuilt on
     // themeChanged — a static-local cache would keep the old theme's tint.

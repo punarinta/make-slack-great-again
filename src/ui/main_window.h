@@ -200,6 +200,9 @@ private:
     // "Find a channel" dialog; initialTab 0 = Channels, 1 = People.
     void openBrowseDialog(int initialTab);
 
+    // Ctrl/Cmd+K: quick switcher over the active workspace's conversations.
+    void openQuickSwitcher();
+
     // Error banner — shown briefly when a network error occurs with no UI handler.
     void showNetworkError(const QString &message);
 

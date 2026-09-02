@@ -215,6 +215,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     # UI
     src/ui/theme.cpp
     src/ui/theme_manager.cpp
+    src/ui/shortcuts.cpp
     src/ui/file_dialog_utils.cpp
     src/ui/virtual_list/virtual_list_widget.cpp
     src/ui/image_cache.cpp
@@ -271,6 +272,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/status_dialog/status_dialog.cpp
     src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     src/ui/browse_channels_dialog/browse_list_view.cpp
+    src/ui/quick_switcher/quick_switcher_dialog.cpp
     src/ui/update_checker/update_checker.cpp
     src/ui/update_bar/update_bar.cpp
     src/ui/huddle_banner/huddle_banner.cpp
