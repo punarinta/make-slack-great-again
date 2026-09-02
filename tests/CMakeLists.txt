@@ -620,8 +620,29 @@ add_msga_widget_test(test_browse_channels_dialog
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
+add_msga_widget_test(test_shortcuts
+    test_shortcuts.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
+)
+
+add_msga_widget_test(test_quick_switcher
+    test_quick_switcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/quick_switcher/quick_switcher_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+
 add_msga_widget_test(test_composer
     test_composer.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
@@ -696,6 +717,7 @@ add_msga_widget_test(test_conv_list_widget
 # the union of what test_message_list and test_composer already need.
 add_msga_widget_test(test_thread_panel
     test_thread_panel.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp

@@ -3,6 +3,7 @@
 #include "formatting_toolbar.h"
 #include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/shortcuts.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -13,20 +14,11 @@
 
 static constexpr QSize kToolIconSize{18, 18};
 
-static QString sc(const char *keys) {
-#ifdef Q_OS_MAC
-    QString s = QString::fromLatin1(keys);
-    s.replace("Ctrl+Alt+Shift+", "⌘⌥⇧");
-    s.replace("Ctrl+Shift+", "⌘⇧");
-    s.replace("Ctrl+", "⌘");
-    return s;
-#else
-    return QString::fromLatin1(keys);
-#endif
-}
-
-static QString tip(const QString &label, const char *shortcut = nullptr) {
-    return shortcut ? label + " (" + sc(shortcut) + ")" : label;
+// Tooltip with a natively-rendered key hint ("Bold (⌘B)"). The sequence comes
+// from the central registry (ui/shortcuts.h), so a hint can never advertise a
+// binding the composer no longer implements.
+static QString tip(const QString &label, Ui::Shortcut id) {
+    return label + " (" + Ui::Shortcuts::nativeKeys(id) + ")";
 }
 
 static QFrame *makeVSep(QWidget *parent) {
@@ -64,16 +56,19 @@ FormattingToolbar::FormattingToolbar(QWidget *parent) : QWidget(parent) {
         return btn;
     };
 
-    auto *boldBtn      = makeBtn(":/ui/bold.svg", tip(tr("Bold"), "Ctrl+B"));
-    auto *italicBtn    = makeBtn(":/ui/italic.svg", tip(tr("Italic"), "Ctrl+I"));
-    auto *underlineBtn = makeBtn(":/ui/underline.svg", tip(tr("Underline"), "Ctrl+U"));
-    auto *strikeBtn = makeBtn(":/ui/strikethrough.svg", tip(tr("Strikethrough"), "Ctrl+Shift+X"));
-    auto *linkBtn   = makeBtn(":/ui/link.svg", tip(tr("Link"), "Ctrl+Shift+U"));
-    auto *olBtn     = makeBtn(":/ui/list-ordered.svg", tip(tr("Ordered list"), "Ctrl+Shift+7"));
-    auto *ulBtn     = makeBtn(":/ui/list.svg", tip(tr("Bullet list"), "Ctrl+Shift+8"));
-    auto *bqBtn     = makeBtn(":/ui/quote.svg", tip(tr("Blockquote"), "Ctrl+Shift+9"));
-    auto *codeBtn   = makeBtn(":/ui/code.svg", tip(tr("Inline code"), "Ctrl+Shift+C"));
-    auto *snipBtn   = makeBtn(":/ui/braces.svg", tip(tr("Code block"), "Ctrl+Alt+Shift+C"));
+    auto *boldBtn   = makeBtn(":/ui/bold.svg", tip(tr("Bold"), Ui::Shortcut::Bold));
+    auto *italicBtn = makeBtn(":/ui/italic.svg", tip(tr("Italic"), Ui::Shortcut::Italic));
+    auto *underlineBtn =
+        makeBtn(":/ui/underline.svg", tip(tr("Underline"), Ui::Shortcut::Underline));
+    auto *strikeBtn =
+        makeBtn(":/ui/strikethrough.svg", tip(tr("Strikethrough"), Ui::Shortcut::Strikethrough));
+    auto *linkBtn = makeBtn(":/ui/link.svg", tip(tr("Link"), Ui::Shortcut::Link));
+    auto *olBtn =
+        makeBtn(":/ui/list-ordered.svg", tip(tr("Ordered list"), Ui::Shortcut::OrderedList));
+    auto *ulBtn   = makeBtn(":/ui/list.svg", tip(tr("Bullet list"), Ui::Shortcut::BulletList));
+    auto *bqBtn   = makeBtn(":/ui/quote.svg", tip(tr("Blockquote"), Ui::Shortcut::Quote));
+    auto *codeBtn = makeBtn(":/ui/code.svg", tip(tr("Inline code"), Ui::Shortcut::InlineCode));
+    auto *snipBtn = makeBtn(":/ui/braces.svg", tip(tr("Code block"), Ui::Shortcut::CodeBlock));
 
     layout->addWidget(boldBtn);
     layout->addWidget(italicBtn);

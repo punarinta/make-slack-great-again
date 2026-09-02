@@ -11,6 +11,7 @@
 #include "ui/file_dialog_utils.h"
 #include "ui/icon_utils.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
+#include "ui/shortcuts.h"
 #include "ui/styled_button/styled_button.h"
 #include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme.h"
@@ -147,20 +148,15 @@ protected:
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-static QString sc(const char *keys) {
-#ifdef Q_OS_MAC
-    QString s = QString::fromLatin1(keys);
-    s.replace("Ctrl+Alt+Shift+", "⌘⌥⇧");
-    s.replace("Ctrl+Shift+", "⌘⇧");
-    s.replace("Ctrl+", "⌘");
-    return s;
-#else
-    return QString::fromLatin1(keys);
-#endif
+// Tooltip with a natively-rendered key hint ("Attach file (⌘O)"). Registry-sourced
+// so the hint tracks the binding; the QString overload is for the hints that
+// aren't a key sequence at all (typing "@").
+static QString tip(const QString &label, Ui::Shortcut id) {
+    return label + " (" + Ui::Shortcuts::nativeKeys(id) + ")";
 }
 
-static QString tip(const QString &label, const char *shortcut = nullptr) {
-    return shortcut ? label + " (" + sc(shortcut) + ")" : label;
+static QString tip(const QString &label, const QString &hint) {
+    return label + " (" + hint + ")";
 }
 
 static QFrame *makeVSep(QWidget *parent) {
@@ -512,7 +508,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     attachBtn->setCursor(Qt::PointingHandCursor);
     attachBtn->setFocusPolicy(Qt::NoFocus);
     _iconBtns.append({attachBtn, ":/ui/paperclip.svg"});
-    registerTip(attachBtn, tip(tr("Attach file"), "Ctrl+O"));
+    registerTip(attachBtn, tip(tr("Attach file"), Ui::Shortcut::AttachFile));
     connect(attachBtn, &QToolButton::clicked, this, &ComposerWidget::openAttachDialog);
 
     auto makeBbBtn = [&](const QString &svgPath, const QString &tooltipText) {
@@ -527,8 +523,8 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
         return btn;
     };
 
-    auto *emojiBtn   = makeBbBtn(":/ui/smile.svg", tip(tr("Emoji"), "Ctrl+Shift+\\"));
-    auto *mentionBtn = makeBbBtn(":/ui/at-sign.svg", tip(tr("Mention"), "@"));
+    auto *emojiBtn   = makeBbBtn(":/ui/smile.svg", tip(tr("Emoji"), Ui::Shortcut::EmojiPicker));
+    auto *mentionBtn = makeBbBtn(":/ui/at-sign.svg", tip(tr("Mention"), QStringLiteral("@")));
 
     bbLayout->addWidget(attachBtn);
     bbLayout->addWidget(emojiBtn);
@@ -540,7 +536,7 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     _sendBtn->setIconSize(QSize(18, 18));
     _sendBtn->setCursor(Qt::PointingHandCursor);
     _sendBtn->setFocusPolicy(Qt::NoFocus);
-    registerTip(_sendBtn, tip(tr("Send message"), "Enter"));
+    registerTip(_sendBtn, tip(tr("Send message"), Ui::Shortcut::SendMessage));
 
     // Schedule-send dropdown (chevron beside send button)
     _dropBtn = new QPushButton(_bottomBar);
@@ -1133,87 +1129,59 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                 }
             }
 
-#ifdef Q_OS_MAC
-            static const Qt::KeyboardModifiers kCmd{Qt::MetaModifier};
-#else
-            static const Qt::KeyboardModifiers kCmd{Qt::ControlModifier};
-#endif
-            const auto relevantMod = mod & (Qt::ControlModifier | Qt::ShiftModifier |
-                                            Qt::AltModifier | Qt::MetaModifier);
+            // Formatting bindings come from the central registry
+            // (src/ui/shortcuts.h). They are matched here rather than installed
+            // as window-scope QShortcuts because each one acts on this editor's
+            // cursor and must not fire while focus is elsewhere.
+            using Ui::Shortcut;
+            namespace Shortcuts = Ui::Shortcuts;
 
-            if (relevantMod == kCmd) {
-                switch (key) {
-                case Qt::Key_B:
-                    applyInlineFormat("*");
-                    return true;
-                case Qt::Key_I:
-                    applyInlineFormat("_");
-                    return true;
-                case Qt::Key_U:
-                    applyInlineFormat("__");
-                    return true;
-                case Qt::Key_O:
-                    openAttachDialog();
-                    return true;
-                default:
-                    break;
-                }
-            }
-
-            if (relevantMod == (kCmd | Qt::ShiftModifier)) {
-                switch (key) {
-                case Qt::Key_X:
-                    applyInlineFormat("~");
-                    return true;
-                case Qt::Key_C:
-                    applyInlineFormat("`");
-                    return true;
-                case Qt::Key_7:
-                    prefixSelectedLines("", true);
-                    return true;
-                case Qt::Key_8:
-                    prefixSelectedLines("- ");
-                    return true;
-                case Qt::Key_9:
-                    prefixSelectedLines("> ");
-                    return true;
-                case Qt::Key_U: {
-                    const QPoint p = _formattingTb->mapToGlobal(
-                        QPoint(_formattingTb->width() / 4, _formattingTb->height() + 4)
+            const auto openEmojiPicker = [this] {
+                if (!_emojiPicker) {
+                    _emojiPicker = new EmojiPickerPopup(this);
+                    connect(
+                        _emojiPicker,
+                        &EmojiPickerPopup::emojiSelected,
+                        this,
+                        [this](const QString &name) {
+                            auto cursor = _edit->textCursor();
+                            cursor.insertText(":" + name + ":");
+                            _edit->setFocus();
+                        }
                     );
-                    openLinkDialog(p);
-                    return true;
                 }
-                case Qt::Key_Backslash: {
-                    if (!_emojiPicker) {
-                        _emojiPicker = new EmojiPickerPopup(this);
-                        connect(
-                            _emojiPicker,
-                            &EmojiPickerPopup::emojiSelected,
-                            this,
-                            [this](const QString &name) {
-                                auto cursor = _edit->textCursor();
-                                cursor.insertText(":" + name + ":");
-                                _edit->setFocus();
-                            }
-                        );
-                    }
-                    if (_session)
-                        _emojiPicker->setSession(_session);
-                    _emojiPicker->setImageCache(_imgCache);
-                    const QRect  cursorRect = _edit->cursorRect();
-                    const QPoint pos = _edit->mapToGlobal(cursorRect.topLeft()) - QPoint(0, 320);
-                    _emojiPicker->open(pos);
-                    return true;
-                }
-                default:
-                    break;
-                }
-            }
+                if (_session)
+                    _emojiPicker->setSession(_session);
+                _emojiPicker->setImageCache(_imgCache);
+                const QRect  cursorRect = _edit->cursorRect();
+                const QPoint pos        = _edit->mapToGlobal(cursorRect.topLeft()) - QPoint(0, 320);
+                _emojiPicker->open(pos);
+            };
 
-            if (relevantMod == (kCmd | Qt::AltModifier | Qt::ShiftModifier)) {
-                if (key == Qt::Key_C) {
-                    applyBlockFormat("```");
+            const auto openLinkFromToolbar = [this] {
+                const QPoint p = _formattingTb->mapToGlobal(
+                    QPoint(_formattingTb->width() / 4, _formattingTb->height() + 4)
+                );
+                openLinkDialog(p);
+            };
+
+            const std::pair<Shortcut, std::function<void()>> kBindings[] = {
+                {Shortcut::Bold, [this] { applyInlineFormat("*"); }},
+                {Shortcut::Italic, [this] { applyInlineFormat("_"); }},
+                {Shortcut::Underline, [this] { applyInlineFormat("__"); }},
+                {Shortcut::Strikethrough, [this] { applyInlineFormat("~"); }},
+                {Shortcut::InlineCode, [this] { applyInlineFormat("`"); }},
+                {Shortcut::CodeBlock, [this] { applyBlockFormat("```"); }},
+                {Shortcut::OrderedList, [this] { prefixSelectedLines("", true); }},
+                {Shortcut::BulletList, [this] { prefixSelectedLines("- "); }},
+                {Shortcut::Quote, [this] { prefixSelectedLines("> "); }},
+                {Shortcut::AttachFile, [this] { openAttachDialog(); }},
+                {Shortcut::Link, openLinkFromToolbar},
+                {Shortcut::EmojiPicker, openEmojiPicker},
+            };
+            for (const auto &[id, run] : kBindings) {
+                if (Shortcuts::matches(id, ke)) {
+                    run();
                     return true;
                 }
             }

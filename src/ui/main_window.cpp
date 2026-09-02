@@ -40,11 +40,13 @@
 #include "profile_dialog/profile_dialog.h"
 #include "status_dialog/status_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
+#include "quick_switcher/quick_switcher_dialog.h"
 #include "update_checker/update_checker.h"
 #include "huddle_banner/huddle_banner.h"
 #include "parallel_usage_banner/parallel_usage_banner.h"
 #include "update_bar/update_bar.h"
 #include "styled_button/styled_button.h"
+#include "shortcuts.h"
 
 #include "ui/icon_utils.h"
 #include "util/desktop_notifier.h"
@@ -84,7 +86,6 @@
 #include <QProcess>
 #include <QTimer>
 #include <QDesktopServices>
-#include <QShortcut>
 #include <QScreen>
 #include <QShowEvent>
 
@@ -266,16 +267,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     qApp->installEventFilter(this);
 
     // Back/forward chat navigation: mouse side buttons are handled in
-    // eventFilter; these cover the keyboard equivalents — dedicated
-    // XF86 Back/Forward keys and the conventional Alt+arrow bindings.
-    const auto addNavShortcut = [this](const QKeySequence &seq, bool back) {
-        auto *sc = new QShortcut(seq, this);
-        connect(sc, &QShortcut::activated, this, [this, back] { navigateHistory(back); });
-    };
-    addNavShortcut(QKeySequence(Qt::Key_Back), true);
-    addNavShortcut(QKeySequence(Qt::Key_Forward), false);
-    addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), true);
-    addNavShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), false);
+    // eventFilter; these cover the keyboard equivalents (the registry binds both
+    // the dedicated XF86 keys and the conventional Alt+arrows to each action).
+    Ui::Shortcuts::install(Ui::Shortcut::NavBack, this, [this] { navigateHistory(true); });
+    Ui::Shortcuts::install(Ui::Shortcut::NavForward, this, [this] { navigateHistory(false); });
 
     // Cmd+W (Ctrl+W elsewhere): close the frontmost thing. Our modal dialogs and
     // the settings panel are in-window child overlays, not top-level windows, so
@@ -288,9 +283,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     //
     // One shortcut has to arbitrate all of this: two QShortcuts on the same
     // sequence in one window (say a competing one owned by AppDialog) both match,
-    // and Qt then reports the press as ambiguous and runs NEITHER handler.
-    auto *closeShortcut = new QShortcut(QKeySequence::Close, this);
-    connect(closeShortcut, &QShortcut::activated, this, [this] {
+    // and Qt then reports the press as ambiguous and runs NEITHER handler. That
+    // is what Ui::Shortcuts::install() now guards against registry-wide.
+    Ui::Shortcuts::install(Ui::Shortcut::CloseFrontmost, this, [this] {
         if (AppDialog *dialog = AppDialog::topmostVisible(this)) {
             dialog->reject(); // same path as Escape / the × button / backdrop click
             return;
@@ -855,8 +850,8 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         }
     };
     connect(_searchBtn, &QPushButton::clicked, this, openSearch);
-    auto *searchShortcut = new QShortcut(QKeySequence::Find, this);
-    connect(searchShortcut, &QShortcut::activated, this, openSearch);
+    Ui::Shortcuts::install(Ui::Shortcut::SearchMessages, this, openSearch);
+    Ui::Shortcuts::install(Ui::Shortcut::QuickSwitch, this, [this] { openQuickSwitcher(); });
     connect(_searchWidget, &SearchWidget::closeRequested, this, [this] {
         _searchWidget->closeSearch(); // animated
     });
@@ -1748,6 +1743,26 @@ void MainWindow::openBrowseDialog(int initialTab) {
             [this](ConversationId conv) { _convList->selectConversation(conv); },
             [this](const QString &err) { showNetworkError(err); }
         );
+    });
+    dlg->exec();
+    dlg->deleteLater();
+}
+
+void MainWindow::openQuickSwitcher() {
+    if (!_session || !_convList)
+        return;
+    // Not on top of another modal: the switcher navigates the window behind the
+    // backdrop, which would leave that dialog stranded over a chat it was never
+    // opened from.
+    if (AppDialog::topmostVisible(this))
+        return;
+
+    auto *dlg = new QuickSwitcherDialog(_convList->namedConversations(), _imgCache, this);
+    connect(dlg, &QuickSwitcherDialog::conversationActivated, this, [this](ConversationId id) {
+        // Same path as a search result / notification open: it moves the list
+        // highlight and drives openConversation(), and un-hides a conversation
+        // the relevance filter or a collapsed section was holding back.
+        _convList->selectConversation(id);
     });
     dlg->exec();
     dlg->deleteLater();
