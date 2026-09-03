@@ -5,6 +5,7 @@
 #include "network/shared_nam.h"
 
 #include <QBuffer>
+#include <QDateTime>
 #include <QImageReader>
 #include <QMovie>
 #include <QNetworkAccessManager>
@@ -151,32 +152,41 @@ static QPixmap pixmapFromData(const QByteArray &bytes) {
     return {};
 }
 
-QPixmap ImageCache::get(const QString &url) {
-    if (url.isEmpty())
-        return {};
+// Intrinsic size straight from the image header, without decoding the pixels.
+// Invalid for formats QImageReader can't introspect (notably SVG), where the
+// caller falls back to a one-off decode.
+static QSize intrinsicSize(const QByteArray &bytes) {
+    QBuffer buf;
+    buf.setData(bytes);
+    buf.open(QIODevice::ReadOnly);
+    QImageReader reader(&buf);
+    const QSize  sz = reader.size();
+    return sz.isEmpty() ? QSize() : sz;
+}
 
-    auto it = _cache.find(url);
-    if (it != _cache.end()) {
-        return it->pixmap; // null while in-flight, real pixmap when done
-    }
+void ImageCache::noteSize(const QString &url, const QSize &sz) {
+    if (!sz.isEmpty())
+        _sizes.insert(url, sz);
+}
 
-    // Check disk before going to the network.
-    if (_diskLoad) {
-        const auto bytes = _diskLoad(url);
-        if (!bytes.isEmpty()) {
-            QPixmap px = pixmapFromData(bytes);
-            if (!px.isNull()) {
-                auto &entry  = _cache[url];
-                entry.pixmap = px;
-                if (isAnimatedImage(bytes))
-                    entry.animatedBytes = bytes;
-                account(url);
-                return px;
-            }
-        }
-    }
+bool ImageCache::isFailed(const QString &url) const {
+    const auto it = _failedUntil.constFind(url);
+    if (it == _failedUntil.constEnd())
+        return false;
+    if (*it == 0)
+        return true; // undecodable bytes — never retry
+    if (QDateTime::currentMSecsSinceEpoch() < *it)
+        return true;
+    return false;
+}
 
-    // First time seeing this URL — insert sentinel and start download.
+void ImageCache::markFailed(const QString &url, bool permanent) {
+    _failedUntil.insert(
+        url, permanent ? 0 : QDateTime::currentMSecsSinceEpoch() + kErrorCooldownMs
+    );
+}
+
+void ImageCache::startFetch(const QString &url) {
     auto &entry    = _cache[url];
     entry.inFlight = true;
 
@@ -190,15 +200,102 @@ QPixmap ImageCache::get(const QString &url) {
             QPixmap    px    = pixmapFromData(bytes);
             if (!px.isNull()) {
                 e.pixmap = px;
+                noteSize(url, px.size());
                 if (isAnimatedImage(bytes))
                     e.animatedBytes = bytes;
                 if (_diskSave)
                     _diskSave(url, bytes);
+            } else {
+                // The bytes are not an image (an HTML error page, say). Nothing
+                // is stored and nothing is disk-saved, so without this sentinel
+                // every later get() missed and re-issued the request — and each
+                // completion emitted loaded(), driving another full relayout.
+                markFailed(url, /*permanent=*/true);
             }
+        } else {
+            markFailed(url, /*permanent=*/false);
         }
         account(url); // no-op cost change if the fetch yielded nothing
         emit loaded(url);
     });
+}
+
+QSize ImageCache::sizeOf(const QString &url) {
+    if (url.isEmpty())
+        return {};
+
+    const auto known = _sizes.constFind(url);
+    if (known != _sizes.constEnd())
+        return *known;
+
+    // A resident pixmap is the authority: paint scales from it, so geometry
+    // measured from any other number could disagree by a pixel.
+    const auto it = _cache.constFind(url);
+    if (it != _cache.constEnd()) {
+        if (!it->pixmap.isNull()) {
+            noteSize(url, it->pixmap.size());
+            return it->pixmap.size();
+        }
+        if (it->inFlight)
+            return {}; // download pending; loaded() will bring the size
+    }
+    if (isFailed(url))
+        return {};
+
+    if (_diskLoad) {
+        const auto bytes = _diskLoad(url);
+        if (!bytes.isEmpty()) {
+            if (const QSize sz = intrinsicSize(bytes); !sz.isEmpty()) {
+                noteSize(url, sz);
+                return sz;
+            }
+            // Header gave us nothing (SVG, or a format without size metadata).
+            // Decode once to learn the size — recorded above, so this cannot
+            // repeat on later layout passes. The pixmap is deliberately not
+            // cached here: sizing must stay free of memory-cap pressure.
+            if (const QPixmap px = pixmapFromData(bytes); !px.isNull()) {
+                noteSize(url, px.size());
+                return px.size();
+            }
+            // Junk on disk — fall through and refetch.
+        }
+    }
+
+    if (it == _cache.constEnd())
+        startFetch(url);
+    return {};
+}
+
+QPixmap ImageCache::get(const QString &url) {
+    if (url.isEmpty())
+        return {};
+
+    auto it = _cache.find(url);
+    if (it != _cache.end()) {
+        return it->pixmap; // null while in-flight, real pixmap when done
+    }
+    if (isFailed(url))
+        return {};
+
+    // Check disk before going to the network.
+    if (_diskLoad) {
+        const auto bytes = _diskLoad(url);
+        if (!bytes.isEmpty()) {
+            QPixmap px = pixmapFromData(bytes);
+            if (!px.isNull()) {
+                auto &entry  = _cache[url];
+                entry.pixmap = px;
+                noteSize(url, px.size());
+                if (isAnimatedImage(bytes))
+                    entry.animatedBytes = bytes;
+                account(url);
+                return px;
+            }
+        }
+    }
+
+    // First time seeing this URL — insert sentinel and start download.
+    startFetch(url);
 
     return {}; // null — caller will be notified via loaded()
 }

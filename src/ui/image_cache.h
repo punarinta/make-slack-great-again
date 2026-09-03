@@ -8,6 +8,7 @@
 #include <QList>
 #include <QObject>
 #include <QPixmap>
+#include <QSize>
 
 class QMovie;
 class QNetworkAccessManager;
@@ -26,6 +27,20 @@ public:
     // First call for a given url triggers a download; subsequent calls while the
     // download is in-flight return null immediately and wait for the loaded() signal.
     QPixmap get(const QString &url);
+
+    // Intrinsic (unscaled) pixel size of url's image, or an invalid QSize while
+    // it is unknown. Starts a download on first call exactly like get(), so a
+    // caller that only needs geometry never has to ask for the pixels.
+    //
+    // Layout MUST use this rather than get().size(): rebuildLayout() measures
+    // every row in the conversation, so sizing through get() required the
+    // decoded pixmap of every image in the channel to be resident at once.
+    // Past the memory cap that turned into an eviction treadmill — each pass
+    // evicted the entry the next pass asked for first, so every layout re-read
+    // and re-decoded the whole image cache (~21 MB/s of PNG decoding on a
+    // preview-heavy channel). Sizes are a few bytes and never evicted, and are
+    // read from the image header without decoding where the format allows.
+    QSize sizeOf(const QString &url);
 
     // Player for an animated image (GIF / animated WebP), or nullptr when the
     // url hasn't loaded yet or decodes to a single frame. The QMovie is created
@@ -75,6 +90,20 @@ private:
         qint64     cost      = 0; // last accounted bytes (pixmap + animatedBytes)
     };
 
+    // Issue the network fetch for url and install the in-flight sentinel.
+    // Shared by get() and sizeOf() so both enter the cache the same way.
+    void startFetch(const QString &url);
+
+    // Record url's intrinsic size once known (idempotent).
+    void noteSize(const QString &url, const QSize &sz);
+
+    // True while url is on the do-not-fetch list: bytes that arrived but could
+    // not be decoded (permanent — they are not an image), or a transport error
+    // still inside its retry cooldown.
+    [[nodiscard]] bool isFailed(const QString &url) const;
+    // permanent=false applies kErrorCooldownMs before another attempt is allowed.
+    void               markFailed(const QString &url, bool permanent);
+
     // Recompute url's memory cost, mark it most-recently-used, then evict down
     // to the cap. Call after any change to an entry's pixmap/animatedBytes.
     void account(const QString &url);
@@ -82,8 +111,17 @@ private:
     // backing a live QMovie that callers may still hold a pointer to).
     void evictIfNeeded(const QString &protectUrl);
 
+    // Wait this long before retrying a url that failed with a transport error.
+    static constexpr qint64 kErrorCooldownMs = 60'000;
+
     QHash<QString, Entry>  _cache;
     QList<QString>         _lru; // front = most recently used
+    // Intrinsic sizes, and urls not to re-fetch. Both are keyed by url and hold
+    // no pixels, so they are deliberately exempt from the memory cap and from
+    // eviction: forgetting them is what produced repeated decodes and repeated
+    // downloads of the same failing url on every layout pass.
+    QHash<QString, QSize>  _sizes;
+    QHash<QString, qint64> _failedUntil; // value 0 == never retry
     qint64                 _memBytes  = 0;
     qint64                 _memoryCap = kDefaultMemoryCap;
     QNetworkAccessManager *_nam;

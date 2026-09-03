@@ -1459,12 +1459,17 @@ int MessageListWidget::attachImageH(const Attachment &att) const {
     const QString imgUrl = attachPreviewUrl(att);
     if (imgUrl.isEmpty() || !_imgCache)
         return 0;
-    const QPixmap px = _imgCache->get(imgUrl);
-    if (px.isNull())
+    // Geometry needs the image's dimensions, not its pixels. Asking sizeOf()
+    // instead of get() is what keeps rebuildLayout() — which measures EVERY row
+    // in the conversation, not just the visible ones — from requiring every
+    // preview in the channel to be decoded and resident simultaneously. Paint
+    // derives its scale from the same intrinsic size, so the two agree exactly.
+    const QSize sz = _imgCache->sizeOf(imgUrl);
+    if (sz.isEmpty())
         return 0;
     const double scale =
-        std::min(1.0, std::min((double)kImgMaxW / px.width(), (double)kImgMaxH / px.height()));
-    return kImgGap + (int)(px.height() * scale);
+        std::min(1.0, std::min((double)kImgMaxW / sz.width(), (double)kImgMaxH / sz.height()));
+    return kImgGap + (int)(sz.height() * scale);
 }
 
 int MessageListWidget::attachTotalH(const MessageItem &item, int ai) const {
