@@ -13,10 +13,33 @@
 
 #include <QApplication>
 #include <QBuffer>
+#include <QDeadlineTimer>
 #include <QHash>
 #include <QImage>
 
+#include "fake_http_server.h"
 #include "ui/image_cache.h"
+
+#include <functional>
+
+namespace {
+
+bool waitFor(std::function<bool()> pred, int timeoutMs = 5000) {
+    QDeadlineTimer deadline(timeoutMs);
+    while (!pred() && !deadline.hasExpired())
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    return pred();
+}
+
+// Let any pending request reach the server, so "no second request" is a real
+// observation rather than a race we won.
+void settle(int ms = 300) {
+    QDeadlineTimer deadline(ms);
+    while (!deadline.hasExpired())
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+}
+
+} // namespace
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -142,4 +165,135 @@ TEST_CASE("A held movie pins its entry; releaseMovie unpins it") {
     // Releasing an unknown or already-released url is a harmless no-op.
     cache.releaseMovie(QStringLiteral("anim"));
     cache.releaseMovie(QStringLiteral("never-seen"));
+}
+
+// ── Sizing without decoding (the layout treadmill) ───────────────────────────
+//
+// rebuildLayout() measures EVERY row in the conversation, and it used to size
+// preview images through get() — so laying out a preview-heavy channel required
+// the decoded pixmap of every image in it to be resident at once. Past the
+// memory cap that became an eviction treadmill: each measuring pass evicted the
+// entry the next pass asked for first, so every layout re-read and re-decoded
+// the entire image cache. sizeOf() exists to break that coupling.
+
+TEST_CASE("sizeOf reports geometry without making pixels resident") {
+    ImageCache cache;
+    wireDisk(cache);
+    cache.setMemoryCap(100 * kEntryCost);
+
+    REQUIRE(cache.sizeOf(QStringLiteral("img-0")) == QSize(kSide, kSide));
+    // The decisive property: geometry cost no resident pixels at all, so
+    // measuring can never apply eviction pressure.
+    REQUIRE(cache.memoryBytes() == 0);
+}
+
+TEST_CASE("sizeOf agrees with the decoded pixmap size") {
+    ImageCache cache;
+    wireDisk(cache);
+    cache.setMemoryCap(100 * kEntryCost);
+
+    // Paint scales from the pixmap, layout from sizeOf: a mismatch would show up
+    // as rows whose reserved height disagrees with what is drawn in them.
+    const QSize measured = cache.sizeOf(QStringLiteral("img-0"));
+    REQUIRE(measured == cache.get(QStringLiteral("img-0")).size());
+
+    // And the reverse order agrees too: a resident pixmap is the size authority.
+    ImageCache other;
+    wireDisk(other);
+    REQUIRE(other.get(QStringLiteral("img-1")).size() == other.sizeOf(QStringLiteral("img-1")));
+}
+
+TEST_CASE("Measuring a working set larger than the cap decodes each url once") {
+    ImageCache              cache;
+    static const QByteArray png   = makePng();
+    int                     loads = 0;
+    cache.setDiskCache(
+        [&loads](const QString &) {
+            ++loads;
+            return png;
+        },
+        [](const QString &, const QByteArray &) {}
+    );
+    cache.setMemoryCap(4 * kEntryCost); // room for ~4 of the 50 urls
+
+    // Three full measuring passes over a working set 12× the cap — exactly the
+    // shape of rebuildLayout() running on a channel full of link previews.
+    const int kUrls = 50;
+    for (int pass = 0; pass < 3; ++pass)
+        for (int i = 0; i < kUrls; ++i)
+            REQUIRE(cache.sizeOf(QStringLiteral("img-%1").arg(i)) == QSize(kSide, kSide));
+
+    // One read per url for the whole run. Sizing through get() gave 150 here,
+    // every one of them a full PNG decode, because the cap could hold only 4.
+    REQUIRE(loads == kUrls);
+    REQUIRE(cache.memoryBytes() == 0);
+}
+
+// ── The negative cache ───────────────────────────────────────────────────────
+//
+// A url whose bytes arrive but do not decode stores nothing and disk-saves
+// nothing, so every later get() missed and re-issued the request — and each
+// completion emitted loaded(), which drove another full relayout, which asked
+// again. That is a self-sustaining loop, and it is what pinned a core at 100%.
+
+TEST_CASE("Bytes that are not an image are fetched once, never again") {
+    FakeHttpServer server;
+    // 200 OK with an HTML body: what a CDN serves for an expired preview url.
+    server.enqueueStatus(200, "OK", "text/html", "<html><body>gone</body></html>");
+
+    ImageCache              cache;
+    static const QByteArray png = makePng();
+    // Only "img-" urls exist on disk, so the broken one must go to the network.
+    cache.setDiskCache(
+        [](const QString &url) { return url.contains(u"img-") ? png : QByteArray{}; },
+        [](const QString &, const QByteArray &) {}
+    );
+    cache.setMemoryCap(2 * kEntryCost);
+
+    const QString broken = server.baseUrl() + QStringLiteral("preview.png");
+
+    REQUIRE(cache.get(broken).isNull()); // miss: starts the fetch
+    REQUIRE(waitFor([&] { return server.requestCount >= 1; }));
+    settle();
+    REQUIRE(server.requestCount == 1);
+
+    // The failed entry holds no pixels, so cap pressure happily evicts it — and
+    // an evicted failure is exactly what used to go back to the network.
+    for (int i = 0; i < 10; ++i)
+        REQUIRE_FALSE(cache.get(QStringLiteral("img-%1").arg(i)).isNull());
+
+    // Both accessors must now refuse it from the sentinel alone.
+    REQUIRE(cache.get(broken).isNull());
+    REQUIRE(cache.sizeOf(broken).isEmpty());
+    settle();
+    REQUIRE(server.requestCount == 1);
+
+    // Repeated measuring passes — the layout loop — issue nothing either.
+    for (int pass = 0; pass < 20; ++pass)
+        REQUIRE(cache.sizeOf(broken).isEmpty());
+    settle();
+    REQUIRE(server.requestCount == 1);
+}
+
+TEST_CASE("A transport error does not permanently blacklist the url") {
+    FakeHttpServer server;
+    server.dropConnections = 1; // close the first request without responding
+
+    ImageCache cache;
+    cache.setDiskCache({}, {}); // network only
+    cache.setMemoryCap(100 * kEntryCost);
+
+    const QString url = server.baseUrl() + QStringLiteral("flaky.png");
+    REQUIRE(cache.get(url).isNull());
+    REQUIRE(waitFor([&] { return server.requestCount >= 1; }));
+
+    // Unlike undecodable bytes, a dropped connection may well succeed later, so
+    // the sentinel is a cooldown rather than a permanent verdict — it exists to
+    // stop the storm, not to give up on the image.
+    settle();
+    const int afterError = server.requestCount;
+    for (int pass = 0; pass < 20; ++pass)
+        cache.get(url);
+    settle();
+    REQUIRE(server.requestCount == afterError); // inside the cooldown: silent
 }
