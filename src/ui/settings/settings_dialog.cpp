@@ -11,6 +11,8 @@
 #include "ui/theme_manager.h"
 #include "app_credentials.h"
 #include "llm/llm_service.h"
+#include "llm/llm_provider.h"
+#include "llm/llm_wire.h"
 #include "cache/cache_evictor.h"
 #include "util/time_format.h"
 #include "util/process_stats.h"
@@ -979,126 +981,189 @@ void SettingsDialog::buildPanel() {
 }
 
 QWidget *SettingsDialog::buildAiPage() {
-    auto &svc = LlmService::instance();
-
     auto       *page = new QWidget;
     const auto &sp   = Th::c().spacing;
     auto       *lay  = new QVBoxLayout(page);
     lay->setContentsMargins(sp.xxl, sp.xl, sp.xxl, sp.xl);
     lay->setSpacing(sp.xl);
 
-    auto *desc = new QLabel(
-        tr("Connect an AI provider to enable assistant features.\n"
-           "Create an API key in your own provider account and paste it below —\n"
-           "it is stored on this computer and sent only to that provider."),
-        page
-    );
-    desc->setObjectName("aiDesc");
-    desc->setWordWrap(true);
-
     auto *providerHeading = new QLabel(tr("AI provider"), page);
     providerHeading->setObjectName("sectionHeading");
     lay->addWidget(providerHeading);
 
+    auto *desc = new QLabel(
+        tr("Connect an AI provider to enable assistant features.\n"
+           "API keys are stored on this computer and sent only to the provider you configure."),
+        page
+    );
+    desc->setObjectName("aiDesc");
+    desc->setWordWrap(true);
     lay->addWidget(desc);
 
-    // Default provider selector
-    auto *defRow   = new QHBoxLayout;
-    auto *defLabel = new QLabel(tr("Default:"), page);
-    defLabel->setObjectName("aiDefaultLabel");
-    defRow->addWidget(defLabel);
+    // ── Provider list (rows rebuilt by refreshAiProviders) ─────────────
+    _aiList    = new QWidget(page);
+    _aiListLay = new QVBoxLayout(_aiList);
+    _aiListLay->setContentsMargins(0, 0, 0, 0);
+    _aiListLay->setSpacing(sp.sm);
+    lay->addWidget(_aiList);
 
-    _aiDefault = new Dropdown(page);
-    _aiDefault->setSize(Dropdown::Size::Small);
-    for (auto *p : svc.providers())
-        _aiDefault->addItem(p->displayName(), p->id());
-    defRow->addWidget(_aiDefault);
-    defRow->addStretch();
-    lay->addLayout(defRow);
+    _aiAddBtn = new StyledButton(
+        tr("Add OpenAI-compatible server…"), StyledButton::Variant::Secondary, page
+    );
+    _aiAddBtn->setSize(StyledButton::Size::Small);
+    connect(_aiAddBtn, &QPushButton::clicked, this, [this] { showAiEditor({}); });
+    auto *addRow = new QHBoxLayout;
+    addRow->addWidget(_aiAddBtn);
+    addRow->addStretch();
+    lay->addLayout(addRow);
 
-    connect(_aiDefault, &Dropdown::currentIndexChanged, this, [this](int idx) {
-        if (idx >= 0)
-            LlmService::instance().setDefaultProviderId(_aiDefault->currentData().toString());
+    // ── Inline editor (hidden until Connect / Edit / Add) ──────────────
+    _aiEditor = new QGroupBox(page);
+    _aiEditor->setObjectName("aiBox");
+    auto *el = new QVBoxLayout(_aiEditor);
+    el->setSpacing(sp.md);
+    el->setContentsMargins(0, 0, 0, 0);
+
+    _aiEditorTitle = new QLabel(_aiEditor);
+    _aiEditorTitle->setObjectName("sectionHeading");
+    el->addWidget(_aiEditorTitle);
+
+    constexpr int kLabelW   = 90; // field-label column, keeps the inputs aligned
+    const auto makeFieldRow = [&](const QString &label, StyledLineEdit *&edit, QWidget *&rowOut) {
+        rowOut   = new QWidget(_aiEditor);
+        auto *rl = new QHBoxLayout(rowOut);
+        rl->setContentsMargins(0, 0, 0, 0);
+        rl->setSpacing(sp.md);
+        auto *l = new QLabel(label, rowOut);
+        l->setObjectName("aiFieldLabel");
+        l->setFixedWidth(kLabelW);
+        rl->addWidget(l);
+        edit = new StyledLineEdit(rowOut);
+        edit->setSize(StyledLineEdit::Size::Small);
+        rl->addWidget(edit, 1);
+        el->addWidget(rowOut);
+        return rl;
+    };
+
+    makeFieldRow(tr("Name"), _aiName, _aiNameRow);
+    _aiName->setPlaceholderText(tr("Company vLLM"));
+
+    // URL row: [label | edit] over [hint / cleartext warning], so the hint and
+    // warning hide together with the row on presets.
+    _aiUrlRow    = new QWidget(_aiEditor);
+    auto *urlCol = new QVBoxLayout(_aiUrlRow);
+    urlCol->setContentsMargins(0, 0, 0, 0);
+    urlCol->setSpacing(sp.xs);
+    auto *urlLine = new QHBoxLayout;
+    urlLine->setContentsMargins(0, 0, 0, 0);
+    urlLine->setSpacing(sp.md);
+    auto *urlLabel = new QLabel(tr("Server URL"), _aiUrlRow);
+    urlLabel->setObjectName("aiFieldLabel");
+    urlLabel->setFixedWidth(kLabelW);
+    urlLine->addWidget(urlLabel);
+    _aiUrl = new StyledLineEdit(_aiUrlRow);
+    _aiUrl->setSize(StyledLineEdit::Size::Small);
+    _aiUrl->setPlaceholderText("http://localhost:8000/v1");
+    urlLine->addWidget(_aiUrl, 1);
+    urlCol->addLayout(urlLine);
+    auto *urlHint = new QLabel(
+        tr("Works with vLLM, Ollama, LM Studio, LiteLLM, OpenRouter and other "
+           "OpenAI-compatible servers."),
+        _aiUrlRow
+    );
+    urlHint->setObjectName("aiDesc");
+    urlHint->setWordWrap(true);
+    urlHint->setContentsMargins(kLabelW + sp.md, 0, 0, 0);
+    urlCol->addWidget(urlHint);
+    _aiCleartextWarn =
+        new QLabel(tr("Unencrypted connection — the API key is sent in plain text."), _aiUrlRow);
+    _aiCleartextWarn->setObjectName("aiError");
+    _aiCleartextWarn->setWordWrap(true);
+    _aiCleartextWarn->setContentsMargins(kLabelW + sp.md, 0, 0, 0);
+    _aiCleartextWarn->hide();
+    urlCol->addWidget(_aiCleartextWarn);
+    el->addWidget(_aiUrlRow);
+    connect(_aiUrl, &StyledLineEdit::textChanged, this, [this](const QString &t) {
+        _aiCleartextWarn->setVisible(
+            LlmWire::isCleartextRemote(LlmWire::normalizeOpenAiBaseUrl(t))
+        );
     });
 
-    // One section per provider (Anthropic, OpenAI).
-    for (auto *p : svc.providers()) {
-        auto *heading = new QLabel(p->displayName(), page);
-        heading->setObjectName("sectionHeading");
-        lay->addWidget(heading);
-
-        auto *box = new QGroupBox(page);
-        box->setObjectName("aiBox");
-        auto *bl = new QVBoxLayout(box);
-        bl->setSpacing(sp.md);
-        bl->setContentsMargins(0, 0, 0, 0);
-
-        AiProviderRow row;
-        row.provider = p;
-
-        row.status = new QLabel(box);
-        row.status->setObjectName("aiStatus");
-        bl->addWidget(row.status);
-
-        auto *btnRow = new QHBoxLayout;
-        row.oauthBtn = new StyledButton(tr("Connect (OAuth)"), StyledButton::Variant::Primary, box);
-        row.oauthBtn->setSize(StyledButton::Size::Small);
-        btnRow->addWidget(row.oauthBtn);
-
-        row.disconnectBtn = new StyledButton(tr("Disconnect"), StyledButton::Variant::Danger, box);
-        row.disconnectBtn->setSize(StyledButton::Size::Small);
-        btnRow->addWidget(row.disconnectBtn);
-        btnRow->addStretch();
-        bl->addLayout(btnRow);
-
-        auto *keyRow = new QHBoxLayout;
-        row.keyEdit  = new StyledLineEdit(box);
-        row.keyEdit->setSize(StyledLineEdit::Size::Small);
-        row.keyEdit->setPlaceholderText(tr("Paste your API key"));
-        row.keyEdit->lineEdit()->setEchoMode(QLineEdit::Password);
-        keyRow->addWidget(row.keyEdit, 1);
-
-        row.saveKeyBtn = new StyledButton(tr("Save key"), StyledButton::Variant::Primary, box);
-        row.saveKeyBtn->setSize(StyledButton::Size::Small);
-        keyRow->addWidget(row.saveKeyBtn);
-        bl->addLayout(keyRow);
-
-        auto *keyLink = new StyledButton(
-            tr("Get an API key from %1…").arg(p->displayName()), StyledButton::Variant::Link, box
-        );
-        connect(keyLink, &QPushButton::clicked, this, [p] {
+    QWidget *keyRow = nullptr;
+    makeFieldRow(tr("API key"), _aiKey, keyRow);
+    _aiKey->lineEdit()->setEchoMode(QLineEdit::Password);
+    // Vendor link / "optional" hint sit under the field, indented to it, so the
+    // input keeps its full width.
+    auto *keySub = new QHBoxLayout;
+    keySub->setContentsMargins(kLabelW + sp.md, 0, 0, 0);
+    keySub->setSpacing(sp.md);
+    _aiKeyLink = new StyledButton({}, StyledButton::Variant::Link, _aiEditor);
+    connect(_aiKeyLink, &QPushButton::clicked, this, [this] {
+        if (auto *p = LlmService::instance().provider(_aiEditingId))
             QDesktopServices::openUrl(QUrl(p->apiKeyUrl()));
-        });
-        auto *keyLinkRow = new QHBoxLayout;
-        keyLinkRow->addWidget(keyLink);
-        keyLinkRow->addStretch();
-        bl->addLayout(keyLinkRow);
-        row.keyLink = keyLink;
+    });
+    keySub->addWidget(_aiKeyLink);
+    _aiKeyHint = new QLabel(_aiEditor);
+    _aiKeyHint->setObjectName("aiDesc");
+    keySub->addWidget(_aiKeyHint);
+    keySub->addStretch();
+    el->addLayout(keySub);
 
-        connect(row.oauthBtn, &QPushButton::clicked, this, [this, p] {
-            _aiError->clear();
-            p->connectOAuth();
-        });
-        connect(row.disconnectBtn, &QPushButton::clicked, this, [this, p] {
-            _aiError->clear();
-            p->disconnectAccount();
-        });
-        const auto saveKey = [this, p, keyEdit = row.keyEdit] {
-            _aiError->clear();
-            p->connectApiKey(keyEdit->text());
-            keyEdit->clear();
-        };
-        connect(row.saveKeyBtn, &QPushButton::clicked, this, saveKey);
-        connect(row.keyEdit, &StyledLineEdit::returnPressed, this, saveKey);
+    QWidget *modelRow = nullptr;
+    auto    *modelLay = makeFieldRow(tr("Model"), _aiModel, modelRow);
+    _aiModel->setPlaceholderText(tr("Model name"));
+    _aiFetchModels =
+        new StyledButton(tr("Fetch models"), StyledButton::Variant::Secondary, modelRow);
+    _aiFetchModels->setSize(StyledButton::Size::Small);
+    connect(_aiFetchModels, &QPushButton::clicked, this, [this] { probeAiEditor(true); });
+    modelLay->addWidget(_aiFetchModels);
+    // Picker under the field: curated list for presets, the server's list once
+    // fetched for custom entries. Choosing fills the (still editable) field.
+    auto *pickSub = new QHBoxLayout;
+    pickSub->setContentsMargins(kLabelW + sp.md, 0, 0, 0);
+    _aiModelPick = new Dropdown(_aiEditor);
+    _aiModelPick->setSize(Dropdown::Size::Small);
+    connect(_aiModelPick, &Dropdown::currentIndexChanged, this, [this](int idx) {
+        if (idx >= 0 && !_aiModelPick->currentData().toString().isEmpty())
+            _aiModel->setText(_aiModelPick->currentData().toString());
+    });
+    pickSub->addWidget(_aiModelPick, 1);
+    el->addLayout(pickSub);
 
-        connect(p, &LlmProvider::authStateChanged, this, &SettingsDialog::refreshAiProviders);
-        connect(p, &LlmProvider::authFailed, this, [this, p](const QString &reason) {
-            _aiError->setText(tr("%1: %2").arg(p->displayName(), reason));
-        });
+    _aiProbeStatus = new QLabel(_aiEditor);
+    _aiProbeStatus->setObjectName("aiDesc");
+    _aiProbeStatus->setWordWrap(true);
+    el->addWidget(_aiProbeStatus);
 
-        _aiRows.append(row);
-        lay->addWidget(box);
-    }
+    auto *actions = new QHBoxLayout;
+    _aiTest = new StyledButton(tr("Test connection"), StyledButton::Variant::Secondary, _aiEditor);
+    _aiTest->setSize(StyledButton::Size::Small);
+    connect(_aiTest, &QPushButton::clicked, this, [this] { probeAiEditor(false); });
+    actions->addWidget(_aiTest);
+    actions->addStretch();
+    auto *cancel = new StyledButton(tr("Cancel"), StyledButton::Variant::Ghost, _aiEditor);
+    cancel->setSize(StyledButton::Size::Small);
+    connect(cancel, &QPushButton::clicked, this, &SettingsDialog::hideAiEditor);
+    actions->addWidget(cancel);
+    _aiSave = new StyledButton(tr("Save"), StyledButton::Variant::Primary, _aiEditor);
+    _aiSave->setSize(StyledButton::Size::Small);
+    connect(_aiSave, &QPushButton::clicked, this, &SettingsDialog::saveAiEditor);
+    connect(_aiKey, &StyledLineEdit::returnPressed, this, &SettingsDialog::saveAiEditor);
+    connect(_aiModel, &StyledLineEdit::returnPressed, this, &SettingsDialog::saveAiEditor);
+    actions->addWidget(_aiSave);
+    el->addLayout(actions);
+
+    _aiEditor->hide();
+    lay->addWidget(_aiEditor);
+
+    _aiError = new QLabel(page);
+    _aiError->setObjectName("aiError");
+    _aiError->setWordWrap(true);
+    lay->addWidget(_aiError);
+
+    auto &svc = LlmService::instance();
+    connect(&svc, &LlmService::providersChanged, this, &SettingsDialog::refreshAiProviders);
+    connect(&svc, &LlmService::availabilityChanged, this, &SettingsDialog::refreshAiProviders);
 
     // ── Your language ─────────────────────────────────────────────────
     auto *langHeading = new QLabel(tr("Your language"), page);
@@ -1116,7 +1181,7 @@ QWidget *SettingsDialog::buildAiPage() {
 
     auto *aiLangRow   = new QHBoxLayout;
     auto *aiLangLabel = new QLabel(tr("Native language:"), page);
-    aiLangLabel->setObjectName("aiDefaultLabel");
+    aiLangLabel->setObjectName("aiFieldLabel");
     aiLangRow->addWidget(aiLangLabel);
 
     _aiLanguage = new Dropdown(page);
@@ -1156,10 +1221,6 @@ QWidget *SettingsDialog::buildAiPage() {
             LlmService::instance().setNativeLanguage(_aiLanguage->currentData().toString());
     });
 
-    _aiError = new QLabel(page);
-    _aiError->setObjectName("aiError");
-    _aiError->setWordWrap(true);
-    lay->addWidget(_aiError);
     lay->addStretch();
 
     refreshAiProviders();
@@ -1167,47 +1228,311 @@ QWidget *SettingsDialog::buildAiPage() {
 }
 
 void SettingsDialog::refreshAiProviders() {
-    for (const auto &row : _aiRows) {
-        const auto state      = row.provider->authState();
-        const bool connected  = state == LlmProvider::AuthState::Connected;
-        const bool connecting = state == LlmProvider::AuthState::Connecting;
+    auto &svc = LlmService::instance();
 
-        if (connected) {
-            row.status->setText(
-                row.provider->authMethod() == LlmProvider::AuthMethod::OAuth
-                    ? tr("Connected as %1").arg(row.provider->accountLabel())
-                    : tr("Connected with API key (%1)").arg(row.provider->accountLabel())
-            );
-        } else if (connecting) {
-            row.status->setText(tr("Waiting for browser sign-in…"));
-        } else {
-            row.status->setText(tr("Not connected"));
-        }
-
-        row.oauthBtn->setVisible(!connected && row.provider->supportsOAuth());
-        row.oauthBtn->setEnabled(!connecting);
-        row.keyEdit->setVisible(!connected);
-        row.saveKeyBtn->setVisible(!connected);
-        row.keyLink->setVisible(!connected);
-        row.disconnectBtn->setVisible(connected);
+    // Rebuild the rows from scratch — the list is tiny and this keeps one
+    // source of truth (the registry) instead of a parallel widget model.
+    while (auto *item = _aiListLay->takeAt(0)) {
+        delete item->widget();
+        delete item;
     }
+    delete _aiDefaultGrp;
+    _aiDefaultGrp = new QButtonGroup(_aiList);
+    _aiDefaultGrp->setExclusive(true);
 
-    // Sync the default-provider combo without re-triggering the save.
-    const QString def = LlmService::instance().defaultProviderId();
-    int           idx = _aiDefault->findData(def);
-    if (idx < 0)
-        idx = 0;
-    const QSignalBlocker blocker(_aiDefault);
-    _aiDefault->setCurrentIndex(idx);
+    const auto   &sp     = Th::c().spacing;
+    const auto   *active = svc.activeProvider();
+    const QString sep    = QStringLiteral(" · ");
 
-    // Same for the native-language combo. Its effective value tracks the UI
+    for (auto *p : svc.providers()) {
+        // Two lines per row: [radio] Name …………… [buttons], then the detail
+        // (model · status / URL) underneath, aligned with the name — a long
+        // server URL must never push the buttons out of the panel.
+        auto *row = new QWidget(_aiList);
+        auto *rv  = new QVBoxLayout(row);
+        rv->setContentsMargins(0, 0, 0, 0);
+        rv->setSpacing(sp.xs);
+        auto *rl = new QHBoxLayout;
+        rl->setContentsMargins(0, 0, 0, 0);
+        rl->setSpacing(sp.md);
+        rv->addLayout(rl);
+
+        auto *radio = new QRadioButton(row);
+        radio->setObjectName("aiDefaultRadio");
+        radio->setEnabled(p->isConnected());
+        radio->setChecked(p == active);
+        _aiDefaultGrp->addButton(radio);
+        connect(radio, &QRadioButton::toggled, this, [id = p->id()](bool on) {
+            if (on)
+                LlmService::instance().setDefaultProviderId(id);
+        });
+        rl->addWidget(radio);
+
+        auto *name = new QLabel(p->displayName(), row);
+        name->setObjectName("aiRowName");
+        rl->addWidget(name);
+        rl->addStretch();
+
+        QString detail;
+        if (p->isPreset()) {
+            detail = p->isConnected()
+                         ? p->model() + sep + tr("Connected (%1)").arg(p->accountLabel())
+                         : tr("Not connected");
+        } else {
+            detail = p->model() + sep + p->baseUrl();
+        }
+        auto *detailLabel = new QLabel(detail, row);
+        detailLabel->setObjectName("aiRowDetail");
+        detailLabel->setWordWrap(true);
+        detailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        // Indent past the radio indicator so it lines up under the name.
+        detailLabel->setContentsMargins(radio->sizeHint().width() + sp.md, 0, 0, 0);
+        rv->addWidget(detailLabel);
+
+        if (p->isPreset() && !p->isConnected()) {
+            auto *connectBtn = new StyledButton(tr("Connect"), StyledButton::Variant::Primary, row);
+            connectBtn->setSize(StyledButton::Size::Small);
+            connect(connectBtn, &QPushButton::clicked, this, [this, id = p->id()] {
+                showAiEditor(id);
+            });
+            rl->addWidget(connectBtn);
+        } else {
+            auto *editBtn = new StyledButton(tr("Edit"), StyledButton::Variant::Secondary, row);
+            editBtn->setSize(StyledButton::Size::Small);
+            connect(editBtn, &QPushButton::clicked, this, [this, id = p->id()] {
+                showAiEditor(id);
+            });
+            rl->addWidget(editBtn);
+
+            auto *dropBtn = new StyledButton(
+                p->isPreset() ? tr("Disconnect") : tr("Remove"), StyledButton::Variant::Danger, row
+            );
+            dropBtn->setSize(StyledButton::Size::Small);
+            connect(dropBtn, &QPushButton::clicked, this, [this, id = p->id()] {
+                _aiError->clear();
+                if (_aiEditingId == id)
+                    hideAiEditor();
+                LlmService::instance().disconnectProvider(id);
+            });
+            rl->addWidget(dropBtn);
+        }
+        _aiListLay->addWidget(row);
+    }
+    applyAiTheme();
+
+    // The editor may be open on a provider that just vanished.
+    if (!_aiEditingId.isEmpty() && !svc.provider(_aiEditingId))
+        hideAiEditor();
+
+    // Sync the native-language combo. Its effective value tracks the UI
     // language until the user ever picks one, so it must not be written back
     // on load; English stands in when the resolved language isn't offered.
-    int langIdx = _aiLanguage->findData(LlmService::instance().nativeLanguage());
+    int langIdx = _aiLanguage->findData(svc.nativeLanguage());
     if (langIdx < 0)
         langIdx = std::max(0, _aiLanguage->findData(QStringLiteral("en")));
     const QSignalBlocker langBlocker(_aiLanguage);
     _aiLanguage->setCurrentIndex(langIdx);
+}
+
+void SettingsDialog::showAiEditor(const QString &providerId) {
+    const auto *p = LlmService::instance().provider(providerId);
+    _aiEditingId  = p ? providerId : QString();
+    _aiError->clear();
+    _aiProbeStatus->clear();
+    ++_aiProbeSeq; // drop replies of any probe started for the previous edit
+    _aiTest->setEnabled(true);
+    _aiFetchModels->setEnabled(true);
+
+    _aiName->clear();
+    _aiUrl->clear();
+    _aiKey->clear();
+    _aiModel->clear();
+    {
+        const QSignalBlocker block(_aiModelPick);
+        _aiModelPick->clear();
+    }
+
+    const bool preset = p && p->isPreset();
+    _aiNameRow->setVisible(!preset);
+    _aiUrlRow->setVisible(!preset);
+    _aiKeyLink->setVisible(preset);
+    _aiModelPick->setVisible(preset); // custom: shown once "Fetch models" returns
+
+    if (!p) {
+        _aiEditorTitle->setText(tr("Add OpenAI-compatible server"));
+        _aiKey->setPlaceholderText(tr("Optional"));
+        _aiKeyHint->setText(tr("Leave empty if the server doesn't need one."));
+        _aiCleartextWarn->hide();
+    } else {
+        const auto &cfg = p->config();
+        _aiEditorTitle->setText(
+            preset && !p->isConnected() ? tr("Connect %1").arg(p->displayName()) : p->displayName()
+        );
+        _aiName->setText(cfg.name);
+        _aiUrl->setText(cfg.baseUrl);
+        _aiModel->setText(p->model());
+        if (p->hasApiKey()) {
+            _aiKey->setPlaceholderText(
+                tr("Key saved (%1) — leave empty to keep it").arg(p->accountLabel())
+            );
+            _aiKeyHint->clear();
+        } else {
+            _aiKey->setPlaceholderText(tr("Paste your API key"));
+            _aiKeyHint->setText(
+                preset ? QString() : tr("Leave empty if the server doesn't need one.")
+            );
+        }
+        if (preset) {
+            _aiKeyLink->setText(tr("Get an API key from %1…").arg(p->displayName()));
+            const QSignalBlocker block(_aiModelPick);
+            if (!cfg.knownModels.contains(p->model())) // user-typed model → keep it listed
+                _aiModelPick->addItem(p->model(), p->model());
+            for (const QString &m : cfg.knownModels)
+                _aiModelPick->addItem(m, m);
+            _aiModelPick->setCurrentIndex(_aiModelPick->findData(p->model()));
+        }
+    }
+    _aiKeyHint->setVisible(!_aiKeyHint->text().isEmpty());
+    _aiEditor->show();
+    (preset ? _aiKey : _aiName)->lineEdit()->setFocus();
+}
+
+void SettingsDialog::hideAiEditor() {
+    _aiEditingId.clear();
+    ++_aiProbeSeq;
+    _aiEditor->hide();
+}
+
+LlmProviderConfig SettingsDialog::aiEditorConfig() const {
+    auto &svc = LlmService::instance();
+    if (const auto *p = svc.provider(_aiEditingId)) {
+        LlmProviderConfig cfg = p->config();
+        if (!p->isPreset()) {
+            cfg.name    = _aiName->text().trimmed();
+            cfg.baseUrl = LlmWire::normalizeOpenAiBaseUrl(_aiUrl->text());
+        }
+        cfg.model = _aiModel->text().trimmed();
+        // Preset default → store empty so a future default change follows.
+        if (p->isPreset() && cfg.model == cfg.defaultModel)
+            cfg.model.clear();
+        return cfg;
+    }
+    LlmProviderConfig cfg = LlmProviderConfig::newCustom();
+    cfg.name              = _aiName->text().trimmed();
+    cfg.baseUrl           = LlmWire::normalizeOpenAiBaseUrl(_aiUrl->text());
+    cfg.model             = _aiModel->text().trimmed();
+    if (cfg.name.isEmpty())
+        cfg.name = QUrl(cfg.baseUrl).host();
+    return cfg;
+}
+
+void SettingsDialog::probeAiEditor(bool fillModels) {
+    _aiError->clear();
+    const auto cfg = aiEditorConfig();
+    if (cfg.baseUrl.isEmpty()) {
+        _aiError->setText(tr("Enter the server URL first"));
+        return;
+    }
+    const auto *p   = LlmService::instance().provider(_aiEditingId);
+    QString     key = _aiKey->text().trimmed();
+    if (key.isEmpty() && p)
+        key = p->apiKey();
+
+    const int seq = ++_aiProbeSeq;
+    _aiTest->setEnabled(false);
+    _aiFetchModels->setEnabled(false);
+    _aiProbeStatus->setText(tr("Connecting…"));
+
+    LlmProvider::probe(
+        cfg,
+        key,
+        [this, seq, fillModels](const QStringList &models) {
+            if (seq != _aiProbeSeq)
+                return;
+            _aiTest->setEnabled(true);
+            _aiFetchModels->setEnabled(true);
+            _aiProbeStatus->setText(
+                tr("Reached the server — %n model(s) available", nullptr, int(models.size()))
+            );
+            if (!fillModels || models.isEmpty())
+                return;
+            // Dropdown can't show "nothing selected" (it lands on the first
+            // item), so keep the field and the picker in agreement: an empty
+            // field takes the first listed model, a typed one not on the
+            // list is added so the picker doesn't misreport it.
+            QString current = _aiModel->text().trimmed();
+            if (current.isEmpty()) {
+                current = models.first();
+                _aiModel->setText(current);
+            }
+            const QSignalBlocker block(_aiModelPick);
+            _aiModelPick->clear();
+            if (!models.contains(current))
+                _aiModelPick->addItem(current, current);
+            for (const QString &m : models)
+                _aiModelPick->addItem(m, m);
+            _aiModelPick->setCurrentIndex(_aiModelPick->findData(current));
+            _aiModelPick->show();
+        },
+        [this, seq](const QString &err) {
+            if (seq != _aiProbeSeq)
+                return;
+            _aiTest->setEnabled(true);
+            _aiFetchModels->setEnabled(true);
+            _aiProbeStatus->clear();
+            _aiError->setText(err);
+        },
+        this
+    );
+}
+
+void SettingsDialog::saveAiEditor() {
+    _aiError->clear();
+    auto         &svc = LlmService::instance();
+    const auto   *p   = svc.provider(_aiEditingId);
+    const auto    cfg = aiEditorConfig();
+    const QString key = _aiKey->text().trimmed();
+
+    if (p && p->isPreset()) {
+        if (key.isEmpty() && !p->hasApiKey()) {
+            _aiError->setText(tr("Paste your API key"));
+            return;
+        }
+    } else {
+        if (cfg.baseUrl.isEmpty()) {
+            _aiError->setText(tr("Enter the server URL (for example http://localhost:8000/v1)"));
+            return;
+        }
+        if (cfg.model.isEmpty()) {
+            _aiError->setText(tr("Enter a model name, or fetch the list from the server"));
+            return;
+        }
+    }
+
+    if (p)
+        svc.updateProvider(p->id(), cfg, key);
+    else
+        svc.addCustom(cfg, key);
+    _aiKey->clear(); // never keep a pasted key in the widget tree
+    hideAiEditor();
+    refreshAiProviders();
+}
+
+void SettingsDialog::applyAiTheme() {
+    const auto   &th       = Th::c();
+    const QString radioQss = Th::radioQss(th.fonts.md);
+    for (auto *w : _panel->findChildren<QRadioButton *>("aiDefaultRadio"))
+        w->setStyleSheet(radioQss);
+    for (auto *w : _panel->findChildren<QLabel *>("aiRowName")) {
+        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
+                             .arg(th.fonts.md)
+                             .arg(Th::qss(th.text.primary)));
+    }
+    for (auto *w : _panel->findChildren<QLabel *>("aiRowDetail")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
 }
 
 void SettingsDialog::applyTheme() {
@@ -1361,26 +1686,21 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
     }
-    for (auto *w : _panel->findChildren<QLabel *>("aiDefaultLabel")) {
+    for (auto *w : _panel->findChildren<QLabel *>("aiFieldLabel")) {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
-    // _aiDefault self-themes (Dropdown).
     for (auto *w : _panel->findChildren<QGroupBox *>("aiBox"))
         w->setStyleSheet("QGroupBox { border: none; }");
-    for (auto *w : _panel->findChildren<QLabel *>("aiStatus")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-        );
+    // (Buttons, inputs and dropdowns self-theme — StyledButton / StyledLineEdit
+    // / Dropdown; the provider rows are rebuilt on the fly → applyAiTheme.)
+    for (auto *w : _panel->findChildren<QLabel *>("aiError")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.danger)));
     }
-    // (AI connect/save/disconnect buttons, the key input and the key link all
-    // self-theme — StyledButton / StyledLineEdit)
-    if (_aiError) {
-        _aiError->setStyleSheet(QString("font-size: %1px; color: %2;")
-                                    .arg(th.fonts.caption)
-                                    .arg(Th::qss(th.text.danger)));
-    }
+    applyAiTheme();
 
     // ── Storage page ──────────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("sizePrefixLabel")) {

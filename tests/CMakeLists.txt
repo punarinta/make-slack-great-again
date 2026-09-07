@@ -322,6 +322,26 @@ add_msga_test(test_discussion_summary
     ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
 )
 
+# Pure wire codecs for both chat-completion formats — no network.
+add_msga_test(test_llm_wire
+    test_llm_wire.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
+)
+target_link_libraries(test_llm_wire PRIVATE Qt6::Network) # QHostAddress (private-range check)
+
+# Provider registry + HTTP round trips against FakeHttpServer (own main: needs a
+# QCoreApplication for the event loop and a redirected QSettings path).
+add_msga_qt_test(test_llm_service
+    test_llm_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+)
+set_target_properties(test_llm_service PROPERTIES AUTOMOC ON)
+target_link_libraries(test_llm_service PRIVATE Qt6::Network)
+
 add_msga_test(test_fake_backend
     test_fake_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/fake_backend/fake_backend.cpp
@@ -746,12 +766,9 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.h
-    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider_base.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/oauth_loopback.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/anthropic_provider.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/openai_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
@@ -805,12 +822,9 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/discussion_summary.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_service.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.h
-    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider_base.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_wire.cpp
+    ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/oauth_loopback.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/anthropic_provider.cpp
-    ${CMAKE_SOURCE_DIR}/src/llm/openai_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp

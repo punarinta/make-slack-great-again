@@ -6,6 +6,7 @@
 #include <QString>
 #include <QList>
 #include <functional>
+#include <optional>
 
 namespace Llm {
 
@@ -16,19 +17,23 @@ struct Message {
 };
 
 struct Request {
-    QString        system;   // optional system prompt
-    QList<Message> messages; // alternating user/assistant, first must be user
-    QString        model;    // empty → provider default
-    int            maxTokens = 4096;
+    QString               system;   // optional system prompt
+    QList<Message>        messages; // alternating user/assistant, first must be user
+    QString               model;    // empty → provider default
+    int                   maxTokens = 4096;
+    // Sampling temperature; unset → provider default. Reasoning models reject
+    // it, so the wire omits it whenever reasoning is on (see llm_wire.h).
+    std::optional<double> temperature;
 };
 
 struct Response {
     QString text;
     QString model;      // model that actually served the request
-    QString stopReason; // provider-specific ("end_turn", "stop", "refusal", …)
+    QString stopReason; // provider-specific ("end_turn", "stop", "length", …)
 };
 
 using OnResponse = std::function<void(Response)>;
 using OnError    = std::function<void(QString)>;
+using OnModels   = std::function<void(QStringList)>;
 
 } // namespace Llm

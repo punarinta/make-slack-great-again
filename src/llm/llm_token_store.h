@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
-// Persists per-provider LLM credentials in QSettings under llm/<providerId>/.
-// Mirrors auth/token_store.h, which does the same for Slack workspaces.
+// Persists per-provider LLM API keys in the secret store under
+// llm/<providerId>/apiKey. Mirrors auth/token_store.h, which does the same for
+// Slack workspaces. Provider *configuration* (name, URL, model) is plain
+// metadata and lives with LlmService in QSettings.
 #pragma once
 
 #include <QString>
 
 namespace LlmTokenStore {
 
-struct Credentials {
-    QString apiKey;      // non-empty → API-key auth
-    QString accessToken; // non-empty → OAuth auth
-    QString refreshToken;
-    qint64  expiresAt = 0; // Unix timestamp when accessToken expires; 0 = unknown
-    QString accountLabel;  // email or masked key, for display only
+QString loadApiKey(const QString &providerId);
+void    saveApiKey(const QString &providerId, const QString &key); // empty clears
+void    clear(const QString &providerId);
 
-    [[nodiscard]] bool isConnected() const { return !apiKey.isEmpty() || !accessToken.isEmpty(); }
-};
-
-Credentials load(const QString &providerId);
-void        save(const QString &providerId, const Credentials &c);
-void        clear(const QString &providerId);
+// Removes the OAuth token fields an earlier version stored next to the key
+// (accessToken/refreshToken/expiresAt). LLM OAuth was never offered by either
+// vendor; run once at startup so stale keychain entries don't linger.
+void scrubLegacyOAuth(const QString &providerId);
 
 } // namespace LlmTokenStore

@@ -135,12 +135,10 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/auth/auth_strategy_factory.cpp
 
     # LLM service (Settings → AI assistance)
-    src/llm/llm_provider.h # header-only QObject — listed so AUTOMOC picks it up
     src/llm/llm_token_store.cpp
-    src/llm/oauth_loopback.cpp
-    src/llm/llm_provider_base.cpp
-    src/llm/anthropic_provider.cpp
-    src/llm/openai_provider.cpp
+    src/llm/oauth_loopback.cpp # used by the IMAP backend (XOAUTH2), not by the LLM layer
+    src/llm/llm_wire.cpp
+    src/llm/llm_provider.cpp
     src/llm/llm_service.cpp
     src/llm/discussion_summary.cpp
 

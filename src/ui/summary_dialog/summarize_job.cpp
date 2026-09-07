@@ -123,8 +123,10 @@ void SummarizeJob::runLlm() {
 
     auto &llm = LlmService::instance();
     auto  req = DiscussionSummary::buildRequest(entries, llm.nativeLanguage());
+    // Summaries are short, low-stakes and potentially frequent → the provider's
+    // light model (its own default when it has no cheaper tier).
     if (const auto *p = llm.activeProvider())
-        req.model = DiscussionSummary::modelForProvider(p->id());
+        req.model = p->lightModel();
 
     // The provider outlives the job; guard the callbacks so a torn-down job
     // (host window closing) doesn't get poked.

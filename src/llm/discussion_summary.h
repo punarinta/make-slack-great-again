@@ -22,11 +22,6 @@ struct Entry {
     bool    threadReply = false;
 };
 
-// Summaries are short, low-stakes and potentially frequent, so they run on the
-// vendor's lightest modern model instead of the provider's (heavier) default.
-// Empty for unknown providers — the provider default applies.
-QString modelForProvider(const QString &providerId);
-
 // languageCode: ISO 639-1 code from LlmService::nativeLanguage().
 Llm::Request buildRequest(const std::vector<Entry> &entries, const QString &languageCode);
 

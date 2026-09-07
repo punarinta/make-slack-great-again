@@ -28,7 +28,10 @@ class StyledButton;
 class StyledLineEdit;
 class UpdateChecker;
 class ThemePreviewCard;
-class LlmProvider;
+class QGroupBox;
+class QVBoxLayout;
+class QButtonGroup;
+struct LlmProviderConfig;
 
 class SettingsDialog : public QWidget {
     Q_OBJECT
@@ -90,7 +93,16 @@ private:
 
     void                   buildPanel();
     QWidget               *buildAiPage();
-    void                   refreshAiProviders();
+    void                   refreshAiProviders(); // rebuild the provider rows from LlmService
+    void                   applyAiTheme();       // rows are created on the fly → styled on demand
+    // Inline provider editor. providerId empty → add a new OpenAI-compatible server.
+    void                   showAiEditor(const QString &providerId);
+    void                   hideAiEditor();
+    void                   saveAiEditor();
+    // GET /models with the editor's current fields: proves URL + key; fillModels
+    // also offers the returned ids in the model dropdown.
+    void                   probeAiEditor(bool fillModels);
+    LlmProviderConfig      aiEditorConfig() const;
     void                   applyTheme();
     void                   saveNotifications();
     void                   loadNotifications();
@@ -142,23 +154,35 @@ private:
     // the combo selection differs from this, even across settings re-opens.
     QString                   _startupLanguage;
 
-    // AI assistance controls
-    struct AiProviderRow {
-        LlmProvider    *provider      = nullptr;
-        QLabel         *status        = nullptr;
-        StyledButton   *oauthBtn      = nullptr;
-        StyledButton   *disconnectBtn = nullptr;
-        StyledLineEdit *keyEdit       = nullptr;
-        StyledButton   *saveKeyBtn    = nullptr;
-        // StyledButton (Link variant): a borderless text link. Plain widget text
-        // is pixel-snapped, unlike rich-text QLabels which show inconsistent
-        // stroke weight on fractionally-scaled displays.
-        StyledButton   *keyLink       = nullptr;
-    };
-    QList<AiProviderRow> _aiRows;
-    Dropdown            *_aiDefault  = nullptr;
-    Dropdown            *_aiLanguage = nullptr;
-    QLabel              *_aiError    = nullptr;
+    // AI assistance controls — one row per provider (radio = default) plus an
+    // inline editor that expands below the list for Connect / Edit / Add.
+    QWidget        *_aiList       = nullptr;
+    QVBoxLayout    *_aiListLay    = nullptr;
+    QButtonGroup   *_aiDefaultGrp = nullptr;
+    StyledButton   *_aiAddBtn     = nullptr;
+    QGroupBox      *_aiEditor     = nullptr;
+    QString         _aiEditingId; // provider being edited; empty = adding a custom one
+    QLabel         *_aiEditorTitle   = nullptr;
+    QWidget        *_aiNameRow       = nullptr;
+    QWidget        *_aiUrlRow        = nullptr;
+    StyledLineEdit *_aiName          = nullptr;
+    StyledLineEdit *_aiUrl           = nullptr;
+    StyledLineEdit *_aiKey           = nullptr;
+    StyledLineEdit *_aiModel         = nullptr;
+    Dropdown       *_aiModelPick     = nullptr;
+    QLabel         *_aiKeyHint       = nullptr;
+    // StyledButton (Link variant): a borderless text link. Plain widget text
+    // is pixel-snapped, unlike rich-text QLabels which show inconsistent
+    // stroke weight on fractionally-scaled displays.
+    StyledButton   *_aiKeyLink       = nullptr;
+    QLabel         *_aiCleartextWarn = nullptr;
+    QLabel         *_aiProbeStatus   = nullptr;
+    StyledButton   *_aiFetchModels   = nullptr;
+    StyledButton   *_aiTest          = nullptr;
+    StyledButton   *_aiSave          = nullptr;
+    int             _aiProbeSeq      = 0; // ignore replies of superseded probes
+    Dropdown       *_aiLanguage      = nullptr;
+    QLabel         *_aiError         = nullptr;
 
     // Storage controls
     QLabel   *_cacheSize = nullptr;

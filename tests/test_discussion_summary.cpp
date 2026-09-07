@@ -7,15 +7,6 @@
 
 using DiscussionSummary::buildRequest;
 using DiscussionSummary::Entry;
-using DiscussionSummary::modelForProvider;
-
-TEST_CASE("modelForProvider picks the lightest modern model per vendor") {
-    CHECK(modelForProvider("anthropic") == "claude-haiku-4-5");
-    CHECK(modelForProvider("openai") == "gpt-5.4-nano");
-    // Unknown provider → empty → the provider's own default applies.
-    CHECK(modelForProvider("acme").isEmpty());
-}
-
 TEST_CASE("buildRequest shapes the transcript") {
     const std::vector<Entry> entries = {
         {"Alice", "Shall we ship on Friday?", false},

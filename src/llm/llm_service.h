@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
-// App-wide LLM facade. Callers use chat() and never learn which vendor served
-// the request; the settings UI manages connections and the default provider.
+// App-wide LLM facade and provider registry. Callers use chat() and never
+// learn which endpoint served the request; the settings UI manages the
+// registry (presets + user-added OpenAI-compatible servers) and the default.
 //
 //   LlmService::instance().chat(request,
 //       [](Llm::Response r) { … },
 //       [](QString err)    { … });
+//
+// Persistence (QSettings "msga"): llm/defaultProvider, llm/customProviders
+// (ordered id list), llm/providers/<id>/{name,baseUrl,model}. Keys live in the
+// secret store via LlmTokenStore.
 #pragma once
 
 #include <QObject>
@@ -17,9 +22,20 @@ class LlmService : public QObject {
 public:
     static LlmService &instance();
 
-    // All registered providers, connected or not (for the settings UI).
+    // Presets first (Anthropic, OpenAI), then custom entries in creation order.
     [[nodiscard]] QList<LlmProvider *> providers() const { return _providers; }
     [[nodiscard]] LlmProvider         *provider(const QString &id) const;
+
+    // Custom (OpenAI-compatible) endpoints. `cfg` from LlmProviderConfig::newCustom()
+    // with name/baseUrl/model filled; the key may be empty.
+    LlmProvider *addCustom(const LlmProviderConfig &cfg, const QString &apiKey);
+    void         removeCustom(const QString &id);
+    // Persists `cfg` (custom: name/baseUrl/model; preset: model only) and the
+    // key. An empty key on a custom provider keeps the stored one; on a preset
+    // it is ignored (use disconnectProvider()).
+    void updateProvider(const QString &id, const LlmProviderConfig &cfg, const QString &apiKey);
+    // Preset: forget the key. Custom: same as removeCustom().
+    void disconnectProvider(const QString &id);
 
     // The user's preferred provider. Persisted in QSettings.
     [[nodiscard]] QString defaultProviderId() const;
@@ -40,11 +56,16 @@ public:
     void chat(const Llm::Request &req, Llm::OnResponse onResponse, Llm::OnError onError);
 
 signals:
-    // Connection state or default-provider selection changed.
+    // Connection state, default selection, or registry membership changed.
     void availabilityChanged();
+    // A provider was added, removed, renamed or repointed.
+    void providersChanged();
 
 private:
     LlmService();
+
+    LlmProvider *registerProvider(const LlmProviderConfig &cfg);
+    void         persistConfig(const LlmProvider *p) const;
 
     QList<LlmProvider *> _providers;
 };

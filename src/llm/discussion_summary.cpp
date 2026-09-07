@@ -41,14 +41,6 @@ QString languageName(const QString &code) {
 
 } // namespace
 
-QString modelForProvider(const QString &providerId) {
-    if (providerId == QStringLiteral("anthropic"))
-        return QStringLiteral("claude-haiku-4-5");
-    if (providerId == QStringLiteral("openai"))
-        return QStringLiteral("gpt-5.4-nano");
-    return {};
-}
-
 Llm::Request buildRequest(const std::vector<Entry> &entries, const QString &languageCode) {
     QStringList lines;
     lines.reserve(static_cast<qsizetype>(entries.size()));
