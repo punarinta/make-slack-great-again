@@ -63,7 +63,9 @@ public:
     loadThread(ConversationId, Ts root, std::optional<QString> cursor) override;
 
     // --- Commands ---
-    void sendMessage(ConversationId, OutgoingMessage) override;
+    void sendMessage(
+        ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
+    ) override;
     void editMessage(ConversationId, Ts, TextWithEntities) override;
     void deleteMessage(ConversationId, Ts) override;
     void addReaction(ConversationId, Ts, QString emoji) override;

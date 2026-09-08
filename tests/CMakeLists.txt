@@ -645,6 +645,22 @@ add_msga_widget_test(test_shortcuts
     ${CMAKE_SOURCE_DIR}/src/ui/shortcuts.cpp
 )
 
+add_msga_widget_test(test_move_to_thread_dialog
+    test_move_to_thread_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/move_to_thread_dialog/move_to_thread_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+
 add_msga_widget_test(test_quick_switcher
     test_quick_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/quick_switcher/quick_switcher_dialog.cpp

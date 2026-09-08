@@ -49,7 +49,9 @@ public:
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override;
 
     // --- Commands ---
-    void sendMessage(ConversationId, OutgoingMessage) override;      // Phase 4 (stub)
+    void sendMessage(
+        ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
+    ) override;
     void editMessage(ConversationId, Ts, TextWithEntities) override; // not supported
     void deleteMessage(ConversationId, Ts) override;
     bool channelsAreLabels() const override { return true; } // channels = labels/folders

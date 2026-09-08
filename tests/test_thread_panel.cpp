@@ -92,7 +92,8 @@ struct StubBackend : Backend {
         return rpl::variable<MessagePage>(_threadPage).value();
     }
 
-    void sendMessage(ConversationId c, OutgoingMessage m) override {
+    void
+    sendMessage(ConversationId c, OutgoingMessage m, std::function<void(bool, QString)>) override {
         sendCalls.push_back({c, std::move(m)});
     }
     struct EditCall {

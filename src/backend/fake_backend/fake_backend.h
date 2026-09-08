@@ -26,7 +26,9 @@ public:
     rpl::producer<MessagePage>  loadHistory(ConversationId, std::optional<QString>) override;
     rpl::producer<MessagePage>  loadThread(ConversationId, Ts, std::optional<QString>) override;
 
-    void sendMessage(ConversationId, OutgoingMessage) override;
+    void sendMessage(
+        ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
+    ) override;
     void editMessage(ConversationId, Ts, TextWithEntities) override;
     void deleteMessage(ConversationId, Ts) override;
     void addReaction(ConversationId, Ts, QString) override;

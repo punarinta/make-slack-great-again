@@ -146,7 +146,12 @@ rpl::producer<MessagePage> FakeBackend::loadThread(ConversationId, Ts, std::opti
     return rpl::variable<MessagePage>(MessagePage{}).value();
 }
 
-void FakeBackend::sendMessage(ConversationId, OutgoingMessage) {}
+void FakeBackend::sendMessage(
+    ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done
+) {
+    if (done)
+        done(true, {});
+}
 void FakeBackend::editMessage(ConversationId, Ts, TextWithEntities) {}
 void FakeBackend::deleteMessage(ConversationId, Ts) {}
 void FakeBackend::addReaction(ConversationId, Ts, QString) {}

@@ -5,6 +5,7 @@
 #include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
 #include "text/mrkdwn_parser.h"
+#include "util/time_format.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -1745,6 +1746,16 @@ void Session::labelMessage(
 void Session::sendMessage(
     ConversationId conv, const QString &text, std::optional<Ts> threadRoot, const QString &subject
 ) {
+    postMessage(std::move(conv), text, std::move(threadRoot), subject, {});
+}
+
+void Session::postMessage(
+    ConversationId                            conv,
+    const QString                            &text,
+    std::optional<Ts>                         threadRoot,
+    const QString                            &subject,
+    std::function<void(bool ok, QString err)> done
+) {
     const Ts fakeTs = makeFakeTs();
     if (threadRoot)
         markThreadFollowed(conv, *threadRoot);
@@ -1771,7 +1782,59 @@ void Session::sendMessage(
     // than this server ts can be the one we are about to post.
     if (const Conversation *c = findConversation(conv))
         out.sinceTs = c->latestTs;
-    _backend->sendMessage(conv, std::move(out));
+    _backend->sendMessage(conv, std::move(out), std::move(done));
+}
+
+QString Session::movedMessageText(const Message &msg, bool withNote) {
+    QString text;
+    if (withNote) {
+        const QString who = !msg.author.value.isEmpty() ? userDisplayName(msg.author) : msg.botName;
+        const QDateTime when = QDateTime::fromSecsSinceEpoch(msg.date / 1'000'000);
+        const QString   header =
+            QCoreApplication::translate(
+                "Session", "Moved from the channel · originally posted by %1 on %2 at %3"
+            )
+                .arg(who, TimeFmt::formatDate(when.date()), TimeFmt::formatTime(when));
+        text = '_' + header + '_';
+    }
+    const QString body = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+    if (!body.trimmed().isEmpty())
+        text += text.isEmpty() ? body : ("\n\n" + body);
+    for (const auto &f : msg.files) {
+        if (f.permalink.isEmpty())
+            continue;
+        const QString link =
+            f.name.isEmpty() ? f.permalink : '<' + f.permalink + '|' + f.name + '>';
+        text += text.isEmpty() ? link : ('\n' + link);
+    }
+    return text;
+}
+
+void Session::moveMessageToThread(
+    ConversationId conv, const Message &msg, Ts rootTs, bool withNote
+) {
+    if (!_backend || rootTs.isEmpty() || msg.ts.isEmpty() || msg.ts == rootTs || msg.pending)
+        return;
+    const Ts original = msg.ts;
+    postMessage(
+        conv,
+        movedMessageText(msg, withNote),
+        rootTs,
+        {},
+        [this, conv, original](bool ok, QString) {
+            if (!ok) {
+                // The send path has already reported why; say what it means
+                // for the move — nothing was deleted.
+                _errorHub.fire(
+                    QCoreApplication::translate(
+                        "Session", "Couldn't move the message — the original is still in place."
+                    )
+                );
+                return;
+            }
+            _backend->deleteMessage(conv, original);
+        }
+    );
 }
 
 bool Session::firstSighting(const ConversationId &conv, const Ts &ts) {

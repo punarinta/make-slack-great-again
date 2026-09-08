@@ -358,6 +358,7 @@ Capabilities PublicBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.moveToThread     = true; // sendMessage confirms from the chat.postMessage response
     c.fileUpload       = true;
     c.scheduledSend    = true; // chat.scheduleMessage
     // The Threads overview rides subscriptions.thread.getView, which Slack only
@@ -1352,6 +1353,13 @@ struct PublicBackend::SendState {
     QString         wireText; // exactly what chat.postMessage was given
     QString         oldestTs; // exclusive lower bound of the reconcile scan
     int             attempts = 0;
+    // Outcome callback (Backend::sendMessage); fired once, after the event.
+    std::function<void(bool ok, QString err)> done;
+
+    void finish(bool ok, const QString &err) {
+        if (auto cb = std::exchange(done, nullptr))
+            cb(ok, err);
+    }
 };
 
 namespace {
@@ -1365,9 +1373,12 @@ QString unescapedText(QString t) {
 }
 } // namespace
 
-void PublicBackend::sendMessage(ConversationId conv, OutgoingMessage msg) {
+void PublicBackend::sendMessage(
+    ConversationId conv, OutgoingMessage msg, std::function<void(bool ok, QString err)> done
+) {
     auto st      = std::make_shared<SendState>();
     st->conv     = conv;
+    st->done     = std::move(done);
     st->wireText = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
     // Prefer the server-assigned anchor (immune to local clock skew); fall
     // back to the local clock minus a minute of slack for empty convs.
@@ -1394,6 +1405,7 @@ void PublicBackend::postMessageAttempt(std::shared_ptr<SendState> st) {
             if (m.ts.isEmpty())
                 m.ts = resp.value("ts").toString();
             _events.fire(EvMessageNew{st->conv, std::move(m)});
+            st->finish(true, {});
         },
         [this, st](QString err) {
             if (err == WebApiClient::kConnectionLost) {
@@ -1406,6 +1418,7 @@ void PublicBackend::postMessageAttempt(std::shared_ptr<SendState> st) {
             }
             qWarning() << "sendMessage error:" << err;
             _events.fire(EvSendFailed{st->conv, err});
+            st->finish(false, err);
         }
     );
 }
@@ -1434,6 +1447,7 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
                 qDebug() << "sendMessage: message" << o.value("ts").toString()
                          << "was delivered after all — not resending";
                 _events.fire(EvMessageNew{st->conv, JsonMappers::toMessage(o)});
+                st->finish(true, {});
                 return;
             }
             postMessageAttempt(st); // genuinely missing — safe to post again
@@ -1444,6 +1458,7 @@ void PublicBackend::reconcileSend(std::shared_ptr<SendState> st) {
             // unusable (gone, kicked, …) — resending would fail the same way.
             qWarning() << "sendMessage reconcile error:" << err;
             _events.fire(EvSendFailed{st->conv, err});
+            st->finish(false, err);
         }
     );
 }

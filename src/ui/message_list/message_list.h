@@ -129,6 +129,12 @@ public:
     // Returns the most recent non-system message authored by `me`, or nullopt.
     std::optional<Message> lastOwnMessage(UserId me) const;
 
+    // The thread roots among the loaded messages, newest first — what "Move to
+    // thread" offers as targets. Only the loaded history is known here (an
+    // older thread needs scrolling back first); replies and broadcast copies
+    // are not roots.
+    std::vector<Message> threadRoots() const;
+
     // Move the focus to a specific message: scroll it into view and flash it, so
     // the eye finds it among its neighbours. The target is remembered when it
     // isn't loaded yet — a jump issued right after opening a conversation still
@@ -158,6 +164,9 @@ signals:
     void editMessageRequested(Ts ts, QString rawText, std::vector<File> files);
     // Emitted when "Forward message" is chosen.
     void forwardMessageRequested(Message msg);
+    // Emitted when "Move to thread…" is chosen (channel mode only); the host
+    // picks the target thread and drives Session::moveMessageToThread.
+    void moveToThreadRequested(Message msg);
     // Emitted when "Message" is clicked on the mention-hover profile card.
     void openDmRequested(UserId user);
     // Emitted when a #channel mention chip is clicked; the host should

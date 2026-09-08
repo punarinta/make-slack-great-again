@@ -713,7 +713,8 @@ struct RenderStubBackend : Backend {
     rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
         return rpl::variable<MessagePage>({}).value();
     }
-    void sendMessage(ConversationId, OutgoingMessage) override {}
+    void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
+    }
     void editMessage(ConversationId, Ts, TextWithEntities) override {}
     void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}

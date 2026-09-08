@@ -170,6 +170,9 @@ struct Capabilities {
                                    // Slack-only: Teams' Graph has no delegated scheduled-send and
                                    // SMTP has no native one, so the composer's schedule-send
                                    // dropdown is gated on this to avoid a dead control.
+    bool moveToThread     = false; // "Move to thread": re-post a top-level message as a reply and
+                                   // delete the original once the copy lands. Needs a sendMessage
+                                   // that reports its outcome (the delete must never run first).
     bool messageSubjects  = false; // per-message subject line (email); shows the composer subject
                                    // field — see imap-backend-plan §3/§4
     bool collapseQuotedReplies =

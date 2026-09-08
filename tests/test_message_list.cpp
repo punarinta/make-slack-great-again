@@ -86,7 +86,8 @@ struct StubBackend : Backend {
         return rpl::variable<MessagePage>({}).value();
     }
 
-    void sendMessage(ConversationId, OutgoingMessage) override {}
+    void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
+    }
     void editMessage(ConversationId, Ts, TextWithEntities) override {}
     void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}
@@ -211,6 +212,30 @@ TEST_CASE(
     CHECK(containsTs(afterSwitch, "1000.000001")); // the scrolled-up anchor target
     CHECK(containsTs(afterSwitch, "1000.000003"));
     CHECK(containsTs(afterSwitch, "1000.000005"));
+}
+
+TEST_CASE("threadRoots lists only loaded roots, newest first", "[message_list][move]") {
+    Fixture f;
+
+    Message root1        = makeMessage("1000.000001", "first thread");
+    root1.replyCount     = 2;
+    Message reply        = makeMessage("1000.000002", "a reply");
+    reply.threadRoot     = Ts{"1000.000001"};
+    Message plain        = makeMessage("1000.000003", "no thread");
+    Message broadcast    = makeMessage("1000.000004", "also sent to channel");
+    broadcast.threadRoot = Ts{"1000.000001"};
+    broadcast.subtype    = "thread_broadcast";
+    Message root2        = makeMessage("1000.000005", "second thread");
+    root2.replyCount     = 1;
+
+    f.stub->_historyPage = {root1, reply, plain, broadcast, root2};
+    MessageListWidget list(f.session.get(), /*imgCache*/ nullptr);
+    list.openConversation(kConv.id);
+
+    const auto roots = list.threadRoots();
+    REQUIRE(roots.size() == 2);
+    CHECK(roots[0].ts == "1000.000005"); // newest first
+    CHECK(roots[1].ts == "1000.000001");
 }
 
 // Snapshot the live view back through the cache: setSession(nullptr) writes

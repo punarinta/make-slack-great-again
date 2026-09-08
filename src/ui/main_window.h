@@ -194,6 +194,9 @@ private:
     // backend, label) the message. `sourceConv` is where the message lives —
     // the thread panel can be showing a different conversation than the chat.
     void forwardMessage(const ConversationId &sourceConv, const Message &msg);
+    // "Move to thread…" on a top-level message of the open conversation: pick a
+    // thread among the loaded roots, then let the Session re-post + delete.
+    void moveMessageToThread(const Message &msg);
     void updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs);
     void updateTrayIcon();
 

@@ -259,6 +259,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/summary_dialog/summarize_job.cpp
     src/ui/conv_selector/conv_selector_widget.cpp
     src/ui/forward_dialog/forward_dialog.cpp
+    src/ui/move_to_thread_dialog/move_to_thread_dialog.cpp
     src/ui/styled_line_edit/styled_line_edit.cpp
     src/ui/styled_button/styled_button.cpp
     src/ui/icon_button/icon_button.cpp

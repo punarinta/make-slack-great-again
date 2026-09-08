@@ -61,6 +61,20 @@ public:
     // Edit an existing message.
     void editMessage(ConversationId conv, Ts ts, const QString &newText);
 
+    // "Move to thread": re-post `msg` as a reply under `rootTs` in the same
+    // conversation, then delete the original. No chat API re-parents a message
+    // or posts on someone else's behalf, so the copy goes out as `me`;
+    // `withNote` prefixes it with the original author and time
+    // (movedMessageText). The delete runs only once the copy is confirmed — a
+    // failed send leaves the original where it was. Gated by
+    // Capabilities::moveToThread.
+    void
+    moveMessageToThread(ConversationId conv, const Message &msg, Ts rootTs, bool withNote = false);
+    // The mrkdwn the moved copy is posted with: the optional attribution note,
+    // the original text, and a permalink per attached file (files stay in the
+    // workspace when their message is deleted, so the links keep working).
+    QString movedMessageText(const Message &msg, bool withNote);
+
     // Email (Model-D): channels are labels, so forwarding a message to a channel
     // labels it rather than re-posting. The UI gates the forward path on this.
     bool channelsAreLabels() const;
@@ -243,6 +257,14 @@ public:
     // STARTED, so this set is what covers a thread we merely replied in.
     bool isThreadFollowed(const ConversationId &conv, const Ts &root) const;
     void markThreadFollowed(const ConversationId &conv, const Ts &root);
+    // sendMessage() with an outcome callback (see Backend::sendMessage).
+    void postMessage(
+        ConversationId                            conv,
+        const QString                            &text,
+        std::optional<Ts>                         threadRoot,
+        const QString                            &subject,
+        std::function<void(bool ok, QString err)> done
+    );
 
     // The user read this thread up to `upTo`: move the server-side thread read
     // cursor (so the official clients agree) and record it as the Threads-feed

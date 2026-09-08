@@ -177,11 +177,18 @@ struct StubBackend : Backend {
         };
     }
 
-    void sendMessage(ConversationId c, OutgoingMessage m) override {
+    // The outcome callbacks of every send, in order — a test completes one to
+    // emulate the server's verdict (see moveMessageToThread).
+    std::vector<std::function<void(bool, QString)>> sendDone;
+    void                                            sendMessage(
+                                                   ConversationId c, OutgoingMessage m, std::function<void(bool, QString)> done
+                                               ) override {
         sentMessages.push_back({c, std::move(m)});
+        sendDone.push_back(std::move(done));
     }
+    std::vector<std::pair<ConversationId, Ts>> deleted;
+    void deleteMessage(ConversationId c, Ts ts) override { deleted.emplace_back(c, ts); }
     void editMessage(ConversationId, Ts, TextWithEntities) override {}
-    void deleteMessage(ConversationId, Ts) override {}
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
 
@@ -1781,6 +1788,97 @@ TEST_CASE_METHOD(SessionFixture, "sendMessage delegates to backend", "[session][
     REQUIRE(stub->sentMessages.size() == 1);
     CHECK(stub->sentMessages[0].conv == ConversationId{"C1"});
     CHECK(stub->sentMessages[0].msg.text.text == "hi");
+}
+
+// ── moveMessageToThread ───────────────────────────────────────────────────────
+
+static Message movableMessage() {
+    Message m;
+    m.ts      = "200.000";
+    m.date    = 1'700'000'000'000'000; // 2023-11-14
+    m.author  = UserId{"U2"};          // Bob
+    m.rawText = "hello *world*";
+    m.text    = TextWithEntities{"hello world", {}};
+    File f;
+    f.name      = "pic.png";
+    f.permalink = "https://x.slack.com/files/U2/F1/pic.png";
+    m.files.push_back(f);
+    return m;
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "moveMessageToThread posts an attributed copy into the thread",
+    "[session][move]"
+) {
+    auto col = collectEvents();
+    session->moveMessageToThread(
+        ConversationId{"C1"}, movableMessage(), Ts{"100.000"}, /*withNote=*/true
+    );
+
+    REQUIRE(stub->sentMessages.size() == 1);
+    const auto &sent = stub->sentMessages[0];
+    CHECK(sent.conv == ConversationId{"C1"});
+    REQUIRE(sent.msg.threadRoot.has_value());
+    CHECK(*sent.msg.threadRoot == "100.000");
+    // The copy carries the original mrkdwn, who wrote it, and its files as links.
+    CHECK(sent.msg.rawText.contains("hello *world*"));
+    CHECK(sent.msg.rawText.contains("Bob Builder"));
+    CHECK(sent.msg.rawText.contains("<https://x.slack.com/files/U2/F1/pic.png|pic.png>"));
+    CHECK(sent.msg.rawText.startsWith('_')); // attribution note first
+
+    // The optimistic ghost lands in the thread like any reply.
+    REQUIRE(col.events.size() == 1);
+    const auto &ev = std::get<EvMessageNew>(col.events[0]);
+    REQUIRE(ev.msg.threadRoot.has_value());
+    CHECK(*ev.msg.threadRoot == "100.000");
+    CHECK(ev.msg.pending);
+
+    // The original stays until the server confirms the copy — then it goes.
+    CHECK(stub->deleted.empty());
+    REQUIRE(stub->sendDone.size() == 1);
+    stub->sendDone[0](true, {});
+    REQUIRE(stub->deleted.size() == 1);
+    CHECK(stub->deleted[0].first == ConversationId{"C1"});
+    CHECK(stub->deleted[0].second == "200.000");
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "moveMessageToThread without the note posts the text as it was",
+    "[session][move]"
+) {
+    session->moveMessageToThread(ConversationId{"C1"}, movableMessage(), Ts{"100.000"});
+    REQUIRE(stub->sentMessages.size() == 1);
+    const QString &text = stub->sentMessages[0].msg.rawText;
+    CHECK(text.startsWith("hello *world*")); // no header, no leading blank line
+    CHECK_FALSE(text.contains("Bob Builder"));
+    CHECK(text.endsWith("<https://x.slack.com/files/U2/F1/pic.png|pic.png>"));
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "moveMessageToThread keeps the original when the copy fails", "[session][move]"
+) {
+    QString       err;
+    rpl::lifetime lt;
+    session->errors() | rpl::on_next([&](const QString &e) { err = e; }, lt);
+
+    session->moveMessageToThread(ConversationId{"C1"}, movableMessage(), Ts{"100.000"});
+    REQUIRE(stub->sendDone.size() == 1);
+    stub->sendDone[0](false, "channel_not_found");
+
+    CHECK(stub->deleted.empty()); // a failed copy must never cost the original
+    CHECK(err.contains("still in place"));
+}
+
+TEST_CASE_METHOD(SessionFixture, "moveMessageToThread ignores a no-op target", "[session][move]") {
+    Message m = movableMessage();
+    session->moveMessageToThread(ConversationId{"C1"}, m, Ts{}); // no thread
+    session->moveMessageToThread(ConversationId{"C1"}, m, m.ts); // into itself
+    m.pending = true;
+    session->moveMessageToThread(ConversationId{"C1"}, m, Ts{"100.000"}); // not sent yet
+    CHECK(stub->sentMessages.empty());
+    CHECK(stub->deleted.empty());
 }
 
 TEST_CASE_METHOD(SessionFixture, "sendMessage optimistic copy is pending", "[session][send]") {

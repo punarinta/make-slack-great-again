@@ -217,7 +217,15 @@ public:
     }
 
     // --- Commands (fire-and-reconcile; optimistic UI lives in Session) ---
-    virtual void sendMessage(ConversationId, OutgoingMessage)      = 0;
+    // `done` (optional) reports the definitive outcome: true once the server has
+    // the message, false when the send failed for good — after the matching
+    // EvMessageNew / EvSendFailed has been fired. Transport retries and
+    // reconciliation happen before it fires, so a caller that chains a second
+    // write on success (Session::moveMessageToThread) never runs it on a
+    // message that isn't there.
+    virtual void sendMessage(
+        ConversationId, OutgoingMessage, std::function<void(bool ok, QString err)> done = {}
+    )                                                              = 0;
     virtual void editMessage(ConversationId, Ts, TextWithEntities) = 0;
     virtual void deleteMessage(ConversationId, Ts)                 = 0;
 

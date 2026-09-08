@@ -205,6 +205,16 @@ std::optional<Message> MessageListWidget::lastOwnMessage(UserId me) const {
     return {};
 }
 
+std::vector<Message> MessageListWidget::threadRoots() const {
+    std::vector<Message> roots;
+    for (auto it = _items.rbegin(); it != _items.rend(); ++it) {
+        const Message &m = it->msg;
+        if (m.replyCount > 0 && !m.threadRoot && !m.pending)
+            roots.push_back(m);
+    }
+    return roots;
+}
+
 void MessageListWidget::clear() {
     _loading = false;
     _loadingAnim.stop();
@@ -2371,6 +2381,21 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
         false,
         ":/ui/share-2.svg"
     );
+
+    // "Move to thread…": a top-level message without replies of its own (moving
+    // a root would orphan its thread), and only where the original can be
+    // deleted afterwards — without the delete it would just be a forward.
+    if (!_isThreadMode && caps.moveToThread && canDelete && !msg.threadRoot &&
+        msg.replyCount == 0 && !isSystemEvent(msg)) {
+        menu->addItem(
+            tr("Move to thread…"),
+            {},
+            [this, msg] { emit moveToThreadRequested(msg); },
+            false,
+            false,
+            ":/ui/corner-down-right.svg"
+        );
+    }
 
     menu->addItem(
         tr("Summarize down"),

@@ -1480,11 +1480,20 @@ void Backend::submitMail(
     });
 }
 
-void Backend::sendMessage(ConversationId conv, OutgoingMessage out) {
+void Backend::sendMessage(
+    ConversationId conv, OutgoingMessage out, std::function<void(bool ok, QString err)> done
+) {
     submitMail(
-        conv, out.text.text, out.threadRoot, out.subject, {}, [this, conv](bool ok, QString err) {
+        conv,
+        out.text.text,
+        out.threadRoot,
+        out.subject,
+        {},
+        [this, conv, done = std::move(done)](bool ok, QString err) {
             if (!ok)
                 _events.fire(EvSendFailed{conv, err});
+            if (done)
+                done(ok, err);
         }
     );
 }

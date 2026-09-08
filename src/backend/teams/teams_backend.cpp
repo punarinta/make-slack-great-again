@@ -593,25 +593,32 @@ Backend::loadThread(ConversationId conv, Ts root, std::optional<QString> cursor)
     };
 }
 
-void Backend::sendMessage(ConversationId conv, OutgoingMessage msg) {
+void Backend::sendMessage(
+    ConversationId conv, OutgoingMessage msg, std::function<void(bool ok, QString err)> done
+) {
     // Send as plain text (contentType "text"); Graph escapes it. Rich
     // mrkdwn→HTML formatting is a later refinement.
     const QString content = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
     QJsonObject   body{{"body", QJsonObject{{"contentType", "text"}, {"content", content}}}};
+    auto          shared = std::make_shared<std::function<void(bool, QString)>>(std::move(done));
     _client->postJson(
         messagesPath(conv, msg.threadRoot),
         body,
-        [this, conv](QJsonObject resp) {
+        [this, conv, shared](QJsonObject resp) {
             // The 201 response is the created message; emit it as the echo so
             // Session reconciles the optimistic ghost (matched by own-author + FIFO).
             _events.fire(EvMessageNew{conv, teams::JsonMappers::toMessage(resp)});
+            if (*shared)
+                (*shared)(true, {});
         },
-        [this, conv](QString err) {
+        [this, conv, shared](QString err) {
             // TODO(teams): on kConnectionLost the send may have landed — a
             // reconcile-scan (like slack) would avoid a false failure. For now the
             // ghost is dropped and the user can retry.
             qWarning() << "teams sendMessage error:" << err;
             _events.fire(EvSendFailed{conv, err});
+            if (*shared)
+                (*shared)(false, err);
         }
     );
 }

@@ -36,6 +36,7 @@
 #include "conv_tabs/conv_tabs_widget.h"
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
+#include "move_to_thread_dialog/move_to_thread_dialog.h"
 #include "create_channel_dialog/create_channel_dialog.h"
 #include "profile_dialog/profile_dialog.h"
 #include "status_dialog/status_dialog.h"
@@ -982,6 +983,14 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         [this](const Message &msg) { forwardMessage(_currentConvId, msg); }
     );
     connect(_threadPanel, &ThreadPanel::forwardMessageRequested, this, &MainWindow::forwardMessage);
+    // Channel mode only (the item is never offered inside a thread), so the
+    // thread panel's list needs no wiring for this one.
+    connect(
+        _messageList,
+        &MessageListWidget::moveToThreadRequested,
+        this,
+        &MainWindow::moveMessageToThread
+    );
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
         if (_session && !_currentConvId.value.isEmpty())
@@ -2831,6 +2840,48 @@ void MainWindow::forwardMessage(const ConversationId &sourceConv, const Message 
         const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
         const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
         _session->sendMessage(target, full);
+    });
+    dlg->open();
+}
+
+void MainWindow::moveMessageToThread(const Message &msg) {
+    if (!_session || _currentConvId.value.isEmpty())
+        return;
+    const ConversationId conv = _currentConvId;
+
+    std::vector<ThreadChoice> choices;
+    for (const Message &root : _messageList->threadRoots()) {
+        if (root.ts == msg.ts)
+            continue;
+        ThreadChoice c;
+        c.root = root.ts;
+        // Readable text, not the parsed plain form: that still carries raw
+        // "@U0BK…" mention ids and ":name:" emoji codes.
+        c.text = MsgRender::notificationText(root.text, _session);
+        if (c.text.trimmed().isEmpty() && !root.files.empty())
+            c.text = root.files.front().name;
+        c.date       = root.date;
+        c.replyCount = root.replyCount;
+        if (!root.author.value.isEmpty()) {
+            c.author = _session->userDisplayName(root.author);
+            if (const User *u = _session->findUser(root.author))
+                c.avatarUrl = u->avatarUrl;
+        } else {
+            c.author    = root.botName;
+            c.avatarUrl = root.botAvatarUrl;
+        }
+        choices.push_back(std::move(c));
+    }
+
+    auto *dlg = new MoveToThreadDialog(std::move(choices), _imgCache, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dlg, &AppDialog::accepted, this, [this, dlg, msg, conv] {
+        const Ts root = dlg->selectedRoot();
+        if (root.isEmpty() || !_session)
+            return;
+        _session->moveMessageToThread(conv, msg, root, dlg->addNote());
+        // Show where it went — the copy appears there as it is confirmed.
+        openThreadPanel(conv, root);
     });
     dlg->open();
 }
