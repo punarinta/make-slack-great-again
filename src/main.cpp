@@ -16,9 +16,12 @@
 #include <QFileOpenEvent>
 #include <QFont>
 #include <QHostInfo>
+#include <QIcon>
 #include <QLocale>
+#include <QPainter>
 #include <QProcess>
 #include <QSettings>
+#include <QSvgRenderer>
 #include <QTimer>
 #include <QTranslator>
 #include <QUrlQuery>
@@ -135,6 +138,25 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("MSGA");
     app.setOrganizationName("msga");
+    // Window icon for every top-level window (taskbar / alt-tab / X11 _NET_WM_ICON).
+    // Without this Qt never sends one, so the Windows taskbar showed the stock
+    // blank-window icon even though the .exe itself carries our logo (GitHub
+    // issue #55). Rendered from the SVG at the sizes Windows and X11 actually
+    // pick from, so no size is upscaled from a smaller one.
+    {
+        QSvgRenderer renderer(QStringLiteral(":/icon.svg"));
+        QIcon        icon;
+        for (int sz : {16, 20, 24, 32, 48, 64, 128, 256}) {
+            QPixmap px(sz, sz);
+            px.fill(Qt::transparent);
+            QPainter p(&px);
+            p.setRenderHint(QPainter::Antialiasing);
+            renderer.render(&p, QRectF(0, 0, sz, sz));
+            p.end();
+            icon.addPixmap(px);
+        }
+        app.setWindowIcon(icon);
+    }
     // One-time migration: the default per-conversation notification level changed
     // from "Just mentions" (1) to "All new posts" (0). Existing installs have the
     // old default persisted, which would otherwise mask the new one; reset that

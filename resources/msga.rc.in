@@ -1,9 +1,14 @@
 // Windows resource script (configured by CMake from msga.rc.in).
 // Embeds the application icon AND the version metadata into msga.exe.
 //
-// Explorer/the taskbar pick the icon with the numerically-lowest resource id,
-// so this stays id 1. The .ico is multi-resolution (16-256 px) so Windows can
-// pick the right size for the taskbar, alt-tab, and the large-icon view.
+// The icon resource is NAMED "IDI_ICON1", not numbered: Qt's Windows platform
+// plugin loads exactly that name for the window-class icon (the one the taskbar
+// and alt-tab show until WM_SETICON arrives), and falls back to the stock blank
+// Windows icon when it is missing — which is what users saw (GitHub issue #55).
+// windres keeps an undefined identifier as a string name, and named resources
+// sort before numeric ids, so Explorer still picks it as the .exe icon. The
+// .ico is multi-resolution (16-256 px) so Windows can pick the right size for
+// the taskbar, alt-tab, and the large-icon view.
 //
 // VERSIONINFO — this block defines the app's identity. FileDescription is what
 // Windows shows as the executable's "Description" in Explorer AND what the
@@ -16,7 +21,7 @@
 // 0x409 made windres' .rsrc merge fail with "duplicate leaf: type VERSION".
 // release-windows.sh now strips the pure-resource member from libwinpthread.a
 // before linking, so this is the only VERSION resource and there is no clash.
-1 ICON "@MSGA_ICON_PATH@"
+IDI_ICON1 ICON "@MSGA_ICON_PATH@"
 
 1 VERSIONINFO
 FILEVERSION    @MSGA_VERSION@,0,0,0
