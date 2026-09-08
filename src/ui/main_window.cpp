@@ -3400,6 +3400,20 @@ void MainWindow::changeEvent(QEvent *e) {
                 _messageList->pauseGifPlayback();
             if (_threadPanel)
                 _threadPanel->pauseGifPlayback();
+            // Minimize-to-tray (Settings → System, GitHub issue #55): tuck the
+            // window away like the close button does, so the taskbar button
+            // disappears and only the tray icon remains. The tray icon is the
+            // only way back, so never do this without one. Deferred: hiding
+            // synchronously inside the state change is unreliable on Windows
+            // (the platform plugin is still mid-way through its own minimize).
+            // Wayland never reports the minimized state to Qt, so this cannot
+            // fire there — the toggle is documented as inert on Wayland.
+            if (_trayIcon &&
+                QSettings("msga", "msga").value("window/minimizeToTray", false).toBool())
+                QTimer::singleShot(0, this, [this] {
+                    if (isMinimized())
+                        hide();
+                });
         }
     } else if (e->type() == QEvent::ActivationChange && _session) {
         if (isActiveWindow()) {

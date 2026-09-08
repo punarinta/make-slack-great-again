@@ -189,13 +189,14 @@ private:
     QSpinBox *_cacheCap  = nullptr;
 
     // System / update controls
-    UpdateChecker *_updateChecker = nullptr;
-    QCheckBox     *_autoUpdates   = nullptr;
-    QLabel        *_updateStatus  = nullptr;
-    QLabel        *_lastChecked   = nullptr;
-    StyledButton  *_checkBtn      = nullptr;
-    QLabel        *_ramLabel      = nullptr;
-    QTimer        *_ramTimer      = nullptr;
+    UpdateChecker *_updateChecker  = nullptr;
+    QCheckBox     *_autoUpdates    = nullptr;
+    QCheckBox     *_minimizeToTray = nullptr; // Window section; absent on macOS
+    QLabel        *_updateStatus   = nullptr;
+    QLabel        *_lastChecked    = nullptr;
+    StyledButton  *_checkBtn       = nullptr;
+    QLabel        *_ramLabel       = nullptr;
+    QTimer        *_ramTimer       = nullptr;
 
     // Slack connection mode switch (System page): session (cookie) vs app keys (OAuth).
     QRadioButton *_modeSession        = nullptr;

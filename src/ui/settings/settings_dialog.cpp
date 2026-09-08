@@ -683,6 +683,44 @@ void SettingsDialog::buildPanel() {
 
     sylay->addWidget(updBox);
 
+#if !defined(Q_OS_MACOS)
+    // ── Window section ────────────────────────────────────────────────
+    // Minimize-to-tray (GitHub issue #55). Close already hides to the tray; this
+    // lets minimize do the same instead of parking the window in the taskbar.
+    // Not offered on macOS, where minimize goes to the Dock and hiding the
+    // window would be surprising. On Wayland the compositor minimizes without
+    // telling Qt, so the toggle has no effect there (see MainWindow::changeEvent).
+    auto *winHeading = new QLabel(tr("Window"), sysPage);
+    winHeading->setObjectName("sectionHeading");
+    sylay->addWidget(winHeading);
+
+    auto *winBox = new QGroupBox(sysPage);
+    winBox->setObjectName("updBox"); // same borderless styling as the update box
+    auto *winLayout = new QVBoxLayout(winBox);
+    winLayout->setSpacing(sp.md);
+    winLayout->setContentsMargins(0, 0, 0, 0);
+
+    _minimizeToTray = new QCheckBox(tr("Minimize to tray"), winBox);
+    _minimizeToTray->setChecked(
+        QSettings("msga", "msga").value("window/minimizeToTray", false).toBool()
+    );
+    connect(_minimizeToTray, &QCheckBox::toggled, this, [](bool on) {
+        QSettings("msga", "msga").setValue("window/minimizeToTray", on);
+    });
+    winLayout->addWidget(_minimizeToTray);
+
+    auto *minTrayDesc = new QLabel(
+        tr("When on, minimizing hides the window to the tray instead of the taskbar.\n"
+           "Click the tray icon to bring it back."),
+        winBox
+    );
+    minTrayDesc->setObjectName("autoUpdDesc"); // same caption styling
+    minTrayDesc->setWordWrap(true);
+    winLayout->addWidget(minTrayDesc);
+
+    sylay->addWidget(winBox);
+#endif
+
     // ── Slack connection section ──────────────────────────────────────
     // Global either/or switch: connect with the user's own Slack session (cookie)
     // or with app keys (OAuth + Socket Mode). Session mode turns app keys and
@@ -1741,11 +1779,13 @@ void SettingsDialog::applyTheme() {
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
         );
     }
-    if (auto *w = _panel->findChild<QGroupBox *>("updBox"))
+    for (auto *w : _panel->findChildren<QGroupBox *>("updBox"))
         w->setStyleSheet("QGroupBox { border: none; }");
     if (_autoUpdates)
         _autoUpdates->setStyleSheet(checkQss);
-    if (auto *w = _panel->findChild<QLabel *>("autoUpdDesc")) {
+    if (_minimizeToTray)
+        _minimizeToTray->setStyleSheet(checkQss);
+    for (auto *w : _panel->findChildren<QLabel *>("autoUpdDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
