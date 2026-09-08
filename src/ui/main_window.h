@@ -159,6 +159,13 @@ private:
     // maybeNotify applies (mute levels etc.) — the user explicitly asked to be
     // reminded; only the global notifications switch is honoured.
     void notifyReminderDue(const QString &teamId, const EvReminderDue &ev);
+    // A workspace's credentials were rejected for good (token refresh failed or
+    // the session cookie died). While the window is hidden in the tray or
+    // minimized the login screen it falls back to is invisible, so raise an OS
+    // notification whose click brings the window (and that workspace) back.
+    // Nothing is shown when the window is already on screen — the logged-out
+    // page itself is the message then.
+    void notifySessionExpired(const QString &teamId);
     // Fire a representative sample notification (Settings → "Sample
     // notifications" Test button); kind is a SettingsDialog::SampleNotif value.
     void showSampleNotification(int kind);

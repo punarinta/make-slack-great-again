@@ -71,3 +71,18 @@ TEST_CASE("pre-reminder tokens (no fourth field) still decode with empty msgTs")
     REQUIRE(t.has_value());
     CHECK(t->msgTs.isEmpty());
 }
+
+TEST_CASE("relogin token names its workspace and is never mistaken for a chat target") {
+    const QString token = encodeReloginNotifToken("T1");
+    const auto    team  = decodeReloginNotifToken(token);
+    REQUIRE(team.has_value());
+    CHECK(*team == "T1");
+    // The conversation decoder must not turn "relogin\x1fT1" into a chat to open:
+    // handleNotifToken checks the relogin form first, but a misrouted token
+    // would otherwise open a bogus "T1" conversation in a "relogin" workspace.
+    CHECK(
+        decodeReloginNotifToken(encodeNotifToken("T1", ConversationId{"C1"}, Ts{})) == std::nullopt
+    );
+    CHECK(decodeReloginNotifToken("relogin") == std::nullopt); // prefix without separator
+    CHECK(decodeReloginNotifToken("") == std::nullopt);
+}

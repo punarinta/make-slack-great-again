@@ -1209,6 +1209,11 @@ Session *MainWindow::ensureSession(const QString &teamId) {
                                    QMetaObject::invokeMethod(
                                        this,
                                        [this, teamId] {
+                                           // Before the session goes: a user who
+                                           // parked the app in the tray would
+                                           // otherwise never learn it stopped
+                                           // receiving messages.
+                                           notifySessionExpired(teamId);
                                            dropSession(teamId);
                                            if (teamId == _activeTeamId || _activeTeamId.isEmpty())
                                                showLoggedOut();
@@ -2517,6 +2522,57 @@ void MainWindow::showSampleNotification(int kind) {
     }
 }
 
+void MainWindow::notifySessionExpired(const QString &teamId) {
+    // Only when the user can't see the login screen the UI is about to show.
+    // Minimize-to-tray hides the window outright; a plain minimize leaves it
+    // mapped but off screen — both need the nudge. Deliberately NOT gated on
+    // the message-notification toggle: this is the app telling the user it has
+    // stopped working, not chatter it could reasonably swallow.
+    if (isVisible() && !isMinimized())
+        return;
+    if (!_trayIcon && !(_desktopNotifier && _desktopNotifier->isAvailable()))
+        return;
+
+    const QString workspace = recordForHandle(teamId).displayName;
+    const QString title     = tr("Session expired");
+    const QString body =
+        workspace.isEmpty()
+            ? tr("Your session has expired. Click to sign in again.")
+            : tr("Your %1 session has expired. Click to sign in again.").arg(workspace);
+
+    // Picture: the workspace icon when cached, so the toast reads as that
+    // workspace's; the image-less form is the floor.
+    QPixmap notifPix;
+    if (_imgCache) {
+        const QString iconUrl = recordForHandle(teamId).iconUrl;
+        if (!iconUrl.isEmpty())
+            notifPix = roundedNotifIcon(_imgCache->get(iconUrl));
+    }
+
+    bool shown = false;
+    if (_desktopNotifier && _desktopNotifier->isAvailable())
+        shown = _desktopNotifier->notify(
+            title,
+            body,
+            notifPix.isNull() ? QImage() : notifPix.toImage(),
+            encodeReloginNotifToken(teamId),
+            {},
+            10000
+        );
+    if (!shown && _trayIcon) {
+        // Tray-balloon click → openNotifTarget with no conversation, which just
+        // brings the window forward; the login screen is what it lands on.
+        _pendingNotifTeam       = teamId;
+        _pendingNotifConv       = {};
+        _pendingNotifThreadRoot = {};
+        _pendingNotifMsgTs      = {};
+        if (notifPix.isNull())
+            _trayIcon->showMessage(title, body, QSystemTrayIcon::Warning, 10000);
+        else
+            _trayIcon->showMessage(title, body, QIcon(notifPix), 10000);
+    }
+}
+
 void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Conversation> &convs) {
     // important (red) = DM/MPDM unreads + channel @mentions. normal (blue) = other
     // *allowed* unread activity — only in channels set to "All new posts". A muted
@@ -2809,6 +2865,18 @@ void MainWindow::handleNotifToken(const QString &token) {
         const QString url = token.mid(kJoinPrefix.size());
         if (!url.isEmpty())
             QDesktopServices::openUrl(QUrl(url));
+        return;
+    }
+    // "Session expired" click: bring the window back so the login screen is in
+    // view. The expired workspace may be a background one (the window still
+    // shows another workspace) — re-activating it runs the same auth attempt
+    // the switcher click would, which fails and lands on the logged-out page
+    // for that workspace. A workspace logged out meanwhile is skipped.
+    if (const auto teamId = decodeReloginNotifToken(token)) {
+        restoreFromTray();
+        const auto key = WorkspaceKey::fromString(*teamId);
+        if (key && *teamId != _activeTeamId && TokenStore::loadWorkspace(*key))
+            activateWorkspace(*teamId);
         return;
     }
     if (const auto t = decodeNotifToken(token))

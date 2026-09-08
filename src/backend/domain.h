@@ -430,6 +430,25 @@ inline std::optional<NotifTarget> decodeNotifToken(const QString &token) {
     return t;
 }
 
+// Click-target of the "session expired" notification (raised when a workspace's
+// credentials are rejected for good while the window is tucked away in the tray,
+// so the user learns they have to sign in again). Distinct from a conversation
+// token: there is no chat to open, only a workspace to bring back to the login
+// screen. The "relogin" prefix can never collide with a real team id (Slack ids
+// are uppercase alphanumerics), and the 0x1f separator matches the codec above
+// so the Windows msga://notif round trip treats both tokens the same way.
+inline QString encodeReloginNotifToken(const QString &teamId) {
+    return QStringLiteral("relogin") + QChar(0x1f) + teamId;
+}
+
+// The team id the token names, or nullopt when the token is not a relogin one.
+inline std::optional<QString> decodeReloginNotifToken(const QString &token) {
+    static const QString kPrefix = QStringLiteral("relogin") + QChar(0x1f);
+    if (!token.startsWith(kPrefix))
+        return std::nullopt;
+    return token.mid(kPrefix.size());
+}
+
 // A per-message reminder (Slack's "Save for Later" item with a due date; see
 // Backend::loadMessageReminders). The backend fills conv/ts/dueAt from the
 // server; threadRoot/snippet/author/bot* /fired are local enrichment the Session
