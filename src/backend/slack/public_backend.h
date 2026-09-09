@@ -64,6 +64,7 @@ public:
     rpl::producer<std::vector<Conversation>> loadConversations() override;
     rpl::producer<std::vector<User>>         loadUsers() override;
     rpl::producer<bool>                      loadPresence(UserId) override;
+    rpl::producer<bool>                      loadPresenceBackground(UserId) override;
     rpl::producer<SelfPresence>              loadSelfPresence() override;
     rpl::producer<User>                      loadBotInfo(UserId botId) override;
     rpl::producer<User>                      loadUser(UserId userId) override;
@@ -262,15 +263,16 @@ protected:
     qint64       _tokenExpiresAt = 0;
 
 private:
-    void setupTokenRefresh(const Credentials &creds, const AppConfig &appCfg);
+    rpl::producer<bool> loadPresenceImpl(UserId userId, bool background);
+    void                setupTokenRefresh(const Credentials &creds, const AppConfig &appCfg);
     // Repoint every Web API client at `base` (the workspace's own /api/ host).
-    void applyApiBase(const QString &base);
+    void                applyApiBase(const QString &base);
     // Enterprise Grid conversation listing: client.userBoot + im.list, the pair
     // the web client itself boots with. Used when conversations.list is refused
     // with `enterprise_is_restricted`.
-    void loadConversationsViaWebClient(
-        std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
-    );
+    void                loadConversationsViaWebClient(
+                       std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
+                   );
     void triggerRefresh(std::function<void(bool)> done);
     void maybeProactiveRefresh();
 

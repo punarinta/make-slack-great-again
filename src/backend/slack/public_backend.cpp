@@ -728,22 +728,35 @@ rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
 }
 
 rpl::producer<bool> PublicBackend::loadPresence(UserId userId) {
-    return [this, userId](auto consumer) mutable {
+    return loadPresenceImpl(std::move(userId), /*background=*/false);
+}
+
+rpl::producer<bool> PublicBackend::loadPresenceBackground(UserId userId) {
+    return loadPresenceImpl(std::move(userId), /*background=*/true);
+}
+
+rpl::producer<bool> PublicBackend::loadPresenceImpl(UserId userId, bool background) {
+    return [this, userId, background](auto consumer) mutable {
         QUrlQuery params;
         params.addQueryItem("user", userId.value);
-        _api->call(
-            "users.getPresence",
-            params,
-            [consumer](QJsonObject resp) mutable {
-                bool active = resp.value("presence").toString() == "active";
-                consumer.put_next(std::move(active));
-                consumer.put_done();
-            },
-            [consumer](QString err) mutable {
-                qWarning() << "loadPresence error:" << err;
-                consumer.put_done();
-            }
-        );
+        auto onOk = [consumer](QJsonObject resp) mutable {
+            bool active = resp.value("presence").toString() == "active";
+            consumer.put_next(std::move(active));
+            consumer.put_done();
+        };
+        auto onErr = [consumer](QString err) mutable {
+            qWarning() << "loadPresence error:" << err;
+            consumer.put_done();
+        };
+        // The periodic DM-partner sweep (Session::pollDmPresence) rides the paced
+        // low-priority lane like the conversations.info sweeps do; a single
+        // interactive probe (opening a DM, the hover card) goes straight out.
+        if (background)
+            _infoApi->callBackground(
+                "users.getPresence", params, std::move(onOk), std::move(onErr)
+            );
+        else
+            _api->call("users.getPresence", params, std::move(onOk), std::move(onErr));
         return rpl::lifetime();
     };
 }

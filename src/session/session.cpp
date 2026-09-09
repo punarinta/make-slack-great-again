@@ -548,6 +548,14 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
     // just the ones composed here.
     if (ownMessage && msg.threadRoot)
         markThreadFollowed(conv, *msg.threadRoot);
+    // Someone we hold as away/offline just posted — they are almost certainly
+    // active now, and the periodic sweep may be up to a minute (or, for a quiet
+    // partner, several rounds) away. One targeted probe closes the gap instead of
+    // assuming: the poll stays the single source of truth for the dot.
+    if (!ownMessage && !msg.author.value.isEmpty()) {
+        if (const User *author = findUser(msg.author); author && !author->isActive)
+            requestPresence(msg.author, /*background=*/true);
+    }
     {
         auto convs = _conversations.current();
         for (auto &c : convs) {
@@ -708,6 +716,18 @@ void Session::checkRealtimeHealth() {
         const qint64 nowStar = QDateTime::currentMSecsSinceEpoch();
         if (nowStar - _lastStarredRefreshMs >= kStarredRefreshGapMs)
             refreshStarred();
+    }
+
+    // (3c) DM-partner presence: polled, not pushed, on every backend — so the
+    // dots in the chats list need a periodic re-poll or they freeze at the
+    // startup snapshot (a partner who came online later stayed "offline" until
+    // the user happened to open or hover them, which are the only other probes).
+    {
+        const qint64 nowPres = QDateTime::currentMSecsSinceEpoch();
+        if (nowPres - _lastPresencePollMs >= kPresencePollGapMs) {
+            _lastPresencePollMs = nowPres;
+            pollDmPresence();
+        }
     }
 
     // Background rotation: sweeps member conversations OTHER than the open one
@@ -2355,7 +2375,7 @@ QByteArray Session::cachedImage(const QString &url) const {
     return _cache->loadImage(url);
 }
 
-void Session::requestPresence(UserId userId) {
+void Session::requestPresence(UserId userId, bool background) {
     // users.getPresence answers internal_error for any user with no observable
     // presence, and Slack returns the generic error rather than a clean code:
     //   - the Slack system accounts (fixed ids USLACKBOT = Slackbot, USLACK = the
@@ -2369,16 +2389,56 @@ void Session::requestPresence(UserId userId) {
     const User *u = findUser(userId);
     if (!u || u->isBot || u->isDeactivated || _backend->isSyntheticUser(userId))
         return;
-    _backend->loadPresence(userId) |
+    auto presence =
+        background ? _backend->loadPresenceBackground(userId) : _backend->loadPresence(userId);
+    std::move(presence) |
         rpl::on_next(
             [this, userId](bool active) {
                 // Patch the cached user silently; the event is
                 // how listeners learn the new state.
+                if (const User *cur = findUser(userId); cur && cur->isActive == active)
+                    return; // unchanged — spare the UI a no-op repaint per sweep
                 patchUserSilently(userId, [active](User &u) { u.isActive = active; });
                 _eventHub.fire(EvPresenceChanged{userId, active});
             },
             _lifetime
         );
+}
+
+void Session::pollDmPresence() {
+    if (!_backend->capabilities().presence)
+        return;
+    // Single-peer DMs only: MPDMs draw no per-member dot, and requestPresence
+    // itself skips bots, deactivated and unknown peers. Self is covered by
+    // refreshSelfPresence. Copy (ts, peer) out first: requestPresence fires
+    // listeners synchronously in tests, and pointers into _conversations don't
+    // survive a mutator (see findConversation's dangling-pointer caveat).
+    std::vector<std::pair<Ts, UserId>> dms;
+    for (const auto &c : _conversations.current())
+        if (c.kind == ConvKind::Im && c.dmUser && !c.dmUser->value.isEmpty() &&
+            *c.dmUser != _meUserId)
+            dms.emplace_back(c.latestTs, *c.dmUser);
+    if (dms.empty())
+        return;
+    std::sort(dms.begin(), dms.end(), [](const auto &a, const auto &b) {
+        return a.first > b.first; // most recently active first
+    });
+    const int n   = static_cast<int>(dms.size());
+    const int hot = std::min(kPresenceHotCount, n);
+    for (int i = 0; i < hot; ++i)
+        requestPresence(dms[i].second, /*background=*/true);
+    // Rotate a window over everyone below the hot set so the long tail is
+    // re-checked too, a few per round.
+    const int rest = n - hot;
+    if (rest <= 0) {
+        _presencePollIdx = 0;
+        return;
+    }
+    _presencePollIdx %= rest;
+    const int batch = std::min(kPresenceRotateCount, rest);
+    for (int i = 0; i < batch; ++i)
+        requestPresence(dms[hot + (_presencePollIdx + i) % rest].second, /*background=*/true);
+    _presencePollIdx = (_presencePollIdx + batch) % rest;
 }
 
 rpl::producer<SelfPresence> Session::selfPresence() const {

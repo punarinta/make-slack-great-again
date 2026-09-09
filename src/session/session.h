@@ -320,7 +320,9 @@ public:
     void refreshStarredForTest() { refreshStarred(); }
 
     // Fetch presence for a user from the network and fire EvPresenceChanged.
-    void requestPresence(UserId userId);
+    // background=true routes the call via the paced low-priority lane (bulk
+    // sweeps); interactive probes (opening a DM, the hover card) leave it false.
+    void requestPresence(UserId userId, bool background = false);
 
     // Rich presence of the authed user — how we appear to others and why
     // (see SelfPresence::phantomAway()). Polled periodically; no realtime
@@ -432,6 +434,11 @@ public:
     // Test hook: run one Threads-feed tick synchronously, bypassing the cadence
     // throttle (normally paced by kThreadsPollGapMs inside checkRealtimeHealth).
     void pollThreadRepliesForTest() { pollThreadReplies(); }
+
+    // Test hook: run one DM-partner presence sweep synchronously, bypassing the
+    // cadence throttle (normally paced by kPresencePollGapMs inside
+    // checkRealtimeHealth).
+    void pollDmPresenceForTest() { pollDmPresence(); }
 
 private:
     // Resolve our own user id via auth.test; persists the result to cache.
@@ -559,6 +566,12 @@ private:
     // the implementation for why the socket's own liveness watchdog can't cover
     // this, and why a background workspace needs its own poll.
     void checkRealtimeHealth();
+    // Re-poll presence for DM partners (see kPresencePollGapMs). Every backend
+    // reports presence as polled (Capabilities::livePresence is false everywhere:
+    // Socket Mode has no presence_sub, session auth has no push at all), so
+    // without this sweep a partner's dot in the chats list froze at whatever the
+    // startup probe found until the user opened or hovered them.
+    void pollDmPresence();
 
     // Poll one conversation's head history for messages the realtime stream
     // dropped; inject any and reestablish the shared socket on a hit. foreground
@@ -815,6 +828,17 @@ private:
     // catch a silently-stalled shared socket without risking rate limits.
     static constexpr qint64    kBackgroundPollGapMs   = 2 * 60'000;
     qint64                     _lastBackgroundPollMs  = 0;
+    // Cadence of the DM-partner presence sweep (pollDmPresence). Each round polls
+    // the kPresenceHotCount most-recently-active partners (the ones the chats list
+    // shows near the top) plus a rotating window of kPresenceRotateCount over the
+    // rest, so a quiet partner is still covered eventually. users.getPresence is
+    // Tier 3 and the calls ride the 1.2 s-paced background lane, so ~20 calls a
+    // minute leaves room for the conversations.info sweeps sharing it.
+    static constexpr qint64    kPresencePollGapMs     = 60'000;
+    static constexpr int       kPresenceHotCount      = 12;
+    static constexpr int       kPresenceRotateCount   = 8;
+    qint64                     _lastPresencePollMs    = 0;
+    int                        _presencePollIdx       = 0;
     // Poll-only backends (session auth): cadence for reloading the conversation
     // roster to discover new chats + refresh latestTs baselines. Push backends
     // get this via reconnect events instead. Kept slow (60 s): conversations.list

@@ -83,9 +83,12 @@ public:
     virtual rpl::producer<std::vector<User>>         loadUsers()          = 0;
     // Fetch current presence for one user; emits true=active/false=away then completes.
     virtual rpl::producer<bool>                      loadPresence(UserId) = 0;
+    // Same, for bulk sweeps: rides the paced low-priority lane (where the backend
+    // has one) so a roster-wide re-poll never crowds out interactive calls.
+    virtual rpl::producer<bool> loadPresenceBackground(UserId id) { return loadPresence(id); }
     // Rich presence for the authed user (users.getPresence with no user arg).
     // Default no-op for backends that don't support this.
-    virtual rpl::producer<SelfPresence>              loadSelfPresence() {
+    virtual rpl::producer<SelfPresence> loadSelfPresence() {
         return [](auto consumer) {
             consumer.put_done();
             return rpl::lifetime();

@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
+#include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -125,9 +126,11 @@ struct StubBackend : Backend {
 
     int                 loadPresenceCalls = 0; // times loadPresence was actually invoked
     UserId              lastPresenceUser;      // user id of the most recent loadPresence call
+    std::vector<UserId> presenceUsers;         // every user id queried, in order
     rpl::producer<bool> loadPresence(UserId id) override {
         ++loadPresenceCalls;
         lastPresenceUser = id;
+        presenceUsers.push_back(id);
         return rpl::variable<bool>(presenceResult).value();
     }
     SelfPresence                selfPresenceResult;                 // returned by loadSelfPresence
@@ -2859,6 +2862,150 @@ static const Conversation kMpdm{
     .name     = "mpdm-alice--bob-1",
     .isMember = true,
 };
+
+// ── pollDmPresence — periodic DM-partner presence sweep ───────────────────────
+// Presence is polled, never pushed, on every backend — so without a periodic
+// re-poll a partner who came online after startup kept an "offline" dot in the
+// chats list until the user happened to open or hover them.
+
+TEST_CASE_METHOD(
+    SessionFixture, "presence sweep re-polls single-peer human DM partners only", "[session]"
+) {
+    stub->caps.presence = true;
+    stub->_users        = std::vector<User>{kAlice, kBob, kBotUser};
+    stub->_convs        = std::vector<Conversation>{
+        kGeneral,
+        kDmBob,
+        Conversation{
+                   .id       = ConversationId{"D2"},
+                   .kind     = ConvKind::Im,
+                   .isMember = true,
+                   .dmUser   = UserId{"B1"}
+        },
+        Conversation{
+                   .id       = ConversationId{"D3"},
+                   .kind     = ConvKind::Im,
+                   .isMember = true,
+                   .dmUser   = UserId{"U1"}
+        },
+        kMpdm,
+    };
+    QCoreApplication::processEvents();
+    stub->loadPresenceCalls = 0;
+    stub->presenceUsers.clear();
+
+    session->pollDmPresenceForTest();
+    // Bob (human peer) yes; the bot DM, the self-DM (refreshSelfPresence owns
+    // that), the MPDM (no per-member dot) and the channel are all skipped.
+    CHECK(stub->loadPresenceCalls == 1);
+    CHECK(stub->presenceUsers == std::vector<UserId>{UserId{"U2"}});
+
+    // A backend without a presence concept (email) never polls.
+    stub->caps.presence     = false;
+    stub->loadPresenceCalls = 0;
+    session->pollDmPresenceForTest();
+    CHECK(stub->loadPresenceCalls == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "presence sweep updates the cached dot and fires only on change", "[session]"
+) {
+    stub->caps.presence = true;
+    stub->_convs        = std::vector<Conversation>{kGeneral, kDmBob};
+    QCoreApplication::processEvents();
+    REQUIRE(session->findUser(UserId{"U2"})->isActive == true);
+
+    stub->presenceResult = false; // Bob went away since the startup probe
+    auto col             = collectEvents();
+    session->pollDmPresenceForTest();
+    CHECK(session->findUser(UserId{"U2"})->isActive == false);
+    REQUIRE(col.events.size() == 1);
+    REQUIRE(std::holds_alternative<EvPresenceChanged>(col.events[0]));
+    CHECK(std::get<EvPresenceChanged>(col.events[0]).user == UserId{"U2"});
+    CHECK(std::get<EvPresenceChanged>(col.events[0]).active == false);
+
+    // Same answer next round → no event: the UI must not repaint per sweep.
+    session->pollDmPresenceForTest();
+    CHECK(col.events.size() == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "presence sweep covers the long tail of DM partners by rotation", "[session]"
+) {
+    // More partners than one round polls: the hottest ones go every round, the
+    // rest take turns — and every partner is reached within a few rounds.
+    stub->caps.presence = true;
+    std::vector<User>         users{kAlice};
+    std::vector<Conversation> convs{kGeneral};
+    for (int i = 0; i < 25; ++i) {
+        const QString uid = QString("U%1").arg(100 + i);
+        users.push_back(
+            User{.id = UserId{uid}, .name = uid, .isBot = false, .isDeactivated = false}
+        );
+        convs.push_back(
+            Conversation{
+                .id       = ConversationId{QString("D%1").arg(100 + i)},
+                .kind     = ConvKind::Im,
+                .isMember = true,
+                .latestTs = QString("%1.000").arg(1000 + i), // U124 is the most recent
+                .dmUser   = UserId{uid},
+            }
+        );
+    }
+    stub->_users = users;
+    stub->_convs = convs;
+    QCoreApplication::processEvents();
+    stub->loadPresenceCalls = 0;
+    stub->presenceUsers.clear();
+
+    session->pollDmPresenceForTest();
+    const int perRound = stub->loadPresenceCalls;
+    CHECK(perRound < 25); // bounded per round…
+    CHECK(perRound > 0);
+    // …with the most recently active partner always in the hot set.
+    CHECK(
+        std::find(stub->presenceUsers.begin(), stub->presenceUsers.end(), UserId{"U124"}) !=
+        stub->presenceUsers.end()
+    );
+
+    session->pollDmPresenceForTest();
+    CHECK(stub->loadPresenceCalls == 2 * perRound);
+    QSet<QString> seen;
+    for (const auto &u : stub->presenceUsers)
+        seen.insert(u.value);
+    CHECK(seen.size() == 25);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture, "a message from a user held as away re-probes their presence", "[session]"
+) {
+    stub->caps.presence = true;
+    // (A users.list refresh keeps the cached live presence, so flip Bob away the
+    // way the real world does: a presence event.)
+    stub->fireEvent(EvPresenceChanged{UserId{"U2"}, false});
+    REQUIRE(session->findUser(UserId{"U2"})->isActive == false);
+    stub->loadPresenceCalls = 0;
+    stub->presenceResult    = true;
+
+    Message m;
+    m.ts     = "300.000";
+    m.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, m});
+    CHECK(stub->loadPresenceCalls == 1);
+    CHECK(stub->lastPresenceUser == UserId{"U2"});
+    CHECK(session->findUser(UserId{"U2"})->isActive == true);
+
+    // Already active → nothing to re-check; own messages never probe.
+    Message m2;
+    m2.ts     = "301.000";
+    m2.author = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, m2});
+    Message mine;
+    mine.ts     = "302.000";
+    mine.author = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{ConversationId{"C1"}, mine});
+    CHECK(stub->loadPresenceCalls == 1);
+}
 
 TEST_CASE_METHOD(
     SessionFixture,
