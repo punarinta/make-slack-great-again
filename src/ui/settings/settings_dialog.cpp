@@ -396,6 +396,25 @@ void SettingsDialog::buildPanel() {
     _showAgentsApps = new QCheckBox(tr("Show the Agents && apps section"), sidebarBox);
     sidebarLayout->addWidget(_showAgentsApps);
 
+    _unreadsOnly = new QCheckBox(tr("Show only unread conversations"), sidebarBox);
+    sidebarLayout->addWidget(_unreadsOnly);
+    auto *unreadsDesc = new QLabel(
+        tr("The conversation you are reading stays listed until you move on.\n"
+           "Starred conversations are always shown."),
+        sidebarBox
+    );
+    unreadsDesc->setObjectName("unreadsDesc"); // themed alongside daysDesc
+    unreadsDesc->setWordWrap(true);
+    sidebarLayout->addWidget(unreadsDesc);
+    // The activity window has nothing to decide while only unread chats are
+    // listed — grey it out so the two controls don't read as competing.
+    const auto syncDaysEnabled = [this, daysPrefix, daysDesc](bool unreadsOnly) {
+        _relevantDays->setEnabled(!unreadsOnly);
+        daysPrefix->setEnabled(!unreadsOnly);
+        daysDesc->setEnabled(!unreadsOnly);
+    };
+    connect(_unreadsOnly, &QCheckBox::toggled, this, syncDaysEnabled);
+
     alay->addWidget(sidebarBox);
     alay->addStretch();
 
@@ -1691,16 +1710,28 @@ void SettingsDialog::applyTheme() {
     _fontMedium->setStyleSheet(radioQss);
     _fontLarge->setStyleSheet(radioQss);
     _showAgentsApps->setStyleSheet(checkQss);
+    _unreadsOnly->setStyleSheet(checkQss);
+    // The explicit colours here override the disabled palette, so the labels
+    // that grey out with the activity window (see the unreads-only toggle) carry
+    // their own :disabled rule.
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
-        );
+        w->setStyleSheet(QString(
+                             "QLabel { font-size: %1px; color: %2; }"
+                             "QLabel:disabled { color: %3; }"
+        )
+                             .arg(th.fonts.md)
+                             .arg(Th::qss(th.text.primary), Th::qss(th.text.tertiary)));
     }
     _relevantDays->setStyleSheet(spinQss);
-    if (auto *w = _panel->findChild<QLabel *>("daysDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+    for (const char *name : {"daysDesc", "unreadsDesc"}) {
+        if (auto *w = _panel->findChild<QLabel *>(QLatin1String(name))) {
+            w->setStyleSheet(QString(
+                                 "QLabel { font-size: %1px; color: %2; }"
+                                 "QLabel:disabled { color: %3; }"
+            )
+                                 .arg(th.fonts.caption)
+                                 .arg(Th::qss(th.text.secondary), Th::qss(th.text.tertiary)));
+        }
     }
     // (Save button self-themes — StyledButton)
 
@@ -1888,6 +1919,9 @@ void SettingsDialog::loadAppearance() {
     _showAgentsApps->setChecked(
         QSettings("msga", "msga").value("appearance/showAgentsApps", true).toBool()
     );
+    _unreadsOnly->setChecked(
+        QSettings("msga", "msga").value("appearance/unreadsOnly", false).toBool()
+    );
 
     for (auto *card : _themeCards)
         card->setChecked(card->themeId() == ThemeManager::instance().themeId());
@@ -1906,6 +1940,9 @@ void SettingsDialog::saveAppearance() {
     const bool showAgents = _showAgentsApps->isChecked();
     QSettings("msga", "msga").setValue("appearance/showAgentsApps", showAgents);
 
+    const bool unreadsOnly = _unreadsOnly->isChecked();
+    QSettings("msga", "msga").setValue("appearance/unreadsOnly", unreadsOnly);
+
     // Applies + persists + re-emits themeChanged (a no-op when unchanged).
     ThemeManager::instance().setFontSizeId(
         _fontSmall->isChecked()   ? QStringLiteral("small")
@@ -1917,6 +1954,7 @@ void SettingsDialog::saveAppearance() {
     emit timeFormatChanged();
     emit threadDisplayChanged(inlineThreads);
     emit agentsAppsVisibilityChanged(showAgents);
+    emit unreadsOnlyChanged(unreadsOnly);
 }
 
 static QString formatBytes(qint64 bytes) {

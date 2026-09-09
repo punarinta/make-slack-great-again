@@ -597,6 +597,9 @@ QString spinBoxQss(int fontPx) {
                "  border: 1px solid %4; border-radius: 4px; padding: 3px 6px;"
                "  selection-background-color: %5; selection-color: %6; }"
                "QSpinBox:focus { border-color: %7; }"
+               // Explicit colours above override the disabled palette, so a
+               // greyed-out spinbox needs its own rule to look greyed out.
+               "QSpinBox:disabled { color: %9; }"
                "QSpinBox::up-button, QSpinBox::down-button {"
                "  width: 16px; border: none; background: transparent; }"
                "QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: %8; }"
@@ -606,7 +609,7 @@ QString spinBoxQss(int fontPx) {
     )
         .arg(fontRule(fontPx), qss(th.text.primary), qss(th.surface.content))
         .arg(qss(th.divider.strong), qss(th.accent.def), qss(th.accent.text))
-        .arg(qss(th.text.link), qss(th.surface.highlight));
+        .arg(qss(th.text.link), qss(th.surface.highlight), qss(th.text.tertiary));
 }
 
 QString stockDialogQss() {

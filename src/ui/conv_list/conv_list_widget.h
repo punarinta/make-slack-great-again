@@ -101,6 +101,14 @@ public:
     // Show/hide the whole "Agents & apps" section (Settings → Appearance).
     // Hidden app DMs stay reachable through search / browse.
     void setShowAgentsApps(bool show);
+    // "Show only unread conversations" (Settings → Appearance): list nothing but
+    // conversations that paint as unread (unread > 0 and not muted), plus the
+    // one that is open — it stays put until the selection moves on, like the
+    // official client's "Unreads only" sidebar filter. Starred conversations are
+    // exempt (a star is an explicit "keep in front of me"). Hidden channels
+    // remain reachable through the "N more channels" expander, hidden DMs
+    // through search / browse.
+    void setUnreadsOnly(bool on);
     // Show the fixed "Threads" entry above the Channels section — gated on
     // Capabilities::threadsView, so it only appears for backends with a
     // workspace-wide threads feed.
@@ -243,6 +251,7 @@ protected:
     bool _dmsCollapsed      = false;
     bool _appsCollapsed     = false;
     bool _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
+    bool _unreadsOnly       = false; // Settings toggle; see setUnreadsOnly()
     bool _showThreads       = false; // capability gate; see setShowThreads()
     bool _showSavedMsgs     = false; // gate; see setShowSavedMessages()
     bool _showAllChannels   = false; // true after user clicks "N more channels"
@@ -289,6 +298,13 @@ protected:
     // through `rowForId(conv) >= 0` — so clicking either would silently do
     // nothing. Transient (never persisted); cleared once the selection moves.
     ConversationId _revealedAppConv;
+    // Unreads-only counterpart, but only for the window inside
+    // selectConversation() between the row rebuild and the actual selection: a
+    // read conversation opened from a notification / search result is not
+    // unread and not yet _selectedId, so without this the rebuild would yield
+    // no row for it and the open would silently fail. Cleared as soon as the
+    // selection lands (from then on _selectedId keeps the row).
+    ConversationId _unreadsOnlyReveal;
 
     // Selection slide animation: 0.0 = start of slide, 1.0 = settled
     QVariantAnimation _selAnim;

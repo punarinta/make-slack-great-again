@@ -154,6 +154,13 @@ void ConvListWidget::setShowAgentsApps(bool show) {
     rebuildRows();
 }
 
+void ConvListWidget::setUnreadsOnly(bool on) {
+    if (_unreadsOnly == on)
+        return;
+    _unreadsOnly = on;
+    rebuildRows();
+}
+
 void ConvListWidget::setShowThreads(bool show) {
     if (_showThreads == show)
         return;
@@ -181,7 +188,13 @@ void ConvListWidget::setDefaultNotifyLevel(NotificationLevel level) {
     if (_defaultNotify == level)
         return;
     _defaultNotify = level;
-    viewport()->update(); // badge visibility/color for Default-level convs may change
+    // The unreads-only filter reads the effective level too (a muted chat is
+    // not "unread"), so a default that changes what counts as muted can change
+    // which rows exist — not just how they paint.
+    if (_unreadsOnly)
+        rebuildRows();
+    else
+        viewport()->update(); // badge visibility/color for Default-level convs may change
 }
 
 void ConvListWidget::resetVisitedAt() {
@@ -251,11 +264,17 @@ bool ConvListWidget::selectConversation(ConversationId id) {
     // Stamp before rebuilding so the relevance filter keeps the row visible.
     _visitedAt[id.value] = QDateTime::currentSecsSinceEpoch();
     scheduleSaveVisitedAt();
+    // The unreads-only filter has no stamp to honour — hold the row open
+    // explicitly until the selection lands on it (see _unreadsOnlyReveal).
+    _unreadsOnlyReveal = id;
     rebuildRows();
     const int row = rowForId(id);
-    if (row < 0)
+    if (row < 0) {
+        _unreadsOnlyReveal = {};
         return false;
+    }
     selectRow(row);
+    _unreadsOnlyReveal = {};
     return true;
 }
 
@@ -419,6 +438,17 @@ void ConvListWidget::rebuildRows() {
             return false; // stale visit stamp and no newer activity
         return c.kind != ConvKind::Im && c.kind != ConvKind::Mpim;
     };
+    // "Show only unread conversations": on top of relevance, a row must paint
+    // as unread (same test as paintRow's bold emphasis — a muted chat with
+    // unreads is silent, so it hides too) unless it is the open conversation,
+    // which stays listed until the selection moves on. Not applied to Starred.
+    auto isListed = [&](const Conversation &c) -> bool {
+        if (!_unreadsOnly)
+            return true;
+        if (c.id == _selectedId || c.id == _unreadsOnlyReveal)
+            return true;
+        return c.unread > 0 && effectiveNotifLevel(c, _defaultNotify) != NotificationLevel::Mute;
+    };
 
     std::vector<int> starred, visCh, hidCh, visDm, hidDm, apps;
     for (int i = 0; i < (int)_convs.size(); ++i) {
@@ -432,11 +462,18 @@ void ConvListWidget::rebuildRows() {
             continue;
         }
         if (isAppConv(c)) {
-            apps.push_back(i);
+            // The Agents & apps section has no relevance filter (see below), but
+            // the unreads-only one applies — otherwise a long tail of read app
+            // DMs would defeat the point of the setting. The open app DM is
+            // still listed through isListed's selected/reveal clause, which is
+            // also what keeps _revealedAppConv reachable.
+            if (isListed(c))
+                apps.push_back(i);
             continue;
         }
-        const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-        (isDm ? (isRelevant(c) ? visDm : hidDm) : (isRelevant(c) ? visCh : hidCh)).push_back(i);
+        const bool isDm    = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
+        const bool visible = isRelevant(c) && isListed(c);
+        (isDm ? (visible ? visDm : hidDm) : (visible ? visCh : hidCh)).push_back(i);
     }
     // ── Threads / Saved messages entries — fixed, above every section ─
     if (_showThreads)
@@ -743,6 +780,10 @@ void ConvListWidget::setSelected(int row) {
     // already consumed `row` by the time these indices shift.
     if (!_revealedAppConv.value.isEmpty() && _revealedAppConv != _selectedId) {
         _revealedAppConv = {};
+        rebuildRows();
+    } else if (_unreadsOnly) {
+        // The conversation we just left was listed only because it was open
+        // (it has been read by now); it leaves the list with the selection.
         rebuildRows();
     }
 }

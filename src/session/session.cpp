@@ -1014,8 +1014,8 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
 
     struct Moved {
         ConversationId conv;
-        Ts             baseline; // where it stood before — the poll's floor
-        ConvCounts     now;      // recorded once we actually poll it
+        ConvCounts     prev; // where it stood before — its latestTs is the poll's floor
+        ConvCounts     now;  // recorded once we actually poll it
     };
     std::vector<Moved> moved;
 
@@ -1023,13 +1023,15 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
     // poll-only workspace this is the only fresh `latest`/`last_read` channels
     // ever get (conversations.list returns neither), and the list uses them for
     // relevance ordering. Upward-merge only, like the other sweeps, so a
-    // momentarily stale response can't rewind a cursor. Unread counts are
-    // deliberately NOT merged: the messages the diff below injects do that
-    // through handleNewMessage, which is also what decides mention-vs-plain.
+    // momentarily stale response can't rewind a cursor. Once diffing, unread
+    // counts are deliberately NOT merged: the messages the diff below injects do
+    // that through handleNewMessage, which is also what decides mention-vs-plain.
     auto convs      = _conversations.current();
     bool convsMoved = false;
 
     for (const auto &c : snapshot) {
+        const auto it        = _activity.constFind(c.id.value);
+        const bool firstSeen = priming || it == _activity.constEnd();
         for (auto &existing : convs) {
             if (existing.id != c.id)
                 continue;
@@ -1041,11 +1043,37 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
                 existing.lastRead = c.lastRead;
                 convsMoved        = true;
             }
+            // First sight of this conversation (startup, or one that just joined
+            // the snapshot): nothing is polled off it — there is no "before" to
+            // inject from, and replaying the backlog would notify for every
+            // message that arrived while the app was closed. The BADGE must
+            // still reflect it: this snapshot is the only place a poll-only
+            // workspace learns that a channel/MPDM/DM was unread while we were
+            // away (conversations.list and conversations.info report no unread
+            // state for channels at all — verified live). Seed it upward,
+            // counting the way handleNewMessage does: every DM/MPDM unread is a
+            // red-badge "mention", a muted conversation badges only explicit
+            // @mentions. The open conversation is being read right now and is
+            // left alone.
+            if (firstSeen && existing.isMember && existing.id != _openConv) {
+                const bool isDm = existing.kind == ConvKind::Im || existing.kind == ConvKind::Mpim;
+                const bool muted =
+                    existing.isMuted || existing.notifLevel == NotificationLevel::Mute;
+                const int mentions = isDm ? std::max(c.unread, c.mentionCount) : c.mentionCount;
+                const int unread   = muted ? mentions : std::max(c.unread, mentions);
+                if (unread > existing.unread) {
+                    existing.unread = unread;
+                    convsMoved      = true;
+                }
+                if (mentions > existing.mentionCount) {
+                    existing.mentionCount = mentions;
+                    convsMoved            = true;
+                }
+            }
             break;
         }
 
-        const auto it = _activity.constFind(c.id.value);
-        if (priming || it == _activity.constEnd()) {
+        if (firstSeen) {
             _activity.insert(c.id.value, c); // reference for the next diff
             continue;
         }
@@ -1055,7 +1083,7 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
         // (conversations.list) still tells us something arrived.
         if (c.latestTs > prev.latestTs || c.unread > prev.unread ||
             c.mentionCount > prev.mentionCount)
-            moved.push_back({c.id, prev.latestTs, c});
+            moved.push_back({c.id, prev, c});
         else
             _activity.insert(c.id.value, c);
     }
@@ -1076,19 +1104,24 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
     int budget = kMaxDiffPollsPerTick;
     for (const auto &m : moved) {
         const Conversation *c = findConversation(m.conv);
-        // Not ours to fetch history for, or fully silent anyway (a muted
-        // conversation raises neither a notification nor a badge — see
-        // effectiveNotifLevel), or already covered far faster by the foreground
-        // poll. Record it as seen so it doesn't re-trigger every tick.
-        if (!c || !c->isMember || c->isMuted || c->notifLevel == NotificationLevel::Mute ||
-            m.conv == _openConv) {
+        // A muted conversation is silent for plain traffic (no notification, no
+        // badge — see effectiveNotifLevel), but an explicit @mention still
+        // badges there, in the official client and in handleNewMessage alike. So
+        // only a mute WITHOUT a mention-count rise is skipped; when the count
+        // rose, the poll runs and the per-message mute rules do the rest.
+        const bool mutedQuiet = c && (c->isMuted || c->notifLevel == NotificationLevel::Mute) &&
+                                m.now.mentionCount <= m.prev.mentionCount;
+        // Not ours to fetch history for, silent anyway, or already covered far
+        // faster by the foreground poll. Record it as seen so it doesn't
+        // re-trigger every tick.
+        if (!c || !c->isMember || mutedQuiet || m.conv == _openConv) {
             _activity.insert(m.conv.value, m.now);
             continue;
         }
         if (budget-- <= 0)
             break; // entry left stale on purpose: still "moved" next tick
         _activity.insert(m.conv.value, m.now);
-        pollConversationForMissed(m.conv, /*foreground=*/false, m.baseline);
+        pollConversationForMissed(m.conv, /*foreground=*/false, m.prev.latestTs);
     }
 }
 

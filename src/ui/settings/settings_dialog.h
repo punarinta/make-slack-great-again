@@ -61,6 +61,8 @@ signals:
     void threadDisplayChanged(bool inlineThreads);
     // Emitted when the "Show the Agents & apps section" toggle is saved.
     void agentsAppsVisibilityChanged(bool visible);
+    // Emitted when the "Show only unread conversations" toggle is saved.
+    void unreadsOnlyChanged(bool on);
     // Emitted after conv/visitedAt is wiped so the conv list can re-seed from API data.
     void stateCleared();
     // Emitted when notification settings (incl. the global default level) are
@@ -149,6 +151,7 @@ private:
     QRadioButton             *_fontMedium       = nullptr;
     QRadioButton             *_fontLarge        = nullptr;
     QCheckBox                *_showAgentsApps   = nullptr;
+    QCheckBox                *_unreadsOnly      = nullptr;
     QList<ThemePreviewCard *> _themeCards; // one per registry theme
     // Language the app actually started with — the restart note shows whenever
     // the combo selection differs from this, even across settings re-opens.

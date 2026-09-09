@@ -4092,6 +4092,97 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     SessionFixture,
+    "first snapshot seeds unread badges for what arrived while the app was closed",
+    "[session][events][counts]"
+) {
+    // Priming polls nothing (no "before" to inject from) — but on a poll-only
+    // workspace the snapshot is the ONLY source that knows a channel/MPDM/DM was
+    // unread while we were away: conversations.list and conversations.info carry
+    // no channel unread state. The badge must come from here, silently.
+    Conversation dev = kRandom; // a plain channel with nothing unread locally
+    dev.id           = ConversationId{"C5"};
+    dev.name         = "dev";
+    Conversation mpdm;
+    mpdm.id                = ConversationId{"G1"};
+    mpdm.kind              = ConvKind::Mpim;
+    mpdm.name              = "mpdm-alice--bob-1";
+    mpdm.isMember          = true;
+    Conversation quiet     = kRandom; // muted, plain traffic only
+    quiet.id               = ConversationId{"C3"};
+    quiet.name             = "quiet";
+    quiet.isMuted          = true;
+    Conversation quietPing = quiet; // muted, but @mentioned
+    quietPing.id           = ConversationId{"C4"};
+    quietPing.name         = "quiet-ping";
+    restartSession({kGeneral, kRandom, dev, mpdm, quiet, quietPing}, {kAlice, kBob});
+    // C2 is the conversation on screen: it is being read, so it gets no badge.
+    session->setOpenConversation(kRandom.id);
+
+    stub->countsResult = std::vector<ConvCounts>{
+        // kGeneral already holds 2 unread locally: upward merge keeps the 2 and
+        // only picks up the mention.
+        ConvCounts{.id = kGeneral.id, .unread = 1, .mentionCount = 1},
+        ConvCounts{.id = kRandom.id, .unread = 1},
+        ConvCounts{.id = dev.id, .unread = 1},
+        ConvCounts{.id = mpdm.id, .unread = 3},
+        ConvCounts{.id = quiet.id, .unread = 1},
+        ConvCounts{.id = quietPing.id, .unread = 1, .mentionCount = 1},
+    };
+    stub->loadHistoryCalls = 0;
+    auto [events, lt]      = collectEvents();
+    session->pollUnreadCountsForTest();
+
+    // Still a pure prime: no history fetched, nothing delivered (so nothing
+    // notifies).
+    CHECK(stub->loadHistoryCalls == 0);
+    CHECK(events.empty());
+
+    CHECK(session->findConversation(kGeneral.id)->unread == 2);
+    CHECK(session->findConversation(kGeneral.id)->mentionCount == 1);
+    CHECK(session->findConversation(kRandom.id)->unread == 0); // open → left alone
+    CHECK(session->findConversation(dev.id)->unread == 1);     // blue dot
+    CHECK(session->findConversation(dev.id)->mentionCount == 0);
+    // Every MPDM unread is a red-badge "mention", as in handleNewMessage.
+    CHECK(session->findConversation(mpdm.id)->unread == 3);
+    CHECK(session->findConversation(mpdm.id)->mentionCount == 3);
+    // Muted: plain traffic stays silent, an @mention still badges.
+    CHECK(session->findConversation(quiet.id)->unread == 0);
+    CHECK(session->findConversation(quietPing.id)->unread == 1);
+    CHECK(session->findConversation(quietPing.id)->mentionCount == 1);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity diff polls a muted channel only when its mention count rises",
+    "[session][events][counts]"
+) {
+    // Muted = silent for plain traffic, so ordinary movement is not worth a
+    // history call. An @mention badges even in a muted channel, and on a
+    // poll-only workspace this diff is the only path that can deliver it.
+    Conversation quiet = kGeneral;
+    quiet.isMuted      = true;
+    restartSession({quiet, kRandom}, {kAlice, kBob});
+    const Message m1 = pollMsg("1000.000001");
+    const Message m2 = pollMsg("1000.000002");
+
+    stub->countsResult     = std::vector<ConvCounts>{ConvCounts{.id = quiet.id, .latestTs = m1.ts}};
+    stub->loadHistoryCalls = 0;
+    session->pollUnreadCountsForTest(); // prime
+
+    stub->countsResult = std::vector<ConvCounts>{ConvCounts{.id = quiet.id, .latestTs = m2.ts}};
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 0); // moved, but muted and no mention
+
+    stub->countsResult = std::vector<ConvCounts>{
+        ConvCounts{.id = quiet.id, .latestTs = m2.ts, .unread = 1, .mentionCount = 1}
+    };
+    session->pollUnreadCountsForTest();
+    CHECK(stub->loadHistoryCalls == 1);
+    CHECK(stub->lastHistoryConv == quiet.id);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
     "activity diff caps polls per tick and drains the rest on later ticks",
     "[session][events][counts][ratelimit]"
 ) {

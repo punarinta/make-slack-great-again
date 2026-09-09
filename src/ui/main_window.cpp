@@ -542,6 +542,15 @@ QWidget *MainWindow::buildMainPage() {
         _convList,
         &ConvListWidget::setShowAgentsApps
     );
+    _convList->setUnreadsOnly(
+        QSettings("msga", "msga").value("appearance/unreadsOnly", false).toBool()
+    );
+    connect(
+        _settingsDialog,
+        &SettingsDialog::unreadsOnlyChanged,
+        _convList,
+        &ConvListWidget::setUnreadsOnly
+    );
     connect(
         _settingsDialog, &SettingsDialog::stateCleared, _convList, &ConvListWidget::resetVisitedAt
     );

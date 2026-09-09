@@ -277,3 +277,110 @@ TEST_CASE("no Starred section header exists while nothing is starred") {
     // Exactly one extra row: the "Starred" header. The channel itself just moved.
     REQUIRE(list.rowCount() == before + 1);
 }
+
+// ── "Show only unread conversations" ──────────────────────────────────────────
+
+static Conversation unread(Conversation c, int count = 1) {
+    c.unread = count;
+    return c;
+}
+
+TEST_CASE("unreads-only lists unread conversations and hides read ones", "[unreads-only]") {
+    ConvListWidget list(nullptr);
+    list.setConversations({channel("C1", "general"), unread(channel("C2", "random"))});
+    // Both listed by default (channels with no data are shown until they earn a stamp).
+    REQUIRE(list.rowForId(ConversationId{"C1"}) >= 0);
+    REQUIRE(list.rowForId(ConversationId{"C2"}) >= 0);
+
+    list.setUnreadsOnly(true);
+    REQUIRE(list.rowForId(ConversationId{"C1"}) < 0);
+    REQUIRE(list.rowForId(ConversationId{"C2"}) >= 0);
+
+    // Reading C2 (its count drops to 0) removes it too.
+    list.setConversations({channel("C1", "general"), channel("C2", "random")});
+    REQUIRE(list.rowForId(ConversationId{"C2"}) < 0);
+
+    list.setUnreadsOnly(false);
+    REQUIRE(list.rowForId(ConversationId{"C1"}) >= 0);
+    REQUIRE(list.rowForId(ConversationId{"C2"}) >= 0);
+}
+
+TEST_CASE(
+    "unreads-only keeps the open conversation listed until the selection moves", "[unreads-only]"
+) {
+    ConvListWidget list(nullptr);
+    list.setUnreadsOnly(true);
+    list.setConversations({unread(channel("C1", "general")), unread(channel("C2", "random"))});
+    REQUIRE(list.selectConversation(ConversationId{"C1"}));
+
+    // C1 is read now (count 0) but still on screen — it must not vanish from
+    // under the message list.
+    list.setConversations({channel("C1", "general"), unread(channel("C2", "random"))});
+    REQUIRE(list.rowForId(ConversationId{"C1"}) >= 0);
+    REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"C1"});
+
+    // Moving on to C2 retires it.
+    REQUIRE(list.selectConversation(ConversationId{"C2"}));
+    REQUIRE(list.rowForId(ConversationId{"C1"}) < 0);
+    REQUIRE(list.conversationId(list.selectedIndex()) == ConversationId{"C2"});
+}
+
+TEST_CASE(
+    "unreads-only still opens a read conversation from a notification or search", "[unreads-only]"
+) {
+    ConvListWidget list(nullptr);
+    list.setUnreadsOnly(true);
+    list.setConversations(
+        {unread(channel("C1", "general")), channel("C2", "random"), hiddenDm("D1", "U9")}
+    );
+    REQUIRE(list.rowForId(ConversationId{"C2"}) < 0);
+    REQUIRE(list.rowForId(ConversationId{"D1"}) < 0);
+    SelectionSpy spy(&list);
+
+    // rowForId finds nothing for a read chat, exactly as for a relevance-hidden
+    // one — selectConversation must still be able to land on it.
+    REQUIRE(list.selectConversation(ConversationId{"C2"}));
+    REQUIRE(spy.count == 1);
+    REQUIRE(list.conversationId(spy.lastRow) == ConversationId{"C2"});
+
+    REQUIRE(list.selectConversation(ConversationId{"D1"}));
+    REQUIRE(spy.count == 2);
+    REQUIRE(list.conversationId(spy.lastRow) == ConversationId{"D1"});
+    // …and the previous one (C2, read) has left the list.
+    REQUIRE(list.rowForId(ConversationId{"C2"}) < 0);
+}
+
+TEST_CASE(
+    "unreads-only treats a muted chat with unreads as read, and exempts starred ones",
+    "[unreads-only]"
+) {
+    ConvListWidget list(nullptr);
+    list.setUnreadsOnly(true);
+    Conversation muted = unread(channel("C_MUTED", "noise"), 5);
+    muted.isMuted      = true;
+    list.setConversations(
+        {unread(channel("C1", "general")), muted, starred(channel("C_STAR", "pinned"))}
+    );
+
+    // A muted conversation paints silent, so it does not count as unread.
+    REQUIRE(list.rowForId(ConversationId{"C_MUTED"}) < 0);
+    // A star is an explicit "keep in front of me": the filter never hides it.
+    REQUIRE(list.rowForId(ConversationId{"C_STAR"}) >= 0);
+    REQUIRE(list.rowForId(ConversationId{"C1"}) >= 0);
+}
+
+TEST_CASE("unreads-only applies to the Agents & apps section", "[unreads-only]") {
+    ConvListWidget list(nullptr);
+    list.setUsers({botUser("B1"), botUser("B2")});
+    list.setConversations(
+        {unread(channel("C1", "general")), appDm("A1", "B1"), unread(appDm("A2", "B2"))}
+    );
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+
+    list.setUnreadsOnly(true);
+    REQUIRE(list.rowForId(ConversationId{"A1"}) < 0);
+    REQUIRE(list.rowForId(ConversationId{"A2"}) >= 0);
+    // The open app DM stays reachable while it is open.
+    REQUIRE(list.selectConversation(ConversationId{"A1"}));
+    REQUIRE(list.rowForId(ConversationId{"A1"}) >= 0);
+}
