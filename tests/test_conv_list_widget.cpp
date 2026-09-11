@@ -369,6 +369,27 @@ TEST_CASE(
     REQUIRE(list.rowForId(ConversationId{"C1"}) >= 0);
 }
 
+TEST_CASE(
+    "the Threads entry stays listed under unreads-only and tracks its unread state",
+    "[unreads-only]"
+) {
+    // Issue #59: the entry is a fixed nav row (never filtered), and its unread
+    // face is driven by the session's count of threads with unread replies.
+    ConvListWidget list(nullptr);
+    list.setShowThreads(true);
+    list.setConversations({channel("C1", "general")});
+    list.setUnreadsOnly(true);
+    // C1 is read and hidden; the Threads row (plus section headers) remains.
+    REQUIRE(list.rowForId(ConversationId{"C1"}) < 0);
+    REQUIRE(list.rowCount() > 0);
+
+    CHECK(list.unreadThreadCount() == 0);
+    list.setUnreadThreadCount(3);
+    CHECK(list.unreadThreadCount() == 3);
+    list.setUnreadThreadCount(-1); // clamped: a count can't go negative
+    CHECK(list.unreadThreadCount() == 0);
+}
+
 TEST_CASE("unreads-only applies to the Agents & apps section", "[unreads-only]") {
     ConvListWidget list(nullptr);
     list.setUsers({botUser("B1"), botUser("B2")});

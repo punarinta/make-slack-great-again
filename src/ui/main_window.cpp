@@ -1799,9 +1799,20 @@ void MainWindow::connectToSession() {
     if (_convFooter)
         _convFooter->setPresenceSupported(_session->capabilities().presence);
 
-    // The "Threads" roster entry needs a workspace-wide threads feed.
-    if (_convList)
+    // The "Threads" roster entry needs a workspace-wide threads feed. Its unread
+    // face follows the session's count of followed threads with unread replies
+    // (the producer replays the current value on subscribe, so a switch back to
+    // a workspace restores its badge at once).
+    if (_convList) {
         _convList->setShowThreads(_session->capabilities().threadsView);
+        _session->unreadThreadCountValue() | rpl::on_next(
+                                                 [this](int n) {
+                                                     if (_convList)
+                                                         _convList->setUnreadThreadCount(n);
+                                                 },
+                                                 _uiLifetime
+                                             );
+    }
 
     // The "Saved messages" entry only shows while there is something saved.
     updateSavedMessagesEntry();

@@ -113,6 +113,13 @@ public:
     // Capabilities::threadsView, so it only appears for backends with a
     // workspace-wide threads feed.
     void setShowThreads(bool show);
+    // Number of followed threads holding unread replies (Session::
+    // unreadThreadCount). Non-zero highlights the "Threads" entry — bright label
+    // and icon, like an unread conversation row — so it stands out under the
+    // unreads-only filter too (issue #59). No count badge: this is a group
+    // title, badges belong on the threads themselves.
+    void setUnreadThreadCount(int count);
+    int  unreadThreadCount() const { return _unreadThreads; }
     // Show the fixed "Saved messages" entry (under Threads) — gated on
     // Capabilities::messageReminders AND the saved list being non-empty, so it
     // only appears while there is something to show.
@@ -174,8 +181,10 @@ protected:
     void paintSavedMsgsRow(QPainter &p, int row, int y) const;
     // Shared face of the fixed nav entries (Threads, Saved messages): pill
     // highlight + icon centred in the kIconSize slot + section-header label.
-    void
-    paintNavEntryRow(QPainter &p, int row, int y, const QPixmap &icon, const QString &label) const;
+    // `unread` brightens the label and icon like an unread conversation row.
+    void paintNavEntryRow(
+        QPainter &p, int row, int y, const QPixmap &icon, const QString &label, bool unread = false
+    ) const;
     void    paintAddChannelsRow(QPainter &p, int row, int y) const;
     void    paintShowMoreRow(QPainter &p, int row, int y, int count) const;
     // Hit/paint rect of the "+" button on the Direct messages section header.
@@ -253,6 +262,7 @@ protected:
     bool _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
     bool _unreadsOnly       = false; // Settings toggle; see setUnreadsOnly()
     bool _showThreads       = false; // capability gate; see setShowThreads()
+    int  _unreadThreads     = 0;     // see setUnreadThreadCount()
     bool _showSavedMsgs     = false; // gate; see setShowSavedMessages()
     bool _showAllChannels   = false; // true after user clicks "N more channels"
     // The "Threads" entry is selected (the overview page is open). Mutually

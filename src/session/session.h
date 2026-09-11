@@ -273,7 +273,15 @@ public:
     // seen backlog injected as new the next time a reply pushes it into the feed.
     // Reading is not following: Slack subscribes you when you REPLY, so this
     // deliberately doesn't touch the followed set.
-    void markThreadRead(const ConversationId &conv, const Ts &root, const Ts &upTo);
+    void               markThreadRead(const ConversationId &conv, const Ts &root, const Ts &upTo);
+    // Followed threads holding replies the user has not read — what the roster's
+    // "Threads" entry badges (issue #59: the channel highlighted on a thread
+    // reply, the Threads entry never did). Fed by every followed-thread reply
+    // that passes through handleNewMessage, corrected by the Threads feed (its
+    // per-thread read cursor is the server's word, and a workspace-wide unread
+    // total of zero clears everything), and drained by markThreadRead.
+    int                unreadThreadCount() const { return int(_unreadThreads.size()); }
+    rpl::producer<int> unreadThreadCountValue() const { return _unreadThreadCount.value(); }
 
     // --- Message reminders ("Remind me about this message") ---
     // Local mirror of the backend's saved-item reminders, gated by
@@ -707,6 +715,19 @@ private:
     QHash<QString, qint64> _followedThreads;
     static constexpr int   kMaxFollowedThreads = 200;
     void                   saveFollowedThreads();
+    // Threads with unread followed replies (see unreadThreadCount), keyed by
+    // threadKey → newest unread reply ts. Separate from _threadPollBaseline,
+    // which is a "scanned up to" cursor, not a read one: the poll lifts it past
+    // replies it injects, and those are exactly the ones still unread.
+    QHash<QString, Ts>     _unreadThreads;
+    // threadKey → ts the user read the thread up to (markThreadRead). A reply
+    // at or below it is already read, however it reaches handleNewMessage.
+    QHash<QString, Ts>     _threadReadFloor;
+    rpl::variable<int>     _unreadThreadCount = 0;
+    // A followed-thread reply from someone else arrived: record the thread as
+    // unread unless the user has already read past it.
+    void noteUnreadThreadReply(const ConversationId &conv, const Ts &root, const Ts &ts);
+    void publishUnreadThreadCount();
 
     // --- Message reminders (see the public reminder API above) ---
     // Arm _reminderTimer for the nearest unfired due time (stopped when none).

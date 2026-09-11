@@ -170,6 +170,14 @@ void ConvListWidget::setShowThreads(bool show) {
     rebuildRows();
 }
 
+void ConvListWidget::setUnreadThreadCount(int count) {
+    count = std::max(0, count);
+    if (_unreadThreads == count)
+        return;
+    _unreadThreads = count;
+    viewport()->update(); // a fixed row: only its face changes, never the layout
+}
+
 void ConvListWidget::setShowSavedMessages(bool show) {
     if (_showSavedMsgs == show)
         return;
@@ -1202,7 +1210,7 @@ QRect ConvListWidget::dmPlusRect(int rowY) const {
 }
 
 void ConvListWidget::paintNavEntryRow(
-    QPainter &p, int row, int y, const QPixmap &icon, const QString &label
+    QPainter &p, int row, int y, const QPixmap &icon, const QString &label, bool unread
 ) const {
     const bool  isSelected = (row == _selected);
     const bool  hovered    = (row == _hovered);
@@ -1235,10 +1243,12 @@ void ConvListWidget::paintNavEntryRow(
     font.setWeight(QFont::DemiBold);
     font.setPointSizeF(font.pointSizeF() * 0.82);
     p.setFont(font);
+    // Unread reads like an unread conversation row: the bright text colour
+    // (the label is DemiBold already, so weight can't carry the emphasis).
     p.setPen(
-        isSelected ? Th::c().nav.itemSelectedText
-        : hovered  ? Th::c().text.onDark
-                   : Th::c().text.onDarkDim
+        isSelected            ? Th::c().nav.itemSelectedText
+        : (hovered || unread) ? Th::c().text.onDark
+                              : Th::c().text.onDarkDim
     );
     const QFontMetrics fm(font);
     p.drawText(kPadH + kGroupIndent, y + (_rowH - fm.height()) / 2 + fm.ascent(), label);
@@ -1247,10 +1257,11 @@ void ConvListWidget::paintNavEntryRow(
 void ConvListWidget::paintThreadsRow(QPainter &p, int row, int y) const {
     const bool     isSelected = (row == _selected);
     const bool     hovered    = (row == _hovered);
-    const QPixmap &icon       = isSelected ? _iconPx.threadsSelected
-                                : hovered  ? _iconPx.threadsBright
-                                           : _iconPx.threadsDim;
-    paintNavEntryRow(p, row, y, icon, tr("Threads"));
+    const bool     unread     = _unreadThreads > 0;
+    const QPixmap &icon       = isSelected            ? _iconPx.threadsSelected
+                                : (hovered || unread) ? _iconPx.threadsBright
+                                                      : _iconPx.threadsDim;
+    paintNavEntryRow(p, row, y, icon, tr("Threads"), unread);
 }
 
 void ConvListWidget::paintSavedMsgsRow(QPainter &p, int row, int y) const {

@@ -548,6 +548,19 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
     // just the ones composed here.
     if (ownMessage && msg.threadRoot)
         markThreadFollowed(conv, *msg.threadRoot);
+    // Someone else's reply in a thread we follow (or that @mentions us — Slack
+    // subscribes us to the thread for that) leaves the thread unread for the
+    // roster's Threads entry. Decided here, ahead of the channel bookkeeping
+    // below, because that deliberately stops short for the open channel
+    // (_readingConv) and for non-member conversations — but a reply lives in the
+    // thread, not the channel, and only reading the THREAD clears it (an open
+    // thread panel does so through markThreadRead when the reply lands in it).
+    if (!ownMessage && msg.threadRoot && !isThreadMuted(conv, *msg.threadRoot)) {
+        const QString &mt = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+        if (isFollowedThreadReply(msg, _meUserId) || isThreadFollowed(conv, *msg.threadRoot) ||
+            mrkdwnMentions(mt, _meUserId))
+            noteUnreadThreadReply(conv, *msg.threadRoot, msg.ts);
+    }
     // Someone we hold as away/offline just posted — they are almost certainly
     // active now, and the periodic sweep may be up to a minute (or, for a quiet
     // partner, several rounds) away. One targeted probe closes the gap instead of
@@ -937,6 +950,23 @@ void Session::pollThreadReplies() {
                         if (r.ts > newest)
                             newest = r.ts;
 
+                    // Sync the Threads-entry unread state with the server's read
+                    // cursor for this thread: replies past root_msg.last_read are
+                    // unread (this is what the official client bolds "Threads"
+                    // on), unless we read further locally or muted the thread.
+                    // Runs on the priming page too — that is what restores the
+                    // badge after a restart.
+                    if (!newest.isEmpty()) {
+                        Ts floor = t.lastRead;
+                        if (const Ts local = _threadReadFloor.value(key); local > floor)
+                            floor = local;
+                        const bool unread = newest > floor && !_mutedThreads.contains(key);
+                        if (unread)
+                            _unreadThreads.insert(key, newest);
+                        else
+                            _unreadThreads.remove(key);
+                    }
+
                     Ts baseline = _threadPollBaseline.value(key);
                     if (baseline.isEmpty()) {
                         // No baseline yet. On the first page of the run, prime:
@@ -987,6 +1017,12 @@ void Session::pollThreadReplies() {
                         baseline = newest;
                     _threadPollBaseline.insert(key, baseline);
                 }
+                // The workspace-wide total is authoritative: nothing unread
+                // anywhere means a thread we still hold (read from another
+                // client, or dropped off this 10-thread page) is read too.
+                if (page.totalUnreadReplies == 0)
+                    _unreadThreads.clear();
+                publishUnreadThreadCount();
             },
             _lifetime
         );
@@ -2709,10 +2745,15 @@ void Session::setThreadMuted(const ConversationId &conv, const Ts &root, bool mu
     const QString key = threadKey(conv, root);
     if (muted == _mutedThreads.contains(key))
         return; // no change
-    if (muted)
+    if (muted) {
         _mutedThreads.insert(key);
-    else
+        // A muted thread's replies stop badging — including the ones already
+        // counted against the Threads entry.
+        if (_unreadThreads.remove(key))
+            publishUnreadThreadCount();
+    } else {
         _mutedThreads.remove(key);
+    }
     if (_cache)
         _cache->saveMutedThreads(QStringList(_mutedThreads.begin(), _mutedThreads.end()));
 }
@@ -2734,10 +2775,38 @@ void Session::markThreadFollowed(const ConversationId &conv, const Ts &root) {
 void Session::markThreadRead(const ConversationId &conv, const Ts &root, const Ts &upTo) {
     if (conv.value.isEmpty() || root.isEmpty() || upTo.isEmpty())
         return;
-    Ts &baseline = _threadPollBaseline[threadKey(conv, root)];
+    const QString key      = threadKey(conv, root);
+    Ts           &baseline = _threadPollBaseline[key];
     if (upTo > baseline)
         baseline = upTo;
+    Ts &floor = _threadReadFloor[key];
+    if (upTo > floor)
+        floor = upTo;
+    // Read up to (or past) the newest unread reply — the thread is read.
+    if (const auto it = _unreadThreads.constFind(key);
+        it != _unreadThreads.constEnd() && !(it.value() > upTo)) {
+        _unreadThreads.erase(it);
+        publishUnreadThreadCount();
+    }
     _backend->markThreadRead(conv, root, upTo);
+}
+
+void Session::noteUnreadThreadReply(const ConversationId &conv, const Ts &root, const Ts &ts) {
+    if (conv.value.isEmpty() || root.isEmpty() || ts.isEmpty())
+        return;
+    const QString key = threadKey(conv, root);
+    if (!(ts > _threadReadFloor.value(key)))
+        return; // already read this far (e.g. the open thread panel showed it)
+    Ts &newest = _unreadThreads[key];
+    if (ts > newest)
+        newest = ts;
+    publishUnreadThreadCount();
+}
+
+void Session::publishUnreadThreadCount() {
+    const int n = int(_unreadThreads.size());
+    if (_unreadThreadCount.current() != n)
+        _unreadThreadCount = n;
 }
 
 void Session::saveFollowedThreads() {

@@ -4154,6 +4154,144 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     SessionFixture,
+    "a followed-thread reply marks the Threads entry unread until the thread is read",
+    "[session][thread][unread]"
+) {
+    // Issue #59: with "show only unread" on, the channel highlighted on a thread
+    // reply but the roster's Threads entry never did — nothing tracked which
+    // threads held unread replies.
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    CHECK(session->unreadThreadCount() == 0);
+
+    std::vector<int> seen;
+    rpl::lifetime    lt;
+    session->unreadThreadCountValue() | rpl::on_next([&](int n) { seen.push_back(n); }, lt);
+    REQUIRE(seen == std::vector<int>{0}); // replays the current value on subscribe
+
+    // A reply in a thread we started (parent_user_id == me).
+    Message r1      = threadReply("600.000", root);
+    r1.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, r1});
+    CHECK(session->unreadThreadCount() == 1);
+    CHECK(seen.back() == 1);
+
+    // A second reply in the same thread is the same unread thread, not two.
+    Message r2      = threadReply("700.000", root);
+    r2.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, r2});
+    CHECK(session->unreadThreadCount() == 1);
+
+    // Another followed thread (one we replied in) counts separately.
+    const Ts root2{"800.000"};
+    session->sendMessage(conv, "my reply", root2);
+    stub->fireEvent(EvMessageNew{conv, threadReply("900.000", root2)});
+    CHECK(session->unreadThreadCount() == 2);
+
+    // Reading the first thread only up to r1 leaves r2 unread…
+    session->markThreadRead(conv, root, r1.ts);
+    CHECK(session->unreadThreadCount() == 2);
+    // …reading to the newest reply clears it.
+    session->markThreadRead(conv, root, r2.ts);
+    CHECK(session->unreadThreadCount() == 1);
+    CHECK(seen.back() == 1);
+
+    // A reply we already read (e.g. the open thread panel showed it) does not
+    // re-arm the entry.
+    Message r3      = threadReply("650.000", root);
+    r3.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, r3});
+    CHECK(session->unreadThreadCount() == 1);
+
+    session->markThreadRead(conv, root2, Ts{"900.000"});
+    CHECK(session->unreadThreadCount() == 0);
+    CHECK(seen.back() == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "replies that don't badge don't arm the Threads entry either",
+    "[session][thread][unread]"
+) {
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+
+    // A thread we never touched (someone else's, no mention).
+    Message other      = threadReply("600.000", root);
+    other.parentUserId = UserId{"U2"};
+    stub->fireEvent(EvMessageNew{conv, other});
+    CHECK(session->unreadThreadCount() == 0);
+
+    // Our own reply.
+    Message mine      = threadReply("610.000", root, "U1");
+    mine.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, mine});
+    CHECK(session->unreadThreadCount() == 0);
+
+    // A muted thread — even one we started.
+    session->setThreadMuted(conv, root, true);
+    Message muted      = threadReply("620.000", root);
+    muted.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, muted});
+    CHECK(session->unreadThreadCount() == 0);
+
+    // Muting a thread that is already counted drops it.
+    const Ts root2{"800.000"};
+    Message  r     = threadReply("900.000", root2);
+    r.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, r});
+    REQUIRE(session->unreadThreadCount() == 1);
+    session->setThreadMuted(conv, root2, true);
+    CHECK(session->unreadThreadCount() == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "the Threads feed syncs the Threads entry with the server's read cursors",
+    "[session][thread][unread][poll]"
+) {
+    const ConversationId conv{"C2"};
+    const Ts             root{"500.000"};
+    const Message        r1 = threadReply("600.000", root);
+    const Message        r2 = threadReply("700.000", root);
+
+    // Priming page (a restart): the thread has replies past last_read, so the
+    // entry lights up even though nothing is injected as new.
+    stub->threadsViewResult =
+        ThreadsViewPage{{overview(conv, root, {r1, r2}, Ts{"600.000"})}, 1, false, {}};
+    auto [primeEvents, primeLt] = collectEvents();
+    session->pollThreadRepliesForTest();
+    CHECK(primeEvents.empty());
+    CHECK(session->unreadThreadCount() == 1);
+
+    // Read from another client: the server cursor moved past everything.
+    stub->threadsViewResult =
+        ThreadsViewPage{{overview(conv, root, {r1, r2}, Ts{"700.000"})}, 0, false, {}};
+    session->pollThreadRepliesForTest();
+    CHECK(session->unreadThreadCount() == 0);
+
+    // Unread again server-side, but read further locally: local knowledge wins
+    // (the panel marked it read; the server cursor just hasn't caught up).
+    session->markThreadRead(conv, root, r2.ts);
+    stub->threadsViewResult =
+        ThreadsViewPage{{overview(conv, root, {r1, r2}, Ts{"600.000"})}, 1, false, {}};
+    session->pollThreadRepliesForTest();
+    CHECK(session->unreadThreadCount() == 0);
+
+    // A thread we hold as unread that fell off the page is still cleared once
+    // the workspace-wide unread total says nothing is unread anywhere.
+    const Ts root2{"800.000"};
+    Message  r     = threadReply("900.000", root2);
+    r.parentUserId = UserId{"U1"};
+    stub->fireEvent(EvMessageNew{conv, r});
+    REQUIRE(session->unreadThreadCount() == 1);
+    stub->threadsViewResult = ThreadsViewPage{{}, 0, false, {}};
+    session->pollThreadRepliesForTest();
+    CHECK(session->unreadThreadCount() == 0);
+}
+
+TEST_CASE_METHOD(
+    SessionFixture,
     "the Threads feed is polled only on a poll-only backend that serves it",
     "[session][thread][poll]"
 ) {

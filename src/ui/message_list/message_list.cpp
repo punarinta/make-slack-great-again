@@ -3567,6 +3567,12 @@ void MessageListWidget::handleEvent(const Event &e) {
                 ev->msg.threadRoot.has_value() && *ev->msg.threadRoot == _threadRootTs;
             if (!isRoot && !isReply)
                 return;
+            // Landing in the open thread panel reads it, like the initial load
+            // does: move the read cursor (server + Session's Threads-entry
+            // unread state) past it. Not for the optimistic ghost — its ts is
+            // fake; the confirmed echo comes through here with the real one.
+            if (isReply && !ev->msg.pending && _session)
+                _session->markThreadRead(_currentConv, _threadRootTs, ev->msg.ts);
         } else if (ev->msg.threadRoot.has_value()) {
             // In channel mode, thread replies don't appear in the main list —
             // bump the reply count on the root message instead. Skip the
