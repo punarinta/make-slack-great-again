@@ -35,6 +35,18 @@ public:
 
     explicit BrowseListView(ImageCache *imgCache, QWidget *parent = nullptr);
 
+    // How applyFilter() reads the query. Substring (the default) keeps the
+    // items' own order and passes rows whose searchKey contains the query —
+    // right for the channel browser, whose keys also carry descriptions.
+    // Fuzzy passes rows whose searchKey contains the query's characters in
+    // order with gaps allowed ("xdg" → "xd-general", issue #60) and reorders
+    // the matches best-first; ties keep the items' order, so with a short query
+    // the most recent conversation still tops equally good matches. An empty
+    // query lists everything in the given order in both modes.
+    enum class Match { Substring, Fuzzy };
+    void  setMatchMode(Match mode);
+    Match matchMode() const { return _matchMode; }
+
     void setItems(std::vector<Item> items);
     void applyFilter(const QString &query);
 
@@ -78,8 +90,9 @@ private:
     std::vector<Item> _items;
     std::vector<int>  _filtered; // indices into _items passing the current filter
     QString           _filterText;
-    int               _hovered  = -1;
-    int               _selected = -1; // keyboard selection; -1 = none
+    Match             _matchMode = Match::Substring;
+    int               _hovered   = -1;
+    int               _selected  = -1; // keyboard selection; -1 = none
     QPixmap           _hashPx, _lockPx, _checkPx;
 
     static constexpr int kRowH       = 60;

@@ -89,6 +89,11 @@ add_msga_test(test_emoji
     ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
 )
 
+add_msga_test(test_fuzzy_match
+    test_fuzzy_match.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/fuzzy_match.cpp
+)
+
 add_msga_test(test_nav_history
     test_nav_history.cpp
 )
@@ -629,6 +634,7 @@ add_msga_widget_test(test_browse_channels_dialog
     test_browse_channels_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_channels_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/fuzzy_match.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
@@ -649,6 +655,7 @@ add_msga_widget_test(test_move_to_thread_dialog
     test_move_to_thread_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/move_to_thread_dialog/move_to_thread_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/fuzzy_match.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
@@ -665,6 +672,7 @@ add_msga_widget_test(test_quick_switcher
     test_quick_switcher.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/quick_switcher/quick_switcher_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/browse_channels_dialog/browse_list_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/fuzzy_match.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp

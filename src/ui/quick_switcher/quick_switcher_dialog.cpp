@@ -40,6 +40,10 @@ QuickSwitcherDialog::QuickSwitcherDialog(
 
     _list = new BrowseListView(_imgCache, card());
     _list->setObjectName("quickSwitcherList");
+    // Fuzzy, not substring: "xdg" must land on #xd-general (issue #60). The
+    // keys are bare names, so scattered matches stay meaningful, and the list
+    // reorders best-first so the preselected top row is the likeliest target.
+    _list->setMatchMode(BrowseListView::Match::Fuzzy);
     _list->setMinimumHeight(kListMinH);
     _list->onActivated = [this](const QString &id) {
         accept();

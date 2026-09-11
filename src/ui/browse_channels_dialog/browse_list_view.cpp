@@ -6,6 +6,7 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/user_avatar.h"
+#include "util/fuzzy_match.h"
 
 #include <QApplication>
 #include <QFontMetrics>
@@ -33,13 +34,37 @@ void BrowseListView::setItems(std::vector<Item> items) {
     applyFilter(_filterText);
 }
 
+void BrowseListView::setMatchMode(Match mode) {
+    if (mode == _matchMode)
+        return;
+    _matchMode = mode;
+    applyFilter(_filterText);
+}
+
 void BrowseListView::applyFilter(const QString &query) {
     _filterText     = query;
     const QString q = query.trimmed().toLower();
     _filtered.clear();
     _filtered.reserve(_items.size());
-    for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-        if (q.isEmpty() || _items[i].searchKey.contains(q))
+    if (q.isEmpty()) {
+        for (int i = 0; i < static_cast<int>(_items.size()); ++i)
+            _filtered.push_back(i);
+    } else if (_matchMode == Match::Substring) {
+        for (int i = 0; i < static_cast<int>(_items.size()); ++i)
+            if (_items[i].searchKey.contains(q))
+                _filtered.push_back(i);
+    } else {
+        // Score every candidate, then order best-first. stable_sort keeps the
+        // incoming (recency) order among equal scores.
+        std::vector<std::pair<double, int>> scored;
+        scored.reserve(_items.size());
+        for (int i = 0; i < static_cast<int>(_items.size()); ++i)
+            if (const auto s = Fuzzy::score(q, _items[i].searchKey))
+                scored.emplace_back(*s, i);
+        std::stable_sort(scored.begin(), scored.end(), [](const auto &a, const auto &b) {
+            return a.first > b.first;
+        });
+        for (const auto &[score, i] : scored)
             _filtered.push_back(i);
     }
     _hovered  = -1;

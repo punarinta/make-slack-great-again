@@ -17,7 +17,9 @@ class StyledLineEdit;
 // Ctrl/Cmd+K quick switcher: type a few letters, hit Enter, land in the
 // conversation (issue #52). Lists only conversations of the ACTIVE workspace
 // that the user is already in — channels, DMs and group DMs — most recently
-// active first, so an empty query is a "recent chats" list.
+// active first, so an empty query is a "recent chats" list. Matching is fuzzy
+// (issue #60): the typed letters need only appear in order, so "xdg" finds
+// #xd-general and "bb" finds Bob Builder; matches are ranked best-first.
 //
 // Deliberately not a second channel browser: BrowseChannelsDialog is for finding
 // something you are *not* in (it can join, it has a People tab, it hits the

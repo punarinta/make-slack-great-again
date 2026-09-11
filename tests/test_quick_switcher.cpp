@@ -5,7 +5,8 @@
 //   - Construction / paint smoke test
 //   - Populated from the name-resolved conversation list, most recent first
 //   - Unnamed conversations are dropped (an unresolved id is not navigable)
-//   - Substring filter, case-insensitive, over channels and DMs alike
+//   - Fuzzy filter (issue #60): subsequence match, case-insensitive, over
+//     channels and DMs alike; matches ranked best-first, ties by recency
 //   - The top match is always preselected, so Enter opens without an arrow press
 //   - Up/Down move the selection and wrap; Enter emits the selected id
 //   - No match → the empty notice replaces the list and Enter is inert
@@ -154,6 +155,57 @@ TEST_CASE("QuickSwitcher: filter is case-insensitive and finds DMs", "[quickswit
     field(&dlg)->setText("BOB");
     // "Bob Builder" (the DM) and "Alice, Bob" (the group DM).
     CHECK(list(&dlg)->visibleCount() == 2);
+}
+
+TEST_CASE("QuickSwitcher: fuzzy — xdg finds #xd-general (issue #60)", "[quickswitch][filter]") {
+    NamedConversation xdGeneral = kGeneral;
+    xdGeneral.id                = ConversationId{"C7"};
+    xdGeneral.name              = "xd-general";
+    QuickSwitcherDialog dlg({kBob, xdGeneral, kDesign}, nullptr);
+    field(&dlg)->setText("xdg");
+    REQUIRE(list(&dlg)->visibleCount() == 1);
+    CHECK(list(&dlg)->idAt(0) == "C7");
+}
+
+TEST_CASE("QuickSwitcher: fuzzy — initials find a person", "[quickswitch][filter]") {
+    QuickSwitcherDialog dlg(kAll, nullptr);
+    field(&dlg)->setText("bb");
+    // "Bob Builder" and "Alice, Bob" (a-l-i-c-e-,- -B-o-B) both contain b…b.
+    REQUIRE(list(&dlg)->visibleCount() == 2);
+    // The word-initial alignment ranks above the one buried in a single word.
+    CHECK(list(&dlg)->idAt(0) == "D1");
+}
+
+TEST_CASE("QuickSwitcher: fuzzy — letters out of order do not match", "[quickswitch][filter]") {
+    QuickSwitcherDialog dlg(kAll, nullptr);
+    field(&dlg)->setText("ngis"); // "design" backwards-ish
+    CHECK(list(&dlg)->visibleCount() == 0);
+}
+
+TEST_CASE("QuickSwitcher: matches are ranked best-first, not by recency", "[quickswitch][filter]") {
+    // Both contain "gen"; the verbatim prefix must win even though the other
+    // conversation is more recent and was handed over first.
+    NamedConversation goEngineering = kGeneral;
+    goEngineering.id                = ConversationId{"C8"};
+    goEngineering.name              = "go-engineering";
+    goEngineering.activitySeconds   = 900;
+    QuickSwitcherDialog dlg({goEngineering, kBob, kGeneral}, nullptr);
+    field(&dlg)->setText("gen");
+    REQUIRE(list(&dlg)->visibleCount() == 2);
+    CHECK(list(&dlg)->idAt(0) == "C1");
+    CHECK(list(&dlg)->idAt(1) == "C8");
+}
+
+TEST_CASE("QuickSwitcher: equally good matches keep recency order", "[quickswitch][filter]") {
+    NamedConversation designB = kDesign;
+    designB.id                = ConversationId{"C9"};
+    designB.name              = "design-backend";
+    // Given most-recent-first: C9 before C2. Same score for "design-" → same order.
+    QuickSwitcherDialog dlg({designB, kDesign, kBob}, nullptr);
+    field(&dlg)->setText("design-");
+    REQUIRE(list(&dlg)->visibleCount() == 2);
+    CHECK(list(&dlg)->idAt(0) == "C9");
+    CHECK(list(&dlg)->idAt(1) == "C2");
 }
 
 TEST_CASE("QuickSwitcher: clearing the filter restores everything", "[quickswitch][filter]") {
