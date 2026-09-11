@@ -17,6 +17,13 @@ static constexpr int kCardPadH = 24;
 static constexpr int kCardPadT = 20;
 static constexpr int kCardPadB = 16;
 
+// Group DMs are named after their members, so "John Doe" matches every group
+// John is in exactly as well as his 1:1 DM — and the groups, often more recent,
+// buried him (issue #61). Half a consecutive-match weight: enough to lose any
+// tie or boundary-bonus difference (those are 0.1 apart) to a 1:1 DM or channel,
+// not enough to sink a group whose name matches a whole character better.
+static constexpr double kGroupDmBias = -0.5;
+
 QuickSwitcherDialog::QuickSwitcherDialog(
     std::vector<NamedConversation> conversations, ImageCache *imgCache, QWidget *parent
 )
@@ -103,6 +110,7 @@ void QuickSwitcherDialog::buildItems() {
         it.avatarUrl = conv.avatarUrl;
         it.initial   = conv.name.left(1);
         it.searchKey = conv.name.toLower();
+        it.rankBias  = conv.kind == ConvKind::Mpim ? kGroupDmBias : 0.0;
         items.push_back(std::move(it));
     }
     _list->setItems(std::move(items));

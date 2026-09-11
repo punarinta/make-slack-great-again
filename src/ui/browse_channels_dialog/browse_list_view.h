@@ -31,6 +31,13 @@ public:
         bool    isPerson  = false;
         bool    isPrivate = false; // channel → lock vs hash icon
         bool    isMember  = false; // channel → "Joined" badge
+        // Added to the fuzzy score before ranking, so a caller can demote (or
+        // promote) a class of rows without touching the matcher: the quick
+        // switcher sinks group DMs under the 1:1 DM they share a name with
+        // (issue #61). In fzy units — 1.0 is one consecutive matched character,
+        // the word/start bonuses are 0.1 apart. Ignored in Substring mode and
+        // for an empty query, which both keep the items' own order.
+        double  rankBias  = 0.0;
     };
 
     explicit BrowseListView(ImageCache *imgCache, QWidget *parent = nullptr);
@@ -40,9 +47,10 @@ public:
     // right for the channel browser, whose keys also carry descriptions.
     // Fuzzy passes rows whose searchKey contains the query's characters in
     // order with gaps allowed ("xdg" → "xd-general", issue #60) and reorders
-    // the matches best-first; ties keep the items' order, so with a short query
-    // the most recent conversation still tops equally good matches. An empty
-    // query lists everything in the given order in both modes.
+    // the matches best-first by score + Item::rankBias; ties keep the items'
+    // order, so with a short query the most recent conversation still tops
+    // equally good matches. An empty query lists everything in the given order
+    // in both modes.
     enum class Match { Substring, Fuzzy };
     void  setMatchMode(Match mode);
     Match matchMode() const { return _matchMode; }

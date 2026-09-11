@@ -19,7 +19,8 @@ class StyledLineEdit;
 // that the user is already in — channels, DMs and group DMs — most recently
 // active first, so an empty query is a "recent chats" list. Matching is fuzzy
 // (issue #60): the typed letters need only appear in order, so "xdg" finds
-// #xd-general and "bb" finds Bob Builder; matches are ranked best-first.
+// #xd-general and "bb" finds Bob Builder; matches are ranked best-first, with
+// group DMs ranked under a 1:1 DM or channel that matches as well (issue #61).
 //
 // Deliberately not a second channel browser: BrowseChannelsDialog is for finding
 // something you are *not* in (it can join, it has a People tab, it hits the

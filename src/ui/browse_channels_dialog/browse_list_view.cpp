@@ -55,12 +55,13 @@ void BrowseListView::applyFilter(const QString &query) {
                 _filtered.push_back(i);
     } else {
         // Score every candidate, then order best-first. stable_sort keeps the
-        // incoming (recency) order among equal scores.
+        // incoming (recency) order among equal scores. The bias only shifts
+        // rows that matched — it never admits a non-match.
         std::vector<std::pair<double, int>> scored;
         scored.reserve(_items.size());
         for (int i = 0; i < static_cast<int>(_items.size()); ++i)
             if (const auto s = Fuzzy::score(q, _items[i].searchKey))
-                scored.emplace_back(*s, i);
+                scored.emplace_back(*s + _items[i].rankBias, i);
         std::stable_sort(scored.begin(), scored.end(), [](const auto &a, const auto &b) {
             return a.first > b.first;
         });

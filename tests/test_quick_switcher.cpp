@@ -7,6 +7,8 @@
 //   - Unnamed conversations are dropped (an unresolved id is not navigable)
 //   - Fuzzy filter (issue #60): subsequence match, case-insensitive, over
 //     channels and DMs alike; matches ranked best-first, ties by recency
+//   - Group DMs rank under a 1:1 DM / channel that matches as well (issue #61),
+//     but still above a clearly weaker match; an empty query keeps recency
 //   - The top match is always preselected, so Enter opens without an arrow press
 //   - Up/Down move the selection and wrap; Enter emits the selected id
 //   - No match → the empty notice replaces the list and Enter is inert
@@ -206,6 +208,59 @@ TEST_CASE("QuickSwitcher: equally good matches keep recency order", "[quickswitc
     REQUIRE(list(&dlg)->visibleCount() == 2);
     CHECK(list(&dlg)->idAt(0) == "C9");
     CHECK(list(&dlg)->idAt(1) == "C2");
+}
+
+TEST_CASE(
+    "QuickSwitcher: a 1:1 DM outranks group DMs it is named in (issue #61)", "[quickswitch][filter]"
+) {
+    // "Bob" starts both names, so the alignments score the same; before #61 the
+    // more recent group DM (handed over first) won the tie and the person was
+    // buried under every group he is a member of.
+    NamedConversation bobCarol = kGroup;
+    bobCarol.id                = ConversationId{"G2"};
+    bobCarol.name              = "Bob Builder, Carol";
+    NamedConversation bobDave  = kGroup;
+    bobDave.id                 = ConversationId{"G3"};
+    bobDave.name               = "Bob Builder, Dave";
+    QuickSwitcherDialog dlg({bobCarol, bobDave, kBob, kGroup}, nullptr);
+
+    field(&dlg)->setText("bob");
+    REQUIRE(list(&dlg)->visibleCount() == 4);
+    CHECK(list(&dlg)->idAt(0) == "D1");
+    // The groups keep their own recency order behind him.
+    CHECK(list(&dlg)->idAt(1) == "G2");
+    CHECK(list(&dlg)->idAt(2) == "G3");
+    CHECK(list(&dlg)->idAt(3) == "G1");
+
+    // Typing the full name — still the person, not the groups.
+    field(&dlg)->setText("bob builder");
+    REQUIRE(list(&dlg)->visibleCount() == 3);
+    CHECK(list(&dlg)->idAt(0) == "D1");
+}
+
+TEST_CASE(
+    "QuickSwitcher: a group DM matched at a word start beats a 1:1 DM matched mid-word",
+    "[quickswitch][filter]"
+) {
+    // The demotion is a bias, not a tier: a group whose name matches a whole
+    // character better still wins over a person whose name barely does.
+    NamedConversation abbot = kBob;
+    abbot.id                = ConversationId{"D2"};
+    abbot.name              = "Abbot Bosch"; // a-B-b-O-t- -B-osch: "bob" without a full run
+    QuickSwitcherDialog dlg({abbot, kGroup}, nullptr);
+    field(&dlg)->setText("bob");
+    REQUIRE(list(&dlg)->visibleCount() == 2);
+    CHECK(list(&dlg)->idAt(0) == "G1"); // "Alice, Bob": a verbatim word-start run
+    CHECK(list(&dlg)->idAt(1) == "D2");
+}
+
+TEST_CASE(
+    "QuickSwitcher: an empty query keeps group DMs in recency order", "[quickswitch][filter]"
+) {
+    // The bias only ranks matches; the "recent chats" list is untouched.
+    QuickSwitcherDialog dlg({kGroup, kBob, kGeneral}, nullptr);
+    CHECK(list(&dlg)->idAt(0) == "G1");
+    CHECK(list(&dlg)->idAt(1) == "D1");
 }
 
 TEST_CASE("QuickSwitcher: clearing the filter restores everything", "[quickswitch][filter]") {
