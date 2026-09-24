@@ -65,6 +65,7 @@ signals:
 
 private:
     void applyTheme();
+    void applyBroadcastBoxTheme();
     // Empty the reply composer and file its unsent input under the open thread
     // (workspace + conversation + root ts). Runs on every way out of a thread —
     // opening another one, close(), a session switch — so a reply staged for

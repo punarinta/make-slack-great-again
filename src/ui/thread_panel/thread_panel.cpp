@@ -138,6 +138,7 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     broadcastLayout->setContentsMargins(sp.lg + sp.md, 0, sp.lg, sp.lg);
     _broadcastBox = new QCheckBox(tr("Also send to channel"), _broadcastRow);
     _broadcastBox->setObjectName("threadBroadcastBox");
+    applyBroadcastBoxTheme(); // applyTheme() ran above, before this box existed
     broadcastLayout->addWidget(_broadcastBox);
     broadcastLayout->addStretch();
     _broadcastRow->hide();
@@ -362,6 +363,12 @@ void ThreadPanel::pauseGifPlayback() {
     _msgList->pauseGifPlayback();
 }
 
+// Small and subdued: an option under the composer, not something to compete
+// with the reply being written.
+void ThreadPanel::applyBroadcastBoxTheme() {
+    _broadcastBox->setStyleSheet(Th::checkBoxQss(Th::c().fonts.xs, Th::c().text.secondary));
+}
+
 void ThreadPanel::applyTheme() {
     // No left border (a soft shadow stands in for it) and no distinct header
     // background: the panel reads as one continuous surface with the chat. The
@@ -371,7 +378,7 @@ void ThreadPanel::applyTheme() {
     );
     _headerWidget->setStyleSheet("QWidget#threadHeader { background: transparent; }");
     if (_broadcastBox)
-        _broadcastBox->setStyleSheet(Th::checkBoxQss(Th::c().fonts.sm));
+        applyBroadcastBoxTheme();
     _header->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
                                .arg(Th::c().fonts.lg)
                                .arg(Th::qss(Th::c().text.primary)));

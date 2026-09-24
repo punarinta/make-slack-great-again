@@ -816,7 +816,7 @@ QString radioQss(int fontPx) {
         .arg(qss(th.surface.content), qss(th.text.tertiary), qss(th.accent.def));
 }
 
-QString checkBoxQss(int fontPx) {
+QString checkBoxQss(int fontPx, const QColor &textColor) {
     const auto &th = c();
     return QString(
                "QCheckBox { color: %1; %2 background: transparent; }"
@@ -826,7 +826,11 @@ QString checkBoxQss(int fontPx) {
                "QCheckBox::indicator:checked { border-color: %6; background: %6;"
                "  image: url(:/ui/check-on-accent.svg); }"
     )
-        .arg(qss(th.text.primary), fontRule(fontPx), qss(th.divider.strong))
+        .arg(
+            qss(textColor.isValid() ? textColor : th.text.primary),
+            fontRule(fontPx),
+            qss(th.divider.strong)
+        )
         .arg(qss(th.surface.content), qss(th.text.tertiary), qss(th.accent.def));
 }
 

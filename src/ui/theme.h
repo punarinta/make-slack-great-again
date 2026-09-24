@@ -372,9 +372,9 @@ QString scrollBarQss(int width = 8, int radius = 4);
 // indicator/field from the OS palette — light-mode white regardless of the
 // theme — so any dialog using them must apply these instead of hand-rolling a
 // color/font-only stylesheet. `fontPx` <= 0 keeps the widget's inherited font
-// size. Re-apply on themeChanged.
+// size; an invalid `textColor` means text.primary. Re-apply on themeChanged.
 QString radioQss(int fontPx = 0);
-QString checkBoxQss(int fontPx = 0);
+QString checkBoxQss(int fontPx = 0, const QColor &textColor = {});
 QString spinBoxQss(int fontPx = 0);
 
 // Stylesheet for stock Qt dialogs we don't custom-paint (the widget-based
