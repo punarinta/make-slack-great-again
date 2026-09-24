@@ -243,6 +243,7 @@ private:
     bool tryHandleFileActionBarPress(const QPoint &pos);
     bool tryHandlePreviewPress(const QPoint &pos);
     bool tryHandleFileChipPress(const QPoint &pos);
+    void openHtmlFile(const File &file);
     // Audio chips: press on the seek bar starts a scrub (release seeks), any
     // other press toggles playback.
     bool tryHandleAudioChipPress(const QPoint &pos);
@@ -742,11 +743,8 @@ private:
     static constexpr int kGalleryGap      = 8;   // gap between gallery tiles (h & v)
     static constexpr int kGalleryMaxW     = 520; // max gallery width (wider than single-image cap)
     static constexpr int kGalleryRadius   = 8;   // rounded-corner radius of gallery tiles
-    // Chip heights come from MsgRender::fileChipHeight(f) (52px, taller audio card).
-    static constexpr int kFileChipGap   = 6; // gap before each chip (between chips, or above first)
-    static constexpr int kFileChipIconW = 48;  // width of the colored type-icon area
-    static constexpr int kFileChipMaxW  = 380; // max chip width (won't span full viewport)
-    static constexpr int kFileChipPadX  = 12;  // gap between icon right edge and text
+    // Chip heights come from MsgRender::fileChipHeight(f) (plain chip, taller audio card).
+    static constexpr int kFileChipGap = 6; // gap before each chip (between chips, or above first)
 
     // Hover toolbar
     static constexpr int kToolbarBtnSize = 28; // icon button square size

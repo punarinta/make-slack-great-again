@@ -7,12 +7,12 @@
 
 FileChipWidget::FileChipWidget(const File &file, QWidget *parent) : QWidget(parent), _file(file) {
     setFixedHeight(MsgRender::fileChipHeight(_file));
-    setMaximumWidth(MsgRender::kFileChipMaxW);
+    setMaximumWidth(MsgRender::fileChipMaxW(_file));
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 }
 
 QSize FileChipWidget::sizeHint() const {
-    return QSize(MsgRender::kFileChipMaxW, MsgRender::fileChipHeight(_file));
+    return QSize(MsgRender::fileChipMaxW(_file), MsgRender::fileChipHeight(_file));
 }
 
 QSize FileChipWidget::minimumSizeHint() const {

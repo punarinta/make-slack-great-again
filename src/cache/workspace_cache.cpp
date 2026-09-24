@@ -93,6 +93,8 @@ static QJsonObject toJson(const File &f) {
         o["aac"] = f.aacUrl;
     if (!f.subtype.isEmpty())
         o["st"] = f.subtype;
+    if (!f.fileType.isEmpty())
+        o["ft"] = f.fileType;
     if (!f.transcriptStatus.isEmpty())
         o["tst"] = f.transcriptStatus;
     if (!f.transcriptPreview.isEmpty())
@@ -131,6 +133,7 @@ static File fileFromJson(const QJsonObject &o) {
     f.durationMs         = static_cast<qint64>(o["dm"].toDouble());
     f.aacUrl             = o["aac"].toString();
     f.subtype            = o["st"].toString();
+    f.fileType           = o["ft"].toString();
     f.transcriptStatus   = o["tst"].toString();
     f.transcriptPreview  = o["tpv"].toString();
     f.transcriptVttUrl   = o["tvt"].toString();

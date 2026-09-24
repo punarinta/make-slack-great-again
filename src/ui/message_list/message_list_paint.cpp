@@ -783,7 +783,7 @@ QRect MessageListWidget::attachFileChipRect(
     return {
         docRect.x(),
         y,
-        std::min(docRect.width(), kFileChipMaxW),
+        std::min(docRect.width(), MsgRender::fileChipMaxW(att.files[fileIdx])),
         MsgRender::fileChipHeight(att.files[fileIdx])
     };
 }

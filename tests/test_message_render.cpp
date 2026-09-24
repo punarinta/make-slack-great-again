@@ -1679,3 +1679,45 @@ TEST_CASE("canvas files get the preview card geometry", "[render][canvas]") {
     CHECK(MsgRender::messageFileMaxW(canvas) == MsgRender::kCanvasCardMaxW);
     CHECK(MsgRender::messageFileHeight(pdf) == MsgRender::fileChipHeight(pdf));
 }
+
+TEST_CASE("code files are recognised by Slack filetype, else extension", "[render][file]") {
+    File html;
+    html.name     = "proposal.html";
+    html.fileType = "html";
+    CHECK(MsgRender::fileIsCode(html));
+    CHECK(MsgRender::fileIsHtml(html));
+
+    File py;
+    py.fileType = "python";
+    py.name     = "run"; // no extension: filetype decides
+    CHECK(MsgRender::fileIsCode(py));
+    CHECK_FALSE(MsgRender::fileIsHtml(py));
+
+    File txt;
+    txt.name     = "notes.txt";
+    txt.fileType = "text";
+    CHECK_FALSE(MsgRender::fileIsCode(txt));
+
+    File pending; // no filetype (pending upload / other backend)
+    pending.name = "page.HTM";
+    CHECK(MsgRender::fileIsCode(pending));
+    CHECK(MsgRender::fileIsHtml(pending));
+    pending.name = "report.pdf";
+    CHECK_FALSE(MsgRender::fileIsCode(pending));
+    CHECK_FALSE(MsgRender::fileIsHtml(pending));
+}
+
+TEST_CASE("plain chips widen to fit the whole filename", "[render][file]") {
+    File shortName;
+    shortName.name = "a.pdf";
+    File longName;
+    longName.name = "github-final-team-proposal-2026-09-24.html";
+    CHECK(MsgRender::fileChipMaxW(shortName) == MsgRender::kFileChipMinW);
+    CHECK(MsgRender::fileChipMaxW(longName) > MsgRender::kFileChipMinW);
+    CHECK(MsgRender::fileChipMaxW(longName) <= MsgRender::kFileChipNameMaxW);
+    CHECK(MsgRender::messageFileMaxW(longName) == MsgRender::fileChipMaxW(longName));
+    File audio;
+    audio.mimeType = "audio/mpeg";
+    audio.name     = longName.name;
+    CHECK(MsgRender::fileChipMaxW(audio) == MsgRender::kFileChipMaxW);
+}

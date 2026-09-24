@@ -451,6 +451,7 @@ File toFile(const QJsonObject &o) {
     f.durationMs         = (qint64)o.value("duration_ms").toDouble();
     f.aacUrl             = o.value("aac").toString();
     f.subtype            = o.value("subtype").toString();
+    f.fileType           = o.value("filetype").toString();
     if (const QJsonObject tr = o.value("transcription").toObject(); !tr.isEmpty()) {
         f.transcriptStatus  = tr.value("status").toString();
         f.transcriptPreview = tr.value("preview").toObject().value("content").toString();

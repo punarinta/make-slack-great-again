@@ -43,6 +43,7 @@
         <file alias="ui/list.svg">../gfx/ui/list.svg</file>
         <file alias="ui/quote.svg">../gfx/ui/quote.svg</file>
         <file alias="ui/code.svg">../gfx/ui/code.svg</file>
+        <file alias="ui/code-file.svg">../gfx/ui/code-file.svg</file>
         <file alias="ui/braces.svg">../gfx/ui/braces.svg</file>
         <file alias="ui/chevron-down.svg">../gfx/ui/chevron-down.svg</file>
         <file alias="ui/chevron-right.svg">../gfx/ui/chevron-right.svg</file>

@@ -58,6 +58,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QMessageBox>
@@ -3439,10 +3440,58 @@ bool MessageListWidget::tryHandleFileChipPress(const QPoint &pos) {
         openCanvasViewer(*f);
         return true;
     }
+    if (MsgRender::fileIsHtml(*f) && !f->urlPrivate.isEmpty()) {
+        openHtmlFile(*f);
+        return true;
+    }
     const QString url = f->permalink.isEmpty() ? f->urlPrivate : f->permalink;
     if (!url.isEmpty())
         QDesktopServices::openUrl(QUrl(url));
     return true;
+}
+
+void MessageListWidget::openHtmlFile(const File &file) {
+    // The page itself, rendered by the browser — not Slack's file page, which
+    // only offers a download. url_private needs auth, so fetch it and hand the
+    // browser a local copy (a data: URL is refused as a top-level navigation by
+    // Chromium, and xdg-open has no handler for the scheme anyway).
+    if (file.urlPrivate.startsWith("file://")) { // pending upload — bytes are on disk
+        QDesktopServices::openUrl(QUrl(file.urlPrivate));
+        return;
+    }
+    if (!_session)
+        return;
+    QString name = QFileInfo(file.name).fileName();
+    name.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")), QStringLiteral("_"));
+    if (!name.endsWith(".html", Qt::CaseInsensitive) && !name.endsWith(".htm", Qt::CaseInsensitive))
+        name += QStringLiteral(".html");
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+                         QStringLiteral("/cache/files/%1-%2").arg(file.id, name);
+    if (QFileInfo fi(path); fi.exists() && fi.size() > 0) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        return;
+    }
+    const QString fallback = file.permalink;
+    _session->downloadFile(
+        file.urlPrivate,
+        [path, fallback](QByteArray data) {
+            QDir().mkpath(QFileInfo(path).path());
+            QSaveFile out(path);
+            if (data.isEmpty() || !out.open(QIODevice::WriteOnly) ||
+                out.write(data) != data.size() || !out.commit()) {
+                if (!fallback.isEmpty())
+                    QDesktopServices::openUrl(QUrl(fallback));
+                return;
+            }
+            CacheEvictor::noteBytesWritten(data.size());
+            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        },
+        [fallback](QString err) {
+            qWarning() << "HTML file download failed:" << err;
+            if (!fallback.isEmpty())
+                QDesktopServices::openUrl(QUrl(fallback));
+        }
+    );
 }
 
 void MessageListWidget::openCanvasViewer(const File &file) {

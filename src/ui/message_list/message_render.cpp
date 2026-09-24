@@ -2011,7 +2011,54 @@ bool attachIsBarless(const Attachment &att) {
     return att.isMsgUnfurl || attachIsImageOnly(att) || attachIsTableOnly(att);
 }
 
+namespace {
+QString fileExtension(const File &f) {
+    const int dot = f.name.lastIndexOf('.');
+    return dot >= 0 ? f.name.mid(dot + 1).toLower() : QString();
+}
+} // namespace
+
+bool fileIsCode(const File &f) {
+    // Slack's filetype ids for languages / markup (its snippet types). "text",
+    // "csv", "tsv" and friends are documents, not code.
+    static const QSet<QString> kCodeTypes = {
+        "applescript", "c",          "clojure",   "coffeescript", "cfm",        "cpp",
+        "csharp",      "css",        "d",         "dart",         "diff",       "dockerfile",
+        "elixir",      "erlang",     "fortran",   "fsharp",       "go",         "groovy",
+        "handlebars",  "haskell",    "haxe",      "html",         "java",       "javascript",
+        "json",        "jsx",        "julia",     "kotlin",       "latex",      "lisp",
+        "lua",         "markdown",   "matlab",    "mumps",        "objc",       "ocaml",
+        "pascal",      "perl",       "php",       "pig",          "powershell", "puppet",
+        "python",      "r",          "ruby",      "rust",         "sass",       "scala",
+        "scheme",      "shell",      "smalltalk", "sql",          "swift",      "toml",
+        "tsx",         "typescript", "vb",        "vbscript",     "velocity",   "verilog",
+        "vhdl",        "xml",        "yaml",
+    };
+    if (!f.fileType.isEmpty())
+        return kCodeTypes.contains(f.fileType.toLower());
+    // No filetype (other backends, pending uploads): go by the extension.
+    static const QSet<QString> kCodeExts = {
+        "bash", "c",    "cc",   "cjs",   "clj",   "cmake", "cpp", "cs",     "css",   "cxx",
+        "dart", "diff", "erl",  "ex",    "exs",   "go",    "h",   "hpp",    "hs",    "htm",
+        "html", "java", "jl",   "js",    "json",  "jsx",   "kt",  "kts",    "less",  "lua",
+        "m",    "md",   "mjs",  "mm",    "patch", "php",   "pl",  "ps1",    "py",    "r",
+        "rb",   "rs",   "sass", "scala", "scss",  "sh",    "sql", "svelte", "swift", "tex",
+        "toml", "ts",   "tsx",  "vue",   "xml",   "yaml",  "yml", "zsh",
+    };
+    return kCodeExts.contains(fileExtension(f));
+}
+
+bool fileIsHtml(const File &f) {
+    if (!f.fileType.isEmpty())
+        return f.fileType.compare("html", Qt::CaseInsensitive) == 0;
+    const QString ext = fileExtension(f);
+    return ext == "html" || ext == "htm" ||
+           f.mimeType.compare("text/html", Qt::CaseInsensitive) == 0;
+}
+
 QColor fileTypeColor(const File &f) {
+    if (fileIsCode(f))
+        return QColor("#DE4E2B"); // Slack's code-file orange
     const QString mt = f.mimeType.toLower();
     if (mt.contains("pdf"))
         return QColor("#E44D4D");
@@ -2058,9 +2105,11 @@ QString formatFileSize(qint64 bytes) {
 
 namespace {
 
-constexpr int kChipIconW  = 48;
-constexpr int kChipPadX   = 12;
-constexpr int kChipRadius = 4;
+constexpr int kChipPad    = 12; // around the icon, and the text's right margin
+constexpr int kChipIcon   = 36; // rounded-square type icon
+constexpr int kChipGap    = 12; // icon → text
+constexpr int kChipRadius = 8;
+constexpr int kChipIconR  = 6;
 
 // Audio card: round play button + title block on top, slider row underneath.
 constexpr int kAudioPad      = 12;
@@ -2072,7 +2121,7 @@ constexpr int kAudioAction   = 28; // "Transcribe" button (square hit area, roun
 constexpr int kAudioLabelGap = 6;  // time label → action button
 
 QRect clampChip(const QRect &rect, const File &f) {
-    return QRect(rect.x(), rect.y(), std::min(rect.width(), kFileChipMaxW), fileChipHeight(f));
+    return QRect(rect.x(), rect.y(), std::min(rect.width(), fileChipMaxW(f)), fileChipHeight(f));
 }
 QRect clampChip(const QRect &rect, int h) {
     return QRect(rect.x(), rect.y(), std::min(rect.width(), kFileChipMaxW), h);
@@ -2089,25 +2138,38 @@ QFont chipSubFont() {
     return f;
 }
 
+// "HTML · 4 KB"
+QString chipSubtitle(const File &f) {
+    QString       sub = f.prettyType;
+    const QString sz  = formatFileSize(f.size);
+    if (!sz.isEmpty())
+        sub += (sub.isEmpty() ? "" : " · ") + sz;
+    return sub;
+}
+
 // Text column layout of the plain (non-audio) chip.
 struct ChipText {
     QRect chip; // clamped chip rect
+    QRect icon;
     int   textX, textW;
     QFont nameFont, subFont;
     int   nameTop, subTop, subH;
 };
 
-ChipText chipText(const QRect &rect) {
+ChipText chipText(const File &f, const QRect &rect) {
     ChipText t;
-    t.chip     = clampChip(rect, kFileChipH);
-    t.textX    = t.chip.x() + kChipIconW + kChipPadX;
-    t.textW    = t.chip.width() - kChipIconW - kChipPadX - 8;
+    t.chip = clampChip(rect, f);
+    t.icon = QRect(
+        t.chip.x() + kChipPad, t.chip.y() + (kFileChipH - kChipIcon) / 2, kChipIcon, kChipIcon
+    );
+    t.textX    = t.icon.right() + 1 + kChipGap;
+    t.textW    = t.chip.right() + 1 - kChipPad - t.textX;
     t.nameFont = chipNameFont();
     t.subFont  = chipSubFont();
     const QFontMetrics nameFm(t.nameFont), subFm(t.subFont);
-    const int          totalTextH = nameFm.height() + 3 + subFm.height();
+    const int          totalTextH = nameFm.height() + 2 + subFm.height();
     t.nameTop                     = t.chip.y() + (kFileChipH - totalTextH) / 2;
-    t.subTop                      = t.nameTop + nameFm.height() + 3;
+    t.subTop                      = t.nameTop + nameFm.height() + 2;
     t.subH                        = subFm.height();
     return t;
 }
@@ -2121,61 +2183,59 @@ int audioTimeLabelW(const QFontMetrics &fm, qint64 durationMs) {
 }
 
 void paintPlainChip(QPainter &p, const File &f, const QRect &rect) {
-    const ChipText t        = chipText(rect);
-    const QRect   &chipRect = t.chip;
+    const ChipText t = chipText(f, rect);
 
-    // Clipped fill: background + colored icon column
-    QPainterPath clipPath;
-    clipPath.addRoundedRect(QRectF(chipRect), kChipRadius, kChipRadius);
-    p.save();
-    p.setClipPath(clipPath);
-    p.fillRect(chipRect, Th::c().message.fileChipBg);
-    p.fillRect(QRect(chipRect.x(), chipRect.y(), kChipIconW, kFileChipH), fileTypeColor(f));
-    p.restore();
-
-    // Border
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Th::c().message.fileChipBorder);
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(QRectF(chipRect), kChipRadius, kChipRadius);
-    p.restore();
 
-    // Extension label centered in icon column
-    {
+    // Card: thin border, rounded corners
+    p.setPen(Th::c().message.fileChipBorder);
+    p.setBrush(Th::c().message.fileChipBg);
+    p.drawRoundedRect(QRectF(t.chip).adjusted(0.5, 0.5, -0.5, -0.5), kChipRadius, kChipRadius);
+
+    // Type icon: coloured rounded square with a "</>" glyph for code, else the
+    // extension. Glyph re-baked on DPR change (never a bare static — see .rules).
+    p.setPen(Qt::NoPen);
+    p.setBrush(fileTypeColor(f));
+    p.drawRoundedRect(QRectF(t.icon), kChipIconR, kChipIconR);
+    if (fileIsCode(f)) {
+        static const QSize kGlyphSz(20, 20);
+        static qreal       kDpr = 0;
+        static QPixmap     kCode;
+        if (const qreal d = p.device()->devicePixelRatioF(); !qFuzzyCompare(d, kDpr)) {
+            kDpr  = d;
+            kCode = svgPixmapPhys(":/ui/code-file.svg", kGlyphSz, Qt::white, d);
+        }
+        p.drawPixmap(
+            t.icon.x() + (t.icon.width() - kGlyphSz.width()) / 2,
+            t.icon.y() + (t.icon.height() - kGlyphSz.height()) / 2,
+            kCode
+        );
+    } else {
         QFont iconFont = QApplication::font();
         iconFont.setBold(true);
-        iconFont.setPointSizeF(iconFont.pointSizeF() * 0.72);
-        p.save();
+        iconFont.setPointSizeF(iconFont.pointSizeF() * 0.66);
         p.setFont(iconFont);
         p.setPen(Qt::white);
-        p.drawText(
-            QRect(chipRect.x(), chipRect.y(), kChipIconW, kFileChipH),
-            Qt::AlignCenter,
-            fileIconLabel(f)
-        );
-        p.restore();
+        p.drawText(t.icon, Qt::AlignCenter, fileIconLabel(f));
     }
 
-    // Filename + subtitle (type · size) vertically centred in text column
-    const QFontMetrics nameFm(t.nameFont);
-    p.save();
+    // Filename + subtitle (type · size)
+    const QFontMetrics nameFm(t.nameFont), subFm(t.subFont);
     p.setFont(t.nameFont);
     p.setPen(Th::c().text.primary);
     p.drawText(
         QRect(t.textX, t.nameTop, t.textW, nameFm.height()),
         Qt::AlignLeft | Qt::AlignVCenter,
-        nameFm.elidedText(f.name, Qt::ElideRight, t.textW)
+        nameFm.elidedText(f.name, Qt::ElideMiddle, t.textW)
     );
-    QString       sub = f.prettyType;
-    const QString sz  = formatFileSize(f.size);
-    if (!sz.isEmpty())
-        sub += (sub.isEmpty() ? "" : " · ") + sz;
-    if (!sub.isEmpty()) {
+    if (const QString sub = chipSubtitle(f); !sub.isEmpty()) {
         p.setFont(t.subFont);
         p.setPen(Th::c().text.secondary);
         p.drawText(
-            QRect(t.textX, t.subTop, t.textW, t.subH), Qt::AlignLeft | Qt::AlignVCenter, sub
+            QRect(t.textX, t.subTop, t.textW, t.subH),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            subFm.elidedText(sub, Qt::ElideRight, t.textW)
         );
     }
     p.restore();
@@ -2443,6 +2503,17 @@ std::vector<VttCue> parseVtt(const QByteArray &vtt) {
             cues.push_back(cue);
     }
     return cues;
+}
+
+int fileChipMaxW(const File &f) {
+    if (f.isAudio())
+        return kFileChipMaxW;
+    const QFontMetrics nameFm(chipNameFont()), subFm(chipSubFont());
+    const int          textW =
+        std::max(nameFm.horizontalAdvance(f.name), subFm.horizontalAdvance(chipSubtitle(f)));
+    return std::clamp(
+        kChipPad + kChipIcon + kChipGap + textW + kChipPad + 1, kFileChipMinW, kFileChipNameMaxW
+    );
 }
 
 void paintFileChip(QPainter &p, const File &f, const QRect &rect, const AudioChipState *audio) {

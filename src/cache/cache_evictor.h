@@ -4,8 +4,9 @@
 // "Last used" is a blob's file mtime: WorkspaceCache::saveImage stamps it on
 // write and loadImage bumps it on read, so eviction order is least-recently-
 // VIEWED, not least-recently-downloaded. Only blobs are evicted (the "images"
-// dirs and the "audio" dir the inline player downloads into); the structural
-// JSON files (conversations, users, messages, meta) are small and always kept.
+// dirs, the "audio" dir the inline player downloads into and the "files" dir
+// of HTML files opened in the browser); the structural JSON files
+// (conversations, users, messages, meta) are small and always kept.
 #pragma once
 
 #include <QObject>

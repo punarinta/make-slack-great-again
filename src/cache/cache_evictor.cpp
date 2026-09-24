@@ -43,7 +43,8 @@ qint64 CacheEvictor::sweep(const QString &cacheRoot, qint64 capBytes) {
         const auto fi = it.fileInfo();
         total += fi.size();
         const QString dir = fi.dir().dirName();
-        if (dir == QLatin1String("images") || dir == QLatin1String("audio"))
+        if (dir == QLatin1String("images") || dir == QLatin1String("audio") ||
+            dir == QLatin1String("files"))
             blobs.push_back({fi.filePath(), fi.size(), fi.lastModified()});
     }
     if (total <= capBytes)

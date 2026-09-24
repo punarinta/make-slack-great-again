@@ -263,6 +263,10 @@ QString convPlaceLabel(const QString &convId, const Session *session);
 
 QColor  fileTypeColor(const File &f);
 QString fileIconLabel(const File &f);
+// Source code / markup, by Slack's filetype id or else the extension: gets the
+// "</>" icon, like Slack's own client. fileIsHtml: opened in the browser.
+bool    fileIsCode(const File &f);
+bool    fileIsHtml(const File &f);
 QString formatFileSize(qint64 bytes);
 
 // Inline-player state of an audio card (File::isAudio()). nullptr = idle and
@@ -282,7 +286,7 @@ struct AudioChipState {
 };
 
 // Paint a single non-image file chip into rect using the canonical message-list
-// style. rect should be fileChipHeight(f) tall; width is clamped to kFileChipMaxW.
+// style. rect should be fileChipHeight(f) tall; width is clamped to fileChipMaxW(f).
 void paintFileChip(
     QPainter &p, const File &f, const QRect &rect, const AudioChipState *audio = nullptr
 );
@@ -317,10 +321,17 @@ QString             formatDuration(qint64 ms, bool round = false);
 // Canonical chip dimensions — exposed so callers can size widgets correctly.
 // Audio files get the taller player card; every layout walk over a message's
 // chips must use fileChipHeight(f), never kFileChipH directly.
-inline constexpr int kFileChipH    = 52;
-inline constexpr int kAudioChipH   = 88;
-inline constexpr int kTranscriptH  = 26; // transcript line under the audio card
-inline constexpr int kFileChipMaxW = 380;
+inline constexpr int kFileChipH        = 60;
+inline constexpr int kAudioChipH       = 88;
+inline constexpr int kTranscriptH      = 26;  // transcript line under the audio card
+inline constexpr int kFileChipMaxW     = 380; // audio card; plain chips fit their name
+// Plain chips grow to show the whole filename (like Slack's), within these
+// bounds — and the width available, which every caller caps it to.
+inline constexpr int kFileChipMinW     = 220;
+inline constexpr int kFileChipNameMaxW = 640;
+// Width a chip wants: kFileChipMaxW for the audio card, the name's natural
+// width for a plain chip. Layout and hit tests size chips through this.
+int                  fileChipMaxW(const File &f);
 inline int           fileChipHeight(const File &f) {
     if (!f.isAudio())
         return kFileChipH;
@@ -340,7 +351,7 @@ inline int           messageFileHeight(const File &f) {
     return f.isCanvas() ? kCanvasCardH : fileChipHeight(f);
 }
 inline int messageFileMaxW(const File &f) {
-    return f.isCanvas() ? kCanvasCardMaxW : kFileChipMaxW;
+    return f.isCanvas() ? kCanvasCardMaxW : fileChipMaxW(f);
 }
 
 // User mentions are rendered as anchors with this internal scheme so they are

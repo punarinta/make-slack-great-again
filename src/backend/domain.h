@@ -767,6 +767,9 @@ struct File {
     qint64                 durationMs = 0;
     QString                aacUrl;  // auth required
     QString                subtype; // e.g. "slack_audio" for voice clips
+    // Slack's `filetype` id ("html", "python", "pdf", …): what Slack keys its
+    // file icons off. Empty on other backends — callers fall back to the name.
+    QString                fileType;
     // Slack's own speech-to-text for voice clips (`transcription` + `vtt`):
     // status ("complete" when usable; uploads report "none"), the one-line
     // preview, and the WebVTT with per-cue timestamps (auth required).
