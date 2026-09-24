@@ -59,6 +59,9 @@ ImapAddAccountDialog::ImapAddAccountDialog(QWidget *parent)
     _help->setTextFormat(Qt::RichText);
     _help->setOpenExternalLinks(true);
     _help->setWordWrap(true);
+    _help->setStyleSheet(QStringLiteral("font-size: %1px; color: %2;")
+                             .arg(Th::c().fonts.caption)
+                             .arg(Th::qss(Th::c().text.secondary)));
     _help->setVisible(false);
     lay->addWidget(_help);
 
@@ -152,8 +155,14 @@ void ImapAddAccountDialog::configureProvider() {
         helpHtml = QObject::tr("%1 needs an app password").arg(_provider.name);
     if (!helpHtml.isEmpty() && !_provider.appPasswordHelpUrl.isEmpty()) {
         _help->setText(
-            QStringLiteral("%1: <a href=\"%2\">%3</a>")
-                .arg(helpHtml, _provider.appPasswordHelpUrl, _provider.appPasswordHelpUrl)
+            // Inline anchor colour: a palette Link colour is dropped under a stylesheet.
+            QStringLiteral("%1: <a href=\"%2\" style=\"color: %4;\">%3</a>")
+                .arg(
+                    helpHtml,
+                    _provider.appPasswordHelpUrl,
+                    _provider.appPasswordHelpUrl,
+                    Th::qss(Th::c().text.link)
+                )
         );
         _help->setVisible(true);
     } else {

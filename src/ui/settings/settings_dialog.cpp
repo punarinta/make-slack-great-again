@@ -662,7 +662,8 @@ void SettingsDialog::buildPanel() {
     auto *soundRow = new QHBoxLayout(_notifSoundRow);
     soundRow->setContentsMargins(0, 0, 0, 0);
     soundRow->setSpacing(sp.md);
-    auto *soundLabel  = new QLabel(tr("Sound:"), _notifSoundRow);
+    auto *soundLabel = new QLabel(tr("Sound:"), _notifSoundRow);
+    soundLabel->setObjectName("soundLabel");
     _notifSoundChoice = new Dropdown(_notifSoundRow);
     _notifSoundChoice->setSize(Dropdown::Size::Small);
     _notifSoundChoice->setMinimumWidth(220);
@@ -1131,6 +1132,7 @@ void SettingsDialog::buildPanel() {
     const auto addCredField =
         [&](const QString &label, const QString &placeholder, bool secret) -> StyledLineEdit * {
         auto *fieldLabel = new QLabel(label, credBox);
+        fieldLabel->setObjectName("credFieldLabel");
         credLayout->addWidget(fieldLabel);
         auto *edit = new StyledLineEdit(credBox);
         edit->setSize(StyledLineEdit::Size::Small);
@@ -1218,7 +1220,9 @@ void SettingsDialog::buildPanel() {
     teamsFields->setSpacing(sp.sm);
     teamsFields->setContentsMargins(0, 0, 0, 0);
 
-    teamsFields->addWidget(new QLabel(tr("Client ID"), sysPage));
+    auto *teamsFieldLabel = new QLabel(tr("Client ID"), sysPage);
+    teamsFieldLabel->setObjectName("credFieldLabel");
+    teamsFields->addWidget(teamsFieldLabel);
     _teamsClientId = new StyledLineEdit(sysPage);
     _teamsClientId->setSize(StyledLineEdit::Size::Small);
     // A baked-in ID is a working default, so say so rather than leaving an
@@ -1287,7 +1291,9 @@ void SettingsDialog::buildPanel() {
     gifFields->setSpacing(sp.sm);
     gifFields->setContentsMargins(0, 0, 0, 0);
 
-    gifFields->addWidget(new QLabel(tr("API key"), sysPage));
+    auto *gifFieldLabel = new QLabel(tr("API key"), sysPage);
+    gifFieldLabel->setObjectName("credFieldLabel");
+    gifFields->addWidget(gifFieldLabel);
     _giphyKey = new StyledLineEdit(sysPage);
     _giphyKey->setSize(StyledLineEdit::Size::Small);
     _giphyKey->enablePasswordReveal();
@@ -1395,8 +1401,7 @@ void SettingsDialog::buildPanel() {
 
     auto *contactLabel = new QLabel(aboutPage);
     contactLabel->setObjectName("aboutContact");
-    contactLabel->setText(tr("Questions or feedback: %1")
-                              .arg("<a href=\"mailto:vladimir@msga.app\">vladimir@msga.app</a>"));
+    // Text is set in applyTheme(): the link colour is baked into the HTML.
     contactLabel->setTextFormat(Qt::RichText);
     contactLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
     contactLabel->setOpenExternalLinks(true);
@@ -2170,6 +2175,11 @@ void SettingsDialog::applyTheme() {
     _notifHuddles->setStyleSheet(checkQss);
     _notifBoldMentionsOnly->setStyleSheet(checkQss);
     _notifSound->setStyleSheet(checkQss);
+    if (auto *w = _panel->findChild<QLabel *>("soundLabel")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
     // (Save button self-themes — StyledButton)
 
     // ── AI assistance page ────────────────────────────────────────────
@@ -2244,6 +2254,26 @@ void SettingsDialog::applyTheme() {
                              .arg(th.fonts.caption)
                              .arg(Th::qss(th.text.secondary)));
     }
+    // Slack connection / Teams / GIF picker blocks.
+    for (auto *w : _panel->findChildren<QLabel *>("credDesc")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
+    for (auto *w : _panel->findChildren<QLabel *>("credStatus")) {
+        w->setStyleSheet(QString("font-size: %1px; color: %2;")
+                             .arg(th.fonts.caption)
+                             .arg(Th::qss(th.text.secondary)));
+    }
+    for (auto *w : _panel->findChildren<QLabel *>("credFieldLabel")) {
+        w->setStyleSheet(
+            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
+    for (auto *w : _panel->findChildren<QGroupBox *>("credBox")) {
+        w->setStyleSheet(QString("QGroupBox#credBox { border: 1px solid %1; border-radius: 4px; }")
+                             .arg(Th::qss(th.divider.def)));
+    }
     // (Check-for-updates button self-themes — StyledButton Ghost)
     _updateStatus->setStyleSheet(
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))
@@ -2267,6 +2297,14 @@ void SettingsDialog::applyTheme() {
         w->setStyleSheet(
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
+        // Inline colour on the anchor: a palette Link colour is dropped once a
+        // stylesheet is in play, leaving the OS default blue.
+        w->setText(tr("Questions or feedback: %1")
+                       .arg(QString(
+                                "<a href=\"mailto:vladimir@msga.app\" style=\"color: %1;\">"
+                                "vladimir@msga.app</a>"
+                       )
+                                .arg(Th::qss(th.text.link))));
     }
     if (auto *w = _panel->findChild<QLabel *>("aboutBugDesc")) {
         w->setStyleSheet(QString("font-size: %1px; color: %2;")
