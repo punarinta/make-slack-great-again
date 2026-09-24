@@ -1139,6 +1139,43 @@ TEST_CASE_METHOD(SessionFixture, "findConversation returns null for unknown id",
     CHECK(session->findConversation(ConversationId{"C_GHOST"}) == nullptr);
 }
 
+TEST_CASE_METHOD(
+    SessionFixture,
+    "mentioned channel outside the list resolves via conversations.info",
+    "[session]"
+) {
+    // An archived channel: conversations.list excludes it, so a bare <#C…>
+    // mention of it can only be named through conversations.info.
+    Conversation archived;
+    archived.id                 = ConversationId{"C_ARCH"};
+    archived.name               = "hitta-all-hands";
+    stub->infoResults["C_ARCH"] = archived;
+
+    QList<ConversationId> fired;
+    rpl::lifetime         lt;
+    session->channelInfoLoaded() | rpl::on_next([&](ConversationId id) { fired.append(id); }, lt);
+
+    CHECK(session->mentionedChannelName(ConversationId{"C1"}) == "general");
+    session->fetchChannelIfNeeded(ConversationId{"C1"}); // in the list: no fetch
+    CHECK(session->mentionedChannelName(ConversationId{"C_ARCH"}).isEmpty());
+
+    session->fetchChannelIfNeeded(ConversationId{"C_ARCH"});
+    CHECK(session->mentionedChannelName(ConversationId{"C_ARCH"}) == "hitta-all-hands");
+    CHECK(fired == QList<ConversationId>{ConversationId{"C_ARCH"}});
+    // Kept out of the sidebar.
+    CHECK(session->findConversation(ConversationId{"C_ARCH"}) == nullptr);
+
+    // Resolved once; a not-found answer is remembered too.
+    stub->infoResults["C_GONE"] = Conversation{.id = ConversationId{"C_GONE"}, .notFound = true};
+    session->fetchChannelIfNeeded(ConversationId{"C_ARCH"});
+    session->fetchChannelIfNeeded(ConversationId{"C_GONE"});
+    session->fetchChannelIfNeeded(ConversationId{"C_GONE"});
+    CHECK(stub->infoRequested.count("C_ARCH") == 1);
+    CHECK(stub->infoRequested.count("C_GONE") == 1);
+    CHECK(session->mentionedChannelName(ConversationId{"C_GONE"}).isEmpty());
+    CHECK(fired.size() == 1);
+}
+
 // ── EvPresenceChanged ─────────────────────────────────────────────────────────
 
 TEST_CASE_METHOD(SessionFixture, "EvPresenceChanged updates user isActive", "[session][events]") {

@@ -360,6 +360,8 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
 
     _session->userInfoLoaded() |
         rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
+    _session->channelInfoLoaded() |
+        rpl::on_next([this](ConversationId id) { onChannelResolved(id); }, _eventLifetime);
 
     _session->botInfoLoaded() | rpl::on_next(
                                     [this](UserId) {
@@ -709,6 +711,8 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
 
     _session->userInfoLoaded() |
         rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
+    _session->channelInfoLoaded() |
+        rpl::on_next([this](ConversationId id) { onChannelResolved(id); }, _eventLifetime);
 
     _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
     // Fresh usergroups.list: @S… fallbacks and stale handles must re-render.
@@ -850,9 +854,12 @@ void MessageListWidget::expandInlineThread(ConversationId conv, const Ts &rootTs
                         // (it walks top-level rows only), so resolve their external
                         // authors + @mentions here.
                         _session->fetchUserIfNeeded(m.author);
-                        for (const auto &e : m.text.entities)
+                        for (const auto &e : m.text.entities) {
                             if (e.type == EntityType::UserMention)
                                 _session->fetchUserIfNeeded(UserId{e.data});
+                            else if (e.type == EntityType::ChannelMention)
+                                _session->fetchChannelIfNeeded(ConversationId{e.data});
+                        }
                     }
                     MessageItem item;
                     item.msg = m;
@@ -1106,6 +1113,24 @@ void MessageListWidget::onUserResolved(UserId id) {
             return;
         item.textDoc.reset();
         item.docWidth = -1;
+    };
+    for (auto &item : _items)
+        refresh(item);
+    for (auto &entry : _inlineThreads)
+        for (auto &reply : entry.second.replies)
+            refresh(reply);
+    rebuildLayout();
+    viewport()->update();
+}
+
+void MessageListWidget::onChannelResolved(ConversationId id) {
+    const auto refresh = [&id](MessageItem &item) {
+        for (const auto &e : item.msg.text.entities)
+            if (e.type == EntityType::ChannelMention && e.data == id.value) {
+                item.textDoc.reset();
+                item.docWidth = -1;
+                return;
+            }
     };
     for (auto &item : _items)
         refresh(item);

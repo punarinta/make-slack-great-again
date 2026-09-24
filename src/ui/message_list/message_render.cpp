@@ -315,14 +315,15 @@ QString resolveMention(const QString &userId, const Session *session) {
 // Resolve a ChannelMention's display name via entity.data (the channel ID).
 // Slack often echoes a channel link as a bare "<#C123>" with no name part, so
 // the parser can only bake "#C123"; resolving against the conversation cache
-// recovers the real "#general" the official client shows. `fallback` is the
-// parser's baked text, used when the channel isn't in the cache.
+// recovers the real "#general" the official client shows (channels outside the
+// list, e.g. archived ones, come from Session::fetchChannelIfNeeded). `fallback`
+// is the parser's baked text, used when the name is unknown.
 static QString
 resolveChannelImpl(const QString &channelId, const QString &fallback, const Session *session) {
     if (session) {
-        const auto *c = session->findConversation(ConversationId{channelId});
-        if (c && !c->name.isEmpty())
-            return "#" + c->name;
+        const QString name = session->mentionedChannelName(ConversationId{channelId});
+        if (!name.isEmpty())
+            return "#" + name;
     }
     return fallback;
 }

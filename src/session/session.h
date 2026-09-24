@@ -424,6 +424,18 @@ public:
     // re-render that author's header + avatar and any baked-in @mentions.
     rpl::producer<UserId> userInfoLoaded() const;
 
+    // Name of a mentioned channel: the conversation list first, then channels
+    // resolved by fetchChannelIfNeeded. Empty when unknown.
+    QString                       mentionedChannelName(ConversationId id) const;
+    // Resolve a <#C…> mention that carries no name and isn't in the
+    // conversation list — archived channels (conversations.list runs with
+    // exclude_archived) and public channels we're not in. conversations.info
+    // on the paced lane, once per id per session; the result stays out of the
+    // sidebar. No-op if known, in flight, or already answered channel_not_found.
+    void                          fetchChannelIfNeeded(ConversationId id);
+    // Fires the channel id whenever fetchChannelIfNeeded resolves a name.
+    rpl::producer<ConversationId> channelInfoLoaded() const;
+
     // Flush current unread counts to cache so they survive a restart.
     // Synchronous — call on shutdown or when durability is required now.
     void persistUnreads();
@@ -1113,6 +1125,10 @@ private:
     QHash<QString, User>       _botUsers;           // bot_id → User; for bots not in users.list
     QSet<QString>              _pendingBotFetches;  // bot_ids with an in-flight bots.info request
     QSet<QString>              _pendingUserFetches; // user ids with an in-flight users.info request
+    // Channel id → name for mentioned channels outside the conversation list
+    // (fetchChannelIfNeeded); an empty name records channel_not_found.
+    QHash<QString, QString>    _mentionedChannelNames;
+    QSet<QString>              _pendingChannelFetches;
     // Daily roster refresh (loadUsersFromBackend / reprobeOffRosterUsers). Renames
     // and avatar changes are rare and a day of lag on them is fine; anything
     // tighter just churns the roster for no visible change. Gated on
@@ -1131,7 +1147,8 @@ private:
     rpl::lifetime          _usersLoadLifetime; // the current loadUsers subscription (one at a time)
     QTimer                 _offRosterProbeTimer; // single-shot → reprobeOffRosterUsers
     QTimer                 _saveUserProbesTimer; // debounces scheduleSaveUserProbeTimes()
-    rpl::event_stream<UserId> _botInfoHub;
-    rpl::event_stream<UserId> _userInfoHub;
-    rpl::lifetime             _lifetime;
+    rpl::event_stream<UserId>         _botInfoHub;
+    rpl::event_stream<UserId>         _userInfoHub;
+    rpl::event_stream<ConversationId> _channelInfoHub;
+    rpl::lifetime                     _lifetime;
 };

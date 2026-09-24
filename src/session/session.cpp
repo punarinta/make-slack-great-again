@@ -1792,6 +1792,41 @@ rpl::producer<UserId> Session::userInfoLoaded() const {
     return _userInfoHub.events();
 }
 
+QString Session::mentionedChannelName(ConversationId id) const {
+    if (const auto *c = findConversation(id); c && !c->name.isEmpty())
+        return c->name;
+    return _mentionedChannelNames.value(id.value);
+}
+
+void Session::fetchChannelIfNeeded(ConversationId id) {
+    if (id.value.isEmpty() || findConversation(id))
+        return;
+    if (_mentionedChannelNames.contains(id.value) || _pendingChannelFetches.contains(id.value))
+        return;
+    _pendingChannelFetches.insert(id.value);
+    _backend->loadConversationInfo(id, /*background=*/true) |
+        rpl::on_next_done(
+            [this, id](Conversation conv) {
+                if (conv.notFound) {
+                    // Remember the miss so the next paint doesn't re-ask.
+                    _mentionedChannelNames.insert(id.value, QString());
+                    return;
+                }
+                if (conv.name.isEmpty())
+                    return;
+                _mentionedChannelNames.insert(id.value, conv.name);
+                _channelInfoHub.fire_copy(id);
+            },
+            // A transient failure leaves the id fetchable for a later paint.
+            [this, id] { _pendingChannelFetches.remove(id.value); },
+            _lifetime
+        );
+}
+
+rpl::producer<ConversationId> Session::channelInfoLoaded() const {
+    return _channelInfoHub.events();
+}
+
 void Session::fetchMissingDmUsers() {
     // users.list not loaded yet → every peer would look "missing". The users
     // load handler calls us again once the full list has arrived.

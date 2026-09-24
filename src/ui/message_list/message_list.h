@@ -498,6 +498,8 @@ private:
     // re-render any rows whose author or @mention is this user so the raw id
     // becomes a name + avatar.
     void onUserResolved(UserId id);
+    // Same for a mentioned channel resolved by Session::fetchChannelIfNeeded.
+    void onChannelResolved(ConversationId id);
 
     // Mouse: returns the href under the given viewport point, or empty.
     QString anchorAt(const QPoint &viewportPos) const;

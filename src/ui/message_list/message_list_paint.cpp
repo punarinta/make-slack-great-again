@@ -527,9 +527,13 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
 
         // Resolve @mentions of external collaborators too, so they render as a
         // name rather than the bare "@U…/@W…".
-        for (const auto &e : msg.text.entities)
+        // Same for #channels outside the conversation list (archived ones).
+        for (const auto &e : msg.text.entities) {
             if (e.type == EntityType::UserMention && !_session->findUser(UserId{e.data}))
                 _session->fetchUserIfNeeded(UserId{e.data});
+            else if (e.type == EntityType::ChannelMention)
+                _session->fetchChannelIfNeeded(ConversationId{e.data});
+        }
 
         // Reactors, so the who-reacted tooltip shows names by the time it opens.
         for (const auto &r : msg.reactions)
