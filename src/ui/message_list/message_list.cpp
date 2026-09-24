@@ -1387,7 +1387,7 @@ int MessageListWidget::rowHeight(int index) const {
         extraH += MsgRender::messageFileHeight(f);
     }
 
-    const int  reactionH   = item.msg.reactions.empty() ? 0 : (kReactH + 2);
+    const int  reactionH   = item.msg.reactions.empty() ? 0 : (kReactGap + kReactH);
     const bool hasReplyBar = !_isThreadMode && item.msg.replyCount > 0;
     const int  replyBarH   = hasReplyBar ? (kReplyBarGap + kReplyBarH) : 0;
     // Expanded inline thread region grows the row below the reply bar.

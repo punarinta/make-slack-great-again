@@ -717,6 +717,7 @@ private:
     static constexpr int kRowGap          = 0;  // no gap — spacing is entirely in kPadV
     static constexpr int kPadVCollapsed   = 3;  // vertical padding for collapsed (same-author) rows
     static constexpr int kReactH          = 22; // height of the reactions strip
+    static constexpr int kReactGap        = 6;  // gap above the reactions strip (Slack spacing)
     static constexpr int kReplyBarH       = 36; // height of the thread-participants bar
     static constexpr int kReplyBarGap     = 6;  // gap above the reply bar
     static constexpr int kThreadAvSize    = 24; // small rounded-square avatar size in reply bar

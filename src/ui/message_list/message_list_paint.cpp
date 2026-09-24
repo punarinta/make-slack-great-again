@@ -432,13 +432,13 @@ void MessageListWidget::paintRow(
 
     // ── Reactions ────────────────────────────────────────────────────
     if (!item.msg.reactions.empty())
-        paintReactions(p, item, ctx, contentY + 2, index);
+        paintReactions(p, item, ctx, contentY + kReactGap, index);
 
     // ── Reply bar (thread-root messages in channel view) ─────────────
     if (!_isThreadMode && item.msg.replyCount > 0) {
         int replyBarTop = contentY;
         if (!item.msg.reactions.empty())
-            replyBarTop += kReactH + 2;
+            replyBarTop += kReactGap + kReactH;
         replyBarTop += kReplyBarGap;
         paintReplyBar(p, item, ctx, replyBarTop, index);
 
@@ -2146,7 +2146,7 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
     }
 
     if (!item.msg.reactions.empty())
-        y += kReactH + 2;
+        y += kReactGap + kReactH;
     y += kReplyBarGap;
     return y;
 }
@@ -2217,7 +2217,7 @@ int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool 
         firstChip = false;
         extraH += MsgRender::messageFileHeight(f);
     }
-    const int reactionH = item.msg.reactions.empty() ? 0 : (kReactH + 2);
+    const int reactionH = item.msg.reactions.empty() ? 0 : (kReactGap + kReactH);
     const int headerH   = collapsed ? 0 : (kHdrH + kHdrGap);
     const int contentH  = headerH + item.docHeight + extraH + reactionH;
     if (collapsed)
@@ -2310,7 +2310,7 @@ void MessageListWidget::paintReplyItem(
     }
 
     if (!item.msg.reactions.empty())
-        paintReactions(p, item, subCtx, contentY + 2, -1);
+        paintReactions(p, item, subCtx, contentY + kReactGap, -1);
 }
 
 void MessageListWidget::paintInlineThread(
@@ -2461,7 +2461,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
             y += MsgRender::messageFileHeight(f);
         }
 
-        const int reactTop = y + 2;
+        const int reactTop = y + kReactGap;
         if (viewportPos.y() < reactTop || viewportPos.y() >= reactTop + kReactH)
             continue;
 
