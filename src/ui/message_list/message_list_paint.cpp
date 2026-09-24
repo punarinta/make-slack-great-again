@@ -395,7 +395,7 @@ void MessageListWidget::paintRow(
         }
 
         MsgRender::paintCodeBlockChrome(p, item.textDoc.get());
-        MsgRender::paintBotButtonChrome(p, item.textDoc.get());
+        MsgRender::paintBotButtonChrome(p, item.textDoc.get(), botButtonHoverPos(index, p));
         item.textDoc->documentLayout()->draw(&p, pCtx);
     }
     p.restore();
@@ -879,16 +879,16 @@ void MessageListWidget::paintAttachments(
         // Slack messages render bar-less and un-indented, like the official
         // client — the last of those draws its own card frame instead.
         const bool   imageOnly = MsgRender::attachIsImageOnly(att);
-        const bool   tableOnly = MsgRender::attachIsTableOnly(att);
         const bool   unfurl    = att.isMsgUnfurl;
         const int    attX      = MsgRender::attachIsBarless(att) ? left : textX;
         const QPoint docOff    = attachDocOffset(att);
         const QRect  docRect(attX + docOff.x(), y + docOff.y(), ad.docWidth, docH);
 
         // Dismiss "×" button — only visible when this specific attachment is
-        // hovered. Table attachments are message content, not a removable
-        // preview, so they never get one.
-        if (!tableOnly && _hoveredAttach.first == index && _hoveredAttach.second == ai) {
+        // hovered, and only on link previews: bot cards and tables are the
+        // message's own content, not a removable preview.
+        if (MsgRender::attachIsDismissable(att) && _hoveredAttach.first == index &&
+            _hoveredAttach.second == ai) {
             const int   btnX = left - kDismissGap - kDismissW;
             const QRect btnRect(btnX, y, kDismissW, kDismissW);
             p.save();
@@ -916,12 +916,7 @@ void MessageListWidget::paintAttachments(
             );
         } else if (!MsgRender::attachIsBarless(att)) {
             // Colored left bar (full attachment height)
-            QColor barColor("#AAAAAA");
-            if (!att.color.isEmpty()) {
-                QColor c(att.color.startsWith('#') ? att.color : "#" + att.color);
-                if (c.isValid())
-                    barColor = c;
-            }
+            const QColor barColor = MsgRender::attachmentBarColor(att);
             p.save();
             p.setRenderHint(QPainter::Antialiasing);
             p.setPen(Qt::NoPen);
@@ -960,7 +955,7 @@ void MessageListWidget::paintAttachments(
             p.save();
             p.translate(docRect.x() + textIndent, docRect.y());
             MsgRender::paintCodeBlockChrome(p, ad.textDoc.get());
-            MsgRender::paintBotButtonChrome(p, ad.textDoc.get());
+            MsgRender::paintBotButtonChrome(p, ad.textDoc.get(), botButtonHoverPos(index, p));
             // Not drawContents(): the base text color must come from the theme,
             // not the app palette (see paintRow).
             QAbstractTextDocumentLayout::PaintContext pCtx;

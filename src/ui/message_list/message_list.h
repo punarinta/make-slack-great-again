@@ -683,6 +683,10 @@ private:
     std::pair<int, int> dismissButtonAt(const QPoint &viewportPos) const;
     // Returns the viewport rect of dismiss button (msgIdx, attachIdx), or null rect.
     QRect               dismissButtonVpRect(int msgIdx, int attachIdx) const;
+    // Mouse position in the painter's current (document) coordinates when row
+    // `index` has a bot button under the cursor, else (-1,-1) — the hover
+    // argument of MsgRender::paintBotButtonChrome.
+    QPointF             botButtonHoverPos(int index, const QPainter &p) const;
     bool                isAttachmentHidden(const Message &msg, int ai) const {
         // Hot path (rowHeight/paint per attachment): only build the lookup key
         // when something was actually dismissed this session.
@@ -723,7 +727,7 @@ private:
     static constexpr int kInlineFooterH   = 24; // height of the "Reply to thread" footer row
     static constexpr int kInlineBottomGap = 6;  // gap below the footer
     static constexpr int kAttachGap       = 4;  // gap above each attachment
-    static constexpr int kAttachBarW      = 3;  // width of attachment color bar
+    static constexpr int kAttachBarW      = 4;  // width of attachment color bar
     static constexpr int kAttachBarGap    = 8;  // gap between bar and attachment text
     // Shared-message unfurl card: gap between its painted author header and the
     // quoted body document.
@@ -887,7 +891,8 @@ private:
     QString             _hoveredAudioTranscribe; // file id whose "Transcribe" button is hovered
     int                 _hoveredFileBtn = -1;    // 0=download, 1=share, 2=more; -1=none
     QString             _hoveredLinkUrl;         // URL of the link currently under the mouse cursor
-    int                 _hoveredLinkRow  = -1;   // row index owning that link (-1 if none)
+    int                 _hoveredLinkRow = -1;    // row index owning that link (-1 if none)
+    QPoint              _hoveredLinkPos;         // viewport pos where _hoveredLinkUrl was entered
     int                 _hoveredReplyRow = -1; // row index whose reply bar is hovered (-1 if none)
     Ts                  _hoveredThreadFooter;  // root ts whose inline "Reply to thread" is hovered
     std::pair<int, int> _hoveredReaction = {-1, -1}; // {row, reactionIdx} under the mouse

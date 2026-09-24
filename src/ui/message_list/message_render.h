@@ -155,8 +155,12 @@ void            paintCodeBlockChrome(QPainter &p, const QTextDocument *doc);
 // Geometry of every bot-button cell in a laid-out message document, and the
 // rounded button face (background + border) painted underneath them — same
 // pattern as the code-block chrome. Call wherever paintCodeBlockChrome is called.
+// `hoverPos` is the mouse in document coordinates (null when the pointer isn't
+// over this document); the button containing it gets its hover face.
 QVector<QRectF> botButtonRects(const QTextDocument *doc);
-void            paintBotButtonChrome(QPainter &p, const QTextDocument *doc);
+void            paintBotButtonChrome(
+    QPainter &p, const QTextDocument *doc, QPointF hoverPos = QPointF(-1, -1)
+);
 
 // Inline table messages cap at this many rows (the last one shaded) — the full
 // table opens in the TableViewerOverlay, like the official client.
@@ -223,6 +227,17 @@ bool attachIsImageOnly(const Attachment &att);
 // the colored quote bar / indent, and they are message content — not a link
 // preview — so they get no dismiss "×" either.
 bool attachIsTableOnly(const Attachment &att);
+
+// True when the attachment gets the hover "×" that hides/removes it: only
+// generated link previews (unfurls). Bot attachments — the colored-bar cards
+// with buttons, fields, etc. — are the message's own content, and the official
+// client offers no way to hide them.
+bool attachIsDismissable(const Attachment &att);
+
+// The attachment's left-bar color: its `color` as hex ("#rrggbb" or bare
+// "rrggbb"), one of the legacy names "good"/"warning"/"danger", or the theme's
+// default bar when empty or unparseable.
+QColor attachmentBarColor(const Attachment &att);
 
 // True when the attachment paints without the colored quote bar and without its
 // indent: image-only, table-only, and shared-message unfurls (which draw their
@@ -430,6 +445,10 @@ inline QString botButtonUrlFromAnchor(const QString &href) {
 // botButtonRects(), which takes the buttons as the container's floating tables.
 // Doubles as the gap between buttons.
 inline constexpr int kBotBtnCellSpacing = 4;
+
+// Anchor-name prefix marking a filled bot button's style ("danger"/"primary")
+// on its label, read back by paintBotButtonChrome to pick the face.
+inline const QString kBotBtnStyleNamePrefix = QStringLiteral("msga-btn-");
 
 // Inline image-block size cap — matches the message list's kImgMaxW/kImgMaxH.
 inline constexpr int kBlockImgMaxW = 400;

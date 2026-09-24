@@ -244,6 +244,43 @@ QString formatFooterTs(qint64 dateMicros) {
 int footerFontPx() {
     return std::max(8, qRound(QFontInfo(QApplication::font()).pixelSize() * 12.0 / 15.0));
 }
+// Slack's 13px button label against its 15px body.
+static int buttonFontPx() {
+    return std::max(8, qRound(QFontInfo(QApplication::font()).pixelSize() * 13.0 / 15.0));
+}
+// Button label weight: between regular and bold, like Slack's. A real semibold
+// face when the UI font has one (Segoe UI, SF); otherwise (Noto ships only
+// Regular + Bold, and fontconfig snaps a 600 request to Bold) a regular face
+// thickened by a hairline same-color glyph outline, ~0.03em.
+static QString buttonWeightCss(const QColor &fg) {
+    const int px = buttonFontPx();
+    QFont     f  = QApplication::font();
+    f.setPixelSize(px);
+    f.setWeight(QFont::DemiBold);
+    const QString semi = QFontInfo(f).styleName();
+    f.setWeight(QFont::Bold);
+    const QString bold = QFontInfo(f).styleName();
+    f.setWeight(QFont::Normal);
+    const QString regular = QFontInfo(f).styleName();
+    if (semi != bold && semi != regular)
+        return QStringLiteral("font-weight:600");
+    return "font-weight:normal;-qt-stroke-width:" + QString::number(px * 0.03, 'f', 2) +
+           "px;-qt-stroke-color:" + Th::qss(fg);
+}
+
+// Button cell padding for Slack's proportions — a 30px-tall face with 12px
+// sides against its 15px body. The vertical part is solved from the label's
+// real line height: our UI fonts have taller lines than Slack's Lato, so a
+// fixed padding came out visibly bigger than the official button.
+static QString buttonPaddingCss() {
+    const int bodyPx = QFontInfo(QApplication::font()).pixelSize();
+    QFont     label  = QApplication::font();
+    label.setPixelSize(buttonFontPx());
+    const int lineH = QFontMetrics(label).height();
+    const int vPad  = std::max(2, qRound((bodyPx * 2.0 - lineH) / 2.0));
+    const int hPad  = std::max(6, qRound(bodyPx * 0.8));
+    return QString::number(vPad) + "px " + QString::number(hPad) + "px";
+}
 int footerIconPx() {
     return std::max(8, qRound(QFontInfo(QApplication::font()).pixelSize() * 16.0 / 15.0));
 }
@@ -971,20 +1008,27 @@ static QString imageBlockHtml(
 static QString buttonsHtml(const std::vector<BotButton> &buttons) {
     if (buttons.empty())
         return {};
-    QString cells;
+    const QString padding = buttonPaddingCss();
+    QString       cells;
     for (size_t i = 0; i < buttons.size(); ++i) {
-        const auto   &btn = buttons[i];
-        const QColor  fg  = btn.style == QLatin1String("danger")    ? Th::c().danger.text
-                            : btn.style == QLatin1String("primary") ? Th::c().accent.def
-                                                                    : Th::c().text.primary;
+        const auto &btn = buttons[i];
+        const bool  filled =
+            btn.style == QLatin1String("danger") || btn.style == QLatin1String("primary");
+        const QColor  fg = filled ? Th::c().text.onDark : Th::c().text.primary;
         const QString href =
             btn.url.isEmpty() ? kBotBtnAnchorPrefix + QString::number(i)
                               : kBotBtnAnchorPrefix +
                                     "url:" + QString::fromLatin1(QUrl::toPercentEncoding(btn.url));
-        cells += "<table cellspacing='0' cellpadding='0' style='float:left;margin:0 " +
-                 QString::number(kBotBtnCellSpacing) + "px " + QString::number(kBotBtnCellSpacing) +
-                 "px 0'><tr><td style='padding:4px 12px'><a href='" + href.toHtmlEscaped() +
-                 "' style='color:" + Th::qss(fg) + ";font-weight:bold;text-decoration:none'>" +
+        // The anchor name carries the style to paintBotButtonChrome (the face is
+        // painted from document geometry, which knows nothing else about it).
+        // Absolute px: an anchor's em size re-resolves from the document default.
+        const QString name = filled ? kBotBtnStyleNamePrefix + btn.style : QString();
+        cells += "<table cellspacing='0' cellpadding='0' style='float:left;margin:0 8px " +
+                 QString::number(kBotBtnCellSpacing) + "px 0'><tr><td style='padding:" + padding +
+                 "'><a href='" + href.toHtmlEscaped() + "'" +
+                 (name.isEmpty() ? QString() : " name='" + name.toHtmlEscaped() + "'") +
+                 " style='color:" + Th::qss(fg) + ";font-size:" + QString::number(buttonFontPx()) +
+                 "px;" + buttonWeightCss(fg) + ";text-decoration:none'>" +
                  btn.text.toHtmlEscaped() + "</a></td></tr></table>";
     }
     return "<table width='100%' cellspacing='" + QString::number(kBotBtnCellSpacing) +
@@ -1006,11 +1050,18 @@ static void collectButtonContainers(QTextFrame *frame, QVector<QTextTable *> &ou
     }
 }
 
-QVector<QRectF> botButtonRects(const QTextDocument *doc) {
+namespace {
+
+struct BotButtonFace {
+    QRectF  rect;
+    QString style; // "", "danger" or "primary"
+};
+
+QVector<BotButtonFace> botButtonFaces(const QTextDocument *doc) {
     QVector<QTextTable *> containers;
     collectButtonContainers(doc->rootFrame(), containers);
-    QVector<QRectF> rects;
-    auto           *layout = doc->documentLayout();
+    QVector<BotButtonFace> faces;
+    auto                  *layout = doc->documentLayout();
     for (QTextTable *container : containers) {
         // The buttons are the floating single-cell tables inside the container's
         // one cell; Qt's frame iterator visits floats in document order.
@@ -1023,29 +1074,57 @@ QVector<QRectF> botButtonRects(const QTextDocument *doc) {
                 continue;
             // Same approach as codeBlockRects: rebuild the cell's rect from its
             // block geometry + paddings (frameBoundingRect is unusable for tables).
-            const auto   bc    = button->cellAt(0, 0);
-            const QRectF first = layout->blockBoundingRect(bc.firstCursorPosition().block());
-            const QRectF last  = layout->blockBoundingRect(bc.lastCursorPosition().block());
-            const auto   cf    = bc.format().toTableCellFormat();
-            rects.push_back(QRectF(
+            const auto    bc    = button->cellAt(0, 0);
+            const QRectF  first = layout->blockBoundingRect(bc.firstCursorPosition().block());
+            const QRectF  last  = layout->blockBoundingRect(bc.lastCursorPosition().block());
+            const auto    cf    = bc.format().toTableCellFormat();
+            BotButtonFace face;
+            face.rect = QRectF(
                 QPointF(first.left() - cf.leftPadding(), first.top() - cf.topPadding()),
                 QPointF(first.right() + cf.rightPadding(), last.bottom() + cf.bottomPadding())
-            ));
+            );
+            // The label's anchor name (see buttonsHtml) says which face to paint.
+            QTextCursor label = bc.firstCursorPosition();
+            label.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+            for (const QString &n : label.charFormat().anchorNames())
+                if (n.startsWith(kBotBtnStyleNamePrefix))
+                    face.style = n.mid(kBotBtnStyleNamePrefix.size());
+            faces.push_back(face);
         }
     }
+    return faces;
+}
+
+} // namespace
+
+QVector<QRectF> botButtonRects(const QTextDocument *doc) {
+    QVector<QRectF> rects;
+    for (const auto &face : botButtonFaces(doc))
+        rects.push_back(face.rect);
     return rects;
 }
 
-void paintBotButtonChrome(QPainter &p, const QTextDocument *doc) {
-    const auto rects = botButtonRects(doc);
-    if (rects.isEmpty())
+void paintBotButtonChrome(QPainter &p, const QTextDocument *doc, QPointF hoverPos) {
+    const auto faces = botButtonFaces(doc);
+    if (faces.isEmpty())
         return;
+    const auto &t = Th::c();
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QPen(Th::c().message.fileChipBorder, 1));
-    p.setBrush(Th::c().surface.raised);
-    for (const QRectF &r : rects)
-        Paint::borderedRect(p, r, 4);
+    for (const auto &face : faces) {
+        const bool hovered = face.rect.contains(hoverPos);
+        if (face.style == QLatin1String("danger")) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(hovered ? t.danger.hover : t.danger.def);
+        } else if (face.style == QLatin1String("primary")) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(hovered ? t.message.botButtonFillHover : t.message.botButtonFill);
+        } else {
+            p.setPen(QPen(t.message.botButtonBorder, 1));
+            p.setBrush(hovered ? t.message.botButtonHoverBg : t.message.botButtonBg);
+        }
+        Paint::borderedRect(p, face.rect, 4);
+    }
     p.restore();
 }
 
@@ -1889,6 +1968,25 @@ bool attachIsImageOnly(const Attachment &att) {
                                      !b.buttons.empty() || !b.tableRows.empty()))
             return false;
     return true;
+}
+
+QColor attachmentBarColor(const Attachment &att) {
+    const auto   &m    = Th::c().message;
+    const QString name = att.color.trimmed().toLower();
+    if (name == QLatin1String("good"))
+        return m.namedBarGood;
+    if (name == QLatin1String("warning"))
+        return m.namedBarWarning;
+    if (name == QLatin1String("danger"))
+        return m.namedBarDanger;
+    if (name.isEmpty())
+        return m.attachmentBar;
+    const QColor c(name.startsWith('#') ? name : "#" + name);
+    return c.isValid() ? c : m.attachmentBar;
+}
+
+bool attachIsDismissable(const Attachment &att) {
+    return att.isLinkPreview && !attachIsTableOnly(att);
 }
 
 bool attachIsTableOnly(const Attachment &att) {

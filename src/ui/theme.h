@@ -97,6 +97,15 @@ struct MessageColors {
     QColor attachmentBg;       // file/link preview card background
     QColor attachmentBorder;   // attachment card border
     QColor attachmentDismiss;  // dismiss "×" button color
+    QColor attachmentBar;      // attachment left bar when the payload sets no color
+    QColor namedBarGood;       // attachment bar for the legacy named color "good"
+    QColor namedBarWarning;    // … "warning"
+    QColor namedBarDanger;     // … "danger"
+    QColor botButtonBg;        // Block Kit / attachment button (outlined default style)
+    QColor botButtonHoverBg;   // hovered default button
+    QColor botButtonBorder;    // default button outline
+    QColor botButtonFill;      // "primary" button fill ("danger" uses danger.def/hover)
+    QColor botButtonFillHover; // hovered "primary" button
     QColor pinnedBg;           // pinned message row tint
     QColor reminderBg;         // "reminder set" message row tint (light blue)
     QColor reminderText;       // reminder banner text/icon ("Due …")

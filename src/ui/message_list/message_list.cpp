@@ -2072,8 +2072,9 @@ std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
             if (!isAttachmentHidden(item.msg, ai)) {
                 y += kAttachGap;
-                // Table attachments are message content — not dismissable.
-                if (!MsgRender::attachIsTableOnly(item.msg.attachments[ai]) &&
+                // Only link previews are dismissable — bot cards and table
+                // attachments are the message's own content.
+                if (MsgRender::attachIsDismissable(item.msg.attachments[ai]) &&
                     QRect(btnX, y, kDismissW, kDismissW).contains(viewportPos))
                     return {i, ai};
                 y += attachTotalH(item, ai);
@@ -2109,6 +2110,12 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
         }
     }
     return {};
+}
+
+QPointF MessageListWidget::botButtonHoverPos(int index, const QPainter &p) const {
+    if (index < 0 || index != _hoveredLinkRow || !MsgRender::isBotButtonAnchor(_hoveredLinkUrl))
+        return QPointF(-1, -1);
+    return p.transform().inverted().map(QPointF(_hoveredLinkPos));
 }
 
 MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewportPos) const {
@@ -4161,6 +4168,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         }
         _hoveredLinkUrl = anchor;
         _hoveredLinkRow = newHoveredRow;
+        _hoveredLinkPos = pos;
         if (!anchor.isEmpty() && !isUserAnchor && !isChanAnchor && !isToggle && !isBotBtn &&
             !isMsgLink && newHoveredRow >= 0) {
             setDocLinkUnderline(_items[newHoveredRow].textDoc.get(), anchor, true);

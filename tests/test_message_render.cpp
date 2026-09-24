@@ -19,6 +19,7 @@
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextCursor>
+#include <QtMath>
 
 #include "ui/message_list/message_render.h"
 #include "ui/theme.h"
@@ -756,6 +757,64 @@ TEST_CASE(
     CHECK(rects[0].height() > 10);             // tall enough to look like a button
     CHECK(rects[1].left() > rects[0].right()); // side by side
     CHECK(MsgRender::codeBlockRects(&doc).isEmpty());
+}
+
+TEST_CASE(
+    "filled button styles paint a filled face, default ones an outline", "[render][buttons]"
+) {
+    Attachment att;
+    att.buttons.push_back({"Leave channel", "", "danger"});
+    att.buttons.push_back({"Approve", "", "primary"});
+    att.buttons.push_back({"Keep going", "", ""});
+    QTextDocument doc;
+    doc.setHtml(MsgRender::buildAttachHtml(att, nullptr));
+    doc.setTextWidth(600);
+    const auto rects = MsgRender::botButtonRects(&doc);
+    REQUIRE(rects.size() == 3);
+
+    QImage img(600, qCeil(doc.size().height()) + 4, QImage::Format_ARGB32);
+    img.fill(Qt::transparent);
+    {
+        QPainter p(&img);
+        MsgRender::paintBotButtonChrome(p, &doc, rects[2].center()); // hover the last one
+    }
+    const auto at = [&](const QRectF &r) { return img.pixelColor(r.center().toPoint()); };
+    CHECK(at(rects[0]) == Th::c().danger.def);
+    CHECK(at(rects[1]) == Th::c().message.botButtonFill);
+    CHECK(at(rects[2]) == Th::c().message.botButtonHoverBg);
+    // Labels on filled faces are light, and none are bold (unlike Slack's old look).
+    const QString html = MsgRender::buildAttachHtml(att, nullptr);
+    CHECK(html.contains("name='" + MsgRender::kBotBtnStyleNamePrefix + "danger'"));
+    CHECK(!html.contains("font-weight:bold"));
+}
+
+TEST_CASE("attachment bar color: hex, legacy names, default", "[render][attachment]") {
+    const auto bar = [](const QString &color) {
+        Attachment att;
+        att.color = color;
+        return MsgRender::attachmentBarColor(att);
+    };
+    const auto &m = Th::c().message;
+    CHECK(bar("#F1828C") == QColor("#F1828C"));
+    CHECK(bar("f1828c") == QColor("#F1828C")); // bare hex, as some bots send it
+    CHECK(bar("good") == m.namedBarGood);
+    CHECK(bar("warning") == m.namedBarWarning);
+    CHECK(bar("Danger") == m.namedBarDanger);
+    CHECK(bar("") == m.attachmentBar);
+    CHECK(bar("not-a-color") == m.attachmentBar);
+}
+
+TEST_CASE("only link previews are dismissable attachments", "[render][attachment]") {
+    Attachment bot;
+    bot.color = "#F1828C";
+    bot.text  = MrkdwnParser::parse("#census-ios — 3 members");
+    bot.buttons.push_back({"Leave Channel", "", "danger"});
+    CHECK(!MsgRender::attachIsDismissable(bot));
+    Attachment preview;
+    preview.title         = "Example";
+    preview.titleLink     = "https://example.com";
+    preview.isLinkPreview = true;
+    CHECK(MsgRender::attachIsDismissable(preview));
 }
 
 TEST_CASE("button rows wrap between buttons, never inside a label", "[render][buttons]") {
