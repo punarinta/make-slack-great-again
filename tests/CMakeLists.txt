@@ -534,6 +534,7 @@ add_msga_widget_test(test_workspace_icon
     test_workspace_icon.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/util/custom_workspace_icon.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_picker_dialog/icon_picker_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_icon_dialog/workspace_icon_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_switcher/workspace_bubble.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
@@ -542,6 +543,21 @@ add_msga_widget_test(test_workspace_icon
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/image_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+
+add_msga_widget_test(test_tray_icon
+    test_tray_icon.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/custom_tray_icon.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_picker_dialog/icon_picker_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/tray_icon_dialog/tray_icon_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/app_dialog/app_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/styled_button/styled_button.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp

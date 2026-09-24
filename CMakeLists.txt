@@ -194,6 +194,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Utilities
     src/util/background_tasks.cpp
+    src/util/custom_tray_icon.cpp
     src/util/custom_workspace_icon.cpp
     src/util/desktop_integration.cpp
     # Listed so AUTOMOC processes the Q_OBJECT (the impl TUs are platform-suffixed
@@ -287,6 +288,8 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
     src/ui/rename_conversation_dialog/rename_conversation_dialog.cpp
+    src/ui/icon_picker_dialog/icon_picker_dialog.cpp
+    src/ui/tray_icon_dialog/tray_icon_dialog.cpp
     src/ui/workspace_icon_dialog/workspace_icon_dialog.cpp
     src/ui/imap_add_account/imap_add_account_dialog.cpp
     src/ui/session_import_dialog/session_import_dialog.cpp

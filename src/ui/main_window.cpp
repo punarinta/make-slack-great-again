@@ -25,6 +25,7 @@
 #include "backend/slack/slack_auth.h"
 #include "ui/session_import_dialog/session_import_dialog.h"
 #include "ui/workspace_icon_dialog/workspace_icon_dialog.h"
+#include "util/custom_tray_icon.h"
 #include "util/custom_workspace_icon.h"
 #include "auth/auth_strategy_factory.h"
 #include "backend/backend.h"
@@ -679,6 +680,7 @@ QWidget *MainWindow::buildMainPage() {
             if (ws.session)
                 ws.session->setPresenceMode(m);
     });
+    connect(_settingsDialog, &SettingsDialog::trayIconChanged, this, &MainWindow::updateTrayIcon);
     connect(_settingsDialog, &SettingsDialog::restartRequested, this, &MainWindow::restartApp);
     connect(
         _settingsDialog,
@@ -3027,31 +3029,45 @@ void MainWindow::updateTrayIcon() {
     if (!_trayIcon)
         return;
 
-    // Always render via QSvgRenderer so the alpha channel is preserved in static builds.
-    const int    sz = 128;
-    QSvgRenderer renderer(QString(":/icon_tray.svg"));
-    QPixmap      px(sz, sz);
+    // The user's own picture (Settings → Appearance → Tray icon) replaces the plane.
+    const QImage custom = CustomTrayIcon::current();
+#ifdef Q_OS_MACOS
+    // NSImage template: follows the menu bar, not the app theme. A custom
+    // picture opts out when its monochrome option is off, so a
+    // colour logo keeps its colours instead of flattening to a silhouette.
+    const bool templ = custom.isNull() || CustomTrayIcon::monochrome();
+#endif
+
+    const int sz = 128;
+    QPixmap   px(sz, sz);
     px.fill(Qt::transparent);
     QPainter p(&px);
     p.setRenderHint(QPainter::Antialiasing);
-    if (renderer.isValid())
-        renderer.render(&p, QRectF(0, 0, sz, sz));
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    if (!custom.isNull()) {
+        p.drawImage(QRectF(0, 0, sz, sz), custom);
+    } else {
+        // Always render via QSvgRenderer so the alpha channel is preserved in static builds.
+        QSvgRenderer renderer(QString(":/icon_tray.svg"));
+        if (renderer.isValid())
+            renderer.render(&p, QRectF(0, 0, sz, sz));
+    }
     if (globalTotal > 0 || globalMentions > 0) {
         // Red when anything important (DM/mention) is unread anywhere,
         // blue for plain unread activity.
         const int d = 36;
-#ifdef Q_OS_MACOS
-        // Cut a clear halo so the monochrome dot stays distinct from the wing.
-        p.setCompositionMode(QPainter::CompositionMode_Clear);
-        p.setBrush(Qt::white);
         p.setPen(Qt::NoPen);
-        p.drawEllipse(sz - d - 4, sz - d - 4, d + 8, d + 8);
-        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-        p.setBrush(Qt::white); // template alpha, tinted by macOS with the plane
-#else
         p.setBrush(globalMentions > 0 ? Th::c().badge.mention : Th::c().badge.activity);
+#ifdef Q_OS_MACOS
+        if (templ) {
+            // Cut a clear halo so the monochrome dot stays distinct from the wing.
+            p.setCompositionMode(QPainter::CompositionMode_Clear);
+            p.setBrush(Qt::white);
+            p.drawEllipse(sz - d - 4, sz - d - 4, d + 8, d + 8);
+            p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            p.setBrush(Qt::white); // template alpha, tinted by macOS with the plane
+        }
 #endif
-        p.setPen(Qt::NoPen);
         p.drawEllipse(sz - d, sz - d, d, d);
     }
     p.end();
@@ -3063,7 +3079,7 @@ void MainWindow::updateTrayIcon() {
         sized.setDevicePixelRatio(scale);
         icon.addPixmap(sized);
     }
-    icon.setIsMask(true); // NSImage template: follows the menu bar, not the app theme
+    icon.setIsMask(templ);
 #else
     icon.addPixmap(px);
 #endif

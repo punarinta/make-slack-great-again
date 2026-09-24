@@ -25,6 +25,8 @@
 #include "backend/slack/slack_auth.h"
 #include "backend/teams/teams_auth.h"
 #include "ui/session_import_dialog/session_import_dialog.h"
+#include "ui/tray_icon_dialog/tray_icon_dialog.h"
+#include "util/custom_tray_icon.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -602,6 +604,45 @@ void SettingsDialog::buildPanel() {
     effectsDesc->setWordWrap(true);
     effectsLayout->addWidget(effectsDesc);
     alay->addWidget(effectsBox);
+
+    // ── Tray icon section ─────────────────────────────────────────────
+    // A picture of the user's own for the tray (GitHub issue #73: the built-in
+    // paper plane is easy to mistake for Telegram's). Turning it off keeps the
+    // picture, so turning it back on needs no new pick.
+    auto *trayHeading = new QLabel(tr("Tray icon"), appearPage);
+    trayHeading->setObjectName("sectionHeading");
+    alay->addWidget(trayHeading);
+
+    auto *trayBox = new QGroupBox(appearPage);
+    trayBox->setObjectName("sidebarBox"); // same flat frame as the blocks above
+    auto *trayLayout = new QVBoxLayout(trayBox);
+    trayLayout->setSpacing(sp.md);
+    trayLayout->setContentsMargins(0, 0, 0, 0);
+
+    _customTray = new QCheckBox(tr("Use custom tray icon"), trayBox);
+    _customTray->setChecked(CustomTrayIcon::enabled() && CustomTrayIcon::hasImage());
+    connect(_customTray, &QCheckBox::toggled, this, [this](bool on) {
+        _trayChangeBtn->setVisible(on);
+        if (on && !CustomTrayIcon::hasImage()) {
+            openTrayIconDialog(); // enables the icon once a picture is saved
+            return;
+        }
+        CustomTrayIcon::setEnabled(on);
+        emit trayIconChanged();
+    });
+    trayLayout->addWidget(_customTray);
+
+    auto *trayRow = new QHBoxLayout;
+    _trayChangeBtn =
+        new StyledButton(tr("Change icon…"), StyledButton::Variant::Secondary, trayBox);
+    _trayChangeBtn->setSize(StyledButton::Size::Small);
+    _trayChangeBtn->setVisible(_customTray->isChecked());
+    connect(_trayChangeBtn, &QPushButton::clicked, this, &SettingsDialog::openTrayIconDialog);
+    trayRow->addWidget(_trayChangeBtn);
+    trayRow->addStretch();
+    trayLayout->addLayout(trayRow);
+
+    alay->addWidget(trayBox);
     alay->addStretch();
 
     auto *aBtnRow = new QHBoxLayout;
@@ -2135,6 +2176,7 @@ void SettingsDialog::applyTheme() {
     _showLinkPreviews->setStyleSheet(checkQss);
     _animateEmoji->setStyleSheet(checkQss);
     _animateMedia->setStyleSheet(checkQss);
+    _customTray->setStyleSheet(checkQss);
     // The explicit colours here override the disabled palette, so the labels
     // that grey out with the activity window (see the unreads-only toggle) carry
     // their own :disabled rule.
@@ -2608,6 +2650,30 @@ void SettingsDialog::openSessionImport() {
         }
     );
     connect(dlg, &AppDialog::finished, dlg, [dlg](int) { dlg->deleteLater(); });
+    dlg->open();
+}
+
+void SettingsDialog::openTrayIconDialog() {
+    auto *dlg = new TrayIconDialog(this);
+    connect(dlg, &AppDialog::finished, this, [this, dlg](int result) {
+        dlg->deleteLater();
+        if (result == QDialog::Accepted) {
+            CustomTrayIcon::setMonochrome(dlg->monochrome());
+            if (dlg->resetRequested()) {
+                CustomTrayIcon::remove();
+            } else if (const QImage img = dlg->chosenImage(); !img.isNull()) {
+                if (CustomTrayIcon::install(img))
+                    CustomTrayIcon::setEnabled(true);
+            }
+            emit trayIconChanged();
+        }
+        // Whatever happened, the switch reflects what the tray now shows (a
+        // cancelled first pick or "Use default" leaves it off).
+        const bool           on = CustomTrayIcon::enabled() && CustomTrayIcon::hasImage();
+        const QSignalBlocker block(_customTray);
+        _customTray->setChecked(on);
+        _trayChangeBtn->setVisible(on);
+    });
     dlg->open();
 }
 

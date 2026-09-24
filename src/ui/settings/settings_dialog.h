@@ -102,6 +102,9 @@ signals:
     // Emitted when the Presence preference (System page) changes; MainWindow
     // re-applies it to every live session. Persisted here already.
     void presenceModeChanged(PresenceMode mode);
+    // Emitted when the custom tray icon (picture, on/off, monochrome) changes;
+    // MainWindow re-renders the tray. Persisted in CustomTrayIcon already.
+    void trayIconChanged();
     // Emitted after the user saves personal Slack app credentials — they only
     // take effect on a fresh start, so MainWindow performs a clean restart.
     void restartRequested();
@@ -151,6 +154,7 @@ private:
     void                   saveAppCredentials();
     void                   loadAppCredentials();
     void                   openSessionImport();
+    void                   openTrayIconDialog();
     void                   updateSlackModeUi(); // show the box for the selected mode
     void                   refreshLastChecked();
     void                   refreshUpdateStatus();
@@ -250,6 +254,8 @@ private:
     UpdateChecker *_updateChecker  = nullptr;
     QCheckBox     *_autoUpdates    = nullptr;
     QCheckBox     *_minimizeToTray = nullptr; // Window section; absent on macOS
+    QCheckBox     *_customTray     = nullptr; // Tray icon section
+    StyledButton  *_trayChangeBtn  = nullptr;
     QLabel        *_updateStatus   = nullptr;
     QLabel        *_lastChecked    = nullptr;
     StyledButton  *_checkBtn       = nullptr;
