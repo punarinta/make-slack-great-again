@@ -411,6 +411,16 @@ TEST_CASE("a teammate mention renders as a mention", "[claude][message]") {
         QStringList{"claude:agent", "claude:role:data-analyst"}
     );
     CHECK(mentions("run `echo @claude:role:engineer`").isEmpty());
+    // Quoted on its own, it's still the teammate (Claude's habit).
+    const auto quoted = renderMarkdown("Yes. `@claude:role:researcher` is the id.");
+    CHECK(quoted.text == "Yes. @claude:role:researcher is the id.");
+    CHECK(
+        mentions("Yes. `@claude:role:researcher` is the id.") ==
+        QStringList{"claude:role:researcher"}
+    );
+    CHECK(std::none_of(quoted.entities.begin(), quoted.entities.end(), [](const auto &e) {
+        return e.type == EntityType::Code;
+    }));
     CHECK(mentions("```\n@claude:role:engineer\n```").isEmpty());
     CHECK(mentions("mail x@claude:role:engineer").isEmpty());
 }

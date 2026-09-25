@@ -490,6 +490,9 @@ static QString linkBareUrls(const QString &escaped) {
     static const QRegularExpression kTeammate(
         QStringLiteral("(?<![\\w@/:.-])@(claude:(?:agent|role:[a-z0-9-]+))(?![\\w-])")
     );
+    static const QRegularExpression kWholeTeammate(
+        QStringLiteral("^@claude:(?:agent|role:[a-z0-9-]+)$")
+    );
     auto linkPlain = [&](const QString &part) {
         QString res = part;
         res.replace(kAutolink, QStringLiteral("<\\1>"));
@@ -536,11 +539,20 @@ static QString linkBareUrls(const QString &escaped) {
         } else {
             const QStringList spans = line.split(QLatin1Char('`'));
             for (int i = 0; i < spans.size(); ++i) {
-                if (i > 0)
-                    done += QLatin1Char('`');
                 // Odd pieces sit between backticks — unless the last backtick
                 // is unpaired, then that tail is plain text.
                 const bool code = i % 2 == 1 && (i < spans.size() - 1 || spans.size() % 2 == 1);
+                // Claude likes to quote a teammate's id as `@claude:role:x`; a
+                // span that is nothing but one is a mention, not code.
+                if (code && kWholeTeammate.match(spans[i]).hasMatch()) {
+                    done += QStringLiteral("<") + spans[i] + QLatin1Char('>');
+                    ++i;
+                    if (i < spans.size())
+                        done += linkPlain(spans[i]);
+                    continue;
+                }
+                if (i > 0)
+                    done += QLatin1Char('`');
                 done += code ? spans[i] : linkPlain(spans[i]);
             }
         }
