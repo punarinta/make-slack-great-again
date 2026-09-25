@@ -21,7 +21,9 @@
 //     it, and Pending while that isn't known yet (the last text of a live turn);
 //   • consecutive tool calls → one ToolGroup item (grows as calls arrive);
 //   • an Agent/Task call → a Subagent item of its own — it roots a thread holding
-//     the subagent's own transcript (subagents/agent-<agentId>.jsonl).
+//     the subagent's own transcript (subagents/agent-<agentId>.jsonl);
+//   • msga's relay of a reply in that thread (subagentReplyPrompt) → a UserPrompt
+//     of the reply alone, marked with the subagent it went to (relayTo).
 // Thinking, attachments, file-history, cost and mode records are hidden.
 #pragma once
 
@@ -55,7 +57,8 @@ struct TranscriptItem {
     QString               text;                 // prompt / markdown answer / subagent description
     std::vector<ToolCall> tools;                // ToolGroup: the calls; Subagent: the one call
     QString               agentId;              // Subagent: set once the call's result arrives
-    QStringList           images; // UserPrompt: pasted images, saved in msga's cache (paths)
+    QString     relayTo; // UserPrompt: a reply in this subagent's thread (text = the reply alone)
+    QStringList images;  // UserPrompt: pasted images, saved in msga's cache (paths)
     QStringList imageNames; // parallel to images: "Image 3.png", after Claude Code's paste number
     // UserPrompt, AssistantText: the transcript record it was read from, which
     // removeFromTranscript takes out; "" for the rest (a tool call can't go
@@ -126,6 +129,13 @@ private:
     QString       _lineUuid;  // the record being read
     QSet<QString> _seenUuids; // every record read, so a copy's repeats are skipped
 };
+
+// What msga sends the session for a reply in a subagent's thread: there is no
+// way to type to a subagent, but the session can pass a message on to one — a
+// finished one too — with its SendMessage tool, addressed by the agentId. The
+// subagent's transcript then records it as the coordinator's (hidden, isMeta),
+// so the thread shows this prompt, parsed back into the reply (relayTo).
+QString subagentReplyPrompt(const QString &agentId, const QString &reply);
 
 // Takes the record `uuid` (a prompt or an answer: TranscriptItem::uuid) out of
 // the transcript at `path`, so the session no longer has it when it resumes.

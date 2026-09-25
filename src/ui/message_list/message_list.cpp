@@ -2488,7 +2488,7 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     bool                    addedThreadSection = false;
     // Where not every message can start a thread (an agent session's are a
     // subagent run or a /btw branch), only an existing one opens — and one that
-    // takes no replies (a subagent's run) is only there to read.
+    // takes no replies yet (a subagent that hasn't started) is only there to read.
     const std::optional<Ts> existingThread     = threadRootOf(msg);
     if (!_isThreadMode && canHostThread(msg) && (caps.newThreads || existingThread)) {
         const bool replies =
@@ -4529,6 +4529,12 @@ void MessageListWidget::handleEvent(const Event &e) {
         const int i = findByTs(ev->msg.ts);
         if (i < 0)
             return;
+        // An agent session's subagent writes its thread without a message
+        // event per reply: the root's reply count moving is the news, and the
+        // thread is re-read (loadThread is local there — nothing to rate-limit).
+        if (_isThreadMode && ev->msg.ts == _threadRootTs && _session &&
+            _session->capabilities().agentSessions)
+            refreshOpenThread(ev->conv, {ev->msg});
         if (ev->textOnly) {
             // chat.update response echo — carries only the new text; keep the
             // row's files/reactions/thread state. Blocks must be taken from the

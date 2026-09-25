@@ -188,9 +188,17 @@ void TranscriptParser::addPrompt(
     const QString &text, qint64 micros, const QStringList &images, const QStringList &imageNames
 ) {
     TranscriptItem item;
-    item.kind       = TranscriptItem::Kind::UserPrompt;
-    item.ts         = nextTs(micros, &item.date);
-    item.text       = text;
+    item.kind = TranscriptItem::Kind::UserPrompt;
+    item.ts   = nextTs(micros, &item.date);
+    item.text = text;
+    static const QRegularExpression kRelay(QStringLiteral(
+        "^The user replied in the thread of subagent ([A-Za-z0-9_-]+)\\. Pass their message on "
+        "to it verbatim with SendMessage \\(to: \"\\1\"\\):\\n\\n([\\s\\S]+)$"
+    ));
+    if (const auto relay = kRelay.match(text); relay.hasMatch()) {
+        item.relayTo = relay.captured(1);
+        item.text    = relay.captured(2);
+    }
     item.images     = images;
     item.imageNames = imageNames;
     item.uuid       = _lineUuid;
@@ -713,6 +721,14 @@ std::vector<Block> markdownBlocks(const QString &markdown) {
         return {};
     flushText();
     return blocks;
+}
+
+QString subagentReplyPrompt(const QString &agentId, const QString &reply) {
+    return QStringLiteral(
+               "The user replied in the thread of subagent %1. Pass their message on "
+               "to it verbatim with SendMessage (to: \"%1\"):\n\n%2"
+    )
+        .arg(agentId, reply);
 }
 
 Message toMessage(const TranscriptItem &item, const UserId &me, const UserId &claude) {

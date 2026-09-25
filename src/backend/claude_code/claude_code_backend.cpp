@@ -156,9 +156,13 @@ struct Backend::Tracked {
     // copy wouldn't do: it's gone with the next reload of the chat, and a
     // message can wait for as long as Claude's turn takes.
     struct Outgoing {
-        QString text;
-        Ts      ts;
-        qint64  date = 0;
+        QString           text; // what Claude is sent
+        Ts                ts;
+        qint64            date = 0;
+        // A reply in a subagent's thread: the text is its relay to the
+        // subagent (subagentReplyPrompt); the copy shows the reply, in the thread.
+        std::optional<Ts> threadRoot;
+        QString           shown;
     };
     QList<Outgoing>         outbox;
     std::optional<Outgoing> flying; // taken from the outbox, prompt not landed yet
@@ -659,9 +663,29 @@ const Message &Backend::renderedAt(Tracked &t, size_t i) {
 
 std::vector<Message> Backend::visibleMessages(Tracked &t) {
     tail(t);
-    const auto          &items     = t.parser.items();
-    const UserId         assistant = roleUser(roleOf(t));
-    const bool           isBusy    = busy(t);
+    const auto        &items     = t.parser.items();
+    const UserId       assistant = roleUser(roleOf(t));
+    const bool         isBusy    = busy(t);
+    // The user's replies in subagent threads, relayed through this session:
+    // replies in the thread, each counted on its root with msga's copies.
+    QHash<QString, Ts> subagentRoot; // by agentId
+    QHash<Ts, int>     relayed;      // by root
+    QHash<Ts, Ts>      relayedLatest;
+    for (const auto &item : items)
+        if (item.kind == TranscriptItem::Kind::Subagent && !item.agentId.isEmpty())
+            subagentRoot.insert(item.agentId, item.ts);
+    const auto noteRelay = [&](const Ts &root, const Ts &ts) {
+        ++relayed[root];
+        relayedLatest[root] = std::max(relayedLatest.value(root), ts);
+    };
+    for (const auto &item : items)
+        if (!item.relayTo.isEmpty() && subagentRoot.contains(item.relayTo))
+            noteRelay(subagentRoot.value(item.relayTo), item.ts);
+    if (t.flying && t.flying->threadRoot)
+        noteRelay(*t.flying->threadRoot, t.flying->ts);
+    for (const auto &o : t.outbox)
+        if (o.threadRoot)
+            noteRelay(*o.threadRoot, o.ts);
     std::vector<Message> out;
     out.reserve(items.size() + 1);
     for (size_t i = 0; i < items.size(); ++i) {
@@ -671,10 +695,13 @@ std::vector<Message> Backend::visibleMessages(Tracked &t) {
         Message m = renderedAt(t, i);
         if (item.kind == TranscriptItem::Kind::Subagent && !item.agentId.isEmpty()) {
             Ts latest;
-            m.replyCount = subagentReplyCount(t, item.agentId, &latest);
+            m.replyCount = subagentReplyCount(t, item.agentId, &latest) + relayed.value(item.ts);
+            latest       = std::max(latest, relayedLatest.value(item.ts));
             if (!latest.isEmpty())
                 m.latestReply = latest;
         }
+        if (!item.relayTo.isEmpty() && subagentRoot.contains(item.relayTo))
+            m.threadRoot = subagentRoot.value(item.relayTo);
         out.push_back(std::move(m));
     }
 
@@ -847,9 +874,9 @@ void Backend::appendOutgoing(
         item.kind    = TranscriptItem::Kind::UserPrompt;
         item.ts      = o.ts;
         item.date    = o.date;
-        item.text    = o.text;
+        item.text    = o.threadRoot ? o.shown : o.text;
         Message m    = toMessage(item, _me, _me);
-        m.threadRoot = threadRoot;
+        m.threadRoot = o.threadRoot ? o.threadRoot : threadRoot;
         out.push_back(std::move(m));
     };
     if (t.flying)
@@ -901,8 +928,21 @@ void Backend::diffAndAnnounce(Tracked &t) {
     for (auto it = t.announced.cbegin(); it != t.announced.cend(); ++it)
         if (!now.contains(it.key()))
             _events.fire(EvMessageDeleted{conv, it.key(), it.value().threadRoot});
-    bool sawOwnPrompt = false;
-    for (auto it = now.cbegin(); it != now.cend(); ++it) {
+    bool       sawOwnPrompt = false;
+    // A new reply before the rest: its root's new reply count comes with the
+    // root's change, and a reply announced after that would be counted twice.
+    const auto newReply     = [&](const auto &it) {
+        return it.value().threadRoot && !t.announced.contains(it.key());
+    };
+    QList<Ts> order;
+    for (auto it = now.cbegin(); it != now.cend(); ++it)
+        if (newReply(it))
+            order << it.key();
+    for (auto it = now.cbegin(); it != now.cend(); ++it)
+        if (!newReply(it))
+            order << it.key();
+    for (const Ts &ts : order) {
+        const auto it  = now.constFind(ts);
         const auto old = t.announced.constFind(it.key());
         if (old == t.announced.cend()) {
             _events.fire(EvMessageNew{conv, it.value()});
@@ -1584,6 +1624,8 @@ rpl::producer<MessagePage> Backend::loadHistory(ConversationId id, std::optional
                     t->announced.insert(m.ts, m);
                 t->announcedInit = true;
             }
+            // Replies in subagent threads are in the threads (loadThread).
+            std::erase_if(msgs, [](const Message &m) { return m.threadRoot.has_value(); });
             // Newest page first; the cursor is how many messages from the end
             // have been served already.
             constexpr int kPage = 200;
@@ -1630,6 +1672,10 @@ rpl::producer<MessagePage> Backend::loadThread(ConversationId id, Ts root, std::
                     agentId = item.agentId;
             if (it != msgs.end()) {
                 page.messages.push_back(*it);
+                // The user's replies, relayed to it through the session.
+                for (const auto &m : msgs)
+                    if (m.threadRoot == root)
+                        page.messages.push_back(m);
                 QFile f(Paths::subagentTranscript(t->transcriptPath, agentId));
                 if (!agentId.isEmpty() && f.open(QIODevice::ReadOnly)) {
                     TranscriptParser p;
@@ -1644,6 +1690,7 @@ rpl::producer<MessagePage> Backend::loadThread(ConversationId id, Ts root, std::
                         page.messages.push_back(std::move(m));
                     }
                 }
+                std::stable_sort(page.messages.begin() + 1, page.messages.end(), MessageDateLess{});
             }
         }
         consumer.put_next(std::move(page));
@@ -1804,15 +1851,26 @@ void Backend::sendMessage(
     const auto                      btw = kBtw.match(text.trimmed());
     QString                         reason;
     Tracked                        *target = t; // who gets the message
+    std::optional<Ts>               relayRoot;  // a reply in a subagent's thread
+    QString                         shown;
     if (!t) {
         reason = QCoreApplication::translate("claude_code", "This session no longer exists.");
+    } else if (msg.threadRoot && (target = forkFor(conv.value, *msg.threadRoot))) {
+        reason = readOnlyReason(*target); // a /btw thread continues its branch
     } else if (msg.threadRoot) {
-        // A /btw thread continues its branch; a subagent's run is only there to read.
-        target = forkFor(conv.value, *msg.threadRoot);
-        reason = target ? readOnlyReason(*target)
-                        : QCoreApplication::translate(
-                              "claude_code", "Subagent threads can't be replied to."
-                          );
+        // A subagent can't be typed to: the session passes the reply on.
+        target                = t;
+        const QString agentId = subagentOf(*t, *msg.threadRoot);
+        if (agentId.isEmpty()) {
+            reason = QCoreApplication::translate(
+                "claude_code", "This subagent can't be written to until it has started."
+            );
+        } else {
+            reason    = readOnlyReason(*t);
+            relayRoot = msg.threadRoot;
+            shown     = text;
+            text      = subagentReplyPrompt(agentId, text);
+        }
     } else if (btw.hasMatch()) {
         // A side question: a branch of the session, which itself isn't touched —
         // so it can be asked while Claude is busy, or of a terminal's session.
@@ -1844,7 +1902,7 @@ void Backend::sendMessage(
     qint64 micros = nowMs() * 1000;
     for (const auto &m : shownMessages(*target))
         micros = std::max(micros, m.date + 1);
-    target->outbox.append({text, microsToTs(micros), micros});
+    target->outbox.append({text, microsToTs(micros), micros, relayRoot, shown});
     // A record timed before that (clocks, the same millisecond) would otherwise
     // be tie-broken onto the copy's very ts, and its prompt never seen landing.
     target->parser.reserveTs(micros);
@@ -1900,7 +1958,21 @@ void Backend::startFork(
 }
 
 bool Backend::threadAcceptsReplies(ConversationId conv, Ts root) {
+    if (forkFor(conv.value, root))
+        return true;
+    const Tracked *t = find(conv.value);
+    return t && !subagentOf(*t, root).isEmpty();
+}
+
+bool Backend::threadOpensAsSession(ConversationId conv, Ts root) {
     return forkFor(conv.value, root) != nullptr;
+}
+
+QString Backend::subagentOf(const Tracked &t, const Ts &root) const {
+    for (const auto &item : t.parser.items())
+        if (item.ts == root && item.kind == TranscriptItem::Kind::Subagent)
+            return item.agentId;
+    return {};
 }
 
 ConversationId Backend::openThreadAsSession(ConversationId conv, Ts root) {

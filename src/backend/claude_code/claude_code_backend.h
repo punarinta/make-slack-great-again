@@ -142,6 +142,7 @@ public:
          runLocalCommand(ConversationId, const QString &name, const QString &args) override;
     // A /btw thread is a session branched off this one: replies continue it.
     bool threadAcceptsReplies(ConversationId, Ts root) override;
+    bool threadOpensAsSession(ConversationId, Ts root) override;
     // Not while the session is working or driven from elsewhere, nor tool calls
     // or history a /btw thread shares.
     bool canDeleteMessage(ConversationId, Ts) override;
@@ -218,6 +219,7 @@ private:
     bool                  needsUser(const Tracked &t) const;
     const TranscriptItem *deletableItem(Tracked &t, const Ts &ts);
     int                   subagentReplyCount(const Tracked &t, const QString &agentId, Ts *latest);
+    QString subagentOf(const Tracked &t, const Ts &root) const; // "" = none/not started
 
     Credentials                              _creds;
     Paths                                    _paths;

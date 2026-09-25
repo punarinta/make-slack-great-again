@@ -294,13 +294,13 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     if (changed)
         _composer->restoreDraft(_drafts.value(threadDraftKey(_session, _conv, _rootTs)));
     _msgList->openThread(conv, rootTs);
-    // An agent session's threads are mostly its subagent runs: there to read,
-    // not to reply to (Capabilities::agentSessions). A side conversation branched
-    // off it (/btw) is one to continue.
+    // An agent session's thread is a subagent's run, which a reply goes on to
+    // (relayed by the session), or a side conversation branched off it (/btw),
+    // which is also a session of its own. A subagent that hasn't started yet
+    // takes nothing.
     const bool agent    = _session && _session->capabilities().agentSessions;
-    const bool branch   = agent && _session->backend()->threadAcceptsReplies(conv, rootTs);
-    const bool readOnly = agent && !branch;
-    _openSessionBtn->setVisible(branch);
+    const bool readOnly = agent && !_session->backend()->threadAcceptsReplies(conv, rootTs);
+    _openSessionBtn->setVisible(agent && _session->backend()->threadOpensAsSession(conv, rootTs));
     _composer->setVisible(!readOnly);
     _composer->setEnabled(!readOnly);
     _composer->setPlaceholderText(tr("Reply in thread…"));

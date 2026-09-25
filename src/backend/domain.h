@@ -216,7 +216,8 @@ struct Capabilities {
                                 // (Teams fetches every photo) or is purely local (IMAP).
     bool agentSessions = false; // conversations are AI agent sessions (Claude Code): the DM "+"
                                 // starts a new one in a chosen folder (startAgentSession) instead
-                                // of browsing people, and threads (subagent runs) are read-only.
+                                // of browsing people, and threads are subagent runs (a reply is
+                                // relayed to the subagent by the session) and /btw branches.
     bool removePreview = false; // deleteAttachment(): strip a link preview from an OWN message
                                 // server-side, for everyone — the official client's "Remove
                                 // preview" (Slack: the internal chat.deleteAttachment, served to

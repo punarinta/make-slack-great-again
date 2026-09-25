@@ -469,10 +469,12 @@ public:
     runLocalCommand(ConversationId, const QString & /*name*/, const QString & /*args*/) {
         return {};
     }
-    // Whether a thread takes replies. Agent sessions' threads are mostly there
-    // to read (a subagent's run); a branched-off side conversation (Claude
-    // Code's /btw thread) is one to continue. Default: every thread does.
+    // Whether a thread takes replies. An agent session's thread may not yet
+    // (a subagent that hasn't started). Default: every thread does.
     virtual bool           threadAcceptsReplies(ConversationId, Ts /*root*/) { return true; }
+    // Whether the thread is really a conversation of its own that can be
+    // listed as one (openThreadAsSession: Claude Code's /btw branch).
+    virtual bool           threadOpensAsSession(ConversationId, Ts /*root*/) { return false; }
     // Whether this one message can be deleted right now, beyond what the
     // capabilities allow in general (an agent session's message can't while
     // the agent is working, say). Default: yes.

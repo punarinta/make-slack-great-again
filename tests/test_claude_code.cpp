@@ -330,6 +330,16 @@ TEST_CASE("an Agent call becomes a subagent item linked by its agent id", "[clau
     CHECK(p.items()[1].agentId == "abc123");
 }
 
+TEST_CASE("a reply relayed to a subagent reads back as the reply alone", "[claude][transcript]") {
+    TranscriptParser p;
+    const QString    relay = subagentReplyPrompt("ab0ae6eeb1648c1f4", "What codeword?\n\nJust it.");
+    p.feed(prompt(relay, "2026-09-25T10:00:00.000Z") + prompt("plain", "2026-09-25T10:00:01.000Z"));
+    REQUIRE(p.items().size() == 2);
+    CHECK(p.items()[0].relayTo == "ab0ae6eeb1648c1f4");
+    CHECK(p.items()[0].text == "What codeword?\n\nJust it.");
+    CHECK(p.items()[1].relayTo.isEmpty());
+}
+
 TEST_CASE(
     "records in the same millisecond still get distinct, ordered ids", "[claude][transcript]"
 ) {
@@ -1976,6 +1986,66 @@ TEST_CASE("typing into a real background session", "[.live][attach]") {
     CHECK(QString(names[int(*outcome)]) == expect);
 }
 
+// A reply in a real subagent's thread, relayed by its session: run in a
+// throwaway CLAUDE_CONFIG_DIR, with MSGA_CC_LIVE_SESSION = a background
+// session (claude --bg) whose last turn launched a subagent, and claude on PATH.
+TEST_CASE("replying to a real subagent", "[.live][thread]") {
+    const QString sessionId = qEnvironmentVariable("MSGA_CC_LIVE_SESSION");
+    const QString claude    = QStandardPaths::findExecutable("claude");
+    if (sessionId.isEmpty() || claude.isEmpty())
+        SKIP("MSGA_CC_LIVE_SESSION and claude on PATH needed");
+    const QString reply =
+        qEnvironmentVariable("MSGA_CC_LIVE_TEXT", "What codeword were you given? Only the word.");
+    Credentials creds;
+    creds.claudePath = claude;
+    claude_code::Backend backend(creds);
+    backend.connectRealtime();
+    const ConversationId conv{sessionId};
+    std::optional<Ts>    root;
+    REQUIRE(
+        QTest::qWaitFor(
+            [&] {
+                for (const auto &page : collect(backend.loadHistory(conv, std::nullopt)))
+                    for (const auto &m : page.messages)
+                        if (m.replyCount > 0 && backend.threadAcceptsReplies(conv, m.ts))
+                            root = m.ts;
+                return root.has_value();
+            },
+            30'000
+        )
+    );
+    OutgoingMessage out;
+    out.composerText = reply;
+    out.threadRoot   = root;
+    std::optional<bool> sent;
+    QString             error;
+    backend.sendMessage(conv, out, [&](bool ok, QString err) {
+        sent  = ok;
+        error = err;
+    });
+    REQUIRE(QTest::qWaitFor([&] { return sent.has_value(); }, 10'000));
+    INFO(error.toStdString());
+    REQUIRE(*sent);
+    // The reply lands in the thread as typed; the subagent answers after it.
+    std::vector<Message> thread;
+    const bool           answered = QTest::qWaitFor(
+        [&] {
+            thread          = collect(backend.loadThread(conv, *root, std::nullopt))[0].messages;
+            const auto mine = std::find_if(thread.begin(), thread.end(), [&](const Message &m) {
+                return m.author == UserId{"me"} && m.text.text == reply;
+            });
+            return mine != thread.end() && mine + 1 != thread.end();
+        },
+        240'000
+    );
+    for (const auto &m : thread)
+        UNSCOPED_INFO(m.author.value.toStdString() << ": " << m.text.text.left(120).toStdString());
+    CHECK(answered);
+    for (const auto &page : collect(backend.loadHistory(conv, std::nullopt)))
+        for (const auto &m : page.messages)
+            CHECK_FALSE(m.text.text.contains(reply)); // not in the chat itself
+}
+
 #ifdef CC_FAKE_ATTACH
 TEST_CASE(
     "a live background session is typed to, not stopped, even while it works",
@@ -2278,7 +2348,77 @@ TEST_CASE(
     CHECK(thread[0].messages[0].ts == root->ts);
     CHECK(thread[0].messages[2].text.text == "The docs say X.");
     CHECK(thread[0].messages[2].threadRoot == root->ts);
-    CHECK(backend.capabilities().agentSessions); // → the thread composer is hidden
+    // A reply goes on to the subagent (relayed by the session); it isn't a
+    // session of its own.
+    CHECK(backend.threadAcceptsReplies(conv, root->ts));
+    CHECK_FALSE(backend.threadOpensAsSession(conv, root->ts));
+}
+
+TEST_CASE(
+    "a reply relayed to a subagent is in its thread, not the chat", "[claude][backend][thread]"
+) {
+    FakeClaudeHome home;
+    home.writeSession("idle");
+    // As Claude Code 2.1.282 records it: the relay is the session's prompt; the
+    // subagent gets it as the coordinator's (isMeta, hidden) and answers.
+    home.append(
+        prompt("research it", "2026-09-25T10:00:00.000Z") +
+        toolUse("a1", "Agent", {{"description", "Read the docs"}}, "2026-09-25T10:00:01.000Z") +
+        toolResult("a1", "2026-09-25T10:00:02.000Z", false, "agent42") +
+        assistantText("Started.", "2026-09-25T10:00:03.000Z") +
+        turnEnd("2026-09-25T10:00:04.000Z") +
+        prompt(subagentReplyPrompt("agent42", "Which page?"), "2026-09-25T10:01:00.000Z") +
+        toolUse("s1", "SendMessage", {{"to", "agent42"}}, "2026-09-25T10:01:01.000Z") +
+        toolResult("s1", "2026-09-25T10:01:02.000Z") +
+        assistantText("Sent.", "2026-09-25T10:01:03.000Z") + turnEnd("2026-09-25T10:01:04.000Z")
+    );
+    QDir().mkpath(home.dir.path() + "/projects/-src-app/S1/subagents");
+    {
+        QFile f(home.dir.path() + "/projects/-src-app/S1/subagents/agent-agent42.jsonl");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(
+            prompt("Read the docs", "2026-09-25T10:00:01.500Z", false) +
+            assistantText("Reading.", "2026-09-25T10:00:05.000Z") +
+            line({
+                {"type", "user"},
+                {"isMeta", true},
+                {"origin", QJsonObject{{"kind", "coordinator"}}},
+                {"timestamp", "2026-09-25T10:01:02.000Z"},
+                {"message",
+                 QJsonObject{
+                     {"content",
+                      "The coordinator sent a message while you were working:\nWhich "
+                      "page?\n\nAddress this before completing your current task."}
+                 }},
+            }) +
+            assistantText("Page 3.", "2026-09-25T10:01:05.000Z")
+        );
+    }
+
+    claude_code::Backend backend(Credentials{});
+    backend.connectRealtime();
+    const ConversationId conv{"S1"};
+    const auto           page = collect(backend.loadHistory(conv, std::nullopt));
+    REQUIRE(page.size() == 1);
+    const auto &msgs = page[0].messages;
+    CHECK(std::none_of(msgs.begin(), msgs.end(), [](const Message &m) {
+        return m.text.text.contains("Which page?") || m.threadRoot.has_value();
+    }));
+    const auto root =
+        std::find_if(msgs.begin(), msgs.end(), [](const Message &m) { return m.replyCount > 0; });
+    REQUIRE(root != msgs.end());
+    CHECK(root->replyCount == 4); // its prompt and 2 answers, and the reply
+
+    const auto thread = collect(backend.loadThread(conv, root->ts, std::nullopt));
+    REQUIRE(thread.size() == 1);
+    const auto &t = thread[0].messages;
+    REQUIRE(t.size() == 5);
+    CHECK(t[2].text.text == "Reading.");
+    CHECK(t[3].text.text == "Which page?"); // yours, in time order
+    CHECK(t[3].author == UserId{"me"});
+    CHECK(t[3].threadRoot == root->ts);
+    CHECK(t[4].text.text == "Page 3.");
+    CHECK(root->latestReply == t[4].ts);
 }
 
 // ── Deleting messages ─────────────────────────────────────────────────────────
