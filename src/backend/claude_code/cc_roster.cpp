@@ -143,15 +143,20 @@ bool isProcessAlive(qint64 pid) {
 #endif
 }
 
-bool hasLiveWorker(const Paths &paths, const QString &sessionId) {
-    const QDir sessions(paths.sessionsDir());
+std::vector<qint64> liveWorkerPids(const Paths &paths, const QString &sessionId) {
+    std::vector<qint64> out;
+    const QDir          sessions(paths.sessionsDir());
     for (const auto &f : sessions.entryList({QStringLiteral("*.json")}, QDir::Files)) {
         const auto s = parseInteractiveSession(readSmallFile(sessions.filePath(f)));
         if (s && s->kind == SessionInfo::Kind::Background && s->sessionId == sessionId &&
             isProcessAlive(s->pid))
-            return true;
+            out.push_back(s->pid);
     }
-    return false;
+    return out;
+}
+
+bool hasLiveWorker(const Paths &paths, const QString &sessionId) {
+    return !liveWorkerPids(paths, sessionId).empty();
 }
 
 #if defined(Q_OS_LINUX)

@@ -73,7 +73,9 @@ public:
 
     // Continue session `sessionId` with `prompt`. `isBackground`: it is (or was)
     // a background session — stopped first when its worker is still alive
-    // (`stopFirst`), and resumed without flags so it keeps its saved options.
+    // (`stopFirst`, or one is found alive now), and resumed without flags so it
+    // keeps its saved options. Should Claude Code start a copy after all, `done`
+    // gets the copy's id: the conversation goes on there.
     void resume(
         const QString &sessionId,
         const QString &cwd,
@@ -114,7 +116,12 @@ private:
          run(const QStringList                            &args,
              const QString                                &cwd,
              std::function<void(int code, QString output)> done);
-    void waitStopped(const QString &sessionId, int attemptsLeft, std::function<void()> then);
+    void waitStopped(
+        const QString        &sessionId,
+        std::vector<qint64>   pids,
+        int                   attemptsLeft,
+        std::function<void()> then
+    );
     void reapLeftovers(const QString &sessionId, std::function<void()> done);
 
     QString _claudePath;

@@ -74,7 +74,10 @@ bool isProcessAlive(qint64 pid);
 // Whether a live background worker holds session `sessionId` (its
 // sessions/<pid>.json, kind "bg"). After `claude stop` this is what tells the
 // worker has exited: an idle job's state.json keeps reading "done".
-bool hasLiveWorker(const Paths &paths, const QString &sessionId);
+bool                hasLiveWorker(const Paths &paths, const QString &sessionId);
+// …and their pids. The pid file can go before the process has exited, and a
+// resume in between only starts a copy: waiting for a stop watches both.
+std::vector<qint64> liveWorkerPids(const Paths &paths, const QString &sessionId);
 
 // Processes background session `sessionId` (job `shortId`) started that
 // outlive its worker. `claude stop` ends the worker and with it the subagents

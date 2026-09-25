@@ -1554,8 +1554,8 @@ TEST_CASE("Stop cuts a session's turn short and drops what waits", "[claude][bac
         )
                     .toJson());
     }
-    qputenv("FAKE_WORKER_PID", QByteArray::number(QCoreApplication::applicationPid()));
-    // Every turn this CLI starts goes on until it is stopped.
+    // Every turn this CLI starts goes on until it is stopped. Its worker is a
+    // real process: a stop waits for it to exit.
     const QString cli = work.path() + "/claude";
     {
         QFile f(cli);
@@ -1568,6 +1568,7 @@ if [ "$1" = stop ]; then
   T=$(sed -n 's/.*"linkScanPath":"\([^"]*\)".*/\1/p' "$H/jobs/$2/state.json")
   echo '{"type":"last-prompt","lastPrompt":"x"}' >> "$T"
   rm -f "$H/sessions/w$2.json"
+  kill $(cat "$H/wpid-$2" 2>/dev/null) 2>/dev/null
   sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
   echo "stopped $2"; exit 0
 fi
@@ -1584,7 +1585,10 @@ T="$H/projects/-fake/$sid.jsonl"
 ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
 mkdir -p "$H/jobs/$short"
 echo "{\"state\":\"working\",\"sessionId\":\"$sid\",\"cwd\":\"$PWD\",\"name\":\"fake-$short\",\"linkScanPath\":\"$T\"}" > "$H/jobs/$short/state.json"
-echo "{\"pid\":$FAKE_WORKER_PID,\"sessionId\":\"$sid\",\"kind\":\"bg\",\"status\":\"busy\"}" > "$H/sessions/w$short.json"
+kill $(cat "$H/wpid-$short" 2>/dev/null) 2>/dev/null
+sleep 60 </dev/null >/dev/null 2>&1 &
+echo $! > "$H/wpid-$short"
+echo "{\"pid\":$!,\"sessionId\":\"$sid\",\"kind\":\"bg\",\"status\":\"busy\"}" > "$H/sessions/w$short.json"
 echo "{\"type\":\"user\",\"timestamp\":\"$ts\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"$prompt\"}}" >> "$T"
 echo "backgrounded · $short"
 )SH");
@@ -1673,10 +1677,12 @@ echo "backgrounded · $short"
     REQUIRE(QTest::qWaitFor([&] { return QFile::exists(workerFile); }, 8000));
     QTest::qWait(300); // the launcher has reported back
     {
+        QFile w(home.dir.path() + "/wpid-abcdef11"); // the fake's worker process
+        REQUIRE(w.open(QIODevice::ReadOnly));
         QFile f(workerFile);
         REQUIRE(f.open(QIODevice::WriteOnly));
         f.write(QString(R"({"pid":%1,"sessionId":"%2","kind":"bg","status":"idle"})")
-                    .arg(QCoreApplication::applicationPid())
+                    .arg(w.readAll().trimmed().toLongLong())
                     .arg(sid)
                     .toUtf8());
         // …and the turn is over.
