@@ -352,9 +352,7 @@ void walk(
 
 QJsonArray richTextElements(const TextWithEntities &twe) {
     std::vector<TextEntity> ents = twe.entities;
-    std::stable_sort(ents.begin(), ents.end(), [](const TextEntity &a, const TextEntity &b) {
-        return a.offset != b.offset ? a.offset < b.offset : a.length > b.length;
-    });
+    std::stable_sort(ents.begin(), ents.end(), TextEntityNestingOrder{});
     QJsonArray out;
     size_t     k = 0;
     walk(twe.text, ents, k, 0, twe.text.size(), Style{}, out);

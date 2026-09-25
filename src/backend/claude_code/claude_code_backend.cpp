@@ -707,9 +707,7 @@ std::vector<Message> Backend::visibleMessages(Tracked &t) {
         branched = true;
     }
     if (branched)
-        std::stable_sort(out.begin(), out.end(), [](const Message &a, const Message &b) {
-            return a.date < b.date;
-        });
+        std::stable_sort(out.begin(), out.end(), MessageDateLess{});
     return out;
 }
 
@@ -2149,14 +2147,6 @@ rpl::producer<std::vector<SearchResult>> Backend::searchMessages(const QString &
             });
         }
         consumer.put_next(std::move(out));
-        consumer.put_done();
-        return rpl::lifetime();
-    };
-}
-
-rpl::producer<QHash<QString, QString>> Backend::loadEmojiList() {
-    return [](auto consumer) {
-        consumer.put_next(QHash<QString, QString>{});
         consumer.put_done();
         return rpl::lifetime();
     };

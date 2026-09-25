@@ -6,8 +6,10 @@
 #pragma once
 
 #include "domain.h"
-#include "rpl/producer.h"
+#include "rpl/complete.h"
 #include "rpl/event_stream.h"
+#include "rpl/producer.h"
+#include "rpl/range.h"
 
 #include <QHash>
 #include <functional>
@@ -85,10 +87,7 @@ public:
     // <!subteam^S…> mentions and counting the ones I belong to as mentions.
     // Default: complete without a value — the service has no user groups.
     virtual rpl::producer<std::vector<Usergroup>>    loadUsergroups() {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<std::vector<Usergroup>>();
     }
     // Fetch current presence for one user; emits true=active/false=away then completes.
     virtual rpl::producer<bool> loadPresence(UserId) = 0;
@@ -97,29 +96,14 @@ public:
     virtual rpl::producer<bool> loadPresenceBackground(UserId id) { return loadPresence(id); }
     // Rich presence for the authed user (users.getPresence with no user arg).
     // Default no-op for backends that don't support this.
-    virtual rpl::producer<SelfPresence> loadSelfPresence() {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
-    }
+    virtual rpl::producer<SelfPresence> loadSelfPresence() { return rpl::complete<SelfPresence>(); }
     // Fetch display name + avatar for a bot by its bot_id (e.g. "B4URAF31U").
     // Default no-op for backends that don't support this.
-    virtual rpl::producer<User> loadBotInfo(UserId /*botId*/) {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
-    }
+    virtual rpl::producer<User> loadBotInfo(UserId /*botId*/) { return rpl::complete<User>(); }
     // Fetch a single user (users.info) by id. Resolves DM peers that users.list
     // omits — Slack system accounts (USLACK / USLACKBOT), Slack Connect partners,
     // deactivated users. Default no-op for backends that don't support this.
-    virtual rpl::producer<User> loadUser(UserId /*userId*/) {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
-    }
+    virtual rpl::producer<User> loadUser(UserId /*userId*/) { return rpl::complete<User>(); }
     // loadUser routed via the paced low-priority lane (see loadConversationInfo's
     // `background`): for the Session's bulk re-probe of users the roster snapshot
     // omits, which must never crowd out interactive calls. Defaults to loadUser.
@@ -133,10 +117,7 @@ public:
     // don't support this.
     virtual rpl::producer<Conversation>
     loadConversationInfo(ConversationId, bool background = false) {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<Conversation>();
     }
     // Whole-workspace unread/activity snapshot in ONE request (Slack's
     // `client.counts`). For a backend with no push transport this is what makes a
@@ -151,10 +132,7 @@ public:
     // unsupported case, so a backend that doesn't implement it simply falls back
     // to the Session's slower roster diff.
     virtual rpl::producer<std::vector<ConvCounts>> loadUnreadCounts() {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<std::vector<ConvCounts>>();
     }
 
     virtual rpl::producer<MessagePage>
@@ -173,10 +151,7 @@ public:
     // Message, or complete WITHOUT emitting when it can't be had (unsupported
     // backend, deleted message, no access, failed request).
     virtual rpl::producer<Message> loadMessageAt(ConversationId, Ts) {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<Message>();
     }
 
     // Workspace-wide "Threads" overview: the threads the authed user is
@@ -188,10 +163,7 @@ public:
     // (unsupported backend, rejected token type, failed request). The UI gates
     // the whole feature on Capabilities::threadsView.
     virtual rpl::producer<ThreadsViewPage> loadThreadsView(const QString & /*cursor*/) {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<ThreadsViewPage>();
     }
 
     // Move the authed user's read cursor inside a thread to `ts` (Slack's
@@ -213,10 +185,7 @@ public:
     // WITHOUT emitting when unavailable — so a consumer only replaces its local
     // state on a real server answer.
     virtual rpl::producer<std::vector<MessageReminder>> loadMessageReminders() {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<std::vector<MessageReminder>>();
     }
     // Save a message for later: dueAt > 0 (Unix seconds) creates or reschedules
     // a reminder, dueAt == 0 a plain bookmark with no alarm (and drops the due
@@ -317,10 +286,7 @@ public:
     // "nothing starred"), or complete WITHOUT emitting when unavailable — so a
     // consumer only replaces its local state on a real server answer.
     virtual rpl::producer<std::vector<ConversationId>> loadStarredConversations() {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<std::vector<ConversationId>>();
     }
     // Leave a conversation (conversations.leave).
     virtual void leaveConversation(ConversationId) {}
@@ -490,10 +456,7 @@ public:
     // (Slack's undocumented commands.list — app commands). Backends without such
     // a registry produce nothing; nativeCommands() + the app-level set still apply.
     virtual rpl::producer<std::vector<SlashCommand>> listCommands() {
-        return [](auto consumer) {
-            consumer.put_done();
-            return rpl::lifetime();
-        };
+        return rpl::complete<std::vector<SlashCommand>>();
     }
     // The slash commands of one conversation, where they differ per
     // conversation (a Claude Code session's project adds its own). Empty: the
@@ -533,14 +496,18 @@ public:
 
     // --- Phase 3: search, emoji, files ---
     virtual rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) = 0;
-    virtual rpl::producer<QHash<QString, QString>>   loadEmojiList()                      = 0;
+    // Custom emoji: name → image URL. Default: an empty map — the service has
+    // no custom emoji.
+    virtual rpl::producer<QHash<QString, QString>>   loadEmojiList() {
+        return rpl::single(QHash<QString, QString>{});
+    }
     // Upload one or more files and share them in the conversation as a single
     // message; initialComment (may be empty) becomes the message text. When
     // threadRoot is set, the files post as a reply in that thread instead of at
     // the channel root.
     // `done` (optional) fires once the whole batch settles: ok=true when a
     // message was posted, ok=false (with a reason) when nothing was posted.
-    virtual void                                     uploadFiles(
+    virtual void uploadFiles(
         ConversationId,
         const QStringList                          &filePaths,
         const QString                              &initialComment,

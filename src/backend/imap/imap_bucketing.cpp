@@ -100,9 +100,7 @@ Bucketer::run(const QList<MsgRef> &msgs, const QList<QList<quint32>> &serverThre
                 gm.append(*m);
         if (gm.isEmpty())
             continue;
-        std::sort(gm.begin(), gm.end(), [](const MsgRef &a, const MsgRef &b) {
-            return a.env.date < b.env.date;
-        });
+        std::sort(gm.begin(), gm.end(), MsgRefDateLess{});
 
         // Participant union (minus me) + list detection + user harvest.
         QList<QString> participants; // ordered unique emails
@@ -166,9 +164,7 @@ Bucketer::run(const QList<MsgRef> &msgs, const QList<QList<quint32>> &serverThre
 
     for (auto it = result.byId.begin(); it != result.byId.end(); ++it) {
         ConvData &cd = it.value();
-        std::sort(cd.messages.begin(), cd.messages.end(), [](const MsgRef &a, const MsgRef &b) {
-            return a.env.date < b.env.date;
-        });
+        std::sort(cd.messages.begin(), cd.messages.end(), MsgRefDateLess{});
         int unread = 0;
         for (const MsgRef &m : cd.messages)
             if (!m.seen)

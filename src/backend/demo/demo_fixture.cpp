@@ -452,9 +452,7 @@ std::optional<Fixture> loadFixture(const QString &path, QString *error, const QD
     // Oldest first, then derive per-conversation cursors from the result.
     for (auto &c : fx.conversations) {
         auto &msgs = fx.history[c.id.value];
-        std::stable_sort(msgs.begin(), msgs.end(), [](const Message &a, const Message &b) {
-            return a.date < b.date;
-        });
+        std::stable_sort(msgs.begin(), msgs.end(), MessageDateLess{});
         const int n = int(msgs.size());
         c.latestTs  = n ? msgs.back().ts : Ts();
         if (c.unread > 0 && c.unread < n)

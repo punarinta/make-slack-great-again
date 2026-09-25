@@ -120,7 +120,6 @@ public:
 
     // --- Search / emoji / files ---
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
-    rpl::producer<QHash<QString, QString>>   loadEmojiList() override;
     void                                     uploadFiles(
         ConversationId,
         const QStringList &,

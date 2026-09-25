@@ -922,11 +922,7 @@ rpl::producer<std::vector<User>> Backend::loadUsers() {
 
 rpl::producer<bool> Backend::loadPresence(UserId) {
     // Email has no presence; report "away" and complete.
-    return [](auto consumer) {
-        consumer.put_next(false);
-        consumer.put_done();
-        return rpl::lifetime();
-    };
+    return rpl::single(false);
 }
 
 // Fetch BODY[] for `refs`, build the MessagePage ON A WORKER THREAD (MIME + HTML
@@ -1044,13 +1040,7 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                                             r.seen         = it.seen();
                                             refs.append(r);
                                         }
-                                        std::sort(
-                                            refs.begin(),
-                                            refs.end(),
-                                            [](const MsgRef &a, const MsgRef &b) {
-                                                return a.env.date < b.env.date;
-                                            }
-                                        );
+                                        std::sort(refs.begin(), refs.end(), MsgRefDateLess{});
                                         // Make the paged-in messages actionable
                                         // (delete / label / mark read resolve
                                         // their UIDs through _index).
@@ -1096,9 +1086,7 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                             byRoot[cd.threadRootOf.value(msgKeyOf(m), msgKeyOf(m))].append(m);
                         for (auto it = byRoot.begin(); it != byRoot.end(); ++it) {
                             QList<MsgRef> g = it.value();
-                            std::sort(g.begin(), g.end(), [](const MsgRef &a, const MsgRef &b) {
-                                return a.env.date < b.env.date;
-                            });
+                            std::sort(g.begin(), g.end(), MsgRefDateLess{});
                             display.append(g.first());
                             replyCountOf[it.key()] = int(g.size()) - 1;
                             if (g.size() > 1)
@@ -1107,9 +1095,7 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                     } else {
                         display = cd.messages; // DM/MPDM: inline, flat
                     }
-                    std::sort(display.begin(), display.end(), [](const MsgRef &a, const MsgRef &b) {
-                        return a.env.date < b.env.date;
-                    });
+                    std::sort(display.begin(), display.end(), MsgRefDateLess{});
 
                     _client->select(
                         mailbox,
@@ -1294,9 +1280,7 @@ Backend::loadThread(ConversationId conv, Ts root, std::optional<QString>) {
             for (const MsgRef &m : cd.messages)
                 if (cd.threadRootOf.value(msgKeyOf(m), msgKeyOf(m)) == root)
                     thread.append(m);
-            std::sort(thread.begin(), thread.end(), [](const MsgRef &a, const MsgRef &b) {
-                return a.env.date < b.env.date;
-            });
+            std::sort(thread.begin(), thread.end(), MsgRefDateLess{});
             if (thread.isEmpty()) {
                 consumer.put_next(MessagePage{});
                 consumer.put_done();
@@ -1743,14 +1727,6 @@ rpl::producer<std::vector<SearchResult>> Backend::searchMessages(const QString &
                 }
             );
         });
-        return rpl::lifetime();
-    };
-}
-
-rpl::producer<QHash<QString, QString>> Backend::loadEmojiList() {
-    return [](auto consumer) {
-        consumer.put_next(QHash<QString, QString>{});
-        consumer.put_done();
         return rpl::lifetime();
     };
 }

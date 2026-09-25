@@ -910,11 +910,7 @@ ThreadsViewPage toThreadsViewPage(const QJsonObject &resp) {
             }
         }
         // Oldest-first for display, whatever order the server sent.
-        std::sort(
-            item.latestReplies.begin(),
-            item.latestReplies.end(),
-            [](const Message &a, const Message &b) { return a.date < b.date; }
-        );
+        std::sort(item.latestReplies.begin(), item.latestReplies.end(), MessageDateLess{});
         item.latestReplies.erase(
             std::unique(
                 item.latestReplies.begin(),

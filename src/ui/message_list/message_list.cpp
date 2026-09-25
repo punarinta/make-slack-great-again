@@ -887,6 +887,16 @@ void MessageListWidget::collapseInlineThread(const Ts &rootTs) {
         emit threadCloseRequested();
 }
 
+namespace {
+// Oldest first. One named comparator for both stable_sorts of _items, so they
+// share a single instantiation of the std::stable_sort machinery (~20 KB each).
+struct ItemDateLess {
+    bool operator()(const MessageItem &a, const MessageItem &b) const {
+        return a.msg.date < b.msg.date;
+    }
+};
+} // namespace
+
 void MessageListWidget::mergeNetworkMessages(
     const std::vector<Message> &incoming, bool fromHeadPage, quint64 requestRevision
 ) {
@@ -920,9 +930,7 @@ void MessageListWidget::mergeNetworkMessages(
         }
         _historyMessageRevisions[msg.ts] = requestRevision;
     }
-    std::stable_sort(_items.begin(), _items.end(), [](const MessageItem &a, const MessageItem &b) {
-        return a.msg.date < b.msg.date;
-    });
+    std::stable_sort(_items.begin(), _items.end(), ItemDateLess{});
 
     // Reconcile deletions. A message deleted from another client won't appear in
     // this authoritative page, yet it's still sitting in our list (pre-populated
@@ -1028,9 +1036,7 @@ void MessageListWidget::appendMessages(const std::vector<Message> &msgs) {
     // regardless of the source's order (e.g. a backend that returns newest-first,
     // or a stale cache written by an older build). Stable so equal-date messages
     // keep their arrival order. No-op when the input is already sorted (Slack).
-    std::stable_sort(_items.begin(), _items.end(), [](const MessageItem &a, const MessageItem &b) {
-        return a.msg.date < b.msg.date;
-    });
+    std::stable_sort(_items.begin(), _items.end(), ItemDateLess{});
     rebuildLayout();
     viewport()->update();
 }

@@ -103,9 +103,7 @@ void ThreadExportJob::writeFile() {
         seen.insert(m.ts);
         messages.push_back(std::move(m));
     }
-    std::stable_sort(messages.begin(), messages.end(), [](const Message &a, const Message &b) {
-        return a.date < b.date;
-    });
+    std::stable_sort(messages.begin(), messages.end(), MessageDateLess{});
 
     QFile f(_savePath);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

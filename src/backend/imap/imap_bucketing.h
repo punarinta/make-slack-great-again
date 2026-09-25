@@ -31,6 +31,12 @@ struct MsgRef {
     bool      seen = false;
 };
 
+// Oldest first, by the Date header. Named (not a lambda per call site) so the
+// many sorts over MsgRef lists share one instantiation of std::sort.
+struct MsgRefDateLess {
+    bool operator()(const MsgRef &a, const MsgRef &b) const { return a.env.date < b.env.date; }
+};
+
 // Per-conversation data the backend keeps to serve loadHistory/loadThread.
 struct ConvData {
     Conversation            conv;

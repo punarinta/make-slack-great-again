@@ -718,6 +718,15 @@ struct TextEntity {
     bool       operator==(const TextEntity &) const = default;
 };
 
+// Parents before children: offset ascending, longer span first. A named
+// comparator rather than a lambda per call site, so every sort over entities
+// shares ONE instantiation of the (sizeable) std sort machinery.
+struct TextEntityNestingOrder {
+    bool operator()(const TextEntity &a, const TextEntity &b) const {
+        return a.offset != b.offset ? a.offset < b.offset : a.length > b.length;
+    }
+};
+
 struct TextWithEntities {
     QString                 text; // plain text with entities stripped
     std::vector<TextEntity> entities;
@@ -978,6 +987,13 @@ struct Message {
     // Set on huddle_thread messages (see presentHuddleThread).
     std::optional<HuddleInfo> huddle;
     bool                      operator==(const Message &) const = default;
+};
+
+// Oldest first, by Message::date. Named (not a lambda per call site) so every
+// sort / stable_sort over messages shares one instantiation of the std sort
+// machinery instead of stamping out ~10 KB of it per comparator.
+struct MessageDateLess {
+    bool operator()(const Message &a, const Message &b) const { return a.date < b.date; }
 };
 
 // True when `msg` is a reply to a thread the authed user is "following", so it

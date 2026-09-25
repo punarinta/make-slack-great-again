@@ -280,9 +280,7 @@ void Backend::pollTracked() {
                 }
                 _lastSeen[conv.value] = mx;
                 // Graph returns newest-first; emit oldest-first so they append in order.
-                std::sort(fresh.begin(), fresh.end(), [](const Message &a, const Message &b) {
-                    return a.date < b.date;
-                });
+                std::sort(fresh.begin(), fresh.end(), MessageDateLess{});
                 for (auto &m : fresh) {
                     resolveMessageMedia(
                         conv, m
@@ -943,14 +941,7 @@ void Backend::openDm(
 //   • pinMessage/unpinMessage — only chats expose pinnedMessages (channels don't),
 //     and unpin needs a separate pinned-id lookup + DELETE; low value, deferred.
 //   • starConversation — Graph exposes no favorite/star for chats or channels.
-
-rpl::producer<QHash<QString, QString>> Backend::loadEmojiList() {
-    return [](auto consumer) mutable {
-        consumer.put_next(QHash<QString, QString>{});
-        consumer.put_done();
-        return rpl::lifetime();
-    };
-}
+//   • loadEmojiList — Teams has no custom emoji (the Backend's empty map).
 
 void Backend::uploadFiles(
     ConversationId     conv,

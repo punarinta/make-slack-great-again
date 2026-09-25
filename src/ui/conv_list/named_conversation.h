@@ -31,6 +31,16 @@ struct NamedConversation {
     qint64         activitySeconds = 0;
 };
 
+// The quick switcher's default ordering: most recent activity first, then by
+// name. Shared by both producers (one std::sort instantiation, not two).
+struct NamedConversationOrder {
+    bool operator()(const NamedConversation &a, const NamedConversation &b) const {
+        if (a.activitySeconds != b.activitySeconds)
+            return a.activitySeconds > b.activitySeconds; // most recent first
+        return a.name.localeAwareCompare(b.name) < 0;
+    }
+};
+
 // Slack names an unnamed group DM "mpdm-alice--bob--carol-1": the member
 // usernames joined by "--", with a numeric suffix. Returns those usernames.
 QStringList parseMpdmUsernames(const QString &mpdmName);

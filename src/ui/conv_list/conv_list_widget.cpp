@@ -855,11 +855,7 @@ std::vector<NamedConversation> ConvListWidget::namedConversations() const {
         }
         out.push_back(std::move(nc));
     }
-    std::sort(out.begin(), out.end(), [](const NamedConversation &a, const NamedConversation &b) {
-        if (a.activitySeconds != b.activitySeconds)
-            return a.activitySeconds > b.activitySeconds; // most recent first
-        return a.name.localeAwareCompare(b.name) < 0;
-    });
+    std::sort(out.begin(), out.end(), NamedConversationOrder{});
     return out;
 }
 

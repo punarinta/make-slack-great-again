@@ -830,9 +830,7 @@ QString toHtml(const TextWithEntities &twe, const Session *session, const Inline
     // pushes a wrapping entity before its nested ones, so a stable sort keeps
     // the parent first even for equal ranges (e.g. a link spanning all of a bold).
     auto sorted = twe.entities;
-    std::stable_sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
-        return a.offset != b.offset ? a.offset < b.offset : a.length > b.length;
-    });
+    std::stable_sort(sorted.begin(), sorted.end(), TextEntityNestingOrder{});
 
     // Containment tree — entity spans are nested-or-disjoint by construction.
     const int                     n = static_cast<int>(sorted.size());
