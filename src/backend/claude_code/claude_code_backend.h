@@ -198,6 +198,8 @@ private:
     void
     startFork(Tracked &parent, const QString &question, std::function<void(bool, QString)> done);
     void                  dispatch(Tracked &t);
+    bool                  typesLive(const Tracked &t) const;
+    void                  typeLive(Tracked &t);
     void                  failSends(Tracked &t, const QString &reason);
     void                  stopWorker(Tracked &t);
     // The chat goes on in session `copyId`, a copy Claude Code made of its own.
@@ -237,16 +239,19 @@ private:
         bool    stopping = false; // its worker is being stopped (stopRemoved)
     };
     QHash<QString, Hidden> _hidden;
-    QObject               *_ctx            = nullptr; // owns the Qt objects
-    Launcher              *_launcher       = nullptr;
-    QFileSystemWatcher    *_watcher        = nullptr;
-    QTimer                *_debounce       = nullptr;
-    QTimer                *_safetyPoll     = nullptr;
-    QTimer                *_saveKnownTimer = nullptr;
-    QTimer                *_typingTimer    = nullptr;
-    bool                   _started        = false;
-    bool                   _firstScanDone  = false;
-    bool                   _zen            = false;
+    QObject               *_ctx                = nullptr; // owns the Qt objects
+    Launcher              *_launcher           = nullptr;
+    QFileSystemWatcher    *_watcher            = nullptr;
+    QTimer                *_debounce           = nullptr;
+    QTimer                *_safetyPoll         = nullptr;
+    QTimer                *_saveKnownTimer     = nullptr;
+    QTimer                *_typingTimer        = nullptr;
+    bool                   _started            = false;
+    bool                   _firstScanDone      = false;
+    // Typing into live workers (typeLive): misses in a row, and off until when.
+    int                    _typeLiveMisses     = 0;
+    qint64                 _typeLiveOffUntilMs = 0;
+    bool                   _zen                = false;
     QString                _myName;       // "" = the login name
     QString                _myAvatarPath; // a copy in app data; "" = initials
     // Subagent transcripts are only re-parsed when they grow.

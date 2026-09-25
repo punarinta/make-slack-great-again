@@ -72,6 +72,9 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/backend_registry.cpp
 
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_catalog.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_attach.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_pty.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_vt.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_launcher.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_roles.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_roster.cpp
@@ -480,6 +483,14 @@ add_msga_qt_test(test_claude_code
 )
 target_link_libraries(test_claude_code PRIVATE Qt6::Test Qt6::Gui Qt6::Concurrent)
 set_target_properties(test_claude_code PROPERTIES AUTOMOC ON)
+if(UNIX)
+    # A stand-in for Claude Code's terminal UI (`claude attach`), for typing
+    # into live background sessions.
+    add_executable(cc_fake_attach cc_fake_attach.cpp)
+    add_dependencies(test_claude_code cc_fake_attach)
+    target_compile_definitions(test_claude_code PRIVATE
+        CC_FAKE_ATTACH="$<TARGET_FILE:cc_fake_attach>")
+endif()
 
 add_msga_qt_test(test_time_format
     test_time_format.cpp

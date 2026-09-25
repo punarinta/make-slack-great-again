@@ -20,9 +20,11 @@
 #include <QFileInfo>
 #include <QUrl>
 
+#include "backend/claude_code/cc_attach.h"
 #include "backend/claude_code/cc_catalog.h"
 #include "backend/claude_code/cc_roster.h"
 #include "backend/claude_code/cc_transcript.h"
+#include "backend/claude_code/cc_vt.h"
 #include "backend/claude_code/claude_code_backend.h"
 
 using namespace claude_code;
@@ -1253,6 +1255,11 @@ TEST_CASE(
         REQUIRE(f.open(QIODevice::WriteOnly));
         f.write(R"SH(#!/bin/sh
 H="$CLAUDE_CONFIG_DIR"
+if [ "$1" = attach ]; then # typing into a live worker: see the terminal UI test
+  printf '%s\n' "$*" >> "$H/attach.log"
+  [ -n "$FAKE_ATTACH" ] && exec "$FAKE_ATTACH" "$2"
+  echo "no such session"; exit 1
+fi
 printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
   rm -f "$H/sessions/w$2.json"
@@ -1625,6 +1632,11 @@ TEST_CASE("Stop cuts a session's turn short and drops what waits", "[claude][bac
         REQUIRE(f.open(QIODevice::WriteOnly));
         f.write(R"SH(#!/bin/sh
 H="$CLAUDE_CONFIG_DIR"
+if [ "$1" = attach ]; then # typing into a live worker: see the terminal UI test
+  printf '%s\n' "$*" >> "$H/attach.log"
+  [ -n "$FAKE_ATTACH" ] && exec "$FAKE_ATTACH" "$2"
+  echo "no such session"; exit 1
+fi
 printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
   # The worker writes its last records as it exits.
@@ -1810,6 +1822,315 @@ echo "backgrounded · $short"
         return c.id == conv;
     }));
     CHECK(calls().size() == 8);
+}
+#endif
+
+namespace {
+
+QByteArray rule(int n, const QByteArray &title = {}) {
+    QByteArray r;
+    for (int i = 0; i < n; ++i)
+        r += "─";
+    return title.isEmpty() ? r : r + " " + title + " ─";
+}
+
+// A frame drawn the way Claude Code 2.1.282 draws its idle screen: absolute
+// rows, the prompt box near the bottom, the cursor parked in it.
+QByteArray idleFrame(const QByteArray &input = {}, bool cursorShown = true) {
+    QByteArray f = "\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l";
+    f += "\x1b[2;1H\x1b[38;5;174m ▐▛███▛█\x1b[39m   Claude Code v2.1.282";
+    f += "\x1b[6;1H❯ Launch ONE subagent\x1b[8;1H● STARTED";
+    f += "\x1b[10;1H✻ Waiting for 1 background agent to finish";
+    f += "\x1b[44;1H" + rule(100, "fix the build");
+    f += "\x1b[45;1H❯ " + input;
+    f += "\x1b[46;1H" + rule(120);
+    f += "\x1b[47;1H  ⏸ manual mode on · ← 1 agent · ↓ to manage";
+    f += "\x1b[45;" + QByteArray::number(3 + input.size()) + "H";
+    if (cursorShown)
+        f += "\x1b[?25h";
+    return f;
+}
+
+} // namespace
+
+TEST_CASE("the terminal screen shows when Claude Code's prompt takes typing", "[claude][attach]") {
+    {
+        VtScreen s(50, 160);
+        s.feed(idleFrame());
+        CHECK(s.row(43).startsWith("────"));
+        CHECK(s.row(43).endsWith("fix the build ─"));
+        CHECK(s.row(44) == "❯");
+        REQUIRE(findPromptBox(s));
+        CHECK(findPromptBox(s)->empty);
+        CHECK(readyForInput(s));
+    }
+    {
+        // Mid-draw (cursor hidden), or a draft someone left in the box: no.
+        VtScreen hidden(50, 160);
+        hidden.feed(idleFrame({}, false));
+        CHECK_FALSE(readyForInput(hidden));
+        VtScreen draft(50, 160);
+        draft.feed(idleFrame("half a thought"));
+        CHECK_FALSE(readyForInput(draft));
+        REQUIRE(findPromptBox(draft));
+        CHECK(findPromptBox(draft)->lines == QStringList{"half a thought"});
+    }
+    {
+        // A permission question (here a subagent's) takes the box's place.
+        VtScreen s(50, 160);
+        s.feed(
+            "\x1b[H\x1b[2J\x1b[6;1H● STARTED\x1b[16;1H" + rule(120) +
+            "\x1b[17;1H Bash command · from the general-purpose agent"
+            "\x1b[22;1H Do you want to proceed?\x1b[23;1H ❯ 1. Yes\x1b[24;1H   2. No"
+            "\x1b[27;1H Esc to cancel · Tab to amend\x1b[23;2H\x1b[?25h"
+        );
+        CHECK_FALSE(findPromptBox(s));
+        CHECK_FALSE(readyForInput(s));
+    }
+    {
+        // A panel (/cost) has the keyboard: no box either.
+        VtScreen s(50, 160);
+        s.feed("\x1b[H\x1b[2J\x1b[3;1H  Current session\x1b[45;1H   Esc to cancel\x1b[3;31H");
+        CHECK_FALSE(readyForInput(s));
+    }
+    {
+        // Relative moves, erasing, a wide character, UTF-8 split across reads.
+        VtScreen         s(5, 20);
+        const QByteArray beer = "🍺";
+        s.feed("ab\x1b[3Gc" + beer.left(2));
+        s.feed(beer.mid(2) + "d\x1b[2;4Hx\x1b[1A\x1b[2Cy");
+        CHECK(s.row(0) == "abc🍺dy");
+        CHECK(s.row(1) == "   x");
+        s.feed("\x1b[1;3H\x1b[K");
+        CHECK(s.row(0) == "ab");
+        CHECK(s.cursorRow() == 0);
+        CHECK(s.cursorCol() == 2);
+        // Writing past the last row scrolls up.
+        s.feed("\x1b[5;1Hlast\r\nnext");
+        CHECK(s.row(3) == "last");
+        CHECK(s.row(4) == "next");
+    }
+}
+
+TEST_CASE("a message is typed line by line, never as one big paste", "[claude][attach]") {
+    const auto paste = [](const QString &t) {
+        return QByteArray("\x1b[200~") + t.toUtf8() + "\x1b[201~";
+    };
+    CHECK(
+        AttachInput::keystrokes("first line\nsecond \"quoted\"") ==
+        QList<QByteArray>{paste("first line"), "\n", paste("second \"quoted\"")}
+    );
+    // Blank lines stay; a trailing newline and CRLFs don't make extra ones.
+    CHECK(
+        AttachInput::keystrokes("a\r\n\r\nb\n") ==
+        QList<QByteArray>{paste("a"), "\n", "\n", paste("b")}
+    );
+    // "!" would run a shell command, "/" a slash command: a space keeps them text.
+    CHECK(AttachInput::keystrokes("!rm -rf /") == QList<QByteArray>{paste(" !rm -rf /")});
+    CHECK(AttachInput::keystrokes("/cost") == QList<QByteArray>{paste(" /cost")});
+    // Control characters would be keys (Esc, Ctrl+C): dropped.
+    CHECK(AttachInput::keystrokes("x\x1b[31my\x03") == QList<QByteArray>{paste("x[31my")});
+    // A long line goes in pieces; a character is never cut in two.
+    const QString long1000 = QString(399, 'a') + QString::fromUtf8("🍺") + QString(600, 'b');
+    const auto    keys     = AttachInput::keystrokes(long1000);
+    REQUIRE(keys.size() == 3);
+    QString joined;
+    for (const auto &k : keys) {
+        CHECK(k.startsWith("\x1b[200~"));
+        joined += QString::fromUtf8(k.mid(6, k.size() - 12));
+    }
+    CHECK(joined == long1000);
+    CHECK(QString::fromUtf8(keys[0].mid(6, keys[0].size() - 12)).size() == 399);
+}
+
+// Against the real CLI, by hand, after a Claude Code upgrade: point it at a
+// live background session of a throwaway CLAUDE_CONFIG_DIR —
+//   MSGA_CC_LIVE_SHORT=<short> MSGA_CC_LIVE_TEXT="What is 2+2?" \
+//   [MSGA_CC_LIVE_EXPECT=NotReady] test_claude_code "[.live]"
+// (claude on PATH). Sent means the prompt box took it; the transcript shows
+// whether Claude got it as typed.
+TEST_CASE("typing into a real background session", "[.live][attach]") {
+    const QString shortId = qEnvironmentVariable("MSGA_CC_LIVE_SHORT");
+    const QString claude  = QStandardPaths::findExecutable("claude");
+    if (shortId.isEmpty() || claude.isEmpty())
+        SKIP("MSGA_CC_LIVE_SHORT and claude on PATH needed");
+    const QString text =
+        qEnvironmentVariable("MSGA_CC_LIVE_TEXT", "Reply with only the word PONG.");
+    const QString expect = qEnvironmentVariable("MSGA_CC_LIVE_EXPECT", "Sent");
+    std::optional<AttachInput::Outcome> outcome;
+    QString                             detail;
+    AttachInput::send(
+        claude,
+        {"attach", shortId},
+        QDir::currentPath(),
+        text,
+        [&](AttachInput::Outcome o, QString d) {
+            outcome = o;
+            detail  = d;
+        },
+        nullptr
+    );
+    REQUIRE(QTest::qWaitFor([&] { return outcome.has_value(); }, 60'000));
+    INFO(detail.toStdString());
+    const char *names[] = {"Sent", "NotReady", "Failed"};
+    CHECK(QString(names[int(*outcome)]) == expect);
+}
+
+#ifdef CC_FAKE_ATTACH
+TEST_CASE(
+    "a live background session is typed to, not stopped, even while it works",
+    "[claude][backend][bg][attach]"
+) {
+    FakeClaudeHome home;
+    QTemporaryDir  work;
+    QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/claude-code/team")
+        .removeRecursively();
+    QDir(home.dir.path()).mkpath("jobs");
+    QDir(home.dir.path()).mkpath("projects/-fake");
+    {
+        QFile f(home.dir.path() + "/.claude.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"projects",
+                         QJsonObject{
+                             {QDir(work.path()).absolutePath(),
+                              QJsonObject{{"hasTrustDialogAccepted", true}}}
+                         }},
+                    }
+        )
+                    .toJson());
+    }
+    // `--bg` starts a session whose worker (a real process) idles on after the
+    // turn; `attach` is the fake terminal UI (cc_fake_attach).
+    qputenv("FAKE_ATTACH", CC_FAKE_ATTACH);
+    AttachInput::setAttachTimeoutMs(1500);
+    const QString cli = work.path() + "/claude";
+    {
+        QFile f(cli);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(R"SH(#!/bin/sh
+H="$CLAUDE_CONFIG_DIR"
+if [ "$1" = attach ]; then
+  printf '%s\n' "$*" >> "$H/attach.log"
+  exec "$FAKE_ATTACH" "$2"
+fi
+printf '%s\n' "$*" >> "$H/calls.log"
+if [ "$1" = stop ]; then
+  rm -f "$H/sessions/w$2.json"; kill $(cat "$H/wpid-$2") 2>/dev/null; exit 0
+fi
+prompt=""
+while [ $# -gt 0 ]; do [ "$1" = -- ] && prompt="$2"; shift; done
+sid="abcdef11-0000-4000-8000-000000000001"; short=abcdef11
+T="$H/projects/-fake/$sid.jsonl"
+mkdir -p "$H/jobs/$short"
+echo "{\"state\":\"done\",\"sessionId\":\"$sid\",\"cwd\":\"$PWD\",\"name\":\"fake\",\"linkScanPath\":\"$T\"}" > "$H/jobs/$short/state.json"
+sleep 60 </dev/null >/dev/null 2>&1 &
+echo $! > "$H/wpid-$short"
+echo "{\"pid\":$!,\"sessionId\":\"$sid\",\"kind\":\"bg\",\"status\":\"idle\"}" > "$H/sessions/w$short.json"
+echo "{\"type\":\"user\",\"uuid\":\"s-$$-1\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"$prompt\"}}" >> "$T"
+echo "{\"type\":\"assistant\",\"uuid\":\"s-$$-2\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"echo $prompt\"}]}}" >> "$T"
+echo "{\"type\":\"system\",\"subtype\":\"turn_duration\",\"uuid\":\"s-$$-3\"}" >> "$T"
+echo "backgrounded · $short"
+)SH");
+        f.setPermissions(f.permissions() | QFileDevice::ExeOwner);
+    }
+    const QString H        = home.dir.path();
+    auto          readText = [&](const QString &name) {
+        QFile f(H + "/" + name);
+        return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+    };
+    // A `stop` call (the first call's --agents JSON can say "stop" too).
+    auto stopped = [&] {
+        const QStringList calls = readText("calls.log").split('\n');
+        return std::any_of(calls.begin(), calls.end(), [](const QString &l) {
+            return l.startsWith("stop ");
+        });
+    };
+    auto writeText = [&](const QString &name, const QByteArray &text) {
+        QFile f(H + "/" + name);
+        REQUIRE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(text);
+    };
+
+    claude_code::Backend backend(Credentials{cli});
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    backend.connectRealtime();
+    ConversationId conv;
+    backend.startAgentSession(work.path(), false, {}, [&](ConversationId id) { conv = id; }, {});
+    auto send = [&](const QString &text) {
+        OutgoingMessage out;
+        out.text = {text, {}};
+        backend.sendMessage(conv, out, {});
+    };
+    auto answered = [&](const QString &text, int ms = 8000) {
+        return QTest::qWaitFor(
+            [&] {
+                return std::any_of(events.begin(), events.end(), [&](const Event &e) {
+                    const auto *n = std::get_if<EvMessageNew>(&e);
+                    return n && n->conv == conv && n->msg.text.text == text;
+                });
+            },
+            ms
+        );
+    };
+
+    send("first"); // a new session: started the usual way
+    REQUIRE(answered("echo first"));
+    const QString worker = readText("wpid-abcdef11").trimmed();
+    REQUIRE_FALSE(worker.isEmpty());
+
+    // A subagent runs: the worker reads busy though Claude waits for input.
+    QTest::qWait(300);
+    writeText(
+        "sessions/wabcdef11.json",
+        QString(
+            R"({"pid":%1,"sessionId":"abcdef11-0000-4000-8000-000000000001","kind":"bg","status":"busy"})"
+        )
+            .arg(worker)
+            .toUtf8()
+    );
+    QTest::qWait(500); // the roster has seen it
+    send("second");
+    REQUIRE(answered("echo second"));
+    CHECK(readText("typed.log") == "second\n");
+    CHECK(readText("attach.log").contains("attach abcdef11"));
+    CHECK_FALSE(stopped()); // the worker (and its subagent) live on
+    CHECK(QProcess::execute("kill", {"-0", worker}) == 0);
+
+    // Several lines, one starting with "!": typed as they are, as plain text.
+    send("!make it\nwork");
+    REQUIRE(answered("echo  !make it\nwork"));
+    CHECK(readText("typed.log").endsWith(" !make it\\nwork\n"));
+
+    // A permission question has the keyboard: nothing is typed, the message
+    // waits — no stop, no resume — and goes once the prompt is back.
+    writeText("attach-mode", "question");
+    send("third");
+    QTest::qWait(2500);
+    CHECK_FALSE(readText("typed.log").contains("third"));
+    CHECK_FALSE(QFile::exists(H + "/question-keys.log"));
+    CHECK_FALSE(stopped());
+    writeText("attach-mode", "");
+    REQUIRE(answered("echo third", 10000));
+    CHECK_FALSE(stopped());
+    CHECK_FALSE(std::any_of(events.begin(), events.end(), [](const Event &e) {
+        return std::holds_alternative<EvSendFailed>(e);
+    }));
+
+    // Stopped by hand, the session takes the old way again.
+    backend.stopAgentSession(conv);
+    REQUIRE(QTest::qWaitFor(stopped, 8000));
+    QTest::qWait(500);
+    send("fourth");
+    REQUIRE(answered("echo fourth"));
+    CHECK(readText("calls.log").contains("-- fourth"));
+
+    AttachInput::setAttachTimeoutMs(15'000);
+    qunsetenv("FAKE_ATTACH");
+    QProcess::execute("kill", {readText("wpid-abcdef11").trimmed()});
 }
 #endif
 

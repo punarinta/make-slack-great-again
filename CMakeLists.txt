@@ -349,6 +349,9 @@ if(MSGA_BACKEND_CLAUDE_CODE)
         src/backend/claude_code/cc_catalog.cpp
         src/backend/claude_code/cc_roles.cpp
         src/backend/claude_code/cc_launcher.cpp
+        src/backend/claude_code/cc_attach.cpp
+        src/backend/claude_code/cc_pty.cpp
+        src/backend/claude_code/cc_vt.cpp
     )
     target_compile_definitions(msga PRIVATE MSGA_BACKEND_CLAUDE_CODE)
 endif()

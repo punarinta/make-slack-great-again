@@ -34,6 +34,7 @@
 //     timestamps, then the prompt.
 #pragma once
 
+#include "backend/claude_code/cc_attach.h"
 #include "backend/claude_code/cc_roster.h"
 #include "backend/domain.h"
 
@@ -85,6 +86,19 @@ public:
         Done           done
     );
 
+    // Type `prompt` into background session `sessionId` through its live
+    // worker's terminal UI (see AttachInput): no stop, no resume, so what the
+    // worker runs — subagents, background commands, scheduled prompts — goes
+    // on, and a turn under way gets it as its next step. NotReady means nothing
+    // was typed (the UI showed a question or a panel, or `attach` failed), so
+    // another way, or a later try, is safe.
+    AttachInput *sendLive(
+        const QString                                     &sessionId,
+        const QString                                     &cwd,
+        const QString                                     &prompt,
+        std::function<void(AttachInput::Outcome, QString)> done
+    );
+
     // A new background session branched off session `sessionId` — a copy of its
     // conversation so far — whose first turn is `prompt`. The original isn't
     // touched: no stop, and its worker (or terminal) goes on as it was.
@@ -112,6 +126,9 @@ public:
 
 private:
     QProcess *newProcess(const QString &cwd, QString &program, QStringList &argv);
+    // The program to start for the CLI with `argv` (on Windows an npm install's
+    // batch script goes through cmd.exe).
+    void      commandFor(QString &program, QStringList &argv) const;
     void
          run(const QStringList                            &args,
              const QString                                &cwd,

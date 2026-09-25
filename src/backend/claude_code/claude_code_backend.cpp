@@ -14,6 +14,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -57,6 +58,9 @@ constexpr qint64 kLaunchTimeoutMs = 60'000;
 // After our prompt landed: a session that went quiet without writing the turn's
 // end (interrupted, crashed) stops counting as busy after this long.
 constexpr qint64 kQuietTurnMs     = 15'000;
+// Typing a message into a live worker found its terminal UI busy with
+// something else (a permission question, a panel): tried again this much later.
+constexpr qint64 kTypeRetryMs     = 5'000;
 
 QString homeRelative(const QString &path) {
     const QString home = QDir::homePath();
@@ -159,14 +163,20 @@ struct Backend::Tracked {
     QList<Outgoing>         outbox;
     std::optional<Outgoing> flying; // taken from the outbox, prompt not landed yet
     // The turn msga started: from launching it until its end is in the transcript.
-    bool                    sending        = false;
-    bool                    launching      = false; // the launcher hasn't reported back yet
-    bool                    stopRequested  = false; // "Stop" while launching: once it has
-    bool                    stopping       = false; // `claude stop` under way
-    qint64                  sendStartedMs  = 0;
-    bool                    promptLanded   = false;
-    qint64                  promptLandedMs = 0;
+    bool                    sending         = false;
+    bool                    launching       = false; // the launcher hasn't reported back yet
+    bool                    stopRequested   = false; // "Stop" while launching: once it has
+    bool                    stopping        = false; // `claude stop` under way
+    qint64                  sendStartedMs   = 0;
+    bool                    promptLanded    = false;
+    qint64                  promptLandedMs  = 0;
+    // The message on its way was typed into the live worker (typeLive): Claude
+    // Code holds it now, and a turn under way takes it at its next step —
+    // however long that is — so it isn't given up on while the session works.
+    bool                    handedOver      = false;
+    qint64                  typeLiveAfterMs = 0; // not typed live before this (see kTypeRetryMs)
     std::function<void(bool ok, QString err)> inFlight; // a /btw's done(), until its root lands
+    QPointer<AttachInput>                     typing;   // typeLive's, while it runs
     // A session branched off another (a /btw, or `--fork-session` anywhere):
     // shown as a thread in its parent rather than in the list (detectForks).
     QString forkOf;   // the parent's conversation id; "" = a session of its own
@@ -933,12 +943,129 @@ void Backend::failSends(Tracked &t, const QString &reason) {
     _events.fire(EvSendFailed{ConversationId{asThread(t) ? t.forkOf : t.convId}, reason});
 }
 
+bool Backend::typesLive(const Tracked &t) const {
+    // A live background worker is typed to (Launcher::sendLive), busy or not:
+    // stopping it to resume would end what it runs — a subagent, a background
+    // command, a scheduled prompt — and a message would otherwise wait for all
+    // of that to finish. A slash command still takes the old way: some open a
+    // panel in the terminal UI that keeps its keyboard.
+    if (t.info.kind != SessionInfo::Kind::Background || !t.info.running ||
+        t.info.sessionId.isEmpty() || t.outbox.isEmpty() ||
+        t.outbox.first().text.trimmed().startsWith(QLatin1Char('/')))
+        return false;
+    if (nowMs() < _typeLiveOffUntilMs)
+        return false; // it hasn't been working lately: see typeLive
+    if (nowMs() < t.typeLiveAfterMs || awaitsApproval(t.info))
+        return false; // the UI has a question up: nothing typed goes to the prompt
+    // One at a time, in order: the last one typed first has to have landed.
+    return !t.flying && !(t.sending && !t.promptLanded);
+}
+
+void Backend::typeLive(Tracked &t) {
+    Tracked::Outgoing next        = t.outbox.takeFirst();
+    // A turn of msga's may be under way (its prompt landed): the new message
+    // joins it, and msga's turn now ends once this one's is over.
+    const bool        wasSending  = t.sending;
+    const bool        wasLanded   = t.promptLanded;
+    const qint64      wasLandedMs = t.promptLandedMs;
+    t.sending                     = true;
+    t.launching                   = true;
+    t.handedOver                  = false;
+    t.sendStartedMs               = nowMs();
+    t.promptLanded                = false;
+    t.flying                      = next;
+    const QString convId          = t.convId;
+    t.typing                      = _launcher->sendLive(
+        t.info.sessionId,
+        t.info.cwd,
+        next.text,
+        [this, convId, wasSending, wasLanded, wasLandedMs](
+            AttachInput::Outcome outcome, QString detail
+        ) {
+            Tracked *t = find(convId);
+            if (!t)
+                return; // removed from msga meanwhile, its worker stopped with it
+            t->launching       = false;
+            const bool stopNow = std::exchange(t->stopRequested, false);
+            auto       restore = [&] {
+                t->sending        = wasSending;
+                t->promptLanded   = wasLanded;
+                t->promptLandedMs = wasLandedMs;
+            };
+            if (outcome == AttachInput::Outcome::Sent) {
+                _typeLiveMisses = 0;
+                t->handedOver   = true;
+                if (stopNow)
+                    stopWorker(*t); // "Stop" came while it was being typed
+                else
+                    scheduleRefresh();
+                return;
+            }
+            if (outcome == AttachInput::Outcome::Failed) {
+                // Typed in part, maybe: sending it again could say it twice.
+                qWarning(
+                    "claude code: typing into %s failed: %s", qPrintable(convId), qPrintable(detail)
+                );
+                restore();
+                failSends(
+                    *t,
+                    QCoreApplication::translate(
+                        "claude_code", "Claude Code's session didn't take the message: %1"
+                    )
+                        .arg(detail)
+                );
+                refresh();
+                return;
+            }
+            // Nothing was typed: the message waits as it did, for another try
+            // or — the session free for it — the old way (stop, resume).
+            qInfo(
+                "claude code: %s not ready for typing (%s)", qPrintable(convId), qPrintable(detail)
+            );
+            restore();
+            if (stopNow) { // "Stop" took it back before a key was typed
+                t->flying.reset();
+                stopWorker(*t);
+                return;
+            }
+            // Missed again and again with Claude idle — where the prompt box
+            // should just be there (a busy session may rightly have a question
+            // up): the terminal UI isn't what it was, or `attach` can't run
+            // here. The old way only, for a while: each miss costs a message
+            // its wait for the prompt box.
+            const bool idle = !(t->info.running && statusIsBusy(t->info.status));
+            if (idle && ++_typeLiveMisses >= 3) {
+                _typeLiveMisses     = 0;
+                _typeLiveOffUntilMs = nowMs() + 10 * 60'000;
+            }
+            if (t->flying)
+                t->outbox.prepend(*t->flying);
+            t->flying.reset();
+            t->typeLiveAfterMs = nowMs() + kTypeRetryMs;
+            // Precise: a coarse timer may fire up to 5% early, before the retry is due.
+            QTimer::singleShot(kTypeRetryMs + 50, Qt::PreciseTimer, _ctx, [this, convId] {
+                if (Tracked *t = find(convId))
+                    dispatch(*t);
+            });
+            dispatch(*t);
+            diffAndAnnounce(*t);
+        }
+    );
+    scheduleRefresh(); // the dot and "typing" follow at once
+}
+
 void Backend::dispatch(Tracked &t) {
-    // One turn at a time: the next message goes once Claude is done with the
-    // last (and a session waiting on an approval takes nothing until it's given).
-    // A background command still running waits too: sending stops the worker,
-    // which would kill the command.
-    if (t.outbox.isEmpty() || t.sending || t.stopping || busy(t) || awaitsApproval(t.info) ||
+    if (t.outbox.isEmpty() || t.stopping || t.launching)
+        return;
+    if (typesLive(t)) {
+        typeLive(t);
+        return;
+    }
+    // Otherwise one turn at a time: the next message goes once Claude is done
+    // with the last (and a session waiting on an approval takes nothing until
+    // it's given). A background command still running waits too: sending
+    // stops the worker, which would kill the command.
+    if (t.sending || busy(t) || awaitsApproval(t.info) ||
         (t.info.running && statusHasShell(t.info.status)))
         return;
     Tracked::Outgoing next = t.outbox.takeFirst();
@@ -946,6 +1073,7 @@ void Backend::dispatch(Tracked &t) {
     t.launching            = true;
     t.sendStartedMs        = nowMs();
     t.promptLanded         = false;
+    t.handedOver           = false;
     t.flying               = std::move(next);
     const QString convId   = t.convId;
     const QString cwd      = t.info.cwd;
@@ -1045,6 +1173,10 @@ void Backend::stopAgentSession(ConversationId conv) {
     if (t->launching) {
         // The CLI is starting the turn right now; stop it the moment it has.
         t->stopRequested = true;
+        // A message still waiting for the prompt box goes with the rest (the
+        // worker is stopped from typeLive's answer, which comes at once).
+        if (t->typing)
+            t->typing->cancel();
         if (queued)
             diffAndAnnounce(*t);
         return;
@@ -1213,7 +1345,10 @@ void Backend::refresh() {
             if (ended) {
                 t.sending = false;
                 diffAndAnnounce(t); // a pending last answer becomes visible now
-            } else if (!t.promptLanded && nowMs() - t.sendStartedMs > kLaunchTimeoutMs) {
+            } else if (
+                !t.promptLanded && !t.launching && nowMs() - t.sendStartedMs > kLaunchTimeoutMs &&
+                !(t.handedOver && t.info.running && statusIsBusy(t.info.status))
+            ) {
                 t.sending = false;
                 failSends(
                     t,

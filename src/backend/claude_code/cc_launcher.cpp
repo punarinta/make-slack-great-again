@@ -34,8 +34,7 @@ bool startedACopy(const QString &output) {
 Launcher::Launcher(QString claudePath, Paths paths, QObject *parent)
     : QObject(parent), _claudePath(std::move(claudePath)), _paths(std::move(paths)) {}
 
-QProcess *Launcher::newProcess(const QString &cwd, QString &program, QStringList &argv) {
-    auto *p = new QProcess(this);
+void Launcher::commandFor(QString &program, QStringList &argv) const {
     program = _claudePath;
 #if defined(Q_OS_WIN)
     // An npm install is a batch script, which CreateProcess can't start itself.
@@ -44,6 +43,15 @@ QProcess *Launcher::newProcess(const QString &cwd, QString &program, QStringList
         argv.prepend(QStringLiteral("/c"));
         program = QStringLiteral("cmd.exe");
     }
+#else
+    Q_UNUSED(argv)
+#endif
+}
+
+QProcess *Launcher::newProcess(const QString &cwd, QString &program, QStringList &argv) {
+    auto *p = new QProcess(this);
+    commandFor(program, argv);
+#if defined(Q_OS_WIN)
     p->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *a) {
         a->flags |= CREATE_NO_WINDOW; // no console window flashing up
     });
@@ -274,6 +282,18 @@ void Launcher::start(
         }
         done(id, {});
     });
+}
+
+AttachInput *Launcher::sendLive(
+    const QString                                     &sessionId,
+    const QString                                     &cwd,
+    const QString                                     &prompt,
+    std::function<void(AttachInput::Outcome, QString)> done
+) {
+    QString     program;
+    QStringList argv = {QStringLiteral("attach"), sessionId.left(8)};
+    commandFor(program, argv);
+    return AttachInput::send(program, argv, cwd, prompt, std::move(done), this);
 }
 
 void Launcher::fork(
