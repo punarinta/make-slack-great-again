@@ -151,15 +151,31 @@ static File fileFromJson(const QJsonObject &o) {
 
 static QJsonArray buttonsToJson(const std::vector<BotButton> &buttons) {
     QJsonArray arr;
-    for (const auto &btn : buttons)
-        arr.append(QJsonObject{{"t", btn.text}, {"u", btn.url}, {"s", btn.style}});
+    for (const auto &btn : buttons) {
+        QJsonObject o{{"t", btn.text}, {"u", btn.url}, {"s", btn.style}};
+        if (!btn.actionId.isEmpty()) {
+            o["a"] = btn.actionId;
+            o["b"] = btn.blockId;
+            o["v"] = btn.value;
+        }
+        arr.append(o);
+    }
     return arr;
 }
 static std::vector<BotButton> buttonsFromJson(const QJsonArray &arr) {
     std::vector<BotButton> buttons;
     for (const auto &v : arr) {
         const auto o = v.toObject();
-        buttons.push_back(BotButton{o["t"].toString(), o["u"].toString(), o["s"].toString()});
+        buttons.push_back(
+            BotButton{
+                .text     = o["t"].toString(),
+                .url      = o["u"].toString(),
+                .style    = o["s"].toString(),
+                .actionId = o["a"].toString(),
+                .blockId  = o["b"].toString(),
+                .value    = o["v"].toString(),
+            }
+        );
     }
     return buttons;
 }
@@ -319,6 +335,8 @@ static QJsonObject toJson(const Message &m) {
         o["bn"] = m.botName;
     if (!m.botAvatarUrl.isEmpty())
         o["ba"] = m.botAvatarUrl;
+    if (!m.botId.isEmpty())
+        o["bd"] = m.botId;
     o["tx"] = toJson(m.text);
     o["ed"] = m.edited;
     if (m.subtype)
@@ -385,6 +403,7 @@ static Message messageFromJson(const QJsonObject &o) {
     m.author       = UserId{o["au"].toString()};
     m.botName      = o["bn"].toString();
     m.botAvatarUrl = o["ba"].toString();
+    m.botId        = o["bd"].toString();
     m.text         = tweFromJson(o["tx"].toObject());
     m.edited       = o["ed"].toBool();
     if (o.contains("st"))

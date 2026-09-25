@@ -253,6 +253,22 @@ public:
     // for everyone — the official client's "Remove preview". `attachmentId` is
     // the service's positional id (Attachment::id). `done` reports the outcome
     // once; the caller (Session) fires EvAttachmentRemoved on success. Default:
+    // Press an interactive bot button (BotButton::actionId set) on message `ts`,
+    // posted by `botId`. The bot answers asynchronously — usually by editing or
+    // posting a message, which arrives through normal delivery. `done` reports
+    // only whether the service accepted the press. Default: unsupported — gate
+    // the UI on Capabilities::botButtons.
+    virtual void pressBotButton(
+        ConversationId,
+        Ts /*ts*/,
+        std::optional<Ts> /*threadTs*/,
+        QString /*botId*/,
+        BotButton,
+        std::function<void(bool ok, QString err)> done
+    ) {
+        if (done)
+            done(false, QStringLiteral("unsupported"));
+    }
     // unsupported — gate the UI on Capabilities::removePreview.
     virtual void deleteAttachment(
         ConversationId, Ts, int /*attachmentId*/, std::function<void(bool ok, QString err)> done

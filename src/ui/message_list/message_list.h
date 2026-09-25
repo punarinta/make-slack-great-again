@@ -469,8 +469,17 @@ private:
     void collapseInlineThread(const Ts &rootTs);
     // Resolve a (already-fetched) anchor href: mentions, bot buttons, mailto,
     // URLs. Returns true if it handled it. Does NOT handle the GIF-collapse
-    // anchor (that needs the owning doc, handled at the call site).
-    bool openAnchorTarget(const QString &anchor, const QPoint &pos);
+    // anchor (that needs the owning doc, handled at the call site). `owner` is
+    // the message the anchor lives in, when the caller knows it (an inline
+    // reply); otherwise the main-list row under `pos` is used.
+    bool openAnchorTarget(const QString &anchor, const QPoint &pos, const Message *owner = nullptr);
+    // Press the Block Kit bot button (blockId, actionId) of `msg`; false when it
+    // can't be pressed from here (no capability / unknown button / no bot).
+    bool pressBotButton(
+        const Message &msg, const QString &blockId, const QString &actionId, const QPoint &pos
+    );
+    // A short self-dismissing note above the click point.
+    void showClickToast(const QString &text, int ms, const QPoint &pos);
     void paintAttachments(
         QPainter &p, const MessageItem &item, const PaintContext &ctx, int top, int index
     ) const;
@@ -503,7 +512,7 @@ private:
     void onChannelResolved(ConversationId id);
 
     // Mouse: returns the href under the given viewport point, or empty.
-    QString anchorAt(const QPoint &viewportPos) const;
+    QString anchorAt(const QPoint &viewportPos, int *outRow = nullptr) const;
 
     // Mention hover profile card
     // Viewport rect of the mention-anchor fragment under viewportPos; falls

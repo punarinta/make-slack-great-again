@@ -701,6 +701,18 @@ add_msga_qt_test(test_slack_members
 target_link_libraries(test_slack_members PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_slack_members PROPERTIES AUTOMOC ON)
 
+add_msga_qt_test(test_bot_buttons
+    test_bot_buttons.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${SLACK_BACKEND_SRCS}
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_bot_buttons PRIVATE Qt6::Network Qt6::WebSockets)
+set_target_properties(test_bot_buttons PROPERTIES AUTOMOC ON)
+
 add_msga_qt_test(test_send_retry
     test_send_retry.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp

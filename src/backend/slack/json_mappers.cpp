@@ -521,14 +521,18 @@ static BotButton toButton(const QJsonObject &el) {
     return BotButton{
         .text =
             textVal.isObject() ? textVal.toObject().value("text").toString() : textVal.toString(),
-        .url   = el.value("url").toString(),
-        .style = el.value("style").toString(),
+        .url      = el.value("url").toString(),
+        .style    = el.value("style").toString(),
+        .actionId = el.value("action_id").toString(),
+        .value    = el.value("value").toString(),
     };
 }
 
 Block toBlock(const QJsonObject &o) {
     Block b;
     b.typeStr = o.value("type").toString();
+
+    const QString blockId = o.value("block_id").toString();
 
     if (b.typeStr == "rich_text") {
         b.text = richTextToTWE(o);
@@ -559,8 +563,10 @@ Block toBlock(const QJsonObject &o) {
         }
         // Accessory button (e.g. "View details" next to a section's text).
         const auto acc = o.value("accessory").toObject();
-        if (acc.value("type").toString() == "button")
+        if (acc.value("type").toString() == "button") {
             b.buttons.push_back(toButton(acc));
+            b.buttons.back().blockId = blockId;
+        }
     } else if (b.typeStr == "context") {
         // Context blocks have an "elements" array; concatenate text elements
         // (mrkdwn ones parsed, with entity offsets shifted to the joined text).
@@ -606,8 +612,10 @@ Block toBlock(const QJsonObject &o) {
         // interactive elements (selects, datepickers) aren't representable.
         for (const auto &ev : o.value("elements").toArray()) {
             const auto el = ev.toObject();
-            if (el.value("type").toString() == "button")
+            if (el.value("type").toString() == "button") {
                 b.buttons.push_back(toButton(el));
+                b.buttons.back().blockId = blockId;
+            }
         }
     }
     return b;
@@ -766,6 +774,7 @@ Message toMessage(const QJsonObject &o) {
         .author       = UserId{msg.value("user").toString(msg.value("bot_id").toString())},
         .botName      = botName,
         .botAvatarUrl = botAvatarUrl,
+        .botId        = msg.value("bot_id").toString(),
         .text         = MrkdwnParser::parse(msg.value("text").toString()),
         .rawText      = msg.value("text").toString(),
         .reactions    = parseReactions(msg.value("reactions").toArray()),

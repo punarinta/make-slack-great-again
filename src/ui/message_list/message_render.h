@@ -432,9 +432,9 @@ inline const QString kGifChevronCollapsedRes = QStringLiteral("msga://gif-chevro
 
 // Bot buttons are anchors with this internal scheme (even URL buttons — a raw
 // URL href would pick up the link hover underline, and buttons aren't links).
-// "url:<percent-encoded>" buttons open their URL on click; the rest carry no
-// deliverable action — Slack routes bot-button callbacks only from its own
-// clients — so the click handler explains that instead.
+// "url:<percent-encoded>" buttons open their URL on click; "act:<block>/<action>"
+// (both percent-encoded) name a Block Kit button the click can press; a bare
+// index is a legacy attachment button with no deliverable action.
 inline const QString kBotBtnAnchorPrefix = QStringLiteral("msga://botbtn/");
 
 inline bool isBotButtonAnchor(const QString &href) {
@@ -449,6 +449,24 @@ inline QString botButtonUrlFromAnchor(const QString &href) {
     if (!rest.startsWith(QLatin1String("url:")))
         return {};
     return QUrl::fromPercentEncoding(rest.mid(4).toLatin1());
+}
+
+// The (block_id, action_id) of a pressable bot-button anchor; both empty
+// for URL/legacy buttons and non-button anchors.
+inline std::pair<QString, QString> botButtonActionFromAnchor(const QString &href) {
+    if (!isBotButtonAnchor(href))
+        return {};
+    const QString rest = href.mid(kBotBtnAnchorPrefix.size());
+    if (!rest.startsWith(QLatin1String("act:")))
+        return {};
+    const QString body  = rest.mid(4);
+    const int     slash = body.indexOf('/');
+    if (slash < 0)
+        return {};
+    return {
+        QUrl::fromPercentEncoding(body.left(slash).toLatin1()),
+        QUrl::fromPercentEncoding(body.mid(slash + 1).toLatin1()),
+    };
 }
 
 // Marker cell spacing identifying the bot-button container table in a

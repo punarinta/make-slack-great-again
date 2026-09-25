@@ -742,6 +742,35 @@ TEST_CASE("buildMsgHtml routes URL buttons through the botbtn anchor scheme", "[
     CHECK(MsgRender::botButtonUrlFromAnchor(href) == "https://example.com/docs?a=1&b=2");
 }
 
+TEST_CASE("buildMsgHtml gives Block Kit buttons a pressable anchor", "[render][buttons]") {
+    Message msg;
+    Block   actions;
+    actions.typeStr = "actions";
+    actions.buttons.push_back(
+        BotButton{.text = "Try again", .actionId = "retry/task&x", .blockId = "b 1'"}
+    );
+    msg.blocks.push_back(actions);
+    const QString html = MsgRender::buildMsgHtml(msg, nullptr);
+
+    QTextDocument doc;
+    doc.setHtml(html);
+    QString href;
+    for (auto b = doc.begin(); b.isValid() && href.isEmpty(); b = b.next())
+        for (auto it = b.begin(); !it.atEnd(); ++it)
+            if (it.fragment().charFormat().isAnchor())
+                href = it.fragment().charFormat().anchorHref();
+    REQUIRE(MsgRender::isBotButtonAnchor(href));
+    CHECK(MsgRender::botButtonUrlFromAnchor(href).isEmpty());
+    const auto [blockId, actionId] = MsgRender::botButtonActionFromAnchor(href);
+    CHECK(blockId == "b 1'");
+    CHECK(actionId == "retry/task&x");
+
+    // Legacy/URL anchors carry no action.
+    CHECK(
+        MsgRender::botButtonActionFromAnchor(MsgRender::kBotBtnAnchorPrefix + "0").second.isEmpty()
+    );
+}
+
 TEST_CASE(
     "botButtonRects finds one rect per button, codeBlockRects ignores them", "[render][buttons]"
 ) {

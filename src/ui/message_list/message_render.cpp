@@ -1003,8 +1003,9 @@ static QString imageBlockHtml(
 // paintBotButtonChrome() (Qt rich text can't do border-radius), which finds the
 // container via the kBotBtnCellSpacing marker and the buttons as its floats.
 // Every button is an anchor so it's hit-testable and gets the pointing cursor:
-// URL buttons open their URL, interactive-only ones use the msga://botbtn/
-// scheme — clicking shows why the action can't be delivered (see BotButton).
+// URL buttons open their URL, Block Kit ones carry (block_id, action_id) so
+// the click can press them (Capabilities::botButtons); legacy ones only
+// explain why the action can't be delivered (see BotButton).
 static QString buttonsHtml(const std::vector<BotButton> &buttons) {
     if (buttons.empty())
         return {};
@@ -1014,11 +1015,17 @@ static QString buttonsHtml(const std::vector<BotButton> &buttons) {
         const auto &btn = buttons[i];
         const bool  filled =
             btn.style == QLatin1String("danger") || btn.style == QLatin1String("primary");
-        const QColor  fg = filled ? Th::c().text.onDark : Th::c().text.primary;
-        const QString href =
-            btn.url.isEmpty() ? kBotBtnAnchorPrefix + QString::number(i)
-                              : kBotBtnAnchorPrefix +
-                                    "url:" + QString::fromLatin1(QUrl::toPercentEncoding(btn.url));
+        const QColor fg = filled ? Th::c().text.onDark : Th::c().text.primary;
+        QString      href;
+        if (!btn.url.isEmpty())
+            href = kBotBtnAnchorPrefix +
+                   "url:" + QString::fromLatin1(QUrl::toPercentEncoding(btn.url));
+        else if (!btn.actionId.isEmpty())
+            href = kBotBtnAnchorPrefix +
+                   "act:" + QString::fromLatin1(QUrl::toPercentEncoding(btn.blockId)) + '/' +
+                   QString::fromLatin1(QUrl::toPercentEncoding(btn.actionId));
+        else
+            href = kBotBtnAnchorPrefix + QString::number(i);
         // The anchor name carries the style to paintBotButtonChrome (the face is
         // painted from document geometry, which knows nothing else about it).
         // Absolute px: an anchor's em size re-resolves from the document default.

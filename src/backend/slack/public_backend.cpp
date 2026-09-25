@@ -391,6 +391,9 @@ Capabilities PublicBackend::capabilities() const {
     // to a session token. The public reminders.* API is retired and never could
     // attach a reminder to a message.
     c.messageReminders = _sessionAuth;
+    // Bot-button presses ride the internal blocks.actions (what the official
+    // client calls), likewise session-token only.
+    c.botButtons       = _sessionAuth;
     // users.prefs.get (the stored sidebar theme) is session-token only as well.
     c.sidebarTheme     = _sessionAuth;
     // The presence link is an RTM socket, and rtm.connect refuses a granular
@@ -1867,6 +1870,68 @@ void PublicBackend::deleteAttachment(
             // could hit a renumbered id. The user sees the failure and can click
             // again once the row has refreshed.
             qWarning() << "deleteAttachment error:" << e;
+            if (done)
+                done(false, e);
+        }
+    );
+}
+
+void PublicBackend::pressBotButton(
+    ConversationId                     conv,
+    Ts                                 ts,
+    std::optional<Ts>                  threadTs,
+    QString                            botId,
+    BotButton                          button,
+    std::function<void(bool, QString)> done
+) {
+    // The official client's button press: the internal blocks.actions, which
+    // Slack relays to the app as a block_actions interaction (verified live —
+    // service_id is the message's bot_id; an unknown one answers
+    // invalid_service_id). Session (xoxc) token only; capabilities() gates the
+    // UI. POST, never retried: a retransmitted press would run the bot's action
+    // twice, and a lost one is simply clicked again.
+    const QString nowTs = QString::number(QDateTime::currentMSecsSinceEpoch() / 1000.0, 'f', 6);
+    QJsonObject   action{
+        {"action_id", button.actionId},
+        {"block_id", button.blockId},
+        {"type", "button"},
+        {"text", QJsonObject{{"type", "plain_text"}, {"text", button.text}}},
+        {"action_ts", nowTs},
+    };
+    if (!button.value.isEmpty())
+        action.insert("value", button.value);
+    if (!button.style.isEmpty())
+        action.insert("style", button.style);
+    QJsonObject container{
+        {"type", "message"},
+        {"message_ts", ts},
+        {"channel_id", conv.value},
+        {"is_ephemeral", false},
+    };
+    if (threadTs)
+        container.insert("thread_ts", *threadTs);
+
+    QUrlQuery params;
+    params.addQueryItem("service_id", botId);
+    params.addQueryItem(
+        "client_token", "msga-" + QString::number(QDateTime::currentMSecsSinceEpoch())
+    );
+    params.addQueryItem(
+        "actions",
+        QString::fromUtf8(QJsonDocument(QJsonArray{action}).toJson(QJsonDocument::Compact))
+    );
+    params.addQueryItem(
+        "container", QString::fromUtf8(QJsonDocument(container).toJson(QJsonDocument::Compact))
+    );
+    _api->callNonIdempotent(
+        "blocks.actions",
+        params,
+        [done](QJsonObject) {
+            if (done)
+                done(true, {});
+        },
+        [done](QString e) {
+            qWarning() << "pressBotButton error:" << e;
             if (done)
                 done(false, e);
         }

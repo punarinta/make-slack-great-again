@@ -101,6 +101,14 @@ public:
     void deleteAttachment(
         ConversationId, Ts, int attachmentId, std::function<void(bool ok, QString err)> done
     ) override;
+    void pressBotButton(
+        ConversationId,
+        Ts,
+        std::optional<Ts> threadTs,
+        QString           botId,
+        BotButton,
+        std::function<void(bool ok, QString err)> done
+    ) override;
     void addReaction(ConversationId, Ts, QString emoji) override;
     void removeReaction(ConversationId, Ts, QString emoji) override;
     void markRead(ConversationId, Ts) override;

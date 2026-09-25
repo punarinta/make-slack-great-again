@@ -195,10 +195,23 @@ TEST_CASE_METHOD(CacheFixture, "messages round-trip preserves all fields", "[cac
         .transcriptPreview = "Test, test, battery.",
         .transcriptVttUrl  = "https://files.slack.com/files-tmb/T1-F1/file.vtt",
     }};
+    m.botId      = "B0BL4TE9M44";
     m.blocks     = {
         Block{
             .typeStr = "section",
             .text    = TextWithEntities{"block text", {TextEntity{EntityType::Italic, 0, 5, ""}}},
+        },
+        // A pressable Block Kit button: without action/block id and value a
+        // cached copy could only explain, never press.
+        Block{
+            .typeStr = "actions",
+            .buttons = {BotButton{
+                .text     = "Try again",
+                .style    = "primary",
+                .actionId = "retry_failed_task",
+                .blockId  = "aXl4u",
+                .value    = R"({"runId":40})",
+            }},
         },
         Block{
             .typeStr   = "table",

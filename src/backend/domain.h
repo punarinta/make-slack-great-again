@@ -189,6 +189,9 @@ struct Capabilities {
                                    // Separate from `threads`: a backend can support replies
                                    // without any server-side subscribed-threads feed (Slack's
                                    // feed is session-token only; IMAP/Teams have none).
+    bool botButtons       = false; // press a bot message's interactive (Block Kit) buttons. Slack
+                                   // serves the internal blocks.actions only to a session (xoxc)
+                                   // token; without it a click explains instead of pressing.
     bool messageReminders = false; // per-message "Save for later" / "Remind me" (Slack's Later).
                                    // Rides the internal saved.* API family, which Slack only
                                    // serves to a session (xoxc) token — OAuth workspaces would
@@ -829,13 +832,17 @@ struct File {
 };
 
 // A bot button — from a Block Kit "actions"/"section" button element or a
-// legacy attachment "actions" entry. Display-only: interactive callbacks need
-// the app's interactivity endpoint (not reachable with public API tokens), so
-// only buttons carrying a URL are clickable.
+// legacy attachment "actions" entry. URL buttons just open their URL. A Block
+// Kit button (actionId set) can also be pressed via Capabilities::botButtons
+// (Slack: the internal blocks.actions, session tokens only); legacy attachment
+// buttons carry no actionId and stay display-only.
 struct BotButton {
     QString text;
-    QString url;   // empty for interactive-only buttons
-    QString style; // ""|"primary"|"danger"
+    QString url;      // empty for interactive-only buttons
+    QString style;    // ""|"primary"|"danger"
+    QString actionId; // Block Kit action_id; empty for legacy attachment buttons
+    QString blockId;  // block_id of the enclosing "actions"/"section" block
+    QString value;    // opaque payload the bot gets back on a press
     bool    operator==(const BotButton &) const = default;
 };
 
@@ -954,6 +961,7 @@ struct Message {
     UserId                author;
     QString               botName;      // display name for bot_message (from username field)
     QString               botAvatarUrl; // avatar URL for bot_message (from bot_profile or icon_url)
+    QString               botId;        // posting bot (Slack bot_id); a bot-button press targets it
     TextWithEntities      text;
     QString               rawText; // original mrkdwn from Slack; used for edit pre-fill
     std::vector<Reaction> reactions;

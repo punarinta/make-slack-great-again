@@ -878,6 +878,40 @@ TEST_CASE("toBlock actions maps button elements", "[mappers][block]") {
     CHECK(b.buttons[1].url == "https://example.com/docs");
 }
 
+TEST_CASE("toBlock buttons keep what a press needs", "[mappers][block]") {
+    auto b = JsonMappers::toBlock(obj(R"({
+        "type": "actions", "block_id": "aXl4u",
+        "elements": [
+            {"type": "button", "action_id": "retry_failed_task",
+             "text": {"type": "plain_text", "text": "Try again", "emoji": false},
+             "value": "{\"runId\":40}"}
+        ]
+    })"));
+    REQUIRE(b.buttons.size() == 1);
+    CHECK(b.buttons[0].actionId == "retry_failed_task");
+    CHECK(b.buttons[0].blockId == "aXl4u");
+    CHECK(b.buttons[0].value == R"({"runId":40})");
+
+    auto s = JsonMappers::toBlock(obj(R"({
+        "type": "section", "block_id": "sec1",
+        "text": {"type": "mrkdwn", "text": "details"},
+        "accessory": {"type": "button", "action_id": "view",
+                      "text": {"type": "plain_text", "text": "View"}}
+    })"));
+    REQUIRE(s.buttons.size() == 1);
+    CHECK(s.buttons[0].actionId == "view");
+    CHECK(s.buttons[0].blockId == "sec1");
+}
+
+TEST_CASE("toMessage keeps the posting bot's id", "[mappers][message]") {
+    auto m = JsonMappers::toMessage(obj(R"({
+        "type": "message", "ts": "1.000001", "user": "U1", "bot_id": "B0BL4TE9M44",
+        "text": "hi"
+    })"));
+    CHECK(m.botId == "B0BL4TE9M44");
+    CHECK(m.author.value == "U1");
+}
+
 TEST_CASE("toBlock section accessory button", "[mappers][block]") {
     auto b = JsonMappers::toBlock(obj(R"({
         "type": "section",

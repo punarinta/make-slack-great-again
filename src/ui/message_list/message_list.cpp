@@ -1847,7 +1847,7 @@ static QString collectLinkText(QTextDocument *doc, const QString &url) {
 
 // ── Mouse handling ────────────────────────────────────────────────────────────
 
-QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
+QString MessageListWidget::anchorAt(const QPoint &viewportPos, int *outRow) const {
     const PaintContext ctx      = makePaintContext();
     const int          scrollY  = ctx.scrollY;
     const int          docY     = viewportPos.y() + scrollY;
@@ -1863,6 +1863,8 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos) const {
 
         const auto &item = _items[i];
         ensureDocLayout(item);
+        if (outRow)
+            *outRow = i;
 
         const bool coll    = isCollapsed(i);
         const int  padV    = coll ? kPadVCollapsed : kPadV;
@@ -3000,7 +3002,7 @@ bool MessageListWidget::tryHandleInlineThreadPress(const QPoint &pos) {
                                     viewport()->update();
                                     return true;
                                 }
-                                openAnchorTarget(anchor, pos);
+                                openAnchorTarget(anchor, pos, &reply.msg);
                                 return true;
                             }
                         }
@@ -3083,7 +3085,57 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
     return openAnchorTarget(anchor, pos);
 }
 
-bool MessageListWidget::openAnchorTarget(const QString &anchor, const QPoint &pos) {
+void MessageListWidget::showClickToast(const QString &text, int ms, const QPoint &pos) {
+    const QPoint gPos = viewport()->mapToGlobal(pos);
+    _tooltip->showAbove(text, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
+    _tooltipPin.setRemainingTime(ms);
+    QTimer::singleShot(ms, _tooltip, &QWidget::hide);
+}
+
+bool MessageListWidget::pressBotButton(
+    const Message &msg, const QString &blockId, const QString &actionId, const QPoint &pos
+) {
+    if (!_session || !_session->capabilities().botButtons || msg.botId.isEmpty())
+        return false;
+    // The button itself: in the message's blocks or in an attachment's blocks.
+    std::optional<BotButton> button;
+    const auto               scan = [&](const std::vector<Block> &blocks) {
+        for (const auto &blk : blocks)
+            for (const auto &btn : blk.buttons)
+                if (!button && btn.actionId == actionId && btn.blockId == blockId)
+                    button = btn;
+    };
+    scan(msg.blocks);
+    for (const auto &att : msg.attachments)
+        scan(att.blocks);
+    if (!button)
+        return false;
+
+    // The bot answers on its own schedule — usually by editing this message or
+    // posting a new one, which arrives through normal delivery — so the toast
+    // only confirms that Slack took the press.
+    QPointer<MessageListWidget> guard(this);
+    _session->backend()->pressBotButton(
+        _currentConv,
+        msg.ts,
+        msg.threadRoot,
+        msg.botId,
+        *button,
+        [guard, pos](bool ok, const QString &err) {
+            if (!guard)
+                return;
+            if (ok)
+                guard->showClickToast(tr("Sent to the app"), 1500, pos);
+            else
+                guard->showClickToast(tr("Couldn't press the button: %1").arg(err), 3000, pos);
+        }
+    );
+    return true;
+}
+
+bool MessageListWidget::openAnchorTarget(
+    const QString &anchor, const QPoint &pos, const Message *owner
+) {
     const QString uid = MsgRender::userIdFromAnchor(anchor);
     if (!uid.isEmpty()) {
         // Clicking a mention opens the profile card without the hover delay.
@@ -3112,18 +3164,23 @@ bool MessageListWidget::openAnchorTarget(const QString &anchor, const QPoint &po
             QDesktopServices::openUrl(QUrl(btnUrl));
             return true;
         }
-        // Interactive bot buttons can't be triggered from here: Slack delivers
-        // button callbacks to the bot only from its own clients (the endpoints
-        // are closed to third-party API tokens) — explain instead of ignoring.
-        constexpr int kToastMs = 2600;
-        const QPoint  gPos     = viewport()->mapToGlobal(pos);
-        _tooltip->showAbove(
-            tr("Slack doesn't let third-party apps press bot buttons, we are working on a "
-               "workaround"),
-            QRect(gPos - QPoint(0, 2), QSize(1, 4))
+        const auto [blockId, actionId] = MsgRender::botButtonActionFromAnchor(anchor);
+        if (!actionId.isEmpty()) {
+            if (!owner) {
+                int row = -1;
+                anchorAt(pos, &row);
+                if (row >= 0 && row < static_cast<int>(_items.size()))
+                    owner = &_items[row].msg;
+            }
+            if (owner && pressBotButton(*owner, blockId, actionId, pos))
+                return true;
+        }
+        // Legacy attachment buttons (and any button on a workspace without
+        // Capabilities::botButtons — OAuth tokens can't reach blocks.actions)
+        // can't be pressed from here — explain instead of ignoring.
+        showClickToast(
+            tr("Slack doesn't let third-party apps press this kind of bot button"), 2600, pos
         );
-        _tooltipPin.setRemainingTime(kToastMs);
-        QTimer::singleShot(kToastMs, _tooltip, &QWidget::hide);
         return true;
     }
     const QUrl url(anchor);
