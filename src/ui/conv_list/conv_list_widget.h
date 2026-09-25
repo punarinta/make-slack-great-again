@@ -209,6 +209,8 @@ signals:
     // "Name conversation…" on a group DM — the host opens the naming dialog and
     // stores the result via Session::setConvLocalName.
     void renameConversationRequested(ConversationId id);
+    // An agent session's "Stop" (Backend::stopAgentSession).
+    void stopSessionRequested(ConversationId id);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

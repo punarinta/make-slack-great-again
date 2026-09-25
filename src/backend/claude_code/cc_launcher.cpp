@@ -205,6 +205,13 @@ void Launcher::waitStopped(const QString &shortId, int attemptsLeft, std::functi
     });
 }
 
+void Launcher::stop(const QString &sessionId, const QString &cwd, std::function<void()> done) {
+    const QString shortId = sessionId.left(8);
+    run({QStringLiteral("stop"), shortId}, cwd, [this, shortId, done](int, QString) {
+        waitStopped(shortId, 40, done); // `stop` returns before the worker exits
+    });
+}
+
 void Launcher::start(
     const QString &cwd,
     const QString &prompt,

@@ -2030,6 +2030,10 @@ void MainWindow::wireConvList() {
             renameConversation(id);
         }
     );
+    connect(_convList, &ConvListWidget::stopSessionRequested, this, [this](ConversationId id) {
+        if (_session)
+            _session->backend()->stopAgentSession(id);
+    });
     connect(_convList, &ConvListWidget::threadsViewRequested, this, [this] { openThreadsView(); });
     connect(_convList, &ConvListWidget::savedMessagesRequested, this, [this] {
         openSavedMessagesView();

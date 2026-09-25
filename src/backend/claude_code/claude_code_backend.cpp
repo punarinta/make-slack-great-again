@@ -154,6 +154,9 @@ struct Backend::Tracked {
     std::optional<Outgoing> flying; // taken from the outbox, prompt not landed yet
     // The turn msga started: from launching it until its end is in the transcript.
     bool                    sending        = false;
+    bool                    launching      = false; // the launcher hasn't reported back yet
+    bool                    stopRequested  = false; // "Stop" while launching: once it has
+    bool                    stopping       = false; // `claude stop` under way
     qint64                  sendStartedMs  = 0;
     bool                    promptLanded   = false;
     qint64                  promptLandedMs = 0;
@@ -342,6 +345,8 @@ QString Backend::convIdFor(const QString &sessionId) const {
 // ── Session state ───────────────────────────────────────────────────────────
 
 bool Backend::busy(const Tracked &t) const {
+    if (t.stopping)
+        return false; // the worker is on its way out
     if (t.sending)
         return true; // msga's turn: from launching it until its end is written
     return t.info.running && statusIsBusy(t.info.status);
@@ -908,11 +913,12 @@ void Backend::dispatch(Tracked &t) {
     // last (and a session waiting on an approval takes nothing until it's given).
     // A background command still running waits too: sending stops the worker,
     // which would kill the command.
-    if (t.outbox.isEmpty() || t.sending || busy(t) || awaitsApproval(t.info) ||
+    if (t.outbox.isEmpty() || t.sending || t.stopping || busy(t) || awaitsApproval(t.info) ||
         (t.info.running && statusHasShell(t.info.status)))
         return;
     Tracked::Outgoing next = t.outbox.takeFirst();
     t.sending              = true;
+    t.launching            = true;
     t.sendStartedMs        = nowMs();
     t.promptLanded         = false;
     t.flying               = std::move(next);
@@ -921,8 +927,10 @@ void Backend::dispatch(Tracked &t) {
         Tracked *t = find(convId);
         if (!t)
             return;
+        t->launching = false;
         if (sessionId.isEmpty()) {
-            t->sending = false;
+            t->sending       = false;
+            t->stopRequested = false;
             failSends(*t, error);
             refresh();
             return;
@@ -935,6 +943,10 @@ void Backend::dispatch(Tracked &t) {
             t->skipPermissionChecks = false; // saved with the session from here on
         }
         scheduleSaveKnown();
+        if (std::exchange(t->stopRequested, false)) {
+            stopWorker(*t); // "Stop" came while the turn was being launched
+            return;
+        }
         scheduleRefresh();
     };
     if (t.info.sessionId.isEmpty()) {
@@ -959,6 +971,55 @@ void Backend::dispatch(Tracked &t) {
         );
     }
     scheduleRefresh(); // the dot and "typing" follow at once
+}
+
+bool Backend::canStopAgentSession(ConversationId conv) {
+    const Tracked *t = find(conv.value);
+    if (!t || asThread(*t) || t->stopping || t->stopRequested)
+        return false;
+    if (t->sending || !t->outbox.isEmpty())
+        return true; // msga's own turn, or messages waiting for one
+    // An idle worker lingers after every turn: nothing to stop there.
+    return t->info.kind == SessionInfo::Kind::Background && t->info.running &&
+           (statusIsBusy(t->info.status) || statusNeedsUser(t->info.status) ||
+            statusHasShell(t->info.status));
+}
+
+void Backend::stopAgentSession(ConversationId conv) {
+    Tracked *t = find(conv.value);
+    if (!t || t->stopping)
+        return;
+    // Messages still waiting are dropped: sending one would resume the session.
+    const bool queued = !t->outbox.isEmpty();
+    t->outbox.clear();
+    if (t->launching) {
+        // The CLI is starting the turn right now; stop it the moment it has.
+        t->stopRequested = true;
+        if (queued)
+            diffAndAnnounce(*t);
+        return;
+    }
+    if (t->info.sessionId.isEmpty()) { // a "+" session nothing was sent to yet
+        if (queued)
+            diffAndAnnounce(*t);
+        return;
+    }
+    stopWorker(*t);
+}
+
+void Backend::stopWorker(Tracked &t) {
+    t.stopping = true;
+    t.sending  = false;
+    // A prompt not in the transcript yet may never get there now; if it does,
+    // it shows from there.
+    t.flying.reset();
+    const QString convId = t.convId;
+    _launcher->stop(t.info.sessionId, t.info.cwd, [this, convId] {
+        if (Tracked *t = find(convId))
+            t->stopping = false;
+        refresh();
+    });
+    refresh(); // no dot, no typing from here on
 }
 
 // ── Roster refresh ──────────────────────────────────────────────────────────

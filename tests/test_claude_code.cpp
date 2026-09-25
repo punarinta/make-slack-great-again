@@ -1308,6 +1308,135 @@ echo "backgrounded · $short"
         return u.id.value == "claude:role:copywriter" && u.name == "Copywriter";
     }));
 }
+
+TEST_CASE("Stop cuts a session's turn short and drops what waits", "[claude][backend][bg]") {
+    FakeClaudeHome home;
+    home.writeSession("busy"); // S1: a terminal's session, working
+    QTemporaryDir work;
+    QDir(home.dir.path()).mkpath("jobs");
+    QDir(home.dir.path()).mkpath("projects/-fake");
+    {
+        QFile f(home.dir.path() + "/.claude.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"projects",
+                         QJsonObject{
+                             {QDir(work.path()).absolutePath(),
+                              QJsonObject{{"hasTrustDialogAccepted", true}}}
+                         }},
+                    }
+        )
+                    .toJson());
+    }
+    qputenv("FAKE_WORKER_PID", QByteArray::number(QCoreApplication::applicationPid()));
+    // Every turn this CLI starts goes on until it is stopped.
+    const QString cli = work.path() + "/claude";
+    {
+        QFile f(cli);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(R"SH(#!/bin/sh
+H="$CLAUDE_CONFIG_DIR"
+echo "$*" >> "$H/calls.log"
+if [ "$1" = stop ]; then
+  rm -f "$H/sessions/w$2.json"
+  sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
+  echo "stopped $2"; exit 0
+fi
+sid=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --resume) sid="$2"; shift ;;
+    --) prompt="$2"; shift ;;
+  esac; shift
+done
+[ -z "$sid" ] && sid="abcdef11-0000-4000-8000-000000000001"
+short=$(echo "$sid" | cut -c1-8)
+T="$H/projects/-fake/$sid.jsonl"
+ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+mkdir -p "$H/jobs/$short"
+echo "{\"state\":\"working\",\"sessionId\":\"$sid\",\"cwd\":\"$PWD\",\"name\":\"fake-$short\",\"linkScanPath\":\"$T\"}" > "$H/jobs/$short/state.json"
+echo "{\"pid\":$FAKE_WORKER_PID,\"sessionId\":\"$sid\",\"kind\":\"bg\",\"status\":\"busy\"}" > "$H/sessions/w$short.json"
+echo "{\"type\":\"user\",\"timestamp\":\"$ts\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"$prompt\"}}" >> "$T"
+echo "backgrounded · $short"
+)SH");
+        f.setPermissions(f.permissions() | QFileDevice::ExeOwner);
+    }
+
+    claude_code::Backend backend(Credentials{cli});
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    backend.connectRealtime();
+
+    // A terminal's session is the terminal's to stop.
+    CHECK_FALSE(backend.canStopAgentSession(ConversationId{"S1"}));
+
+    ConversationId conv;
+    backend.startAgentSession(work.path(), false, {}, [&](ConversationId id) { conv = id; }, {});
+    REQUIRE_FALSE(conv.value.isEmpty());
+    CHECK_FALSE(backend.canStopAgentSession(conv)); // nothing sent yet
+
+    const QString sid   = "abcdef11-0000-4000-8000-000000000001";
+    auto          calls = [&] {
+        QFile f(home.dir.path() + "/calls.log");
+        return f.open(QIODevice::ReadOnly)
+                   ? QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts)
+                   : QStringList{};
+    };
+    auto send = [&](const char *text) {
+        OutgoingMessage out;
+        out.text = {text, {}};
+        backend.sendMessage(conv, out, {});
+    };
+    auto ownTexts = [&] {
+        QStringList texts;
+        const auto  pages = collect(backend.loadHistory(conv, std::nullopt));
+        for (const auto &m : pages[0].messages)
+            if (m.author.value == "me")
+                texts << m.text.text;
+        return texts;
+    };
+    const UserId assistant{"claude:" + conv.value};
+    auto         working = [&] {
+        const auto presence = collect(backend.loadPresence(assistant)); // vector<bool>: bind it
+        return bool(presence[0]);
+    };
+
+    send("first");
+    // Claude is on it: the prompt is in and the worker reads busy.
+    REQUIRE(QTest::qWaitFor([&] { return ownTexts() == QStringList{"first"}; }, 8000));
+    QTest::qWait(300); // the launcher has reported back
+    send("second");    // waits for the turn to end
+    CHECK(ownTexts() == QStringList{"first", "second"});
+    CHECK(working());
+    REQUIRE(backend.canStopAgentSession(conv));
+
+    backend.stopAgentSession(conv);
+    CHECK_FALSE(working()); // at once
+    CHECK_FALSE(backend.canStopAgentSession(conv));
+    CHECK(ownTexts() == QStringList{"first"}); // the waiting one is dropped
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 2; }, 8000));
+    CHECK(calls()[1] == "stop abcdef11");
+    QTest::qWait(1000); // stopped, and nothing more goes out
+    CHECK(calls().size() == 2);
+    CHECK_FALSE(working());
+    CHECK(std::none_of(events.begin(), events.end(), [](const Event &e) {
+        return std::holds_alternative<EvSendFailed>(e);
+    }));
+
+    // The next message continues it: the worker is gone, so no stop first.
+    send("third");
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 3; }, 8000));
+    CHECK(calls()[2] == "--bg --resume " + sid + " -- third");
+    // Stopped while the CLI is still starting the turn: stopped once it has.
+    backend.stopAgentSession(conv);
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 4; }, 8000));
+    CHECK(calls()[3] == "stop abcdef11");
+    QTest::qWait(1000);
+    CHECK_FALSE(working());
+    CHECK_FALSE(backend.canStopAgentSession(conv));
+}
 #endif
 
 TEST_CASE("a branched-off session is a thread in its parent", "[claude][backend][thread]") {

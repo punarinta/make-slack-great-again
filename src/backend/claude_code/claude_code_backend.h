@@ -111,6 +111,11 @@ public:
     // (cc_catalog), read on a worker thread.
     void           findAgentSessions(std::function<void(std::vector<FoundSession>)> done) override;
     ConversationId addFoundSession(const QString &sessionId) override;
+    // "Stop": a background session's worker is stopped (`claude stop`), mid-turn
+    // or waiting on an approval. Sessions a terminal or another program drives
+    // are theirs to stop.
+    bool           canStopAgentSession(ConversationId) override;
+    void           stopAgentSession(ConversationId) override;
 
     // --- Search / emoji / files ---
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
@@ -192,6 +197,7 @@ private:
     startFork(Tracked &parent, const QString &question, std::function<void(bool, QString)> done);
     void                  dispatch(Tracked &t);
     void                  failSends(Tracked &t, const QString &reason);
+    void                  stopWorker(Tracked &t);
     void                  watchLive();
     void                  pumpTyping();
     std::vector<Message>  visibleMessages(Tracked &t);

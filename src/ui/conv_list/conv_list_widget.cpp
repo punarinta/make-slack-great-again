@@ -8,6 +8,7 @@
 #include "ui/paint_utils.h"
 #include "ui/user_avatar.h"
 #include "ui/message_list/message_render.h"
+#include "backend/backend.h"
 #include "session/session.h"
 #include "util/emoji.h"
 #include "util/emoji_pixmap.h"
@@ -1163,6 +1164,9 @@ void ConvListWidget::showDmContextMenu(int row, QPoint globalPos) {
         emit muteConversationRequested(id, !muted);
     });
     if (_agentSessions) {
+        // Only while there is something to stop: a turn, or messages waiting.
+        if (_session && _session->backend()->canStopAgentSession(conv.id))
+            menu->addItem(tr("Stop"), [this, id = conv.id] { emit stopSessionRequested(id); });
         menu->addItem(tr("Rename session…"), [this, id = conv.id] {
             emit renameConversationRequested(id);
         });

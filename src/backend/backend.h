@@ -395,6 +395,12 @@ public:
     // Brings a found session into the list (announced like any new one) and
     // returns its conversation; an empty id when it's gone.
     virtual ConversationId addFoundSession(const QString & /*id*/) { return {}; }
+    // Whether an agent session is at work (or has messages waiting to go) and
+    // can be stopped from here. Default: no.
+    virtual bool           canStopAgentSession(ConversationId) { return false; }
+    // Stops it at once: the turn is cut short and messages still waiting are
+    // dropped. The session stays, and a new message continues it.
+    virtual void           stopAgentSession(ConversationId) {}
 
     // --- Self presence / status (documented public APIs) ---
     // Set the authed user's presence (users.setPresence): away=true forces

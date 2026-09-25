@@ -79,6 +79,11 @@ public:
     // touched: no stop, and its worker (or terminal) goes on as it was.
     void fork(const QString &sessionId, const QString &cwd, const QString &prompt, Done done);
 
+    // Stop background session `sessionId` now, mid-turn or not (`claude stop`):
+    // its worker exits, the conversation is kept and can be resumed. `done`
+    // runs once the job reads "stopped" (or after 10 s).
+    void stop(const QString &sessionId, const QString &cwd, std::function<void()> done);
+
     // The full session id of background job `shortId` (from its state.json).
     QString sessionIdForShort(const QString &shortId) const;
 
