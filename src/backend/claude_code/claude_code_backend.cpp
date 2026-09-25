@@ -1107,9 +1107,13 @@ void Backend::refresh() {
             if (h->stopping || !fi.exists() || fi.lastModified().toMSecsSinceEpoch() <= h->atMs)
                 continue;
             // Written since, but maybe only Claude Code's bookkeeping (its
-            // daemon retiring the idle worker an hour on appends some).
-            if (h->seenSize >= 0 && fi.size() >= h->seenSize) {
-                if (fi.size() == h->seenSize || !hasTurnSince(path, h->seenSize)) {
+            // daemon retiring the idle worker an hour on appends some). An
+            // entry saved before sizes were kept has no size: look for a turn
+            // timestamped after the removal anywhere in the file instead.
+            if (h->seenSize < 0 || fi.size() >= h->seenSize) {
+                const bool sized = h->seenSize >= 0;
+                if (fi.size() == h->seenSize ||
+                    !hasTurnSince(path, sized ? h->seenSize : 0, sized ? 0 : h->atMs)) {
                     h->seenSize = fi.size();
                     scheduleSaveKnown();
                     continue;

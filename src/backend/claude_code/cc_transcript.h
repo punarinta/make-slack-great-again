@@ -142,8 +142,9 @@ bool removeFromTranscript(const QString &path, const QString &uuid, QString *err
 // Whether the transcript at `path` has a conversation record (a prompt or an
 // answer) past byte `from`. What Claude Code appends besides — last-prompt,
 // cost-state and title records, e.g. when its daemon retires an idle
-// background worker — is no activity in the session.
-bool hasTurnSince(const QString &path, qint64 from);
+// background worker — is no activity in the session. With `afterMs`, only a
+// record timestamped after it counts.
+bool hasTurnSince(const QString &path, qint64 from, qint64 afterMs = 0);
 
 // A pasted image (a prompt's base64 "image" block) saved once in msga's cache,
 // named by its content hash; returns the file's path ("" when it can't be saved).

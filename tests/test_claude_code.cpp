@@ -733,6 +733,63 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "a session removed by an older msga stays away through an idle-worker retire",
+    "[claude][backend]"
+) {
+    FakeClaudeHome home;
+    home.writeSession("idle");
+    home.append(
+        prompt("hi", "2026-09-25T10:00:00.000Z") +
+        assistantText("Hello!", "2026-09-25T10:00:01.000Z") + turnEnd("2026-09-25T10:00:02.000Z")
+    );
+    // Removed before hide entries kept the transcript's size (seen 2026-09-25:
+    // the session came back an hour on, when Claude Code retired its worker).
+    const qint64 removedAt = QDateTime::currentMSecsSinceEpoch();
+    {
+        const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+                             "/claude-code/known-sessions.json";
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"sessions", QJsonArray{}},
+                        {"hidden",
+                         QJsonArray{QJsonObject{
+                             {"sessionId", "S1"},
+                             {"at", double(removedAt)},
+                             {"transcript", home.transcript},
+                         }}},
+                    }
+        )
+                    .toJson());
+    }
+    QTest::qWait(20); // the transcript's next write must be newer than the removal
+
+    claude_code::Backend backend(Credentials{});
+    backend.connectRealtime();
+    CHECK(collect(backend.loadConversations())[0].empty());
+
+    home.append(
+        "{\"type\":\"last-prompt\",\"lastPrompt\":\"hi\",\"sessionId\":\"S1\"}\n"
+        "{\"type\":\"cost-state\",\"sessionId\":\"S1\"}\n"
+    );
+    home.writeSession("idle");
+    QTest::qWait(1500);
+    CHECK(collect(backend.loadConversations())[0].empty());
+
+    // A turn after the removal brings it back.
+    const QByteArray now = QDateTime::fromMSecsSinceEpoch(removedAt + 1000, Qt::UTC)
+                               .toString(Qt::ISODateWithMs)
+                               .toUtf8();
+    home.append(prompt("more", now.constData()));
+    home.writeSession("busy");
+    CHECK(
+        QTest::qWaitFor([&] { return collect(backend.loadConversations())[0].size() == 1; }, 12000)
+    );
+}
+
+TEST_CASE(
     "a session removed from msga stays away until it gets new activity", "[claude][backend]"
 ) {
     FakeClaudeHome home;

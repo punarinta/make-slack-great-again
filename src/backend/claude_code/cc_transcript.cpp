@@ -837,14 +837,21 @@ bool endsTurn(const QJsonObject &o) {
 
 } // namespace
 
-bool hasTurnSince(const QString &path, qint64 from) {
+bool hasTurnSince(const QString &path, qint64 from, qint64 afterMs) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly) || !f.seek(from))
         return false;
     while (!f.atEnd()) {
-        const QString type =
-            QJsonDocument::fromJson(f.readLine()).object().value(QLatin1String("type")).toString();
-        if (type == QLatin1String("user") || type == QLatin1String("assistant"))
+        const QJsonObject rec  = QJsonDocument::fromJson(f.readLine()).object();
+        const QString     type = rec.value(QLatin1String("type")).toString();
+        if (type != QLatin1String("user") && type != QLatin1String("assistant"))
+            continue;
+        if (afterMs <= 0)
+            return true;
+        const QDateTime at = QDateTime::fromString(
+            rec.value(QLatin1String("timestamp")).toString(), Qt::ISODateWithMs
+        );
+        if (at.isValid() && at.toMSecsSinceEpoch() > afterMs)
             return true;
     }
     return false;
