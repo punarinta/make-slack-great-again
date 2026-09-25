@@ -377,12 +377,31 @@ QStringList Backend::roleIds() const {
 
 QString Backend::titleOf(const Tracked &t) const {
     if (!t.info.name.isEmpty())
-        return t.info.name;
+        return teammateNames(t.info.name);
     if (!t.parser.aiTitle().isEmpty())
-        return t.parser.aiTitle();
+        return teammateNames(t.parser.aiTitle());
     if (!t.info.cwd.isEmpty())
         return QFileInfo(t.info.cwd).fileName();
     return t.info.sessionId.left(8);
+}
+
+// A title is plain text, so a teammate mention it echoes from the prompt
+// ("@claude:role:engineer") can't be a pill: name the teammate instead.
+QString Backend::teammateNames(const QString &text) const {
+    static const QRegularExpression kTeammate(
+        QStringLiteral("(?<![\\w@/:.-])@claude:(agent|role:[a-z0-9-]+)(?![\\w-])")
+    );
+    QString out;
+    int     last = 0;
+    for (auto it = kTeammate.globalMatch(text); it.hasNext();) {
+        const auto    m = it.next();
+        const QString role =
+            m.captured(1) == QLatin1String("agent") ? kGeneralist : m.captured(1).mid(5);
+        out +=
+            text.mid(last, m.capturedStart() - last) + QLatin1Char('@') + _team.resolve(role).name;
+        last = int(m.capturedEnd());
+    }
+    return last == 0 ? text : out + text.mid(last);
 }
 
 QString Backend::readOnlyReason(const Tracked &t) const {

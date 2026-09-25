@@ -480,14 +480,20 @@ QString cachePastedImage(const QString &mediaType, const QByteArray &base64) {
 // it; Claude's text comes raw. Wrap them the same way (in already-escaped text),
 // outside code, and leave markdown [label](url) links to the converter. Claude's
 // own <url> autolinks arrive escaped as &lt;url&gt; and are restored too.
+// A teammate mention ("@claude:role:engineer", "@claude:agent") is how the
+// composer's pill reaches Claude; shown, it becomes a <@…> mention again.
 static QString linkBareUrls(const QString &escaped) {
     static const QRegularExpression kAutolink(
         QStringLiteral("&lt;(https?://[^\\s&]+(?:&amp;[^\\s&]+)*)&gt;")
     );
     static const QRegularExpression kUrl(QStringLiteral("(?<!\\]\\()https?://[^\\s<>\\[\\]`]+"));
-    auto                            linkPlain = [&](const QString &part) {
+    static const QRegularExpression kTeammate(
+        QStringLiteral("(?<![\\w@/:.-])@(claude:(?:agent|role:[a-z0-9-]+))(?![\\w-])")
+    );
+    auto linkPlain = [&](const QString &part) {
         QString res = part;
         res.replace(kAutolink, QStringLiteral("<\\1>"));
+        res.replace(kTeammate, QStringLiteral("<@\\1>"));
         QString out;
         int     last = 0;
         for (auto it = kUrl.globalMatch(res); it.hasNext();) {

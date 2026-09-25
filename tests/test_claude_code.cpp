@@ -395,6 +395,26 @@ TEST_CASE("bare URLs in Claude's text are links", "[claude][message]") {
     CHECK(t.text == "go to https://x.example/a now");
 }
 
+TEST_CASE("a teammate mention renders as a mention", "[claude][message]") {
+    auto mentions = [](const QString &md) {
+        QStringList out;
+        for (const auto &e : renderMarkdown(md).entities)
+            if (e.type == EntityType::UserMention)
+                out << e.data;
+        return out;
+    };
+    CHECK(
+        mentions("Do you know who @claude:role:engineer is?") == QStringList{"claude:role:engineer"}
+    );
+    CHECK(
+        mentions("ask @claude:agent and @claude:role:data-analyst.") ==
+        QStringList{"claude:agent", "claude:role:data-analyst"}
+    );
+    CHECK(mentions("run `echo @claude:role:engineer`").isEmpty());
+    CHECK(mentions("```\n@claude:role:engineer\n```").isEmpty());
+    CHECK(mentions("mail x@claude:role:engineer").isEmpty());
+}
+
 TEST_CASE("a pasted image is attached to the prompt", "[claude][message]") {
     QImage img(3, 2, QImage::Format_RGB32);
     img.fill(Qt::red);
@@ -565,7 +585,7 @@ struct FakeClaudeHome {
     }
     ~FakeClaudeHome() { qunsetenv("CLAUDE_CONFIG_DIR"); }
 
-    void writeSession(const QString &status) {
+    void writeSession(const QString &status, const QString &name = "app-1") {
         QFile f(dir.path() + "/sessions/1.json");
         REQUIRE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
         f.write(QJsonDocument(
@@ -573,7 +593,7 @@ struct FakeClaudeHome {
                         {"pid", QCoreApplication::applicationPid()}, // alive
                         {"sessionId", "S1"},
                         {"cwd", "/src/app"},
-                        {"name", "app-1"},
+                        {"name", name},
                         {"status", status},
                         {"entrypoint", "cli"},
                     }
@@ -596,6 +616,23 @@ std::vector<T> collect(rpl::producer<T> p) {
 }
 
 } // namespace
+
+TEST_CASE("a session title names the teammates it mentions", "[claude][backend]") {
+    FakeClaudeHome home;
+    home.writeSession("idle", "Ask @claude:role:engineer and @claude:agent");
+    home.append(prompt("hi", "2026-09-25T10:00:00.000Z"));
+
+    claude_code::Backend backend(Credentials{});
+    backend.connectRealtime();
+    const auto convs = collect(backend.loadConversations());
+    REQUIRE(convs.size() == 1);
+    REQUIRE(convs[0].size() == 1);
+    CHECK(convs[0][0].name == "Ask @Engineer and @Generalist");
+    const auto users = collect(backend.loadUsers());
+    CHECK(std::any_of(users[0].begin(), users[0].end(), [](const User &u) {
+        return u.id.value == "claude:S1" && u.name == "Ask @Engineer and @Generalist";
+    }));
+}
 
 TEST_CASE(
     "backend lists a terminal session read-only and announces its answer", "[claude][backend]"

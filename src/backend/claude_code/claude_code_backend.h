@@ -203,8 +203,9 @@ private:
     std::vector<Message>  visibleMessages(Tracked &t);
     Conversation          conversationFor(const Tracked &t) const;
     User                  assistantUser(const Tracked &t) const;
-    QString               titleOf(const Tracked &t) const;    // Claude Code's name for it
-    QString               shownTitle(const Tracked &t) const; // the user's name, else titleOf
+    QString               titleOf(const Tracked &t) const;          // Claude Code's name for it
+    QString               shownTitle(const Tracked &t) const;       // the user's name, else titleOf
+    QString               teammateNames(const QString &text) const; // "@claude:role:x" → "@X"
     void                  announceChanged(Tracked &t);
     QString               readOnlyReason(const Tracked &t) const;
     bool                  busy(const Tracked &t) const;
