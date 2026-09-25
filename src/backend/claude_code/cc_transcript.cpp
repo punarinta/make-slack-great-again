@@ -222,8 +222,15 @@ void TranscriptParser::handleLine(const QByteArray &line) {
     if (err.error != QJsonParseError::NoError || o.isEmpty())
         return; // a torn or foreign line — skip, never fail the whole transcript
 
-    const QString type  = o.value(QLatin1String("type")).toString();
-    _lineUuid           = o.value(QLatin1String("uuid")).toString();
+    const QString type = o.value(QLatin1String("type")).toString();
+    _lineUuid          = o.value(QLatin1String("uuid")).toString();
+    // A copy of a session starts with the records it was copied from, same
+    // uuids and all — the ones read already, from the session it continues.
+    if (!_lineUuid.isEmpty()) {
+        if (_seenUuids.contains(_lineUuid))
+            return;
+        _seenUuids.insert(_lineUuid);
+    }
     const qint64 micros = parseIsoMicros(o.value(QLatin1String("timestamp")).toString());
     if (micros > _lastActivity)
         _lastActivity = micros;
@@ -826,6 +833,19 @@ bool endsTurn(const QJsonObject &o) {
 }
 
 } // namespace
+
+bool hasTurnSince(const QString &path, qint64 from) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly) || !f.seek(from))
+        return false;
+    while (!f.atEnd()) {
+        const QString type =
+            QJsonDocument::fromJson(f.readLine()).object().value(QLatin1String("type")).toString();
+        if (type == QLatin1String("user") || type == QLatin1String("assistant"))
+            return true;
+    }
+    return false;
+}
 
 bool removeFromTranscript(const QString &path, const QString &uuid, QString *error) {
     auto fail = [error](const QString &why) {

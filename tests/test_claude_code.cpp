@@ -755,6 +755,16 @@ TEST_CASE(
     backend.connectRealtime();
     CHECK(collect(backend.loadConversations())[0].empty());
 
+    // Claude Code's daemon retiring the idle worker appends bookkeeping: no
+    // activity, it stays away.
+    home.append(
+        "{\"type\":\"last-prompt\",\"lastPrompt\":\"hi\",\"sessionId\":\"S1\"}\n"
+        "{\"type\":\"cost-state\",\"sessionId\":\"S1\"}\n"
+    );
+    home.writeSession("idle");
+    QTest::qWait(1500);
+    CHECK(collect(backend.loadConversations())[0].empty());
+
     // Someone continues it in the terminal: it's back.
     home.append(prompt("more", "2026-09-25T11:00:00.000Z"));
     home.writeSession("busy");
@@ -1167,11 +1177,13 @@ TEST_CASE(
         )
                     .toJson());
     }
-    qputenv("FAKE_WORKER_PID", QByteArray::number(QCoreApplication::applicationPid()));
     // Stand-in for the CLI, following what Claude Code 2.1.282 was seen doing:
-    // `--bg … -- <prompt>` creates a job + worker and answers, printing
-    // "backgrounded · <short>"; `stop <short>` ends the worker; `--bg --resume
-    // <id> -- <prompt>` continues. Every call is logged to calls.log.
+    // `--bg … -- <prompt>` creates a job + worker (a real process: a stop waits
+    // for it to exit) and answers, printing "backgrounded · <short>"; `stop
+    // <short>` ends the worker; `--bg --resume <id> -- <prompt>` continues —
+    // or, with a copy-next file present, starts a copy of the session (records
+    // repeated, uuids and all) and continues there. Every call is logged to
+    // calls.log.
     const QString cli = work.path() + "/claude";
     {
         QFile f(cli);
@@ -1181,29 +1193,39 @@ H="$CLAUDE_CONFIG_DIR"
 printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
   rm -f "$H/sessions/w$2.json"
+  kill $(cat "$H/wpid-$2" 2>/dev/null) 2>/dev/null
   sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
   echo "stopped $2"; exit 0
 fi
-sid=""; prompt=""
+sid=""; prompt=""; copied=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --resume) sid="$2"; shift ;;
     --) prompt="$2"; shift ;;
   esac; shift
 done
+if [ -n "$sid" ] && [ -f "$H/copy-next" ]; then
+  rm -f "$H/copy-next"; copied="$H/projects/-fake/$sid.jsonl"; sid=""
+fi
 if [ -z "$sid" ]; then
   n=$(cat "$H/counter" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$H/counter"
   sid="abcdef1$n-0000-4000-8000-00000000000$n"
 fi
 short=$(echo "$sid" | cut -c1-8)
 T="$H/projects/-fake/$sid.jsonl"
+[ -n "$copied" ] && cp "$copied" "$T"
 ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+u=$(cat /proc/sys/kernel/random/uuid)
 mkdir -p "$H/jobs/$short"
 echo "{\"state\":\"done\",\"sessionId\":\"$sid\",\"cwd\":\"$PWD\",\"name\":\"fake-$short\",\"linkScanPath\":\"$T\"}" > "$H/jobs/$short/state.json"
-echo "{\"pid\":$FAKE_WORKER_PID,\"sessionId\":\"$sid\",\"kind\":\"bg\",\"status\":\"idle\"}" > "$H/sessions/w$short.json"
-echo "{\"type\":\"user\",\"timestamp\":\"$ts\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"$prompt\"}}" >> "$T"
-echo "{\"type\":\"assistant\",\"timestamp\":\"$ts\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"echo $prompt\"}]}}" >> "$T"
-echo "{\"type\":\"system\",\"subtype\":\"turn_duration\",\"timestamp\":\"$ts\"}" >> "$T"
+kill $(cat "$H/wpid-$short" 2>/dev/null) 2>/dev/null
+sleep 60 </dev/null >/dev/null 2>&1 &
+echo $! > "$H/wpid-$short"
+echo "{\"pid\":$!,\"sessionId\":\"$sid\",\"kind\":\"bg\",\"status\":\"idle\"}" > "$H/sessions/w$short.json"
+echo "{\"type\":\"user\",\"uuid\":\"$u-1\",\"timestamp\":\"$ts\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"$prompt\"}}" >> "$T"
+echo "{\"type\":\"assistant\",\"uuid\":\"$u-2\",\"timestamp\":\"$ts\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"echo $prompt\"}]}}" >> "$T"
+echo "{\"type\":\"system\",\"subtype\":\"turn_duration\",\"uuid\":\"$u-3\",\"timestamp\":\"$ts\"}" >> "$T"
+[ -n "$copied" ] && echo "Worker still running; started a copy of the session."
 echo "backgrounded · $short"
 )SH");
         f.setPermissions(f.permissions() | QFileDevice::ExeOwner);
@@ -1306,6 +1328,7 @@ echo "backgrounded · $short"
     QTest::qWait(500); // a turn for fifth would have started by now
     REQUIRE(log.open(QIODevice::ReadOnly));
     CHECK_FALSE(log.readAll().contains("fifth"));
+    log.close();
     CHECK_FALSE(ownTexts().contains("fifth"));
 
     // One conversation for it, under its "+" id; the name comes from Claude Code.
@@ -1313,6 +1336,33 @@ echo "backgrounded · $short"
     CHECK(std::count_if(after[0].begin(), after[0].end(), [&](const Conversation &c) {
               return c.name == "fake-abcdef11";
           }) == 1);
+
+    // Claude Code started a copy after all (a resume racing the old worker's
+    // exit, seen 2026-09-25): the chat goes on in it — no failure, no history
+    // twice, no second session or thread — and the next message resumes the copy.
+    {
+        QFile f(home.dir.path() + "/copy-next");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+    }
+    bool ok6 = false, ok7 = false;
+    sendText("sixth", &ok6);
+    REQUIRE(answered("echo sixth"));
+    CHECK(ok6);
+    CHECK_FALSE(std::any_of(events.begin(), events.end(), [&](const Event &e) {
+        return std::holds_alternative<EvSendFailed>(e);
+    }));
+    CHECK(ownTexts() == QStringList{"first", "second", "third", "fourth", "sixth"});
+    const auto copied = collect(backend.loadConversations());
+    CHECK(std::count_if(copied[0].begin(), copied[0].end(), [&](const Conversation &c) {
+              return c.name.startsWith("fake-abcdef1");
+          }) == 1);
+    sendText("seventh", &ok7);
+    REQUIRE(answered("echo seventh"));
+    REQUIRE(log.open(QIODevice::ReadOnly));
+    const QString copyLog = QString::fromUtf8(log.readAll());
+    log.close();
+    CHECK(copyLog.contains("--bg --resume abcdef12-0000-4000-8000-000000000002 -- seventh"));
+    CHECK(copyLog.contains("stop abcdef11\n")); // the original is stopped, not left idling
 
     // Skipping permission checks is a start option, saved with the session.
     ConversationId noChecks;

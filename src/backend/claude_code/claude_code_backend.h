@@ -200,6 +200,8 @@ private:
     void                  dispatch(Tracked &t);
     void                  failSends(Tracked &t, const QString &reason);
     void                  stopWorker(Tracked &t);
+    // The chat goes on in session `copyId`, a copy Claude Code made of its own.
+    void                  adoptCopy(Tracked &t, const QString &copyId);
     void                  watchLive();
     void                  pumpTyping();
     std::vector<Message>  visibleMessages(Tracked &t);
@@ -231,6 +233,7 @@ private:
     struct Hidden {
         qint64  atMs = 0;
         QString transcript;
+        qint64  seenSize = -1;    // transcript bytes already known not to be new activity
         bool    stopping = false; // its worker is being stopped (stopRemoved)
     };
     QHash<QString, Hidden> _hidden;

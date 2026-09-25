@@ -29,6 +29,7 @@
 
 #include <QByteArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <vector>
@@ -114,15 +115,16 @@ private:
     qint64                      _lastActivity  = 0;
     int                         _openToolGroup = -1; // index into _items, -1 when none
     int                         _pendingText   = -1; // index of the Pending text, -1 when none
-    int     _commandOutput = -1; // index of the latest command output, -1 when none
-    bool    _turnOpen      = false;
-    QString _aiTitle;
-    QString _version;
-    QString _model;
-    QString _permissionMode;
-    QString _role;
-    QString _roleName;
-    QString _lineUuid; // the record being read
+    int           _commandOutput = -1; // index of the latest command output, -1 when none
+    bool          _turnOpen      = false;
+    QString       _aiTitle;
+    QString       _version;
+    QString       _model;
+    QString       _permissionMode;
+    QString       _role;
+    QString       _roleName;
+    QString       _lineUuid;  // the record being read
+    QSet<QString> _seenUuids; // every record read, so a copy's repeats are skipped
 };
 
 // Takes the record `uuid` (a prompt or an answer: TranscriptItem::uuid) out of
@@ -136,6 +138,12 @@ private:
 // it. False, with *error, when the record isn't there or the file can't be
 // rewritten.
 bool removeFromTranscript(const QString &path, const QString &uuid, QString *error = nullptr);
+
+// Whether the transcript at `path` has a conversation record (a prompt or an
+// answer) past byte `from`. What Claude Code appends besides — last-prompt,
+// cost-state and title records, e.g. when its daemon retires an idle
+// background worker — is no activity in the session.
+bool hasTurnSince(const QString &path, qint64 from);
 
 // A pasted image (a prompt's base64 "image" block) saved once in msga's cache,
 // named by its content hash; returns the file's path ("" when it can't be saved).

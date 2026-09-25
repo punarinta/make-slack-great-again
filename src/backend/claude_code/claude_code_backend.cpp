@@ -87,6 +87,12 @@ bool awaitsApproval(const SessionInfo &s) {
     return s.kind == SessionInfo::Kind::Background && s.needs.startsWith(QLatin1String("approve "));
 }
 
+// A transcript's size, or -1 when there is none (yet).
+qint64 sizeOf(const QString &path) {
+    const QFileInfo fi(path);
+    return !path.isEmpty() && fi.exists() ? fi.size() : -1;
+}
+
 qint64 nowMs() {
     return QDateTime::currentMSecsSinceEpoch();
 }
@@ -258,13 +264,12 @@ void Backend::loadKnown() {
         const QString     sid = o.value(QLatin1String("sessionId")).toString();
         if (sid.isEmpty() || _convOf.contains(sid))
             continue;
-        _hidden.insert(
-            sid,
-            Hidden{
-                qint64(o.value(QLatin1String("at")).toDouble()),
-                o.value(QLatin1String("transcript")).toString()
-            }
-        );
+        Hidden h{
+            qint64(o.value(QLatin1String("at")).toDouble()),
+            o.value(QLatin1String("transcript")).toString()
+        };
+        h.seenSize = qint64(o.value(QLatin1String("size")).toDouble(-1));
+        _hidden.insert(sid, h);
     }
 }
 
@@ -304,6 +309,8 @@ void Backend::saveKnown() {
         o[QStringLiteral("sessionId")]  = it.key();
         o[QStringLiteral("at")]         = double(it->atMs);
         o[QStringLiteral("transcript")] = it->transcript;
+        if (it->seenSize >= 0)
+            o[QStringLiteral("size")] = double(it->seenSize);
         hidden.append(o);
     }
     QDir().mkpath(QFileInfo(knownSessionsPath()).absolutePath());
@@ -964,6 +971,8 @@ void Backend::dispatch(Tracked &t) {
             t->info.kind      = SessionInfo::Kind::Background;
             _convOf.insert(sessionId, convId);
             t->skipPermissionChecks = false; // saved with the session from here on
+        } else if (sessionId != t->info.sessionId) {
+            adoptCopy(*t, sessionId); // Claude Code went on in a copy of it
         }
         scheduleSaveKnown();
         if (std::exchange(t->stopRequested, false)) {
@@ -995,6 +1004,23 @@ void Backend::dispatch(Tracked &t) {
         );
     }
     scheduleRefresh(); // the dot and "typing" follow at once
+}
+
+void Backend::adoptCopy(Tracked &t, const QString &copyId) {
+    // A resume that raced the old worker's exit: Claude Code started a copy of
+    // the session and put the new turn there. The copy holds the whole
+    // conversation (its records repeat the original's, uuids and all, which the
+    // parser skips), so this chat simply goes on in it — nothing shown changes,
+    // no thread appears. The original is put away as if removed from msga, and
+    // its worker, if any, stopped.
+    const QString old = t.info.sessionId;
+    _convOf.remove(old);
+    if (copyId != t.convId)
+        _convOf.insert(copyId, t.convId);
+    t.info.sessionId = copyId;
+    t.transcriptPath = _paths.findTranscript(copyId); // "" until it's written: tail looks again
+    t.offset         = 0;
+    stopRemoved(old, t.info.cwd);
 }
 
 bool Backend::canStopAgentSession(ConversationId conv) {
@@ -1070,17 +1096,31 @@ void Backend::refresh() {
         const QString convId = convIdFor(s.sessionId);
         if (!_sessions.contains(convId) && startingIn.contains(QDir(s.cwd).absolutePath()))
             continue;
-        if (const auto h = _hidden.constFind(s.sessionId); h != _hidden.cend()) {
-            // Removed from msga: stays away until its transcript is written
-            // again. No transcript (none yet, or Claude Code already deleted it
+        if (const auto h = _hidden.find(s.sessionId); h != _hidden.end()) {
+            // Removed from msga: stays away until its transcript gets a new
+            // turn. No transcript (none yet, or Claude Code already deleted it
             // while the job lingers) means no new activity either.
             const QString   path = s.transcriptPath.isEmpty() ? h->transcript : s.transcriptPath;
             // While msga stops it, what it still writes isn't new activity either.
             const QFileInfo fi(path);
             if (h->stopping || !fi.exists() || fi.lastModified().toMSecsSinceEpoch() <= h->atMs)
                 continue;
+            // Written since, but maybe only Claude Code's bookkeeping (its
+            // daemon retiring the idle worker an hour on appends some).
+            if (h->seenSize >= 0 && fi.size() >= h->seenSize) {
+                if (fi.size() == h->seenSize || !hasTurnSince(path, h->seenSize)) {
+                    h->seenSize = fi.size();
+                    scheduleSaveKnown();
+                    continue;
+                }
+            }
             _hidden.erase(h);
         }
+        // A session msga went on from in a copy (adoptCopy), should it be
+        // listed again, never takes over the chat that is the copy's now.
+        if (const Tracked *owner = find(convId);
+            owner && !owner->info.sessionId.isEmpty() && owner->info.sessionId != s.sessionId)
+            continue;
         listedNow.insert(convId);
         const bool    isNew   = !_sessions.contains(convId);
         Tracked      &t       = ensureTracked(convId);
@@ -1973,7 +2013,9 @@ void Backend::hideSession(const QString &convId) {
         QString transcript = t.transcriptPath;
         if (transcript.isEmpty())
             transcript = _paths.findTranscript(t.info.sessionId);
-        _hidden.insert(t.info.sessionId, Hidden{nowMs(), transcript});
+        Hidden h{nowMs(), transcript};
+        h.seenSize = sizeOf(transcript);
+        _hidden.insert(t.info.sessionId, h);
         _convOf.remove(t.info.sessionId);
         if (t.info.kind == SessionInfo::Kind::Background && t.info.running && !t.stopping)
             stopRemoved(t.info.sessionId, t.info.cwd);
@@ -1982,8 +2024,11 @@ void Backend::hideSession(const QString &convId) {
 }
 
 void Backend::stopRemoved(const QString &sessionId, const QString &cwd) {
-    if (!_hidden.contains(sessionId))
-        _hidden.insert(sessionId, Hidden{nowMs(), _paths.findTranscript(sessionId)});
+    if (!_hidden.contains(sessionId)) {
+        Hidden h{nowMs(), _paths.findTranscript(sessionId)};
+        h.seenSize = sizeOf(h.transcript);
+        _hidden.insert(sessionId, h);
+    }
     _hidden[sessionId].stopping = true;
     _launcher->stop(sessionId, cwd, [this, sessionId] {
         // The worker writes its last records as it exits; that is no new
@@ -1993,6 +2038,7 @@ void Backend::stopRemoved(const QString &sessionId, const QString &cwd) {
             h->atMs     = nowMs();
             if (h->transcript.isEmpty())
                 h->transcript = _paths.findTranscript(sessionId);
+            h->seenSize = sizeOf(h->transcript);
             saveKnown();
         }
     });
