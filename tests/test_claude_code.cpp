@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -1441,6 +1442,9 @@ TEST_CASE("Stop cuts a session's turn short and drops what waits", "[claude][bac
 H="$CLAUDE_CONFIG_DIR"
 printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
+  # The worker writes its last records as it exits.
+  T=$(sed -n 's/.*"linkScanPath":"\([^"]*\)".*/\1/p' "$H/jobs/$2/state.json")
+  echo '{"type":"last-prompt","lastPrompt":"x"}' >> "$T"
   rm -f "$H/sessions/w$2.json"
   sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
   echo "stopped $2"; exit 0
@@ -1538,6 +1542,83 @@ echo "backgrounded · $short"
     QTest::qWait(1000);
     CHECK_FALSE(working());
     CHECK_FALSE(backend.canStopAgentSession(conv));
+
+    // An idle worker can be stopped too: a subagent's result or a scheduled
+    // prompt would wake it without anyone sending a thing.
+    send("fourth");
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 5; }, 8000));
+    const QString workerFile = home.dir.path() + "/sessions/wabcdef11.json";
+    REQUIRE(QTest::qWaitFor([&] { return QFile::exists(workerFile); }, 8000));
+    QTest::qWait(300); // the launcher has reported back
+    {
+        QFile f(workerFile);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QString(R"({"pid":%1,"sessionId":"%2","kind":"bg","status":"idle"})")
+                    .arg(QCoreApplication::applicationPid())
+                    .arg(sid)
+                    .toUtf8());
+        // …and the turn is over.
+        QFile job(home.dir.path() + "/jobs/abcdef11/state.json");
+        REQUIRE(job.open(QIODevice::ReadOnly));
+        const QByteArray state = job.readAll().replace("\"working\"", "\"done\"");
+        job.close();
+        REQUIRE(job.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        job.write(state);
+        QFile t(home.dir.path() + "/projects/-fake/" + sid + ".jsonl");
+        REQUIRE(t.open(QIODevice::Append));
+        t.write("{\"type\":\"system\",\"subtype\":\"turn_duration\"}\n");
+    }
+    REQUIRE(QTest::qWaitFor([&] { return !working(); }, 8000));
+    CHECK(backend.canStopAgentSession(conv));
+
+#if defined(Q_OS_LINUX)
+    // What the session left running outside its worker is ended with it —
+    // only that: a process that merely inherited the session id is no leftover.
+    auto spawn = [&](bool inJob, qint64 *pid) {
+        QProcess            p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("CLAUDE_CODE_SESSION_ID", sid);
+        if (inJob)
+            env.insert("CLAUDE_JOB_DIR", home.dir.path() + "/jobs/abcdef11");
+        p.setProcessEnvironment(env);
+        p.setProgram("sleep");
+        p.setArguments({"30"});
+        return p.startDetached(pid); // not msga's child: those are spared
+    };
+    qint64 leftover = 0, bystander = 0;
+    REQUIRE(spawn(true, &leftover));
+    REQUIRE(spawn(false, &bystander));
+    REQUIRE(
+        QTest::qWaitFor(
+            [&] { return leftoverProcesses(sid, "abcdef11") == std::vector<qint64>{leftover}; },
+            3000
+        )
+    );
+#endif
+    backend.stopAgentSession(conv);
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 6; }, 8000));
+    CHECK(calls()[5] == "stop abcdef11");
+#if defined(Q_OS_LINUX)
+    CHECK(QTest::qWaitFor([&] { return !isProcessAlive(leftover); }, 5000));
+    CHECK(isProcessAlive(bystander));
+    signalProcess(bystander, true);
+#endif
+
+    // "Remove from msga" stops a live worker too, and the session stays away
+    // though the worker still writes to its transcript as it goes.
+    send("fifth");
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 7; }, 8000));
+    REQUIRE(QTest::qWaitFor([&] { return working(); }, 8000));
+    QTest::qWait(300); // the launcher has reported back
+    backend.leaveConversation(conv);
+    REQUIRE(QTest::qWaitFor([&] { return calls().size() == 8; }, 8000));
+    CHECK(calls()[7] == "stop abcdef11");
+    QTest::qWait(1500);
+    const auto convs = collect(backend.loadConversations());
+    CHECK(std::none_of(convs[0].begin(), convs[0].end(), [&](const Conversation &c) {
+        return c.id == conv;
+    }));
+    CHECK(calls().size() == 8);
 }
 #endif
 

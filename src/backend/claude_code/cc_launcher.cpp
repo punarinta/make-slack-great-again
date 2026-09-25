@@ -190,25 +190,42 @@ QString Launcher::sessionIdForShort(const QString &shortId) const {
         .toString();
 }
 
-void Launcher::waitStopped(const QString &shortId, int attemptsLeft, std::function<void()> then) {
-    QFile      f(_paths.jobsDir() + QLatin1Char('/') + shortId + QStringLiteral("/state.json"));
-    const bool stopped =
-        !f.open(QIODevice::ReadOnly) ||
-        QJsonDocument::fromJson(f.readAll()).object().value(QLatin1String("state")).toString() ==
-            QLatin1String("stopped");
-    if (stopped || attemptsLeft <= 0) {
+void Launcher::waitStopped(const QString &sessionId, int attemptsLeft, std::function<void()> then) {
+    // The worker's pid file goes when it exits. The job's state is no help: a
+    // worker stopped while idle leaves it reading "done" (verified 2026-09-25).
+    if (!hasLiveWorker(_paths, sessionId) || attemptsLeft <= 0) {
         then();
         return;
     }
-    QTimer::singleShot(250, this, [this, shortId, attemptsLeft, then] {
-        waitStopped(shortId, attemptsLeft - 1, then);
+    QTimer::singleShot(250, this, [this, sessionId, attemptsLeft, then] {
+        waitStopped(sessionId, attemptsLeft - 1, then);
+    });
+}
+
+void Launcher::reapLeftovers(const QString &sessionId, std::function<void()> done) {
+    const QString shortId = sessionId.left(8);
+    const auto    pids    = leftoverProcesses(sessionId, shortId);
+    if (pids.empty()) {
+        if (done)
+            done();
+        return;
+    }
+    for (const qint64 pid : pids)
+        signalProcess(pid, false);
+    // What ignores SIGTERM gets SIGKILL — looked up again, never by stale pid.
+    QTimer::singleShot(2000, this, [sessionId, shortId, done] {
+        for (const qint64 pid : leftoverProcesses(sessionId, shortId))
+            signalProcess(pid, true);
+        if (done)
+            done();
     });
 }
 
 void Launcher::stop(const QString &sessionId, const QString &cwd, std::function<void()> done) {
     const QString shortId = sessionId.left(8);
-    run({QStringLiteral("stop"), shortId}, cwd, [this, shortId, done](int, QString) {
-        waitStopped(shortId, 40, done); // `stop` returns before the worker exits
+    run({QStringLiteral("stop"), shortId}, cwd, [this, sessionId, done](int, QString) {
+        // `stop` returns before the worker exits. Up to 10 s.
+        waitStopped(sessionId, 40, [this, sessionId, done] { reapLeftovers(sessionId, done); });
     });
 }
 
@@ -315,10 +332,10 @@ void Launcher::resume(
         return;
     }
     const QString shortId = sessionId.left(8);
-    run({QStringLiteral("stop"), shortId}, cwd, [this, shortId, go](int, QString) {
+    run({QStringLiteral("stop"), shortId}, cwd, [this, sessionId, go](int, QString) {
         // `stop` returns before the worker has exited; resuming earlier only
         // starts a copy. Up to 10 s.
-        waitStopped(shortId, 40, go);
+        waitStopped(sessionId, 40, go);
     });
 }
 

@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "cc_roster.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -10,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcessEnvironment>
+#include <algorithm>
 
 #if defined(Q_OS_WIN)
 #include <windows.h>
@@ -138,6 +140,94 @@ bool isProcessAlive(qint64 pid) {
     return alive;
 #else
     return ::kill(pid_t(pid), 0) == 0 || errno == EPERM;
+#endif
+}
+
+bool hasLiveWorker(const Paths &paths, const QString &sessionId) {
+    const QDir sessions(paths.sessionsDir());
+    for (const auto &f : sessions.entryList({QStringLiteral("*.json")}, QDir::Files)) {
+        const auto s = parseInteractiveSession(readSmallFile(sessions.filePath(f)));
+        if (s && s->kind == SessionInfo::Kind::Background && s->sessionId == sessionId &&
+            isProcessAlive(s->pid))
+            return true;
+    }
+    return false;
+}
+
+#if defined(Q_OS_LINUX)
+namespace {
+
+QList<QByteArray> procStrings(qint64 pid, const char *file) {
+    QFile f(QStringLiteral("/proc/%1/%2").arg(pid).arg(QLatin1String(file)));
+    if (!f.open(QIODevice::ReadOnly))
+        return {}; // gone, or not ours to read
+    return f.readAll().split('\0');
+}
+
+qint64 parentPid(qint64 pid) {
+    QFile f(QStringLiteral("/proc/%1/stat").arg(pid));
+    if (!f.open(QIODevice::ReadOnly))
+        return 0;
+    // "<pid> (<comm>) <state> <ppid> …" — comm may hold spaces and parentheses.
+    const QByteArray stat = f.readAll();
+    const auto       rest = stat.mid(stat.lastIndexOf(')') + 2).split(' ');
+    return rest.size() > 1 ? rest[1].toLongLong() : 0;
+}
+
+bool descendsFrom(qint64 pid, qint64 ancestor) {
+    for (int depth = 0; pid > 1 && depth < 64; ++depth) {
+        if (pid == ancestor)
+            return true;
+        pid = parentPid(pid);
+    }
+    return false;
+}
+
+} // namespace
+#endif
+
+std::vector<qint64> leftoverProcesses(const QString &sessionId, const QString &shortId) {
+    std::vector<qint64> out;
+#if defined(Q_OS_LINUX)
+    if (sessionId.isEmpty() || shortId.isEmpty())
+        return out;
+    const QByteArray idVar     = "CLAUDE_CODE_SESSION_ID=" + sessionId.toUtf8();
+    const QByteArray jobSuffix = "/jobs/" + shortId.toUtf8();
+    const qint64     self      = QCoreApplication::applicationPid();
+    const QDir       proc(QStringLiteral("/proc"));
+    for (const QString &entry : proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        bool         isPid = false;
+        const qint64 pid   = entry.toLongLong(&isPid);
+        if (!isPid || pid == self)
+            continue;
+        const auto env    = procStrings(pid, "environ");
+        const bool hasJob = std::any_of(env.begin(), env.end(), [&](const QByteArray &v) {
+            return v.startsWith("CLAUDE_JOB_DIR=") && v.endsWith(jobSuffix);
+        });
+        if (!hasJob || !env.contains(idVar))
+            continue;
+        const auto argv = procStrings(pid, "cmdline");
+        if (argv.contains("--bg-spare") || argv.contains("--bg-pty-host") ||
+            (argv.size() > 1 && argv[1] == "daemon"))
+            continue; // Claude Code's own machinery, serving every session
+        if (descendsFrom(pid, self))
+            continue; // msga was started from that session (a dev run)
+        out.push_back(pid);
+    }
+#else
+    Q_UNUSED(sessionId);
+    Q_UNUSED(shortId);
+#endif
+    return out;
+}
+
+void signalProcess(qint64 pid, bool force) {
+#if defined(Q_OS_WIN)
+    Q_UNUSED(pid);
+    Q_UNUSED(force);
+#else
+    if (pid > 0)
+        ::kill(pid_t(pid), force ? SIGKILL : SIGTERM);
 #endif
 }
 

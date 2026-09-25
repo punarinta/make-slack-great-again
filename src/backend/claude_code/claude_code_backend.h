@@ -74,8 +74,9 @@ public:
     void addReaction(ConversationId, Ts, QString) override {}
     void removeReaction(ConversationId, Ts, QString) override {}
     void markRead(ConversationId, Ts) override;
-    // "Remove from msga": hides the session here only — Claude Code keeps it.
-    // It comes back if it gets new activity after that.
+    // "Remove from msga": hides the session here — Claude Code keeps it — and
+    // stops it if it's a background one (with all it runs, see Launcher::stop).
+    // It comes back if it gets new activity after that (resumed elsewhere).
     void leaveConversation(ConversationId) override;
     // "Rename session…": a name only msga shows (Claude Code keeps its own). It
     // goes on the session's user, which titles the DM everywhere.
@@ -111,9 +112,9 @@ public:
     // (cc_catalog), read on a worker thread.
     void           findAgentSessions(std::function<void(std::vector<FoundSession>)> done) override;
     ConversationId addFoundSession(const QString &sessionId) override;
-    // "Stop": a background session's worker is stopped (`claude stop`), mid-turn
-    // or waiting on an approval. Sessions a terminal or another program drives
-    // are theirs to stop.
+    // "Stop": a background session's worker is stopped (`claude stop`) with all
+    // it runs, mid-turn, waiting on an approval or idle. Sessions a terminal or
+    // another program drives are theirs to stop.
     bool           canStopAgentSession(ConversationId) override;
     void           stopAgentSession(ConversationId) override;
 
@@ -168,6 +169,8 @@ private:
     void     tail(Tracked &t);
     void     diffAndAnnounce(Tracked &t);
     void     hideSession(const QString &convId); // "Remove from msga", one session
+    // Stop a background session that was removed from msga, keeping it hidden.
+    void     stopRemoved(const QString &sessionId, const QString &cwd);
     std::vector<std::pair<QString, QString>> conversationStatus(Tracked &t);
     // Why no session can be started in `dir` ("" = it can), and a new one there
     // (a "+" session: it starts with its first message).
@@ -229,6 +232,7 @@ private:
     struct Hidden {
         qint64  atMs = 0;
         QString transcript;
+        bool    stopping = false; // its worker is being stopped (stopRemoved)
     };
     QHash<QString, Hidden> _hidden;
     QObject               *_ctx            = nullptr; // owns the Qt objects

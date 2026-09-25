@@ -942,10 +942,16 @@ void Backend::dispatch(Tracked &t) {
     t.promptLanded         = false;
     t.flying               = std::move(next);
     const QString convId   = t.convId;
-    auto          settled  = [this, convId](QString sessionId, QString error) {
+    const QString cwd      = t.info.cwd;
+    auto          settled  = [this, convId, cwd](QString sessionId, QString error) {
         Tracked *t = find(convId);
-        if (!t)
+        if (!t) {
+            // Removed from msga while the CLI was starting the turn: stop it
+            // there, and keep it away.
+            if (!sessionId.isEmpty())
+                stopRemoved(sessionId, cwd);
             return;
+        }
         t->launching = false;
         if (sessionId.isEmpty()) {
             t->sending       = false;
@@ -999,10 +1005,9 @@ bool Backend::canStopAgentSession(ConversationId conv) {
         return false;
     if (t->sending || !t->outbox.isEmpty())
         return true; // msga's own turn, or messages waiting for one
-    // An idle worker lingers after every turn: nothing to stop there.
-    return t->info.kind == SessionInfo::Kind::Background && t->info.running &&
-           (statusIsBusy(t->info.status) || statusNeedsUser(t->info.status) ||
-            statusHasShell(t->info.status));
+    // Any live worker, idle too: an idle one can still wake itself — a
+    // subagent's result or a scheduled prompt starts a turn nobody sent.
+    return t->info.kind == SessionInfo::Kind::Background && t->info.running;
 }
 
 void Backend::stopAgentSession(ConversationId conv) {
@@ -1072,8 +1077,9 @@ void Backend::refresh() {
             // again. No transcript (none yet, or Claude Code already deleted it
             // while the job lingers) means no new activity either.
             const QString   path = s.transcriptPath.isEmpty() ? h->transcript : s.transcriptPath;
+            // While msga stops it, what it still writes isn't new activity either.
             const QFileInfo fi(path);
-            if (!fi.exists() || fi.lastModified().toMSecsSinceEpoch() <= h->atMs)
+            if (h->stopping || !fi.exists() || fi.lastModified().toMSecsSinceEpoch() <= h->atMs)
                 continue;
             _hidden.erase(h);
         }
@@ -1960,8 +1966,10 @@ void Backend::hideSession(const QString &convId) {
     if (it == _sessions.end())
         return;
     Tracked &t = *it.value();
-    // Messages still waiting here are dropped; a turn already handed to Claude
-    // Code runs on there.
+    // Messages still waiting here are dropped, and a background session is
+    // stopped with all it runs: nothing of it goes on once it's out of sight.
+    // (A turn being launched right now is stopped once it has: dispatch.)
+    // A terminal's session is the terminal's.
     failSends(t, QCoreApplication::translate("claude_code", "The session was removed from msga."));
     if (!t.info.sessionId.isEmpty()) {
         QString transcript = t.transcriptPath;
@@ -1969,8 +1977,27 @@ void Backend::hideSession(const QString &convId) {
             transcript = _paths.findTranscript(t.info.sessionId);
         _hidden.insert(t.info.sessionId, Hidden{nowMs(), transcript});
         _convOf.remove(t.info.sessionId);
+        if (t.info.kind == SessionInfo::Kind::Background && t.info.running && !t.stopping)
+            stopRemoved(t.info.sessionId, t.info.cwd);
     }
     _sessions.erase(it);
+}
+
+void Backend::stopRemoved(const QString &sessionId, const QString &cwd) {
+    if (!_hidden.contains(sessionId))
+        _hidden.insert(sessionId, Hidden{nowMs(), _paths.findTranscript(sessionId)});
+    _hidden[sessionId].stopping = true;
+    _launcher->stop(sessionId, cwd, [this, sessionId] {
+        // The worker writes its last records as it exits; that is no new
+        // activity to bring the session back for.
+        if (const auto h = _hidden.find(sessionId); h != _hidden.end()) {
+            h->stopping = false;
+            h->atMs     = nowMs();
+            if (h->transcript.isEmpty())
+                h->transcript = _paths.findTranscript(sessionId);
+            saveKnown();
+        }
+    });
 }
 
 void Backend::findAgentSessions(std::function<void(std::vector<FoundSession>)> done) {

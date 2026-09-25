@@ -71,6 +71,25 @@ void applyWorker(SessionInfo &job, const SessionInfo &worker);
 // Whether a process id is alive. A pid file can outlive a crashed session.
 bool isProcessAlive(qint64 pid);
 
+// Whether a live background worker holds session `sessionId` (its
+// sessions/<pid>.json, kind "bg"). After `claude stop` this is what tells the
+// worker has exited: an idle job's state.json keeps reading "done".
+bool hasLiveWorker(const Paths &paths, const QString &sessionId);
+
+// Processes background session `sessionId` (job `shortId`) started that
+// outlive its worker. `claude stop` ends the worker and with it the subagents
+// and scheduled prompts that run inside it, but a command Claude ran in the
+// background (run_in_background: a dev server, a watch loop) is its own
+// process session and carries on, reparented to init (verified with 2.1.282).
+// Everything the worker spawns has CLAUDE_CODE_SESSION_ID=<sessionId> and
+// CLAUDE_JOB_DIR=<jobs dir>/<shortId> in its environment; both must match, as
+// Claude Code's own daemon and warm spares can inherit a session id from the
+// shell that first started them — those, msga and msga's children are never
+// listed. Linux only (/proc); empty elsewhere.
+std::vector<qint64> leftoverProcesses(const QString &sessionId, const QString &shortId);
+// SIGTERM, or SIGKILL when `force`. Not on Windows.
+void                signalProcess(qint64 pid, bool force);
+
 // Every session currently listed by the two directories. Interactive sessions
 // whose process is gone are left out (their pid file is stale).
 std::vector<SessionInfo> scanSessions(const Paths &paths);

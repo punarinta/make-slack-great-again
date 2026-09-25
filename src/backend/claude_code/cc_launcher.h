@@ -10,8 +10,12 @@
 //     "backgrounded · <short id>"; the job's state.json holds the full id.
 //   • A finished turn leaves the job "done" with its worker still alive, and
 //     resuming then only starts a copy — so a follow-up is `claude stop <short>`,
-//     wait for the job to read "stopped" (stop returns before the worker exits),
-//     then `claude --bg --resume <id> -- <prompt>`.
+//     wait for the worker's sessions/<pid>.json to go (stop returns before the
+//     worker exits, and an idle job keeps reading "done"), then
+//     `claude --bg --resume <id> -- <prompt>`.
+//   • `claude stop` ends the worker and what runs inside it — subagents,
+//     scheduled prompts (CronCreate), a subagent's running command — but not a
+//     command Claude ran in the background, which carries on orphaned.
 //   • A background session keeps the options it was started with; passing any
 //     flag on resume starts a copy instead. A session that was never a
 //     background one (a terminal or -p session) takes flags fine.
@@ -84,9 +88,11 @@ public:
     // touched: no stop, and its worker (or terminal) goes on as it was.
     void fork(const QString &sessionId, const QString &cwd, const QString &prompt, Done done);
 
-    // Stop background session `sessionId` now, mid-turn or not (`claude stop`):
-    // its worker exits, the conversation is kept and can be resumed. `done`
-    // runs once the job reads "stopped" (or after 10 s).
+    // Stop background session `sessionId` now, mid-turn or idle (`claude stop`):
+    // its worker exits, the conversation is kept and can be resumed. Then what
+    // it left running is ended too (leftoverProcesses), so nothing it started
+    // goes on or wakes it again. `done` runs once all that is over (the worker
+    // is waited for up to 10 s).
     void stop(const QString &sessionId, const QString &cwd, std::function<void()> done);
 
     // The full session id of background job `shortId` (from its state.json).
@@ -108,7 +114,8 @@ private:
          run(const QStringList                            &args,
              const QString                                &cwd,
              std::function<void(int code, QString output)> done);
-    void waitStopped(const QString &shortId, int attemptsLeft, std::function<void()> then);
+    void waitStopped(const QString &sessionId, int attemptsLeft, std::function<void()> then);
+    void reapLeftovers(const QString &sessionId, std::function<void()> done);
 
     QString _claudePath;
     Paths   _paths;
