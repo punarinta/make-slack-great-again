@@ -15,6 +15,7 @@
 #include "util/time_format.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QDir>
 #include <QFile>
 #include <QFileOpenEvent>
@@ -24,6 +25,7 @@
 #include <QLocale>
 #include <QPainter>
 #include <QProcess>
+#include <QRadioButton>
 #include <QSettings>
 #include <QSvgRenderer>
 #include <QTimer>
@@ -301,6 +303,24 @@ int main(int argc, char *argv[]) {
         }
     }
 #endif
+
+    // Checkboxes and radio buttons show a pointing-hand cursor on hover. QSS has
+    // no `cursor` property, so it's set once per widget when it's first polished
+    // (covers every instance, present and future). An explicit cursor wins.
+    class PointerCursorFilter : public QObject {
+    public:
+        using QObject::QObject;
+        bool eventFilter(QObject *obj, QEvent *ev) override {
+            if (ev->type() == QEvent::Polish &&
+                (qobject_cast<QCheckBox *>(obj) || qobject_cast<QRadioButton *>(obj))) {
+                auto *w = static_cast<QWidget *>(obj);
+                if (!w->testAttribute(Qt::WA_SetCursor))
+                    w->setCursor(Qt::PointingHandCursor);
+            }
+            return false;
+        }
+    };
+    app.installEventFilter(new PointerCursorFilter(&app));
 
     MainWindow window;
     // Dispatch incoming msga:// URLs: notification-click activation (Windows
