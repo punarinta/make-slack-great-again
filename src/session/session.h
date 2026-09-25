@@ -586,7 +586,8 @@ private:
         const QString                            &subject,
         std::function<void(bool ok, QString err)> done,
         bool                                      replyBroadcast = false,
-        std::vector<OutgoingGif>                  gifs           = {}
+        std::vector<OutgoingGif>                  gifs           = {},
+        const QString                            &composerText   = {}
     );
     // Composer text → OutgoingMessage (parsed text, mrkdwn, blocks) for the
     // paths that don't need an optimistic copy: edit and schedule.

@@ -1523,9 +1523,12 @@ void Backend::submitMail(
 void Backend::sendMessage(
     ConversationId conv, OutgoingMessage out, std::function<void(bool ok, QString err)> done
 ) {
+    // The mail body is plain text: the composer's text as typed, markup and
+    // all — the parsed copy (out.text.text) would drop ``` fences, backticks
+    // and link targets.
     submitMail(
         conv,
-        out.text.text,
+        out.composerText.isEmpty() ? out.text.text : out.composerText,
         out.threadRoot,
         out.subject,
         {},

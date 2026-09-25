@@ -2207,7 +2207,8 @@ Ts Session::postMessage(
         subject,
         std::move(done),
         replyBroadcast,
-        std::move(gifs)
+        std::move(gifs),
+        body
     );
 }
 
@@ -2218,7 +2219,8 @@ Ts Session::postComposed(
     const QString                            &subject,
     std::function<void(bool ok, QString err)> done,
     bool                                      replyBroadcast,
-    std::vector<OutgoingGif>                  gifs
+    std::vector<OutgoingGif>                  gifs,
+    const QString                            &composerText
 ) {
     const Ts   fakeTs    = makeFakeTs();
     const bool broadcast = threadRoot.has_value() && replyBroadcast;
@@ -2249,6 +2251,7 @@ Ts Session::postComposed(
     OutgoingMessage out;
     out.text           = optimistic.text;
     out.rawText        = composed.mrkdwn;
+    out.composerText   = composerText;
     out.blocks         = composed.blocks;
     out.gifs           = std::move(gifs);
     out.threadRoot     = threadRoot;
@@ -2339,9 +2342,10 @@ void Session::editMessage(ConversationId conv, Ts ts, const QString &newText) {
 OutgoingMessage Session::composeOutgoing(const QString &composerText) {
     const auto      composed = MarkdownCompose::convert(composerText);
     OutgoingMessage out;
-    out.text    = MrkdwnParser::parse(composed.mrkdwn);
-    out.rawText = composed.mrkdwn;
-    out.blocks  = composed.blocks;
+    out.text         = MrkdwnParser::parse(composed.mrkdwn);
+    out.rawText      = composed.mrkdwn;
+    out.composerText = composerText;
+    out.blocks       = composed.blocks;
     return out;
 }
 

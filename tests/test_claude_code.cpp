@@ -1273,6 +1273,23 @@ echo "backgrounded · $short"
             8000
         )
     );
+    // Claude gets the text as typed, not the parsed copy the fences and
+    // backticks were stripped from.
+    OutgoingMessage fenced;
+    fenced.text         = {"quotes test code", {}};
+    fenced.rawText      = "quotes ```test``` `code`";
+    fenced.composerText = "quotes ```test``` `code`";
+    backend.sendMessage(noChecks, fenced, {});
+    CHECK(
+        QTest::qWaitFor(
+            [&] {
+                QFile f(home.dir.path() + "/calls.log");
+                return f.open(QIODevice::ReadOnly) &&
+                       f.readAll().contains("quotes ```test``` `code`");
+            },
+            8000
+        )
+    );
 
     // A teammate: its few lines go after Claude Code's own prompt, its session
     // carries its role and picture, and Claude answers as the teammate.

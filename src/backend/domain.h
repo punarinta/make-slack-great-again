@@ -1154,6 +1154,10 @@ inline Attachment gifAttachment(const OutgoingGif &gif, int id) {
 struct OutgoingMessage {
     TextWithEntities  text;
     QString           rawText; // original mrkdwn source; sent verbatim to chat.postMessage
+    // The composer's text as typed (markdown, before the mrkdwn conversion) —
+    // for services that read markdown or plain text rather than mrkdwn. Empty
+    // when the message didn't come from the composer (a moved message).
+    QString           composerText;
     // Block Kit `blocks` to post alongside the text — one rich_text block when
     // the composer text held a list (MarkdownCompose::convert), else empty.
     // Slack only; other services render rawText.

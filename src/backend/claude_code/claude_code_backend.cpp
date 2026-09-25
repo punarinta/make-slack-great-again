@@ -1606,9 +1606,12 @@ void Backend::sendMessage(
     ConversationId conv, OutgoingMessage msg, std::function<void(bool ok, QString err)> done
 ) {
     Tracked                        *t    = find(conv.value);
-    // The composer's text as typed: rawText is the composer's mrkdwn conversion,
-    // but Claude reads markdown best as written.
-    const QString                   text = msg.text.text.isEmpty() ? msg.rawText : msg.text.text;
+    // The composer's text as typed: Claude reads markdown best as written.
+    // Never msg.text.text — that is the parsed copy, its ``` fences, `code`
+    // backticks and link targets stripped into entities.
+    const QString                   text = !msg.composerText.isEmpty() ? msg.composerText
+                                           : !msg.rawText.isEmpty()    ? msg.rawText
+                                                                       : msg.text.text;
     static const QRegularExpression kBtw(QStringLiteral("^/btw(?:\\s+([\\s\\S]*))?$"));
     const auto                      btw = kBtw.match(text.trimmed());
     QString                         reason;
