@@ -31,6 +31,7 @@
 #include <QTemporaryDir>
 #include <QUuid>
 
+#include <algorithm>
 #include <vector>
 
 #include "backend/domain.h"
@@ -652,4 +653,34 @@ TEST_CASE("removeSelectedIdleSession removes only an idle agent session") {
         REQUIRE(list.selectConversation(ConversationId{"D1"}));
         REQUIRE_FALSE(list.removeSelectedIdleSession());
     }
+}
+
+// A removed session hands the view to the row below it, or — when it was the
+// last — to the new last row.
+TEST_CASE("neighbourConversationId prefers the row below, then the row above") {
+    ConvListWidget list(nullptr);
+    list.setConversations(
+        {channel("C1", "alpha"), channel("C2", "bravo"), channel("C3", "charlie")}
+    );
+    const int r1 = list.rowForId(ConversationId{"C1"});
+    const int r2 = list.rowForId(ConversationId{"C2"});
+    const int r3 = list.rowForId(ConversationId{"C3"});
+    REQUIRE(r1 >= 0);
+    REQUIRE(r2 >= 0);
+    REQUIRE(r3 >= 0);
+    // Rows in visual order, whatever the list's sort did with them.
+    std::vector<std::pair<int, ConversationId>> rows{
+        {r1, ConversationId{"C1"}}, {r2, ConversationId{"C2"}}, {r3, ConversationId{"C3"}}
+    };
+    std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
+        return a.first < b.first;
+    });
+
+    REQUIRE(list.neighbourConversationId(rows[0].second) == rows[1].second);
+    REQUIRE(list.neighbourConversationId(rows[1].second) == rows[2].second);
+    REQUIRE(list.neighbourConversationId(rows[2].second) == rows[1].second);
+    REQUIRE(list.neighbourConversationId(ConversationId{"gone"}) == rows[0].second);
+
+    list.setConversations({channel("C1", "alpha")});
+    REQUIRE(list.neighbourConversationId(ConversationId{"C1"}).value.isEmpty());
 }

@@ -752,10 +752,20 @@ ConversationId ConvListWidget::conversationId(int row) const {
     return _convs[ri.convIdx].id;
 }
 
-ConversationId ConvListWidget::firstConversationId(const ConversationId &except) const {
+ConversationId ConvListWidget::neighbourConversationId(const ConversationId &id) const {
+    const int at = rowForId(id);
+    if (at >= 0) {
+        for (int row = at + 1; row < (int)_rows.size(); ++row)
+            if (const ConversationId next = conversationId(row); !next.value.isEmpty())
+                return next;
+        for (int row = at - 1; row >= 0; --row)
+            if (const ConversationId prev = conversationId(row); !prev.value.isEmpty())
+                return prev;
+        return {};
+    }
     for (int row = 0; row < (int)_rows.size(); ++row)
-        if (const ConversationId id = conversationId(row); !id.value.isEmpty() && id != except)
-            return id;
+        if (const ConversationId other = conversationId(row); !other.value.isEmpty() && other != id)
+            return other;
     return {};
 }
 

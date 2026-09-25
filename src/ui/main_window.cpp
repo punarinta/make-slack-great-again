@@ -1994,16 +1994,18 @@ void MainWindow::wireConvList() {
         _convList, &ConvListWidget::leaveConversationRequested, this, [this](ConversationId id) {
             if (!_session)
                 return;
+            // A Claude Code session removed while open: show the one below it
+            // (the one above when it was the last) rather than a chat that is
+            // gone. Picked now, while the removed row is still in the list.
+            const ConversationId next =
+                (id == _currentConvId && _session->capabilities().agentSessions)
+                    ? _convList->neighbourConversationId(id)
+                    : ConversationId{};
             _session->leaveConversation(id);
-            // A Claude Code session removed while open: show the next one
-            // rather than a chat that is gone.
-            if (id == _currentConvId && _session->capabilities().agentSessions)
-                QTimer::singleShot(0, this, [this, id] {
-                    if (_currentConvId != id)
-                        return;
-                    if (const ConversationId next = _convList->firstConversationId(id);
-                        !next.value.isEmpty())
-                        openConversationIn({}, next);
+            if (!next.value.isEmpty())
+                QTimer::singleShot(0, this, [this, id, next] {
+                    if (_currentConvId == id)
+                        openConversationIn({}, next); // focuses the composer too
                 });
         }
     );

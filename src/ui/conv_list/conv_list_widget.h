@@ -116,8 +116,10 @@ public:
     int                            rowCount() const { return int(_rows.size()); }
     // Resolved ConversationId for a visual row (-1 safe: returns empty id).
     ConversationId                 conversationId(int row) const;
-    // The topmost conversation row's id, skipping `except`; empty when none.
-    ConversationId                 firstConversationId(const ConversationId &except = {}) const;
+    // What to show once `id` is removed: the conversation row just below it,
+    // else the nearest one above (it was the last); the topmost other row when
+    // `id` has no visible row. Empty when nothing else is listed.
+    ConversationId                 neighbourConversationId(const ConversationId &id) const;
     // Visual row for a given id; -1 if not found or section is collapsed.
     int                            rowForId(ConversationId id) const;
     // Viewport rectangle of a row (empty for an invalid row). Rows are virtual, so
