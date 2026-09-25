@@ -50,7 +50,7 @@ TokenStore::WorkspaceRecord toRecord(const Credentials &creds) {
     blob[QStringLiteral("userId")]       = creds.userId;
 
     TokenStore::WorkspaceRecord rec;
-    rec.key         = WorkspaceKey{Service::Teams, creds.tenantId};
+    rec.key         = WorkspaceKey{kService, creds.tenantId};
     rec.displayName = creds.orgName;
     rec.iconUrl     = creds.iconUrl;
     rec.auth        = QJsonDocument(blob).toJson(QJsonDocument::Compact);

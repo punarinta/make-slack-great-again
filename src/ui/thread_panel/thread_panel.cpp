@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "thread_panel.h"
+#include "backend/backend.h"
 #include "ui/message_list/message_list.h"
 #include "ui/composer/composer_widget.h"
 #include "ui/file_dialog_utils.h"
@@ -87,6 +88,18 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     _downloadBtn->installEventFilter(this);
     connect(_downloadBtn, &QPushButton::clicked, this, &ThreadPanel::downloadThread);
     headerLayout->addWidget(_downloadBtn);
+
+    // A branched agent conversation (/btw) can move to the list as a session.
+    _openSessionBtn =
+        new IconButton(QStringLiteral(":/ui/external-link.svg"), 32, 18, _headerWidget);
+    _openSessionBtn->setObjectName("threadOpenSessionBtn");
+    _openSessionBtn->installEventFilter(this);
+    _openSessionBtn->hide();
+    connect(_openSessionBtn, &QPushButton::clicked, this, [this] {
+        if (!_conv.value.isEmpty() && !_rootTs.isEmpty())
+            emit openAsSessionRequested(_conv, _rootTs);
+    });
+    headerLayout->addWidget(_openSessionBtn);
 
     _closeBtn = new IconButton(QStringLiteral(":/ui/x.svg"), 32, 18, _headerWidget);
     _closeBtn->setObjectName("threadCloseBtn");
@@ -281,7 +294,15 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     if (changed)
         _composer->restoreDraft(_drafts.value(threadDraftKey(_session, _conv, _rootTs)));
     _msgList->openThread(conv, rootTs);
-    _composer->setEnabled(true);
+    // An agent session's threads are mostly its subagent runs: there to read,
+    // not to reply to (Capabilities::agentSessions). A side conversation branched
+    // off it (/btw) is one to continue.
+    const bool agent    = _session && _session->capabilities().agentSessions;
+    const bool branch   = agent && _session->backend()->threadAcceptsReplies(conv, rootTs);
+    const bool readOnly = agent && !branch;
+    _openSessionBtn->setVisible(branch);
+    _composer->setVisible(!readOnly);
+    _composer->setEnabled(!readOnly);
     _composer->setPlaceholderText(tr("Reply in thread…"));
     refreshBroadcastCheckbox();
     refreshMuteButton();
@@ -308,12 +329,6 @@ void ThreadPanel::toggleMuted() {
         return;
     _session->setThreadMuted(_conv, _rootTs, !_session->isThreadMuted(_conv, _rootTs));
     refreshMuteButton();
-    // The label flipped under the cursor; re-show the tooltip with the new one.
-    if (_muteBtn->underMouse())
-        _tooltip->showAbove(
-            _session->isThreadMuted(_conv, _rootTs) ? tr("Unmute thread") : tr("Mute thread"),
-            QRect(_muteBtn->mapToGlobal(QPoint(0, 0)), _muteBtn->size())
-        );
 }
 
 void ThreadPanel::refreshMuteButton() {
@@ -411,10 +426,11 @@ void ThreadPanel::downloadThread() {
 }
 
 bool ThreadPanel::eventFilter(QObject *watched, QEvent *e) {
-    if (watched == _downloadBtn || watched == _muteBtn) {
+    if (watched == _downloadBtn || watched == _muteBtn || watched == _openSessionBtn) {
         auto *btn = static_cast<QWidget *>(watched);
         if (e->type() == QEvent::Enter) {
-            QString text = tr("Download thread as text");
+            QString text =
+                watched == _openSessionBtn ? tr("Open as session") : tr("Download thread as text");
             if (watched == _muteBtn) {
                 const bool muted = _session && _session->isThreadMuted(_conv, _rootTs);
                 text             = muted ? tr("Unmute thread") : tr("Mute thread");

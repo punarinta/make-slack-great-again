@@ -146,6 +146,14 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
     _emailEdit->setPlaceholderText(tr("name@example.com"));
     addField(tr("Phone"), _phoneLabel, _phoneEdit);
     _phoneEdit->setPlaceholderText(tr("Optional"));
+    // A profile that is only a name and a picture (Claude Code) has no contacts.
+    if (_session && !_session->capabilities().profileContact)
+        for (QWidget *w :
+             {(QWidget *)_emailLabel,
+              (QWidget *)_emailEdit,
+              (QWidget *)_phoneLabel,
+              (QWidget *)_phoneEdit})
+            w->hide();
 
     _status = new QLabel;
     _status->setWordWrap(true);
@@ -157,7 +165,7 @@ ProfileDialog::ProfileDialog(Session *session, ImageCache *imgCache, QWidget *pa
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
     _cancelBtn = new StyledButton(tr("Cancel"), StyledButton::Variant::Secondary);
-    _saveBtn   = new StyledButton(tr("Save Changes"), StyledButton::Variant::Primary);
+    _saveBtn   = new StyledButton(tr("Save changes"), StyledButton::Variant::Primary);
     btnRow->addWidget(_cancelBtn);
     btnRow->addSpacing(sp.md);
     btnRow->addWidget(_saveBtn);

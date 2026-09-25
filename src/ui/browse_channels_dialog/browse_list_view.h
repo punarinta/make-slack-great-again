@@ -29,15 +29,18 @@ public:
         QString initial;   // placeholder letter
         QString searchKey; // lowercased haystack for filtering
         bool    isPerson  = false;
-        bool    isPrivate = false; // channel → lock vs hash icon
-        bool    isMember  = false; // channel → "Joined" badge
+        bool    isPrivate = false;   // channel → lock vs hash icon
+        bool    isMember  = false;   // channel → "Joined" badge
+        QString badge;               // any row: this badge on the right instead
+        bool    badgeCheck  = true;  // with the check mark "Joined" has
+        bool    badgeStrong = false; // in the primary text colour, bold (news)
         // Added to the fuzzy score before ranking, so a caller can demote (or
         // promote) a class of rows without touching the matcher: the quick
         // switcher sinks group DMs under the 1:1 DM they share a name with
         // (issue #61). In fzy units — 1.0 is one consecutive matched character,
         // the word/start bonuses are 0.1 apart. Ignored in Substring mode and
         // for an empty query, which both keep the items' own order.
-        double  rankBias  = 0.0;
+        double  rankBias    = 0.0;
     };
 
     explicit BrowseListView(ImageCache *imgCache, QWidget *parent = nullptr);
@@ -82,6 +85,11 @@ public:
     // Side padding inside each row (left of the avatar/icon, right of the
     // badge); a compact host that already has margins of its own trims it.
     void                 setRowPadding(int px);
+    // Off a dialog card: the list paints the page's content surface instead
+    // of the card's.
+    void                 setOnContentSurface(bool on);
+    // Corner radius of the avatars; round (the default) when negative.
+    void                 setAvatarRadius(int px);
 
 protected:
     void resizeEvent(QResizeEvent *) override;
@@ -104,10 +112,12 @@ private:
     std::vector<Item> _items;
     std::vector<int>  _filtered; // indices into _items passing the current filter
     QString           _filterText;
-    Match             _matchMode = Match::Substring;
-    int               _hovered   = -1;
-    int               _selected  = -1; // keyboard selection; -1 = none
-    int               _rowPadH   = kRowPadH;
+    Match             _matchMode    = Match::Substring;
+    int               _hovered      = -1;
+    int               _selected     = -1; // keyboard selection; -1 = none
+    int               _rowPadH      = kRowPadH;
+    bool              _onContent    = false;
+    int               _avatarRadius = -1;
     QPixmap           _hashPx, _lockPx, _checkPx;
 
     static constexpr int kRowH       = 60;

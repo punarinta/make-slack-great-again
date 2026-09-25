@@ -27,6 +27,7 @@
 #include <QTextDocument>
 #include <QTextFrame>
 #include <QTextTable>
+#include <cmath>
 #include <limits>
 #include <optional>
 
@@ -1167,25 +1168,29 @@ QString tableBlockHtml(const Block &blk, const Session *session, int maxRows) {
     // Data table (Slack's newer table messages). cellspacing 0 keeps it out of
     // the bot-button chrome (kBotBtnCellSpacing marker), and the fixed
     // (non-percentage) width keeps a one-column table out of the code-block
-    // chrome. border-collapse makes Qt draw flat 1px grid lines instead of its
-    // default ridged 3D border — and is what dataTableRects() keys on.
+    // chrome. border-collapse is what dataTableRects() keys on; the table itself
+    // draws NO lines — the rounded frame, header tint and row rules are painted
+    // underneath by paintDataTableChrome (Qt rich text has no border-radius).
+    // Row 0 is always the header: Slack pads it with nulls, markdown tables
+    // require one, and CSV files lead with one.
     const int total = (int)blk.tableRows.size();
     const int shown = maxRows > 0 ? std::min(total, maxRows) : total;
     QString   rows;
     for (int ri = 0; ri < shown; ++ri) {
+        QString tdStyle = QStringLiteral("padding:5px 12px");
+        if (ri == 0)
+            tdStyle += QStringLiteral(";font-weight:bold");
         // When rows were cut, the last visible row is shaded — the official
         // client's "there's more below" cue.
-        const bool    shaded  = shown < total && ri == shown - 1;
-        const QString tdStyle = shaded ? "padding:3px 8px;color:" + Th::qss(Th::c().text.tertiary)
-                                       : QStringLiteral("padding:3px 8px");
+        if (shown < total && ri == shown - 1)
+            tdStyle += ";color:" + Th::qss(Th::c().text.tertiary);
         rows += "<tr>";
         for (const auto &cell : blk.tableRows[ri])
             rows += "<td style='" + tdStyle + "'>" + toHtml(cell, session) + "</td>";
         rows += "</tr>";
     }
-    return "<table cellspacing='0' cellpadding='0' style='margin:4px 0;"
-           "border-collapse:collapse;border-width:1px;border-style:solid;border-color:" +
-           Th::qss(Th::c().message.fileChipBorder) + "'>" + rows + "</table>";
+    return "<table cellspacing='0' cellpadding='0' style='margin:8px 0;border-collapse:collapse'>" +
+           rows + "</table>";
 }
 
 Block csvToTableBlock(const QByteArray &bytes) {
@@ -1276,29 +1281,112 @@ static void collectDataTables(QTextFrame *frame, QVector<QTextTable *> &out) {
     }
 }
 
+// Top edge (doc coordinates) of row `row`: its first cell's first block minus
+// that cell's top padding — every cell in a row starts at the same y.
+static qreal tableRowTop(QTextTable *table, int row, QAbstractTextDocumentLayout *layout) {
+    const auto cell = table->cellAt(row, 0);
+    return layout->blockBoundingRect(cell.firstCursorPosition().block()).top() -
+           cell.format().toTableCellFormat().topPadding();
+}
+
+// Outer rect of a data table: frameBoundingRect is unusable for tables (see
+// codeBlockRects) — rebuild it from the corner cells' block geometry.
+static std::optional<QRectF> dataTableRect(QTextTable *table, QAbstractTextDocumentLayout *layout) {
+    const auto tl = table->cellAt(0, 0);
+    const auto br = table->cellAt(table->rows() - 1, table->columns() - 1);
+    if (!tl.isValid() || !br.isValid())
+        return std::nullopt;
+    const QRectF first = layout->blockBoundingRect(tl.firstCursorPosition().block());
+    const QRectF last  = layout->blockBoundingRect(br.lastCursorPosition().block());
+    const auto   tlf   = tl.format().toTableCellFormat();
+    const auto   brf   = br.format().toTableCellFormat();
+    return QRectF(
+        QPointF(first.left() - tlf.leftPadding(), first.top() - tlf.topPadding()),
+        QPointF(last.right() + brf.rightPadding(), last.bottom() + brf.bottomPadding())
+    );
+}
+
 QVector<QRectF> dataTableRects(const QTextDocument *doc) {
     QVector<QTextTable *> tables;
     collectDataTables(doc->rootFrame(), tables);
     QVector<QRectF> rects;
     rects.reserve(tables.size());
-    auto *layout = doc->documentLayout();
-    for (QTextTable *table : tables) {
-        // frameBoundingRect is unusable for tables (see codeBlockRects) —
-        // rebuild the outer rect from the corner cells' block geometry.
-        const auto tl = table->cellAt(0, 0);
-        const auto br = table->cellAt(table->rows() - 1, table->columns() - 1);
-        if (!tl.isValid() || !br.isValid())
-            continue;
-        const QRectF first = layout->blockBoundingRect(tl.firstCursorPosition().block());
-        const QRectF last  = layout->blockBoundingRect(br.lastCursorPosition().block());
-        const auto   tlf   = tl.format().toTableCellFormat();
-        const auto   brf   = br.format().toTableCellFormat();
-        rects.push_back(QRectF(
-            QPointF(first.left() - tlf.leftPadding(), first.top() - tlf.topPadding()),
-            QPointF(last.right() + brf.rightPadding(), last.bottom() + brf.bottomPadding())
-        ));
-    }
+    for (QTextTable *table : tables)
+        if (const auto r = dataTableRect(table, doc->documentLayout()))
+            rects.push_back(*r);
     return rects;
+}
+
+QVector<bool> dataTablesSqueezed(const QTextDocument *doc) {
+    QVector<QTextTable *> tables;
+    collectDataTables(doc->rootFrame(), tables);
+    auto         *layout = doc->documentLayout();
+    QVector<bool> out;
+    out.reserve(tables.size());
+    for (QTextTable *table : tables) {
+        const auto rect = dataTableRect(table, layout);
+        if (!rect)
+            continue; // keep parity with dataTableRects
+        bool squeezed = doc->textWidth() > 0 && rect->right() > doc->textWidth();
+        for (int r = 0; r < table->rows() && !squeezed; ++r) {
+            for (int c = 0; c < table->columns() && !squeezed; ++c) {
+                const auto       cell = table->cellAt(r, c);
+                const QTextBlock end  = cell.lastCursorPosition().block().next();
+                for (QTextBlock b = cell.firstCursorPosition().block(); b.isValid() && b != end;
+                     b            = b.next()) {
+                    if (b.layout() && b.layout()->lineCount() > 1) {
+                        squeezed = true;
+                        break;
+                    }
+                }
+            }
+        }
+        out.push_back(squeezed);
+    }
+    return out;
+}
+
+void paintDataTableChrome(QPainter &p, const QTextDocument *doc) {
+    QVector<QTextTable *> tables;
+    collectDataTables(doc->rootFrame(), tables);
+    if (tables.isEmpty())
+        return;
+    auto           *layout  = doc->documentLayout();
+    const auto     &mc      = Th::c().message;
+    constexpr qreal kRadius = 6;
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    for (QTextTable *table : tables) {
+        const auto rect = dataTableRect(table, layout);
+        if (!rect)
+            continue;
+        const QRectF r        = *rect;
+        // Hairlines land on pixel centres (x.5) so they stay 1px crisp.
+        const auto   hairline = [&](qreal y, const QColor &c) {
+            const qreal yy = std::floor(y) + 0.5;
+            p.setPen(QPen(c, 1));
+            p.drawLine(QPointF(r.left() + 1, yy), QPointF(r.right() - 1, yy));
+        };
+        const qreal headerBottom = table->rows() > 1 ? tableRowTop(table, 1, layout) : r.bottom();
+
+        // Header tint, clipped to the rounded frame so its top corners follow it.
+        QPainterPath frame;
+        frame.addRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), kRadius, kRadius);
+        p.save();
+        p.setClipPath(frame);
+        p.fillRect(QRectF(r.left(), r.top(), r.width(), headerBottom - r.top()), mc.tableHeaderBg);
+        p.restore();
+
+        for (int row = 2; row < table->rows(); ++row)
+            hairline(tableRowTop(table, row, layout), mc.tableRowRule);
+        if (table->rows() > 1)
+            hairline(headerBottom, mc.tableBorder);
+
+        p.setPen(QPen(mc.tableBorder, 1));
+        p.setBrush(Qt::NoBrush);
+        Paint::borderedRect(p, r, kRadius);
+    }
+    p.restore();
 }
 
 // True for a code point that anchors an emoji grapheme (the pictographic blocks

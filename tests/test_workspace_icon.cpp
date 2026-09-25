@@ -50,7 +50,7 @@ struct Fixture {
 };
 
 WorkspaceKey key(const QString &id = "T0000TEST") {
-    return WorkspaceKey{Service::Slack, id};
+    return WorkspaceKey{Service{QStringLiteral("slack")}, id};
 }
 
 // w×h image: left half red, right half blue — the crop's centre is visible.

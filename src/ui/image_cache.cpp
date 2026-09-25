@@ -290,11 +290,14 @@ void ImageCache::pumpFetchQueue() {
 }
 
 void ImageCache::issueFetch(const QString &url) {
-    // A file:// url (custom workspace icons) is read straight from disk: no
-    // download slot to hold, and nothing to copy into the disk cache — the
-    // file IS the durable copy. Same completion path as a download otherwise.
-    if (const QUrl u(url); u.isLocalFile()) {
-        QFile f(u.toLocalFile());
+    // A file:// url (custom workspace icons) is read straight from disk, a
+    // qrc:/ url (built-in avatars, e.g. Claude Code sessions) from the app's
+    // resources: no download slot to hold, and nothing to copy into the disk
+    // cache — the file IS the durable copy. Same completion path as a download
+    // otherwise.
+    const QUrl u(url);
+    if (u.isLocalFile() || u.scheme() == QLatin1String("qrc")) {
+        QFile f(u.isLocalFile() ? u.toLocalFile() : QLatin1Char(':') + u.path());
         if (f.open(QIODevice::ReadOnly)) {
             decodeAsync(url, f.readAll(), /*saveToDisk=*/false);
         } else {

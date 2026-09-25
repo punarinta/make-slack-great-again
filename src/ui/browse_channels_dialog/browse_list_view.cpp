@@ -48,6 +48,16 @@ void BrowseListView::setRowPadding(int px) {
     viewport()->update();
 }
 
+void BrowseListView::setOnContentSurface(bool on) {
+    _onContent = on;
+    viewport()->update();
+}
+
+void BrowseListView::setAvatarRadius(int px) {
+    _avatarRadius = px;
+    viewport()->update();
+}
+
 void BrowseListView::applyFilter(const QString &query) {
     _filterText     = query;
     const QString q = query.trimmed().toLower();
@@ -222,7 +232,7 @@ void BrowseListView::doMouseLeave() {
 
 void BrowseListView::doPaint(QPaintEvent *) {
     QPainter p(viewport());
-    p.fillRect(viewport()->rect(), Th::c().surface.raised);
+    p.fillRect(viewport()->rect(), _onContent ? Th::c().surface.content : Th::c().surface.raised);
 
     const int vh      = viewport()->height();
     const int scrollY = verticalScrollBar()->value();
@@ -270,20 +280,27 @@ void BrowseListView::paintRow(QPainter &p, const Item &it, int y, bool hovered, 
             px,
             it.initial,
             st,
-            kAvatarSize / 2,
+            _avatarRadius < 0 ? kAvatarSize / 2 : _avatarRadius,
             p.device()->devicePixelRatioF()
         );
         textX = avX + kAvatarSize + 12;
-    } else if (it.isMember) {
-        // Reserve room on the right for the "Joined" badge.
-        const QString joined = QObject::tr("Joined");
-        const int     badgeW = 13 + 4 + fmSub.horizontalAdvance(joined);
-        const int     bx     = vw - _rowPadH - badgeW;
-        const int     cy     = y + kRowH / 2;
-        p.drawPixmap(bx, cy - 13 / 2, _checkPx);
-        p.setPen(Th::c().text.secondary);
-        p.setFont(subFont);
-        p.drawText(bx + 13 + 4, cy - fmSub.height() / 2 + fmSub.ascent(), joined);
+    }
+    if (!it.badge.isEmpty() || (!it.isPerson && it.isMember)) {
+        // Reserve room on the right for the badge ("Joined" for a channel).
+        const QString joined = it.badge.isEmpty() ? QObject::tr("Joined") : it.badge;
+        QFont         bf     = subFont;
+        bf.setBold(it.badgeStrong);
+        const QFontMetrics fmBadge(bf);
+        const bool         check  = it.badge.isEmpty() || it.badgeCheck;
+        const int          iconW  = check ? 13 + 4 : 0;
+        const int          badgeW = iconW + fmBadge.horizontalAdvance(joined);
+        const int          bx     = vw - _rowPadH - badgeW;
+        const int          cy     = y + kRowH / 2;
+        if (check)
+            p.drawPixmap(bx, cy - 13 / 2, _checkPx);
+        p.setPen(it.badgeStrong ? Th::c().text.primary : Th::c().text.secondary);
+        p.setFont(bf);
+        p.drawText(bx + iconW, cy - fmBadge.height() / 2 + fmBadge.ascent(), joined);
         rightLimit = bx - 12;
     }
 

@@ -30,6 +30,8 @@
 #include "auth/auth_strategy_factory.h"
 #include "backend/backend.h"
 #include "backend/backend_factory.h"
+#include "backend/backend_registry.h"
+#include "ui/file_dialog_utils.h"
 #include "settings/settings_dialog.h"
 #include "search/search_widget.h"
 #include "thread_panel/thread_panel.h"
@@ -37,12 +39,16 @@
 #include "canvas_page/canvas_page.h"
 #include "threads_page/threads_page.h"
 #include "saved_page/saved_messages_page.h"
+#include "teammate_dialog/teammate_dialog.h"
+#include "teammate_page/teammate_page.h"
 #include "conv_tabs/conv_tabs_widget.h"
 #include "welcome_tips/welcome_widget.h"
 #include "forward_dialog/forward_dialog.h"
 #include "move_to_thread_dialog/move_to_thread_dialog.h"
 #include "create_channel_dialog/create_channel_dialog.h"
 #include "rename_conversation_dialog/rename_conversation_dialog.h"
+#include "session_finder_dialog/session_finder_dialog.h"
+#include "session_status_dialog/session_status_dialog.h"
 #include "profile_dialog/profile_dialog.h"
 #include "status_dialog/status_dialog.h"
 #include "browse_channels_dialog/browse_channels_dialog.h"
@@ -83,6 +89,7 @@
 #include <QStackedWidget>
 #include <QSystemTrayIcon>
 #include <QCursor>
+#include <QDir>
 #include <QSettings>
 #include <QSplitter>
 #include <QWindow>
@@ -280,6 +287,11 @@ MainWindow::~MainWindow() {
     // painted over the icon after we quit. Clear it on the way out.
     macSetDockBadge(0);
 #endif
+}
+
+// Zen mode is per workspace (off by default).
+static QString zenModeKey(const QString &teamId) {
+    return QStringLiteral("zenMode/") + QString::fromLatin1(QUrl::toPercentEncoding(teamId));
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
@@ -774,6 +786,16 @@ QWidget *MainWindow::buildConvPanel(QWidget *parent) {
         if (_session)
             _session->setPresence(away);
     });
+    // Zen mode: remembered per workspace; the open chat reloads to match.
+    connect(_convFooter, &ConvFooterWidget::zenModeToggled, this, [this](bool on) {
+        if (!_session)
+            return;
+        QSettings("msga", "msga").setValue(zenModeKey(_activeTeamId), on);
+        _session->setZenMode(on);
+        if (_contentView == ContentView::Conversation && !_currentConvId.value.isEmpty())
+            if (const int row = _convList->rowForId(_currentConvId); row >= 0)
+                openConversation(row);
+    });
     connect(_convFooter, &ConvFooterWidget::manageProfileRequested, this, [this] {
         if (!_session)
             return;
@@ -1012,6 +1034,16 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         }
     );
 
+    _teammatePage = new TeammatePage(_imgCache, _contentStack);
+    _contentStack->addWidget(_teammatePage);
+    connect(_teammatePage, &TeammatePage::openSessionRequested, this, [this](ConversationId conv) {
+        _convList->selectConversation(conv);
+    });
+    connect(_teammatePage, &TeammatePage::folderChanged, this, [this] { applyTeammateComposer(); });
+    connect(_teammatePage, &TeammatePage::editRequested, this, [this](const QString &id) {
+        editTeammate(id);
+    });
+
     // Search is an overlay on msgArea — not a stack page, so it doesn't replace the
     // message list.  Show/hide it; the message list stays loaded beneath it.
     _searchWidget = new SearchWidget(msgArea);
@@ -1097,6 +1129,23 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         _messageList->setOpenThreadRoot({});
     };
     connect(_threadPanel, &ThreadPanel::closeRequested, this, closeThreadPanel);
+    connect(
+        _threadPanel,
+        &ThreadPanel::openAsSessionRequested,
+        this,
+        [this, closeThreadPanel](ConversationId conv, Ts rootTs) {
+            if (!_session)
+                return;
+            const ConversationId session = _session->backend()->openThreadAsSession(conv, rootTs);
+            if (session.value.isEmpty())
+                return;
+            closeThreadPanel();
+            // The list picks the new session up from the event just fired.
+            QTimer::singleShot(0, this, [this, session] {
+                _convList->selectConversation(session);
+            });
+        }
+    );
     connect(_messageList, &MessageListWidget::threadCloseRequested, this, closeThreadPanel);
 
     // ── Messages / canvas tabs ────────────────────────────────────────
@@ -1188,6 +1237,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
     );
 
     connect(_composer, &ComposerWidget::sendRequested, this, [this](const QString &text) {
+        if (teammateViewOpen()) {
+            startSessionWithTeammate(text);
+            return;
+        }
         if (!_session || _currentConvId.value.isEmpty())
             return;
         const Ts ghost =
@@ -1199,8 +1252,35 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         &ComposerWidget::commandRequested,
         this,
         [this](const QString &name, const QString &args) {
-            if (_session && !_currentConvId.value.isEmpty())
-                _session->runCommand(_currentConvId, name, args);
+            // To a teammate, a command is the new session's first prompt.
+            if (teammateViewOpen()) {
+                startSessionWithTeammate(
+                    QLatin1Char('/') + name + (args.isEmpty() ? QString() : QLatin1Char(' ') + args)
+                );
+                return;
+            }
+            if (!_session || _currentConvId.value.isEmpty())
+                return;
+            // A command the app runs itself (an agent session's /status, /clear):
+            // nothing is sent.
+            if (const auto cmd = _session->findCommand(name); cmd && cmd->local) {
+                const auto r = _session->backend()->runLocalCommand(_currentConvId, name, args);
+                if (!r.error.isEmpty())
+                    showNetworkError(r.error);
+                if (!r.status.empty()) {
+                    SessionStatusDialog dlg(r.status, this);
+                    dlg.exec();
+                }
+                if (!r.open.value.isEmpty()) {
+                    // The list picks the new conversation up from the event just fired.
+                    const ConversationId open = r.open;
+                    QTimer::singleShot(0, this, [this, open] {
+                        _convList->selectConversation(open);
+                    });
+                }
+                return;
+            }
+            _session->runCommand(_currentConvId, name, args);
         }
     );
     connect(
@@ -1399,6 +1479,8 @@ Session *MainWindow::ensureSession(const QString &teamId) {
     auto &entry      = _sessions[teamId];
     entry.session    = std::make_unique<Session>(std::move(backend), teamId);
     Session *session = entry.session.get();
+    if (session->capabilities().zenMode)
+        session->setZenMode(QSettings("msga", "msga").value(zenModeKey(teamId), false).toBool());
 
     // Background subscriptions — alive for the whole session, active
     // workspace or not, so badges and notifications never depend on what's
@@ -1508,6 +1590,22 @@ void MainWindow::activateWorkspace(QString teamId) {
         showLoggedOut();
         return;
     }
+    // A workspace that can't be opened (listed, but its record is missing or
+    // unreadable, or its service isn't built in) must never leave the window
+    // without a session: stay in the open one, else go to another, else to
+    // the sign-in page. Checked before anything of the open one is torn down.
+    if (!ensureSession(teamId)) {
+        qWarning("workspace %s can't be opened", qPrintable(teamId));
+        if (_session)
+            return;
+        for (const auto &key : TokenStore::workspaceKeys())
+            if (key.toString() != teamId && ensureSession(key.toString())) {
+                activateWorkspace(key.toString());
+                return;
+            }
+        showLoggedOut();
+        return;
+    }
 
     // Build the main page once, lazily
     if (!_mainPage) {
@@ -1586,6 +1684,8 @@ void MainWindow::activateWorkspace(QString teamId) {
         _threadsPage->setSession(_session); // also drops the old workspace's cards
     if (_savedPage)
         _savedPage->setSession(_session);
+    if (_teammatePage)
+        _teammatePage->setSession(_session);
     _currentCanvasFileId.clear();
     _currentCanvasTitle.clear();
     if (_convTabs)
@@ -1650,7 +1750,7 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
         return;
     // One service → no point in a menu; start it directly.
     if (services.size() == 1) {
-        if (services.front() == Service::Slack)
+        if (services.front() == slack::kService)
             connectSlack();
         else
             loginWithService(services.front());
@@ -1663,9 +1763,9 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
     auto *menu = new ContextMenu(this);
     menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
     for (const Service s : services) {
-        menu->addItem(serviceDisplayName(s), [this, s] {
+        menu->addItem(backends::displayName(s), [this, s] {
             QTimer::singleShot(0, this, [this, s] {
-                if (s == Service::Slack)
+                if (s == slack::kService)
                     connectSlack();
                 else
                     loginWithService(s);
@@ -1686,7 +1786,7 @@ void MainWindow::connectSlack() {
         [this](const QList<TokenStore::WorkspaceRecord> &recs) { addSessionWorkspaces(recs); }
     );
     connect(dlg, &SessionImportDialog::useAppKeysRequested, this, [this] {
-        loginWithService(Service::Slack);
+        loginWithService(slack::kService);
     });
     connect(dlg, &AppDialog::finished, dlg, [dlg](int) { dlg->deleteLater(); });
     dlg->open();
@@ -1697,7 +1797,7 @@ void MainWindow::migrateSlackToSession() {
     QString                                      cookie;
     QList<slack::session::SessionMigrator::Item> items;
     for (const auto &key : TokenStore::workspaceKeys()) {
-        if (key.service != Service::Slack)
+        if (key.service != slack::kService)
             continue;
         const auto rec = TokenStore::loadWorkspace(key);
         if (!rec)
@@ -1774,7 +1874,7 @@ void MainWindow::addSessionWorkspaces(const QList<TokenStore::WorkspaceRecord> &
         for (const auto &rec : recs)
             justAdded.insert(rec.key.id);
         for (const auto &key : TokenStore::workspaceKeys()) {
-            if (key.service != Service::Slack || justAdded.contains(key.id))
+            if (key.service != slack::kService || justAdded.contains(key.id))
                 continue;
             const auto rec = TokenStore::loadWorkspace(key);
             if (!rec)
@@ -1832,7 +1932,7 @@ void MainWindow::loginWithService(Service service) {
         this,
         [this, s, service](TokenStore::WorkspaceRecord rec) {
             // OAuth sign-in ⇒ app-keys mode (Socket Mode on) — mode follows how you connect.
-            if (service == Service::Slack)
+            if (service == slack::kService)
                 slack::setConnectionMode(slack::ConnectionMode::AppKeys);
             TokenStore::saveWorkspace(rec);
             _activeTeamId = rec.key.toString();
@@ -1889,8 +1989,19 @@ void MainWindow::wireConvList() {
     );
     connect(
         _convList, &ConvListWidget::leaveConversationRequested, this, [this](ConversationId id) {
-            if (_session)
-                _session->leaveConversation(id);
+            if (!_session)
+                return;
+            _session->leaveConversation(id);
+            // A Claude Code session removed while open: show the next one
+            // rather than a chat that is gone.
+            if (id == _currentConvId && _session->capabilities().agentSessions)
+                QTimer::singleShot(0, this, [this, id] {
+                    if (_currentConvId != id)
+                        return;
+                    if (const ConversationId next = _convList->firstConversationId(id);
+                        !next.value.isEmpty())
+                        openConversationIn({}, next);
+                });
         }
     );
     connect(_convList, &ConvListWidget::joinHuddleRequested, this, [this](ConversationId id) {
@@ -1923,11 +2034,46 @@ void MainWindow::wireConvList() {
     connect(_convList, &ConvListWidget::savedMessagesRequested, this, [this] {
         openSavedMessagesView();
     });
+    connect(_convList, &ConvListWidget::teammateSelected, this, [this](const QString &role) {
+        openTeammateView(role);
+    });
+    connect(_convList, &ConvListWidget::addTeammateRequested, this, [this] {
+        QTimer::singleShot(0, this, [this] { editTeammate({}); });
+    });
+    connect(_convList, &ConvListWidget::editTeammateRequested, this, [this](const QString &id) {
+        QTimer::singleShot(0, this, [this, id] { editTeammate(id); });
+    });
+    connect(_convList, &ConvListWidget::restoreTeammateRequested, this, [this](const QString &id) {
+        if (_session) {
+            _session->backend()->restoreAgentRole(id);
+            refreshTeammates();
+        }
+    });
+    connect(_convList, &ConvListWidget::removeTeammateRequested, this, [this](const QString &id) {
+        QTimer::singleShot(0, this, [this, id] { removeTeammate(id); });
+    });
     connect(_convList, &ConvListWidget::findChannelRequested, this, [this] {
         openBrowseDialog(0);
     });
     connect(_convList, &ConvListWidget::browsePeopleRequested, this, [this] {
         openBrowseDialog(1);
+    });
+    // The "+" on an agent workspace's Sessions header: its "Add channels".
+    connect(_convList, &ConvListWidget::agentSessionMenuRequested, this, [this](QPoint at) {
+        if (!_session || !_session->capabilities().agentSessions)
+            return;
+        auto *menu = new ContextMenu(this);
+        menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
+        menu->addItem(tr("Find a session"), [this] {
+            QTimer::singleShot(0, this, [this] { openSessionFinder(); });
+        });
+        menu->addItem(tr("Create a session"), [this] {
+            QTimer::singleShot(0, this, [this] { startAgentSession(false); });
+        });
+        menu->addItem(tr("Create an unsafe session"), [this] {
+            QTimer::singleShot(0, this, [this] { startAgentSession(true); });
+        });
+        menu->popup(at);
     });
     connect(_convList, &ConvListWidget::createChannelRequested, this, [this] {
         if (!_session)
@@ -1948,14 +2094,24 @@ void MainWindow::renameConversation(ConversationId id) {
     if (!_session || !_convList)
         return;
     const auto *conv = _session->findConversation(id);
-    if (!conv || conv->kind != ConvKind::Mpim)
+    // A Claude Code session is a DM whose backend applies the name (to the
+    // session's user, which titles it everywhere); its own name is conv->name.
+    const bool  agentSession =
+        conv && conv->kind == ConvKind::Im && _session->capabilities().agentSessions;
+    if (!conv || (conv->kind != ConvKind::Mpim && !agentSession))
         return;
     // Placeholder = what the list falls back to without an alias.
     Conversation bare = *conv;
     bare.localName.clear();
-    const QString derived = _convList->resolvedConvName(bare);
+    const QString derived = agentSession ? conv->name : _convList->resolvedConvName(bare);
 
-    RenameConversationDialog dlg(conv->localName, derived, this);
+    RenameConversationDialog dlg(
+        conv->localName,
+        derived,
+        this,
+        agentSession ? RenameConversationDialog::Kind::AgentSession
+                     : RenameConversationDialog::Kind::GroupDm
+    );
     if (dlg.exec() != QDialog::Accepted)
         return;
     const QString name = dlg.name();
@@ -1975,11 +2131,87 @@ void MainWindow::renameConversation(ConversationId id) {
     const QString title = _convList->resolvedName(row);
     if (_convNameLabel)
         _convNameLabel->setText(title);
-    if (_composer)
+    if (_composer && _composerLockReason.isEmpty()) // a locked one shows why instead
         _composer->setPlaceholderText(
             title.isEmpty() ? tr("Message") : tr("Message %1").arg(title)
         );
     updateHeaderForConv(id);
+}
+
+// "+" in an agent workspace: pick the directory the new session works in, and
+// open its conversation (already listed when onSuccess runs). The session
+// itself starts with the first message sent there.
+void MainWindow::startAgentSession(bool skipPermissionChecks) {
+    if (!_session)
+        return;
+    QSettings     s("msga", "msga");
+    const QString last  = s.value("claudeCode/lastDir", QDir::homePath()).toString();
+    const QString title = skipPermissionChecks
+                              ? tr("Start session in a directory without permission checks…")
+                              : tr("Start session in a directory…");
+    const QString dir   = Ui::getExistingDirectory(this, title, last);
+    if (dir.isEmpty() || !_session)
+        return;
+    s.setValue("claudeCode/lastDir", dir);
+    _session->startAgentSession(
+        dir,
+        skipPermissionChecks,
+        {}, // the generalist; a specialist is written to on its page
+        [this](ConversationId id) {
+            if (_convList && _convList->selectConversation(id))
+                focusComposerIfActive();
+        },
+        [this](const QString &err) { showNetworkError(err); }
+    );
+}
+
+// A conversation nobody can post to from here right now (Conversation::
+// readOnlyReason — e.g. a Claude Code session a terminal is driving) gets a
+// locked composer that says why. Re-run on every roster change, since the state
+// flips while the chat is open (the terminal session ends → it can be continued).
+void MainWindow::applyComposerAccess() {
+    if (!_composer || !_session || _currentConvId.value.isEmpty())
+        return;
+    const auto   *conv   = _session->findConversation(_currentConvId);
+    const QString reason = conv ? conv->readOnlyReason : QString();
+    if (reason == _composerLockReason)
+        return;
+    _composerLockReason = reason;
+    _composer->setEnabled(reason.isEmpty());
+    if (!reason.isEmpty()) {
+        _composer->setPlaceholderText(reason);
+        return;
+    }
+    const int     row   = _convList ? _convList->rowForId(_currentConvId) : -1;
+    const QString title = row >= 0 ? _convList->resolvedName(row) : QString();
+    _composer->setPlaceholderText(title.isEmpty() ? tr("Message") : tr("Message %1").arg(title));
+}
+
+void MainWindow::openSessionFinder() {
+    if (!_session)
+        return;
+    auto *dlg = new SessionFinderDialog(_imgCache, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    QPointer<SessionFinderDialog> alive(dlg);
+    _session->backend()->findAgentSessions([alive](std::vector<FoundSession> sessions) {
+        if (alive)
+            alive->setSessions(std::move(sessions));
+    });
+    connect(dlg, &SessionFinderDialog::sessionActivated, this, [this](const QString &id) {
+        if (!_session)
+            return;
+        const ConversationId conv = _session->backend()->addFoundSession(id);
+        if (conv.value.isEmpty()) {
+            showNetworkError(tr("That session is gone: Claude Code no longer has it."));
+            return;
+        }
+        // Listed by the backend's announcement; select once that has landed.
+        QTimer::singleShot(0, this, [this, conv] { _convList->selectConversation(conv); });
+    });
+    connect(dlg, &SessionFinderDialog::createSessionRequested, this, [this] {
+        QTimer::singleShot(0, this, [this] { startAgentSession(false); });
+    });
+    dlg->exec();
 }
 
 void MainWindow::openBrowseDialog(int initialTab) {
@@ -2085,8 +2317,16 @@ void MainWindow::connectToSession() {
 
     // The footer's visible/hidden presence toggle only makes sense on a backend
     // with a presence concept (Slack); IMAP/email has none, so drop the control.
-    if (_convFooter)
-        _convFooter->setPresenceSupported(_session->capabilities().presence);
+    if (_convFooter) {
+        _convFooter->setPresenceSupported(
+            _session->capabilities().presence && _session->capabilities().selfPresence
+        );
+        _convFooter->setStatusSupported(_session->capabilities().selfStatus);
+        _convFooter->setZenMode(
+            _session->capabilities().zenMode,
+            QSettings("msga", "msga").value(zenModeKey(_activeTeamId), false).toBool()
+        );
+    }
 
     // The "Threads" roster entry needs a workspace-wide threads feed. Its unread
     // face follows the session's count of followed threads with unread replies
@@ -2094,6 +2334,8 @@ void MainWindow::connectToSession() {
     // a workspace restores its badge at once).
     if (_convList) {
         _convList->setShowThreads(_session->capabilities().threadsView);
+        _convList->setAgentSessions(_session->capabilities().agentSessions);
+        refreshTeammates();
         _session->unreadThreadCountValue() | rpl::on_next(
                                                  [this](int n) {
                                                      if (_convList)
@@ -2127,6 +2369,8 @@ void MainWindow::connectToSession() {
                 // Huddle state rides on the conversation list, so re-evaluate
                 // the banner whenever it changes (incl. the setReading refresh).
                 updateHuddleBanner();
+                // …and so does whether the open chat can be posted to at all.
+                applyComposerAccess();
                 // Reveal the conv column the moment real data arrives.
                 if (!convs.empty() && _convPanel && !_convPanel->isVisible()) {
                     if (_messageList)
@@ -2196,8 +2440,9 @@ void MainWindow::connectToSession() {
                                 if (_convNameLabel)
                                     _convNameLabel->setText(name);
                                 // Also update the composer placeholder, which was set
-                                // from the (still-unresolved) user ID on open.
-                                if (_composer)
+                                // from the (still-unresolved) user ID on open —
+                                // unless it is showing why the chat is locked.
+                                if (_composer && _composerLockReason.isEmpty())
                                     _composer->setPlaceholderText(
                                         name.isEmpty() ? tr("Message") : tr("Message %1").arg(name)
                                     );
@@ -2233,13 +2478,13 @@ void MainWindow::connectToSession() {
                             _headerAvatar->setDnd(ev->dndEnabled);
                     }
                 } else if (const auto *ev = std::get_if<EvTyping>(&e)) {
-                    // NOTE: in practice EvTyping never fires — Slack delivers
+                    // Slack never fires this in practice — it delivers
                     // user_typing only over the deprecated RTM API, which has no
                     // Events API / Socket Mode equivalent and which a maintainer
-                    // confirmed will not be added (node-slack-sdk#1130). See the
-                    // dead user_typing branch in socket_mode_realtime.cpp. This
-                    // handler + TypingIndicatorWidget are kept ready so the UI
-                    // works automatically should such an event ever arrive.
+                    // confirmed will not be added (node-slack-sdk#1130); see the
+                    // dead user_typing branch in socket_mode_realtime.cpp. The
+                    // Claude Code backend does: a session working on a turn
+                    // "types" (Capabilities::typing).
                     //
                     // Show typing for the open conversation only.  Our own id can
                     // arrive here when we type from another client (we never echo
@@ -2251,8 +2496,10 @@ void MainWindow::connectToSession() {
                         );
                     }
                 } else if (const auto *ev = std::get_if<EvMessageNew>(&e)) {
-                    // A delivered message means that author has stopped typing.
-                    if (_typingIndicator && ev->conv == _currentConvId)
+                    // A delivered message means that author has stopped typing —
+                    // except an agent's mid-task update: it is still working.
+                    if (_typingIndicator && ev->conv == _currentConvId &&
+                        !isProgressMessage(ev->msg))
                         _typingIndicator->userStopped(ev->msg.author);
                 }
             },
@@ -2421,6 +2668,11 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool
     if (ev.msg.subtype && *ev.msg.subtype == QLatin1String("huddle_thread"))
         return;
 
+    // An agent's mid-task updates (Claude Code's tool calls, interim remarks)
+    // are shown but never announced — only the answer that ends the task is.
+    if (isProgressMessage(ev.msg))
+        return;
+
     // Skip if this conversation is on screen right now
     if (isActiveWindow() && teamId == _activeTeamId && ev.conv == _currentConvId)
         return;
@@ -2506,6 +2758,9 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool
     if (isDm) {
         title = senderName;
         body  = preview;
+        // Agent sessions all answer as the same "Agent": name the session.
+        if (session->capabilities().agentSessions && conv->dmUser)
+            title = session->userDisplayName(*conv->dmUser);
     } else {
         title = "#" + conv->name;
         body  = senderName + ": " + preview;
@@ -2974,6 +3229,9 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
     // contributes only its @mentions (red), never blue.
     const NotificationLevel fallback = globalDefaultNotifLevel();
     int                     normal = 0, important = 0;
+    const auto              ws            = _sessions.find(teamId);
+    const bool              agentSessions = ws != _sessions.end() && ws->second.session &&
+                                            ws->second.session->capabilities().agentSessions;
     for (const auto &c : convs) {
         if (!c.isMember)
             continue;
@@ -2990,7 +3248,11 @@ void MainWindow::updateUnreadBadges(const QString &teamId, const std::vector<Con
         if (lvl == NotificationLevel::Mute)
             continue;
         const bool isDm = (c.kind == ConvKind::Im || c.kind == ConvKind::Mpim);
-        if (isDm) {
+        if (agentSessions) {
+            // An agent session counts only what needs you (its answer, "waiting
+            // for you"), never its progress updates.
+            important += c.mentionCount;
+        } else if (isDm) {
             important += c.unread;
         } else {
             important += c.mentionCount;
@@ -3533,6 +3795,168 @@ void MainWindow::openSavedMessagesView() {
     _savedPage->open();
 }
 
+bool MainWindow::teammateViewOpen() const {
+    return _teammatePage && _contentView == ContentView::Overview &&
+           _contentStack->currentWidget() == _teammatePage;
+}
+
+ConversationId MainWindow::teammateDraftConv(const QString &role) {
+    return ConversationId{QStringLiteral("teammate:") + role};
+}
+
+void MainWindow::openTeammateView(const QString &role) {
+    if (!_session || !_teammatePage)
+        return;
+    AgentRole mate;
+    for (const AgentRole &r : _session->backend()->agentRoles())
+        if (r.id == role)
+            mate = r;
+    if (mate.id.isEmpty())
+        return;
+
+    if (_searchWidget && _searchWidget->isVisible())
+        _searchWidget->hide();
+
+    // Same leave-the-conversation bookkeeping as openThreadsView() — except
+    // the composer stays: writing to a teammate starts a session with it.
+    stashComposerDraft();
+    _currentConvId = {};
+    _contentView   = ContentView::Overview;
+
+    if (_typingIndicator)
+        _typingIndicator->clearAll();
+    if (_threadPanel && _threadPanel->isVisible()) {
+        _threadPanel->close();
+        _threadPanel->setVisible(false);
+        _messageList->setOpenThreadRoot({});
+    }
+    _session->setReading({});
+    _session->setOpenConversation({});
+
+    if (_canvasPage)
+        _canvasPage->flushPendingSave();
+
+    if (_msgHeader)
+        _msgHeader->hide();
+    if (_convTabs)
+        _convTabs->hide();
+    if (_huddleBanner)
+        _huddleBanner->hide();
+    _convList->setSelectedTeammate(mate.id);
+
+    _contentStack->setCurrentWidget(_teammatePage);
+    _teammatePage->open(mate);
+    _composer->show();
+    _composerLockReason.clear(); // re-derived when a chat opens
+    applyTeammateComposer();
+    _composer->restoreDraft(_drafts.value(draftKey(_activeTeamId, teammateDraftConv(mate.id))));
+    focusComposerIfActive();
+}
+
+void MainWindow::refreshTeammates() {
+    if (!_convList || !_session)
+        return;
+    const auto team = _session->capabilities().agentSessions ? _session->backend()->agentRoles()
+                                                             : std::vector<AgentRole>{};
+    _convList->setTeammates(team);
+    if (!teammateViewOpen())
+        return;
+    // The page shows the teammate as it is now — or, once it's off the team,
+    // the Generalist.
+    const QString open = _teammatePage->teammate().id;
+    for (const AgentRole &r : team)
+        if (r.id == open) {
+            _teammatePage->open(r);
+            applyTeammateComposer();
+            return;
+        }
+    if (!team.empty())
+        openTeammateView(team.front().id);
+}
+
+void MainWindow::editTeammate(const QString &id) {
+    if (!_session)
+        return;
+    AgentRole role;
+    if (id.isEmpty()) {
+        role.glyph = QStringLiteral("pen-tool"); // a starting point, changed in the dialog
+        role.color = QStringLiteral("#0e8c9a");
+    } else {
+        for (const AgentRole &r : _session->backend()->agentRoles())
+            if (r.id == id)
+                role = r;
+        if (role.id.isEmpty())
+            return;
+    }
+    TeammateDialog dlg(role, this);
+    if (dlg.exec() != QDialog::Accepted || !_session)
+        return;
+    if (dlg.restoreRequested()) {
+        _session->backend()->restoreAgentRole(id);
+        refreshTeammates();
+        return;
+    }
+    QString       error;
+    const QString saved = _session->backend()->saveAgentRole(dlg.role(), &error);
+    if (saved.isEmpty()) {
+        showNetworkError(error);
+        return;
+    }
+    refreshTeammates();
+    if (id.isEmpty())
+        openTeammateView(saved); // a new teammate: straight to its page, ready to write to
+}
+
+void MainWindow::removeTeammate(const QString &id) {
+    if (!_session)
+        return;
+    QString name;
+    for (const AgentRole &r : _session->backend()->agentRoles())
+        if (r.id == id)
+            name = r.name;
+    if (name.isEmpty())
+        return;
+    RemoveTeammateDialog dlg(name, this);
+    if (dlg.exec() != QDialog::Accepted || !_session)
+        return;
+    _session->backend()->removeAgentRole(id);
+    refreshTeammates();
+}
+
+void MainWindow::applyTeammateComposer() {
+    if (!teammateViewOpen())
+        return;
+    const QString blocker = _teammatePage->blocker();
+    _composer->setEnabled(blocker.isEmpty());
+    _composer->setPlaceholderText(
+        blocker.isEmpty() ? tr("Message %1").arg(_teammatePage->teammate().name) : blocker
+    );
+}
+
+void MainWindow::startSessionWithTeammate(const QString &text) {
+    if (!_session || !_teammatePage || text.trimmed().isEmpty())
+        return;
+    const QString role = _teammatePage->teammate().id;
+    const QString dir  = _teammatePage->folder();
+    QSettings("msga", "msga").setValue("claudeCode/lastDir", dir);
+    _session->startAgentSession(
+        dir,
+        false,
+        role,
+        [this, text](ConversationId id) {
+            // Listed by now (the backend announces a session before this):
+            // open it, then the text is its first message.
+            if (!_session || !_convList || !_convList->selectConversation(id))
+                return;
+            _session->sendMessage(id, text, std::nullopt, {});
+        },
+        [this, text](const QString &err) {
+            showNetworkError(err);
+            applyTeammateComposer();
+        }
+    );
+}
+
 void MainWindow::updateSavedMessagesEntry() {
     if (!_convList || !_session)
         return;
@@ -4067,10 +4491,13 @@ void MainWindow::stashComposerDraft() {
         return;
     // Always take, even when nothing is open: emptying the composer is the
     // point — whatever it held must not survive into the next conversation.
-    const ComposerDraft draft = _composer->takeDraft();
-    if (_activeTeamId.isEmpty() || _currentConvId.value.isEmpty())
+    const ComposerDraft  draft = _composer->takeDraft();
+    // A teammate's page keeps what was being written to it, like a chat.
+    const ConversationId under =
+        teammateViewOpen() ? teammateDraftConv(_teammatePage->teammate().id) : _currentConvId;
+    if (_activeTeamId.isEmpty() || under.value.isEmpty())
         return; // no conversation to file it under: discard
-    const QString key = draftKey(_activeTeamId, _currentConvId);
+    const QString key = draftKey(_activeTeamId, under);
     if (draft.isEmpty())
         _drafts.remove(key);
     else
@@ -4213,6 +4640,8 @@ void MainWindow::openConversation(int row) {
     _composer->setPlaceholderText(
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );
+    _composerLockReason.clear();
+    applyComposerAccess();
 
     // Restore this conversation's unsent input (text + attachments). Applied
     // wholesale even when there is no stash, so nothing staged elsewhere and
@@ -4235,24 +4664,30 @@ void MainWindow::openConversation(int row) {
         if (_convTabs)
             _convTabs->hide();
         _composer->hide();
-        connect(
-            _messageList,
-            &MessageListWidget::initialPageLoaded,
-            this,
-            [this, convId = _currentConvId] {
-                if (_currentConvId != convId)
-                    return;
-                if (_msgHeader)
-                    _msgHeader->show();
-                if (_convTabs)
-                    _convTabs->show();
-                if (_composer)
-                    _composer->show();
-                focusComposerIfActive();
-                updateHuddleBanner();
-            },
-            Qt::SingleShotConnection
-        );
+        auto reveal = [this, convId = _currentConvId] {
+            if (_currentConvId != convId)
+                return;
+            if (_msgHeader)
+                _msgHeader->show();
+            if (_convTabs)
+                _convTabs->show();
+            if (_composer)
+                _composer->show();
+            focusComposerIfActive();
+            updateHuddleBanner();
+        };
+        // A backend answering synchronously (Claude Code reads local files)
+        // already delivered the page inside openConversation() above.
+        if (_messageList->initialPageDone())
+            reveal();
+        else
+            connect(
+                _messageList,
+                &MessageListWidget::initialPageLoaded,
+                this,
+                reveal,
+                Qt::SingleShotConnection
+            );
     }
 
     _session->saveLastConv(_currentConvId, displayName);
@@ -4387,7 +4822,7 @@ void MainWindow::updateHeaderForConv(const ConversationId &conv) {
                 _headerAvatar->setDnd(u->dndEnabled);
                 const bool isSelf = *conversation->dmUser == _session->meUserId();
                 const auto sp     = _session->currentSelfPresence();
-                _headerAvatar->setPhantomAway(isSelf && sp.phantomAway());
+                _headerAvatar->setPhantomAway((isSelf && sp.phantomAway()) || u->unavailable);
                 _headerAvatar->setToolTip(isSelf ? selfPresenceTooltip(sp) : QString{});
                 _headerAvatar->setDisplayName(u->displayName.isEmpty() ? u->name : u->displayName);
                 _session->requestPresence(*conversation->dmUser);

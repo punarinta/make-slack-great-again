@@ -395,6 +395,8 @@ void MessageListWidget::paintRow(
         }
 
         MsgRender::paintCodeBlockChrome(p, item.textDoc.get());
+
+        MsgRender::paintDataTableChrome(p, item.textDoc.get());
         MsgRender::paintBotButtonChrome(p, item.textDoc.get(), botButtonHoverPos(index, p));
         item.textDoc->documentLayout()->draw(&p, pCtx);
     }
@@ -955,6 +957,7 @@ void MessageListWidget::paintAttachments(
             p.save();
             p.translate(docRect.x() + textIndent, docRect.y());
             MsgRender::paintCodeBlockChrome(p, ad.textDoc.get());
+            MsgRender::paintDataTableChrome(p, ad.textDoc.get());
             MsgRender::paintBotButtonChrome(p, ad.textDoc.get(), botButtonHoverPos(index, p));
             // Not drawContents(): the base text color must come from the theme,
             // not the app palette (see paintRow).
@@ -2275,6 +2278,7 @@ void MessageListWidget::paintReplyItem(
             QPalette::Text, isMutedMessage(item.msg) ? Th::c().text.secondary : Th::c().text.primary
         );
         MsgRender::paintCodeBlockChrome(p, item.textDoc.get());
+        MsgRender::paintDataTableChrome(p, item.textDoc.get());
         MsgRender::paintBotButtonChrome(p, item.textDoc.get());
         item.textDoc->documentLayout()->draw(&p, pCtx);
         p.restore();
@@ -2485,15 +2489,26 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
 
 // ── Hover toolbar ─────────────────────────────────────────────────────────────
 
+std::vector<MessageListWidget::ToolbarBtn> MessageListWidget::toolbarButtons() const {
+    using Btn               = ToolbarBtn;
+    const Capabilities caps = _session ? _session->capabilities() : Capabilities{};
+    std::vector<Btn>   out;
+    if (caps.reactions)
+        out.push_back(Btn::Emoji);
+    out.push_back(Btn::Forward);
+    if (caps.messageReminders)
+        out.push_back(Btn::Save);
+    out.push_back(Btn::More);
+    return out;
+}
+
 int MessageListWidget::toolbarButtonCount() const {
-    return _session && _session->capabilities().messageReminders ? 4 : 3;
+    return int(toolbarButtons().size());
 }
 
 MessageListWidget::ToolbarBtn MessageListWidget::toolbarButtonKind(int btn) const {
-    // Without Save the row is Emoji/Forward/More: skip the Save slot.
-    if (toolbarButtonCount() == 3 && btn >= 2)
-        ++btn;
-    return static_cast<ToolbarBtn>(btn);
+    const auto buttons = toolbarButtons();
+    return btn >= 0 && btn < int(buttons.size()) ? buttons[size_t(btn)] : ToolbarBtn::More;
 }
 
 int MessageListWidget::toolbarCardW() const {

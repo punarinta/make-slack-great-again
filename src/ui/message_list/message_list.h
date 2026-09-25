@@ -116,6 +116,10 @@ public:
     // it read — when set, the list opens scrolled to the first message after it
     // (the first unread); when empty, it opens scrolled to the bottom.
     void openConversation(ConversationId conv, const Ts &lastReadTs = {});
+    // The open conversation's first page is showing (initialPageLoaded fired).
+    // A backend that answers synchronously fires it inside openConversation(),
+    // before a caller could connect — check this first.
+    bool initialPageDone() const { return _initialPageDone; }
     // Open a thread view: loads conversations.replies and filters events accordingly.
     void openThread(ConversationId conv, Ts rootTs);
     void clear();
@@ -252,14 +256,16 @@ private:
     // A data table under the cursor (message doc or an attachment doc).
     struct TableHit {
         int   row       = -1;
-        int   attachIdx = -1; // -1 = the message's own doc
-        int   tableIdx  = -1; // n-th data table within that doc
-        QRect vpRect;         // table rect in viewport coords
+        int   attachIdx = -1;  // -1 = the message's own doc
+        int   tableIdx  = -1;  // n-th data table within that doc
+        QRect vpRect;          // table rect in viewport coords
+        bool  clipped = false; // inline view hides something (cut rows, wrapped/overflowing cells)
         bool  valid() const { return row >= 0; }
         bool  operator==(const TableHit &) const = default;
     };
     TableHit     tableHitAt(const QPoint &viewportPos) const;
-    // "Open full table" pill rect for a hovered table, in viewport coords.
+    // "Open full table" pill rect for a hovered table, in viewport coords; empty
+    // when the table is already fully shown inline (nothing more to open).
     QRect        tablePillRect(const TableHit &hit) const;
     // The Block a table hit refers to, or nullptr if the model changed.
     const Block *tableBlockFor(const TableHit &hit) const;
@@ -602,17 +608,18 @@ private:
     int     toolbarButtonAt(const QPoint &viewportPos) const;
     // Rect of toolbar button i for the given row top/height, in viewport coords.
     QRect   toolbarButtonRect(int btn, int rowTop, int rowH) const;
-    // The hover toolbar's buttons, left to right. Save is only offered where the
-    // workspace can hold saved items (Capabilities::messageReminders), so the
-    // visible row is either Emoji/Forward/Save/More or Emoji/Forward/More.
+    // The hover toolbar's buttons, left to right. Emoji is only offered where
+    // the workspace has reactions, Save where it can hold saved items
+    // (Capabilities::messageReminders): toolbarButtons() is the visible row.
     enum class ToolbarBtn { Emoji, Forward, Save, More };
-    int        toolbarButtonCount() const;
-    ToolbarBtn toolbarButtonKind(int btn) const;
+    std::vector<ToolbarBtn> toolbarButtons() const;
+    int                     toolbarButtonCount() const;
+    ToolbarBtn              toolbarButtonKind(int btn) const;
     // Full width of the toolbar card for the current button count.
-    int        toolbarCardW() const;
+    int                     toolbarCardW() const;
     // Tooltip of the button at index `btn` for row `row` ("Save for later" flips
     // to "Remove from saved" on a saved message).
-    QString    toolbarTip(int btn, int row) const;
+    QString                 toolbarTip(int btn, int row) const;
 
     // Returns {msgIdx, reactionIdx} of the reaction chip under viewportPos, else {-1,-1}.
     // When a chip is hit and outChipRect is non-null, it receives the chip's viewport rect.
@@ -782,7 +789,8 @@ private:
 
     Session                *_session;
     ConversationId          _currentConv;
-    bool                    _isThreadMode = false;
+    bool                    _initialPageDone = false; // see initialPageDone()
+    bool                    _isThreadMode    = false;
     Ts                      _threadRootTs;
     // Rate-gate for backfillAfterReconnect(): each EvRealtimeReconnected triggers a
     // head-history (conversations.history) fetch, and a flapping socket fires that

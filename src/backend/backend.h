@@ -324,6 +324,13 @@ public:
     }
     // Leave a conversation (conversations.leave).
     virtual void leaveConversation(ConversationId) {}
+    // The user's local name for a conversation (Conversation::localName; empty =
+    // none). Session keeps it either way; a backend whose DMs are titled by the
+    // peer's name (Claude Code sessions) applies it there too.
+    virtual void setConversationLocalName(ConversationId, const QString &) {}
+    // Zen mode (Capabilities::zenMode): details hidden from history and from new
+    // messages. Toggling it announces nothing; the host reloads what's on screen.
+    virtual void setZenMode(bool) {}
     // Create a new channel (conversations.create). No-op on unsupported backends.
     virtual void createChannel(
         const QString & /*name*/,
@@ -344,6 +351,50 @@ public:
         std::function<void(ConversationId)> /*onSuccess*/ = {},
         std::function<void(QString)> /*onError*/          = {}
     ) {}
+
+    // Start a new AI agent session working in `directory` (Capabilities::
+    // agentSessions). onSuccess gets the new conversation once it is listed.
+    // skipPermissionChecks: the session runs without asking before each tool
+    // use (Claude Code's --dangerously-skip-permissions), saved with it.
+    // `role` is an AgentRole id ("" = the first, the generalist).
+    virtual void startAgentSession(
+        const QString & /*directory*/,
+        bool /*skipPermissionChecks*/,
+        const QString & /*role*/,
+        std::function<void(ConversationId)> /*onSuccess*/ = {},
+        std::function<void(QString)> onError              = {}
+    ) {
+        if (onError)
+            onError(QStringLiteral("not_supported"));
+    }
+    // Why no agent session can be started in `directory` right now, for the
+    // UI to say before anything is typed; "" = one can.
+    virtual QString                agentSessionBlocker(const QString                &/*directory*/) { return {}; }
+    // The team sessions are started with (AgentRole), in the order to list
+    // them; empty where the backend has none.
+    virtual std::vector<AgentRole> agentRoles() { return {}; }
+    // Adds (`role.id` empty) or updates a teammate; its id, or "" with *error.
+    // A new prompt applies to sessions started from then on: those already
+    // started keep the one they began with.
+    virtual QString                saveAgentRole(const AgentRole                &/*role*/, QString *error) {
+        if (error)
+            *error = QStringLiteral("not_supported");
+        return {};
+    }
+    // Takes an added teammate off the team; its sessions keep its name and
+    // picture.
+    virtual void removeAgentRole(const QString & /*id*/) {}
+    // A built-in teammate back to how it comes.
+    virtual void restoreAgentRole(const QString & /*id*/) {}
+    // Every agent session there is, the ones in the list and the rest, newest
+    // first — what an agent's own "resume" offers (Claude Code: every
+    // transcript, from every folder). Asynchronous; empty where unsupported.
+    virtual void findAgentSessions(std::function<void(std::vector<FoundSession>)> done) {
+        done({});
+    }
+    // Brings a found session into the list (announced like any new one) and
+    // returns its conversation; an empty id when it's gone.
+    virtual ConversationId addFoundSession(const QString & /*id*/) { return {}; }
 
     // --- Self presence / status (documented public APIs) ---
     // Set the authed user's presence (users.setPresence): away=true forces
@@ -438,14 +489,36 @@ public:
             return rpl::lifetime();
         };
     }
+    // The slash commands of one conversation, where they differ per
+    // conversation (a Claude Code session's project adds its own). Empty: the
+    // workspace-wide list applies. Answers from a cache, so the first call may
+    // only start loading them.
+    virtual std::vector<SlashCommand> conversationCommands(ConversationId) { return {}; }
+    // Runs a local command (SlashCommand::local) in a conversation — Claude
+    // Code's /status (rows for a dialog), /clear (a fresh session to open).
+    virtual LocalCommandResult
+    runLocalCommand(ConversationId, const QString & /*name*/, const QString & /*args*/) {
+        return {};
+    }
+    // Whether a thread takes replies. Agent sessions' threads are mostly there
+    // to read (a subagent's run); a branched-off side conversation (Claude
+    // Code's /btw thread) is one to continue. Default: every thread does.
+    virtual bool           threadAcceptsReplies(ConversationId, Ts /*root*/) { return true; }
+    // Whether this one message can be deleted right now, beyond what the
+    // capabilities allow in general (an agent session's message can't while
+    // the agent is working, say). Default: yes.
+    virtual bool           canDeleteMessage(ConversationId, Ts) { return true; }
+    // Turns a thread that is really a conversation of its own (a /btw branch)
+    // into one in the list; returns its id, or an empty id when it can't.
+    virtual ConversationId openThreadAsSession(ConversationId, Ts /*root*/) { return {}; }
     // Execute a slash command in a conversation (undocumented chat.command —
     // official-client API). `command` carries the leading slash ("/remind").
     // done(ok, message): on failure `message` is the error; on success it is
     // the optional inline response some core commands return (e.g. /who).
-    virtual void runCommand(
+    virtual void           runCommand(
         ConversationId,
-        const QString & /*command*/,
-        const QString & /*text*/,
+        const QString           &/*command*/,
+        const QString           &/*text*/,
         std::function<void(bool ok, QString message)> done = {}
     ) {
         if (done)

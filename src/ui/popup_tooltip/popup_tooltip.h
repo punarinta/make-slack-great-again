@@ -9,11 +9,21 @@
 // Dark rounded-rect tooltip with a downward-pointing chevron.
 // Call showAbove(text, targetGlobalRect) to position and reveal it;
 // hide() to dismiss.  The chevron tip points at the center-top of targetGlobalRect.
+//
+// A mouse press anywhere hides every visible tooltip, and a tooltip for the
+// pressed target stays suppressed (show* calls are ignored) until the cursor
+// leaves that target — a hint for an action that has just been taken is noise.
+// Call sites need no press handling of their own; feedback shown in response to
+// the click itself goes through showToast(), which bypasses the suppression.
 class PopupTooltip : public QWidget {
     Q_OBJECT
 public:
     explicit PopupTooltip(QWidget *parent = nullptr);
+    ~PopupTooltip() override;
     void showAbove(const QString &text, const QRect &targetGlobalRect);
+    // As showAbove, but never suppressed by a press on the target: for click
+    // feedback ("address copied") that is meant to appear under the cursor.
+    void showToast(const QString &text, const QRect &targetGlobalRect);
     void showRightOf(const QString &text, const QRect &targetGlobalRect);
 
     // Reaction preview: a large emoji (unicode glyph or custom-emoji image) over
@@ -40,6 +50,13 @@ protected:
     void hideEvent(QHideEvent *e) override;
 
 private:
+    friend class PopupTooltipPressWatcher;
+
+    // True (and the tooltip is hidden) when a press on this target suppresses it.
+    bool suppressedFor(const QRect &targetGlobalRect);
+    void showAboveImpl(const QString &text, const QRect &targetGlobalRect);
+
+    QRect       _target; // global rect of the target the tooltip currently points at
     QString     _text;
     int         _arrowX   = 0;     // arrow-tip x in widget coords (above/below modes)
     int         _arrowY   = 0;     // arrow-tip y in widget coords (rightOf mode)

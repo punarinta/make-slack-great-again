@@ -10,22 +10,22 @@ QString relativeTime(qint64 unixSecs) {
         return QCoreApplication::translate("relativeTime", "just now");
     if (age < 3600) {
         const int n = age / 60;
-        return QCoreApplication::translate("relativeTime", "%n minute ago", "", n);
+        return QCoreApplication::translate("relativeTime", "%n minute(s) ago", "", n);
     }
     if (age < 86400) {
         const int n = age / 3600;
-        return QCoreApplication::translate("relativeTime", "%n hour ago", "", n);
+        return QCoreApplication::translate("relativeTime", "%n hour(s) ago", "", n);
     }
     if (age < 86400 * 30) {
         const int n = age / 86400;
-        return QCoreApplication::translate("relativeTime", "%n day ago", "", n);
+        return QCoreApplication::translate("relativeTime", "%n day(s) ago", "", n);
     }
     if (age < 86400 * 365) {
         const int n = age / (86400 * 30);
-        return QCoreApplication::translate("relativeTime", "%n month ago", "", n);
+        return QCoreApplication::translate("relativeTime", "%n month(s) ago", "", n);
     }
     const int n = age / (86400 * 365);
-    return QCoreApplication::translate("relativeTime", "%n year ago", "", n);
+    return QCoreApplication::translate("relativeTime", "%n year(s) ago", "", n);
 }
 
 QString relativeTime(const QString &slackTs) {

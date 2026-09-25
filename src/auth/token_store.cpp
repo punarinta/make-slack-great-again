@@ -21,6 +21,20 @@ namespace {
 //  v2: bare-id slack subtree → composite `workspace/{handle}/{displayName,iconUrl,auth}`.
 constexpr int kStoreVersion = 2;
 
+bool (*g_serviceVisible)(const Service &) = nullptr; // see TokenStore::setServiceFilter
+
+bool serviceVisible(const Service &service) {
+    return !g_serviceVisible || g_serviceVisible(service);
+}
+
+// The pre-multi-service layouts below only ever held Slack workspaces. Spelled
+// out rather than taken from slack::kService: the neutral store must not depend
+// on a backend, and a stored token never changes anyway.
+const Service &legacySlackService() {
+    static const Service s{QStringLiteral("slack")};
+    return s;
+}
+
 QString recordBase(const WorkspaceKey &key) {
     return QStringLiteral("workspace/") + key.toString();
 }
@@ -66,7 +80,7 @@ void migrateV1toV2(QSettings &s) {
         blob[QStringLiteral("expiresAt")] =
             QString::number(s.value(oldBase + "/expiresAt").toLongLong());
 
-        const WorkspaceKey key{Service::Slack, id};
+        const WorkspaceKey key{legacySlackService(), id};
         const QString      base = recordBase(key);
         s.setValue(base + "/displayName", s.value(oldBase + "/name").toString());
         s.setValue(base + "/iconUrl", s.value(oldBase + "/iconUrl").toString());
@@ -78,7 +92,7 @@ void migrateV1toV2(QSettings &s) {
 
     const QString active = s.value(QStringLiteral("active")).toString();
     if (!active.isEmpty() && !WorkspaceKey::fromString(active))
-        s.setValue(QStringLiteral("active"), WorkspaceKey{Service::Slack, active}.toString());
+        s.setValue(QStringLiteral("active"), WorkspaceKey{legacySlackService(), active}.toString());
 }
 
 // Guarded, idempotent. Cold path: only ever runs on first launch after upgrade.
@@ -137,12 +151,16 @@ void TokenStore::removeWorkspace(const WorkspaceKey &key) {
         s.setValue(QStringLiteral("active"), ids.isEmpty() ? QString() : ids.first());
 }
 
+void TokenStore::setServiceFilter(bool (*isVisible)(const Service &)) {
+    g_serviceVisible = isVisible;
+}
+
 std::vector<WorkspaceKey> TokenStore::workspaceKeys() {
     auto s = settings();
     migrate(s);
     std::vector<WorkspaceKey> keys;
     for (const auto &h : s.value(QStringLiteral("workspaces")).toStringList())
-        if (auto k = WorkspaceKey::fromString(h))
+        if (auto k = WorkspaceKey::fromString(h); k && serviceVisible(k->service))
             keys.push_back(*k);
     return keys;
 }
@@ -182,7 +200,10 @@ void TokenStore::setWorkspaceMuted(const WorkspaceKey &key, bool muted) {
 std::optional<WorkspaceKey> TokenStore::activeWorkspace() {
     auto s = settings();
     migrate(s);
-    return WorkspaceKey::fromString(s.value(QStringLiteral("active")).toString());
+    const auto key = WorkspaceKey::fromString(s.value(QStringLiteral("active")).toString());
+    if (key && !serviceVisible(key->service))
+        return std::nullopt;
+    return key;
 }
 
 void TokenStore::setActiveWorkspace(const WorkspaceKey &key) {

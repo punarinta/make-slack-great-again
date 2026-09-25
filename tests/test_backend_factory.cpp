@@ -9,13 +9,18 @@
 
 #include "backend/backend.h"
 #include "backend/backend_factory.h"
+#include "backend/backend_registry.h"
 #include "backend/slack/slack_auth.h"
+#include "backend/slack/slack_module.h"
 #include "backend/teams/teams_auth.h"
+#include "backend/teams/teams_module.h"
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
+    slack::registerBackend();
+    teams::registerBackend();
     return Catch::Session().run(argc, argv);
 }
 
@@ -31,7 +36,7 @@ TEST_CASE("slack::toRecord packs the token fields into the auth blob", "[factory
     c.expiresAt    = 1700000000LL;
 
     const auto rec = slack::toRecord(c);
-    CHECK(rec.key == WorkspaceKey{Service::Slack, "T0123"});
+    CHECK(rec.key == WorkspaceKey{slack::kService, "T0123"});
     CHECK(rec.displayName == "Acme");
     CHECK(rec.iconUrl == "https://icon/x.png");
 
@@ -70,6 +75,13 @@ TEST_CASE("makeBackend builds a backend for a Slack record", "[factory]") {
     CHECK(backend->teamUrl().isEmpty());
 }
 
+TEST_CASE("makeBackend returns nullptr for a service not in this build", "[factory]") {
+    TokenStore::WorkspaceRecord rec;
+    rec.key  = WorkspaceKey{Service{QStringLiteral("carrier-pigeon")}, "coop-1"};
+    rec.auth = "{}";
+    CHECK(makeBackend(rec) == nullptr);
+}
+
 // ── Teams credential <-> neutral record round-trip ───────────────────────────
 
 TEST_CASE("teams::toRecord packs the token set into the auth blob", "[factory][teams]") {
@@ -84,7 +96,7 @@ TEST_CASE("teams::toRecord packs the token set into the auth blob", "[factory][t
 
     const auto rec = teams::toRecord(c);
     // The Teams workspace handle is keyed by tenant id, NOT a Slack-style team id.
-    CHECK(rec.key == WorkspaceKey{Service::Teams, "a071f9a6-tenant"});
+    CHECK(rec.key == WorkspaceKey{teams::kService, "a071f9a6-tenant"});
     CHECK(rec.displayName == "Contoso");
     CHECK(rec.iconUrl == "https://icon/org.png");
 

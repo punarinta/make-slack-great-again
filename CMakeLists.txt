@@ -144,10 +144,14 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/llm/discussion_summary.cpp
     src/llm/audio_transcriber.cpp
 
-    # Backend port + factory (neutral)
+    # Backend port, registry + factory (neutral). Optional backends add their
+    # sources below (MSGA_BACKEND_*); builtin_backends.cpp registers them.
     src/backend/backend_factory.cpp
+    src/backend/backend_registry.cpp
+    src/backend/builtin_backends.cpp
 
-    # Slack backend adapter (below the Backend seam)
+    # Slack backend adapter (below the Backend seam) — always built
+    src/backend/slack/slack_module.cpp
     src/backend/slack/public_backend.cpp
     src/backend/slack/json_mappers.cpp
     src/backend/slack/socket_mode_realtime.cpp
@@ -162,30 +166,6 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/slack/session_import/token_deriver.cpp
     src/backend/slack/session_import/local_importer.cpp
     src/backend/slack/session_import/session_migrator.cpp
-
-    # Microsoft Teams backend adapter (below the Backend seam)
-    src/backend/teams/teams_backend.cpp
-    src/backend/teams/graph_client.cpp
-    src/backend/teams/json_mappers.cpp
-    src/backend/teams/teams_auth.cpp
-    src/backend/teams/oauth_flow.cpp
-
-    # Email (IMAP/SMTP) backend adapter (below the Backend seam)
-    src/backend/imap/mime_parser.cpp
-    src/backend/imap/imap_protocol.cpp
-    src/backend/imap/imap_client.cpp
-    src/backend/imap/imap_mappers.cpp
-    src/backend/imap/imap_bucketing.cpp
-    src/backend/imap/imap_auth.cpp
-    src/backend/imap/imap_auth_strategy.cpp
-    src/backend/imap/imap_providers.cpp
-    src/backend/imap/imap_server_detect.cpp
-    src/backend/imap/imap_html.cpp
-    src/backend/imap/imap_bimi.cpp
-    src/backend/imap/imap_favicon.cpp
-    src/backend/imap/imap_compose.cpp
-    src/backend/imap/imap_smtp.cpp
-    src/backend/imap/imap_backend.cpp
 
     # Text
     src/text/link_labels.cpp
@@ -207,6 +187,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/util/fuzzy_match.cpp
     src/util/mailto_link.cpp
     src/util/relative_time.cpp
+    src/util/avatar_glyphs.cpp
     src/util/sound_player.cpp
     src/util/time_format.cpp
 
@@ -266,6 +247,8 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/thread_panel/thread_export_job.cpp
     src/ui/threads_page/threads_page.cpp
     src/ui/saved_page/saved_messages_page.cpp
+    src/ui/teammate_page/teammate_page.cpp
+    src/ui/teammate_dialog/teammate_dialog.cpp
     src/ui/canvas_page/canvas_page.cpp
     src/ui/canvas_page/canvas_diff.cpp
     src/ui/canvas_page/canvas_emoji.cpp
@@ -288,10 +271,11 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/dropdown/dropdown.cpp
     src/ui/create_channel_dialog/create_channel_dialog.cpp
     src/ui/rename_conversation_dialog/rename_conversation_dialog.cpp
+    src/ui/session_status_dialog/session_status_dialog.cpp
+    src/ui/session_finder_dialog/session_finder_dialog.cpp
     src/ui/icon_picker_dialog/icon_picker_dialog.cpp
     src/ui/tray_icon_dialog/tray_icon_dialog.cpp
     src/ui/workspace_icon_dialog/workspace_icon_dialog.cpp
-    src/ui/imap_add_account/imap_add_account_dialog.cpp
     src/ui/session_import_dialog/session_import_dialog.cpp
     src/ui/profile_dialog/profile_dialog.cpp
     src/ui/status_dialog/status_dialog.cpp
@@ -309,6 +293,65 @@ add_executable(msga MACOSX_BUNDLE WIN32
 )
 
 target_precompile_headers(msga PRIVATE src/pch.h)
+
+# ── Optional backends ──────────────────────────────────────────────────────
+# Each switch adds the backend's sources AND defines MSGA_BACKEND_<NAME>, which
+# builtin_backends.cpp keys its explicit register call on (never self-registering
+# statics — a static link would drop them silently). A compiled-in backend costs
+# nothing until a workspace for it exists (docs/backend-modules-plan.md §4.5); a
+# stored workspace of a compiled-out backend is kept but hidden.
+option(MSGA_BACKEND_TEAMS "Compile the Microsoft Teams backend" ON)
+option(MSGA_BACKEND_IMAP "Compile the email (IMAP/SMTP) backend" ON)
+option(MSGA_BACKEND_CLAUDE_CODE "Compile the Claude Code sessions backend" ON)
+
+if(MSGA_BACKEND_TEAMS)
+    target_sources(msga PRIVATE
+        src/backend/teams/teams_module.cpp
+        src/backend/teams/teams_backend.cpp
+        src/backend/teams/graph_client.cpp
+        src/backend/teams/json_mappers.cpp
+        src/backend/teams/teams_auth.cpp
+        src/backend/teams/oauth_flow.cpp
+    )
+    target_compile_definitions(msga PRIVATE MSGA_BACKEND_TEAMS)
+endif()
+
+if(MSGA_BACKEND_IMAP)
+    target_sources(msga PRIVATE
+        src/backend/imap/imap_module.cpp
+        src/backend/imap/mime_parser.cpp
+        src/backend/imap/imap_protocol.cpp
+        src/backend/imap/imap_client.cpp
+        src/backend/imap/imap_mappers.cpp
+        src/backend/imap/imap_bucketing.cpp
+        src/backend/imap/imap_auth.cpp
+        src/backend/imap/imap_auth_strategy.cpp
+        src/backend/imap/imap_providers.cpp
+        src/backend/imap/imap_server_detect.cpp
+        src/backend/imap/imap_html.cpp
+        src/backend/imap/imap_bimi.cpp
+        src/backend/imap/imap_favicon.cpp
+        src/backend/imap/imap_compose.cpp
+        src/backend/imap/imap_smtp.cpp
+        src/backend/imap/imap_backend.cpp
+        src/ui/imap_add_account/imap_add_account_dialog.cpp
+    )
+    target_compile_definitions(msga PRIVATE MSGA_BACKEND_IMAP)
+endif()
+
+if(MSGA_BACKEND_CLAUDE_CODE)
+    target_sources(msga PRIVATE
+        src/backend/claude_code/claude_code_module.cpp
+        src/backend/claude_code/claude_code_backend.cpp
+        src/backend/claude_code/claude_code_auth.cpp
+        src/backend/claude_code/cc_roster.cpp
+        src/backend/claude_code/cc_transcript.cpp
+        src/backend/claude_code/cc_catalog.cpp
+        src/backend/claude_code/cc_roles.cpp
+        src/backend/claude_code/cc_launcher.cpp
+    )
+    target_compile_definitions(msga PRIVATE MSGA_BACKEND_CLAUDE_CODE)
+endif()
 
 target_include_directories(msga PRIVATE
     src
@@ -700,13 +743,14 @@ endif()
 # Demo mode (`msga --demo <fixture dir>`): a fixture-driven fake workspace and a
 # scripted tour for recording the README demo (demo/README.md). OPT-IN ONLY:
 # nothing under src/backend/demo/ (nor the fake backend) is compiled, and
-# Service::Demo does not exist, unless -DMSGA_DEMO=ON is passed — which only
+# the demo service is not registered, unless -DMSGA_DEMO=ON is passed — which only
 # scripts/demo-video.sh does, into its own build-demo/ tree. Release builds and
 # the public mirror (which has no demo/ directory) never see any of it.
 option(MSGA_DEMO "Compile the fixture-driven demo workspace + tour (--demo, --demo-tour)" OFF)
 if(MSGA_DEMO)
     target_sources(msga PRIVATE
         src/backend/fake_backend/fake_backend.cpp
+        src/backend/demo/demo_module.cpp
         src/backend/demo/demo_fixture.cpp
         src/backend/demo/demo_backend.cpp
         src/backend/demo/demo_mode.cpp

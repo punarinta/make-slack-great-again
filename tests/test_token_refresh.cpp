@@ -24,7 +24,7 @@ using namespace slack;
 // all Slack), so assertions can read xoxp/refreshToken/expiresAt back out of the
 // opaque WorkspaceRecord::auth blob.
 static slack::Credentials loadCreds(const QString &id) {
-    const auto rec = TokenStore::loadWorkspace(WorkspaceKey{Service::Slack, id});
+    const auto rec = TokenStore::loadWorkspace(WorkspaceKey{Service{QStringLiteral("slack")}, id});
     return rec ? slack::fromRecord(*rec) : slack::Credentials{};
 }
 

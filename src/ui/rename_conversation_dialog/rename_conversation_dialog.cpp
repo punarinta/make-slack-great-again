@@ -14,9 +14,11 @@
 static constexpr int kMaxNameLen = 80;
 
 RenameConversationDialog::RenameConversationDialog(
-    const QString &currentName, const QString &derivedName, QWidget *parent
+    const QString &currentName, const QString &derivedName, QWidget *parent, Kind kind
 )
-    : AppDialog(tr("Name conversation"), parent) {
+    : AppDialog(
+          kind == Kind::AgentSession ? tr("Rename session") : tr("Name conversation"), parent
+      ) {
     auto       *cl = contentLayout();
     const auto &sp = Th::c().spacing;
     cl->setSpacing(sp.md);
@@ -34,8 +36,12 @@ RenameConversationDialog::RenameConversationDialog(
     _edit->lineEdit()->selectAll();
     cl->addWidget(_edit);
 
-    _hint =
-        new QLabel(tr("Only you see this name. Leave it empty to show the members' names again."));
+    _hint = new QLabel(
+        kind == Kind::AgentSession
+            ? tr("Only msga shows this name; Claude Code keeps its own. Leave it empty to use "
+                 "Claude Code's name again.")
+            : tr("Only you see this name. Leave it empty to show the members' names again.")
+    );
     _hint->setWordWrap(true);
     cl->addWidget(_hint);
 

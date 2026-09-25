@@ -9,6 +9,9 @@
 
 namespace teams {
 
+// This backend's service. The token is stored in workspace handles — never change it.
+inline const Service kService{QStringLiteral("teams")};
+
 // Per-workspace Microsoft Teams (Graph) credentials — the token-shaped struct,
 // kept in the Teams adapter below the Backend seam. A Teams "workspace" is one
 // signed-in account in one Entra tenant: the WorkspaceKey id is the tenant id,

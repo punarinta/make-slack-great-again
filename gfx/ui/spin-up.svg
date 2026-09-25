@@ -1,5 +1,3 @@
-<!-- Lucide "chevron-up", pre-tinted neutral grey (readable on light and dark
-     surfaces) — for QSpinBox::up-arrow QSS, which cannot tint at runtime. -->
 <svg
   xmlns="http://www.w3.org/2000/svg"
   width="24"

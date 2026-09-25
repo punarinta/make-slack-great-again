@@ -209,6 +209,7 @@ Capabilities Backend::capabilities() const {
     c.editMessage   = true;
     c.deleteMessage = true;
     c.threads       = true;
+    c.newThreads    = true;
     c.fileUpload    = true;
     // typing / livePresence / huddles / canvases / slashCommands stay false:
     // Graph offers no live typing, canvas, huddle, or slash-command analog for a

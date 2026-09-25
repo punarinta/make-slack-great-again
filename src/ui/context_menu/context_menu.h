@@ -98,6 +98,7 @@ private:
     QRect menuRect() const;                         // white menu rect in widget coords
     int   shadowPad() const;                        // kShadow, or 0 in flat (demo) mode
     void  updateGeometry(const QPoint &globalPos);
+    void  collapseSeparators(); // drop leading/trailing/doubled separators
 
     std::vector<Item> _items;
     int               _hovered    = -1;

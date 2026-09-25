@@ -50,6 +50,9 @@ protected:
 
 signals:
     void closeRequested();
+    // "Open as session" on a thread that is a conversation of its own (an agent
+    // session's /btw branch).
+    void openAsSessionRequested(ConversationId conv, Ts rootTs);
     // Forwarded from the embedded message list's mention-hover profile card.
     void openDmRequested(UserId user);
     // Forwarded from the embedded message list (#channel mention click).
@@ -98,17 +101,18 @@ private:
     // from the box, which unticks while an attachment or an edit rules it out.
     bool                          _broadcastWanted = false;
 
-    QWidget           *_headerWidget = nullptr;
-    QWidget           *_leftShadow   = nullptr;
-    QLabel            *_header       = nullptr;
-    IconButton        *_muteBtn      = nullptr;
-    IconButton        *_downloadBtn  = nullptr;
-    IconButton        *_closeBtn     = nullptr;
-    PopupTooltip      *_tooltip      = nullptr;
-    MessageListWidget *_msgList      = nullptr;
-    ComposerWidget    *_composer     = nullptr;
-    QWidget           *_broadcastRow = nullptr;
-    QCheckBox         *_broadcastBox = nullptr;
+    QWidget           *_headerWidget   = nullptr;
+    QWidget           *_leftShadow     = nullptr;
+    QLabel            *_header         = nullptr;
+    IconButton        *_muteBtn        = nullptr;
+    IconButton        *_downloadBtn    = nullptr;
+    IconButton        *_openSessionBtn = nullptr;
+    IconButton        *_closeBtn       = nullptr;
+    PopupTooltip      *_tooltip        = nullptr;
+    MessageListWidget *_msgList        = nullptr;
+    ComposerWidget    *_composer       = nullptr;
+    QWidget           *_broadcastRow   = nullptr;
+    QCheckBox         *_broadcastBox   = nullptr;
 
     rpl::lifetime _lifetime;
 };

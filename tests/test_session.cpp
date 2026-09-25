@@ -3409,13 +3409,13 @@ TEST_CASE_METHOD(
 ) {
     // The stub's listCommands completes empty (unsupported), so the built-in
     // fallback set must serve the composer.
-    REQUIRE(session->findCommand("shrug") != nullptr);
-    REQUIRE(session->findCommand("status") != nullptr);
-    CHECK(session->findCommand("SHRUG") != nullptr); // case-insensitive
-    CHECK(session->findCommand("definitely-not-a-command") == nullptr);
+    REQUIRE(session->findCommand("shrug").has_value());
+    REQUIRE(session->findCommand("status").has_value());
+    CHECK(session->findCommand("SHRUG").has_value()); // case-insensitive
+    CHECK(session->findCommand("definitely-not-a-command") == std::nullopt);
     // Built-ins are limited to natively-executable commands: /remind would
     // need chat.command, which the fallback path can't call.
-    CHECK(session->findCommand("remind") == nullptr);
+    CHECK(session->findCommand("remind") == std::nullopt);
 }
 
 TEST_CASE("a backend with no native commands surfaces none (e.g. Teams)", "[session][commands]") {
@@ -3440,8 +3440,8 @@ TEST_CASE("a backend with no native commands surfaces none (e.g. Teams)", "[sess
     Session session(std::make_unique<NoNativeStub>(), teamId);
     session.start();
 
-    CHECK(session.findCommand("shrug") == nullptr); // Slack-native — not in Teams
-    CHECK(session.findCommand("away") == nullptr);
+    CHECK(session.findCommand("shrug") == std::nullopt); // Slack-native — not in Teams
+    CHECK(session.findCommand("away") == std::nullopt);
     CHECK(session.currentCommands().empty());
 }
 
@@ -3463,15 +3463,15 @@ TEST_CASE(
     Session session(std::move(backend), teamId);
     session.start();
 
-    const auto *deploy = session.findCommand("deploy");
-    REQUIRE(deploy != nullptr);
+    const auto deploy = session.findCommand("deploy");
+    REQUIRE(deploy.has_value());
     CHECK(deploy->appId == "A012");
     // Server copy wins over the built-in duplicate…
-    const auto *remind = session.findCommand("remind");
-    REQUIRE(remind != nullptr);
+    const auto remind = session.findCommand("remind");
+    REQUIRE(remind.has_value());
     CHECK(remind->desc == "Set a reminder (server copy)");
     // …and built-ins the server didn't mention survive the merge.
-    CHECK(session.findCommand("shrug") != nullptr);
+    CHECK(session.findCommand("shrug").has_value());
 
     QDir(baseDir).removeRecursively();
 }

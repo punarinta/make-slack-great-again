@@ -122,6 +122,19 @@ TEST_CASE("ContextMenu height: header + item + separator + item", "[context_menu
     delete m;
 }
 
+TEST_CASE("ContextMenu height: redundant separators are collapsed", "[context_menu][layout]") {
+    auto *m = makeMenu();
+    m->addSeparator(); // leading
+    m->addItem("First", [] {});
+    m->addSeparator();
+    m->addSeparator(); // doubled (an empty group in between)
+    m->addItem("Second", [] {});
+    m->addSeparator(); // trailing
+    showMenu(m);
+    CHECK(m->height() == expectedHeight({'I', 'S', 'I'}));
+    delete m;
+}
+
 // ── Render without crash ──────────────────────────────────────────────────────
 
 TEST_CASE("ContextMenu renders channel context menu without crash", "[context_menu][render]") {

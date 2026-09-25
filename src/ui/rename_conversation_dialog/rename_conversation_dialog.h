@@ -17,11 +17,19 @@ class StyledLineEdit;
 //
 // After exec() == Accepted: name() is the trimmed alias — empty means "clear
 // it, list the members again".
+//
+// Kind::AgentSession words it for a Claude Code session, whose derived name is
+// the one Claude Code gives it.
 class RenameConversationDialog : public AppDialog {
     Q_OBJECT
 public:
+    enum class Kind { GroupDm, AgentSession };
+
     RenameConversationDialog(
-        const QString &currentName, const QString &derivedName, QWidget *parent = nullptr
+        const QString &currentName,
+        const QString &derivedName,
+        QWidget       *parent = nullptr,
+        Kind           kind   = Kind::GroupDm
     );
 
     QString name() const;

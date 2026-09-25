@@ -148,6 +148,9 @@ void applyDarkContent(Theme &t) {
     t.message.extBadgeBg             = QColor(230, 201, 138, 30);
     t.message.extBadgeText           = QColor("#D9B45C");
     t.message.canvasTile             = QColor("#1D9BD1");
+    t.message.tableBorder            = QColor("#3E3E3E");
+    t.message.tableHeaderBg = QColor(255, 255, 255, 12); // translucent: row hover shows through
+    t.message.tableRowRule  = QColor(255, 255, 255, 18);
 
     t.composer.bg                    = QColor("#222222");
     t.composer.border                = QColor("#3A3A3A");
@@ -385,6 +388,9 @@ const Theme kAubergineBase = {
             .extBadgeBg             = QColor(198, 146, 10, 38),
             .extBadgeText           = QColor("#8A6508"),
             .canvasTile             = QColor("#1D9BD1"),
+            .tableBorder            = QColor("#DDDDDD"),
+            .tableHeaderBg          = QColor(0, 0, 0, 11), // translucent: row hover shows through
+            .tableRowRule           = QColor(0, 0, 0, 20),
             .avatarHslSaturation    = 130,
             .avatarHslLightness     = 100,
         },

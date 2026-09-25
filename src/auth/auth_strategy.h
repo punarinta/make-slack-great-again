@@ -16,8 +16,8 @@ namespace auth {
 // consent — and on success emits a fully-populated neutral WorkspaceRecord with
 // the per-service secrets already encoded into its opaque `auth` blob. The UI
 // (MainWindow) drives every service through this contract and never sees a
-// service-specific credential type. The factory (auth_strategy_factory.h) is the
-// single point that switches *into* a service's strategy, mirroring makeBackend.
+// service-specific credential type. The factory (auth_strategy_factory.h) builds
+// a service's strategy through the backend registry, mirroring makeBackend.
 class AuthStrategy : public QObject {
     Q_OBJECT
 public:

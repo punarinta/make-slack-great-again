@@ -342,6 +342,7 @@ void MessageListWidget::setSession(Session *session) {
 }
 
 void MessageListWidget::openConversation(ConversationId conv, const Ts &lastReadTs) {
+    _initialPageDone = false;
     // Persist messages of the conversation we're leaving before discarding them.
     if (!_currentConv.value.isEmpty() && _session && !_items.empty()) {
         std::vector<Message> msgs;
@@ -437,6 +438,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
     }();
 
     if (hasCached) {
+        _initialPageDone = true;
         emit initialPageLoaded();
         // Apply scroll position after layout settles (next event-loop tick).
         QTimer::singleShot(0, this, [this, conv] {
@@ -487,6 +489,7 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
                 } else {
                     // No cached data was shown — normal first-load path.
                     mergeNetworkMessages(page.messages, /*fromHeadPage=*/true, revision);
+                    _initialPageDone = true;
                     emit initialPageLoaded();
                     QTimer::singleShot(0, this, [this, conv] {
                         if (_currentConv != conv)
@@ -2153,8 +2156,15 @@ MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewport
             const auto rects = MsgRender::dataTableRects(doc);
             for (int ti = 0; ti < rects.size(); ++ti) {
                 const QRect vp = rects[ti].translated(originX, originY - scrollY).toAlignedRect();
-                if (vp.contains(viewportPos))
-                    return TableHit{i, attachIdx, ti, vp};
+                if (!vp.contains(viewportPos))
+                    continue;
+                TableHit     hit{i, attachIdx, ti, vp};
+                const Block *blk = tableBlockFor(hit);
+                const bool   rowsCut =
+                    blk && (int)blk->tableRows.size() > MsgRender::kMaxInlineTableRows;
+                // No Block = nothing the viewer could open, so no pill either.
+                hit.clipped = blk && (rowsCut || MsgRender::dataTablesSqueezed(doc).value(ti));
+                return hit;
             }
             return {};
         };
@@ -2186,7 +2196,7 @@ MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewport
 }
 
 QRect MessageListWidget::tablePillRect(const TableHit &hit) const {
-    if (!hit.valid())
+    if (!hit.valid() || !hit.clipped)
         return {};
     // Vertically centred on the VISIBLE part of the table (tables can be taller
     // than the viewport), inset from the right edge — like the official client.
@@ -2458,17 +2468,28 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
     // Edit is own-only and only where the backend supports editing (email can't).
     const bool         canEdit      = isOwnMessage && caps.editMessage;
     // Delete needs backend support, then: any message if the backend says so
-    // (email — it's your mailbox), else your own messages or the admin path.
-    const bool         canDelete = caps.deleteMessage && (caps.deleteAnyMessage || isOwnMessage ||
-                                                          (_session && _session->meIsAdmin()));
-    const QString      linkUrl   = firstLinkInMessage(msg);
+    // (email — it's your mailbox), else your own messages or the admin path —
+    // and only when the backend can take this one now (not while an agent
+    // session is working, say).
+    const bool         canDelete =
+        caps.deleteMessage &&
+        (caps.deleteAnyMessage || isOwnMessage || (_session && _session->meIsAdmin())) &&
+        _session->backend()->canDeleteMessage(_currentConv, msg.ts);
+    const QString linkUrl = firstLinkInMessage(msg);
 
     auto *menu = new ContextMenu(this);
 
-    bool addedThreadSection = false;
-    if (!_isThreadMode && canHostThread(msg)) {
+    bool                    addedThreadSection = false;
+    // Where not every message can start a thread (an agent session's are a
+    // subagent run or a /btw branch), only an existing one opens — and one that
+    // takes no replies (a subagent's run) is only there to read.
+    const std::optional<Ts> existingThread     = threadRootOf(msg);
+    if (!_isThreadMode && canHostThread(msg) && (caps.newThreads || existingThread)) {
+        const bool replies =
+            caps.newThreads ||
+            _session->backend()->threadAcceptsReplies(_currentConv, *existingThread);
         menu->addItem(
-            tr("Reply in thread"),
+            replies ? tr("Reply in thread") : tr("Open thread"),
             "T",
             [this, conv = _currentConv, rootTs = msg.threadRoot.value_or(msg.ts)] {
                 emit threadClicked(conv, rootTs);
@@ -2561,7 +2582,9 @@ void MessageListWidget::showMessageContextMenu(const Message &msg, const QPoint 
 
     menu->addSeparator();
 
-    if (msg.pinned) {
+    if (!caps.pins) {
+        // Nothing to pin to.
+    } else if (msg.pinned) {
         menu->addItem(
             tr("Unpin from channel"),
             "P",
@@ -3087,7 +3110,7 @@ bool MessageListWidget::tryHandleLinkPress(const QPoint &pos) {
 
 void MessageListWidget::showClickToast(const QString &text, int ms, const QPoint &pos) {
     const QPoint gPos = viewport()->mapToGlobal(pos);
-    _tooltip->showAbove(text, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
+    _tooltip->showToast(text, QRect(gPos - QPoint(0, 2), QSize(1, 4)));
     _tooltipPin.setRemainingTime(ms);
     QTimer::singleShot(ms, _tooltip, &QWidget::hide);
 }
@@ -3187,13 +3210,7 @@ bool MessageListWidget::openAnchorTarget(
     if (MailtoLink::isMailto(url)) {
         if (MailtoLink::openOrCopy(url)) {
             // No mail client registered — tell the user where the address went.
-            constexpr int kToastMs = 1800;
-            const QPoint  gPos     = viewport()->mapToGlobal(pos);
-            _tooltip->showAbove(
-                tr("No email app — address copied"), QRect(gPos - QPoint(0, 2), QSize(1, 4))
-            );
-            _tooltipPin.setRemainingTime(kToastMs);
-            QTimer::singleShot(kToastMs, _tooltip, &QWidget::hide);
+            showClickToast(tr("No email app — address copied"), 1800, pos);
         }
         return true;
     }
@@ -3355,8 +3372,8 @@ void MessageListWidget::showFileContextMenu(
         );
     }
 
-    const bool canDelete =
-        _session && (msg.author == _session->meUserId() || _session->meIsAdmin());
+    const bool canDelete = _session && _session->capabilities().deleteFiles &&
+                           (msg.author == _session->meUserId() || _session->meIsAdmin());
     if (canDelete && !file.id.isEmpty()) {
         menu->addSeparator();
         menu->addItem(
@@ -4029,7 +4046,11 @@ QString MessageListWidget::selectedText() const {
         cur.setPosition(from);
         cur.setPosition(to, QTextCursor::KeepAnchor);
         QString text = cur.selectedText();
+        // Paragraph ends and in-paragraph line breaks (<br>) come back as
+        // U+2029 / U+2028; most apps drop those, so turn both into newlines.
         text.replace(QChar::ParagraphSeparator, '\n');
+        text.replace(QChar::LineSeparator, '\n');
+        text.replace(QChar::Nbsp, ' ');
         if (!text.isEmpty())
             parts.append(text);
     }

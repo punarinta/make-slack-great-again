@@ -83,8 +83,8 @@ QRect ConvFooterWidget::avatarRect() const {
 }
 
 QRect ConvFooterWidget::toggleRect() const {
-    if (!_presenceSupported)
-        return {}; // no presence concept → no toggle (never painted/hit-tested)
+    if (!_presenceSupported && !_zenSupported)
+        return {}; // nothing to toggle (never painted/hit-tested)
     return QRect(width() - kPadH - kBtn, height() - kBottomPad - kBtn, kBtn, kBtn);
 }
 
@@ -92,7 +92,8 @@ QRect ConvFooterWidget::tasksRect() const {
     if (!hasTasks())
         return {};
     // Sit just left of the toggle, or at the right edge when there's no toggle.
-    const int rightEdge = _presenceSupported ? toggleRect().left() - kTaskGap : width() - kPadH;
+    const QRect toggle    = toggleRect();
+    const int   rightEdge = toggle.isNull() ? width() - kPadH : toggle.left() - kTaskGap;
     return QRect(rightEdge - kBtn, height() - kBottomPad - kBtn, kBtn, kBtn);
 }
 
@@ -178,7 +179,7 @@ void ConvFooterWidget::setPresenceLink(PresenceLinkState link) {
     if (_link == link)
         return;
     _link = link;
-    if (_hot == Hot::Toggle) { // re-word a tooltip that is showing right now
+    if (_hot == Hot::Toggle && _presenceSupported) { // re-word a tooltip showing right now
         const QRect r = toggleRect();
         _tooltip->showAbove(presenceTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
     }
@@ -193,6 +194,20 @@ void ConvFooterWidget::setPresenceSupported(bool supported) {
     // hover/tooltip and re-evaluate what's hot.
     setHot(hitTest(mapFromGlobal(QCursor::pos())));
     update();
+}
+
+void ConvFooterWidget::setZenMode(bool supported, bool on) {
+    if (_zenSupported == supported && _zenOn == on)
+        return;
+    _zenSupported = supported;
+    _zenOn        = on;
+    setHot(hitTest(mapFromGlobal(QCursor::pos())));
+    update();
+}
+
+QString ConvFooterWidget::zenTooltip() const {
+    return _zenOn ? tr("Zen mode is on: tool calls are hidden. Click to show everything.")
+                  : tr("Zen mode is off. Click to hide tool calls for easier reading.");
 }
 
 void ConvFooterWidget::clear() {
@@ -309,6 +324,16 @@ void ConvFooterWidget::paintEvent(QPaintEvent *) {
         } else {
             NavGhostButton::paintIcon(p, btnRect, hov, iconFor(_displayHidden));
         }
+    } else if (_zenSupported) {
+        const QRectF btnRect = toggleRect();
+        const bool   hov     = (_hot == Hot::Toggle);
+        NavGhostButton::paintChrome(p, btnRect, hov, kRadius);
+        NavGhostButton::paintIcon(
+            p,
+            btnRect,
+            hov,
+            _zenOn ? QStringLiteral(":/ui/leaf.svg") : QStringLiteral(":/ui/eye.svg")
+        );
     }
 
     // Background-task spinner — same ghost chrome, with a continuously rotating cog.
@@ -339,12 +364,18 @@ void ConvFooterWidget::setHot(Hot hot) {
 
     if (hot == Hot::Toggle) {
         const QRect r = toggleRect();
-        _tooltip->showAbove(presenceTooltip(), QRect(mapToGlobal(r.topLeft()), r.size()));
+        _tooltip->showAbove(
+            _presenceSupported ? presenceTooltip() : zenTooltip(),
+            QRect(mapToGlobal(r.topLeft()), r.size())
+        );
     } else if (hot == Hot::Tasks) {
         showTasksTooltip();
     } else if (hot == Hot::Avatar) {
         const QRect r = avatarRect();
-        _tooltip->showAbove(tr("Profile & status"), QRect(mapToGlobal(r.topLeft()), r.size()));
+        _tooltip->showAbove(
+            _statusSupported ? tr("Profile & status") : tr("Profile"),
+            QRect(mapToGlobal(r.topLeft()), r.size())
+        );
     } else {
         _tooltip->hide();
     }
@@ -369,7 +400,11 @@ void ConvFooterWidget::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton)
         return;
     const Hot hit = hitTest(e->pos());
-    if (hit == Hot::Toggle && _pressed == Hot::Toggle) {
+    if (hit == Hot::Toggle && _pressed == Hot::Toggle && !_presenceSupported) {
+        _zenOn = !_zenOn;
+        update();
+        emit zenModeToggled(_zenOn);
+    } else if (hit == Hot::Toggle && _pressed == Hot::Toggle) {
         // Optimistic: flip the icon immediately so the network round-trip isn't
         // felt, then ask the session to apply it. setSelfPresence() reconciles
         // when the server confirms; the confirm timer reverts on failure.
@@ -393,12 +428,13 @@ void ConvFooterWidget::showAvatarMenu() {
         false,
         QStringLiteral(":/ui/circle-user-round.svg")
     );
-    menu->addItem(
-        tr("Manage status"),
-        [this] { emit manageStatusRequested(); }, /*destructive=*/
-        false,
-        QStringLiteral(":/ui/smile.svg")
-    );
+    if (_statusSupported)
+        menu->addItem(
+            tr("Manage status"),
+            [this] { emit manageStatusRequested(); }, /*destructive=*/
+            false,
+            QStringLiteral(":/ui/smile.svg")
+        );
     // Anchor at the avatar's top — ContextMenu flips upward near the screen edge,
     // so the menu opens above the footer.
     const QRect r = avatarRect();

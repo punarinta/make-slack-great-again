@@ -520,6 +520,8 @@ static QJsonObject toJson(const Conversation &c) {
         o["ln"] = c.localName;
     if (c.notifLevel != NotificationLevel::Default)
         o["nl"] = static_cast<int>(c.notifLevel);
+    if (!c.agentRole.isEmpty())
+        o["ar"] = c.agentRole;
     return o;
 }
 static Conversation convFromJson(const QJsonObject &o) {
@@ -543,6 +545,7 @@ static Conversation convFromJson(const QJsonObject &o) {
     c.localName = o["ln"].toString();
     if (o.contains("nl"))
         c.notifLevel = static_cast<NotificationLevel>(o["nl"].toInt());
+    c.agentRole = o["ar"].toString();
     return c;
 }
 

@@ -35,6 +35,7 @@ class TitleBar;
 class ThreadPanel;
 class CanvasPage;
 class SavedMessagesPage;
+class TeammatePage;
 class ThreadsPage;
 class ConvTabsWidget;
 class HeaderAvatarWidget;
@@ -100,36 +101,53 @@ private:
     // UI at one of them.  Team ids are taken BY VALUE: callers often pass
     // strings owned by structures these functions rebuild (switcher entries,
     // _activeTeamId, the sessions map), which would dangle behind a reference.
-    Session *ensureSession(const QString &teamId);
+    Session              *ensureSession(const QString &teamId);
     // Bring up background workspaces one per timer tick: each ensureSession()
     // parses that workspace's cache JSON synchronously (multi-MB users.json for
     // a large org), so starting them all on the constructor path would block
     // the first paint N-workspaces wide.
-    void     ensureSessionsSequentially(QStringList pending);
-    void     activateWorkspace(QString teamId);
-    void     dropSession(QString teamId);
-    void     switchToWorkspace(QString teamId);
-    void     showLoggedOut();
+    void                  ensureSessionsSequentially(QStringList pending);
+    void                  activateWorkspace(QString teamId);
+    void                  dropSession(QString teamId);
+    void                  switchToWorkspace(QString teamId);
+    void                  showLoggedOut();
     // Add-workspace entry point: with one registered service, starts its login
     // directly; with several, pops a ContextMenu (anchored at anchorGlobal) to
     // pick the service, then starts that one. Async — the workspace activates
     // from the auth strategy's success signal.
-    void     promptAddWorkspace(const QPoint &anchorGlobal);
+    void                  promptAddWorkspace(const QPoint &anchorGlobal);
     // Runs one service's auth strategy and, on success, saves + activates the
     // new workspace.
-    void     loginWithService(Service service);
+    void                  loginWithService(Service service);
+    void                  applyComposerAccess();
+    void                  startAgentSession(bool skipPermissionChecks);
+    // A teammate's page (agent workspace): its sessions, and the composer
+    // starting a new one with it.
+    void                  openTeammateView(const QString &role);
+    bool                  teammateViewOpen() const;
+    // Composer on the teammate page: locked with the reason when no session
+    // can start in the page's folder, else "Message <teammate>".
+    void                  applyTeammateComposer();
+    // The Team section and an open teammate page, after the team changed.
+    void                  refreshTeammates();
+    // "Add teammate" (`id` empty) / "Edit teammate…".
+    void                  editTeammate(const QString &id);
+    void                  removeTeammate(const QString &id);
+    void                  startSessionWithTeammate(const QString &text);
+    // Where the teammate page's unsent text is kept among the drafts.
+    static ConversationId teammateDraftConv(const QString &role);
     // Slack connect entry: opens the session-import dialog (the default), with a
     // secondary "use app keys" escape into OAuth (loginWithService).
-    void     connectSlack();
+    void                  connectSlack();
     // Persist session-mode + save + activate imported session workspaces. Shared
     // by connectSlack() and the Settings import path.
-    void     addSessionWorkspaces(const QList<TokenStore::WorkspaceRecord> &records);
+    void                  addSessionWorkspaces(const QList<TokenStore::WorkspaceRecord> &records);
     // Convert existing app-key (OAuth) Slack workspaces to session auth in bulk,
     // reusing the `d` cookie from an already-session workspace, then restart.
-    void     migrateSlackToSession();
-    void     wireConvList(); // one-time Qt signal wiring (lambdas read _session)
-    void     connectToSession();
-    void     restoreLastConv();
+    void                  migrateSlackToSession();
+    void                  wireConvList(); // one-time Qt signal wiring (lambdas read _session)
+    void                  connectToSession();
+    void                  restoreLastConv();
 
     // Workspace management
     void refreshSwitcher();
@@ -246,6 +264,7 @@ private:
 
     // "Find a channel" dialog; initialTab 0 = Channels, 1 = People.
     void openBrowseDialog(int initialTab);
+    void openSessionFinder(); // an agent workspace's "Find a session"
     // "Name conversation…" on a group DM: dialog → Session::setConvLocalName,
     // then the header/composer of the open chat follow the new title.
     void renameConversation(ConversationId id);
@@ -304,6 +323,7 @@ private:
     Session                            *_session = nullptr; // active workspace's session
 
     QString             _activeTeamId;
+    QString             _composerLockReason;   // what applyComposerAccess last applied
     auth::AuthStrategy *_activeFlow = nullptr; // valid only while a login flow is in progress
 
     // Window frame
@@ -346,6 +366,7 @@ private:
     CanvasPage            *_canvasPage      = nullptr;
     ThreadsPage           *_threadsPage     = nullptr;
     SavedMessagesPage     *_savedPage       = nullptr;
+    TeammatePage          *_teammatePage    = nullptr;
     QString                _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
     QString                _currentCanvasTitle;
 

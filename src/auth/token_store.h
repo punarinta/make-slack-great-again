@@ -27,11 +27,19 @@ struct WorkspaceRecord {
 void                           saveWorkspace(const WorkspaceRecord &c);
 std::optional<WorkspaceRecord> loadWorkspace(const WorkspaceKey &key);
 void                           removeWorkspace(const WorkspaceKey &key);
+// Only workspaces whose service passes the service filter (see below).
 std::vector<WorkspaceKey>      workspaceKeys();
 // Persist a new display order. Unknown keys are ignored; known keys missing
 // from `ordered` are appended at the end so no workspace is ever lost.
 void                           setWorkspaceOrder(const std::vector<WorkspaceKey> &ordered);
 bool                           hasAnyWorkspace();
+
+// Which services' workspaces are visible. The app installs "registered in this
+// build" (backends::isRegistered) at startup, so a workspace of a backend that
+// was compiled out is hidden from workspaceKeys()/activeWorkspace() — but never
+// deleted: its record stays stored and reappears in a build that has the backend.
+// No filter (the default, and what tests get) shows every stored workspace.
+void setServiceFilter(bool (*isVisible)(const Service &));
 
 // High-level per-workspace mute switch. Independent of any conversation's own
 // notification settings: while muted, the app suppresses OS notifications and

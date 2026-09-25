@@ -178,7 +178,24 @@ void ContextMenu::updateGeometry(const QPoint &globalPos) {
     setGeometry(x, y, totalW, totalH);
 }
 
+// Callers add separators between groups unconditionally and skip items that
+// don't apply, so a group can end up empty — leaving two dividers in a row (or
+// one at an edge). Tidy that here rather than at every call site.
+void ContextMenu::collapseSeparators() {
+    std::vector<Item> kept;
+    kept.reserve(_items.size());
+    for (auto &it : _items) {
+        if (it.separator && (kept.empty() || kept.back().separator))
+            continue;
+        kept.push_back(std::move(it));
+    }
+    while (!kept.empty() && kept.back().separator)
+        kept.pop_back();
+    _items = std::move(kept);
+}
+
 void ContextMenu::popup(const QPoint &globalPos) {
+    collapseSeparators();
     updateGeometry(globalPos);
     show();
     raise();

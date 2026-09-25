@@ -30,7 +30,7 @@ ConnectionMode connectionMode() {
     // Exception: an existing OAuth Slack workspace (signed in before the mode
     // existed) implies app-keys mode; keep it so we don't silently kill live push.
     for (const auto &key : TokenStore::workspaceKeys()) {
-        if (key.service != Service::Slack)
+        if (key.service != kService)
             continue;
         const auto rec = TokenStore::loadWorkspace(key);
         if (rec && fromRecord(*rec).cookie.isEmpty())
@@ -122,7 +122,7 @@ TokenStore::WorkspaceRecord toRecord(const Credentials &creds) {
         blob[QStringLiteral("workspaceUrl")] = creds.workspaceUrl;
 
     TokenStore::WorkspaceRecord rec;
-    rec.key         = WorkspaceKey{Service::Slack, creds.teamId};
+    rec.key         = WorkspaceKey{kService, creds.teamId};
     rec.displayName = creds.teamName;
     rec.iconUrl     = creds.iconUrl;
     rec.auth        = QJsonDocument(blob).toJson(QJsonDocument::Compact);

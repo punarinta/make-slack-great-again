@@ -56,7 +56,7 @@ TokenStore::WorkspaceRecord toRecord(const Credentials &creds) {
     blob[QStringLiteral("aliases")] = aliases;
 
     TokenStore::WorkspaceRecord rec;
-    rec.key         = WorkspaceKey{Service::Imap, creds.user};
+    rec.key         = WorkspaceKey{kService, creds.user};
     rec.displayName = creds.user;
     rec.auth        = QJsonDocument(blob).toJson(QJsonDocument::Compact);
     return rec;

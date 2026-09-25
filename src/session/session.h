@@ -118,11 +118,14 @@ public:
     void scheduleMessage(ConversationId conv, const QString &text, qint64 postAt);
 
     // --- Slash commands ---
-    // Workspace slash commands: the built-in Slack set, replaced/extended by
-    // whatever the backend reports (commands.list) once it answers.
-    const std::vector<SlashCommand> &currentCommands() const { return _commands; }
+    // Slash commands: the built-in Slack set, replaced/extended by whatever the
+    // backend reports (commands.list) once it answers — or the open
+    // conversation's own list, where the backend has one per conversation.
+    std::vector<SlashCommand>   currentCommands() const;
+    // Whether a slash command is just a message to the agent (Claude Code).
+    bool                        commandsAreMessages() const;
     // Look up a command by name (no leading slash, case-insensitive); nullptr if unknown.
-    const SlashCommand              *findCommand(const QString &name) const;
+    std::optional<SlashCommand> findCommand(const QString &name) const;
     // Execute "/name args" in a conversation. Commands with documented
     // public-API equivalents run natively; the rest go through
     // Backend::runCommand (undocumented chat.command) and report failures
@@ -269,6 +272,18 @@ public:
     void starConversation(ConversationId conv, bool star);
     // Leave a conversation (optimistic removal + API call).
     void leaveConversation(ConversationId conv);
+    // Zen mode (Capabilities::zenMode) — passed to the backend; reload what's shown.
+    void setZenMode(bool on);
+    // Start an AI agent session in `directory` (Capabilities::agentSessions);
+    // skipPermissionChecks: it never asks before using a tool. `role`: the
+    // teammate it starts with (AgentRole::id; "" = the generalist).
+    void startAgentSession(
+        const QString                      &directory,
+        bool                                skipPermissionChecks,
+        const QString                      &role,
+        std::function<void(ConversationId)> onSuccess = {},
+        std::function<void(QString)>        onError   = {}
+    );
     // Create a new channel via the Slack API; refreshes the conversation list on success.
     void createChannel(
         const QString                      &name,

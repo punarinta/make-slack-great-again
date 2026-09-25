@@ -3,39 +3,19 @@
 #include "auth_strategy_factory.h"
 
 #include "auth/auth_strategy.h"
-#include "backend/imap/imap_auth_strategy.h"
-#include "backend/slack/oauth_flow.h"
-#include "backend/teams/oauth_flow.h"
-#include "backend/teams/teams_auth.h"
+#include "backend/backend_registry.h"
 
 namespace auth {
 
-std::unique_ptr<AuthStrategy> makeAuthStrategy(Service service, QObject *parent) {
-    switch (service) {
-    case Service::Slack:
-        // The only place the Slack auth flow appears above the seam: the case
-        // that builds it. slack::OAuthFlow reads its own compiled-in app-config.
-        return std::make_unique<slack::OAuthFlow>(slack::appConfig(), parent);
-    case Service::Teams:
-        // Microsoft Teams: Auth Code + PKCE (public client) over Microsoft identity.
-        return std::make_unique<teams::OAuthFlow>(teams::appConfig(), parent);
-    case Service::Imap:
-        // Email (imap-backend-plan §5). The strategy is Widgets-free; the add-
-        // account dialog is injected via imap::AuthStrategy::setPrompt at startup.
-        return std::make_unique<imap::AuthStrategy>(parent);
-#if defined(MSGA_DEMO)
-    case Service::Demo:
-        // Seeded from a fixture by `--demo`; nothing to sign in to. Also absent
-        // from registeredAuthServices() so the picker never offers it.
+std::unique_ptr<AuthStrategy> makeAuthStrategy(const Service &service, QObject *parent) {
+    const auto *d = backends::find(service);
+    if (!d || !d->makeAuthStrategy)
         return nullptr;
-#endif
-    }
-    return nullptr;
+    return d->makeAuthStrategy(parent);
 }
 
 std::vector<Service> registeredAuthServices() {
-    // Order = the order the picker offers them.
-    return {Service::Slack, Service::Teams, Service::Imap};
+    return backends::pickerServices();
 }
 
 } // namespace auth

@@ -29,20 +29,21 @@ struct UserInfo {
     bool    isDeactivated = false;
     bool    isActive      = false;
     bool    dndEnabled    = false;
+    bool    unavailable   = false; // User::unavailable — the yellow dot
     bool    isBot         = false; // bot/app user (incl. Slackbot)
     bool    isExternal    = false; // Slack Connect external member ("EXT" tag)
     QString statusEmoji;           // resolved emoji name without colons, e.g. "palm_tree"
 };
 
 // Visual row kinds in the conversation list.
-enum class RowKind { Threads, SavedMsgs, SectionHeader, Conv, AddChannels, ShowMore };
+enum class RowKind { Threads, SavedMsgs, SectionHeader, Conv, AddChannels, ShowMore, Teammate };
 
 // Maps a visual row index to its content.
 struct RowItem {
     RowKind kind;
-    int     convIdx   = -1; // index into _convs, valid when kind == Conv
+    int     convIdx   = -1; // index into _convs when kind == Conv, into _teammates for Teammate
     int     sectionId = -1; // 0 = Channels, 1 = Direct messages, 2 = Agents & apps,
-                            // 3 = Starred; valid for SectionHeader/AddChannels/ShowMore
+                            // 3 = Starred, 4 = Team; valid for SectionHeader/AddChannels/ShowMore
     int     count     = 0;  // for ShowMore: number of hidden items
 };
 
@@ -111,6 +112,8 @@ public:
     int                            rowCount() const { return int(_rows.size()); }
     // Resolved ConversationId for a visual row (-1 safe: returns empty id).
     ConversationId                 conversationId(int row) const;
+    // The topmost conversation row's id, skipping `except`; empty when none.
+    ConversationId                 firstConversationId(const ConversationId &except = {}) const;
     // Visual row for a given id; -1 if not found or section is collapsed.
     int                            rowForId(ConversationId id) const;
     // Viewport rectangle of a row (empty for an invalid row). Rows are virtual, so
@@ -141,6 +144,18 @@ public:
     // Capabilities::threadsView, so it only appears for backends with a
     // workspace-wide threads feed.
     void setShowThreads(bool show);
+    // Agent workspace (Capabilities::agentSessions, e.g. Claude Code): the DMs
+    // are sessions — every one is listed (no relevance filter: finished sessions
+    // stay reachable for as long as the service keeps them), the section reads
+    // "Sessions", and an empty Channels section is left out.
+    void setAgentSessions(bool on);
+    // Agent workspace: the team (Backend::agentRoles), listed in a "Team"
+    // section under the sessions. A teammate's row opens its page
+    // (teammateSelected); its dot is its user's presence — working while any
+    // of its sessions is. Empty hides the section.
+    void setTeammates(std::vector<AgentRole> teammates);
+    // Highlight a teammate's row as the open page (no signal); "" clears it.
+    void setSelectedTeammate(const QString &roleId);
     // Number of followed threads holding unread replies (Session::
     // unreadThreadCount). Non-zero highlights the "Threads" entry — bright label
     // and icon, like an unread conversation row — so it stands out under the
@@ -172,10 +187,19 @@ signals:
     void threadsViewRequested();
     // Click on the fixed "Saved messages" entry — open the saved messages page.
     void savedMessagesRequested();
+    // Click on a teammate in the Team section — open its page.
+    void teammateSelected(const QString &roleId);
+    // The Team header's "+", and a teammate row's menu.
+    void addTeammateRequested();
+    void editTeammateRequested(const QString &roleId);
+    void restoreTeammateRequested(const QString &roleId);
+    void removeTeammateRequested(const QString &roleId);
     void findChannelRequested();
     // "+" on the Direct messages header — open the browse dialog on People.
     void browsePeopleRequested();
     void createChannelRequested();
+    // Right-click on the Sessions "+" (agent workspace): start-session options.
+    void agentSessionMenuRequested(QPoint globalPos);
     void starConversationRequested(ConversationId id, bool star);
     // Click on a row's live-huddle indicator — open the huddle's web join link.
     void joinHuddleRequested(ConversationId id);
@@ -211,9 +235,12 @@ protected:
     void setSelected(int row);        // emits conversationSelected (no-op for non-Conv rows)
     void selectThreadsRow(int row);   // Threads-row counterpart; emits threadsViewRequested
     void selectSavedMsgsRow(int row); // "Saved messages" counterpart; emits savedMessagesRequested
+    void selectTeammateRow(int row);  // Team counterpart; emits teammateSelected
+    void paintTeammateRow(QPainter &p, int row, int y) const;
     void showChannelContextMenu(int row, QPoint globalPos);
     void showMpdmContextMenu(int row, QPoint globalPos);
     void showDmContextMenu(int row, QPoint globalPos);
+    void showTeammateContextMenu(int row, QPoint globalPos);
     void paintRow(QPainter &p, int row, int y) const;
     void paintSectionHeader(QPainter &p, int row, int y, int sectionId) const;
     void paintThreadsRow(QPainter &p, int row, int y) const;
@@ -224,7 +251,7 @@ protected:
     void paintNavEntryRow(
         QPainter &p, int row, int y, const QPixmap &icon, const QString &label, bool unread = false
     ) const;
-    void   paintAddChannelsRow(QPainter &p, int row, int y) const;
+    void   paintAddChannelsRow(QPainter &p, int row, int y) const; // also sessions
     void   paintShowMoreRow(QPainter &p, int row, int y, int count) const;
     // Hit/paint rect of the "+" button on the Direct messages section header.
     QRect  dmPlusRect(int rowY) const;
@@ -247,6 +274,7 @@ protected:
     struct IconPixmaps {
         QPixmap chevDown, chevRight, hash, msg, bot, plusDim; // section headers, nav.itemTextDim
         QPixmap star;                                         // Starred section header
+        QPixmap team;                                         // Team section header
         QPixmap plusBright;                                   // add-channels hover, nav.itemText
         QPixmap lockDim, lockBright, lockSelected;            // private channel prefix
         QPixmap hashSmDim, hashSmBright, hashSmSelected;      // public channel prefix
@@ -297,22 +325,27 @@ protected:
     UserId        _meUserId;
     bool          _selfPhantomAway = false;
 
-    bool _animateEmoji      = true; // see setEmojiAnimationsEnabled()
-    bool _starredCollapsed  = false;
-    bool _channelsCollapsed = false;
-    bool _dmsCollapsed      = false;
-    bool _appsCollapsed     = false;
-    bool _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
-    bool _unreadsOnly       = false; // Settings toggle; see setUnreadsOnly()
-    bool _showThreads       = false; // capability gate; see setShowThreads()
-    int  _unreadThreads     = 0;     // see setUnreadThreadCount()
-    bool _showSavedMsgs     = false; // gate; see setShowSavedMessages()
-    bool _showAllChannels   = false; // true after user clicks "N more channels"
+    bool                   _animateEmoji      = true; // see setEmojiAnimationsEnabled()
+    bool                   _starredCollapsed  = false;
+    bool                   _channelsCollapsed = false;
+    bool                   _dmsCollapsed      = false;
+    bool                   _appsCollapsed     = false;
+    bool                   _teamCollapsed     = false;
+    bool                   _showAgentsApps    = true;  // Settings toggle; see setShowAgentsApps()
+    bool                   _unreadsOnly       = false; // Settings toggle; see setUnreadsOnly()
+    bool                   _showThreads       = false; // capability gate; see setShowThreads()
+    bool                   _agentSessions     = false; // see setAgentSessions()
+    int                    _unreadThreads     = 0;     // see setUnreadThreadCount()
+    bool                   _showSavedMsgs     = false; // gate; see setShowSavedMessages()
+    bool                   _showAllChannels   = false; // true after user clicks "N more channels"
     // The "Threads" entry is selected (the overview page is open). Mutually
     // exclusive with _selectedId; survives rebuildRows() like it.
-    bool _threadsSelected   = false;
+    bool                   _threadsSelected   = false;
     // Same for the "Saved messages" entry; mutually exclusive with both.
-    bool _savedMsgsSelected = false;
+    bool                   _savedMsgsSelected = false;
+    // The teammate whose page is open ("" = none); exclusive with the above.
+    QString                _selectedTeammate;
+    std::vector<AgentRole> _teammates; // see setTeammates()
 
     // convId.value → viewport rect of the clickable huddle indicator, refreshed
     // each paint (so it tracks scroll); consulted on click to join the huddle.

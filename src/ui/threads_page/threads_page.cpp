@@ -151,6 +151,7 @@ protected:
             p.save();
             p.translate(textLeft(), docTop());
             MsgRender::paintCodeBlockChrome(p, _doc.get());
+            MsgRender::paintDataTableChrome(p, _doc.get());
             MsgRender::paintBotButtonChrome(p, _doc.get());
             QAbstractTextDocumentLayout::PaintContext pCtx;
             pCtx.palette = QApplication::palette();

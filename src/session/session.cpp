@@ -96,6 +96,8 @@ static int parseDndMinutes(const QString &args) {
     return minutes > 0 ? minutes : -1;
 }
 
+static void carryLocalConvState(Conversation &fresh, const Conversation &old); // below
+
 void Session::start() {
     // Serve cached data immediately so the UI has something to show before
     // the network responds.
@@ -379,6 +381,38 @@ void Session::start() {
                     }
                     if (changed)
                         _conversations = std::move(convs);
+                } else if (auto *ev = std::get_if<EvChannelCreated>(&e)) {
+                    // Upsert: an already-listed conversation takes the fresh copy
+                    // (keeping local state), a new one joins the list when we are
+                    // in it. A channel we aren't in stays out — browse finds it.
+                    auto       convs = _conversations.current();
+                    const auto it =
+                        std::find_if(convs.begin(), convs.end(), [&](const Conversation &c) {
+                            return c.id == ev->conv.id;
+                        });
+                    if (it != convs.end() || ev->conv.isMember) {
+                        Conversation fresh = ev->conv;
+                        if (it != convs.end()) {
+                            carryLocalConvState(fresh, *it);
+                            *it = std::move(fresh);
+                        } else {
+                            markConvAlive(fresh.id);
+                            convs.push_back(std::move(fresh));
+                        }
+                        _cache->saveConversations(convs);
+                        _conversations = std::move(convs);
+                    }
+                } else if (auto *ev = std::get_if<EvConversationRemoved>(&e)) {
+                    auto       convs = _conversations.current();
+                    const auto it =
+                        std::find_if(convs.begin(), convs.end(), [&](const Conversation &c) {
+                            return c.id == ev->conv;
+                        });
+                    if (it != convs.end()) {
+                        convs.erase(it);
+                        _cache->saveConversations(convs);
+                        _conversations = std::move(convs);
+                    }
                 } else if (auto *ev = std::get_if<EvMemberJoined>(&e)) {
                     // The member list we hold for it is one short now.
                     _members.remove(ev->conv.value);
@@ -569,6 +603,13 @@ bool Session::handleNewMessage(const ConversationId &conv, const Message &msg) {
             // followed-thread replies, and DM replies still count.
             if (msg.threadRoot && !isMention && !isFollowed && (threadMuted || !isDm))
                 break;
+            // An agent's mid-task update marks the chat unread (bold) but adds
+            // nothing to the red counter — that is for the answer (see maybeNotify).
+            if (isProgressMessage(msg)) {
+                if (!c.isMuted)
+                    c.unread++;
+                break;
+            }
             if (!c.isMuted) {
                 c.unread++;
                 if (isDm || isMention || isFollowed)
@@ -1118,7 +1159,10 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
                 const bool isDm = existing.kind == ConvKind::Im || existing.kind == ConvKind::Mpim;
                 const bool muted =
                     existing.isMuted || existing.notifLevel == NotificationLevel::Mute;
-                const int mentions = isDm ? std::max(c.unread, c.mentionCount) : c.mentionCount;
+                // An agent session's backend already counts only what needs you.
+                const int mentions = isDm && !_backend->capabilities().agentSessions
+                                         ? std::max(c.unread, c.mentionCount)
+                                         : c.mentionCount;
                 const int unread   = muted ? mentions : std::max(c.unread, mentions);
                 if (unread > existing.unread) {
                     existing.unread = unread;
@@ -2329,11 +2373,24 @@ void Session::scheduleMessage(ConversationId conv, const QString &text, qint64 p
     _backend->scheduleMessage(conv, std::move(out), postAt);
 }
 
-const SlashCommand *Session::findCommand(const QString &name) const {
-    for (const auto &c : _commands)
+std::vector<SlashCommand> Session::currentCommands() const {
+    if (!_openConv.value.isEmpty()) {
+        auto own = _backend->conversationCommands(_openConv);
+        if (!own.empty())
+            return own;
+    }
+    return _commands;
+}
+
+bool Session::commandsAreMessages() const {
+    return _backend->capabilities().commandsAreMessages;
+}
+
+std::optional<SlashCommand> Session::findCommand(const QString &name) const {
+    for (const auto &c : currentCommands())
         if (c.name.compare(name, Qt::CaseInsensitive) == 0)
-            return &c;
-    return nullptr;
+            return c;
+    return std::nullopt;
 }
 
 void Session::runCommand(ConversationId conv, const QString &name, const QString &args) {
@@ -3023,7 +3080,9 @@ void Session::scheduleSaveUsers() {
 void Session::setOpenConversation(ConversationId conv) {
     if (_openConv == conv)
         return;
-    _openConv         = conv;
+    _openConv = conv;
+    if (!conv.value.isEmpty() && _backend->capabilities().slashCommands)
+        _backend->conversationCommands(conv); // starts loading its own list, if it has one
     // The deletion-detection baseline belongs to the conversation that was open;
     // it's meaningless once we switch (and a stale set would mis-fire). The next
     // poll rebuilds it for the new conversation.
@@ -3112,7 +3171,26 @@ void Session::leaveConversation(ConversationId conv) {
         ),
         convs.end()
     );
+    _cache->saveConversations(convs);
     _conversations = std::move(convs);
+}
+
+void Session::setZenMode(bool on) {
+    _backend->setZenMode(on);
+}
+
+void Session::startAgentSession(
+    const QString                      &directory,
+    bool                                skipPermissionChecks,
+    const QString                      &role,
+    std::function<void(ConversationId)> onSuccess,
+    std::function<void(QString)>        onError
+) {
+    // The backend announces the new session itself (EvChannelCreated) before
+    // calling onSuccess, so the conversation is already listed by then.
+    _backend->startAgentSession(
+        directory, skipPermissionChecks, role, std::move(onSuccess), std::move(onError)
+    );
 }
 
 void Session::createChannel(
@@ -3248,6 +3326,7 @@ void Session::setConvLocalName(ConversationId conv, const QString &name) {
     }
     _conversations = std::move(convs);
     scheduleSaveUnreads(); // local-only state, same as setNotificationLevel
+    _backend->setConversationLocalName(conv, name.trimmed());
 }
 
 bool Session::isThreadMuted(const ConversationId &conv, const Ts &root) const {

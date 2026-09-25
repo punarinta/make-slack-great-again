@@ -36,7 +36,7 @@ struct TokenStoreFixture {
 };
 
 static WorkspaceKey slackKey(const QString &id) {
-    return WorkspaceKey{Service::Slack, id};
+    return WorkspaceKey{Service{QStringLiteral("slack")}, id};
 }
 static WorkspaceRecord
 rec(const QString &id, const QString &name, const QString &icon = {}, const QByteArray &auth = {}) {
@@ -55,9 +55,50 @@ TEST_CASE("WorkspaceKey round-trips through its canonical string", "[tokenstore]
 
 TEST_CASE("WorkspaceKey::fromString rejects malformed handles", "[tokenstore][key]") {
     CHECK_FALSE(WorkspaceKey::fromString("T0123").has_value());       // no service
-    CHECK_FALSE(WorkspaceKey::fromString("bogus:T0123").has_value()); // unknown service
+    CHECK_FALSE(WorkspaceKey::fromString("Bogus:T0123").has_value()); // not a token (uppercase)
+    CHECK_FALSE(WorkspaceKey::fromString("a b:T0123").has_value());   // not a token (space)
     CHECK_FALSE(WorkspaceKey::fromString(":T0123").has_value());      // empty service
     CHECK_FALSE(WorkspaceKey::fromString("slack:").has_value());      // empty id
+}
+
+TEST_CASE(
+    "WorkspaceKey::fromString parses a service this build may not have", "[tokenstore][key]"
+) {
+    // Parsing is registry-agnostic: a workspace of a compiled-out backend must
+    // survive as a key, or it would be lost from storage.
+    const auto k = WorkspaceKey::fromString("claude-code:local");
+    REQUIRE(k.has_value());
+    CHECK(k->service.token == "claude-code");
+    CHECK(k->id == "local");
+}
+
+TEST_CASE_METHOD(
+    TokenStoreFixture,
+    "the service filter hides a workspace without deleting it",
+    "[tokenstore][filter]"
+) {
+    const WorkspaceKey gone{Service{QStringLiteral("teams")}, "tenant-1"};
+    TokenStore::saveWorkspace(rec("T001", "Slack team"));
+    TokenStore::saveWorkspace(WorkspaceRecord{gone, "Contoso", {}, "blob"});
+    TokenStore::setActiveWorkspace(gone);
+
+    // "This build only has Slack."
+    TokenStore::setServiceFilter([](const Service &s) { return s.token == "slack"; });
+    const auto visible = TokenStore::workspaceKeys();
+    REQUIRE(visible.size() == 1);
+    CHECK(visible.front() == slackKey("T001"));
+    CHECK_FALSE(TokenStore::activeWorkspace().has_value()); // the hidden one can't be active
+
+    // Reordering the visible list must not drop the hidden record.
+    TokenStore::setWorkspaceOrder(visible);
+    CHECK(TokenStore::loadWorkspace(gone).has_value());
+
+    // A build that has the backend sees it again, untouched.
+    TokenStore::setServiceFilter(nullptr);
+    CHECK(TokenStore::workspaceKeys().size() == 2);
+    REQUIRE(TokenStore::activeWorkspace().has_value());
+    CHECK(*TokenStore::activeWorkspace() == gone);
+    CHECK(TokenStore::loadWorkspace(gone)->auth == QByteArray("blob"));
 }
 
 // ── saveWorkspace / loadWorkspace ─────────────────────────────────────────────

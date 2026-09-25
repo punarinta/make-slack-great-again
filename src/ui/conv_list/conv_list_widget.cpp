@@ -55,12 +55,14 @@ ConvListWidget::ConvListWidget(ImageCache *imgCache, QWidget *parent)
             const int last  = lastVisibleRow();
             for (int r = first; r <= last; ++r) {
                 const auto &ri = _rows[r];
-                if (ri.kind != RowKind::Conv)
+                QString     userId;
+                if (ri.kind == RowKind::Teammate)
+                    userId = _teammates[size_t(ri.convIdx)].user.value;
+                else if (ri.kind == RowKind::Conv && _convs[ri.convIdx].dmUser)
+                    userId = _convs[ri.convIdx].dmUser->value;
+                if (userId.isEmpty())
                     continue;
-                const auto &conv = _convs[ri.convIdx];
-                if (!conv.dmUser)
-                    continue;
-                const auto infoIt = _userInfos.constFind(conv.dmUser->value);
+                const auto infoIt = _userInfos.constFind(userId);
                 if (infoIt == _userInfos.constEnd())
                     continue;
                 if (infoIt->avatarUrl != url && statusEmojiOf(*infoIt).imageUrl != url)
@@ -178,6 +180,7 @@ void ConvListWidget::rebuildIconPixmaps() {
     _iconPx.msg        = px(":/ui/messages-square.svg", big, th.nav.itemTextDim);
     _iconPx.bot        = px(":/ui/bot.svg", big, th.nav.itemTextDim);
     _iconPx.star       = px(":/ui/star.svg", big, th.nav.itemTextDim);
+    _iconPx.team       = px(":/ui/users.svg", big, th.nav.itemTextDim);
     _iconPx.plusDim    = px(":/ui/plus.svg", big, th.nav.itemTextDim);
     _iconPx.plusBright = px(":/ui/plus.svg", big, th.nav.itemText);
 
@@ -237,6 +240,33 @@ void ConvListWidget::setShowThreads(bool show) {
     _showThreads = show;
     if (!show)
         _threadsSelected = false;
+    rebuildRows();
+}
+
+void ConvListWidget::setAgentSessions(bool on) {
+    if (_agentSessions == on)
+        return;
+    _agentSessions = on;
+    rebuildRows();
+    viewport()->update();
+}
+
+void ConvListWidget::setTeammates(std::vector<AgentRole> teammates) {
+    if (_teammates == teammates)
+        return;
+    _teammates = std::move(teammates);
+    rebuildRows();
+}
+
+void ConvListWidget::setSelectedTeammate(const QString &roleId) {
+    if (_selectedTeammate == roleId && (roleId.isEmpty() || _selectedId.value.isEmpty()))
+        return;
+    _selectedTeammate = roleId;
+    if (!roleId.isEmpty()) {
+        _selectedId        = {};
+        _threadsSelected   = false;
+        _savedMsgsSelected = false;
+    }
     rebuildRows();
 }
 
@@ -410,6 +440,7 @@ void ConvListWidget::setUsers(const std::vector<User> &users) {
                 .isDeactivated = u.isDeactivated,
                 .isActive      = u.isActive,
                 .dndEnabled    = u.dndEnabled,
+                .unavailable   = u.unavailable,
                 // System accounts may report is_bot=false; the backend knows them.
                 .isBot         = u.isBot || (_session && _session->isSyntheticUser(u.id)),
                 .isExternal    = u.isExternal,
@@ -528,7 +559,7 @@ void ConvListWidget::rebuildRows() {
     // DMs and MPDMs with no data start hidden and pop in once the sweep
     // analyzes them and finds recent activity.
     auto isRelevant = [&](const Conversation &c) -> bool {
-        if (c.unread > 0)
+        if (c.unread > 0 || _agentSessions)
             return true;
         if (c.id == _selectedId)
             return true;
@@ -604,8 +635,10 @@ void ConvListWidget::rebuildRows() {
     }
 
     // ── Channels section ─────────────────────────────────────────────
-    _rows.push_back({RowKind::SectionHeader, -1, 0});
-    if (!_channelsCollapsed) {
+    const bool noChannels = _agentSessions && visCh.empty() && hidCh.empty();
+    if (!noChannels)
+        _rows.push_back({RowKind::SectionHeader, -1, 0});
+    if (!noChannels && !_channelsCollapsed) {
         for (int i : visCh)
             _rows.push_back({RowKind::Conv, i, -1});
         if (!hidCh.empty()) {
@@ -626,6 +659,20 @@ void ConvListWidget::rebuildRows() {
     if (!_dmsCollapsed) {
         for (int i : visDm)
             _rows.push_back({RowKind::Conv, i, -1});
+        // Sessions: an "Add sessions" row (find or create one), as channels
+        // have "Add channels" — the header's "+" only shows on hover.
+        if (_agentSessions)
+            _rows.push_back({RowKind::AddChannels, -1, 1});
+    }
+
+    // ── Team section (agent workspace) ────────────────────────────────
+    // The roles sessions are started with; a row opens the teammate's page.
+    if (_agentSessions && !_teammates.empty()) {
+        _rows.push_back({RowKind::SectionHeader, -1, 4});
+        if (!_teamCollapsed) {
+            for (int i = 0; i < int(_teammates.size()); ++i)
+                _rows.push_back({RowKind::Teammate, i, 4});
+        }
     }
 
     // ── Agents & apps section ─────────────────────────────────────────
@@ -674,6 +721,14 @@ void ConvListWidget::rebuildRows() {
                 break;
             }
         }
+    } else if (!_selectedTeammate.isEmpty()) {
+        for (int r = 0; r < (int)_rows.size(); ++r) {
+            if (_rows[r].kind == RowKind::Teammate &&
+                _teammates[size_t(_rows[r].convIdx)].id == _selectedTeammate) {
+                _selected = r;
+                break;
+            }
+        }
     } else if (!_selectedId.value.isEmpty()) {
         for (int r = 0; r < (int)_rows.size(); ++r) {
             if (_rows[r].kind == RowKind::Conv && _convs[_rows[r].convIdx].id == _selectedId) {
@@ -694,6 +749,13 @@ ConversationId ConvListWidget::conversationId(int row) const {
     if (ri.kind != RowKind::Conv)
         return {};
     return _convs[ri.convIdx].id;
+}
+
+ConversationId ConvListWidget::firstConversationId(const ConversationId &except) const {
+    for (int row = 0; row < (int)_rows.size(); ++row)
+        if (const ConversationId id = conversationId(row); !id.value.isEmpty() && id != except)
+            return id;
+    return {};
 }
 
 int ConvListWidget::rowForId(ConversationId id) const {
@@ -865,11 +927,12 @@ void ConvListWidget::setSelected(int row) {
         return;
     if (row == _selected)
         return;
-    _selFrom                      = _selected;
-    _selT                         = 0.0;
-    _selected                     = row;
-    _threadsSelected              = false;
-    _savedMsgsSelected            = false;
+    _selFrom           = _selected;
+    _selT              = 0.0;
+    _selected          = row;
+    _threadsSelected   = false;
+    _savedMsgsSelected = false;
+    _selectedTeammate.clear();
     _selectedId                   = _convs[_rows[row].convIdx].id;
     // Record visit so this conversation stays visible in future sessions.
     _visitedAt[_selectedId.value] = QDateTime::currentSecsSinceEpoch();
@@ -903,7 +966,8 @@ void ConvListWidget::selectThreadsRow(int row) {
     _selected          = row;
     _threadsSelected   = true;
     _savedMsgsSelected = false;
-    _selectedId        = {}; // no conversation is highlighted while the overview is open
+    _selectedTeammate.clear();
+    _selectedId = {}; // no conversation is highlighted while the overview is open
     _selAnim.stop();
     _selAnim.setStartValue(0.0);
     _selAnim.setEndValue(1.0);
@@ -921,12 +985,33 @@ void ConvListWidget::selectSavedMsgsRow(int row) {
     _selected          = row;
     _threadsSelected   = false;
     _savedMsgsSelected = true;
-    _selectedId        = {}; // no conversation is highlighted while the page is open
+    _selectedTeammate.clear();
+    _selectedId = {}; // no conversation is highlighted while the page is open
     _selAnim.stop();
     _selAnim.setStartValue(0.0);
     _selAnim.setEndValue(1.0);
     _selAnim.start();
     emit savedMessagesRequested();
+}
+
+void ConvListWidget::selectTeammateRow(int row) {
+    if (row < 0 || row >= (int)_rows.size() || _rows[row].kind != RowKind::Teammate)
+        return;
+    const QString id = _teammates[size_t(_rows[row].convIdx)].id;
+    if (row != _selected) {
+        _selFrom           = _selected;
+        _selT              = 0.0;
+        _selected          = row;
+        _threadsSelected   = false;
+        _savedMsgsSelected = false;
+        _selectedTeammate  = id;
+        _selectedId        = {}; // no conversation is highlighted while the page is open
+        _selAnim.stop();
+        _selAnim.setStartValue(0.0);
+        _selAnim.setEndValue(1.0);
+        _selAnim.start();
+    }
+    emit teammateSelected(id); // again on a re-click: back to the page from anywhere in it
 }
 
 void ConvListWidget::doMouseMove(QMouseEvent *e) {
@@ -950,16 +1035,20 @@ void ConvListWidget::doMouseMove(QMouseEvent *e) {
     const int row = rowAt(e->pos().y());
     setHovered(row);
 
-    // Tooltips: the "+" on the Direct messages header, and the full name over a
-    // truncated (elided) chat name. _tooltipRow tracks what's showing so we only
-    // re-issue showAbove when the target changes (-2 = the "+", else the row).
+    // Tooltips: the "+" on the Direct messages / Team header, and the full name
+    // over a truncated (elided) chat name. _tooltipRow tracks what's showing so
+    // we only re-issue showAbove when the target changes (-2 = the "+", else
+    // the row).
     bool tooltipShown = false;
-    if (row >= 0 && _rows[row].kind == RowKind::SectionHeader && _rows[row].sectionId == 1) {
+    if (row >= 0 && _rows[row].kind == RowKind::SectionHeader &&
+        (_rows[row].sectionId == 1 || _rows[row].sectionId == 4)) {
         const QRect r = dmPlusRect(rowTopView(row));
         if (r.contains(e->pos())) {
             if (_tooltipRow != -2) {
                 _tooltip->showAbove(
-                    tr("Open a direct message"),
+                    _rows[row].sectionId == 4 ? tr("Add teammate")
+                    : _agentSessions          ? tr("Add sessions")
+                                              : tr("Open a direct message"),
                     QRect(viewport()->mapToGlobal(r.topLeft()), r.size())
                 );
                 _tooltipRow = -2;
@@ -1073,6 +1162,37 @@ void ConvListWidget::showDmContextMenu(int row, QPoint globalPos) {
     menu->addItem(muted ? tr("Unmute") : tr("Mute"), [this, id = conv.id, muted] {
         emit muteConversationRequested(id, !muted);
     });
+    if (_agentSessions) {
+        menu->addItem(tr("Rename session…"), [this, id = conv.id] {
+            emit renameConversationRequested(id);
+        });
+        // Claude Code keeps the session; it only leaves this list.
+        menu->addSeparator();
+        menu->addItem(
+            tr("Remove from msga"),
+            [this, id = conv.id] { emit leaveConversationRequested(id); },
+            /*destructive=*/true
+        );
+    }
+    menu->popup(globalPos);
+}
+
+void ConvListWidget::showTeammateContextMenu(int row, QPoint globalPos) {
+    const AgentRole mate = _teammates[size_t(_rows[size_t(row)].convIdx)];
+    auto           *menu = new ContextMenu(viewport());
+    menu->addItem(tr("Edit teammate…"), [this, id = mate.id] { emit editTeammateRequested(id); });
+    if (mate.builtIn && mate.edited)
+        menu->addItem(tr("Restore default"), [this, id = mate.id] {
+            emit restoreTeammateRequested(id);
+        });
+    if (!mate.builtIn) {
+        menu->addSeparator();
+        menu->addItem(
+            tr("Remove teammate…"),
+            [this, id = mate.id] { emit removeTeammateRequested(id); },
+            /*destructive=*/true
+        );
+    }
     menu->popup(globalPos);
 }
 
@@ -1081,6 +1201,15 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     _tooltipRow = -1;
     if (e->button() == Qt::RightButton) {
         const int row = rowAt(e->pos().y());
+        if (_agentSessions && row >= 0 && _rows[row].kind == RowKind::SectionHeader &&
+            _rows[row].sectionId == 1 && dmPlusRect(rowTopView(row)).contains(e->pos())) {
+            emit agentSessionMenuRequested(e->globalPosition().toPoint());
+            return;
+        }
+        if (row >= 0 && _rows[row].kind == RowKind::Teammate) {
+            showTeammateContextMenu(row, e->globalPosition().toPoint());
+            return;
+        }
         if (row >= 0 && _rows[row].kind == RowKind::Conv) {
             const auto &conv = _convs[_rows[row].convIdx];
             if (conv.kind == ConvKind::Mpim) {
@@ -1117,9 +1246,20 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
     case RowKind::SavedMsgs:
         selectSavedMsgsRow(row);
         break;
+    case RowKind::Teammate:
+        selectTeammateRow(row);
+        break;
     case RowKind::SectionHeader:
         if (ri.sectionId == 1 && dmPlusRect(rowTopView(row)).contains(e->pos())) {
-            emit browsePeopleRequested();
+            // Sessions: find one or create one, as "Add channels" does for channels.
+            if (_agentSessions)
+                emit agentSessionMenuRequested(e->globalPosition().toPoint());
+            else
+                emit browsePeopleRequested();
+            break;
+        }
+        if (ri.sectionId == 4 && dmPlusRect(rowTopView(row)).contains(e->pos())) {
+            emit addTeammateRequested();
             break;
         }
         if (ri.sectionId == 0)
@@ -1128,6 +1268,8 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
             _dmsCollapsed = !_dmsCollapsed;
         else if (ri.sectionId == 3)
             _starredCollapsed = !_starredCollapsed;
+        else if (ri.sectionId == 4)
+            _teamCollapsed = !_teamCollapsed;
         else
             _appsCollapsed = !_appsCollapsed;
         rebuildRows();
@@ -1145,6 +1287,10 @@ void ConvListWidget::doMousePress(QMouseEvent *e) {
         break;
     }
     case RowKind::AddChannels: {
+        if (ri.sectionId == 1) {
+            emit agentSessionMenuRequested(e->globalPosition().toPoint());
+            break;
+        }
         auto *menu = new ContextMenu(viewport());
         menu->addItem(tr("Find a channel"), [this] { emit findChannelRequested(); });
         menu->addItem(tr("Create a channel"), [this] { emit createChannelRequested(); });
@@ -1192,6 +1338,12 @@ void ConvListWidget::triggerMissingAvatarDownloads() {
 
     for (int r = first; r <= last; ++r) {
         const auto &ri = _rows[r];
+        if (ri.kind == RowKind::Teammate) {
+            const auto infoIt = _userInfos.constFind(_teammates[size_t(ri.convIdx)].user.value);
+            if (infoIt != _userInfos.constEnd() && !infoIt->avatarUrl.isEmpty())
+                _imgCache->get(infoIt->avatarUrl);
+            continue;
+        }
         if (ri.kind != RowKind::Conv)
             continue;
         const auto &conv = _convs[ri.convIdx];
@@ -1242,6 +1394,8 @@ void ConvListWidget::drawUserAvatar(
             : UserAvatar::State{};
     if (_selfPhantomAway && !_meUserId.value.isEmpty() && userId == _meUserId.value)
         state.phantomAway = true;
+    if (infoIt != _userInfos.constEnd() && infoIt->unavailable)
+        state.phantomAway = true; // same yellow: there, but not reachable from here
     // Apps/bots (incl. Slackbot/system accounts) can't go offline — no presence dot.
     if (infoIt != _userInfos.constEnd() && infoIt->isBot)
         state.showPresence = false;
@@ -1305,6 +1459,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     const bool collapsed = (sectionId == 0)   ? _channelsCollapsed
                            : (sectionId == 1) ? _dmsCollapsed
                            : (sectionId == 3) ? _starredCollapsed
+                           : (sectionId == 4) ? _teamCollapsed
                                               : _appsCollapsed;
 
     if (hovered)
@@ -1322,6 +1477,7 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
         icon = (sectionId == 0)   ? &_iconPx.hash
                : (sectionId == 1) ? &_iconPx.msg
                : (sectionId == 3) ? &_iconPx.star
+               : (sectionId == 4) ? &_iconPx.team
                                   : &_iconPx.bot;
 
     const int iconY = y + (_rowH - kIconSize) / 2;
@@ -1335,14 +1491,17 @@ void ConvListWidget::paintSectionHeader(QPainter &p, int row, int y, int section
     p.setFont(font);
     p.setPen(color);
     const QFontMetrics fm(font);
-    const QString      label = (sectionId == 0)   ? tr("Channels")
-                               : (sectionId == 1) ? tr("Direct messages")
-                               : (sectionId == 3) ? tr("Starred")
-                                                  : tr("Agents & apps");
+    const QString      label = (sectionId == 0)                     ? tr("Channels")
+                               : (sectionId == 1 && _agentSessions) ? tr("Sessions")
+                               : (sectionId == 1)                   ? tr("Direct messages")
+                               : (sectionId == 3)                   ? tr("Starred")
+                               : (sectionId == 4)                   ? tr("Team")
+                                                                    : tr("Agents & apps");
     p.drawText(x, y + (_rowH - fm.height()) / 2 + fm.ascent(), label);
 
-    // DM section header: a "+" on hover opens the browse dialog on People.
-    if (sectionId == 1 && hovered) {
+    // DM section header: a "+" on hover opens the browse dialog on People
+    // (sessions: find or create one); Team header: adds a teammate.
+    if ((sectionId == 1 || sectionId == 4) && hovered) {
         const QRect r = dmPlusRect(y);
         p.drawPixmap(r.topLeft(), _iconPx.plusDim);
     }
@@ -1435,8 +1594,10 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     p.setPen(color);
 
     const QFontMetrics fm(font);
-    const int          textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
-    p.drawText(kPadH + kGroupIndent + kIconSize + 6, textY, tr("Add channels"));
+    const int          textY   = y + (_rowH - fm.height()) / 2 + fm.ascent();
+    const int          section = _rows[size_t(row)].sectionId;
+    const QString      label   = section == 1 ? tr("Add sessions") : tr("Add channels");
+    p.drawText(kPadH + kGroupIndent + kIconSize + 6, textY, label);
 }
 
 void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) const {
@@ -1458,6 +1619,62 @@ void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) co
     const QString label =
         tr("%1 more %2").arg(count).arg(count == 1 ? tr("channel") : tr("channels"));
     p.drawText(leftX, textY, label);
+}
+
+void ConvListWidget::paintTeammateRow(QPainter &p, int row, int y) const {
+    const AgentRole &mate       = _teammates[size_t(_rows[size_t(row)].convIdx)];
+    const bool       isSelected = (row == _selected);
+    const bool       hovered    = (row == _hovered);
+    const QRect      rowRect(0, y, viewport()->width(), _rowH);
+
+    // Same pill (and selection slide) as a conversation row.
+    QColor rowBg = Th::c().nav.primary;
+    if (isSelected) {
+        const QColor base = hovered ? Th::c().nav.itemHover : Th::c().nav.primary;
+        const QColor sel  = Th::c().nav.itemSelected;
+        auto lerp = [](int a, int b, double t) { return static_cast<int>(a + (b - a) * t); };
+        rowBg     = QColor(
+            lerp(base.red(), sel.red(), _selT),
+            lerp(base.green(), sel.green(), _selT),
+            lerp(base.blue(), sel.blue(), _selT)
+        );
+    } else if (hovered) {
+        rowBg = Th::c().nav.itemHover;
+    }
+    if (isSelected || hovered) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(rowBg);
+        p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
+    }
+
+    // Bright while any of its sessions has something unread: the sessions carry
+    // the badges, the teammate only says where to look.
+    const bool unread = std::any_of(_convs.begin(), _convs.end(), [&](const Conversation &c) {
+        return c.agentRole == mate.id && paintsUnread(c);
+    });
+    const int  leftX  = kPadH + kGroupIndent;
+    drawUserAvatar(
+        p,
+        QRect(leftX, y + (_rowH - kAvatarSize) / 2, kAvatarSize, kAvatarSize),
+        mate.user.value,
+        rowBg,
+        isSelected
+    );
+    QFont font = QApplication::font();
+    font.setWeight(unread ? QFont::DemiBold : QFont::Normal);
+    p.setFont(font);
+    p.setPen(
+        isSelected ? Th::c().nav.itemSelectedText
+        : unread   ? Th::c().nav.itemText
+                   : Th::c().nav.itemTextDim
+    );
+    const QFontMetrics fm(font);
+    const int          nameX = leftX + kAvatarSize + kAvatarGap;
+    p.drawText(
+        nameX,
+        y + (_rowH - fm.height()) / 2 + fm.ascent(),
+        fm.elidedText(mate.name, Qt::ElideRight, viewport()->width() - nameX - 14)
+    );
 }
 
 const ConvListWidget::NameCache &ConvListWidget::cachedName(
@@ -1499,6 +1716,10 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     }
     if (ri.kind == RowKind::ShowMore) {
         paintShowMoreRow(p, row, y, ri.count);
+        return;
+    }
+    if (ri.kind == RowKind::Teammate) {
+        paintTeammateRow(p, row, y);
         return;
     }
 
@@ -1549,7 +1770,9 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     // Red badge = @mentions / DM unreads (only when not muted). Its number is the
     // count of things you were actually notified about: DM unreads, or channel
     // @mentions.
-    const int  redCount = isDm ? conv.unread : conv.mentionCount;
+    // An agent session's DM counts only what needs you — an answer, a "waiting
+    // for you" — not its progress updates (Session counts those as mentions).
+    const int  redCount = isDm && !_agentSessions ? conv.unread : conv.mentionCount;
     // Nothing here is newer than the notification window, so it counts as
     // history rather than activity: no badge, red or blue (see
     // kMaxNotifyAgeDays). Like a local mute, it leaves the bold row emphasis

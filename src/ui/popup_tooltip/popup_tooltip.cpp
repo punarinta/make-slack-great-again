@@ -7,7 +7,9 @@
 #include "ui/theme_manager.h"
 #include "util/emoji_pixmap.h"
 
+#include <QElapsedTimer>
 #include <QHideEvent>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QApplication>
@@ -16,7 +18,89 @@
 #include <QGuiApplication>
 #include <algorithm>
 
+// ── Press suppression ─────────────────────────────────────────────────────────
+// One app-wide filter serves every tooltip. On a press it hides all visible
+// tooltips and remembers the pressed target; show* calls for that target are
+// then ignored until the cursor moves out of it. When no tooltip was up at the
+// press (a call site that shows on a delay), the press point is remembered for a
+// short while and the first show whose target contains it becomes the
+// suppressed target.
+
+class PopupTooltipPressWatcher : public QObject {
+public:
+    static PopupTooltipPressWatcher &instance() {
+        static auto *w = [] {
+            auto *watcher = new PopupTooltipPressWatcher(qApp);
+            qApp->installEventFilter(watcher);
+            return watcher;
+        }();
+        return *w;
+    }
+
+    std::vector<PopupTooltip *> tooltips;
+    QRect                       suppressed; // pressed target; invalid = none
+    QPoint                      pressPos;   // pending press with no target known yet
+    QElapsedTimer               pressAge;
+
+    static constexpr int kPendingPressMs = 1500;
+
+    bool suppresses(const QRect &target) {
+        if (suppressed.isValid())
+            return suppressed.contains(target.center());
+        if (pressAge.isValid() && !pressAge.hasExpired(kPendingPressMs) &&
+            target.contains(pressPos)) {
+            suppressed = target;
+            pressAge.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+protected:
+    using QObject::QObject;
+
+    bool eventFilter(QObject *, QEvent *e) override {
+        if (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonDblClick) {
+            const QPoint g = static_cast<QMouseEvent *>(e)->globalPosition().toPoint();
+            // Mouse events pass here twice (window, then widget): the second pass
+            // sees nothing visible and must not drop what the first one found.
+            if (!suppressed.isValid() || !suppressed.contains(g)) {
+                suppressed = {};
+                pressPos   = g;
+                pressAge.start();
+            }
+            for (PopupTooltip *t : tooltips) {
+                if (!t->isVisible())
+                    continue;
+                if (t->_target.contains(g)) {
+                    suppressed = t->_target;
+                    pressAge.invalidate();
+                }
+                t->hide();
+            }
+        } else if (e->type() == QEvent::MouseMove && suppressed.isValid()) {
+            const QPoint g = static_cast<QMouseEvent *>(e)->globalPosition().toPoint();
+            if (!suppressed.contains(g))
+                suppressed = {};
+        }
+        return false;
+    }
+};
+
+bool PopupTooltip::suppressedFor(const QRect &targetGlobalRect) {
+    if (!PopupTooltipPressWatcher::instance().suppresses(targetGlobalRect))
+        return false;
+    hide();
+    return true;
+}
+
+PopupTooltip::~PopupTooltip() {
+    auto &list = PopupTooltipPressWatcher::instance().tooltips;
+    list.erase(std::remove(list.begin(), list.end(), this), list.end());
+}
+
 PopupTooltip::PopupTooltip(QWidget *parent) : QWidget(parent) {
+    PopupTooltipPressWatcher::instance().tooltips.push_back(this);
     // In-window child overlay (no Qt::ToolTip window flag): see placeGlobal().
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -64,6 +148,20 @@ void PopupTooltip::placeGlobal(int gx, int gy, int w, int h) {
 }
 
 void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect) {
+    if (!suppressedFor(targetGlobalRect))
+        showAboveImpl(text, targetGlobalRect);
+}
+
+void PopupTooltip::showToast(const QString &text, const QRect &targetGlobalRect) {
+    showAboveImpl(text, targetGlobalRect);
+    // The press that asked for this toast must not take it down: it is the
+    // current target now, so leaving it is what ends the suppression.
+    auto &w = PopupTooltipPressWatcher::instance();
+    w.pressAge.invalidate();
+    w.suppressed = {};
+}
+
+void PopupTooltip::showAboveImpl(const QString &text, const QRect &targetGlobalRect) {
     _text     = text;
     _rightOf  = false;
     _reaction = false;
@@ -96,10 +194,13 @@ void PopupTooltip::showAbove(const QString &text, const QRect &targetGlobalRect)
 
     _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
+    _target = targetGlobalRect;
     placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
 }
 
 void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRect) {
+    if (suppressedFor(targetGlobalRect))
+        return;
     _text     = text;
     _below    = false;
     _rightOf  = true;
@@ -129,6 +230,7 @@ void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRec
 
     _arrowY = std::clamp(arrowTipGY - wy, kShadow + kArrowW, widgetH - kShadow - kArrowW);
 
+    _target = targetGlobalRect;
     placeGlobal(wx, wy, widgetW, widgetH);
 }
 
@@ -138,6 +240,8 @@ void PopupTooltip::showReaction(
     const QStringList &names,
     const QRect       &targetGlobalRect
 ) {
+    if (suppressedFor(targetGlobalRect))
+        return;
     _reaction   = true;
     _taskList   = false;
     _rightOf    = false;
@@ -177,12 +281,15 @@ void PopupTooltip::showReaction(
 
     _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
+    _target = targetGlobalRect;
     placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
 }
 
 void PopupTooltip::showTaskList(
     const QString &header, const QStringList &tasks, const QRect &targetGlobalRect
 ) {
+    if (suppressedFor(targetGlobalRect))
+        return;
     _taskList = true;
     _reaction = false;
     _rightOf  = false;
@@ -227,6 +334,7 @@ void PopupTooltip::showTaskList(
 
     _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
 
+    _target = targetGlobalRect;
     placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
 }
 

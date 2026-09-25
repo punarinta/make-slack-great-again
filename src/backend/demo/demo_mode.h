@@ -5,9 +5,14 @@
 // a live account. Debug builds only (MSGA_DEMO); see demo/README.md.
 #pragma once
 
+#include "backend/domain.h"
+
 #include <QString>
 
 namespace demo {
+
+// This backend's service. The token is stored in workspace handles — never change it.
+inline const Service kService{QStringLiteral("demo")};
 
 // The directory (or .json file) given to --demo / --demo=…; empty when absent.
 QString fixtureDirFromArgs(int argc, char **argv);

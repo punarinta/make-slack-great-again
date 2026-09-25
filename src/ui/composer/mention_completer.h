@@ -48,7 +48,7 @@ public:
         QString source;        // bold subtitle prefix, e.g. "Slack" or "Giphy"
         bool    isApp = false; // prefixes the source with "App · "
         QString desc;          // dim subtitle text after the source
-        QString iconUrl;       // app icon URL; empty → built-in Slack mark
+        QString iconUrl;       // app/service icon URL; empty → built-in Slack mark
     };
     void show(const QPoint &globalPos, const QList<Item> &items, Callback cb);
     void dismiss();

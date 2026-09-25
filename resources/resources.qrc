@@ -5,6 +5,13 @@
         <file alias="linux/msga.desktop">../gfx/msga.desktop</file>
         <file alias="icon.svg">../gfx/icon.svg</file>
         <file alias="icon_tray.svg">../gfx/icon_tray.svg</file>
+        <!-- Claude Code backend: the avatar every session's assistant user shows -->
+        <file alias="claude_code_avatar.png">../gfx/claude_code_avatar.png</file>
+        <!-- Claude Code team roles (cc_roles; glyphs from Lucide — https://lucide.dev/): the generalist uses the avatar above -->
+        <file alias="roles/engineer.svg">../gfx/roles/engineer.svg</file>
+        <file alias="roles/designer.svg">../gfx/roles/designer.svg</file>
+        <file alias="roles/marketer.svg">../gfx/roles/marketer.svg</file>
+        <file alias="roles/researcher.svg">../gfx/roles/researcher.svg</file>
         <!-- Window controls (MDI — https://pictogrammers.com/library/mdi/) -->
         <file alias="ui/wc-minimize.svg">../gfx/ui/wc-minimize.svg</file>
         <file alias="ui/wc-maximize.svg">../gfx/ui/wc-maximize.svg</file>

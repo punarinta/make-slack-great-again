@@ -66,65 +66,26 @@ inline qint64 decimalTsToMicros(const QString &ts) {
 
 // --- Services / workspace handle ---
 
-// The messaging services this app can host. Only Slack today; Telegram/Teams/…
-// are added here as backends land. Keep minimal.
-enum class Service {
-    Slack,
-    Teams,
-    Imap /*, Telegram, … */
-#if defined(MSGA_DEMO)
-    ,
-    Demo // fixture-driven fake workspace (`--demo`), Debug builds only — see demo/README.md.
-         // Every reference to it MUST sit under #if defined(MSGA_DEMO).
-#endif
+// A messaging service, identified by its stable token ("slack", "imap", …). The
+// token IS what workspace handles store ("imap:alice@example.com"), so it never
+// changes once shipped. This header deliberately knows no concrete service: each
+// backend module defines its own constant (slack::kService, imap::kService, …)
+// and registers itself in backend_registry.h, which is where a service's display
+// name and factories live.
+struct Service {
+    QString token;
+    bool    operator==(const Service &) const = default;
 };
 
-// Stable serialization token for a Service. NEVER serialize the enum's integer
-// — reordering the enum later must not corrupt stored workspace handles.
-inline QString serviceToken(Service s) {
-    switch (s) {
-    case Service::Slack:
-        return QStringLiteral("slack");
-    case Service::Teams:
-        return QStringLiteral("teams");
-    case Service::Imap:
-        return QStringLiteral("imap");
-#if defined(MSGA_DEMO)
-    case Service::Demo:
-        return QStringLiteral("demo");
-#endif
-    }
-    return QStringLiteral("slack");
-}
-inline std::optional<Service> serviceFromToken(const QString &t) {
-    if (t == QStringLiteral("slack"))
-        return Service::Slack;
-    if (t == QStringLiteral("teams"))
-        return Service::Teams;
-    if (t == QStringLiteral("imap"))
-        return Service::Imap;
-#if defined(MSGA_DEMO)
-    if (t == QStringLiteral("demo"))
-        return Service::Demo;
-#endif
-    return std::nullopt;
-}
-
-// Human-facing service name — shown in the add-workspace service picker.
-inline QString serviceDisplayName(Service s) {
-    switch (s) {
-    case Service::Slack:
-        return QStringLiteral("Slack");
-    case Service::Teams:
-        return QStringLiteral("Microsoft Teams");
-    case Service::Imap:
-        return QStringLiteral("Email (IMAP)");
-#if defined(MSGA_DEMO)
-    case Service::Demo:
-        return QStringLiteral("Demo");
-#endif
-    }
-    return QStringLiteral("Slack");
+// A service token is lowercase ASCII letters, digits, '-' and '_' — never ':',
+// which separates it from the id in a workspace handle.
+inline bool isValidServiceToken(const QString &t) {
+    if (t.isEmpty())
+        return false;
+    for (const QChar c : t)
+        if (!((c >= u'a' && c <= u'z') || (c >= u'0' && c <= u'9') || c == u'-' || c == u'_'))
+            return false;
+    return true;
 }
 
 // App-wide workspace handle. Service ids are unique only *within* a service, so
@@ -132,22 +93,26 @@ inline QString serviceDisplayName(Service s) {
 // active marker) is keyed by (service, id) — not a bare id. Kept as explicit
 // fields; only encoded to/from a string at the QSettings / cache-path boundary.
 struct WorkspaceKey {
-    Service service = Service::Slack;
+    Service service;
     QString id; // service-local id, e.g. Slack team "T0123ABCD"
     bool    operator==(const WorkspaceKey &) const = default;
 
     // Canonical form "slack:T0123ABCD" (service token + ':' + id). ':' is a safe
-    // delimiter: no service id format uses it (Slack ids are [A-Z0-9]).
-    QString toString() const { return serviceToken(service) + QLatin1Char(':') + id; }
+    // delimiter: service tokens never contain it (isValidServiceToken).
+    QString toString() const { return service.token + QLatin1Char(':') + id; }
 
     static std::optional<WorkspaceKey> fromString(const QString &s) {
         const int i = s.indexOf(QLatin1Char(':'));
         if (i <= 0 || i + 1 >= s.size())
             return std::nullopt;
-        const auto svc = serviceFromToken(s.left(i));
-        if (!svc)
+        // Any well-formed token parses, including one whose backend isn't in this
+        // build: such a workspace must be kept in storage, not lost (the token
+        // store filters it out of the visible list instead — see
+        // TokenStore::setServiceFilter).
+        const QString token = s.left(i);
+        if (!isValidServiceToken(token))
             return std::nullopt;
-        return WorkspaceKey{*svc, s.mid(i + 1)};
+        return WorkspaceKey{Service{token}, s.mid(i + 1)};
     }
 };
 
@@ -163,15 +128,32 @@ enum class NotificationLevel { Default, All, Mentions, Mute };
 // the canvas tab and huddle call sites) so a future Telegram/Teams backend that
 // lacks them shows a clean surface with no dead controls.
 struct Capabilities {
-    bool typing        = false; // live "user is typing" events (internal path only)
-    bool presence      = false; // service has any user presence (online/away dots at all).
-                                // IMAP/email has no presence concept → false → no dot drawn.
-    bool livePresence  = false; // realtime presence_change (vs. polled presence)
-    bool huddles       = false; // live huddle indicator + join links
-    bool canvases      = false; // channel canvas tab + editing
-    bool slashCommands = false; // listCommands()/runCommand()
-    bool reactions     = false; // add/remove emoji reactions
-    bool editMessage   = false; // edit own messages (email cannot — see deleteMessage)
+    bool typing              = false; // live "user is typing" events (Slack: internal path only;
+                                      // Claude Code: a session working on a turn)
+    bool presence            = false; // service has any user presence (online/away dots at all).
+                                      // IMAP/email has no presence concept → false → no dot drawn.
+    bool livePresence        = false; // realtime presence_change (vs. polled presence)
+    // Your own presence means something to the service (the footer's away
+    // toggle and your avatar's dot). Off where only the peers have one: Claude
+    // Code sessions show working/idle, but there's no "away" towards them.
+    bool selfPresence        = true;
+    // Offers Zen mode (Backend::setZenMode): easier reading with the details
+    // hidden — for Claude Code, the tool-call cards. Off unless the user turns it on.
+    bool zenMode             = false;
+    // The profile dialog's email and phone fields, and "Manage status" in the
+    // footer's avatar menu. Off where your profile is only a name and a picture
+    // msga keeps locally (Claude Code).
+    bool profileContact      = true;
+    bool selfStatus          = true;
+    bool huddles             = false; // live huddle indicator + join links
+    bool canvases            = false; // channel canvas tab + editing
+    bool slashCommands       = false; // listCommands()/runCommand()
+    // A slash command is a message to the agent (Claude Code runs "/compact"
+    // itself): the composer sends it like any text, and the command list is
+    // only there for completion (conversationCommands()).
+    bool commandsAreMessages = false;
+    bool reactions           = false; // add/remove emoji reactions
+    bool editMessage         = false; // edit own messages (email cannot — see deleteMessage)
     bool deleteMessage = false; // delete own messages (split from editMessage: email can delete a
                                 // sent message but never edit it)
     bool deleteAnyMessage = false; // delete *any* message, not just your own (email: it's your own
@@ -179,6 +161,11 @@ struct Capabilities {
                                    // Requires deleteMessage. Slack/Teams leave this false
                                    // (own-only, plus the separate admin path).
     bool threads          = false; // threaded replies
+    bool newThreads       = false; // any message can start a thread ("Reply in thread").
+                                   // Off: only threads that already exist open (agent
+                                   // sessions: a subagent run, a /btw branch)
+    bool pins             = false; // pin a message to its conversation
+    bool deleteFiles      = false; // delete a message's file on its own (Slack: files.delete)
     bool replyBroadcast   = false; // thread reply can also appear in its channel
     bool memberList       = false; // loadMembers(): who is in a channel or group DM (Slack:
                                    // conversations.members) — the header's member list
@@ -227,6 +214,9 @@ struct Capabilities {
                                 // avatars reach a long-running session (Slack: users.list). Off
                                 // for a backend whose loadUsers re-downloads per-member data
                                 // (Teams fetches every photo) or is purely local (IMAP).
+    bool agentSessions = false; // conversations are AI agent sessions (Claude Code): the DM "+"
+                                // starts a new one in a chosen folder (startAgentSession) instead
+                                // of browsing people, and threads (subagent runs) are read-only.
     bool removePreview = false; // deleteAttachment(): strip a link preview from an OWN message
                                 // server-side, for everyone — the official client's "Remove
                                 // preview" (Slack: the internal chat.deleteAttachment, served to
@@ -264,11 +254,14 @@ struct User {
     bool    isAdmin       = false; // is_admin || is_owner from users.list
     bool    isOwner       = false; // is_owner / is_primary_owner (profile card role label)
     bool    dndEnabled    = false; // do-not-disturb; updated via dnd_updated_user event
-    QString statusEmoji;           // Slack emoji name without colons, e.g. "palm_tree"
-    QString statusText;            // user status text, e.g. "On vacation"
-    QString title;                 // job title from profile.title
-    QString email;                 // address for contact-centric services (always set for email
-                                   // backends, where it doubles as the UserId; Slack fills it only
+    // There, but you can't write to them from here: drawn as the yellow dot when
+    // not active. Claude Code: a session open in a terminal and idle there.
+    bool    unavailable   = false;
+    QString statusEmoji; // Slack emoji name without colons, e.g. "palm_tree"
+    QString statusText;  // user status text, e.g. "On vacation"
+    QString title;       // job title from profile.title
+    QString email;       // address for contact-centric services (always set for email
+                         // backends, where it doubles as the UserId; Slack fills it only
     // when the token has users:read.email). Shown on the profile card.
     bool    hasTz                          = false; // true when tzOffset is known
     int     tzOffset                       = 0;     // seconds east of UTC (Slack tz_offset)
@@ -401,7 +394,14 @@ struct Conversation {
     // socket, or a dead DM). Lets Session tell a definitive "gone" from a
     // transient failure and stop re-fetching it, without confusing it for a real
     // conversation. Only ever true on that sentinel result; a real conv is false.
-    bool                notFound                               = false;
+    bool                notFound = false;
+    // Non-empty: nobody can post here from msga right now, and this says why (the
+    // composer is disabled and shows it). Claude Code: a session that a terminal
+    // or another program is driving. Transient — always re-derived by the backend.
+    QString             readOnlyReason;
+    // Agent workspace: the teammate (AgentRole::id) this session was started
+    // with; "" for every other kind of conversation.
+    QString             agentRole;
     bool                operator==(const Conversation &) const = default;
 };
 
@@ -1058,6 +1058,14 @@ inline void presentHuddleThread(Message &m) {
     m.text = {m.botName};
 }
 
+// A status update from an agent in the middle of a task (Claude Code's tool
+// calls and interim remarks): drawn as an ordinary message, but it never raises
+// a notification — only the answer that ends the task does.
+inline constexpr char kProgressSubtype[] = "progress";
+inline bool           isProgressMessage(const Message &m) {
+    return m.subtype && *m.subtype == QLatin1String(kProgressSubtype);
+}
+
 // True for messages the official client draws as ordinary rows (avatar, name,
 // timestamp) but greys the body of and refuses to thread — e.g. reminder_add,
 // the user-authored "/remind" notice. Distinct from isSystemEvent, which is a
@@ -1247,6 +1255,10 @@ struct EvDndChanged {
     UserId user;
     bool   dndEnabled;
 };
+// A conversation appeared or changed (Slack channel_created; IMAP's new
+// thread; Claude Code's new, renamed or started/stopped session). Session
+// upserts it — keeping local state such as mute and notification level — when
+// it is one we are in, or one already listed.
 struct EvChannelCreated {
     Conversation conv;
 };
@@ -1273,6 +1285,11 @@ struct EvUsersChanged {
 // renamed, membership edited, self added/removed). Carries nothing: the
 // Session re-fetches the list, which is small and one request.
 struct EvUsergroupsChanged {};
+// A conversation stopped existing for this workspace (Claude Code: the session
+// was removed from Claude Code). Session drops it from the list.
+struct EvConversationRemoved {
+    ConversationId conv;
+};
 // A sendMessage definitively failed (Slack rejected it — not a transport
 // problem, those are retried). Session removes the optimistic copy and
 // surfaces the reason to the user.
@@ -1372,13 +1389,57 @@ struct SearchResult {
 // A slash command available in the workspace ("/remind", an app's "/github", …).
 // Built-in Slack commands have an empty appId.
 struct SlashCommand {
-    QString name;    // without the leading slash, e.g. "remind"
-    QString desc;    // human-readable description
-    QString usage;   // argument hint, e.g. "[@someone or #channel] [what] [when]"
-    QString appId;   // owning app ID for app commands; empty for core commands
-    QString appName; // owning app display name ("Giphy"); empty for core commands
-    QString iconUrl; // owning app icon URL; empty → fall back to the generic mark
+    QString name;          // without the leading slash, e.g. "remind"
+    QString desc;          // human-readable description
+    QString usage;         // argument hint, e.g. "[@someone or #channel] [what] [when]"
+    QString appId;         // owning app ID for app commands; empty for core commands
+    QString appName;       // owning app display name ("Giphy"); empty for core commands
+    QString iconUrl;       // owning app icon URL; empty → fall back to the generic mark
+    QString source;        // label for a core command's source; empty → "Slack"
+    bool    local = false; // run by the app itself (Backend::runLocalCommand) even where
+                           // commands are messages (Capabilities::commandsAreMessages)
     bool    operator==(const SlashCommand &) const = default;
+};
+
+// What a local command did (Backend::runLocalCommand); all empty = nothing.
+struct LocalCommandResult {
+    std::vector<std::pair<QString, QString>> status; // label/value rows for a dialog
+    ConversationId                           open;   // a conversation to switch to
+    QString                                  error;
+};
+
+// An agent session that exists, listed or not ("Find a session",
+// Backend::findAgentSessions).
+// A teammate in an agent workspace (Backend::agentRoles): a role sessions are
+// started with — a generalist, an engineer, a designer… Its sessions carry its
+// id (Conversation::agentRole), its avatar and, as the author of what the
+// agent says, its user.
+struct AgentRole {
+    QString id;
+    QString name;        // "Engineer"
+    QString description; // one line
+    QString avatarUrl;
+    UserId  user; // listed with the users; isActive while any of its sessions works
+    // Editable (Backend::saveAgentRole): what it adds to the agent's own
+    // instructions, and its picture — a glyph (AvatarGlyphs) on a colour.
+    QString prompt;
+    QString glyph;
+    QString color;           // "#rrggbb"
+    bool    builtIn = false; // comes with the app: can be restored, not removed
+    bool    edited  = false; // a built-in changed from how it comes
+    bool    operator==(const AgentRole &) const = default;
+};
+
+struct FoundSession {
+    QString        id;     // for Backend::addFoundSession
+    QString        title;  // "" = untitled: show the prompts
+    QString        folder; // where it ran
+    QString        avatarUrl;
+    QString        firstPrompt;
+    QString        lastPrompt;
+    qint64         lastActiveMs = 0;
+    ConversationId listed;    // already in the list as this conversation; empty = not
+    QString        agentRole; // AgentRole::id it was started with
 };
 
 using Event = std::variant<
@@ -1394,6 +1455,7 @@ using Event = std::variant<
     EvPresenceChanged,
     EvDndChanged,
     EvChannelCreated,
+    EvConversationRemoved,
     EvMemberJoined,
     EvUserChanged,
     EvUsersChanged,

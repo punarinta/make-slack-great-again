@@ -34,4 +34,15 @@ QString getOpenFileName(QWidget *parent, const QString &title, const QString &fi
     return dlg.selectedFiles().front();
 }
 
+QString getExistingDirectory(QWidget *parent, const QString &title, const QString &startDir) {
+    QFileDialog dlg(parent, title, startDir);
+    dlg.setAcceptMode(QFileDialog::AcceptOpen);
+    dlg.setFileMode(QFileDialog::Directory);
+    dlg.setOption(QFileDialog::ShowDirsOnly, true);
+    applyFileDialogTheme(&dlg);
+    if (dlg.exec() != QDialog::Accepted || dlg.selectedFiles().isEmpty())
+        return {};
+    return dlg.selectedFiles().front();
+}
+
 } // namespace Ui

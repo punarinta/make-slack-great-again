@@ -50,7 +50,7 @@ public:
         setCursor(Qt::PointingHandCursor);
         setMouseTracking(true);
 
-        if (_cache && _item.isApp && !_item.iconUrl.isEmpty()) {
+        if (_cache && !_item.iconUrl.isEmpty()) {
             _cache->get(_item.iconUrl); // kick off the download
             connect(_cache, &ImageCache::loaded, this, [this](const QString &url) {
                 if (url == _item.iconUrl)
@@ -201,7 +201,7 @@ private:
 
     void paintAvatar(QPainter &p, const QRect &iconR, qreal dpr) {
         // Built-in Slack commands: the multicolor brand mark, drawn as-is.
-        if (!_item.isApp) {
+        if (!_item.isApp && _item.iconUrl.isEmpty()) {
             QSvgRenderer r(QStringLiteral(":/ui/slack-mark.svg"));
             if (r.isValid()) {
                 const QRect inset = iconR.adjusted(1, 1, -1, -1);
@@ -210,7 +210,8 @@ private:
             return;
         }
 
-        // App commands: rounded-square icon, falling back to an initial chip.
+        // App commands (and a service's own commands that bring an icon):
+        // rounded-square icon, falling back to an initial chip.
         const QPixmap px =
             (_cache && !_item.iconUrl.isEmpty()) ? _cache->get(_item.iconUrl) : QPixmap();
         QPainterPath clip;

@@ -19,7 +19,7 @@ TableViewerOverlay::TableViewerOverlay(QWidget *windowParent) : QWidget(windowPa
     _doc.setDocumentMargin(0);
 
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
-        // The table HTML bakes theme colors (grid lines, shading) — re-render.
+        // The table HTML bakes theme colors (shading) — re-render.
         if (!_block.tableRows.empty())
             rebuildDoc();
         update();
@@ -86,6 +86,7 @@ void TableViewerOverlay::paintEvent(QPaintEvent *) {
     QAbstractTextDocumentLayout::PaintContext pCtx;
     pCtx.palette.setColor(QPalette::Text, Th::c().text.primary);
     pCtx.clip = QRectF(0, _scroll, _doc.textWidth(), card.height() - 2 * kCardPad);
+    MsgRender::paintDataTableChrome(p, &_doc);
     _doc.documentLayout()->draw(&p, pCtx);
     p.restore();
 }

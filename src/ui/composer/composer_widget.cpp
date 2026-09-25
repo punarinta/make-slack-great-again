@@ -1369,8 +1369,9 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                     if (cmdTrigger) {
                         if (!_session)
                             return;
+                        const auto                        commands = _session->currentCommands();
                         std::vector<const SlashCommand *> matches;
-                        for (const auto &c : _session->currentCommands()) {
+                        for (const auto &c : commands) {
                             if (c.name.startsWith(query, Qt::CaseInsensitive))
                                 matches.push_back(&c);
                         }
@@ -1391,7 +1392,9 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                             it.isApp   = !c->appId.isEmpty();
                             // App name labels the source (CommandRow renders it
                             // as "App · <name>"); core commands belong to Slack.
-                            it.source  = it.isApp ? c->appName : QStringLiteral("Slack");
+                            it.source  = it.isApp              ? c->appName
+                                         : c->source.isEmpty() ? QStringLiteral("Slack")
+                                                               : c->source;
                             it.iconUrl = c->iconUrl;
                             items.append(it);
                             // The palette shows 5 rows and scrolls the rest;
@@ -1596,10 +1599,13 @@ void ComposerWidget::trySend() {
     // "/command [args]" runs a slash command instead of posting text — only
     // when the command is known, so a plain message that merely starts with
     // "/" still sends as text.
+    // Where commands are messages to an agent, they simply send — except those
+    // the app runs itself (a status dialog, a fresh session).
     if (_editingTs.isEmpty() && files.isEmpty() && text.startsWith('/') && _session) {
         const int     sp   = text.indexOf(' ');
         const QString name = sp < 0 ? text.mid(1) : text.mid(1, sp - 1);
-        if (!name.isEmpty() && _session->findCommand(name)) {
+        const auto    cmd  = name.isEmpty() ? std::nullopt : _session->findCommand(name);
+        if (cmd && (!_session->commandsAreMessages() || cmd->local)) {
             _edit->clear();
             updateSendState();
             _typingTimer.stop();
@@ -1821,7 +1827,10 @@ void ComposerWidget::offerUndoSend(std::function<void()> undo) {
 void ComposerWidget::offerUndoSend(
     const ConversationId &conv, const Ts &ghostTs, std::function<void()> restore
 ) {
-    if (!_session || ghostTs.isEmpty() || !_session->capabilities().deleteMessage)
+    // An agent reads a prompt the moment it's sent: taking it back later
+    // wouldn't unsay it.
+    if (!_session || ghostTs.isEmpty() || !_session->capabilities().deleteMessage ||
+        _session->capabilities().agentSessions)
         return;
     // Plain pointer on purpose: Session is not a QObject, and every path that
     // retires a session (logout, workspace switch) goes through takeDraft() or

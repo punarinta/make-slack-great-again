@@ -20,5 +20,6 @@ void applyFileDialogTheme(QFileDialog *dlg);
 // `pathWithName` is the preselected target (directory + default file name).
 QString getSaveFileName(QWidget *parent, const QString &title, const QString &pathWithName);
 QString getOpenFileName(QWidget *parent, const QString &title, const QString &filter);
+QString getExistingDirectory(QWidget *parent, const QString &title, const QString &startDir);
 
 } // namespace Ui

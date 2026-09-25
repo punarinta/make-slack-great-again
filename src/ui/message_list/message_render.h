@@ -188,6 +188,13 @@ Block csvToTableBlock(const QByteArray &bytes);
 // (code blocks / blockquotes / button rows never set it). Drives the hover
 // "Open full table" affordance.
 QVector<QRectF> dataTableRects(const QTextDocument *doc);
+// Parallel to dataTableRects: true where the laid-out table squeezes its content
+// — a cell's text wrapped, or the table overflows the document width. (Rows cut
+// by kMaxInlineTableRows are not visible here; compare against the Block.)
+QVector<bool>   dataTablesSqueezed(const QTextDocument *doc);
+// Rounded frame, header-row tint and row rules behind every data table — the
+// table HTML draws no lines of its own. Call wherever paintCodeBlockChrome is.
+void            paintDataTableChrome(QPainter &p, const QTextDocument *doc);
 // collapseQuotedReplies (email only — Capabilities::collapseQuotedReplies): strip
 // the trailing quoted history + signature so a reply shows only what the sender
 // added. Chat services pass false and keep their intentional quotes.

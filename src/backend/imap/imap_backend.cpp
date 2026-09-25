@@ -559,6 +559,7 @@ rpl::producer<AuthState> Backend::authState() const {
 Capabilities Backend::capabilities() const {
     Capabilities c;
     c.threads          = true;
+    c.newThreads       = true; // a reply to any mail
     c.fileUpload       = true; // Phase 4 (attachments via MIME)
     c.deleteMessage    = true; // Phase 4 (move to Trash / \Deleted)
     c.deleteAnyMessage = true; // it's your own mailbox — any message is deletable, not just yours

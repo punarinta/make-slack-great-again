@@ -53,6 +53,8 @@ Capabilities DemoBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.newThreads       = true;
+    c.pins             = true;
     c.memberList       = true;
     c.gifAttachments   = true;
     c.fileUpload       = true;

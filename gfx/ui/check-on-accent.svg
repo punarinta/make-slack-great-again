@@ -1,5 +1,3 @@
-<!-- Lucide "check", pre-tinted white (accent.text) — for QSS ::indicator image
-     rules, which cannot tint at runtime like svgIcon() does. -->
 <svg
   xmlns="http://www.w3.org/2000/svg"
   width="24"

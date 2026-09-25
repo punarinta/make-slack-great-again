@@ -313,7 +313,7 @@ void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
         // Persist atomically. Decode the existing record's Slack auth blob,
         // update only the rotated token fields, re-encode — displayName/iconUrl
         // are preserved.
-        const WorkspaceKey key{Service::Slack, _teamId};
+        const WorkspaceKey key{kService, _teamId};
         Credentials        saved = fromRecord(
             TokenStore::loadWorkspace(key).value_or(TokenStore::WorkspaceRecord{key, {}, {}, {}})
         );
@@ -374,6 +374,9 @@ Capabilities PublicBackend::capabilities() const {
     c.editMessage      = true;
     c.deleteMessage    = true;
     c.threads          = true;
+    c.newThreads       = true;
+    c.pins             = true;
+    c.deleteFiles      = true;
     c.replyBroadcast   = true;
     c.memberList       = true; // conversations.members
     c.gifAttachments   = true;

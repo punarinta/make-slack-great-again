@@ -9,6 +9,9 @@
 
 namespace slack {
 
+// This backend's service. The token is stored in workspace handles — never change it.
+inline const Service kService{QStringLiteral("slack")};
+
 // Per-workspace Slack credentials — the token-shaped struct, demoted out of the
 // neutral TokenStore into the Slack adapter. The token fields are serialized
 // into the opaque TokenStore::WorkspaceRecord::auth blob; teamName/iconUrl map

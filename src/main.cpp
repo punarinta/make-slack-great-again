@@ -2,9 +2,13 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "ui/main_window.h"
 
+#include "auth/token_store.h"
+#include "backend/backend_registry.h"
+#if defined(MSGA_BACKEND_IMAP)
 #include "backend/imap/imap_auth.h"          // dev IMAP env-seed (Phase 1)
 #include "backend/imap/imap_auth_strategy.h" // IMAP add-account prompt hook
 #include "ui/imap_add_account/imap_add_account_dialog.h"
+#endif
 #include "app/crash_handler.h"
 #if defined(MSGA_DEMO)
 #include "backend/demo/demo_mode.h" // `--demo <dir>`: fixture workspace, Debug builds only
@@ -287,6 +291,13 @@ int main(int argc, char *argv[]) {
     if (loaded)
         app.installTranslator(&translator);
 
+    // Every backend compiled into this build (builtin_backends.cpp). Before any
+    // workspace is read: a stored workspace of a backend this build lacks is
+    // hidden (kept, not deleted) by the token store's service filter.
+    registerBuiltinBackends();
+    TokenStore::setServiceFilter(&backends::isRegistered);
+
+#if defined(MSGA_BACKEND_IMAP)
     // IMAP "Add email account" dialog: injected into the (Widgets-free) auth
     // strategy as the credential prompt (imap-backend-plan §5).
     imap::AuthStrategy::setPrompt(&ImapAddAccountDialog::prompt);
@@ -294,6 +305,7 @@ int main(int argc, char *argv[]) {
     // Dev bridge (Phase 1): also seed an IMAP workspace from IMAP_* env vars when
     // set, so email can be exercised without the dialog. No-op when unset.
     imap::seedDevWorkspaceFromEnv();
+#endif
 #if defined(MSGA_DEMO)
     if (!demoDir.isEmpty()) {
         QString err;

@@ -23,7 +23,9 @@
 #include "util/process_stats.h"
 #include "util/sound_player.h"
 #include "backend/slack/slack_auth.h"
+#if defined(MSGA_BACKEND_TEAMS)
 #include "backend/teams/teams_auth.h"
+#endif
 #include "ui/session_import_dialog/session_import_dialog.h"
 #include "ui/tray_icon_dialog/tray_icon_dialog.h"
 #include "util/custom_tray_icon.h"
@@ -1102,7 +1104,7 @@ void SettingsDialog::buildPanel() {
     // conversion of them to session auth (reuses the one session cookie).
     int oauthSlackCount = 0;
     for (const auto &key : TokenStore::workspaceKeys()) {
-        if (key.service != Service::Slack)
+        if (key.service != slack::kService)
             continue;
         const auto rec = TokenStore::loadWorkspace(key);
         if (rec && slack::fromRecord(*rec).cookie.isEmpty())
@@ -1224,6 +1226,7 @@ void SettingsDialog::buildPanel() {
     });
     loadAppCredentials();
 
+#if defined(MSGA_BACKEND_TEAMS) // compiled out with the Teams backend
     // ── Microsoft Teams section ───────────────────────────────────────
     // Teams signs in through the user's own Entra app registration (public
     // client + PKCE, no secret). A build can bake the client ID in
@@ -1297,6 +1300,7 @@ void SettingsDialog::buildPanel() {
     teamsFields->addLayout(teamsSaveRow);
 
     sylay->addLayout(teamsFields);
+#endif
 
     // ── GIF picker section ────────────────────────────────────────────
     // The composer's GIF button talks to GIPHY, which needs a key. A build can

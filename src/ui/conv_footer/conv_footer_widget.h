@@ -42,12 +42,19 @@ public:
     // When false (e.g. IMAP/email), the visible/hidden presence toggle is dropped
     // entirely — there's nothing to toggle and the avatar shows no presence dot.
     void setPresenceSupported(bool supported);
+    // Zen mode (Capabilities::zenMode) takes the toggle's place on a backend
+    // without self presence: eye = everything shown, leaf = details hidden.
+    void setZenMode(bool supported, bool on);
+    // Capabilities::selfStatus: offer "Manage status" in the avatar menu.
+    void setStatusSupported(bool supported) { _statusSupported = supported; }
     // Clear on logout / workspace teardown.
     void clear();
 
 signals:
     // Requested new presence: away=true → hidden, away=false → visible.
     void presenceToggleRequested(bool away);
+    // The Zen mode toggle was clicked; `on` is the new state (already shown).
+    void zenModeToggled(bool on);
     // Picked from the avatar's context menu — open the "Manage profile" dialog.
     void manageProfileRequested();
     // Picked from the avatar's context menu — open the "Set a status" dialog.
@@ -75,6 +82,7 @@ private:
     void    showAvatarMenu();
     void    loadAvatar();
     QString presenceTooltip() const;
+    QString zenTooltip() const;
     QString tasksTooltip() const;
     // Shows the task-list popup above the spinner: count header + descriptions.
     void    showTasksTooltip();
@@ -99,6 +107,9 @@ private:
     SelfPresence            _sp;
     PresenceLinkState       _link              = PresenceLinkState::Off;
     bool                    _presenceSupported = true; // backend has a presence concept
+    bool                    _zenSupported      = false;
+    bool                    _statusSupported   = true;
+    bool                    _zenOn             = false;
     Hot                     _hot               = Hot::None;
     Hot                     _pressed           = Hot::None;
 

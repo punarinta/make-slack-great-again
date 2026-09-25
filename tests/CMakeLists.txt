@@ -314,6 +314,12 @@ add_msga_qt_test(test_secret_store
 add_msga_qt_test(test_backend_factory
     test_backend_factory.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/backend_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/backend_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_module.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_module.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/auth_strategy.h # header-only QObject base — moc it
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/oauth_flow.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/teams/oauth_flow.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${SLACK_BACKEND_SRCS}
     ${TEAMS_BACKEND_SRCS}
@@ -331,16 +337,36 @@ add_msga_qt_test(test_auth_strategy
     test_auth_strategy.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/auth_strategy.h # header-only QObject base — moc it
     ${CMAKE_SOURCE_DIR}/src/auth/auth_strategy_factory.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/backend_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/oauth_flow.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/teams/oauth_flow.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/teams/teams_auth.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_auth_strategy.cpp
-    ${CMAKE_SOURCE_DIR}/src/backend/imap/imap_auth.cpp
 )
 target_link_libraries(test_auth_strategy PRIVATE Qt6::Gui Qt6::Network)
 set_target_properties(test_auth_strategy PROPERTIES AUTOMOC ON)
+
+# Claude Code backend: transcript + roster parsing, and the backend end to end
+# against a fake ~/.claude (CLAUDE_CONFIG_DIR).
+add_msga_qt_test(test_claude_code
+    test_claude_code.cpp
+    ${CMAKE_SOURCE_DIR}/src/auth/auth_strategy.h # header-only QObject base — moc it
+    ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/claude_code_backend.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/claude_code_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_roster.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_transcript.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_catalog.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_roles.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/avatar_glyphs.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_launcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/markdown_compose.cpp
+    ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/time_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
+    ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
+)
+target_link_libraries(test_claude_code PRIVATE Qt6::Test Qt6::Gui Qt6::Concurrent)
+set_target_properties(test_claude_code PROPERTIES AUTOMOC ON)
 
 add_msga_qt_test(test_time_format
     test_time_format.cpp
@@ -587,6 +613,18 @@ add_msga_widget_test(test_context_menu
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 target_link_libraries(test_context_menu PRIVATE Qt6::Test)
+
+add_msga_widget_test(test_popup_tooltip
+    test_popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_pixmap.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/emoji_data.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
+    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+)
+target_link_libraries(test_popup_tooltip PRIVATE Qt6::Test)
 
 add_msga_widget_test(test_app_dialog
     test_app_dialog.cpp

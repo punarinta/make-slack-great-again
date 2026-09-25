@@ -548,6 +548,29 @@ TEST_CASE("dataTableRects finds data tables but not code/quote/button tables", "
     CHECK(MsgRender::codeBlockRects(&doc).size() == 1);
 }
 
+TEST_CASE("dataTablesSqueezed flags only tables that wrap or overflow", "[render][table]") {
+    Block wide = makeTable(3);
+    wide.tableRows[1][1] =
+        TextWithEntities{"a long cell that has to wrap once the document is narrow", {}};
+    QTextDocument doc;
+    doc.setHtml(
+        MsgRender::tableBlockHtml(makeTable(3), nullptr, 10) +
+        MsgRender::tableBlockHtml(wide, nullptr, 10)
+    );
+
+    doc.setTextWidth(1000); // everything fits: nothing to open
+    auto squeezed = MsgRender::dataTablesSqueezed(&doc);
+    REQUIRE(squeezed.size() == 2);
+    CHECK_FALSE(squeezed[0]);
+    CHECK_FALSE(squeezed[1]);
+
+    doc.setTextWidth(150); // the long cell wraps
+    squeezed = MsgRender::dataTablesSqueezed(&doc);
+    REQUIRE(squeezed.size() == 2);
+    CHECK_FALSE(squeezed[0]);
+    CHECK(squeezed[1]);
+}
+
 TEST_CASE("toHtml renders a link nested in bold as <b><a>", "[render][nested]") {
     const auto    twe  = MrkdwnParser::parse("*<https://example.com/e|Stand-Up>*");
     const QString html = MsgRender::toHtml(twe, nullptr);

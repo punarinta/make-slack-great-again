@@ -63,7 +63,7 @@ bool seedWorkspace(const QString &fixtureDir, QString *error) {
         return false;
 
     TokenStore::WorkspaceRecord rec;
-    rec.key         = WorkspaceKey{Service::Demo, fx->workspaceId};
+    rec.key         = WorkspaceKey{kService, fx->workspaceId};
     rec.displayName = fx->workspaceName;
     rec.iconUrl     = fx->workspaceIcon;
     rec.auth        = fx->dir.toUtf8(); // makeBackend reloads the fixture from here

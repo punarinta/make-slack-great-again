@@ -18,6 +18,9 @@
 
 namespace imap {
 
+// This backend's service. The token is stored in workspace handles — never change it.
+inline const Service kService{QStringLiteral("imap")};
+
 struct Credentials {
     QString     host;       // IMAP host, e.g. "imap.fastmail.com"
     quint16     port = 993; // implicit-TLS port

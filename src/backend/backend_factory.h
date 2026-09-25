@@ -8,8 +8,8 @@
 
 class Backend;
 
-// Construct the backend for a workspace, dispatching on its service. The
-// signature is NEUTRAL — no service-specific type crosses it. Each service case
-// owns decoding the record's opaque `auth` blob into its own credential shape;
-// this function is the single point that switches *into* a service's namespace.
+// Construct the backend for a workspace through the backend registry
+// (backend_registry.h). The signature is NEUTRAL — no service-specific type
+// crosses it; each registered service owns decoding the record's opaque `auth`
+// blob into its own credential shape. nullptr for a service not in this build.
 std::unique_ptr<Backend> makeBackend(const TokenStore::WorkspaceRecord &rec);
