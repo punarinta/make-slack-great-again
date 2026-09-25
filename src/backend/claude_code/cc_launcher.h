@@ -19,6 +19,9 @@
 //   • `--append-system-prompt` is saved with the session like any start option,
 //     and the rendered system prompt is recorded in the transcript and sent
 //     again on every resume.
+//   • `--agents <json>` is saved too (a flag-free resume reports "woke session
+//     … with its saved options (… --agents …)"), and its types are offered to
+//     the Agent tool next to the built-in ones, each with its own prompt.
 //   • `--bg` refuses a folder Claude Code hasn't trusted (trust is inherited from
 //     a trusted parent folder).
 //   • `claude --bg --resume <id> --fork-session -- <prompt>` branches a session
@@ -52,13 +55,15 @@ public:
     // A new background session in `cwd` whose first turn is `prompt`. Claude's
     // multiple-choice question tool is turned off: from msga a question must
     // arrive as text, answerable by message. `rolePrompt` (a team role's, see
-    // cc_roles) is appended to Claude Code's system prompt; the session keeps
-    // it from then on.
+    // cc_roles) is appended to Claude Code's system prompt, and `agentsJson`
+    // (the team's, see subagentsJson) defines its subagent types; the session
+    // keeps both from then on.
     void start(
         const QString &cwd,
         const QString &prompt,
         bool           skipPermissionChecks,
         const QString &rolePrompt,
+        const QString &agentsJson,
         Done           done
     );
 

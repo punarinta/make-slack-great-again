@@ -54,6 +54,12 @@ struct Role {
 QString appendedPrompt(const Role &role);
 // "# Your role: <name> (msga: <id>)".
 QString roleHeader(const QString &name, const QString &id);
+// What --agents gets: `roles` (the listed team) as Claude Code subagent types,
+// one per role that adds a prompt, named by its id — so "use @Engineer", which
+// reaches Claude as "@claude:role:engineer", finds subagent_type "engineer".
+// For a subagent --agent's replacing the prompt is the point: every subagent
+// type works that way. An id Claude Code's own types already use is left out.
+QString subagentsJson(const std::vector<Role> &roles);
 
 // The role named by our part of a recorded system prompt.
 struct RoleMark {

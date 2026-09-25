@@ -974,6 +974,7 @@ void Backend::dispatch(Tracked &t) {
             t.flying->text,
             t.skipPermissionChecks,
             appendedPrompt(_team.resolve(roleOf(t))),
+            subagentsJson(_team.listed()),
             settled
         );
     } else {

@@ -1017,6 +1017,28 @@ TEST_CASE("teammates are added, edited, restored and removed", "[claude][roles]"
     CHECK_FALSE(team.find("engineer")->edited);
     CHECK(team.find("engineer")->prompt == builtInRoles()[1].prompt);
 
+    // The team as subagent types: every role with a prompt, under its id, with
+    // that prompt — but none shadowing one of Claude Code's own types.
+    Role plan;
+    plan.name   = "Plan";
+    plan.prompt = "You plan.";
+    REQUIRE(team.save(plan, &error) == "plan");
+    const QJsonObject agents =
+        QJsonDocument::fromJson(subagentsJson(team.listed()).toUtf8()).object();
+    CHECK(
+        agents.keys() ==
+        QStringList{
+            "copy-writer", "copy-writer-2", "designer", "engineer", "marketer", "researcher"
+        }
+    );
+    CHECK(agents["engineer"]["prompt"].toString() == appendedPrompt(*team.find("engineer")));
+    CHECK(
+        agents["copy-writer"]["description"].toString() ==
+        "Writer, a teammate (mentioned as @claude:role:copy-writer). Writes copy."
+    );
+    CHECK(subagentsJson({builtInRoles()[0]}).isEmpty()); // the Generalist adds nothing
+    team.remove("plan");
+
     // Removed: off the list, still known to its sessions.
     CHECK(team.remove(id));
     CHECK(team.listed().size() == 6);
@@ -1083,7 +1105,7 @@ TEST_CASE(
         REQUIRE(f.open(QIODevice::WriteOnly));
         f.write(R"SH(#!/bin/sh
 H="$CLAUDE_CONFIG_DIR"
-echo "$*" >> "$H/calls.log"
+printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
   rm -f "$H/sessions/w$2.json"
   sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
@@ -1181,7 +1203,11 @@ echo "backgrounded · $short"
     const QStringList calls = QString::fromUtf8(log.readAll()).split('\n', Qt::SkipEmptyParts);
     const QString     sid   = "abcdef11-0000-4000-8000-000000000001";
     REQUIRE(calls.size() == 5);
-    CHECK(calls[0] == "--bg --disallowedTools AskUserQuestion -- first");
+    // A new session gets the team as subagent types, so "use @Engineer" works.
+    CHECK(
+        calls[0] == "--bg --disallowedTools AskUserQuestion --agents " +
+                        subagentsJson(builtInRoles()) + " -- first"
+    );
     CHECK(calls[1] == "stop abcdef11");                       // the worker idles on after a turn
     CHECK(calls[2] == "--bg --resume " + sid + " -- second"); // no flags: keeps its options
     CHECK(calls[3] == "stop abcdef11");
@@ -1226,7 +1252,10 @@ echo "backgrounded · $short"
             [&] {
                 QFile f(home.dir.path() + "/calls.log");
                 return f.open(QIODevice::ReadOnly) &&
-                       f.readAll().contains("--dangerously-skip-permissions -- go");
+                       f.readAll().contains(
+                           "--dangerously-skip-permissions --agents " +
+                           subagentsJson(builtInRoles()).toUtf8() + " -- go"
+                       );
             },
             8000
         )
@@ -1330,9 +1359,18 @@ echo "backgrounded · $short"
     REQUIRE(waitFor(cw2, "echo fresh"));
     QFile calls3(home.dir.path() + "/calls.log");
     REQUIRE(calls3.open(QIODevice::ReadOnly));
-    const QString calls3Text = QString::fromUtf8(calls3.readAll());
-    CHECK(calls3Text.count("Write copy v1.") == 1);
-    CHECK(calls3Text.count("Write copy v2.") == 1);
+    const QString     calls3Text = QString::fromUtf8(calls3.readAll());
+    // Both its prompt and its subagent type carry the text: count launches.
+    // (A call's log entry runs over lines where its prompt does.)
+    const QStringList calls3List = calls3Text.split("\n--bg");
+    auto              launches   = [&](const QString &text) {
+        return std::count_if(calls3List.begin(), calls3List.end(), [&](const QString &call) {
+            return call.contains(text);
+        });
+    };
+    CHECK(launches("Write copy v1.") == 1);
+    CHECK(launches("Write copy v2.") == 1);
+    CHECK(calls3Text.contains(R"("copywriter":{"description":"Copywriter, a teammate)"));
     CHECK(
         calls3Text.indexOf("Write copy v2.") > calls3Text.indexOf(" -- again")
     ); // only the new session
@@ -1384,7 +1422,7 @@ TEST_CASE("Stop cuts a session's turn short and drops what waits", "[claude][bac
         REQUIRE(f.open(QIODevice::WriteOnly));
         f.write(R"SH(#!/bin/sh
 H="$CLAUDE_CONFIG_DIR"
-echo "$*" >> "$H/calls.log"
+printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
   rm -f "$H/sessions/w$2.json"
   sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"

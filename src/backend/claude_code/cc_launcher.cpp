@@ -217,6 +217,7 @@ void Launcher::start(
     const QString &prompt,
     bool           skipPermissionChecks,
     const QString &rolePrompt,
+    const QString &agentsJson,
     Done           done
 ) {
     QStringList args = {
@@ -228,6 +229,8 @@ void Launcher::start(
         args << QStringLiteral("--dangerously-skip-permissions");
     if (!rolePrompt.isEmpty())
         args << QStringLiteral("--append-system-prompt") << rolePrompt;
+    if (!agentsJson.isEmpty())
+        args << QStringLiteral("--agents") << agentsJson;
     args << QStringLiteral("--") << prompt;
     run(args, cwd, [this, done](int code, QString out) {
         const QString shortId = parseBackgroundedShortId(out);

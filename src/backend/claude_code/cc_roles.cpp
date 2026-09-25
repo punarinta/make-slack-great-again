@@ -8,6 +8,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QUrl>
@@ -150,6 +152,42 @@ QString appendedPrompt(const Role &role) {
         return {};
     return roleHeader(role.promptName.isEmpty() ? role.name : role.promptName, role.id) +
            QLatin1Char('\n') + body;
+}
+
+QString subagentsJson(const std::vector<Role> &roles) {
+    // Claude Code's own subagent types (2.1.282); a teammate by one of these
+    // names would shadow it.
+    static const QStringList kTaken = {
+        QStringLiteral("claude"),
+        QStringLiteral("general-purpose"),
+        QStringLiteral("explore"),
+        QStringLiteral("plan"),
+        QStringLiteral("statusline-setup"),
+        QStringLiteral("claude-code-guide"),
+    };
+    QJsonObject agents;
+    for (const Role &r : roles) {
+        const QString prompt = appendedPrompt(r);
+        if (prompt.isEmpty() || kTaken.contains(r.id))
+            continue;
+        agents.insert(
+            r.id,
+            QJsonObject{
+                {QStringLiteral("description"),
+                 QStringLiteral("%1, a teammate (mentioned as @claude:role:%2). %3")
+                     .arg(
+                         r.promptName.isEmpty() ? r.name : r.promptName,
+                         r.id,
+                         oneLine(r.description)
+                     )
+                     .trimmed()},
+                {QStringLiteral("prompt"), prompt},
+            }
+        );
+    }
+    return agents.isEmpty()
+               ? QString()
+               : QString::fromUtf8(QJsonDocument(agents).toJson(QJsonDocument::Compact));
 }
 
 RoleMark roleInSystemPrompt(const QJsonArray &systemPrompt) {
