@@ -424,6 +424,12 @@ TEST_CASE("a teammate mention renders as a mention", "[claude][message]") {
     }));
     CHECK(mentions("```\n@claude:role:engineer\n```").isEmpty());
     CHECK(mentions("mail x@claude:role:engineer").isEmpty());
+    // A composer pill's raw token (older prompts hold it) gains no extra brackets.
+    const auto pill = renderMarkdown("start an <@claude:role:engineer> subagent");
+    CHECK(pill.text == "start an @claude:role:engineer subagent");
+    CHECK(
+        mentions("start an <@claude:role:engineer> subagent") == QStringList{"claude:role:engineer"}
+    );
 }
 
 TEST_CASE("a pasted image is attached to the prompt", "[claude][message]") {

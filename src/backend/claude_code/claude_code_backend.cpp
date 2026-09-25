@@ -395,15 +395,16 @@ QString Backend::titleOf(const Tracked &t) const {
 // A title is plain text, so a teammate mention it echoes from the prompt
 // ("@claude:role:engineer") can't be a pill: name the teammate instead.
 QString Backend::teammateNames(const QString &text) const {
-    static const QRegularExpression kTeammate(
-        QStringLiteral("(?<![\\w@/:.-])@claude:(agent|role:[a-z0-9-]+)(?![\\w-])")
-    );
-    QString out;
-    int     last = 0;
+    static const QRegularExpression kTeammate(QStringLiteral(
+        "<@claude:(agent|role:[a-z0-9-]+)>|"
+        "(?<![\\w@/:.-])@claude:(agent|role:[a-z0-9-]+)(?![\\w-])"
+    ));
+    QString                         out;
+    int                             last = 0;
     for (auto it = kTeammate.globalMatch(text); it.hasNext();) {
-        const auto    m = it.next();
-        const QString role =
-            m.captured(1) == QLatin1String("agent") ? kGeneralist : m.captured(1).mid(5);
+        const auto    m    = it.next();
+        const QString id   = m.captured(1).isEmpty() ? m.captured(2) : m.captured(1);
+        const QString role = id == QLatin1String("agent") ? kGeneralist : id.mid(5);
         out +=
             text.mid(last, m.capturedStart() - last) + QLatin1Char('@') + _team.resolve(role).name;
         last = int(m.capturedEnd());
@@ -1649,13 +1650,17 @@ std::vector<std::pair<QString, QString>> Backend::conversationStatus(Tracked &tr
 void Backend::sendMessage(
     ConversationId conv, OutgoingMessage msg, std::function<void(bool ok, QString err)> done
 ) {
-    Tracked                        *t    = find(conv.value);
+    Tracked                        *t = find(conv.value);
     // The composer's text as typed: Claude reads markdown best as written.
     // Never msg.text.text — that is the parsed copy, its ``` fences, `code`
     // backticks and link targets stripped into entities.
-    const QString                   text = !msg.composerText.isEmpty() ? msg.composerText
+    // A teammate pill arrives as the Slack-style <@claude:role:x> token; Claude
+    // knows its teammates as the bare "@claude:role:x".
+    static const QRegularExpression kPill(QStringLiteral("<@(claude:(?:agent|role:[a-z0-9-]+))>"));
+    QString                         text = !msg.composerText.isEmpty() ? msg.composerText
                                            : !msg.rawText.isEmpty()    ? msg.rawText
                                                                        : msg.text.text;
+    text.replace(kPill, QStringLiteral("@\\1"));
     static const QRegularExpression kBtw(QStringLiteral("^/btw(?:\\s+([\\s\\S]*))?$"));
     const auto                      btw = kBtw.match(text.trimmed());
     QString                         reason;
