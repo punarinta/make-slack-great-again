@@ -177,6 +177,13 @@ const std::vector<ShortcutDef> kDefs = {
      QKeySequence::Close,
      QT_TRANSLATE_NOOP("Ui::Shortcuts", "Close dialog or window"),
      false},
+    // Claude Code workspace only, and only on an idle (gray-dot) session.
+    {Shortcut::RemoveIdleSession,
+     ShortcutScope::Documented,
+     "Shift+Del",
+     kNoStd,
+     QT_TRANSLATE_NOOP("Ui::Shortcuts", "Remove idle session from msga"),
+     false},
 };
 
 // Cached so matches() — run on every composer keypress — never opens QSettings.

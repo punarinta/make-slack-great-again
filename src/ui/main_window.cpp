@@ -83,6 +83,9 @@
 #include <QMenu>
 #include <QPushButton>
 #include <QApplication>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QEventLoop>
 #include <QIcon>
 #include <QMessageBox>
@@ -4120,6 +4123,27 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
     }
     default:
         break;
+    }
+    // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered
+    // here because the composer keeps focus once a session is opened. An editor
+    // with a selection keeps the key as Cut; without one Cut is a no-op anyway.
+    if (e->type() == QEvent::KeyPress &&
+        Ui::Shortcuts::matches(Ui::Shortcut::RemoveIdleSession, static_cast<QKeyEvent *>(e))) {
+        auto *w = qobject_cast<QWidget *>(obj);
+        if (w && w->window() == this && _session && _session->capabilities().agentSessions &&
+            !AppDialog::topmostVisible(this) &&
+            !(_settingsDialog && _settingsDialog->isVisible())) {
+            const QWidget *focus        = QApplication::focusWidget();
+            bool           hasSelection = false;
+            if (auto *te = qobject_cast<const QTextEdit *>(focus))
+                hasSelection = te->textCursor().hasSelection();
+            else if (auto *pe = qobject_cast<const QPlainTextEdit *>(focus))
+                hasSelection = pe->textCursor().hasSelection();
+            else if (auto *le = qobject_cast<const QLineEdit *>(focus))
+                hasSelection = le->hasSelectedText();
+            if (!hasSelection && _convList->removeSelectedIdleSession())
+                return true;
+        }
     }
     // Mouse side buttons anywhere in this window navigate chat history.
     if (e->type() == QEvent::MouseButtonPress) {

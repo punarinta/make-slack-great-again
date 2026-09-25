@@ -1181,6 +1181,21 @@ void ConvListWidget::showDmContextMenu(int row, QPoint globalPos) {
     menu->popup(globalPos);
 }
 
+bool ConvListWidget::removeSelectedIdleSession() {
+    if (!_agentSessions || _selected < 0 || _selected >= int(_rows.size()) ||
+        _rows[size_t(_selected)].kind != RowKind::Conv)
+        return false;
+    const auto &conv = _convs[_rows[size_t(_selected)].convIdx];
+    if (conv.kind != ConvKind::Im || !conv.dmUser)
+        return false;
+    // Exactly what the row paints: neither working (green) nor yellow.
+    const auto infoIt = _userInfos.constFind(conv.dmUser->value);
+    if (infoIt == _userInfos.constEnd() || infoIt->isActive || infoIt->unavailable)
+        return false;
+    emit leaveConversationRequested(conv.id);
+    return true;
+}
+
 void ConvListWidget::showTeammateContextMenu(int row, QPoint globalPos) {
     const AgentRole mate = _teammates[size_t(_rows[size_t(row)].convIdx)];
     auto           *menu = new ContextMenu(viewport());

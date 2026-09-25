@@ -56,6 +56,9 @@ enum class Shortcut {
     NewLine,
     EditLastMessage,
     CancelOrExitEdit,
+    // Matched in MainWindow's app-wide key filter, not a QShortcut: the composer
+    // holds focus after a session is opened and claims Shift+Del as Cut.
+    RemoveIdleSession,
 };
 
 enum class ShortcutScope {

@@ -613,3 +613,43 @@ TEST_CASE("collapsed Starred header keeps its unread state") {
     list.setConversations({dm});
     CHECK_FALSE(list.sectionHasUnread(3));
 }
+
+// Shift+Del in a Claude Code workspace removes the selected session from msga —
+// but only a gray-dot (idle) one: a working (green) or terminal-held (yellow)
+// session stays, as does every row outside the agent-sessions list.
+TEST_CASE("removeSelectedIdleSession removes only an idle agent session") {
+    ConvListWidget list(nullptr);
+    list.setAgentSessions(true);
+    list.setConversations({hiddenDm("D1", "U1")});
+    ConversationId removed;
+    QObject::connect(&list, &ConvListWidget::leaveConversationRequested, [&](ConversationId id) {
+        removed = id;
+    });
+    REQUIRE(list.selectConversation(ConversationId{"D1"}));
+
+    User u;
+    u.id = UserId{"U1"};
+    SECTION("working (green)") {
+        u.isActive = true;
+        list.setUsers({u});
+        REQUIRE_FALSE(list.removeSelectedIdleSession());
+        REQUIRE(removed.value.isEmpty());
+    }
+    SECTION("held by a terminal (yellow)") {
+        u.unavailable = true;
+        list.setUsers({u});
+        REQUIRE_FALSE(list.removeSelectedIdleSession());
+        REQUIRE(removed.value.isEmpty());
+    }
+    SECTION("idle (gray)") {
+        list.setUsers({u});
+        REQUIRE(list.removeSelectedIdleSession());
+        REQUIRE(removed == ConversationId{"D1"});
+    }
+    SECTION("not an agent-sessions workspace") {
+        list.setUsers({u});
+        list.setAgentSessions(false);
+        REQUIRE(list.selectConversation(ConversationId{"D1"}));
+        REQUIRE_FALSE(list.removeSelectedIdleSession());
+    }
+}

@@ -106,6 +106,10 @@ public:
     // conversations can be ranked from it too (namedConversationsFor()).
     const QHash<QString, qint64>  &visitedAt() const { return _visitedAt; }
     int                            selectedIndex() const { return _selected; }
+    // Claude Code workspace: when the selected row is an idle (gray-dot)
+    // session, emits leaveConversationRequested for it — the context menu's
+    // "Remove from msga" — and returns true; otherwise does nothing.
+    bool                           removeSelectedIdleSession();
     // Number of visual rows currently laid out (conversations plus the section
     // headers and action rows between them).
     bool                           sectionHasUnread(int sectionId) const;
