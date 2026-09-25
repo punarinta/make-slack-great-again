@@ -234,11 +234,12 @@ void signalProcess(qint64 pid, bool force) {
 void applyWorker(SessionInfo &job, const SessionInfo &worker) {
     // The worker stays alive (idle) after a turn even though the job reads
     // "done", and resuming it then only starts a copy: it counts as running.
+    // The worker's status is the live one: a job can keep reading "working"
+    // long after its last turn ended (a stale inFlight.queued, seen 2026-09-25).
     job.running    = true;
     job.pid        = worker.pid;
     job.peerSocket = worker.peerSocket;
-    if (job.status != QLatin1String("blocked") &&
-        (statusIsBusy(worker.status) || statusHasShell(worker.status)))
+    if (job.status != QLatin1String("blocked") && !worker.status.isEmpty())
         job.status = worker.status;
     if (job.name.isEmpty())
         job.name = worker.name;

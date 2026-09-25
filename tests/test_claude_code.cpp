@@ -565,6 +565,20 @@ TEST_CASE("roster files parse into sessions", "[claude][roster]") {
     CHECK(done.running);
     CHECK(statusIsBusy(done.status));
 
+    // A job stuck on "working" after its turn ended: the idle worker wins.
+    auto stale = *parseBackgroundJob(R"({"state":"working","sessionId":"S2"})");
+    auto idle  = parseInteractiveSession(
+        R"({"pid":7,"sessionId":"S2","kind":"bg","status":"idle","entrypoint":"cli"})"
+    );
+    REQUIRE(idle);
+    applyWorker(stale, *idle);
+    CHECK(stale.running);
+    CHECK_FALSE(statusIsBusy(stale.status));
+    // ...but a question waiting for the user stays visible.
+    auto asking = *approval;
+    applyWorker(asking, *idle);
+    CHECK(statusNeedsUser(asking.status));
+
     CHECK_FALSE(parseInteractiveSession("{}"));
     CHECK_FALSE(parseBackgroundJob("garbage"));
     CHECK(statusIsBusy("busy"));
@@ -912,6 +926,64 @@ TEST_CASE("an idle session with a background command running is not typing", "[c
     CHECK(mate->unavailable);
     CHECK_FALSE(collect(backend.loadPresence(UserId{"claude:S1"}))[0]);
     QTest::qWait(3500); // the typing pump runs every 3 s while anything is busy
+    CHECK(std::none_of(events.begin(), events.end(), [](const Event &e) {
+        return std::holds_alternative<EvTyping>(e);
+    }));
+}
+
+TEST_CASE(
+    "a background job stuck on \"working\" after its turn ended is not typing",
+    "[claude][backend][bg]"
+) {
+    // Seen live 2026-09-25: a subagent's notification left the job reading
+    // "working" (inFlight.queued 1) while its worker sat idle for good.
+    FakeClaudeHome home;
+    home.append(
+        prompt("look for duplicates", "2026-09-25T10:00:00.000Z") +
+        assistantText("Done.", "2026-09-25T10:00:01.000Z") + turnEnd("2026-09-25T10:00:02.000Z")
+    );
+    QDir(home.dir.path()).mkpath("jobs/S1");
+    {
+        QFile f(home.dir.path() + "/jobs/S1/state.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"state", "working"},
+                        {"sessionId", "S1"},
+                        {"cwd", "/src/app"},
+                        {"name", "duplicates"},
+                        {"linkScanPath", home.transcript},
+                    }
+        )
+                    .toJson());
+    }
+    {
+        QFile f(home.dir.path() + "/sessions/1.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"pid", QCoreApplication::applicationPid()}, // alive
+                        {"sessionId", "S1"},
+                        {"cwd", "/src/app"},
+                        {"kind", "bg"},
+                        {"status", "idle"},
+                        {"entrypoint", "cli"},
+                    }
+        )
+                    .toJson());
+    }
+    claude_code::Backend backend(Credentials{});
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    backend.connectRealtime();
+    const auto users = collect(backend.loadUsers());
+    const auto peer  = std::find_if(users[0].begin(), users[0].end(), [](const User &u) {
+        return u.id == UserId{"claude:S1"};
+    });
+    REQUIRE(peer != users[0].end());
+    CHECK_FALSE(peer->isActive); // no "working" dot
+    QTest::qWait(3500);          // the typing pump runs every 3 s while anything is busy
     CHECK(std::none_of(events.begin(), events.end(), [](const Event &e) {
         return std::holds_alternative<EvTyping>(e);
     }));
