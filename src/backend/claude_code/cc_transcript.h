@@ -74,6 +74,9 @@ public:
     // True while the last turn has not ended (no turn_duration record after the
     // latest prompt) — the session is, or was when it stopped, mid-turn.
     bool turnOpen() const { return _turnOpen; }
+    // Items from here on get a ts after `micros` — taken by a message msga
+    // shows of its own (a prompt on its way), which no item may collide with.
+    void reserveTs(qint64 micros) { _lastMicros = std::max(_lastMicros, micros); }
 
     // The session's own title, when Claude Code generated one ("ai-title").
     const QString &aiTitle() const { return _aiTitle; }

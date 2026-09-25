@@ -141,18 +141,23 @@ struct Backend::Tracked {
     bool                                            lastBusy = false;
     bool wasLive = false; // listed or sending at the previous refresh
     // Sending: messages wait here while Claude is on a turn, and go out one per
-    // turn — each one's optimistic copy is replaced by its own prompt showing up.
+    // turn. Each is shown as a message of msga's own (ts/date) from the moment
+    // it's sent until its prompt is in the transcript — the Session's optimistic
+    // copy wouldn't do: it's gone with the next reload of the chat, and a
+    // message can wait for as long as Claude's turn takes.
     struct Outgoing {
-        QString                                   text;
-        std::function<void(bool ok, QString err)> done;
+        QString text;
+        Ts      ts;
+        qint64  date = 0;
     };
-    QList<Outgoing>                           outbox;
+    QList<Outgoing>         outbox;
+    std::optional<Outgoing> flying; // taken from the outbox, prompt not landed yet
     // The turn msga started: from launching it until its end is in the transcript.
-    bool                                      sending        = false;
-    qint64                                    sendStartedMs  = 0;
-    bool                                      promptLanded   = false;
-    qint64                                    promptLandedMs = 0;
-    std::function<void(bool ok, QString err)> inFlight; // done() of the message on its way
+    bool                    sending        = false;
+    qint64                  sendStartedMs  = 0;
+    bool                    promptLanded   = false;
+    qint64                  promptLandedMs = 0;
+    std::function<void(bool ok, QString err)> inFlight; // a /btw's done(), until its root lands
     // A session branched off another (a /btw, or `--fork-session` anywhere):
     // shown as a thread in its parent rather than in the list (detectForks).
     QString forkOf;   // the parent's conversation id; "" = a session of its own
@@ -658,6 +663,8 @@ std::vector<Message> Backend::visibleMessages(Tracked &t) {
         out.push_back(std::move(m));
     }
 
+    appendOutgoing(t, out, std::nullopt);
+
     // Side conversations branched off this session (/btw): each one's first
     // prompt is a message here, rooting a thread with the rest of it.
     bool branched = false;
@@ -788,7 +795,34 @@ std::vector<Message> Backend::threadMessages(Tracked &f) {
         m.parentUserId = _me; // you started it: its answers notify as replies to you
         out.push_back(std::move(m));
     }
+    appendOutgoing(f, out, f.forkRoot);
     return out;
+}
+
+void Backend::appendOutgoing(
+    const Tracked &t, std::vector<Message> &out, const std::optional<Ts> &threadRoot
+) const {
+    const auto add = [&](const Tracked::Outgoing &o) {
+        TranscriptItem item;
+        item.kind    = TranscriptItem::Kind::UserPrompt;
+        item.ts      = o.ts;
+        item.date    = o.date;
+        item.text    = o.text;
+        Message m    = toMessage(item, _me, _me);
+        m.threadRoot = threadRoot;
+        out.push_back(std::move(m));
+    };
+    if (t.flying)
+        add(*t.flying);
+    for (const auto &o : t.outbox)
+        add(o);
+}
+
+bool Backend::isOutgoingCopy(const Tracked &t, const Ts &ts) const {
+    return (t.flying && t.flying->ts == ts) ||
+           std::any_of(t.outbox.begin(), t.outbox.end(), [&](const Tracked::Outgoing &o) {
+               return o.ts == ts;
+           });
 }
 
 std::vector<Message> Backend::shownMessages(Tracked &t) {
@@ -802,7 +836,15 @@ void Backend::diffAndAnnounce(Tracked &t) {
         t.announcedAsThread = thread;
         t.announcedInit     = false; // what was announced belongs to the other place
     }
-    const auto        msgs = shownMessages(t);
+    auto msgs = shownMessages(t);
+    // The message on its way is delivered once its prompt is in the transcript:
+    // msga's copy of it goes in the same breath.
+    if (t.flying && t.announcedInit && std::any_of(msgs.begin(), msgs.end(), [&](const Message &m) {
+            return m.author == _me && !t.announced.contains(m.ts) && !isOutgoingCopy(t, m.ts);
+        })) {
+        t.flying.reset();
+        msgs = shownMessages(t);
+    }
     QMap<Ts, Message> now;
     for (const auto &m : msgs)
         now.insert(m.ts, m);
@@ -824,7 +866,8 @@ void Backend::diffAndAnnounce(Tracked &t) {
         const auto old = t.announced.constFind(it.key());
         if (old == t.announced.cend()) {
             _events.fire(EvMessageNew{conv, it.value()});
-            sawOwnPrompt = sawOwnPrompt || it.value().author == _me;
+            sawOwnPrompt =
+                sawOwnPrompt || (it.value().author == _me && !isOutgoingCopy(t, it.key()));
         } else if (!(old.value() == it.value())) {
             _events.fire(EvMessageChanged{conv, it.value(), false});
         }
@@ -836,8 +879,7 @@ void Backend::diffAndAnnounce(Tracked &t) {
         t.awaitingRoot = false;
         sawOwnPrompt   = true;
     }
-    // The message on its way is delivered once its prompt is in the transcript
-    // (the Session saw it replace the optimistic copy above).
+    // The turn msga started is under way once its prompt is in the transcript.
     if (sawOwnPrompt && t.sending && !t.promptLanded) {
         t.promptLanded   = true;
         t.promptLandedMs = nowMs();
@@ -849,14 +891,15 @@ void Backend::diffAndAnnounce(Tracked &t) {
 // ── Sending ─────────────────────────────────────────────────────────────────
 
 void Backend::failSends(Tracked &t, const QString &reason) {
-    if (!t.inFlight && t.outbox.isEmpty())
+    if (!t.inFlight && !t.flying && t.outbox.isEmpty())
         return; // nothing on its way
     if (auto done = std::exchange(t.inFlight, {}))
         done(false, reason);
-    for (auto &o : t.outbox)
-        if (o.done)
-            o.done(false, reason);
+    const bool copies = t.flying || !t.outbox.isEmpty();
+    t.flying.reset();
     t.outbox.clear();
+    if (copies)
+        diffAndAnnounce(t); // msga's copies of them go
     _events.fire(EvSendFailed{ConversationId{asThread(t) ? t.forkOf : t.convId}, reason});
 }
 
@@ -872,7 +915,7 @@ void Backend::dispatch(Tracked &t) {
     t.sending              = true;
     t.sendStartedMs        = nowMs();
     t.promptLanded         = false;
-    t.inFlight             = std::move(next.done);
+    t.flying               = std::move(next);
     const QString convId   = t.convId;
     auto          settled  = [this, convId](QString sessionId, QString error) {
         Tracked *t = find(convId);
@@ -897,7 +940,7 @@ void Backend::dispatch(Tracked &t) {
     if (t.info.sessionId.isEmpty()) {
         _launcher->start(
             t.info.cwd,
-            next.text,
+            t.flying->text,
             t.skipPermissionChecks,
             appendedPrompt(_team.resolve(roleOf(t))),
             settled
@@ -909,7 +952,7 @@ void Backend::dispatch(Tracked &t) {
         _launcher->resume(
             t.info.sessionId,
             t.info.cwd,
-            next.text,
+            t.flying->text,
             background,
             background && t.info.running,
             settled
@@ -1523,8 +1566,20 @@ void Backend::sendMessage(
             done(false, reason);
         return;
     }
-    target->outbox.append({text, std::move(done)});
-    dispatch(*target); // at once when Claude is free; otherwise when its turn ends
+    if (!target->announcedInit)
+        diffAndAnnounce(*target); // what's there already isn't news
+    // msga's copy of it, from now on: after everything shown, uniquely timed.
+    qint64 micros = nowMs() * 1000;
+    for (const auto &m : shownMessages(*target))
+        micros = std::max(micros, m.date + 1);
+    target->outbox.append({text, microsToTs(micros), micros});
+    // A record timed before that (clocks, the same millisecond) would otherwise
+    // be tie-broken onto the copy's very ts, and its prompt never seen landing.
+    target->parser.reserveTs(micros);
+    dispatch(*target);        // at once when Claude is free; otherwise when its turn ends
+    diffAndAnnounce(*target); // the copy replaces the Session's optimistic one
+    if (done)
+        done(true, {});
 }
 
 void Backend::startFork(
@@ -1617,12 +1672,36 @@ const TranscriptItem *Backend::deletableItem(Tracked &t, const Ts &ts) {
     return &*it;
 }
 
+// A message still waiting for its turn can be taken back: it's only msga's.
+Backend::Tracked *Backend::queuedHolder(const ConversationId &conv, const Ts &ts, int *index) {
+    for (auto it = _sessions.begin(); it != _sessions.end(); ++it) {
+        Tracked &t = *it.value();
+        if ((asThread(t) ? t.forkOf : t.convId) != conv.value)
+            continue;
+        for (int i = 0; i < t.outbox.size(); ++i)
+            if (t.outbox[i].ts == ts) {
+                *index = i;
+                return &t;
+            }
+    }
+    return nullptr;
+}
+
 bool Backend::canDeleteMessage(ConversationId conv, Ts ts) {
+    int index = 0;
+    if (queuedHolder(conv, ts, &index))
+        return true;
     Tracked *t = find(conv.value);
     return t && deletableItem(*t, ts);
 }
 
 void Backend::deleteMessage(ConversationId conv, Ts ts) {
+    int index = 0;
+    if (Tracked *q = queuedHolder(conv, ts, &index)) {
+        q->outbox.removeAt(index);
+        diffAndAnnounce(*q);
+        return;
+    }
     Tracked              *t    = find(conv.value);
     const TranscriptItem *item = t ? deletableItem(*t, ts) : nullptr;
     if (!item) {

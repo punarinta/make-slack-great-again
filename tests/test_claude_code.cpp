@@ -1111,10 +1111,23 @@ echo "backgrounded · $short"
     // Two more at once: the second waits for its turn, one prompt per turn.
     sendText("second", &ok2);
     sendText("third", &ok3);
+    // The waiting one is a message of its own at once, and stays one across a
+    // reload of the chat — the Session's optimistic copy wouldn't.
+    CHECK(ok3);
+    const auto ownTexts = [&] {
+        QStringList texts;
+        const auto  pages = collect(backend.loadHistory(conv, std::nullopt));
+        for (const auto &m : pages[0].messages)
+            if (m.author.value == "me")
+                texts << m.text.text;
+        return texts;
+    };
+    CHECK(ownTexts() == QStringList{"first", "second", "third"});
     REQUIRE(answered("echo second"));
     REQUIRE(answered("echo third"));
     CHECK(ok2);
-    CHECK(ok3);
+    // …and gives way to its prompt in the transcript: no doubles.
+    CHECK(ownTexts() == QStringList{"first", "second", "third"});
 
     QFile log(home.dir.path() + "/calls.log");
     REQUIRE(log.open(QIODevice::ReadOnly));
@@ -1126,6 +1139,28 @@ echo "backgrounded · $short"
     CHECK(calls[2] == "--bg --resume " + sid + " -- second"); // no flags: keeps its options
     CHECK(calls[3] == "stop abcdef11");
     CHECK(calls[4] == "--bg --resume " + sid + " -- third");
+    log.close();
+
+    // A message still waiting for its turn can be taken back.
+    bool ok4 = false, ok5 = false;
+    sendText("fourth", &ok4);
+    sendText("fifth", &ok5);
+    Ts fifth;
+    for (const auto &e : events)
+        if (const auto *n = std::get_if<EvMessageNew>(&e); n && n->msg.text.text == "fifth")
+            fifth = n->msg.ts;
+    REQUIRE_FALSE(fifth.isEmpty());
+    REQUIRE(backend.canDeleteMessage(conv, fifth));
+    backend.deleteMessage(conv, fifth);
+    CHECK(std::any_of(events.begin(), events.end(), [&](const Event &e) {
+        const auto *d = std::get_if<EvMessageDeleted>(&e);
+        return d && d->ts == fifth;
+    }));
+    REQUIRE(answered("echo fourth"));
+    QTest::qWait(500); // a turn for fifth would have started by now
+    REQUIRE(log.open(QIODevice::ReadOnly));
+    CHECK_FALSE(log.readAll().contains("fifth"));
+    CHECK_FALSE(ownTexts().contains("fifth"));
 
     // One conversation for it, under its "+" id; the name comes from Claude Code.
     const auto after = collect(backend.loadConversations());

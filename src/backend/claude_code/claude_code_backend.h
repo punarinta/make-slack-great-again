@@ -182,6 +182,12 @@ private:
     Tracked             *forkFor(const QString &parentConv, const Ts &root);
     std::vector<Message> threadMessages(Tracked &fork);
     std::vector<Message> shownMessages(Tracked &t); // thread replies for a fork
+    // msga's copies of the messages sent but not in the transcript yet.
+    void                 appendOutgoing(
+        const Tracked &t, std::vector<Message> &out, const std::optional<Ts> &threadRoot
+    ) const;
+    bool     isOutgoingCopy(const Tracked &t, const Ts &ts) const;
+    Tracked *queuedHolder(const ConversationId &conv, const Ts &ts, int *index);
     void
     startFork(Tracked &parent, const QString &question, std::function<void(bool, QString)> done);
     void                  dispatch(Tracked &t);
