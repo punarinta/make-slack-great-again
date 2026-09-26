@@ -47,9 +47,13 @@ class AttachInput : public QObject {
     Q_OBJECT
 public:
     enum class Outcome {
-        Sent,     // typed and taken: the prompt box emptied after Enter
+        Sent,     // typed and taken: the prompt box let go of it after Enter
         NotReady, // nothing typed: the prompt box never showed up ready
-        Failed,   // typing began but didn't go through; it may be half there
+        Failed,   // typing began but never got as far as Enter; it may be half there
+        // Typed in full and Enter pressed, but the prompt box still seemed to
+        // hold it when the time was up. Mid-turn Claude Code queues a prompt
+        // and redraws the box as it likes: only the transcript can tell.
+        Unconfirmed,
     };
     using Done = std::function<void(Outcome, QString detail)>;
 
@@ -70,8 +74,10 @@ public:
 
     // What goes to the terminal for `text`, write by write (exposed for tests).
     static QList<QByteArray> keystrokes(const QString &text);
-    // How long the prompt box is waited for (tests shorten it).
+    // How long the prompt box is waited for, and how long it may keep the
+    // message after Enter (tests shorten them).
     static void              setAttachTimeoutMs(int ms);
+    static void              setSubmitTimeoutMs(int ms);
 
 private:
     AttachInput(QString text, Done done, QObject *parent);

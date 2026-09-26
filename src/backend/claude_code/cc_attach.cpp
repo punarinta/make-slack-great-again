@@ -27,7 +27,7 @@ constexpr int kChunk = 400;
 constexpr int kLookMs     = 300;    // how often the screen is looked at while it changes
 int           attachMs    = 15'000; // attaching took ~2 s when tried
 constexpr int kEchoMs     = 5'000;
-constexpr int kSubmitMs   = 10'000;
+int           submitMs    = 10'000;
 constexpr int kWriteGapMs = 15; // between pastes, so each is one of its own
 
 const QByteArray kPasteStart = QByteArrayLiteral("\x1b[200~");
@@ -75,6 +75,10 @@ QList<QByteArray> AttachInput::keystrokes(const QString &text) {
 
 void AttachInput::setAttachTimeoutMs(int ms) {
     attachMs = ms;
+}
+
+void AttachInput::setSubmitTimeoutMs(int ms) {
+    submitMs = ms;
 }
 
 AttachInput *AttachInput::send(
@@ -140,7 +144,13 @@ AttachInput::AttachInput(QString text, Done done, QObject *parent)
             finish(Outcome::Failed, QStringLiteral("the message didn't show up in the prompt box"));
             break;
         case Phase::Submitting:
-            finish(Outcome::Failed, QStringLiteral("the prompt box kept the message after Enter"));
+            // Not a failure: Enter went to the box with the whole message in
+            // it. A prompt typed mid-turn (Claude Code 2.1.283) was queued and
+            // answered though this deadline passed — the transcript is what
+            // tells whether it came.
+            finish(
+                Outcome::Unconfirmed, QStringLiteral("the prompt box kept the message after Enter")
+            );
             break;
         default:
             break;
@@ -182,16 +192,18 @@ void AttachInput::settle() {
         if (!box || box->lines.isEmpty() || !box->lines.first().trimmed().startsWith(_echo))
             return;
         _phase = Phase::Submitting;
-        _limit->start(kSubmitMs);
+        _limit->start(submitMs);
         _pty->write(QByteArrayLiteral("\r"));
         break;
     }
     case Phase::Submitting: {
-        // Taken once the box is empty again — or gone: the Enter went to the
-        // box (the message was in it), and what replaced it came after, say a
-        // permission question for the turn it started.
+        // Taken once the box no longer shows it: empty again, gone, or holding
+        // something else — the Enter went to the box (the message was in it),
+        // and what replaced it came after: say a permission question for the
+        // turn it started, or whatever the box shows while the prompt is queued.
         const auto box = findPromptBox(*_screen);
-        if (!box || box->empty)
+        if (!box || box->empty || box->lines.isEmpty() ||
+            !box->lines.first().trimmed().startsWith(_echo))
             finish(Outcome::Sent, {});
         break;
     }

@@ -1188,7 +1188,17 @@ void Backend::typeLive(Tracked &t) {
                 t->promptLanded   = wasLanded;
                 t->promptLandedMs = wasLandedMs;
             };
-            if (outcome == AttachInput::Outcome::Sent) {
+            if (outcome == AttachInput::Outcome::Unconfirmed)
+                // Enter went to the box with the message in it: taken as sent,
+                // and the transcript settles it — its prompt landing, or the
+                // launch timeout in refresh() if it never does.
+                qInfo(
+                    "claude code: typed into %s, not seen taken: %s",
+                    qPrintable(convId),
+                    qPrintable(detail)
+                );
+            if (outcome == AttachInput::Outcome::Sent ||
+                outcome == AttachInput::Outcome::Unconfirmed) {
                 _typeLiveMisses = 0;
                 t->handedOver   = true;
                 if (stopNow)

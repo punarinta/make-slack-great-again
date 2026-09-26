@@ -2558,7 +2558,7 @@ TEST_CASE("typing into a real background session", "[.live][attach]") {
     );
     REQUIRE(QTest::qWaitFor([&] { return outcome.has_value(); }, 60'000));
     INFO(detail.toStdString());
-    const char *names[] = {"Sent", "NotReady", "Failed"};
+    const char *names[] = {"Sent", "NotReady", "Failed", "Unconfirmed"};
     CHECK(QString(names[int(*outcome)]) == expect);
 }
 
@@ -2829,6 +2829,27 @@ echo "backgrounded · $short"
     CHECK_FALSE(std::any_of(events.begin(), events.end(), [](const Event &e) {
         return std::holds_alternative<EvSendFailed>(e);
     }));
+
+    // Mid-turn Claude Code queues the prompt and may draw the box as it likes:
+    // a hint in it, or the prompt seemingly still there. Delivered either way
+    // (the transcript has it) — never "didn't take the message".
+    AttachInput::setSubmitTimeoutMs(1000);
+    writeText("attach-mode", "hint");
+    send("queued one");
+    REQUIRE(answered("echo queued one"));
+    writeText("attach-mode", "sticky");
+    send("queued two");
+    REQUIRE(answered("echo queued two"));
+    QTest::qWait(1500); // past the box's deadline
+    writeText("attach-mode", "");
+    send("queued three"); // and the next one still goes live
+    REQUIRE(answered("echo queued three", 10000));
+    CHECK(readText("typed.log").endsWith("queued one\nqueued two\nqueued three\n"));
+    CHECK_FALSE(stopped());
+    CHECK_FALSE(std::any_of(events.begin(), events.end(), [](const Event &e) {
+        return std::holds_alternative<EvSendFailed>(e);
+    }));
+    AttachInput::setSubmitTimeoutMs(10'000);
 
     // Stopped by hand, the session takes the old way again.
     backend.stopAgentSession(conv);

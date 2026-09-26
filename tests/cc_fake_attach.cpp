@@ -9,7 +9,10 @@
 //   attach-mode   "question": a permission question has the keyboard instead
 //                 of the prompt box (keys then go to question-keys.log): ↑/↓
 //                 move "❯" over its options, Enter picks one — written to
-//                 answered.log — and the question goes (attach-mode emptied)
+//                 answered.log — and the question goes (attach-mode emptied);
+//                 "sticky": after Enter the box goes on showing the prompt
+//                 (whatever Claude Code draws while it queues one);
+//                 "hint": after Enter the box shows a queued-prompt hint
 //   typed.log     every prompt submitted, one per line ("\n" as "\\n")
 // A spinner redraws all the time, as Claude Code's does mid-turn.
 #include <csignal>
@@ -27,6 +30,7 @@ namespace {
 std::string home;
 std::string transcript;
 std::string input;
+std::string shown; // what the box shows instead of the input ("sticky", "hint")
 int         spin = 0;
 int         pick = 1; // the question's option "❯" is on
 
@@ -39,8 +43,12 @@ std::string readFile(const std::string &path) {
     return ss.str();
 }
 
+bool mode(const char *name) {
+    return readFile(home + "/attach-mode").rfind(name, 0) == 0;
+}
+
 bool question() {
-    return readFile(home + "/attach-mode").rfind("question", 0) == 0;
+    return mode("question");
 }
 
 void out(const std::string &s) {
@@ -83,7 +91,7 @@ void draw() {
         ++row;
         line.clear();
     };
-    for (const char c : input) {
+    for (const char c : input.empty() ? shown : input) {
         if (c == '\n')
             flush();
         else
@@ -125,6 +133,7 @@ void submit() {
       << R"(-2","message":{"content":[{"type":"text","text":)" << jsonString("echo " + input)
       << "}]}}\n";
     t << R"({"type":"system","subtype":"turn_duration","uuid":"a-)" << id << "-3\"}\n";
+    shown = mode("sticky") ? input : mode("hint") ? "Press up to edit queued messages" : "";
     input.clear();
 }
 
