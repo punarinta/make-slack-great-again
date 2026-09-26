@@ -1833,6 +1833,20 @@ rpl::producer<MessagePage> Backend::loadThread(ConversationId id, Ts root, std::
     };
 }
 
+// ── Prompt history ──────────────────────────────────────────────────────────
+
+QStringList Backend::promptHistory(ConversationId conv) {
+    const Tracked *t = find(conv.value);
+    if (!t || t->info.cwd.isEmpty())
+        return {};
+    return claude_code::promptHistory(
+        _paths.home + QStringLiteral("/history.jsonl"),
+        _paths.home + QStringLiteral("/paste-cache"),
+        t->info.cwd,
+        t->info.sessionId
+    );
+}
+
 // ── Commands ────────────────────────────────────────────────────────────────
 
 std::vector<SlashCommand> Backend::conversationCommands(ConversationId conv) {

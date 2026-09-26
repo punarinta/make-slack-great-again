@@ -47,6 +47,7 @@ enum class Shortcut {
     BulletList,
     Quote,
     UndoSend,
+    SearchPromptHistory,
 
     // ── Documented only ──────────────────────────────────────────────────────
     // SendMessage/NewLine swap bindings with the "send with Ctrl+Enter" option

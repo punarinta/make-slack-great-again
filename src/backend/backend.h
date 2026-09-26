@@ -12,6 +12,7 @@
 #include "rpl/range.h"
 
 #include <QHash>
+#include <QStringList>
 #include <functional>
 #include <memory>
 
@@ -463,6 +464,10 @@ public:
     // workspace-wide list applies. Answers from a cache, so the first call may
     // only start loading them.
     virtual std::vector<SlashCommand> conversationCommands(ConversationId) { return {}; }
+    // What ↑ steps through in the empty composer, newest first, where the
+    // service keeps a history of what was typed to it (Claude Code's prompt
+    // history). Empty: ↑ edits your last message instead, where that's possible.
+    virtual QStringList               promptHistory(ConversationId) { return {}; }
     // Runs a local command (SlashCommand::local) in a conversation — Claude
     // Code's /status (rows for a dialog), /clear (a fresh session to open).
     virtual LocalCommandResult

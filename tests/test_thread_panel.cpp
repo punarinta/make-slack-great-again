@@ -58,7 +58,10 @@ namespace {
 // Records the calls the panel is supposed to produce; everything else is inert.
 
 struct StubBackend : msga_test::StubBackendBase {
-    StubBackend() { caps.replyBroadcast = true; }
+    StubBackend() {
+        caps.replyBroadcast = true;
+        caps.editMessage    = true;
+    }
 
     struct UploadCall {
         ConversationId    conv;
@@ -519,6 +522,19 @@ TEST_CASE("an upload with no thread open is dropped, not sent to the channel", "
     CHECK(f.stub->uploadCalls.empty());
 }
 
+static void typeInto(ComposerWidget *c, const QString &text) {
+    auto *ed = c->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(ed != nullptr);
+    ed->setPlainText(text);
+}
+
+static void pressEnter(ComposerWidget *c) {
+    auto *ed = c->findChild<QTextEdit *>("composerEdit");
+    REQUIRE(ed != nullptr);
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(ed, &enter);
+}
+
 // ── Editing a reply from the thread panel ─────────────────────────────────────
 //
 // The bug (issue #44): in a thread, "Edit message" from the context menu did
@@ -603,6 +619,30 @@ TEST_CASE("the ↑ path still edits the newest own reply", "[thread][edit]") {
     CHECK(composerOf(panel)->currentText() == QStringLiteral("newest reply"));
 }
 
+TEST_CASE("↑ does not enter edit mode where the backend cannot edit", "[thread][edit]") {
+    // Claude Code (and email) have no message edit: their editMessage is a
+    // no-op. Entering edit mode there lets the user rewrite a prompt, press
+    // Enter, and lose the text to nothing — so ↑ must leave the composer alone.
+    Fixture f;
+    f.stub->caps.editMessage = false;
+    f.stub->_threadPage =
+        MessagePage{{rootInHeadPage("100.700", 2), replyMsg("100.700", "newest reply", "U1")}, {}};
+
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+
+    emit composerOf(panel)->editLastRequested();
+    CHECK(composerOf(panel)->currentText().isEmpty());
+
+    // And Enter afterwards sends a normal reply, never an edit.
+    typeInto(composerOf(panel), QStringLiteral("next prompt"));
+    pressEnter(composerOf(panel));
+    CHECK(f.stub->editCalls.empty());
+    REQUIRE(f.stub->sendCalls.size() == 1);
+    CHECK(f.stub->sendCalls[0].msg.rawText == QStringLiteral("next prompt"));
+}
+
 // ── Draft stashing across threads ─────────────────────────────────────────────
 //
 // Security-boundary tests: input staged in one thread (text + attachments) must
@@ -610,19 +650,6 @@ TEST_CASE("the ↑ path still edits the newest own reply", "[thread][edit]") {
 // and must come back intact when the user returns to where it was typed. The
 // failure mode these guard against is the worst kind: a reply drafted for one
 // audience silently posted to a different one.
-
-static void typeInto(ComposerWidget *c, const QString &text) {
-    auto *ed = c->findChild<QTextEdit *>("composerEdit");
-    REQUIRE(ed != nullptr);
-    ed->setPlainText(text);
-}
-
-static void pressEnter(ComposerWidget *c) {
-    auto *ed = c->findChild<QTextEdit *>("composerEdit");
-    REQUIRE(ed != nullptr);
-    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
-    QApplication::sendEvent(ed, &enter);
-}
 
 static const Ts kRoot2 = QStringLiteral("200.500");
 

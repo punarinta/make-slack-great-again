@@ -29,6 +29,7 @@ class EmojiPickerPopup;
 class GifPickerPopup;
 class MentionCompleter;
 class MentionPopup;
+class HistorySearchPopup;
 class FormattingToolbar;
 class AttachmentStrip;
 class EditModeBanner;
@@ -56,6 +57,12 @@ public:
 
     // Provide a session for autocomplete and emoji; can be called at any time.
     void setSession(Session *session);
+
+    // Where ↑ in the empty editor finds earlier prompts to step through
+    // (newest first), the way Claude Code's prompt box does; ↓ steps back and,
+    // past the newest, empties the editor again. Asked each time ↑ starts from
+    // an empty editor; an empty list leaves ↑ to editLastRequested.
+    void setPromptHistorySource(std::function<QStringList()> source);
 
     // Optional subject line for email backends (decision §3 #3): shown only when
     // the backend declares Capabilities::messageSubjects. The value travels to
@@ -172,6 +179,13 @@ private:
     void applyTheme();
     void trySend();
     void trySchedule();
+    // ↑ (older) or ↓ in the prompt history; false when the key is the editor's
+    // (a line to move to, no history, a message being edited).
+    bool stepPromptHistory(bool older);
+    void resetPromptHistory();
+    // Ctrl+R: the search over the same history (HistorySearchPopup); false
+    // when there's nothing to search.
+    bool openHistorySearch();
     void updateSendState();
     void adjustEditorHeight();
     void setFocused(bool focused);
@@ -222,12 +236,16 @@ private:
     // editing; -1 = never), so typing doesn't re-emit it.
     int               _compositionState = -1;
 
-    PopupTooltip                            *_tooltip        = nullptr;
-    EmojiPickerPopup                        *_emojiPicker    = nullptr;
-    GifPickerPopup                          *_gifPicker      = nullptr;
-    MentionCompleter                        *_mentionComp    = nullptr;
-    MentionPopup                            *_mentionPopup   = nullptr;
-    Session                                 *_session        = nullptr;
+    PopupTooltip                            *_tooltip       = nullptr;
+    EmojiPickerPopup                        *_emojiPicker   = nullptr;
+    GifPickerPopup                          *_gifPicker     = nullptr;
+    MentionCompleter                        *_mentionComp   = nullptr;
+    MentionPopup                            *_mentionPopup  = nullptr;
+    HistorySearchPopup                      *_historySearch = nullptr;
+    Session                                 *_session       = nullptr;
+    std::function<QStringList()>             _historySource;
+    QStringList                              _history;             // while stepping through it
+    int                                      _historyIndex   = -1; // shown entry; -1 = none
     ImageCache                              *_imgCache       = nullptr;
     ConvKind                                 _convKind       = ConvKind::PublicChannel;
     bool                                     _isThread       = false;

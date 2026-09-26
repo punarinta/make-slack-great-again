@@ -195,17 +195,9 @@ void TranscriptParser::addPrompt(
     const QString &text, qint64 micros, const QStringList &images, const QStringList &imageNames
 ) {
     TranscriptItem item;
-    item.kind = TranscriptItem::Kind::UserPrompt;
-    item.ts   = nextTs(micros, &item.date);
-    item.text = withoutTeammateNote(text); // msga's own addition to what was typed
-    static const QRegularExpression kRelay(QStringLiteral(
-        "^The user replied in the thread of subagent ([A-Za-z0-9_-]+)\\. Pass their message on "
-        "to it verbatim with SendMessage \\(to: \"\\1\"\\):\\n\\n([\\s\\S]+)$"
-    ));
-    if (const auto relay = kRelay.match(item.text); relay.hasMatch()) {
-        item.relayTo = relay.captured(1);
-        item.text    = relay.captured(2);
-    }
+    item.kind       = TranscriptItem::Kind::UserPrompt;
+    item.ts         = nextTs(micros, &item.date);
+    item.text       = typedPrompt(text, &item.relayTo);
     item.images     = images;
     item.imageNames = imageNames;
     // Files sent from msga ride the text as mentions (see withAttachments).
@@ -830,6 +822,79 @@ std::vector<Block> markdownBlocks(const QString &markdown) {
         return {};
     flushText();
     return blocks;
+}
+
+QString typedPrompt(const QString &prompt, QString *relayTo) {
+    QString text = withoutTeammateNote(prompt); // msga's own addition to what was typed
+    static const QRegularExpression kRelay(QStringLiteral(
+        "^The user replied in the thread of subagent ([A-Za-z0-9_-]+)\\. Pass their message on "
+        "to it verbatim with SendMessage \\(to: \"\\1\"\\):\\n\\n([\\s\\S]+)$"
+    ));
+    if (const auto relay = kRelay.match(text); relay.hasMatch()) {
+        if (relayTo)
+            *relayTo = relay.captured(1);
+        text = relay.captured(2);
+    }
+    return text;
+}
+
+QStringList promptHistory(
+    const QString &historyPath,
+    const QString &pasteDir,
+    const QString &project,
+    const QString &sessionId,
+    int            max
+) {
+    QFile f(historyPath);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    static const QRegularExpression kImage(QStringLiteral("\\[Image #\\d+\\] ?"));
+    const QString                   dir = QDir::cleanPath(project);
+    QStringList                     own, others; // oldest first
+    while (!f.atEnd()) {
+        const QByteArray line = f.readLine();
+        if (!line.contains("\"display\"")) // skip the parse for what can't be an entry
+            continue;
+        const QJsonObject o = QJsonDocument::fromJson(line).object();
+        if (QDir::cleanPath(o.value(QLatin1String("project")).toString()) != dir)
+            continue;
+        QString           text   = o.value(QLatin1String("display")).toString();
+        // A long paste shows as "[Pasted text #3 +24 lines]"; its text is in
+        // the entry, or (newer) in paste-cache/<contentHash>.txt.
+        const QJsonObject pastes = o.value(QLatin1String("pastedContents")).toObject();
+        for (auto it = pastes.begin(); it != pastes.end(); ++it) {
+            const QJsonObject p = it.value().toObject();
+            if (p.value(QLatin1String("type")).toString() != QLatin1String("text"))
+                continue;
+            QString content = p.value(QLatin1String("content")).toString();
+            if (content.isEmpty()) {
+                const QString hash = p.value(QLatin1String("contentHash")).toString();
+                QFile         paste(pasteDir + QLatin1Char('/') + hash + QStringLiteral(".txt"));
+                if (hash.isEmpty() || !paste.open(QIODevice::ReadOnly))
+                    continue; // leave the placeholder: better than a silent hole
+                content = QString::fromUtf8(paste.readAll());
+            }
+            const QRegularExpression placeholder(
+                QStringLiteral("\\[Pasted text #%1(?: \\+\\d+ lines)?\\]").arg(it.key())
+            );
+            if (const auto m = placeholder.match(text); m.hasMatch())
+                text.replace(m.capturedStart(), m.capturedLength(), content);
+        }
+        // A pasted image can't come back as text, and "[Image #1]" alone would
+        // only confuse the next prompt.
+        text.remove(kImage);
+        text = typedPrompt(text).trimmed();
+        if (text.isEmpty())
+            continue;
+        (o.value(QLatin1String("sessionId")).toString() == sessionId ? own : others) << text;
+    }
+    QStringList out;
+    for (const QStringList *part : {&own, &others}) {
+        for (auto it = part->crbegin(); it != part->crend() && out.size() < max; ++it)
+            if (out.isEmpty() || out.last() != *it) // the same prompt twice in a row: once
+                out << *it;
+    }
+    return out;
 }
 
 QString subagentReplyPrompt(const QString &agentId, const QString &reply) {

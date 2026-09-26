@@ -126,6 +126,13 @@ const std::vector<ShortcutDef> kDefs = {
      kNoStd,
      QT_TRANSLATE_NOOP("Ui::Shortcuts", "Undo send"),
      true},
+    // Only where the conversation has a prompt history (a Claude Code session).
+    {Shortcut::SearchPromptHistory,
+     ShortcutScope::Composer,
+     "Ctrl+R",
+     kNoStd,
+     QT_TRANSLATE_NOOP("Ui::Shortcuts", "Search earlier prompts"),
+     false},
 
     // ── Not advertised in the help panel ──────────────────────────────────────
     {Shortcut::Underline,

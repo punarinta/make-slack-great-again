@@ -175,6 +175,7 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/ui/loading_indicator/loading_indicator.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/members_popup/members_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/mention_popup/mention_popup.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/history_search/history_search_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/file_chip_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/message_list/message_list_paint.cpp

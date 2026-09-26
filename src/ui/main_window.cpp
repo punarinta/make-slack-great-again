@@ -1310,8 +1310,14 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
                 _session->editMessage(_currentConvId, ts, newText);
         }
     );
+    // ↑ in a Claude Code session: its prompt history, as in Claude Code itself.
+    _composer->setPromptHistorySource([this] {
+        return _session ? _session->promptHistory(_currentConvId) : QStringList();
+    });
     connect(_composer, &ComposerWidget::editLastRequested, this, [this] {
-        if (!_session || !_messageList)
+        // Only where the backend can edit: Claude Code and email have no edit,
+        // so edit mode there would swallow the rewrite into a no-op.
+        if (!_session || !_messageList || !_session->capabilities().editMessage)
             return;
         const auto msg = _messageList->lastOwnMessage(_session->meUserId());
         if (!msg)

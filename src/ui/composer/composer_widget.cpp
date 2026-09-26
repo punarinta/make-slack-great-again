@@ -10,6 +10,7 @@
 #include "network/gif_search.h"
 #include "text/link_labels.h"
 #include "mention_completer.h"
+#include "ui/history_search/history_search_popup.h"
 #include "ui/mention_popup/mention_popup.h"
 #include "session/session.h"
 #include "ui/file_dialog_utils.h"
@@ -1222,6 +1223,14 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                 return true;
             }
 
+            if (Ui::Shortcuts::matches(Ui::Shortcut::SearchPromptHistory, ke) &&
+                openHistorySearch())
+                return true;
+
+            if ((key == Qt::Key_Up || key == Qt::Key_Down) && mod == Qt::NoModifier &&
+                stepPromptHistory(key == Qt::Key_Up))
+                return true;
+
             if (key == Qt::Key_Up && mod == Qt::NoModifier && _edit->toPlainText().isEmpty()) {
                 emit editLastRequested();
                 return true;
@@ -1581,6 +1590,80 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
 
 // ── Sending ───────────────────────────────────────────────────────────────────
 
+void ComposerWidget::setPromptHistorySource(std::function<QStringList()> source) {
+    _historySource = std::move(source);
+    resetPromptHistory();
+}
+
+bool ComposerWidget::stepPromptHistory(bool older) {
+    if (!_editingTs.isEmpty())
+        return false;
+    // Inside a multi-line prompt the arrows move between its lines first.
+    if (auto probe = _edit->textCursor();
+        probe.movePosition(older ? QTextCursor::Up : QTextCursor::Down))
+        return false;
+    if (_historyIndex < 0) {
+        // Only from an empty editor: a draft is never replaced by ↑.
+        if (!older || !_historySource || !_edit->toPlainText().isEmpty())
+            return false;
+        _history = _historySource();
+        if (_history.isEmpty())
+            return false;
+    }
+    const int next = _historyIndex + (older ? 1 : -1);
+    if (next >= _history.size())
+        return true; // the oldest is shown already
+    if (next < 0) {
+        resetPromptHistory();
+        _edit->clear();
+        return true;
+    }
+    _historyIndex = next;
+    setText(_history[next]);
+    // Where the next press in the same direction goes on at once: going back
+    // from the first line, forward from the last.
+    auto tc = _edit->textCursor();
+    tc.movePosition(older ? QTextCursor::Start : QTextCursor::End);
+    _edit->setTextCursor(tc);
+    return true;
+}
+
+void ComposerWidget::resetPromptHistory() {
+    _history.clear();
+    _historyIndex = -1;
+}
+
+bool ComposerWidget::openHistorySearch() {
+    if (!_editingTs.isEmpty() || !_historySource || !parentWidget())
+        return false;
+    const QStringList history = _historySource();
+    if (history.isEmpty())
+        return false;
+    if (!_historySearch) {
+        // Parent = msgArea, as for the mention popup: over the message list,
+        // not a window of its own.
+        _historySearch = new HistorySearchPopup(parentWidget());
+        connect(_historySearch, &HistorySearchPopup::picked, this, [this](const QString &text) {
+            resetPromptHistory();
+            setText(text);
+            auto tc = _edit->textCursor();
+            tc.movePosition(QTextCursor::End);
+            _edit->setTextCursor(tc);
+            _edit->setFocus();
+        });
+        connect(_historySearch, &HistorySearchPopup::cancelled, this, [this] {
+            _edit->setFocus();
+        });
+    }
+    // What's typed so far is where the search starts; picking replaces it.
+    _historySearch->open(
+        history,
+        _edit->toPlainText().simplified(),
+        QRect(mapTo(parentWidget(), QPoint(0, 0)), size())
+    );
+    return true;
+}
+
 void ComposerWidget::trySend() {
     _tooltip->hide();
     const auto        text  = currentText().trimmed();
@@ -1588,6 +1671,7 @@ void ComposerWidget::trySend() {
 
     if (text.isEmpty() && files.isEmpty())
         return;
+    resetPromptHistory(); // the next ↑ starts from the newest again
 
     // Email backends require a subject (the field is shown only for them). Never
     // send an empty-subject mail — focus the field so the user fills it.
@@ -1779,6 +1863,9 @@ void ComposerWidget::setText(const QString &text) {
 }
 
 ComposerDraft ComposerWidget::takeDraft() {
+    resetPromptHistory();
+    if (_historySearch)
+        _historySearch->dismiss();
     // An in-progress edit is not a draft: its text is an existing message's,
     // and stashing it would resurface that message as "your unsent input"
     // somewhere else. Exiting first drops the edit text and the read-only file
@@ -1805,6 +1892,7 @@ ComposerDraft ComposerWidget::takeDraft() {
 }
 
 void ComposerWidget::restoreDraft(const ComposerDraft &draft) {
+    resetPromptHistory();
     exitEditMode();
     setText(draft.text);
     _pendingFiles = draft.files;

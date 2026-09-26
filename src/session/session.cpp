@@ -2386,6 +2386,10 @@ std::vector<SlashCommand> Session::currentCommands() const {
     return _commands;
 }
 
+QStringList Session::promptHistory(ConversationId conv) const {
+    return conv.value.isEmpty() ? QStringList() : _backend->promptHistory(conv);
+}
+
 bool Session::commandsAreMessages() const {
     return _backend->capabilities().commandsAreMessages;
 }

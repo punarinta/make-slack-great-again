@@ -16,6 +16,7 @@
 #include <QDropEvent>
 #include <QFile>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QUrl>
 #include <QImage>
 #include <QMimeData>
@@ -25,6 +26,7 @@
 
 #include "ui/composer/composer_widget.h"
 #include "ui/composer/undo_send_pill.h"
+#include "ui/history_search/history_search_popup.h"
 #include "ui/shortcuts.h"
 #include "session/session.h"
 #include "backend/backend.h"
@@ -435,6 +437,201 @@ TEST_CASE("a subject-less draft keeps the host's reply prefill", "[composer][dra
     CHECK(c.currentText() == "body only");
 }
 
+// ── Prompt history (↑ in a Claude Code session) ───────────────────────────────
+
+static void press(ComposerWidget *c, Qt::Key key) {
+    QKeyEvent ev(QEvent::KeyPress, key, Qt::NoModifier);
+    QApplication::sendEvent(editOf(c), &ev);
+}
+
+TEST_CASE("↑ and ↓ step through the prompt history", "[composer][history]") {
+    ComposerWidget c;
+    c.setPromptHistorySource([] { return QStringList{"newest", "middle", "oldest"}; });
+    int editLast = 0;
+    QObject::connect(&c, &ComposerWidget::editLastRequested, &c, [&] { ++editLast; });
+
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "newest");
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "middle");
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "oldest");
+    press(&c, Qt::Key_Up); // nothing older: stays
+    CHECK(c.currentText() == "oldest");
+
+    press(&c, Qt::Key_Down);
+    CHECK(c.currentText() == "middle");
+    press(&c, Qt::Key_Down);
+    CHECK(c.currentText() == "newest");
+    press(&c, Qt::Key_Down); // past the newest: the empty editor again
+    CHECK(c.currentText().isEmpty());
+    CHECK(editLast == 0); // never mistaken for "edit my last message"
+}
+
+TEST_CASE("↑ never replaces a draft with a history entry", "[composer][history]") {
+    ComposerWidget c;
+    c.setPromptHistorySource([] { return QStringList{"old prompt"}; });
+    typeText(&c, "half-typed");
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "half-typed");
+}
+
+TEST_CASE("a multi-line entry is walked line by line on the way back down", "[composer][history]") {
+    ComposerWidget c;
+    c.setPromptHistorySource([] { return QStringList{"one line", "first\nsecond"}; });
+    press(&c, Qt::Key_Up);
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "first\nsecond");
+    // ↑ left the cursor on the first line, so ↓ moves to the second line
+    // before it moves on to the newer entry.
+    press(&c, Qt::Key_Down);
+    CHECK(c.currentText() == "first\nsecond");
+    press(&c, Qt::Key_Down);
+    CHECK(c.currentText() == "one line");
+}
+
+TEST_CASE("with no history ↑ still asks to edit the last message", "[composer][history]") {
+    ComposerWidget c;
+    c.setPromptHistorySource([] { return QStringList(); });
+    int editLast = 0;
+    QObject::connect(&c, &ComposerWidget::editLastRequested, &c, [&] { ++editLast; });
+    press(&c, Qt::Key_Up);
+    CHECK(editLast == 1);
+}
+
+TEST_CASE("after a send ↑ starts again from the newest prompt", "[composer][history]") {
+    ComposerWidget c;
+    QStringList    history{"b", "a"};
+    c.setPromptHistorySource([&] { return history; });
+    QString sent;
+    QObject::connect(&c, &ComposerWidget::sendRequested, &c, [&](const QString &t) { sent = t; });
+
+    press(&c, Qt::Key_Up);
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "a");
+    press(&c, Qt::Key_Return);
+    CHECK(sent == "a");
+    CHECK(c.currentText().isEmpty());
+
+    history.prepend("a"); // what Claude Code records for the send
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "a");
+    press(&c, Qt::Key_Up);
+    CHECK(c.currentText() == "b");
+}
+
+// ── Prompt history search (Ctrl+R) ────────────────────────────────────────────
+
+TEST_CASE("history search matches every word, in any order", "[composer][history][search]") {
+    const QStringList entries{
+        "Fix the Login bug", "login page styling", "unrelated", "bug in login"
+    };
+    CHECK(HistorySearch::filter(entries, "") == QList<int>{0, 1, 2, 3});
+    CHECK(HistorySearch::filter(entries, "login") == QList<int>{0, 1, 3});
+    CHECK(HistorySearch::filter(entries, "  bug   LOGIN ") == QList<int>{0, 3});
+    CHECK(HistorySearch::filter(entries, "nothing").isEmpty());
+
+    // Highlights: every occurrence of every word, overlaps merged.
+    using R = QList<QPair<int, int>>;
+    CHECK(HistorySearch::matchRanges("Login and login", "login") == R{{0, 5}, {10, 5}});
+    CHECK(HistorySearch::matchRanges("abcdef", "abc cde") == R{{0, 5}});
+    CHECK(HistorySearch::matchRanges("abc", "").isEmpty());
+}
+
+namespace {
+// The composer in a host: the search panel hangs in the composer's parent.
+struct SearchHost {
+    QWidget         host;
+    ComposerWidget *c = nullptr;
+    QStringList     history{"deploy to staging", "fix the login bug", "deploy to prod"};
+
+    SearchHost() {
+        host.resize(800, 600);
+        c = new ComposerWidget(&host);
+        c->setGeometry(0, 480, 800, 120);
+        c->setPromptHistorySource([this] { return history; });
+        host.show();
+    }
+    HistorySearchPopup *popup() const { return host.findChild<HistorySearchPopup *>(); }
+    void                key(Qt::Key k, Qt::KeyboardModifiers mods = Qt::NoModifier) const {
+        QKeyEvent ev(QEvent::KeyPress, k, mods);
+        QApplication::sendEvent(popup()->findChild<QLineEdit *>(), &ev);
+    }
+    void ctrlR(QWidget *target) const {
+        QKeyEvent ev(QEvent::KeyPress, Qt::Key_R, Qt::ControlModifier);
+        QApplication::sendEvent(target, &ev);
+    }
+};
+} // namespace
+
+TEST_CASE("Ctrl+R searches the history and Enter takes the match", "[composer][history][search]") {
+    SearchHost h;
+    typeText(h.c, "deploy");
+    h.ctrlR(editOf(h.c));
+    REQUIRE(h.popup() != nullptr);
+    CHECK(h.popup()->isOpen());
+    CHECK(h.popup()->query() == "deploy"); // the draft is where the search starts
+    CHECK(h.popup()->matches() == QStringList{"deploy to staging", "deploy to prod"});
+    CHECK(h.popup()->selectedEntry() == "deploy to staging"); // the newest first
+
+    h.key(Qt::Key_Return);
+    CHECK_FALSE(h.popup()->isOpen());
+    CHECK(h.c->currentText() == "deploy to staging"); // taken back, not sent
+}
+
+TEST_CASE("↑ and Ctrl+R again go to older matches", "[composer][history][search]") {
+    SearchHost h;
+    h.ctrlR(editOf(h.c));
+    REQUIRE(h.popup() != nullptr);
+    CHECK(h.popup()->matches().size() == 3);
+    h.key(Qt::Key_Up);
+    CHECK(h.popup()->selectedEntry() == "fix the login bug");
+    h.ctrlR(h.popup()->findChild<QLineEdit *>());
+    CHECK(h.popup()->selectedEntry() == "deploy to prod");
+    h.key(Qt::Key_Up); // the oldest already
+    CHECK(h.popup()->selectedEntry() == "deploy to prod");
+    h.key(Qt::Key_Down);
+    CHECK(h.popup()->selectedEntry() == "fix the login bug");
+    h.key(Qt::Key_Return);
+    CHECK(h.c->currentText() == "fix the login bug");
+}
+
+TEST_CASE("Esc closes the history search and keeps the draft", "[composer][history][search]") {
+    SearchHost h;
+    typeText(h.c, "half-typed");
+    h.ctrlR(editOf(h.c));
+    REQUIRE(h.popup() != nullptr);
+    h.key(Qt::Key_Escape);
+    CHECK_FALSE(h.popup()->isOpen());
+    CHECK(h.c->currentText() == "half-typed");
+}
+
+TEST_CASE("Enter with no match takes nothing", "[composer][history][search]") {
+    SearchHost h;
+    typeText(h.c, "zzz");
+    h.ctrlR(editOf(h.c));
+    REQUIRE(h.popup() != nullptr);
+    CHECK(h.popup()->matches().isEmpty());
+    h.key(Qt::Key_Return);
+    CHECK(h.popup()->isOpen());
+    CHECK(h.c->currentText() == "zzz");
+}
+
+TEST_CASE("without a history Ctrl+R opens nothing", "[composer][history][search]") {
+    SearchHost h;
+    h.history.clear(); // a Slack chat: the backend keeps no prompt history
+    h.ctrlR(editOf(h.c));
+    CHECK(h.popup() == nullptr);
+}
+
+TEST_CASE("switching conversations closes the history search", "[composer][history][search]") {
+    SearchHost h;
+    h.ctrlR(editOf(h.c));
+    REQUIRE(h.popup() != nullptr);
+    h.c->takeDraft();
+    CHECK_FALSE(h.popup()->isOpen());
+}
+
 // ── Session: new methods ──────────────────────────────────────────────────────
 
 // StubBackend mirrors the one in test_session.cpp but adds typing/schedule tracking.
@@ -628,6 +825,7 @@ TEST_CASE("adjacent mention pills serialize independently", "[composer][mention]
 #include "ui/theme.h"
 #include <QEventLoop>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QTimer>
 

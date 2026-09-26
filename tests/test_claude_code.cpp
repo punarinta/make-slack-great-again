@@ -456,6 +456,70 @@ TEST_CASE("a reply relayed to a subagent reads back as the reply alone", "[claud
     CHECK(p.items()[1].relayTo.isEmpty());
 }
 
+// ── Prompt history (history.jsonl, what ↑ steps through) ──────────────────────
+
+TEST_CASE("the prompt history is the folder's, this session's first", "[claude][history]") {
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    const QString pastes = dir.filePath("paste-cache");
+    REQUIRE(QDir().mkpath(pastes));
+    QFile cached(pastes + "/abc123.txt");
+    REQUIRE(cached.open(QIODevice::WriteOnly));
+    cached.write("pasted from the cache");
+    cached.close();
+
+    const auto entry = [](const QString     &text,
+                          const QString     &project,
+                          const QString     &session,
+                          const QJsonObject &pasted = {}) {
+        return line({
+            {"display", text},
+            {"pastedContents", pasted},
+            {"timestamp", qint64(1790419488582)},
+            {"project", project},
+            {"sessionId", session},
+        });
+    };
+    QFile f(dir.filePath("history.jsonl"));
+    REQUIRE(f.open(QIODevice::WriteOnly));
+    f.write(
+        entry("other session, older", "/src/app", "S2") + entry("mine, older", "/src/app", "S1") +
+        entry("another folder", "/src/other", "S1") +
+        entry(
+            "[Pasted text #1 +3 lines] and inline",
+            "/src/app",
+            "S2",
+            QJsonObject{{"1", QJsonObject{{"id", 1}, {"type", "text"}, {"content", "PASTE"}}}}
+        ) +
+        entry(
+            "see [Pasted text #7 +9 lines]",
+            "/src/app",
+            "S2",
+            QJsonObject{{"7", QJsonObject{{"id", 7}, {"type", "text"}, {"contentHash", "abc123"}}}}
+        ) +
+        entry("[Image #1] what's wrong here?", "/src/app/", "S1") +
+        entry(subagentReplyPrompt("agent42", "Which page?"), "/src/app", "S1") +
+        entry("[Image #2]", "/src/app", "S1") + // nothing left to recall
+        entry("again", "/src/app", "S1") + entry("again", "/src/app", "S1") + "not json\n"
+    );
+    f.close();
+
+    const QStringList h = promptHistory(f.fileName(), pastes, "/src/app", "S1");
+    CHECK(
+        h == QStringList{
+                 "again",
+                 "Which page?",        // the relayed reply as typed, not msga's wrapper
+                 "what's wrong here?", // the image placeholder dropped
+                 "mine, older",
+                 "see pasted from the cache",
+                 "PASTE and inline",
+                 "other session, older",
+             }
+    );
+    CHECK(promptHistory(f.fileName(), pastes, "/src/app", "S1", 2).size() == 2);
+    CHECK(promptHistory(dir.filePath("missing.jsonl"), pastes, "/src/app", "S1").isEmpty());
+}
+
 TEST_CASE(
     "records in the same millisecond still get distinct, ordered ids", "[claude][transcript]"
 ) {

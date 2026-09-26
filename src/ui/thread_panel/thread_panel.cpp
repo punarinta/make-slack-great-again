@@ -203,7 +203,9 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
         }
     );
     connect(_composer, &ComposerWidget::editLastRequested, this, [this] {
-        if (!_session || !_msgList)
+        // Only where the backend can edit: Claude Code and email have no edit,
+        // so edit mode there would swallow the rewrite into a no-op.
+        if (!_session || !_msgList || !_session->capabilities().editMessage)
             return;
         const auto msg = _msgList->lastOwnMessage(_session->meUserId());
         if (!msg)

@@ -155,6 +155,25 @@ private:
 // so the thread shows this prompt, parsed back into the reply (relayTo).
 QString subagentReplyPrompt(const QString &agentId, const QString &reply);
 
+// What the user typed, out of a prompt msga sent: without msga's teammate note,
+// and a relayed thread reply (subagentReplyPrompt) as the reply alone, its
+// subagent in `relayTo`.
+QString typedPrompt(const QString &prompt, QString *relayTo = nullptr);
+
+// Claude Code's prompt history — history.jsonl, the list its prompt box steps
+// through with ↑ — for the sessions of folder `project`, newest first: session
+// `sessionId`'s own prompts, then the folder's other sessions'. Up to `max`, as
+// many as Claude Code offers. msga's prompts are in it too (they're typed into
+// the session) and come back as typed (typedPrompt); long pastes come back
+// whole (inline, or <pasteDir>/<contentHash>.txt); pasted images are dropped.
+QStringList promptHistory(
+    const QString &historyPath,
+    const QString &pasteDir,
+    const QString &project,
+    const QString &sessionId,
+    int            max = 100
+);
+
 // Takes the record `uuid` (a prompt or an answer: TranscriptItem::uuid) out of
 // the transcript at `path`, so the session no longer has it when it resumes.
 // The thinking behind it goes too (an answer's, or for a prompt the whole

@@ -122,6 +122,8 @@ public:
     // backend reports (commands.list) once it answers — or the open
     // conversation's own list, where the backend has one per conversation.
     std::vector<SlashCommand>   currentCommands() const;
+    // What ↑ steps through in `conv`'s empty composer (Backend::promptHistory).
+    QStringList                 promptHistory(ConversationId conv) const;
     // Whether a slash command is just a message to the agent (Claude Code).
     bool                        commandsAreMessages() const;
     // Look up a command by name (no leading slash, case-insensitive); nullptr if unknown.
