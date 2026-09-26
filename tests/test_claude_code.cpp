@@ -1493,6 +1493,104 @@ TEST_CASE(
     REQUIRE(QTest::qWaitFor([&] { return !active(); }, 5000));
 }
 
+TEST_CASE("a background job's suggested reply is offered only while it asks", "[claude][roster]") {
+    // Claude Code writes it on a turn that ends on a question, and its own
+    // list offers it only while the job reads "blocked" (verified in 2.1.283).
+    const auto asking = parseBackgroundJob(
+        R"({"state":"blocked","tempo":"blocked","sessionId":"S1","needs":"confirm the copy",
+            "suggestedReply":"copy changes to 'master'"})"
+    );
+    REQUIRE(asking);
+    CHECK(asking->suggestedReply == "copy changes to 'master'");
+
+    // A stopped job keeps a stale one (seen live).
+    const auto stopped = parseBackgroundJob(
+        R"({"state":"stopped","tempo":"idle","sessionId":"S2","suggestedReply":"finish the rest"})"
+    );
+    REQUIRE(stopped);
+    CHECK(stopped->suggestedReply.isEmpty());
+
+    // Multiple-choice questions are answered by picking, not typing.
+    const auto choosing = parseBackgroundJob(
+        R"({"state":"blocked","tempo":"blocked","sessionId":"S3","suggestedReply":"yes",
+            "block":{"questions":[{"question":"Which?","options":[]}]}})"
+    );
+    REQUIRE(choosing);
+    CHECK(choosing->suggestedReply.isEmpty());
+}
+
+TEST_CASE(
+    "the suggested reply rides on the conversation until the reply is under way",
+    "[claude][backend][bg]"
+) {
+    FakeClaudeHome home;
+    home.append(
+        prompt("look for duplicates", "2026-09-25T10:00:00.000Z") +
+        assistantText("Copy it to master?", "2026-09-25T10:00:01.000Z") +
+        turnEnd("2026-09-25T10:00:02.000Z")
+    );
+    QDir(home.dir.path()).mkpath("jobs/S1");
+    {
+        QFile f(home.dir.path() + "/jobs/S1/state.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"state", "blocked"},
+                        {"tempo", "blocked"},
+                        {"needs", "confirm the copy"},
+                        {"suggestedReply", "copy changes to 'master'"},
+                        {"updatedAt", "2026-09-25T10:00:02.500Z"},
+                        {"sessionId", "S1"},
+                        {"cwd", "/src/app"},
+                        {"name", "duplicates"},
+                        {"linkScanPath", home.transcript},
+                    }
+        )
+                    .toJson());
+    }
+    {
+        QFile f(home.dir.path() + "/sessions/1.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"pid", QCoreApplication::applicationPid()}, // alive
+                        {"sessionId", "S1"},
+                        {"cwd", "/src/app"},
+                        {"kind", "bg"},
+                        {"status", "busy"},
+                        {"entrypoint", "cli"},
+                    }
+        )
+                    .toJson());
+    }
+    Credentials creds;
+    creds.claudePath = QStringLiteral("claude"); // else nothing is writable from here
+    claude_code::Backend backend(creds);
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    backend.connectRealtime();
+
+    const auto convs = collect(backend.loadConversations());
+    REQUIRE(convs.size() == 1);
+    REQUIRE(convs[0].size() == 1);
+    CHECK(convs[0][0].readOnlyReason.isEmpty());
+    CHECK(convs[0][0].suggestedReply == "copy changes to 'master'");
+
+    // The reply, typed in a terminal, is under way: nothing left to suggest.
+    const auto lastSuggestion = [&]() -> std::optional<QString> {
+        for (auto it = events.rbegin(); it != events.rend(); ++it)
+            if (const auto *c = std::get_if<EvChannelCreated>(&*it); c && c->conv.id.value == "S1")
+                return c->conv.suggestedReply;
+        return std::nullopt;
+    };
+    home.append(
+        prompt("copy changes to master", "2026-09-25T10:05:00.000Z") +
+        toolUse("b1", "Bash", {{"command", "ls"}}, "2026-09-25T10:05:01.000Z")
+    );
+    REQUIRE(QTest::qWaitFor([&] { return lastSuggestion() == QString(); }, 5000));
+}
+
 #if !defined(Q_OS_WIN)
 // ── Team roles ────────────────────────────────────────────────────────────────
 

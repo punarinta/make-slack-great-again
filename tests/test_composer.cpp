@@ -522,6 +522,75 @@ TEST_CASE("after a send ↑ starts again from the newest prompt", "[composer][hi
     CHECK(c.currentText() == "b");
 }
 
+// ── Suggested reply ───────────────────────────────────────────────────────────
+
+TEST_CASE("a suggested reply stands in for the placeholder", "[composer][suggestion]") {
+    ComposerWidget c;
+    c.setPlaceholderText("Message Agent");
+    c.setSuggestion("run the tests");
+    CHECK(editOf(&c)->placeholderText().startsWith("run the tests"));
+    CHECK(c.currentText().isEmpty()); // shown, not typed
+    c.setSuggestion({});
+    CHECK(editOf(&c)->placeholderText() == "Message Agent");
+    // The host's placeholder set meanwhile comes back once it's gone.
+    c.setSuggestion("run the tests");
+    c.setPlaceholderText("Message Other");
+    CHECK(editOf(&c)->placeholderText().startsWith("run the tests"));
+    c.setSuggestion({});
+    CHECK(editOf(&c)->placeholderText() == "Message Other");
+}
+
+TEST_CASE("→ or Tab in the empty editor takes the suggestion, unsent", "[composer][suggestion]") {
+    ComposerWidget c;
+    int            sends = 0;
+    QObject::connect(&c, &ComposerWidget::sendRequested, &c, [&] { ++sends; });
+    c.setSuggestion("run the tests");
+    press(&c, Qt::Key_Right);
+    CHECK(c.currentText() == "run the tests");
+    CHECK(editOf(&c)->textCursor().position() == QString("run the tests").size());
+    CHECK(sends == 0);
+
+    editOf(&c)->insertPlainText(" again"); // at the cursor, which sits after it
+    CHECK(c.currentText() == "run the tests again");
+
+    ComposerWidget t;
+    t.setSuggestion("push it");
+    press(&t, Qt::Key_Tab);
+    CHECK(t.currentText() == "push it");
+}
+
+TEST_CASE("→ never replaces what is typed", "[composer][suggestion]") {
+    ComposerWidget c;
+    c.setSuggestion("run the tests");
+    typeText(&c, "no");
+    press(&c, Qt::Key_Right);
+    CHECK(c.currentText() == "no");
+    press(&c, Qt::Key_Tab);
+    CHECK_FALSE(c.currentText().contains("run the tests"));
+}
+
+TEST_CASE("without a suggestion → does what it always did", "[composer][suggestion]") {
+    ComposerWidget c;
+    press(&c, Qt::Key_Right);
+    CHECK(c.currentText().isEmpty());
+}
+
+TEST_CASE("a send or leaving the chat drops the suggestion", "[composer][suggestion]") {
+    ComposerWidget c;
+    c.setPlaceholderText("Message Agent");
+    c.setSuggestion("run the tests");
+    press(&c, Qt::Key_Right);
+    press(&c, Qt::Key_Return);
+    CHECK(c.suggestion().isEmpty());
+    CHECK(editOf(&c)->placeholderText() == "Message Agent");
+    press(&c, Qt::Key_Right);
+    CHECK(c.currentText().isEmpty());
+
+    c.setSuggestion("push it");
+    c.takeDraft();
+    CHECK(c.suggestion().isEmpty());
+}
+
 // ── Prompt history search (Ctrl+R) ────────────────────────────────────────────
 
 TEST_CASE("history search matches every word, in any order", "[composer][history][search]") {

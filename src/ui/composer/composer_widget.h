@@ -55,6 +55,14 @@ public:
 
     void setPlaceholderText(const QString &text);
 
+    // What the conversation's service predicts you'll type next (Claude
+    // Code's suggested reply), shown in place of the placeholder while the
+    // editor is empty; → or Tab there puts it in the editor, unsent, the way
+    // Claude Code's prompt box takes its suggestion. "" drops it. A send or a
+    // conversation switch (takeDraft) drops it too: it answers one turn.
+    void    setSuggestion(const QString &text);
+    QString suggestion() const { return _suggestion; }
+
     // Provide a session for autocomplete and emoji; can be called at any time.
     void setSession(Session *session);
 
@@ -208,6 +216,11 @@ private:
     void undoSend();
     void withdrawUndoSend();
     void placeUndoPill();
+    // The placeholder on screen: the suggestion (with its key hint) while
+    // there is one, else the host's text.
+    void applyPlaceholder();
+    // → / Tab in the empty editor: the suggestion becomes the editor's text.
+    bool acceptSuggestion();
 
     QFrame            *_box          = nullptr;
     StyledLineEdit    *_subject      = nullptr; // email subject line (optional)
@@ -224,6 +237,8 @@ private:
     QWidget           *_linkPopup    = nullptr; // LinkPopup instance, created lazily
     QFileDialog       *_attachDialog = nullptr; // persistent native file picker, reused
     Ts                 _editingTs;              // non-empty when in edit mode
+    QString            _placeholder;            // the host's (setPlaceholderText)
+    QString            _suggestion;             // setSuggestion; "" = none
 
     QStringList       _pendingFiles;  // local paths of files to upload on send
     std::vector<File> _editModeFiles; // existing files shown read-only in edit mode

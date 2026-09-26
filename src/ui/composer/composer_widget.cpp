@@ -504,7 +504,8 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
     edit->onMediaPaste = [this](const QMimeData *source) { return attachFromMimeData(source); };
     _edit              = edit;
     _edit->setObjectName("composerEdit");
-    _edit->setPlaceholderText(tr("Message #channel"));
+    _placeholder = tr("Message #channel");
+    _edit->setPlaceholderText(_placeholder);
     _edit->setMinimumHeight(kMinEditHeight);
     _edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     _edit->setAcceptRichText(false);
@@ -780,7 +781,33 @@ void ComposerWidget::recolorMentionPills() {
 // ── Public ────────────────────────────────────────────────────────────────────
 
 void ComposerWidget::setPlaceholderText(const QString &text) {
-    _edit->setPlaceholderText(text);
+    _placeholder = text;
+    applyPlaceholder();
+}
+
+void ComposerWidget::setSuggestion(const QString &text) {
+    const QString s = text.simplified();
+    if (s == _suggestion)
+        return;
+    _suggestion = s;
+    applyPlaceholder();
+}
+
+void ComposerWidget::applyPlaceholder() {
+    if (_suggestion.isEmpty()) {
+        _edit->setPlaceholderText(_placeholder);
+        return;
+    }
+    //: The composer's placeholder when Claude Code suggests what to type next:
+    //: the suggestion, then the key that puts it in the editor
+    _edit->setPlaceholderText(tr("%1  →").arg(_suggestion));
+}
+
+bool ComposerWidget::acceptSuggestion() {
+    if (_suggestion.isEmpty() || !_editingTs.isEmpty() || !_edit->document()->isEmpty())
+        return false;
+    _edit->insertPlainText(_suggestion); // the cursor ends up after it
+    return true;
 }
 
 void ComposerWidget::setSession(Session *session) {
@@ -1196,6 +1223,13 @@ bool ComposerWidget::eventFilter(QObject *obj, QEvent *event) {
                 if (_mentionComp->handleKey(key))
                     return true;
             }
+
+            // A suggested reply is taken with → or Tab from the empty editor
+            // (Right has nothing to move over there, and Tab would insert a
+            // lone tab character).
+            if ((key == Qt::Key_Right || key == Qt::Key_Tab) &&
+                (mod & ~Qt::KeypadModifier) == Qt::NoModifier && acceptSuggestion())
+                return true;
 
             // Mention pills are atomic: deleting any part of one removes the
             // whole pill — a partially edited pill would otherwise lose its
@@ -1752,6 +1786,7 @@ void ComposerWidget::trySend() {
             emit editRequested(ts, text);
     } else {
         _edit->clear();
+        setSuggestion({}); // it was the answer to the turn this send follows
         if (!files.isEmpty())
             emit uploadRequested(files, text); // files + text = one message
         else
@@ -1904,6 +1939,7 @@ ComposerDraft ComposerWidget::takeDraft() {
     // conversation being left; carrying it over would let a click on the chip
     // drop that text into whatever chat is shown next.
     withdrawUndoSend();
+    setSuggestion({}); // it belongs to the conversation being left
 
     ComposerDraft draft;
     draft.text  = currentText();

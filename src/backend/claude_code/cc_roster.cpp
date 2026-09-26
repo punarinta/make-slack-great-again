@@ -119,6 +119,14 @@ std::optional<SessionInfo> parseBackgroundJob(const QByteArray &json) {
     // (verified 2026-09-25): it is waiting for the user all the same.
     if (!s.needs.isEmpty())
         s.status = QStringLiteral("blocked");
+    // Claude Code predicts the reply when a turn ends on a question (a bg
+    // worker without a focused terminal predicts nothing else) and clears it
+    // when the next turn starts — yet a stopped job can keep a stale one, and
+    // its own list offers it only while "blocked" and not on multiple-choice
+    // questions (verified in 2.1.283), so neither does msga.
+    if (o.value(QLatin1String("tempo")).toString() == QLatin1String("blocked") &&
+        !o.value(QLatin1String("block")).toObject().contains(QLatin1String("questions")))
+        s.suggestedReply = o.value(QLatin1String("suggestedReply")).toString().trimmed();
     s.transcriptPath = o.value(QLatin1String("linkScanPath")).toString();
     s.statusSinceMs  = isoToMs(o.value(QLatin1String("updatedAt")).toString());
     // Running = its worker process is alive, which only the worker's own

@@ -345,6 +345,7 @@ private:
 
     QString             _activeTeamId;
     QString             _composerLockReason;   // what applyComposerAccess last applied
+    QString             _composerSuggestion;   // …and the suggested reply it last handed on
     auth::AuthStrategy *_activeFlow = nullptr; // valid only while a login flow is in progress
 
     // Window frame

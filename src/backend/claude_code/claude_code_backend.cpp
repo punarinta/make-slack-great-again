@@ -627,6 +627,10 @@ Conversation Backend::conversationFor(const Tracked &t) const {
     c.lastRead       = t.lastRead;
     c.readOnlyReason = readOnlyReason(t);
     c.agentRole      = roleOf(t);
+    // Only while it still waits for that answer: once msga sends one, or the
+    // reply typed in a terminal is under way, it answers nothing any more.
+    if (needsUser(t) && c.readOnlyReason.isEmpty())
+        c.suggestedReply = t.info.suggestedReply;
     // Unread = what Claude said since the last read; only its answers (and
     // "waiting for you") count toward the red counter, like the live path.
     for (auto it = t.announced.cbegin(); it != t.announced.cend(); ++it) {
@@ -1410,6 +1414,7 @@ void Backend::refresh() {
         t.info.running = false;
         t.info.status.clear();
         t.info.needs.clear();
+        t.info.suggestedReply.clear();
         if (t.info.sessionId.isEmpty() || t.sending)
             continue; // a "+" session not started yet, or one being started right now
         // Kept exactly as long as Claude Code keeps the session: a background
@@ -2244,7 +2249,8 @@ void Backend::announceChanged(Tracked &t) {
     const Conversation c = conversationFor(t);
     if (c.name != t.lastConv.name || c.localName != t.lastConv.localName ||
         c.readOnlyReason != t.lastConv.readOnlyReason || c.description != t.lastConv.description ||
-        c.agentRole != t.lastConv.agentRole || t.lastConv.id.value.isEmpty())
+        c.suggestedReply != t.lastConv.suggestedReply || c.agentRole != t.lastConv.agentRole ||
+        t.lastConv.id.value.isEmpty())
         _events.fire(EvChannelCreated{c});
     t.lastConv   = c;
     const User u = assistantUser(t);

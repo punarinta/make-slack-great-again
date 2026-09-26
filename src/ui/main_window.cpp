@@ -2227,8 +2227,15 @@ void MainWindow::startAgentSession(bool skipPermissionChecks) {
 void MainWindow::applyComposerAccess() {
     if (!_composer || !_session || _currentConvId.value.isEmpty())
         return;
-    const auto   *conv   = _session->findConversation(_currentConvId);
-    const QString reason = conv ? conv->readOnlyReason : QString();
+    const auto   *conv       = _session->findConversation(_currentConvId);
+    const QString reason     = conv ? conv->readOnlyReason : QString();
+    // Handed on only when it changes: a send drops it from the composer, and
+    // the roster may still carry it until Claude Code starts the next turn.
+    const QString suggestion = conv ? conv->suggestedReply : QString();
+    if (suggestion != _composerSuggestion) {
+        _composerSuggestion = suggestion;
+        _composer->setSuggestion(suggestion);
+    }
     if (reason == _composerLockReason)
         return;
     _composerLockReason = reason;
@@ -3886,6 +3893,7 @@ void MainWindow::openTeammateView(const QString &role) {
     _teammatePage->open(mate);
     _composer->show();
     _composerLockReason.clear(); // re-derived when a chat opens
+    _composerSuggestion.clear();
     applyTeammateComposer();
     _composer->restoreDraft(_drafts.value(draftKey(_activeTeamId, teammateDraftConv(mate.id))));
     focusComposerIfActive();
@@ -4703,6 +4711,7 @@ void MainWindow::openConversation(int row) {
         displayName.isEmpty() ? tr("Message") : tr("Message %1").arg(displayName)
     );
     _composerLockReason.clear();
+    _composerSuggestion.clear(); // takeDraft dropped the last one's
     applyComposerAccess();
 
     // Restore this conversation's unsent input (text + attachments). Applied

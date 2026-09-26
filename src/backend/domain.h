@@ -400,6 +400,10 @@ struct Conversation {
     // composer is disabled and shows it). Claude Code: a session that a terminal
     // or another program is driving. Transient — always re-derived by the backend.
     QString             readOnlyReason;
+    // What the service predicts you'll type next here (a Claude Code session
+    // that asked you something: its suggested reply); the empty composer shows
+    // it for → to take. Transient — always re-derived by the backend.
+    QString             suggestedReply;
     // Agent workspace: the teammate (AgentRole::id) this session was started
     // with; "" for every other kind of conversation.
     QString             agentRole;
