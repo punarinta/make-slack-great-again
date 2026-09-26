@@ -330,6 +330,18 @@ TEST_CASE("an Agent call becomes a subagent item linked by its agent id", "[clau
     CHECK(p.items()[1].agentId == "abc123");
 }
 
+TEST_CASE("a subagent item keeps the type it was started as", "[claude][transcript]") {
+    TranscriptParser p;
+    p.feed(toolUse(
+        "a1",
+        "Agent",
+        {{"description", "Draw it"}, {"subagent_type", "designer"}},
+        "2026-09-25T10:00:01.000Z"
+    ));
+    REQUIRE(p.items().size() == 1);
+    CHECK(p.items()[0].agentType == "designer");
+}
+
 TEST_CASE("a reply relayed to a subagent reads back as the reply alone", "[claude][transcript]") {
     TranscriptParser p;
     const QString    relay = subagentReplyPrompt("ab0ae6eeb1648c1f4", "What codeword?\n\nJust it.");
@@ -2352,6 +2364,55 @@ TEST_CASE(
     // session of its own.
     CHECK(backend.threadAcceptsReplies(conv, root->ts));
     CHECK_FALSE(backend.threadOpensAsSession(conv, root->ts));
+}
+
+TEST_CASE("a subagent started as a teammate speaks as that teammate", "[claude][backend][thread]") {
+    // Seen live 2026-09-26: "start a @Designer subagent" ran subagent_type
+    // "designer", yet its thread read as the session's Generalist.
+    FakeClaudeHome home;
+    home.writeSession("idle");
+    home.append(
+        prompt("draw it", "2026-09-25T10:00:00.000Z") +
+        toolUse(
+            "a1",
+            "Agent",
+            {{"description", "Draw a test image"}, {"subagent_type", "designer"}},
+            "2026-09-25T10:00:01.000Z"
+        ) +
+        toolResult("a1", "2026-09-25T10:00:09.000Z", false, "agent42") +
+        assistantText("Done.", "2026-09-25T10:00:10.000Z") + turnEnd("2026-09-25T10:00:11.000Z")
+    );
+    QDir().mkpath(home.dir.path() + "/projects/-src-app/S1/subagents");
+    {
+        QFile f(home.dir.path() + "/projects/-src-app/S1/subagents/agent-agent42.jsonl");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(
+            prompt("Draw a test image", "2026-09-25T10:00:02.000Z", false) +
+            assistantText("Drew it.", "2026-09-25T10:00:08.000Z") +
+            turnEnd("2026-09-25T10:00:08.500Z")
+        );
+    }
+
+    claude_code::Backend backend(Credentials{});
+    backend.connectRealtime();
+    const ConversationId conv{"S1"};
+    const UserId         designer{"claude:role:designer"};
+    const UserId         generalist{"claude:agent"};
+    const auto           page = collect(backend.loadHistory(conv, std::nullopt));
+    REQUIRE(page.size() == 1);
+    const auto &msgs = page[0].messages;
+    const auto  root =
+        std::find_if(msgs.begin(), msgs.end(), [](const Message &m) { return m.replyCount > 0; });
+    REQUIRE(root != msgs.end());
+    CHECK(root->author == designer);
+    CHECK(msgs.back().author == generalist); // the session's own answer
+
+    const auto thread = collect(backend.loadThread(conv, root->ts, std::nullopt));
+    REQUIRE(thread.size() == 1);
+    REQUIRE(thread[0].messages.size() == 3);
+    CHECK(thread[0].messages[1].author == generalist); // the prompt: the session wrote it
+    CHECK(thread[0].messages[2].author == designer);
+    CHECK(thread[0].messages[2].parentUserId == designer);
 }
 
 TEST_CASE(

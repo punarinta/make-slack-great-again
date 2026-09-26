@@ -441,17 +441,18 @@ void TranscriptParser::handleLine(const QByteArray &line) {
             // Claude kept working after its text, so that text was an update.
             resolvePendingText(TranscriptItem::State::Progress);
             ToolCall call;
-            call.toolUseId = b.value(QLatin1String("id")).toString();
-            call.name      = b.value(QLatin1String("name")).toString();
-            call.summary =
-                summarizeToolInput(call.name, b.value(QLatin1String("input")).toObject());
-            _turnOpen = true;
+            call.toolUseId          = b.value(QLatin1String("id")).toString();
+            call.name               = b.value(QLatin1String("name")).toString();
+            const QJsonObject input = b.value(QLatin1String("input")).toObject();
+            call.summary            = summarizeToolInput(call.name, input);
+            _turnOpen               = true;
             if (isAgentTool(call.name)) {
                 closeToolGroup();
                 TranscriptItem item;
-                item.kind = TranscriptItem::Kind::Subagent;
-                item.ts   = nextTs(micros, &item.date);
-                item.text = call.summary;
+                item.kind      = TranscriptItem::Kind::Subagent;
+                item.ts        = nextTs(micros, &item.date);
+                item.text      = call.summary;
+                item.agentType = input.value(QLatin1String("subagent_type")).toString();
                 item.tools.push_back(std::move(call));
                 _items.push_back(std::move(item));
                 continue;

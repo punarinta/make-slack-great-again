@@ -387,6 +387,10 @@ Role Backend::roleFor(const Tracked &t) const {
     return _team.resolve(roleOf(t), t.parser.roleName());
 }
 
+UserId Backend::subagentAuthor(const TranscriptItem &item, const UserId &parent) const {
+    return _team.find(item.agentType) ? roleUser(item.agentType) : parent;
+}
+
 QStringList Backend::roleIds() const {
     QStringList ids;
     for (const Role &r : _team.roles())
@@ -652,12 +656,16 @@ const Message &Backend::renderedAt(Tracked &t, size_t i) {
     }
     if (t.rendered.size() > items.size())
         t.rendered.resize(items.size());
+    // A subagent started as a teammate is that teammate's thread.
+    const auto render = [&](const TranscriptItem &item) {
+        return toMessage(item, _me, subagentAuthor(item, author));
+    };
     while (t.rendered.size() <= i) {
         const auto &item = items[t.rendered.size()];
-        t.rendered.emplace_back(item, toMessage(item, _me, author));
+        t.rendered.emplace_back(item, render(item));
     }
     if (t.rendered[i].first != items[i])
-        t.rendered[i] = {items[i], toMessage(items[i], _me, author)};
+        t.rendered[i] = {items[i], render(items[i])};
     return t.rendered[i].second;
 }
 
@@ -1659,17 +1667,21 @@ rpl::producer<MessagePage> Backend::loadThread(ConversationId id, Ts root, std::
             t = nullptr;
         }
         if (t) {
-            // The root is the Subagent message; the replies are its own transcript,
-            // everything in it said by the session's assistant (the prompt too —
-            // the parent agent wrote it).
-            const auto msgs = visibleMessages(*t);
-            const auto it   = std::find_if(msgs.begin(), msgs.end(), [&](const Message &m) {
+            // The root is the Subagent message; the replies are its own transcript:
+            // the prompt written by the session's assistant, the rest said by the
+            // subagent (the teammate it was started as, else the assistant too).
+            const auto   msgs      = visibleMessages(*t);
+            const auto   it        = std::find_if(msgs.begin(), msgs.end(), [&](const Message &m) {
                 return m.ts == root;
             });
-            QString    agentId;
+            const UserId assistant = roleUser(roleOf(*t));
+            QString      agentId;
+            UserId       subagent = assistant;
             for (const auto &item : t->parser.items())
-                if (item.ts == root)
-                    agentId = item.agentId;
+                if (item.ts == root) {
+                    agentId  = item.agentId;
+                    subagent = subagentAuthor(item, assistant);
+                }
             if (it != msgs.end()) {
                 page.messages.push_back(*it);
                 // The user's replies, relayed to it through the session.
@@ -1680,13 +1692,12 @@ rpl::producer<MessagePage> Backend::loadThread(ConversationId id, Ts root, std::
                 if (!agentId.isEmpty() && f.open(QIODevice::ReadOnly)) {
                     TranscriptParser p;
                     p.feed(f.readAll());
-                    const UserId assistant = roleUser(roleOf(*t));
                     for (const auto &item : p.items()) {
                         if (_zen && item.kind == TranscriptItem::Kind::ToolGroup)
                             continue;
-                        Message m      = toMessage(item, assistant, assistant);
+                        Message m      = toMessage(item, assistant, subagent);
                         m.threadRoot   = root;
-                        m.parentUserId = assistant;
+                        m.parentUserId = subagent;
                         page.messages.push_back(std::move(m));
                     }
                 }

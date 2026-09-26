@@ -178,7 +178,10 @@ private:
     Conversation  createSession(const QString &dir, bool skipPermissionChecks, const QString &role);
     QString       roleOf(const Tracked &t) const;  // its teammate's role id
     Role          roleFor(const Tracked &t) const; // …and the teammate, as shown
-    QStringList   roleIds() const;                 // every role a session may have
+    // Who a Subagent item speaks as: the teammate it was started as (its
+    // subagent_type), else `parent` — the session's own teammate.
+    UserId        subagentAuthor(const TranscriptItem &item, const UserId &parent) const;
+    QStringList   roleIds() const; // every role a session may have
     void          teamChanged(const QString &id);
     bool          roleBusy(const QString &role) const;
     bool          roleUnavailable(const QString &role) const; // …or yellow

@@ -57,6 +57,7 @@ struct TranscriptItem {
     QString               text;                 // prompt / markdown answer / subagent description
     std::vector<ToolCall> tools;                // ToolGroup: the calls; Subagent: the one call
     QString               agentId;              // Subagent: set once the call's result arrives
+    QString               agentType;            // Subagent: the call's subagent_type ("designer")
     QString     relayTo; // UserPrompt: a reply in this subagent's thread (text = the reply alone)
     QStringList images;  // UserPrompt: pasted images, saved in msga's cache (paths)
     QStringList imageNames; // parallel to images: "Image 3.png", after Claude Code's paste number
