@@ -6,6 +6,7 @@
 #include "ui/canvas_page/canvas_diff.h"
 #include "ui/canvas_page/canvas_display.h"
 #include "text/mrkdwn_parser.h"
+#include "ui/fonts.h"
 #include "ui/theme.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
@@ -536,50 +537,22 @@ void MessageListWidget::triggerMissingAvatarDownloads() {
 
 // ── Shared header pieces (message rows and quoted-message cards) ─────────────
 
-// Type of a message header line. Static because the app font only changes on
-// restart; hoisted out of paintMessageHeader so a quoted message's card header
-// draws with exactly the same fonts.
-static const QFont &msgNameFont() {
-    static const QFont f = [] {
-        QFont x = QApplication::font();
-        x.setBold(true);
-        return x;
-    }();
-    return f;
-}
-static const QFont &msgTsFont() {
-    static const QFont f = [] {
-        QFont x = QApplication::font();
-        x.setPointSizeF(x.pointSizeF() * 0.85);
-        return x;
-    }();
-    return f;
-}
-static const QFont &tagBadgeFont() {
-    static const QFont f = [] {
-        QFont x = QApplication::font();
-        x.setPointSizeF(x.pointSizeF() * 0.62);
-        x.setBold(true);
-        return x;
-    }();
-    return f;
-}
-
 // The Slack-style tag pill that follows a name ("APP", "EXT"): 14px tall, 2px
 // radius, vertically centred in a `lineH`-tall line starting at `top`. Returns
 // the x to continue drawing at.
 static int paintTagBadge(
     QPainter &p, int x, int top, int lineH, const QString &text, const QColor &bg, const QColor &fg
 ) {
-    constexpr int      bH = 14;
-    const QFontMetrics fm(tagBadgeFont());
-    const QRect        r(x, top + (lineH - bH) / 2, fm.horizontalAdvance(text) + 8, bH);
+    constexpr int       bH    = 14;
+    const Ui::Fonts    &fonts = Ui::Fonts::get();
+    const QFontMetrics &fm    = fonts.tagBadgeFm;
+    const QRect         r(x, top + (lineH - bH) / 2, fm.horizontalAdvance(text) + 8, bH);
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
     p.setBrush(bg);
     p.drawRoundedRect(r, 2, 2);
-    p.setFont(tagBadgeFont());
+    p.setFont(fonts.tagBadge);
     p.setPen(fg);
     p.drawText(r, Qt::AlignCenter, text);
     p.restore();
@@ -672,15 +645,24 @@ void MessageListWidget::paintMessageHeader(
              : (!item.msg.botName.isEmpty() ? item.msg.botName
                                             : _session->userDisplayName(item.msg.author));
 
-    p.setFont(msgNameFont());
+    const Ui::Fonts &fonts = Ui::Fonts::get();
+    // The shaped name/timestamp below are keyed by their strings; a font change
+    // (runtime font-size switch) has to re-shape and re-measure them too.
+    if (item.stFontGen != fonts.generation) {
+        item.stFontGen = fonts.generation;
+        item.stNameSrc.clear();
+        item.stTsSrc.clear();
+    }
+
+    p.setFont(fonts.msgName);
     p.setPen(Th::c().text.primary);
-    const QFontMetrics nameFm(msgNameFont());
-    const int          headerBaseline = contTop + nameFm.ascent();
+    const QFontMetrics &nameFm         = fonts.msgNameFm;
+    const int           headerBaseline = contTop + nameFm.ascent();
     if (item.stNameSrc != name) {
         item.stNameSrc = name;
         item.stName.setTextFormat(Qt::PlainText);
         item.stName.setText(name);
-        item.stName.prepare({}, msgNameFont());
+        item.stName.prepare({}, fonts.msgName);
         item.stNameW = nameFm.horizontalAdvance(name);
     }
     p.drawStaticText(QPointF(textLeft, contTop), item.stName);
@@ -719,17 +701,17 @@ void MessageListWidget::paintMessageHeader(
             Th::c().message.extBadgeText
         );
 
-    p.setFont(msgTsFont());
+    p.setFont(fonts.msgTs);
     p.setPen(Th::c().text.secondary);
-    const QFontMetrics tsFm(msgTsFont());
+    const QFontMetrics &tsFm   = fonts.msgTsFm;
     // The formatted string is still produced every frame (it must follow a live
     // 12h/24h switch); only the shaping is cached, keyed by the string itself.
-    const QString      tsText = MsgRender::formatTs(item.msg.date);
+    const QString       tsText = MsgRender::formatTs(item.msg.date);
     if (item.stTsSrc != tsText) {
         item.stTsSrc = tsText;
         item.stTs.setTextFormat(Qt::PlainText);
         item.stTs.setText(tsText);
-        item.stTs.prepare({}, msgTsFont());
+        item.stTs.prepare({}, fonts.msgTs);
     }
     // Align timestamp to the same baseline as the bold name
     const int tsTop = headerBaseline - tsFm.ascent();
@@ -781,9 +763,8 @@ QRect MessageListWidget::attachFileChipRect(
 
 int MessageListWidget::unfurlHeaderH() const {
     // The avatar, or the two text lines beside it when the font makes them taller.
-    const QFontMetrics nameFm(msgNameFont());
-    const QFontMetrics subFm(msgTsFont());
-    return std::max(kAvSize, nameFm.height() + 2 + subFm.height());
+    const Ui::Fonts &fonts = Ui::Fonts::get();
+    return std::max(kAvSize, fonts.msgNameFm.height() + 2 + fonts.msgTsFm.height());
 }
 
 void MessageListWidget::paintUnfurlHeader(
@@ -797,13 +778,14 @@ void MessageListWidget::paintUnfurlHeader(
         (_imgCache && !att.authorIcon.isEmpty()) ? _imgCache->get(att.authorIcon) : QPixmap();
     paintAvatarPhotoOrInitial(p, QRect(box.x(), box.y(), kAvSize, kAvSize), photo, name);
 
-    const int          textX = box.x() + kAvSize + kAvGap;
-    const QFontMetrics nameFm(msgNameFont());
-    const QFontMetrics subFm(msgTsFont());
-    const int          nameW = std::max(0, box.right() - textX);
+    const Ui::Fonts    &fonts  = Ui::Fonts::get();
+    const int           textX  = box.x() + kAvSize + kAvGap;
+    const QFontMetrics &nameFm = fonts.msgNameFm;
+    const QFontMetrics &subFm  = fonts.msgTsFm;
+    const int           nameW  = std::max(0, box.right() - textX);
 
     p.save();
-    p.setFont(msgNameFont());
+    p.setFont(fonts.msgName);
     p.setPen(Th::c().text.primary);
     const QString elided = nameFm.elidedText(name, Qt::ElideRight, nameW);
     p.drawText(QRect(textX, box.y(), nameW, nameFm.height()), Qt::AlignVCenter, elided);
@@ -821,7 +803,7 @@ void MessageListWidget::paintUnfurlHeader(
             Th::c().message.appBadgeText
         );
 
-    p.setFont(msgTsFont());
+    p.setFont(fonts.msgTs);
     p.setPen(Th::c().text.secondary);
     if (att.msgDate > 0) {
         // Share the bold name's baseline, exactly like a message row's timestamp.
@@ -1492,17 +1474,19 @@ static constexpr int kEmojiSlot  = 17; // fixed pixel budget for one emoji glyph
 static constexpr int kReactEmoji = 16; // rendered emoji size (glyph px / custom image side)
 
 static int reactChipW(const QString &countStr) {
-    static const QFont kCntFont = [] {
-        QFont f = QApplication::font();
-        f.setPointSizeF(f.pointSizeF() * 0.82);
-        return f;
-    }();
     // Count strings are a tiny set (" 1", " 2", …) — memoize the advance so a
-    // hover repaint doesn't re-shape every chip's count.
+    // hover repaint doesn't re-shape every chip's count. Dropped whenever the
+    // fonts move (a runtime font-size change).
     static QHash<QString, int> widths;
-    int                        w = widths.value(countStr, -1);
+    static quint32             widthsGen = 0;
+    const Ui::Fonts           &fonts     = Ui::Fonts::get();
+    if (widthsGen != fonts.generation) {
+        widths.clear();
+        widthsGen = fonts.generation;
+    }
+    int w = widths.value(countStr, -1);
     if (w < 0) {
-        w = QFontMetrics(kCntFont).horizontalAdvance(countStr);
+        w = fonts.reactionCountFm.horizontalAdvance(countStr);
         widths.insert(countStr, w);
     }
     return kReactPad + kEmojiSlot + w + kReactPad;
@@ -1516,13 +1500,9 @@ void MessageListWidget::paintReactions(
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
 
-    static const QFont kCountF = [] {
-        QFont f = QApplication::font();
-        f.setPointSizeF(f.pointSizeF() * 0.82);
-        return f;
-    }();
-    const int chipH = kReactH;
-    int       x     = left;
+    const QFont &kCountF = Ui::Fonts::get().reactionCount;
+    const int    chipH   = kReactH;
+    int          x       = left;
 
     const UserId me = _session ? _session->meUserId() : UserId{};
 
@@ -1714,14 +1694,15 @@ void MessageListWidget::paintCanvasCard(QPainter &p, const File &f, const QRect 
         if (!kPx.isNull())
             p.drawPixmap(tile.x() + (kTile - 20) / 2, tile.y() + (kTile - 20) / 2, kPx);
     }
-    const int          textX    = tile.right() + 1 + 12;
-    const int          textW    = card.right() - kPad - textX;
-    const QFont        nameFont = msgNameFont();
-    const QFont        subFont  = msgTsFont();
-    const QFontMetrics nameFm(nameFont), subFm(subFont);
-    const int          blockH = nameFm.height() + 2 + subFm.height();
-    const int          textY  = card.y() + (hdrH - blockH) / 2;
-    const QString      title = f.title.isEmpty() ? f.name : CanvasDisplay::title(f.title, _session);
+    const int           textX    = tile.right() + 1 + 12;
+    const int           textW    = card.right() - kPad - textX;
+    const Ui::Fonts    &fonts    = Ui::Fonts::get();
+    const QFont        &nameFont = fonts.msgName;
+    const QFont        &subFont  = fonts.msgTs;
+    const QFontMetrics &nameFm = fonts.msgNameFm, &subFm = fonts.msgTsFm;
+    const int           blockH = nameFm.height() + 2 + subFm.height();
+    const int           textY  = card.y() + (hdrH - blockH) / 2;
+    const QString title = f.title.isEmpty() ? f.name : CanvasDisplay::title(f.title, _session);
     p.setFont(nameFont);
     p.setPen(th.text.primary);
     p.drawText(

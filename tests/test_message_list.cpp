@@ -40,6 +40,7 @@
 #include "rpl/variable.h"
 #include "rpl/event_stream.h"
 #include "ui/image_cache.h"
+#include "ui/theme_manager.h"
 
 MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
@@ -1261,4 +1262,39 @@ TEST_CASE(
         return list.rowViewportRect(message.ts).height() < fullH;
     });
     CHECK(f.stub->attachmentDeletes.empty());
+}
+
+// Regression: after a runtime font-size switch the sender name, timestamp and
+// reaction chips of an already painted list stayed at the startup size (static
+// fonts + string-keyed shaping caches) until a restart.
+TEST_CASE("a painted list's header follows a runtime font-size change", "[message_list][fonts]") {
+    Fixture       f;
+    QTemporaryDir themeDir; // keep the font-size setting out of the real config
+    qputenv("MSGA_THEME_SETTINGS_FILE", themeDir.filePath("msga.ini").toUtf8());
+    auto &mgr = ThemeManager::instance();
+    mgr.setFontSizeId("medium");
+
+    Message m = makeMessage("1000.000001", "hello");
+    m.reactions.push_back({"thumbsup", 12, {UserId{"U1"}}});
+    f.stub->_historyPage = {m};
+
+    MessageListWidget painted(f.session.get(), nullptr);
+    painted.resize(500, 200);
+    painted.openConversation(kConv.id);
+    const QImage atMedium = painted.grab().toImage();
+
+    mgr.setFontSizeId("large");
+    const QImage afterSwitch = painted.grab().toImage();
+
+    // Rendered from scratch at the new size: what the switched list must match.
+    MessageListWidget fresh(f.session.get(), nullptr);
+    fresh.resize(500, 200);
+    fresh.openConversation(kConv.id);
+    const QImage freshLarge = fresh.grab().toImage();
+
+    mgr.setFontSizeId("medium");
+    qunsetenv("MSGA_THEME_SETTINGS_FILE");
+
+    CHECK(afterSwitch != atMedium);
+    CHECK(afterSwitch == freshLarge);
 }

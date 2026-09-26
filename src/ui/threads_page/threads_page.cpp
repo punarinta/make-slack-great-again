@@ -78,8 +78,8 @@ public:
 
     int heightForWidth(int w) const override {
         ensureDoc(w);
-        const QFontMetrics fm(nameFont());
-        int                h = padV() + fm.height() + hdrGap() + _docHeight;
+        const QFontMetrics &fm = OverviewCard::nameFontMetrics();
+        int                 h  = padV() + fm.height() + hdrGap() + _docHeight;
         if (!_msg.files.empty())
             h += QFontMetrics(QApplication::font()).height();
         return std::max(h, padV() + kAvatarSize) + padV();
@@ -163,12 +163,11 @@ protected:
     }
 
 private:
-    static QFont nameFont() { return OverviewCard::nameFont(); }
-    static int   padV() { return OverviewCard::rowPadV(); }
-    static int   hdrGap() { return OverviewCard::rowHdrGap(); }
-    static int   textLeft() { return kTextLeft; }
-    int          docWidth() const { return std::max(50, width() - textLeft()); }
-    int          docTop() const { return padV() + QFontMetrics(nameFont()).height() + hdrGap(); }
+    static int padV() { return OverviewCard::rowPadV(); }
+    static int hdrGap() { return OverviewCard::rowHdrGap(); }
+    static int textLeft() { return kTextLeft; }
+    int        docWidth() const { return std::max(50, width() - textLeft()); }
+    int docTop() const { return padV() + OverviewCard::nameFontMetrics().height() + hdrGap(); }
 
     QString displayName() const {
         if (!_msg.botName.isEmpty())

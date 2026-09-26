@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "overview_card.h"
 #include "session/session.h"
+#include "ui/fonts.h"
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/theme.h"
@@ -17,10 +18,12 @@
 
 namespace OverviewCard {
 
-QFont nameFont() {
-    QFont f = QApplication::font();
-    f.setWeight(QFont::DemiBold);
-    return f;
+const QFont &nameFont() {
+    return Ui::Fonts::get().demiBold;
+}
+
+const QFontMetrics &nameFontMetrics() {
+    return Ui::Fonts::get().demiBoldFm;
 }
 
 int rowPadV() {
@@ -67,16 +70,13 @@ void paintRowHeader(
         );
 
     // Header: name + timestamp.
-    const QFont        nf = nameFont();
-    const QFontMetrics nfm(nf);
-    p.setFont(nf);
+    const QFontMetrics &nfm = nameFontMetrics();
+    p.setFont(nameFont());
     p.setPen(Th::c().text.primary);
     const QString shown = nfm.elidedText(name, Qt::ElideRight, width - kTextLeft);
     p.drawText(kTextLeft, rowPadV() + nfm.ascent(), shown);
 
-    QFont tf = QApplication::font();
-    tf.setPointSizeF(tf.pointSizeF() * Th::c().fontScales.timestamp);
-    p.setFont(tf);
+    p.setFont(Ui::Fonts::get().cardTs);
     p.setPen(Th::c().text.secondary);
     p.drawText(
         kTextLeft + nfm.horizontalAdvance(shown) + Th::c().spacing.md,

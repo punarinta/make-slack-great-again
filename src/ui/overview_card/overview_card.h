@@ -5,6 +5,7 @@
 #include "backend/domain.h"
 
 #include <QFont>
+#include <QFontMetrics>
 #include <QString>
 #include <functional>
 
@@ -32,9 +33,10 @@ constexpr int kAvatarRadius = 4;
 constexpr int kAvatarGap    = 10;
 constexpr int kTextLeft     = kAvatarSize + kAvatarGap;
 
-QFont nameFont();  // the row's bold author name
-int   rowPadV();   // above and below the row
-int   rowHdrGap(); // between the name line and the body
+const QFont        &nameFont();        // the row's bold author name
+const QFontMetrics &nameFontMetrics(); // ...and its metrics
+int                 rowPadV();         // above and below the row
+int                 rowHdrGap();       // between the name line and the body
 
 // The author's picture: a bot's own icon, else the user's avatar ({} if none).
 QString avatarUrl(Session *session, const UserId &author, const QString &botAvatarUrl);

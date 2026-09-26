@@ -70,10 +70,12 @@ struct MessageItem {
     // Shaped-text caches for the header line (author name, timestamp) —
     // QPainter::drawText re-shapes its string on every call, and
     // paintMessageHeader runs per visible row per frame. Keyed by the source
-    // string so a display-name change or time-format switch rebuilds in place.
+    // string so a display-name change or time-format switch rebuilds in place,
+    // and by the Ui::Fonts generation so a runtime font-size change does too.
     mutable QStaticText   stName, stTs;
     mutable QString       stNameSrc, stTsSrc;
-    mutable int           stNameW = 0;
+    mutable int           stNameW   = 0;
+    mutable quint32       stFontGen = 0;
 };
 
 // Aggregates the constant viewport geometry computed at the start of every paint/hit-test.

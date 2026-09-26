@@ -6,6 +6,7 @@
 #include "test_main.h"
 
 #include "ui/file_dialog_utils.h"
+#include "ui/fonts.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
@@ -803,4 +804,55 @@ TEST_CASE("ThemeManager: the custom slot renders the user's theme live", "[theme
     mgr.setThemeIdFor(false, "purple");
     mgr.setThemeIdFor(true, "charcoal");
     mgr.setCustomTheme(Th::defaultCustomTheme());
+}
+
+// Regression: the message header fonts (sender name, timestamp, tag pill,
+// reaction count) used to be function-local statics built from the app font on
+// first paint, so a runtime font-size switch left them at the old size until a
+// restart while the body text followed.
+TEST_CASE("Ui::Fonts follow a runtime font-size change", "[theme][fonts]") {
+    auto &mgr = ThemeManager::instance();
+    mgr.setFontSizeId("medium");
+
+    const Ui::Fonts &fonts   = Ui::Fonts::get();
+    const qreal      basePt  = QApplication::font().pointSizeF();
+    const quint32    baseGen = fonts.generation;
+    const int        baseH   = fonts.msgNameFm.height();
+    REQUIRE(basePt > 0);
+    CHECK(fonts.msgName.pointSizeF() == Catch::Approx(basePt));
+    CHECK(fonts.msgName.bold());
+    CHECK(fonts.msgTs.pointSizeF() == Catch::Approx(basePt * 0.85));
+    CHECK(fonts.tagBadge.pointSizeF() == Catch::Approx(basePt * 0.62));
+    CHECK(fonts.demiBold.weight() == QFont::DemiBold);
+    // Cached, not rebuilt, while nothing changes.
+    CHECK(Ui::Fonts::get().generation == baseGen);
+    CHECK(&Ui::Fonts::get() == &fonts);
+
+    // The Appearance → Font size setting: every derived font follows at once.
+    mgr.setFontSizeId("large");
+    const qreal largePt = QApplication::font().pointSizeF();
+    REQUIRE(largePt > basePt);
+    // (The set rebuilds in place on the next get(); paint paths always call it.)
+    const Ui::Fonts &large = Ui::Fonts::get();
+    CHECK(&large == &fonts);
+    CHECK(large.generation != baseGen);
+    CHECK(large.msgName.pointSizeF() == Catch::Approx(largePt));
+    CHECK(large.msgTs.pointSizeF() == Catch::Approx(largePt * 0.85));
+    CHECK(large.tagBadge.pointSizeF() == Catch::Approx(largePt * 0.62));
+    CHECK(large.reactionCount.pointSizeF() == Catch::Approx(largePt * 0.82));
+    CHECK(large.countBadge.pointSizeF() == Catch::Approx(largePt * 0.78));
+    CHECK(large.msgNameFm.height() > baseH);
+
+    // A plain app-font change (system font, no theme re-apply) invalidates too.
+    const quint32 largeGen = large.generation;
+    QFont         f        = QApplication::font();
+    f.setPointSizeF(largePt * 2);
+    QApplication::setFont(f);
+    CHECK(Ui::Fonts::get().generation != largeGen);
+    CHECK(Ui::Fonts::get().msgName.pointSizeF() == Catch::Approx(largePt * 2));
+
+    // Back to the default size: back to the original fonts.
+    mgr.setFontSizeId("medium");
+    CHECK(Ui::Fonts::get().msgName.pointSizeF() == Catch::Approx(basePt));
+    CHECK(Ui::Fonts::get().msgNameFm.height() == baseH);
 }

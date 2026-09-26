@@ -53,9 +53,9 @@ public:
     }
 
     QSize sizeHint() const override {
-        const QFontMetrics nfm(nameFont());
-        const QFontMetrics bfm(QApplication::font());
-        const int          textH = padV() + nfm.height() + hdrGap() + bfm.height() + padV();
+        const QFontMetrics &nfm = OverviewCard::nameFontMetrics();
+        const QFontMetrics  bfm(QApplication::font());
+        const int           textH = padV() + nfm.height() + hdrGap() + bfm.height() + padV();
         return {kAvatarSize * 3, std::max(textH, padV() + kAvatarSize + padV())};
     }
     QSize minimumSizeHint() const override { return sizeHint(); }
@@ -77,9 +77,9 @@ protected:
         );
 
         // Snippet, one elided line.
-        const QFontMetrics nfm(nameFont());
-        const QFont        bf = QApplication::font();
-        const QFontMetrics bfm(bf);
+        const QFontMetrics &nfm = OverviewCard::nameFontMetrics();
+        const QFont         bf  = QApplication::font();
+        const QFontMetrics  bfm(bf);
         p.setFont(bf);
         p.setPen(Th::c().text.primary);
         const QString body = _item.snippet.isEmpty() ? tr("No preview available") : _item.snippet;
@@ -96,10 +96,9 @@ protected:
     }
 
 private:
-    static QFont nameFont() { return OverviewCard::nameFont(); }
-    static int   padV() { return OverviewCard::rowPadV(); }
-    static int   hdrGap() { return OverviewCard::rowHdrGap(); }
-    static int   textLeft() { return kTextLeft; }
+    static int padV() { return OverviewCard::rowPadV(); }
+    static int hdrGap() { return OverviewCard::rowHdrGap(); }
+    static int textLeft() { return kTextLeft; }
 
     QString displayName() const {
         if (!_item.botName.isEmpty())

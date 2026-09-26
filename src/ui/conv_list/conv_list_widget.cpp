@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "conv_list_widget.h"
+#include "ui/fonts.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/icon_utils.h"
@@ -1613,15 +1614,14 @@ void ConvListWidget::paintAddChannelsRow(QPainter &p, int row, int y) const {
     const QPixmap &plusPx = hovered ? _iconPx.plusBright : _iconPx.plusDim;
     p.drawPixmap(kPadH + kGroupIndent, y + (_rowH - kIconSize) / 2, plusPx);
 
-    QFont font = QApplication::font();
-    font.setWeight(QFont::Normal);
-    p.setFont(font);
+    const Ui::Fonts &fonts = Ui::Fonts::get();
+    p.setFont(fonts.normal);
     p.setPen(color);
 
-    const QFontMetrics fm(font);
-    const int          textY   = y + (_rowH - fm.height()) / 2 + fm.ascent();
-    const int          section = _rows[size_t(row)].sectionId;
-    const QString      label   = section == 1 ? tr("Add sessions") : tr("Add channels");
+    const QFontMetrics &fm      = fonts.normalFm;
+    const int           textY   = y + (_rowH - fm.height()) / 2 + fm.ascent();
+    const int           section = _rows[size_t(row)].sectionId;
+    const QString       label   = section == 1 ? tr("Add sessions") : tr("Add channels");
     p.drawText(kPadH + kGroupIndent + kIconSize + 6, textY, label);
 }
 
@@ -1632,14 +1632,13 @@ void ConvListWidget::paintShowMoreRow(QPainter &p, int row, int y, int count) co
 
     const QColor color = hovered ? Th::c().nav.itemText : Th::c().nav.itemTextDim;
 
-    QFont font = QApplication::font();
-    font.setWeight(QFont::Normal);
-    p.setFont(font);
+    const Ui::Fonts &fonts = Ui::Fonts::get();
+    p.setFont(fonts.normal);
     p.setPen(color);
 
-    const QFontMetrics fm(font);
-    const int          textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
-    const int          leftX = kPadH + kGroupIndent;
+    const QFontMetrics &fm    = fonts.normalFm;
+    const int           textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
+    const int           leftX = kPadH + kGroupIndent;
 
     const QString label =
         tr("%1 more %2").arg(count).arg(count == 1 ? tr("channel") : tr("channels"));
@@ -1685,16 +1684,15 @@ void ConvListWidget::paintTeammateRow(QPainter &p, int row, int y) const {
         rowBg,
         isSelected
     );
-    QFont font = QApplication::font();
-    font.setWeight(unread ? QFont::DemiBold : QFont::Normal);
-    p.setFont(font);
+    const Ui::Fonts &fonts = Ui::Fonts::get();
+    p.setFont(unread ? fonts.demiBold : fonts.normal);
     p.setPen(
         isSelected ? Th::c().nav.itemSelectedText
         : unread   ? Th::c().nav.itemText
                    : Th::c().nav.itemTextDim
     );
-    const QFontMetrics fm(font);
-    const int          nameX = leftX + kAvatarSize + kAvatarGap;
+    const QFontMetrics &fm    = unread ? fonts.demiBoldFm : fonts.normalFm;
+    const int           nameX = leftX + kAvatarSize + kAvatarGap;
     p.drawText(
         nameX,
         y + (_rowH - fm.height()) / 2 + fm.ascent(),
@@ -1774,13 +1772,13 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         p.drawRoundedRect(rowRect.adjusted(8, 0, -8, 0), 6, 6);
     }
 
-    QFont                   font       = QApplication::font();
+    const Ui::Fonts        &fonts      = Ui::Fonts::get();
     const NotificationLevel lvl        = effectiveNotifLevel(conv, _defaultNotify);
     // Bold/bright emphasis (muted = silent, mentions-only = per setting); the
     // badges below have their own, stricter rules.
     const bool              isUnread   = paintsUnread(conv);
     const bool              isSelected = (row == _selected);
-    font.setWeight(isUnread ? QFont::DemiBold : QFont::Normal);
+    const QFont            &font       = isUnread ? fonts.demiBold : fonts.normal;
     p.setFont(font);
 
     const QColor textColor = isSelected ? Th::c().nav.itemSelectedText
@@ -1788,8 +1786,8 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
                                         : Th::c().nav.itemTextDim;
     p.setPen(textColor);
 
-    const QFontMetrics fm(font);
-    const int          textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
+    const QFontMetrics &fm    = isUnread ? fonts.demiBoldFm : fonts.normalFm;
+    const int           textY = y + (_rowH - fm.height()) / 2 + fm.ascent();
 
     const bool isDm     = (conv.kind == ConvKind::Im || conv.kind == ConvKind::Mpim);
     // Red badge = @mentions / DM unreads (only when not muted). Its number is the
@@ -1822,11 +1820,8 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
                                     : QString::number(int(conv.huddleParticipants.size()));
     int           huddlePillW = 0, huddleW = 0;
     if (conv.huddleActive) {
-        QFont cf = font;
-        cf.setPointSizeF(cf.pointSizeF() * 0.78);
-        cf.setBold(true);
         const int countW =
-            huddleCount.isEmpty() ? 0 : QFontMetrics(cf).horizontalAdvance(huddleCount) + 4;
+            huddleCount.isEmpty() ? 0 : fonts.countBadgeFm.horizontalAdvance(huddleCount) + 4;
         huddlePillW = kHuddlePad + kHuddleIcon + countW + kHuddlePad;
         huddleW = huddlePillW + (conv.huddleParticipants.empty() ? 0 : (kAvatarSize + kHuddleGap));
     }
@@ -1895,19 +1890,18 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         const int nameX = leftX + kAvatarSize + kAvatarGap;
 
         const bool isExternal = (infoIt != _userInfos.constEnd()) && infoIt->isExternal;
-        QFont      extFont    = font;
-        extFont.setPointSizeF(extFont.pointSizeF() * 0.62);
-        extFont.setBold(true);
-        const QFontMetrics extFm(extFont);
-        const QString      extLabel = tr("EXT");
-        const int          extPillW = extFm.horizontalAdvance(extLabel) + 8;
-
-        int suffixW = 0;
-        if (isExternal)
+        // The "EXT" pill (same font as the message header's tag pill) is only
+        // shaped for rows that actually show it.
+        QString    extLabel;
+        int        extPillW = 0;
+        int        suffixW  = 0;
+        if (isExternal) {
+            extLabel = tr("EXT");
+            extPillW = fonts.tagBadgeFm.horizontalAdvance(extLabel) + 8;
             suffixW += extPillW + 6;
-        const int emojiPx =
-            static_cast<int>(font.pixelSize() > 0 ? font.pixelSize() : QFontMetrics(font).height());
-        int emojiW = 0;
+        }
+        const int emojiPx = font.pixelSize() > 0 ? font.pixelSize() : fm.height();
+        int       emojiW  = 0;
         if (hasStatusEmoji) {
             // Custom emoji fit a square emojiPx slot (the image is scaled into it
             // when painted); glyphs take their cached-pixmap ink width —
@@ -1920,10 +1914,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         }
         int youW = 0;
         if (isMe) {
-            QFont df = font;
-            df.setWeight(QFont::Normal);
-            df.setPointSizeF(df.pointSizeF() * 0.88);
-            youW = QFontMetrics(df).horizontalAdvance(tr("you")) + 6;
+            youW = fonts.youLabelFm.horizontalAdvance(tr("you")) + 6;
             suffixW += youW;
         }
 
@@ -1944,7 +1935,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
             p.setPen(Qt::NoPen);
             p.setBrush(Th::c().nav.extBadgeBg);
             p.drawRoundedRect(bRect, 2, 2);
-            p.setFont(extFont);
+            p.setFont(fonts.tagBadge);
             p.setPen(Th::c().nav.extBadgeText);
             p.drawText(bRect, Qt::AlignCenter, extLabel);
             p.restore();
@@ -1991,10 +1982,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
 
         if (isMe) {
             curX += 4;
-            QFont df = font;
-            df.setWeight(QFont::Normal);
-            df.setPointSizeF(df.pointSizeF() * 0.88);
-            p.setFont(df);
+            p.setFont(fonts.youLabel);
             p.setPen(isSelected ? textColor : Th::c().nav.itemTextDim);
             p.drawText(curX, textY, tr("you"));
         }
@@ -2034,10 +2022,7 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
         Paint::pill(p, QRect(pillX, pillY, huddlePillW, pillH));
         p.drawPixmap(pillX + kHuddlePad, pillY + (pillH - kHuddleIcon) / 2, _iconPx.huddle);
         if (!huddleCount.isEmpty()) {
-            QFont cf = font;
-            cf.setPointSizeF(cf.pointSizeF() * 0.78);
-            cf.setBold(true);
-            p.setFont(cf);
+            p.setFont(fonts.countBadge);
             p.setPen(Th::c().accent.text);
             p.drawText(
                 QRect(pillX + kHuddlePad + kHuddleIcon, pillY, huddlePillW, pillH),
@@ -2071,17 +2056,14 @@ void ConvListWidget::paintRow(QPainter &p, int row, int y) const {
     if (showRed) {
         // Red numbered badge for DM unreads and channel @mentions.
         const QString badge = redCount > 99 ? "99+" : QString::number(redCount);
-        QFont         bf    = font;
-        bf.setPointSizeF(bf.pointSizeF() * 0.78);
-        bf.setBold(true);
-        p.setFont(bf);
-        const QFontMetrics bfm(bf);
-        const int          bh = bfm.height() + 4;
+        p.setFont(fonts.countBadge);
+        const QFontMetrics &bfm = fonts.countBadgeFm;
+        const int           bh  = bfm.height() + 4;
         // Never narrower than tall: a single-digit badge is a circle (w == h),
         // multi-digit grows into a pill — instead of a squeezed oval.
-        const int          bw = qMax(bfm.horizontalAdvance(badge) + 10, bh);
-        const int          bx = rightEdge - bw;
-        const int          by = y + (_rowH - bh) / 2;
+        const int           bw  = qMax(bfm.horizontalAdvance(badge) + 10, bh);
+        const int           bx  = rightEdge - bw;
+        const int           by  = y + (_rowH - bh) / 2;
         p.setPen(Qt::NoPen);
         p.setBrush(Th::c().badge.mention);
         Paint::pill(p, QRect(bx, by, bw, bh));

@@ -195,6 +195,7 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_custom.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/fonts.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_export_job.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_panel.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/transcript_dialog/transcript_dialog.cpp

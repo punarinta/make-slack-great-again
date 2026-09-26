@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "theme_manager.h"
+#include "fonts.h"
 
 #include <QApplication>
 #include <QCursor>
@@ -254,6 +255,8 @@ void ThemeManager::setTheme(const Th::Theme &theme) {
     QGuiApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
     _theme = theme;
     applyFontScale(_theme, fontFactorFor(_fontSizeId));
+    // Before the signal, so its handlers (layout rebuilds) see the new fonts.
+    Ui::Fonts::invalidate();
     emit themeChanged();
     QGuiApplication::restoreOverrideCursor();
 }
