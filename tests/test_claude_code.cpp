@@ -606,6 +606,61 @@ TEST_CASE("a pasted image is attached to the prompt", "[claude][message]") {
     CHECK(cachePastedImage("image/png", png.toBase64()) == item.images[0]);
 }
 
+TEST_CASE("files sent to a session ride the prompt as mentions", "[claude][message]") {
+    QTemporaryDir dir;
+    QImage        img(3, 2, QImage::Format_RGB32);
+    img.fill(Qt::red);
+    REQUIRE(img.save(dir.path() + "/shot.png"));
+    {
+        QFile f(dir.path() + "/my notes.txt");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("notes");
+    }
+    // Copied into msga's cache, where a temp folder's cleanup can't take them;
+    // the same content twice is the same copy.
+    const QString shot  = cacheUpload(dir.path() + "/shot.png");
+    const QString notes = cacheUpload(dir.path() + "/my notes.txt");
+    REQUIRE(shot.startsWith(uploadsDir() + '/'));
+    CHECK(shot.endsWith("/shot.png"));
+    CHECK(QFile::exists(notes));
+    CHECK(cacheUpload(dir.path() + "/shot.png") == shot);
+    CHECK(cacheUpload(dir.path() + "/missing.png").isEmpty());
+
+    // Mentions first — typed live, one ending the prompt would lose the Enter to
+    // the completion list — a path with spaces quoted.
+    const QString sent = withAttachments("what's **this**?", {shot, notes});
+    CHECK(sent == "@" + shot + " @\"" + notes + "\" what's **this**?");
+    CHECK(withAttachments("", {shot}) == "@" + shot + " (attached)");
+    CHECK(withAttachments("/btw why", {shot}) == "/btw why @" + shot);
+    CHECK(withAttachments("plain", {}) == "plain");
+
+    // Read back, the mentions are the prompt's files again.
+    TranscriptParser p;
+    p.feed(prompt(sent, "2026-09-26T10:00:00.000Z"));
+    p.feed(prompt(withAttachments("", {shot}), "2026-09-26T10:00:01.000Z"));
+    p.feed(prompt("see @/etc/hosts", "2026-09-26T10:00:02.000Z"));
+    REQUIRE(p.items().size() == 3);
+    const auto &item = p.items()[0];
+    CHECK(item.text == "what's **this**?");
+    CHECK(item.images == QStringList{shot, notes});
+    const Message m = toMessage(item, UserId{"me"}, UserId{"claude:agent"});
+    REQUIRE(m.files.size() == 2);
+    CHECK(m.files[0].name == "shot.png");
+    CHECK(m.files[0].mimeType == "image/png");
+    CHECK(m.files[0].imageWidth == 3);
+    CHECK(m.files[0].thumbUrl.startsWith("file:"));
+    CHECK(m.files[1].name == "my notes.txt");
+    CHECK(m.files[1].mimeType == "text/plain");
+    CHECK(m.files[1].thumbUrl.isEmpty()); // a download, no picture
+    CHECK(m.files[1].urlPrivateDownload == QUrl::fromLocalFile(notes).toString());
+    // Files alone: no stand-in text shown.
+    CHECK(p.items()[1].text.isEmpty());
+    CHECK(p.items()[1].images == QStringList{shot});
+    // A file the user mentioned themselves stays what they typed.
+    CHECK(p.items()[2].text == "see @/etc/hosts");
+    CHECK(p.items()[2].images.isEmpty());
+}
+
 TEST_CASE("markdown tables become table blocks in reading order", "[claude][message]") {
     const QString md     = "Before the table.\n\n"
                            "| Session | Can you write? |\n"
@@ -1014,6 +1069,91 @@ TEST_CASE(
     const auto convs = collect(backend.loadConversations())[0];
     CHECK(std::none_of(convs.begin(), convs.end(), [&](const Conversation &c) {
         return c.id == conv;
+    }));
+}
+
+TEST_CASE("files sent to a session go with its prompt", "[claude][backend]") {
+    FakeClaudeHome home;
+    QTemporaryDir  work;
+    {
+        QFile f(home.dir.path() + "/.claude.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"projects",
+                         QJsonObject{
+                             {QDir(work.path()).absolutePath(),
+                              QJsonObject{{"hasTrustDialogAccepted", true}}}
+                         }},
+                    }
+        )
+                    .toJson());
+    }
+    // The CLI only notes what it was asked to do.
+    const QString cli = work.path() + "/claude";
+    {
+        QFile f(cli);
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CLAUDE_CONFIG_DIR/calls.log\"\nexit 1\n");
+        f.setPermissions(f.permissions() | QFileDevice::ExeOwner);
+    }
+    QImage img(4, 4, QImage::Format_RGB32);
+    img.fill(Qt::blue);
+    REQUIRE(img.save(work.path() + "/pasted.png"));
+
+    claude_code::Backend backend(Credentials{cli});
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    ConversationId conv;
+    backend.startAgentSession(work.path(), false, {}, [&](ConversationId id) { conv = id; }, {});
+    REQUIRE_FALSE(conv.value.isEmpty());
+
+    std::optional<bool> ok;
+    backend.uploadFiles(
+        conv, {work.path() + "/pasted.png"}, "look", std::nullopt, [&](bool s, QString) { ok = s; }
+    );
+    REQUIRE(ok == true);
+    // msga's copy of it shows the picture, not the mention (and so takes the
+    // place of the Session's file-message ghost).
+    const auto copy = std::find_if(events.begin(), events.end(), [&](const Event &e) {
+        const auto *n = std::get_if<EvMessageNew>(&e);
+        return n && n->conv == conv;
+    });
+    REQUIRE(copy != events.end());
+    const Message &m = std::get<EvMessageNew>(*copy).msg;
+    CHECK(m.text.text == "look");
+    REQUIRE(m.files.size() == 1);
+    CHECK(m.files[0].name == "pasted.png");
+    // Claude Code gets the cached copy's mention before the text.
+    const QString log = home.dir.path() + "/calls.log";
+    REQUIRE(QTest::qWaitFor([&] { return QFileInfo::exists(log); }, 5000));
+    QFile f(log);
+    REQUIRE(f.open(QIODevice::ReadOnly));
+    const QString call = QString::fromUtf8(f.readAll());
+    CHECK(call.contains("-- @" + uploadsDir() + '/'));
+    CHECK(call.trimmed().endsWith("/pasted.png look"));
+
+    // A file that can't be read fails the send, and only through `done`: the
+    // Session says "Upload failed" itself.
+    events.clear();
+    std::optional<bool> failed;
+    backend.uploadFiles(conv, {work.path() + "/gone.png"}, "x", std::nullopt, [&](bool s, QString) {
+        failed = !s;
+    });
+    CHECK(failed == true);
+    CHECK(events.empty());
+    // Nor does a refused one announce itself.
+    backend.uploadFiles(
+        ConversationId{"nope"},
+        {work.path() + "/pasted.png"},
+        "",
+        std::nullopt,
+        [&](bool s, QString) { failed = !s; }
+    );
+    CHECK(failed == true);
+    CHECK_FALSE(std::any_of(events.begin(), events.end(), [](const Event &e) {
+        return std::holds_alternative<EvSendFailed>(e);
     }));
 }
 

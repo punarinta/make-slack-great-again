@@ -15,6 +15,7 @@
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMimeDatabase>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -201,7 +202,11 @@ void TranscriptParser::addPrompt(
     }
     item.images     = images;
     item.imageNames = imageNames;
-    item.uuid       = _lineUuid;
+    // Files sent from msga ride the text as mentions (see withAttachments).
+    item.text       = takeAttachments(item.text, &item.images);
+    while (item.imageNames.size() < item.images.size())
+        item.imageNames << QFileInfo(item.images[item.imageNames.size()]).fileName();
+    item.uuid = _lineUuid;
     _items.push_back(std::move(item));
     _turnOpen = true;
 }
@@ -531,6 +536,64 @@ QString cachePastedImage(const QString &mediaType, const QByteArray &base64) {
     return f.commit() ? path : QString();
 }
 
+namespace {
+// What a message of files alone says after its mentions, and is shown without.
+const QString kFilesOnly = QStringLiteral("(attached)");
+} // namespace
+
+QString uploadsDir() {
+    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
+           QStringLiteral("/claude-code/uploads");
+}
+
+QString cacheUpload(const QString &path) {
+    QFile src(path);
+    if (!src.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    hash.addData(&src);
+    const QString dir =
+        uploadsDir() + QLatin1Char('/') + QString::fromLatin1(hash.result().toHex());
+    const QString copy = dir + QLatin1Char('/') + QFileInfo(path).fileName();
+    if (QFileInfo::exists(copy))
+        return copy;
+    QDir().mkpath(dir);
+    return QFile::copy(path, copy) ? copy : QString();
+}
+
+QString withAttachments(const QString &text, const QStringList &paths) {
+    QStringList mentions;
+    for (const QString &p : paths)
+        mentions
+            << (p.contains(QRegularExpression(QStringLiteral("\\s")))
+                    ? QStringLiteral("@\"%1\"").arg(p)
+                    : QLatin1Char('@') + p);
+    if (mentions.isEmpty())
+        return text;
+    const QString body = text.trimmed();
+    // A slash command keeps its place at the start (it goes by `--resume`,
+    // never typed, so the mentions may end it).
+    if (body.startsWith(QLatin1Char('/')))
+        return body + QLatin1Char(' ') + mentions.join(QLatin1Char(' '));
+    return mentions.join(QLatin1Char(' ')) + QLatin1Char(' ') +
+           (body.isEmpty() ? kFilesOnly : body);
+}
+
+QString takeAttachments(const QString &prompt, QStringList *paths) {
+    const QString            dir = QRegularExpression::escape(uploadsDir() + QLatin1Char('/'));
+    const QRegularExpression kMention(QStringLiteral("@(?:\"(%1[^\"]+)\"|(%1\\S+)) ?").arg(dir));
+    QString                  text = prompt;
+    for (auto it = kMention.globalMatch(prompt); it.hasNext();) {
+        const auto    m    = it.next();
+        const QString path = m.captured(1).isEmpty() ? m.captured(2) : m.captured(1);
+        if (paths)
+            *paths << path;
+    }
+    text.remove(kMention);
+    text = text.trimmed();
+    return text == kFilesOnly ? QString() : text;
+}
+
 // Slack's server turns every bare URL into a <url> link before a client sees
 // it; Claude's text comes raw. Wrap them the same way (in already-escaped text),
 // outside code, and leave markdown [label](url) links to the converter. Claude's
@@ -787,16 +850,20 @@ Message toMessage(const TranscriptItem &item, const UserId &me, const UserId &cl
             File           f;
             f.id   = item.ts + QStringLiteral("-img%1").arg(i);
             f.name = i < item.imageNames.size() ? item.imageNames[i] : QFileInfo(path).fileName();
-            f.mimeType           = QStringLiteral("image/") + QFileInfo(path).suffix();
+            f.mimeType           = QMimeDatabase().mimeTypeForFile(path).name();
+            f.prettyType         = QFileInfo(path).suffix().toUpper();
             f.urlPrivate         = url;
             f.urlPrivateDownload = url;
-            f.thumbUrl           = url;
             f.size               = QFileInfo(path).size();
-            const QSize sz       = QImageReader(path).size();
-            f.imageWidth         = sz.width() > 0 ? sz.width() : 1;
-            f.imageHeight        = sz.height() > 0 ? sz.height() : 1;
-            if (sz.width() > 0)
-                f.thumbs.push_back(FileThumb{sz.width(), sz.height(), url});
+            // A file sent along that isn't a picture is a download.
+            if (f.mimeType.startsWith(QLatin1String("image/"))) {
+                f.thumbUrl     = url;
+                const QSize sz = QImageReader(path).size();
+                f.imageWidth   = sz.width() > 0 ? sz.width() : 1;
+                f.imageHeight  = sz.height() > 0 ? sz.height() : 1;
+                if (sz.width() > 0)
+                    f.thumbs.push_back(FileThumb{sz.width(), sz.height(), url});
+            }
             m.files.push_back(std::move(f));
         }
         break;

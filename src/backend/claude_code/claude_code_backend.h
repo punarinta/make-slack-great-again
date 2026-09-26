@@ -208,6 +208,11 @@ private:
     ) const;
     bool     isOutgoingCopy(const Tracked &t, const Ts &ts) const;
     Tracked *queuedHolder(const ConversationId &conv, const Ts &ts, int *index);
+    // sendMessage's work. A message refused at once is reported to `done`, and
+    // with `announce` also as EvSendFailed (a file message's failure is only
+    // the upload's: the Session reports it from `done`).
+    void
+    send(ConversationId, OutgoingMessage, std::function<void(bool, QString)> done, bool announce);
     void
     startFork(Tracked &parent, const QString &question, std::function<void(bool, QString)> done);
     void                  dispatch(Tracked &t);

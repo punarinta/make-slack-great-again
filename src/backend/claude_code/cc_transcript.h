@@ -61,7 +61,7 @@ struct TranscriptItem {
     QString               agentType;            // Subagent: the call's subagent_type ("designer")
     QString               agentRole; // Subagent: the teammate its prompt names (roleInAgentPrompt)
     QString     relayTo; // UserPrompt: a reply in this subagent's thread (text = the reply alone)
-    QStringList images;  // UserPrompt: pasted images, saved in msga's cache (paths)
+    QStringList images;  // UserPrompt: pasted images and sent files, in msga's cache (paths)
     QStringList imageNames; // parallel to images: "Image 3.png", after Claude Code's paste number
     // UserPrompt, AssistantText: the transcript record it was read from, which
     // removeFromTranscript takes out; "" for the rest (a tool call can't go
@@ -173,6 +173,20 @@ bool hasTurnSince(const QString &path, qint64 from, qint64 afterMs = 0);
 // A pasted image (a prompt's base64 "image" block) saved once in msga's cache,
 // named by its content hash; returns the file's path ("" when it can't be saved).
 QString cachePastedImage(const QString &mediaType, const QByteArray &base64);
+
+// Files sent with a message ride its prompt as "@path" mentions, which Claude
+// Code expands into attachments (an image arrives as an image) — the same in a
+// `--bg` prompt as typed into a live worker's prompt box. So the files are
+// copied into msga's cache first (cacheUpload: <sha1>/<name>, where no temp
+// folder cleanup reaches them), and the parser turns mentions of that folder
+// back into the message's files (takeAttachments). Typed live, a mention must
+// not end the prompt: the terminal UI's completion list takes the Enter
+// (verified with Claude Code 2.1.283, 2026-09-26) — so the mentions go first,
+// with a stand-in text after them when the message has none.
+QString uploadsDir();
+QString cacheUpload(const QString &path); // "" when it can't be copied
+QString withAttachments(const QString &text, const QStringList &paths);
+QString takeAttachments(const QString &prompt, QStringList *paths);
 
 // Human line for one tool call's input ("git status", "src/main.cpp", …).
 QString summarizeToolInput(const QString &toolName, const QJsonObject &input);

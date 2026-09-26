@@ -2737,8 +2737,14 @@ Ts Session::uploadFiles(
     _eventHub.fire(EvMessageNew{conv, optimistic});
     _pendingSends[conv.value].append({fakeTs, true});
 
+    // An agent reads the markdown as typed (see OutgoingMessage::composerText).
+    const bool agent = _backend->capabilities().agentSessions;
     _backend->uploadFiles(
-        conv, filePaths, text, threadRoot, [this, conv, fakeTs](bool ok, QString error) {
+        conv,
+        filePaths,
+        agent ? composerText : text,
+        threadRoot,
+        [this, conv, fakeTs](bool ok, QString error) {
             if (ok)
                 return; // realtime delivery of the real message removes the ghost
             bool undone = false;

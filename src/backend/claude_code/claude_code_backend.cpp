@@ -944,7 +944,7 @@ void Backend::appendOutgoing(
         item.kind    = TranscriptItem::Kind::UserPrompt;
         item.ts      = o.ts;
         item.date    = o.date;
-        item.text    = o.shown.isEmpty() ? o.text : o.shown;
+        item.text    = takeAttachments(o.shown.isEmpty() ? o.text : o.shown, &item.images);
         Message m    = toMessage(item, _me, _me);
         m.threadRoot = o.threadRoot ? o.threadRoot : threadRoot;
         out.push_back(std::move(m));
@@ -1950,6 +1950,12 @@ std::vector<std::pair<QString, QString>> Backend::conversationStatus(Tracked &tr
 void Backend::sendMessage(
     ConversationId conv, OutgoingMessage msg, std::function<void(bool ok, QString err)> done
 ) {
+    send(conv, std::move(msg), std::move(done), true);
+}
+
+void Backend::send(
+    ConversationId conv, OutgoingMessage msg, std::function<void(bool, QString)> done, bool announce
+) {
     Tracked                        *t = find(conv.value);
     // The composer's text as typed: Claude reads markdown best as written.
     // Never msg.text.text — that is the parsed copy, its ``` fences, `code`
@@ -2005,7 +2011,8 @@ void Backend::sendMessage(
         reason = readOnlyReason(*t);
     }
     if (!reason.isEmpty()) {
-        _events.fire(EvSendFailed{conv, reason});
+        if (announce)
+            _events.fire(EvSendFailed{conv, reason});
         if (done)
             done(false, reason);
         return;
@@ -2539,18 +2546,36 @@ rpl::producer<std::vector<SearchResult>> Backend::searchMessages(const QString &
     };
 }
 
+// Files go with the prompt as mentions of copies in msga's cache (see
+// withAttachments): Claude Code attaches them itself.
 void Backend::uploadFiles(
-    ConversationId,
-    const QStringList &,
-    const QString &,
-    std::optional<Ts>,
+    ConversationId                     conv,
+    const QStringList                 &filePaths,
+    const QString                     &text,
+    std::optional<Ts>                  threadRoot,
     std::function<void(bool, QString)> done
 ) {
-    if (done)
-        done(false, QStringLiteral("unsupported"));
+    QStringList copies;
+    for (const QString &path : filePaths) {
+        const QString copy = cacheUpload(path);
+        if (copy.isEmpty()) {
+            if (done)
+                done(
+                    false,
+                    QCoreApplication::translate("claude_code", "Couldn't read %1.")
+                        .arg(QFileInfo(path).fileName())
+                );
+            return;
+        }
+        copies << copy;
+    }
+    OutgoingMessage msg;
+    msg.composerText = withAttachments(text, copies);
+    msg.threadRoot   = threadRoot;
+    send(conv, std::move(msg), std::move(done), false);
 }
 
-// Files here are local: the pasted images saved in msga's cache.
+// Files here are local: the pasted images and sent files in msga's cache.
 void Backend::downloadFile(
     const QString &url, std::function<void(QByteArray)> onData, std::function<void(QString)> onError
 ) {
