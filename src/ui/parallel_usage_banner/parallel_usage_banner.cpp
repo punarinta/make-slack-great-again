@@ -76,15 +76,18 @@ void ParallelUsageBanner::applyTheme() {
     // Re-tint the close glyph on every theme change (see .rules).
     _closeBtn->setIcon(svgIcon(":/ui/x.svg", QSize(14, 14), th.text.onDark));
 
-    setStyleSheet(QString(
-                      "QWidget#parallelUsageBanner { background: %1; }"
-                      "QLabel { background: transparent; color: %2; font-size: %3px; }"
-                      "QPushButton#parallelUsageClose {"
-                      "  background: transparent; border: none; border-radius: 3px;"
-                      "}"
-                      "QPushButton#parallelUsageClose:hover { background: %4; }"
-    )
-                      .arg(Th::qss(th.danger.icon), Th::qss(th.text.onDark))
-                      .arg(th.fonts.md)
-                      .arg(Th::qss(th.danger.hover)));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString(
+            "QWidget#parallelUsageBanner { background: %1; }"
+            "QLabel { background: transparent; color: %2; font-size: %3px; }"
+            "QPushButton#parallelUsageClose {"
+            "  background: transparent; border: none; border-radius: 3px;"
+            "}"
+            "QPushButton#parallelUsageClose:hover { background: %4; }"
+        )
+            .arg(Th::qss(th.danger.icon), Th::qss(th.text.onDark))
+            .arg(th.fonts.md)
+            .arg(Th::qss(th.danger.hover))
+    );
 }

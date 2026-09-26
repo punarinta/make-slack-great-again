@@ -51,6 +51,7 @@
 #include <QImage>
 #include <QStandardPaths>
 #include <QSettings>
+#include <QStyle>
 #include <QDir>
 #include <QDateTime>
 #include <QNetworkAccessManager>
@@ -65,6 +66,9 @@
 static constexpr int kMinEditHeight = 40;
 
 static constexpr QSize kToolIconSize{18, 18};
+
+// Dynamic property on _box selecting the accent border in its stylesheet.
+static constexpr char kFocusedProp[] = "focused";
 
 // ── Mention pills ─────────────────────────────────────────────────────────────
 // The editor shows "@Display Name" while the raw Slack token ("<@U123ABC>")
@@ -677,31 +681,51 @@ ComposerWidget::ComposerWidget(QWidget *parent) : QWidget(parent) {
 
 void ComposerWidget::applyTheme() {
     _edit->setFont(QApplication::font());
-    _edit->setStyleSheet(QString(
-                             "QTextEdit {"
-                             "  border: none;"
-                             "  padding: 6px 10px;"
-                             "  color: %1;"
-                             "  background: transparent;"
-                             "}"
-    )
-                             .arg(Th::qss(Th::c().text.primary)));
+    Th::setStyleSheetIfChanged(
+        _edit,
+        QString(
+            "QTextEdit {"
+            "  border: none;"
+            "  padding: 6px 10px;"
+            "  color: %1;"
+            "  background: transparent;"
+            "}"
+        )
+            .arg(Th::qss(Th::c().text.primary))
+    );
 
     recolorMentionPills();
 
-    // The box frame (border + raised background) and the toolbar/bottom-bar
-    // icon tints are owned by setFocused() — re-run it with the current focus
-    // state, otherwise a theme switch keeps the old surface until the next
-    // focus change (visible as a light composer stuck on a dark theme).
+    // The box frame (border + raised background); setFocused() toggles the
+    // `focused` property that picks the accent border.
+    Th::setStyleSheetIfChanged(
+        _box,
+        QString(
+            "QFrame#composerBox {"
+            "  border: 1px solid %1;"
+            "  border-radius: 8px;"
+            "  background: %2;"
+            "}"
+            "QFrame#composerBox[%3=\"true\"] { border: 1px solid %4; }"
+        )
+            .arg(Th::qss(Th::c().composer.border), Th::qss(Th::c().surface.raised))
+            .arg(QLatin1String(kFocusedProp), Th::qss(Th::c().composer.borderFocus))
+    );
+
+    // The toolbar/bottom-bar icon tints are owned by setFocused() — re-run it
+    // with the current focus state so they pick up the new theme's colors.
     setFocused(_edit->hasFocus());
 
     // One-time-styled separators.
-    _subjectSep->setStyleSheet(QStringLiteral("QFrame { border: none; background: %1; }")
-                                   .arg(Th::qss(Th::c().composer.toolbarBorder)));
+    Th::setStyleSheetIfChanged(
+        _subjectSep,
+        QStringLiteral("QFrame { border: none; background: %1; }")
+            .arg(Th::qss(Th::c().composer.toolbarBorder))
+    );
     const auto vseps = findChildren<QFrame *>(QStringLiteral("composerVSep"));
     for (auto *sep : vseps)
-        sep->setStyleSheet(
-            QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
+        Th::setStyleSheetIfChanged(
+            sep, QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
         );
 
     // Re-apply bottom-bar tool button styles
@@ -714,7 +738,7 @@ void ComposerWidget::applyTheme() {
             .arg(Th::qss(Th::c().divider.def), Th::qss(Th::c().surface.highlightStrong));
     const auto toolBtns = _bottomBar->findChildren<QToolButton *>();
     for (auto *btn : toolBtns)
-        btn->setStyleSheet(bbToolBtnStyle);
+        Th::setStyleSheetIfChanged(btn, bbToolBtnStyle);
 
     // Send-button colors come from updateSendState — force a restyle with the
     // new theme's palette (also fixes the pill keeping stale colors until the
@@ -991,17 +1015,17 @@ void ComposerWidget::setFocused(bool focused) {
         focused ? Th::c().composer.toolbarIconActive : Th::c().composer.toolbarIcon;
     recolorBottomBarIcons(iconColor);
     _formattingTb->recolor(iconColor);
-    _box->setStyleSheet(
-        QString(
-            "QFrame#composerBox {"
-            "  border: 1px solid %1;"
-            "  border-radius: 8px;"
-            "  background: %2;"
-            "}"
-        )
-            .arg(Th::qss(focused ? Th::c().composer.borderFocus : Th::c().composer.border))
-            .arg(Th::qss(Th::c().surface.raised))
-    );
+
+    // The focus border is a `[focused="true"]` rule in the box's sheet (set in
+    // applyTheme): flip the property and re-polish the box alone. Re-setting a
+    // stylesheet instead would re-polish the box's whole ~50-widget subtree on
+    // every focus change.
+    if (_box->property(kFocusedProp).toBool() != focused) {
+        _box->setProperty(kFocusedProp, focused);
+        _box->style()->unpolish(_box);
+        _box->style()->polish(_box);
+        _box->update();
+    }
 
     // Update schedule-send dropdown icon color
     const QColor dropColor =
@@ -1064,23 +1088,27 @@ void ComposerWidget::updateSendState() {
 
     if (active) {
         // Group paints the unified green pill; buttons are transparent windows into it.
-        _sendGroup->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _sendGroup,
             QString("background:%1; border-radius:4px;").arg(Th::qss(Th::c().accent.def))
         );
-        _sendBtn->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _sendBtn,
             "QPushButton { background:transparent; border:none; margin:0; padding:0; }"
             "QPushButton:hover   { background:rgba(255,255,255,40); }"
             "QPushButton:pressed { background:rgba(0,0,0,40); }"
         );
-        _dropBtn->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _dropBtn,
             "QPushButton { background:transparent; border:none; margin:0; padding:0;"
             "  border-left:1px solid rgba(0,0,0,60); }"
             "QPushButton:hover   { background:rgba(255,255,255,40); }"
             "QPushButton:pressed { background:rgba(0,0,0,40); }"
         );
     } else {
-        _sendGroup->setStyleSheet("background:transparent;");
-        _sendBtn->setStyleSheet(
+        Th::setStyleSheetIfChanged(_sendGroup, "background:transparent;");
+        Th::setStyleSheetIfChanged(
+            _sendBtn,
             QString(
                 "QPushButton { background:transparent; border:none; margin:0; padding:0;"
                 "  border-top-left-radius:4px; border-bottom-left-radius:4px; }"
@@ -1088,7 +1116,8 @@ void ComposerWidget::updateSendState() {
             )
                 .arg(Th::qss(Th::c().surface.highlight))
         );
-        _dropBtn->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _dropBtn,
             QString(
                 "QPushButton { background:transparent; border:none; margin:0; padding:0;"
                 "  border-top-right-radius:4px; border-bottom-right-radius:4px; }"

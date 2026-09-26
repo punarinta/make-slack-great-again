@@ -159,12 +159,16 @@ void CustomThemeEditor::showStatus(const QString &text, bool error) {
 void CustomThemeEditor::applyTheme() {
     const auto   &th       = Th::c();
     const QString checkQss = Th::checkBoxQss(th.fonts.md);
-    _inverted->setStyleSheet(checkQss);
-    _gradient->setStyleSheet(checkQss);
-    _contrast->setStyleSheet(
+    Th::setStyleSheetIfChanged(_inverted, checkQss);
+    Th::setStyleSheetIfChanged(_gradient, checkQss);
+    Th::setStyleSheetIfChanged(
+        _contrast,
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.warning))
     );
-    _status->setStyleSheet(QString("font-size: %1px; color: %2;")
-                               .arg(th.fonts.caption)
-                               .arg(Th::qss(_statusError ? th.text.danger : th.text.secondary)));
+    Th::setStyleSheetIfChanged(
+        _status,
+        QString("font-size: %1px; color: %2;")
+            .arg(th.fonts.caption)
+            .arg(Th::qss(_statusError ? th.text.danger : th.text.secondary))
+    );
 }

@@ -42,13 +42,16 @@ void Dropdown::applyStyle() {
     const bool   active = isEnabled() && (_hover || _open);
     const QColor border = active ? Th::c().composer.borderFocus : Th::c().composer.border;
     const QColor bg     = isEnabled() ? Th::c().surface.raised : Th::c().surface.sunken;
-    setStyleSheet(QString(
-                      "Dropdown {"
-                      "  border: %1px solid %2; border-radius: 6px; background: %3;"
-                      "}"
-    )
-                      .arg(active ? 2 : 1)
-                      .arg(Th::qss(border), Th::qss(bg)));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString(
+            "Dropdown {"
+            "  border: %1px solid %2; border-radius: 6px; background: %3;"
+            "}"
+        )
+            .arg(active ? 2 : 1)
+            .arg(Th::qss(border), Th::qss(bg))
+    );
     update();
 }
 

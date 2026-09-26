@@ -113,11 +113,14 @@ void WelcomeWidget::buildRows() {
 void WelcomeWidget::applyTheme() {
     const auto &th = Th::c();
 
-    _title->setStyleSheet(QString("font-size: %1px; color: %2; font-weight: 500;")
-                              .arg(th.fonts.lg)
-                              .arg(Th::qss(th.text.secondary)));
+    Th::setStyleSheetIfChanged(
+        _title,
+        QString("font-size: %1px; color: %2; font-weight: 500;")
+            .arg(th.fonts.lg)
+            .arg(Th::qss(th.text.secondary))
+    );
 
-    _rule->setStyleSheet(QString("color: %1;").arg(Th::qss(th.surface.highlight)));
+    Th::setStyleSheetIfChanged(_rule, QString("color: %1;").arg(Th::qss(th.surface.highlight)));
 
     const QString chipSS = QString(
                                "QLabel {"
@@ -137,18 +140,18 @@ void WelcomeWidget::applyTheme() {
                                    Th::qss(th.text.primary)
                                );
     for (QLabel *lbl : std::as_const(_chipLabels))
-        lbl->setStyleSheet(chipSS);
+        Th::setStyleSheetIfChanged(lbl, chipSS);
 
     const QString plusSS = QString("font-size: %1px; color: %2; padding: 0 1px;")
                                .arg(th.fonts.sm)
                                .arg(Th::qss(th.divider.def));
     for (QLabel *lbl : std::as_const(_plusLabels))
-        lbl->setStyleSheet(plusSS);
+        Th::setStyleSheetIfChanged(lbl, plusSS);
 
     const QString actionSS =
         QString("font-size: %1px; color: %2;").arg(th.fonts.base).arg(Th::qss(th.text.primary));
     for (QLabel *lbl : std::as_const(_actionLabels))
-        lbl->setStyleSheet(actionSS);
+        Th::setStyleSheetIfChanged(lbl, actionSS);
 }
 
 void WelcomeWidget::resizeEvent(QResizeEvent *e) {

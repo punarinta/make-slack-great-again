@@ -33,10 +33,13 @@ void IconButton::setSvgPath(const QString &svgPath) {
 void IconButton::applyTheme() {
     const QColor tint = _hasColor ? _iconColor : Th::c().icon.def;
     setIcon(svgIcon(_svgPath, QSize(_iconPx, _iconPx), tint));
-    setStyleSheet(QString(
-                      "IconButton { border: none; background: transparent; border-radius: %1px; }"
-                      "IconButton:hover { background: %2; }"
-    )
-                      .arg(_side / 2)
-                      .arg(Th::qss(Th::c().surface.highlight)));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString(
+            "IconButton { border: none; background: transparent; border-radius: %1px; }"
+            "IconButton:hover { background: %2; }"
+        )
+            .arg(_side / 2)
+            .arg(Th::qss(Th::c().surface.highlight))
+    );
 }

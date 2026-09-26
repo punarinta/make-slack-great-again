@@ -1367,24 +1367,24 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
 
 void MainWindow::applyTheme() {
     // qApp->setStyleSheet() forces Qt to re-polish (recompute the style of)
-    // EVERY widget in the application — hundreds of ms on a populated window.
-    // globalQss() only styles QToolTip, and its colors come from content tokens
-    // (text.*) that are shared across all current themes, so a purple<->blue
-    // switch produces a byte-for-byte identical string. Re-applying it then is
-    // pure waste: skip unless the string actually changed (e.g. a future theme
-    // that retints tooltips), turning the common case into a no-op.
+    // EVERY widget in the application — ~150 ms on a populated window. The app
+    // sheet therefore carries no colors (only the tooltip's shape and font), so
+    // it changes only with the font size; the tooltip's theme colors are put on
+    // Qt's tooltip label itself by the styler.
     static QString lastGlobalQss;
     const QString  gqss = Th::globalQss();
     if (gqss != lastGlobalQss) {
         lastGlobalQss = gqss;
         qApp->setStyleSheet(gqss);
     }
+    Th::installToolTipStyler();
 
     const auto &th = Th::c();
 
 #ifdef Q_OS_MACOS
     if (_msgHeader)
-        _msgHeader->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _msgHeader,
             QString("QWidget#msgHeader { background: %1; border-bottom: 1px solid %2; }")
                 .arg(Th::qss(th.surface.content), Th::qss(th.divider.subtle))
         );
@@ -1405,19 +1405,20 @@ void MainWindow::applyTheme() {
     // build time it kept the previous theme's surface after a light↔dark
     // switch.
     if (_rightPanel) {
-        _rightPanel->setStyleSheet(
-            QString("QWidget { background: %1; }").arg(Th::qss(th.surface.content))
+        Th::setStyleSheetIfChanged(
+            _rightPanel, QString("QWidget { background: %1; }").arg(Th::qss(th.surface.content))
         );
     }
 
     // Same one-time-style trap as the right panel, for the pre-login screen.
     if (_loggedOutPage) {
-        _loggedOutPage->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _loggedOutPage,
             QString("QWidget#loggedOutWrapper { background: %1; }").arg(Th::qss(th.nav.bg))
         );
         if (auto *page = _loggedOutPage->findChild<QWidget *>("loggedOutPage")) {
-            page->setStyleSheet(
-                QString("QWidget { background: %1; }").arg(Th::qss(th.surface.content))
+            Th::setStyleSheetIfChanged(
+                page, QString("QWidget { background: %1; }").arg(Th::qss(th.surface.content))
             );
         }
     }
@@ -1430,42 +1431,57 @@ void MainWindow::applyTheme() {
 #else
         const int titleFontSize = th.fonts.xxl;
 #endif
-        _convNameLabel->setStyleSheet(QString("font-weight: 600; font-size: %1px; color: %2;")
-                                          .arg(titleFontSize)
-                                          .arg(Th::qss(th.text.primary)));
+        Th::setStyleSheetIfChanged(
+            _convNameLabel,
+            QString("font-weight: 600; font-size: %1px; color: %2;")
+                .arg(titleFontSize)
+                .arg(Th::qss(th.text.primary))
+        );
     }
     if (_membersBtn) {
-        _membersBtn->setStyleSheet(QString(
-                                       "QPushButton { border: none; background: transparent;"
-                                       "  padding: 0 %1px; color: %2; font-size: %3px; }"
-        )
-                                       .arg(th.spacing.sm)
-                                       .arg(Th::qss(th.text.secondary))
-                                       .arg(th.fonts.sm));
+        Th::setStyleSheetIfChanged(
+            _membersBtn,
+            QString(
+                "QPushButton { border: none; background: transparent;"
+                "  padding: 0 %1px; color: %2; font-size: %3px; }"
+            )
+                .arg(th.spacing.sm)
+                .arg(Th::qss(th.text.secondary))
+                .arg(th.fonts.sm)
+        );
         _membersBtn->setIcon(svgIcon(":/ui/users.svg", QSize(16, 16), th.icon.def));
     }
     if (_huddleBtn) {
-        _huddleBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
+        Th::setStyleSheetIfChanged(
+            _huddleBtn, "QPushButton { border: none; background: transparent; }"
+        );
         _huddleBtn->setIcon(svgIcon(":/ui/headphones.svg", QSize(16, 16), th.icon.def));
     }
     if (_starBtn) {
-        _starBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
+        Th::setStyleSheetIfChanged(
+            _starBtn, "QPushButton { border: none; background: transparent; }"
+        );
     }
     if (_searchBtn) {
-        _searchBtn->setStyleSheet("QPushButton { border: none; background: transparent; }");
+        Th::setStyleSheetIfChanged(
+            _searchBtn, "QPushButton { border: none; background: transparent; }"
+        );
         _searchBtn->setIcon(svgIcon(":/ui/search.svg", QSize(16, 16), th.icon.def));
     }
     if (_errorBanner) {
-        _errorBanner->setStyleSheet(QString(
-                                        "QLabel#errorBanner {"
-                                        "  background: %1;"
-                                        "  color: %2;"
-                                        "  padding: 6px 12px;"
-                                        "  font-size: %3px;"
-                                        "}"
-        )
-                                        .arg(Th::qss(th.danger.icon), Th::qss(th.surface.raised))
-                                        .arg(th.fonts.md));
+        Th::setStyleSheetIfChanged(
+            _errorBanner,
+            QString(
+                "QLabel#errorBanner {"
+                "  background: %1;"
+                "  color: %2;"
+                "  padding: 6px 12px;"
+                "  font-size: %3px;"
+                "}"
+            )
+                .arg(Th::qss(th.danger.icon), Th::qss(th.surface.raised))
+                .arg(th.fonts.md)
+        );
     }
 }
 

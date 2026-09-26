@@ -653,26 +653,31 @@ void CanvasPage::resizeEvent(QResizeEvent *e) {
 
 void CanvasPage::applyTheme() {
     const auto &th = Th::c();
-    setStyleSheet(
-        QString("QWidget#canvasPage { background: %1; }").arg(Th::qss(th.surface.content))
+    Th::setStyleSheetIfChanged(
+        this, QString("QWidget#canvasPage { background: %1; }").arg(Th::qss(th.surface.content))
     );
-    _title->setStyleSheet(QString(
-                              "QLineEdit#canvasTitle { background: transparent; border: none;"
-                              " font-size: 28px; font-weight: bold; color: %1; }"
-    )
-                              .arg(Th::qss(th.text.primary)));
-    _roNotice->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _title,
+        QString(
+            "QLineEdit#canvasTitle { background: transparent; border: none;"
+            " font-size: 28px; font-weight: bold; color: %1; }"
+        )
+            .arg(Th::qss(th.text.primary))
+    );
+    Th::setStyleSheetIfChanged(
+        _roNotice,
         QString("color: %1; font-size: %2px;").arg(Th::qss(th.text.warning)).arg(th.fonts.caption)
     );
-    _body->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _body,
         QString(
             // (color is the softer document-body tone, not near-black primary)
             "QTextBrowser { background: transparent; border: none;"
             " font-size: %1px; color: %2; }"
         )
-            .arg(th.fonts.lg)
-            .arg(Th::qss(th.text.documentBody)) +
-        Th::scrollBarQss()
+                .arg(th.fonts.lg)
+                .arg(Th::qss(th.text.documentBody)) +
+            Th::scrollBarQss()
     );
     // Heading sizes are applied per-block by CanvasDisplay::styleHeadings (Qt's rich-text
     // engine ignores font-size on h1..h6 in the default stylesheet), so this
@@ -685,15 +690,18 @@ void CanvasPage::applyTheme() {
         )
             .arg(Th::qss(th.accent.def), Th::qss(th.surface.sunken), Th::qss(th.text.secondary))
     );
-    _menuBtn->setStyleSheet(QString(
-                                "QPushButton#canvasMenuBtn { background: %1;"
-                                " border: 1px solid %2; border-radius: 8px; }"
-                                "QPushButton#canvasMenuBtn:hover { background: %3; }"
-    )
-                                .arg(
-                                    Th::qss(th.surface.content),
-                                    Th::qss(th.divider.strong),
-                                    Th::qss(th.surface.highlight)
-                                ));
+    Th::setStyleSheetIfChanged(
+        _menuBtn,
+        QString(
+            "QPushButton#canvasMenuBtn { background: %1;"
+            " border: 1px solid %2; border-radius: 8px; }"
+            "QPushButton#canvasMenuBtn:hover { background: %3; }"
+        )
+            .arg(
+                Th::qss(th.surface.content),
+                Th::qss(th.divider.strong),
+                Th::qss(th.surface.highlight)
+            )
+    );
     _menuBtn->setIcon(svgIcon(":/ui/ellipsis-vertical.svg", QSize(17, 17), th.icon.def));
 }

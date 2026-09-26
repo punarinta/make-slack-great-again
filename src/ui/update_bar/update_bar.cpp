@@ -44,7 +44,8 @@ void UpdateBar::applyTheme() {
     const auto &th = Th::c();
 
     // The Restart button is a StyledButton (Danger / XSmall) — it themes itself.
-    setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        this,
         QString(
             "QWidget#updateBar {"
             "  background: %1;"

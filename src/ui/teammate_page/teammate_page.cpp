@@ -277,33 +277,49 @@ void TeammatePage::updateAvatar() {
 
 void TeammatePage::applyTheme() {
     const auto &th = Th::c();
-    setStyleSheet(
-        QString("QWidget#teammatePage { background: %1; }").arg(Th::qss(th.surface.content))
+    Th::setStyleSheetIfChanged(
+        this, QString("QWidget#teammatePage { background: %1; }").arg(Th::qss(th.surface.content))
     );
-    _header->setStyleSheet(QString("QWidget#teammateHeader { background: transparent; }"));
-    _footer->setStyleSheet(QString(
-                               "QWidget#teammateFooter { background: transparent; "
-                               "border-top: 1px solid %1; }"
-    )
-                               .arg(Th::qss(th.divider.subtle)));
-    _name->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _header, QString("QWidget#teammateHeader { background: transparent; }")
+    );
+    Th::setStyleSheetIfChanged(
+        _footer,
+        QString(
+            "QWidget#teammateFooter { background: transparent; "
+            "border-top: 1px solid %1; }"
+        )
+            .arg(Th::qss(th.divider.subtle))
+    );
+    Th::setStyleSheetIfChanged(
+        _name,
         QString("background: transparent; font-weight: bold; font-size: %1px; color: %2;")
             .arg(th.fonts.xxxl)
             .arg(Th::qss(th.text.primary))
     );
-    _description->setStyleSheet(QString("background: transparent; font-size: %1px; color: %2;")
-                                    .arg(th.fonts.lg)
-                                    .arg(Th::qss(th.text.secondary)));
-    _listTitle->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _description,
+        QString("background: transparent; font-size: %1px; color: %2;")
+            .arg(th.fonts.lg)
+            .arg(Th::qss(th.text.secondary))
+    );
+    Th::setStyleSheetIfChanged(
+        _listTitle,
         QString("background: transparent; font-weight: bold; font-size: %1px; color: %2;")
             .arg(th.fonts.xl)
             .arg(Th::qss(th.text.primary))
     );
-    _empty->setStyleSheet(QString("background: transparent; color: %1; padding: %2px;")
-                              .arg(Th::qss(th.text.secondary))
-                              .arg(th.spacing.xxl));
-    _folderLabel->setStyleSheet(QString("background: transparent; color: %1; font-size: %2px;")
-                                    .arg(Th::qss(th.text.secondary))
-                                    .arg(th.fonts.md));
+    Th::setStyleSheetIfChanged(
+        _empty,
+        QString("background: transparent; color: %1; padding: %2px;")
+            .arg(Th::qss(th.text.secondary))
+            .arg(th.spacing.xxl)
+    );
+    Th::setStyleSheetIfChanged(
+        _folderLabel,
+        QString("background: transparent; color: %1; font-size: %2px;")
+            .arg(Th::qss(th.text.secondary))
+            .arg(th.fonts.md)
+    );
     updateAvatar();
 }

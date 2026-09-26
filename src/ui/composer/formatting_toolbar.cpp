@@ -97,18 +97,24 @@ FormattingToolbar::FormattingToolbar(QWidget *parent) : QWidget(parent) {
         emit linkClicked(linkBtn->mapToGlobal(QPoint(0, linkBtn->height() + 4)));
     });
 
+    recolor(Th::c().composer.toolbarIcon);
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
 }
 
-void FormattingToolbar::applyTheme() {
-    recolor(Th::c().composer.toolbarIcon);
-}
-
 void FormattingToolbar::recolor(const QColor &color) {
+    if (color == _iconColor)
+        return;
+    _iconColor = color;
     for (auto &[btn, path] : _iconBtns)
         btn->setIcon(svgIcon(path, btn->iconSize(), color));
-    setStyleSheet(
+}
+
+// The toolbar's look doesn't depend on the composer's focus (only the icon
+// tint does, via recolor()), so its sheets are set here, on theme changes only.
+void FormattingToolbar::applyTheme() {
+    Th::setStyleSheetIfChanged(
+        this,
         QString(
             "QWidget#composerToolbar {"
             "  background: %1;"
@@ -125,10 +131,9 @@ void FormattingToolbar::recolor(const QColor &color) {
     );
     const auto vseps = findChildren<QFrame *>(QStringLiteral("composerVSep"));
     for (auto *sep : vseps)
-        sep->setStyleSheet(
-            QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
+        Th::setStyleSheetIfChanged(
+            sep, QString("QFrame { color: %1; }").arg(Th::qss(Th::c().composer.toolbarBorder))
         );
-    (void)color; // stylesheet is static; only icons change with color
 }
 
 bool FormattingToolbar::eventFilter(QObject *obj, QEvent *event) {

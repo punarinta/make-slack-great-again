@@ -147,5 +147,5 @@ void StyledButton::applyTheme() {
                   .arg(Th::qss(th.accent.hover));
         break;
     }
-    setStyleSheet(css);
+    Th::setStyleSheetIfChanged(this, css);
 }

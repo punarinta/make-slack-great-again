@@ -18,7 +18,8 @@ class FormattingToolbar : public QWidget {
 public:
     explicit FormattingToolbar(QWidget *parent = nullptr);
 
-    // Call when the composer gains or loses focus to recolor the toolbar icons.
+    // Call when the composer gains or loses focus (and after a theme change) to
+    // recolor the toolbar icons. No-op when the tint is unchanged.
     void recolor(const QColor &color);
 
 signals:
@@ -43,4 +44,5 @@ private:
     QList<QPair<QAbstractButton *, QString>> _iconBtns;
     QHash<QWidget *, QString>                _tooltipBtns;
     PopupTooltip                            *_tooltip = nullptr;
+    QColor                                   _iconColor; // last recolor() tint
 };

@@ -17,6 +17,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QToolTip>
 
 // Same store ThemeManager uses (see MSGA_THEME_SETTINGS_FILE in main()).
 static QSettings testSettings() {
@@ -504,6 +505,81 @@ TEST_CASE("stock file dialog readable whatever the OS palette", "[theme]") {
 
     qApp->setPalette(appPalette);
     ThemeManager::instance().setTheme(Th::defaultTheme());
+}
+
+// ── Stylesheet re-polish avoidance ───────────────────────────────────────────
+
+TEST_CASE("setStyleSheetIfChanged skips identical sheets, not app font changes", "[theme]") {
+    QWidget       w;
+    const QString red  = QStringLiteral("QWidget { color: red; }");
+    const QString blue = QStringLiteral("QWidget { color: blue; }");
+    CHECK(Th::setStyleSheetIfChanged(&w, red));
+    CHECK(w.styleSheet() == red);
+    CHECK_FALSE(Th::setStyleSheetIfChanged(&w, red));
+    CHECK(Th::setStyleSheetIfChanged(&w, blue));
+    CHECK_FALSE(Th::setStyleSheetIfChanged(nullptr, blue));
+
+    // A font-size change must still re-apply an identical sheet: the re-set is
+    // what re-resolves the subtree's fonts.
+    const QFont orig   = QApplication::font();
+    QFont       bigger = orig;
+    bigger.setPixelSize(QFontInfo(orig).pixelSize() + 4);
+    QApplication::setFont(bigger);
+    CHECK(Th::setStyleSheetIfChanged(&w, blue));
+    CHECK_FALSE(Th::setStyleSheetIfChanged(&w, blue));
+    QApplication::setFont(orig);
+}
+
+TEST_CASE("tooltip colors follow the theme; the app stylesheet does not change", "[theme]") {
+    // The app-wide sheet re-polishes every widget when set, so it must be the
+    // same for every theme; the tooltip label gets its colors on its own.
+    const QString appQss = qApp->styleSheet();
+    const auto   *light  = Th::themeById(QStringLiteral("purple"), false);
+    const auto   *dark   = Th::themeById(QStringLiteral("charcoal"), true);
+    REQUIRE(light);
+    REQUIRE(dark);
+    REQUIRE(light->tooltip.bg != dark->tooltip.bg);
+
+    auto &tm = ThemeManager::instance();
+    tm.setTheme(*light);
+    const QString gqss = Th::globalQss();
+    tm.setTheme(*dark);
+    CHECK(Th::globalQss() == gqss);
+    qApp->setStyleSheet(gqss);
+
+    QWidget host;
+    host.resize(200, 200);
+    host.show();
+    const auto tipBg = [] {
+        for (QWidget *w : QApplication::topLevelWidgets())
+            if (w->inherits("QTipLabel") && w->isVisible()) {
+                const QImage img = w->grab().toImage();
+                return img.pixelColor(img.width() / 2, 3);
+            }
+        return QColor();
+    };
+    const auto show = [&](const QString &text, int at) {
+        QToolTip::showText(host.mapToGlobal(QPoint(at, at)), text, &host);
+    };
+
+    for (const auto *theme : {light, dark}) {
+        tm.setTheme(*theme);
+        Th::installToolTipStyler(); // what MainWindow::applyTheme does
+        show(QStringLiteral("a tooltip"), 10);
+        CHECK(tipBg() == theme->tooltip.bg);
+        // Qt reuses the visible label and resets its sheet on the way.
+        show(QStringLiteral("another, longer tooltip"), 40);
+        CHECK(tipBg() == theme->tooltip.bg);
+    }
+
+    // A tooltip visible across a switch is restyled.
+    tm.setTheme(*light);
+    Th::installToolTipStyler();
+    CHECK(tipBg() == light->tooltip.bg);
+
+    QToolTip::hideText();
+    qApp->setStyleSheet(appQss);
+    tm.setTheme(Th::defaultTheme());
 }
 
 // ── Custom themes (phase 3) ──────────────────────────────────────────────────

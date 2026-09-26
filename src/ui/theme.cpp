@@ -3,7 +3,11 @@
 #include "theme.h"
 #include "theme_manager.h"
 
+#include <QApplication>
+#include <QEvent>
+#include <QFont>
 #include <QPoint>
+#include <QPointer>
 #include <QWidget>
 
 #include <algorithm>
@@ -779,22 +783,90 @@ QLinearGradient navGradient(const QWidget *widget, const QColor &top, const QCol
     return g;
 }
 
+bool setStyleSheetIfChanged(QWidget *w, const QString &qss) {
+    if (!w)
+        return false;
+    // Re-setting a sheet also re-resolves the fonts of the widget's subtree, and
+    // a font-size change relies on that: a sheet without a font size in it (the
+    // composer's editor) is byte-identical across the change, yet its widgets
+    // must pick up the new app font. So "unchanged" also means "set under the
+    // same application font".
+    static constexpr char kFontProp[] = "_msga_qss_app_font";
+    const QFont           appFont     = QApplication::font();
+    if (w->styleSheet() == qss && w->property(kFontProp).value<QFont>() == appFont)
+        return false;
+    w->setProperty(kFontProp, appFont);
+    w->setStyleSheet(qss);
+    return true;
+}
+
 QString globalQss() {
-    const auto &th = c();
     return QString(
                "QToolTip {"
-               "  background-color: %1;"
-               "  color: %2;"
                "  border: none;"
                "  border-radius: 6px;"
                "  padding: 5px 10px;"
                "  font-weight: bold;"
-               "  font-size: %3px;"
+               "  font-size: %1px;"
                "}"
     )
-        .arg(qss(th.tooltip.bg))
-        .arg(qss(th.text.onDark))
-        .arg(th.fonts.caption);
+        .arg(c().fonts.caption);
+}
+
+namespace {
+
+QString toolTipColorQss() {
+    const auto &th = c();
+    return QString("QToolTip { background-color: %1; color: %2; }")
+        .arg(qss(th.tooltip.bg), qss(th.text.onDark));
+}
+
+// Qt's tooltip is a private QTipLabel (a QLabel), created per tip and reused
+// while one is visible. Its colors are set as a stylesheet on the label itself
+// rather than in globalQss(), so a theme switch restyles one label instead of
+// re-polishing every widget in the app. QTipLabel::placeTip() resets the
+// label's sheet to "/* */" on every show AND on every reuse (to pick up the
+// tooltip owner's stylesheet ancestry), which arrives here as a StyleChange —
+// so re-assert on that as well as on Show. The shape/padding/font stay in the
+// app sheet: they must be in effect when the label computes its margin and
+// size, before either event.
+class ToolTipStyler : public QObject {
+public:
+    using QObject::QObject;
+
+    static void restyle(QWidget *label) { setStyleSheetIfChanged(label, toolTipColorQss()); }
+
+    void restyleVisible() {
+        if (_label && _label->isVisible())
+            restyle(_label);
+    }
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        const auto t = event->type();
+        if ((t == QEvent::Show || t == QEvent::StyleChange) && obj->isWidgetType() &&
+            obj->inherits("QTipLabel")) {
+            _label = static_cast<QWidget *>(obj);
+            restyle(_label);
+        }
+        return false;
+    }
+
+private:
+    QPointer<QWidget> _label;
+};
+
+} // namespace
+
+void installToolTipStyler() {
+    static QPointer<ToolTipStyler> styler; // owned by qApp
+    if (!qApp)
+        return;
+    if (!styler) {
+        styler = new ToolTipStyler(qApp);
+        qApp->installEventFilter(styler);
+    }
+    styler->restyleVisible();
 }
 
 QString scrollBarQss(int width, int radius) {
@@ -804,32 +876,35 @@ QString scrollBarQss(int width, int radius) {
 QString scrollBarQss(const ScrollBarStyle &s) {
     const auto   &th     = c();
     const QString margin = s.margin ? QString("%1px").arg(s.margin) : QStringLiteral("0");
+    const QString scope  = s.scope.isEmpty() ? QString() : s.scope + QLatin1Char(' ');
     const auto    hover  = [&](const char *dir) {
-        return s.hoverTint ? QString("QScrollBar::handle:%1:hover { background: %2; }")
-                                 .arg(QLatin1String(dir), qss(th.text.secondary))
+        return s.hoverTint ? scope + QString("QScrollBar::handle:%1:hover { background: %2; }")
+                                         .arg(QLatin1String(dir), qss(th.text.secondary))
                            : QString();
     };
+    // %8 (the scope) is substituted last, after the hover rules went into %6/%7.
     return QString(
-               "QScrollBar:vertical { background: transparent; width: %1px; margin: %4; }"
-               "QScrollBar::handle:vertical { background: %3; border-radius: %2px;"
+               "%8QScrollBar:vertical { background: transparent; width: %1px; margin: %4; }"
+               "%8QScrollBar::handle:vertical { background: %3; border-radius: %2px;"
                " min-height: %5px; }"
                "%6"
-               "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
-               "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+               "%8QScrollBar::add-line:vertical, %8QScrollBar::sub-line:vertical { height: 0; }"
+               "%8QScrollBar::add-page:vertical, %8QScrollBar::sub-page:vertical {"
                " background: transparent; }"
-               "QScrollBar:horizontal { background: transparent; height: %1px; margin: %4; }"
-               "QScrollBar::handle:horizontal { background: %3; border-radius: %2px;"
+               "%8QScrollBar:horizontal { background: transparent; height: %1px; margin: %4; }"
+               "%8QScrollBar::handle:horizontal { background: %3; border-radius: %2px;"
                " min-width: %5px; }"
                "%7"
-               "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
-               "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+               "%8QScrollBar::add-line:horizontal, %8QScrollBar::sub-line:horizontal { width: 0; }"
+               "%8QScrollBar::add-page:horizontal, %8QScrollBar::sub-page:horizontal {"
                " background: transparent; }"
     )
         .arg(s.width)
         .arg(s.radius)
         .arg(qss(th.divider.strong), margin)
         .arg(s.minHandle)
-        .arg(hover("vertical"), hover("horizontal"));
+        .arg(hover("vertical"), hover("horizontal"))
+        .arg(scope);
 }
 
 QString popupScrollBarQss() {

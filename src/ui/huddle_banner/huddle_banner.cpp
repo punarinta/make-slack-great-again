@@ -77,7 +77,8 @@ void HuddleBanner::applyTheme() {
     // every theme change so the icon tint never goes stale (see .rules).
     _icon->setPixmap(svgPixmap(":/ui/headphones.svg", QSize(16, 16), th.text.onDark));
 
-    setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        this,
         QString(
             "QWidget#huddleBanner { background: %1; }"
             "QLabel { background: transparent; color: %2; font-size: %3px; font-weight: 600; }"

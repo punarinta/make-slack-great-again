@@ -482,33 +482,36 @@ EmojiPickerPopup::EmojiPickerPopup(QWidget *parent)
 void EmojiPickerPopup::applyTheme() {
     // The search field is a StyledLineEdit (self-themed); only the frame, the
     // category QToolButtons and the skin-tone QPushButton are styled here.
-    setStyleSheet(QString(
-                      "QFrame#emojiPicker {"
-                      "  background: %1;"
-                      "  border: 1px solid %2;"
-                      "  border-radius: 8px;"
-                      "}"
-                      "QToolButton {"
-                      "  border: none; background: transparent; padding: 5px;"
-                      "  border-bottom: 2px solid transparent;"
-                      "}"
-                      "QToolButton:hover { background: %4; border-radius: 4px; }"
-                      "QToolButton:checked { border-bottom: 2px solid %3; }"
-                      "QPushButton {"
-                      "  border: none; background: transparent; color: %5;"
-                      "  padding: 3px 6px; font-size: %7px;"
-                      "}"
-                      "QPushButton:hover { color: %6; }"
-    )
-                      .arg(
-                          Th::qss(Th::c().surface.raised),
-                          Th::qss(Th::c().divider.strong),
-                          Th::qss(Th::c().accent.def),
-                          Th::qss(Th::c().surface.highlight),
-                          Th::qss(Th::c().text.secondary),
-                          Th::qss(Th::c().text.primary)
-                      )
-                      .arg(Th::c().fonts.sm));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString(
+            "QFrame#emojiPicker {"
+            "  background: %1;"
+            "  border: 1px solid %2;"
+            "  border-radius: 8px;"
+            "}"
+            "QToolButton {"
+            "  border: none; background: transparent; padding: 5px;"
+            "  border-bottom: 2px solid transparent;"
+            "}"
+            "QToolButton:hover { background: %4; border-radius: 4px; }"
+            "QToolButton:checked { border-bottom: 2px solid %3; }"
+            "QPushButton {"
+            "  border: none; background: transparent; color: %5;"
+            "  padding: 3px 6px; font-size: %7px;"
+            "}"
+            "QPushButton:hover { color: %6; }"
+        )
+            .arg(
+                Th::qss(Th::c().surface.raised),
+                Th::qss(Th::c().divider.strong),
+                Th::qss(Th::c().accent.def),
+                Th::qss(Th::c().surface.highlight),
+                Th::qss(Th::c().text.secondary),
+                Th::qss(Th::c().text.primary)
+            )
+            .arg(Th::c().fonts.sm)
+    );
     buildCategoryBar(); // re-tint category icons
     updateSkinToneButton();
 }

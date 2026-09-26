@@ -138,11 +138,14 @@ QString TypingIndicatorWidget::formatElapsed(qint64 ms) {
 }
 
 void TypingIndicatorWidget::applyTheme() {
-    setStyleSheet(QString(
-                      "QWidget#typingIndicator { background: transparent; }"
-                      "QLabel { background: transparent; border: none;"
-                      "  font-size: %1px; color: %2; }"
-    )
-                      .arg(Th::c().fonts.sm)
-                      .arg(Th::qss(Th::c().text.secondary)));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString(
+            "QWidget#typingIndicator { background: transparent; }"
+            "QLabel { background: transparent; border: none;"
+            "  font-size: %1px; color: %2; }"
+        )
+            .arg(Th::c().fonts.sm)
+            .arg(Th::qss(Th::c().text.secondary))
+    );
 }

@@ -66,10 +66,17 @@ static constexpr int kPanelMinH = 360;
 static constexpr int kEdge      = 7;
 
 // Our scrollbar design: thin rounded handle, transparent track, no arrows —
-// the same look used by the chats list and the canvas page. Shared so the
-// settings scroll areas re-style on theme change via applyTheme().
+// the same look used by the chats list and the canvas page — on transparent
+// scroll areas. Part of the panel's sheet (applyTheme), scoped to the
+// "settingsScroll" areas: the same widgets a sheet on each area used to reach.
 static QString settingsScrollQss() {
-    return QStringLiteral("QScrollArea { background: transparent; }") + Th::scrollBarQss();
+    return QStringLiteral(
+               "QScrollArea#settingsScroll { background: transparent; }"
+               "QScrollArea#settingsScroll QScrollArea { background: transparent; }"
+           ) +
+           Th::scrollBarQss(
+               Th::ScrollBarStyle{.scope = QStringLiteral("QScrollArea#settingsScroll")}
+           );
 }
 
 // Wrap a settings page so it scrolls when it's taller than the panel instead of
@@ -83,7 +90,6 @@ static QWidget *scrollWrap(QWidget *page) {
     sa->setFrameShape(QFrame::NoFrame);
     sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     sa->viewport()->setAutoFillBackground(false);
-    sa->setStyleSheet(settingsScrollQss());
     sa->setWidget(page);
     // setWidget() force-enables autoFillBackground on the page, which would
     // paint the *palette's* light-grey window color over the themed panel —
@@ -323,15 +329,14 @@ void SettingsDialog::buildPanel() {
 
         // The card row can be wider than the panel's content column — scroll it
         // horizontally instead of letting the layout squeeze the fixed-size
-        // cards. Named "settingsScroll" so applyTheme() restyles it along with
-        // the page wraps.
+        // cards. Named "settingsScroll" so the panel sheet (applyTheme) styles it
+        // like the page wraps.
         auto *themeScroll = new QScrollArea(appearPage);
         themeScroll->setObjectName("settingsScroll");
         themeScroll->setWidgetResizable(true);
         themeScroll->setFrameShape(QFrame::NoFrame);
         themeScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         themeScroll->viewport()->setAutoFillBackground(false);
-        themeScroll->setStyleSheet(settingsScrollQss());
         themeScroll->setWidget(themeBox);
         themeBox->setAutoFillBackground(false); // see scrollWrap()
         // Vertical scrolling is off and the cards must never be squeezed, so pin
@@ -2029,60 +2034,73 @@ void SettingsDialog::applyAiTheme() {
     const auto   &th       = Th::c();
     const QString radioQss = Th::radioQss(th.fonts.md);
     for (auto *w : _panel->findChildren<QRadioButton *>("aiDefaultRadio"))
-        w->setStyleSheet(radioQss);
+        Th::setStyleSheetIfChanged(w, radioQss);
     for (auto *w : _panel->findChildren<QLabel *>("aiRowName")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.md)
-                             .arg(Th::qss(th.text.primary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; font-weight: 600; color: %2;")
+                .arg(th.fonts.md)
+                .arg(Th::qss(th.text.primary))
+        );
     }
     for (auto *w : _panel->findChildren<QLabel *>("aiRowDetail")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
 }
 
 void SettingsDialog::applyTheme() {
     const auto &th = Th::c();
 
-    // Tab pages scroll with our thin rounded scrollbar (like the chats list);
-    // re-style live so a theme switch from the Appearance tab updates them too.
-    const QString scrollQss = settingsScrollQss();
-    for (auto *sa : _panel->findChildren<QScrollArea *>("settingsScroll"))
-        sa->setStyleSheet(scrollQss);
-
-    // Panel frame
-    _panel->setStyleSheet(QString(
-                              "QFrame#settingsPanel {"
-                              "  background: %1;"
-                              "  border-radius: 8px;"
-                              "  border: 1px solid %2;"
-                              "}"
-    )
-                              .arg(Th::qss(th.surface.raised), Th::qss(th.divider.strong)));
+    // Panel frame, plus the tab pages' scroll areas (settingsScrollQss()): one
+    // sheet on the panel instead of one per scroll area, so a theme switch
+    // re-polishes the panel's subtree once rather than once more per page.
+    Th::setStyleSheetIfChanged(
+        _panel,
+        QString(
+            "QFrame#settingsPanel {"
+            "  background: %1;"
+            "  border-radius: 8px;"
+            "  border: 1px solid %2;"
+            "}"
+        )
+                .arg(Th::qss(th.surface.raised), Th::qss(th.divider.strong)) +
+            settingsScrollQss()
+    );
 
     // Header
     if (auto *w = _panel->findChild<QWidget *>("settingsHeader")) {
-        w->setStyleSheet(QString(
-                             "background: %1;"
-                             "border-bottom: 1px solid %2;"
-                             "border-top-left-radius: 8px;"
-                             "border-top-right-radius: 8px;"
-        )
-                             .arg(Th::qss(th.surface.highlight), Th::qss(th.divider.def)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString(
+                "background: %1;"
+                "border-bottom: 1px solid %2;"
+                "border-top-left-radius: 8px;"
+                "border-top-right-radius: 8px;"
+            )
+                .arg(Th::qss(th.surface.highlight), Th::qss(th.divider.def))
+        );
     }
     if (auto *w = _panel->findChild<QLabel *>("settingsTitleLabel")) {
-        w->setStyleSheet(QString(
-                             "font-size: %1px; font-weight: 600; color: %2;"
-                             "background: transparent; border: none;"
-        )
-                             .arg(th.fonts.lg)
-                             .arg(Th::qss(th.text.primary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString(
+                "font-size: %1px; font-weight: 600; color: %2;"
+                "background: transparent; border: none;"
+            )
+                .arg(th.fonts.lg)
+                .arg(Th::qss(th.text.primary))
+        );
     }
     // settingsCloseBtn (IconButton) self-themes.
 
     // Tabs list
-    _tabs->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _tabs,
         QString(
             "QListWidget {"
             "  background: %1;"
@@ -2114,9 +2132,12 @@ void SettingsDialog::applyTheme() {
 
     // ── Section headings (bold, used across all pages) ─────────────────
     for (auto *w : _panel->findChildren<QLabel *>("sectionHeading")) {
-        w->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                             .arg(th.fonts.base)
-                             .arg(Th::qss(th.text.primary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; font-weight: 600; color: %2;")
+                .arg(th.fonts.base)
+                .arg(Th::qss(th.text.primary))
+        );
     }
 
     // ── Appearance page ───────────────────────────────────────────────
@@ -2132,15 +2153,16 @@ void SettingsDialog::applyTheme() {
           QString("fontBox")}) {
         // findChildren, not findChild: the theme rows share one name.
         for (auto *w : _panel->findChildren<QGroupBox *>(boxName))
-            w->setStyleSheet("QGroupBox { border: none; }");
+            Th::setStyleSheetIfChanged(w, "QGroupBox { border: none; }");
     }
     if (auto *w = _panel->findChild<QLabel *>("langLabel")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
     // _language self-themes (Dropdown).
-    _langRestartNote->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _langRestartNote,
         QString(
             "font-size: %1px; color: %2; background: %3;"
             "border: 1px solid %4; border-radius: 4px; padding: 6px 8px;"
@@ -2156,192 +2178,235 @@ void SettingsDialog::applyTheme() {
     const QString radioQss = Th::radioQss(th.fonts.md);
     const QString checkQss = Th::checkBoxQss(th.fonts.md);
     const QString spinQss  = Th::spinBoxQss(th.fonts.md);
-    _time12->setStyleSheet(radioQss);
-    _time24->setStyleSheet(radioQss);
-    _threadStandalone->setStyleSheet(radioQss);
-    _threadInline->setStyleSheet(radioQss);
-    _fontSmall->setStyleSheet(radioQss);
-    _fontMedium->setStyleSheet(radioQss);
-    _fontLarge->setStyleSheet(radioQss);
-    _modeLight->setStyleSheet(radioQss);
-    _modeDark->setStyleSheet(radioQss);
-    _modeSystem->setStyleSheet(radioQss);
-    _modeHint->setStyleSheet(
+    Th::setStyleSheetIfChanged(_time12, radioQss);
+    Th::setStyleSheetIfChanged(_time24, radioQss);
+    Th::setStyleSheetIfChanged(_threadStandalone, radioQss);
+    Th::setStyleSheetIfChanged(_threadInline, radioQss);
+    Th::setStyleSheetIfChanged(_fontSmall, radioQss);
+    Th::setStyleSheetIfChanged(_fontMedium, radioQss);
+    Th::setStyleSheetIfChanged(_fontLarge, radioQss);
+    Th::setStyleSheetIfChanged(_modeLight, radioQss);
+    Th::setStyleSheetIfChanged(_modeDark, radioQss);
+    Th::setStyleSheetIfChanged(_modeSystem, radioQss);
+    Th::setStyleSheetIfChanged(
+        _modeHint,
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))
     );
     for (auto *w : _panel->findChildren<QLabel *>("themeRowLabel")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
-    _ctrlEnterSends->setStyleSheet(checkQss);
-    _showAgentsApps->setStyleSheet(checkQss);
-    _unreadsOnly->setStyleSheet(checkQss);
-    _showLinkPreviews->setStyleSheet(checkQss);
-    _animateEmoji->setStyleSheet(checkQss);
-    _animateMedia->setStyleSheet(checkQss);
-    _customTray->setStyleSheet(checkQss);
+    Th::setStyleSheetIfChanged(_ctrlEnterSends, checkQss);
+    Th::setStyleSheetIfChanged(_showAgentsApps, checkQss);
+    Th::setStyleSheetIfChanged(_unreadsOnly, checkQss);
+    Th::setStyleSheetIfChanged(_showLinkPreviews, checkQss);
+    Th::setStyleSheetIfChanged(_animateEmoji, checkQss);
+    Th::setStyleSheetIfChanged(_animateMedia, checkQss);
+    Th::setStyleSheetIfChanged(_customTray, checkQss);
     // The explicit colours here override the disabled palette, so the labels
     // that grey out with the activity window (see the unreads-only toggle) carry
     // their own :disabled rule.
     if (auto *w = _panel->findChild<QLabel *>("daysPrefix")) {
-        w->setStyleSheet(QString(
-                             "QLabel { font-size: %1px; color: %2; }"
-                             "QLabel:disabled { color: %3; }"
-        )
-                             .arg(th.fonts.md)
-                             .arg(Th::qss(th.text.primary), Th::qss(th.text.tertiary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString(
+                "QLabel { font-size: %1px; color: %2; }"
+                "QLabel:disabled { color: %3; }"
+            )
+                .arg(th.fonts.md)
+                .arg(Th::qss(th.text.primary), Th::qss(th.text.tertiary))
+        );
     }
-    _relevantDays->setStyleSheet(spinQss);
+    Th::setStyleSheetIfChanged(_relevantDays, spinQss);
     for (const char *name : {"daysDesc", "unreadsDesc", "effectsDesc", "linkPreviewsDesc"}) {
         if (auto *w = _panel->findChild<QLabel *>(QLatin1String(name))) {
-            w->setStyleSheet(QString(
-                                 "QLabel { font-size: %1px; color: %2; }"
-                                 "QLabel:disabled { color: %3; }"
-            )
-                                 .arg(th.fonts.caption)
-                                 .arg(Th::qss(th.text.secondary), Th::qss(th.text.tertiary)));
+            Th::setStyleSheetIfChanged(
+                w,
+                QString(
+                    "QLabel { font-size: %1px; color: %2; }"
+                    "QLabel:disabled { color: %3; }"
+                )
+                    .arg(th.fonts.caption)
+                    .arg(Th::qss(th.text.secondary), Th::qss(th.text.tertiary))
+            );
         }
     }
     // (Save button self-themes — StyledButton)
 
     // ── Notifications page ────────────────────────────────────────────
-    _notifEnabled->setStyleSheet(checkQss);
+    Th::setStyleSheetIfChanged(_notifEnabled, checkQss);
     if (auto *w = _panel->findChild<QGroupBox *>("levelBox"))
-        w->setStyleSheet("QGroupBox { border: none; }");
-    _notifAll->setStyleSheet(radioQss);
-    _notifMentions->setStyleSheet(radioQss);
+        Th::setStyleSheetIfChanged(w, "QGroupBox { border: none; }");
+    Th::setStyleSheetIfChanged(_notifAll, radioQss);
+    Th::setStyleSheetIfChanged(_notifMentions, radioQss);
     if (_modeSession)
-        _modeSession->setStyleSheet(radioQss);
+        Th::setStyleSheetIfChanged(_modeSession, radioQss);
     if (_modeAppKeys)
-        _modeAppKeys->setStyleSheet(radioQss);
+        Th::setStyleSheetIfChanged(_modeAppKeys, radioQss);
     for (auto *r : {_presRunning, _presUsing, _presNative})
         if (r)
-            r->setStyleSheet(radioQss);
-    _notifHuddles->setStyleSheet(checkQss);
-    _notifBoldMentionsOnly->setStyleSheet(checkQss);
-    _notifSound->setStyleSheet(checkQss);
+            Th::setStyleSheetIfChanged(r, radioQss);
+    Th::setStyleSheetIfChanged(_notifHuddles, checkQss);
+    Th::setStyleSheetIfChanged(_notifBoldMentionsOnly, checkQss);
+    Th::setStyleSheetIfChanged(_notifSound, checkQss);
     if (auto *w = _panel->findChild<QLabel *>("soundLabel")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
     // (Save button self-themes — StyledButton)
 
     // ── AI assistance page ────────────────────────────────────────────
     for (auto *w : _panel->findChildren<QLabel *>("aiDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
     for (auto *w : _panel->findChildren<QLabel *>("aiFieldLabel")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
     for (auto *w : _panel->findChildren<QGroupBox *>("aiBox"))
-        w->setStyleSheet("QGroupBox { border: none; }");
+        Th::setStyleSheetIfChanged(w, "QGroupBox { border: none; }");
     // (Buttons, inputs and dropdowns self-theme — StyledButton / StyledLineEdit
     // / Dropdown; the provider rows are rebuilt on the fly → applyAiTheme.)
     for (auto *w : _panel->findChildren<QLabel *>("aiError")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.danger)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.danger))
+        );
     }
     applyAiTheme();
 
     // ── Storage page ──────────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("sizePrefixLabel")) {
-        w->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            w,
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
         );
     }
-    _cacheSize->setStyleSheet(QString("font-size: %1px; font-weight: 600; color: %2;")
-                                  .arg(th.fonts.md)
-                                  .arg(Th::qss(th.text.primary)));
+    Th::setStyleSheetIfChanged(
+        _cacheSize,
+        QString("font-size: %1px; font-weight: 600; color: %2;")
+            .arg(th.fonts.md)
+            .arg(Th::qss(th.text.primary))
+    );
     if (auto *w = _panel->findChild<QLabel *>("cacheDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
-    }
-    if (auto *w = _panel->findChild<QLabel *>("capPrefix")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
         );
     }
-    _cacheCap->setStyleSheet(spinQss);
+    if (auto *w = _panel->findChild<QLabel *>("capPrefix")) {
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        );
+    }
+    Th::setStyleSheetIfChanged(_cacheCap, spinQss);
     if (auto *w = _panel->findChild<QLabel *>("capDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
     // (Clear Cache button self-themes — StyledButton Danger)
     if (auto *w = _panel->findChild<QLabel *>("stateDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
     // (Clear State button self-themes — StyledButton Danger)
 
     // ── System page ───────────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("verLabel")) {
-        w->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            w,
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
         );
     }
     for (auto *w : _panel->findChildren<QGroupBox *>("updBox"))
-        w->setStyleSheet("QGroupBox { border: none; }");
+        Th::setStyleSheetIfChanged(w, "QGroupBox { border: none; }");
     if (_autoUpdates)
-        _autoUpdates->setStyleSheet(checkQss);
+        Th::setStyleSheetIfChanged(_autoUpdates, checkQss);
     if (_minimizeToTray)
-        _minimizeToTray->setStyleSheet(checkQss);
+        Th::setStyleSheetIfChanged(_minimizeToTray, checkQss);
     for (auto *w : _panel->findChildren<QLabel *>("autoUpdDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
     // Slack connection / Teams / GIF picker blocks.
     for (auto *w : _panel->findChildren<QLabel *>("credDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
     for (auto *w : _panel->findChildren<QLabel *>("credStatus")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
     for (auto *w : _panel->findChildren<QLabel *>("credFieldLabel")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
     }
     for (auto *w : _panel->findChildren<QGroupBox *>("credBox")) {
-        w->setStyleSheet(QString("QGroupBox#credBox { border: 1px solid %1; border-radius: 4px; }")
-                             .arg(Th::qss(th.divider.def)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("QGroupBox#credBox { border: 1px solid %1; border-radius: 4px; }")
+                .arg(Th::qss(th.divider.def))
+        );
     }
     // (Check-for-updates button self-themes — StyledButton Ghost)
-    _updateStatus->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _updateStatus,
         QString("font-size: %1px; color: %2;").arg(th.fonts.caption).arg(Th::qss(th.text.secondary))
     );
-    _lastChecked->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _lastChecked,
         QString("font-size: %1px; color: %2;").arg(th.fonts.sm).arg(Th::qss(th.text.tertiary))
     );
     if (auto *w = _panel->findChild<QGroupBox *>("memBox"))
-        w->setStyleSheet("QGroupBox { border: none; }");
-    _ramLabel->setStyleSheet(
+        Th::setStyleSheetIfChanged(w, "QGroupBox { border: none; }");
+    Th::setStyleSheetIfChanged(
+        _ramLabel,
         QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
     );
 
     // ── About page ────────────────────────────────────────────────────
     if (auto *w = _panel->findChild<QLabel *>("aboutLicense")) {
-        w->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            w,
             QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.secondary))
         );
     }
     if (auto *w = _panel->findChild<QLabel *>("aboutContact")) {
-        w->setStyleSheet(
-            QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
+        Th::setStyleSheetIfChanged(
+            w, QString("font-size: %1px; color: %2;").arg(th.fonts.md).arg(Th::qss(th.text.primary))
         );
         // Inline colour on the anchor: a palette Link colour is dropped once a
         // stylesheet is in play, leaving the OS default blue.
@@ -2353,9 +2418,12 @@ void SettingsDialog::applyTheme() {
                                 .arg(Th::qss(th.text.link))));
     }
     if (auto *w = _panel->findChild<QLabel *>("aboutBugDesc")) {
-        w->setStyleSheet(QString("font-size: %1px; color: %2;")
-                             .arg(th.fonts.caption)
-                             .arg(Th::qss(th.text.secondary)));
+        Th::setStyleSheetIfChanged(
+            w,
+            QString("font-size: %1px; color: %2;")
+                .arg(th.fonts.caption)
+                .arg(Th::qss(th.text.secondary))
+        );
     }
 }
 

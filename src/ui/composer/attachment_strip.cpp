@@ -190,11 +190,12 @@ AttachmentStrip::AttachmentStrip(QWidget *parent) : QWidget(parent) {
 }
 
 void AttachmentStrip::applyTheme() {
-    _scroll->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _scroll,
         "QScrollArea#fileScrollArea { background: transparent; border: none; }"
         "QScrollArea#fileScrollArea > QWidget { background: transparent; }"
     );
-    _strip->setStyleSheet("QWidget#fileStrip { background: transparent; }");
+    Th::setStyleSheetIfChanged(_strip, "QWidget#fileStrip { background: transparent; }");
 }
 
 void AttachmentStrip::rebuild(const QStringList &pending, const std::vector<File> &readOnly) {

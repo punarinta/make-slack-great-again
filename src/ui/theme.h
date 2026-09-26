@@ -368,10 +368,27 @@ QLinearGradient navGradient(const QWidget *widget, const QColor &top, const QCol
 // Opaque → "#RRGGBB"; with alpha → "rgba(r,g,b,A)" (A is 0–255, not 0.0–1.0).
 QString qss(const QColor &color);
 
-// Global application stylesheet built from the active theme.
-// Apply via qApp->setStyleSheet(Th::globalQss()) and re-apply on themeChanged.
-// Covers only things that can't be done per-widget (QToolTip, etc.).
+// `w->setStyleSheet(qss)` unless `w` already has exactly that sheet, set under
+// the current application font (a font-size change still re-applies, since a
+// re-set is what re-resolves the subtree's fonts). Setting a stylesheet
+// re-polishes the widget and its whole subtree even when the string is
+// unchanged, and most theme switches (preset <-> preset) leave most sheets
+// identical — so every applyTheme() path should go through this. Returns
+// whether the sheet was set. To re-polish after a dynamic property/objectName
+// change, use style()->unpolish(w) + style()->polish(w) instead of re-setting.
+bool setStyleSheetIfChanged(QWidget *w, const QString &qss);
+
+// Global application stylesheet: the tooltip's shape and font only, no
+// colors, so it stays byte-for-byte identical across light/dark and presets.
+// qApp->setStyleSheet() re-polishes EVERY widget, so apply it only when the
+// string changes (i.e. on a font-size change). The colors come from
+// installToolTipStyler().
 QString globalQss();
+
+// Installs (once) an application event filter that gives Qt's tooltip label
+// its colors from the active theme as a stylesheet on the label itself, and
+// restyles a tooltip that is visible right now. Call on every theme change.
+void installToolTipStyler();
 
 // Our scrollbar look: thin rounded handle (`divider.strong`, hover
 // `text.secondary`), transparent track, no arrows — vertical + horizontal.
@@ -383,12 +400,16 @@ QString scrollBarQss(int width = 8, int radius = 4);
 // The knobs behind scrollBarQss(). `margin` insets the handle inside the bar
 // (a 2px margin on an 8px bar leaves a 4px handle), `minHandle` is the handle's
 // minimum length and `hoverTint` adds the `text.secondary` hover colour.
+// A non-empty `scope` prefixes every selector with it as an ancestor (e.g.
+// "QScrollArea#settingsScroll"), so the rules can live in one container's sheet
+// instead of a sheet on each scroll area.
 struct ScrollBarStyle {
-    int  width     = 8;
-    int  radius    = 4;
-    int  margin    = 0;
-    int  minHandle = 28;
-    bool hoverTint = true;
+    int     width     = 8;
+    int     radius    = 4;
+    int     margin    = 0;
+    int     minHandle = 28;
+    bool    hoverTint = true;
+    QString scope;
 };
 QString scrollBarQss(const ScrollBarStyle &style);
 

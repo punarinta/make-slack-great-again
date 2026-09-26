@@ -424,16 +424,20 @@ void SearchWidget::populateResults(const std::vector<SearchResult> &results) {
 void SearchWidget::applyTheme() {
     const auto &th = Th::c();
 
-    _header->setStyleSheet(QString(
-                               "QWidget#searchHeader {"
-                               "  background: %1;"
-                               "  border-bottom: 1px solid %2;"
-                               "}"
-    )
-                               .arg(Th::qss(th.surface.raised), Th::qss(th.divider.def)));
+    Th::setStyleSheetIfChanged(
+        _header,
+        QString(
+            "QWidget#searchHeader {"
+            "  background: %1;"
+            "  border-bottom: 1px solid %2;"
+            "}"
+        )
+            .arg(Th::qss(th.surface.raised), Th::qss(th.divider.def))
+    );
     // Borderless Spotlight field: the header frame + the separate leading search
     // icon (with its own hover tooltip) are the chrome — see .rules (UI § search).
-    _queryEdit->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _queryEdit,
         QString(
             "QLineEdit { border: none; background: transparent; padding: 4px 0; "
             "font-size: %1px; color: %2; }"
@@ -441,12 +445,13 @@ void SearchWidget::applyTheme() {
             .arg(th.fonts.base)
             .arg(Th::qss(th.text.primary))
     );
-    _closeBtn->setStyleSheet(
-        "QPushButton#searchCloseBtn { border: none; background: transparent; }"
+    Th::setStyleSheetIfChanged(
+        _closeBtn, "QPushButton#searchCloseBtn { border: none; background: transparent; }"
     );
     _searchIconLabel->setPixmap(svgPixmap(":/ui/search.svg", QSize(16, 16), th.icon.def));
 
-    _resultList->setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        _resultList,
         QString(
             "QListWidget#searchResultList {"
             "  border: none;"
@@ -466,13 +471,13 @@ void SearchWidget::applyTheme() {
             "  color: %5;"
             "}"
         )
-            .arg(
-                Th::qss(th.surface.raised),          // %1 list bg
-                Th::qss(th.divider.subtle),          // %2 item separator
-                Th::qss(th.surface.highlight),       // %3 hover
-                Th::qss(th.surface.highlightStrong), // %4 keyboard-selected (no accent blue)
-                Th::qss(th.text.primary)             // %5 item text
-            ) +
-        Th::scrollBarQss() // fold the old drifted 6px/r3 bar to the standard 8px/r4
+                .arg(
+                    Th::qss(th.surface.raised),          // %1 list bg
+                    Th::qss(th.divider.subtle),          // %2 item separator
+                    Th::qss(th.surface.highlight),       // %3 hover
+                    Th::qss(th.surface.highlightStrong), // %4 keyboard-selected (no accent blue)
+                    Th::qss(th.text.primary)             // %5 item text
+                ) +
+            Th::scrollBarQss() // fold the old drifted 6px/r3 bar to the standard 8px/r4
     );
 }

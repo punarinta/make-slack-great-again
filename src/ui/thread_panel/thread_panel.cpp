@@ -401,22 +401,28 @@ void ThreadPanel::pauseGifPlayback() {
 // Small and subdued: an option under the composer, not something to compete
 // with the reply being written.
 void ThreadPanel::applyBroadcastBoxTheme() {
-    _broadcastBox->setStyleSheet(Th::checkBoxQss(Th::c().fonts.xs, Th::c().text.secondary));
+    Th::setStyleSheetIfChanged(
+        _broadcastBox, Th::checkBoxQss(Th::c().fonts.xs, Th::c().text.secondary)
+    );
 }
 
 void ThreadPanel::applyTheme() {
     // No left border (a soft shadow stands in for it) and no distinct header
     // background: the panel reads as one continuous surface with the chat. The
     // only horizontal line above the header is the one the tab strip paints.
-    setStyleSheet(
+    Th::setStyleSheetIfChanged(
+        this,
         QString("QWidget#threadPanel { background: %1; }").arg(Th::qss(Th::c().surface.content))
     );
-    _headerWidget->setStyleSheet("QWidget#threadHeader { background: transparent; }");
+    Th::setStyleSheetIfChanged(_headerWidget, "QWidget#threadHeader { background: transparent; }");
     if (_broadcastBox)
         applyBroadcastBoxTheme();
-    _header->setStyleSheet(QString("font-weight: bold; font-size: %1px; color: %2;")
-                               .arg(Th::c().fonts.lg)
-                               .arg(Th::qss(Th::c().text.primary)));
+    Th::setStyleSheetIfChanged(
+        _header,
+        QString("font-weight: bold; font-size: %1px; color: %2;")
+            .arg(Th::c().fonts.lg)
+            .arg(Th::qss(Th::c().text.primary))
+    );
     // _closeBtn (IconButton) self-themes.
 }
 

@@ -132,16 +132,22 @@ void TitleBar::contextMenuEvent(QContextMenuEvent *e) {
 
 void TitleBar::applyTheme() {
 #ifdef Q_OS_MACOS
-    setStyleSheet(QString("QWidget#titleBar { background: %1; border-bottom: 1px solid %2; }")
-                      .arg(Th::qss(Th::c().surface.content), Th::qss(Th::c().divider.subtle)));
-    _titleLabel->setStyleSheet(QString("color: %1; font-size: %2px; font-weight: 600;")
-                                   .arg(Th::qss(Th::c().text.primary))
-                                   .arg(Th::c().fonts.xl));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString("QWidget#titleBar { background: %1; border-bottom: 1px solid %2; }")
+            .arg(Th::qss(Th::c().surface.content), Th::qss(Th::c().divider.subtle))
+    );
+    Th::setStyleSheetIfChanged(
+        _titleLabel,
+        QString("color: %1; font-size: %2px; font-weight: 600;")
+            .arg(Th::qss(Th::c().text.primary))
+            .arg(Th::c().fonts.xl)
+    );
     if (window()->windowHandle())
         configureMacTitleBar(window());
 #else
-    setStyleSheet(
-        QString("QWidget#titleBar { background: %1; }").arg(Th::qss(Th::c().titleBar.bg))
+    Th::setStyleSheetIfChanged(
+        this, QString("QWidget#titleBar { background: %1; }").arg(Th::qss(Th::c().titleBar.bg))
     );
     _minBtn->setIcon(
         svgIcon(":/ui/wc-minimize.svg", kBtnIconSize, Th::c().titleBar.controlDefault)
@@ -149,11 +155,14 @@ void TitleBar::applyTheme() {
     updateMaxButton();
     updatePinButton();
     _closeBtn->setIcon(svgIcon(":/ui/wc-close.svg", kBtnIconSize, Th::c().titleBar.controlDefault));
-    _closeBtn->setStyleSheet(QString(
-                                 "QPushButton#titleBarClose:hover { background-color: %1; "
-                                 "border-top-right-radius: 8px; }"
-    )
-                                 .arg(Th::qss(Th::c().titleBar.controlClose)));
+    Th::setStyleSheetIfChanged(
+        _closeBtn,
+        QString(
+            "QPushButton#titleBarClose:hover { background-color: %1; "
+            "border-top-right-radius: 8px; }"
+        )
+            .arg(Th::qss(Th::c().titleBar.controlClose))
+    );
 #endif
 }
 

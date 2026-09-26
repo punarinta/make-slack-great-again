@@ -19,6 +19,8 @@
 #include <QLineEdit>
 #include <QUrl>
 #include <QImage>
+#include <QFocusEvent>
+#include <QFrame>
 #include <QMimeData>
 #include <QStandardPaths>
 #include <QTextEdit>
@@ -1636,4 +1638,44 @@ TEST_CASE("offerUndoSend by ghost ts needs a session that can delete", "[compose
     c.setSession(&session);
     c.offerUndoSend(ConversationId{"C1"}, Ts{"1.000"});
     CHECK_FALSE(c.undoSendOffered());
+}
+
+// ── Focus border ──────────────────────────────────────────────────────────────
+
+TEST_CASE(
+    "focus toggles the accent border without re-setting the box stylesheet", "[composer][focus]"
+) {
+    // The border is a `[focused="true"]` rule in the box's one stylesheet: a
+    // focus change flips the property and re-polishes the box alone. Re-setting
+    // the sheet instead re-polished the box's whole subtree on every focus change.
+    ComposerWidget c;
+    c.resize(600, 160);
+    c.show();
+    pumpEvents();
+    auto *box = c.findChild<QFrame *>("composerBox");
+    REQUIRE(box);
+    QTextEdit *ed = editOf(&c);
+    REQUIRE(ed);
+    const QString sheet = box->styleSheet();
+
+    // Colour of the box's top border, mid-width (a straight 1px edge: exact).
+    const auto borderColor = [box] {
+        const QImage img = box->grab().toImage();
+        return img.pixelColor(img.width() / 2, 0);
+    };
+    // Shown, the editor may already hold focus: start from a known state.
+    QFocusEvent start(QEvent::FocusOut, Qt::OtherFocusReason);
+    QCoreApplication::sendEvent(ed, &start);
+    CHECK(borderColor() == Th::c().composer.border);
+
+    QFocusEvent in(QEvent::FocusIn, Qt::OtherFocusReason);
+    QCoreApplication::sendEvent(ed, &in);
+    CHECK(box->property("focused").toBool());
+    CHECK(borderColor() == Th::c().composer.borderFocus);
+
+    QFocusEvent out(QEvent::FocusOut, Qt::OtherFocusReason);
+    QCoreApplication::sendEvent(ed, &out);
+    CHECK_FALSE(box->property("focused").toBool());
+    CHECK(borderColor() == Th::c().composer.border);
+    CHECK(box->styleSheet() == sheet);
 }

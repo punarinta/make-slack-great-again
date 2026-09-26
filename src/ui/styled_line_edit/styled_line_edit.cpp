@@ -156,15 +156,22 @@ void StyledLineEdit::applyTheme() {
     if (_leadingIcon && !_leadingIconPath.isEmpty())
         _leadingIcon->setPixmap(svgPixmap(_leadingIconPath, _leadingIconSize, Th::c().icon.def));
     if (_prefixLabel)
-        _prefixLabel->setStyleSheet(QString("color: %1; font-size: %2px;")
-                                        .arg(Th::qss(Th::c().text.tertiary))
-                                        .arg(Th::c().fonts.base));
+        Th::setStyleSheetIfChanged(
+            _prefixLabel,
+            QString("color: %1; font-size: %2px;")
+                .arg(Th::qss(Th::c().text.tertiary))
+                .arg(Th::c().fonts.base)
+        );
     if (_counterLabel)
-        _counterLabel->setStyleSheet(QString("color: %1; font-size: %2px;")
-                                         .arg(Th::qss(Th::c().text.tertiary))
-                                         .arg(Th::c().fonts.sm));
+        Th::setStyleSheetIfChanged(
+            _counterLabel,
+            QString("color: %1; font-size: %2px;")
+                .arg(Th::qss(Th::c().text.tertiary))
+                .arg(Th::c().fonts.sm)
+        );
     if (_edit)
-        _edit->setStyleSheet(
+        Th::setStyleSheetIfChanged(
+            _edit,
             QString(
                 "QLineEdit { background: transparent; border: none; color: %1; font-size: %2px; }"
             )
@@ -180,20 +187,25 @@ void StyledLineEdit::updateCounter() {
 
 void StyledLineEdit::updateBorderStyle(bool focused) {
     if (_borderless) {
-        setStyleSheet(QStringLiteral("StyledLineEdit { border: none; background: transparent; }"));
+        Th::setStyleSheetIfChanged(
+            this, QStringLiteral("StyledLineEdit { border: none; background: transparent; }")
+        );
         return;
     }
     const QColor border = focused ? Th::c().composer.borderFocus : Th::c().composer.border;
     const int    bw     = focused ? 2 : 1;
-    setStyleSheet(QString(
-                      "StyledLineEdit {"
-                      "  border: %1px solid %2;"
-                      "  border-radius: %3px;"
-                      "  background: %4;"
-                      "}"
-    )
-                      .arg(bw)
-                      .arg(Th::qss(border))
-                      .arg(Ui::kControlRadius)
-                      .arg(Th::qss(Th::c().surface.raised)));
+    Th::setStyleSheetIfChanged(
+        this,
+        QString(
+            "StyledLineEdit {"
+            "  border: %1px solid %2;"
+            "  border-radius: %3px;"
+            "  background: %4;"
+            "}"
+        )
+            .arg(bw)
+            .arg(Th::qss(border))
+            .arg(Ui::kControlRadius)
+            .arg(Th::qss(Th::c().surface.raised))
+    );
 }
