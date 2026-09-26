@@ -1751,8 +1751,22 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
     const auto services = auth::registeredAuthServices();
     if (services.empty())
         return;
+    // A single-workspace service (Claude Code) that's already connected can't be
+    // added again: its row is greyed out.
+    const auto keys         = TokenStore::workspaceKeys();
+    const auto alreadyAdded = [&keys](const Service &s) {
+        const auto *d = backends::find(s);
+        if (!d || !d->singleWorkspace)
+            return false;
+        for (const auto &k : keys)
+            if (k.service == s)
+                return true;
+        return false;
+    };
     // One service → no point in a menu; start it directly.
     if (services.size() == 1) {
+        if (alreadyAdded(services.front()))
+            return;
         if (services.front() == slack::kService)
             connectSlack();
         else
@@ -1766,6 +1780,10 @@ void MainWindow::promptAddWorkspace(const QPoint &anchorGlobal) {
     auto *menu = new ContextMenu(this);
     menu->setWidthMode(ContextMenu::WidthMode::MinWidth);
     for (const Service s : services) {
+        if (alreadyAdded(s)) {
+            menu->addDisabledItem(backends::displayName(s));
+            continue;
+        }
         menu->addItem(backends::displayName(s), [this, s] {
             QTimer::singleShot(0, this, [this, s] {
                 if (s == slack::kService)

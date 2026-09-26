@@ -30,6 +30,7 @@ public:
         bool                  separator   = false; // thin divider; other fields ignored
         bool                  header      = false; // non-clickable section label
         bool                  selected    = false; // checkmark + accent color
+        bool                  disabled    = false; // greyed out, not clickable
         QPixmap               icon; // optional 16×16 icon rendered to the left of text
     };
 
@@ -66,6 +67,10 @@ public:
         const QString        &iconPath    = {}
     );
     void addSeparator();
+
+    // Greyed-out row that can't be hovered or clicked (an option that doesn't
+    // apply right now, shown so its absence isn't a mystery).
+    void addDisabledItem(const QString &text);
 
     // Shows the menu anchored below-right of globalPos.
     // Flips direction automatically if near screen edge.

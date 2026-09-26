@@ -100,6 +100,13 @@ void ContextMenu::addSeparator() {
     _items.push_back({{}, {}, false, nullptr, false, true});
 }
 
+void ContextMenu::addDisabledItem(const QString &text) {
+    Item it;
+    it.text     = text;
+    it.disabled = true;
+    _items.push_back(std::move(it));
+}
+
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
 int ContextMenu::itemH(int i) const {
@@ -294,9 +301,10 @@ void ContextMenu::paintEvent(QPaintEvent *) {
 
         const bool   isSelected = _items[i].selected;
         const QColor accentCol  = Th::c().accent.def;
-        const QColor textColor  = _items[i].destructive ? Th::c().contextMenu.dangerText
-                                  : isSelected          ? accentCol
-                                                        : Th::c().contextMenu.itemText;
+        const QColor textColor  = _items[i].disabled      ? Th::c().contextMenu.itemTextDim
+                                  : _items[i].destructive ? Th::c().contextMenu.dangerText
+                                  : isSelected            ? accentCol
+                                                          : Th::c().contextMenu.itemText;
 
         // Checkmark for the selected item
         if (isSelected) {
@@ -368,7 +376,7 @@ void ContextMenu::paintEvent(QPaintEvent *) {
 
 int ContextMenu::hoveredAt(const QPoint &pos) const {
     for (int i = 0; i < static_cast<int>(_items.size()); ++i) {
-        if (_items[i].separator || _items[i].header)
+        if (_items[i].separator || _items[i].header || _items[i].disabled)
             continue;
         if (itemRect(i).contains(pos))
             return i;
@@ -412,7 +420,7 @@ void ContextMenu::keyPressEvent(QKeyEvent *e) {
     }
 
     for (const auto &item : _items) {
-        if (item.separator || item.shortcut.isEmpty() || !item.action)
+        if (item.separator || item.disabled || item.shortcut.isEmpty() || !item.action)
             continue;
         const QKeySequence seq(item.shortcut);
         if (seq.isEmpty())

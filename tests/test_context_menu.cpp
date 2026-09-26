@@ -190,6 +190,25 @@ TEST_CASE("ContextMenu: clicking a header row fires no action", "[context_menu][
     delete m;
 }
 
+// ── Disabled item is shown but inert ─────────────────────────────────────────
+
+TEST_CASE(
+    "ContextMenu: a disabled item is a full row that ignores clicks", "[context_menu][item]"
+) {
+    auto *m     = makeMenu();
+    bool  fired = false;
+    m->addDisabledItem("Claude Code");
+    m->addItem("Slack", [&fired] { fired = true; });
+    showMenu(m);
+    CHECK(m->height() == expectedHeight({'I', 'I'}));
+
+    click(m, QPoint(menuCenterX(m), itemCenterY({'I', 'I'}, 0))); // click the disabled row
+
+    CHECK(!fired);
+    CHECK(m->isVisible()); // an inert row doesn't dismiss the menu
+    delete m;
+}
+
 // ── Normal item fires its action ──────────────────────────────────────────────
 
 TEST_CASE("ContextMenu: clicking a normal item fires its action", "[context_menu][item]") {

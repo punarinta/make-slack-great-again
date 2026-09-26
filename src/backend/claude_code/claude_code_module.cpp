@@ -10,9 +10,11 @@ namespace claude_code {
 
 void registerBackend() {
     backends::registerBackend({
-        .service     = kService,
-        .displayName = QStringLiteral("Claude Code"),
-        .pickerOrder = 30,
+        .service         = kService,
+        .displayName     = QStringLiteral("Claude Code"),
+        .pickerOrder     = 30,
+        // One workspace per machine (kWorkspaceId).
+        .singleWorkspace = true,
         .makeBackend = [](const TokenStore::WorkspaceRecord &rec) -> std::unique_ptr<::Backend> {
             return std::make_unique<Backend>(fromRecord(rec));
         },
