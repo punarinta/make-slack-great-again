@@ -7,7 +7,7 @@
 // so the UI transparently falls back to the guided manual-paste flow.
 //
 // Availability: the real implementation is compiled only when MSGA_SLACK_SESSION_IMPORT
-// is defined (Linux + OpenSSL + Qt6::Sql found at configure time). Otherwise this is
+// is defined (Linux + OpenSSL found at configure time). Otherwise this is
 // a stub returning error="unsupported_platform". macOS/Windows are follow-up phases.
 #pragma once
 

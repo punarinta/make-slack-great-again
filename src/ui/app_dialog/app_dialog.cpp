@@ -8,7 +8,7 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QFrame>
-#include <QGraphicsDropShadowEffect>
+#include <QImage>
 #include <QHBoxLayout>
 #include <QHideEvent>
 #include <QKeyEvent>
@@ -23,6 +23,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <vector>
 
 static constexpr int kCardMinW = 480;
 static constexpr int kCardMaxW = 560;
@@ -81,11 +82,9 @@ void AppDialog::buildCard(bool standardHeader, const QString &title, Scroll scro
     _card = new QFrame(this);
     _card->setObjectName("appDialogCard");
 
-    auto *shadow = new QGraphicsDropShadowEffect(_card);
-    shadow->setBlurRadius(40);
-    shadow->setOffset(0, 6);
-    shadow->setColor(QColor(0, 0, 0, 70));
-    _card->setGraphicsEffect(shadow);
+    // The shadow is painted by paintEvent (cardShadow()), not a QGraphicsDropShadowEffect:
+    // graphics effects need the whole Graphics View framework, which the static Linux
+    // build leaves out (-no-feature-graphicsview, scripts/qt-features.sh).
 
     _cardLayout    = new QVBoxLayout(_card);
     const auto &sp = Th::c().spacing;
@@ -311,6 +310,11 @@ void AppDialog::updateCard() {
 
     // Centre in the overlay.
     _card->move((width() - cardW) / 2, (height() - cardH) / 2);
+    // Only this function moves or resizes the card, so the shadow painted behind it
+    // (paintEvent) follows it from here. Not via an event filter on the card:
+    // subclasses override eventFilter(), and theirs would see card events while
+    // their members are still being constructed.
+    update();
 }
 
 void AppDialog::coverParent() {
@@ -326,9 +330,85 @@ void AppDialog::coverParent() {
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
+namespace {
+
+// The look QGraphicsDropShadowEffect(blur 40, offset 0,6, black at alpha 70) gave.
+constexpr int kShadowBlur    = 40; // how far the shadow spreads past the card edge
+constexpr int kShadowOffsetY = 6;
+constexpr int kShadowAlpha   = 70;
+constexpr int kCardRadius    = 12; // QFrame#appDialogCard's border-radius
+
+// One running-sum box blur of radius r over an 8-bit alpha image, along every row
+// (horizontal) or column. Pixels outside the image count as transparent. Three
+// passes approximate a Gaussian closely enough for a soft shadow.
+void boxBlur(QImage &img, int r, bool horizontal) {
+    const int          lines = horizontal ? img.height() : img.width();
+    const int          n     = horizontal ? img.width() : img.height();
+    const int          step  = horizontal ? 1 : int(img.bytesPerLine());
+    std::vector<uchar> src(n);
+    for (int line = 0; line < lines; ++line) {
+        uchar *base = horizontal ? img.scanLine(line) : img.bits() + line;
+        for (int i = 0; i < n; ++i)
+            src[i] = base[i * step];
+        int sum = 0;
+        for (int i = 0; i <= r && i < n; ++i)
+            sum += src[i];
+        for (int i = 0; i < n; ++i) {
+            base[i * step] = uchar(sum / (2 * r + 1));
+            if (i + r + 1 < n)
+                sum += src[i + r + 1];
+            if (i - r >= 0)
+                sum -= src[i - r];
+        }
+    }
+}
+
+} // namespace
+
+const QImage &AppDialog::cardShadow() {
+    const qreal dpr = devicePixelRatioF();
+    if (_shadowCardSize == _card->size() && qFuzzyCompare(_shadowDpr, dpr))
+        return _shadow;
+    const QSize logical = _card->size() + QSize(2 * kShadowBlur, 2 * kShadowBlur);
+    QImage      mask((QSizeF(logical) * dpr).toSize(), QImage::Format_Alpha8);
+    mask.setDevicePixelRatio(dpr);
+    mask.fill(0);
+    {
+        QPainter mp(&mask);
+        mp.setRenderHint(QPainter::Antialiasing);
+        mp.setPen(Qt::NoPen);
+        mp.setBrush(QColor(0, 0, 0, kShadowAlpha));
+        mp.drawRoundedRect(
+            QRectF(QPointF(kShadowBlur, kShadowBlur), QSizeF(_card->size())),
+            kCardRadius,
+            kCardRadius
+        );
+    }
+    const int r = qMax(1, qRound(kShadowBlur * dpr / 3));
+    for (int pass = 0; pass < 3; ++pass) {
+        boxBlur(mask, r, true);
+        boxBlur(mask, r, false);
+    }
+    _shadow = QImage(mask.size(), QImage::Format_ARGB32_Premultiplied); // black: alpha only
+    _shadow.setDevicePixelRatio(dpr);
+    for (int y = 0; y < mask.height(); ++y) {
+        const uchar *a   = mask.constScanLine(y);
+        auto        *out = reinterpret_cast<QRgb *>(_shadow.scanLine(y));
+        for (int x = 0; x < mask.width(); ++x)
+            out[x] = qRgba(0, 0, 0, a[x]);
+    }
+    _shadowCardSize = _card->size();
+    _shadowDpr      = dpr;
+    return _shadow;
+}
+
 void AppDialog::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.fillRect(rect(), QColor(0, 0, 0, 140));
+    if (_card->isVisible())
+        p.drawImage(
+            _card->pos() + QPoint(-kShadowBlur, -kShadowBlur + kShadowOffsetY), cardShadow()
+        );
 }
 
 void AppDialog::showEvent(QShowEvent *e) {

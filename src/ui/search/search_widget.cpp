@@ -21,7 +21,6 @@
 #include <QShowEvent>
 #include <QTimer>
 #include <QPropertyAnimation>
-#include <QGraphicsOpacityEffect>
 #include <QPainter>
 #include <QEasingCurve>
 
@@ -45,17 +44,26 @@ SearchWidget::SearchWidget(QWidget *parent) : QWidget(parent) {
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // Card: the visible panel (header + results). Has its own opacity effect so
-    // the content fades in as a unit while the overlay alpha is animated separately.
+    // Card: the visible panel (header + results). Its content fades in as a unit
+    // while the overlay alpha is animated separately.
     _card = new QWidget(this);
     _card->setObjectName("searchCard");
     auto *cardLayout = new QVBoxLayout(_card);
     cardLayout->setContentsMargins(0, 0, 0, 0);
     cardLayout->setSpacing(0);
 
-    auto *cardEffect = new QGraphicsOpacityEffect(_card);
-    cardEffect->setOpacity(0.0);
-    _card->setGraphicsEffect(cardEffect);
+    // Qt Widgets can only fade a widget subtree with QGraphicsOpacityEffect, which
+    // needs the whole Graphics View framework — which the static Linux build leaves
+    // out (-no-feature-graphicsview, scripts/qt-features.sh). Instead a click-through veil over the
+    // card paints what lies behind the card (the dimmed message area) at
+    // 1 - cardOpacity: the same picture, and the query field still takes
+    // keystrokes during the fade.
+    _veil = new QWidget(this);
+    _veil->setAttribute(Qt::WA_TransparentForMouseEvents);
+    _veil->setFocusPolicy(Qt::NoFocus);
+    _veil->installEventFilter(this);
+    _veil->hide();
+    _card->installEventFilter(this); // keeps the veil on the card's geometry
 
     // Header row: search icon + input + close button
     _header = new QWidget(_card);
@@ -121,7 +129,7 @@ SearchWidget::SearchWidget(QWidget *parent) : QWidget(parent) {
     // overlayAlpha (0→target) drives paintEvent; cardAnim fades the panel content.
     _overlayAnim = new QPropertyAnimation(this, "overlayAlpha", this);
     _overlayAnim->setDuration(350);
-    _cardAnim = new QPropertyAnimation(cardEffect, "opacity", this);
+    _cardAnim = new QPropertyAnimation(this, "cardOpacity", this);
     _cardAnim->setDuration(350);
 
     applyTheme();
@@ -141,7 +149,71 @@ void SearchWidget::hideEvent(QHideEvent *event) {
     disconnect(_overlayAnim, &QPropertyAnimation::finished, nullptr, nullptr);
     disconnect(_cardAnim, &QPropertyAnimation::finished, nullptr, nullptr);
     _overlayAlpha = 0;
-    static_cast<QGraphicsOpacityEffect *>(_card->graphicsEffect())->setOpacity(0.0);
+    setCardOpacity(0.0);
+}
+
+void SearchWidget::setCardOpacity(qreal o) {
+    _cardOpacity = o;
+    if (o >= 1.0) {
+        _veil->hide();
+        return;
+    }
+    _veil->setGeometry(_card->geometry());
+    _veil->raise();
+    _veil->show();
+    _veil->update();
+}
+
+// Renders what this overlay covers, without the overlay itself: the parent's
+// background plus every sibling stacked below us. Done at each open and close, so
+// the fade-out shows the message area as it is now, not as it was at open time.
+void SearchWidget::captureBackdrop() {
+    const qreal dpr = devicePixelRatioF();
+    QPixmap     pm((QSizeF(size()) * dpr).toSize());
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    if (QWidget *p = parentWidget()) {
+        QPainter painter(&pm);
+        p->render(&painter, -pos(), QRegion(geometry()), QWidget::DrawWindowBackground);
+        for (QObject *o : p->children()) { // children() is the stacking order, bottom first
+            if (o == this)
+                break;
+            auto *w = qobject_cast<QWidget *>(o);
+            if (!w || w->isWindow() || !w->isVisible())
+                continue;
+            w->render(
+                &painter,
+                w->pos() - pos(),
+                QRegion(),
+                QWidget::DrawWindowBackground | QWidget::DrawChildren
+            );
+        }
+    }
+    _backdrop = pm;
+}
+
+void SearchWidget::paintVeil() {
+    // What shows through a transparent card is the backdrop under the dimming
+    // overlay. Compose the two first, then fade them as one: painting each at the
+    // same opacity separately would not add up to the same picture.
+    const qreal dpr = _backdrop.isNull() ? devicePixelRatioF() : _backdrop.devicePixelRatio();
+    QPixmap     under;
+    if (!_backdrop.isNull())
+        under = _backdrop.copy(
+            QRectF(QPointF(_veil->pos()) * dpr, QSizeF(_veil->size()) * dpr).toAlignedRect()
+        );
+    else {
+        under = QPixmap((QSizeF(_veil->size()) * dpr).toSize());
+        under.fill(Qt::transparent);
+    }
+    under.setDevicePixelRatio(dpr);
+    {
+        QPainter c(&under);
+        c.fillRect(QRect(QPoint(), _veil->size()), QColor(0, 0, 0, _overlayAlpha));
+    }
+    QPainter p(_veil);
+    p.setOpacity(1.0 - _cardOpacity);
+    p.drawPixmap(0, 0, under);
 }
 
 void SearchWidget::paintEvent(QPaintEvent *) {
@@ -151,7 +223,8 @@ void SearchWidget::paintEvent(QPaintEvent *) {
 
 void SearchWidget::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
-    auto *cardEffect = static_cast<QGraphicsOpacityEffect *>(_card->graphicsEffect());
+    captureBackdrop();
+    setCardOpacity(_cardOpacity);
 
     disconnect(_overlayAnim, &QPropertyAnimation::finished, nullptr, nullptr);
     disconnect(_cardAnim, &QPropertyAnimation::finished, nullptr, nullptr);
@@ -163,7 +236,7 @@ void SearchWidget::showEvent(QShowEvent *event) {
     _overlayAnim->setEndValue(Th::c().surface.overlay.alpha());
 
     _cardAnim->setEasingCurve(QEasingCurve::OutCubic);
-    _cardAnim->setStartValue(cardEffect->opacity());
+    _cardAnim->setStartValue(_cardOpacity);
     _cardAnim->setEndValue(1.0);
 
     _overlayAnim->start();
@@ -178,7 +251,7 @@ void SearchWidget::showEvent(QShowEvent *event) {
 void SearchWidget::closeSearch() {
     if (!isVisible())
         return;
-    auto *cardEffect = static_cast<QGraphicsOpacityEffect *>(_card->graphicsEffect());
+    captureBackdrop();
 
     disconnect(_overlayAnim, &QPropertyAnimation::finished, nullptr, nullptr);
     disconnect(_cardAnim, &QPropertyAnimation::finished, nullptr, nullptr);
@@ -193,7 +266,7 @@ void SearchWidget::closeSearch() {
     );
 
     _cardAnim->setEasingCurve(QEasingCurve::InCubic);
-    _cardAnim->setStartValue(cardEffect->opacity());
+    _cardAnim->setStartValue(_cardOpacity);
     _cardAnim->setEndValue(0.0);
 
     _overlayAnim->start();
@@ -203,6 +276,12 @@ void SearchWidget::closeSearch() {
 // ── Event filter (keyboard nav + tooltips) ────────────────────────────────────
 
 bool SearchWidget::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == _veil && event->type() == QEvent::Paint) {
+        paintVeil();
+        return true;
+    }
+    if (obj == _card && (event->type() == QEvent::Resize || event->type() == QEvent::Move))
+        _veil->setGeometry(_card->geometry());
     if (obj == _queryEdit && event->type() == QEvent::KeyPress) {
         auto *ke = static_cast<QKeyEvent *>(event);
         switch (ke->key()) {

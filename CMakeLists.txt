@@ -166,6 +166,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/backend/slack/session_import/browser_login.cpp
     src/backend/slack/session_import/token_deriver.cpp
     src/backend/slack/session_import/local_importer.cpp
+    src/backend/slack/session_import/sqlite_reader.cpp
     src/backend/slack/session_import/session_migrator.cpp
 
     # Text
@@ -699,19 +700,19 @@ endif()
 
 # Optional one-click Slack session import (Settings → System → "Import Slack
 # session"): reads and decrypts the locally-installed Slack desktop app's cookie
-# store. Needs OpenSSL (AES/PBKDF2) and Qt6::Sql (the Chromium cookie SQLite);
-# the keyring lookup additionally uses Qt6::DBus when present. Linux only for now.
-# Without the deps the importer compiles to a graceful stub and the UI offers the
-# guided manual-paste fallback — so the build is green everywhere regardless.
+# store. Needs OpenSSL (AES/PBKDF2); the Chromium cookie DB is read by our own
+# sqlite_reader, NOT Qt6::Sql — linking Qt's SQLite plugin cost 1.4 MB of the static
+# binary for one SELECT. The keyring lookup additionally uses Qt6::DBus when present.
+# Linux only for now. Without OpenSSL the importer compiles to a graceful stub and
+# the UI offers the guided manual-paste fallback — so the build is green everywhere.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(OpenSSL QUIET COMPONENTS Crypto)
-    find_package(Qt6 QUIET OPTIONAL_COMPONENTS Sql)
-    if(OpenSSL_FOUND AND Qt6Sql_FOUND)
-        target_link_libraries(msga PRIVATE OpenSSL::Crypto Qt6::Sql)
+    if(OpenSSL_FOUND)
+        target_link_libraries(msga PRIVATE OpenSSL::Crypto)
         target_compile_definitions(msga PRIVATE MSGA_SLACK_SESSION_IMPORT)
-        message(STATUS "Slack session import: enabled (OpenSSL + Qt6::Sql)")
+        message(STATUS "Slack session import: enabled (OpenSSL)")
     else()
-        message(STATUS "Slack session import: disabled — install libssl-dev + Qt6 Sql "
+        message(STATUS "Slack session import: disabled — install libssl-dev "
                        "to enable one-click import (guided manual paste still works)")
     endif()
 endif()

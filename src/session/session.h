@@ -42,6 +42,10 @@ public:
 
     // --- Read interface for UI ---
     rpl::producer<std::vector<Conversation>> conversations() const;
+    // The backend's conversation list has arrived at least once — an empty one
+    // (a Claude Code workspace with no sessions yet) is then really empty, not
+    // still loading.
+    bool conversationsLoaded() const { return _conversationsLoaded; }
     rpl::producer<std::vector<User>>         users() const;
     rpl::producer<Event>                     events() const;
     rpl::producer<AuthState>                 authState() const;
@@ -815,6 +819,7 @@ private:
     const QString                   _teamId;
 
     rpl::variable<std::vector<Conversation>> _conversations;
+    bool                                     _conversationsLoaded = false;
     rpl::variable<std::vector<User>>         _users;
     std::vector<Usergroup>                   _usergroups; // see loadUsergroupsFromBackend
     rpl::lifetime                            _usergroupsLoadLifetime; // one subscription at a time

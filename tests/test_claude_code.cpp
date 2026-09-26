@@ -1791,7 +1791,9 @@ printf '%s\n' "$*" >> "$H/calls.log" # echo would expand \n
 if [ "$1" = stop ]; then
   rm -f "$H/sessions/w$2.json"
   kill $(cat "$H/wpid-$2" 2>/dev/null) 2>/dev/null
-  sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
+  # No `sed -i`: BSD sed (macOS) reads its next argument as a backup suffix.
+  sed 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json" > "$H/state.tmp" &&
+    mv "$H/state.tmp" "$H/jobs/$2/state.json"
   echo "stopped $2"; exit 0
 fi
 sid=""; prompt=""; copied=""
@@ -1811,8 +1813,11 @@ fi
 short=$(echo "$sid" | cut -c1-8)
 T="$H/projects/-fake/$sid.jsonl"
 [ -n "$copied" ] && cp "$copied" "$T"
-ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
-u=$(cat /proc/sys/kernel/random/uuid)
+# Millisecond ISO time via perl, not `date +%3N`: BSD date (macOS) prints a literal "3N".
+ts=$(perl -MTime::HiRes=time -MPOSIX=strftime -e '$t = time; printf "%s.%03dZ", strftime("%Y-%m-%dT%H:%M:%S", gmtime $t), ($t - int $t) * 1000')
+# A fresh id per turn from /dev/urandom — there is no /proc on macOS, and ids that
+# repeat across turns make the backend drop later answers as duplicates.
+u=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
 mkdir -p "$H/jobs/$short"
 echo "{\"state\":\"done\",\"sessionId\":\"$sid\",\"cwd\":\"$PWD\",\"name\":\"fake-$short\",\"linkScanPath\":\"$T\"}" > "$H/jobs/$short/state.json"
 kill $(cat "$H/wpid-$short" 2>/dev/null) 2>/dev/null
@@ -2171,7 +2176,9 @@ if [ "$1" = stop ]; then
   echo '{"type":"last-prompt","lastPrompt":"x"}' >> "$T"
   rm -f "$H/sessions/w$2.json"
   kill $(cat "$H/wpid-$2" 2>/dev/null) 2>/dev/null
-  sed -i 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json"
+  # No `sed -i`: BSD sed (macOS) reads its next argument as a backup suffix.
+  sed 's/"state":"[a-z]*"/"state":"stopped"/' "$H/jobs/$2/state.json" > "$H/state.tmp" &&
+    mv "$H/state.tmp" "$H/jobs/$2/state.json"
   echo "stopped $2"; exit 0
 fi
 sid=""; prompt=""
@@ -2184,7 +2191,8 @@ done
 [ -z "$sid" ] && sid="abcdef11-0000-4000-8000-000000000001"
 short=$(echo "$sid" | cut -c1-8)
 T="$H/projects/-fake/$sid.jsonl"
-ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+# Millisecond ISO time via perl, not `date +%3N`: BSD date (macOS) prints a literal "3N".
+ts=$(perl -MTime::HiRes=time -MPOSIX=strftime -e '$t = time; printf "%s.%03dZ", strftime("%Y-%m-%dT%H:%M:%S", gmtime $t), ($t - int $t) * 1000')
 mkdir -p "$H/jobs/$short"
 echo "{\"state\":\"working\",\"sessionId\":\"$sid\",\"cwd\":\"$PWD\",\"name\":\"fake-$short\",\"linkScanPath\":\"$T\"}" > "$H/jobs/$short/state.json"
 kill $(cat "$H/wpid-$short" 2>/dev/null) 2>/dev/null
@@ -2348,7 +2356,14 @@ echo "backgrounded · $short"
     CHECK(std::none_of(convs[0].begin(), convs[0].end(), [&](const Conversation &c) {
         return c.id == conv;
     }));
-    CHECK(calls().size() == 8);
+    // Nothing resumes it. A removal that lands while the turn is still being
+    // launched (a slow machine: the 300 ms above isn't a guarantee) stops the
+    // worker once more when the launch reports back — needed, the first stop may
+    // have beaten the new worker — so a second "stop" is fine, anything else not.
+    const QStringList after = calls();
+    REQUIRE(after.size() >= 8);
+    for (qsizetype i = 8; i < after.size(); ++i)
+        CHECK(after[i] == "stop abcdef11");
 }
 #endif
 

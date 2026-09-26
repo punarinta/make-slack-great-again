@@ -798,6 +798,30 @@ TEST_CASE_METHOD(SessionFixture, "start() populates conversations from backend",
     CHECK(session->findConversation(ConversationId{"C1"})->unread == 2);
 }
 
+// A workspace with nothing in it (Claude Code with no session running and none
+// seen before) must still count as loaded: the UI keeps its spinner up until
+// the list arrives, and an empty list equals the empty cache it starts from.
+TEST_CASE("an empty conversation list still arrives and counts as loaded", "[session]") {
+    const QString teamId  = "T_SESSION_EMPTY";
+    auto          backend = std::make_unique<StubBackend>();
+    auto         *stub    = backend.get();
+    stub->_meId           = UserId{"U1"};
+    Session session(std::move(backend), teamId);
+    int     arrivals = 0;
+    rpl::lifetime lt;
+    session.conversations() | rpl::on_next([&](const std::vector<Conversation> &) {
+        ++arrivals;
+    }, lt);
+    CHECK(arrivals == 1); // the (empty) cache
+    CHECK_FALSE(session.conversationsLoaded());
+    session.start();
+    CHECK(stub->loadConversationsCalls == 1);
+    CHECK(session.conversationsLoaded());
+    CHECK(arrivals == 2); // the backend's, empty all the same
+    QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/cache/" + teamId)
+        .removeRecursively();
+}
+
 TEST_CASE_METHOD(SessionFixture, "start() populates users from backend", "[session]") {
     REQUIRE(session->findUser(UserId{"U1"}) != nullptr);
     REQUIRE(session->findUser(UserId{"U2"}) != nullptr);

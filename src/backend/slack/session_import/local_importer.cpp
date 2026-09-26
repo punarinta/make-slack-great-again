@@ -13,7 +13,8 @@ namespace slack::session {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Real Linux implementation, compiled only when the deps were found at configure
-// time (OpenSSL for AES/PBKDF2, Qt6::Sql for the Chromium cookie DB). Everything
+// time (OpenSSL for AES/PBKDF2; the Chromium cookie DB is read by sqlite_reader,
+// not SQLite, which kept 1.4 MB out of the static binary). Everything
 // else — macOS, Windows, or a Linux build without those deps — uses the stub at
 // the bottom, so the app always builds and simply offers guided manual paste.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,17 +24,17 @@ namespace slack::session {
 
 #include <QByteArray>
 #include <QCryptographicHash>
-#include <QSqlDatabase>
-#include <QSqlQuery>
-#include <QUuid>
 
 #include <openssl/evp.h>
+
+#include "backend/slack/session_import/sqlite_reader.h"
 
 #if defined(MSGA_HAS_DBUS)
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusMetaType>
 #include <QDBusObjectPath>
 #include <QDBusReply>
 #endif
@@ -138,6 +139,9 @@ QByteArray secretServicePassword() {
     const auto sessionPath = os.arguments().at(1).value<QDBusObjectPath>();
 
     // SearchItems({application: "Slack"}) — Chromium stores the key under this attr.
+    // QtDBus can't marshal an a{ss} map until the type is registered; without this
+    // the call never leaves the process and every v11 cookie fails to decrypt.
+    qDBusRegisterMetaType<QMap<QString, QString>>();
     QMap<QString, QString> attrs{{QStringLiteral("application"), QStringLiteral("Slack")}};
     QDBusMessage search = svc.call(QStringLiteral("SearchItems"), QVariant::fromValue(attrs));
     if (search.type() != QDBusMessage::ReplyMessage || search.arguments().isEmpty())
@@ -255,31 +259,26 @@ LocalImport importLocalSlackSession() {
         return result;
     }
 
-    // Read the encrypted `d` cookie. Open a private, uniquely-named read-only
-    // connection so we never disturb Slack's own DB handle.
-    QByteArray enc;
-    {
-        const QString conn = QStringLiteral("msga_slack_cookies_") + QUuid::createUuid().toString();
-        {
-            QSqlDatabase sdb = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), conn);
-            sdb.setDatabaseName(cookieDb);
-            sdb.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY=1"));
-            if (!sdb.open()) {
-                QSqlDatabase::removeDatabase(conn);
-                result.error = QStringLiteral("locked");
-                return result;
+    // Read the encrypted `d` cookie straight from the file (read-only, no lock taken,
+    // so Slack's own DB handle is never disturbed). A Slack mid-write reads as
+    // Busy and, like an unreadable file, is reported as "locked" — retrying works.
+    const SqliteTable cookies = readSqliteTable(cookieDb, QStringLiteral("cookies"));
+    if (cookies.error != SqliteTable::Error::None && cookies.error != SqliteTable::Error::NoTable) {
+        result.error = QStringLiteral("locked");
+        return result;
+    }
+    const qsizetype host  = cookies.columns.indexOf(QStringLiteral("host_key"));
+    const qsizetype name  = cookies.columns.indexOf(QStringLiteral("name"));
+    const qsizetype value = cookies.columns.indexOf(QStringLiteral("encrypted_value"));
+    QByteArray      enc;
+    if (host >= 0 && name >= 0 && value >= 0) {
+        for (const QVariantList &row : cookies.rows) {
+            if (row[name].toString() == QLatin1String("d") &&
+                row[host].toString().contains(QStringLiteral("slack.com"))) {
+                enc = row[value].toByteArray();
+                break;
             }
-            QSqlQuery q(sdb);
-            q.exec(QStringLiteral("SELECT host_key, encrypted_value FROM cookies WHERE name='d'"));
-            while (q.next()) {
-                if (q.value(0).toString().contains(QStringLiteral("slack.com"))) {
-                    enc = q.value(1).toByteArray();
-                    break;
-                }
-            }
-            sdb.close();
         }
-        QSqlDatabase::removeDatabase(conn);
     }
     if (enc.isEmpty()) {
         result.error = QStringLiteral("no_cookie");

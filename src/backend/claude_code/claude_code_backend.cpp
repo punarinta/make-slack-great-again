@@ -368,8 +368,10 @@ QString Backend::convIdFor(const QString &sessionId) const {
 // ── Session state ───────────────────────────────────────────────────────────
 
 bool Backend::busy(const Tracked &t) const {
-    if (t.stopping)
-        return false; // the worker is on its way out
+    // The worker is on its way out — or will be as soon as the launch it was
+    // stopped during reports back (stopRequested): no dot from the Stop on.
+    if (t.stopping || t.stopRequested)
+        return false;
     if (t.sending)
         return true; // msga's turn: from launching it until its end is written
     return working(t);
@@ -1306,6 +1308,7 @@ void Backend::stopAgentSession(ConversationId conv) {
             t->typing->cancel();
         if (queued)
             diffAndAnnounce(*t);
+        refresh(); // no dot from here on (busy() honours stopRequested)
         return;
     }
     if (t->info.sessionId.isEmpty()) { // a "+" session nothing was sent to yet

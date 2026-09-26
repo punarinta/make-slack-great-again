@@ -103,6 +103,7 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/slack/rtm_presence.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/browser_login.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/local_importer.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/sqlite_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/session_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/shared_realtime.cpp
@@ -513,6 +514,15 @@ add_msga_test(test_browser_login)
 
 # SessionImportDialog render/smoke harness (screenshot + card-height regression).
 add_msga_widget_test(test_session_import_dialog)
+
+# test_sqlite_reader writes its databases with the real SQLite (Qt's QSQLITE
+# driver) to check the session import's own reader against the actual format.
+# Test-only: the app no longer links Qt6::Sql. Skipped where Qt has no Sql module.
+find_package(Qt6 QUIET OPTIONAL_COMPONENTS Sql)
+if(Qt6Sql_FOUND)
+    target_link_libraries(msga_tests PRIVATE Qt6::Sql)
+    add_msga_test(test_sqlite_reader)
+endif()
 
 add_msga_widget_test(test_browse_channels_dialog)
 

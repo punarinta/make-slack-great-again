@@ -1347,7 +1347,15 @@ void Session::reloadConversations(bool refreshEmoji) {
                                             // (invited/unarchived while the app was closed).
                                             reconcileDeadConvIds(convs);
                                             _cache->saveConversations(convs);
-                                            _conversations = std::move(convs);
+                                            // The first arrival always reaches the UI, even an
+                                            // empty list equal to the (empty) cached one: that
+                                            // ends its loading spinner (conversationsLoaded).
+                                            if (!_conversationsLoaded) {
+                                                _conversationsLoaded = true;
+                                                _conversations.force_assign(std::move(convs));
+                                            } else {
+                                                _conversations = std::move(convs);
+                                            }
                                             // After the assignment: the diff reads the merged list
                                             // (membership, mute state) and may fold cursors back
                                             // into it.

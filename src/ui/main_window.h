@@ -9,7 +9,7 @@
 #include "ui/nav_history.h"
 #include "rpl/lifetime.h"
 
-#include <QMainWindow>
+#include <QWidget>
 #include <QLabel>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -62,7 +62,10 @@ class Tour;
 }
 #endif
 
-class MainWindow : public QMainWindow {
+// A plain top-level QWidget, not a QMainWindow: we use no menu/tool/status bar or
+// dock area, and QMainWindow alone links Qt's dock-area, menu-bar and tab-bar code
+// into the static binaries (and blocks building Qt with -no-feature-dockwidget).
+class MainWindow : public QWidget {
     Q_OBJECT
 #if defined(MSGA_DEMO)
     // The scripted demo tour (--demo-tour) drives the real widgets — it reads

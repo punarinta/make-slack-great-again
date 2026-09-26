@@ -297,7 +297,7 @@ static QString zenModeKey(const QString &teamId) {
     return QStringLiteral("zenMode/") + QString::fromLatin1(QUrl::toPercentEncoding(teamId));
 }
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
     setWindowTitle("");
 #ifdef Q_OS_MACOS
     // Keep AppKit's traffic lights, shadow, rounded corners, and resize handling.
@@ -439,7 +439,10 @@ void MainWindow::buildUi() {
     bodyLayout->addWidget(buildWorkspaceSwitcher(body));
     bodyLayout->addWidget(_stack, 1);
 
-    setCentralWidget(_frame);
+    auto *rootLayout = new QVBoxLayout(this); // the frame fills the whole window
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+    rootLayout->addWidget(_frame);
 
     connect(_updateChecker, &UpdateChecker::downloadReady, _updateBar, &UpdateBar::showUpdateReady);
     connect(_updateChecker, &UpdateChecker::checkFailed, this, &MainWindow::showNetworkError);
@@ -2433,8 +2436,10 @@ void MainWindow::connectToSession() {
                 updateHuddleBanner();
                 // …and so does whether the open chat can be posted to at all.
                 applyComposerAccess();
-                // Reveal the conv column the moment real data arrives.
-                if (!convs.empty() && _convPanel && !_convPanel->isVisible()) {
+                // Reveal the conv column the moment real data arrives — an
+                // empty list too, once it's the backend's and not the cache's.
+                if ((!convs.empty() || _session->conversationsLoaded()) && _convPanel &&
+                    !_convPanel->isVisible()) {
                     if (_messageList)
                         _messageList->setWaiting(false);
                     _convPanel->show();
@@ -4328,7 +4333,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e) {
         else if (e->type() == QEvent::Leave)
             _searchBtnTooltip->hide();
     }
-    return QMainWindow::eventFilter(obj, e);
+    return QWidget::eventFilter(obj, e);
 }
 
 void MainWindow::updateRoundedMask() {
@@ -4358,7 +4363,7 @@ void MainWindow::updateRoundedMask() {
 }
 
 void MainWindow::resizeEvent(QResizeEvent *e) {
-    QMainWindow::resizeEvent(e);
+    QWidget::resizeEvent(e);
     updateRoundedMask();
 }
 
@@ -4461,7 +4466,7 @@ void MainWindow::resetWindowGeometry() {
 }
 
 void MainWindow::showEvent(QShowEvent *e) {
-    QMainWindow::showEvent(e);
+    QWidget::showEvent(e);
     if (!_screenFitWired) {
         if (QWindow *h = windowHandle()) {
             _screenFitWired = true;
@@ -4535,7 +4540,7 @@ void MainWindow::changeEvent(QEvent *e) {
             _session->setReading({});
         }
     }
-    QMainWindow::changeEvent(e);
+    QWidget::changeEvent(e);
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {

@@ -117,11 +117,16 @@ protected:
     QVBoxLayout *cardLayout() const { return _cardLayout; }
 
 private:
-    void buildCard(bool standardHeader, const QString &title, Scroll scroll);
+    void          buildCard(bool standardHeader, const QString &title, Scroll scroll);
+    // The card's soft drop shadow, rendered once per card size / scale (see paintEvent).
+    const QImage &cardShadow();
     // Re-cover the parent window's client rect and re-centre the card.
-    void coverParent();
+    void          coverParent();
 
-    QFrame      *_card          = nullptr;
+    QFrame      *_card = nullptr;
+    QImage       _shadow;
+    QSize        _shadowCardSize;
+    qreal        _shadowDpr     = 0;
     QLabel      *_titleLabel    = nullptr;
     IconButton  *_closeBtn      = nullptr;
     QVBoxLayout *_cardLayout    = nullptr;

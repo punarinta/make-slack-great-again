@@ -5,6 +5,7 @@
 
 #include "backend/domain.h"
 #include "rpl/lifetime.h"
+#include <QPixmap>
 #include <QWidget>
 #include <vector>
 
@@ -19,6 +20,7 @@ class PopupTooltip;
 class SearchWidget : public QWidget {
     Q_OBJECT
     Q_PROPERTY(int overlayAlpha READ overlayAlpha WRITE setOverlayAlpha)
+    Q_PROPERTY(qreal cardOpacity READ cardOpacity WRITE setCardOpacity)
 public:
     explicit SearchWidget(QWidget *parent = nullptr);
 
@@ -50,10 +52,16 @@ private:
     void setOverlayAlpha(int a) {
         _overlayAlpha = a;
         update();
+        _veil->update(); // the veil paints the overlay too
     }
+    qreal cardOpacity() const { return _cardOpacity; }
+    void  setCardOpacity(qreal o);
+    void  captureBackdrop();
+    void  paintVeil();
 
     Session            *_session           = nullptr;
     QWidget            *_card              = nullptr;
+    QWidget            *_veil              = nullptr; // fades the card: see the constructor
     QWidget            *_header            = nullptr;
     QLineEdit          *_queryEdit         = nullptr;
     QLabel             *_searchIconLabel   = nullptr;
@@ -64,7 +72,9 @@ private:
     QPropertyAnimation *_overlayAnim       = nullptr;
     QPropertyAnimation *_cardAnim          = nullptr;
     int                 _overlayAlpha      = 0;
-    int                 _selectedIdx       = -1;
+    qreal               _cardOpacity       = 0.0;
+    QPixmap             _backdrop; // what this overlay covers, captured per open/close
+    int                 _selectedIdx = -1;
 
     std::vector<SearchResult> _results;
     rpl::lifetime             _sessionLifetime; // userInfoLoaded subscription
