@@ -303,6 +303,16 @@ void ConvSelectorWidget::rebuildList(const QString &filter) {
     positionDropdown();
 }
 
+void ConvSelectorWidget::setSession(Session *session) {
+    if (session == _session)
+        return;
+    _session = session;
+    if (!_selectedId.value.isEmpty())
+        clearSelection();
+    else
+        rebuildList(_searchEdit->text());
+}
+
 void ConvSelectorWidget::selectRow(int row) {
     if (row < 0 || row >= (int)_listIds.size())
         return;

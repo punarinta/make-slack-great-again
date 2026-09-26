@@ -27,6 +27,10 @@ public:
     ConversationId selectedConv() const { return _selectedId; }
     QString        selectedName() const { return _selectedName; }
 
+    // Pick from another session's conversations instead. Any selection belongs
+    // to the old session, so it is cleared (emitting convSelected({}, {})).
+    void setSession(Session *session);
+
 signals:
     void convSelected(const ConversationId &conv, const QString &name);
 

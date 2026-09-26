@@ -1555,6 +1555,8 @@ void MainWindow::dropSession(QString teamId) {
     auto it = _sessions.find(teamId);
     if (it == _sessions.end())
         return;
+    if (_forwardDialog && _forwardDialog->usesSession(it->second.session.get()))
+        _forwardDialog->reject();
     if (it->second.session.get() == _session) {
         // The composers may still hold input for this workspace; the workspace
         // is going away, so take it and let it fall on the floor. The thread
@@ -3662,29 +3664,51 @@ void MainWindow::handleNotifToken(const QString &token) {
 void MainWindow::forwardMessage(const ConversationId &sourceConv, const Message &msg) {
     if (!_session)
         return;
-    auto *dlg = new ForwardDialog(msg, _session, this);
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    connect(dlg, &AppDialog::accepted, this, [this, dlg, msg, sourceConv] {
-        const ConversationId target = dlg->targetConv();
-        if (target.value.isEmpty())
-            return;
-        // Email (Model-D): forwarding to a channel labels the original
-        // message rather than re-posting its text (imap-backend-plan §3).
-        const Conversation *tc = _session->findConversation(target);
-        const bool          isChannel =
-            tc && (tc->kind == ConvKind::PublicChannel || tc->kind == ConvKind::PrivateChannel);
-        if (isChannel && _session->channelsAreLabels()) {
-            _session->labelMessage(sourceConv, msg.ts, target, [this](bool ok, QString) {
-                if (!ok)
-                    showNetworkError(tr("Couldn't apply the label."));
-            });
-            return;
+    // A backend that allows it (Claude Code) forwards into any live workspace,
+    // listed in switcher order; everyone else stays within its own.
+    std::vector<ForwardDialog::Workspace> workspaces;
+    const auto                            sourceKey = WorkspaceKey::fromString(_session->teamId());
+    const auto *desc = sourceKey ? backends::find(sourceKey->service) : nullptr;
+    if (desc && desc->forwardAnywhere) {
+        for (const auto &key : TokenStore::workspaceKeys()) {
+            const auto it = _sessions.find(key.toString());
+            if (it == _sessions.end() || !it->second.session)
+                continue;
+            QString name = recordForHandle(it->first).displayName;
+            if (name.isEmpty())
+                name = backends::displayName(key.service);
+            workspaces.push_back({it->second.session.get(), name});
         }
-        const QString comment = dlg->comment();
-        const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
-        const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
-        _session->sendMessage(target, full);
-    });
+    }
+    auto *dlg = new ForwardDialog(msg, _session, std::move(workspaces), this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    _forwardDialog = dlg;
+    connect(
+        dlg, &AppDialog::accepted, this, [this, dlg, msg, sourceConv, source = _session->teamId()] {
+            const ConversationId target = dlg->targetConv();
+            // Still live: dropSession closes the dialog before freeing its sessions.
+            Session             *ts     = dlg->targetSession();
+            if (target.value.isEmpty() || !ts)
+                return;
+            // Email (Model-D): forwarding to a channel labels the original
+            // message rather than re-posting its text (imap-backend-plan §3) —
+            // only possible within the message's own workspace.
+            const Conversation *tc = ts->findConversation(target);
+            const bool          isChannel =
+                tc && (tc->kind == ConvKind::PublicChannel || tc->kind == ConvKind::PrivateChannel);
+            if (isChannel && ts->teamId() == source && ts->channelsAreLabels()) {
+                ts->labelMessage(sourceConv, msg.ts, target, [this](bool ok, QString) {
+                    if (!ok)
+                        showNetworkError(tr("Couldn't apply the label."));
+                });
+                return;
+            }
+            const QString comment = dlg->comment();
+            const QString fwd     = msg.rawText.isEmpty() ? msg.text.text : msg.rawText;
+            const QString full    = comment.isEmpty() ? fwd : (comment + "\n" + fwd);
+            ts->sendMessage(target, full);
+        }
+    );
     dlg->open();
 }
 

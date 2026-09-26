@@ -15,6 +15,7 @@ void registerBackend() {
         .pickerOrder     = 30,
         // One workspace per machine (kWorkspaceId).
         .singleWorkspace = true,
+        .forwardAnywhere = true,
         .makeBackend = [](const TokenStore::WorkspaceRecord &rec) -> std::unique_ptr<::Backend> {
             return std::make_unique<Backend>(fromRecord(rec));
         },

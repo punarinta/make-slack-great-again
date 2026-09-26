@@ -27,6 +27,9 @@ struct BackendDescriptor {
     // At most one workspace of this service: the picker greys it out once one is
     // connected (Claude Code is "the sessions on this machine").
     bool    singleWorkspace = false;
+    // Its messages may be forwarded into any other workspace, not just its own
+    // conversations (Claude Code: hand an agent's answer to the team).
+    bool    forwardAnywhere = false;
     // Builds the backend for a stored workspace. Owns decoding the record's opaque
     // `auth` blob. May return nullptr (e.g. a record it can't decode).
     std::function<std::unique_ptr<Backend>(const TokenStore::WorkspaceRecord &)> makeBackend;

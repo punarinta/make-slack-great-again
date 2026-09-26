@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "forward_dialog.h"
 #include "ui/conv_selector/conv_selector_widget.h"
+#include "ui/dropdown/dropdown.h"
 #include "ui/composer/composer_widget.h"
 #include "ui/message_list/file_chip_widget.h"
 #include "ui/message_list/message_render.h"
@@ -19,21 +20,41 @@
 #include <QTextBrowser>
 #include <QVBoxLayout>
 #include <QtMath>
+#include <algorithm>
 
-ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *parent)
-    : AppDialog(tr("Forward this message"), parent) {
+ForwardDialog::ForwardDialog(
+    const Message &msg, Session *session, std::vector<Workspace> workspaces, QWidget *parent
+)
+    : AppDialog(tr("Forward this message"), parent), _workspaces(std::move(workspaces)),
+      _target(session) {
     auto       *cl = contentLayout();
     const auto &sp = Th::c().spacing;
 
+    // ── Target workspace (only when there is a choice) ────────────────
+    if (_workspaces.size() > 1) {
+        _wsPicker = new Dropdown;
+        for (int i = 0; i < (int)_workspaces.size(); ++i) {
+            _wsPicker->addItem(_workspaces[i].name);
+            if (_workspaces[i].session == session)
+                _wsPicker->setCurrentIndex(i);
+        }
+        if (_wsPicker->currentIndex() < 0) {
+            _wsPicker->setCurrentIndex(0);
+            _target = _workspaces.front().session;
+        }
+        cl->addWidget(_wsPicker);
+    }
+
     // ── Conversation selector ──────────────────────────────────────────
-    _selector = new ConvSelectorWidget(session);
+    _selector = new ConvSelectorWidget(_target);
     cl->addWidget(_selector);
 
     // ── Optional comment via composer ─────────────────────────────────
     _composer = new ComposerWidget;
     _composer->setPlaceholderText(tr("Add a message, if you'd like."));
-    if (session)
-        _composer->setSession(session);
+    // Mentions and emoji in the comment resolve in the workspace it's sent to.
+    if (_target)
+        _composer->setSession(_target);
     _composer->setMaximumHeight(120);
     if (auto *lay = _composer->layout())
         lay->setContentsMargins(
@@ -192,6 +213,12 @@ ForwardDialog::ForwardDialog(const Message &msg, Session *session, QWidget *pare
 
     connect(_fwdBtn, &QPushButton::clicked, this, &AppDialog::accept);
 
+    if (_wsPicker)
+        connect(_wsPicker, &Dropdown::currentIndexChanged, this, [this](int i) {
+            if (i >= 0 && i < (int)_workspaces.size())
+                setTargetSession(_workspaces[i].session);
+        });
+
     // The modeless dialog outlives the caller's message (often a signal argument).
     connect(_copyLinkBtn, &QPushButton::clicked, this, [entities = msg.text.entities] {
         for (const auto &ent : entities) {
@@ -227,6 +254,22 @@ void ForwardDialog::applyTheme() {
             .arg(Th::qss(Th::c().surface.highlightStrong), Th::qss(Th::c().message.fileChipBg))
     );
     // Copy Link / Cancel / Forward buttons self-theme (StyledButton).
+}
+
+void ForwardDialog::setTargetSession(Session *session) {
+    if (session == _target)
+        return;
+    _target = session;
+    // Clears the picked conversation (it belongs to the old workspace), which
+    // disables Forward through convSelected until one is picked here.
+    _selector->setSession(session);
+    _composer->setSession(session);
+}
+
+bool ForwardDialog::usesSession(const Session *session) const {
+    return session == _target || std::ranges::any_of(_workspaces, [session](const Workspace &w) {
+               return w.session == session;
+           });
 }
 
 ConversationId ForwardDialog::targetConv() const {

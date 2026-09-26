@@ -14,6 +14,7 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QSystemTrayIcon>
+#include <QPointer>
 #include <QPushButton>
 #include <QSet>
 #include <QUrl>
@@ -33,6 +34,7 @@ class SearchWidget;
 class WelcomeWidget;
 class TitleBar;
 class ThreadPanel;
+class ForwardDialog;
 class CanvasPage;
 class SavedMessagesPage;
 class TeammatePage;
@@ -375,18 +377,21 @@ private:
     QStackedWidget    *_contentStack        = nullptr;
     MessageListWidget *_messageList         = nullptr;
     ComposerWidget    *_composer            = nullptr;
-    TypingIndicatorWidget *_typingIndicator = nullptr;
-    SearchWidget          *_searchWidget    = nullptr;
-    WelcomeWidget         *_welcomeTips     = nullptr;
-    ThreadPanel           *_threadPanel     = nullptr;
-    ConvTabsWidget        *_convTabs        = nullptr;
-    HuddleBanner          *_huddleBanner    = nullptr;
-    CanvasPage            *_canvasPage      = nullptr;
-    ThreadsPage           *_threadsPage     = nullptr;
-    SavedMessagesPage     *_savedPage       = nullptr;
-    TeammatePage          *_teammatePage    = nullptr;
-    QString                _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
-    QString                _currentCanvasTitle;
+    TypingIndicatorWidget  *_typingIndicator = nullptr;
+    SearchWidget           *_searchWidget    = nullptr;
+    WelcomeWidget          *_welcomeTips     = nullptr;
+    ThreadPanel            *_threadPanel     = nullptr;
+    // The open "Forward message" dialog; dropSession closes it if it holds the
+    // session going away (a Claude Code forward lists every workspace).
+    QPointer<ForwardDialog> _forwardDialog;
+    ConvTabsWidget         *_convTabs     = nullptr;
+    HuddleBanner           *_huddleBanner = nullptr;
+    CanvasPage             *_canvasPage   = nullptr;
+    ThreadsPage            *_threadsPage  = nullptr;
+    SavedMessagesPage      *_savedPage    = nullptr;
+    TeammatePage           *_teammatePage = nullptr;
+    QString                 _currentCanvasFileId; // channel canvas of _currentConvId; empty = none
+    QString                 _currentCanvasTitle;
 
     std::vector<ConversationId> _convIds;
     ConversationId              _currentConvId;

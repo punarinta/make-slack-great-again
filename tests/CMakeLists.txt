@@ -163,6 +163,7 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/ui/conv_list/named_conversation.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/conv_selector/conv_selector_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/delete_message_dialog/delete_message_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/dropdown/dropdown.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/emoji_picker/emoji_picker_popup.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/file_dialog_utils.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/forward_dialog/forward_dialog.cpp
