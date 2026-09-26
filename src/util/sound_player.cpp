@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 
 namespace Sound {
@@ -30,6 +31,12 @@ QString bundledPath(const QString &name) {
         return {};
     QDir().mkpath(dir);
     const QString dst = dir + QStringLiteral("/sfx-%1.wav").arg(name);
+    // Re-extract when the bundled file changed (a new release re-rendered the
+    // chime), or the cache would keep playing the old one forever. The sizes
+    // are enough to tell, and QFile reports the uncompressed size even for a
+    // compressed qrc entry.
+    if (QFile::exists(dst) && QFileInfo(dst).size() != QFile(src).size())
+        QFile::remove(dst);
     if (!QFile::exists(dst)) {
         if (!QFile::copy(src, dst))
             return {};

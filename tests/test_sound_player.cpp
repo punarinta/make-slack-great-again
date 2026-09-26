@@ -3,6 +3,8 @@
 #include "test_main.h"
 
 #include <QCoreApplication>
+#include <QFile>
+#include <QtEndian>
 
 #include "util/sound_player.h"
 
@@ -17,6 +19,22 @@ using namespace Sound;
 
 TEST_CASE("default id is the bundled chime") {
     REQUIRE(Player::defaultId() == "bundled:notify");
+}
+
+TEST_CASE("bundled chime is a plain PCM WAV the native players can read") {
+    // Windows PlaySound and aplay only take PCM WAV, so the chime must stay one.
+    // rcc may store it compressed: QFile must still hand back the real bytes
+    // and report the uncompressed size (bundledPath() relies on that).
+    QFile f(":/sfx/notify.wav");
+    REQUIRE(f.open(QIODevice::ReadOnly));
+    const QByteArray wav = f.readAll();
+    REQUIRE(wav.size() > 44);
+    CHECK(f.size() == wav.size());
+    CHECK(wav.left(4) == "RIFF");
+    CHECK(wav.mid(8, 4) == "WAVE");
+    CHECK(wav.mid(12, 4) == "fmt ");
+    CHECK(qFromLittleEndian<quint16>(wav.constData() + 20) == 1);  // WAVE_FORMAT_PCM
+    CHECK(qFromLittleEndian<quint16>(wav.constData() + 34) == 16); // bits per sample
 }
 
 TEST_CASE("bundled sounds expose the default with a label") {

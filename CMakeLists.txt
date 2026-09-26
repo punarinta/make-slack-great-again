@@ -296,6 +296,16 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
 target_precompile_headers(msga PRIVATE src/pch.h)
 
+# rcc only compresses a file when that saves at least --threshold percent
+# (default 70). Small SVGs shrink by 40-65%, so the default stored the whole of
+# resources.qrc raw; 5 lets them compress (~15 KB less in the binary). zlib,
+# not rcc's default zstd: QtCore can always inflate zlib, while a static
+# target Qt built without zstd could not read zstd data. That guard exists
+# only for qt_add_* targets, and msga is a plain add_executable. The tests'
+# resource library reuses this variable (tests/CMakeLists.txt).
+set(MSGA_RCC_OPTIONS --compress-algo zlib --threshold 5)
+set_property(TARGET msga APPEND PROPERTY AUTORCC_OPTIONS ${MSGA_RCC_OPTIONS})
+
 # ── Optional backends ──────────────────────────────────────────────────────
 # Each switch adds the backend's sources AND defines MSGA_BACKEND_<NAME>, which
 # builtin_backends.cpp keys its explicit register call on (never self-registering
@@ -743,6 +753,11 @@ if(Qt6LinguistTools_FOUND)
     qt_add_translations(msga
         TS_FILES translations/msga_en.ts translations/msga_ja.ts
         RESOURCE_PREFIX "/translations"
+        # Leave out translations identical to the source text: tr() falls back
+        # to the source string anyway. msga_en.ts repeats every string for
+        # its handful of plural forms, so this takes msga_en.qm from ~110 KB
+        # to ~2.4 KB.
+        LRELEASE_OPTIONS -removeidentical
     )
 endif()
 

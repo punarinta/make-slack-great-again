@@ -270,6 +270,8 @@ target_precompile_headers(msga_test_support PRIVATE ${CMAKE_SOURCE_DIR}/src/pch.
 # object is always linked (a static library would drop it as unreferenced).
 add_library(msga_test_resources OBJECT ${CMAKE_SOURCE_DIR}/resources/resources.qrc)
 target_link_libraries(msga_test_resources PRIVATE Qt6::Core)
+# Same rcc compression as the app (MSGA_RCC_OPTIONS, top-level CMakeLists.txt).
+set_property(TARGET msga_test_resources APPEND PROPERTY AUTORCC_OPTIONS ${MSGA_RCC_OPTIONS})
 
 # ── One test executable ─────────────────────────────────────────────────────
 # Every test file is linked into ONE executable, msga_tests, instead of one
