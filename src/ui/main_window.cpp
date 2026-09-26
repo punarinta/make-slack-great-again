@@ -1291,6 +1291,10 @@ QWidget *MainWindow::buildRightPanel(QWidget *parent) {
         &ComposerWidget::uploadRequested,
         this,
         [this](const QStringList &filePaths, const QString &text) {
+            if (teammateViewOpen()) {
+                startSessionWithTeammate(text, filePaths);
+                return;
+            }
             if (!_session || _currentConvId.value.isEmpty())
                 return;
             const Ts ghost = _session->uploadFiles(_currentConvId, filePaths, text);
@@ -3945,8 +3949,8 @@ void MainWindow::applyTeammateComposer() {
     );
 }
 
-void MainWindow::startSessionWithTeammate(const QString &text) {
-    if (!_session || !_teammatePage || text.trimmed().isEmpty())
+void MainWindow::startSessionWithTeammate(const QString &text, const QStringList &filePaths) {
+    if (!_session || !_teammatePage || (text.trimmed().isEmpty() && filePaths.isEmpty()))
         return;
     const QString role = _teammatePage->teammate().id;
     const QString dir  = _teammatePage->folder();
@@ -3955,12 +3959,15 @@ void MainWindow::startSessionWithTeammate(const QString &text) {
         dir,
         false,
         role,
-        [this, text](ConversationId id) {
+        [this, text, filePaths](ConversationId id) {
             // Listed by now (the backend announces a session before this):
             // open it, then the text is its first message.
             if (!_session || !_convList || !_convList->selectConversation(id))
                 return;
-            _session->sendMessage(id, text, std::nullopt, {});
+            if (filePaths.isEmpty())
+                _session->sendMessage(id, text, std::nullopt, {});
+            else
+                _session->uploadFiles(id, filePaths, text);
         },
         [this, text](const QString &err) {
             showNetworkError(err);
