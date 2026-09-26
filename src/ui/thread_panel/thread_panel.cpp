@@ -11,6 +11,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 #include "ui/thread_panel/thread_export_job.h"
+#include "ui/typing_indicator/typing_indicator.h"
 #include "session/session.h"
 
 #include <QDateTime>
@@ -136,6 +137,9 @@ ThreadPanel::ThreadPanel(ImageCache *imgCache, QWidget *parent) : QWidget(parent
     connect(_msgList, &MessageListWidget::forwardMessageRequested, this, [this](const Message &m) {
         emit forwardMessageRequested(_conv, m);
     });
+
+    _typingIndicator = new TypingIndicatorWidget(this);
+    layout->addWidget(_typingIndicator);
 
     _composer = new ComposerWidget(this);
     _composer->setThreadMode(true);
@@ -281,6 +285,7 @@ void ThreadPanel::openThread(ConversationId conv, Ts rootTs) {
     if (changed) {
         stashDraft();
         _broadcastWanted = false;
+        _typingIndicator->clearAll();
     }
     _conv                 = conv;
     _rootTs               = rootTs;
@@ -312,11 +317,24 @@ void ThreadPanel::jumpToTs(const Ts &ts) {
     _msgList->jumpToTs(ts);
 }
 
+void ThreadPanel::userTyping(
+    const ConversationId &conv,
+    const Ts             &rootTs,
+    const UserId         &user,
+    const QString        &name,
+    bool                  isSelf,
+    qint64                thinkingSinceMs
+) {
+    if (conv == _conv && rootTs == _rootTs && !rootTs.isEmpty())
+        _typingIndicator->userTyping(user, name, isSelf, thinkingSinceMs);
+}
+
 void ThreadPanel::close() {
     stashDraft(); // before _conv/_rootTs clear — the stash is filed under them
     _conv   = {};
     _rootTs = {};
     _msgList->clear();
+    _typingIndicator->clearAll();
     _composer->setEnabled(false);
     _broadcastThread = false;
     _broadcastWanted = false;

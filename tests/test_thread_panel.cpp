@@ -24,9 +24,11 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -41,6 +43,7 @@
 #include "ui/message_list/message_list.h"
 #include "ui/mention_popup/mention_popup.h"
 #include "ui/thread_panel/thread_panel.h"
+#include "ui/typing_indicator/typing_indicator.h"
 
 MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
@@ -827,4 +830,34 @@ TEST_CASE("the header bell mutes and unmutes the open thread", "[thread][mute]")
     panel.close();
     bell->click();
     CHECK_FALSE(f.session->isThreadMuted(kConv.id, kRoot));
+}
+
+TEST_CASE("the open thread shows who is thinking in it", "[thread][typing]") {
+    // A background subagent at work "thinks" in its thread (Claude Code backend).
+    Fixture     f;
+    ThreadPanel panel(/*imgCache*/ nullptr);
+    panel.setSession(f.session.get());
+    panel.openThread(kConv.id, kRoot);
+    panel.show();
+    auto *indicator = panel.findChild<TypingIndicatorWidget *>();
+    REQUIRE(indicator);
+    const auto   text  = [&] { return indicator->findChild<QLabel *>()->text(); };
+    const qint64 since = QDateTime::currentMSecsSinceEpoch() - 65'000;
+
+    // Another thread, another conversation: not this one.
+    panel.userTyping(kConv.id, Ts{"100.600"}, UserId{"R1"}, "Researcher", false, since);
+    panel.userTyping(ConversationId{"C2"}, kRoot, UserId{"R1"}, "Researcher", false, since);
+    CHECK(indicator->isHidden());
+
+    panel.userTyping(kConv.id, kRoot, UserId{"R1"}, "Researcher", false, since);
+    CHECK_FALSE(indicator->isHidden());
+    CHECK(text().contains("<b>Researcher</b> is thinking (1m 5s)"));
+
+    // Leaving the thread forgets it.
+    panel.openThread(kConv.id, Ts{"100.600"});
+    CHECK(indicator->isHidden());
+    panel.openThread(kConv.id, kRoot);
+    panel.userTyping(kConv.id, kRoot, UserId{"R1"}, "Researcher", false, since);
+    panel.close();
+    CHECK(indicator->isHidden());
 }

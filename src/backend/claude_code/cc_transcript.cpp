@@ -224,6 +224,17 @@ void TranscriptParser::addCommandOutput(const QString &output, qint64 micros) {
     endTurn();
 }
 
+void TranscriptParser::noteTaskNotification(const QString &text, qint64 micros) {
+    // Only a notification itself: its <result> may quote anything.
+    if (micros <= 0 || !text.trimmed().startsWith(QLatin1String("<task-notification>")))
+        return;
+    static const QRegularExpression kTaskId(QStringLiteral("<task-id>([^<]+)</task-id>"));
+    for (auto it = kTaskId.globalMatch(text); it.hasNext();) {
+        qint64 &at = _taskStopped[it.next().captured(1).trimmed()];
+        at         = std::max(at, micros);
+    }
+}
+
 void TranscriptParser::handleLine(const QByteArray &line) {
     QJsonParseError   err;
     const QJsonObject o = QJsonDocument::fromJson(line, &err).object();
@@ -242,11 +253,20 @@ void TranscriptParser::handleLine(const QByteArray &line) {
     const qint64 micros = parseIsoMicros(o.value(QLatin1String("timestamp")).toString());
     if (micros > _lastActivity)
         _lastActivity = micros;
+    if (micros > 0)
+        _activity.push_back(micros);
 
     if (const QString v = o.value(QLatin1String("version")).toString(); !v.isEmpty())
         _version = v;
     if (const QString m = o.value(QLatin1String("permissionMode")).toString(); !m.isEmpty())
         _permissionMode = m;
+    if (type == QLatin1String("queue-operation")) {
+        // A notification queued for the session, the moment its task stopped
+        // (the prompt that delivers it may come much later).
+        if (o.value(QLatin1String("operation")).toString() == QLatin1String("enqueue"))
+            noteTaskNotification(o.value(QLatin1String("content")).toString(), micros);
+        return;
+    }
     if (type == QLatin1String("ai-title")) {
         _aiTitle = o.value(QLatin1String("aiTitle")).toString().trimmed();
         return;
@@ -283,6 +303,8 @@ void TranscriptParser::handleLine(const QByteArray &line) {
             _roleName = mark.name;
             return;
         }
+        if (a.value(QLatin1String("type")).toString() == QLatin1String("queued_command"))
+            noteTaskNotification(a.value(QLatin1String("prompt")).toString(), micros);
         if (a.value(QLatin1String("type")).toString() == QLatin1String("queued_command") &&
             a.value(QLatin1String("commandMode")).toString() == QLatin1String("prompt")) {
             const QString text = cleanPrompt(a.value(QLatin1String("prompt")).toString());
@@ -314,8 +336,11 @@ void TranscriptParser::handleLine(const QByteArray &line) {
             return;
         const QJsonValue origin = o.value(QLatin1String("origin"));
         if (origin.isObject() &&
-            origin.toObject().value(QLatin1String("kind")).toString() != QLatin1String("human"))
+            origin.toObject().value(QLatin1String("kind")).toString() != QLatin1String("human")) {
+            if (content.isString())
+                noteTaskNotification(content.toString(), micros);
             return; // task notifications and other machine-originated turns
+        }
 
         QString     text;
         QStringList images;

@@ -659,7 +659,7 @@ void Backend::tail(Tracked &t) {
         _events.fire(EvUserChanged{teammateUser(_team.resolve(t.parser.role()))});
 }
 
-int Backend::subagentReplyCount(const Tracked &t, const QString &agentId, Ts *latest) {
+const Backend::SubagentCount &Backend::subagentStats(const Tracked &t, const QString &agentId) {
     const QString path = Paths::subagentTranscript(t.transcriptPath, agentId);
     const qint64  size = QFileInfo(path).size();
     auto         &c    = _subagentCounts[path];
@@ -674,14 +674,36 @@ int Backend::subagentReplyCount(const Tracked &t, const QString &agentId, Ts *la
                 return i.kind != TranscriptItem::Kind::ToolGroup;
             }));
             c.latest   = p.items().empty() ? Ts{} : p.items().back().ts;
+            c.activity = p.activity();
         } else {
             c.count    = 0;
             c.zenCount = 0;
             c.latest.clear();
+            c.activity.clear();
         }
     }
-    *latest = c.latest;
+    return c;
+}
+
+int Backend::subagentReplyCount(const Tracked &t, const QString &agentId, Ts *latest) {
+    const SubagentCount &c = subagentStats(t, agentId);
+    *latest                = c.latest;
     return _zen ? c.zenCount : c.count;
+}
+
+// A background subagent runs from its first record after it last stopped: the
+// session is notified each time it stops, a few ms after its last record, and
+// it may start again (a reply relayed to it, or on its own when work of its
+// own ends) — then its file grows past that notification.
+qint64 Backend::subagentRunSinceMs(const Tracked &t, const QString &agentId) {
+    const auto  &activity = subagentStats(t, agentId).activity;
+    const qint64 stopped  = t.parser.taskStoppedAt(agentId);
+    if (activity.empty() || activity.back() <= stopped)
+        return 0;
+    auto it = activity.end();
+    while (it != activity.begin() && *(it - 1) > stopped)
+        --it;
+    return *it / 1000;
 }
 
 const Message &Backend::renderedAt(Tracked &t, size_t i) {
@@ -1519,6 +1541,27 @@ void Backend::pumpTyping() {
             continue;
         any = true;
         _events.fire(EvTyping{ConversationId{it.key()}, roleUser(roleOf(t)), t.busySinceMs});
+    }
+    // A background subagent working "thinks" in its thread. Only a live worker
+    // runs one: a killed session never sends the notification that it stopped.
+    for (auto it = _sessions.cbegin(); it != _sessions.cend(); ++it) {
+        Tracked &t = *it.value();
+        if (!t.info.running || t.stopping || asThread(t))
+            continue;
+        tail(t); // the notification that it stopped lands in the session's transcript
+        const UserId assistant = roleUser(roleOf(t));
+        for (const auto &item : t.parser.items()) {
+            if (item.kind != TranscriptItem::Kind::Subagent || item.agentId.isEmpty())
+                continue;
+            if (const qint64 since = subagentRunSinceMs(t, item.agentId)) {
+                any = true;
+                _events.fire(
+                    EvTyping{
+                        ConversationId{it.key()}, subagentAuthor(item, assistant), since, item.ts
+                    }
+                );
+            }
+        }
     }
     if (any && !_typingTimer->isActive())
         _typingTimer->start();

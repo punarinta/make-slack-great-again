@@ -106,6 +106,22 @@ QByteArray turnEnd(const char *ts) {
     return line({{"type", "system"}, {"subtype", "turn_duration"}, {"timestamp", ts}});
 }
 
+// What the session is told when a background task (a subagent) stops, as
+// Claude Code writes it: queued the moment it stops, delivered as a prompt.
+QString taskNotification(const QString &taskId) {
+    return "<task-notification>\n<task-id>" + taskId +
+           "</task-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n"
+           "</task-notification>";
+}
+QByteArray taskStopped(const QString &taskId, const char *ts) {
+    return line({
+        {"type", "queue-operation"},
+        {"operation", "enqueue"},
+        {"timestamp", ts},
+        {"content", taskNotification(taskId)},
+    });
+}
+
 // One realistic turn: prompt, a remark, two tool calls, the answer, turn end.
 QByteArray sampleTurn() {
     return prompt("fix the build", "2026-09-25T10:00:00.000Z") +
@@ -380,6 +396,54 @@ TEST_CASE("a prompt mentioning teammates says how to spawn them", "[claude][role
     );
     CHECK(roleInAgentPrompt("Role: engineer. Repo: msga …") == "engineer");
     CHECK(roleInAgentPrompt("Fix the role: engineer bug").isEmpty());
+}
+
+TEST_CASE("a background task's stop notifications are noted", "[claude][transcript]") {
+    TranscriptParser p;
+    // Queued, delivered mid-turn, delivered as a turn of its own: the latest counts.
+    p.feed(taskStopped("agent42", "2026-09-25T10:00:05.000Z"));
+    CHECK(p.taskStoppedAt("agent42") == 1790330405000000);
+    p.feed(line({
+        {"type", "attachment"},
+        {"timestamp", "2026-09-25T10:01:00.000Z"},
+        {"attachment",
+         QJsonObject{
+             {"type", "queued_command"},
+             {"commandMode", "task-notification"},
+             {"prompt", taskNotification("agent42")},
+         }},
+    }));
+    CHECK(p.taskStoppedAt("agent42") == 1790330460000000);
+    p.feed(line({
+        {"type", "user"},
+        {"timestamp", "2026-09-25T10:02:00.000Z"},
+        {"origin", QJsonObject{{"kind", "task-notification"}}},
+        {"message", QJsonObject{{"role", "user"}, {"content", taskNotification("agent7")}}},
+    }));
+    CHECK(p.taskStoppedAt("agent7") == 1790330520000000);
+    CHECK(p.items().empty()); // none of it is anything anyone said
+    CHECK(p.activity().size() == 3);
+
+    // A notification quoted by a tool's output isn't one.
+    TranscriptParser q;
+    q.feed(
+        toolUse("t1", "Bash", {{"command", "grep"}}, "2026-09-25T10:00:00.000Z") +
+        line({
+            {"type", "user"},
+            {"timestamp", "2026-09-25T10:00:01.000Z"},
+            {"message",
+             QJsonObject{
+                 {"content",
+                  QJsonArray{QJsonObject{
+                      {"type", "tool_result"},
+                      {"tool_use_id", "t1"},
+                      {"content", taskNotification("agent42")},
+                  }}}
+             }},
+        })
+    );
+    CHECK(q.taskStoppedAt("agent42") == 0);
+    CHECK(p.taskStoppedAt("nobody") == 0);
 }
 
 TEST_CASE("a reply relayed to a subagent reads back as the reply alone", "[claude][transcript]") {
@@ -2406,6 +2470,92 @@ TEST_CASE(
     // session of its own.
     CHECK(backend.threadAcceptsReplies(conv, root->ts));
     CHECK_FALSE(backend.threadOpensAsSession(conv, root->ts));
+}
+
+TEST_CASE("a background subagent at work thinks in its thread", "[claude][backend][thread]") {
+    FakeClaudeHome home;
+    home.writeSession("busy");
+    home.append(
+        prompt("research it", "2026-09-25T10:00:00.000Z") +
+        toolUse(
+            "a1",
+            "Agent",
+            {{"description", "Read the docs"}, {"subagent_type", "designer"}},
+            "2026-09-25T10:00:01.000Z"
+        ) +
+        toolResult("a1", "2026-09-25T10:00:01.500Z", false, "agent42") // launched
+    );
+    const QString sub = home.dir.path() + "/projects/-src-app/S1/subagents/agent-agent42.jsonl";
+    QDir().mkpath(QFileInfo(sub).path());
+    const auto subAppend = [&](const QByteArray &bytes) {
+        QFile f(sub);
+        REQUIRE(f.open(QIODevice::Append));
+        f.write(bytes);
+    };
+    subAppend(
+        prompt("Read the docs and report", "2026-09-25T10:00:02.000Z", false) +
+        toolUse("t1", "Read", {{"file_path", "/docs"}}, "2026-09-25T10:00:03.000Z")
+    );
+
+    claude_code::Backend backend(Credentials{});
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    const auto threadTyping = [&]() -> std::optional<EvTyping> {
+        for (auto it = events.rbegin(); it != events.rend(); ++it)
+            if (const auto *t = std::get_if<EvTyping>(&*it); t && t->threadRoot)
+                return *t;
+        return std::nullopt;
+    };
+    backend.connectRealtime();
+    const ConversationId conv{"S1"};
+    const auto           page = collect(backend.loadHistory(conv, std::nullopt));
+    REQUIRE(page.size() == 1);
+    const auto root =
+        std::find_if(page[0].messages.begin(), page[0].messages.end(), [](const Message &m) {
+            return m.replyCount > 0;
+        });
+    REQUIRE(root != page[0].messages.end());
+
+    // Running: thinking in its thread, as the teammate, since its first record.
+    auto typing = threadTyping();
+    REQUIRE(typing);
+    CHECK(typing->conv == conv);
+    CHECK(*typing->threadRoot == root->ts);
+    CHECK(typing->user == UserId{"claude:role:designer"});
+    CHECK(typing->thinkingSinceMs == 1790330402000);
+    // The session thinks in the chat as ever.
+    CHECK(std::any_of(events.begin(), events.end(), [](const Event &e) {
+        const auto *t = std::get_if<EvTyping>(&e);
+        return t && !t->threadRoot && t->user.value == "claude:agent";
+    }));
+
+    // It stops: the session is notified, a moment after its last record.
+    subAppend(assistantText("The docs say X.", "2026-09-25T10:00:08.000Z"));
+    home.append(taskStopped("agent42", "2026-09-25T10:00:08.050Z"));
+    QTest::qWait(500); // the transcript's change is picked up
+    events.clear();
+    QTest::qWait(3500); // the typing pump runs every 3 s while anything is busy
+    CHECK_FALSE(threadTyping());
+
+    // A reply relayed to it starts it again — its clock from then.
+    subAppend(line({
+        {"type", "user"},
+        {"isMeta", true},
+        {"timestamp", "2026-09-25T10:05:00.000Z"},
+        {"origin", QJsonObject{{"kind", "coordinator"}}},
+        {"message", QJsonObject{{"role", "user"}, {"content", "Which page?"}}},
+    }));
+    REQUIRE(QTest::qWaitFor([&] { return threadTyping().has_value(); }, 5000));
+    typing = threadTyping();
+    CHECK(typing->thinkingSinceMs == 1790330700000);
+
+    // A session that's gone runs no subagents, whatever its files say.
+    QFile::remove(home.dir.path() + "/sessions/1.json");
+    QTest::qWait(500);
+    events.clear();
+    QTest::qWait(3500);
+    CHECK_FALSE(threadTyping());
 }
 
 TEST_CASE("a subagent started as a teammate speaks as that teammate", "[claude][backend][thread]") {

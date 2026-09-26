@@ -17,6 +17,7 @@ class QLabel;
 class IconButton;
 class PopupTooltip;
 class QCheckBox;
+class TypingIndicatorWidget;
 
 // Right-side panel showing a Slack thread: root message + replies + composer.
 // Slides in when the user clicks a "N replies" bar in the main message list.
@@ -30,6 +31,16 @@ public:
     // it logs out, so the same team re-added later starts clean.
     void purgeDrafts(const QString &teamId);
     void openThread(ConversationId conv, Ts rootTs);
+    // Someone typing (an agent thinking, since `thinkingSinceMs`) in a thread:
+    // shown when it's the open one, else ignored.
+    void userTyping(
+        const ConversationId &conv,
+        const Ts             &rootTs,
+        const UserId         &user,
+        const QString        &name,
+        bool                  isSelf,
+        qint64                thinkingSinceMs
+    );
     // Move the focus to one reply of the open thread (see MessageListWidget::jumpToTs).
     void jumpToTs(const Ts &ts);
     void close();
@@ -101,18 +112,19 @@ private:
     // from the box, which unticks while an attachment or an edit rules it out.
     bool                          _broadcastWanted = false;
 
-    QWidget           *_headerWidget   = nullptr;
-    QWidget           *_leftShadow     = nullptr;
-    QLabel            *_header         = nullptr;
-    IconButton        *_muteBtn        = nullptr;
-    IconButton        *_downloadBtn    = nullptr;
-    IconButton        *_openSessionBtn = nullptr;
-    IconButton        *_closeBtn       = nullptr;
-    PopupTooltip      *_tooltip        = nullptr;
-    MessageListWidget *_msgList        = nullptr;
-    ComposerWidget    *_composer       = nullptr;
-    QWidget           *_broadcastRow   = nullptr;
-    QCheckBox         *_broadcastBox   = nullptr;
+    QWidget               *_headerWidget    = nullptr;
+    QWidget               *_leftShadow      = nullptr;
+    QLabel                *_header          = nullptr;
+    IconButton            *_muteBtn         = nullptr;
+    IconButton            *_downloadBtn     = nullptr;
+    IconButton            *_openSessionBtn  = nullptr;
+    IconButton            *_closeBtn        = nullptr;
+    PopupTooltip          *_tooltip         = nullptr;
+    MessageListWidget     *_msgList         = nullptr;
+    TypingIndicatorWidget *_typingIndicator = nullptr;
+    ComposerWidget        *_composer        = nullptr;
+    QWidget               *_broadcastRow    = nullptr;
+    QCheckBox             *_broadcastBox    = nullptr;
 
     rpl::lifetime _lifetime;
 };

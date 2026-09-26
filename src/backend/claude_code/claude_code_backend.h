@@ -231,6 +231,8 @@ private:
     bool                  needsUser(const Tracked &t) const;
     const TranscriptItem *deletableItem(Tracked &t, const Ts &ts);
     int                   subagentReplyCount(const Tracked &t, const QString &agentId, Ts *latest);
+    // When the subagent's run under way began (epoch ms); 0 = it isn't running.
+    qint64                subagentRunSinceMs(const Tracked &t, const QString &agentId);
     QString subagentOf(const Tracked &t, const Ts &root) const; // "" = none/not started
 
     Credentials                              _creds;
@@ -270,11 +272,13 @@ private:
     QString                _myAvatarPath; // a copy in app data; "" = initials
     // Subagent transcripts are only re-parsed when they grow.
     struct SubagentCount {
-        qint64 size     = -1;
-        int    count    = 0;
-        int    zenCount = 0; // without the tool-call cards
-        Ts     latest;
+        qint64              size     = -1;
+        int                 count    = 0;
+        int                 zenCount = 0; // without the tool-call cards
+        Ts                  latest;
+        std::vector<qint64> activity; // every record's epoch micros (TranscriptParser::activity)
     };
+    const SubagentCount          &subagentStats(const Tracked &t, const QString &agentId);
     QHash<QString, SubagentCount> _subagentCounts; // by transcript path
     struct CommandList {
         std::vector<SlashCommand> commands;

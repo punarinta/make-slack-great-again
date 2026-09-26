@@ -30,6 +30,7 @@
 #include "backend/domain.h"
 
 #include <QByteArray>
+#include <QHash>
 #include <QJsonObject>
 #include <QSet>
 #include <QString>
@@ -88,7 +89,14 @@ public:
     const QString &aiTitle() const { return _aiTitle; }
 
     // Epoch micros of the newest record seen (any type) — "last activity".
-    qint64 lastActivity() const { return _lastActivity; }
+    qint64                     lastActivity() const { return _lastActivity; }
+    // Epoch micros of every record read, in file order — when a subagent's run
+    // began (Backend::pumpTyping).
+    const std::vector<qint64> &activity() const { return _activity; }
+    // Epoch micros of the latest notification that a background task (a
+    // subagent: its agentId) stopped; 0 = none yet. One arrives each time it
+    // stops — it may start again, on its own or for a relayed reply.
+    qint64 taskStoppedAt(const QString &taskId) const { return _taskStopped.value(taskId); }
 
     // As of the newest record that says: the Claude Code version that wrote
     // it, the model that answered, the permission mode of the last prompt.
@@ -106,6 +114,8 @@ private:
     void closeToolGroup();
     void resolvePendingText(TranscriptItem::State state);
     void endTurn();
+    // A "<task-notification>…" the session was sent: its task(s) stopped at `micros`.
+    void noteTaskNotification(const QString &text, qint64 micros);
     // What a command Claude Code runs itself printed: an answer, and the turn's end.
     void addCommandOutput(const QString &output, qint64 micros);
     void addPrompt(
@@ -116,8 +126,10 @@ private:
     );
     QByteArray                  _partial;
     std::vector<TranscriptItem> _items;
-    qint64                      _lastMicros    = 0;
-    qint64                      _lastActivity  = 0;
+    qint64                      _lastMicros   = 0;
+    qint64                      _lastActivity = 0;
+    std::vector<qint64>         _activity;
+    QHash<QString, qint64>      _taskStopped;        // by task id
     int                         _openToolGroup = -1; // index into _items, -1 when none
     int                         _pendingText   = -1; // index of the Pending text, -1 when none
     int           _commandOutput = -1; // index of the latest command output, -1 when none

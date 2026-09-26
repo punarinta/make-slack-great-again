@@ -2514,11 +2514,23 @@ void MainWindow::connectToSession() {
                     // "types" (Capabilities::typing), shown as thinking with the
                     // turn's elapsed time (EvTyping::thinkingSinceMs).
                     //
-                    // Show typing for the open conversation only.  Our own id can
-                    // arrive here when we type from another client (we never echo
-                    // local typing), shown as "You … on another device".
-                    if (_typingIndicator && ev->conv == _currentConvId) {
-                        const bool isSelf = ev->user == _session->meUserId();
+                    // A background subagent thinks in its thread (threadRoot).
+                    //
+                    // Show typing for the open conversation (or thread) only.  Our
+                    // own id can arrive here when we type from another client (we
+                    // never echo local typing), shown as "You … on another device".
+                    const bool isSelf = ev->user == _session->meUserId();
+                    if (ev->threadRoot) {
+                        if (_threadPanel)
+                            _threadPanel->userTyping(
+                                ev->conv,
+                                *ev->threadRoot,
+                                ev->user,
+                                _session->userDisplayName(ev->user),
+                                isSelf,
+                                ev->thinkingSinceMs
+                            );
+                    } else if (_typingIndicator && ev->conv == _currentConvId) {
                         _typingIndicator->userTyping(
                             ev->user,
                             _session->userDisplayName(ev->user),

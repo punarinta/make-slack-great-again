@@ -1265,11 +1265,13 @@ struct EvConvMarked {
     int            mentionCount = 0;
 };
 struct EvTyping {
-    ConversationId conv;
-    UserId         user;
+    ConversationId    conv;
+    UserId            user;
     // An agent working on a turn rather than a person typing: when the turn
     // began (epoch ms), shown as "… is thinking (35s)". 0 = plain typing.
-    qint64         thinkingSinceMs = 0;
+    qint64            thinkingSinceMs = 0;
+    // Typing in this thread (its root) rather than the conversation itself.
+    std::optional<Ts> threadRoot;
 };
 struct EvPresenceChanged {
     UserId user;
