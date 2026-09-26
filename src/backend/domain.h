@@ -1267,6 +1267,9 @@ struct EvConvMarked {
 struct EvTyping {
     ConversationId conv;
     UserId         user;
+    // An agent working on a turn rather than a person typing: when the turn
+    // began (epoch ms), shown as "… is thinking (35s)". 0 = plain typing.
+    qint64         thinkingSinceMs = 0;
 };
 struct EvPresenceChanged {
     UserId user;

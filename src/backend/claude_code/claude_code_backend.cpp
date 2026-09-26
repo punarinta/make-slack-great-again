@@ -150,7 +150,8 @@ struct Backend::Tracked {
     Conversation                                    lastConv;
     User                                            lastUser;
     bool                                            lastBusy = false;
-    bool wasLive = false; // listed or sending at the previous refresh
+    qint64 busySinceMs = 0;     // epoch ms the turn under way began (pumpTyping); 0 = not busy
+    bool   wasLive     = false; // listed or sending at the previous refresh
     // Sending: messages wait here while Claude is on a turn, and go out one per
     // turn. Each is shown as a message of msga's own (ts/date) from the moment
     // it's sent until its prompt is in the transcript — the Session's optimistic
@@ -1492,20 +1493,32 @@ void Backend::refresh() {
     pumpTyping();
 }
 
-// Claude working on a turn shows as the session "typing" — the terminal's
-// spinner ("Incubating… (17s · still thinking)"). The indicator forgets a typer
-// after a few seconds without a refresh, so re-send every 3 s while any session
-// is busy; the timer runs only then.
+// Claude working on a turn shows as the session "thinking (8m 58s)" — the
+// terminal's spinner ("Incubating… (17s · still thinking)"). The indicator
+// forgets a typer after a few seconds without a refresh, so re-send every 3 s
+// while any session is busy; the timer runs only then.
 void Backend::pumpTyping() {
     if (!_typingTimer)
         return;
     bool any = false;
     for (auto it = _sessions.cbegin(); it != _sessions.cend(); ++it) {
+        Tracked &t = *it.value();
+        if (!busy(t)) {
+            t.busySinceMs = 0;
+            continue;
+        }
+        // When the turn began, fixed for as long as it runs: msga's own turn
+        // from its send, else from when the session's status last changed (it
+        // turned busy, possibly before msga was looking).
+        if (t.busySinceMs == 0)
+            t.busySinceMs = t.sending && t.sendStartedMs > 0 ? t.sendStartedMs
+                            : t.info.statusSinceMs > 0 ? std::min(t.info.statusSinceMs, nowMs())
+                                                       : nowMs();
         // A /btw thread working shows nowhere: "typing" is the session's own.
-        if (!busy(*it.value()) || asThread(*it.value()))
+        if (asThread(t))
             continue;
         any = true;
-        _events.fire(EvTyping{ConversationId{it.key()}, roleUser(roleOf(*it.value()))});
+        _events.fire(EvTyping{ConversationId{it.key()}, roleUser(roleOf(t)), t.busySinceMs});
     }
     if (any && !_typingTimer->isActive())
         _typingTimer->start();

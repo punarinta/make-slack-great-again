@@ -9,11 +9,13 @@
 //   - userTyping() refreshes an existing typer instead of duplicating
 //   - userStopped() / clearAll() remove typers and re-hide when empty
 //   - a typer falls off automatically after the expiry window
+//   - an agent on a turn "is thinking (8m 58s)", its clock ticking
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QLabel>
 #include <QTest>
 
@@ -160,4 +162,33 @@ TEST_CASE("a typer expires after the silence window") {
     // so the purge timer fires.
     QTest::qWait(7500);
     CHECK(w.isHidden());
+}
+
+TEST_CASE("elapsed time is formatted like Claude Code's spinner") {
+    CHECK(TypingIndicatorWidget::formatElapsed(0) == "0s");
+    CHECK(TypingIndicatorWidget::formatElapsed(35'400) == "35s");
+    CHECK(TypingIndicatorWidget::formatElapsed(60'000) == "1m 0s");
+    CHECK(TypingIndicatorWidget::formatElapsed((8 * 60 + 58) * 1000) == "8m 58s");
+    CHECK(TypingIndicatorWidget::formatElapsed((3600 + 5 * 60 + 7) * 1000) == "1h 5m");
+    CHECK(TypingIndicatorWidget::formatElapsed(-500) == "0s"); // clock skew
+}
+
+TEST_CASE("an agent on a turn shows 'is thinking' with the elapsed time") {
+    TypingIndicatorWidget w;
+    const qint64          since = QDateTime::currentMSecsSinceEpoch() - (8 * 60 + 58) * 1000;
+    w.userTyping(UserId{"U1"}, "Engineer", false, since);
+
+    const QString text = labelText(w);
+    CHECK(text.contains("<b>Engineer</b> is thinking (8m 58s)"));
+    CHECK_FALSE(text.contains("typing"));
+}
+
+TEST_CASE("the thinking clock ticks without new typing events") {
+    TypingIndicatorWidget w;
+    w.userTyping(UserId{"U1"}, "Engineer", false, QDateTime::currentMSecsSinceEpoch() - 10'000);
+    CHECK(labelText(w).contains("(10s)"));
+
+    QTest::qWait(2200); // two 1 s ticks
+    CHECK_FALSE(labelText(w).contains("(10s)"));
+    CHECK(labelText(w).contains("s)"));
 }

@@ -244,8 +244,10 @@ void applyWorker(SessionInfo &job, const SessionInfo &worker) {
     job.running    = true;
     job.pid        = worker.pid;
     job.peerSocket = worker.peerSocket;
-    if (job.status != QLatin1String("blocked") && !worker.status.isEmpty())
-        job.status = worker.status;
+    if (job.status != QLatin1String("blocked") && !worker.status.isEmpty()) {
+        job.status        = worker.status;
+        job.statusSinceMs = worker.statusSinceMs; // since the turn began, say (pumpTyping)
+    }
     if (job.name.isEmpty())
         job.name = worker.name;
 }

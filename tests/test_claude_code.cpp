@@ -627,13 +627,15 @@ TEST_CASE("roster files parse into sessions", "[claude][roster]") {
     // it would only start a copy — and a busy worker makes it busy.
     auto done   = *job;
     auto worker = parseInteractiveSession(
-        R"({"pid":7,"sessionId":"S2","kind":"bg","status":"busy","entrypoint":"cli"})"
+        R"({"pid":7,"sessionId":"S2","kind":"bg","status":"busy","entrypoint":"cli",)"
+        R"("statusUpdatedAt":1790411125875})"
     );
     REQUIRE(worker);
     CHECK(worker->kind == SessionInfo::Kind::Background);
     applyWorker(done, *worker);
     CHECK(done.running);
     CHECK(statusIsBusy(done.status));
+    CHECK(done.statusSinceMs == 1790411125875); // the worker's status, the worker's time
 
     // A job stuck on "working" after its turn ended: the idle worker wins.
     auto stale = *parseBackgroundJob(R"({"state":"working","sessionId":"S2"})");

@@ -198,6 +198,7 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/ui/thread_panel/thread_panel.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/transcript_dialog/transcript_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/tray_icon_dialog/tray_icon_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/typing_indicator/typing_indicator.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/user_profile_card/user_profile_card.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/virtual_list/virtual_list_widget.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/workspace_icon_dialog/workspace_icon_dialog.cpp
@@ -479,10 +480,7 @@ add_msga_widget_test(test_app_dialog)
 
 add_msga_widget_test(test_summary_dialog)
 
-# Disabled: the "XXX is typing…" indicator feature is not in use right now.
-# Re-enabling needs src/ui/typing_indicator/typing_indicator.cpp in
-# MSGA_TEST_SUPPORT_SRCS.
-# add_msga_widget_test(test_typing_indicator)
+add_msga_widget_test(test_typing_indicator)
 
 add_msga_widget_test(test_search_widget)
 

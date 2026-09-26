@@ -2493,7 +2493,8 @@ void MainWindow::connectToSession() {
                     // confirmed will not be added (node-slack-sdk#1130); see the
                     // dead user_typing branch in socket_mode_realtime.cpp. The
                     // Claude Code backend does: a session working on a turn
-                    // "types" (Capabilities::typing).
+                    // "types" (Capabilities::typing), shown as thinking with the
+                    // turn's elapsed time (EvTyping::thinkingSinceMs).
                     //
                     // Show typing for the open conversation only.  Our own id can
                     // arrive here when we type from another client (we never echo
@@ -2501,7 +2502,10 @@ void MainWindow::connectToSession() {
                     if (_typingIndicator && ev->conv == _currentConvId) {
                         const bool isSelf = ev->user == _session->meUserId();
                         _typingIndicator->userTyping(
-                            ev->user, _session->userDisplayName(ev->user), isSelf
+                            ev->user,
+                            _session->userDisplayName(ev->user),
+                            isSelf,
+                            ev->thinkingSinceMs
                         );
                     }
                 } else if (const auto *ev = std::get_if<EvMessageNew>(&e)) {
