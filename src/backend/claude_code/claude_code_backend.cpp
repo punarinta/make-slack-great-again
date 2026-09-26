@@ -415,7 +415,16 @@ void Backend::attachOutputs(
 }
 
 UserId Backend::subagentAuthor(const TranscriptItem &item, const UserId &parent) const {
-    return _team.find(item.agentType) ? roleUser(item.agentType) : parent;
+    if (item.kind != TranscriptItem::Kind::Subagent)
+        return parent;
+    // A type that isn't a teammate ("claude", "Explore") is no teammate either
+    // — not the parent's role — unless its prompt names one (a session with no
+    // teammate types spawns them as "claude", see teammateNote).
+    if (_team.find(item.agentType))
+        return roleUser(item.agentType);
+    if (_team.find(item.agentRole))
+        return roleUser(item.agentRole);
+    return kAgentUser;
 }
 
 QStringList Backend::roleIds() const {
@@ -429,7 +438,7 @@ QStringList Backend::roleIds() const {
 
 QString Backend::titleOf(const Tracked &t) const {
     if (!t.info.name.isEmpty())
-        return teammateNames(t.info.name);
+        return teammateNames(withoutTeammateNote(t.info.name));
     if (!t.parser.aiTitle().isEmpty())
         return teammateNames(t.parser.aiTitle());
     if (!t.info.cwd.isEmpty())
@@ -912,7 +921,7 @@ void Backend::appendOutgoing(
         item.kind    = TranscriptItem::Kind::UserPrompt;
         item.ts      = o.ts;
         item.date    = o.date;
-        item.text    = o.threadRoot ? o.shown : o.text;
+        item.text    = o.shown.isEmpty() ? o.text : o.shown;
         Message m    = toMessage(item, _me, _me);
         m.threadRoot = o.threadRoot ? o.threadRoot : threadRoot;
         out.push_back(std::move(m));
@@ -1951,6 +1960,16 @@ void Backend::sendMessage(
     qint64 micros = nowMs() * 1000;
     for (const auto &m : shownMessages(*target))
         micros = std::max(micros, m.date + 1);
+    // How to spawn the teammates it mentions, which the session may not know
+    // as subagent types; the chat shows the message without it.
+    if (const QString note =
+            relayRoot ? QString()
+                      : teammateNote(text, [this](const QString &id) { return _team.find(id); });
+        !note.isEmpty()) {
+        if (shown.isEmpty())
+            shown = text;
+        text += note;
+    }
     target->outbox.append({text, microsToTs(micros), micros, relayRoot, shown});
     // A record timed before that (clocks, the same millisecond) would otherwise
     // be tie-broken onto the copy's very ts, and its prompt never seen landing.

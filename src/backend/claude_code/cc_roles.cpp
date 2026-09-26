@@ -109,6 +109,20 @@ QString shownDescription(const QString &id) {
 
 const QString kHeaderPrefix = QStringLiteral("# Your role: ");
 
+// Claude Code's own subagent types (2.1.282); a teammate by one of these
+// names would shadow it.
+const QStringList kTakenTypes = {
+    QStringLiteral("claude"),
+    QStringLiteral("general-purpose"),
+    QStringLiteral("explore"),
+    QStringLiteral("plan"),
+    QStringLiteral("statusline-setup"),
+    QStringLiteral("claude-code-guide"),
+};
+
+const QString kNoteOpen  = QStringLiteral("<msga-teammates>");
+const QString kNoteClose = QStringLiteral("</msga-teammates>");
+
 // The header line's name and id: "Data analyst (msga: data-analyst)" — or, as
 // sessions started before ids were written have it, a built-in's English
 // name alone ("Engineer").
@@ -155,20 +169,10 @@ QString appendedPrompt(const Role &role) {
 }
 
 QString subagentsJson(const std::vector<Role> &roles) {
-    // Claude Code's own subagent types (2.1.282); a teammate by one of these
-    // names would shadow it.
-    static const QStringList kTaken = {
-        QStringLiteral("claude"),
-        QStringLiteral("general-purpose"),
-        QStringLiteral("explore"),
-        QStringLiteral("plan"),
-        QStringLiteral("statusline-setup"),
-        QStringLiteral("claude-code-guide"),
-    };
     QJsonObject agents;
     for (const Role &r : roles) {
         const QString prompt = appendedPrompt(r);
-        if (prompt.isEmpty() || kTaken.contains(r.id))
+        if (prompt.isEmpty() || kTakenTypes.contains(r.id))
             continue;
         agents.insert(
             r.id,
@@ -188,6 +192,64 @@ QString subagentsJson(const std::vector<Role> &roles) {
     return agents.isEmpty()
                ? QString()
                : QString::fromUtf8(QJsonDocument(agents).toJson(QJsonDocument::Compact));
+}
+
+QString
+teammateNote(const QString &prompt, const std::function<const Role *(const QString &)> &find) {
+    static const QRegularExpression kMention(
+        QStringLiteral("(?<![\\w@/:.-])@claude:role:([a-z0-9-]+)(?![\\w-])")
+    );
+    QStringList seen;
+    QString     body;
+    for (auto it = kMention.globalMatch(prompt); it.hasNext();) {
+        const QString id = it.next().captured(1);
+        if (seen.contains(id))
+            continue;
+        seen << id;
+        const Role   *r      = find(id);
+        const QString append = r ? appendedPrompt(*r) : QString();
+        if (append.isEmpty())
+            continue;
+        const QString name = r->promptName.isEmpty() ? r->name : r->promptName;
+        body += kTakenTypes.contains(id)
+                    ? QStringLiteral(
+                          "\n@claude:role:%1 is the teammate %2. To spawn it, use the "
+                          "Agent tool with subagent_type \"claude\" and begin the "
+                          "prompt with its role, verbatim:\n"
+                      )
+                          .arg(id, name)
+                    : QStringLiteral(
+                          "\n@claude:role:%1 is the teammate %2. To spawn it, use the "
+                          "Agent tool with subagent_type \"%1\". If there is no such "
+                          "type, use subagent_type \"claude\" instead and begin the "
+                          "prompt with its role, verbatim:\n"
+                      )
+                          .arg(id, name);
+        body += append + QLatin1Char('\n');
+    }
+    if (body.isEmpty())
+        return {};
+    return QStringLiteral("\n\n") + kNoteOpen + body + kNoteClose;
+}
+
+QString withoutTeammateNote(const QString &prompt) {
+    const qsizetype open = prompt.lastIndexOf(QStringLiteral("\n\n") + kNoteOpen);
+    if (open < 0 || !prompt.trimmed().endsWith(kNoteClose))
+        return prompt;
+    return prompt.left(open);
+}
+
+QString roleInAgentPrompt(const QString &prompt) {
+    for (const QString &line : prompt.split(QLatin1Char('\n')))
+        if (line.startsWith(kHeaderPrefix))
+            if (const RoleMark m = parseHeaderLine(line.mid(kHeaderPrefix.size())); !m.id.isEmpty())
+                return m.id;
+    static const QRegularExpression kSelfWritten(
+        QStringLiteral("^\\s*Role:\\s*([A-Za-z][A-Za-z0-9-]*)\\b")
+    );
+    if (const auto m = kSelfWritten.match(prompt); m.hasMatch())
+        return m.captured(1).toLower();
+    return {};
 }
 
 RoleMark roleInSystemPrompt(const QJsonArray &systemPrompt) {

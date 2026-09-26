@@ -29,6 +29,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QString>
+#include <functional>
 #include <vector>
 
 namespace claude_code {
@@ -60,6 +61,21 @@ QString roleHeader(const QString &name, const QString &id);
 // For a subagent --agent's replacing the prompt is the point: every subagent
 // type works that way. An id Claude Code's own types already use is left out.
 QString subagentsJson(const std::vector<Role> &roles);
+
+// What msga adds to a prompt that mentions teammates ("@claude:role:x"): a
+// note saying how to spawn each, their prompts included. --agents alone isn't
+// enough — sessions started before it, and copies Claude Code makes on
+// resume, have no such subagent types, and Claude then spawns a plain
+// "claude" subagent with a self-written "Role: engineer" line. "" when
+// `prompt` mentions none that adds a prompt. `find` looks a role up by id.
+QString
+teammateNote(const QString &prompt, const std::function<const Role *(const QString &)> &find);
+// `prompt` without the note, as the transcript has it back.
+QString withoutTeammateNote(const QString &prompt);
+// The teammate a subagent was spawned as, from its Agent call's prompt: our
+// header line (a teammateNote fallback), or a leading "Role: engineer" line
+// Claude wrote itself; "" = none.
+QString roleInAgentPrompt(const QString &prompt);
 
 // The role named by our part of a recorded system prompt.
 struct RoleMark {

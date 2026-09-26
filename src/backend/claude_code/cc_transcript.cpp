@@ -190,12 +190,12 @@ void TranscriptParser::addPrompt(
     TranscriptItem item;
     item.kind = TranscriptItem::Kind::UserPrompt;
     item.ts   = nextTs(micros, &item.date);
-    item.text = text;
+    item.text = withoutTeammateNote(text); // msga's own addition to what was typed
     static const QRegularExpression kRelay(QStringLiteral(
         "^The user replied in the thread of subagent ([A-Za-z0-9_-]+)\\. Pass their message on "
         "to it verbatim with SendMessage \\(to: \"\\1\"\\):\\n\\n([\\s\\S]+)$"
     ));
-    if (const auto relay = kRelay.match(text); relay.hasMatch()) {
+    if (const auto relay = kRelay.match(item.text); relay.hasMatch()) {
         item.relayTo = relay.captured(1);
         item.text    = relay.captured(2);
     }
@@ -466,6 +466,7 @@ void TranscriptParser::handleLine(const QByteArray &line) {
                 item.ts        = nextTs(micros, &item.date);
                 item.text      = call.summary;
                 item.agentType = input.value(QLatin1String("subagent_type")).toString();
+                item.agentRole = roleInAgentPrompt(input.value(QLatin1String("prompt")).toString());
                 item.tools.push_back(std::move(call));
                 _items.push_back(std::move(item));
                 continue;

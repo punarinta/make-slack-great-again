@@ -346,6 +346,42 @@ TEST_CASE("a subagent item keeps the type it was started as", "[claude][transcri
     CHECK(p.items()[0].agentType == "designer");
 }
 
+TEST_CASE("a prompt mentioning teammates says how to spawn them", "[claude][roles]") {
+    const auto find = [](const QString &id) -> const Role * {
+        for (const Role &r : builtInRoles())
+            if (r.id == id)
+                return &r;
+        return nullptr;
+    };
+    const QString typed =
+        "ask one @claude:role:engineer to fix 1-4, another @claude:role:engineer for p. 11";
+    const QString note = teammateNote(typed, find);
+    // Once per teammate, its prompt included: a session started before the team
+    // were subagent types (or a copy of one) has no "engineer" type to pick.
+    CHECK(note.count("# Your role: Engineer (msga: engineer)") == 1);
+    CHECK(note.contains("subagent_type \"engineer\""));
+    CHECK(note.contains("subagent_type \"claude\""));
+    CHECK(withoutTeammateNote(typed + note) == typed);
+    CHECK(withoutTeammateNote(typed) == typed);
+    // The Generalist and unknown ids add nothing; nor does a bare word.
+    CHECK(teammateNote("ask @claude:agent and @claude:role:astronaut", find).isEmpty());
+    CHECK(teammateNote("ask an engineer", find).isEmpty());
+
+    // The prompt reads back as typed.
+    TranscriptParser p;
+    p.feed(prompt(typed + note, "2026-09-25T10:00:00.000Z"));
+    REQUIRE(p.items().size() == 1);
+    CHECK(p.items()[0].text == typed);
+
+    // A subagent's teammate, from its prompt: our header, or Claude's own line.
+    CHECK(
+        roleInAgentPrompt("# Your role: Engineer (msga: engineer)\nYou are…\n\nFix it.") ==
+        "engineer"
+    );
+    CHECK(roleInAgentPrompt("Role: engineer. Repo: msga …") == "engineer");
+    CHECK(roleInAgentPrompt("Fix the role: engineer bug").isEmpty());
+}
+
 TEST_CASE("a reply relayed to a subagent reads back as the reply alone", "[claude][transcript]") {
     TranscriptParser p;
     const QString    relay = subagentReplyPrompt("ab0ae6eeb1648c1f4", "What codeword?\n\nJust it.");
@@ -2417,6 +2453,55 @@ TEST_CASE("a subagent started as a teammate speaks as that teammate", "[claude][
     CHECK(thread[0].messages[1].author == generalist); // the prompt: the session wrote it
     CHECK(thread[0].messages[2].author == designer);
     CHECK(thread[0].messages[2].parentUserId == designer);
+}
+
+TEST_CASE("a plain subagent isn't taken for its session's teammate", "[claude][backend][thread]") {
+    // Seen live 2026-09-26: a Researcher session with no teammate types asked
+    // for two @Engineers spawned subagent_type "claude" with a self-written
+    // "Role: engineer." prompt — and both threads read as the Researcher.
+    FakeClaudeHome home;
+    home.writeSession("idle");
+    const QByteArray snapshot = line(
+        {{"type", "attachment"},
+         {"timestamp", "2026-09-25T10:00:00.500Z"},
+         {"attachment",
+          QJsonObject{
+              {"type", "prompt_snapshot"},
+              {"systemPrompt", QJsonArray{"# Your role: Researcher (msga: researcher)\nDig."}}
+          }}}
+    );
+    home.append(
+        prompt("ask engineers", "2026-09-25T10:00:00.000Z") + snapshot +
+        toolUse(
+            "a1",
+            "Agent",
+            {{"description", "Fix it"},
+             {"subagent_type", "claude"},
+             {"prompt", "Role: engineer. Fix it."}},
+            "2026-09-25T10:00:01.000Z"
+        ) +
+        toolResult("a1", "2026-09-25T10:00:02.000Z", false, "agent1") +
+        toolUse(
+            "a2",
+            "Agent",
+            {{"description", "Look around"}, {"subagent_type", "Explore"}, {"prompt", "Look."}},
+            "2026-09-25T10:00:03.000Z"
+        ) +
+        toolResult("a2", "2026-09-25T10:00:04.000Z", false, "agent2") +
+        assistantText("Started both.", "2026-09-25T10:00:05.000Z") +
+        turnEnd("2026-09-25T10:00:06.000Z")
+    );
+
+    claude_code::Backend backend(Credentials{});
+    backend.connectRealtime();
+    const auto page = collect(backend.loadHistory(ConversationId{"S1"}, std::nullopt));
+    REQUIRE(page.size() == 1);
+    QHash<QString, UserId> byText;
+    for (const auto &m : page[0].messages)
+        byText.insert(m.text.text, m.author);
+    CHECK(byText.value("Started both.") == UserId{"claude:role:researcher"});
+    CHECK(byText.value("Subagent: Fix it") == UserId{"claude:role:engineer"});
+    CHECK(byText.value("Subagent: Look around") == UserId{"claude:agent"});
 }
 
 TEST_CASE(
