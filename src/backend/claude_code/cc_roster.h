@@ -48,6 +48,9 @@ struct SessionInfo {
     QString needs;             // background: what it waits on the user for
     QString transcriptPath;    // background state names it; else found by id
     QString peerSocket;        // a live process's messaging socket (sessions/<pid>.json)
+    // Background: the live worker's own status (idle/busy/shell), which `status`
+    // shows unless the job reads "blocked" — "" = no worker.
+    QString workerStatus;
     bool    operator==(const SessionInfo &) const = default;
 };
 

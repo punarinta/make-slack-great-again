@@ -233,6 +233,7 @@ private:
     void                  announceChanged(Tracked &t);
     QString               readOnlyReason(const Tracked &t) const;
     bool                  busy(const Tracked &t) const;
+    bool                  working(const Tracked &t) const; // busy, msga's own turn aside
     bool                  needsUser(const Tracked &t) const;
     const TranscriptItem *deletableItem(Tracked &t, const Ts &ts);
     int                   subagentReplyCount(const Tracked &t, const QString &agentId, Ts *latest);

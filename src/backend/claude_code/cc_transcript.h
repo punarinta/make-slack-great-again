@@ -80,10 +80,12 @@ public:
 
     // True while the last turn has not ended (no turn_duration record after the
     // latest prompt) — the session is, or was when it stopped, mid-turn.
-    bool turnOpen() const { return _turnOpen; }
+    bool   turnOpen() const { return _turnOpen; }
+    // Epoch micros of the record that opened the last turn; 0 = none yet.
+    qint64 turnStartedAt() const { return _turnStartedAt; }
     // Items from here on get a ts after `micros` — taken by a message msga
     // shows of its own (a prompt on its way), which no item may collide with.
-    void reserveTs(qint64 micros) { _lastMicros = std::max(_lastMicros, micros); }
+    void   reserveTs(qint64 micros) { _lastMicros = std::max(_lastMicros, micros); }
 
     // The session's own title, when Claude Code generated one ("ai-title").
     const QString &aiTitle() const { return _aiTitle; }
@@ -114,6 +116,7 @@ private:
     void closeToolGroup();
     void resolvePendingText(TranscriptItem::State state);
     void endTurn();
+    void openTurn(qint64 micros);
     // A "<task-notification>…" the session was sent: its task(s) stopped at `micros`.
     void noteTaskNotification(const QString &text, qint64 micros);
     // What a command Claude Code runs itself printed: an answer, and the turn's end.
@@ -134,6 +137,7 @@ private:
     int                         _pendingText   = -1; // index of the Pending text, -1 when none
     int           _commandOutput = -1; // index of the latest command output, -1 when none
     bool          _turnOpen      = false;
+    qint64        _turnStartedAt = 0;
     QString       _aiTitle;
     QString       _version;
     QString       _model;

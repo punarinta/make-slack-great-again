@@ -185,6 +185,12 @@ void TranscriptParser::endTurn() {
     _turnOpen = false;
 }
 
+void TranscriptParser::openTurn(qint64 micros) {
+    if (!_turnOpen)
+        _turnStartedAt = micros; // a prompt joining a turn under way doesn't restart it
+    _turnOpen = true;
+}
+
 void TranscriptParser::addPrompt(
     const QString &text, qint64 micros, const QStringList &images, const QStringList &imageNames
 ) {
@@ -208,7 +214,7 @@ void TranscriptParser::addPrompt(
         item.imageNames << QFileInfo(item.images[item.imageNames.size()]).fileName();
     item.uuid = _lineUuid;
     _items.push_back(std::move(item));
-    _turnOpen = true;
+    openTurn(micros);
 }
 
 void TranscriptParser::addCommandOutput(const QString &output, qint64 micros) {
@@ -466,7 +472,7 @@ void TranscriptParser::handleLine(const QByteArray &line) {
             item.uuid  = _lineUuid;
             _items.push_back(std::move(item));
             _pendingText = int(_items.size()) - 1;
-            _turnOpen    = true;
+            openTurn(micros);
         } else if (bt == QLatin1String("tool_use")) {
             // Claude kept working after its text, so that text was an update.
             resolvePendingText(TranscriptItem::State::Progress);
@@ -475,7 +481,7 @@ void TranscriptParser::handleLine(const QByteArray &line) {
             call.name               = b.value(QLatin1String("name")).toString();
             const QJsonObject input = b.value(QLatin1String("input")).toObject();
             call.summary            = summarizeToolInput(call.name, input);
-            _turnOpen               = true;
+            openTurn(micros);
             if (call.name == QLatin1String("SubagentHandback")) {
                 // A subagent's report to its session: its answer, in its thread.
                 const QString report = input.value(QLatin1String("message")).toString().trimmed();

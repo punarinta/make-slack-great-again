@@ -241,9 +241,10 @@ void applyWorker(SessionInfo &job, const SessionInfo &worker) {
     // "done", and resuming it then only starts a copy: it counts as running.
     // The worker's status is the live one: a job can keep reading "working"
     // long after its last turn ended (a stale inFlight.queued, seen 2026-09-25).
-    job.running    = true;
-    job.pid        = worker.pid;
-    job.peerSocket = worker.peerSocket;
+    job.running      = true;
+    job.pid          = worker.pid;
+    job.peerSocket   = worker.peerSocket;
+    job.workerStatus = worker.status;
     if (job.status != QLatin1String("blocked") && !worker.status.isEmpty()) {
         job.status        = worker.status;
         job.statusSinceMs = worker.statusSinceMs; // since the turn began, say (pumpTyping)

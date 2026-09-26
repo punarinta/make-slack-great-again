@@ -1332,6 +1332,103 @@ TEST_CASE(
     }));
 }
 
+TEST_CASE(
+    "a reply to a background job's question works though the job still reads \"blocked\"",
+    "[claude][backend][bg]"
+) {
+    // Seen live 2026-09-26: a turn ending on a question left the job "blocked",
+    // and the reply's turn never flipped it back to "working" — no dot, no
+    // "thinking" for two minutes of work. The worker read "busy" throughout
+    // (a subagent of its was running).
+    FakeClaudeHome home;
+    home.append(
+        prompt("look for duplicates", "2026-09-25T10:00:00.000Z") +
+        assistantText("Copy it to master?", "2026-09-25T10:00:01.000Z") +
+        turnEnd("2026-09-25T10:00:02.000Z")
+    );
+    QDir(home.dir.path()).mkpath("jobs/S1");
+    {
+        QFile f(home.dir.path() + "/jobs/S1/state.json");
+        REQUIRE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"state", "blocked"},
+                        {"detail", "Copy it to master?"},
+                        {"updatedAt", "2026-09-25T10:00:02.500Z"},
+                        {"sessionId", "S1"},
+                        {"cwd", "/src/app"},
+                        {"name", "duplicates"},
+                        {"linkScanPath", home.transcript},
+                    }
+        )
+                    .toJson());
+    }
+    const auto writeWorker = [&](const QString &status) {
+        QFile f(home.dir.path() + "/sessions/1.json");
+        REQUIRE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(
+                    QJsonObject{
+                        {"pid", QCoreApplication::applicationPid()}, // alive
+                        {"sessionId", "S1"},
+                        {"cwd", "/src/app"},
+                        {"kind", "bg"},
+                        {"status", status},
+                        {"entrypoint", "cli"},
+                    }
+        )
+                    .toJson());
+    };
+    writeWorker("busy");
+    claude_code::Backend backend(Credentials{});
+    std::vector<Event>   events;
+    rpl::lifetime        lt;
+    backend.events() | rpl::on_next([&](Event e) { events.push_back(std::move(e)); }, lt);
+    backend.connectRealtime();
+    const auto peer = [&] {
+        const auto users = collect(backend.loadUsers());
+        const auto it    = std::find_if(users[0].begin(), users[0].end(), [](const User &u) {
+            return u.id == UserId{"claude:S1"};
+        });
+        REQUIRE(it != users[0].end());
+        return *it;
+    };
+    const auto active = [&]() -> bool {
+        return collect(backend.loadPresence(UserId{"claude:S1"}))[0];
+    };
+    const auto typing = [&]() -> std::optional<EvTyping> {
+        for (auto it = events.rbegin(); it != events.rend(); ++it)
+            if (const auto *t = std::get_if<EvTyping>(&*it); t && !t->threadRoot)
+                return *t;
+        return std::nullopt;
+    };
+
+    // The question waits: no dot, whatever the busy worker says.
+    CHECK_FALSE(peer().isActive);
+    CHECK(peer().statusText == "Waiting for you");
+
+    // The reply's turn is under way: working, thinking since its prompt.
+    home.append(
+        prompt("copy changes to master", "2026-09-25T10:05:00.000Z") +
+        toolUse("b1", "Bash", {{"command", "git apply"}}, "2026-09-25T10:05:01.000Z")
+    );
+    REQUIRE(QTest::qWaitFor(active, 5000));
+    CHECK(peer().statusText == "Working");
+    REQUIRE(QTest::qWaitFor([&] { return typing().has_value(); }, 5000));
+    CHECK(typing()->thinkingSinceMs == 1790330700000);
+
+    // A worker gone idle with the turn left open (interrupted): not working.
+    writeWorker("idle");
+    REQUIRE(QTest::qWaitFor([&] { return !active(); }, 5000));
+    writeWorker("busy");
+    REQUIRE(QTest::qWaitFor(active, 5000));
+
+    // The turn ends: back to waiting.
+    home.append(
+        assistantText("Copied.", "2026-09-25T10:06:00.000Z") + turnEnd("2026-09-25T10:06:01.000Z")
+    );
+    REQUIRE(QTest::qWaitFor([&] { return !active(); }, 5000));
+}
+
 #if !defined(Q_OS_WIN)
 // ── Team roles ────────────────────────────────────────────────────────────────
 

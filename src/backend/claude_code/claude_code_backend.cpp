@@ -372,11 +372,24 @@ bool Backend::busy(const Tracked &t) const {
         return false; // the worker is on its way out
     if (t.sending)
         return true; // msga's turn: from launching it until its end is written
-    return t.info.running && statusIsBusy(t.info.status);
+    return working(t);
+}
+
+bool Backend::working(const Tracked &t) const {
+    if (!t.info.running)
+        return false;
+    if (statusIsBusy(t.info.status))
+        return true;
+    // A turn that ends on a question leaves the job "blocked", and the reply's
+    // turn doesn't flip it back to "working" (seen 2026-09-26: blocked for 20
+    // minutes over two turns, nothing in between). A turn still open whose
+    // records are newer than that status, its worker busy, is under way.
+    return statusIsBusy(t.info.workerStatus) && t.parser.turnOpen() &&
+           t.parser.lastActivity() / 1000 > t.info.statusSinceMs;
 }
 
 bool Backend::needsUser(const Tracked &t) const {
-    return !t.sending && t.info.running && statusNeedsUser(t.info.status);
+    return !t.sending && t.info.running && statusNeedsUser(t.info.status) && !working(t);
 }
 
 QString Backend::roleOf(const Tracked &t) const {
@@ -1143,7 +1156,7 @@ void Backend::typeLive(Tracked &t) {
             // up): the terminal UI isn't what it was, or `attach` can't run
             // here. The old way only, for a while: each miss costs a message
             // its wait for the prompt box.
-            const bool idle = !(t->info.running && statusIsBusy(t->info.status));
+            const bool idle = !working(*t);
             if (idle && ++_typeLiveMisses >= 3) {
                 _typeLiveMisses     = 0;
                 _typeLiveOffUntilMs = nowMs() + 10 * 60'000;
@@ -1447,18 +1460,20 @@ void Backend::refresh() {
         t.wasLive = live;
 
         // msga's turn is over once its end is in the transcript — or, failing
-        // that, once the session has sat idle for a while after our prompt.
+        // that, once the session has sat idle and silent for a while since our
+        // prompt landed (its last record, not the landing: a turn goes on
+        // writing long after its prompt).
         if (t.sending) {
-            const bool ended =
+            const qint64 quietSinceMs = std::max(t.promptLandedMs, t.parser.lastActivity() / 1000);
+            const bool   ended =
                 t.promptLanded &&
-                (!t.parser.turnOpen() || (!(t.info.running && statusIsBusy(t.info.status)) &&
-                                          nowMs() - t.promptLandedMs > kQuietTurnMs));
+                (!t.parser.turnOpen() || (!working(t) && nowMs() - quietSinceMs > kQuietTurnMs));
             if (ended) {
                 t.sending = false;
                 diffAndAnnounce(t); // a pending last answer becomes visible now
             } else if (
                 !t.promptLanded && !t.launching && nowMs() - t.sendStartedMs > kLaunchTimeoutMs &&
-                !(t.handedOver && t.info.running && statusIsBusy(t.info.status))
+                !(t.handedOver && working(t))
             ) {
                 t.sending = false;
                 failSends(
@@ -1531,11 +1546,16 @@ void Backend::pumpTyping() {
         }
         // When the turn began, fixed for as long as it runs: msga's own turn
         // from its send, else from when the session's status last changed (it
-        // turned busy, possibly before msga was looking).
-        if (t.busySinceMs == 0)
-            t.busySinceMs = t.sending && t.sendStartedMs > 0 ? t.sendStartedMs
-                            : t.info.statusSinceMs > 0 ? std::min(t.info.statusSinceMs, nowMs())
-                                                       : nowMs();
+        // turned busy, possibly before msga was looking) — or, busy under a
+        // stale "blocked" (working), from the turn's first record.
+        if (t.busySinceMs == 0) {
+            const qint64 statusSince = statusIsBusy(t.info.status)
+                                           ? t.info.statusSinceMs
+                                           : t.parser.turnStartedAt() / 1000;
+            t.busySinceMs            = t.sending && t.sendStartedMs > 0 ? t.sendStartedMs
+                                       : statusSince > 0 ? std::min(statusSince, nowMs())
+                                                         : nowMs();
+        }
         // A /btw thread working shows nowhere: "typing" is the session's own.
         if (asThread(t))
             continue;
