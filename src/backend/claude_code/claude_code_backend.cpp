@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "claude_code_backend.h"
+#include "cc_attach.h"
 #include "cc_catalog.h"
 #include "cc_outputs.h"
 #include "cc_roles.h"
@@ -91,6 +92,35 @@ QString knownSessionsPath() {
 bool awaitsApproval(const SessionInfo &s) {
     return s.kind == SessionInfo::Kind::Background && s.needs.startsWith(QLatin1String("approve "));
 }
+
+// Whether the question on a session's screen is the one its `needs` names
+// ("approve Bash: rm -rf build"): the screen shows the command wrapped and
+// framed ("│ rm -rf …"), so both are compared without spaces or frames — the
+// command's start, or for a file (Edit, Write) its name, which may be shown
+// relative to the folder.
+bool questionIsFor(const QString &needs, const PermissionQuestion &q) {
+    const auto squash = [](const QString &s) {
+        QString out;
+        for (const QChar c : s)
+            if (!c.isSpace() && c != QChar(0x2502)) // │
+                out.append(c);
+        return out;
+    };
+    const QString detail = needs.mid(int(qstrlen("approve ")));
+    const int     colon  = detail.indexOf(QLatin1String(": "));
+    const QString tool   = colon < 0 ? detail : detail.left(colon);
+    const QString arg    = colon < 0 ? QString() : detail.mid(colon + 2).trimmed();
+    const QString text   = squash(q.text);
+    if (arg.isEmpty())
+        return !tool.isEmpty() && text.contains(tool);
+    if (text.contains(squash(arg).left(40)))
+        return true;
+    const QString file = QFileInfo(arg).fileName();
+    return QDir::isAbsolutePath(arg) && !file.isEmpty() && text.contains(squash(file));
+}
+
+constexpr int kApprovalReads   = 3;     // tries at reading a question's options
+constexpr int kApprovalRetryMs = 4'000; // between them
 
 // A transcript's size, or -1 when there is none (yet).
 qint64 sizeOf(const QString &path) {
@@ -183,6 +213,12 @@ struct Backend::Tracked {
     qint64                  typeLiveAfterMs = 0; // not typed live before this (see kTypeRetryMs)
     std::function<void(bool ok, QString err)> inFlight; // a /btw's done(), until its root lands
     QPointer<AttachInput>                     typing;   // typeLive's, while it runs
+    // The permission question it waits on (awaitsApproval), as read off its
+    // screen: the `needs` it was read for, and the options it offers.
+    QString                                   approvalNeeds;
+    std::vector<PermissionQuestion::Option>   approvalOptions;
+    int                                       approvalReads = 0;
+    QPointer<AttachAnswer>                    answering; // reading or answering it
     // A session branched off another (a /btw, or `--fork-session` anywhere):
     // shown as a thread in its parent rather than in the list (detectForks).
     QString forkOf;   // the parent's conversation id; "" = a session of its own
@@ -227,6 +263,7 @@ Capabilities Backend::capabilities() const {
     // nothing is writing to it (canDeleteMessage).
     c.deleteMessage       = true;
     c.deleteAnyMessage    = true;
+    c.botButtons          = true; // a permission question's options (pressBotButton)
     return c;
 }
 
@@ -496,13 +533,6 @@ QString Backend::readOnlyReason(const Tracked &t) const {
             "it here."
         );
     }
-    if (awaitsApproval(t.info))
-        return QCoreApplication::translate(
-                   "claude_code",
-                   "Claude is waiting for your approval, which only the terminal can give: "
-                   "run “claude attach %1”."
-        )
-            .arg(t.info.sessionId.left(8));
     if (_creds.claudePath.isEmpty())
         return QCoreApplication::translate(
             "claude_code",
@@ -519,9 +549,7 @@ User Backend::assistantUser(const Tracked &t) const {
     u.avatarUrl   = roleFor(t).avatarUrl;
     u.title       = homeRelative(t.info.cwd); // shown on the profile card
     u.isActive    = busy(t);
-    // Not working, yet not writable from here (open in a terminal, waiting on
-    // an approval only the terminal can give): the yellow dot.
-    u.unavailable = !u.isActive && !readOnlyReason(t).isEmpty();
+    u.unavailable = !u.isActive && unavailable(t);
     if (needsUser(t))
         u.statusText = QCoreApplication::translate("claude_code", "Waiting for you");
     else if (busy(t))
@@ -529,6 +557,12 @@ User Backend::assistantUser(const Tracked &t) const {
     else if (t.info.running && statusHasShell(t.info.status))
         u.statusText = QCoreApplication::translate("claude_code", "Running a background command");
     return u;
+}
+
+// Not working, yet waiting on something besides a message: open in a
+// terminal, or on a permission question (messages wait for its answer).
+bool Backend::unavailable(const Tracked &t) const {
+    return awaitsApproval(t.info) || !readOnlyReason(t).isEmpty();
 }
 
 bool Backend::roleBusy(const QString &role) const {
@@ -544,8 +578,7 @@ bool Backend::roleUnavailable(const QString &role) const {
     if (roleBusy(role))
         return false;
     for (auto it = _sessions.cbegin(); it != _sessions.cend(); ++it)
-        if (!asThread(*it.value()) && roleOf(*it.value()) == role &&
-            !readOnlyReason(*it.value()).isEmpty())
+        if (!asThread(*it.value()) && roleOf(*it.value()) == role && unavailable(*it.value()))
             return true;
     return false;
 }
@@ -631,7 +664,7 @@ Conversation Backend::conversationFor(const Tracked &t) const {
     c.agentRole      = roleOf(t);
     // Only while it still waits for that answer: once msga sends one, or the
     // reply typed in a terminal is under way, it answers nothing any more.
-    if (needsUser(t) && c.readOnlyReason.isEmpty())
+    if (needsUser(t) && c.readOnlyReason.isEmpty() && !awaitsApproval(t.info))
         c.suggestedReply = t.info.suggestedReply;
     // Unread = what Claude said since the last read; only its answers (and
     // "waiting for you") count toward the red counter, like the live path.
@@ -818,6 +851,40 @@ std::vector<Message> Backend::visibleMessages(Tracked &t) {
                       .arg(t.info.needs.mid(int(qstrlen("approve "))));
         m.rawText = text;
         m.text    = {text, {}};
+        if (!terminalWaits) {
+            // Its options, once read off the screen (readApproval), as buttons;
+            // until then — or if they can't be — the way to answer it by hand.
+            const bool read = t.approvalNeeds == t.info.needs && !t.approvalOptions.empty();
+            if (read) {
+                Block section;
+                section.typeStr = QStringLiteral("section");
+                section.text    = m.text;
+                Block actions;
+                actions.typeStr = QStringLiteral("actions");
+                for (const auto &o : t.approvalOptions) {
+                    BotButton b;
+                    b.text     = o.label;
+                    b.blockId  = QStringLiteral("approval");
+                    b.actionId = QStringLiteral("option:%1").arg(o.number);
+                    b.value    = o.label;
+                    if (o.label.startsWith(QLatin1String("Yes")))
+                        b.style = QStringLiteral("primary");
+                    else if (o.label.startsWith(QLatin1String("No")))
+                        b.style = QStringLiteral("danger");
+                    actions.buttons.push_back(std::move(b));
+                }
+                m.blocks = {std::move(section), std::move(actions)};
+                m.botId  = assistant.value;
+            } else if (!t.answering) {
+                const QString hint =
+                    QCoreApplication::translate(
+                        "claude_code", "Run “claude attach %1” in a terminal to answer it."
+                    )
+                        .arg(t.info.sessionId.left(8));
+                m.rawText += QLatin1Char('\n') + hint;
+                m.text = {m.rawText, {}};
+            }
+        }
         out.push_back(std::move(m));
     }
 
@@ -1183,6 +1250,126 @@ void Backend::typeLive(Tracked &t) {
     scheduleRefresh(); // the dot and "typing" follow at once
 }
 
+void Backend::readApproval(Tracked &t) {
+    if (!awaitsApproval(t.info) || !t.info.running) {
+        t.approvalNeeds.clear();
+        t.approvalOptions.clear();
+        t.approvalReads = 0;
+        return;
+    }
+    if (t.answering)
+        return;
+    if (t.approvalNeeds != t.info.needs) {
+        t.approvalNeeds = t.info.needs;
+        t.approvalOptions.clear();
+        t.approvalReads = 0;
+    }
+    if (!t.approvalOptions.empty() || t.approvalReads >= kApprovalReads)
+        return;
+    ++t.approvalReads;
+    const QString convId = t.convId;
+    const QString needs  = t.info.needs;
+    QString       program;
+    QStringList   argv;
+    _launcher->attachCommand(t.info.sessionId, program, argv);
+    t.answering = AttachAnswer::read(
+        program,
+        argv,
+        t.info.cwd,
+        [needs](const PermissionQuestion &q) { return questionIsFor(needs, q); },
+        [this, convId, needs](
+            AttachAnswer::Outcome outcome, std::optional<PermissionQuestion> q, QString detail
+        ) {
+            Tracked *t = find(convId);
+            if (!t)
+                return;
+            t->answering.clear(); // it lingers a moment after `attach` is told to end
+            if (t->approvalNeeds != needs)
+                return;
+            if (outcome == AttachAnswer::Outcome::Done && q) {
+                t->approvalOptions = q->options;
+            } else {
+                qInfo(
+                    "claude code: couldn't read %s's question (%s)",
+                    qPrintable(convId),
+                    qPrintable(detail)
+                );
+                if (t->approvalReads < kApprovalReads)
+                    QTimer::singleShot(kApprovalRetryMs, _ctx, [this] { scheduleRefresh(); });
+            }
+            diffAndAnnounce(*t); // the buttons, or the hint
+        },
+        _ctx
+    );
+    diffAndAnnounce(t); // no hint while it's being read
+}
+
+void Backend::pressBotButton(
+    ConversationId conv,
+    Ts,
+    std::optional<Ts>,
+    QString,
+    BotButton                                 button,
+    std::function<void(bool ok, QString err)> done
+) {
+    const auto fail = [&](const QString &why) {
+        if (done)
+            done(false, why);
+    };
+    Tracked *t = find(conv.value);
+    if (!t || !awaitsApproval(t->info) || t->approvalNeeds != t->info.needs)
+        return fail(
+            QCoreApplication::translate(
+                "claude_code", "Claude isn't waiting for that approval any more."
+            )
+        );
+    static const QRegularExpression kOption(QStringLiteral("^option:(\\d+)$"));
+    const auto                      m = kOption.match(button.actionId);
+    if (!m.hasMatch())
+        return fail(QStringLiteral("unknown button"));
+    if (t->answering)
+        return fail(QCoreApplication::translate("claude_code", "The answer is on its way."));
+    const QString convId = t->convId;
+    const QString needs  = t->info.needs;
+    QString       program;
+    QStringList   argv;
+    _launcher->attachCommand(t->info.sessionId, program, argv);
+    t->answering = AttachAnswer::choose(
+        program,
+        argv,
+        t->info.cwd,
+        [needs](const PermissionQuestion &q) { return questionIsFor(needs, q); },
+        m.captured(1).toInt(),
+        button.value,
+        [this, convId, done](AttachAnswer::Outcome outcome, auto, QString detail) {
+            Tracked *t = find(convId);
+            if (t)
+                t->answering.clear();
+            if (outcome == AttachAnswer::Outcome::Done) {
+                if (t) {
+                    // Answered: no buttons for it any more, whatever the job's
+                    // state still says until Claude Code rewrites it.
+                    t->approvalOptions.clear();
+                    t->approvalReads = kApprovalReads;
+                    diffAndAnnounce(*t);
+                }
+                scheduleRefresh();
+                if (done)
+                    done(true, {});
+                return;
+            }
+            qWarning(
+                "claude code: answering %s's question failed: %s",
+                qPrintable(convId),
+                qPrintable(detail)
+            );
+            if (done)
+                done(false, detail);
+        },
+        _ctx
+    );
+}
+
 void Backend::dispatch(Tracked &t) {
     if (t.outbox.isEmpty() || t.stopping || t.launching)
         return;
@@ -1493,6 +1680,7 @@ void Backend::refresh() {
             }
         }
         dispatch(t); // the next queued message, if the turn is over
+        readApproval(t);
 
         if (asThread(t)) {
             // A thread, not a conversation — one listed before it was known

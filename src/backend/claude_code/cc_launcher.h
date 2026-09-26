@@ -99,6 +99,10 @@ public:
         std::function<void(AttachInput::Outcome, QString)> done
     );
 
+    // `claude attach <short>` for background session `sessionId`, as the
+    // program to start and its arguments (for AttachInput, AttachAnswer).
+    void attachCommand(const QString &sessionId, QString &program, QStringList &argv) const;
+
     // A new background session branched off session `sessionId` — a copy of its
     // conversation so far — whose first turn is `prompt`. The original isn't
     // touched: no stop, and its worker (or terminal) goes on as it was.

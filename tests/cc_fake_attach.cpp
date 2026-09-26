@@ -7,7 +7,9 @@
 //
 // Driven by files in $CLAUDE_CONFIG_DIR:
 //   attach-mode   "question": a permission question has the keyboard instead
-//                 of the prompt box (keys then go to question-keys.log)
+//                 of the prompt box (keys then go to question-keys.log): ↑/↓
+//                 move "❯" over its options, Enter picks one — written to
+//                 answered.log — and the question goes (attach-mode emptied)
 //   typed.log     every prompt submitted, one per line ("\n" as "\\n")
 // A spinner redraws all the time, as Claude Code's does mid-turn.
 #include <csignal>
@@ -26,6 +28,9 @@ std::string home;
 std::string transcript;
 std::string input;
 int         spin = 0;
+int         pick = 1; // the question's option "❯" is on
+
+const char *const kOptions[] = {"Yes", "Yes, and don't ask again for rm commands", "No"};
 
 std::string readFile(const std::string &path) {
     std::ifstream     f(path);
@@ -55,12 +60,15 @@ void draw() {
         rule += "\xe2\x94\x80"; // ─
     if (question()) {
         s += "\x1b[10;1H" + rule;
-        s += "\x1b[11;1H Bash command \xc2\xb7 from the general-purpose agent";
+        s += "\x1b[11;1H Bash command";
+        s += "\x1b[12;1H   \xe2\x94\x82 rm -rf build"; // │ rm -rf build
         s += "\x1b[13;1H Do you want to proceed?";
-        s += "\x1b[14;1H \xe2\x9d\xaf 1. Yes";
-        s += "\x1b[15;1H   2. No";
-        s += "\x1b[17;1H Esc to cancel \xc2\xb7 Tab to amend";
-        s += "\x1b[14;2H\x1b[?25h";
+        for (int i = 0; i < 3; ++i)
+            s += "\x1b[" + std::to_string(14 + i) + ";1H " +
+                 (i + 1 == pick ? "\xe2\x9d\xaf " : "  ") + std::to_string(i + 1) + ". " +
+                 kOptions[i];
+        s += "\x1b[18;1H Esc to cancel \xc2\xb7 Tab to amend";
+        s += "\x1b[" + std::to_string(13 + pick) + ";2H\x1b[?25h";
         out(s);
         return;
     }
@@ -163,7 +171,19 @@ int main(int argc, char **argv) {
         pending.append(buf, static_cast<size_t>(n));
         if (question()) {
             std::ofstream(home + "/question-keys.log", std::ios::app) << pending;
+            for (size_t at = 0; at < pending.size(); ++at) {
+                if (pending.compare(at, 3, "\x1b[A") == 0)
+                    pick = pick > 1 ? pick - 1 : pick;
+                else if (pending.compare(at, 3, "\x1b[B") == 0)
+                    pick = pick < 3 ? pick + 1 : pick;
+                else if (pending[at] == '\r') {
+                    std::ofstream(home + "/answered.log", std::ios::app) << pick << "\n";
+                    std::ofstream(home + "/attach-mode", std::ios::trunc);
+                    pick = 1;
+                }
+            }
             pending.clear();
+            draw();
             continue;
         }
         for (;;) {

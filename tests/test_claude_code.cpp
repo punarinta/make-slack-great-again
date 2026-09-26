@@ -2428,6 +2428,50 @@ TEST_CASE("the terminal screen shows when Claude Code's prompt takes typing", "[
         );
         CHECK_FALSE(findPromptBox(s));
         CHECK_FALSE(readyForInput(s));
+        const auto q = findPermissionQuestion(s);
+        REQUIRE(q);
+        REQUIRE(q->options.size() == 2);
+        CHECK(q->options[0].label == "Yes");
+        CHECK(q->options[1].label == "No");
+        CHECK(q->selected == 1);
+        CHECK(q->text == "Bash command · from the general-purpose agent Do you want to proceed?");
+    }
+    {
+        // As Claude Code 2.1.283 drew one for a background session (seen through
+        // `claude attach`, 2026-09-26): the command framed and wrapped, a note,
+        // the auto-deny countdown — and "❯" moved down to the second option.
+        VtScreen s(50, 120);
+        s.feed(
+            "\x1b[H\x1b[2J\x1b[25;1H● Running 1 shell command…\x1b[31;1H" + rule(120) +
+            "\x1b[32;1H Bash command"
+            "\x1b[34;1H   │ rm -rf /home/robin/.claude/jobs/b7b46dde/tmp/ccfg"
+            "\x1b[35;1H   │ /home/robin/src/msga/build-tests; git -C"
+            "\x1b[36;1H   │ /home/robin/src/msga status --short"
+            "\x1b[37;1H   Run shell command"
+            "\x1b[39;1H │ Dangerous rm operation on working directory or its ancestor:"
+            "\x1b[41;1H ⚠ Claude Code will automatically deny this request in 0:14"
+            "\x1b[44;1H Do you want to proceed?\x1b[45;1H   1. Yes\x1b[46;1H ❯ 2. No"
+            "\x1b[48;1H Esc to cancel · Tab to amend\x1b[46;2H"
+        );
+        const auto q = findPermissionQuestion(s);
+        REQUIRE(q);
+        REQUIRE(q->options.size() == 2);
+        CHECK(q->selected == 2);
+        CHECK(
+            q->text.startsWith("Bash command │ rm -rf /home/robin/.claude/jobs/b7b46dde/tmp/ccfg")
+        );
+    }
+    {
+        // The prompt box, or a numbered list in an answer: no question.
+        VtScreen box(50, 160);
+        box.feed(idleFrame());
+        CHECK_FALSE(findPermissionQuestion(box));
+        VtScreen list(50, 160);
+        list.feed(
+            "\x1b[H\x1b[2J\x1b[3;1H" + rule(120) + "\x1b[4;1H Steps:\x1b[5;1H 1. build" +
+            "\x1b[6;1H 2. test"
+        );
+        CHECK_FALSE(findPermissionQuestion(list)); // no "❯" on any of them
     }
     {
         // A panel (/cost) has the keyboard: no box either.
@@ -2717,6 +2761,70 @@ echo "backgrounded · $short"
     CHECK_FALSE(stopped());
     writeText("attach-mode", "");
     REQUIRE(answered("echo third", 10000));
+    CHECK_FALSE(stopped());
+    CHECK_FALSE(std::any_of(events.begin(), events.end(), [](const Event &e) {
+        return std::holds_alternative<EvSendFailed>(e);
+    }));
+
+    // Waiting on the permission question its job names: the question's
+    // options, read off the screen, are buttons on "Waiting for your
+    // approval", and a press picks that option there. A message sent
+    // meanwhile waits for the answer instead of being refused.
+    const QString jobPath  = "jobs/abcdef11/state.json";
+    QJsonObject   job      = QJsonDocument::fromJson(readText(jobPath).toUtf8()).object();
+    const auto    writeJob = [&] {
+        writeText(jobPath, QJsonDocument(job).toJson(QJsonDocument::Compact));
+    };
+    writeText("attach-mode", "question");
+    job["state"] = "working";
+    job["needs"] = "approve Bash: rm -rf build";
+    writeJob();
+    std::optional<Message> waiting;
+    REQUIRE(
+        QTest::qWaitFor(
+            [&] {
+                for (const auto &e : events) {
+                    const Message *m = nullptr;
+                    if (const auto *n = std::get_if<EvMessageNew>(&e); n && n->conv == conv)
+                        m = &n->msg;
+                    if (const auto *c = std::get_if<EvMessageChanged>(&e); c && c->conv == conv)
+                        m = &c->msg;
+                    if (m && m->blocks.size() == 2)
+                        waiting = *m;
+                }
+                return waiting.has_value();
+            },
+            10000
+        )
+    );
+    CHECK(backend.capabilities().botButtons);
+    CHECK_FALSE(waiting->botId.isEmpty());
+    CHECK(waiting->blocks[0].text.text == "Waiting for your approval: Bash: rm -rf build");
+    const auto &buttons = waiting->blocks[1].buttons;
+    REQUIRE(buttons.size() == 3);
+    CHECK(buttons[0].text == "Yes");
+    CHECK(buttons[0].style == "primary");
+    CHECK(buttons[1].text == "Yes, and don't ask again for rm commands");
+    CHECK(buttons[2].text == "No");
+    CHECK(buttons[2].style == "danger");
+    CHECK_FALSE(QFile::exists(H + "/answered.log")); // reading it pressed nothing
+    CHECK_FALSE(readText("question-keys.log").contains('\r'));
+    send("fifth");
+    bool pressed = false, ok = false;
+    backend.pressBotButton(
+        conv, waiting->ts, std::nullopt, waiting->botId, buttons[2], [&](bool o, QString) {
+            pressed = true;
+            ok      = o;
+        }
+    );
+    REQUIRE(QTest::qWaitFor([&] { return pressed; }, 10000));
+    CHECK(ok);
+    CHECK(readText("answered.log") == "3\n"); // "No", moved to with ↓↓ before Enter
+    CHECK_FALSE(readText("typed.log").contains("fifth"));
+    job["state"] = "done";
+    job.remove("needs");
+    writeJob();
+    REQUIRE(answered("echo fifth", 10000));
     CHECK_FALSE(stopped());
     CHECK_FALSE(std::any_of(events.begin(), events.end(), [](const Event &e) {
         return std::holds_alternative<EvSendFailed>(e);

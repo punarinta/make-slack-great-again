@@ -3,6 +3,7 @@
 #include "cc_vt.h"
 
 #include <QChar>
+#include <QRegularExpression>
 #include <algorithm>
 
 namespace claude_code {
@@ -428,6 +429,44 @@ bool readyForInput(const VtScreen &screen) {
     const auto box = findPromptBox(screen);
     return box && box->empty && box->lines.size() == 1 && screen.cursorVisible() &&
            screen.cursorRow() == box->top;
+}
+
+std::optional<PermissionQuestion> findPermissionQuestion(const VtScreen &screen) {
+    int rule = -1;
+    for (int r = screen.rows() - 1; r >= 0; --r)
+        if (isRule(screen.row(r))) {
+            rule = r;
+            break;
+        }
+    if (rule < 0)
+        return std::nullopt;
+    static const QRegularExpression kOption(QStringLiteral("^\\s*(❯)?\\s*(\\d+)\\.\\s+(\\S.*)$"));
+    PermissionQuestion              q;
+    QStringList                     text;
+    for (int r = rule + 1; r < screen.rows(); ++r) {
+        const QString row = screen.row(r);
+        const auto    m   = kOption.match(row);
+        if (!m.hasMatch()) {
+            if (!q.options.empty())
+                break; // past the options: "Esc to cancel · Tab to amend"
+            if (!row.trimmed().isEmpty())
+                text << row.trimmed();
+            continue;
+        }
+        const int number = m.captured(2).toInt();
+        if (number != int(q.options.size()) + 1)
+            return std::nullopt; // a numbered list, but not one of options
+        q.options.push_back({number, m.captured(3).trimmed()});
+        if (m.capturedLength(1) > 0) {
+            if (q.selected)
+                return std::nullopt;
+            q.selected = number;
+        }
+    }
+    if (q.options.size() < 2 || !q.selected)
+        return std::nullopt;
+    q.text = text.join(QLatin1Char(' '));
+    return q;
 }
 
 } // namespace claude_code

@@ -117,6 +117,16 @@ public:
     // another program drives are theirs to stop.
     bool           canStopAgentSession(ConversationId) override;
     void           stopAgentSession(ConversationId) override;
+    // The buttons on "Waiting for your approval": each one is an option of the
+    // permission question on Claude Code's screen, picked there (AttachAnswer).
+    void           pressBotButton(
+        ConversationId,
+        Ts,
+        std::optional<Ts>,
+        QString,
+        BotButton,
+        std::function<void(bool ok, QString err)> done
+    ) override;
 
     // --- Search / emoji / files ---
     rpl::producer<std::vector<SearchResult>> searchMessages(const QString &query) override;
@@ -222,6 +232,9 @@ private:
     bool                  typesLive(const Tracked &t) const;
     void                  typeLive(Tracked &t);
     void                  failSends(Tracked &t, const QString &reason);
+    // Reads the options of the permission question the session waits on off
+    // its screen, for the buttons (a few tries per question).
+    void                  readApproval(Tracked &t);
     void                  stopWorker(Tracked &t);
     // The chat goes on in session `copyId`, a copy Claude Code made of its own.
     void                  adoptCopy(Tracked &t, const QString &copyId);
@@ -238,6 +251,7 @@ private:
     bool                  busy(const Tracked &t) const;
     bool                  working(const Tracked &t) const; // busy, msga's own turn aside
     bool                  needsUser(const Tracked &t) const;
+    bool                  unavailable(const Tracked &t) const; // the yellow dot
     const TranscriptItem *deletableItem(Tracked &t, const Ts &ts);
     int                   subagentReplyCount(const Tracked &t, const QString &agentId, Ts *latest);
     // When the subagent's run under way began (epoch ms); 0 = it isn't running.

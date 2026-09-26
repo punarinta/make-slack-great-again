@@ -1013,285 +1013,285 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="524"/>
+        <location filename="../src/ui/main_window.cpp" line="527"/>
         <source>Log in to workspace</source>
         <translation>ワークスペースにログイン</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3735"/>
+        <location filename="../src/ui/main_window.cpp" line="3740"/>
         <source>Couldn&apos;t apply the label.</source>
         <translation>ラベルを適用できませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1865"/>
-        <location filename="../src/ui/main_window.cpp" line="1873"/>
-        <location filename="../src/ui/main_window.cpp" line="1887"/>
+        <location filename="../src/ui/main_window.cpp" line="1868"/>
+        <location filename="../src/ui/main_window.cpp" line="1876"/>
+        <location filename="../src/ui/main_window.cpp" line="1890"/>
         <source>Convert to session</source>
         <translation>セッションに切り替え</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1866"/>
+        <location filename="../src/ui/main_window.cpp" line="1869"/>
         <source>Add one workspace with your Slack session first — its cookie is reused for the rest.</source>
         <translation>まずSlackセッションでワークスペースを1つ追加してください — そのクッキーを残りのワークスペースにも再利用します。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1873"/>
+        <location filename="../src/ui/main_window.cpp" line="1876"/>
         <source>All Slack workspaces already use your session.</source>
         <translation>すべてのSlackワークスペースはすでにセッションを使用しています。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1888"/>
+        <location filename="../src/ui/main_window.cpp" line="1891"/>
         <source>Couldn&apos;t convert your workspaces: %1</source>
         <translation>ワークスペースを切り替えられませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1969"/>
-        <location filename="../src/ui/main_window.cpp" line="1998"/>
+        <location filename="../src/ui/main_window.cpp" line="1972"/>
+        <location filename="../src/ui/main_window.cpp" line="2001"/>
         <source>Login failed</source>
         <translation>ログインに失敗しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="1969"/>
+        <location filename="../src/ui/main_window.cpp" line="1972"/>
         <source>This service is not supported.</source>
         <translation>このサービスはサポートされていません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2128"/>
+        <location filename="../src/ui/main_window.cpp" line="2131"/>
         <source>Create an unsafe session</source>
         <translation>安全でないセッションを作成</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2206"/>
+        <location filename="../src/ui/main_window.cpp" line="2209"/>
         <source>Start session in a directory…</source>
         <translation>フォルダーでセッションを開始…</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2205"/>
+        <location filename="../src/ui/main_window.cpp" line="2208"/>
         <source>Start session in a directory without permission checks…</source>
         <translation>権限の確認なしでフォルダーでセッションを開始…</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2122"/>
+        <location filename="../src/ui/main_window.cpp" line="2125"/>
         <source>Find a session</source>
         <translation>セッションを探す</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2125"/>
+        <location filename="../src/ui/main_window.cpp" line="2128"/>
         <source>Create a session</source>
         <translation>セッションを作成</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2191"/>
-        <location filename="../src/ui/main_window.cpp" line="2249"/>
-        <location filename="../src/ui/main_window.cpp" line="2509"/>
-        <location filename="../src/ui/main_window.cpp" line="4711"/>
+        <location filename="../src/ui/main_window.cpp" line="2194"/>
+        <location filename="../src/ui/main_window.cpp" line="2252"/>
+        <location filename="../src/ui/main_window.cpp" line="2514"/>
+        <location filename="../src/ui/main_window.cpp" line="4716"/>
         <source>Message</source>
         <translation>メッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2191"/>
-        <location filename="../src/ui/main_window.cpp" line="2249"/>
-        <location filename="../src/ui/main_window.cpp" line="2509"/>
-        <location filename="../src/ui/main_window.cpp" line="3978"/>
-        <location filename="../src/ui/main_window.cpp" line="4711"/>
+        <location filename="../src/ui/main_window.cpp" line="2194"/>
+        <location filename="../src/ui/main_window.cpp" line="2252"/>
+        <location filename="../src/ui/main_window.cpp" line="2514"/>
+        <location filename="../src/ui/main_window.cpp" line="3983"/>
+        <location filename="../src/ui/main_window.cpp" line="4716"/>
         <source>Message %1</source>
         <translation>%1へのメッセージ</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2267"/>
+        <location filename="../src/ui/main_window.cpp" line="2270"/>
         <source>That session is gone: Claude Code no longer has it.</source>
         <translation>このセッションはもうありません。Claude Code から削除されています。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2860"/>
-        <location filename="../src/ui/main_window.cpp" line="3023"/>
+        <location filename="../src/ui/main_window.cpp" line="2865"/>
+        <location filename="../src/ui/main_window.cpp" line="3028"/>
         <source>Someone</source>
         <translation>誰か</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3029"/>
+        <location filename="../src/ui/main_window.cpp" line="3034"/>
         <source>Started a huddle</source>
         <translation>ハドルを開始しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3032"/>
-        <location filename="../src/ui/main_window.cpp" line="3204"/>
+        <location filename="../src/ui/main_window.cpp" line="3037"/>
+        <location filename="../src/ui/main_window.cpp" line="3209"/>
         <source>%1 started a huddle</source>
         <translation>%1さんがハドルを開始しました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3062"/>
-        <location filename="../src/ui/main_window.cpp" line="3209"/>
+        <location filename="../src/ui/main_window.cpp" line="3067"/>
+        <location filename="../src/ui/main_window.cpp" line="3214"/>
         <source>Join</source>
         <translation>参加</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3123"/>
+        <location filename="../src/ui/main_window.cpp" line="3128"/>
         <source>Reminder</source>
         <translation>リマインダー</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3123"/>
+        <location filename="../src/ui/main_window.cpp" line="3128"/>
         <source>Reminder — %1</source>
         <translation>リマインダー — %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3142"/>
+        <location filename="../src/ui/main_window.cpp" line="3147"/>
         <source>You asked to be reminded about a message.</source>
         <translation>メッセージのリマインダーを設定していました。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3188"/>
+        <location filename="../src/ui/main_window.cpp" line="3193"/>
         <source>Sample User</source>
         <translation>サンプルユーザー</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3196"/>
+        <location filename="../src/ui/main_window.cpp" line="3201"/>
         <source>Hey — do you have a minute?</source>
         <translation>ちょっといいですか？</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3200"/>
+        <location filename="../src/ui/main_window.cpp" line="3205"/>
         <source>%1: Heads up, the deploy is going out at 3pm</source>
         <translation>%1: お知らせ、デプロイは15時に行われます</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3225"/>
+        <location filename="../src/ui/main_window.cpp" line="3230"/>
         <source>Submitting notification to macOS…</source>
         <translation>macOS に通知を送信しています…</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3240"/>
+        <location filename="../src/ui/main_window.cpp" line="3245"/>
         <source>The macOS notification service is unavailable.</source>
         <translation>macOS の通知サービスを利用できません。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3261"/>
+        <location filename="../src/ui/main_window.cpp" line="3266"/>
         <source>Session expired</source>
         <translation>セッションの期限が切れました</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3264"/>
+        <location filename="../src/ui/main_window.cpp" line="3269"/>
         <source>Your session has expired. Click to sign in again.</source>
         <translation>セッションの期限が切れました。クリックして再度サインインしてください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3265"/>
+        <location filename="../src/ui/main_window.cpp" line="3270"/>
         <source>Your %1 session has expired. Click to sign in again.</source>
         <translation>%1 のセッションの期限が切れました。クリックして再度サインインしてください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3488"/>
+        <location filename="../src/ui/main_window.cpp" line="3493"/>
         <source>Workspace icon</source>
         <translation>ワークスペースのアイコン</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3488"/>
+        <location filename="../src/ui/main_window.cpp" line="3493"/>
         <source>The icon could not be saved.</source>
         <translation>アイコンを保存できませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3528"/>
+        <location filename="../src/ui/main_window.cpp" line="3533"/>
         <source>Workspace admin</source>
         <translation>ワークスペース管理</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3534"/>
+        <location filename="../src/ui/main_window.cpp" line="3539"/>
         <source>Change icon…</source>
         <translation>アイコンを変更…</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3536"/>
+        <location filename="../src/ui/main_window.cpp" line="3541"/>
         <source>Unmute</source>
         <translation>ミュート解除</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3536"/>
+        <location filename="../src/ui/main_window.cpp" line="3541"/>
         <source>Mute</source>
         <translation>ミュート</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3541"/>
+        <location filename="../src/ui/main_window.cpp" line="3546"/>
         <source>Log out</source>
         <translation>ログアウト</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3541"/>
+        <location filename="../src/ui/main_window.cpp" line="3546"/>
         <source>Log out from %1</source>
         <translation>%1からログアウト</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3600"/>
+        <location filename="../src/ui/main_window.cpp" line="3605"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3607"/>
+        <location filename="../src/ui/main_window.cpp" line="3612"/>
         <source>Reset window size</source>
         <translation>ウィンドウサイズをリセット</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3612"/>
+        <location filename="../src/ui/main_window.cpp" line="3617"/>
         <source>Quit</source>
         <translation>終了</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3661"/>
+        <location filename="../src/ui/main_window.cpp" line="3666"/>
         <source>Accepted by macOS. If no banner appears, check Focus and notification settings.</source>
         <translation>macOS に受け付けられました。バナーが表示されない場合は、集中モードと通知の設定を確認してください。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="3663"/>
+        <location filename="../src/ui/main_window.cpp" line="3668"/>
         <source>Notification status: %1</source>
         <translation>通知の状態: %1</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4282"/>
+        <location filename="../src/ui/main_window.cpp" line="4287"/>
         <source>View members</source>
         <translation>メンバーを表示</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4304"/>
+        <location filename="../src/ui/main_window.cpp" line="4309"/>
         <source>Opens the huddle in Slack for web</source>
         <translation>Slack（ブラウザ版）でハドルを開きます</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4314"/>
+        <location filename="../src/ui/main_window.cpp" line="4319"/>
         <source>Unstar conversation</source>
         <translation>会話のスターを外す</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4314"/>
+        <location filename="../src/ui/main_window.cpp" line="4319"/>
         <source>Star conversation</source>
         <translation>会話にスターを付ける</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4325"/>
+        <location filename="../src/ui/main_window.cpp" line="4330"/>
         <source>Search messages</source>
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4854"/>
+        <location filename="../src/ui/main_window.cpp" line="4859"/>
         <source>%1k</source>
         <translation>%1k</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="4975"/>
+        <location filename="../src/ui/main_window.cpp" line="4980"/>
         <source>Couldn&apos;t load the members (%1).</source>
         <translation>メンバーを読み込めませんでした（%1）。</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2012"/>
+        <location filename="../src/ui/main_window.cpp" line="2015"/>
         <source>You appear away to others — no official Slack client is connected</source>
         <translation>公式Slackクライアントが接続されていないため、他のメンバーには離席中と表示されます</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2016"/>
+        <location filename="../src/ui/main_window.cpp" line="2019"/>
         <source>Active</source>
         <translation>アクティブ</translation>
     </message>
     <message>
-        <location filename="../src/ui/main_window.cpp" line="2018"/>
+        <location filename="../src/ui/main_window.cpp" line="2021"/>
         <source>Away</source>
         <translation>離席中</translation>
     </message>
@@ -2667,32 +2667,32 @@ Create a free one — it takes a minute — then paste it below. You can change 
 <context>
     <name>SearchWidget</name>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="77"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="85"/>
         <source>Search messages…</source>
         <translation>メッセージを検索…</translation>
     </message>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="234"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="313"/>
         <source>Search messages</source>
         <translation>メッセージを検索</translation>
     </message>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="245"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="324"/>
         <source>Close search</source>
         <translation>検索を閉じる</translation>
     </message>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="313"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="392"/>
         <source>Searching…</source>
         <translation>検索中…</translation>
     </message>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="388"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="467"/>
         <source>No results found.</source>
         <translation>結果が見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/ui/search/search_widget.cpp" line="402"/>
+        <location filename="../src/ui/search/search_widget.cpp" line="481"/>
         <source>Unknown channel</source>
         <translation>不明なチャンネル</translation>
     </message>
@@ -2747,107 +2747,107 @@ Create a free one — it takes a minute — then paste it below. You can change 
         </translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2092"/>
+        <location filename="../src/session/session.cpp" line="2100"/>
         <source>Unknown user</source>
         <translation>不明なユーザー</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2274"/>
+        <location filename="../src/session/session.cpp" line="2282"/>
         <source>Moved from the channel · originally posted by %1 on %2 at %3</source>
         <translation>チャンネルから移動 · 元の投稿者: %1（%2 %3）</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2312"/>
+        <location filename="../src/session/session.cpp" line="2320"/>
         <source>Couldn&apos;t move the message — the original is still in place.</source>
         <translation>メッセージを移動できませんでした。元のメッセージはそのまま残っています。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2360"/>
+        <location filename="../src/session/session.cpp" line="2368"/>
         <source>Couldn&apos;t remove the preview (%1).</source>
         <translation>プレビューを削除できませんでした（%1）。</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2436"/>
+        <location filename="../src/session/session.cpp" line="2444"/>
         <source>No such user: %1</source>
         <translation>ユーザーが見つかりません: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2487"/>
+        <location filename="../src/session/session.cpp" line="2495"/>
         <source>Usage: /dnd [duration, e.g. 30m or 2h] — or /dnd off to resume</source>
         <translation>使い方: /dnd [時間。例: 30m、2h] — 解除は /dnd off</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2503"/>
+        <location filename="../src/session/session.cpp" line="2511"/>
         <source>Command /%1 failed: %2</source>
         <translation>コマンド /%1 が失敗しました: %2</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2538"/>
+        <location filename="../src/session/session.cpp" line="2546"/>
         <source>Could not change presence: %1</source>
         <translation>プレゼンスを変更できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2572"/>
+        <location filename="../src/session/session.cpp" line="2580"/>
         <source>Could not set status: %1</source>
         <translation>ステータスを設定できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2593"/>
+        <location filename="../src/session/session.cpp" line="2601"/>
         <source>Could not update notifications: %1</source>
         <translation>通知設定を更新できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2654"/>
+        <location filename="../src/session/session.cpp" line="2662"/>
         <source>Could not update profile: %1</source>
         <translation>プロフィールを更新できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2675"/>
+        <location filename="../src/session/session.cpp" line="2683"/>
         <source>Could not update avatar: %1</source>
         <translation>アバターを更新できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2765"/>
+        <location filename="../src/session/session.cpp" line="2773"/>
         <source>Upload failed: %1</source>
         <translation>アップロードに失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2808"/>
+        <location filename="../src/session/session.cpp" line="2816"/>
         <source>Could not load canvas: %1</source>
         <translation>canvasを読み込めませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2839"/>
+        <location filename="../src/session/session.cpp" line="2847"/>
         <source>Could not create canvas: %1</source>
         <translation>canvasを作成できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2855"/>
+        <location filename="../src/session/session.cpp" line="2863"/>
         <source>Canvas edit failed: %1</source>
         <translation>canvasの編集に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="2873"/>
+        <location filename="../src/session/session.cpp" line="2881"/>
         <source>Canvas deletion failed: %1</source>
         <translation>canvasの削除に失敗しました: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="3506"/>
+        <location filename="../src/session/session.cpp" line="3514"/>
         <source>Couldn&apos;t set the reminder: %1</source>
         <translation>リマインダーを設定できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="3507"/>
+        <location filename="../src/session/session.cpp" line="3515"/>
         <source>Couldn&apos;t save the message: %1</source>
         <translation>メッセージを保存できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="3538"/>
+        <location filename="../src/session/session.cpp" line="3546"/>
         <source>Couldn&apos;t remove the reminder: %1</source>
         <translation>リマインダーを削除できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/session/session.cpp" line="3540"/>
+        <location filename="../src/session/session.cpp" line="3548"/>
         <source>Couldn&apos;t remove the saved message: %1</source>
         <translation>保存済みメッセージを削除できませんでした: %1</translation>
     </message>
@@ -4706,7 +4706,7 @@ It follows the app language until you pick one here.</source>
         <translation>Claude Code が終了しました（コード %1）。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/cc_launcher.cpp" line="348"/>
+        <location filename="../src/backend/claude_code/cc_launcher.cpp" line="353"/>
         <source>Claude Code started a copy of this session instead of continuing it.</source>
         <translation>Claude Code はこのセッションを続ける代わりにコピーを開始しました。</translation>
     </message>
@@ -4735,233 +4735,243 @@ It follows the app language until you pick one here.</source>
         <translation>このコンピューターでは Claude Code が設定されていないようです（%1 がありません）。ターミナルで一度 `claude` を実行してから、もう一度ワークスペースを追加してください。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="486"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="525"/>
         <source>This session is running in a terminal — reply there. Once it ends, you can continue it here.</source>
         <translation>このセッションはターミナルで動いています。返信はそちらでどうぞ。終了すれば、ここから続けられます。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="491"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="530"/>
         <source>Another program is driving this session. Once it ends, you can continue it here.</source>
         <translation>このセッションは別のプログラムが操作しています。終了すれば、ここから続けられます。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="498"/>
-        <source>Claude is waiting for your approval, which only the terminal can give: run “claude attach %1”.</source>
-        <translation>Claude があなたの承認を待っています。承認はターミナルでしかできません:「claude attach %1」を実行してください。</translation>
-    </message>
-    <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="505"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="537"/>
         <source>Install the claude command-line tool to write to Claude Code sessions from here.</source>
         <translation>ここから Claude Code セッションに書き込むには、claude コマンドラインツールをインストールしてください。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="624"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="659"/>
         <source> · no permission checks</source>
         <translation> · 権限の確認なし</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1139"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="880"/>
+        <source>Run “claude attach %1” in a terminal to answer it.</source>
+        <translation>ターミナルで「claude attach %1」を実行して答えてください。</translation>
+    </message>
+    <message>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1208"/>
         <source>Claude Code&apos;s session didn&apos;t take the message: %1</source>
         <translation>Claude Codeのセッションがメッセージを受け取りませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1888"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1321"/>
+        <source>Claude isn&apos;t waiting for that approval any more.</source>
+        <translation>Claude はもうこの承認を待っていません。</translation>
+    </message>
+    <message>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1329"/>
+        <source>The answer is on its way.</source>
+        <translation>回答を送信中です。</translation>
+    </message>
+    <message>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2077"/>
         <source>Ask a side question in a thread; the session itself isn&apos;t touched</source>
         <translation>スレッドで横道の質問をします。セッション自体には影響しません</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1891"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2080"/>
         <source>&lt;question&gt;</source>
         <translation>&lt;質問&gt;</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1898"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2087"/>
         <source>Show the session&apos;s Claude Code version, model, account and folder</source>
         <translation>セッションの Claude Code のバージョン、モデル、アカウント、フォルダーを表示</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1909"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2098"/>
         <source>Start a new session in the same folder; this one stays as it is</source>
         <translation>同じフォルダーで新しいセッションを開始します。このセッションはそのまま残ります</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1953"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2142"/>
         <source>Version</source>
         <translation>バージョン</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1954"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2143"/>
         <source>Session name</source>
         <translation>セッション名</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1956"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2145"/>
         <source>Teammate</source>
         <translation>チームメイト</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1958"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2147"/>
         <source>%1 (no longer on the team)</source>
         <translation>%1（チームから外れています）</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1961"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2150"/>
         <source>Session ID</source>
         <translation>セッション ID</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1964"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2153"/>
         <source>Background</source>
         <translation>バックグラウンド</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1966"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2155"/>
         <source>Ended</source>
         <translation>終了済み</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1968"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2157"/>
         <source>Interactive, in a terminal</source>
         <translation>対話型（ターミナル）</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1970"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2159"/>
         <source>Driven by another program</source>
         <translation>別のプログラムが操作中</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1971"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2160"/>
         <source>Session kind</source>
         <translation>セッションの種類</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1973"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2162"/>
         <source>Peer address</source>
         <translation>ピアアドレス</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1975"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2164"/>
         <source>Folder</source>
         <translation>フォルダー</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1977"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2166"/>
         <source>Login method</source>
         <translation>ログイン方法</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1979"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2168"/>
         <source>%1 account</source>
         <translation>%1 アカウント</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1980"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2169"/>
         <source>Organization</source>
         <translation>組織</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1982"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2171"/>
         <source>Email</source>
         <translation>メールアドレス</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1984"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2173"/>
         <source>Model</source>
         <translation>モデル</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1985"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2174"/>
         <source>Permission mode</source>
         <translation>権限モード</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2024"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2213"/>
         <source>This subagent can&apos;t be written to until it has started.</source>
         <translation>このサブエージェントには、開始するまで書き込めません。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2038"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2227"/>
         <source>Type your question after /btw.</source>
         <translation>/btw の後に質問を入力してください。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2040"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2229"/>
         <source>Send the session its first message before asking on the side.</source>
         <translation>横道の質問をする前に、まずセッションに最初のメッセージを送ってください。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2518"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2707"/>
         <source>Claude Code doesn&apos;t trust %1 yet. Run `claude` in that folder once and accept its trust prompt, then start the session again.</source>
         <translation>Claude Code はまだ %1 を信頼していません。そのフォルダーで一度 `claude` を実行して信頼の確認を承認してから、もう一度セッションを開始してください。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="524"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="554"/>
         <source>Waiting for you</source>
         <translation>あなたの対応待ち</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="526"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="556"/>
         <source>Working</source>
         <translation>作業中</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="814"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="849"/>
         <source>Waiting for you in the terminal.</source>
         <translation>ターミナルであなたの対応を待っています。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="815"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="850"/>
         <source>Waiting for your approval: %1</source>
         <translation>あなたの承認待ち: %1</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1486"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="1674"/>
         <source>Claude Code didn&apos;t pick up the message.</source>
         <translation>Claude Code がメッセージを受け取りませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="80"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="81"/>
         <source>You</source>
         <translation>あなた</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="528"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="558"/>
         <source>Running a background command</source>
         <translation>バックグラウンドでコマンドを実行中</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2016"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2205"/>
         <source>This session no longer exists.</source>
         <translation>このセッションはもう存在しません。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2342"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2531"/>
         <source>Couldn&apos;t copy the picture.</source>
         <translation>画像をコピーできませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2100"/>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2398"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2289"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2587"/>
         <source>The session was removed from msga.</source>
         <translation>セッションはmsgaから削除されました。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2510"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2699"/>
         <source>The claude command-line tool wasn&apos;t found on this computer.</source>
         <translation>このコンピューターに claude コマンドラインツールが見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2514"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2703"/>
         <source>%1 isn&apos;t a folder.</source>
         <translation>%1 はフォルダーではありません。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2605"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2794"/>
         <source>Couldn&apos;t read %1.</source>
         <translation>%1 を読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2625"/>
+        <location filename="../src/backend/claude_code/claude_code_backend.cpp" line="2814"/>
         <source>The file isn&apos;t there anymore.</source>
         <translation>ファイルはもうありません。</translation>
     </message>

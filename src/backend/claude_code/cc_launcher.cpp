@@ -295,9 +295,14 @@ AttachInput *Launcher::sendLive(
     std::function<void(AttachInput::Outcome, QString)> done
 ) {
     QString     program;
-    QStringList argv = {QStringLiteral("attach"), sessionId.left(8)};
-    commandFor(program, argv);
+    QStringList argv;
+    attachCommand(sessionId, program, argv);
     return AttachInput::send(program, argv, cwd, prompt, std::move(done), this);
+}
+
+void Launcher::attachCommand(const QString &sessionId, QString &program, QStringList &argv) const {
+    argv = {QStringLiteral("attach"), sessionId.left(8)};
+    commandFor(program, argv);
 }
 
 void Launcher::fork(

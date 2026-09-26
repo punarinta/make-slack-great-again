@@ -29,17 +29,19 @@
 //     with the cursor in it (readyForInput).
 #pragma once
 
+#include "backend/claude_code/cc_vt.h"
+
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <functional>
+#include <optional>
 
 class QTimer;
 
 namespace claude_code {
 
 class PtyProcess;
-class VtScreen;
 
 class AttachInput : public QObject {
     Q_OBJECT
@@ -92,6 +94,66 @@ private:
     Phase             _phase     = Phase::Attaching;
     QList<QByteArray> _writes;
     QString           _echo; // the start of the message, as the prompt box shows it
+};
+
+// Answers a background session's permission question the way a person at its
+// terminal would: through `claude attach`, picking one of the numbered options
+// Claude Code shows (see PermissionQuestion). Which options there are is only
+// on the screen — the job's state says "approve Bash: …" and no more — so the
+// question is read first (read), and an option is picked by its number and
+// label (choose). Nothing is pressed unless the screen shows that question
+// with that option: "❯" is moved onto it with the arrow keys, and Enter goes
+// only once "❯" is seen there — never a key that could pick something else.
+class AttachAnswer : public QObject {
+    Q_OBJECT
+public:
+    enum class Outcome {
+        Done,     // read: the question is passed on; choose: answered, the question went
+        NotReady, // nothing answered: no such question on screen, or `attach` failed
+        Failed,   // Enter was pressed but the question stayed
+    };
+    // Whether the question on screen is the one meant (the job's `needs`).
+    using Match  = std::function<bool(const PermissionQuestion &)>;
+    using Result = std::function<void(Outcome, std::optional<PermissionQuestion>, QString detail)>;
+
+    static AttachAnswer *read(
+        const QString     &program,
+        const QStringList &args,
+        const QString     &cwd,
+        Match              match,
+        Result             done,
+        QObject           *parent
+    );
+    static AttachAnswer *choose(
+        const QString     &program,
+        const QStringList &args,
+        const QString     &cwd,
+        Match              match,
+        int                number,
+        const QString     &label,
+        Result             done,
+        QObject           *parent
+    );
+
+private:
+    AttachAnswer(Match match, int number, QString label, Result done, QObject *parent);
+    ~AttachAnswer() override;
+    void start(const QString &program, const QStringList &args, const QString &cwd);
+    void settle();
+    void finish(Outcome outcome, const QString &detail);
+
+    enum class Phase { Reading, Moving, Submitting, Done };
+
+    Match                             _match;
+    int                               _number = 0; // 0: read only
+    QString                           _label;
+    Result                            _done;
+    PtyProcess                       *_pty    = nullptr;
+    VtScreen                         *_screen = nullptr;
+    QTimer                           *_quiet  = nullptr;
+    QTimer                           *_limit  = nullptr;
+    Phase                             _phase  = Phase::Reading;
+    std::optional<PermissionQuestion> _seen; // the last look's, to see it twice alike
 };
 
 } // namespace claude_code

@@ -82,4 +82,26 @@ std::optional<PromptBox> findPromptBox(const VtScreen &screen);
 // would answer, and not onto a draft someone left in it).
 bool readyForInput(const VtScreen &screen);
 
+// A permission question in the prompt box's place, as Claude Code 2.1.283
+// draws it below its last horizontal rule:
+//
+//    Bash command
+//      │ rm -rf build
+//    Do you want to proceed?
+//    ❯ 1. Yes
+//      2. Yes, and don't ask again for rm commands in /src
+//      3. No
+//
+// The options are the numbered rows, "❯" marking the one Enter would pick.
+struct PermissionQuestion {
+    struct Option {
+        int     number = 0;
+        QString label;
+    };
+    QString             text;         // the rows above the options, joined by spaces
+    std::vector<Option> options;      // numbered 1, 2, 3… in order
+    int                 selected = 0; // the number "❯" is on
+};
+std::optional<PermissionQuestion> findPermissionQuestion(const VtScreen &screen);
+
 } // namespace claude_code

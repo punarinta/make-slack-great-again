@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QTimer>
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
 
 namespace claude_code {
@@ -223,6 +224,179 @@ void AttachInput::finish(Outcome outcome, const QString &detail) {
     if (auto done = std::exchange(_done, {}))
         done(outcome, detail);
     // The terminal goes once `attach` has exited (or been made to).
+    connect(_pty, &PtyProcess::finished, this, &QObject::deleteLater);
+    if (!_pty->isRunning())
+        deleteLater();
+    else
+        QTimer::singleShot(5000, this, &QObject::deleteLater);
+}
+
+// ── AttachAnswer ────────────────────────────────────────────────────────────
+
+namespace {
+
+constexpr int kMoveMs = 5'000;
+
+bool sameOptions(const PermissionQuestion &a, const PermissionQuestion &b) {
+    if (a.selected != b.selected || a.options.size() != b.options.size())
+        return false;
+    for (size_t i = 0; i < a.options.size(); ++i)
+        if (a.options[i].label != b.options[i].label)
+            return false;
+    return true;
+}
+
+} // namespace
+
+AttachAnswer *AttachAnswer::read(
+    const QString     &program,
+    const QStringList &args,
+    const QString     &cwd,
+    Match              match,
+    Result             done,
+    QObject           *parent
+) {
+    auto *self = new AttachAnswer(std::move(match), 0, {}, std::move(done), parent);
+    self->start(program, args, cwd);
+    return self;
+}
+
+AttachAnswer *AttachAnswer::choose(
+    const QString     &program,
+    const QStringList &args,
+    const QString     &cwd,
+    Match              match,
+    int                number,
+    const QString     &label,
+    Result             done,
+    QObject           *parent
+) {
+    auto *self = new AttachAnswer(std::move(match), number, label, std::move(done), parent);
+    self->start(program, args, cwd);
+    return self;
+}
+
+AttachAnswer::AttachAnswer(Match match, int number, QString label, Result done, QObject *parent)
+    : QObject(parent), _match(std::move(match)), _number(number), _label(std::move(label)),
+      _done(std::move(done)), _pty(new PtyProcess(this)), _screen(new VtScreen(kRows, kCols)),
+      _quiet(new QTimer(this)), _limit(new QTimer(this)) {
+    _quiet->setSingleShot(true);
+    _quiet->setInterval(kLookMs);
+    _limit->setSingleShot(true);
+    connect(_pty, &PtyProcess::output, this, [this](const QByteArray &bytes) {
+        _screen->feed(bytes);
+        if (!_quiet->isActive())
+            _quiet->start();
+    });
+    connect(_quiet, &QTimer::timeout, this, &AttachAnswer::settle);
+    connect(_pty, &PtyProcess::finished, this, [this] {
+        finish(
+            _phase == Phase::Submitting ? Outcome::Failed : Outcome::NotReady,
+            QStringLiteral("claude attach exited")
+        );
+    });
+    connect(_limit, &QTimer::timeout, this, [this] {
+        switch (_phase) {
+        case Phase::Reading:
+            finish(Outcome::NotReady, QStringLiteral("the question isn't on Claude Code's screen"));
+            break;
+        case Phase::Moving:
+            finish(Outcome::NotReady, QStringLiteral("the choice didn't move to the option"));
+            break;
+        case Phase::Submitting:
+            finish(Outcome::Failed, QStringLiteral("the question stayed after Enter"));
+            break;
+        default:
+            break;
+        }
+    });
+}
+
+AttachAnswer::~AttachAnswer() {
+    delete _screen;
+}
+
+void AttachAnswer::start(const QString &program, const QStringList &args, const QString &cwd) {
+    if (!_pty->start(program, args, cwd, kRows, kCols)) {
+        finish(Outcome::NotReady, _pty->errorString());
+        return;
+    }
+    _limit->start(attachMs);
+}
+
+void AttachAnswer::settle() {
+    auto q = findPermissionQuestion(*_screen);
+    if (q && !_match(*q))
+        q.reset(); // a question, but another one (a subagent's, say)
+    switch (_phase) {
+    case Phase::Reading: {
+        // Seen twice alike, a look apart — never a frame half drawn.
+        const bool twice = q && _seen && sameOptions(*q, *_seen);
+        _seen            = q;
+        if (!q)
+            return; // not (yet): the deadline decides
+        if (!twice) {
+            _quiet->start();
+            return;
+        }
+        if (!_number) {
+            finish(Outcome::Done, {});
+            return;
+        }
+        if (_number > int(q->options.size()) || q->options[size_t(_number - 1)].label != _label) {
+            finish(Outcome::NotReady, QStringLiteral("the question has other options now"));
+            return;
+        }
+        _phase = Phase::Moving;
+        _limit->start(kMoveMs);
+        const int        steps = _number - q->selected;
+        const QByteArray key =
+            steps > 0 ? QByteArrayLiteral("\x1b[B") : QByteArrayLiteral("\x1b[A"); // ↓ / ↑
+        for (int i = 0; i < std::abs(steps); ++i)
+            QTimer::singleShot(i * 50, this, [this, key] {
+                if (_phase == Phase::Moving)
+                    _pty->write(key);
+            });
+        _seen.reset();
+        _quiet->start(); // looked at even when nothing needed moving
+        break;
+    }
+    case Phase::Moving: {
+        // Enter only with "❯" seen on the option twice running.
+        const bool on    = q && q->selected == _number;
+        const bool twice = on && _seen;
+        _seen            = on ? q : std::nullopt;
+        if (!on)
+            return;
+        if (!twice) {
+            _quiet->start();
+            return;
+        }
+        _phase = Phase::Submitting;
+        _limit->start(kSubmitMs);
+        _pty->write(QByteArrayLiteral("\r"));
+        break;
+    }
+    case Phase::Submitting:
+        if (!q)
+            finish(Outcome::Done, {});
+        break;
+    default:
+        break;
+    }
+}
+
+void AttachAnswer::finish(Outcome outcome, const QString &detail) {
+    if (_phase == Phase::Done)
+        return;
+    const bool read = _phase == Phase::Reading;
+    _phase          = Phase::Done;
+    _quiet->stop();
+    _limit->stop();
+    disconnect(_pty, nullptr, this, nullptr);
+    _pty->terminate(); // detaching: the session goes on
+    if (auto done = std::exchange(_done, {}))
+        done(outcome, read && outcome == Outcome::Done ? _seen : std::nullopt, detail);
     connect(_pty, &PtyProcess::finished, this, &QObject::deleteLater);
     if (!_pty->isRunning())
         deleteLater();
