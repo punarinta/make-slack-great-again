@@ -8,11 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
-
-#include <QCoreApplication>
-#include <QDeadlineTimer>
-#include <QSettings>
-#include <QTemporaryDir>
+#include "test_support.h"
 
 #include "backend/slack/session_import/token_deriver.h"
 #include "fake_http_server.h"
@@ -20,19 +16,11 @@
 using namespace slack::session;
 
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-    QTemporaryDir tempDir;
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreAppWithTempSettings(argc, argv);
 }
 
 static bool waitFor(std::function<bool()> pred, int timeoutMs = 5000) {
-    QDeadlineTimer deadline(timeoutMs);
-    while (!pred() && !deadline.hasExpired())
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-    return pred();
+    return msga_test::waitFor(std::move(pred), timeoutMs);
 }
 
 // A boot page trimmed to the shape that matters: the token lives in a big JSON

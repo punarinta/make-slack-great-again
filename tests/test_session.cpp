@@ -3,13 +3,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "test_support.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
 #include <QSet>
-#include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -24,14 +24,7 @@
 #include "rpl/variable.h"
 
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-
-    QTemporaryDir tempDir;
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreAppWithTempSettings(argc, argv);
 }
 
 namespace {

@@ -3,14 +3,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "test_support.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
-#include <QDeadlineTimer>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
-#include <QTemporaryDir>
 #include <QUrlQuery>
 
 #include "auth/token_store.h"
@@ -30,14 +29,7 @@ static slack::Credentials loadCreds(const QString &id) {
 }
 
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-
-    QTemporaryDir tempDir;
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreAppWithTempSettings(argc, argv);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,12 +40,8 @@ static void clearSettings() {
     s.sync();
 }
 
-// Pumps the Qt event loop until pred() returns true or timeoutMs elapses.
 static bool waitFor(std::function<bool()> pred, int timeoutMs = 2000) {
-    QDeadlineTimer deadline(timeoutMs);
-    while (!pred() && !deadline.hasExpired())
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-    return pred();
+    return msga_test::waitFor(std::move(pred), timeoutMs);
 }
 
 #include "fake_http_server.h"

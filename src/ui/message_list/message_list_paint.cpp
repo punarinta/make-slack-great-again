@@ -419,18 +419,7 @@ void MessageListWidget::paintRow(
 
     // ── File chips (files without a preview) ─────────────────────────
     paintFileChips(p, item, ctx, contentY);
-    {
-        const bool hasAboveChips = hasImgAbove || imgRegionH > 0;
-        bool       firstChip     = true;
-        for (const auto &f : item.msg.files) {
-            if (f.hasPreview())
-                continue;
-            if (!firstChip || hasAboveChips)
-                contentY += kFileChipGap;
-            firstChip = false;
-            contentY += MsgRender::messageFileHeight(f);
-        }
-    }
+    contentY += fileChipsH(item.msg, hasImgAbove || imgRegionH > 0);
 
     // ── Reactions ────────────────────────────────────────────────────
     if (!item.msg.reactions.empty())
@@ -1868,13 +1857,8 @@ MessageListWidget::fileChipAt(const QPoint &viewportPos, QRect *chipRect, int *m
 
         // Reproduce the contentY tracking from paintRow up to the file chips section.
         ensureDocLayout(item);
-        const bool collapsed = isCollapsed(i);
-        const int  padV      = collapsed ? kPadVCollapsed : kPadV;
-        const int  sep2      = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH2  = bannersH(item);
-        int        chipY =
-            rowTop + sep2 + padV + pinnedH2 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
-        const int attX = textLeft; // cards are un-indented (attachIsBarless)
+        int       chipY = rowTextTop(i) - scrollY + item.docHeight;
+        const int attX  = textLeft; // cards are un-indented (attachIsBarless)
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
             if (isAttachmentHidden(item.msg, ai))
                 continue;
@@ -2117,14 +2101,9 @@ void MessageListWidget::paintReplyBar(
 int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
     const int   scrollY   = ctx.scrollY;
     const int   textWidth = ctx.textWidth;
-    const int   rowTop    = _tops[i] - scrollY;
     const auto &item      = _items[i];
     ensureDocLayout(item);
-    const bool collapsed = isCollapsed(i);
-    const int  padV      = collapsed ? kPadVCollapsed : kPadV;
-    const int  sep3      = needsDateSep(i) ? kSepH : 0;
-    const int  pinnedH3  = bannersH(item);
-    int y = rowTop + sep3 + padV + pinnedH3 + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+    int y = rowTextTop(i) - scrollY + item.docHeight;
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
         if (isAttachmentHidden(item.msg, ai))
             continue;
@@ -2137,16 +2116,7 @@ int MessageListWidget::replyBarVpTop(int i, const PaintContext &ctx) const {
     y += imgRegionH;
 
     // File chips (files without a preview) — mirror paint.
-    const bool hasAboveChips = hasAboveImages || imgRegionH > 0;
-    bool       firstChip     = true;
-    for (const auto &f : item.msg.files) {
-        if (f.hasPreview())
-            continue;
-        if (!firstChip || hasAboveChips)
-            y += kFileChipGap;
-        firstChip = false;
-        y += MsgRender::messageFileHeight(f);
-    }
+    y += fileChipsH(item.msg, hasAboveImages || imgRegionH > 0);
 
     if (!item.msg.reactions.empty())
         y += kReactGap + kReactH;
@@ -2210,16 +2180,7 @@ int MessageListWidget::replyItemHeight(const MessageItem &item, int width, bool 
     const bool hasAboveImages = item.docHeight > 0 || hasVisibleAttachments(item.msg);
     const int  imgRegionH     = layoutFileImages(item, width, hasAboveImages).height;
     extraH += imgRegionH;
-    const bool hasAboveChips = hasAboveImages || imgRegionH > 0;
-    bool       firstChip     = true;
-    for (const auto &f : item.msg.files) {
-        if (f.hasPreview())
-            continue;
-        if (!firstChip || hasAboveChips)
-            extraH += kFileChipGap;
-        firstChip = false;
-        extraH += MsgRender::messageFileHeight(f);
-    }
+    extraH += fileChipsH(item.msg, hasAboveImages || imgRegionH > 0);
     const int reactionH = item.msg.reactions.empty() ? 0 : (kReactGap + kReactH);
     const int headerH   = collapsed ? 0 : (kHdrH + kHdrGap);
     const int contentH  = headerH + item.docHeight + extraH + reactionH;
@@ -2300,18 +2261,7 @@ void MessageListWidget::paintReplyItem(
     contentY += imgRegionH;
 
     paintFileChips(p, item, subCtx, contentY);
-    {
-        const bool hasAboveChips = hasImgAbove || imgRegionH > 0;
-        bool       firstChip     = true;
-        for (const auto &f : item.msg.files) {
-            if (f.hasPreview())
-                continue;
-            if (!firstChip || hasAboveChips)
-                contentY += kFileChipGap;
-            firstChip = false;
-            contentY += MsgRender::messageFileHeight(f);
-        }
-    }
+    contentY += fileChipsH(item.msg, hasImgAbove || imgRegionH > 0);
 
     if (!item.msg.reactions.empty())
         paintReactions(p, item, subCtx, contentY + kReactGap, -1);
@@ -2435,13 +2385,9 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
             continue;
 
         ensureDocLayout(_items[i]);
-        const auto &item      = _items[i];
-        const bool  collapsed = isCollapsed(i);
-        const int   padV      = collapsed ? kPadVCollapsed : kPadV;
-        const int   sep       = needsDateSep(i) ? kSepH : 0;
-        const int   pinH      = bannersH(item);
+        const auto &item = _items[i];
 
-        int y = rowTop + sep + pinH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+        int y = rowTextTop(i) - scrollY + item.docHeight;
 
         for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
             if (!isAttachmentHidden(item.msg, ai))
@@ -2454,16 +2400,7 @@ MessageListWidget::reactionAt(const QPoint &viewportPos, QRect *outChipRect) con
         y += imgRegionH;
 
         // File chips
-        const bool hasAboveChips = hasAbove || imgRegionH > 0;
-        bool       firstChip     = true;
-        for (const auto &f : item.msg.files) {
-            if (f.hasPreview())
-                continue;
-            if (!firstChip || hasAboveChips)
-                y += kFileChipGap;
-            firstChip = false;
-            y += MsgRender::messageFileHeight(f);
-        }
+        y += fileChipsH(item.msg, hasAbove || imgRegionH > 0);
 
         const int reactTop = y + kReactGap;
         if (viewportPos.y() < reactTop || viewportPos.y() >= reactTop + kReactH)
@@ -2642,19 +2579,13 @@ QRect MessageListWidget::fileViewportRect(int msgIdx, int fileIdx) const {
         return {};
 
     ensureDocLayout(item);
-    const PaintContext ctx       = makePaintContext();
-    const int          scrollY   = ctx.scrollY;
-    const int          left      = ctx.textLeft;
-    const int          width     = ctx.textWidth;
-    const bool         collapsed = isCollapsed(msgIdx);
-    const int          padV      = collapsed ? kPadVCollapsed : kPadV;
-    const int          sep       = needsDateSep(msgIdx) ? kSepH : 0;
-    const int          pinnedH   = bannersH(item);
-    const int          rowTop    = _tops[msgIdx] - scrollY;
+    const PaintContext ctx     = makePaintContext();
+    const int          scrollY = ctx.scrollY;
+    const int          left    = ctx.textLeft;
+    const int          width   = ctx.textWidth;
 
     // Replicate contentY buildup from paintRow up to the file sections.
-    int contentY =
-        rowTop + sep + pinnedH + padV + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+    int contentY = rowTextTop(msgIdx) - scrollY + item.docHeight;
     for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
         if (!isAttachmentHidden(item.msg, ai))
             contentY += kAttachGap + attachTotalH(item, ai);

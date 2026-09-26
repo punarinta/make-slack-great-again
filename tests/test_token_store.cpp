@@ -3,24 +3,16 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
-#include <QCoreApplication>
+#include "test_support.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
-#include <QTemporaryDir>
 #include "auth/token_store.h"
 
 // Redirect QSettings("msga","msga") to a temp dir so tests never touch the
 // user's real credentials stored in ~/.config/msga/msga.conf.
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-
-    QTemporaryDir tempDir;
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreAppWithTempSettings(argc, argv);
 }
 
 using TokenStore::WorkspaceRecord;

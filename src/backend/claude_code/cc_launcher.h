@@ -133,6 +133,9 @@ private:
          run(const QStringList                            &args,
              const QString                                &cwd,
              std::function<void(int code, QString output)> done);
+    // Runs `args` (a --bg launch of a new session) and reports the session id
+    // the CLI backgrounded, or the error it printed.
+    void runNewSession(const QStringList &args, const QString &cwd, Done done);
     void waitStopped(
         const QString        &sessionId,
         std::vector<qint64>   pids,

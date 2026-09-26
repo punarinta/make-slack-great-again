@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "stub_backend.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -53,28 +54,11 @@ namespace {
 // Minimal controllable backend. loadHistory returns _historyPage synchronously
 // (rpl::variable fires on subscription), modelling the no-cursor history fetch.
 
-struct StubBackend : Backend {
-    rpl::variable<AuthState>                 _authState{AuthState::LoggedIn};
-    rpl::variable<UserId>                    _meId;
-    rpl::variable<std::vector<Conversation>> _convs;
-    rpl::variable<std::vector<User>>         _users;
-    rpl::event_stream<Event>                 _events;
-
+struct StubBackend : msga_test::StubBackendBase {
     // The page returned by a no-cursor loadHistory (the recent tail).
     std::vector<Message>   _historyPage;
     std::vector<Message>   _threadPage;
     std::optional<QString> _olderCursor;
-
-    rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities             caps;
-    Capabilities             capabilities() const override { return caps; }
-    void                     connectRealtime() override {}
-    void                     disconnectRealtime() override {}
-
-    rpl::producer<UserId>                    loadMe() override { return _meId.value(); }
-    rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
-    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
-    rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
 
     // When set, a no-cursor loadHistory answers nothing until deliverHistory()
     // is called — the "conversation opened, its first page still in flight"
@@ -100,10 +84,6 @@ struct StubBackend : Backend {
         return rpl::variable<MessagePage>(MessagePage{_threadPage, std::nullopt}).value();
     }
 
-    void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
-    }
-    void editMessage(ConversationId, Ts, OutgoingMessage) override {}
-    void deleteMessage(ConversationId, Ts) override {}
     // deleteAttachment calls with their outcome callbacks: the test plays the
     // server, so the list's optimistic hide and the confirmation can be told apart.
     struct AttachmentDelete {
@@ -118,29 +98,6 @@ struct StubBackend : Backend {
     ) override {
         attachmentDeletes.push_back({c, ts, id, std::move(done)});
     }
-    void addReaction(ConversationId, Ts, QString) override {}
-    void removeReaction(ConversationId, Ts, QString) override {}
-    void markRead(ConversationId, Ts) override {}
-
-    void uploadFiles(
-        ConversationId,
-        const QStringList &,
-        const QString &,
-        std::optional<Ts>                  = std::nullopt,
-        std::function<void(bool, QString)> = {}
-    ) override {}
-    void downloadFile(
-        const QString &, std::function<void(QByteArray)>, std::function<void(QString)> = {}
-    ) override {}
-
-    rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
-        return rpl::variable<std::vector<SearchResult>>({}).value();
-    }
-    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
-        return rpl::variable<QHash<QString, QString>>({}).value();
-    }
-
-    rpl::producer<Event> events() const override { return _events.events(); }
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

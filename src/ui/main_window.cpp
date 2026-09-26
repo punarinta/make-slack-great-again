@@ -2667,6 +2667,36 @@ static QPixmap roundedNotifIcon(const QPixmap &src, int side = 64) {
     return out;
 }
 
+// The notification chime, when the user has it on.
+static void playNotificationSound(const QSettings &s) {
+    if (s.value("notifications/sound", true).toBool())
+        Sound::Player::instance().play(
+            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
+        );
+}
+
+void MainWindow::setPendingNotifTarget(
+    const QString &teamId, const ConversationId &conv, const Ts &threadRoot, const Ts &msgTs
+) {
+    _pendingNotifTeam       = teamId;
+    _pendingNotifConv       = conv;
+    _pendingNotifThreadRoot = threadRoot;
+    _pendingNotifMsgTs      = msgTs;
+}
+
+void MainWindow::showTrayMessage(
+    const QString               &title,
+    const QString               &body,
+    const QPixmap               &pix,
+    int                          timeoutMs,
+    QSystemTrayIcon::MessageIcon iconWithoutPix
+) {
+    if (pix.isNull())
+        _trayIcon->showMessage(title, body, iconWithoutPix, timeoutMs);
+    else
+        _trayIcon->showMessage(title, body, QIcon(pix), timeoutMs);
+}
+
 void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool allowDefer) {
     // Too old to announce: a reconnect backfill, a cache replay or a history
     // sweep can surface month-old messages as fresh EvMessageNew. Drop those
@@ -2846,20 +2876,11 @@ void MainWindow::maybeNotify(const QString &teamId, const EvMessageNew &ev, bool
         );
     }
     if (!shown) {
-        _pendingNotifTeam       = teamId;
-        _pendingNotifConv       = ev.conv;
-        _pendingNotifThreadRoot = replyRoot;
-        _pendingNotifMsgTs      = {};
-        if (notifPix.isNull())
-            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
-        else
-            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+        setPendingNotifTarget(teamId, ev.conv, replyRoot, {});
+        showTrayMessage(title, body, notifPix);
     }
 
-    if (s.value("notifications/sound", true).toBool())
-        Sound::Player::instance().play(
-            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
-        );
+    playNotificationSound(s);
 }
 
 // How long a notification waits for users.info to put names to the ids it
@@ -2999,20 +3020,11 @@ void MainWindow::maybeNotifyHuddle(const QString &teamId, const EvHuddleChanged 
     if (!shown) {
         // The tray balloon has no action button; a click opens the conversation
         // (which surfaces the HuddleBanner's Join pill).
-        _pendingNotifTeam       = teamId;
-        _pendingNotifConv       = ev.conv;
-        _pendingNotifThreadRoot = {}; // a huddle isn't a thread
-        _pendingNotifMsgTs      = {};
-        if (notifPix.isNull())
-            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
-        else
-            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+        setPendingNotifTarget(teamId, ev.conv, {}, {}); // a huddle isn't a thread
+        showTrayMessage(title, body, notifPix);
     }
 
-    if (s.value("notifications/sound", true).toBool())
-        Sound::Player::instance().play(
-            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
-        );
+    playNotificationSound(s);
 }
 
 void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &ev) {
@@ -3115,20 +3127,11 @@ void MainWindow::notifyReminderDue(const QString &teamId, const EvReminderDue &e
         );
     }
     if (!shown && _trayIcon) {
-        _pendingNotifTeam       = teamId;
-        _pendingNotifConv       = ev.conv;
-        _pendingNotifThreadRoot = ev.threadRoot;
-        _pendingNotifMsgTs      = ev.ts;
-        if (notifPix.isNull())
-            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
-        else
-            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+        setPendingNotifTarget(teamId, ev.conv, ev.threadRoot, ev.ts);
+        showTrayMessage(title, body, notifPix);
     }
 
-    if (s.value("notifications/sound", true).toBool())
-        Sound::Player::instance().play(
-            s.value("notifications/soundId", Sound::Player::defaultId()).toString()
-        );
+    playNotificationSound(s);
 }
 
 void MainWindow::showSampleNotification(int kind) {
@@ -3191,14 +3194,8 @@ void MainWindow::showSampleNotification(int kind) {
         );
 #endif
     if (!shown && _trayIcon) {
-        _pendingNotifTeam.clear();
-        _pendingNotifConv       = {};
-        _pendingNotifThreadRoot = {};
-        _pendingNotifMsgTs      = {};
-        if (notifPix.isNull())
-            _trayIcon->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
-        else
-            _trayIcon->showMessage(title, body, QIcon(notifPix), 5000);
+        setPendingNotifTarget({}, {}, {}, {});
+        showTrayMessage(title, body, notifPix);
     }
 }
 
@@ -3242,14 +3239,8 @@ void MainWindow::notifySessionExpired(const QString &teamId) {
     if (!shown && _trayIcon) {
         // Tray-balloon click → openNotifTarget with no conversation, which just
         // brings the window forward; the login screen is what it lands on.
-        _pendingNotifTeam       = teamId;
-        _pendingNotifConv       = {};
-        _pendingNotifThreadRoot = {};
-        _pendingNotifMsgTs      = {};
-        if (notifPix.isNull())
-            _trayIcon->showMessage(title, body, QSystemTrayIcon::Warning, 10000);
-        else
-            _trayIcon->showMessage(title, body, QIcon(notifPix), 10000);
+        setPendingNotifTarget(teamId, {}, {}, {});
+        showTrayMessage(title, body, notifPix, 10000, QSystemTrayIcon::Warning);
     }
 }
 
@@ -3742,10 +3733,7 @@ void MainWindow::openThreadPanel(const ConversationId &conv, const Ts &rootTs) {
     }
 }
 
-void MainWindow::openThreadsView() {
-    if (!_session || !_threadsPage)
-        return;
-
+void MainWindow::leaveConversationForOverview() {
     if (_searchWidget && _searchWidget->isVisible())
         _searchWidget->hide();
 
@@ -3773,14 +3761,22 @@ void MainWindow::openThreadsView() {
     if (_canvasPage)
         _canvasPage->flushPendingSave();
 
-    // The overview brings its own header and per-thread reply boxes; the
-    // conversation chrome would all refer to a chat that's no longer on screen.
+    // The overview brings its own header; the conversation chrome would all
+    // refer to a chat that's no longer on screen.
     if (_msgHeader)
         _msgHeader->hide();
     if (_convTabs)
         _convTabs->hide();
     if (_huddleBanner)
         _huddleBanner->hide();
+}
+
+void MainWindow::openThreadsView() {
+    if (!_session || !_threadsPage)
+        return;
+
+    leaveConversationForOverview();
+    // The page brings its own per-thread reply boxes.
     _composer->hide();
     _composer->setEnabled(false);
 
@@ -3792,33 +3788,7 @@ void MainWindow::openSavedMessagesView() {
     if (!_session || !_savedPage)
         return;
 
-    if (_searchWidget && _searchWidget->isVisible())
-        _searchWidget->hide();
-
-    // Same leave-the-conversation bookkeeping as openThreadsView().
-    stashComposerDraft();
-    _currentConvId = {};
-    _contentView   = ContentView::Overview;
-
-    if (_typingIndicator)
-        _typingIndicator->clearAll();
-    if (_threadPanel && _threadPanel->isVisible()) {
-        _threadPanel->close();
-        _threadPanel->setVisible(false);
-        _messageList->setOpenThreadRoot({});
-    }
-    _session->setReading({});
-    _session->setOpenConversation({});
-
-    if (_canvasPage)
-        _canvasPage->flushPendingSave();
-
-    if (_msgHeader)
-        _msgHeader->hide();
-    if (_convTabs)
-        _convTabs->hide();
-    if (_huddleBanner)
-        _huddleBanner->hide();
+    leaveConversationForOverview();
     _composer->hide();
     _composer->setEnabled(false);
 
@@ -3845,34 +3815,9 @@ void MainWindow::openTeammateView(const QString &role) {
     if (mate.id.isEmpty())
         return;
 
-    if (_searchWidget && _searchWidget->isVisible())
-        _searchWidget->hide();
-
-    // Same leave-the-conversation bookkeeping as openThreadsView() — except
-    // the composer stays: writing to a teammate starts a session with it.
-    stashComposerDraft();
-    _currentConvId = {};
-    _contentView   = ContentView::Overview;
-
-    if (_typingIndicator)
-        _typingIndicator->clearAll();
-    if (_threadPanel && _threadPanel->isVisible()) {
-        _threadPanel->close();
-        _threadPanel->setVisible(false);
-        _messageList->setOpenThreadRoot({});
-    }
-    _session->setReading({});
-    _session->setOpenConversation({});
-
-    if (_canvasPage)
-        _canvasPage->flushPendingSave();
-
-    if (_msgHeader)
-        _msgHeader->hide();
-    if (_convTabs)
-        _convTabs->hide();
-    if (_huddleBanner)
-        _huddleBanner->hide();
+    // Unlike the other overview pages the composer stays: writing to a
+    // teammate starts a session with it.
+    leaveConversationForOverview();
     _convList->setSelectedTeammate(mate.id);
 
     _contentStack->setCurrentWidget(_teammatePage);

@@ -341,37 +341,13 @@ void MessageListWidget::setSession(Session *session) {
         _emojiPicker->setSession(session);
 }
 
-void MessageListWidget::openConversation(ConversationId conv, const Ts &lastReadTs) {
-    _initialPageDone = false;
-    // Persist messages of the conversation we're leaving before discarding them.
-    if (!_currentConv.value.isEmpty() && _session && !_items.empty()) {
-        std::vector<Message> msgs;
-        msgs.reserve(_items.size());
-        for (const auto &item : _items)
-            msgs.push_back(item.msg);
-        _session->cacheMessages(_currentConv, msgs);
-    }
-
-    saveScrollAnchor();
-    clear();
-    _currentConv  = conv;
-    _isThreadMode = false;
-    _threadRootTs = {};
-
+void MessageListWidget::subscribeSessionUpdates() {
     _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
 
     _session->userInfoLoaded() |
         rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
     _session->channelInfoLoaded() |
         rpl::on_next([this](ConversationId id) { onChannelResolved(id); }, _eventLifetime);
-
-    _session->botInfoLoaded() | rpl::on_next(
-                                    [this](UserId) {
-                                        rebuildLayout();
-                                        viewport()->update();
-                                    },
-                                    _eventLifetime
-                                );
 
     // Fresh emoji.list arrived: :codes: that resolved to nothing (or to stale
     // URLs) while the map was empty must be re-rendered.
@@ -393,6 +369,33 @@ void MessageListWidget::openConversation(ConversationId conv, const Ts &lastRead
     // transcript line under the player (height changes → relayout).
     _session->aiTranscriptChanged() |
         rpl::on_next([this](QString fileId) { onAiTranscript(fileId); }, _eventLifetime);
+}
+
+void MessageListWidget::openConversation(ConversationId conv, const Ts &lastReadTs) {
+    _initialPageDone = false;
+    // Persist messages of the conversation we're leaving before discarding them.
+    if (!_currentConv.value.isEmpty() && _session && !_items.empty()) {
+        std::vector<Message> msgs;
+        msgs.reserve(_items.size());
+        for (const auto &item : _items)
+            msgs.push_back(item.msg);
+        _session->cacheMessages(_currentConv, msgs);
+    }
+
+    saveScrollAnchor();
+    clear();
+    _currentConv  = conv;
+    _isThreadMode = false;
+    _threadRootTs = {};
+
+    subscribeSessionUpdates();
+    _session->botInfoLoaded() | rpl::on_next(
+                                    [this](UserId) {
+                                        rebuildLayout();
+                                        viewport()->update();
+                                    },
+                                    _eventLifetime
+                                );
 
     // If we've shown this chat before, restore exactly where the user left it —
     // ignoring the unread target so switching chats/workspaces never jumps the
@@ -711,31 +714,7 @@ void MessageListWidget::openThread(ConversationId conv, Ts rootTs) {
     _loadingElapsedTimer.start();
     _loadingAnim.start();
 
-    _session->events() | rpl::on_next([this](Event e) { handleEvent(e); }, _eventLifetime);
-
-    _session->userInfoLoaded() |
-        rpl::on_next([this](UserId id) { onUserResolved(id); }, _eventLifetime);
-    _session->channelInfoLoaded() |
-        rpl::on_next([this](ConversationId id) { onChannelResolved(id); }, _eventLifetime);
-
-    _session->emojiMapLoaded() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
-    // Fresh usergroups.list: @S… fallbacks and stale handles must re-render.
-    _session->usergroupsChanged() | rpl::on_next([this] { invalidateAllDocs(); }, _eventLifetime);
-
-    // Reminder set/removed/synced: rows gain or lose the due strip (height) and
-    // the blue tint — relayout, not just repaint.
-    _session->remindersChanged() | rpl::on_next(
-                                       [this] {
-                                           rebuildLayout();
-                                           viewport()->update();
-                                       },
-                                       _eventLifetime
-                                   );
-
-    // The user's AI transcribed an audio file: its rows gain/replace the
-    // transcript line under the player (height changes → relayout).
-    _session->aiTranscriptChanged() |
-        rpl::on_next([this](QString fileId) { onAiTranscript(fileId); }, _eventLifetime);
+    subscribeSessionUpdates();
 
     const auto revision = _session->nextMessageRevision();
     _session->backend()->loadThread(conv, rootTs, std::nullopt) |
@@ -1385,16 +1364,7 @@ int MessageListWidget::rowHeight(int index) const {
     extraH += imgRegionH;
 
     // File chips (files without a preview)
-    const bool hasAboveChips = docH > 0 || hasVisAtt || imgRegionH > 0;
-    bool       firstChip     = true;
-    for (const auto &f : item.msg.files) {
-        if (f.hasPreview())
-            continue;
-        if (!firstChip || hasAboveChips)
-            extraH += kFileChipGap;
-        firstChip = false;
-        extraH += MsgRender::messageFileHeight(f);
-    }
+    extraH += fileChipsH(item.msg, docH > 0 || hasVisAtt || imgRegionH > 0);
 
     const int  reactionH   = item.msg.reactions.empty() ? 0 : (kReactGap + kReactH);
     const bool hasReplyBar = !_isThreadMode && item.msg.replyCount > 0;
@@ -1428,6 +1398,26 @@ int MessageListWidget::bannersH(const MessageItem &item) const {
     if (isSaved(item))
         h += kBannerH;
     return h;
+}
+
+int MessageListWidget::fileChipsH(const Message &msg, bool contentAbove) {
+    int  h     = 0;
+    bool first = true;
+    for (const auto &f : msg.files) {
+        if (f.hasPreview())
+            continue;
+        if (!first || contentAbove)
+            h += kFileChipGap;
+        first = false;
+        h += MsgRender::messageFileHeight(f);
+    }
+    return h;
+}
+
+int MessageListWidget::rowTextTop(int i) const {
+    const bool collapsed = isCollapsed(i);
+    return _tops[i] + (needsDateSep(i) ? kSepH : 0) + bannersH(_items[i]) +
+           (collapsed ? kPadVCollapsed : kPadV + kHdrH + kHdrGap);
 }
 
 // "Laid out at the current width" — the cheap proxy for "measured". ensureDocLayout
@@ -1875,11 +1865,7 @@ QString MessageListWidget::anchorAt(const QPoint &viewportPos, int *outRow) cons
         if (outRow)
             *outRow = i;
 
-        const bool coll    = isCollapsed(i);
-        const int  padV    = coll ? kPadVCollapsed : kPadV;
-        const int  sepH2   = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = bannersH(item);
-        const int  textTop = rowTop + sepH2 + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+        const int textTop = rowTextTop(i);
 
         // Check main message text doc
         {
@@ -1945,11 +1931,7 @@ QRect MessageListWidget::userAnchorVpRect(const QPoint &viewportPos, const QStri
         if (!item.textDoc)
             return fallback;
 
-        const bool coll    = isCollapsed(i);
-        const int  padV    = coll ? kPadVCollapsed : kPadV;
-        const int  sepH    = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = bannersH(item);
-        const int  textTop = rowTop + sepH + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+        const int textTop = rowTextTop(i);
 
         const QPointF local(viewportPos.x() - ctx.textLeft, docY - textTop);
         const int     hit = item.textDoc->documentLayout()->hitTest(local, Qt::ExactHit);
@@ -2075,11 +2057,7 @@ std::pair<int, int> MessageListWidget::dismissButtonAt(const QPoint &viewportPos
             continue;
         ensureDocLayout(item);
 
-        const bool collapsed = isCollapsed(i);
-        const int  padV      = collapsed ? kPadVCollapsed : kPadV;
-        const int  sep       = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH   = bannersH(item);
-        int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+        int y = rowTextTop(i) - scrollY + item.docHeight;
 
         for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
             if (!isAttachmentHidden(item.msg, ai)) {
@@ -2102,16 +2080,11 @@ QRect MessageListWidget::dismissButtonVpRect(int msgIdx, int attachIdx) const {
     const auto &item = _items[msgIdx];
     ensureDocLayout(item);
 
-    const PaintContext ctx       = makePaintContext();
-    const int          scrollY   = ctx.scrollY;
-    const int          textLeft  = ctx.textLeft;
-    const int          btnX      = textLeft - kDismissGap - kDismissW;
-    const bool         collapsed = isCollapsed(msgIdx);
-    const int          padV      = collapsed ? kPadVCollapsed : kPadV;
-    const int          sep       = needsDateSep(msgIdx) ? kSepH : 0;
-    const int          pinnedH   = bannersH(item);
-    const int          rowTop    = _tops[msgIdx] - scrollY;
-    int y = rowTop + sep + padV + pinnedH + (collapsed ? 0 : kHdrH + kHdrGap) + item.docHeight;
+    const PaintContext ctx      = makePaintContext();
+    const int          scrollY  = ctx.scrollY;
+    const int          textLeft = ctx.textLeft;
+    const int          btnX     = textLeft - kDismissGap - kDismissW;
+    int                y        = rowTextTop(msgIdx) - scrollY + item.docHeight;
 
     for (int ai = 0; ai < (int)item.msg.attachments.size(); ++ai) {
         if (!isAttachmentHidden(item.msg, ai)) {
@@ -2147,11 +2120,7 @@ MessageListWidget::TableHit MessageListWidget::tableHitAt(const QPoint &viewport
         const auto &item = _items[i];
         ensureDocLayout(item);
 
-        const bool coll    = isCollapsed(i);
-        const int  padV    = coll ? kPadVCollapsed : kPadV;
-        const int  sepH2   = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = bannersH(item);
-        const int  textTop = rowTop + sepH2 + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+        const int textTop = rowTextTop(i);
 
         // Tables in a laid-out doc at origin (originX, originY): return the
         // hit table's viewport rect and its index within the doc.
@@ -3997,11 +3966,7 @@ TextPos MessageListWidget::textHitTest(const QPoint &viewportPos) const {
         if (!item.textDoc || item.docHeight <= 0)
             continue;
 
-        const bool coll    = isCollapsed(i);
-        const int  padV    = coll ? kPadVCollapsed : kPadV;
-        const int  sepH    = needsDateSep(i) ? kSepH : 0;
-        const int  pinnedH = bannersH(item);
-        const int  textTop = rowTop + sepH + pinnedH + padV + (coll ? 0 : kHdrH + kHdrGap);
+        const int textTop = rowTextTop(i);
 
         const QPointF local(viewportPos.x() - textLeft, docY - textTop);
         if (local.y() < 0 || local.y() > item.docHeight)
@@ -4198,12 +4163,7 @@ void MessageListWidget::doMouseMove(QMouseEvent *event) {
         const auto &item = _items[newHoveredRow];
         if (!item.msg.attachments.empty()) {
             ensureDocLayout(item);
-            const bool collA = isCollapsed(newHoveredRow);
-            const int  padVA = collA ? kPadVCollapsed : kPadV;
-            const int  sepA  = needsDateSep(newHoveredRow) ? kSepH : 0;
-            const int  pinHA = bannersH(item);
-            const int  rtA   = _tops[newHoveredRow] - scrollY;
-            int ay = rtA + sepA + pinHA + padVA + (collA ? 0 : kHdrH + kHdrGap) + item.docHeight;
+            int ay = rowTextTop(newHoveredRow) - scrollY + item.docHeight;
             for (int ai = 0; ai < (int)item.attachDocs.size(); ++ai) {
                 if (!isAttachmentHidden(item.msg, ai)) {
                     ay += kAttachGap;

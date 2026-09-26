@@ -3,7 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
-#include <QCoreApplication>
+#include "test_support.h"
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -15,10 +15,7 @@
 #include "cache/workspace_cache.h"
 
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreApp(argc, argv);
 }
 
 // Each test gets a fresh fixture; the destructor removes the cache directory.

@@ -225,6 +225,11 @@ protected:
     bool event(QEvent *event) override;
 
 private:
+    // The session streams an open conversation or thread re-renders on (events,
+    // resolved users/channels, emoji, usergroups, reminders, AI transcripts),
+    // tied to _eventLifetime.
+    void subscribeSessionUpdates();
+
     // Viewport event handlers (called from eventFilter)
     void doPaint(QPaintEvent *event);
     void doMousePress(QMouseEvent *event);
@@ -364,6 +369,10 @@ private:
     // flight before the very top is reached.
     int                loadOlderMargin() const;
 
+    // Height of a message's file chips (its files without an inline preview),
+    // each with the gap above it — the first one's only when `contentAbove`.
+    static int fileChipsH(const Message &msg, bool contentAbove);
+
     // Layout
     void rebuildLayout();
     int  rowHeight(int index) const;
@@ -372,6 +381,10 @@ private:
     // "Saved for later"). Every geometry path (rowHeight, paint, hit-tests)
     // offsets content by this.
     int  bannersH(const MessageItem &item) const;
+    // Document-space y where row `i`'s message text starts: below its date
+    // separator, banners, top padding and (unless collapsed) the header — the
+    // origin paintRow and the hit-tests measure the text and attachments from.
+    int  rowTextTop(int i) const;
     // The message is saved for later — bookmark or reminder (Session store;
     // drives the strip, the filled toolbar bookmark and the menu entries).
     bool isSaved(const MessageItem &item) const;

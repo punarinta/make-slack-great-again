@@ -12,11 +12,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
-
-#include <QCoreApplication>
-#include <QDeadlineTimer>
-#include <QSettings>
-#include <QTemporaryDir>
+#include "test_support.h"
 
 #include "backend/slack/public_backend.h"
 #include "backend/slack/slack_auth.h"
@@ -27,24 +23,12 @@
 using namespace slack;
 
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-
-    QTemporaryDir tempDir;
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreAppWithTempSettings(argc, argv);
 }
 
 namespace {
 
-bool waitFor(std::function<bool()> pred, int timeoutMs = 3000) {
-    QDeadlineTimer deadline(timeoutMs);
-    while (!pred() && !deadline.hasExpired())
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-    return pred();
-}
+using msga_test::waitFor;
 
 const AppConfig kTestApp{"id", "secret", ""};
 

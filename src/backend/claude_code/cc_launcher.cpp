@@ -247,6 +247,24 @@ void Launcher::stop(const QString &sessionId, const QString &cwd, std::function<
     });
 }
 
+void Launcher::runNewSession(const QStringList &args, const QString &cwd, Done done) {
+    run(args, cwd, [this, done](int code, QString out) {
+        const QString shortId = parseBackgroundedShortId(out);
+        const QString id      = shortId.isEmpty() ? QString() : sessionIdForShort(shortId);
+        if (code != 0 || id.isEmpty()) {
+            done(
+                {},
+                out.trimmed().isEmpty()
+                    ? QCoreApplication::translate("claude_code", "Claude Code exited (code %1).")
+                          .arg(code)
+                    : out.trimmed()
+            );
+            return;
+        }
+        done(id, {});
+    });
+}
+
 void Launcher::start(
     const QString &cwd,
     const QString &prompt,
@@ -267,21 +285,7 @@ void Launcher::start(
     if (!agentsJson.isEmpty())
         args << QStringLiteral("--agents") << agentsJson;
     args << QStringLiteral("--") << prompt;
-    run(args, cwd, [this, done](int code, QString out) {
-        const QString shortId = parseBackgroundedShortId(out);
-        const QString id      = shortId.isEmpty() ? QString() : sessionIdForShort(shortId);
-        if (code != 0 || id.isEmpty()) {
-            done(
-                {},
-                out.trimmed().isEmpty()
-                    ? QCoreApplication::translate("claude_code", "Claude Code exited (code %1).")
-                          .arg(code)
-                    : out.trimmed()
-            );
-            return;
-        }
-        done(id, {});
-    });
+    runNewSession(args, cwd, std::move(done));
 }
 
 AttachInput *Launcher::sendLive(
@@ -307,21 +311,7 @@ void Launcher::fork(
         QStringLiteral("--"),
         prompt,
     };
-    run(args, cwd, [this, done](int code, QString out) {
-        const QString shortId = parseBackgroundedShortId(out);
-        const QString id      = shortId.isEmpty() ? QString() : sessionIdForShort(shortId);
-        if (code != 0 || id.isEmpty()) {
-            done(
-                {},
-                out.trimmed().isEmpty()
-                    ? QCoreApplication::translate("claude_code", "Claude Code exited (code %1).")
-                          .arg(code)
-                    : out.trimmed()
-            );
-            return;
-        }
-        done(id, {});
-    });
+    runNewSession(args, cwd, std::move(done));
 }
 
 void Launcher::resume(

@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "stub_backend.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -437,13 +438,7 @@ TEST_CASE("a subject-less draft keeps the host's reply prefill", "[composer][dra
 // ── Session: new methods ──────────────────────────────────────────────────────
 
 // StubBackend mirrors the one in test_session.cpp but adds typing/schedule tracking.
-struct StubBackend2 : Backend {
-    rpl::variable<AuthState>                 _auth{AuthState::LoggedIn};
-    rpl::variable<UserId>                    _me;
-    rpl::variable<std::vector<Conversation>> _convs;
-    rpl::variable<std::vector<User>>         _users;
-    rpl::event_stream<Event>                 _events;
-
+struct StubBackend2 : msga_test::StubBackendBase {
     int typingCallCount = 0;
     struct ScheduledMsg {
         ConversationId conv;
@@ -452,48 +447,10 @@ struct StubBackend2 : Backend {
     };
     std::vector<ScheduledMsg> scheduled;
 
-    rpl::producer<AuthState>                 authState() const override { return _auth.value(); }
-    Capabilities                             capabilities() const override { return {}; }
-    void                                     connectRealtime() override {}
-    void                                     disconnectRealtime() override {}
-    rpl::producer<UserId>                    loadMe() override { return _me.value(); }
-    rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
-    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
-    rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
-    rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
-        return rpl::variable<MessagePage>({}).value();
-    }
-    rpl::producer<MessagePage> loadThread(ConversationId, Ts, std::optional<QString>) override {
-        return rpl::variable<MessagePage>({}).value();
-    }
-    void sendMessage(ConversationId, OutgoingMessage, std::function<void(bool, QString)>) override {
-    }
-    void editMessage(ConversationId, Ts, OutgoingMessage) override {}
-    void deleteMessage(ConversationId, Ts) override {}
-    void addReaction(ConversationId, Ts, QString) override {}
-    void removeReaction(ConversationId, Ts, QString) override {}
-    void markRead(ConversationId, Ts) override {}
     void sendTyping(ConversationId) override { ++typingCallCount; }
     void scheduleMessage(ConversationId conv, OutgoingMessage msg, qint64 postAt) override {
         scheduled.push_back({conv, msg.text.text, postAt});
     }
-    rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
-        return rpl::variable<std::vector<SearchResult>>({}).value();
-    }
-    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
-        return rpl::variable<QHash<QString, QString>>({}).value();
-    }
-    void uploadFiles(
-        ConversationId,
-        const QStringList &,
-        const QString &,
-        std::optional<Ts>                  = std::nullopt,
-        std::function<void(bool, QString)> = {}
-    ) override {}
-    void downloadFile(
-        const QString &, std::function<void(QByteArray)>, std::function<void(QString)>
-    ) override {}
-    rpl::producer<Event> events() const override { return _events.events(); }
 };
 
 TEST_CASE("Session::sendTyping delegates to backend", "[session][typing]") {
@@ -1475,7 +1432,7 @@ TEST_CASE("offerUndoSend by ghost ts needs a session that can delete", "[compose
     // A session whose backend lacks deleteMessage (StubBackend2 reports no
     // capabilities) gets no offer either — the chip would be a dead control.
     auto *stub   = new StubBackend2;
-    stub->_me    = UserId{"U1"};
+    stub->_meId  = UserId{"U1"};
     stub->_convs = std::vector<Conversation>{};
     Session session(std::unique_ptr<Backend>(stub), "T_TEST");
     c.setSession(&session);

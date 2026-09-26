@@ -20,6 +20,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "stub_backend.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -53,12 +54,8 @@ namespace {
 // ── StubBackend ───────────────────────────────────────────────────────────────
 // Records the calls the panel is supposed to produce; everything else is inert.
 
-struct StubBackend : Backend {
-    rpl::variable<AuthState>                 _authState{AuthState::LoggedIn};
-    rpl::variable<UserId>                    _meId;
-    rpl::variable<std::vector<Conversation>> _convs;
-    rpl::variable<std::vector<User>>         _users;
-    rpl::event_stream<Event>                 _events;
+struct StubBackend : msga_test::StubBackendBase {
+    StubBackend() { caps.replyBroadcast = true; }
 
     struct UploadCall {
         ConversationId    conv;
@@ -74,20 +71,6 @@ struct StubBackend : Backend {
     };
     std::vector<SendCall> sendCalls;
 
-    rpl::producer<AuthState> authState() const override { return _authState.value(); }
-    Capabilities             caps{.replyBroadcast = true};
-    Capabilities             capabilities() const override { return caps; }
-    void                     connectRealtime() override {}
-    void                     disconnectRealtime() override {}
-
-    rpl::producer<UserId>                    loadMe() override { return _meId.value(); }
-    rpl::producer<std::vector<Conversation>> loadConversations() override { return _convs.value(); }
-    rpl::producer<std::vector<User>>         loadUsers() override { return _users.value(); }
-    rpl::producer<bool> loadPresence(UserId) override { return rpl::variable<bool>(false).value(); }
-
-    rpl::producer<MessagePage> loadHistory(ConversationId, std::optional<QString>) override {
-        return rpl::variable<MessagePage>(MessagePage{}).value();
-    }
     // The thread as the server currently has it. Tests mutate this between
     // fetches to model a reply arriving, and count the fetches to prove the
     // refresh is conditional rather than unconditional polling.
@@ -113,10 +96,6 @@ struct StubBackend : Backend {
     void editMessage(ConversationId c, Ts ts, OutgoingMessage m) override {
         editCalls.push_back({c, ts, std::move(m)});
     }
-    void deleteMessage(ConversationId, Ts) override {}
-    void addReaction(ConversationId, Ts, QString) override {}
-    void removeReaction(ConversationId, Ts, QString) override {}
-    void markRead(ConversationId, Ts) override {}
 
     void uploadFiles(
         ConversationId                     c,
@@ -130,18 +109,6 @@ struct StubBackend : Backend {
         // meant to survive in, and neither outcome is what these tests assert.
         Q_UNUSED(done);
     }
-    void downloadFile(
-        const QString &, std::function<void(QByteArray)>, std::function<void(QString)> = {}
-    ) override {}
-
-    rpl::producer<std::vector<SearchResult>> searchMessages(const QString &) override {
-        return rpl::variable<std::vector<SearchResult>>({}).value();
-    }
-    rpl::producer<QHash<QString, QString>> loadEmojiList() override {
-        return rpl::variable<QHash<QString, QString>>({}).value();
-    }
-
-    rpl::producer<Event> events() const override { return _events.events(); }
 };
 
 // ── Fixture ───────────────────────────────────────────────────────────────────

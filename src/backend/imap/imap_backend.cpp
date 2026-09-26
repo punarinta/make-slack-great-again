@@ -91,6 +91,26 @@ QString msgKeyOf(const MsgRef &m) {
                                      : m.env.messageId;
 }
 
+// A fetched message as a ref into `mailbox` (uid, envelope, dates, \Seen).
+MsgRef msgRefOf(const FetchItem &it, const QString &mailbox) {
+    MsgRef r;
+    r.uid          = it.uid;
+    r.mailbox      = mailbox;
+    r.env          = it.envelope;
+    r.internalDate = it.internalDate;
+    r.seen         = it.seen();
+    return r;
+}
+
+// The envelope-bearing messages of a UID FETCH answer, as refs into `mailbox`.
+QList<MsgRef> msgRefsOf(const QList<QByteArray> &fetchLines, const QString &mailbox) {
+    QList<MsgRef> refs;
+    for (const FetchItem &it : Mappers::parseFetch(fetchLines))
+        if (it.hasEnvelope)
+            refs.append(msgRefOf(it, mailbox));
+    return refs;
+}
+
 // Render UIDs as an IMAP sequence set ("12,15,17") for a batched STORE.
 QByteArray joinUidSet(const QList<quint32> &uids) {
     QByteArray s;
@@ -281,18 +301,7 @@ BucketResult scanBucket(
     const QSet<QString>     &me,
     const QString           &mePrimary
 ) {
-    QList<MsgRef> refs;
-    for (const FetchItem &it : Mappers::parseFetch(fetchLines)) {
-        if (!it.hasEnvelope)
-            continue;
-        MsgRef r;
-        r.uid          = it.uid;
-        r.mailbox      = QStringLiteral("INBOX");
-        r.env          = it.envelope;
-        r.internalDate = it.internalDate;
-        r.seen         = it.seen();
-        refs.append(r);
-    }
+    QList<MsgRef>               refs = msgRefsOf(fetchLines, QStringLiteral("INBOX"));
     const QList<QList<quint32>> threads =
         useThread ? Mappers::parseThread(threadLine) : QList<QList<quint32>>{};
     return Bucketer(me, mePrimary).run(refs, threads);
@@ -659,12 +668,7 @@ void Backend::fetchNewMail() {
                 for (const FetchItem &it : Mappers::parseFetch(lines)) {
                     if (!it.hasEnvelope)
                         continue;
-                    MsgRef r;
-                    r.uid          = it.uid;
-                    r.mailbox      = QStringLiteral("INBOX");
-                    r.env          = it.envelope;
-                    r.internalDate = it.internalDate;
-                    r.seen         = it.seen();
+                    MsgRef r = msgRefOf(it, QStringLiteral("INBOX"));
 
                     const QList<QString> parts =
                         Bucketing::participantsOf(it.envelope, _myAddresses);
@@ -1028,18 +1032,7 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                                     [this, conv, mailbox, newCursor, consumer](
                                         bool, QList<QByteArray> lines
                                     ) mutable {
-                                        QList<MsgRef> refs;
-                                        for (const FetchItem &it : Mappers::parseFetch(lines)) {
-                                            if (!it.hasEnvelope)
-                                                continue;
-                                            MsgRef r;
-                                            r.uid          = it.uid;
-                                            r.mailbox      = mailbox;
-                                            r.env          = it.envelope;
-                                            r.internalDate = it.internalDate;
-                                            r.seen         = it.seen();
-                                            refs.append(r);
-                                        }
+                                        QList<MsgRef> refs = msgRefsOf(lines, mailbox);
                                         std::sort(refs.begin(), refs.end(), MsgRefDateLess{});
                                         // Make the paged-in messages actionable
                                         // (delete / label / mark read resolve
@@ -1169,19 +1162,8 @@ Backend::loadHistory(ConversationId conv, std::optional<QString> cursor) {
                                     [this, conv, mailbox, olderCursor, emitConv](
                                         bool, QList<QByteArray> lines
                                     ) mutable {
-                                        QList<MsgRef> refs;
-                                        for (const FetchItem &it : Mappers::parseFetch(lines)) {
-                                            if (!it.hasEnvelope)
-                                                continue;
-                                            MsgRef r;
-                                            r.uid          = it.uid;
-                                            r.mailbox      = mailbox;
-                                            r.env          = it.envelope;
-                                            r.internalDate = it.internalDate;
-                                            r.seen         = it.seen();
-                                            refs.append(r);
-                                        }
-                                        ConvData cd;
+                                        QList<MsgRef> refs = msgRefsOf(lines, mailbox);
+                                        ConvData      cd;
                                         cd.conv.id   = conv;
                                         cd.conv.kind = ConvKind::PublicChannel;
                                         cd.messages  = refs;
@@ -1699,12 +1681,7 @@ rpl::producer<std::vector<SearchResult>> Backend::searchMessages(const QString &
                                     for (const FetchItem &it : Mappers::parseFetch(lines)) {
                                         if (!it.hasEnvelope)
                                             continue;
-                                        MsgRef r;
-                                        r.uid          = it.uid;
-                                        r.mailbox      = QStringLiteral("INBOX");
-                                        r.env          = it.envelope;
-                                        r.internalDate = it.internalDate;
-                                        r.seen         = it.seen();
+                                        MsgRef     r = msgRefOf(it, QStringLiteral("INBOX"));
                                         const auto parts =
                                             Bucketing::participantsOf(it.envelope, _myAddresses);
                                         const auto   cl = Bucketing::classify(parts, r.listId, 8);

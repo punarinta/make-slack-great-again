@@ -11,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "test_support.h"
 
 #include <QApplication>
 #include <QBuffer>
@@ -26,10 +27,7 @@
 namespace {
 
 bool waitFor(std::function<bool()> pred, int timeoutMs = 5000) {
-    QDeadlineTimer deadline(timeoutMs);
-    while (!pred() && !deadline.hasExpired())
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-    return pred();
+    return msga_test::waitFor(std::move(pred), timeoutMs);
 }
 
 // Let any pending request reach the server, so "no second request" is a real

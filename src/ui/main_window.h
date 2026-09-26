@@ -215,6 +215,20 @@ private:
     // Nothing is shown when the window is already on screen — the logged-out
     // page itself is the message then.
     void notifySessionExpired(const QString &teamId);
+    // What a click on the tray-balloon fallback opens (openNotifTarget):
+    // workspace, conversation, and the thread root / exact message when set.
+    void setPendingNotifTarget(
+        const QString &teamId, const ConversationId &conv, const Ts &threadRoot, const Ts &msgTs
+    );
+    // The tray-balloon fallback for a notification the OS notifier didn't show:
+    // `pix` as its icon, or the stock `iconWithoutPix` when there is none.
+    void showTrayMessage(
+        const QString               &title,
+        const QString               &body,
+        const QPixmap               &pix,
+        int                          timeoutMs      = 5000,
+        QSystemTrayIcon::MessageIcon iconWithoutPix = QSystemTrayIcon::NoIcon
+    );
     // Fire a representative sample notification (Settings → "Sample
     // notifications" Test button); kind is a SettingsDialog::SampleNotif value.
     void showSampleNotification(int kind);
@@ -241,6 +255,10 @@ private:
     // the splitter if collapsed. Shared by the message-list thread click and the
     // thread-reply notification click.
     void openThreadPanel(const ConversationId &conv, const Ts &rootTs);
+    // Leave the open conversation for an overview page (Threads, Saved
+    // messages, a teammate): stash its draft, close the thread panel, stop
+    // reading it and hide its chrome. The composer is left to the caller.
+    void leaveConversationForOverview();
     // Show the workspace-wide Threads overview page in the content stack
     // (roster "Threads" entry; gated on Capabilities::threadsView).
     void openThreadsView();

@@ -14,10 +14,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "test_main.h"
+#include "test_support.h"
 
-#include <QCoreApplication>
 #include <QCryptographicHash>
-#include <QDeadlineTimer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
@@ -32,18 +31,11 @@
 using slack::SocketModeRealtime;
 
 MSGA_TEST_MAIN(argc, argv) {
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("msga-test");
-    app.setOrganizationName("msga-test");
-    return msga_test::runCatch(argc, argv);
+    return msga_test::runCoreApp(argc, argv);
 }
 
-// Pumps the Qt event loop until pred() returns true or timeoutMs elapses.
 static bool waitFor(std::function<bool()> pred, int timeoutMs = 5000) {
-    QDeadlineTimer deadline(timeoutMs);
-    while (!pred() && !deadline.hasExpired())
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-    return pred();
+    return msga_test::waitFor(std::move(pred), timeoutMs);
 }
 
 // ── DeadPeerWsServer ──────────────────────────────────────────────────────────
