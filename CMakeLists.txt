@@ -347,6 +347,7 @@ if(MSGA_BACKEND_CLAUDE_CODE)
         src/backend/claude_code/cc_roster.cpp
         src/backend/claude_code/cc_transcript.cpp
         src/backend/claude_code/cc_catalog.cpp
+        src/backend/claude_code/cc_outputs.cpp
         src/backend/claude_code/cc_roles.cpp
         src/backend/claude_code/cc_launcher.cpp
         src/backend/claude_code/cc_attach.cpp

@@ -19,9 +19,12 @@
 #include <QJsonArray>
 #include <QFileInfo>
 #include <QUrl>
+#include <QDateTime>
+#include <QTimeZone>
 
 #include "backend/claude_code/cc_attach.h"
 #include "backend/claude_code/cc_catalog.h"
+#include "backend/claude_code/cc_outputs.h"
 #include "backend/claude_code/cc_roster.h"
 #include "backend/claude_code/cc_transcript.h"
 #include "backend/claude_code/cc_vt.h"
@@ -2847,4 +2850,149 @@ TEST_CASE(
     const auto convs = collect(backend.loadConversations())[0];
     CHECK(convs.size() == 2); // the copy didn't turn into a thread of the original
     CHECK(collect(backend.loadHistory(ConversationId{"S1"}, std::nullopt))[0].messages.size() == 4);
+}
+
+// ── Files the agent made (cc_outputs) ───────────────────────────────────────
+
+namespace {
+
+QByteArray pngBytes(int w, int h) {
+    QImage img(w, h, QImage::Format_ARGB32);
+    img.fill(Qt::red);
+    QByteArray bytes;
+    QBuffer    buf(&bytes);
+    buf.open(QIODevice::WriteOnly);
+    img.save(&buf, "PNG");
+    return bytes;
+}
+
+const QByteArray kSvg = R"(<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160">)"
+                        R"(<rect x="10" y="10" width="60" height="60" fill="blue"/></svg>)";
+
+QByteArray isoAt(qint64 msecs) {
+    return QDateTime::fromMSecsSinceEpoch(msecs, QTimeZone::UTC)
+        .toString(Qt::ISODateWithMs)
+        .toUtf8();
+}
+
+} // namespace
+
+TEST_CASE("an answer names its files by path, or by folder and name", "[claude][outputs]") {
+    QTemporaryDir tmp;
+    const QString d = tmp.path();
+    writeFile(d + "/out/test-image.svg", kSvg);
+    writeFile(d + "/out/test-image.png", pngBytes(4, 4));
+    writeFile(d + "/out/notes.txt", "not shown");
+    writeFile(d + "/proj/mock.pdf", "%PDF-1.4");
+    writeFile(d + "/abs.png", pngBytes(2, 2));
+
+    // Seen live 2026-09-26: a folder, then the bare names under it.
+    const QString     text  = "Files are in `" + d +
+                              "/out/`:\n- `test-image.svg`\n- `test-image.png`\n"
+                              "- notes.txt\nAlso **" +
+                              d +
+                              "/abs.png**, docs/missing.png, mock.pdf and "
+                              "https://example.com/x.png.";
+    const QStringList files = mentionedFiles(text, d + "/proj");
+    CHECK(
+        files == QStringList{
+                     d + "/abs.png",
+                     d + "/out/test-image.svg",
+                     d + "/out/test-image.png",
+                     d + "/proj/mock.pdf"
+                 }
+    );
+}
+
+TEST_CASE("an answer's files are copied, and only the ones made in its turn", "[claude][outputs]") {
+    QTemporaryDir tmp;
+    const QString d   = tmp.path();
+    const qint64  now = QDateTime::currentMSecsSinceEpoch();
+    writeFile(d + "/new.svg", kSvg);
+    writeFile(d + "/old.png", pngBytes(8, 6));
+    {
+        QFile old(d + "/old.png"); // made the day before: only referred to
+        REQUIRE(old.open(QIODevice::ReadWrite));
+        old.setFileTime(
+            QDateTime::fromMSecsSinceEpoch(now - 86'400'000), QFileDevice::FileModificationTime
+        );
+    }
+    OutputContext ctx;
+    ctx.convId     = "outputs-test";
+    ctx.messageKey = "u1";
+    ctx.turnStart  = (now - 60'000) * 1000;
+    ctx.date       = now * 1000;
+    clearOutputs(ctx.convId);
+
+    const QString text  = "Drew " + d + "/new.svg, next to " + d + "/old.png.";
+    const auto    files = outputFiles(text, ctx);
+    REQUIRE(files.size() == 1);
+    const File &svg = files[0];
+    CHECK(svg.name == "new.svg");
+    CHECK(svg.isImage()); // shown by its rendered preview
+    CHECK(svg.imageWidth == 240);
+    CHECK(svg.imageHeight == 160);
+    CHECK(svg.urlPrivateDownload.endsWith(".svg")); // the download is the SVG
+    CHECK(svg.urlPrivate.endsWith(".png"));
+    CHECK(QUrl(svg.urlPrivate).toLocalFile().startsWith(outputsDir(ctx.convId)));
+    CHECK(QImage(QUrl(svg.urlPrivate).toLocalFile()).width() == 480);
+
+    // The copy stays what the agent made: the file changing or going is no matter.
+    QFile::remove(d + "/new.svg");
+    const auto again = outputFiles(text, ctx);
+    REQUIRE(again.size() == 1);
+    CHECK(again[0] == svg);
+
+    clearOutputs(ctx.convId);
+    CHECK_FALSE(QFileInfo::exists(outputsDir(ctx.convId)));
+    CHECK(outputFiles(text, ctx).empty()); // gone, and not there to copy again
+}
+
+TEST_CASE("a subagent's handback is its answer", "[claude][transcript]") {
+    TranscriptParser p;
+    p.feed(
+        prompt("Draw it", "2026-09-25T10:00:00.000Z", false) +
+        toolUse(
+            "h1",
+            "SubagentHandback",
+            {{"message", "Drew it: /tmp/x.png"}},
+            "2026-09-25T10:00:05.000Z"
+        ) +
+        toolResult("h1", "2026-09-25T10:00:06.000Z", false)
+    );
+    REQUIRE(p.items().size() == 2);
+    CHECK(p.items()[1].kind == Kind::AssistantText);
+    CHECK(p.items()[1].text == "Drew it: /tmp/x.png");
+}
+
+TEST_CASE(
+    "a session's answers carry the files it made, until it's removed", "[claude][backend][outputs]"
+) {
+    FakeClaudeHome home;
+    home.writeSession("idle");
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    writeFile(home.dir.path() + "/work/chart.png", pngBytes(30, 20));
+    home.append(
+        prompt("make a chart", isoAt(now - 30'000).constData()) +
+        assistantText(
+            "Saved it to `" + home.dir.path() + "/work/chart.png`.", isoAt(now).constData()
+        ) +
+        turnEnd(isoAt(now + 1).constData())
+    );
+    const ConversationId conv{"S1"};
+    clearOutputs(conv.value);
+
+    claude_code::Backend backend(Credentials{});
+    backend.connectRealtime();
+    const auto page = collect(backend.loadHistory(conv, std::nullopt));
+    REQUIRE(page.size() == 1);
+    const auto &answer = page[0].messages.back();
+    REQUIRE(answer.files.size() == 1);
+    CHECK(answer.files[0].name == "chart.png");
+    CHECK(answer.files[0].isImage());
+    CHECK(answer.files[0].imageWidth == 30);
+    CHECK(QFileInfo::exists(outputsDir(conv.value)));
+
+    backend.leaveConversation(conv); // "Remove from msga"
+    CHECK_FALSE(QFileInfo::exists(outputsDir(conv.value)));
 }

@@ -2,6 +2,7 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "claude_code_backend.h"
 #include "cc_catalog.h"
+#include "cc_outputs.h"
 #include "cc_roles.h"
 
 #include <QCoreApplication>
@@ -387,6 +388,32 @@ Role Backend::roleFor(const Tracked &t) const {
     return _team.resolve(roleOf(t), t.parser.roleName());
 }
 
+void Backend::attachOutputs(
+    Message                           &m,
+    const std::vector<TranscriptItem> &items,
+    size_t                             i,
+    const QString                     &convId,
+    const QString                     &cwd,
+    const QString                     &keyPrefix
+) const {
+    const TranscriptItem &item = items[i];
+    if (item.kind != TranscriptItem::Kind::AssistantText)
+        return;
+    OutputContext ctx;
+    ctx.convId     = convId;
+    ctx.messageKey = keyPrefix + (item.uuid.isEmpty() ? item.ts : item.uuid);
+    ctx.cwd        = cwd;
+    ctx.date       = item.date;
+    ctx.turnStart  = items.front().date;
+    for (size_t j = i; j-- > 0;)
+        if (items[j].kind == TranscriptItem::Kind::UserPrompt) {
+            ctx.turnStart = items[j].date;
+            break;
+        }
+    for (File &f : outputFiles(item.text, ctx))
+        m.files.push_back(std::move(f));
+}
+
 UserId Backend::subagentAuthor(const TranscriptItem &item, const UserId &parent) const {
     return _team.find(item.agentType) ? roleUser(item.agentType) : parent;
 }
@@ -656,16 +683,19 @@ const Message &Backend::renderedAt(Tracked &t, size_t i) {
     }
     if (t.rendered.size() > items.size())
         t.rendered.resize(items.size());
-    // A subagent started as a teammate is that teammate's thread.
-    const auto render = [&](const TranscriptItem &item) {
-        return toMessage(item, _me, subagentAuthor(item, author));
+    // A subagent started as a teammate is that teammate's thread; an answer
+    // carries the files it made.
+    const auto render = [&](size_t j) {
+        Message m = toMessage(items[j], _me, subagentAuthor(items[j], author));
+        attachOutputs(m, items, j, t.convId, t.info.cwd);
+        return m;
     };
     while (t.rendered.size() <= i) {
-        const auto &item = items[t.rendered.size()];
-        t.rendered.emplace_back(item, render(item));
+        const size_t j = t.rendered.size();
+        t.rendered.emplace_back(items[j], render(j));
     }
     if (t.rendered[i].first != items[i])
-        t.rendered[i] = {items[i], render(items[i])};
+        t.rendered[i] = {items[i], render(i)};
     return t.rendered[i].second;
 }
 
@@ -1348,6 +1378,7 @@ void Backend::refresh() {
     for (const auto &id : dropped) {
         _convOf.remove(_sessions.value(id)->info.sessionId);
         _sessions.remove(id);
+        clearOutputs(id);
         if (_firstScanDone)
             _events.fire(EvConversationRemoved{ConversationId{id}});
     }
@@ -1444,6 +1475,8 @@ void Backend::refresh() {
             _events.fire(EvUserChanged{teammateUser(_team.resolve(role))});
         _roleUnavailable.insert(role, y);
     }
+    if (!_firstScanDone)
+        pruneOutputs(_sessions.keys()); // copies of sessions gone while msga wasn't looking
     _firstScanDone = true;
     watchLive();
     scheduleSaveKnown();
@@ -1692,10 +1725,15 @@ rpl::producer<MessagePage> Backend::loadThread(ConversationId id, Ts root, std::
                 if (!agentId.isEmpty() && f.open(QIODevice::ReadOnly)) {
                     TranscriptParser p;
                     p.feed(f.readAll());
-                    for (const auto &item : p.items()) {
+                    const auto &items = p.items();
+                    for (size_t i = 0; i < items.size(); ++i) {
+                        const auto &item = items[i];
                         if (_zen && item.kind == TranscriptItem::Kind::ToolGroup)
                             continue;
-                        Message m      = toMessage(item, assistant, subagent);
+                        Message m = toMessage(item, assistant, subagent);
+                        attachOutputs(
+                            m, items, i, t->convId, t->info.cwd, agentId + QLatin1Char('-')
+                        );
                         m.threadRoot   = root;
                         m.parentUserId = subagent;
                         page.messages.push_back(std::move(m));
@@ -2247,6 +2285,7 @@ void Backend::hideSession(const QString &convId) {
         if (t.info.kind == SessionInfo::Kind::Background && t.info.running && !t.stopping)
             stopRemoved(t.info.sessionId, t.info.cwd);
     }
+    clearOutputs(convId); // the copies of the files it made
     _sessions.erase(it);
 }
 

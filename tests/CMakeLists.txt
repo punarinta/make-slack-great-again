@@ -72,6 +72,7 @@ set(MSGA_TEST_SUPPORT_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/backend_registry.cpp
 
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_catalog.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_outputs.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_attach.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_pty.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/claude_code/cc_vt.cpp

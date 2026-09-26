@@ -175,19 +175,28 @@ private:
     // Why no session can be started in `dir` ("" = it can), and a new one there
     // (a "+" session: it starts with its first message).
     QString                                  cannotStartIn(const QString &dir) const;
-    Conversation  createSession(const QString &dir, bool skipPermissionChecks, const QString &role);
-    QString       roleOf(const Tracked &t) const;  // its teammate's role id
-    Role          roleFor(const Tracked &t) const; // …and the teammate, as shown
+    Conversation createSession(const QString &dir, bool skipPermissionChecks, const QString &role);
+    QString      roleOf(const Tracked &t) const;  // its teammate's role id
+    Role         roleFor(const Tracked &t) const; // …and the teammate, as shown
     // Who a Subagent item speaks as: the teammate it was started as (its
     // subagent_type), else `parent` — the session's own teammate.
-    UserId        subagentAuthor(const TranscriptItem &item, const UserId &parent) const;
-    QStringList   roleIds() const; // every role a session may have
-    void          teamChanged(const QString &id);
-    bool          roleBusy(const QString &role) const;
-    bool          roleUnavailable(const QString &role) const; // …or yellow
-    User          teammateUser(const Role &r) const;
+    UserId       subagentAuthor(const TranscriptItem &item, const UserId &parent) const;
+    // The files answer items[i] made, copied into msga's cache (cc_outputs).
+    void         attachOutputs(
+        Message                           &m,
+        const std::vector<TranscriptItem> &items,
+        size_t                             i,
+        const QString                     &convId,
+        const QString                     &cwd,
+        const QString                     &keyPrefix = {} // unique among the session's
+    ) const;
+    QStringList          roleIds() const; // every role a session may have
+    void                 teamChanged(const QString &id);
+    bool                 roleBusy(const QString &role) const;
+    bool                 roleUnavailable(const QString &role) const; // …or yellow
+    User                 teammateUser(const Role &r) const;
     // Branched sessions (/btw threads): see detectForks.
-    QSet<QString> detectForks(); // parents whose threads changed
+    QSet<QString>        detectForks(); // parents whose threads changed
     const Message       &renderedAt(Tracked &t, size_t i);
     bool                 asThread(const Tracked &t) const;
     Tracked             *forkFor(const QString &parentConv, const Ts &root);

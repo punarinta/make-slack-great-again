@@ -446,6 +446,19 @@ void TranscriptParser::handleLine(const QByteArray &line) {
             const QJsonObject input = b.value(QLatin1String("input")).toObject();
             call.summary            = summarizeToolInput(call.name, input);
             _turnOpen               = true;
+            if (call.name == QLatin1String("SubagentHandback")) {
+                // A subagent's report to its session: its answer, in its thread.
+                const QString report = input.value(QLatin1String("message")).toString().trimmed();
+                if (!report.isEmpty()) {
+                    closeToolGroup();
+                    TranscriptItem item;
+                    item.kind = TranscriptItem::Kind::AssistantText;
+                    item.ts   = nextTs(micros, &item.date);
+                    item.text = report; // no uuid: a tool call can't go without its result
+                    _items.push_back(std::move(item));
+                    continue;
+                }
+            }
             if (isAgentTool(call.name)) {
                 closeToolGroup();
                 TranscriptItem item;
