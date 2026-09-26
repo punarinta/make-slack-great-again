@@ -5,17 +5,16 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/paint_utils.h"
+#include "ui/pick_row_paint.h"
 #include "ui/popup_placement.h"
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
-#include "ui/user_avatar.h"
 
 #include <QCoreApplication>
 #include <QFontMetrics>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -142,22 +141,15 @@ protected:
         const int midY      = kRowH / 2;
 
         // ── "Enter" affordance on the selected row (reserved on the right) ──
-        if (_selected) {
-            const QString enterText = QCoreApplication::translate("MentionPopup", "Enter");
-            QFont         ef        = font();
-            ef.setPixelSize(Th::c().fonts.caption);
-            const QFontMetrics efm(ef);
-            const int          ew = efm.horizontalAdvance(enterText) + 18;
-            const int          eh = 22;
-            const QRect        enterRect(textRight - ew, (kRowH - eh) / 2, ew, eh);
-            textRight = enterRect.left() - kGap;
-            p.setPen(QPen(Th::c().divider.strong, 1));
-            p.setBrush(Th::c().surface.raised);
-            p.drawRoundedRect(QRectF(enterRect).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-            p.setFont(ef);
-            p.setPen(Th::c().text.secondary);
-            p.drawText(enterRect, Qt::AlignCenter, enterText);
-        }
+        if (_selected)
+            textRight = PickRow::paintEnterBadge(
+                p,
+                font(),
+                QCoreApplication::translate("MentionPopup", "Enter"),
+                textRight,
+                kRowH,
+                kGap
+            );
 
         // Keep the thread restriction visible even when the description is elided.
         if (!_data.status.isEmpty()) {
@@ -172,15 +164,7 @@ protected:
         }
 
         // ── Name (bold) ─────────────────────────────────────────────────────
-        QFont nameF = font();
-        nameF.setPixelSize(Th::c().fonts.base);
-        nameF.setBold(true);
-        const QFontMetrics nfm(nameF);
-        const QString      nameE = nfm.elidedText(_data.name, Qt::ElideRight, textRight - x);
-        p.setFont(nameF);
-        p.setPen(Th::c().text.primary);
-        p.drawText(QRect(x, 0, textRight - x, kRowH), Qt::AlignVCenter | Qt::AlignLeft, nameE);
-        x += nfm.horizontalAdvance(nameE);
+        x += PickRow::paintBoldName(p, font(), _data.name, x, textRight, kRowH);
 
         // ── APP badge (bots) ────────────────────────────────────────────────
         if (_data.isBot && x < textRight) {
@@ -264,26 +248,9 @@ private:
     void paintAvatar(QPainter &p, const QRect &iconR, qreal dpr) {
         const QPixmap px =
             (_cache && !_data.avatarUrl.isEmpty()) ? _cache->get(_data.avatarUrl) : QPixmap();
-        QPainterPath clip;
-        clip.addRoundedRect(QRectF(iconR), 6, 6);
-        if (!px.isNull()) {
-            UserAvatar::paintPhoto(p, iconR, px, dpr, 6);
-        } else {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().presence.away);
-            p.drawPath(clip);
-            const QString initial = _data.name.isEmpty()
-                                        ? QString()
-                                        : QString(_data.name).remove('@').left(1).toUpper();
-            if (!initial.isEmpty()) {
-                QFont f = font();
-                f.setBold(true);
-                f.setPixelSize(qRound(iconR.height() * 0.42));
-                p.setFont(f);
-                p.setPen(Th::c().text.onDark);
-                p.drawText(iconR, Qt::AlignCenter, initial);
-            }
-        }
+        const QString initial =
+            _data.name.isEmpty() ? QString() : QString(_data.name).remove('@').left(1).toUpper();
+        PickRow::paintIcon(p, iconR, px, dpr, 6, font(), initial);
     }
 
     RowData     _data;
@@ -330,30 +297,18 @@ MentionPopup::MentionPopup(QWidget *parent) : QFrame(parent) {
 }
 
 void MentionPopup::applyTheme() {
-    setStyleSheet(QString(
-                      "QFrame#mentionPopup {"
-                      "  background:%1;"
-                      "  border:1px solid %2;"
-                      "  border-radius:6px;"
-                      "}"
-                      "QScrollArea { background: transparent; border: none; }"
-                      // Thin rounded scrollbar, matching the conversation list.
-                      "QScrollBar:vertical {"
-                      "  background: transparent; width: 8px; margin: 2px;"
-                      "}"
-                      "QScrollBar::handle:vertical {"
-                      "  background: %3; border-radius: 3px; min-height: 24px;"
-                      "}"
-                      "QScrollBar::add-line:vertical,"
-                      "QScrollBar::sub-line:vertical { height: 0; }"
-                      "QScrollBar::add-page:vertical,"
-                      "QScrollBar::sub-page:vertical { background: transparent; }"
-    )
-                      .arg(
-                          Th::qss(Th::c().surface.raised),
-                          Th::qss(Th::c().divider.strong),
-                          Th::qss(Th::c().divider.strong)
-                      ));
+    setStyleSheet(
+        QString(
+            "QFrame#mentionPopup {"
+            "  background:%1;"
+            "  border:1px solid %2;"
+            "  border-radius:6px;"
+            "}"
+            "QScrollArea { background: transparent; border: none; }"
+        )
+            .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)) +
+        Th::popupScrollBarQss()
+    );
 }
 
 void MentionPopup::setSession(Session *s) {

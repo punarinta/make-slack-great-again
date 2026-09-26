@@ -167,19 +167,20 @@ void PopupTooltip::showAboveImpl(const QString &text, const QRect &targetGlobalR
     _reaction = false;
     _taskList = false;
 
-    QFont f = QApplication::font();
-    f.setWeight(QFont::Weight(500));
-    const QFontMetrics fm(f);
+    const QFontMetrics fm(textFont());
+    placeAbove(fm.horizontalAdvance(text), fm.height(), targetGlobalRect);
+}
 
-    const int bodyW   = fm.horizontalAdvance(text) + 2 * kPadH;
-    const int bodyH   = fm.height() + 2 * kPadV;
+void PopupTooltip::placeAbove(int contentW, int contentH, const QRect &targetGlobalRect) {
+    const int bodyW   = contentW + 2 * kPadH;
+    const int bodyH   = contentH + 2 * kPadV;
     const int widgetW = bodyW + 2 * kShadow;
     const int widgetH = kShadow + bodyH + kArrowH + kShadow;
 
     const int arrowTipGX = targetGlobalRect.center().x();
 
     // Prefer above; placePopup flips to below if there isn't room, then clamps
-    // on-screen. _below drives which way the arrow points (see paintEvent).
+    // on-screen. _below drives which way the arrow points (see paintFrame).
     bool         flipped = false;
     const QPoint wpos    = Ui::placePopup(
         targetGlobalRect,
@@ -207,9 +208,7 @@ void PopupTooltip::showRightOf(const QString &text, const QRect &targetGlobalRec
     _reaction = false;
     _taskList = false;
 
-    QFont f = QApplication::font();
-    f.setWeight(QFont::Weight(500));
-    const QFontMetrics fm(f);
+    const QFontMetrics fm(textFont());
 
     const int bodyW   = fm.horizontalAdvance(text) + 2 * kPadH;
     const int bodyH   = fm.height() + 2 * kPadV;
@@ -259,30 +258,7 @@ void PopupTooltip::showReaction(
     const int contentW = std::min(std::max(kEmojiPx, namesW), 320);
     const int contentH = kEmojiPx + kReactGapV + (int)names.size() * lineH;
 
-    const int bodyW   = contentW + 2 * kPadH;
-    const int bodyH   = contentH + 2 * kPadV;
-    const int widgetW = bodyW + 2 * kShadow;
-    const int widgetH = kShadow + bodyH + kArrowH + kShadow;
-
-    const int arrowTipGX = targetGlobalRect.center().x();
-
-    // Prefer above; placePopup flips to below and clamps on-screen.
-    bool         flipped = false;
-    const QPoint wpos    = Ui::placePopup(
-        targetGlobalRect,
-        QSize(widgetW, widgetH),
-        availRect(),
-        Ui::Edge::Above,
-        kGap - kShadow,
-        Ui::Align::Center,
-        &flipped
-    );
-    _below = flipped;
-
-    _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
-
-    _target = targetGlobalRect;
-    placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
+    placeAbove(contentW, contentH, targetGlobalRect);
 }
 
 void PopupTooltip::showTaskList(
@@ -300,9 +276,7 @@ void PopupTooltip::showTaskList(
     headerF.setPointSizeF(headerF.pointSizeF() * 0.82);
     const QFontMetrics headerFm(headerF);
 
-    QFont taskF = QApplication::font();
-    taskF.setWeight(QFont::Weight(500));
-    const QFontMetrics taskFm(taskF);
+    const QFontMetrics taskFm(textFont());
 
     int contentW = headerFm.horizontalAdvance(header);
     for (const QString &t : tasks)
@@ -312,30 +286,7 @@ void PopupTooltip::showTaskList(
     const int contentH =
         headerFm.height() + kHeaderGapV + static_cast<int>(tasks.size()) * taskFm.height();
 
-    const int bodyW   = contentW + 2 * kPadH;
-    const int bodyH   = contentH + 2 * kPadV;
-    const int widgetW = bodyW + 2 * kShadow;
-    const int widgetH = kShadow + bodyH + kArrowH + kShadow;
-
-    const int arrowTipGX = targetGlobalRect.center().x();
-
-    // Prefer above; placePopup flips to below and clamps on-screen.
-    bool         flipped = false;
-    const QPoint wpos    = Ui::placePopup(
-        targetGlobalRect,
-        QSize(widgetW, widgetH),
-        availRect(),
-        Ui::Edge::Above,
-        kGap - kShadow,
-        Ui::Align::Center,
-        &flipped
-    );
-    _below = flipped;
-
-    _arrowX = std::clamp(arrowTipGX - wpos.x(), kShadow + kArrowW, widgetW - kShadow - kArrowW);
-
-    _target = targetGlobalRect;
-    placeGlobal(wpos.x(), wpos.y(), widgetW, widgetH);
+    placeAbove(contentW, contentH, targetGlobalRect);
 }
 
 void PopupTooltip::hideEvent(QHideEvent *e) {
@@ -344,33 +295,26 @@ void PopupTooltip::hideEvent(QHideEvent *e) {
     QWidget::hideEvent(e);
 }
 
-void PopupTooltip::paintEvent(QPaintEvent *) {
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
+QFont PopupTooltip::textFont() {
+    QFont f = QApplication::font();
+    f.setWeight(QFont::Weight(500));
+    return f;
+}
 
-    if (_reaction) {
-        paintReaction(p);
-        return;
-    }
-    if (_taskList) {
-        paintTaskList(p);
-        return;
-    }
-
-    QRectF body;
-    if (_rightOf) {
-        body = QRectF(
+QRectF PopupTooltip::bodyRect() const {
+    if (_rightOf)
+        return QRectF(
             kShadow + kArrowH,
             kShadow,
             width() - kShadow - kArrowH - kShadow,
             height() - 2 * kShadow
         );
-    } else {
-        const int bodyH = height() - kShadow - kArrowH - kShadow;
-        body            = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
-                                 : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
-    }
+    const int bodyH = height() - kShadow - kArrowH - kShadow;
+    return _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
+                  : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
+}
 
+void PopupTooltip::paintFrame(QPainter &p, const QRectF &body) {
     // Light drop shadow around the body only
     Paint::dropShadow(p, body, kRadius, kShadow, 0, 3);
 
@@ -403,11 +347,26 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
         }
     }
     p.drawPolygon(arrow);
+}
+
+void PopupTooltip::paintEvent(QPaintEvent *) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    const QRectF body = bodyRect();
+    paintFrame(p, body);
+
+    if (_reaction) {
+        paintReaction(p, body);
+        return;
+    }
+    if (_taskList) {
+        paintTaskList(p, body);
+        return;
+    }
 
     // Text
-    QFont f = QApplication::font();
-    f.setWeight(QFont::Weight(500));
-    p.setFont(f);
+    p.setFont(textFont());
     p.setPen(Th::c().text.onDark);
     p.drawText(
         QRectF(
@@ -421,33 +380,7 @@ void PopupTooltip::paintEvent(QPaintEvent *) {
     );
 }
 
-void PopupTooltip::paintReaction(QPainter &p) {
-    const int    bodyH = height() - kShadow - kArrowH - kShadow;
-    const QRectF body  = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
-                                : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
-
-    // Light drop shadow around the body only
-    Paint::dropShadow(p, body, kRadius, kShadow, 0, 3);
-
-    // Fill body
-    p.setPen(Qt::NoPen);
-    p.setBrush(Th::c().tooltip.bg);
-    p.drawRoundedRect(body, kRadius, kRadius);
-
-    // Arrow
-    QPolygonF   arrow;
-    const qreal cx = _arrowX;
-    if (_below) {
-        const qreal baseY = body.top();
-        arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
-              << QPointF(cx, kShadow);
-    } else {
-        const qreal baseY = body.bottom();
-        arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
-              << QPointF(cx, baseY + kArrowH);
-    }
-    p.drawPolygon(arrow);
-
+void PopupTooltip::paintReaction(QPainter &p, const QRectF &body) {
     // Emoji preview — centered near the top of the body
     const QRect emojiRect(
         qRound(body.center().x() - kEmojiPx / 2.0), qRound(body.top() + kPadV), kEmojiPx, kEmojiPx
@@ -482,33 +415,7 @@ void PopupTooltip::paintReaction(QPainter &p) {
     }
 }
 
-void PopupTooltip::paintTaskList(QPainter &p) {
-    const int    bodyH = height() - kShadow - kArrowH - kShadow;
-    const QRectF body  = _below ? QRectF(kShadow, kShadow + kArrowH, width() - 2 * kShadow, bodyH)
-                                : QRectF(kShadow, kShadow, width() - 2 * kShadow, bodyH);
-
-    // Light drop shadow around the body only
-    Paint::dropShadow(p, body, kRadius, kShadow, 0, 3);
-
-    // Fill body
-    p.setPen(Qt::NoPen);
-    p.setBrush(Th::c().tooltip.bg);
-    p.drawRoundedRect(body, kRadius, kRadius);
-
-    // Arrow
-    QPolygonF   arrow;
-    const qreal cx = _arrowX;
-    if (_below) {
-        const qreal baseY = body.top();
-        arrow << QPointF(cx - kArrowW, baseY + 3) << QPointF(cx + kArrowW, baseY + 3)
-              << QPointF(cx, kShadow);
-    } else {
-        const qreal baseY = body.bottom();
-        arrow << QPointF(cx - kArrowW, baseY - 3) << QPointF(cx + kArrowW, baseY - 3)
-              << QPointF(cx, baseY + kArrowH);
-    }
-    p.drawPolygon(arrow);
-
+void PopupTooltip::paintTaskList(QPainter &p, const QRectF &body) {
     const qreal textW = body.width() - 2 * kPadH;
     const qreal textX = body.left() + kPadH;
 
@@ -529,8 +436,7 @@ void PopupTooltip::paintTaskList(QPainter &p) {
     ty += headerFm.height() + kHeaderGapV;
 
     // Task descriptions — one per line, left-aligned
-    QFont taskF = QApplication::font();
-    taskF.setWeight(QFont::Weight(500));
+    const QFont taskF = textFont();
     p.setFont(taskF);
     const QFontMetrics taskFm(taskF);
     p.setPen(Th::c().text.onDark);

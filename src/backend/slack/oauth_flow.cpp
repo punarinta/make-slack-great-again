@@ -2,10 +2,9 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "oauth_flow.h"
 
-#include "network/form_urlencode.h"
+#include "network/oauth_pkce.h"
 
 #include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QJsonDocument>
@@ -13,7 +12,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QRandomGenerator>
+#include <QUrl>
 #include <QUrlQuery>
 
 namespace slack {
@@ -53,18 +52,9 @@ void OAuthFlow::start() {
         return;
     }
 
-    // PKCE: 32 random bytes → base64url (43 chars, within RFC 7636's 43–128 range)
-    QByteArray verifierBytes(32, '\0');
-    QRandomGenerator::global()->fillRange(reinterpret_cast<quint32 *>(verifierBytes.data()), 8);
-    _codeVerifier = QString::fromLatin1(
-        verifierBytes.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)
-    );
-
-    const QByteArray challenge =
-        QCryptographicHash::hash(_codeVerifier.toLatin1(), QCryptographicHash::Sha256)
-            .toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
-
-    _state = QString::number(QRandomGenerator::global()->generate64(), 16);
+    const auto pkce = net::oauth::makePkce();
+    _codeVerifier   = pkce.verifier;
+    _state          = pkce.state;
 
     QUrl      url("https://slack.com/oauth/v2/authorize");
     QUrlQuery q;
@@ -72,7 +62,7 @@ void OAuthFlow::start() {
     q.addQueryItem("user_scope", userScopes().join(','));
     q.addQueryItem("redirect_uri", kOAuthRedirectUri);
     q.addQueryItem("state", _state);
-    q.addQueryItem("code_challenge", QString::fromLatin1(challenge));
+    q.addQueryItem("code_challenge", QString::fromLatin1(pkce.challenge));
     q.addQueryItem("code_challenge_method", "S256");
     url.setQuery(q);
 
@@ -84,16 +74,12 @@ void OAuthFlow::handleCallbackUri(const QUrl &uri) {
     if (uri.scheme() != "msga" || uri.host() != "oauth" || uri.path() != "/callback")
         return;
 
-    QUrlQuery q(uri.query());
-    if (q.hasQueryItem("error")) {
-        emit failed(q.queryItemValue("error"));
+    const auto cb = net::oauth::parseCallback(QUrlQuery(uri.query()), _state);
+    if (!cb.error.isEmpty()) {
+        emit failed(cb.error);
         return;
     }
-    if (q.queryItemValue("state") != _state) {
-        emit failed("state_mismatch");
-        return;
-    }
-    exchangeCode(q.queryItemValue("code"));
+    exchangeCode(cb.code);
 }
 
 void OAuthFlow::exchangeCode(const QString &code) {
@@ -104,14 +90,8 @@ void OAuthFlow::exchangeCode(const QString &code) {
     params.addQueryItem("redirect_uri", kOAuthRedirectUri);
     params.addQueryItem("code_verifier", _codeVerifier); // PKCE
 
-    auto           *nam = new QNetworkAccessManager(this);
-    QNetworkRequest req(QUrl("https://slack.com/api/oauth.v2.access"));
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-
-    auto *reply = nam->post(req, net::formUrlEncode(params));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam] {
-        reply->deleteLater();
-        nam->deleteLater();
+    const QUrl tokenUrl("https://slack.com/api/oauth.v2.access");
+    net::oauth::postForm(this, tokenUrl, params, [this](QNetworkReply *reply) {
         if (reply->error() != QNetworkReply::NoError) {
             emit failed(reply->errorString());
             return;

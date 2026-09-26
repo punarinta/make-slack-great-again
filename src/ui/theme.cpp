@@ -798,26 +798,44 @@ QString globalQss() {
 }
 
 QString scrollBarQss(int width, int radius) {
-    const auto &th = c();
+    return scrollBarQss(ScrollBarStyle{.width = width, .radius = radius});
+}
+
+QString scrollBarQss(const ScrollBarStyle &s) {
+    const auto   &th     = c();
+    const QString margin = s.margin ? QString("%1px").arg(s.margin) : QStringLiteral("0");
+    const auto    hover  = [&](const char *dir) {
+        return s.hoverTint ? QString("QScrollBar::handle:%1:hover { background: %2; }")
+                                 .arg(QLatin1String(dir), qss(th.text.secondary))
+                           : QString();
+    };
     return QString(
-               "QScrollBar:vertical { background: transparent; width: %1px; margin: 0; }"
+               "QScrollBar:vertical { background: transparent; width: %1px; margin: %4; }"
                "QScrollBar::handle:vertical { background: %3; border-radius: %2px;"
-               " min-height: 28px; }"
-               "QScrollBar::handle:vertical:hover { background: %4; }"
+               " min-height: %5px; }"
+               "%6"
                "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
                "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
                " background: transparent; }"
-               "QScrollBar:horizontal { background: transparent; height: %1px; margin: 0; }"
+               "QScrollBar:horizontal { background: transparent; height: %1px; margin: %4; }"
                "QScrollBar::handle:horizontal { background: %3; border-radius: %2px;"
-               " min-width: 28px; }"
-               "QScrollBar::handle:horizontal:hover { background: %4; }"
+               " min-width: %5px; }"
+               "%7"
                "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
                "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
                " background: transparent; }"
     )
-        .arg(width)
-        .arg(radius)
-        .arg(qss(th.divider.strong), qss(th.text.secondary));
+        .arg(s.width)
+        .arg(s.radius)
+        .arg(qss(th.divider.strong), margin)
+        .arg(s.minHandle)
+        .arg(hover("vertical"), hover("horizontal"));
+}
+
+QString popupScrollBarQss() {
+    return scrollBarQss(
+        ScrollBarStyle{.width = 8, .radius = 3, .margin = 2, .minHandle = 24, .hoverTint = false}
+    );
 }
 
 static QString fontRule(int fontPx) {

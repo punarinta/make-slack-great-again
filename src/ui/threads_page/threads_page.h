@@ -3,6 +3,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "ui/overview_card/overview_card.h"
 #include "rpl/lifetime.h"
 
 #include <QWidget>
@@ -12,9 +13,6 @@ class ImageCache;
 class Session;
 class StyledButton;
 class ThreadCard;
-class QLabel;
-class QScrollArea;
-class QVBoxLayout;
 
 // Workspace-wide "Threads" overview page (the official client's Threads view):
 // every thread the user is subscribed to, newest activity first, as cards with
@@ -51,13 +49,8 @@ private:
     Session    *_session  = nullptr;
     ImageCache *_imgCache = nullptr;
 
-    QLabel       *_titleLabel  = nullptr;
-    QWidget      *_headerRow   = nullptr;
-    QScrollArea  *_scroll      = nullptr;
-    QWidget      *_listHost    = nullptr;
-    QVBoxLayout  *_listLayout  = nullptr; // cards, then "Show more", then stretch
-    QLabel       *_statusLabel = nullptr;
-    StyledButton *_moreBtn     = nullptr;
+    OverviewCard::Page _page; // list: status, cards, then "Show more", then stretch
+    StyledButton      *_moreBtn = nullptr;
 
     std::vector<ThreadCard *> _cards;
     QString                   _nextCursor;

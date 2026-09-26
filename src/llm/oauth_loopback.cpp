@@ -3,15 +3,13 @@
 #include "oauth_loopback.h"
 
 #include "network/form_urlencode.h"
+#include "network/oauth_pkce.h"
 
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QUrlQuery>
-#include <QRandomGenerator>
-#include <QCryptographicHash>
-#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -27,17 +25,9 @@ QString OAuthLoopbackFlow::redirectUri() const {
 void OAuthLoopbackFlow::start() {
     _finished = false;
 
-    // PKCE: 32 random bytes → base64url (43 chars, within RFC 7636's 43–128 range)
-    QByteArray verifierBytes(32, '\0');
-    QRandomGenerator::global()->fillRange(reinterpret_cast<quint32 *>(verifierBytes.data()), 8);
-    _codeVerifier = QString::fromLatin1(
-        verifierBytes.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)
-    );
-    const QByteArray challenge =
-        QCryptographicHash::hash(_codeVerifier.toLatin1(), QCryptographicHash::Sha256)
-            .toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
-
-    _state = QString::number(QRandomGenerator::global()->generate64(), 16);
+    const auto pkce = net::oauth::makePkce();
+    _codeVerifier   = pkce.verifier;
+    _state          = pkce.state;
 
     _server = new QTcpServer(this);
     if (!_server->listen(QHostAddress::LocalHost, _cfg.port)) {
@@ -57,7 +47,7 @@ void OAuthLoopbackFlow::start() {
     q.addQueryItem("redirect_uri", redirectUri());
     q.addQueryItem("scope", _cfg.scopes);
     q.addQueryItem("state", _state);
-    q.addQueryItem("code_challenge", QString::fromLatin1(challenge));
+    q.addQueryItem("code_challenge", QString::fromLatin1(pkce.challenge));
     q.addQueryItem("code_challenge_method", "S256");
     for (const auto &[k, v] : _cfg.extraAuthParams)
         q.addQueryItem(k, v);
@@ -105,16 +95,12 @@ void OAuthLoopbackFlow::onNewConnection() {
         _finished = true;
         _server->close();
 
-        QUrlQuery q(url.query());
-        if (q.hasQueryItem("error")) {
-            emit failed(q.queryItemValue("error"));
+        const auto cb = net::oauth::parseCallback(QUrlQuery(url.query()), _state);
+        if (!cb.error.isEmpty()) {
+            emit failed(cb.error);
             return;
         }
-        if (q.queryItemValue("state") != _state) {
-            emit failed("state_mismatch");
-            return;
-        }
-        exchangeCode(q.queryItemValue("code"));
+        exchangeCode(cb.code);
     });
     connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
 }
@@ -143,7 +129,6 @@ void OAuthLoopbackFlow::postTokenRequest(const QList<QPair<QString, QString>> &p
     if (!_cfg.clientSecret.isEmpty()) // Google "Desktop app" clients require it
         params.append({QStringLiteral("client_secret"), _cfg.clientSecret});
 
-    auto           *nam = new QNetworkAccessManager(this);
     QNetworkRequest req((QUrl(_cfg.tokenUrl)));
 
     QByteArray payload;
@@ -161,10 +146,7 @@ void OAuthLoopbackFlow::postTokenRequest(const QList<QPair<QString, QString>> &p
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
     }
 
-    auto *reply = nam->post(req, payload);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam] {
-        reply->deleteLater();
-        nam->deleteLater();
+    net::oauth::post(this, req, payload, [this](QNetworkReply *reply) {
         const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
         if (reply->error() != QNetworkReply::NoError) {
             const QString detail = obj.value("error_description")

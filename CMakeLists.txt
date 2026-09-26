@@ -129,6 +129,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     # Network (transport mechanics, service-agnostic)
     src/network/http_queue.cpp
     src/network/gif_search.cpp
+    src/network/oauth_pkce.cpp
 
     # Auth (neutral strategy interface + factory; per-service flows live below the seam)
     src/auth/token_store.cpp
@@ -247,6 +248,7 @@ add_executable(msga MACOSX_BUNDLE WIN32
     src/ui/thread_panel/thread_export_job.cpp
     src/ui/threads_page/threads_page.cpp
     src/ui/saved_page/saved_messages_page.cpp
+    src/ui/overview_card/overview_card.cpp
     src/ui/teammate_page/teammate_page.cpp
     src/ui/teammate_dialog/teammate_dialog.cpp
     src/ui/canvas_page/canvas_page.cpp

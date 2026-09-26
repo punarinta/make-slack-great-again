@@ -4,10 +4,10 @@
 #include "ui/icon_utils.h"
 #include "ui/image_cache.h"
 #include "ui/paint_utils.h"
+#include "ui/pick_row_paint.h"
 #include "ui/popup_placement.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
-#include "ui/user_avatar.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -15,7 +15,6 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSvgRenderer>
@@ -106,24 +105,15 @@ protected:
         int textRight = r.right() - kPadX;
 
         // Reserve room for the "Enter" affordance on the keyboard-selected row.
-        QString enterText;
-        QRect   enterRect;
-        if (_selected && !_hovered) {
-            enterText = QCoreApplication::translate("MentionCompleter", "Enter");
-            QFont ef  = font();
-            ef.setPixelSize(Th::c().fonts.caption);
-            const QFontMetrics efm(ef);
-            const int          ew = efm.horizontalAdvance(enterText) + 18;
-            const int          eh = 22;
-            enterRect             = QRect(textRight - ew, (kRowH - eh) / 2, ew, eh);
-            textRight             = enterRect.left() - kGap;
-            p.setPen(QPen(Th::c().divider.strong, 1));
-            p.setBrush(Th::c().surface.raised);
-            p.drawRoundedRect(QRectF(enterRect).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-            p.setFont(ef);
-            p.setPen(Th::c().text.secondary);
-            p.drawText(enterRect, Qt::AlignCenter, enterText);
-        }
+        if (_selected && !_hovered)
+            textRight = PickRow::paintEnterBadge(
+                p,
+                font(),
+                QCoreApplication::translate("MentionCompleter", "Enter"),
+                textRight,
+                kRowH,
+                kGap
+            );
 
         const int textW = qMax(0, textRight - textLeft);
 
@@ -214,23 +204,9 @@ private:
         // rounded-square icon, falling back to an initial chip.
         const QPixmap px =
             (_cache && !_item.iconUrl.isEmpty()) ? _cache->get(_item.iconUrl) : QPixmap();
-        QPainterPath clip;
-        clip.addRoundedRect(QRectF(iconR), 8, 8);
-        if (!px.isNull()) {
-            UserAvatar::paintPhoto(p, iconR, px, dpr, 8);
-        } else {
-            p.setPen(Qt::NoPen);
-            p.setBrush(Th::c().presence.away);
-            p.drawPath(clip);
-            const QString initial =
-                _item.source.isEmpty() ? QStringLiteral("A") : _item.source.left(1).toUpper();
-            QFont f = font();
-            f.setBold(true);
-            f.setPixelSize(qRound(iconR.height() * 0.42));
-            p.setFont(f);
-            p.setPen(Th::c().text.onDark);
-            p.drawText(iconR, Qt::AlignCenter, initial);
-        }
+        const QString initial =
+            _item.source.isEmpty() ? QStringLiteral("A") : _item.source.left(1).toUpper();
+        PickRow::paintIcon(p, iconR, px, dpr, 8, font(), initial);
     }
 
     MentionCompleter::Item _item;
@@ -298,37 +274,22 @@ protected:
         if (!px.isNull())
             p.drawPixmap(iconR, px);
 
-        int       x         = iconR.right() + 1 + kGap;
+        const int x         = iconR.right() + 1 + kGap;
         int       textRight = r.right() - kPadX;
-        const int midY      = kRowH / 2;
 
         // ── "Enter" affordance on the selected row (reserved on the right) ──
-        if (_selected) {
-            const QString enterText = QCoreApplication::translate("MentionCompleter", "Enter");
-            QFont         ef        = font();
-            ef.setPixelSize(Th::c().fonts.caption);
-            const QFontMetrics efm(ef);
-            const int          ew = efm.horizontalAdvance(enterText) + 18;
-            const int          eh = 22;
-            const QRect        enterRect(textRight - ew, midY - eh / 2, ew, eh);
-            textRight = enterRect.left() - kGap;
-            p.setPen(QPen(Th::c().divider.strong, 1));
-            p.setBrush(Th::c().surface.raised);
-            p.drawRoundedRect(QRectF(enterRect).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-            p.setFont(ef);
-            p.setPen(Th::c().text.secondary);
-            p.drawText(enterRect, Qt::AlignCenter, enterText);
-        }
+        if (_selected)
+            textRight = PickRow::paintEnterBadge(
+                p,
+                font(),
+                QCoreApplication::translate("MentionCompleter", "Enter"),
+                textRight,
+                kRowH,
+                kGap
+            );
 
         // ── Channel name (bold) ─────────────────────────────────────────────
-        QFont nameF = font();
-        nameF.setPixelSize(Th::c().fonts.base);
-        nameF.setBold(true);
-        const QFontMetrics nfm(nameF);
-        const QString      nameE = nfm.elidedText(_item.title, Qt::ElideRight, textRight - x);
-        p.setFont(nameF);
-        p.setPen(Th::c().text.primary);
-        p.drawText(QRect(x, 0, textRight - x, kRowH), Qt::AlignVCenter | Qt::AlignLeft, nameE);
+        PickRow::paintBoldName(p, font(), _item.title, x, textRight, kRowH);
     }
 
 private:
@@ -398,30 +359,18 @@ MentionCompleter::MentionCompleter(QWidget *parent) : QFrame(parent) {
 }
 
 void MentionCompleter::applyTheme() {
-    setStyleSheet(QString(
-                      "QFrame#mentionCompleter {"
-                      "  background: %1;"
-                      "  border: 1px solid %2;"
-                      "  border-radius: 6px;"
-                      "}"
-                      "QScrollArea { background: transparent; border: none; }"
-                      // Thin rounded scrollbar, matching the conversation list.
-                      "QScrollBar:vertical {"
-                      "  background: transparent; width: 8px; margin: 2px;"
-                      "}"
-                      "QScrollBar::handle:vertical {"
-                      "  background: %3; border-radius: 3px; min-height: 24px;"
-                      "}"
-                      "QScrollBar::add-line:vertical,"
-                      "QScrollBar::sub-line:vertical { height: 0; }"
-                      "QScrollBar::add-page:vertical,"
-                      "QScrollBar::sub-page:vertical { background: transparent; }"
-    )
-                      .arg(
-                          Th::qss(Th::c().surface.raised),
-                          Th::qss(Th::c().divider.strong),
-                          Th::qss(Th::c().divider.strong)
-                      ));
+    setStyleSheet(
+        QString(
+            "QFrame#mentionCompleter {"
+            "  background: %1;"
+            "  border: 1px solid %2;"
+            "  border-radius: 6px;"
+            "}"
+            "QScrollArea { background: transparent; border: none; }"
+        )
+            .arg(Th::qss(Th::c().surface.raised), Th::qss(Th::c().divider.strong)) +
+        Th::popupScrollBarQss()
+    );
 }
 
 void MentionCompleter::show(const QPoint &globalPos, const QList<Item> &items, Callback cb) {

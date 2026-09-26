@@ -159,29 +159,20 @@ void ConvSelectorWidget::openDropdown() {
 
         _dropList = new QListWidget(_dropdown);
         _dropList->setFrameShape(QFrame::NoFrame);
-        _dropList->setStyleSheet(QString(
-                                     "QListWidget { border: none; background: transparent; }"
-                                     "QListWidget::item { padding: 6px 12px; }"
-                                     "QListWidget::item:hover { background: %1; }"
-                                     "QListWidget::item:selected { background: %2; color: %3; }"
-                                     // Thin rounded scrollbar, matching our other lists.
-                                     "QScrollBar:vertical {"
-                                     "  background: transparent; width: 8px; margin: 2px;"
-                                     "}"
-                                     "QScrollBar::handle:vertical {"
-                                     "  background: %4; border-radius: 3px; min-height: 24px;"
-                                     "}"
-                                     "QScrollBar::add-line:vertical,"
-                                     "QScrollBar::sub-line:vertical { height: 0; }"
-                                     "QScrollBar::add-page:vertical,"
-                                     "QScrollBar::sub-page:vertical { background: transparent; }"
-        )
-                                     .arg(
-                                         Th::qss(Th::c().surface.highlight),
-                                         Th::qss(Th::c().accent.subtleBg),
-                                         Th::qss(Th::c().message.replyLink),
-                                         Th::qss(Th::c().divider.strong)
-                                     ));
+        _dropList->setStyleSheet(
+            QString(
+                "QListWidget { border: none; background: transparent; }"
+                "QListWidget::item { padding: 6px 12px; }"
+                "QListWidget::item:hover { background: %1; }"
+                "QListWidget::item:selected { background: %2; color: %3; }"
+            )
+                .arg(
+                    Th::qss(Th::c().surface.highlight),
+                    Th::qss(Th::c().accent.subtleBg),
+                    Th::qss(Th::c().message.replyLink)
+                ) +
+            Th::popupScrollBarQss()
+        );
         _dropList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         lay->addWidget(_dropList);
 

@@ -8,7 +8,6 @@
 #include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
-#include "ui/user_avatar.h"
 #include "util/time_format.h"
 
 #include <QApplication>
@@ -18,17 +17,10 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QVBoxLayout>
 
-namespace {
-
-// Match the message list's avatar geometry so saved rows read like chat rows.
-constexpr int kAvatarSize   = 36;
-constexpr int kAvatarRadius = 4;
-constexpr int kAvatarGap    = 10;
-
-} // namespace
+using OverviewCard::kAvatarSize;
+using OverviewCard::kTextLeft;
 
 // ── SavedMsgRow ───────────────────────────────────────────────────────────────
 // The reminded message, chat-style: avatar + name + time header over the stored
@@ -49,12 +41,7 @@ public:
         setCursor(Qt::PointingHandCursor);
         setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
-        if (!_item.botAvatarUrl.isEmpty()) {
-            _avatarUrl = _item.botAvatarUrl;
-        } else if (_session && !_item.author.value.isEmpty()) {
-            if (const User *u = _session->findUser(_item.author))
-                _avatarUrl = u->avatarUrl;
-        }
+        _avatarUrl = OverviewCard::avatarUrl(_session, _item.author, _item.botAvatarUrl);
         if (_imgCache) {
             if (!_avatarUrl.isEmpty())
                 _imgCache->get(_avatarUrl); // kick off the download
@@ -78,42 +65,19 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // Avatar.
-        const QRect   avRect(0, padV(), kAvatarSize, kAvatarSize);
-        const QPixmap px =
-            (_imgCache && !_avatarUrl.isEmpty()) ? _imgCache->get(_avatarUrl) : QPixmap{};
-        if (!px.isNull())
-            UserAvatar::paintPhoto(p, avRect, px, devicePixelRatioF(), kAvatarRadius);
-        else
-            UserAvatar::paintInitial(
-                p,
-                avRect,
-                displayName().left(1),
-                Th::c().presence.away,
-                Qt::white,
-                kAvatarRadius,
-                avRect.height() * 0.38
-            );
-
-        // Header: name + the message's own timestamp.
-        const QFont        nf = nameFont();
-        const QFontMetrics nfm(nf);
-        p.setFont(nf);
-        p.setPen(Th::c().text.primary);
-        const QString name = nfm.elidedText(displayName(), Qt::ElideRight, width() - textLeft());
-        p.drawText(textLeft(), padV() + nfm.ascent(), name);
-
-        QFont tf = QApplication::font();
-        tf.setPointSizeF(tf.pointSizeF() * Th::c().fontScales.timestamp);
-        p.setFont(tf);
-        p.setPen(Th::c().text.secondary);
-        p.drawText(
-            textLeft() + nfm.horizontalAdvance(name) + Th::c().spacing.md,
-            padV() + nfm.ascent(),
+        // Avatar + name + the message's own timestamp.
+        OverviewCard::paintRowHeader(
+            p,
+            width(),
+            devicePixelRatioF(),
+            _imgCache,
+            _avatarUrl,
+            displayName(),
             MsgRender::dateTimeLabel(decimalTsToMicros(_item.ts))
         );
 
         // Snippet, one elided line.
+        const QFontMetrics nfm(nameFont());
         const QFont        bf = QApplication::font();
         const QFontMetrics bfm(bf);
         p.setFont(bf);
@@ -132,14 +96,10 @@ protected:
     }
 
 private:
-    static QFont nameFont() {
-        QFont f = QApplication::font();
-        f.setWeight(QFont::DemiBold);
-        return f;
-    }
-    int padV() const { return Th::c().spacing.sm; }
-    int hdrGap() const { return Th::c().spacing.xs; }
-    int textLeft() const { return kAvatarSize + kAvatarGap; }
+    static QFont nameFont() { return OverviewCard::nameFont(); }
+    static int   padV() { return OverviewCard::rowPadV(); }
+    static int   hdrGap() { return OverviewCard::rowHdrGap(); }
+    static int   textLeft() { return kTextLeft; }
 
     QString displayName() const {
         if (!_item.botName.isEmpty())
@@ -179,21 +139,18 @@ public:
         outer->setSpacing(sp.lg);
 
         // ── Header: conversation name on the grey page ─────────────────
-        auto *nameRow = new QHBoxLayout();
-        nameRow->setContentsMargins(0, 0, 0, 0);
-        nameRow->setSpacing(sp.sm);
-        _chanIcon = new QLabel(this);
-        nameRow->addWidget(_chanIcon);
-        _chanBtn = new QPushButton(channelLabel(), this);
-        _chanBtn->setFlat(true);
-        _chanBtn->setCursor(Qt::PointingHandCursor);
-        connect(_chanBtn, &QPushButton::clicked, this, [this] {
-            if (_cbs.openChannel)
-                _cbs.openChannel(_item.conv);
-        });
-        nameRow->addWidget(_chanBtn);
-        nameRow->addStretch(1);
-        outer->addLayout(nameRow);
+        outer->addLayout(
+            OverviewCard::makeChannelHeader(
+                this,
+                OverviewCard::conversationLabel(_session, _item.conv),
+                [this] {
+                    if (_cbs.openChannel)
+                        _cbs.openChannel(_item.conv);
+                },
+                &_chanIcon,
+                &_chanBtn
+            )
+        );
 
         // ── White card body: the message row + due footer ──────────────
         _body = new QWidget(this);
@@ -233,24 +190,8 @@ public:
         const auto &th = Th::c();
         // MainWindow cascades "QWidget { background: content }" over the whole
         // right panel, so header widgets pin explicit transparent backgrounds.
-        _body->setStyleSheet(
-            QString(
-                "QWidget#savedCardBody { background: %1; border: 1px solid %2; "
-                "border-radius: 8px; }"
-            )
-                .arg(Th::qss(th.surface.content), Th::qss(th.message.attachmentBorder))
-        );
-        _chanIcon->setPixmap(svgPixmap(channelIconPath(), QSize(15, 15), th.text.primary));
-        _chanIcon->setStyleSheet(QStringLiteral("background: transparent;"));
-        _chanBtn->setStyleSheet(
-            QString(
-                "QPushButton { border: none; background: transparent; padding: 0; "
-                "color: %1; font-size: %2px; font-weight: 700; text-align: left; }"
-                "QPushButton:hover { text-decoration: underline; }"
-            )
-                .arg(Th::qss(th.text.primary))
-                .arg(th.fonts.lg)
-        );
+        OverviewCard::styleCardBody(_body);
+        OverviewCard::styleChannelHeader(_chanIcon, channelIconPath(), _chanBtn);
         // Overdue reminders already alarmed — tint the clock line like the
         // mention badge so "waiting for you" is visible at a glance. A plain
         // bookmark (no due date) shows a bookmark instead of the clock.
@@ -271,15 +212,6 @@ public:
     }
 
 private:
-    QString channelLabel() const {
-        const Conversation *c = _session ? _session->findConversation(_item.conv) : nullptr;
-        if (!c)
-            return _item.conv.value;
-        if (c->kind == ConvKind::Im && c->dmUser)
-            return _session->userDisplayName(*c->dmUser);
-        return c->name;
-    }
-
     QString channelIconPath() const {
         const Conversation *c = _session ? _session->findConversation(_item.conv) : nullptr;
         if (c && (c->kind == ConvKind::Im || c->kind == ConvKind::Mpim))
@@ -310,50 +242,7 @@ private:
 
 SavedMessagesPage::SavedMessagesPage(ImageCache *imgCache, QWidget *parent)
     : QWidget(parent), _imgCache(imgCache) {
-    setObjectName("savedPage");
-    setAttribute(Qt::WA_StyledBackground);
-
-    const auto &sp   = Th::c().spacing;
-    auto       *root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
-    root->setSpacing(0);
-
-    // Header matches the threads page's: 48px, bold, lg.
-    _headerRow = new QWidget(this);
-    _headerRow->setObjectName("savedHeader");
-    _headerRow->setAttribute(Qt::WA_StyledBackground);
-    _headerRow->setFixedHeight(48);
-    auto *headerLayout = new QHBoxLayout(_headerRow);
-    headerLayout->setContentsMargins(sp.xl, 0, sp.md, 0);
-    _titleLabel = new QLabel(tr("Saved messages"), _headerRow);
-    headerLayout->addWidget(_titleLabel, 1);
-    root->addWidget(_headerRow);
-
-    _scroll = new QScrollArea(this);
-    _scroll->setWidgetResizable(true);
-    _scroll->setFrameShape(QFrame::NoFrame);
-    _scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    _scroll->viewport()->setAutoFillBackground(false);
-    root->addWidget(_scroll, 1);
-
-    _listHost   = new QWidget(_scroll);
-    _listLayout = new QVBoxLayout(_listHost);
-    _listLayout->setContentsMargins(sp.xxl, sp.xxl, sp.xxl, sp.xxl);
-    _listLayout->setSpacing(sp.xxl);
-
-    _statusLabel = new QLabel(_listHost);
-    _statusLabel->setAlignment(Qt::AlignHCenter);
-    _statusLabel->setWordWrap(true);
-    _statusLabel->hide();
-    _listLayout->addWidget(_statusLabel);
-
-    _listLayout->addStretch(1);
-    _listHost->setObjectName("savedList");
-    // Styled, not palette-filled — see ThreadsPage on why setWidget() +
-    // autoFillBackground would paint the wrong color.
-    _listHost->setAttribute(Qt::WA_StyledBackground);
-    _scroll->setWidget(_listHost);
-    _listHost->setAutoFillBackground(false);
+    _page = OverviewCard::buildPage(this, QStringLiteral("saved"), tr("Saved messages"));
 
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
@@ -407,9 +296,9 @@ void SavedMessagesPage::rebuild() {
     };
     cbs.openChannel = [this](ConversationId conv) { emit openChannelRequested(conv); };
     for (const auto &r : _session->messageReminders()) {
-        auto *card = new SavedCard(r, _session, _imgCache, cbs, _listHost);
+        auto *card = new SavedCard(r, _session, _imgCache, cbs, _page.listHost);
         // Above the stretch.
-        _listLayout->insertWidget(_listLayout->count() - 1, card);
+        _page.listLayout->insertWidget(_page.listLayout->count() - 1, card);
         _cards.push_back(card);
     }
     setStatus(
@@ -419,32 +308,12 @@ void SavedMessagesPage::rebuild() {
 }
 
 void SavedMessagesPage::setStatus(const QString &text) {
-    _statusLabel->setText(text);
-    _statusLabel->setVisible(!text.isEmpty());
+    _page.statusLabel->setText(text);
+    _page.statusLabel->setVisible(!text.isEmpty());
 }
 
 void SavedMessagesPage::applyTheme() {
-    const auto &th = Th::c();
-    setStyleSheet(QString("QWidget#savedPage { background: %1; }").arg(Th::qss(th.surface.sunken)));
-    _headerRow->setStyleSheet(QString(
-                                  "QWidget#savedHeader { background: %1; "
-                                  "border-bottom: 1px solid %2; }"
-    )
-                                  .arg(Th::qss(th.surface.sunken), Th::qss(th.divider.subtle)));
-    _listHost->setStyleSheet(
-        QString("QWidget#savedList { background: %1; }").arg(Th::qss(th.surface.sunken))
-    );
-    _titleLabel->setStyleSheet(
-        QString("background: transparent; font-weight: bold; font-size: %1px; color: %2;")
-            .arg(th.fonts.xxl)
-            .arg(Th::qss(th.text.primary))
-    );
-    _statusLabel->setStyleSheet(QString("background: transparent; color: %1; padding: %2px;")
-                                    .arg(Th::qss(th.text.secondary))
-                                    .arg(th.spacing.xxl));
-    _scroll->setStyleSheet(
-        QStringLiteral("QScrollArea { background: transparent; }") + Th::scrollBarQss()
-    );
+    OverviewCard::stylePage(this, _page);
     for (auto *card : _cards)
         card->applyTheme();
 }

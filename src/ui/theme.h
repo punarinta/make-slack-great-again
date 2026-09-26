@@ -380,6 +380,23 @@ QString globalQss();
 // handle corner radius.
 QString scrollBarQss(int width = 8, int radius = 4);
 
+// The knobs behind scrollBarQss(). `margin` insets the handle inside the bar
+// (a 2px margin on an 8px bar leaves a 4px handle), `minHandle` is the handle's
+// minimum length and `hoverTint` adds the `text.secondary` hover colour.
+struct ScrollBarStyle {
+    int  width     = 8;
+    int  radius    = 4;
+    int  margin    = 0;
+    int  minHandle = 28;
+    bool hoverTint = true;
+};
+QString scrollBarQss(const ScrollBarStyle &style);
+
+// The slimmer bar of the floating pick lists (mention popup, composer
+// completer, conversation selector): 4px handle inset in an 8px track, radius
+// 3, no hover tint.
+QString popupScrollBarQss();
+
 // Themed stock form controls. Native QRadioButton/QCheckBox/QSpinBox draw their
 // indicator/field from the OS palette — light-mode white regardless of the
 // theme — so any dialog using them must apply these instead of hand-rolling a

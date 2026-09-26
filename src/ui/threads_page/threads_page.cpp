@@ -10,7 +10,6 @@
 #include "ui/styled_button/styled_button.h"
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
-#include "ui/user_avatar.h"
 
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
@@ -19,20 +18,12 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QScrollArea>
 #include <QTextDocument>
 #include <QUrl>
 #include <QVBoxLayout>
 
-namespace {
-
-// Match the message list's avatar geometry (kAvSize/kAvGap/radius 4 in
-// message_list) so thread rows read exactly like chat rows.
-constexpr int kAvatarSize   = 36;
-constexpr int kAvatarRadius = 4;
-constexpr int kAvatarGap    = 10;
-
-} // namespace
+using OverviewCard::kAvatarSize;
+using OverviewCard::kTextLeft;
 
 // ── ThreadMsgRow ──────────────────────────────────────────────────────────────
 // One message inside a thread card: avatar + name + time header over the rich
@@ -56,12 +47,7 @@ public:
         sp.setHeightForWidth(true);
         setSizePolicy(sp);
 
-        if (!_msg.botAvatarUrl.isEmpty()) {
-            _avatarUrl = _msg.botAvatarUrl;
-        } else if (_session) {
-            if (const User *u = _session->findUser(_msg.author))
-                _avatarUrl = u->avatarUrl;
-        }
+        _avatarUrl = OverviewCard::avatarUrl(_session, _msg.author, _msg.botAvatarUrl);
         if (_imgCache) {
             if (!_avatarUrl.isEmpty())
                 _imgCache->get(_avatarUrl); // kick off the download
@@ -111,38 +97,13 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
         ensureDoc(width());
 
-        // Avatar (no presence dot — this is a digest, not the roster).
-        const QRect   avRect(0, padV(), kAvatarSize, kAvatarSize);
-        const QPixmap px =
-            (_imgCache && !_avatarUrl.isEmpty()) ? _imgCache->get(_avatarUrl) : QPixmap{};
-        if (!px.isNull())
-            UserAvatar::paintPhoto(p, avRect, px, devicePixelRatioF(), kAvatarRadius);
-        else
-            UserAvatar::paintInitial(
-                p,
-                avRect,
-                displayName().left(1),
-                Th::c().presence.away,
-                Qt::white,
-                kAvatarRadius,
-                avRect.height() * 0.38
-            );
-
-        // Header: name + timestamp.
-        const QFont        nf = nameFont();
-        const QFontMetrics nfm(nf);
-        p.setFont(nf);
-        p.setPen(Th::c().text.primary);
-        const QString name = nfm.elidedText(displayName(), Qt::ElideRight, width() - textLeft());
-        p.drawText(textLeft(), padV() + nfm.ascent(), name);
-
-        QFont tf = QApplication::font();
-        tf.setPointSizeF(tf.pointSizeF() * Th::c().fontScales.timestamp);
-        p.setFont(tf);
-        p.setPen(Th::c().text.secondary);
-        p.drawText(
-            textLeft() + nfm.horizontalAdvance(name) + Th::c().spacing.md,
-            padV() + nfm.ascent(),
+        OverviewCard::paintRowHeader(
+            p,
+            width(),
+            devicePixelRatioF(),
+            _imgCache,
+            _avatarUrl,
+            displayName(),
             MsgRender::dateTimeLabel(_msg.date)
         );
 
@@ -202,16 +163,12 @@ protected:
     }
 
 private:
-    static QFont nameFont() {
-        QFont f = QApplication::font();
-        f.setWeight(QFont::DemiBold);
-        return f;
-    }
-    int padV() const { return Th::c().spacing.sm; }
-    int hdrGap() const { return Th::c().spacing.xs; }
-    int textLeft() const { return kAvatarSize + kAvatarGap; }
-    int docWidth() const { return std::max(50, width() - textLeft()); }
-    int docTop() const { return padV() + QFontMetrics(nameFont()).height() + hdrGap(); }
+    static QFont nameFont() { return OverviewCard::nameFont(); }
+    static int   padV() { return OverviewCard::rowPadV(); }
+    static int   hdrGap() { return OverviewCard::rowHdrGap(); }
+    static int   textLeft() { return kTextLeft; }
+    int          docWidth() const { return std::max(50, width() - textLeft()); }
+    int          docTop() const { return padV() + QFontMetrics(nameFont()).height() + hdrGap(); }
 
     QString displayName() const {
         if (!_msg.botName.isEmpty())
@@ -306,20 +263,16 @@ public:
         auto *headerCol = new QVBoxLayout();
         headerCol->setContentsMargins(0, 0, 0, 0);
         headerCol->setSpacing(sp.xs);
-        auto *nameRow = new QHBoxLayout();
-        nameRow->setContentsMargins(0, 0, 0, 0);
-        nameRow->setSpacing(sp.sm);
-        _chanIcon = new QLabel(this);
-        nameRow->addWidget(_chanIcon);
-        _chanBtn = new QPushButton(channelLabel(), this);
-        _chanBtn->setFlat(true);
-        _chanBtn->setCursor(Qt::PointingHandCursor);
-        connect(_chanBtn, &QPushButton::clicked, this, [this] {
-            if (_cbs.openChannel)
-                _cbs.openChannel(_item.conv);
-        });
-        nameRow->addWidget(_chanBtn);
-        nameRow->addStretch(1);
+        auto *nameRow = OverviewCard::makeChannelHeader(
+            this,
+            OverviewCard::conversationLabel(_session, _item.conv),
+            [this] {
+                if (_cbs.openChannel)
+                    _cbs.openChannel(_item.conv);
+            },
+            &_chanIcon,
+            &_chanBtn
+        );
         _newPill = new QLabel(tr("New"), this);
         _newPill->setVisible(hasUnread());
         nameRow->addWidget(_newPill);
@@ -412,28 +365,11 @@ public:
         // MainWindow cascades "QWidget { background: content }" over the whole
         // right panel, so every header widget here must pin an explicit
         // transparent background or it paints a white chip on the grey page.
-        _body->setStyleSheet(
-            QString(
-                "QWidget#threadCardBody { background: %1; border: 1px solid %2; "
-                "border-radius: 8px; }"
-            )
-                .arg(Th::qss(th.surface.content), Th::qss(th.message.attachmentBorder))
-        );
-        const bool priv = isPrivateChannel();
-        _chanIcon->setPixmap(svgPixmap(
-            priv ? QStringLiteral(":/ui/lock.svg") : QStringLiteral(":/ui/hash.svg"),
-            QSize(15, 15),
-            th.text.primary
-        ));
-        _chanIcon->setStyleSheet(QStringLiteral("background: transparent;"));
-        _chanBtn->setStyleSheet(
-            QString(
-                "QPushButton { border: none; background: transparent; padding: 0; "
-                "color: %1; font-size: %2px; font-weight: 700; text-align: left; }"
-                "QPushButton:hover { text-decoration: underline; }"
-            )
-                .arg(Th::qss(th.text.primary))
-                .arg(th.fonts.lg)
+        OverviewCard::styleCardBody(_body);
+        OverviewCard::styleChannelHeader(
+            _chanIcon,
+            isPrivateChannel() ? QStringLiteral(":/ui/lock.svg") : QStringLiteral(":/ui/hash.svg"),
+            _chanBtn
         );
         _participants->setStyleSheet(QString("background: transparent; color: %1; font-size: %2px;")
                                          .arg(Th::qss(th.text.secondary))
@@ -455,15 +391,6 @@ private:
     bool isPrivateChannel() const {
         const Conversation *c = _session ? _session->findConversation(_item.conv) : nullptr;
         return c && c->kind == ConvKind::PrivateChannel;
-    }
-
-    QString channelLabel() const {
-        const Conversation *c = _session ? _session->findConversation(_item.conv) : nullptr;
-        if (!c)
-            return _item.conv.value;
-        if (c->kind == ConvKind::Im && c->dmUser)
-            return _session->userDisplayName(*c->dmUser);
-        return c->name;
     }
 
     bool hasUnread() const {
@@ -598,61 +525,14 @@ private:
 
 ThreadsPage::ThreadsPage(ImageCache *imgCache, QWidget *parent)
     : QWidget(parent), _imgCache(imgCache) {
-    setObjectName("threadsPage");
-    setAttribute(Qt::WA_StyledBackground);
-
-    const auto &sp   = Th::c().spacing;
-    auto       *root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
-    root->setSpacing(0);
-
-    // Header matches the thread panel's: 48px, bold, lg. It keeps the content
-    // background; the scroll body below is grey (official-client layout), so
-    // the hairline in applyTheme separates the two.
-    _headerRow = new QWidget(this);
-    _headerRow->setObjectName("threadsHeader");
-    _headerRow->setAttribute(Qt::WA_StyledBackground);
-    _headerRow->setFixedHeight(48);
-    auto *headerRow    = _headerRow;
-    auto *headerLayout = new QHBoxLayout(headerRow);
-    headerLayout->setContentsMargins(sp.xl, 0, sp.md, 0);
-    _titleLabel = new QLabel(tr("Threads"), headerRow);
-    headerLayout->addWidget(_titleLabel, 1);
-    root->addWidget(headerRow);
-
-    _scroll = new QScrollArea(this);
-    _scroll->setWidgetResizable(true);
-    _scroll->setFrameShape(QFrame::NoFrame);
-    _scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    _scroll->viewport()->setAutoFillBackground(false);
-    root->addWidget(_scroll, 1);
-
-    _listHost   = new QWidget(_scroll);
-    _listLayout = new QVBoxLayout(_listHost);
-    // Generous official-client rhythm: ~24px page gutter and between sections.
-    _listLayout->setContentsMargins(sp.xxl, sp.xxl, sp.xxl, sp.xxl);
-    _listLayout->setSpacing(sp.xxl);
-
-    _statusLabel = new QLabel(_listHost);
-    _statusLabel->setAlignment(Qt::AlignHCenter);
-    _statusLabel->setWordWrap(true);
-    _statusLabel->hide();
-    _listLayout->addWidget(_statusLabel);
+    _page = OverviewCard::buildPage(this, QStringLiteral("threads"), tr("Threads"));
 
     _moreBtn = new StyledButton(tr("Show more threads"), StyledButton::Variant::Secondary, this);
     _moreBtn->setSize(StyledButton::Size::Small);
     _moreBtn->hide();
     connect(_moreBtn, &QPushButton::clicked, this, [this] { loadPage(_nextCursor); });
-    _listLayout->addWidget(_moreBtn, 0, Qt::AlignLeft);
-
-    _listLayout->addStretch(1);
-    _listHost->setObjectName("threadsList");
-    // Styled, not palette-filled: setWidget() force-enables autoFillBackground,
-    // which would paint the palette's window color (see scrollWrap() in
-    // settings_dialog); the grey comes from the stylesheet in applyTheme.
-    _listHost->setAttribute(Qt::WA_StyledBackground);
-    _scroll->setWidget(_listHost);
-    _listHost->setAutoFillBackground(false);
+    // Below the status label, above the stretch.
+    _page.listLayout->insertWidget(_page.listLayout->count() - 1, _moreBtn, 0, Qt::AlignLeft);
 
     applyTheme();
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] { applyTheme(); });
@@ -733,9 +613,9 @@ void ThreadsPage::loadPage(const QString &cursor) {
                 };
                 cbs.openChannel = [this](ConversationId conv) { emit openChannelRequested(conv); };
                 for (const auto &t : page.threads) {
-                    auto *card = new ThreadCard(t, _session, _imgCache, cbs, _listHost);
+                    auto *card = new ThreadCard(t, _session, _imgCache, cbs, _page.listHost);
                     // Above the "Show more" button (which sits above the stretch).
-                    _listLayout->insertWidget(_listLayout->indexOf(_moreBtn), card);
+                    _page.listLayout->insertWidget(_page.listLayout->indexOf(_moreBtn), card);
                     _cards.push_back(card);
                 }
                 _hasMore    = page.hasMore;
@@ -760,36 +640,12 @@ void ThreadsPage::loadPage(const QString &cursor) {
 }
 
 void ThreadsPage::setStatus(const QString &text) {
-    _statusLabel->setText(text);
-    _statusLabel->setVisible(!text.isEmpty());
+    _page.statusLabel->setText(text);
+    _page.statusLabel->setVisible(!text.isEmpty());
 }
 
 void ThreadsPage::applyTheme() {
-    const auto &th = Th::c();
-    // The whole page is one grey surface (official-client look): the title sits
-    // on the same grey as the card list, separated only by a subtle hairline.
-    setStyleSheet(
-        QString("QWidget#threadsPage { background: %1; }").arg(Th::qss(th.surface.sunken))
-    );
-    _headerRow->setStyleSheet(QString(
-                                  "QWidget#threadsHeader { background: %1; "
-                                  "border-bottom: 1px solid %2; }"
-    )
-                                  .arg(Th::qss(th.surface.sunken), Th::qss(th.divider.subtle)));
-    _listHost->setStyleSheet(
-        QString("QWidget#threadsList { background: %1; }").arg(Th::qss(th.surface.sunken))
-    );
-    _titleLabel->setStyleSheet(
-        QString("background: transparent; font-weight: bold; font-size: %1px; color: %2;")
-            .arg(th.fonts.xxl)
-            .arg(Th::qss(th.text.primary))
-    );
-    _statusLabel->setStyleSheet(QString("background: transparent; color: %1; padding: %2px;")
-                                    .arg(Th::qss(th.text.secondary))
-                                    .arg(th.spacing.xxl));
-    _scroll->setStyleSheet(
-        QStringLiteral("QScrollArea { background: transparent; }") + Th::scrollBarQss()
-    );
+    OverviewCard::stylePage(this, _page);
     for (auto *card : _cards)
         card->applyTheme();
 }

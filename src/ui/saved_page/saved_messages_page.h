@@ -3,6 +3,7 @@
 #pragma once
 
 #include "backend/domain.h"
+#include "ui/overview_card/overview_card.h"
 #include "rpl/lifetime.h"
 
 #include <QWidget>
@@ -11,9 +12,6 @@
 class ImageCache;
 class Session;
 class SavedCard;
-class QLabel;
-class QScrollArea;
-class QVBoxLayout;
 
 // "Saved messages" page: every saved message (Slack's "Later": reminders
 // soonest due first, then plain "Save for later" bookmarks newest first) as
@@ -49,12 +47,7 @@ private:
     Session    *_session  = nullptr;
     ImageCache *_imgCache = nullptr;
 
-    QLabel      *_titleLabel  = nullptr;
-    QWidget     *_headerRow   = nullptr;
-    QScrollArea *_scroll      = nullptr;
-    QWidget     *_listHost    = nullptr;
-    QVBoxLayout *_listLayout  = nullptr; // cards, then stretch
-    QLabel      *_statusLabel = nullptr;
+    OverviewCard::Page _page; // list: status, cards, then stretch
 
     std::vector<SavedCard *> _cards;
 

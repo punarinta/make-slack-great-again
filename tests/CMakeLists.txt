@@ -136,6 +136,7 @@ set(MSGA_TEST_SUPPORT_SRCS
 
     ${CMAKE_SOURCE_DIR}/src/network/gif_search.cpp
     ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/oauth_pkce.cpp
 
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
 

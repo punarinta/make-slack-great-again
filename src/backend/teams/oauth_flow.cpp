@@ -2,10 +2,9 @@
 // Copyright (C) 2026  Vladimir Osipov
 #include "oauth_flow.h"
 
-#include "network/form_urlencode.h"
+#include "network/oauth_pkce.h"
 
 #include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QJsonArray>
@@ -14,7 +13,6 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QRandomGenerator>
 #include <QUrlQuery>
 
 // Same custom-scheme redirect the OS routes back to the app (registered verbatim
@@ -64,17 +62,9 @@ void OAuthFlow::start() {
         return;
     }
 
-    // PKCE: 32 random bytes → base64url (43 chars, within RFC 7636's 43–128 range)
-    QByteArray verifierBytes(32, '\0');
-    QRandomGenerator::global()->fillRange(reinterpret_cast<quint32 *>(verifierBytes.data()), 8);
-    _codeVerifier = QString::fromLatin1(
-        verifierBytes.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)
-    );
-    const QByteArray challenge =
-        QCryptographicHash::hash(_codeVerifier.toLatin1(), QCryptographicHash::Sha256)
-            .toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
-
-    _state = QString::number(QRandomGenerator::global()->generate64(), 16);
+    const auto pkce = net::oauth::makePkce();
+    _codeVerifier   = pkce.verifier;
+    _state          = pkce.state;
 
     QUrl      url(authorityBase() + QStringLiteral("/oauth2/v2.0/authorize"));
     QUrlQuery q;
@@ -84,7 +74,7 @@ void OAuthFlow::start() {
     q.addQueryItem("response_mode", "query");
     q.addQueryItem("scope", scopes());
     q.addQueryItem("state", _state);
-    q.addQueryItem("code_challenge", QString::fromLatin1(challenge));
+    q.addQueryItem("code_challenge", QString::fromLatin1(pkce.challenge));
     q.addQueryItem("code_challenge_method", "S256");
     q.addQueryItem("prompt", "select_account");
     url.setQuery(q);
@@ -97,19 +87,14 @@ void OAuthFlow::handleCallbackUri(const QUrl &uri) {
     if (uri.scheme() != "msga" || uri.host() != "oauth" || uri.path() != "/callback")
         return;
 
-    QUrlQuery q(uri.query());
-    if (q.hasQueryItem("error")) {
+    const auto cb = net::oauth::parseCallback(QUrlQuery(uri.query()), _state);
+    if (!cb.error.isEmpty()) {
         // Surface the admin-consent case clearly; Entra returns error=
         // access_denied / consent_required with a description.
-        const QString desc = q.queryItemValue("error_description");
-        emit          failed(desc.isEmpty() ? q.queryItemValue("error") : desc);
+        emit failed(cb.errorDescription.isEmpty() ? cb.error : cb.errorDescription);
         return;
     }
-    if (q.queryItemValue("state") != _state) {
-        emit failed("state_mismatch");
-        return;
-    }
-    exchangeCode(q.queryItemValue("code"));
+    exchangeCode(cb.code);
 }
 
 void OAuthFlow::exchangeCode(const QString &code) {
@@ -121,13 +106,8 @@ void OAuthFlow::exchangeCode(const QString &code) {
     params.addQueryItem("code_verifier", _codeVerifier); // PKCE (no client_secret — public client)
     params.addQueryItem("scope", scopes());
 
-    auto           *nam = new QNetworkAccessManager(this);
-    QNetworkRequest req(QUrl(authorityBase() + QStringLiteral("/oauth2/v2.0/token")));
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    auto *reply = nam->post(req, net::formUrlEncode(params));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam] {
-        reply->deleteLater();
-        nam->deleteLater();
+    const QUrl tokenUrl(authorityBase() + QStringLiteral("/oauth2/v2.0/token"));
+    net::oauth::postForm(this, tokenUrl, params, [this](QNetworkReply *reply) {
         const auto obj = QJsonDocument::fromJson(reply->readAll()).object();
         if (obj.contains("error")) {
             const QString desc = obj.value("error_description").toString();

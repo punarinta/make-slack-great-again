@@ -69,8 +69,19 @@ private:
     QString     _header;           // small dimmed header line (task-list mode)
     QStringList _names;            // reactor display names / task descriptions, one per line
 
-    void paintReaction(QPainter &p);
-    void paintTaskList(QPainter &p);
+    // Size a body holding contentW x contentH, then place it above the target
+    // (flipping below when there is no room) with the arrow on the target's
+    // centre: the shared positioning of every show* variant but showRightOf.
+    void placeAbove(int contentW, int contentH, const QRect &targetGlobalRect);
+
+    // The rounded body inside the shadow margin, on the side away from the arrow.
+    QRectF       bodyRect() const;
+    // Shadow, body fill and arrow — the chrome under every mode's content.
+    void         paintFrame(QPainter &p, const QRectF &body);
+    void         paintReaction(QPainter &p, const QRectF &body);
+    void         paintTaskList(QPainter &p, const QRectF &body);
+    // Medium-weight app font: the plain tooltip text and the task-list lines.
+    static QFont textFont();
 
     // Reparent onto the top-level window and place at a global position.  Done as
     // an in-window child overlay (not a Qt::ToolTip top-level) because Wayland
