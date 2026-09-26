@@ -2,8 +2,9 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 // Claude Code backend: transcript parsing, roster parsing, and the backend
 // end to end against a fake ~/.claude (CLAUDE_CONFIG_DIR) — docs/backend-modules-plan.md §5.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -34,12 +35,12 @@ using namespace claude_code;
 using Kind  = TranscriptItem::Kind;
 using State = TranscriptItem::State;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
     QStandardPaths::setTestModeEnabled(true);
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

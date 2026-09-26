@@ -6,8 +6,9 @@
 // content (regression guard for the clipped/overlapping-steps bug). Browser
 // sign-in is pinned off so the rendered state doesn't depend on whether the
 // machine running the tests happens to have Chrome installed.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QDir>
@@ -22,7 +23,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     // Pin browser sign-in off before any widget asks whether it's available, so the
     // rendered state doesn't depend on the test machine having Chrome. Set the var
     // yourself (MSGA_BROWSER_LOGIN=1) to eyeball the browser-enabled layout instead.
@@ -34,7 +35,7 @@ int main(int argc, char **argv) {
     ThemeManager::instance();
     static QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 static void pump(int ms) {

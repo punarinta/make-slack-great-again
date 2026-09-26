@@ -12,8 +12,9 @@
 // setSession() must cache the loaded messages first, exactly like
 // openConversation() does — so the anchor message survives the round-trip.
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -39,12 +40,14 @@
 #include "rpl/event_stream.h"
 #include "ui/image_cache.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-message-list");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
+
+namespace {
 
 // ── StubBackend ───────────────────────────────────────────────────────────────
 // Minimal controllable backend. loadHistory returns _historyPage synchronously
@@ -192,6 +195,8 @@ struct Fixture {
         QDir(tempDir.path()).removeRecursively();
     }
 };
+
+} // namespace
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

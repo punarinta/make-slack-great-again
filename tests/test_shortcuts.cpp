@@ -13,8 +13,9 @@
 //     sequence already taken in that window
 //   - keyChips()/nativeKeys() render the primary binding for the help panel
 //     and the tooltips
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QKeyEvent>
@@ -27,11 +28,11 @@ using Ui::Shortcut;
 using Ui::ShortcutScope;
 namespace Shortcuts = Ui::Shortcuts;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-shortcuts");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Table consistency ─────────────────────────────────────────────────────────

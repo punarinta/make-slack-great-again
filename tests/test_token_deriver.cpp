@@ -5,8 +5,9 @@
 // ContentAccessDenied) while still embedding "api_token":"xoxc-…". Gating the
 // scrape on reply->error() threw that token away and reported a perfectly good
 // cookie as unverifiable — every manual cookie sign-in failed that way.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
@@ -18,13 +19,13 @@
 
 using namespace slack::session;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 static bool waitFor(std::function<bool()> pred, int timeoutMs = 5000) {

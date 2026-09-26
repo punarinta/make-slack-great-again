@@ -2,8 +2,9 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 // Session-token (xoxc/xoxd) sign-in: the `d` cookie survives the credentials
 // blob round-trip, and the transport emits `Cookie: d=…` only when a cookie is set.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
@@ -19,13 +20,13 @@
 
 using namespace slack;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 static bool waitFor(std::function<bool()> pred, int timeoutMs = 3000) {

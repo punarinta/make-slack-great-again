@@ -4,8 +4,9 @@
 // the DevTools endpoint, turning the web client's localConfig_v2 into workspaces, and
 // the host-harvesting fallback used when the client never booted. The CDP round trip
 // itself needs a real browser, so it isn't covered here.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 
@@ -13,11 +14,11 @@
 
 using namespace slack::session;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test-browser-login");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 TEST_CASE("the DevTools websocket endpoint is read from /json/version", "[browser_login]") {

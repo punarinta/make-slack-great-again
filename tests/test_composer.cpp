@@ -4,8 +4,9 @@
 // Tests for the message composer and related session/backend features.
 // Requires QApplication because ComposerWidget inherits QWidget.
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -31,11 +32,11 @@
 
 // ── Custom main (need QApplication before Catch runs) ────────────────────────
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-composer");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

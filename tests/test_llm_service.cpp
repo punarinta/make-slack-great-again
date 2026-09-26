@@ -4,8 +4,9 @@
 // QSettings is redirected to a temp dir so the real user config (and its
 // API keys) is never touched; SecretStore on Linux is the QSettings fallback,
 // so keys land there too.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "fake_http_server.h"
 #include "llm/llm_service.h"
@@ -21,7 +22,7 @@
 
 static QTemporaryDir *gSettingsDir = nullptr;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
@@ -39,7 +40,7 @@ int main(int argc, char **argv) {
         s.setValue("llm/anthropic/expiresAt", 123);
         s.sync();
     }
-    const int rc = Catch::Session().run(argc, argv);
+    const int rc = msga_test::runCatch(argc, argv);
     delete gSettingsDir;
     return rc;
 }

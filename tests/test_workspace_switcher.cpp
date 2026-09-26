@@ -7,8 +7,9 @@
 //   - Badge text truncation (>99 → "99+")
 //   - Widget renders without crash when unreads are present
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QPixmap>
@@ -18,11 +19,11 @@
 
 // ── Custom main (QApplication required for QWidget) ──────────────────────────
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-workspace-switcher");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -11,8 +11,9 @@
 // one). These tests exercise the positive path (a simulated suspend gap → reconnect)
 // and the negative path (a healthy, normally-ticking connection → no churn).
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -30,11 +31,11 @@
 
 using slack::SocketModeRealtime;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // Pumps the Qt event loop until pred() returns true or timeoutMs elapses.

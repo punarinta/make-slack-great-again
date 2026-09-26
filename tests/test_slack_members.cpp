@@ -3,8 +3,9 @@
 // PublicBackend::loadMembers: conversations.members, which pages by cursor. The
 // header's member list shows the whole answer, so every page has to be read
 // before it is handed over.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
@@ -17,7 +18,7 @@
 
 using namespace slack;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
@@ -25,7 +26,7 @@ int main(int argc, char **argv) {
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

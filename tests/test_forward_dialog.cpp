@@ -2,6 +2,8 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 #include <catch2/catch_test_macros.hpp>
 
+#include "test_main.h"
+
 #include <QApplication>
 #include <QClipboard>
 #include <QPushButton>
@@ -9,6 +11,13 @@
 
 #include "text/mrkdwn_parser.h"
 #include "ui/forward_dialog/forward_dialog.h"
+
+MSGA_TEST_MAIN(argc, argv) {
+    QApplication app(argc, argv);
+    app.setApplicationName("msga-test-forward-dialog");
+    app.setOrganizationName("msga-test");
+    return msga_test::runCatch(argc, argv);
+}
 
 namespace {
 

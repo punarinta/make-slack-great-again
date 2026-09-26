@@ -3,8 +3,9 @@
 // PublicBackend::pressBotButton: the internal blocks.actions the official
 // client calls on a Block Kit button press. Session (xoxc) tokens only, so an
 // OAuth workspace must not claim the capability.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
@@ -21,7 +22,7 @@
 
 using namespace slack;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
@@ -29,7 +30,7 @@ int main(int argc, char **argv) {
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

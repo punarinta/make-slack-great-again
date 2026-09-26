@@ -4,8 +4,9 @@
 // downloaded canvas HTML into rendered emoji (Unicode glyphs for built-ins,
 // inline <img src="emoji:name"> for workspace custom emoji), without ever
 // touching colons that live inside tags/attributes.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "ui/canvas_page/canvas_display.h"
 #include "ui/canvas_page/canvas_emoji.h"
@@ -15,11 +16,11 @@
 #include <QTextBlock>
 #include <QTextDocument>
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-canvas-emoji");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 using CanvasEmoji::expandInHtml;

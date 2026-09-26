@@ -5,8 +5,9 @@
 // Dialogs are in-window children, so nothing else knows they are closeable; if
 // the stacking order is read wrong, Cmd+W hides the whole window with a dialog
 // still open on it.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QLabel>
@@ -18,12 +19,12 @@
 #include "ui/app_dialog/app_dialog.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-app-dialog");
     app.setOrganizationName("msga-test");
     ThemeManager::instance();
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

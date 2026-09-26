@@ -15,8 +15,9 @@
 // accessors, and activation through its onActivated hook (the same hook the
 // virtual list invokes on a row click) — neither depends on widget geometry, so
 // the tests run deterministically headless.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QLineEdit>
@@ -32,7 +33,7 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-browse-channels");
     app.setOrganizationName("msga-test");
@@ -41,7 +42,7 @@ int main(int argc, char **argv) {
     static QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Test data ──────────────────────────────────────────────────────────────────

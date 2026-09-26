@@ -3,8 +3,9 @@
 //
 // PopupTooltip press suppression: a press on a tooltipped target hides the
 // tooltip, and it is not shown again for that target until the cursor leaves it.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QTest>
@@ -12,12 +13,12 @@
 #include "ui/popup_tooltip/popup_tooltip.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-popup-tooltip");
     app.setOrganizationName("msga-test");
     ThemeManager::instance();
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

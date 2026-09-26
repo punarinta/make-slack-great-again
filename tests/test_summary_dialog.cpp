@@ -5,8 +5,9 @@
 //   - long content scrolls inside a QScrollArea instead of growing the card
 //   - the card is the widened 840px (clamped to the host window)
 //   - Copy is the only button; it puts the raw Markdown on the clipboard
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -21,12 +22,12 @@
 #include "ui/styled_button/styled_button.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-summary-dialog");
     app.setOrganizationName("msga-test");
     ThemeManager::instance();
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

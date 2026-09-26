@@ -2,8 +2,9 @@
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
 // Transport-failure retry behavior of WebApiClient and the duplicate-free
 // send-reconcile loop of PublicBackend::sendMessage.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -25,7 +26,7 @@
 
 using namespace slack;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
@@ -33,7 +34,7 @@ int main(int argc, char **argv) {
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // Pumps the Qt event loop until pred() returns true or timeoutMs elapses.

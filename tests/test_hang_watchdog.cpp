@@ -13,22 +13,23 @@
 // grace; the first heartbeat() drops to the steady window. These tests pin that
 // behaviour.
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "app/crash_handler.h"
 
 #include <QStandardPaths>
 #include <QtGlobal>
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     // Keep the watchdog enabled and non-fatal regardless of the dev's shell env,
     // and route any report it writes to a throwaway crash.log.
     qunsetenv("MSGA_WATCHDOG_DISABLE");
     qunsetenv("MSGA_WATCHDOG_ABORT");
     QStandardPaths::setTestModeEnabled(true);
     CrashHandler::install(); // sets the crash-log path + warms the unwinder
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 #if defined(MSGA_HANG_WATCHDOG)

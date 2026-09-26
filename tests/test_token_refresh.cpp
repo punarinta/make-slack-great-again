@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 MSGA contributors. See LICENSE for details.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -28,7 +29,7 @@ static slack::Credentials loadCreds(const QString &id) {
     return rec ? slack::fromRecord(*rec) : slack::Credentials{};
 }
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
@@ -36,7 +37,7 @@ int main(int argc, char **argv) {
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

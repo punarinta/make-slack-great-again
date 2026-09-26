@@ -8,8 +8,9 @@
 //   - buildAttachHtml(): classic bot "fields" render as bold title + value
 //   - lastReplyLabel(): "today at"/"yesterday at" wording
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QDateTime>
@@ -31,11 +32,11 @@
 
 // ── Custom main (QApplication required for fonts/theme) ──────────────────────
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-message-render");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 TEST_CASE("rich text preserves titled links from matching fallback text", "[render][links]") {

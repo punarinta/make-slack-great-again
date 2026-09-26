@@ -9,8 +9,9 @@
 // conversations.list is refused anyway with `enterprise_is_restricted` ("The
 // method cannot be called from an Enterprise"), the roster is loaded the way the
 // web client loads it: client.userBoot for channels, im.list for DMs.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
@@ -25,7 +26,7 @@
 
 using namespace slack;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test");
     app.setOrganizationName("msga-test");
@@ -33,7 +34,7 @@ int main(int argc, char **argv) {
     QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

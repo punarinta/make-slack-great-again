@@ -6,8 +6,9 @@
 //   - addItem() with selected=true: checkmark + accent color
 //   - Layout: per-item heights add up correctly
 //   - Behavioral: clicking a header fires nothing; clicking an item fires its action
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QPixmap>
@@ -17,12 +18,12 @@
 #include "ui/theme.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-context-menu");
     app.setOrganizationName("msga-test");
     ThemeManager::instance();
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Layout constants (mirror of ContextMenu's private section) ────────────────

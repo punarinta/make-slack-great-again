@@ -8,8 +8,9 @@
 //   - staying under the cap evicts nothing
 //   - the freshly inserted url survives eviction triggered by its own insert
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QBuffer>
@@ -41,11 +42,11 @@ void settle(int ms = 300) {
 
 } // namespace
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-image-cache");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // A 256×256 ARGB image decodes to 256*256*4 = 256 KiB resident — the cost

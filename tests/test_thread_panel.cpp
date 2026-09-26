@@ -17,8 +17,9 @@
 // signals and check what reaches the backend, including the thread root, which
 // is the part that decides whether the file lands in the thread or at the
 // channel root.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -40,12 +41,14 @@
 #include "ui/mention_popup/mention_popup.h"
 #include "ui/thread_panel/thread_panel.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-thread-panel");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
+
+namespace {
 
 // ── StubBackend ───────────────────────────────────────────────────────────────
 // Records the calls the panel is supposed to produce; everything else is inert.
@@ -183,6 +186,8 @@ struct Fixture {
         QDir(tempDir.path()).removeRecursively();
     }
 };
+
+} // namespace
 
 // The composer is ThreadPanel's own child; the panel owns the wiring under test.
 static ComposerWidget *composerOf(ThreadPanel &panel) {

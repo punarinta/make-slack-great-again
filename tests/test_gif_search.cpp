@@ -7,8 +7,9 @@
 // the `original` rendition carries no `url` key at all. Rendition coverage also
 // varies per GIF, so the fallback chains have to survive gaps.
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "network/gif_search.h"
 
@@ -22,7 +23,7 @@
 using net::GifResult;
 using net::GifSearch;
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga");
     app.setOrganizationName("msga");
@@ -38,7 +39,7 @@ int main(int argc, char **argv) {
     // down is what keeps the real key intact.
     static QTemporaryDir settingsDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

@@ -13,8 +13,9 @@
 // plaintext-copy sequence a keychain platform needs would here delete the value
 // it just stored. writeScrubbingLegacy() is what keeps that straight, and the
 // last two cases below are its regression guard.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QSettings>
@@ -22,7 +23,7 @@
 
 #include "util/secret_store.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga");
     app.setOrganizationName("msga");
@@ -30,7 +31,7 @@ int main(int argc, char **argv) {
     // storage so tests never touch the real config.
     static QTemporaryDir settingsDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

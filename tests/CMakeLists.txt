@@ -33,13 +33,11 @@ set(TEST_SYSTEM_INCLUDES
 
 # ── Shared app sources: compiled once, linked into every test ──────────────
 # Every app source a test exercises is compiled ONCE into msga_test_support and
-# linked into each test executable, instead of being recompiled per test (this
+# linked into the test executable, instead of being recompiled per test (this
 # used to be ~60% of the test build's CPU time: theme/mrkdwn/time_format ~25×,
 # session.cpp 11×, the SecretStore pair into all ~80 tests). It is a STATIC
-# library, so the linker still pulls only the objects a test references: each
-# test links exactly the code it uses, and a Core-only test never drags in the
-# widget layer. A new app source a test needs goes in this list, not in the
-# test's own source list.
+# library, so the linker pulls only the objects some test references. A new app
+# source a test needs goes in this list, not in the test's own source list.
 #
 # Compiled with the test flags, NOT the app's: none of the MSGA_BACKEND_* /
 # MSGA_DEMO / MSGA_HANG_WATCHDOG defines (the msga target sets those on
@@ -272,486 +270,268 @@ target_precompile_headers(msga_test_support PRIVATE ${CMAKE_SOURCE_DIR}/src/pch.
 add_library(msga_test_resources OBJECT ${CMAKE_SOURCE_DIR}/resources/resources.qrc)
 target_link_libraries(msga_test_resources PRIVATE Qt6::Core)
 
-function(add_msga_test target)
-    add_executable(${target} ${ARGN})
-    target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
-    target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
-    target_link_libraries(${target} PRIVATE
-        msga_test_support Catch2::Catch2WithMain Qt6::Core Microsoft.GSL::GSL)
-    add_test(NAME ${target} COMMAND ${target})
+# ── One test executable ─────────────────────────────────────────────────────
+# Every test file is linked into ONE executable, msga_tests, instead of one
+# executable per file: the per-file links used to cost ~80 CPU-s and ~1.8 GB
+# of Debug binaries, mostly the same msga_test_support objects linked 77 times.
+#
+# Each test file is a suite named after it, and each ctest entry still runs one
+# suite in its own process (`msga_tests test_session`), so process-global setup
+# (QApplication, QSettings::setPath, QStandardPaths test mode, env) stays per
+# file. A file that needs such setup declares it with MSGA_TEST_MAIN in place
+# of main() — see test_main.h, which also has the rules for adding a test file.
+add_executable(msga_tests msga_tests_main.cpp)
+set_target_properties(msga_tests PROPERTIES AUTOMOC ON)
+target_include_directories(msga_tests PRIVATE ${TEST_INCLUDES})
+target_include_directories(msga_tests SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
+target_link_libraries(msga_tests PRIVATE
+    msga_test_support
+    msga_test_resources
+    Catch2::Catch2
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Svg
+    Qt6::Concurrent Qt6::Test
+    Microsoft.GSL::GSL)
+# Its own precompiled header, not the app's src/pch.h: see test_pch.h.
+target_precompile_headers(msga_tests PRIVATE test_pch.h)
+
+# add_msga_test(<suite> [extra sources...]): adds <suite>.cpp (plus any extra
+# sources only this suite needs) to msga_tests and registers a ctest entry that
+# runs just that file's test cases. The suite name must be the file name: the
+# suite selects its test cases by Catch2's filename tag ([#<suite>]).
+function(add_msga_test suite)
+    target_sources(msga_tests PRIVATE ${suite}.cpp ${ARGN})
+    add_test(NAME ${suite} COMMAND msga_tests ${suite})
 endfunction()
 
-# Like add_msga_test but the source file provides its own main() (needed when
-# a QCoreApplication must be constructed before Catch2 runs, e.g. QStandardPaths).
-function(add_msga_qt_test target)
-    add_executable(${target} ${ARGN})
-    target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
-    target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
-    target_link_libraries(${target} PRIVATE
-        msga_test_support Catch2::Catch2 Qt6::Core Microsoft.GSL::GSL)
-    add_test(NAME ${target} COMMAND ${target})
-endfunction()
-
-# Widget test helper: needs QApplication + Qt6::Widgets.
+# Widget test helper: like add_msga_test, run under QApplication (the file's
+# MSGA_TEST_MAIN) with the offscreen QPA.
 # ctest runs these headless (offscreen QPA): no windows pop over the developer's
 # desktop mid-run, and results stop depending on the live compositor (Wayland
 # hides parentless popups, focus/expose timing varies per WM — the same reason
 # test_user_profile_card already forced offscreen internally). To watch a test's
-# UI while debugging, run the test binary directly — the property applies only
-# under ctest.
-function(add_msga_widget_test target)
-    add_executable(${target} ${ARGN})
-    set_target_properties(${target} PROPERTIES AUTOMOC ON)
-    target_include_directories(${target} PRIVATE ${TEST_INCLUDES})
-    target_include_directories(${target} SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDES})
-    target_link_libraries(${target} PRIVATE
-        msga_test_support
-        Catch2::Catch2
-        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::WebSockets Qt6::Svg
-        Microsoft.GSL::GSL)
-    add_test(NAME ${target} COMMAND ${target})
-    set_tests_properties(${target} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+# UI while debugging, run `msga_tests <suite>` directly — the property applies
+# only under ctest.
+function(add_msga_widget_test suite)
+    add_msga_test(${suite} ${ARGN})
+    set_tests_properties(${suite} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endfunction()
 
-add_msga_test(test_emoji
-    test_emoji.cpp
-)
+add_msga_test(test_emoji)
 
-add_msga_test(test_fuzzy_match
-    test_fuzzy_match.cpp
-)
+add_msga_test(test_fuzzy_match)
 
-add_msga_test(test_nav_history
-    test_nav_history.cpp
-)
+add_msga_test(test_nav_history)
 
-add_msga_test(test_content_view
-    test_content_view.cpp
-)
+add_msga_test(test_content_view)
 
-add_msga_test(test_background_tasks
-    test_background_tasks.cpp
-)
-# BackgroundTasks is a Q_OBJECT (its moc comes with msga_test_support).
-set_target_properties(test_background_tasks PROPERTIES AUTOMOC ON)
+add_msga_test(test_background_tasks)
 
-add_msga_test(test_desktop_integration
-    test_desktop_integration.cpp
-)
+add_msga_test(test_desktop_integration)
 
 # Static-source guard: scheme registration must stay outside the WinRT guard.
 # Parses the real Windows source (runs on any host), so it needs its path.
-add_msga_test(test_win_uri_scheme
-    test_win_uri_scheme.cpp
-)
-target_compile_definitions(test_win_uri_scheme PRIVATE
-    MSGA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_msga_test(test_win_uri_scheme)
+set_source_files_properties(test_win_uri_scheme.cpp PROPERTIES
+    COMPILE_DEFINITIONS MSGA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
-add_msga_test(test_mrkdwn
-    test_mrkdwn.cpp
-)
+add_msga_test(test_mrkdwn)
 
 # Composer text → mrkdwn + rich_text (CommonMark rewrites, list blocks).
-add_msga_test(test_markdown_compose
-    test_markdown_compose.cpp
-)
+add_msga_test(test_markdown_compose)
 
 # Shortened link labels ("host/…/…") — detection, display expansion, copy text.
-add_msga_test(test_link_labels
-    test_link_labels.cpp
-)
+add_msga_test(test_link_labels)
 
-# Slack deep-link parsing (header-only; Qt6::Core only).
-add_msga_test(test_slack_links
-    test_slack_links.cpp
-)
+# Slack deep-link parsing (header-only).
+add_msga_test(test_slack_links)
 
-# GIPHY wire format behind the composer's GIF picker. Needs Qt6::Network for
-# QNetworkReply/QNetworkAccessManager, even though the parsing under test is
-# pure — GifSearch owns the request as well as the response.
+# GIPHY wire format behind the composer's GIF picker.
 # Custom main: the key lives in SecretStore, so QSettings has to be redirected
 # at a temp dir before any test touches it.
-add_msga_qt_test(test_gif_search
-    test_gif_search.cpp
-)
-target_link_libraries(test_gif_search PRIVATE Qt6::Network Qt6::Test)
+add_msga_test(test_gif_search)
 
-add_msga_test(test_json_mappers
-    test_json_mappers.cpp
-)
+add_msga_test(test_json_mappers)
 
-# IMAP MIME / RFC 5322 parser (raw message → text/attachments; Qt6::Core only).
-add_msga_test(test_imap_mime
-    test_imap_mime.cpp
-)
+# IMAP MIME / RFC 5322 parser (raw message → text/attachments).
+add_msga_test(test_imap_mime)
 
-# IMAP protocol layer: response framing + light parsers (Qt6::Core only).
-add_msga_test(test_imap_protocol
-    test_imap_protocol.cpp
-)
+# IMAP protocol layer: response framing + light parsers.
+add_msga_test(test_imap_protocol)
 
-# IMAP ENVELOPE/FLAGS/THREAD S-expression mappers (Qt6::Core only).
-add_msga_test(test_imap_mappers
-    test_imap_mappers.cpp
-)
+# IMAP ENVELOPE/FLAGS/THREAD S-expression mappers.
+add_msga_test(test_imap_mappers)
 
-# Model-D bucketing engine: thread → DM/MPDM/list-channel grouping (Qt6::Core).
-add_msga_test(test_imap_bucketing
-    test_imap_bucketing.cpp
-)
+# Model-D bucketing engine: thread → DM/MPDM/list-channel grouping.
+add_msga_test(test_imap_bucketing)
 
-# HTML email → TextWithEntities (Qt6::Core only).
-add_msga_test(test_imap_html
-    test_imap_html.cpp
-)
+# HTML email → TextWithEntities.
+add_msga_test(test_imap_html)
 
-# Outgoing MIME message builder (Qt6::Core only).
-add_msga_test(test_imap_compose
-    test_imap_compose.cpp
-)
+# Outgoing MIME message builder.
+add_msga_test(test_imap_compose)
 
-# IMAP provider auto-detection (domain → server settings; Qt6::Core only).
-add_msga_test(test_imap_providers
-    test_imap_providers.cpp
-)
+# IMAP provider auto-detection (domain → server settings).
+add_msga_test(test_imap_providers)
 
 # Favicon fallback resolver — pure parts (<link rel=icon> scan, parent-domain
-# hop, image sniffing). Gui for QImage decode, Network for the resolver class.
-add_msga_test(test_imap_favicon
-    test_imap_favicon.cpp
-)
-target_link_libraries(test_imap_favicon PRIVATE Qt6::Gui Qt6::Network Qt6::Concurrent)
-set_target_properties(test_imap_favicon PROPERTIES AUTOMOC ON)
+# hop, image sniffing).
+add_msga_test(test_imap_favicon)
 
-# Microsoft Teams JSON mappers (Graph JSON → domain; needs only Qt6::Core).
-add_msga_test(test_teams_mappers
-    test_teams_mappers.cpp
-)
+# Microsoft Teams JSON mappers (Graph JSON → domain).
+add_msga_test(test_teams_mappers)
 
 # Pure huddle-notification policy (header-only helper in domain.h).
-add_msga_test(test_huddle_notify
-    test_huddle_notify.cpp
-)
-target_link_libraries(test_huddle_notify PRIVATE Qt6::Gui)
+add_msga_test(test_huddle_notify)
 
 # Pure notification-freshness policy (header-only helper in domain.h).
-add_msga_test(test_notify_age
-    test_notify_age.cpp
-)
-target_link_libraries(test_notify_age PRIVATE Qt6::Gui)
+add_msga_test(test_notify_age)
 
 # Notification click-target token codec (encode/decode round-trip, thread root).
-add_msga_test(test_notif_token
-    test_notif_token.cpp
-)
-target_link_libraries(test_notif_token PRIVATE Qt6::Gui)
+add_msga_test(test_notif_token)
 
-add_msga_qt_test(test_workspace_cache
-    test_workspace_cache.cpp
-)
+add_msga_test(test_workspace_cache)
 
-add_msga_test(test_cache_evictor
-    test_cache_evictor.cpp
-)
+add_msga_test(test_cache_evictor)
 
-add_msga_qt_test(test_token_store
-    test_token_store.cpp
-)
+add_msga_test(test_token_store)
 
-# The backend sources come from msga_test_support — listing them here too
-# would be a duplicate-symbol link error.
-add_msga_qt_test(test_secret_store
-    test_secret_store.cpp
-)
+add_msga_test(test_secret_store)
 
-add_msga_qt_test(test_backend_factory
-    test_backend_factory.cpp
-)
-target_link_libraries(test_backend_factory PRIVATE
-    Qt6::Gui Qt6::Network Qt6::WebSockets Qt6::Concurrent)
-set_target_properties(test_backend_factory PROPERTIES AUTOMOC ON)
+add_msga_test(test_backend_factory)
 
-add_msga_qt_test(test_auth_strategy
-    test_auth_strategy.cpp
-)
-target_link_libraries(test_auth_strategy PRIVATE Qt6::Gui Qt6::Network)
-set_target_properties(test_auth_strategy PROPERTIES AUTOMOC ON)
+add_msga_test(test_auth_strategy)
 
 # Claude Code backend: transcript + roster parsing, and the backend end to end
 # against a fake ~/.claude (CLAUDE_CONFIG_DIR).
-add_msga_qt_test(test_claude_code
-    test_claude_code.cpp
-)
-target_link_libraries(test_claude_code PRIVATE Qt6::Test Qt6::Gui Qt6::Concurrent)
-set_target_properties(test_claude_code PROPERTIES AUTOMOC ON)
+add_msga_test(test_claude_code)
 if(UNIX)
     # A stand-in for Claude Code's terminal UI (`claude attach`), for typing
     # into live background sessions.
     add_executable(cc_fake_attach cc_fake_attach.cpp)
-    add_dependencies(test_claude_code cc_fake_attach)
-    target_compile_definitions(test_claude_code PRIVATE
-        CC_FAKE_ATTACH="$<TARGET_FILE:cc_fake_attach>")
+    add_dependencies(msga_tests cc_fake_attach)
+    set_source_files_properties(test_claude_code.cpp PROPERTIES
+        COMPILE_DEFINITIONS CC_FAKE_ATTACH="$<TARGET_FILE:cc_fake_attach>")
 endif()
 
-add_msga_qt_test(test_time_format
-    test_time_format.cpp
-)
+add_msga_test(test_time_format)
 
-add_msga_test(test_discussion_summary
-    test_discussion_summary.cpp
-)
+add_msga_test(test_discussion_summary)
 
 # Pure wire codecs for both chat-completion formats — no network.
-add_msga_test(test_llm_wire
-    test_llm_wire.cpp
-)
-target_link_libraries(test_llm_wire PRIVATE Qt6::Network) # QHostAddress (private-range check)
+add_msga_test(test_llm_wire)
 
 # Provider registry + HTTP round trips against FakeHttpServer (own main: needs a
 # QCoreApplication for the event loop and a redirected QSettings path).
-add_msga_qt_test(test_llm_service
-    test_llm_service.cpp
-)
-set_target_properties(test_llm_service PROPERTIES AUTOMOC ON)
-target_link_libraries(test_llm_service PRIVATE Qt6::Network)
+add_msga_test(test_llm_service)
 
-add_msga_test(test_fake_backend
-    test_fake_backend.cpp
-)
+add_msga_test(test_fake_backend)
 
 # --demo fixture loader, tour script parser and demo backend. Only where the
 # fixture exists (the private repo): the public mirror ships no demo/ directory
 # and must build without any demo-mode code.
 if(EXISTS "${CMAKE_SOURCE_DIR}/demo/fixture.json")
     add_msga_test(test_demo_fixture
-        test_demo_fixture.cpp
         ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_fixture.cpp
         ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_backend.cpp
         ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_tour_script.cpp
         ${CMAKE_SOURCE_DIR}/src/backend/demo/demo_services.cpp
     )
-    target_link_libraries(test_demo_fixture PRIVATE Qt6::Gui Qt6::Network)
-    target_compile_definitions(test_demo_fixture PRIVATE
-        MSGA_DEMO_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/demo")
+    set_source_files_properties(test_demo_fixture.cpp PROPERTIES
+        COMPILE_DEFINITIONS MSGA_DEMO_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/demo")
 endif()
 
-add_msga_qt_test(test_session
-    test_session.cpp
-)
-# session.cpp probes image dimensions for optimistic upload previews (QImageReader)
-target_link_libraries(test_session PRIVATE Qt6::Gui)
+add_msga_test(test_session)
 
-add_msga_widget_test(test_message_render
-    test_message_render.cpp
-)
+add_msga_widget_test(test_message_render)
 
-add_msga_widget_test(test_theme
-    test_theme.cpp
-)
-
-target_link_libraries(test_theme PRIVATE Qt6::Test)
-# Same binary, pre-mode config seeded: exercises ThemeManager's one-time
+add_msga_widget_test(test_theme)
+# Same suite, pre-mode config seeded: exercises ThemeManager's one-time
 # charcoal → dark-mode migration, which only runs in the constructor.
-add_test(NAME test_theme_migration COMMAND test_theme "[migration]")
+add_test(NAME test_theme_migration COMMAND msga_tests test_theme "[migration]")
 set_tests_properties(test_theme_migration PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;MSGA_TEST_SEED_THEME=charcoal")
 
-add_msga_widget_test(test_canvas_diff
-    test_canvas_diff.cpp
-)
+add_msga_widget_test(test_canvas_diff)
 
-add_msga_widget_test(test_canvas_page
-    test_canvas_page.cpp
-)
+add_msga_widget_test(test_canvas_page)
 
-# canvas_emoji reuses MsgRender::resolveEmojiRich (same transitive deps as
-# test_message_render).
-add_msga_widget_test(test_canvas_emoji
-    test_canvas_emoji.cpp
-)
+# canvas_emoji reuses MsgRender::resolveEmojiRich.
+add_msga_widget_test(test_canvas_emoji)
 
-add_msga_widget_test(test_image_cache
-    test_image_cache.cpp
-)
+add_msga_widget_test(test_image_cache)
 
-add_msga_widget_test(test_workspace_switcher
-    test_workspace_switcher.cpp
-)
-target_link_libraries(test_workspace_switcher PRIVATE msga_test_resources)
+add_msga_widget_test(test_workspace_switcher)
 
-add_msga_widget_test(test_workspace_icon
-    test_workspace_icon.cpp
-)
-target_link_libraries(test_workspace_icon PRIVATE msga_test_resources)
+add_msga_widget_test(test_workspace_icon)
 
-add_msga_widget_test(test_tray_icon
-    test_tray_icon.cpp
-)
-target_link_libraries(test_tray_icon PRIVATE msga_test_resources)
+add_msga_widget_test(test_tray_icon)
 
-add_msga_widget_test(test_user_profile_card
-    test_user_profile_card.cpp
-)
-target_link_libraries(test_user_profile_card PRIVATE msga_test_resources)
-target_link_libraries(test_user_profile_card PRIVATE Qt6::Test)
+add_msga_widget_test(test_user_profile_card)
 
-add_msga_widget_test(test_context_menu
-    test_context_menu.cpp
-)
-target_link_libraries(test_context_menu PRIVATE msga_test_resources)
-target_link_libraries(test_context_menu PRIVATE Qt6::Test)
+add_msga_widget_test(test_context_menu)
 
-add_msga_widget_test(test_popup_tooltip
-    test_popup_tooltip.cpp
-)
-target_link_libraries(test_popup_tooltip PRIVATE msga_test_resources)
-target_link_libraries(test_popup_tooltip PRIVATE Qt6::Test)
+add_msga_widget_test(test_popup_tooltip)
 
-add_msga_widget_test(test_app_dialog
-    test_app_dialog.cpp
-)
-target_link_libraries(test_app_dialog PRIVATE msga_test_resources)
-target_link_libraries(test_app_dialog PRIVATE Qt6::Test)
+add_msga_widget_test(test_app_dialog)
 
-add_msga_widget_test(test_summary_dialog
-    test_summary_dialog.cpp
-)
-target_link_libraries(test_summary_dialog PRIVATE msga_test_resources)
-target_link_libraries(test_summary_dialog PRIVATE Qt6::Test)
+add_msga_widget_test(test_summary_dialog)
 
 # Disabled: the "XXX is typing…" indicator feature is not in use right now.
 # Re-enabling needs src/ui/typing_indicator/typing_indicator.cpp in
 # MSGA_TEST_SUPPORT_SRCS.
-# add_msga_widget_test(test_typing_indicator
-#     test_typing_indicator.cpp
-# )
-# target_link_libraries(test_typing_indicator PRIVATE Qt6::Test)
+# add_msga_widget_test(test_typing_indicator)
 
-add_msga_widget_test(test_search_widget
-    test_search_widget.cpp
-)
-target_link_libraries(test_search_widget PRIVATE msga_test_resources)
-target_link_libraries(test_search_widget PRIVATE Qt6::Test)
+add_msga_widget_test(test_search_widget)
 
-add_msga_qt_test(test_token_refresh
-    test_token_refresh.cpp
-)
-target_link_libraries(test_token_refresh PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_token_refresh PROPERTIES AUTOMOC ON)
+add_msga_test(test_token_refresh)
 
-add_msga_qt_test(test_socket_mode_realtime
-    test_socket_mode_realtime.cpp
-)
-target_link_libraries(test_socket_mode_realtime PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_socket_mode_realtime PROPERTIES AUTOMOC ON)
+add_msga_test(test_socket_mode_realtime)
 
-add_msga_qt_test(test_rtm_presence
-    test_rtm_presence.cpp
-)
-target_link_libraries(test_rtm_presence PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_rtm_presence PROPERTIES AUTOMOC ON)
+add_msga_test(test_rtm_presence)
 
-add_msga_qt_test(test_enterprise_grid
-    test_enterprise_grid.cpp
-)
-target_link_libraries(test_enterprise_grid PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_enterprise_grid PROPERTIES AUTOMOC ON)
+add_msga_test(test_enterprise_grid)
 
-add_msga_qt_test(test_slack_members
-    test_slack_members.cpp
-)
-target_link_libraries(test_slack_members PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_slack_members PROPERTIES AUTOMOC ON)
+add_msga_test(test_slack_members)
 
-add_msga_qt_test(test_bot_buttons
-    test_bot_buttons.cpp
-)
-target_link_libraries(test_bot_buttons PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_bot_buttons PROPERTIES AUTOMOC ON)
+add_msga_test(test_bot_buttons)
 
-add_msga_qt_test(test_send_retry
-    test_send_retry.cpp
-)
-target_link_libraries(test_send_retry PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_send_retry PROPERTIES AUTOMOC ON)
+add_msga_test(test_send_retry)
 
 # Session-token (xoxc/xoxd) sign-in: blob round-trip + Cookie-header emission.
-add_msga_qt_test(test_session_auth
-    test_session_auth.cpp
-)
-target_link_libraries(test_session_auth PRIVATE Qt6::Network Qt6::WebSockets)
-set_target_properties(test_session_auth PROPERTIES AUTOMOC ON)
+add_msga_test(test_session_auth)
 
 # Session-token derivation: boot-page scrape (incl. Slack's 403-with-payload),
 # auth.test validation, per-candidate failure reasons.
-add_msga_qt_test(test_token_deriver
-    test_token_deriver.cpp
-)
-target_link_libraries(test_token_deriver PRIVATE Qt6::Network)
-set_target_properties(test_token_deriver PROPERTIES AUTOMOC ON)
+add_msga_test(test_token_deriver)
 
 # Browser sign-in: the pure parsers (localConfig_v2, host harvesting, /json/version).
-add_msga_qt_test(test_browser_login
-    test_browser_login.cpp
-)
-# Qt6::Gui: browser_login sizes the sign-in window against the screen work area.
-target_link_libraries(test_browser_login PRIVATE Qt6::Gui Qt6::Network Qt6::WebSockets)
-set_target_properties(test_browser_login PROPERTIES AUTOMOC ON)
+add_msga_test(test_browser_login)
 
 # SessionImportDialog render/smoke harness (screenshot + card-height regression).
-add_msga_widget_test(test_session_import_dialog
-    test_session_import_dialog.cpp
-)
-target_link_libraries(test_session_import_dialog PRIVATE msga_test_resources)
+add_msga_widget_test(test_session_import_dialog)
 
-add_msga_widget_test(test_browse_channels_dialog
-    test_browse_channels_dialog.cpp
-)
-target_link_libraries(test_browse_channels_dialog PRIVATE msga_test_resources)
+add_msga_widget_test(test_browse_channels_dialog)
 
-add_msga_widget_test(test_members_popup
-    test_members_popup.cpp
-)
-target_link_libraries(test_members_popup PRIVATE msga_test_resources)
+add_msga_widget_test(test_members_popup)
 
-add_msga_widget_test(test_shortcuts
-    test_shortcuts.cpp
-)
+add_msga_widget_test(test_shortcuts)
 
-add_msga_widget_test(test_move_to_thread_dialog
-    test_move_to_thread_dialog.cpp
-)
-target_link_libraries(test_move_to_thread_dialog PRIVATE msga_test_resources)
+add_msga_widget_test(test_move_to_thread_dialog)
 
-add_msga_widget_test(test_quick_switcher
-    test_quick_switcher.cpp
-)
-target_link_libraries(test_quick_switcher PRIVATE msga_test_resources)
+add_msga_widget_test(test_quick_switcher)
 
-add_msga_widget_test(test_composer
-    test_composer.cpp
-)
-target_link_libraries(test_composer PRIVATE msga_test_resources)
+add_msga_widget_test(test_composer)
 
-
-add_msga_widget_test(test_conv_list_widget
-    test_conv_list_widget.cpp
-)
-target_link_libraries(test_conv_list_widget PRIVATE msga_test_resources)
+add_msga_widget_test(test_conv_list_widget)
 
 # ThreadPanel owns a MessageListWidget and a ComposerWidget.
-add_msga_widget_test(test_thread_panel
-    test_thread_panel.cpp
-    # Forwarding shares the thread composer's message-rendering dependencies.
-    test_forward_dialog.cpp
-)
-target_link_libraries(test_thread_panel PRIVATE msga_test_resources)
+add_msga_widget_test(test_thread_panel)
 
-add_msga_widget_test(test_message_list
-    test_message_list.cpp
-)
-target_link_libraries(test_message_list PRIVATE msga_test_resources)
+# Forwarding shares the thread composer's message-rendering dependencies (it
+# used to be compiled into test_thread_panel's executable).
+add_msga_widget_test(test_forward_dialog)
 
+add_msga_widget_test(test_message_list)
 
 # Sound player: shared logic + the platform-native backend for this OS.
 if(APPLE)
@@ -761,45 +541,43 @@ elseif(WIN32)
 else()
     set(_sound_backend ${CMAKE_SOURCE_DIR}/src/util/sound_player_linux.cpp)
 endif()
-add_msga_qt_test(test_sound_player
-    test_sound_player.cpp
+add_msga_test(test_sound_player
     ${CMAKE_SOURCE_DIR}/src/util/sound_player.cpp
     ${_sound_backend}
 )
-target_link_libraries(test_sound_player PRIVATE msga_test_resources)
 # Platform-native audio backends need their system frameworks (mirrors the
 # msga target in the top-level CMakeLists): NSSound lives in AppKit on macOS,
 # PlaySound in winmm on Windows.
 if(APPLE)
     set_source_files_properties(${CMAKE_SOURCE_DIR}/src/util/sound_player_mac.mm
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-    target_link_libraries(test_sound_player PRIVATE "-framework AppKit" "-framework Foundation")
+    target_link_libraries(msga_tests PRIVATE "-framework AppKit" "-framework Foundation")
 elseif(WIN32)
-    target_link_libraries(test_sound_player PRIVATE winmm)
+    target_link_libraries(msga_tests PRIVATE winmm)
 endif()
 
 # Hang-watchdog startup-window regression (logs/2026-06-30_09-55-13.log). The
 # watchdog itself is Linux + dev-build only (POSIX per-process timers targeted
 # at the main thread); mirror the top-level CMakeLists gating so the test
 # exercises the real signal path where it exists and trivially passes elsewhere.
-add_msga_qt_test(test_hang_watchdog
-    test_hang_watchdog.cpp
+add_msga_test(test_hang_watchdog
     ${CMAKE_SOURCE_DIR}/src/app/crash_handler.cpp
 )
+# crash_handler.cpp #defines _GNU_SOURCE before its first include; the PCH
+# would pull in <signal.h> ahead of it (same exemption as the app target).
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/app/crash_handler.cpp
+    PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR MSGA_ASAN))
-    target_compile_definitions(test_hang_watchdog PRIVATE MSGA_HANG_WATCHDOG)
+    # Scoped to the two files that read it, as the app scopes it to its target.
+    set_source_files_properties(test_hang_watchdog.cpp ${CMAKE_SOURCE_DIR}/src/app/crash_handler.cpp
+        PROPERTIES COMPILE_DEFINITIONS MSGA_HANG_WATCHDOG)
     find_library(MSGA_RT_LIB_TEST rt)
     if(MSGA_RT_LIB_TEST)
-        target_link_libraries(test_hang_watchdog PRIVATE ${MSGA_RT_LIB_TEST})
+        target_link_libraries(msga_tests PRIVATE ${MSGA_RT_LIB_TEST})
     endif()
 endif()
-
 
 # Inline audio player: AudioPlayer state machine (scripted engine) + the real
 # platform engine's decode path (Linux: miniaudio on a generated WAV, never
 # played — no sound server needed under ctest).
-add_msga_qt_test(test_audio_player
-    test_audio_player.cpp
-)
-set_target_properties(test_audio_player PROPERTIES AUTOMOC ON)
-target_link_libraries(test_audio_player PRIVATE Qt6::Gui)
+add_msga_test(test_audio_player)

@@ -9,8 +9,9 @@
 //   - userTyping() refreshes an existing typer instead of duplicating
 //   - userStopped() / clearAll() remove typers and re-hide when empty
 //   - a typer falls off automatically after the expiry window
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QLabel>
@@ -19,12 +20,12 @@
 #include "ui/theme_manager.h"
 #include "ui/typing_indicator/typing_indicator.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-typing-indicator");
     app.setOrganizationName("msga-test");
     ThemeManager::instance();
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // Current rich text of the indicator's label.

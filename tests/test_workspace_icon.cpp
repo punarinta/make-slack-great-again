@@ -7,8 +7,9 @@
 //   - TokenStore::displayIconUrl precedence and fallback to the server icon
 //   - WorkspaceIconDialog result contract (loadFile / loadImage)
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QDir>
@@ -25,7 +26,7 @@
 #include "ui/workspace_icon_dialog/workspace_icon_dialog.h"
 #include "util/custom_workspace_icon.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-workspace-icon");
     app.setOrganizationName("msga-test");
@@ -33,7 +34,7 @@ int main(int argc, char **argv) {
     QTemporaryDir settingsDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
     QStandardPaths::setTestModeEnabled(true);
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

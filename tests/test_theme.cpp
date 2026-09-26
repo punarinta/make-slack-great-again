@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include <catch2/catch_approx.hpp>
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "ui/file_dialog_utils.h"
 #include "ui/theme.h"
@@ -21,7 +22,7 @@ static QSettings testSettings() {
     return QSettings(qEnvironmentVariable("MSGA_THEME_SETTINGS_FILE"), QSettings::IniFormat);
 }
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-theme");
     app.setOrganizationName("msga-test");
@@ -37,7 +38,7 @@ int main(int argc, char **argv) {
     const QByteArray seed = qgetenv("MSGA_TEST_SEED_THEME");
     if (!seed.isEmpty())
         testSettings().setValue("appearance/theme", QString::fromUtf8(seed));
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {

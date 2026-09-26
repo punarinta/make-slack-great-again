@@ -1,5 +1,6 @@
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 
@@ -7,9 +8,9 @@
 
 // Own main: Sound::Player touches QStandardPaths / QProcess, which want a
 // QCoreApplication instance.
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 using namespace Sound;

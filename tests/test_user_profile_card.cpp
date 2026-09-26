@@ -5,8 +5,9 @@
 //   - showFor() sizes and shows the card; grab() paints without crashing
 //   - optional rows (role header, status, title, clock) change the height
 //   - scheduleHide()/cancelHide()/hideNow() behavior
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -17,7 +18,7 @@
 #include "ui/theme_manager.h"
 #include "ui/user_profile_card/user_profile_card.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     // Parentless Qt::ToolTip windows can't map on Wayland (no transient parent)
     // and get hidden asynchronously — run offscreen for deterministic visibility.
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -25,7 +26,7 @@ int main(int argc, char **argv) {
     app.setApplicationName("msga-test-user-profile-card");
     app.setOrganizationName("msga-test");
     ThemeManager::instance();
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 static User plainUser() {

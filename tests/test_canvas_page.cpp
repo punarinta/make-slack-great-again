@@ -6,8 +6,9 @@
 //      whole-document ReplaceAll that would round-trip the image's relative blob
 //      URL back to Slack (which breaks the save and, via the retry loop, used to
 //      leave the body blank).
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "backend/fake_backend/fake_backend.h"
 #include "session/session.h"
@@ -117,9 +118,9 @@ TEST_CASE("CanvasPage renders body and saves image canvases surgically") {
     }
 }
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-canvas-page");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }

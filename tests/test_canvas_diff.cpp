@@ -4,8 +4,9 @@
 // locally edited QTextDocument. The HTML fixture below is a verbatim server
 // response (Nisdos workspace, June 2026) — if Slack changes the format, these
 // tests document what we relied on.
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include "ui/canvas_page/canvas_diff.h"
 
@@ -14,11 +15,11 @@
 #include <QTextCursor>
 #include <QTextDocument>
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-canvas-diff");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 using CanvasDiff::Chunk;

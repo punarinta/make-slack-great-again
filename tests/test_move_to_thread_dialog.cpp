@@ -8,8 +8,9 @@
 //   - No match → the empty notice replaces the list and Enter is inert
 //   - Enter / Move accept with the highlighted root; a click only selects
 //   - No threads at all → nothing to select, Move stays disabled
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -25,7 +26,7 @@
 #include "ui/styled_line_edit/styled_line_edit.h"
 #include "ui/theme_manager.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-move-to-thread");
     app.setOrganizationName("msga-test");
@@ -34,7 +35,7 @@ int main(int argc, char **argv) {
     static QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 // ── Test data (newest first, as the host hands them over) ─────────────────────

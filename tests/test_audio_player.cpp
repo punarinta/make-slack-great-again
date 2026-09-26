@@ -5,8 +5,9 @@
 // platform engine's decode path on Linux (a generated WAV: load, duration,
 // seek at rest — never actually played, so CI needs no sound server).
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QCoreApplication>
 #include <QDataStream>
@@ -18,11 +19,11 @@
 
 #include "media/audio_player.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QCoreApplication app(argc, argv);
     app.setApplicationName("msga-test-audio-player");
     app.setOrganizationName("msga-test");
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 using Media::AudioPlayer;

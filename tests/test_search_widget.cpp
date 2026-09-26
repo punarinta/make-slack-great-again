@@ -13,8 +13,9 @@
 //   - resultSelected signal on item click and on Enter key
 //   - Keyboard Up/Down navigation (currentRow tracking)
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QDir>
@@ -37,7 +38,7 @@
 
 // ── Custom main ───────────────────────────────────────────────────────────────
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-search-widget");
     app.setOrganizationName("msga-test");
@@ -46,8 +47,10 @@ int main(int argc, char **argv) {
     static QTemporaryDir tempDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, tempDir.path());
 
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
+
+namespace {
 
 // ── StubBackend ───────────────────────────────────────────────────────────────
 
@@ -154,6 +157,8 @@ struct SessionFixture {
         QDir(tempDir.path()).removeRecursively();
     }
 };
+
+} // namespace
 
 // ── Widget helpers ────────────────────────────────────────────────────────────
 

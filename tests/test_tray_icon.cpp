@@ -7,8 +7,9 @@
 //   - install / enabled / current / remove: the file, the switch, the cache
 //   - TrayIconDialog result contract (picture, monochrome-only change, reset)
 
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include "test_main.h"
 
 #include <QApplication>
 #include <QBuffer>
@@ -24,7 +25,7 @@
 #include "ui/tray_icon_dialog/tray_icon_dialog.h"
 #include "util/custom_tray_icon.h"
 
-int main(int argc, char **argv) {
+MSGA_TEST_MAIN(argc, argv) {
     QApplication app(argc, argv);
     app.setApplicationName("msga-test-tray-icon");
     app.setOrganizationName("msga-test");
@@ -32,7 +33,7 @@ int main(int argc, char **argv) {
     QTemporaryDir settingsDir;
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
     QStandardPaths::setTestModeEnabled(true);
-    return Catch::Session().run(argc, argv);
+    return msga_test::runCatch(argc, argv);
 }
 
 namespace {
