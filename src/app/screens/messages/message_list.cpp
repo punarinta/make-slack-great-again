@@ -1411,7 +1411,7 @@ bool MessageList::onEvent(ui::Event &e) {
         if (!hasSelection())
             return false;
         if (e.key == plat::Key::C && (e.mods & plat::primaryMod()) &&
-            !(e.mods & ~(plat::primaryMod() | plat::ModShift))) {
+            !(e.mods & ui::kModMask & ~(plat::primaryMod() | plat::ModShift))) {
             copySelection();
             return true;
         }

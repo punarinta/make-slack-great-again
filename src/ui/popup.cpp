@@ -542,7 +542,8 @@ bool Menu::onEvent(Event &e) {
             break;
         }
         // A letter jumps to the next enabled item starting with it.
-        if (const char c = typeAheadChar(e.key, false); c && !(e.mods & ~plat::ModShift)) {
+        if (const char c = typeAheadChar(e.key, false);
+            c && !(e.mods & kModMask & ~plat::ModShift)) {
             const int i = typeAheadMatch(
                 _current, int(_items.size()), c, &_items, [](const void *items, int k) {
                     const MenuItem &it =

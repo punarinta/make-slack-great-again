@@ -150,6 +150,14 @@ TEST("menu: checked, disabled and danger items; the chevron row measures wider")
     // Typing jumps by first letter, disabled items excluded.
     w.key(plat::Key::N);
     CHECK(sub->current() == 3);
+    // With NumLock and CapsLock on too (they arrive as modifiers).
+    w.key(plat::Key::Up);
+    CHECK(sub->current() != 3);
+    ui::Event n{ui::EventType::KeyDown};
+    n.key  = plat::Key::N;
+    n.mods = plat::ModNum | plat::ModCaps;
+    CHECK(sub->onEvent(n));
+    CHECK(sub->current() == 3);
     // Clicking a disabled item neither chooses nor closes.
     const ui::RectF s = sub->windowRect();
     w.move(s.x + 30, s.y + 6 + 2 * 36 + 18);

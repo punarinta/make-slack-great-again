@@ -2598,6 +2598,11 @@ TEST("selection: drag positions, across messages, Ctrl+C copies, Escape clears")
     ui::Event copy = key(plat::Key::C, plat::primaryMod());
     CHECK(e.list->onEvent(copy));
     CHECK_STR(clipboard(), "message here\nsecond one\nwith");
+    // NumLock and CapsLock ride along as modifiers; Ctrl+C still copies.
+    app().platform().setClipboardText("before");
+    ui::Event locked = key(plat::Key::C, plat::primaryMod() | plat::ModNum | plat::ModCaps);
+    CHECK(e.list->onEvent(locked));
+    CHECK_STR(clipboard(), "message here\nsecond one\nwith");
     ui::Event esc = key(plat::Key::Escape, 0);
     CHECK(e.list->onEvent(esc));
     CHECK_FALSE(e.list->hasSelection());
