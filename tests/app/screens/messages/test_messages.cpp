@@ -3609,3 +3609,35 @@ TEST("audio: playback ticks reshape nothing but a changed time label") {
     e.log.playing = false;
     e.player.stop();
 }
+
+TEST("audio: View transcript opens the dialog and shows the plain transcript") {
+    AudioEnv e;
+    REQUIRE(e.ts != 0);
+    ui::View *card = e.card();
+    REQUIRE(card != nullptr);
+    auto *link = static_cast<ui::Clickable *>(findNamed(card, "View transcript"));
+    REQUIRE(link != nullptr);
+    link->activate(); // openTranscript: f.transcriptVtt is empty, the sync setText() path
+    pump(2);
+    ui::Popup *popup = e.win->topPopup();
+    REQUIRE(popup != nullptr);
+    ui::View *body = findNamed(popup, e.file.transcript);
+    CHECK(body != nullptr);
+}
+
+// Regression test: with no window, the dialog's view tree used to be
+// freed while _scroll/_copy still pointed into it. Not test-only:
+// - messages_demo never sets ctx.window
+// - the real shell nulls it mid-teardown
+TEST("audio: View transcript with no window keeps its view tree alive instead of "
+     "using it after it is freed") {
+    AudioEnv e;
+    REQUIRE(e.ts != 0);
+    ui::View *card = e.card();
+    REQUIRE(card != nullptr);
+    auto *link = static_cast<ui::Clickable *>(findNamed(card, "View transcript"));
+    REQUIRE(link != nullptr);
+    e.ctx.window = nullptr; // the orphan path
+    link->activate();       // openTranscript -> TranscriptDialog::open -> setText -> setBody
+    e.ctx.window = e.win.get();
+}
