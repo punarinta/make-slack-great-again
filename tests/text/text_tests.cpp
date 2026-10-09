@@ -637,6 +637,29 @@ void emojiPaint() {
     }
 }
 
+// A colour emoji sits where the native renderers put it: its ink centred
+// about 3/8 em above the baseline, near the middle of a digit beside it.
+// Apple Color Emoji's sbix strikes start at the baseline, which drawn as
+// stored leaves the face 1/8 em too high (issue #99: reaction pills).
+void emojiVertical() {
+    if (fonts::emoji() == fonts::kNoFont) {
+        std::printf("  no colour emoji font installed; skipped\n");
+        return;
+    }
+    for (float scale : {1.f, 2.f})
+        for (float size : {13.f, 15.f, 18.f, 24.f, 32.f}) {
+            Style st;
+            st.size            = size;
+            auto        l      = lay("\xF0\x9F\x98\x84", 1e9f, scale, st); // 😄
+            const auto  ink    = l->inkBounds();
+            const float centre = l->baseline(0) - (ink.y + ink.h / 2);
+            std::printf(
+                "  %gpx @%gx: ink centre %.2f em above the baseline\n", size, scale, centre / size
+            );
+            CHECK(centre > 0.30f * size && centre < 0.45f * size);
+        }
+}
+
 // The pixels a layout paints at `scale` on a fixed backdrop (paintAs `as`).
 std::vector<uint32_t> pixels(const Layout &l, float scale, const gfx::Color *as = nullptr) {
     gfx::Bitmap  bmp(320, 80);
@@ -874,6 +897,7 @@ constexpr Case kCases[] = {
     {"emoji_caret", emojiCaret},
     {"emoji_color", emojiColor},
     {"emoji_paint", emojiPaint},
+    {"emoji_vertical", emojiVertical},
     {"rtl", rtl},
     {"cjk_fallback", cjkFallback},
     {"hit_roundtrip", hitRoundtrip},

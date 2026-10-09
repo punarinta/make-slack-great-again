@@ -527,12 +527,17 @@ bool rasterize(FontKey k, uint32_t glyph, uint32_t ppem64, int phase, Raster *ou
         const gfx::BitmapView src{
             reinterpret_cast<uint32_t *>(bm.buffer), int(bm.width), int(bm.rows), bm.pitch / 4
         };
+        // Apple Color Emoji's sbix images stand on the baseline (origin 0,0,
+        // one em tall); CoreText draws them 1/8 em lower, centred 3/8 em up
+        // like the digits beside them. As stored they sit visibly high.
+        const float drop = FT_HAS_SBIX(f) ? ppem / 8 : 0;
+
         g->scratchColor = gfx::resize(src, dw, dh);
         out->w          = dw;
         out->h          = dh;
         out->pitch      = dw;
         out->left       = int(std::lround(f->glyph->bitmap_left * s));
-        out->top        = int(std::lround(f->glyph->bitmap_top * s));
+        out->top        = int(std::lround(f->glyph->bitmap_top * s - drop));
         out->color      = true;
         out->argb       = g->scratchColor.pixels();
         return true;
