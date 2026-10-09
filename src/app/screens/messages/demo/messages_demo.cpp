@@ -89,7 +89,8 @@ int main(int argc, char **argv) {
     d.appId = "msga-messages-demo";
     d.size  = {1200, 800};
     ui::Window win(d);
-    auto      *screen = win.root().add<ui::View>();
+    ctx.window = &win; // lets popups (e.g. the transcript dialog) show
+    auto *screen = win.root().add<ui::View>();
     screen->style().row();
     auto *main = screen->add<ui::View>();
     main->style().flex(1);
