@@ -3626,9 +3626,9 @@ TEST("audio: View transcript opens the dialog and shows the plain transcript") {
 }
 
 // Regression test: with no window, the dialog's view tree used to be
-// freed while _scroll/_copy still pointed into it. Not test-only:
-// - messages_demo never sets ctx.window
-// - the real shell nulls it mid-teardown
+// freed while _scroll/_copy still pointed into it. Only a context without
+// a window takes this path: the shell clears its views before it drops
+// ctx.window, so no click reaches it there. ASan catches the regression.
 TEST(
     "audio: View transcript with no window keeps its view tree alive instead of "
     "using it after it is freed"
