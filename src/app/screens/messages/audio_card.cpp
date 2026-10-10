@@ -145,8 +145,13 @@ public:
         setBody({}, tr("Loading\xE2\x80\xA6"));
         if (ctx.window)
             ctx.window->showPopup(std::move(d));
-        else
-            _dialog = nullptr;
+        else {
+            // _scroll/_copy point into `d`'s tree and stay in use after
+            // this returns -- keep `d` alive instead of letting it free
+            // out from under them.
+            _dialog     = nullptr;
+            _standalone = std::move(d);
+        }
     }
 
     void setCues(const std::vector<VttCue> &cues) {
@@ -184,12 +189,13 @@ private:
         }
     }
 
-    Context              &_ctx;
-    ui::Dialog           *_dialog = nullptr;
-    ui::ScrollView       *_scroll = nullptr;
-    ui::Button           *_copy   = nullptr;
-    std::string           _plain; // what Copy puts on the clipboard
-    std::shared_ptr<char> _alive = std::make_shared<char>(0);
+    Context                    &_ctx;
+    ui::Dialog                 *_dialog = nullptr;
+    ui::ScrollView             *_scroll = nullptr;
+    ui::Button                 *_copy   = nullptr;
+    std::unique_ptr<ui::Dialog> _standalone; // set only without a window
+    std::string                 _plain;      // what Copy puts on the clipboard
+    std::shared_ptr<char>       _alive = std::make_shared<char>(0);
 
 public:
     // Owned by the dialog view (dies with it).
