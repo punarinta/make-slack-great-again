@@ -189,13 +189,13 @@ private:
         }
     }
 
-    Context              &_ctx;
-    ui::Dialog           *_dialog = nullptr;
-    ui::ScrollView       *_scroll = nullptr;
-    ui::Button           *_copy   = nullptr;
+    Context                    &_ctx;
+    ui::Dialog                 *_dialog = nullptr;
+    ui::ScrollView             *_scroll = nullptr;
+    ui::Button                 *_copy   = nullptr;
     std::unique_ptr<ui::Dialog> _standalone; // set only without a window
-    std::string           _plain; // what Copy puts on the clipboard
-    std::shared_ptr<char> _alive = std::make_shared<char>(0);
+    std::string                 _plain;      // what Copy puts on the clipboard
+    std::shared_ptr<char>       _alive = std::make_shared<char>(0);
 
 public:
     // Owned by the dialog view (dies with it).

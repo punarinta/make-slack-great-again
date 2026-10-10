@@ -3629,8 +3629,10 @@ TEST("audio: View transcript opens the dialog and shows the plain transcript") {
 // freed while _scroll/_copy still pointed into it. Not test-only:
 // - messages_demo never sets ctx.window
 // - the real shell nulls it mid-teardown
-TEST("audio: View transcript with no window keeps its view tree alive instead of "
-     "using it after it is freed") {
+TEST(
+    "audio: View transcript with no window keeps its view tree alive instead of "
+    "using it after it is freed"
+) {
     AudioEnv e;
     REQUIRE(e.ts != 0);
     ui::View *card = e.card();
