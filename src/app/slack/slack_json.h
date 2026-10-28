@@ -95,4 +95,14 @@ struct FeedThread {
 };
 bool toFeedThread(const json::Value &t, model::Store &store, FeedThread &out);
 
+// One subscription of subscriptions.thread.getTimestamps (the feed where
+// getView is refused, issue #118): which thread, its newest message and my
+// read cursor; no messages. False for one in a conversation the Store
+// doesn't have.
+struct ThreadSub {
+    model::ConvRef conv = model::kNoConv;
+    model::Ts      root = 0, latest = 0, lastRead = 0;
+};
+bool toThreadSub(const json::Value &t, model::Store &store, ThreadSub &out);
+
 } // namespace slack::mapjson

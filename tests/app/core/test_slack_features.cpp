@@ -478,10 +478,11 @@ TEST("slack features: on Grid the thread feed refused without team_id goes again
     CHECK_STR(Log().get("subscriptions.thread.mark")["form"]["team_id"].str(), "T1");
 }
 
-TEST("slack features: a refused thread feed reports Slack's code; no team_id off Grid") {
+TEST("slack features: a thread feed refused in both forms reports Slack's code") {
     if (!haveServer())
         return;
-    Env e(R"({"subscriptions.thread.getView": {"ok": false, "error": "not_allowed_token_type"}})");
+    Env e(R"({"subscriptions.thread.getView": {"ok": false, "error": "not_allowed_token_type"},
+              "subscriptions.thread.getTimestamps": {"ok": false, "error": "unknown_method"}})");
     REQUIRE(e.connect());
     for (int i = 0; i < 2; ++i) { // the second answers from the latch
         bool                        called = false, ok = true;
@@ -493,11 +494,125 @@ TEST("slack features: a refused thread feed reports Slack's code; no team_id off
         });
         REQUIRE(pumpUntil([&] { return called; }, 5000));
         CHECK(!ok);
-        CHECK_STR(page.error, "not_allowed_token_type");
+        CHECK_STR(page.error, "unknown_method");
     }
+    // Off Grid neither goes with team_id.
     const Log log;
-    for (int i = 0; i < log.count("subscriptions.thread.getView"); ++i)
-        CHECK(!log.get("subscriptions.thread.getView", i)["form"].has("team_id"));
+    for (const char *m : {"subscriptions.thread.getView", "subscriptions.thread.getTimestamps"})
+        for (int i = 0; i < log.count(m); ++i)
+            CHECK(!log.get(m, i)["form"].has("team_id"));
+}
+
+// Issue #118: where getView is refused, the web client's getTimestamps
+// lists the threads and conversations.replies fills each card.
+TEST("slack features: the Threads page falls back to getTimestamps where getView is refused") {
+    if (!haveServer())
+        return;
+    Env e(R"({"subscriptions.thread.getView": {"ok": false, "error": "unknown_method"},
+      "subscriptions.thread.getTimestamps": {"ok": true, "subscriptions": [
+        {"latest": "1800000002.000100", "last_read": "1800000001.000100", "channel_id": "C1",
+         "date_created": 1800000000, "timestamp": "1800000000.000100", "priority": false},
+        {"latest": "1800000101.000100", "last_read": "1800000101.000100", "channel_id": "C1",
+         "date_created": 1800000100, "timestamp": "1800000100.000100", "priority": false},
+        {"latest": "1800000201.000100", "last_read": "1800000200.000100", "channel_id": "CGONE",
+         "date_created": 1800000200, "timestamp": "1800000200.000100", "priority": false}],
+        "response_metadata": {"next_cursor": "bmV4dA=="}},
+      "conversations.replies?ts=1800000000.000100": {"ok": true, "messages": [
+        {"ts": "1800000000.000100", "user": "UME", "text": "root one", "reply_count": 2,
+         "latest_reply": "1800000002.000100", "thread_ts": "1800000000.000100"},
+        {"ts": "1800000002.000100", "user": "UMIRA", "text": "unread reply",
+         "thread_ts": "1800000000.000100"}]},
+      "conversations.replies?ts=1800000100.000100": [
+        {"ok": true, "messages": [{"ts": "1800000101.000100", "user": "UMIRA",
+                                   "text": "last reply", "thread_ts": "1800000100.000100"}]},
+        {"ok": true, "messages": [{"ts": "1800000100.000100", "user": "UME", "text": "root two",
+                                   "reply_count": 1, "thread_ts": "1800000100.000100"}]}]})");
+    REQUIRE(e.connect());
+    bool                        called = false, ok = false;
+    model::Backend::ThreadsView page;
+    e.be->loadThreadsView({}, [&](bool o, model::Backend::ThreadsView p) {
+        called = true;
+        ok     = o;
+        page   = std::move(p);
+    });
+    REQUIRE(pumpUntil([&] { return called; }, 5000));
+    REQUIRE(ok);
+    // In the feed's order; the thread of a conversation we don't have is left out.
+    REQUIRE(page.threads.size() == 2);
+    CHECK_STR(page.threads[0].root.text, "root one");
+    CHECK(page.threads[0].lastRead == model::parseTs("1800000001.000100"));
+    REQUIRE(page.threads[0].latestReplies.size() == 1);
+    CHECK_STR(page.threads[0].latestReplies[0].text, "unread reply");
+    // A root the answer left out is asked for alone.
+    CHECK_STR(page.threads[1].root.text, "root two");
+    REQUIRE(page.threads[1].latestReplies.size() == 1);
+    CHECK_STR(page.threads[1].latestReplies[0].text, "last reply");
+    CHECK(page.hasMore);
+    CHECK_STR(page.nextCursor, "bmV4dA==");
+    // Unread: the replies past my read cursor; read: the newest one.
+    const Log log;
+    for (int i = 0; i < log.count("conversations.replies"); ++i) {
+        const json::Value f = log.get("conversations.replies", i)["form"];
+        if (f["ts"].str() == "1800000000.000100") {
+            CHECK_STR(f["oldest"].str(), "1800000001.000100");
+            CHECK_STR(f["inclusive"].str(), "0");
+        } else if (f["ts"].str() == "1800000100.000100" && f.has("oldest")) {
+            CHECK_STR(f["oldest"].str(), "1800000101.000100");
+            CHECK_STR(f["inclusive"].str(), "1");
+        }
+    }
+    CHECK_STR(
+        log.get("subscriptions.thread.getTimestamps")["form"]["mode"].str(), "all_subscriptions"
+    );
+    // From now on the page goes straight to getTimestamps, the cursor with it.
+    const int views = count("subscriptions.thread.getView");
+    called          = false;
+    e.be->loadThreadsView(page.nextCursor, [&](bool o, model::Backend::ThreadsView) {
+        called = true;
+        ok     = o;
+    });
+    REQUIRE(pumpUntil([&] { return called; }, 5000));
+    CHECK(ok);
+    CHECK(count("subscriptions.thread.getView") == views);
+    bool      sawCursor = false;
+    const Log after;
+    for (int i = 0; i < after.count("subscriptions.thread.getTimestamps"); ++i)
+        sawCursor |= after.get("subscriptions.thread.getTimestamps", i)["form"]["cursor"].str() ==
+                     "bmV4dA==";
+    CHECK(sawCursor);
+}
+
+TEST("slack features: a followed thread's reply notifies through the getTimestamps feed") {
+    if (!haveServer())
+        return;
+    // The first round primes; the second moves the thread's latest, and only
+    // then are its replies asked for.
+    Env e(R"({"subscriptions.thread.getView": {"ok": false, "error": "unknown_method"},
+      "subscriptions.thread.getTimestamps": [
+        {"ok": true, "subscriptions": [
+          {"latest": "1800000001.000100", "last_read": "1800000001.000100", "channel_id": "C1",
+           "timestamp": "1800000000.000100"}]},
+        {"ok": true, "subscriptions": [
+          {"latest": "1800000002.000100", "last_read": "1800000001.000100", "channel_id": "C1",
+           "timestamp": "1800000000.000100"}]}],
+      "conversations.replies?ts=1800000000.000100": {"ok": true, "messages": [
+        {"ts": "1800000000.000100", "user": "UME", "text": "root", "thread_ts": "1800000000.000100"},
+        {"ts": "1800000002.000100", "user": "UMIRA", "text": "new one",
+         "thread_ts": "1800000000.000100"}]}})");
+    std::vector<std::string> arrived;
+    const auto obs = e.store.observe(model::Store::kAnyConv, [&](const model::Change &ch) {
+        if (ch.kind == model::ChangeKind::Arrived && e.store.arrived())
+            arrived.push_back(e.store.arrived()->text);
+    });
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return !arrived.empty(); }, 5000));
+    CHECK_STR(arrived[0], "new one");
+    pumpFor(500); // more rounds of the same feed bring nothing more
+    CHECK(arrived.size() == 1);
+    CHECK(e.be->threadFollowed(e.conv("C1"), model::parseTs("1800000000.000100")));
+    CHECK(e.store.unreadThreads() == 1);
+    CHECK_STR(Log().get("conversations.replies")["form"]["oldest"].str(), "1800000001.000100");
+    e.store.unobserve(obs);
 }
 
 TEST("slack features: a followed thread's reply notifies even when the thread isn't loaded") {

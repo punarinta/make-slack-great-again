@@ -864,4 +864,12 @@ bool toFeedThread(const Value &t, model::Store &store, FeedThread &out) {
     return true;
 }
 
+bool toThreadSub(const Value &t, model::Store &store, ThreadSub &out) {
+    out.conv     = store.findConversation(t["channel_id"].str());
+    out.root     = model::parseTs(t["timestamp"].str());
+    out.latest   = model::parseTs(t["latest"].str());
+    out.lastRead = model::parseTs(t["last_read"].str());
+    return out.conv != model::kNoConv && out.root;
+}
+
 } // namespace slack::mapjson

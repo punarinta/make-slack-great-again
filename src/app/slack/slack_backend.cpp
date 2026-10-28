@@ -68,6 +68,11 @@ constexpr int         kPacedMs                = 1200; // the _infoApi background
 constexpr int         kPresenceHot = 8, kPresenceRotate = 4;
 constexpr int         kMaxDiffPolls = 8, kCountsFailureLimit = 3;
 constexpr int         kMaxThreadInjects = 12, kMaxThreadBacklog = 3;
+// subscriptions.thread.getTimestamps as the web client asks it; a card of
+// that feed shows up to kSubThreadReplies of its replies.
+constexpr const char *kSubsForm =
+    "mode=all_subscriptions&limit=10&priority_mode=all&fetch_threads_state=false";
+constexpr const char *kSubThreadReplies = "10";
 // Lost connections and gateway pages: 10 tries back off 0, 1, 2 … 60 s, about
 // four minutes in all (bounded, so a long outage surfaces as an error).
 constexpr int         kMaxUserReprobes = 20, kMaxTransientRetries = 6, kMaxTransportRetries = 10;
@@ -185,7 +190,7 @@ struct SlackBackend::Read {
     void        pageFrom(std::shared_ptr<Pager> p, std::string cursor);
     std::string teamForm(std::initializer_list<std::pair<std::string_view, std::string_view>> kv);
     std::string threadsForm(std::string form);
-    bool        threadsRefused(const std::string &err, bool sentTeam);
+    bool        threadsRefused(const std::string &err, bool sentTeam, bool sentSubs);
     void        applyApiBase(std::string_view workspaceUrl);
 
     // ── Connect and the roster ──────────────────────────────────────────────
@@ -314,8 +319,9 @@ struct SlackBackend::Read {
     // that already asked once (one the reload doesn't bring asks no more).
     bool                                             rosterWanted = false;
     std::unordered_set<std::string>                  rosterAsked;
-    bool                                threadsUnavailable = false, threadsPrimed = false;
-    std::string                         threadsError; // the refusal that gave up on the feed
+    bool        threadsUnavailable = false, threadsPrimed = false;
+    std::string threadsError;           // the refusal that gave up on the feed
+    bool        threadsViaSubs = false; // getView refused: the feed is getTimestamps
     std::unordered_map<std::string, Ts> threadBaseline;
     std::unordered_set<std::string>     followed; // threads I started, replied in, or follow
     // Followed threads with an
@@ -327,12 +333,33 @@ struct SlackBackend::Read {
     bool                                follow(const std::string &key); // true: newly followed
     void                                pruneThreadState();
 
-    void    tick();
-    void    pollUnreadCounts();
+    void tick();
+    void pollUnreadCounts();
     // fromCounts: a client.counts snapshot (else the roster's own numbers).
-    void    applyActivity(const std::vector<mapjson::Counts> &snapshot, bool fromCounts);
-    void    pollConversation(ConvRef c, bool foreground, Ts hint = 0);
-    void    pollThreadReplies();
+    void applyActivity(const std::vector<mapjson::Counts> &snapshot, bool fromCounts);
+    void pollConversation(ConvRef c, bool foreground, Ts hint = 0);
+    void pollThreadReplies();
+    void pollThreadSubs();
+    bool feedThread(
+        const std::string &key,
+        ConvRef            c,
+        Ts                 root,
+        Ts                 newest,
+        Ts                 lastRead,
+        bool               priming,
+        Ts                &baseline
+    );
+    void announceReplies(
+        const std::string           &key,
+        ConvRef                      c,
+        Ts                           baseline,
+        Ts                           newest,
+        std::vector<model::Message> &replies,
+        const std::vector<char>     &parentIsMe,
+        int                         &injected
+    );
+    void    threadSubsPage(std::string cursor, ThreadsViewDone done);
+    void    loadSubThread(const mapjson::ThreadSub &t, std::function<void(FollowedThread)> done);
     ConvRef nextBackgroundTarget();
     bool    inject(ConvRef c, model::Message m, bool parentIsMe);
     void    carryLocal(model::Conversation &fresh, const model::Conversation &old) const;
@@ -578,18 +605,37 @@ std::string SlackBackend::Read::threadsForm(std::string form) {
     return form;
 }
 
-// A method-level refusal of the feed. On Grid a session token may resolve
-// in the org (issue #118): the call goes once more with team_id before
-// the feed is given up on. sentTeam: the refused call carried it (one
-// sent before the switch, the poll's and the page's crossing, still
-// retries). true: try again.
-bool SlackBackend::Read::threadsRefused(const std::string &err, bool sentTeam) {
-    if (!isMethodUnavailable(err))
+// Slack said no to the feed itself (not the network, a throttle, a hiccup
+// or dead credentials).
+namespace {
+bool isFeedRefusal(const std::string &err) {
+    return !err.empty() && err != "cancelled" && err != "ratelimited" && !isTransportError(err) &&
+           !isTransientSlackError(err) && !isAuthError(err);
+}
+} // namespace
+
+// A refusal of the feed (issue #118). On Grid a session token may resolve
+// in the org: a method-level refusal goes once more with team_id. Then
+// getView gives way to getTimestamps, which today's web client reads
+// instead; only a method-level refusal of that gives up on the feed.
+// sentTeam / sentSubs: what the refused call was (one sent before a
+// switch, the poll's and the page's crossing, still retries). true: try
+// again.
+bool SlackBackend::Read::threadsRefused(const std::string &err, bool sentTeam, bool sentSubs) {
+    if (!isFeedRefusal(err))
         return false;
-    if (b._grid && !sentTeam) {
+    if (b._grid && !sentTeam && isMethodUnavailable(err)) {
         b._threadsTeamId = true;
         return true;
     }
+    if (!sentSubs) {
+        if (!threadsViaSubs)
+            LOG_INFO("slack", "the thread feed falls back to subscriptions.thread.getTimestamps");
+        threadsViaSubs = true;
+        return true;
+    }
+    if (!isMethodUnavailable(err))
+        return false;
     threadsUnavailable = true;
     threadsError       = err;
     return false;
@@ -2476,14 +2522,18 @@ void SlackBackend::Read::pollConversation(ConvRef c, bool foreground, Ts hint) {
 // Thread replies (subscriptions.thread.getView, session tokens):
 // the one endpoint that reports thread replies workspace-wide.
 void SlackBackend::Read::pollThreadReplies() {
+    if (threadsViaSubs) {
+        pollThreadSubs();
+        return;
+    }
     call(
         "subscriptions.thread.getView",
         threadsForm("limit=10&priority_mode=all"),
         [this, sentTeam = b._threadsTeamId](const json::Document &doc, const std::string &err) {
             if (!err.empty()) {
-                if (isMethodUnavailable(err)) {
+                if (isFeedRefusal(err)) {
                     LOG_WARN("slack", "subscriptions.thread.getView: %s", err.c_str());
-                    threadsRefused(err, sentTeam); // a retry with team_id rides the next tick
+                    threadsRefused(err, sentTeam, false); // the retry rides the next tick
                 }
                 return;
             }
@@ -2494,59 +2544,150 @@ void SlackBackend::Read::pollThreadReplies() {
                 mapjson::FeedThread ft;
                 if (!mapjson::toFeedThread(t, s, ft))
                     continue;
-                const ConvRef     c       = ft.conv;
-                const Ts          root    = ft.root;
-                auto             &replies = ft.replies;
-                const std::string key     = threadKey(c, root);
-                follow(key); // the feed IS the subscription list
-                const Ts newest = replies.empty() ? 0 : replies.back().ts;
-                pullWatch(c, root, newest);
-                // The Threads entry: the feed's own
-                // read cursor or mine, whichever is further; the first page
-                // after a start restores it.
-                const Ts floor = std::max(ft.lastRead, threadReadFloor[key]);
-                if (newest > floor && !s.threadMuted(c, root))
-                    unreadThreads[key] = newest;
-                else
-                    unreadThreads.erase(key);
-                Ts baseline = 0;
-                if (const auto it = threadBaseline.find(key); it != threadBaseline.end())
-                    baseline = it->second;
-                if (!baseline) {
-                    // First page of the run primes; a thread that shows up
-                    // later uses its own read cursor as the floor.
-                    baseline = priming ? newest : ft.lastRead;
-                    if (!baseline) {
-                        threadBaseline[key] = newest;
-                        continue;
-                    }
-                }
-                // At most the newest few of a backlog are announced.
-                size_t unseen = 0;
-                for (const model::Message &r : replies)
-                    unseen += r.ts > baseline;
-                if (unseen > size_t(kMaxThreadBacklog))
-                    baseline = replies[replies.size() - kMaxThreadBacklog - 1].ts;
-                Ts reached = newest;
-                for (size_t i = 0; i < replies.size(); ++i) {
-                    const Ts ts = replies[i].ts;
-                    if (ts <= baseline)
-                        continue;
-                    if (injected >= kMaxThreadInjects) {
-                        reached = baseline; // the rest drains next tick
-                        break;
-                    }
-                    if (!s.findMessage(c, ts)) {
-                        inject(c, std::move(replies[i]), ft.parentIsMe[i]);
-                        ++injected;
-                    }
-                    baseline = std::max(baseline, ts);
-                }
-                threadBaseline[key] = std::max(baseline, reached);
+                const std::string key    = threadKey(ft.conv, ft.root);
+                const Ts          newest = ft.replies.empty() ? 0 : ft.replies.back().ts;
+                Ts                baseline;
+                if (feedThread(key, ft.conv, ft.root, newest, ft.lastRead, priming, baseline))
+                    announceReplies(
+                        key, ft.conv, baseline, newest, ft.replies, ft.parentIsMe, injected
+                    );
             }
             // "All clear" from the server (the count is threads, not replies).
             if (doc.root()["total_unread_replies"].integer() == 0)
                 unreadThreads.clear();
+            publishUnreadThreads();
+        }
+    );
+}
+
+// One thread of either feed: followed, its watch pulled, the Threads
+// entry's unread state; baseline: where its news starts. false: none to
+// announce (it has nothing past its read cursor yet).
+bool SlackBackend::Read::feedThread(
+    const std::string &key, ConvRef c, Ts root, Ts newest, Ts lastRead, bool priming, Ts &baseline
+) {
+    follow(key); // the feed IS the subscription list
+    pullWatch(c, root, newest);
+    // The Threads entry: the feed's own
+    // read cursor or mine, whichever is further; the first page
+    // after a start restores it.
+    const Ts floor = std::max(lastRead, threadReadFloor[key]);
+    if (newest > floor && !s.threadMuted(c, root))
+        unreadThreads[key] = newest;
+    else
+        unreadThreads.erase(key);
+    baseline = 0;
+    if (const auto it = threadBaseline.find(key); it != threadBaseline.end())
+        baseline = it->second;
+    if (!baseline) {
+        // First page of the run primes; a thread that shows up
+        // later uses its own read cursor as the floor.
+        baseline = priming ? newest : lastRead;
+        if (!baseline) {
+            threadBaseline[key] = newest;
+            return false;
+        }
+    }
+    return true;
+}
+
+// The replies past a thread's baseline are delivered (at most the newest
+// few of a backlog, kMaxThreadInjects a round); the baseline moves to
+// newest.
+void SlackBackend::Read::announceReplies(
+    const std::string           &key,
+    ConvRef                      c,
+    Ts                           baseline,
+    Ts                           newest,
+    std::vector<model::Message> &replies,
+    const std::vector<char>     &parentIsMe,
+    int                         &injected
+) {
+    size_t unseen = 0;
+    for (const model::Message &r : replies)
+        unseen += r.ts > baseline;
+    if (unseen > size_t(kMaxThreadBacklog))
+        baseline = replies[replies.size() - kMaxThreadBacklog - 1].ts;
+    Ts reached = newest;
+    for (size_t i = 0; i < replies.size(); ++i) {
+        const Ts ts = replies[i].ts;
+        if (ts <= baseline)
+            continue;
+        if (injected >= kMaxThreadInjects) {
+            reached = baseline; // the rest drains next tick
+            break;
+        }
+        if (!s.findMessage(c, ts)) {
+            inject(c, std::move(replies[i]), parentIsMe[i]);
+            ++injected;
+        }
+        baseline = std::max(baseline, ts);
+    }
+    threadBaseline[key] = std::max(baseline, reached);
+}
+
+// The getTimestamps feed (where getView is refused) carries no messages:
+// only a thread whose newest message moved past its baseline costs a
+// conversations.replies for the news.
+void SlackBackend::Read::pollThreadSubs() {
+    call(
+        "subscriptions.thread.getTimestamps",
+        threadsForm(kSubsForm),
+        [this, sentTeam = b._threadsTeamId](const json::Document &doc, const std::string &err) {
+            if (!err.empty()) {
+                if (isFeedRefusal(err)) {
+                    LOG_WARN("slack", "subscriptions.thread.getTimestamps: %s", err.c_str());
+                    threadsRefused(err, sentTeam, true);
+                }
+                return;
+            }
+            const bool priming = !threadsPrimed;
+            threadsPrimed      = true;
+            auto injected      = std::make_shared<int>(0);
+            for (const json::Value v : doc.root()["subscriptions"]) {
+                mapjson::ThreadSub t;
+                if (!mapjson::toThreadSub(v, s, t))
+                    continue;
+                const std::string key = threadKey(t.conv, t.root);
+                Ts                baseline;
+                if (!feedThread(key, t.conv, t.root, t.latest, t.lastRead, priming, baseline))
+                    continue;
+                if (t.latest <= baseline) {
+                    threadBaseline[key] = baseline;
+                    continue;
+                }
+                call(
+                    "conversations.replies",
+                    net::formEncode(
+                        {{"channel", b.convId(t.conv)},
+                         {"ts", model::formatTs(t.root)},
+                         {"oldest", model::formatTs(baseline)},
+                         {"limit", kHistoryLimit}}
+                    ),
+                    [this, key, t, baseline, injected](
+                        const json::Document &doc, const std::string &err
+                    ) {
+                        if (!err.empty() || t.conv >= s.conversationCount())
+                            return; // the next tick asks again
+                        const std::string          &me = s.user(s.me).id;
+                        std::vector<model::Message> replies;
+                        std::vector<char>           parentIsMe;
+                        for (const json::Value r : doc.root()["messages"]) {
+                            model::Message m = mapjson::toMessage(r, s);
+                            if (!m.ts || m.ts == t.root || m.ts <= baseline)
+                                continue;
+                            m.threadTs = t.root;
+                            parentIsMe.push_back(!me.empty() && r["parent_user_id"].str() == me);
+                            replies.push_back(std::move(m));
+                        }
+                        // Read or announced meanwhile: from there.
+                        const Ts from = std::max(baseline, threadBaseline[key]);
+                        announceReplies(
+                            key, t.conv, from, t.latest, replies, parentIsMe, *injected
+                        );
+                    }
+                );
+            }
             publishUnreadThreads();
         }
     );
@@ -2596,6 +2737,10 @@ void SlackBackend::loadThreadsView(std::string cursor, ThreadsViewDone done) {
         });
         return;
     }
+    if (r->threadsViaSubs) {
+        r->threadSubsPage(std::move(cursor), std::move(done));
+        return;
+    }
     std::string form = "limit=10&priority_mode=all"; // every followed thread
     // Continuation is the previous answer's max_ts (no next_cursor here).
     if (!cursor.empty())
@@ -2611,7 +2756,9 @@ void SlackBackend::loadThreadsView(std::string cursor, ThreadsViewDone done) {
             if (!err.empty()) {
                 LOG_WARN("slack", "subscriptions.thread.getView: %s", err.c_str());
                 // Given up on only for a method-level refusal, never a transport failure.
-                if (r->threadsRefused(err, sentTeam)) {
+                // A later page of getView can't go on in getTimestamps.
+                if (r->threadsRefused(err, sentTeam, false) &&
+                    (cursor.empty() || !r->threadsViaSubs)) {
                     loadThreadsView(std::move(cursor), std::move(done));
                     return;
                 }
@@ -2642,6 +2789,127 @@ void SlackBackend::loadThreadsView(std::string cursor, ThreadsViewDone done) {
             }
             if (done)
                 done(true, std::move(page));
+        }
+    );
+}
+
+// A page of the getTimestamps feed: the threads (no messages), then one
+// card each from loadSubThread, in the feed's order.
+void SlackBackend::Read::threadSubsPage(std::string cursor, ThreadsViewDone done) {
+    std::string form = kSubsForm;
+    if (!cursor.empty())
+        form += "&" + net::formEncode({{"cursor", cursor}});
+    call(
+        "subscriptions.thread.getTimestamps",
+        threadsForm(std::move(form)),
+        [this, cursor, sentTeam = b._threadsTeamId, done = std::move(done)](
+            const json::Document &doc, const std::string &err
+        ) mutable {
+            if (err == "cancelled")
+                return;
+            if (!err.empty()) {
+                LOG_WARN("slack", "subscriptions.thread.getTimestamps: %s", err.c_str());
+                if (threadsRefused(err, sentTeam, true)) {
+                    b.loadThreadsView(std::move(cursor), std::move(done));
+                    return;
+                }
+                ThreadsView failed;
+                failed.error = err;
+                if (done)
+                    done(false, std::move(failed));
+                return;
+            }
+            struct Acc {
+                ThreadsView     page;
+                size_t          pending = 0;
+                ThreadsViewDone done;
+            };
+            auto acc  = std::make_shared<Acc>();
+            acc->done = std::move(done);
+            acc->page.nextCursor =
+                std::string(doc.root()["response_metadata"]["next_cursor"].str());
+            acc->page.hasMore = !acc->page.nextCursor.empty();
+            std::vector<mapjson::ThreadSub> subs;
+            for (const json::Value v : doc.root()["subscriptions"]) {
+                mapjson::ThreadSub t;
+                if (mapjson::toThreadSub(v, s, t))
+                    subs.push_back(t);
+            }
+            if (subs.empty()) {
+                if (acc->done)
+                    acc->done(true, std::move(acc->page));
+                return;
+            }
+            acc->page.threads.resize(subs.size());
+            acc->pending = subs.size();
+            for (size_t i = 0; i < subs.size(); ++i)
+                loadSubThread(subs[i], [acc, i](FollowedThread f) {
+                    acc->page.threads[i] = std::move(f);
+                    if (--acc->pending)
+                        return;
+                    // One that couldn't be read is left out.
+                    std::erase_if(acc->page.threads, [](const FollowedThread &x) {
+                        return !x.root.ts;
+                    });
+                    if (acc->done)
+                        acc->done(true, std::move(acc->page));
+                });
+        }
+    );
+}
+
+// One card of the getTimestamps feed from one conversations.replies: the
+// root and the unread replies, or the newest one of a read thread (a
+// root the answer leaves out is asked for alone). A failure answers an
+// empty one.
+void SlackBackend::Read::loadSubThread(
+    const mapjson::ThreadSub &t, std::function<void(FollowedThread)> done
+) {
+    const bool unread = t.latest > t.lastRead;
+    const Ts   from   = unread ? std::max(t.lastRead, t.root) : t.latest;
+    call(
+        "conversations.replies",
+        net::formEncode(
+            {{"channel", b.convId(t.conv)},
+             {"ts", model::formatTs(t.root)},
+             {"oldest", model::formatTs(from)},
+             {"inclusive", unread ? "0" : "1"},
+             {"limit", kSubThreadReplies}}
+        ),
+        [this, t, done = std::move(done)](const json::Document &doc, const std::string &err) {
+            if (err == "cancelled")
+                return;
+            FollowedThread f;
+            if (!err.empty() || t.conv >= s.conversationCount()) {
+                if (done)
+                    done(std::move(f));
+                return;
+            }
+            f.conv     = t.conv;
+            f.lastRead = t.lastRead;
+            for (const json::Value v : doc.root()["messages"]) {
+                model::Message m = mapjson::toMessage(v, s);
+                if (m.ts == t.root) {
+                    f.root = std::move(m);
+                } else if (m.ts) {
+                    m.threadTs = t.root;
+                    f.latestReplies.push_back(std::move(m));
+                }
+            }
+            if (f.root.ts) {
+                if (done)
+                    done(std::move(f));
+                return;
+            }
+            auto held = std::make_shared<FollowedThread>(std::move(f));
+            b.loadMessage(
+                t.conv, t.root, [held, done = std::move(done)](bool ok, model::Message root) {
+                    if (ok)
+                        held->root = std::move(root);
+                    if (done)
+                        done(std::move(*held));
+                }
+            );
         }
     );
 }
