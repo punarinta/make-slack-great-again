@@ -444,6 +444,62 @@ TEST("slack features: the Threads entry — unread from the feed, read by markTh
     CHECK(e.store.unreadThreads() == 0);
 }
 
+TEST("slack features: on Grid the thread feed refused without team_id goes again with it") {
+    if (!haveServer())
+        return;
+    // Issue #118: a Grid session token may resolve in the org.
+    Env e(R"({"auth.test": {"ok": true, "user_id": "UME", "team_id": "T1", "team": "Lumen",
+                            "enterprise_id": "E1", "url": "https://lumen.slack.com/"},
+              "subscriptions.thread.getView": {"ok": false, "error": "enterprise_is_restricted"},
+              "subscriptions.thread.getView?team_id=T1": {"ok": true, "total_unread_replies": 0,
+                "threads": [{"root_msg": {"channel": "C1", "ts": "1800000000.000100",
+                                          "user": "UME", "text": "root"},
+                             "latest_replies": []}]}})");
+    REQUIRE(e.connect());
+    // The poll's refusal and the page's may cross: neither gives up on it.
+    for (int i = 0; i < 2; ++i) {
+        bool                        called = false, ok = false;
+        model::Backend::ThreadsView page;
+        e.be->loadThreadsView({}, [&](bool o, model::Backend::ThreadsView p) {
+            called = true;
+            ok     = o;
+            page   = std::move(p);
+        });
+        REQUIRE(pumpUntil([&] { return called; }, 5000));
+        CHECK(ok);
+        CHECK(page.threads.size() == 1);
+        pumpFor(300); // a poll tick in between
+    }
+    // The read cursor goes with team_id too.
+    e.be->markThreadRead(
+        e.conv("C1"), model::parseTs("1800000000.000100"), model::parseTs("1800000000.000100")
+    );
+    REQUIRE(pumpUntil([&] { return count("subscriptions.thread.mark") == 1; }, 3000));
+    CHECK_STR(Log().get("subscriptions.thread.mark")["form"]["team_id"].str(), "T1");
+}
+
+TEST("slack features: a refused thread feed reports Slack's code; no team_id off Grid") {
+    if (!haveServer())
+        return;
+    Env e(R"({"subscriptions.thread.getView": {"ok": false, "error": "not_allowed_token_type"}})");
+    REQUIRE(e.connect());
+    for (int i = 0; i < 2; ++i) { // the second answers from the latch
+        bool                        called = false, ok = true;
+        model::Backend::ThreadsView page;
+        e.be->loadThreadsView({}, [&](bool o, model::Backend::ThreadsView p) {
+            called = true;
+            ok     = o;
+            page   = std::move(p);
+        });
+        REQUIRE(pumpUntil([&] { return called; }, 5000));
+        CHECK(!ok);
+        CHECK_STR(page.error, "not_allowed_token_type");
+    }
+    const Log log;
+    for (int i = 0; i < log.count("subscriptions.thread.getView"); ++i)
+        CHECK(!log.get("subscriptions.thread.getView", i)["form"].has("team_id"));
+}
+
 TEST("slack features: a followed thread's reply notifies even when the thread isn't loaded") {
     if (!haveServer())
         return;

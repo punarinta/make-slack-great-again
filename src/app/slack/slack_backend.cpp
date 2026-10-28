@@ -184,6 +184,8 @@ struct SlackBackend::Read {
     );
     void        pageFrom(std::shared_ptr<Pager> p, std::string cursor);
     std::string teamForm(std::initializer_list<std::pair<std::string_view, std::string_view>> kv);
+    std::string threadsForm(std::string form);
+    bool        threadsRefused(const std::string &err, bool sentTeam);
     void        applyApiBase(std::string_view workspaceUrl);
 
     // ── Connect and the roster ──────────────────────────────────────────────
@@ -313,6 +315,7 @@ struct SlackBackend::Read {
     bool                                             rosterWanted = false;
     std::unordered_set<std::string>                  rosterAsked;
     bool                                threadsUnavailable = false, threadsPrimed = false;
+    std::string                         threadsError; // the refusal that gave up on the feed
     std::unordered_map<std::string, Ts> threadBaseline;
     std::unordered_set<std::string>     followed; // threads I started, replied in, or follow
     // Followed threads with an
@@ -568,6 +571,30 @@ std::string SlackBackend::Read::teamForm(
     return f;
 }
 
+// The feed's form: on Grid, once refused without it, with team_id.
+std::string SlackBackend::Read::threadsForm(std::string form) {
+    if (b._threadsTeamId)
+        form.append("&").append(teamForm({}));
+    return form;
+}
+
+// A method-level refusal of the feed. On Grid a session token may resolve
+// in the org (issue #118): the call goes once more with team_id before
+// the feed is given up on. sentTeam: the refused call carried it (one
+// sent before the switch, the poll's and the page's crossing, still
+// retries). true: try again.
+bool SlackBackend::Read::threadsRefused(const std::string &err, bool sentTeam) {
+    if (!isMethodUnavailable(err))
+        return false;
+    if (b._grid && !sentTeam) {
+        b._threadsTeamId = true;
+        return true;
+    }
+    threadsUnavailable = true;
+    threadsError       = err;
+    return false;
+}
+
 // A session token resolves in the context of the host it is called on; on
 // slack.com a Grid token lands in the org and is refused workspace methods
 // (issue #49). OAuth tokens are workspace-scoped: slack.com is fine.
@@ -601,7 +628,8 @@ void SlackBackend::connect(Done done) {
             // auth.test's url is the authoritative host (stored credentials may
             // predate workspaceUrl or carry a stale one).
             _read->applyApiBase(_store.workspaceUrl);
-            if (o.has("enterprise_id"))
+            _grid = o.has("enterprise_id");
+            if (_grid)
                 LOG_INFO(
                     "slack",
                     "%s is part of Enterprise Grid org %.*s",
@@ -2450,11 +2478,13 @@ void SlackBackend::Read::pollConversation(ConvRef c, bool foreground, Ts hint) {
 void SlackBackend::Read::pollThreadReplies() {
     call(
         "subscriptions.thread.getView",
-        "limit=10&priority_mode=all",
-        [this](const json::Document &doc, const std::string &err) {
+        threadsForm("limit=10&priority_mode=all"),
+        [this, sentTeam = b._threadsTeamId](const json::Document &doc, const std::string &err) {
             if (!err.empty()) {
-                if (isMethodUnavailable(err))
-                    threadsUnavailable = true;
+                if (isMethodUnavailable(err)) {
+                    LOG_WARN("slack", "subscriptions.thread.getView: %s", err.c_str());
+                    threadsRefused(err, sentTeam); // a retry with team_id rides the next tick
+                }
                 return;
             }
             const bool priming = !threadsPrimed;
@@ -2558,9 +2588,11 @@ void SlackBackend::Read::publishUnreadThreads() {
 void SlackBackend::loadThreadsView(std::string cursor, ThreadsViewDone done) {
     Read *r = _read;
     if (!r->session || r->threadsUnavailable) {
-        r->later(0, [done = std::move(done)] {
+        r->later(0, [r, done = std::move(done)] {
+            ThreadsView failed;
+            failed.error = r->threadsError;
             if (done)
-                done(false, {});
+                done(false, std::move(failed));
         });
         return;
     }
@@ -2570,17 +2602,23 @@ void SlackBackend::loadThreadsView(std::string cursor, ThreadsViewDone done) {
         form += "&" + net::formEncode({{"current_ts", cursor}});
     r->call(
         "subscriptions.thread.getView",
-        std::move(form),
-        [r, done = std::move(done)](const json::Document &doc, const std::string &err) {
+        r->threadsForm(std::move(form)),
+        [this, r, cursor, sentTeam = _threadsTeamId, done = std::move(done)](
+            const json::Document &doc, const std::string &err
+        ) mutable {
             if (err == "cancelled")
                 return;
             if (!err.empty()) {
-                // Given up on only for a method-level refusal, never a transport failure.
-                if (isMethodUnavailable(err))
-                    r->threadsUnavailable = true;
                 LOG_WARN("slack", "subscriptions.thread.getView: %s", err.c_str());
+                // Given up on only for a method-level refusal, never a transport failure.
+                if (r->threadsRefused(err, sentTeam)) {
+                    loadThreadsView(std::move(cursor), std::move(done));
+                    return;
+                }
+                ThreadsView failed;
+                failed.error = err;
                 if (done)
-                    done(false, {});
+                    done(false, std::move(failed));
                 return;
             }
             model::Store     &s    = r->s;

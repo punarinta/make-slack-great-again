@@ -354,6 +354,9 @@ private:
     net::Client                       &transfers();
     std::vector<std::shared_ptr<Done>> _downloads; // downloadFile's, until answered
     bool                               _authLost = false;
+    // Enterprise Grid (auth.test's enterprise_id), and the thread
+    // methods there refused without team_id once: they send it since.
+    bool                               _grid = false, _threadsTeamId = false;
     std::shared_ptr<bool>              _alive;
     Read                              *_read  = nullptr;
     Write                             *_write = nullptr;

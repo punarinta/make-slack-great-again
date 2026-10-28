@@ -2183,6 +2183,26 @@ TEST("threads page: participants, and a feed that can't be loaded") {
     waitForThreads(page);
     CHECK_STR(page.statusText(), "Couldn't load threads. Try again later.");
     CHECK(page.cardCount() == 0);
+
+    // Slack's code goes with it: the clue a bug report carries.
+    struct RefusedFeed : fake::FakeBackend {
+        using FakeBackend::FakeBackend;
+        void loadThreadsView(std::string, ThreadsViewDone done) override {
+            app().platform().post([done] {
+                ThreadsView failed;
+                failed.error = "enterprise_is_restricted";
+                done(false, std::move(failed));
+            });
+        }
+    };
+    RefusedFeed        rf{h.store, app().platform()};
+    screens::Context   refused{app(), h.store, rf, h.ctx.images, {}, {}, {}, {}, {}};
+    shell::ThreadsPage page2(refused, h.sh->avatars(), h.sh->drafts(), nullptr);
+    page2.open();
+    waitForThreads(page2);
+    CHECK_STR(
+        page2.statusText(), "Couldn't load threads. Try again later. (enterprise_is_restricted)"
+    );
 }
 
 // ── AI assistance → the LLM layer ───────────────────────────────────────────

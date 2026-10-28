@@ -693,6 +693,7 @@ public:
         int                         totalUnreadReplies = 0;
         bool                        hasMore            = false;
         std::string                 nextCursor; // the next call's `cursor`
+        std::string                 error;      // ok = false: Slack's error code, if any
     };
     // One page ("" = the first). ok = false: unavailable, or it failed.
     using ThreadsViewDone = std::function<void(bool ok, ThreadsView page)>;

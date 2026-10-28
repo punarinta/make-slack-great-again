@@ -1455,12 +1455,19 @@ void SlackBackend::markThreadRead(ConvRef conv, Ts root, Ts ts) {
     threadRead(conv, root, ts); // the Threads entry
     if (!_creds.sessionAuth() || _write->threadMarkUnavailable)
         return;
+    std::string form = net::formEncode(
+        {{"channel", convId(conv)},
+         {"thread_ts", model::formatTs(root)},
+         {"ts", model::formatTs(ts)}}
+    );
+    // On Grid, as the feed found it needs: with team_id.
+    if (_threadsTeamId)
+        form +=
+            "&" + net::formEncode(
+                      {{"team_id", _store.workspaceId.empty() ? _creds.teamId : _store.workspaceId}}
+                  );
     api("subscriptions.thread.mark",
-        net::formEncode(
-            {{"channel", convId(conv)},
-             {"thread_ts", model::formatTs(root)},
-             {"ts", model::formatTs(ts)}}
-        ),
+        std::move(form),
         [this](const json::Document &, const std::string &err) {
             if (!err.empty() && err != "cancelled") {
                 LOG_WARN("slack", "subscriptions.thread.mark: %s", err.c_str());

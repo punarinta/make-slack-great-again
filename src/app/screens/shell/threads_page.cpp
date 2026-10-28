@@ -323,8 +323,18 @@ void ThreadsPage::loadPage(std::string cursor) {
             _loading = false;
             _more->setEnabled(true);
             if (!ok) {
+                // Slack's code with it: the one clue a report can carry.
                 if (_cards.empty())
-                    setStatus(tr("Couldn't load threads. Try again later."));
+                    setStatus(
+                        page.error.empty()
+                            ? std::string(tr("Couldn't load threads. Try again later."))
+                            : str::concat(
+                                  {tr("Couldn't load threads. Try again later."),
+                                   " (",
+                                   page.error,
+                                   ")"}
+                              )
+                    );
                 return;
             }
             if (first) {
