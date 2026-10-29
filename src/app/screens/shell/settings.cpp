@@ -232,6 +232,13 @@ void fromJson(const json::Value r, Settings &s) {
     for (const json::Value e : r["visitedAt"])
         if (!e.key().empty() && e.integer() > 0)
             s.visitedAt.emplace_back(std::string(e.key()), e.integer());
+    for (const json::Value e : r["sidebarSorts"])
+        if (!e["section"].str().empty() && !e["sort"].str().empty())
+            s.sidebarSorts.push_back(
+                {std::string(e["workspace"].str()),
+                 std::string(e["section"].str()),
+                 std::string(e["sort"].str())}
+            );
     for (const json::Value e : r["claudeRecentDirs"])
         if (!e["path"].str().empty())
             s.claudeRecentDirs.push_back({std::string(e["path"].str()), e["usedAt"].integer()});
@@ -311,6 +318,19 @@ std::string Settings::toFile() const {
         for (const auto &[id, at] : visitedAt)
             w.key(id).value(at);
         w.endObject();
+    }
+    if (!sidebarSorts.empty()) {
+        w.key("sidebarSorts").beginArray();
+        for (const SectionSortPref &p : sidebarSorts)
+            w.beginObject()
+                .key("workspace")
+                .value(p.workspace)
+                .key("section")
+                .value(p.section)
+                .key("sort")
+                .value(p.sort)
+                .endObject();
+        w.endArray();
     }
     if (!claudeRecentDirs.empty()) {
         w.key("claudeRecentDirs").beginArray();

@@ -54,6 +54,10 @@ constexpr ui::MenuDef kDefs[] = {
     {Menus::kDeleteSection, kNone, N_("Delete section…"), nullptr, nullptr},
     {Menus::kSectionUp, kNone, N_("Move section up"), nullptr, nullptr},
     {Menus::kSectionDown, kNone, N_("Move section down"), nullptr, nullptr},
+    {Menus::kSortDefault, kNone, N_("Default"), nullptr, nullptr},
+    {Menus::kSortAlpha, kNone, N_("Alphabetically"), nullptr, nullptr},
+    {Menus::kSortRecent, kNone, N_("By most recent"), nullptr, nullptr},
+    {Menus::kUnreadsFirst, kNone, N_("Unreads on top"), nullptr, nullptr},
 };
 
 ui::MenuItem &add(std::vector<ui::MenuItem> &out, int id, bool direct = false, bool on = true) {
@@ -197,22 +201,48 @@ void Menus::runTeammate(int id, const std::string &role) {
     }
 }
 
-std::vector<ui::MenuItem> Menus::sectionItems(const std::string &section) const {
+std::vector<ui::MenuItem> Menus::sectionItems(const std::string &section, SectionSort sort) const {
     std::vector<ui::MenuItem> items;
-    if (!_ctx.backend.capabilities().customSections)
-        return items;
-    add(items, kCreateSection);
-    const auto &all = _ctx.store().sections();
-    for (size_t i = 0; i < all.size(); ++i)
-        if (all[i].id == section) {
-            add(items, kRenameSection);
-            ui::addMenuSeparator(items);
-            add(items, kSectionUp, false, i > 0);
-            add(items, kSectionDown, false, i + 1 < all.size());
-            ui::addMenuSeparator(items);
-            add(items, kDeleteSection);
-        }
+    if (_ctx.backend.capabilities().customSections) {
+        add(items, kCreateSection);
+        const auto &all = _ctx.store().sections();
+        for (size_t i = 0; i < all.size(); ++i)
+            if (all[i].id == section) {
+                add(items, kRenameSection);
+                ui::addMenuSeparator(items);
+                add(items, kSectionUp, false, i > 0);
+                add(items, kSectionDown, false, i + 1 < all.size());
+                ui::addMenuSeparator(items);
+                add(items, kDeleteSection);
+            }
+        ui::addMenuSeparator(items);
+    }
+    // The sort: one of the orders ticked, and unreads on top on or off.
+    items.push_back(ui::MenuItem::headerItem(tr("Sort")));
+    add(items, kSortDefault).checked = sort.by == SectionSort::By::Default;
+    add(items, kSortAlpha).checked   = sort.by == SectionSort::By::Alpha;
+    add(items, kSortRecent).checked  = sort.by == SectionSort::By::Recent;
+    ui::addMenuSeparator(items);
+    add(items, kUnreadsFirst).checked = sort.unreadsFirst;
     return items;
+}
+
+SectionSort Menus::sortAfter(int id, SectionSort sort) {
+    switch (id) {
+    case kSortDefault:
+        sort.by = SectionSort::By::Default;
+        break;
+    case kSortAlpha:
+        sort.by = SectionSort::By::Alpha;
+        break;
+    case kSortRecent:
+        sort.by = SectionSort::By::Recent;
+        break;
+    case kUnreadsFirst:
+        sort.unreadsFirst = !sort.unreadsFirst;
+        break;
+    }
+    return sort;
 }
 
 void Menus::runSection(int id, const std::string &section) {
@@ -233,14 +263,24 @@ void Menus::runSection(int id, const std::string &section) {
     }
 }
 
-void Menus::showSection(const std::string &section, ui::PointF at) {
-    std::vector<ui::MenuItem> items = sectionItems(section);
-    if (items.empty())
-        return;
-    ui::Menu::popupAt(_win, at, std::move(items), [this, section](int id) {
-        if (id)
-            runSection(id, section);
-    });
+void Menus::showSection(
+    const std::string               &section,
+    SectionSort                      sort,
+    ui::PointF                       at,
+    std::function<void(SectionSort)> onSort
+) {
+    ui::Menu::popupAt(
+        _win,
+        at,
+        sectionItems(section, sort),
+        [this, section, sort, onSort = std::move(onSort)](int id) {
+            if (id >= kSortDefault && id <= kUnreadsFirst) {
+                if (onSort)
+                    onSort(sortAfter(id, sort));
+            } else if (id)
+                runSection(id, section);
+        }
+    );
 }
 
 void Menus::run(int id, uint32_t target) {

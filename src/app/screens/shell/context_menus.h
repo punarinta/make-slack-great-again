@@ -11,6 +11,7 @@
 #pragma once
 
 #include "screens/common/context.h"
+#include "screens/shell/sidebar.h"
 #include "ui/ui.h"
 
 #include <functional>
@@ -75,6 +76,10 @@ public:
         kDeleteSection,
         kSectionUp,
         kSectionDown,
+        kSortDefault, // the section's sort (SectionSort)
+        kSortAlpha,
+        kSortRecent,
+        kUnreadsFirst,
         // "Move to section" → the n-th section (target: ConvRef)
         kMoveToSection = 200,
     };
@@ -89,10 +94,13 @@ public:
     // An agent session's "+" menu, and a teammate's menu.
     std::vector<ui::MenuItem> sessionItems() const;
     std::vector<ui::MenuItem> teammateItems(const model::Backend::AgentRole &mate) const;
-    // A sidebar section header's menu: `section` is a custom section's id,
-    // "" a built-in section (Channels, Direct messages…).
-    std::vector<ui::MenuItem> sectionItems(const std::string &section) const;
+    // A sidebar section header's menu (its More actions): `section` is a
+    // custom section's id, "" a built-in section (Channels, Direct
+    // messages…); `sort` is the section's, ticked in the menu.
+    std::vector<ui::MenuItem> sectionItems(const std::string &section, SectionSort sort) const;
     void                      runSection(int id, const std::string &section);
+    // The sort a sort item picks (`sort` unchanged for any other item).
+    static SectionSort        sortAfter(int id, SectionSort sort);
     // `target` is the ConvRef the item's menu was built for (0: workspace).
     void                      run(int id, uint32_t target);
     void                      runTeammate(int id, const std::string &role);
@@ -102,7 +110,13 @@ public:
     void showWorkspace(const Workspace &w, ui::PointF at);
     void showSessions(ui::PointF at);
     void showTeammate(const std::string &role, ui::PointF at);
-    void showSection(const std::string &section, ui::PointF at);
+    // onSort: a sort item was picked (the new sort).
+    void showSection(
+        const std::string               &section,
+        SectionSort                      sort,
+        ui::PointF                       at,
+        std::function<void(SectionSort)> onSort
+    );
 
 private:
     ui::Menu *show(std::vector<ui::MenuItem> items, uint32_t target, ui::PointF at);

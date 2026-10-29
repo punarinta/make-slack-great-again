@@ -930,7 +930,7 @@ msgstr "転送"
 msgid "Open in browser"
 msgstr "ブラウザで開く"
 
-#: src/app/screens/messages/message_list.cpp
+#: src/app/screens/messages/message_list.cpp src/app/screens/shell/sidebar.cpp
 msgid "More actions"
 msgstr "その他の操作"
 
@@ -2748,6 +2748,22 @@ msgid "Move section down"
 msgstr "セクションを下へ移動"
 
 #: src/app/screens/shell/context_menus.cpp
+msgid "Default"
+msgstr "デフォルト"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Alphabetically"
+msgstr "アルファベット順"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "By most recent"
+msgstr "新しい順"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Unreads on top"
+msgstr "未読を上に表示"
+
+#: src/app/screens/shell/context_menus.cpp
 msgid "Notify you about…"
 msgstr "通知対象…"
 
@@ -2770,6 +2786,10 @@ msgstr "msgaから削除"
 #: src/app/screens/shell/context_menus.cpp
 msgid "Log out from %1"
 msgstr "%1からログアウト"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Sort"
+msgstr "並べ替え"
 
 #: src/app/screens/shell/gif_search.cpp
 msgid "GIPHY rate limit reached. Try again shortly."
@@ -3302,6 +3322,10 @@ msgid "Remove idle session from msga"
 msgstr "待機中のセッションをmsgaから削除"
 
 #: src/app/screens/shell/sidebar.cpp
+msgid "Add channels"
+msgstr "チャンネルを追加"
+
+#: src/app/screens/shell/sidebar.cpp
 msgid "Add sessions"
 msgstr "セッションを追加"
 
@@ -3340,10 +3364,6 @@ msgstr "チャンネル"
 #: src/app/screens/shell/sidebar.cpp
 msgid "channels"
 msgstr "チャンネル"
-
-#: src/app/screens/shell/sidebar.cpp
-msgid "Add channels"
-msgstr "チャンネルを追加"
 
 #: src/app/screens/shell/sidebar.cpp
 msgid "Team"

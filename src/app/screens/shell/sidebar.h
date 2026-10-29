@@ -3,15 +3,18 @@
 // messages" and "Scheduled messages" entries, then the Starred / Channels /
 // Direct messages / Agents & apps sections (a click on a header collapses
 // it, hiding every row; hovering shows the chevron that says what a click
-// does; the Direct messages header has a "+" on hover), "N more channels"
+// does, and on the right the header's "+" — Channels: "Add channels",
+// Direct messages: open one — and "⋮" More actions), "N more channels"
 // for the ones outside the relevant-days window, "Add channels", and the
 // footer (avatar + menu, presence toggle). Over the nav gradient.
 //
-// With Capabilities::customSections the user's own sections
-// (Store::sections) come between Starred and Channels, each under its emoji
-// (the list icon without one) and holding its conversations in its own
-// order, whatever the filters. A right click on a header opens the section
-// menu (Menus::showSection); a conversation's menu moves it between them.
+// More actions (a right click on the header too) is the section menu
+// (Menus::showSection): how the section sorts its rows (SectionSort, kept
+// per workspace by the shell) and, with Capabilities::customSections, the
+// user's own sections (Store::sections). Those come between Starred and
+// Channels, each under its emoji (the list icon without one) and holding
+// its conversations in its own order, whatever the filters; a
+// conversation's menu moves it between them.
 //
 // An agent workspace (Capabilities::agentSessions, Claude Code) calls the
 // direct messages "Sessions" and ends them with "Add sessions" (its "+" and
@@ -63,6 +66,20 @@ workspaceAttention(const model::Store &store, model::NotifyLevel fallback, int64
 // A peer not loaded yet (a placeholder) is let through.
 bool deadDm(const model::Store &store, const model::Conversation &c);
 
+// How a section orders its rows: as listed (the service's order, a custom
+// section's own), by name, or most recent activity first; unreads on top
+// lifts the bold rows over the rest, each part in that order.
+struct SectionSort {
+    enum class By : uint8_t { Default, Alpha, Recent };
+    By                 by           = By::Default;
+    bool               unreadsFirst = false;
+    bool               plain() const { return by == By::Default && !unreadsFirst; }
+    bool               operator==(const SectionSort &) const = default;
+    // "alpha", "recent,unreads"… ("" = plain); unknown parts are ignored.
+    std::string        encode() const;
+    static SectionSort decode(std::string_view s);
+};
+
 class ConvRow;
 class Menus;
 class SectionHeader;
@@ -92,6 +109,17 @@ public:
     const VisitStamps    &visited() const { return _visited; }
     void                  clearVisited(); // Settings → "Clear state"
     std::function<void()> onVisitedChanged;
+    // Each section's sort by its key (sectionKey; plain ones left out). The
+    // shell keeps them per workspace and sets them on a switch;
+    // onSortsChanged fires when the section menu changed one.
+    using Sorts = std::unordered_map<std::string, SectionSort>;
+    void                  setSorts(Sorts sorts);
+    const Sorts          &sorts() const { return _sorts; }
+    std::function<void()> onSortsChanged;
+    void                  setSort(const std::string &key, SectionSort sort);
+    // A section's key: a custom one's id, "#starred", "#channels",
+    // "#direct", "#apps" for the built-ins ("" for the Team).
+    static std::string    sectionKey(int kind, const std::string &id);
 
     void                        rebuild();                   // from the Store (roster changed)
     void                        select(model::ConvRef conv); // highlight only (kNoConv clears)
@@ -199,7 +227,16 @@ private:
     uint64_t           userShape() const;
     void               noteShape(uint64_t shape); // a userShape() and what it was taken at
     void               addChannelsMenu(ui::View *row);
-    void               refreshTeammates();
+    void               addChannelsMenu(ui::PointF at);
+    void               sectionMenu(SectionHeader *h, ui::PointF at); // More actions
+    SectionSort        sortOf(const SectionHeader *h) const;
+    // The order a section's conversations show in under `sort`: indexes
+    // into `rows` (as listed; unchanged when plain).
+    std::vector<size_t>
+         sortedOrder(SectionSort sort, const std::vector<model::ConvRef> &rows) const;
+    void resortSoon();      // a row may have left its sort's place: check (sectionsSoon)
+    bool sortsHold() const; // every sorted section still in its order
+    void refreshTeammates();
 
     screens::Context                      &_ctx;
     Avatars                               &_avatars;
@@ -218,6 +255,7 @@ private:
     ui::View                *_savedRow = nullptr, *_threadsRow = nullptr, *_scheduledRow = nullptr;
     Nav                      _navSelected = Nav::None;
     VisitStamps              _visited; // opened here (visit stamps)
+    Sorts                    _sorts;
     Filters                  _filters;
     model::ConvRef           _selected        = model::kNoConv;
     model::Store::ObserverId _observer        = 0;
@@ -238,6 +276,7 @@ private:
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged
     bool     _showAllChannels = false;
+    bool     _resort          = false; // sectionsSoon checks the sorted sections' order
 };
 
 } // namespace shell

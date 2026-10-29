@@ -55,6 +55,7 @@
 #endif
 
 #include <algorithm>
+#include <tuple>
 #include <cmath>
 #include <cstring>
 
@@ -817,6 +818,11 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
             storeVisited();
             saveSettingsSoon();
         });
+    };
+    loadSorts();
+    _sidebar->onSortsChanged = [this] {
+        storeSorts();
+        saveSettingsSoon();
     };
     _listHandle = body->add<ListHandle>(*_sidebar);
     buildMain(body);
@@ -1620,6 +1626,7 @@ void Shell::workspaceChanged() {
     rebuildTrayMenu();
     updateHeader();
     _sidebar->footer().setZenOn(_settings.zenMode(_activeKey)); // its own
+    loadSorts();
 }
 
 void Shell::open(ConvRef conv) {
@@ -3227,6 +3234,29 @@ void Shell::storeVisited() {
         if (at >= horizon)
             _settings.visitedAt.emplace_back(id, at);
     std::sort(_settings.visitedAt.begin(), _settings.visitedAt.end()); // a stable file
+}
+
+void Shell::loadSorts() {
+    Sidebar::Sorts sorts;
+    for (const Settings::SectionSortPref &p : _settings.sidebarSorts)
+        if (p.workspace == _activeKey)
+            sorts[p.section] = SectionSort::decode(p.sort);
+    _sidebar->setSorts(std::move(sorts));
+}
+
+void Shell::storeSorts() {
+    std::erase_if(_settings.sidebarSorts, [this](const Settings::SectionSortPref &p) {
+        return p.workspace == _activeKey;
+    });
+    for (const auto &[section, sort] : _sidebar->sorts())
+        _settings.sidebarSorts.push_back({_activeKey, section, sort.encode()});
+    std::sort( // a stable file
+        _settings.sidebarSorts.begin(),
+        _settings.sidebarSorts.end(),
+        [](const Settings::SectionSortPref &a, const Settings::SectionSortPref &b) {
+            return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
+        }
+    );
 }
 
 void Shell::saveState() {

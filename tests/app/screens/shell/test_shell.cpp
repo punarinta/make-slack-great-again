@@ -17,6 +17,7 @@
 #include "support/test.h"
 #include "base/file.h"
 #include "base/time.h"
+#include "base/utf8.h"
 #include "gfx/icons_generated.h"
 #include "plat/audio.h"
 #include "plat/testing.h"
@@ -682,7 +683,8 @@ TEST("sections: the conversation and section header menus") {
     const ConvRef eng = h.conv("C0ENG");
     CHECK(labels(m.chatItems(eng)).rfind("Star channel|Move to section|-|", 0) == 0);
     CHECK_STR(labels(m.chatItems(eng)[1].sub), "New section…");
-    CHECK_STR(labels(m.sectionItems("")), "Create a section…");
+    const std::string sort = "|-|Sort|Default(on)|Alphabetically|By most recent|-|Unreads on top";
+    CHECK_STR(labels(m.sectionItems("", {})), "Create a section…" + sort);
     h.backend.createSection("Projects", "", eng);
     h.backend.createSection("Later", "", kNoConv);
     pump();
@@ -691,11 +693,12 @@ TEST("sections: the conversation and section header menus") {
     CHECK_STR(labels(items[1].sub), "Later|Projects(on)|-|New section…");
     const std::string later = h.store.sections()[0].id, projects = h.store.sections()[1].id;
     CHECK_STR(
-        labels(m.sectionItems(later)),
+        labels(m.sectionItems(later, {})),
         "Create a section…|Rename section…|-|Move section up(off)|Move section down|-|"
-        "Delete section…"
+        "Delete section…" +
+            sort
     );
-    CHECK(m.sectionItems(later).back().danger);
+    CHECK(m.sectionItems(later, {})[6].danger);
     // The submenu's items move it; "Remove from" takes it out.
     m.run(items[1].sub[0].id, eng);
     pump();
@@ -706,6 +709,105 @@ TEST("sections: the conversation and section header menus") {
     m.runSection(shell::Menus::kSectionDown, later);
     pump();
     CHECK_STR(h.store.sections()[0].id, projects);
+}
+
+TEST("sort: the section menu ticks the sort; its items pick the next one") {
+    Harness       h;
+    shell::Menus &m            = h.sh->menus();
+    using By                   = shell::SectionSort::By;
+    const shell::SectionSort s = {By::Recent, true};
+    CHECK(labels(m.sectionItems("", s))
+              .ends_with("Sort|Default|Alphabetically|By most recent(on)|-|Unreads on top(on)"));
+    CHECK((
+        shell::Menus::sortAfter(shell::Menus::kSortAlpha, s) == shell::SectionSort{By::Alpha, true}
+    ));
+    CHECK(
+        (shell::Menus::sortAfter(shell::Menus::kUnreadsFirst, s) == shell::SectionSort{By::Recent})
+    );
+    CHECK(shell::Menus::sortAfter(shell::Menus::kRenameSection, s) == s);
+    // The encoding the settings keep.
+    CHECK_STR(s.encode(), "recent,unreads");
+    CHECK(shell::SectionSort::decode("recent,unreads") == s);
+    CHECK((shell::SectionSort::decode("unreads,bogus") == shell::SectionSort{By::Default, true}));
+    CHECK_STR(shell::SectionSort{}.encode(), "");
+}
+
+namespace {
+// The Channels rows, top to bottom (no starred or custom section in the way).
+std::vector<ConvRef> channelRows(Harness &h) {
+    std::vector<ConvRef> out;
+    for (ConvRef c : h.sh->sidebar().order()) {
+        const auto &cv = h.store.conversation(c);
+        if (!cv.isDirect() && !cv.starred)
+            out.push_back(c);
+    }
+    return out;
+}
+} // namespace
+
+TEST("sort: alphabetically, most recent first, unreads on top; kept per workspace") {
+    Harness         h;
+    shell::Sidebar &sb = h.sh->sidebar();
+    sb.showAllChannels();
+    pump();
+    const std::vector<ConvRef> listed = channelRows(h);
+    REQUIRE(listed.size() >= 3);
+    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
+    pump();
+    std::vector<ConvRef> rows = channelRows(h);
+    CHECK(rows.size() == listed.size());
+    CHECK(std::is_sorted(rows.begin(), rows.end(), [&](ConvRef a, ConvRef b) {
+        return utf8::foldCase(h.store.displayName(a)) < utf8::foldCase(h.store.displayName(b));
+    }));
+    // Saved for the open workspace.
+    REQUIRE(h.settings.sidebarSorts.size() == 1);
+    const std::string ws = h.settings.sidebarSorts[0].workspace;
+    CHECK_STR(h.settings.sidebarSorts[0].section, "#channels");
+    CHECK_STR(h.settings.sidebarSorts[0].sort, "alpha");
+
+    sb.setSort("#channels", {shell::SectionSort::By::Recent});
+    pump();
+    rows                = channelRows(h);
+    const auto activity = [&](ConvRef c) {
+        const auto &cv = h.store.conversation(c);
+        return std::max(cv.latest, cv.lastRead);
+    };
+    CHECK(std::is_sorted(rows.begin(), rows.end(), [&](ConvRef a, ConvRef b) {
+        return activity(a) > activity(b);
+    }));
+
+    // Unreads on top over the default order: the bold rows first, each part
+    // as listed.
+    sb.setSort("#channels", {shell::SectionSort::By::Default, true});
+    pump();
+    rows = channelRows(h);
+    std::vector<ConvRef> want;
+    for (int pass = 0; pass < 2; ++pass)
+        for (ConvRef c : listed)
+            if (sb.rowState(c).bold == (pass == 0))
+                want.push_back(c);
+    CHECK(rows == want);
+    CHECK(sb.rowState(rows.front()).bold);
+    CHECK_FALSE(sb.rowState(rows.back()).bold);
+    // Read, a row drops back to its place.
+    const ConvRef first = rows.front();
+    h.backend.markRead(first, h.store.conversation(first).latest);
+    pump();
+    rows = channelRows(h);
+    CHECK_FALSE(sb.rowState(first).bold);
+    CHECK(std::find(rows.begin(), rows.end(), first) - rows.begin() > 0);
+
+    // Back to default: nothing is kept; a workspace switch loads its own.
+    sb.setSort("#channels", {});
+    pump();
+    CHECK(h.settings.sidebarSorts.empty());
+    CHECK(channelRows(h) == listed);
+    h.settings.sidebarSorts = {{ws, "#channels", "alpha"}, {ws + "x", "#direct", "recent"}};
+    h.sh->workspaceChanged(); // a switch reloads the workspace's own
+    pump();
+    const shell::Sidebar::Sorts &loaded = sb.sorts();
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded.count("#channels") && loaded.at("#channels").by == shell::SectionSort::By::Alpha);
 }
 
 // ── Files: the chooser helper, attachments, drops, Save as ──────────────────

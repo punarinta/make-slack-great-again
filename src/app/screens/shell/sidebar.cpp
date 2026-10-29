@@ -6,6 +6,7 @@
 #include "base/i18n.h"
 #include "base/str.h"
 #include "base/time.h"
+#include "base/utf8.h"
 #include "gfx/icons_generated.h"
 #include "screens/shell/context_menus.h"
 #include "screens/shell/header.h"
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <utility>
 
 using namespace ui;
@@ -100,17 +102,22 @@ public:
     bool   unread = false; // followed threads with unread replies (Store::unreadThreads)
 };
 
-// The "+" on the Direct messages / Sessions / Team header: shown while the
-// header is hovered. `at` is where the press was (the session menu
-// opens at the cursor); a right click on it does the same as a left one.
-class HeaderPlus final : public Clickable {
+// The "+" and the "⋮" (More actions) on a section header: shown while the
+// header is hovered. `at` is where the press was (the menus open at the
+// cursor); a right click on it does the same as a left one.
+class HeaderButton final : public Clickable {
 public:
-    explicit HeaderPlus(const char *tip) {
+    HeaderButton(Icon i, const char *tip) : icon(i) {
         style().size(14, 14).noShrink();
         setLook({C::None, C::None, C::None, C::None, 0});
         setTooltip(tip);
     }
+    void paint(gfx::Painter &p) override {
+        gfx::drawIcon(p, icon, bounds(), color(hovered() ? C::SidebarText : C::SidebarTextMuted));
+    }
     bool onEvent(Event &e) override {
+        if (e.type == EventType::PointerEnter || e.type == EventType::PointerLeave)
+            update();
         if (e.type == EventType::PointerDown)
             at = e.windowPos;
         if (e.type == EventType::ContextMenu && onRightClick) {
@@ -120,9 +127,7 @@ public:
         }
         return Clickable::onEvent(e);
     }
-    void paint(gfx::Painter &p) override {
-        gfx::drawIcon(p, Icon::Plus, bounds(), color(C::SidebarTextMuted));
-    }
+    Icon                  icon;
     PointF                at;
     std::function<void()> onRightClick;
 };
@@ -258,19 +263,25 @@ public:
         style().row().height(rowH()).padding(kContentX, 0, kPadH, 0).items(Align::Center);
         label = add<Label>(std::move(text), Font::Section, C::SidebarTextMuted);
         label->setMaxLines(1);
-        // Direct messages: "+" → the browse dialog's People tab; Sessions:
-        // find or create one (a right click too); Team: add a teammate.
+        label->style().shrink = 1;
+        add<View>()->style().flex(1);
+        // Channels: "+" → find or create one; Direct messages: the browse
+        // dialog's People tab; Sessions: find or create one (a right click
+        // too); Team: add a teammate.
         const bool agents = sb._ctx.backend.capabilities().agentSessions;
-        if (k == 2 || k == 4) {
-            add<View>()->style().flex(1);
-            plus = add<HeaderPlus>(
-                k == 4   ? tr("Add teammate")
+        if (k == 1 || k == 2 || k == 4) {
+            plus = add<HeaderButton>(
+                Icon::Plus,
+                k == 1   ? tr("Add channels")
+                : k == 4 ? tr("Add teammate")
                 : agents ? tr("Add sessions")
                          : tr("Open a direct message")
             );
             plus->setVisible(false);
             plus->onClick = [this, k, agents] {
-                if (k == 4) {
+                if (k == 1)
+                    sidebar.addChannelsMenu(plus->at);
+                else if (k == 4) {
                     if (sidebar.onAddTeammate)
                         sidebar.onAddTeammate();
                 } else if (agents) {
@@ -285,6 +296,15 @@ public:
                     if (sidebar.onSessionMenu)
                         sidebar.onSessionMenu(plus->at);
                 };
+        }
+        // More actions: the section menu (sort, the user's sections); not
+        // on the Team, which lists no conversations.
+        if (k != 4) {
+            more = add<HeaderButton>(Icon::EllipsisVertical, tr("More actions"));
+            more->style().margins(plus ? 6 : 0, 0, 0, 0);
+            more->setVisible(false);
+            more->onClick      = [this] { sidebar.sectionMenu(this, more->at); };
+            more->onRightClick = more->onClick;
         }
     }
     void setUnread(bool on) {
@@ -310,11 +330,9 @@ public:
             stale = false;
             refreshLook();
         }
-        // The section menu (create, and a custom one's rename/move/delete);
-        // not on the Team, which lists no conversations.
-        if (e.type == EventType::ContextMenu && kind != 4 && sidebar._menus &&
-            sidebar._ctx.backend.capabilities().customSections) {
-            sidebar._menus->showSection(sectionId, e.windowPos);
+        // More actions, at the pointer.
+        if (e.type == EventType::ContextMenu && more) {
+            sidebar.sectionMenu(this, e.windowPos);
             return true;
         }
         return HoverRow::onEvent(e);
@@ -330,6 +348,8 @@ public:
         label->setColor(labelInk());
         if (plus)
             plus->setVisible(lit());
+        if (more)
+            more->setVisible(lit());
         update();
     }
     void paint(gfx::Painter &p) override {
@@ -363,7 +383,8 @@ public:
     std::unique_ptr<text::Layout> emojiLayout;
     float                         emojiScale = 0;
     Label                        *label      = nullptr;
-    HeaderPlus                   *plus       = nullptr;
+    HeaderButton                 *plus       = nullptr;
+    HeaderButton                 *more       = nullptr;
     std::vector<ConvRow *>        rows;
     std::vector<View *>           extras; // "N more channels", "Add channels"
     bool                          collapsed = false, unread = false, stale = false;
@@ -643,6 +664,7 @@ public:
     CountBadge    *badge   = nullptr;
     HuddlePill    *huddle  = nullptr;
     SectionHeader *section = nullptr;
+    size_t         base    = 0; // its place in the section as listed (before the sort)
     bool           unread = false, dot = false;
     int            count = 0, huddleCount = 0;
 };
@@ -736,6 +758,8 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             if (ch.thread == 0 && ch.conv < _ctx.store().conversationCount() && !rowFor(ch.conv) &&
                 _ctx.store().conversation(ch.conv).member && relevant(ch.conv))
                 rebuildSoon();
+            else if (ch.thread == 0 && rowFor(ch.conv)) // most recent first may move it
+                resortSoon();
             [[fallthrough]];
         case model::ChangeKind::Update:
         case model::ChangeKind::Remove:
@@ -775,6 +799,7 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             else {
                 refresh(ch.conv);
                 sectionsSoon(); // the headers, its sessions' teammate: once per burst
+                resortSoon();   // unreads on top, a new name or activity may move it
             }
             break;
         }
@@ -975,30 +1000,35 @@ void Sidebar::rebuild() {
         {Icon::Bot, tr("Agents & apps")},
     };
     // A header and its rows (a click on the header collapses them).
-    const auto section =
-        [&](int kind, Icon icon, std::string title, const std::vector<ConvRef> &rows) {
-            auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
-            h->collapsed = kind < 5 && _collapsed[kind];
-            _sections.push_back(h);
-            h->onClick = [this, h] {
-                h->collapsed = !h->collapsed;
-                applyCollapse(h);
-            };
-            for (ConvRef c : rows) {
-                auto *row    = _items->add<ConvRow>(*this, c);
-                row->section = h;
-                h->rows.push_back(row);
-                _rows.push_back(row);
-                if (c < _rowOf.size())
-                    _rowOf[c] = row;
-            }
-            return h;
+    const auto section = [&](int                         kind,
+                             Icon                        icon,
+                             std::string                 title,
+                             const std::vector<ConvRef> &rows,
+                             const std::string          &id = {}) {
+        auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
+        h->collapsed = kind < 5 && _collapsed[kind];
+        _sections.push_back(h);
+        h->onClick = [this, h] {
+            h->collapsed = !h->collapsed;
+            applyCollapse(h);
         };
+        h->sectionId = id;
+        for (size_t i : sortedOrder(sortOf(h), rows)) {
+            const ConvRef c   = rows[i];
+            auto         *row = _items->add<ConvRow>(*this, c);
+            row->section      = h;
+            row->base         = i;
+            h->rows.push_back(row);
+            _rows.push_back(row);
+            if (c < _rowOf.size())
+                _rowOf[c] = row;
+        }
+        return h;
+    };
     for (int s = 0; s < 4; ++s) {
         if (s == 1) // the user's own sections, between Starred and Channels
             for (size_t i = 0; i < custom.size(); ++i) {
-                auto *h      = section(5, Icon::List, secs[i].name, custom[i]);
-                h->sectionId = secs[i].id;
+                auto *h = section(5, Icon::List, secs[i].name, custom[i], secs[i].id);
                 if (!secs[i].emoji.empty())
                     h->setEmoji(store.emojiFor(secs[i].emoji).unicode);
                 const auto was = _collapsedCustom.find(secs[i].id);
@@ -1163,7 +1193,144 @@ void Sidebar::sectionsSoon() {
         _sectionsTimer = 0;
         refreshSections();
         refreshTeammates();
+        if (std::exchange(_resort, false) && !sortsHold())
+            rebuildSoon(false);
     });
+}
+
+void Sidebar::resortSoon() {
+    if (_sorts.empty())
+        return;
+    _resort = true;
+    sectionsSoon();
+}
+
+bool Sidebar::sortsHold() const {
+    for (const SectionHeader *h : _sections) {
+        const SectionSort sort = sortOf(h);
+        if (sort.plain() || h->rows.size() < 2)
+            continue;
+        std::vector<ConvRef> listed(h->rows.size());
+        for (const ConvRow *r : h->rows)
+            listed[r->base] = r->conv;
+        const std::vector<size_t> order = sortedOrder(sort, listed);
+        for (size_t i = 0; i < order.size(); ++i)
+            if (order[i] != h->rows[i]->base)
+                return false;
+    }
+    return true;
+}
+
+std::vector<size_t> Sidebar::sortedOrder(SectionSort sort, const std::vector<ConvRef> &rows) const {
+    std::vector<size_t> order(rows.size());
+    std::iota(order.begin(), order.end(), size_t(0));
+    if (sort.plain())
+        return order;
+    const auto &store = _ctx.store();
+    struct Key {
+        bool        unread = false;
+        model::Ts   recent = 0;
+        std::string name; // case-folded
+    };
+    std::vector<Key> keys(rows.size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+        const auto &cv = store.conversation(rows[i]);
+        keys[i].unread = sort.unreadsFirst && paintsUnread(cv);
+        if (sort.by == SectionSort::By::Recent)
+            keys[i].recent = std::max(cv.latest, cv.lastRead);
+        else if (sort.by == SectionSort::By::Alpha)
+            keys[i].name = utf8::foldCase(store.displayName(rows[i]));
+    }
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        const Key &x = keys[a], &y = keys[b];
+        if (x.unread != y.unread)
+            return x.unread;
+        switch (sort.by) {
+        case SectionSort::By::Alpha:
+            return x.name < y.name;
+        case SectionSort::By::Recent:
+            return x.recent > y.recent;
+        case SectionSort::By::Default:
+            break;
+        }
+        return false;
+    });
+    return order;
+}
+
+// ── Sorting and the section menu ────────────────────────────────────────────
+
+std::string SectionSort::encode() const {
+    std::string out = by == By::Alpha ? "alpha" : by == By::Recent ? "recent" : "";
+    if (unreadsFirst)
+        out += out.empty() ? "unreads" : ",unreads";
+    return out;
+}
+
+SectionSort SectionSort::decode(std::string_view s) {
+    SectionSort sort;
+    for (std::string_view part : str::split(s, ','))
+        if (part == "alpha")
+            sort.by = By::Alpha;
+        else if (part == "recent")
+            sort.by = By::Recent;
+        else if (part == "unreads")
+            sort.unreadsFirst = true;
+    return sort;
+}
+
+std::string Sidebar::sectionKey(int kind, const std::string &id) {
+    switch (kind) {
+    case 0:
+        return "#starred";
+    case 1:
+        return "#channels";
+    case 2:
+        return "#direct";
+    case 3:
+        return "#apps";
+    case 5:
+        return id;
+    }
+    return {};
+}
+
+SectionSort Sidebar::sortOf(const SectionHeader *h) const {
+    const auto it = _sorts.find(sectionKey(h->kind, h->sectionId));
+    return it == _sorts.end() ? SectionSort{} : it->second;
+}
+
+void Sidebar::setSorts(Sorts sorts) {
+    std::erase_if(sorts, [](const auto &e) { return e.first.empty() || e.second.plain(); });
+    if (sorts == _sorts)
+        return;
+    _sorts = std::move(sorts);
+    rebuild();
+}
+
+void Sidebar::setSort(const std::string &key, SectionSort sort) {
+    Sorts next = _sorts;
+    if (sort.plain())
+        next.erase(key);
+    else
+        next[key] = sort;
+    if (next == _sorts)
+        return;
+    _sorts = std::move(next);
+    rebuildSoon(false); // not from inside the menu's own pick
+    if (onSortsChanged)
+        onSortsChanged();
+}
+
+void Sidebar::sectionMenu(SectionHeader *h, PointF at) {
+    if (!_menus)
+        return;
+    const std::string key = sectionKey(h->kind, h->sectionId);
+    _menus->showSection(
+        h->kind == 5 ? h->sectionId : std::string(), sortOf(h), at, [this, key](SectionSort sort) {
+            setSort(key, sort);
+        }
+    );
 }
 
 // Collapsed, a section lists nothing under its header.
@@ -1282,6 +1449,11 @@ void Sidebar::rebuildSoon(bool reveal) {
 }
 
 void Sidebar::addChannelsMenu(View *row) {
+    const RectF r = row->windowRect();
+    addChannelsMenu({r.x + kContentX, r.y + r.h / 2});
+}
+
+void Sidebar::addChannelsMenu(PointF at) {
     Window *w = window();
     if (!w)
         return;
@@ -1292,8 +1464,7 @@ void Sidebar::addChannelsMenu(View *row) {
     items[1].id      = 2;
     items[1].label   = tr("Create a channel");
     items[1].enabled = bool(onCreateChannel);
-    const RectF r    = row->windowRect();
-    Menu::popupAt(*w, {r.x + kContentX, r.y + r.h / 2}, std::move(items), [this](int id) {
+    Menu::popupAt(*w, at, std::move(items), [this](int id) {
         auto &hook = id == 1 ? onFindChannel : onCreateChannel;
         if (hook)
             hook();

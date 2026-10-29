@@ -399,6 +399,10 @@ private:
     void applyUpdate(); // the update bar's button
 #endif
     void storeVisited(); // the sidebar's visit stamps into _settings
+    // The open workspace's section sorts: from _settings into the sidebar,
+    // and back when the section menu changed one.
+    void loadSorts();
+    void storeSorts();
     // Claude Code UI for agent sessions: the
     // composer's lock and suggestion, slash commands that msga runs itself,
     // the footer's zen toggle, the thread panel's "Open as session".

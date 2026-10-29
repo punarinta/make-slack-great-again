@@ -98,7 +98,14 @@ struct Settings {
     // The sidebar's visit stamps: conversation id →
     // when it was last opened here (epoch secs); "Clear state" empties it.
     std::vector<std::pair<std::string, int64_t>> visitedAt;
-    bool trayMonochrome = true; // the custom tray icon turned monochrome
+    // The sidebar sections' sorts (SectionSort::encode, plain ones left
+    // out), per workspace (auth::WorkspaceRecord::key) and section
+    // (Sidebar::sectionKey).
+    struct SectionSortPref {
+        std::string workspace, section, sort;
+    };
+    std::vector<SectionSortPref> sidebarSorts;
+    bool                         trayMonochrome = true; // the custom tray icon turned monochrome
 
     // ── Claude Code ─────────────────────────────────────────────────────────
     // The folder the last session started in (claudeCode/lastDir; "" = home),
