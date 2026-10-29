@@ -7,3 +7,4 @@ build-asan/
 build-cov/
 credentials.cmake
 .DS_Store
+result
