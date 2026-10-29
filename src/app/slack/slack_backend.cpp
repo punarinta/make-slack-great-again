@@ -48,6 +48,7 @@ namespace {
 constexpr int64_t     kRosterReloadGapMs      = 60'000;
 constexpr int64_t     kRosterSoonestGapMs     = 10'000;
 constexpr int64_t     kRosterFallbackGapMs    = 15 * 60'000;
+constexpr int64_t     kDirectoryGapMs         = 10 * 60'000; // the channel browser's list
 constexpr int64_t     kCountsPollGapMs        = 10'000;
 constexpr int64_t     kThreadsPollGapMs       = 20'000;
 constexpr int64_t     kBackgroundPollGapMs    = 2 * 60'000;
@@ -200,17 +201,21 @@ struct SlackBackend::Read {
     std::string   connectError;
     bool          usersLoaded = false, usersLoading = false, convsLoaded = false, started = false;
     bool          convListRestricted = false, dmActivitySwept = false;
+    bool          directoryLoading = false; // loadChannelDirectory
+    int64_t       lastDirectory    = 0;     // now() of its last complete list
 
     int64_t lastRateNotice = -1; // the rate-limit banner, at most every 15 s
     void    noteRateLimited(const std::string &method, int64_t secs);
 
+    void loadUsers(std::function<void(const std::string &)> done, Lane lane = Lane::Normal);
+
     void                          startLoads();
     void                          connectSettled();
-    void                          loadUsers(std::function<void(const std::string &)> done);
     void                          mergeUsers(std::vector<model::User> users);
     void                          noteOffRoster(const std::unordered_set<std::string> &inSnapshot);
     void                          loadConversations(std::function<void(const std::string &)> done);
     void                          loadViaWebClient(std::function<void(const std::string &)> done);
+    void                          loadChannelDirectory();
     void                          applyRoster(std::vector<model::Conversation> convs);
     void                          fixGroupMembers();
     void                          enrichDmActivity();
@@ -400,6 +405,7 @@ struct SlackBackend::Read {
 
     // ── The workspace cache ─────────────────────────────────────────────────
     int64_t sweepAt = 0; // the last DM activity sweep (unix secs)
+    int64_t usersAt = 0; // the last complete users.list (unix secs)
     void    loadExtras(const json::Value &x);
     void    saveExtras(json::Writer &w);
     void    extrasChanged() {
@@ -590,6 +596,10 @@ void SlackBackend::Read::pageFrom(std::shared_ptr<Pager> p, std::string cursor) 
             const std::string_view next = root["response_metadata"]["next_cursor"].str();
             if (next.empty())
                 p->onDone({});
+            else if (p->lane == Lane::Normal && !paced.empty())
+                // A long listing lets the paced lane in between its pages
+                // (it only moves while no Normal call is outstanding).
+                later(0, [this, p, next = std::string(next)] { pageFrom(p, next); });
             else
                 pageFrom(p, std::string(next));
         },
@@ -704,8 +714,12 @@ void SlackBackend::connect(Done done) {
 
 void SlackBackend::Read::startLoads() {
     // In this order: self presence, conversations (then emoji), stars,
-    // users, user groups, saved items.
-    connectPending = 2;
+    // users, user groups, saved items. A users.list less than a day old
+    // stands in the cache: no new one (a big org's takes hours), people it
+    // lacks are looked up one by one (fetchUserIfNeeded), and the daily
+    // refresh brings the rest.
+    const bool cachedUsers = usersAt > 0 && base::nowSecs() - usersAt < kUsersRefreshGapMs / 1000;
+    connectPending         = cachedUsers ? 1 : 2;
     connectError.clear();
     refreshSelfPresence();
     loadConversations([this](const std::string &err) {
@@ -721,7 +735,14 @@ void SlackBackend::Read::startLoads() {
         }
         connectSettled();
     });
-    loadUsers([this](const std::string &) { connectSettled(); });
+    if (cachedUsers) {
+        usersLoaded = true;
+        for (const auto &[id, at] : probedAt) // the cached off-roster users
+            offRoster.insert(id);
+        later(kOffRosterProbeMs, [this] { reprobeOffRoster(); });
+    } else {
+        loadUsers([this](const std::string &) { connectSettled(); });
+    }
     refreshStarred();
     refreshSections();
     loadUsergroups();
@@ -749,6 +770,9 @@ void SlackBackend::Read::connectSettled() {
     const int64_t t = now();
     lastRoster = lastUsers = lastStarred = lastSaved = lastScheduled = lastSelf = lastPresence = t;
     lastBg                                                                                     = t;
+    // The daily users.list counts from the last one, this run's or the cache's.
+    if (usersAt > 0)
+        lastUsers = t - std::max<int64_t>(base::nowSecs() - usersAt, 0) * 1000 * speed;
     // The first activity snapshot seeds the unread badges at once (the
     // cache may already have them); presence starts with the hot set.
     pollUnreadCounts();
@@ -762,7 +786,7 @@ void SlackBackend::Read::connectSettled() {
     tickTimer        = b._app.addTimer(std::max(tickMs, 1), true, [this] { tick(); });
 }
 
-void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done) {
+void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done, Lane lane) {
     // Each page lands as it comes (a big org's roster takes many pages, and
     // one that gives up keeps the pages before it); who is off the roster is
     // only known once the last page is in.
@@ -790,6 +814,8 @@ void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done
             } else {
                 noteOffRoster(*seen);
                 usersLoaded = true;
+                usersAt     = base::nowSecs();
+                extrasChanged();
                 fetchMissingDmUsers();
                 fixGroupMembers();
                 later(kOffRosterProbeMs, [this] { reprobeOffRoster(); });
@@ -797,7 +823,7 @@ void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done
             done(err);
         },
         0,
-        Lane::Normal,
+        lane,
         true // a throttled page just waits it out: no banner
     );
 }
@@ -853,9 +879,11 @@ void SlackBackend::Read::loadConversations(std::function<void(const std::string 
         return;
     }
     auto acc = std::make_shared<std::vector<model::Conversation>>();
-    // limit 1000: conversations.list is Tier 2, fewer pages = fewer 429s.
+    // users.conversations: only what I'm in (conversations.list pages through
+    // every public channel of the workspace — thousands in a big one — on its
+    // tight Tier 2; the channel browser asks for those: loadChannelDirectory).
     paginate(
-        "conversations.list",
+        "users.conversations",
         teamForm(
             {{"types", "public_channel,private_channel,im,mpim"},
              {"exclude_archived", "true"},
@@ -871,23 +899,67 @@ void SlackBackend::Read::loadConversations(std::function<void(const std::string 
         },
         [this, acc, done = std::move(done)](const std::string &err) mutable {
             if (err == "enterprise_is_restricted") {
-                // Grid: conversations.list is never served to a session token.
+                // Grid: the listings are never served to a session token.
                 if (!convListRestricted)
                     LOG_INFO(
-                        "slack", "conversations.list restricted (Grid): client.userBoot + im.list"
+                        "slack", "users.conversations restricted (Grid): client.userBoot + im.list"
                     );
                 convListRestricted = true;
                 loadViaWebClient(std::move(done));
                 return;
             }
             if (!err.empty()) {
-                LOG_WARN("slack", "conversations.list: %s", err.c_str());
+                LOG_WARN("slack", "users.conversations: %s", err.c_str());
                 done(err);
                 return;
             }
             applyRoster(std::move(*acc));
             done({});
         }
+    );
+}
+
+// The channel browser's list: the workspace's public channels, which the
+// roster (mine only) lacks. Those I'm not in are kept as non-members; mine
+// stay the roster's. At most every kDirectoryGapMs; none on Grid session
+// tokens (conversations.list is refused there).
+void SlackBackend::Read::loadChannelDirectory() {
+    if (convListRestricted || directoryLoading ||
+        (lastDirectory && now() - lastDirectory < kDirectoryGapMs))
+        return;
+    directoryLoading = true;
+    auto acc         = std::make_shared<std::vector<model::Conversation>>();
+    paginate(
+        "conversations.list",
+        teamForm({{"types", "public_channel"}, {"exclude_archived", "true"}, {"limit", "1000"}}),
+        "channels",
+        [this, acc](const json::Value &arr) {
+            for (const json::Value c : arr)
+                if (model::Conversation m = mapjson::toConversation(c, s); !m.id.empty())
+                    acc->push_back(std::move(m));
+        },
+        [this, acc](const std::string &err) {
+            directoryLoading = false;
+            if (!err.empty()) {
+                LOG_WARN("slack", "conversations.list: %s", err.c_str());
+                return;
+            }
+            lastDirectory = now();
+            std::vector<model::Conversation> others;
+            for (model::Conversation &m : *acc) {
+                const ConvRef r = s.findConversation(m.id);
+                if (r != kNoConv && s.conversation(r).member)
+                    continue; // the roster's (joined meanwhile, too)
+                m.member = false;
+                if (r != kNoConv)
+                    carryLocal(m, s.conversation(r));
+                others.push_back(std::move(m));
+            }
+            s.addConversations(std::move(others));
+        },
+        0,
+        Lane::Normal,
+        true // nobody waits on it: a 429 only waits
     );
 }
 
@@ -2272,6 +2344,7 @@ void SlackBackend::Read::saveExtras(json::Writer &w) {
     for (const auto &[id, at] : probedAt)
         w.beginArray().value(id).value(wall - (t - at) / (1000 * speed)).endArray();
     w.endArray().key("sweep").value(sweepAt);
+    w.key("users").value(usersAt);
     if (savedNames != mapjson::kNoPref)
         w.key("names").value(int64_t(savedNames));
     w.key("dead").beginArray();
@@ -2312,6 +2385,7 @@ void SlackBackend::Read::loadExtras(const json::Value &x) {
             probedAt[std::string(v[0].str())] =
                 t - std::max<int64_t>(wall - v[1].integer(), 0) * 1000 * speed;
     sweepAt = x["sweep"].integer();
+    usersAt = x["users"].integer();
     if (const int64_t n = x["names"].integer(mapjson::kNoPref); n == 0 || n == 1) {
         savedNames = int(n);
         applyNames();
@@ -2410,10 +2484,11 @@ void SlackBackend::Read::tick() {
         lastFg = t;
         pollConversation(openConv, true);
     }
-    // (2b) Renames and avatars: once per day of uptime.
+    // (2b) Renames and avatars: a day after the last users.list.
     if (t - lastUsers >= kUsersRefreshGapMs) {
         lastUsers = t;
-        loadUsers([](const std::string &) {});
+        // Names are there already: behind whatever the user waits for.
+        loadUsers([](const std::string &) {}, usersLoaded ? Lane::Background : Lane::Normal);
         loadUsergroups();
     } else if (!usersLoaded && !usersLoading && t - lastUsers >= kRosterReloadGapMs) {
         // users.list never came (a flaky start outlasted its retries):
@@ -3519,6 +3594,10 @@ ConvRef SlackBackend::mergeConversation(model::Conversation fresh) {
 
 void SlackBackend::reloadConversations() {
     _read->loadConversations([](const std::string &) {});
+}
+
+void SlackBackend::loadChannelDirectory() {
+    _read->loadChannelDirectory();
 }
 
 void SlackBackend::backfillOpen() {

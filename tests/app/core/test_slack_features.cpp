@@ -66,7 +66,7 @@ const char *kWorkspace = R"({
      {"id": "UME", "name": "me", "profile": {"real_name": "Me Myself"}},
      {"id": "UMIRA", "name": "mira", "profile": {"real_name": "Mira Okafor"}}],
    "response_metadata": {"next_cursor": ""}},
- "conversations.list": {"ok": true, "channels": [
+ "users.conversations": {"ok": true, "channels": [
      {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
      {"id": "D1", "is_im": true, "user": "UMIRA"}],
    "response_metadata": {"next_cursor": ""}},
@@ -197,8 +197,8 @@ TEST("slack features: huddle rooms — mappers, the first history page, roster r
     CHECK_STR(x.huddleLink, "https://app.slack.com/huddle/T1/C1");
     REQUIRE(x.huddleParticipants.size() == 1);
     CHECK_STR(e.store.user(x.huddleParticipants[0]).id, "UMIRA");
-    // conversations.list carries no room: a reload keeps the live huddle.
-    REQUIRE(pumpUntil([&] { return count("conversations.list") >= 2; }, 5000));
+    // The roster carries no room: a reload keeps the live huddle.
+    REQUIRE(pumpUntil([&] { return count("users.conversations") >= 2; }, 5000));
     pumpFor(50);
     CHECK(e.store.conversation(c).huddleActive);
 }

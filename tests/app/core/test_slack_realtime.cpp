@@ -102,7 +102,7 @@ const char *kWorkspace = R"({
      {"id": "UME", "name": "me", "profile": {"real_name": "Me Myself"}},
      {"id": "UMIRA", "name": "mira", "profile": {"real_name": "Mira Okafor"}}],
    "response_metadata": {"next_cursor": ""}},
- "conversations.list": {"ok": true, "channels": [
+ "users.conversations": {"ok": true, "channels": [
      {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
      {"id": "D1", "is_im": true, "user": "UMIRA"}],
    "response_metadata": {"next_cursor": ""}},
@@ -505,12 +505,12 @@ TEST("slack realtime: a reconnect backfills the roster and the DM badges") {
     Env e;
     REQUIRE(e.connect());
     REQUIRE(e.live());
-    const int lists = count("conversations.list");
+    const int lists = count("users.conversations");
     CHECK(e.store.conversation(e.conv("D1")).unread == 0);
     // Slack drops the socket: a later hello is a reconnect after a gap.
     ctl("POST", "/_ctl/ws/close", R"({"code": 1001})");
     REQUIRE(pumpUntil([&] { return count("ws-open") == 2 && e.socket->connected(); }));
-    REQUIRE(pumpUntil([&] { return count("conversations.list") > lists; }));
+    REQUIRE(pumpUntil([&] { return count("users.conversations") > lists; }));
     // resyncUnreads: conversations.info on the DM, merged upward.
     REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("D1")).unread == 4; }, 5000));
     CHECK(e.store.conversation(e.conv("D1")).mentions == 4);
@@ -521,7 +521,7 @@ TEST("slack realtime: a reconnect soon after a full DM sweep asks only the most 
     if (!haveServer())
         return;
     // 30 DMs: more than a short sweep takes.
-    std::string list = R"({"conversations.list": {"ok": true, "channels": [)";
+    std::string list = R"({"users.conversations": {"ok": true, "channels": [)";
     for (int i = 0; i < 30; ++i)
         list += str::concat(
             {i ? "," : "",
@@ -643,16 +643,16 @@ TEST("slack realtime: a push workspace polls only as a safety net") {
         Env e;
         REQUIRE(e.connect());
         REQUIRE(e.live());
-        const int lists = count("conversations.list");
+        const int lists = count("users.conversations");
         pumpFor(1500); // 2.5 roster gaps at 100× speed
-        CHECK(count("conversations.list") == lists);
+        CHECK(count("users.conversations") == lists);
     }
     {
         Env e(false, false);
         REQUIRE(e.connect());
         CHECK_FALSE(e.be->hasRealtimePush());
-        const int lists = count("conversations.list");
-        REQUIRE(pumpUntil([&] { return count("conversations.list") > lists; }, 3000));
+        const int lists = count("users.conversations");
+        REQUIRE(pumpUntil([&] { return count("users.conversations") > lists; }, 3000));
     }
     {
         // A session workspace never takes the app's socket.

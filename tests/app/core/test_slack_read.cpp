@@ -75,12 +75,12 @@ const char *kWorkspace = R"({
  "users.list?cursor=p2": {"ok": true, "members": [
      {"id": "UBOT", "name": "deploybot", "is_bot": true, "profile": {}}],
    "response_metadata": {"next_cursor": ""}},
- "conversations.list": {"ok": true, "channels": [
+ "users.conversations": {"ok": true, "channels": [
      {"id": "C1", "name": "general", "is_channel": true, "is_member": true,
       "topic": {"value": "Company news"}, "num_members": 12},
      {"id": "D1", "is_im": true, "user": "UMIRA"}],
    "response_metadata": {"next_cursor": "c2"}},
- "conversations.list?cursor=c2": {"ok": true, "channels": [
+ "users.conversations?cursor=c2": {"ok": true, "channels": [
      {"id": "D2", "is_im": true, "user": "UEXT"},
      {"id": "G1", "is_mpim": true, "name": "mpdm-me--mira--jonas-1"},
      {"id": "C2", "name": "random", "is_channel": true, "is_member": true, "is_muted": true}],
@@ -222,12 +222,12 @@ TEST("slack read: connect fills users, conversations, unread, stars, emoji, grou
     CHECK(e.store.user(e.store.me).active);
     // The listing parameters sent.
     Log               l;
-    const json::Value list = l.get("conversations.list");
+    const json::Value list = l.get("users.conversations");
     CHECK_STR(list["form"]["types"].str(), "public_channel,private_channel,im,mpim");
     CHECK_STR(list["form"]["limit"].str(), "1000");
     CHECK_STR(list["form"]["exclude_archived"].str(), "true");
     CHECK_STR(list["form"]["team_id"].str(), "T1");
-    CHECK_STR(l.get("conversations.list", 1)["form"]["cursor"].str(), "c2");
+    CHECK_STR(l.get("users.conversations", 1)["form"]["cursor"].str(), "c2");
     CHECK_STR(l.get("users.list", 1)["form"]["cursor"].str(), "p2");
     CHECK_STR(l.get("usergroups.list")["form"]["include_users"].str(), "1");
     CHECK_STR(l.get("auth.test")["auth"].str(), "Bearer xoxc-test");
@@ -247,7 +247,14 @@ TEST("slack read: a users.list snapshot merges, never drops or blanks users") {
               {"id": "UME", "name": "me", "profile": {}},
               {"id": "UMIRA", "name": "mira", "profile": {"real_name": "Mira O."}}],
             "response_metadata": {"next_cursor": ""}}})");
+    // A new backend on the same Store: this run's list doesn't stand in.
+    slack::Credentials cr;
+    cr.token  = "xoxc-test";
+    cr.cookie = "xoxd-test";
+    cr.teamId = "T1";
+    e.be      = std::make_unique<slack::SlackBackend>(e.store, app(), e.client, cr);
     REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return !e.be->connecting(); }, 3000));
     CHECK_STR(e.user("UMIRA").displayName, "Mira O.");
     CHECK_STR(e.user("UMIRA").avatar, "https://a/mira72.png"); // kept
     CHECK(!e.user("UJONAS").placeholder);
@@ -618,6 +625,33 @@ TEST("slack read: a background call already queued is not queued twice") {
     CHECK(a == 1 && b == 1 && other == 1);
 }
 
+TEST("slack read: the channel browser's list brings the channels I'm not in, as non-members") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(R"({"conversations.list": {"ok": true, "channels": [
+              {"id": "C1", "name": "general", "is_channel": true, "is_member": true,
+               "num_members": 99},
+              {"id": "C7", "name": "watercooler", "is_channel": true, "is_member": false,
+               "num_members": 40}],
+            "response_metadata": {"next_cursor": ""}}})");
+    REQUIRE(e.connect());
+    CHECK(e.conv("C7") == kNoConv); // the roster is mine only
+    CHECK(Log().count("conversations.list") == 0);
+    e.be->loadChannelDirectory();
+    REQUIRE(pumpUntil([&] { return e.conv("C7") != kNoConv; }, 3000));
+    CHECK(!e.store.conversation(e.conv("C7")).member);
+    CHECK(e.store.conversation(e.conv("C7")).memberCount == 40);
+    // Mine stay the roster's copy.
+    CHECK(e.store.conversation(e.conv("C1")).member);
+    CHECK(e.store.conversation(e.conv("C1")).memberCount == 12);
+    CHECK_STR(Log().get("conversations.list")["form"]["types"].str(), "public_channel");
+    // Opened again soon after: nothing is asked.
+    e.be->loadChannelDirectory();
+    fakeslack::pumpFor(100);
+    CHECK(Log().count("conversations.list") == 1);
+}
+
 TEST("slack read: a roster reload that changed nothing emits no Meta") {
     if (!haveServer())
         return;
@@ -632,8 +666,8 @@ TEST("slack read: a roster reload that changed nothing emits no Meta") {
         roster += ch.kind == model::ChangeKind::Roster;
     });
     // Without push the roster reloads every 60 s (0.6 s here): wait for two.
-    const int  lists = Log().count("conversations.list");
-    REQUIRE(pumpUntil([&] { return Log().count("conversations.list") >= lists + 4; }, 5000));
+    const int  lists = Log().count("users.conversations");
+    REQUIRE(pumpUntil([&] { return Log().count("users.conversations") >= lists + 4; }, 5000));
     fakeslack::pumpFor(100);
     e.store.unobserve(id);
     CHECK(meta == 0);
@@ -648,10 +682,10 @@ TEST("slack read: with client.counts the roster reloads when counts names a new 
     fakeslack::pumpFor(300);
     // counts every 10 s (0.1 s here): nothing new, so no reload in ~15
     // snapshots (the fallback is 15 min, 9 s here).
-    const int lists = Log().count("conversations.list");
+    const int lists = Log().count("users.conversations");
     fakeslack::pumpFor(1500);
     CHECK(Log().count("client.counts") >= 5);
-    CHECK(Log().count("conversations.list") == lists);
+    CHECK(Log().count("users.conversations") == lists);
     // A new DM shows up in counts first: one reload brings it.
     set(R"({"client.counts": {"ok": true,
               "channels": [{"id": "C1", "latest": "1700000100.000000",
@@ -659,7 +693,7 @@ TEST("slack read: with client.counts the roster reloads when counts names a new 
               "ims": [{"id": "D1", "latest": "1700000050.000000", "last_read": "1700000000.000000"},
                       {"id": "D9", "latest": "1700000900.000000", "last_read": "0"}],
               "mpims": []},
-            "conversations.list?cursor=c2": {"ok": true, "channels": [
+            "users.conversations?cursor=c2": {"ok": true, "channels": [
               {"id": "D2", "is_im": true, "user": "UEXT"},
               {"id": "G1", "is_mpim": true, "name": "mpdm-me--mira--jonas-1"},
               {"id": "C2", "name": "random", "is_channel": true, "is_member": true},
@@ -667,16 +701,16 @@ TEST("slack read: with client.counts the roster reloads when counts names a new 
               "response_metadata": {"next_cursor": ""}}})");
     REQUIRE(pumpUntil([&] { return e.conv("D9") != kNoConv; }, 3000));
     fakeslack::pumpFor(300);
-    const int after = Log().count("conversations.list", "cursor", "c2");
+    const int after = Log().count("users.conversations", "cursor", "c2");
     CHECK(after >= 1);
     // An id the reload doesn't bring (not ours to list) asks only once.
     set(R"({"client.counts": {"ok": true, "channels": [{"id": "C1"}, {"id": "CZ"}],
               "ims": [{"id": "D1"}, {"id": "D9"}], "mpims": []}})");
     fakeslack::pumpFor(1500);
-    const int lists2 = Log().count("conversations.list", "cursor", "c2");
+    const int lists2 = Log().count("users.conversations", "cursor", "c2");
     CHECK(lists2 <= after + 1);
     fakeslack::pumpFor(1000);
-    CHECK(Log().count("conversations.list", "cursor", "c2") == lists2);
+    CHECK(Log().count("users.conversations", "cursor", "c2") == lists2);
 }
 
 TEST("slack read: an open thread whose root left the head page asks for its root alone") {
@@ -804,14 +838,14 @@ TEST("slack read: dead credentials fail connect and report the loss") {
     CHECK(slack::SlackBackend::authError(err));
     REQUIRE(pumpUntil([&] { return !e.lostAuth.empty(); }, 2000));
     CHECK_STR(e.lostAuth, "invalid_auth");
-    CHECK(Log().count("conversations.list") == 0);
+    CHECK(Log().count("users.conversations") == 0);
 }
 
 TEST("slack read: Enterprise Grid lists through client.userBoot + im.list") {
     if (!haveServer())
         return;
     Env e;
-    set(R"({"conversations.list": {"ok": false, "error": "enterprise_is_restricted"},
+    set(R"({"users.conversations": {"ok": false, "error": "enterprise_is_restricted"},
             "client.userBoot": {"ok": true, "channels": [
               {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
               {"id": "C9", "name": "old", "is_channel": true, "is_archived": true}]},
@@ -928,7 +962,7 @@ TEST("slack read: Grid takes the workspace default from client.userBoot") {
         return;
     Env e;
     set(kMeg);
-    set(R"({"conversations.list": {"ok": false, "error": "enterprise_is_restricted"},
+    set(R"({"users.conversations": {"ok": false, "error": "enterprise_is_restricted"},
             "client.userBoot": {"ok": true, "channels": [],
               "prefs": {"display_real_names_override": 0},
               "team": {"id": "T1", "prefs": {"display_real_names": false}}},

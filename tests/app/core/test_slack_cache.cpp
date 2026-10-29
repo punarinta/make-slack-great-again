@@ -7,6 +7,7 @@
 #include "app/slack/slack_backend.h"
 #include "support/fake_slack_server.h"
 #include "base/file.h"
+#include "base/json.h"
 #include "support/test.h"
 
 #include <cstdlib>
@@ -36,7 +37,7 @@ const char *kWorkspace = R"({
      {"id": "UMIRA", "name": "mira", "profile": {"real_name": "Mira Okafor",
                                                  "image_72": "https://a/mira72.png"}}],
    "response_metadata": {"next_cursor": ""}},
- "conversations.list": {"ok": true, "channels": [
+ "users.conversations": {"ok": true, "channels": [
      {"id": "C1", "name": "general", "is_channel": true, "is_member": true,
       "topic": {"value": "Company news"}},
      {"id": "D1", "is_im": true, "user": "UMIRA"}],
@@ -52,6 +53,15 @@ const char *kWorkspace = R"({
       "files": [{"id": "F1", "name": "cat.png", "mimetype": "image/png",
                  "url_private": "https://files/cat.png", "original_w": 16, "original_h": 9}]}]}
 })";
+
+int count(std::string_view method) {
+    json::Document d;
+    d.parse(ctl("GET", "/_ctl/log").body, nullptr);
+    int n = 0;
+    for (json::Value r : d.root())
+        n += r["method"].str() == method;
+    return n;
+}
 
 std::string cacheDir() {
     return cache::WorkspaceCache::dirFor(app(), "slack:T1");
@@ -146,7 +156,7 @@ TEST("slack cache: a cold start writes it, a warm start shows it before the netw
     set(
         R"({"auth.test": {"ok": true, "user_id": "UME", "team_id": "T1", "team": "Lumen",
                           "__delay": 0.6},
-            "conversations.list": {"ok": true, "channels": [
+            "users.conversations": {"ok": true, "channels": [
               {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
               {"id": "C3", "name": "design", "is_channel": true, "is_member": true},
               {"id": "D1", "is_im": true, "user": "UMIRA"}],
@@ -617,6 +627,31 @@ TEST("slack cache: both names and Slack's Names answer show before the network d
     // Full names chosen here: the cached names re-resolve.
     e.be->setNamesMode(model::Backend::NamesMode::Full);
     CHECK_STR(e.store.displayName(e.conv("D1")), "Mira Okafor");
+    wipe();
+}
+
+TEST("slack cache: a users.list under a day old stands in; a warm start lists no users") {
+    if (!haveServer())
+        return;
+    coldStart();
+    ctl("POST", "/_ctl/reset");
+    set(kWorkspace);
+    // A DM with someone the cached list never had.
+    set(R"({"users.conversations": {"ok": true, "channels": [
+              {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
+              {"id": "D1", "is_im": true, "user": "UMIRA"},
+              {"id": "D2", "is_im": true, "user": "UNEW"}],
+            "response_metadata": {"next_cursor": ""}},
+            "users.info?user=UNEW": {"ok": true, "user": {"id": "UNEW", "name": "new",
+                                     "profile": {"real_name": "New Hire"}}}})");
+    Env e(false);
+    REQUIRE(e.warm);
+    REQUIRE(e.connect());
+    CHECK_STR(e.store.user(e.store.findUser("UMIRA")).realName, "Mira Okafor");
+    // Looked up alone, without waiting for a whole users.list.
+    REQUIRE(pumpUntil([&] { return !e.store.user(e.c("D2").dmUser).placeholder; }, 3000));
+    CHECK_STR(e.store.displayName(e.conv("D2")), "New Hire");
+    CHECK(count("users.list") == 0);
     wipe();
 }
 

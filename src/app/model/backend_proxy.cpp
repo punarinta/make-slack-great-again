@@ -57,6 +57,10 @@ void BackendProxy::joinChannel(ConvRef c, ConvDone done) {
 void BackendProxy::createChannel(std::string name, bool isPrivate, ConvDone done) {
     _t->createChannel(std::move(name), isPrivate, std::move(done));
 }
+
+void BackendProxy::loadChannelDirectory() {
+    _t->loadChannelDirectory();
+}
 void BackendProxy::setPinned(ConvRef c, Ts ts, bool on) {
     _t->setPinned(c, ts, on);
 }

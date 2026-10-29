@@ -105,6 +105,9 @@ public:
         if (done)
             done(kNoConv, "not supported");
     }
+    // "Find a channel" opened: the channels I'm not in, fetched into the
+    // Store as non-members (a Roster change) where the roster lacks them.
+    virtual void loadChannelDirectory() {}
 
     // Agent sessions (Claude Code shows each as a DM). Other backends keep
     // the defaults: no DM is a session, nothing to stop.

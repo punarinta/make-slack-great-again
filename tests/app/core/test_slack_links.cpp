@@ -70,7 +70,7 @@ const char *kWorkspace = R"({
      {"id": "UME", "name": "me", "profile": {"real_name": "Me Myself", "display_name": "memyself"}},
      {"id": "UMIRA", "name": "mira", "profile": {"real_name": "Mira Okafor"}}],
    "response_metadata": {"next_cursor": ""}},
- "conversations.list": {"ok": true, "channels": [
+ "users.conversations": {"ok": true, "channels": [
      {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
      {"id": "C2", "name": "random", "is_channel": true, "is_member": true},
      {"id": "C3", "name": "dev", "is_channel": true, "is_member": true}],

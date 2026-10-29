@@ -34,6 +34,7 @@ public:
     void openDm(UserRef u, std::function<void(ConvRef)> done) override;
     void joinChannel(ConvRef c, ConvDone done) override;
     void createChannel(std::string name, bool isPrivate, ConvDone done) override;
+    void loadChannelDirectory() override;
     void setPinned(ConvRef c, Ts ts, bool on) override;
     void setSaved(ConvRef c, Ts ts, bool on) override;
     void deleteFile(ConvRef c, Ts ts, const std::string &fileId) override;

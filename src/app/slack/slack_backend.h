@@ -111,6 +111,7 @@ public:
     void openDm(model::UserRef user, std::function<void(model::ConvRef)> done) override;
     void joinChannel(model::ConvRef conv, ConvDone done) override;
     void createChannel(std::string name, bool isPrivate, ConvDone done) override;
+    void loadChannelDirectory() override;
     void setPinned(model::ConvRef conv, model::Ts ts, bool pinned) override;
     void setSaved(model::ConvRef conv, model::Ts ts, bool saved) override;
     void deleteFile(model::ConvRef conv, model::Ts ts, const std::string &fileId) override;

@@ -117,12 +117,22 @@ public:
         }
         _lists[0]->setItems(channelItems(ctx.store));
         _lists[1]->setItems(peopleItems(ctx.store));
+        // The channels I'm not in come on demand: the list follows them in.
+        _observer = ctx.store.observe(model::Store::kAnyConv, [this](const model::Change &ch) {
+            if (ch.kind != model::ChangeKind::Roster)
+                return;
+            _lists[0]->setItems(channelItems(_ctx.store));
+            if (_tab == 0)
+                applyFilter();
+        });
+        ctx.backend.loadChannelDirectory();
 
         _search->edit().onChange = [this] { applyFilter(); };
         // The search field drives the open list: arrows move, Enter opens.
         _search->edit().onKey    = [this](const Event &e) { return _lists[_tab]->navKey(e); };
         selectTab(0);
     }
+    ~ChannelFinder() override { _ctx.store.unobserve(_observer); }
 
     void selectTab(int tab) {
         _tab = tab;
@@ -161,6 +171,7 @@ private:
     FinderTab                   *_tabs[2]  = {};
     BrowseList                  *_lists[2] = {};
     int                          _tab      = 0;
+    model::Store::ObserverId     _observer = 0;
 };
 
 // ── Create a channel ────────────────────────────────────────────────────────
