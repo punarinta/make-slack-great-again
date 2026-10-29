@@ -81,6 +81,9 @@ public:
     size_t         tabCount() const { return _tabs.size(); }
     ui::Clickable *tab(int i) const { return _tabs[size_t(i)]; }
     std::string    tabText(int i) const;
+    // The Activity look: the underline in the accent color, and each tab's
+    // hover box as far from the strip's top as from the underline.
+    void           setAccentLook();
 
     std::function<void(int tab)> onSelect;
 
@@ -92,6 +95,7 @@ protected:
     void                         setTab(int i, gfx::Icon icon, std::string text);
     std::vector<ui::Clickable *> _tabs;
     int                          _active = 0;
+    bool                         _accent = false;
 };
 
 // The conversation tabs: Messages, then the canvas.

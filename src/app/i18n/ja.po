@@ -2370,8 +2370,8 @@ msgid "Mentions"
 msgstr "メンション"
 
 #: src/app/screens/shell/activity_page.cpp
-msgid "Unread messages"
-msgstr "未読メッセージ"
+msgid "Unread only"
+msgstr "未読のみ"
 
 #: src/app/screens/shell/activity_page.cpp
 msgid "Loading activity…"

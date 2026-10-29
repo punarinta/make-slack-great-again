@@ -2,7 +2,7 @@
 // what notified me, newest first — mentions, thread replies, reactions to
 // my messages, direct messages, posts in channels on "All new posts". Under
 // the title the tabs All | DMs | Mentions | Threads, then the "Unread
-// messages" toggle, then one bordered list: per item the avatar, the name
+// only" checkbox, then one bordered list: per item the avatar, the name
 // and time, the message on two lines and where it happened ("Mention in
 // #design", "Thread in #design", "Reacted 👍 to your message in #design").
 // An unread item is bold with a dot (or its count of new messages); a
@@ -42,7 +42,7 @@ public:
     std::function<void(model::ConvRef, model::Ts root)>                 onOpenThread;
     std::function<void(model::ConvRef, model::Ts ts, model::Ts thread)> onOpenMessage;
 
-    // The tabs and the toggle (a click does the same).
+    // The tabs and the checkbox (a click does the same).
     void      setFilter(Filter f);
     Filter    filter() const { return _filter; }
     void      setUnreadOnly(bool on);
@@ -64,7 +64,7 @@ private:
     void onChange(const model::Change &ch) override;
 
     TabStrip          *_tabs   = nullptr;
-    ui::Button        *_unread = nullptr; // the "Unread messages" toggle
+    ui::CheckBox      *_unread = nullptr; // the "Unread only" filter
     ui::View          *_card   = nullptr; // the bordered list
     ui::Button        *_more   = nullptr;
     std::vector<Item>  _items;

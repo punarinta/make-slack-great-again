@@ -164,6 +164,7 @@ ActivityPage::ActivityPage(screens::Context &ctx, Avatars &avatars)
     _tabs     = tabs.get();
     adopt(std::move(tabs), 1);
     _rule->setVisible(false);
+    _tabs->setAccentLook();
     _tabs->addTab(tr("All"));
     _tabs->addTab(gfx::Icon::MessageCircle, tr("DMs"));
     _tabs->addTab(gfx::Icon::AtSign, tr("Mentions"));
@@ -173,13 +174,15 @@ ActivityPage::ActivityPage(screens::Context &ctx, Avatars &avatars)
         reload();
     };
 
-    // The toolbar over the list: the unread filter.
+    // The toolbar over the list: the unread filter, closer to the tabs and
+    // the list than the overview pages' usual 24 px.
     View *content = _scroll->content();
-    auto  bar     = std::make_unique<View>();
+    content->style().padding(24, 16, 24, 24).spacing(16);
+    auto bar = std::make_unique<View>();
     bar->style().row().items(Align::Center);
-    _unread = bar->add<Button>(tr("Unread messages"), Button::Kind::Secondary, Button::Form::Small);
+    _unread = bar->add<ui::CheckBox>(tr("Unread only"));
     _unread->setFocusable(false);
-    _unread->onClick = [this] { setUnreadOnly(!_unreadOnly); };
+    _unread->onChange = [this](bool on) { setUnreadOnly(on); };
     content->adopt(std::move(bar), 0);
 
     // One bordered card holds the rows (hairlines between them).
@@ -209,8 +212,6 @@ void ActivityPage::setUnreadOnly(bool on) {
         return;
     _unreadOnly = on;
     _unread->setChecked(on);
-    // On: the accent's tint, as the official client shows it.
-    _unread->setTextColor(on ? C::Link : C::Text);
     reload();
 }
 

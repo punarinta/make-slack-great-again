@@ -2567,7 +2567,7 @@ TEST("activity page: mark as read / unread, and the unread filter") {
     CHECK(page.row(1).unread());
     const auto readKey = page.item(0).key, unreadKey = page.item(1).key;
 
-    // Unread messages: only the unread ones (the backend kept the marks).
+    // Unread only: only the unread ones (the backend kept the marks).
     page.setUnreadOnly(true);
     CHECK(page.unreadOnly());
     waitForActivity(page);

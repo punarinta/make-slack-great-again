@@ -483,12 +483,15 @@ public:
     Tab(Icon icon, bool hasIcon, std::string text) : icon(icon), hasIcon(hasIcon) {
         setRole(Role::Tab);
         setLook({C::None, C::FormHighlight, C::FormHighlight, C::None, 6});
-        style().row().height(31).margins(0, 4, 0, 0).padding(lead(), 0, 10, 0);
+        setBand(4, 31);
+        style().row().padding(lead(), 0, 10, 0);
         style().items(Align::Center).noShrink();
         label = add<Label>(std::move(text), Font::Control, C::TextMuted);
         label->setMaxLines(1);
         label->setHitTransparent(true);
     }
+    // The hover box: its top inset in the strip and its height.
+    void  setBand(float top, float h) { style().height(h).margins(0, top, 0, 0); }
     // Before the text: the icon and its gap, or the bare padding.
     float lead() const { return hasIcon ? 10 + 15 + 6 : 10; }
     void  setText(std::string t) {
@@ -547,6 +550,8 @@ int TabStrip::addTab(std::string text) {
 int TabStrip::addTab(Icon icon, bool hasIcon, std::string text) {
     const int i = int(_tabs.size());
     auto     *t = add<Tab>(icon, hasIcon, std::move(text));
+    if (_accent)
+        t->setBand(3, 30);
     t->fit();
     t->setActive(i == _active);
     t->onClick = [this, i] {
@@ -574,6 +579,14 @@ void TabStrip::setActive(int tab) {
     update();
 }
 
+void TabStrip::setAccentLook() {
+    // 3 px above the 30 px box, 3 px below it to the underline (36..38).
+    _accent = true;
+    for (auto *t : _tabs)
+        static_cast<Tab *>(t)->setBand(3, 30);
+    update();
+}
+
 std::string TabStrip::tabText(int i) const {
     return static_cast<Tab *>(_tabs[size_t(i)])->label->text();
 }
@@ -589,7 +602,9 @@ void TabStrip::paintOver(gfx::Painter &p) {
         return;
     const View *t = _tabs[size_t(_active)];
     if (t->visible())
-        p.fillRect({t->frame().x, height() - 2, t->width(), 2}, color(C::Text));
+        p.fillRect(
+            {t->frame().x, height() - 2, t->width(), 2}, color(_accent ? C::Accent : C::Text)
+        );
 }
 
 ConvTabs::ConvTabs() {
