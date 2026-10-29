@@ -69,6 +69,7 @@ add_library(msga_app_slack STATIC
     slack/slack_backend.cpp
     slack/slack_backend_core.cpp
     slack/slack_actions.cpp
+    slack/slack_activity.cpp
     slack/slack_realtime.cpp
     slack/slack_json.cpp
     slack/socket_mode.cpp

@@ -40,6 +40,7 @@ class ConvHeader;
 class OverviewPage;
 class TeammatePage;
 class SavedPage;
+class ActivityPage;
 class ScheduledPage;
 class ThreadsPage;
 class ConvTabs;
@@ -207,6 +208,7 @@ public:
     using Page = Sidebar::Nav;
     void           showPage(Page p);
     bool           pageOpen(Page p) const;
+    ActivityPage  *activityPage() const { return _activityPage; }
     ThreadsPage   *threadsPage() const { return _threadsPage; }
     SavedPage     *savedPage() const { return _savedPage; }
     ScheduledPage *scheduledPage() const { return _scheduledPage; }
@@ -375,6 +377,7 @@ private:
     void          buildTeammatePage(ui::View *stack);
     void          buildThreadsPage(ui::View *stack);
     void          buildSavedPage(ui::View *stack);
+    void          buildActivityPage(ui::View *stack);
     void          buildScheduledPage(ui::View *stack);
     // What the overview pages and the teammate page take away: the
     // conversation's chrome and, unless kept (the teammate page writes to
@@ -497,6 +500,7 @@ private:
     // The teammate page and what was typed to each teammate (the
     // "teammate:<role>" drafts); guards the agent flows' callbacks.
     TeammatePage                      *_teammatePage  = nullptr;
+    ActivityPage                      *_activityPage  = nullptr;
     ThreadsPage                       *_threadsPage   = nullptr;
     SavedPage                         *_savedPage     = nullptr;
     ScheduledPage                     *_scheduledPage = nullptr;

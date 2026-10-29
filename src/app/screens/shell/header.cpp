@@ -474,22 +474,24 @@ void ConvHeader::openMembers(RectF anchor) {
     );
 }
 
-// ── ConvTabs ────────────────────────────────────────────────────────────────
+// ── Tabs ────────────────────────────────────────────────────────────────────
 
 namespace {
 
 class Tab final : public Clickable {
 public:
-    Tab(Icon icon, std::string text) : icon(icon) {
+    Tab(Icon icon, bool hasIcon, std::string text) : icon(icon), hasIcon(hasIcon) {
         setRole(Role::Tab);
         setLook({C::None, C::FormHighlight, C::FormHighlight, C::None, 6});
-        style().row().height(31).margins(0, 4, 0, 0).padding(10 + 15 + 6, 0, 10, 0);
+        style().row().height(31).margins(0, 4, 0, 0).padding(lead(), 0, 10, 0);
         style().items(Align::Center).noShrink();
         label = add<Label>(std::move(text), Font::Control, C::TextMuted);
         label->setMaxLines(1);
         label->setHitTransparent(true);
     }
-    void setText(std::string t) {
+    // Before the text: the icon and its gap, or the bare padding.
+    float lead() const { return hasIcon ? 10 + 15 + 6 : 10; }
+    void  setText(std::string t) {
         label->setText(std::move(t));
         fit();
     }
@@ -499,7 +501,7 @@ public:
         Label       probe(label->text(), Font::TabBold);
         const float w = std::min(240.f, std::ceil(probe.measure(kInf, kInf).w));
         label->style().width(w);
-        style().width(10 + 15 + 6 + w + 10);
+        style().padding(lead(), 0, 10, 0).width(lead() + w + 10);
     }
     void setActive(bool on) {
         active = on;
@@ -512,72 +514,99 @@ public:
     }
     void paint(gfx::Painter &p) override {
         Clickable::paint(p);
-        gfx::drawIcon(
-            p,
-            icon,
-            {10, snapPx((height() - 15) / 2), 15, 15},
-            color(active ? C::Text : C::TextMuted)
-        );
+        if (hasIcon)
+            gfx::drawIcon(
+                p,
+                icon,
+                {10, snapPx((height() - 15) / 2), 15, 15},
+                color(active ? C::Text : C::TextMuted)
+            );
     }
     Icon   icon;
+    bool   hasIcon;
     Label *label;
     bool   active = false;
 };
 
 } // namespace
 
-ConvTabs::ConvTabs() {
+TabStrip::TabStrip() {
     setRole(Role::Group);
     style().row().height(38).padding(16, 0, 0, 0).spacing(4).noShrink();
     style().items(Align::Start);
-    _tabs[0] = add<Tab>(Icon::MessageCircle, tr("Messages"));
-    _tabs[1] = add<Tab>(Icon::StickyNotePlus, tr("Add canvas"));
-    for (int i = 0; i < 2; ++i) {
-        static_cast<Tab *>(_tabs[i])->fit();
-        _tabs[i]->onClick = [this, i] {
-            if (i == _active)
-                return;
-            setActive(i);
-            if (onSelect)
-                onSelect(i);
-        };
-    }
-    setActive(0);
+}
+
+int TabStrip::addTab(Icon icon, std::string text) {
+    return addTab(icon, true, std::move(text));
+}
+
+int TabStrip::addTab(std::string text) {
+    return addTab(Icon::AtSign, false, std::move(text));
+}
+
+int TabStrip::addTab(Icon icon, bool hasIcon, std::string text) {
+    const int i = int(_tabs.size());
+    auto     *t = add<Tab>(icon, hasIcon, std::move(text));
+    t->fit();
+    t->setActive(i == _active);
+    t->onClick = [this, i] {
+        if (i == _active)
+            return;
+        setActive(i);
+        if (onSelect)
+            onSelect(i);
+    };
+    _tabs.push_back(t);
+    return i;
+}
+
+void TabStrip::setTab(int i, Icon icon, std::string text) {
+    auto *t    = static_cast<Tab *>(_tabs[size_t(i)]);
+    t->icon    = icon;
+    t->hasIcon = true;
+    t->setText(std::move(text));
+}
+
+void TabStrip::setActive(int tab) {
+    _active = tab;
+    for (size_t i = 0; i < _tabs.size(); ++i)
+        static_cast<Tab *>(_tabs[i])->setActive(int(i) == tab);
+    update();
+}
+
+std::string TabStrip::tabText(int i) const {
+    return static_cast<Tab *>(_tabs[size_t(i)])->label->text();
+}
+
+void TabStrip::paint(gfx::Painter &p) {
+    p.fillRect(bounds(), color(C::Surface));
+    p.fillRect({0, height() - 1, width(), 1}, color(C::Border));
+}
+
+void TabStrip::paintOver(gfx::Painter &p) {
+    // The active tab's underline sits on the divider.
+    if (size_t(_active) >= _tabs.size())
+        return;
+    const View *t = _tabs[size_t(_active)];
+    if (t->visible())
+        p.fillRect({t->frame().x, height() - 2, t->width(), 2}, color(C::Text));
+}
+
+ConvTabs::ConvTabs() {
+    addTab(Icon::MessageCircle, tr("Messages"));
+    addTab(Icon::StickyNotePlus, tr("Add canvas"));
 }
 
 void ConvTabs::setCanvas(bool visible, bool hasCanvas, std::string title) {
-    auto *t = static_cast<Tab *>(_tabs[1]);
-    t->setVisible(visible);
-    t->icon = hasCanvas ? Icon::Canvas : Icon::StickyNotePlus;
-    t->setText(
+    _tabs[1]->setVisible(visible);
+    setTab(
+        1,
+        hasCanvas ? Icon::Canvas : Icon::StickyNotePlus,
         hasCanvas ? (title.empty() ? std::string(tr("Untitled")) : std::move(title))
                   : std::string(tr("Add canvas"))
     );
     if (!visible && _active == 1)
         setActive(0); // can't stay on a hidden tab
-}
-
-void ConvTabs::setActive(int tab) {
-    _active = tab;
-    for (int i = 0; i < 2; ++i)
-        static_cast<Tab *>(_tabs[i])->setActive(i == tab);
-    update();
-}
-
-std::string ConvTabs::tabText(int i) const {
-    return static_cast<Tab *>(_tabs[i])->label->text();
-}
-
-void ConvTabs::paint(gfx::Painter &p) {
-    p.fillRect(bounds(), color(C::Surface));
-    p.fillRect({0, height() - 1, width(), 1}, color(C::Border));
-}
-
-void ConvTabs::paintOver(gfx::Painter &p) {
-    // The active tab's underline sits on the divider.
-    const View *t = _tabs[_active];
-    if (t->visible())
-        p.fillRect({t->frame().x, height() - 2, t->width(), 2}, color(C::Text));
 }
 
 } // namespace shell

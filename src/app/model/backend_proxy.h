@@ -135,11 +135,14 @@ public:
     void postAgentFiles(
         ConvRef c, Ts root, std::string text, std::vector<std::string> files, PostDone d
     ) override;
-    void    loadThreadReplies(ConvRef c, Ts root, Ts after, RepliesDone done) override;
-    void    watchThread(ConvRef c, Ts root, Ts after, bool busy) override;
-    void    unwatchThread(ConvRef c, Ts root) override;
-    void    loadThreadsView(std::string cursor, ThreadsViewDone done) override;
-    void    markThreadRead(ConvRef c, Ts root, Ts ts) override;
+    void loadThreadReplies(ConvRef c, Ts root, Ts after, RepliesDone done) override;
+    void watchThread(ConvRef c, Ts root, Ts after, bool busy) override;
+    void unwatchThread(ConvRef c, Ts root) override;
+    void loadThreadsView(std::string cursor, ThreadsViewDone done) override;
+    void markThreadRead(ConvRef c, Ts root, Ts ts) override;
+    void
+    loadActivity(ActivityFilter f, bool unreadOnly, std::string cursor, ActivityDone done) override;
+    void    setActivityRead(const ActivityItem &item, bool read) override;
     int64_t nowSecs() const override;
     void    loadChannelCanvas(ConvRef c, std::function<void(std::string)> done) override;
     void    loadCanvasMeta(const std::string &fileId, CanvasMetaDone done) override;

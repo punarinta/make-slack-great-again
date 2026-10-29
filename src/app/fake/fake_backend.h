@@ -70,6 +70,13 @@ public:
     // replies each, one page; every fixture thread starts out read.
     void loadThreadsView(std::string cursor, ThreadsViewDone done) override;
     void markThreadRead(model::ConvRef conv, model::Ts root, model::Ts ts) override;
+    // The demo's activity: mentions of me, the newest message of each
+    // direct message, replies in my threads, reactions to my messages —
+    // unread past the read cursors; one page.
+    void loadActivity(
+        ActivityFilter filter, bool unreadOnly, std::string cursor, ActivityDone done
+    ) override;
+    void         setActivityRead(const ActivityItem &item, bool read) override;
     // The demo: members, the Threads entry and Saved messages; no huddles,
     // broadcast replies or scheduled sends. I look phantom-away (no official
     // client); the toggle and status round-trip but change nothing.
@@ -144,6 +151,8 @@ private:
     };
     std::vector<ThreadRead> _threadRead; // my cursor per thread (few: linear is fine)
     model::Ts              &threadRead(model::ConvRef conv, model::Ts root);
+    // Items marked read or unread on the Activity page, by key.
+    std::vector<std::pair<std::string, bool>> _activityRead;
     struct CanvasEdit {
         std::string id, html; // the body as saved (no title heading)
     };

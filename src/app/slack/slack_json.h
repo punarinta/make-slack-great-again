@@ -3,6 +3,7 @@
 // (Store::internUser), so a message never waits for the roster.
 #pragma once
 
+#include "app/model/backend.h"
 #include "app/model/store.h"
 #include "base/json.h"
 
@@ -114,5 +115,14 @@ struct ThreadSub {
     model::Ts      root = 0, latest = 0, lastRead = 0;
 };
 bool toThreadSub(const json::Value &t, model::Store &store, ThreadSub &out);
+
+// activity.feed's `types` for a tab of the Activity page.
+const char *activityTypes(model::Backend::ActivityFilter filter);
+// One activity.feed item: what it is and where its message is — the feed
+// carries no text (messages.list brings that). False for a type the page
+// doesn't show, or one in a conversation the Store doesn't have.
+bool toActivityItem(const json::Value &v, model::Store &store, model::Backend::ActivityItem &out);
+// client.counts' activity_v2: the unread items of the types the page shows.
+int  activityUnread(const json::Value &resp);
 
 } // namespace slack::mapjson

@@ -31,6 +31,7 @@
 #include "screens/shell/overview_page.h"
 #include "screens/shell/saved_page.h"
 #include "screens/shell/scheduled_page.h"
+#include "screens/shell/activity_page.h"
 #include "screens/shell/threads_page.h"
 #include "screens/shell/shortcuts.h"
 #include "screens/shell/shell_text.h"
@@ -1405,6 +1406,7 @@ void Shell::buildMain(View *parent) {
             _tabs->setCanvas(true, true, title);
     };
     buildTeammatePage(stack); // an agent workspace's teammate page (shell_agents.cpp)
+    buildActivityPage(stack);
     buildThreadsPage(stack);
     buildSavedPage(stack);
     buildScheduledPage(stack);
@@ -1682,6 +1684,8 @@ void Shell::open(ConvRef conv) {
 void Shell::leaveWorkspace() {
     leaveTeammate();
     leavePages();
+    if (_activityPage)
+        _activityPage->clear(); // its items point into the old workspace
     if (_threadsPage)
         _threadsPage->clear(); // its cards point into the old workspace
     if (_savedPage)
@@ -1916,10 +1920,26 @@ void Shell::buildThreadsPage(View *stack) {
     _sidebar->onThreads         = [this] { showPage(Page::Threads); };
 }
 
+// ── The Activity page ───────────────────────────────────────────────────────
+
+void Shell::buildActivityPage(View *stack) {
+    _activityPage = stack->add<ActivityPage>(_ctx, _avatars);
+    _activityPage->setVisible(false);
+    // A thread: the channel and the thread panel; a message: the jump to
+    // it (inside its thread for a reply).
+    _activityPage->onOpenThread  = [this](ConvRef c, Ts root) { openThread(c, root); };
+    _activityPage->onOpenMessage = [this](ConvRef c, Ts ts, Ts thread) {
+        jumpToMessage(c, ts, thread);
+    };
+    _sidebar->onActivity = [this] { showPage(Page::Activity); };
+}
+
 // ── The overview pages ──────────────────────────────────────────────────────
 
 OverviewPage *Shell::pageView(Page p) const {
     switch (p) {
+    case Page::Activity:
+        return _activityPage;
     case Page::Threads:
         return _threadsPage;
     case Page::Saved:
@@ -1942,13 +1962,14 @@ bool Shell::pageOpen(Page p) const {
 void Shell::showPage(Page p) {
     OverviewPage *page = pageView(p);
     const auto    caps = _ctx.backend.capabilities();
-    const bool    has  = p == Page::Threads ? caps.threadsView
-                         : p == Page::Saved ? caps.messageReminders
-                                            : caps.scheduledSend;
+    const bool    has  = p == Page::Activity  ? caps.activityView
+                         : p == Page::Threads ? caps.threadsView
+                         : p == Page::Saved   ? caps.messageReminders
+                                              : caps.scheduledSend;
     if (!page || !_signedIn || !has)
         return;
     leaveTeammate();
-    for (Page o : {Page::Threads, Page::Saved, Page::Scheduled})
+    for (Page o : {Page::Activity, Page::Threads, Page::Saved, Page::Scheduled})
         if (o != p)
             leavePage(o);
     leaveConversationChrome(false);
@@ -1989,7 +2010,7 @@ void Shell::leavePage(Page p) {
 }
 
 void Shell::leavePages() {
-    for (Page p : {Page::Threads, Page::Saved, Page::Scheduled})
+    for (Page p : {Page::Activity, Page::Threads, Page::Saved, Page::Scheduled})
         leavePage(p);
 }
 

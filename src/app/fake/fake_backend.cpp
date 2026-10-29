@@ -122,6 +122,100 @@ void FakeBackend::loadThread(ConvRef conv, Ts root, Done done) {
     });
 }
 
+void FakeBackend::loadActivity(
+    ActivityFilter filter, bool unreadOnly, std::string, ActivityDone done
+) {
+    later(kReadLatencyMs * 2 + slowMs(), [this, filter, unreadOnly, done = std::move(done)] {
+        using Kind = ActivityItem::Kind;
+        using F    = ActivityFilter;
+        ActivityFeed      page;
+        const std::string mention = "<@" + _store.user(_store.me).id + ">";
+        const auto        add = [&](Kind kind, ConvRef c, const model::Message &m, bool unread) {
+            const bool shown = filter == F::All || (filter == F::Dms && kind == Kind::Dm) ||
+                               (filter == F::Mentions && kind == Kind::Mention) ||
+                               (filter == F::Threads && kind == Kind::Thread);
+            if (!shown)
+                return (ActivityItem *)nullptr;
+            ActivityItem it;
+            it.kind = kind;
+            it.conv = c;
+            it.ts   = m.ts;
+            it.key  = str::concat(
+                {str::number(int64_t(kind)),
+                 ":",
+                 _store.conversation(c).id,
+                 ":",
+                 model::formatTs(m.ts)}
+            );
+            for (const auto &[k, read] : _activityRead)
+                if (k == it.key)
+                    unread = !read;
+            if (unreadOnly && !unread)
+                return (ActivityItem *)nullptr;
+            it.unread  = unread;
+            it.message = m.clone();
+            page.items.push_back(std::move(it));
+            return &page.items.back();
+        };
+        for (ConvRef c = 0; c < _store.conversationCount(); ++c) {
+            const model::Conversation &cv = _store.conversation(c);
+            // A direct message: its newest message from the other side.
+            if (cv.kind == model::ConvKind::Dm || cv.kind == model::ConvKind::Group)
+                for (auto m = cv.messages.rbegin(); m != cv.messages.rend(); ++m)
+                    if (m->user != _store.me) {
+                        add(Kind::Dm, c, *m, m->ts > cv.lastRead);
+                        break;
+                    }
+            for (const model::Message &m : cv.messages) {
+                if (m.user != _store.me && m.text.find(mention) != std::string::npos)
+                    add(Kind::Mention, c, m, m.ts > cv.lastRead);
+                // Reactions to my messages, by someone else.
+                if (m.user == _store.me)
+                    for (const model::Reaction &r : m.reactions)
+                        for (model::UserRef u : r.users)
+                            if (u != _store.me)
+                                if (ActivityItem *it = add(Kind::Reaction, c, m, false)) {
+                                    it->actor    = u;
+                                    it->reaction = r.name;
+                                    break;
+                                }
+            }
+            // My threads with a reply from someone else: the newest one.
+            for (const model::Thread &t : cv.threads) {
+                const model::Message *root = _store.findMessage(c, t.root);
+                if (!root || t.replies.empty())
+                    continue;
+                bool mine = root->user == _store.me;
+                for (const model::Message &r : t.replies)
+                    mine = mine || r.user == _store.me;
+                const model::Message &last = t.replies.back();
+                if (!mine || last.user == _store.me)
+                    continue;
+                const Ts read = threadRead(c, t.root);
+                if (ActivityItem *it = add(Kind::Thread, c, last, last.ts > read)) {
+                    it->thread = t.root;
+                    for (const model::Message &r : t.replies)
+                        it->count += r.ts > read;
+                }
+            }
+        }
+        std::stable_sort(page.items.begin(), page.items.end(), [](const auto &a, const auto &b) {
+            return a.ts > b.ts;
+        });
+        if (done)
+            done(true, std::move(page));
+    });
+}
+
+void FakeBackend::setActivityRead(const ActivityItem &item, bool read) {
+    for (auto &[k, r] : _activityRead)
+        if (k == item.key) {
+            r = read;
+            return;
+        }
+    _activityRead.emplace_back(item.key, read);
+}
+
 Ts FakeBackend::nextTs() {
     Ts ts = base::nowMicros();
     if (ts <= _lastTs)
@@ -359,6 +453,7 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     Capabilities c;
     c.memberList       = true;
     c.threadsView      = true;
+    c.activityView     = true;
     c.messageReminders = true;
     c.canvases         = true;
     c.fileUpload       = true;

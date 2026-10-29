@@ -358,6 +358,7 @@ public:
         bool scheduledSend    = false; // the composer's schedule-send chevron
         bool memberList       = false; // the header's members button opens the list
         bool threadsView      = false; // the sidebar's "Threads" entry
+        bool activityView     = false; // the sidebar's "Activity" entry
         bool messageReminders = false; // "Saved messages" (while something is saved)
         bool presence         = true;  // presence dots, the footer's presence toggle
         bool selfStatus       = true;  // "Manage status" in the footer's avatar menu
@@ -723,6 +724,42 @@ public:
     }
     // My read cursor in a followed thread moves to ts (best effort).
     virtual void markThreadRead(ConvRef conv, Ts root, Ts ts) { (void)conv, (void)root, (void)ts; }
+
+    // The sidebar's "Activity" page (Capabilities::activityView): what
+    // notified me, newest first — mentions, thread replies, reactions to my
+    // messages, direct messages, posts in channels on "All new posts".
+    // Copies, not Store data.
+    struct ActivityItem {
+        enum class Kind : uint8_t { Mention, Thread, Reaction, Dm, Channel };
+        // The service's handle on the item (setActivityRead).
+        std::string key, type, feedTs;
+        Kind        kind   = Kind::Mention;
+        bool        unread = false;
+        ConvRef     conv   = kNoConv;
+        Ts          ts     = 0;       // the message
+        Ts          thread = 0;       // its thread's root (a Thread item: the thread)
+        UserRef     actor  = kNoUser; // who reacted (a Reaction)
+        std::string reaction;         // the emoji's name (a Reaction)
+        int         count = 0;        // new messages it stands for (a DM, a thread)
+        Message     message;          // ts 0: it couldn't be loaded
+    };
+    // The page's tabs.
+    enum class ActivityFilter : uint8_t { All, Dms, Mentions, Threads };
+    struct ActivityFeed {
+        std::vector<ActivityItem> items;
+        std::string               nextCursor; // "" = no more
+        std::string               error;      // ok = false: the service's error code, if any
+    };
+    // One page ("" = the first); unreadOnly: the unread items alone.
+    using ActivityDone = std::function<void(bool ok, ActivityFeed page)>;
+    virtual void
+    loadActivity(ActivityFilter filter, bool unreadOnly, std::string cursor, ActivityDone done) {
+        (void)filter, (void)unreadOnly, (void)cursor;
+        if (done)
+            done(false, {});
+    }
+    // Marks an item read or unread in the feed (best effort).
+    virtual void setActivityRead(const ActivityItem &item, bool read) { (void)item, (void)read; }
 
     // A thread I follow (started, replied in, subscribed)
     // — its replies are important (notify, badge).

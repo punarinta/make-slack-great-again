@@ -931,4 +931,114 @@ bool toThreadSub(const Value &t, model::Store &store, ThreadSub &out) {
     return out.conv != model::kNoConv && out.root;
 }
 
+// ── The activity feed ───────────────────────────────────────────────────────
+
+namespace {
+
+using Kind = model::Backend::ActivityItem::Kind;
+
+constexpr const char *kMentionTypes =
+    "at_user,at_user_group,at_channel,at_everyone,keyword,unjoined_channel_mention";
+// Every type the page shows, as the All tab asks for them.
+constexpr const char *kAllTypes = "at_user,at_user_group,at_channel,at_everyone,keyword,"
+                                  "unjoined_channel_mention,thread_v2,message_reaction,dm,"
+                                  "bot_dm_bundle,channel";
+
+bool activityKind(std::string_view type, Kind &out) {
+    if (type == "thread_v2")
+        out = Kind::Thread;
+    else if (type == "message_reaction")
+        out = Kind::Reaction;
+    else if (type == "dm" || type == "bot_dm_bundle")
+        out = Kind::Dm;
+    else if (type == "channel")
+        out = Kind::Channel;
+    else if (
+        type == "at_user" || type == "at_user_group" || type == "at_channel" ||
+        type == "at_everyone" || type == "keyword" || type == "unjoined_channel_mention"
+    )
+        out = Kind::Mention;
+    else
+        return false;
+    return true;
+}
+
+} // namespace
+
+const char *activityTypes(model::Backend::ActivityFilter filter) {
+    using F = model::Backend::ActivityFilter;
+    switch (filter) {
+    case F::Dms:
+        return "dm";
+    case F::Mentions:
+        return kMentionTypes;
+    case F::Threads:
+        return "thread_v2";
+    case F::All:
+        break;
+    }
+    return kAllTypes;
+}
+
+bool toActivityItem(const Value &v, model::Store &store, model::Backend::ActivityItem &out) {
+    const Value item = v["item"];
+    const auto  type = item["type"].str();
+    if (!activityKind(type, out.kind))
+        return false;
+    out.key             = std::string(v["key"].str());
+    out.type            = std::string(type);
+    out.feedTs          = std::string(v["feed_ts"].str());
+    out.unread          = v["is_unread"].boolean();
+    // Mentions and reactions point at the message; the bundles (a thread,
+    // a DM, a channel) at their newest one.
+    const Value payload = item["bundle_info"]["payload"];
+    Value       msg;
+    switch (out.kind) {
+    case Kind::Mention:
+    case Kind::Reaction:
+        msg = item["message"];
+        break;
+    case Kind::Dm:
+        msg = payload.has("dm_entry") ? payload["dm_entry"]["latest_message"] : payload["message"];
+        break;
+    case Kind::Channel:
+        msg = payload["channel_entry"]["latest_message"];
+        break;
+    case Kind::Thread:
+        break;
+    }
+    std::string_view channel;
+    if (out.kind == Kind::Thread) {
+        const Value t = payload["thread_entry"];
+        channel       = t["channel_id"].str();
+        out.ts        = model::parseTs(t["latest_ts"].str());
+        out.thread    = model::parseTs(t["thread_ts"].str());
+        out.count     = int(t["unread_msg_count"].integer());
+    } else {
+        channel = msg["channel"].str();
+        out.ts  = model::parseTs(msg["ts"].str());
+        // A reply: its root (a root's own thread_ts is itself).
+        if (const model::Ts root = model::parseTs(msg["thread_ts"].str()); root && root != out.ts)
+            out.thread = root;
+        out.count = int(item["bundle_info"]["unread_count"].integer());
+    }
+    if (out.kind == Kind::Reaction) {
+        out.actor    = store.internUser(item["reaction"]["user"].str());
+        out.reaction = std::string(item["reaction"]["name"].str());
+    }
+    out.conv = store.findConversation(channel);
+    return out.conv != model::kNoConv && out.ts;
+}
+
+int activityUnread(const Value &resp) {
+    const Value counts = resp["activity_v2"];
+    int         n      = 0;
+    for (std::string_view types = kAllTypes; !types.empty();) {
+        const size_t comma = types.find(',');
+        n += int(counts[types.substr(0, comma)].integer());
+        types = comma == std::string_view::npos ? std::string_view() : types.substr(comma + 1);
+    }
+    return n;
+}
+
 } // namespace slack::mapjson

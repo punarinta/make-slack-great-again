@@ -1,6 +1,6 @@
 // The conversation sidebar:
-// uniform 30 px rows under a 6 px top inset — the "Threads", "Saved
-// messages" and "Scheduled messages" entries, then the Starred / Channels /
+// uniform 30 px rows under a 6 px top inset — the "Activity", "Threads",
+// "Saved messages" and "Scheduled messages" entries, then the Starred / Channels /
 // Direct messages / Agents & apps sections (a click on a header collapses
 // it, hiding every row; hovering shows the chevron that says what a click
 // does, and on the right the header's "+" — Channels: "Add channels",
@@ -153,6 +153,7 @@ public:
     std::string              rowSection(model::ConvRef conv) const;
     void                     showAllChannels(); // the "N more channels" row
 
+    std::function<void()>                    onActivity;      // the Activity entry
     std::function<void()>                    onThreads;       // the Threads entry
     std::function<void()>                    onSavedMessages; // the Saved messages entry
     std::function<void()>                    onScheduled;     // the Scheduled messages entry
@@ -168,15 +169,17 @@ public:
     // conversation is highlighted meanwhile.
     void                                     selectTeammate(const std::string &role);
     const std::string                       &selectedTeammate() const { return _selectedTeammate; }
-    // The entries over the sections, each an overview page: Threads, Saved
-    // messages (shown while something is saved, Store::hasSaved), Scheduled
-    // messages (while something is scheduled, Store::hasScheduled).
-    enum class Nav : uint8_t { None, Threads, Saved, Scheduled };
+    // The entries over the sections, each an overview page: Activity,
+    // Threads, Saved messages (shown while something is saved,
+    // Store::hasSaved), Scheduled messages (while something is scheduled,
+    // Store::hasScheduled).
+    enum class Nav : uint8_t { None, Activity, Threads, Saved, Scheduled };
     // Highlights an entry as the open page (None: none); opening a
     // conversation or a teammate clears it.
     void selectNav(Nav n);
     Nav  selectedNav() const { return _navSelected; }
-    bool threadsUnread() const; // the Threads entry is bright (Store::unreadThreads)
+    bool threadsUnread() const;  // the Threads entry is bright (Store::unreadThreads)
+    bool activityUnread() const; // the Activity entry is bright (Store::unreadActivity)
     // A click on a row's huddle pill (tests): false when it shows none.
     bool joinHuddle(model::ConvRef conv);
     bool scheduledShown() const; // tests
@@ -250,9 +253,10 @@ private:
     std::vector<model::Backend::AgentRole> _team; // as last listed (rebuild)
     std::string                            _selectedTeammate;
     std::vector<SectionHeader *>           _sections;
-    std::vector<ui::View *>                _nav; // Threads, Saved messages, Scheduled messages
+    std::vector<ui::View *>                _nav; // Activity, Threads, Saved, Scheduled messages
     std::vector<const char *>              _navTitles;
     ui::View                *_savedRow = nullptr, *_threadsRow = nullptr, *_scheduledRow = nullptr;
+    ui::View                *_activityRow = nullptr;
     Nav                      _navSelected = Nav::None;
     VisitStamps              _visited; // opened here (visit stamps)
     Sorts                    _sorts;

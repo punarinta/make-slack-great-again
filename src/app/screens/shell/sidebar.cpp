@@ -99,7 +99,9 @@ public:
     }
     Icon   icon;
     Label *label  = nullptr;
-    bool   unread = false; // followed threads with unread replies (Store::unreadThreads)
+    // Threads: followed threads with unread replies (Store::unreadThreads);
+    // Activity: unread items in the feed (Store::unreadActivity).
+    bool   unread = false;
 };
 
 // The "+" and the "⋮" (More actions) on a section header: shown while the
@@ -775,6 +777,11 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
                 r->unread = _ctx.store().unreadThreads() > 0;
                 r->refreshLook();
             }
+            if (ch.conv == model::kNoConv && _activityRow) { // the Activity entry's
+                auto *r   = static_cast<NavRow *>(_activityRow);
+                r->unread = _ctx.store().unreadActivity() > 0;
+                r->refreshLook();
+            }
             // The scheduled list came or went: show or hide its entry. The
             // sections changed: the rows move.
             if (ch.conv == model::kNoConv) {
@@ -900,6 +907,7 @@ void Sidebar::rebuild() {
     _savedRow         = nullptr;
     _threadsRow       = nullptr;
     _scheduledRow     = nullptr;
+    _activityRow      = nullptr;
     const auto &store = _ctx.store();
     const auto  caps  = _ctx.backend.capabilities();
 
@@ -914,6 +922,11 @@ void Sidebar::rebuild() {
         _navTitles.push_back(text);
         return r;
     };
+    if (caps.activityView) {
+        auto *r      = nav(Icon::Bell, tr("Activity"), &onActivity);
+        r->unread    = store.unreadActivity() > 0;
+        _activityRow = r;
+    }
     if (caps.threadsView) {
         auto *r     = nav(Icon::Split, tr("Threads"), &onThreads);
         r->unread   = store.unreadThreads() > 0;
@@ -1578,6 +1591,8 @@ ConvRow *Sidebar::rowFor(ConvRef conv) const {
 
 View *Sidebar::navRow(Nav n) const {
     switch (n) {
+    case Nav::Activity:
+        return _activityRow;
     case Nav::Threads:
         return _threadsRow;
     case Nav::Saved:
@@ -1600,7 +1615,7 @@ void Sidebar::selectNav(Nav n) {
 }
 
 void Sidebar::showNavSelection() {
-    for (Nav k : {Nav::Threads, Nav::Saved, Nav::Scheduled})
+    for (Nav k : {Nav::Activity, Nav::Threads, Nav::Saved, Nav::Scheduled})
         if (auto *r = static_cast<NavRow *>(navRow(k))) {
             r->setChecked(_navSelected == k);
             r->refreshLook();
@@ -1690,6 +1705,10 @@ Sidebar::RowState Sidebar::rowState(ConvRef conv) const {
 
 bool Sidebar::threadsUnread() const {
     return _threadsRow && static_cast<NavRow *>(_threadsRow)->unread;
+}
+
+bool Sidebar::activityUnread() const {
+    return _activityRow && static_cast<NavRow *>(_activityRow)->unread;
 }
 
 bool Sidebar::joinHuddle(ConvRef conv) {

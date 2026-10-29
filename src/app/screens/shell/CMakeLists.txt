@@ -2,6 +2,7 @@
 # panel wiring, tray/notifications — and the msga executable.
 add_library(msga_screens_shell STATIC
     accounts.cpp
+    activity_page.cpp
     avatars.cpp
     canvas_page.cpp
     canvas_viewer.cpp

@@ -240,6 +240,10 @@ public:
     // sidebar's Threads entry is bright while > 0). Fires Meta (kNoConv).
     int            unreadThreads() const { return _unreadThreads; }
     void           setUnreadThreads(int n);
+    // Unread items in the service's activity feed (the sidebar's Activity
+    // entry is bright while > 0). Fires Meta (kNoConv).
+    int            unreadActivity() const { return _unreadActivity; }
+    void           setUnreadActivity(int n);
     // Agent sessions (Claude Code): every answer is meant for me, so each
     // one counts as a mention (the red badge) — except a progress note
     // (subtype "progress": a remark before tool calls, a tool card).
@@ -418,9 +422,10 @@ private:
     std::vector<Usergroup>                       _usergroups;
     std::unordered_map<std::string, std::string> _channelNames;
     std::unordered_map<std::string, UserRef>     _linkedAuthors; // "conv/ts"
-    const Message                               *_arrived       = nullptr;
-    int                                          _unreadThreads = 0;
-    bool                                         _realNames     = true;
+    const Message                               *_arrived        = nullptr;
+    int                                          _unreadThreads  = 0;
+    int                                          _unreadActivity = 0;
+    bool                                         _realNames      = true;
 
     std::unordered_map<std::string, AiTranscript> _aiTranscripts;
 

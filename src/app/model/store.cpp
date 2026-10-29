@@ -180,6 +180,7 @@ void Store::clear() {
     ++_localRev;
     ++_groupRev;
     _unreadThreads     = 0;
+    _unreadActivity    = 0;
     workspaceMuted     = false;
     answersAreMentions = false;
     me                 = kNoUser;
@@ -1129,6 +1130,14 @@ void Store::setUnreadThreads(int n) {
     if (n == _unreadThreads)
         return;
     _unreadThreads = n;
+    emit({ChangeKind::Meta, kNoConv});
+}
+
+void Store::setUnreadActivity(int n) {
+    n = std::max(n, 0);
+    if (n == _unreadActivity)
+        return;
+    _unreadActivity = n;
     emit({ChangeKind::Meta, kNoConv});
 }
 

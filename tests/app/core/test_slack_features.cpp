@@ -2,9 +2,9 @@
 // (tests/support/fake_slack.py): huddle rooms, slash commands (msga's built-ins,
 // commands.list, chat.command), DND snooze, bot buttons (blocks.actions),
 // the account's Slack theme, message reminders going off, the Threads
-// entry's unread state, the dead-conversation cache, the rate-limit and
-// send-failure banners, mentioned channels and user groups, the app-keys
-// OAuth sign-in. Nothing here talks to the real Slack.
+// entry's unread state, the Activity page's feed, the dead-conversation
+// cache, the rate-limit and send-failure banners, mentioned channels and
+// user groups, the app-keys OAuth sign-in. Nothing here talks to the real Slack.
 #include "app/cache/workspace_cache.h"
 #include "app/slack/oauth.h"
 #include "app/slack/slack_backend.h"
@@ -843,6 +843,191 @@ TEST("slack features: an OAuth token has no custom sections") {
     CHECK_FALSE(e.be->capabilities().customSections);
     pumpFor(50);
     CHECK(count("users.channelSections.list") == 0);
+}
+
+// ── The Activity page ───────────────────────────────────────────────────────
+
+namespace {
+
+// One activity.feed page: a mention in a thread, a reaction to my message,
+// a followed thread with 2 new replies, a DM, an unknown conversation's
+// mention (left out) and a reminder (a type the page doesn't show).
+const char *kActivityFeed = R"({"activity.feed": {"ok": true, "items": [
+  {"is_unread": true, "feed_ts": "1800000009.000000", "key": "at_user.1",
+   "item": {"type": "at_user", "message": {"ts": "1800000009.000100", "channel": "C1",
+            "thread_ts": "1800000001.000100", "author_user_id": "UMIRA"}}},
+  {"is_unread": false, "feed_ts": "1800000008.000000", "key": "message_reaction.1",
+   "item": {"type": "message_reaction", "message": {"ts": "1800000002.000100", "channel": "C1"},
+            "reaction": {"user": "UMIRA", "name": "tada"}}},
+  {"is_unread": true, "feed_ts": "1800000007.000000", "key": "thread_v2.1",
+   "item": {"type": "thread_v2", "bundle_info": {"payload": {"thread_entry": {
+            "channel_id": "C1", "thread_ts": "1800000001.000100",
+            "latest_ts": "1800000007.000100", "unread_msg_count": 2}}}}},
+  {"is_unread": true, "feed_ts": "1800000006.000000", "key": "dm.1",
+   "item": {"type": "dm", "bundle_info": {"unread_count": 3, "payload": {"dm_entry": {
+            "latest_message": {"ts": "1800000006.000100", "channel": "D1"}}}}}},
+  {"is_unread": true, "feed_ts": "1800000005.000000", "key": "at_user.2",
+   "item": {"type": "at_user", "message": {"ts": "1800000005.000100", "channel": "C404"}}},
+  {"is_unread": true, "feed_ts": "1800000004.000000", "key": "saved_reminder.1",
+   "item": {"type": "saved_reminder", "saved_reminder_payload": {"item_type": "reminder"}}}],
+  "response_metadata": {"next_cursor": "p2"}},
+ "messages.list": {"ok": true, "messages_data": {
+   "C1": {"messages": [
+     {"ts": "1800000009.000100", "user": "UMIRA", "text": "<@UME> look",
+      "thread_ts": "1800000001.000100"},
+     {"ts": "1800000002.000100", "user": "UME", "text": "shipped"},
+     {"ts": "1800000007.000100", "user": "UMIRA", "text": "newest reply",
+      "thread_ts": "1800000001.000100"}]},
+   "D1": {"messages": [{"ts": "1800000006.000100", "user": "UMIRA", "text": "hi there"}]}}}})";
+
+struct Feed {
+    bool                         called = false, ok = false;
+    model::Backend::ActivityFeed page;
+};
+
+Feed loadFeed(Env &e, model::Backend::ActivityFilter f, bool unreadOnly, std::string cursor = {}) {
+    Feed out;
+    e.be->loadActivity(
+        f, unreadOnly, std::move(cursor), [&](bool o, model::Backend::ActivityFeed p) {
+            out.called = true;
+            out.ok     = o;
+            out.page   = std::move(p);
+        }
+    );
+    pumpUntil([&] { return out.called; }, 5000);
+    return out;
+}
+
+} // namespace
+
+TEST("slack features: the Activity feed — items, their messages from messages.list, the tabs") {
+    if (!haveServer())
+        return;
+    using Kind = model::Backend::ActivityItem::Kind;
+    using F    = model::Backend::ActivityFilter;
+    Env e(kActivityFeed);
+    REQUIRE(e.connect());
+    REQUIRE(e.be->capabilities().activityView);
+    Feed f = loadFeed(e, F::All, false);
+    REQUIRE(f.called);
+    REQUIRE(f.ok);
+    CHECK_STR(f.page.nextCursor, "p2");
+    // The unknown conversation's and the reminder are left out.
+    REQUIRE(f.page.items.size() == 4);
+    const auto &mention = f.page.items[0];
+    CHECK(mention.kind == Kind::Mention);
+    CHECK(mention.unread);
+    CHECK(mention.conv == e.conv("C1"));
+    CHECK(mention.ts == model::parseTs("1800000009.000100"));
+    CHECK(mention.thread == model::parseTs("1800000001.000100"));
+    CHECK_STR(mention.key, "at_user.1");
+    CHECK_STR(mention.type, "at_user");
+    CHECK_STR(mention.feedTs, "1800000009.000000");
+    CHECK_STR(mention.message.text, "<@UME> look");
+    const auto &reaction = f.page.items[1];
+    CHECK(reaction.kind == Kind::Reaction);
+    CHECK(!reaction.unread);
+    CHECK(reaction.thread == 0);
+    CHECK_STR(reaction.reaction, "tada");
+    CHECK(reaction.actor == e.store.findUser("UMIRA"));
+    CHECK_STR(reaction.message.text, "shipped");
+    const auto &thread = f.page.items[2];
+    CHECK(thread.kind == Kind::Thread);
+    CHECK(thread.thread == model::parseTs("1800000001.000100"));
+    CHECK(thread.ts == model::parseTs("1800000007.000100"));
+    CHECK(thread.count == 2);
+    CHECK_STR(thread.message.text, "newest reply");
+    const auto &dm = f.page.items[3];
+    CHECK(dm.kind == Kind::Dm);
+    CHECK(dm.conv == e.conv("D1"));
+    CHECK(dm.count == 3);
+    CHECK_STR(dm.message.text, "hi there");
+    // One messages.list for both conversations; the feed asked as the web
+    // client does.
+    const Log log;
+    REQUIRE(log.count("messages.list") == 1);
+    const std::string ids(log.get("messages.list")["form"]["message_ids"].str());
+    CHECK(ids.find("\"C1\"") != std::string::npos);
+    CHECK(ids.find("\"D1\"") != std::string::npos);
+    CHECK(ids.find("\"1800000006.000100\"") != std::string::npos);
+    const json::Value form = log.get("activity.feed")["form"];
+    CHECK_STR(form["mode"].str(), "chrono_v1");
+    CHECK_STR(form["unread_only"].str(), "false");
+    CHECK(std::string(form["types"].str()).find("thread_v2") != std::string::npos);
+    CHECK(!form.has("cursor"));
+
+    // A tab asks for its types, the toggle for the unread ones, a next page
+    // for its cursor.
+    loadFeed(e, F::Mentions, true, "p2");
+    const json::Value next = Log().get("activity.feed", 1)["form"];
+    CHECK_STR(next["unread_only"].str(), "true");
+    CHECK_STR(next["cursor"].str(), "p2");
+    CHECK(std::string(next["types"].str()).find("at_user") != std::string::npos);
+    CHECK(std::string(next["types"].str()).find("thread_v2") == std::string::npos);
+    loadFeed(e, F::Dms, false);
+    CHECK_STR(Log().get("activity.feed", 2)["form"]["types"].str(), "dm");
+    loadFeed(e, F::Threads, false);
+    CHECK_STR(Log().get("activity.feed", 3)["form"]["types"].str(), "thread_v2");
+}
+
+TEST("slack features: an Activity item is marked read and unread with its key") {
+    if (!haveServer())
+        return;
+    Env e(kActivityFeed);
+    REQUIRE(e.connect());
+    Feed f = loadFeed(e, model::Backend::ActivityFilter::All, false);
+    REQUIRE(f.ok);
+    REQUIRE(!f.page.items.empty());
+    e.be->setActivityRead(f.page.items[0], true);
+    e.be->setActivityRead(f.page.items[0], false);
+    REQUIRE(pumpUntil([&] { return count("activity.markUnread") == 1; }, 3000));
+    const Log      log;
+    json::Document entries;
+    REQUIRE(entries.parse(std::string(log.get("activity.markRead")["form"]["entries"].str())));
+    CHECK(entries.root().size() == 1);
+    CHECK_STR(entries.root()[0]["type"].str(), "at_user");
+    CHECK_STR(entries.root()[0]["key"].str(), "at_user.1");
+    CHECK_STR(entries.root()[0]["feed_ts"].str(), "1800000009.000000");
+    CHECK(log.count("activity.markRead") == 1);
+}
+
+TEST("slack features: the Activity entry is bright from client.counts' activity_v2") {
+    if (!haveServer())
+        return;
+    // A reminder is no item of the page: it doesn't count.
+    Env e(R"({"client.counts": {"ok": true, "channels": [], "ims": [], "mpims": [],
+              "activity_v2": {"at_user": 2, "dm": 1, "thread_v2": 0, "saved_reminder": 4}}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.unreadActivity() == 3; }, 5000));
+    set(R"({"client.counts": {"ok": true, "channels": [], "ims": [], "mpims": [],
+            "activity_v2": {"at_user": 0, "dm": 0}}})");
+    REQUIRE(pumpUntil([&] { return e.store.unreadActivity() == 0; }, 5000));
+}
+
+TEST("slack features: a refused Activity feed reports Slack's code and isn't asked again") {
+    if (!haveServer())
+        return;
+    Env e(R"({"activity.feed": {"ok": false, "error": "not_allowed_token_type"}})");
+    REQUIRE(e.connect());
+    for (int i = 0; i < 2; ++i) { // the second answers from the latch
+        Feed f = loadFeed(e, model::Backend::ActivityFilter::All, false);
+        REQUIRE(f.called);
+        CHECK(!f.ok);
+        CHECK_STR(f.page.error, "not_allowed_token_type");
+    }
+    CHECK(count("activity.feed") == 1);
+}
+
+TEST("slack features: an OAuth token has no Activity page") {
+    if (!haveServer())
+        return;
+    Env e({}, false);
+    REQUIRE(e.connect());
+    CHECK_FALSE(e.be->capabilities().activityView);
+    Feed f = loadFeed(e, model::Backend::ActivityFilter::All, false);
+    CHECK(f.called);
+    CHECK(!f.ok);
+    CHECK(count("activity.feed") == 0);
 }
 
 #endif // !_WIN32

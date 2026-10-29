@@ -64,6 +64,7 @@ protected:
 
     screens::Context    &_ctx;
     Avatars             &_avatars;
+    ui::View            *_rule   = nullptr; // the hairline under the title
     ui::ScrollView      *_scroll = nullptr;
     ui::Label           *_status = nullptr;
     ui::View            *_list   = nullptr; // the cards

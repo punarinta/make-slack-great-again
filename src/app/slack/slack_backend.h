@@ -79,11 +79,17 @@ public:
     int64_t      nowSecs() const override;
     // The Threads page: subscriptions.thread.getView (session tokens only).
     void         loadThreadsView(std::string cursor, ThreadsViewDone done) override;
-    void         loadMessage(model::ConvRef conv, model::Ts ts, MessageDone done) override;
-    void         resolveChannel(const std::string &id) override;
-    bool         threadFollowed(model::ConvRef conv, model::Ts root) const override;
-    void         resolveUser(model::UserRef u) override;
-    void         requestPresence(model::UserRef u) override;
+    // The Activity page (slack_activity.cpp): activity.feed, its messages
+    // from messages.list, activity.markRead / markUnread (session tokens only).
+    void         loadActivity(
+        ActivityFilter filter, bool unreadOnly, std::string cursor, ActivityDone done
+    ) override;
+    void setActivityRead(const ActivityItem &item, bool read) override;
+    void loadMessage(model::ConvRef conv, model::Ts ts, MessageDone done) override;
+    void resolveChannel(const std::string &id) override;
+    bool threadFollowed(model::ConvRef conv, model::Ts root) const override;
+    void resolveUser(model::UserRef u) override;
+    void requestPresence(model::UserRef u) override;
 
     // ── Write side (slack_actions.cpp) ──────────────────────────────────────
     void send(model::ConvRef conv, std::string text, model::Ts threadTs, Done done) override;
@@ -368,6 +374,14 @@ private:
     // Enterprise Grid (auth.test's enterprise_id), and the thread
     // methods there refused without team_id once: they send it since.
     bool                               _grid = false, _threadsTeamId = false;
+    // The activity feed refused for good (its code, for the page), or on
+    // Grid refused without team_id once (slack_activity.cpp).
+    bool                               _activityUnavailable = false, _activityTeamId = false;
+    std::string                        _activityError;
+    // The page's messages: messages.list, or one conversations.history each
+    // where that is refused.
+    bool                               _messagesListUnavailable = false;
+    void                               fillActivity(ActivityFeed page, ActivityDone done);
     std::shared_ptr<bool>              _alive;
     Read                              *_read  = nullptr;
     Write                             *_write = nullptr;

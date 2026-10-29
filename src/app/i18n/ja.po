@@ -1283,7 +1283,7 @@ msgstr "後で見るために保存済み"
 msgid "Show less"
 msgstr "折りたたむ"
 
-#: src/app/screens/messages/rows.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/activity_page.cpp
 msgid "Show more"
 msgstr "さらに表示"
 
@@ -1363,7 +1363,7 @@ msgstr "[ファイル: %1]"
 msgid "untitled"
 msgstr "無題"
 
-#: src/app/screens/messages/thread_export.cpp
+#: src/app/screens/messages/thread_export.cpp src/app/screens/shell/activity_page.cpp
 msgid "Thread in %1"
 msgstr "%1のスレッド"
 
@@ -1515,7 +1515,7 @@ msgstr "12時間表示（午後2:34）"
 msgid "24-hour clock (14:34)"
 msgstr "24時間表示（14:34）"
 
-#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/sidebar.cpp src/app/screens/shell/threads_page.cpp
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/activity_page.cpp src/app/screens/shell/sidebar.cpp src/app/screens/shell/threads_page.cpp
 msgid "Threads"
 msgstr "スレッド"
 
@@ -2321,6 +2321,74 @@ msgstr "すべてのSlackワークスペースはすでにセッションを使�
 msgid "Couldn't convert your workspaces: %1"
 msgstr "ワークスペースを切り替えられませんでした: %1"
 
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mention in %1"
+msgstr "%1でのメンション"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Reacted %1 to your message in %2"
+msgstr "%2であなたのメッセージに%1でリアクションしました"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Group message"
+msgstr "グループメッセージ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Direct message"
+msgstr "ダイレクトメッセージ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "New messages in %1"
+msgstr "%1の新着メッセージ"
+
+#: src/app/screens/shell/activity_page.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
+msgid "No preview available"
+msgstr "プレビューはありません"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mark as read"
+msgstr "既読にする"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mark as unread"
+msgstr "未読にする"
+
+#: src/app/screens/shell/activity_page.cpp src/app/screens/shell/sidebar.cpp
+msgid "Activity"
+msgstr "アクティビティ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "All"
+msgstr "すべて"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "DMs"
+msgstr "DM"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mentions"
+msgstr "メンション"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Unread messages"
+msgstr "未読メッセージ"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Loading activity…"
+msgstr "アクティビティを読み込み中…"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Couldn't load activity. Try again later."
+msgstr "アクティビティを読み込めませんでした。後でもう一度お試しください。"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "You're all caught up."
+msgstr "すべて確認済みです。"
+
+#: src/app/screens/shell/activity_page.cpp
+msgid "Mentions, replies, reactions and direct messages will appear here."
+msgstr "メンション、返信、リアクション、ダイレクトメッセージがここに表示されます。"
+
 #: src/app/screens/shell/canvas_page.cpp
 msgid "Your canvas title"
 msgstr "canvasのタイトル"
@@ -2943,10 +3011,6 @@ msgstr "%1 には一致する会話がありません。他のワークスペー
 #: src/app/screens/shell/saved_page.cpp
 msgid "Reminder set for %1"
 msgstr "リマインダー: %1"
-
-#: src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
-msgid "No preview available"
-msgstr "プレビューはありません"
 
 #: src/app/screens/shell/saved_page.cpp src/app/screens/shell/sidebar.cpp
 msgid "Saved messages"

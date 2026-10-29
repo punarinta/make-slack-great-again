@@ -20,6 +20,7 @@
 #include <functional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace shell {
 
@@ -65,17 +66,20 @@ private:
 // Where the huddle button sends a conversation.
 std::string huddleJoinUrl(const model::Store &st, model::ConvRef conv);
 
-// The conversation tabs: 38 px (the bottom divider included), tabs 16 px in,
-// the active one bold with a 2 px underline over the divider.
-class ConvTabs : public ui::View {
+// A row of tabs: 38 px (the bottom divider included), tabs 16 px in, each
+// an icon (or none) and its text, the active one bold with a 2 px underline
+// over the divider. A click on another tab activates it and calls onSelect.
+class TabStrip : public ui::View {
 public:
-    ConvTabs();
-    // hasCanvas: the second tab names the canvas (title, "Untitled"), else
-    // offers "Add canvas"; visible = false leaves only Messages.
-    void           setCanvas(bool visible, bool hasCanvas, std::string title);
-    void           setActive(int tab); // 0 Messages, 1 canvas
+    TabStrip();
+    // Appends a tab (an icon and its text, or the text alone); returns its
+    // index.
+    int            addTab(gfx::Icon icon, std::string text);
+    int            addTab(std::string text);
+    void           setActive(int tab);
     int            active() const { return _active; }
-    ui::Clickable *tab(int i) const { return _tabs[i]; }
+    size_t         tabCount() const { return _tabs.size(); }
+    ui::Clickable *tab(int i) const { return _tabs[size_t(i)]; }
     std::string    tabText(int i) const;
 
     std::function<void(int tab)> onSelect;
@@ -83,10 +87,20 @@ public:
     void paint(gfx::Painter &p) override;
     void paintOver(gfx::Painter &p) override;
 
-private:
-    void           restyle();
-    ui::Clickable *_tabs[2] = {};
-    int            _active  = 0;
+protected:
+    int                          addTab(gfx::Icon icon, bool hasIcon, std::string text);
+    void                         setTab(int i, gfx::Icon icon, std::string text);
+    std::vector<ui::Clickable *> _tabs;
+    int                          _active = 0;
+};
+
+// The conversation tabs: Messages, then the canvas.
+class ConvTabs : public TabStrip {
+public:
+    ConvTabs();
+    // hasCanvas: the second tab names the canvas (title, "Untitled"), else
+    // offers "Add canvas"; visible = false leaves only Messages.
+    void setCanvas(bool visible, bool hasCanvas, std::string title);
 };
 
 } // namespace shell

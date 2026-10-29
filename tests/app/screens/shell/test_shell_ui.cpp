@@ -198,18 +198,22 @@ std::string joined(const std::vector<std::string> &v) {
 
 TEST("sidebar: the entries and sections, and Saved messages while something is saved") {
     Harness h;
-    CHECK_STR(joined(h.sidebar().sectionTitles()), "Threads|Starred|Channels|Direct messages");
+    CHECK_STR(
+        joined(h.sidebar().sectionTitles()), "Activity|Threads|Starred|Channels|Direct messages"
+    );
     const ConvRef design = h.conv("C0DESIGN");
     const Ts      ts     = h.store.conversation(design).messages.back().ts;
     h.backend.setSaved(design, ts, true);
     pump();
     CHECK_STR(
         joined(h.sidebar().sectionTitles()),
-        "Threads|Saved messages|Starred|Channels|Direct messages"
+        "Activity|Threads|Saved messages|Starred|Channels|Direct messages"
     );
     h.backend.setSaved(design, ts, false);
     pump();
-    CHECK_STR(joined(h.sidebar().sectionTitles()), "Threads|Starred|Channels|Direct messages");
+    CHECK_STR(
+        joined(h.sidebar().sectionTitles()), "Activity|Threads|Starred|Channels|Direct messages"
+    );
 }
 
 TEST("sidebar: a collapsed section lists nothing; opening one of its chats expands it") {
@@ -278,11 +282,13 @@ TEST("sidebar: bot DMs live under Agents & apps, which Settings can hide") {
     h.sidebar().rebuild();
     CHECK_STR(
         joined(h.sidebar().sectionTitles()),
-        "Threads|Starred|Channels|Direct messages|Agents & apps"
+        "Activity|Threads|Starred|Channels|Direct messages|Agents & apps"
     );
     h.settings.showAgentsApps = false;
     h.sh->applySettings();
-    CHECK_STR(joined(h.sidebar().sectionTitles()), "Threads|Starred|Channels|Direct messages");
+    CHECK_STR(
+        joined(h.sidebar().sectionTitles()), "Activity|Threads|Starred|Channels|Direct messages"
+    );
 }
 
 TEST("sidebar: a DM whose peer was deactivated is not listed") {

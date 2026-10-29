@@ -83,6 +83,7 @@ void runSoak(
                 break;
             }
     }
+    steps.push_back([shp] { shp->showPage(shell::Shell::Page::Activity); });
     steps.push_back([shp] { shp->showPage(shell::Shell::Page::Threads); });
     steps.push_back([shp] { shp->showPage(shell::Shell::Page::Saved); });
     steps.push_back([shp] { shp->showPage(shell::Shell::Page::Scheduled); });

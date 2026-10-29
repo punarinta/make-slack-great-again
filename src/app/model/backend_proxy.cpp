@@ -207,6 +207,14 @@ void BackendProxy::loadThreadsView(std::string cursor, ThreadsViewDone done) {
 void BackendProxy::markThreadRead(ConvRef c, Ts root, Ts ts) {
     _t->markThreadRead(c, root, ts);
 }
+void BackendProxy::loadActivity(
+    ActivityFilter f, bool unreadOnly, std::string cursor, ActivityDone done
+) {
+    _t->loadActivity(f, unreadOnly, std::move(cursor), std::move(done));
+}
+void BackendProxy::setActivityRead(const ActivityItem &item, bool read) {
+    _t->setActivityRead(item, read);
+}
 int64_t BackendProxy::nowSecs() const {
     return _t->nowSecs();
 }

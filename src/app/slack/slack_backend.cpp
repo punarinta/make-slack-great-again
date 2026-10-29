@@ -2545,6 +2545,9 @@ void SlackBackend::Read::pollUnreadCounts() {
         if (err.empty()) {
             countsFailures = 0;
             applyActivity(mapjson::toCounts(doc.root()), true);
+            // The Activity entry: the feed's unread items (activity_v2).
+            if (session)
+                s.setUnreadActivity(mapjson::activityUnread(doc.root()));
             // A followed thread has unread replies: maybe a watched one.
             const bool unread = doc.root()["threads"]["has_unreads"].boolean();
             if (unread && !threadsUnread)
@@ -3682,6 +3685,7 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.scheduledSend    = true;                 // chat.scheduleMessage
     c.memberList       = true;                 // conversations.members
     c.threadsView      = _creds.sessionAuth(); // subscriptions.thread.getView: xoxc only
+    c.activityView     = _creds.sessionAuth(); // activity.feed: xoxc only
     c.messageReminders = _creds.sessionAuth(); // saved.*: xoxc only
     c.presence         = true;                 // polled users.getPresence
     c.selfStatus       = true;

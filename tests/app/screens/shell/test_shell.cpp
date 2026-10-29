@@ -38,6 +38,7 @@
 #include "screens/shell/shell.h"
 #include "screens/settings/settings_dialog.h"
 #include "screens/shell/threads_page.h"
+#include "screens/shell/activity_page.h"
 #include "screens/shell/nav_chrome.h"
 #include "screens/shell/voice_strip.h"
 
@@ -599,10 +600,10 @@ TEST("sections: a new section sits under Starred and takes its rows out of the o
     Harness         h;
     shell::Sidebar &sb  = h.sh->sidebar();
     const ConvRef   eng = h.conv("C0ENG"), mira = h.conv("D0MIRA");
-    CHECK_STR(titles(sb), "Threads|Starred|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
     h.backend.createSection("Projects", "rocket", eng);
     pump();
-    CHECK_STR(titles(sb), "Threads|Starred|Projects|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Projects|Channels|Direct messages");
     REQUIRE(h.store.sections().size() == 1);
     const std::string id = h.store.sections()[0].id;
     CHECK_STR(sb.rowSection(eng), id);
@@ -615,17 +616,17 @@ TEST("sections: a new section sits under Starred and takes its rows out of the o
     // A second section goes on top; moving one down swaps them back.
     h.backend.createSection("Later", "", kNoConv);
     pump();
-    CHECK_STR(titles(sb), "Threads|Starred|Later|Projects|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Later|Projects|Channels|Direct messages");
     h.backend.moveSection(h.store.sections()[0].id, 1);
     pump();
-    CHECK_STR(titles(sb), "Threads|Starred|Projects|Later|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Projects|Later|Channels|Direct messages");
     // Renamed in place; deleted, its rows go back where they came from.
     h.backend.updateSection(id, "Work", "");
     pump();
-    CHECK_STR(titles(sb), "Threads|Starred|Work|Later|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Work|Later|Channels|Direct messages");
     h.backend.deleteSection(id);
     pump();
-    CHECK_STR(titles(sb), "Threads|Starred|Later|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Later|Channels|Direct messages");
     CHECK_STR(sb.rowSection(eng), "");
     CHECK(sb.rowState(eng).exists);
     CHECK(sb.rowState(mira).exists);
@@ -645,7 +646,7 @@ TEST("sections: a conversation is in one place: starring and moving trade it") {
     CHECK_STR(sb.rowSection(general), "");
     CHECK(h.store.sections()[0].convs.empty());
     // An empty section still shows its header.
-    CHECK_STR(titles(sb), "Threads|Starred|Projects|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Projects|Channels|Direct messages");
 }
 
 TEST("sections: a dropped row lands in the section; Channels takes it back") {
@@ -2436,6 +2437,198 @@ TEST("threads page: participants, and a feed that can't be loaded") {
     CHECK_STR(
         page2.statusText(), "Couldn't load threads. Try again later. (enterprise_is_restricted)"
     );
+}
+
+// ── The Activity page ───────────────────────────────────────────────────────
+
+namespace {
+
+// Pumps until the Activity page has answered.
+void waitForActivity(shell::ActivityPage &page) {
+    for (int i = 0; i < 200 && page.statusText() == "Loading activity…"; ++i)
+        app().pump(5);
+}
+
+// The first item of that kind (SIZE_MAX: none).
+size_t firstOf(const shell::ActivityPage &page, model::Backend::ActivityItem::Kind k) {
+    for (size_t i = 0; i < page.itemCount(); ++i)
+        if (page.item(i).kind == k)
+            return i;
+    return SIZE_MAX;
+}
+
+} // namespace
+
+TEST("activity page: the sidebar entry opens the feed, newest first; the tabs filter it") {
+    using Kind = model::Backend::ActivityItem::Kind;
+    Harness h;
+    REQUIRE(h.backend.capabilities().activityView);
+    h.sh->sidebar().onActivity(); // the entry's click
+    CHECK(h.sh->pageOpen(shell::Shell::Page::Activity));
+    CHECK(h.sh->sidebar().selectedNav() == shell::Sidebar::Nav::Activity);
+    CHECK(h.sh->sidebar().selected() == kNoConv);
+    CHECK(h.sh->current() == kNoConv);
+    CHECK(!h.sh->composer().visible());
+    shell::ActivityPage &page = *h.sh->activityPage();
+    CHECK(page.tabs().tabCount() == 4);
+    CHECK_STR(page.tabs().tabText(0), "All");
+    CHECK_STR(page.tabs().tabText(3), "Threads");
+    CHECK(page.tabs().active() == 0);
+    CHECK_STR(page.statusText(), "Loading activity…");
+    waitForActivity(page);
+    REQUIRE(page.itemCount() > 0);
+    CHECK_STR(page.statusText(), "");
+    for (size_t i = 1; i < page.itemCount(); ++i)
+        CHECK(page.item(i).ts <= page.item(i - 1).ts);
+    // The fixture mentions me, has DMs and threads I'm in.
+    const size_t mention = firstOf(page, Kind::Mention);
+    REQUIRE(mention != SIZE_MAX);
+    CHECK(page.row(mention).context().starts_with("Mention in #"));
+    REQUIRE(firstOf(page, Kind::Dm) != SIZE_MAX);
+    CHECK_STR(page.row(firstOf(page, Kind::Dm)).context(), "Direct message");
+    REQUIRE(firstOf(page, Kind::Thread) != SIZE_MAX);
+    CHECK(page.row(firstOf(page, Kind::Thread)).context().starts_with("Thread in #"));
+
+    // A tab: its kind alone.
+    const std::pair<shell::ActivityPage::Filter, Kind> tabs[] = {
+        {shell::ActivityPage::Filter::Dms, Kind::Dm},
+        {shell::ActivityPage::Filter::Mentions, Kind::Mention},
+        {shell::ActivityPage::Filter::Threads, Kind::Thread},
+    };
+    for (const auto &[filter, kind] : tabs) {
+        page.setFilter(filter);
+        CHECK(page.filter() == filter);
+        waitForActivity(page);
+        REQUIRE(page.itemCount() > 0);
+        for (size_t i = 0; i < page.itemCount(); ++i)
+            CHECK(page.item(i).kind == kind);
+    }
+    // A click on a tab does the same.
+    page.tabs().tab(0)->onClick();
+    CHECK(page.filter() == shell::ActivityPage::Filter::All);
+    waitForActivity(page);
+    CHECK(firstOf(page, Kind::Dm) != SIZE_MAX);
+    CHECK(firstOf(page, Kind::Thread) != SIZE_MAX);
+
+    // Opening a conversation leaves the page and its highlight.
+    h.sh->open(h.conv("C0DESIGN"));
+    CHECK(!h.sh->pageOpen(shell::Shell::Page::Activity));
+    CHECK(h.sh->sidebar().selectedNav() != shell::Sidebar::Nav::Activity);
+    CHECK(h.sh->composer().visible());
+}
+
+TEST("activity page: an item opens its message or its thread and is read") {
+    using Kind = model::Backend::ActivityItem::Kind;
+    Harness h;
+    h.sh->showPage(shell::Shell::Page::Activity);
+    shell::ActivityPage &page = *h.sh->activityPage();
+    waitForActivity(page);
+    const size_t dm = firstOf(page, Kind::Dm);
+    REQUIRE(dm != SIZE_MAX);
+    const ConvRef dmConv = page.item(dm).conv;
+    page.activate(dm);
+    CHECK(!h.sh->pageOpen(shell::Shell::Page::Activity));
+    CHECK(h.sh->current() == dmConv);
+    CHECK(!h.sh->threadOpen());
+
+    // A thread: its thread panel. Read since: unread no more after a reload.
+    h.sh->showPage(shell::Shell::Page::Activity);
+    CHECK(h.sh->sidebar().selectedNav() == shell::Sidebar::Nav::Activity);
+    waitForActivity(page);
+    const size_t th = firstOf(page, Kind::Thread);
+    REQUIRE(th != SIZE_MAX);
+    const ConvRef thConv = page.item(th).conv;
+    const Ts      root   = page.item(th).thread;
+    const auto    key    = page.item(th).key;
+    page.activate(th);
+    CHECK(h.sh->current() == thConv);
+    CHECK(h.sh->threadOpen());
+    h.sh->showPage(shell::Shell::Page::Activity);
+    waitForActivity(page);
+    for (size_t i = 0; i < page.itemCount(); ++i)
+        if (page.item(i).key == key)
+            CHECK(!page.item(i).unread);
+    CHECK(root != 0);
+}
+
+TEST("activity page: mark as read / unread, and the unread filter") {
+    Harness h;
+    h.sh->showPage(shell::Shell::Page::Activity);
+    shell::ActivityPage &page = *h.sh->activityPage();
+    waitForActivity(page);
+    REQUIRE(page.itemCount() > 1);
+    // Item 0 read, item 1 unread: the toggle flips each, the row follows.
+    if (page.item(0).unread)
+        page.toggleRead(0);
+    if (!page.item(1).unread)
+        page.toggleRead(1);
+    CHECK(!page.item(0).unread);
+    CHECK(!page.row(0).unread());
+    CHECK(page.row(1).unread());
+    const auto readKey = page.item(0).key, unreadKey = page.item(1).key;
+
+    // Unread messages: only the unread ones (the backend kept the marks).
+    page.setUnreadOnly(true);
+    CHECK(page.unreadOnly());
+    waitForActivity(page);
+    bool sawUnread = false;
+    for (size_t i = 0; i < page.itemCount(); ++i) {
+        CHECK(page.item(i).unread);
+        CHECK(page.item(i).key != readKey);
+        sawUnread |= page.item(i).key == unreadKey;
+    }
+    CHECK(sawUnread);
+    // All read: the caught-up line.
+    while (page.itemCount() && page.item(0).unread) {
+        for (size_t i = 0; i < page.itemCount(); ++i)
+            if (page.item(i).unread)
+                page.toggleRead(i);
+        page.setUnreadOnly(false);
+        page.setUnreadOnly(true);
+        waitForActivity(page);
+    }
+    CHECK(page.itemCount() == 0);
+    CHECK_STR(page.statusText(), "You're all caught up.");
+}
+
+TEST("activity page: the entry is bright while the feed has unread items; a failing feed") {
+    Harness h;
+    CHECK(!h.sh->sidebar().activityUnread());
+    h.store.setUnreadActivity(2);
+    CHECK(h.sh->sidebar().activityUnread());
+    h.store.setUnreadActivity(0);
+    CHECK(!h.sh->sidebar().activityUnread());
+
+    struct RefusedFeed : fake::FakeBackend {
+        using FakeBackend::FakeBackend;
+        void loadActivity(ActivityFilter, bool, std::string, ActivityDone done) override {
+            app().platform().post([done] {
+                ActivityFeed failed;
+                failed.error = "not_allowed_token_type";
+                done(false, std::move(failed));
+            });
+        }
+    };
+    RefusedFeed         rf{h.store, app().platform()};
+    screens::Context    refused{app(), h.store, rf, h.ctx.images, {}, {}, {}, {}, {}};
+    shell::ActivityPage page(refused, h.sh->avatars());
+    page.open();
+    waitForActivity(page);
+    CHECK_STR(
+        page.statusText(), "Couldn't load activity. Try again later. (not_allowed_token_type)"
+    );
+    CHECK(page.itemCount() == 0);
+}
+
+TEST("activity page: the conversation tabs still read Messages | canvas") {
+    Harness          h;
+    shell::ConvTabs &tabs = h.sh->tabs();
+    CHECK(tabs.tabCount() == 2);
+    CHECK_STR(tabs.tabText(0), "Messages");
+    tabs.setCanvas(true, true, "Plan");
+    CHECK_STR(tabs.tabText(1), "Plan");
+    tabs.setCanvas(true, false, {});
+    CHECK_STR(tabs.tabText(1), "Add canvas");
 }
 
 // ── AI assistance → the LLM layer ───────────────────────────────────────────

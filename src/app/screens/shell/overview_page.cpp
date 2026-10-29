@@ -51,7 +51,7 @@ OverviewPage::OverviewPage(screens::Context &ctx, Avatars &avatars, std::string 
     auto *header = add<View>();
     header->style().row().height(48).padding(16, 0, 8, 0).items(Align::Center).noShrink();
     header->add<Label>(std::move(title), Font::Title)->style().flex(1);
-    add<Separator>(false, C::FormDivider);
+    _rule   = add<Separator>(false, C::FormDivider);
     _scroll = add<ScrollView>();
     _scroll->style().flex(1);
     View *content = _scroll->content();
