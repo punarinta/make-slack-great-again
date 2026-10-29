@@ -309,6 +309,27 @@ public:
     // Drops one (cancelled or sent from here); fires Meta like setScheduled.
     void                              removeScheduled(const std::string &id);
 
+    // ── Sidebar sections ────────────────────────────────────────────────────
+    // The user's own sidebar sections (Slack's custom sections), top to
+    // bottom: each lists its conversations by id, in the order they were
+    // put there. A conversation is in at most one, and a section's rows
+    // replace the Starred / Channels / Direct messages ones. Only this user
+    // sees them.
+    struct Section {
+        std::string              id, name;
+        std::string              emoji; // shortcode without colons ("" = none)
+        std::vector<std::string> convs;
+        bool                     operator==(const Section &) const = default;
+    };
+    const std::vector<Section> &sections() const { return _sections; }
+    // The one holding conversation `convId` (null: none).
+    const Section              *sectionOf(std::string_view convId) const;
+    const Section              *findSection(std::string_view id) const;
+    // Replaces the list; fires Meta with conv = kNoConv when it changed.
+    void                        setSections(std::vector<Section> sections);
+    // Grows with every change of the list.
+    uint64_t                    sectionsRevision() const { return _sectionsRev; }
+
     // ── "Transcribe with AI" ────────────────────────────────────────────────
     // AI transcripts of audio files (app-local: Slack has no write API
     // for a file's transcript). Setting one fires Update for every loaded
@@ -392,6 +413,8 @@ private:
     std::vector<Draft>                           _drafts;                   // few: linear is fine
     std::vector<SavedItem>                       _saved;
     std::vector<ScheduledItem>                   _scheduled;
+    std::vector<Section>                         _sections;
+    uint64_t                                     _sectionsRev = 0;
     std::vector<Usergroup>                       _usergroups;
     std::unordered_map<std::string, std::string> _channelNames;
     std::unordered_map<std::string, UserRef>     _linkedAuthors; // "conv/ts"

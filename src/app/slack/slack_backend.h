@@ -103,6 +103,11 @@ public:
     void setMuted(model::ConvRef conv, bool muted) override;
     void setNotifyLevel(model::ConvRef conv, model::NotifyLevel level) override;
     void leave(model::ConvRef conv) override;
+    void createSection(std::string name, std::string emoji, model::ConvRef first) override;
+    void updateSection(const std::string &id, std::string name, std::string emoji) override;
+    void deleteSection(const std::string &id) override;
+    void moveToSection(model::ConvRef conv, const std::string &id) override;
+    void moveSection(const std::string &id, int step) override;
     void openDm(model::UserRef user, std::function<void(model::ConvRef)> done) override;
     void joinChannel(model::ConvRef conv, ConvDone done) override;
     void createChannel(std::string name, bool isPrivate, ConvDone done) override;
@@ -232,6 +237,11 @@ public:
     // cancels it (done never runs after ~SlackBackend). An auth error also
     // fires onAuthLost (once).
     void api(std::string_view method, std::string form, ApiDone done);
+    // A users.channelSections.* edit: counted while in flight (no list lands
+    // meanwhile), a refusal shown in the error banner and set right by a list.
+    void sectionCall(
+        std::string_view method, std::string form, std::function<void(const json::Document &)> onOk
+    );
     // The same for a call whose answer is ok or an error (slack_actions.cpp):
     // a cancel is silent, a failure is logged and `done` hears it; on ok
     // onOk(doc) runs first, then done(true). Either may be null.

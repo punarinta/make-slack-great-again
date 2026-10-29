@@ -91,6 +91,11 @@ public:
     void         pressButton(ConvRef c, Ts ts, const std::string &buttonId, Done d) override;
     void         setZenMode(bool on) override;
     void         setLocalName(ConvRef c, std::string name) override;
+    void         createSection(std::string name, std::string emoji, ConvRef first) override;
+    void         updateSection(const std::string &id, std::string name, std::string emoji) override;
+    void         deleteSection(const std::string &id) override;
+    void         moveToSection(ConvRef c, const std::string &id) override;
+    void         moveSection(const std::string &id, int step) override;
     void         userTyping(ConvRef c, Ts thread) override;
     Capabilities capabilities() const override;
     SelfPresence selfPresence() const override;

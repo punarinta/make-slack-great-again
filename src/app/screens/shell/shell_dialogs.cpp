@@ -21,6 +21,7 @@
 #include "ui/controls.h"
 
 #ifdef MSGA_HAVE_MESSAGES
+#include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/message_dialogs.h"
 #endif
 
@@ -1382,6 +1383,102 @@ Popup *showWorkspaceIconDialog(
         ctx, avatars, workspaceId, defaultIcon, cur, std::move(done)
     );
     auto *raw = d.get();
+    w.showPopup(std::move(d));
+    return raw;
+}
+
+Popup *showSectionDialog(screens::Context &ctx, Window &w, const std::string &id, ConvRef first) {
+    const model::Store::Section *sec = id.empty() ? nullptr : ctx.store().findSection(id);
+    if (!id.empty() && !sec)
+        return nullptr;
+    auto d = std::make_unique<Dialog>(sec ? tr("Rename section") : tr("Create a section"));
+    styledLabel(d->content(), tr("Name"), pxFont(15, text::Weight::Bold, color(C::FormText)));
+    // The emoji button and the name in one bordered box, as in "Set a status".
+    auto *box = d->content()->add<View>();
+    box->style().row().items(Align::Center).padding(8, 4).spacing(8).height(40);
+    box->setBackground(C::FormBg, 6);
+    box->setBorder(C::FieldBorder);
+    auto *emojiBtn = box->add<Clickable>();
+    emojiBtn->style().size(30, 30).stack().items(Align::Center).noShrink();
+    emojiBtn->setLook({C::None, C::FormSunken, C::FormSunken, C::None, 6});
+    auto *smiley = emojiBtn->add<IconView>(gfx::Icon::Smile, 20, C::FormTextFaint);
+    auto *glyph  = emojiBtn->add<Label>("", Font::Title);
+    auto *field  = box->add<TextEdit>();
+    field->style().flex(1);
+    field->setMaxLines(1);
+    field->setFont(Font::Field);
+    field->setPlaceholder(tr("e.g. Projects"));
+    field->onChange = [field] {
+        const std::string &t = field->text();
+        if (const size_t n = utf8::prefixBytes(t, 80); n < t.size()) // Slack's cap
+            field->setText(t.substr(0, n));
+    };
+    auto emoji = std::make_shared<std::string>();
+    auto show  = [&ctx, emoji, smiley, glyph](std::string name) {
+        *emoji              = std::move(name);
+        const std::string g = emoji->empty() ? std::string() : ctx.store().emojiFor(*emoji).unicode;
+        smiley->setVisible(g.empty());
+        glyph->setVisible(!g.empty());
+        glyph->setText(g);
+    };
+    show(sec ? sec->emoji : std::string());
+    if (sec)
+        field->setText(sec->name);
+#ifdef MSGA_HAVE_MESSAGES
+    emojiBtn->onClick = [&ctx, emojiBtn, field, show] {
+        if (Window *win = emojiBtn->window())
+            screens::EmojiPicker::show(
+                *win, emojiBtn->windowRect(), ctx, [field, show](const std::string &n) {
+                    show(n);
+                    field->focus();
+                }
+            );
+    };
+#endif
+    styledLabel(
+        d->content(),
+        tr("Only you see your sections."),
+        pxFont(11, text::Weight::Regular, color(C::FormTextMuted))
+    );
+    auto *save = Dialog::makeButton(sec ? tr("Save") : tr("Create"), V::Primary);
+    d->addButtonRow(save, Dialog::makeButton(tr("Cancel"), V::Secondary));
+    Dialog *raw   = d.get();
+    // Read the field before accept() closes the dialog.
+    save->onClick = [raw, field, emoji, &ctx, id, first] {
+        std::string name(str::trim(field->text()));
+        if (name.empty()) {
+            field->focus();
+            return;
+        }
+        std::string e = *emoji;
+        raw->accept();
+        if (id.empty())
+            ctx.backend.createSection(std::move(name), std::move(e), first);
+        else
+            ctx.backend.updateSection(id, std::move(name), std::move(e));
+    };
+    field->onSubmit = [save] { return save->onClick(), true; };
+    w.showPopup(std::move(d));
+    field->focus();
+    return raw;
+}
+
+Popup *showDeleteSectionDialog(screens::Context &ctx, Window &w, const std::string &id) {
+    const model::Store::Section *sec = ctx.store().findSection(id);
+    if (!sec)
+        return nullptr;
+    auto d = Dialog::confirm(
+        tr("Delete section"),
+        i18n::arg(
+            tr("Delete \"%1\"? Its conversations go back to where they were listed before."),
+            sec->name
+        ),
+        tr("Delete"),
+        V::Danger,
+        themed(C::FormText)
+    );
+    Dialog *raw   = d.get();
+    d->onAccepted = [&ctx, id] { ctx.backend.deleteSection(id); };
     w.showPopup(std::move(d));
     return raw;
 }

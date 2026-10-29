@@ -7,6 +7,12 @@
 // for the ones outside the relevant-days window, "Add channels", and the
 // footer (avatar + menu, presence toggle). Over the nav gradient.
 //
+// With Capabilities::customSections the user's own sections
+// (Store::sections) come between Starred and Channels, each under its emoji
+// (the list icon without one) and holding its conversations in its own
+// order, whatever the filters. A right click on a header opens the section
+// menu (Menus::showSection); a conversation's menu moves it between them.
+//
 // An agent workspace (Capabilities::agentSessions, Claude Code) calls the
 // direct messages "Sessions" and ends them with "Add sessions" (its "+" and
 // that row open the find-or-create menu), and lists the team
@@ -112,6 +118,11 @@ public:
     std::vector<std::string> sectionTitles() const;
     // Collapses or expands a section by title (tests; a click does the same).
     bool                     toggleSection(std::string_view title);
+    // A row dropped on the section titled so (tests; a drag does the same):
+    // false where it can't go (its own section, the Team…).
+    bool                     dropOnSection(model::ConvRef conv, std::string_view title);
+    // The custom section a conversation's row is under ("" = a built-in one).
+    std::string              rowSection(model::ConvRef conv) const;
     void                     showAllChannels(); // the "N more channels" row
 
     std::function<void()>                    onThreads;       // the Threads entry
@@ -176,6 +187,11 @@ private:
     bool               isApp(const model::Conversation &c) const;
     bool               relevant(model::ConvRef c) const;
     void               applyCollapse(SectionHeader *h);
+    // A conversation row dragged onto a section (ConvRow's press handling).
+    SectionHeader     *sectionAt(ui::PointF windowPos) const;
+    void               dragRow(ConvRow *row, ui::PointF windowPos);
+    void               dropRow(bool drop); // false: cancelled
+    void               moveInto(model::ConvRef conv, SectionHeader *to);
     // reveal: scroll the selected row into view afterwards.
     void               rebuildSoon(bool reveal = true);
     void               usersSoon();
@@ -217,8 +233,11 @@ private:
     int                      _rebuilds        = 0;
     bool                     _revealOnRebuild = false;
     int                      _hiddenChannels  = 0;
-    bool                     _collapsed[5]    = {}; // starred, channels, DMs, apps, team
-    bool                     _showAllChannels = false;
+    bool                     _collapsed[5]    = {};         // starred, channels, DMs, apps, team
+    std::unordered_map<std::string, bool> _collapsedCustom; // the user's sections, by id
+    uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
+    ConvRow *_dragRow         = nullptr; // a row being dragged
+    bool     _showAllChannels = false;
 };
 
 } // namespace shell

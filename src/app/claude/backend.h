@@ -206,6 +206,7 @@ private:
     void                       loadKnown();
     void                       saveKnown();
     void                       scheduleSaveKnown();
+    void                       sectionsChanged() override; // kept with the known sessions
     Tracked                   &ensureTracked(const std::string &convId);
     Tracked                   *find(std::string_view convId);
     const Tracked             *find(std::string_view convId) const;
@@ -546,6 +547,7 @@ private:
     std::string                            _myName;       // "" = the login name
     std::string                            _myAvatarPath; // a copy in msga's data; "" = initials
     std::string                            _lastConv;     // the conversation open last
+    std::vector<model::Store::Section>     _sections;     // the sidebar's own (Store::sections)
     std::unordered_map<std::string, std::unique_ptr<SubagentFeed>> _subagents; // by transcript path
     uint64_t                        _subagentParses = 0; // parseSubagentOnWorker's, numbered
     std::vector<std::string>        _subagentsReadFor; // conversations synced again (subagentsRead)

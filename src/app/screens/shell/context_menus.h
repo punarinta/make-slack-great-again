@@ -1,6 +1,6 @@
-// The shell's context menus — sidebar conversations, an agent workspace's
-// session "+" and teammates, and the workspace tile on the rail — and what
-// their items do.
+// The shell's context menus — sidebar conversations and section headers, an
+// agent workspace's session "+" and teammates, and the workspace tile on the
+// rail — and what their items do.
 //
 // Items, order and wording are fixed per menu (channel, group DM, DM,
 // teammate, workspace and agent session). Every
@@ -52,6 +52,8 @@ public:
         kRename, // group DMs, agent sessions
         kLeave,
         kStopSession,
+        kNewSection,        // "Move to section" → "New section…"
+        kRemoveFromSection, // "Remove from <section>"
         // The workspace (no target)
         kWorkspaceAdmin = 40,
         kChangeIcon,
@@ -66,6 +68,15 @@ public:
         kEditTeammate = 70,
         kRestoreTeammate,
         kRemoveTeammate,
+        // A section header in the sidebar (target: the section's id, "" for
+        // one of the built-in sections)
+        kCreateSection = 80,
+        kRenameSection,
+        kDeleteSection,
+        kSectionUp,
+        kSectionDown,
+        // "Move to section" → the n-th section (target: ConvRef)
+        kMoveToSection = 200,
     };
 
     Menus(Shell &shell, screens::Context &ctx, ui::Window &win);
@@ -78,6 +89,10 @@ public:
     // An agent session's "+" menu, and a teammate's menu.
     std::vector<ui::MenuItem> sessionItems() const;
     std::vector<ui::MenuItem> teammateItems(const model::Backend::AgentRole &mate) const;
+    // A sidebar section header's menu: `section` is a custom section's id,
+    // "" a built-in section (Channels, Direct messages…).
+    std::vector<ui::MenuItem> sectionItems(const std::string &section) const;
+    void                      runSection(int id, const std::string &section);
     // `target` is the ConvRef the item's menu was built for (0: workspace).
     void                      run(int id, uint32_t target);
     void                      runTeammate(int id, const std::string &role);
@@ -87,9 +102,11 @@ public:
     void showWorkspace(const Workspace &w, ui::PointF at);
     void showSessions(ui::PointF at);
     void showTeammate(const std::string &role, ui::PointF at);
+    void showSection(const std::string &section, ui::PointF at);
 
 private:
     ui::Menu *show(std::vector<ui::MenuItem> items, uint32_t target, ui::PointF at);
+    void      sectionMoves(std::vector<ui::MenuItem> &items, const model::Conversation &cv) const;
 
     Shell            &_shell;
     screens::Context &_ctx;

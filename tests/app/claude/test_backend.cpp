@@ -2370,6 +2370,36 @@ TEST("backend: known-sessions.json is written only when what it says changes") {
     CHECK(contains(readText(known), "\"starred\":true"));
 }
 
+TEST("backend: the sidebar's own sections are kept with the known sessions") {
+    FakeClaudeHome home;
+    home.writeSession("idle");
+    home.append(
+        prompt("hi", "2026-09-25T10:00:00.000Z") +
+        assistantText("Hello!", "2026-09-25T10:00:01.000Z") + turnEnd("2026-09-25T10:00:02.000Z")
+    );
+    const std::string known = home.msga + "/data/known-sessions.json";
+    {
+        Rig           rig;
+        const ConvRef conv = rig.ref("S1");
+        REQUIRE(conv != kNoConv);
+        CHECK(rig.backend->capabilities().customSections);
+        rig.backend->setStarred(conv, true);
+        rig.backend->createSection("Releases", "ship", conv);
+        CHECK_FALSE(rig.store.conversation(conv).starred); // moved out of Starred
+        REQUIRE(rig.store.sections().size() == 1);
+        CHECK(rig.wait([&] { return contains(readText(known), "\"Releases\""); }));
+    }
+    // The next run lists them again, the session still in its section.
+    Rig rig;
+    REQUIRE(rig.store.sections().size() == 1);
+    CHECK_STR(rig.store.sections()[0].name, "Releases");
+    CHECK_STR(rig.store.sections()[0].emoji, "ship");
+    REQUIRE(rig.store.sections()[0].convs.size() == 1);
+    CHECK_STR(rig.store.sections()[0].convs[0], "S1");
+    rig.backend->deleteSection(rig.store.sections()[0].id);
+    CHECK(rig.wait([&] { return !contains(readText(known), "\"Releases\""); }));
+}
+
 // POSIX only from here: these cases drive a fake `claude` written as a
 // /bin/sh script (and real `sleep` workers); Windows runs no such script.
 #ifndef _WIN32

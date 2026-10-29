@@ -240,11 +240,14 @@ TEST("agents: the session menu, a session's and a teammate's, and their wording"
     const ConvRef dm = h.conv("D0JONAS");
     CHECK_STR(
         labels(h.sh->menus().chatItems(dm)),
-        "Star conversation|-|Mute|Rename session…|-|Remove from msga"
+        "Star conversation|Move to section|-|Mute|Rename session…|-|Remove from msga"
     );
     h.backend.stoppable = dm;
     const auto items    = h.sh->menus().chatItems(dm);
-    CHECK_STR(labels(items), "Star conversation|-|Mute|Stop|Rename session…|-|Remove from msga");
+    CHECK_STR(
+        labels(items),
+        "Star conversation|Move to section|-|Mute|Stop|Rename session…|-|Remove from msga"
+    );
     CHECK(items.back().danger);
     const auto &t = h.backend.team;
     CHECK_STR(labels(h.sh->menus().teammateItems(t[0])), "Edit teammate…");

@@ -27,6 +27,7 @@
 #include <memory>
 #include <tuple>
 #include <unordered_set>
+#include <utility>
 
 namespace slack {
 
@@ -262,6 +263,17 @@ struct SlackBackend::Read {
     std::unordered_map<std::string, int64_t> serverSaved; // "conv:ts" → due (0 = none)
     void                                     refreshStarred();
     void                                     refreshSaved();
+
+    // ── Sidebar sections (users.channelSections.*, session tokens only) ─────
+    bool                                         sectionsUnavailable = false;
+    int64_t                                      lastSections        = 0;
+    int                                          sectionWrites       = 0; // edits in flight
+    bool                                         sectionsStale = false;   // a list waits on them
+    // Slack's own sections by type ("channels", "direct_messages",
+    // "recent_apps"): where a conversation taken out of its section goes.
+    std::unordered_map<std::string, std::string> systemSections;
+    void                                         refreshSections();
+    void                                         sectionWriteDone(const std::string &err);
 
     // ── Scheduled messages (the sidebar's "Scheduled messages") ─────────────
     bool     scheduledUnavailable = false;
@@ -711,6 +723,7 @@ void SlackBackend::Read::startLoads() {
     });
     loadUsers([this](const std::string &) { connectSettled(); });
     refreshStarred();
+    refreshSections();
     loadUsergroups();
     refreshSaved();
     loadCommands();
@@ -1534,6 +1547,174 @@ void SlackBackend::Read::refreshStarred() {
     );
 }
 
+// users.channelSections.list (session tokens only): the custom sidebar
+// sections. Never while an edit of ours is in flight: the list could predate
+// it (sectionWriteDone lists again once they are all in).
+void SlackBackend::Read::refreshSections() {
+    lastSections = now();
+    if (!session || sectionsUnavailable)
+        return;
+    if (sectionWrites > 0) {
+        sectionsStale = true;
+        return;
+    }
+    call(
+        "users.channelSections.list",
+        {},
+        [this](const json::Document &doc, const std::string &err) {
+            if (!err.empty()) {
+                if (isMethodUnavailable(err))
+                    sectionsUnavailable = true;
+                return;
+            }
+            if (sectionWrites > 0) {
+                sectionsStale = true;
+                return;
+            }
+            std::vector<model::Store::Section> list;
+            systemSections.clear();
+            mapjson::toSections(doc.root(), list, systemSections);
+            s.setSections(std::move(list));
+        }
+    );
+}
+
+void SlackBackend::Read::sectionWriteDone(const std::string &err) {
+    if (sectionWrites > 0)
+        --sectionWrites;
+    if (!err.empty() && err != "cancelled")
+        LOG_WARN("slack", "users.channelSections: %s", err.c_str());
+    // A refused edit is undone by Slack's own list.
+    if (!err.empty())
+        sectionsStale = true;
+    if (sectionWrites == 0 && std::exchange(sectionsStale, false))
+        refreshSections();
+}
+
+// The edits: shown in the Store at once (the local defaults), then sent; a
+// refused one is set right by the list that follows it.
+namespace {
+void addParam(std::string &form, std::string_view k, std::string_view v) {
+    if (!form.empty())
+        form += '&';
+    form += net::percentEncode(k);
+    form += '=';
+    form += net::percentEncode(v);
+}
+
+// [{"channel_section_id":…,"channel_ids":[…]}] (bulkUpdate's insert/remove).
+std::string sectionChannels(const std::string &section, const std::string &channel) {
+    json::Writer w;
+    w.beginArray().beginObject();
+    w.key("channel_section_id").value(section);
+    w.key("channel_ids").beginArray().value(channel).endArray();
+    w.endObject().endArray();
+    return w.str();
+}
+} // namespace
+
+void SlackBackend::sectionCall(
+    std::string_view method, std::string form, std::function<void(const json::Document &)> onOk
+) {
+    ++_read->sectionWrites;
+    api(method,
+        std::move(form),
+        [this, onOk = std::move(onOk)](const json::Document &doc, const std::string &err) {
+            if (err.empty() && onOk)
+                onOk(doc);
+            if (!err.empty() && err != "cancelled" && onError)
+                onError(i18n::arg(i18n::tr("Couldn't change the sidebar sections: %1"), err));
+            if (err != "cancelled")
+                _read->sectionWriteDone(err);
+        });
+}
+
+void SlackBackend::createSection(std::string name, std::string emoji, ConvRef first) {
+    std::string form;
+    addParam(form, "name", name);
+    if (!emoji.empty())
+        addParam(form, "emoji", emoji);
+    // The id is Slack's: the section shows once it answers.
+    sectionCall(
+        "users.channelSections.create",
+        std::move(form),
+        [this, name, emoji, first](const json::Document &doc) {
+            const std::string id(doc.root()["channel_section_id"].str());
+            if (id.empty())
+                return;
+            std::vector<model::Store::Section> all = _store.sections();
+            all.insert(all.begin(), model::Store::Section{id, name, emoji, {}});
+            _store.setSections(std::move(all));
+            if (first != kNoConv)
+                moveToSection(first, id);
+        }
+    );
+}
+
+void SlackBackend::updateSection(const std::string &id, std::string name, std::string emoji) {
+    std::string form;
+    addParam(form, "channel_section_id", id);
+    addParam(form, "name", name);
+    addParam(form, "emoji", emoji);
+    Backend::updateSection(id, std::move(name), std::move(emoji));
+    sectionCall("users.channelSections.update", std::move(form), {});
+}
+
+void SlackBackend::deleteSection(const std::string &id) {
+    Backend::deleteSection(id);
+    sectionCall("users.channelSections.delete", net::formEncode({{"channel_section_id", id}}), {});
+}
+
+void SlackBackend::moveToSection(ConvRef conv, const std::string &id) {
+    if (conv >= _store.conversationCount())
+        return;
+    const model::Conversation   &cv      = _store.conversation(conv);
+    const std::string            channel = cv.id;
+    const model::Store::Section *from    = _store.sectionOf(channel);
+    const std::string            old     = from ? from->id : std::string();
+    if (old == id)
+        return;
+    // Out of a section it goes back to Slack's own one for its kind.
+    std::string to = id;
+    if (to.empty()) {
+        const bool app = cv.kind == model::ConvKind::Dm && cv.dmUser != model::kNoUser &&
+                         _store.user(cv.dmUser).bot;
+        const auto it  = _read->systemSections.find(
+            app             ? "recent_apps"
+            : cv.isDirect() ? "direct_messages"
+                            : "channels"
+        );
+        if (it != _read->systemSections.end())
+            to = it->second;
+    }
+    Backend::moveToSection(conv, id);
+    std::string form;
+    if (!to.empty())
+        addParam(form, "insert", sectionChannels(to, channel));
+    if (!old.empty())
+        addParam(form, "remove", sectionChannels(old, channel));
+    sectionCall("users.channelSections.channels.bulkUpdate", std::move(form), {});
+}
+
+void SlackBackend::moveSection(const std::string &id, int step) {
+    // Slack chains its sections: one step up puts this one before its upper
+    // neighbour; one down puts the lower neighbour before it.
+    const auto &all = _store.sections();
+    size_t      i   = 0;
+    while (i < all.size() && all[i].id != id)
+        ++i;
+    const int64_t j = int64_t(i) + step;
+    if (i >= all.size() || j < 0 || j >= int64_t(all.size()))
+        return;
+    const std::string other = all[size_t(j)].id;
+    const std::string first = step < 0 ? id : other, second = step < 0 ? other : id;
+    Backend::moveSection(id, step);
+    std::string form;
+    addParam(form, "channel_section_id", first);
+    addParam(form, "next_channel_section_id", second);
+    sectionCall("users.channelSections.update", std::move(form), {});
+}
+
 // saved.list (session tokens only): "save for later"
 // items and their due times, diffed against the previous snapshot as above.
 void SlackBackend::Read::refreshSaved() {
@@ -2246,6 +2427,8 @@ void SlackBackend::Read::tick() {
         refreshScheduled();
     if (t - lastStarred >= kStarredGapMs)
         refreshStarred();
+    if (t - lastSections >= kStarredGapMs)
+        refreshSections();
     // Others' presence draws only in the window: none while it is hidden
     // (showing it again asks at once: setWindowVisible).
     if (visible && t - lastPresence >= kPresencePollGapMs) {
@@ -3428,6 +3611,7 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.removePreview    = _creds.sessionAuth(); // chat.deleteAttachment: internal, xoxc only
     c.slashCommands    = true;                 // the built-ins, commands.list, chat.command
     c.sidebarTheme     = _creds.sessionAuth(); // users.prefs.get: xoxc only
+    c.customSections   = _creds.sessionAuth(); // users.channelSections.*: xoxc only
     return c;
 }
 

@@ -1491,6 +1491,8 @@ void SlackBackend::markUnread(ConvRef conv, Ts ts) {
 void SlackBackend::setStarred(ConvRef conv, bool starred) {
     if (conv >= _store.conversationCount())
         return;
+    if (starred)
+        leaveSection(conv);
     auto set = [this, conv](bool on) {
         _store.updateConversation(conv, [on](model::Conversation &c) { c.starred = on; });
     };

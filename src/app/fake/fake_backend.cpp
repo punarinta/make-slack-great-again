@@ -245,6 +245,8 @@ void FakeBackend::setMessageFlag(ConvRef conv, Ts ts, bool pinFlag, bool on) {
 }
 
 void FakeBackend::setStarred(ConvRef conv, bool starred) {
+    if (starred)
+        leaveSection(conv);
     setConvFlag(conv, ConvFlag::Starred, starred);
 }
 
@@ -360,6 +362,7 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     c.messageReminders = true;
     c.canvases         = true;
     c.fileUpload       = true;
+    c.customSections   = true; // this run only
     return c;
 }
 

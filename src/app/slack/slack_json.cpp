@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <unordered_set>
 
 namespace slack::mapjson {
 
@@ -814,6 +815,64 @@ void starredConversationIds(const json::Value &items, std::vector<std::string> &
             continue;
         if (const std::string_view id = it["channel"].str(); !id.empty())
             out.emplace_back(id);
+    }
+}
+
+void toSections(
+    const Value                                  &resp,
+    std::vector<model::Store::Section>           &out,
+    std::unordered_map<std::string, std::string> &system
+) {
+    // Follow the chain from the one no other section points at; any left
+    // off it (a broken chain) follow in the order listed.
+    const Value                     all = resp["channel_sections"];
+    std::vector<Value>              list;
+    std::unordered_set<std::string> pointed;
+    for (const Value s : all) {
+        list.push_back(s);
+        if (const std::string_view n = s["next_channel_section_id"].str(); !n.empty())
+            pointed.emplace(n);
+    }
+    std::vector<Value>              ordered;
+    std::unordered_set<std::string> placed;
+    const auto                      byId = [&](std::string_view id) -> int {
+        for (size_t i = 0; i < list.size(); ++i)
+            if (!id.empty() && list[i]["channel_section_id"].str() == id)
+                return int(i);
+        return -1;
+    };
+    for (size_t h = 0; h < list.size(); ++h) {
+        if (pointed.count(std::string(list[h]["channel_section_id"].str())))
+            continue;
+        for (int i = int(h);
+             i >= 0 && placed.emplace(list[size_t(i)]["channel_section_id"].str()).second;
+             i = byId(list[size_t(i)]["next_channel_section_id"].str()))
+            ordered.push_back(list[size_t(i)]);
+    }
+    for (const Value &s : list)
+        if (placed.emplace(s["channel_section_id"].str()).second)
+            ordered.push_back(s);
+    for (const Value &s : ordered) {
+        const std::string_view type = s["type"].str();
+        const std::string      id(s["channel_section_id"].str());
+        if (type != "standard") {
+            if (!type.empty() && !id.empty())
+                system[std::string(type)] = id;
+            continue;
+        }
+        if (id.empty() || s["is_redacted"].boolean())
+            continue;
+        model::Store::Section sec;
+        sec.id    = id;
+        sec.name  = s["name"].str();
+        sec.emoji = s["emoji"].str();
+        // client.channels says channel_ids; users.channelSections.list pages them.
+        const Value page =
+            s.has("channel_ids_page") ? s["channel_ids_page"]["channel_ids"] : s["channel_ids"];
+        for (const Value c : page)
+            if (!c.str().empty())
+                sec.convs.emplace_back(c.str());
+        out.push_back(std::move(sec));
     }
 }
 

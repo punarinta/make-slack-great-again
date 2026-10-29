@@ -188,6 +188,7 @@ Backend::Capabilities Backend::capabilities() const {
     c.agentSessions  = true;
     c.zenMode        = true; // hides the tool-call cards
     c.slashCommands  = true; // Claude Code's own, typed to it (commands())
+    c.customSections = true; // kept with the known sessions
     // fileUpload stays off: Forward sends a message's files as links.
     return c;
 }
@@ -244,6 +245,16 @@ void Backend::loadKnown() {
         _hidden[sid] = std::move(h);
     }
     _lastConv = root["open"].str();
+    for (const json::Value o : root["sections"]) {
+        model::Store::Section sec;
+        sec.id    = o["id"].str();
+        sec.name  = o["name"].str();
+        sec.emoji = o["emoji"].str();
+        for (const json::Value v : o["convs"])
+            sec.convs.emplace_back(v.str());
+        if (!sec.id.empty())
+            _sections.push_back(std::move(sec));
+    }
 }
 
 void Backend::saveKnown() {
@@ -324,6 +335,23 @@ void Backend::saveKnown() {
     w.endArray();
     if (!_lastConv.empty())
         w.key("open").value(_lastConv);
+    if (!_sections.empty()) { // the sidebar's own sections, forgotten sessions left out
+        w.key("sections").beginArray();
+        for (const model::Store::Section &sec : _sections) {
+            w.beginObject();
+            w.key("id").value(sec.id);
+            w.key("name").value(sec.name);
+            if (!sec.emoji.empty())
+                w.key("emoji").value(sec.emoji);
+            w.key("convs").beginArray();
+            for (const std::string &conv : sec.convs)
+                if (_sessions.count(conv))
+                    w.value(conv);
+            w.endArray();
+            w.endObject();
+        }
+        w.endArray();
+    }
     w.endObject();
     if (dirs().data.empty())
         return;
@@ -2586,6 +2614,7 @@ void Backend::connect(Done done) {
     _store.workspaceName      = "Claude Code";
     _store.workspaceIcon      = agentAvatarPath();
     _store.answersAreMentions = true;
+    _store.setSections(_sections);
     syncUsers();
     if (!_started) {
         firstScan(std::move(done));
@@ -2818,11 +2847,18 @@ void Backend::markUnread(ConvRef conv, Ts ts) {
 }
 
 void Backend::setStarred(ConvRef conv, bool starred) {
+    if (starred)
+        leaveSection(conv);
     if (Tracked *t = findRef(conv)) {
         t->starred = starred;
         syncMeta(*t);
         scheduleSaveKnown();
     }
+}
+
+void Backend::sectionsChanged() {
+    _sections = _store.sections();
+    scheduleSaveKnown();
 }
 
 void Backend::setMuted(ConvRef conv, bool muted) {

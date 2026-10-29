@@ -583,6 +583,131 @@ std::string labels(const std::vector<ui::MenuItem> &items) {
 
 } // namespace
 
+// ── Custom sections ─────────────────────────────────────────────────────────
+
+namespace {
+std::string titles(shell::Sidebar &sb) {
+    std::string out;
+    for (const std::string &t : sb.sectionTitles())
+        out += (out.empty() ? "" : "|") + t;
+    return out;
+}
+} // namespace
+
+TEST("sections: a new section sits under Starred and takes its rows out of the others") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   eng = h.conv("C0ENG"), mira = h.conv("D0MIRA");
+    CHECK_STR(titles(sb), "Threads|Starred|Channels|Direct messages");
+    h.backend.createSection("Projects", "rocket", eng);
+    pump();
+    CHECK_STR(titles(sb), "Threads|Starred|Projects|Channels|Direct messages");
+    REQUIRE(h.store.sections().size() == 1);
+    const std::string id = h.store.sections()[0].id;
+    CHECK_STR(sb.rowSection(eng), id);
+    // A DM joins it too, after the channel (the order they were put there).
+    h.backend.moveToSection(mira, id);
+    pump();
+    auto order = sb.order();
+    CHECK(order[2] == eng);
+    CHECK(order[3] == mira);
+    // A second section goes on top; moving one down swaps them back.
+    h.backend.createSection("Later", "", kNoConv);
+    pump();
+    CHECK_STR(titles(sb), "Threads|Starred|Later|Projects|Channels|Direct messages");
+    h.backend.moveSection(h.store.sections()[0].id, 1);
+    pump();
+    CHECK_STR(titles(sb), "Threads|Starred|Projects|Later|Channels|Direct messages");
+    // Renamed in place; deleted, its rows go back where they came from.
+    h.backend.updateSection(id, "Work", "");
+    pump();
+    CHECK_STR(titles(sb), "Threads|Starred|Work|Later|Channels|Direct messages");
+    h.backend.deleteSection(id);
+    pump();
+    CHECK_STR(titles(sb), "Threads|Starred|Later|Channels|Direct messages");
+    CHECK_STR(sb.rowSection(eng), "");
+    CHECK(sb.rowState(eng).exists);
+    CHECK(sb.rowState(mira).exists);
+}
+
+TEST("sections: a conversation is in one place: starring and moving trade it") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    h.backend.createSection("Projects", "", general);
+    pump();
+    CHECK_FALSE(h.store.conversation(general).starred); // moved out of Starred
+    CHECK_STR(sb.rowSection(general), h.store.sections()[0].id);
+    h.backend.setStarred(general, true); // starring takes it out again
+    pump();
+    CHECK(h.store.conversation(general).starred);
+    CHECK_STR(sb.rowSection(general), "");
+    CHECK(h.store.sections()[0].convs.empty());
+    // An empty section still shows its header.
+    CHECK_STR(titles(sb), "Threads|Starred|Projects|Channels|Direct messages");
+}
+
+TEST("sections: a dropped row lands in the section; Channels takes it back") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   eng = h.conv("C0ENG");
+    h.backend.createSection("Projects", "", kNoConv);
+    pump();
+    CHECK_FALSE(sb.dropOnSection(eng, "Channels")); // already there
+    CHECK_FALSE(sb.dropOnSection(eng, "Direct messages"));
+    REQUIRE(sb.dropOnSection(eng, "Projects"));
+    pump();
+    CHECK_STR(sb.rowSection(eng), h.store.sections()[0].id);
+    REQUIRE(sb.dropOnSection(eng, "Channels"));
+    pump();
+    CHECK_STR(sb.rowSection(eng), "");
+    REQUIRE(sb.dropOnSection(eng, "Starred"));
+    pump();
+    CHECK(h.store.conversation(eng).starred);
+}
+
+TEST("sections: under unreads-only a section keeps its read rows") {
+    Harness       h;
+    const ConvRef random = h.conv("C0RANDOM"); // read
+    h.backend.createSection("Projects", "", random);
+    h.settings.unreadsOnly = true;
+    h.sh->applySettings();
+    pump();
+    CHECK(h.sh->sidebar().rowState(random).exists);
+}
+
+TEST("sections: the conversation and section header menus") {
+    Harness       h;
+    shell::Menus &m   = h.sh->menus();
+    const ConvRef eng = h.conv("C0ENG");
+    CHECK(labels(m.chatItems(eng)).rfind("Star channel|Move to section|-|", 0) == 0);
+    CHECK_STR(labels(m.chatItems(eng)[1].sub), "New section…");
+    CHECK_STR(labels(m.sectionItems("")), "Create a section…");
+    h.backend.createSection("Projects", "", eng);
+    h.backend.createSection("Later", "", kNoConv);
+    pump();
+    const auto items = m.chatItems(eng);
+    CHECK(labels(items).rfind("Star channel|Move to section|Remove from Projects|-|", 0) == 0);
+    CHECK_STR(labels(items[1].sub), "Later|Projects(on)|-|New section…");
+    const std::string later = h.store.sections()[0].id, projects = h.store.sections()[1].id;
+    CHECK_STR(
+        labels(m.sectionItems(later)),
+        "Create a section…|Rename section…|-|Move section up(off)|Move section down|-|"
+        "Delete section…"
+    );
+    CHECK(m.sectionItems(later).back().danger);
+    // The submenu's items move it; "Remove from" takes it out.
+    m.run(items[1].sub[0].id, eng);
+    pump();
+    CHECK_STR(h.sh->sidebar().rowSection(eng), later);
+    m.run(shell::Menus::kRemoveFromSection, eng);
+    pump();
+    CHECK_STR(h.sh->sidebar().rowSection(eng), "");
+    m.runSection(shell::Menus::kSectionDown, later);
+    pump();
+    CHECK_STR(h.store.sections()[0].id, projects);
+}
+
 // ── Files: the chooser helper, attachments, drops, Save as ──────────────────
 
 namespace {
@@ -636,21 +761,25 @@ TEST("menus: channel, DM, group DM and workspace menus, item by item") {
     // conv_list_widget.cpp showChannelContextMenu
     CHECK_STR(
         labels(m.chatItems(h.conv("C0ENG"))),
-        "Star channel|-|Notify you about…|All new posts(on)|Just mentions|Mute and hide|-|"
+        "Star channel|Move to section|-|Notify you about…|All new posts(on)|Just mentions|"
+        "Mute and hide|-|"
         "Leave channel"
     );
     const auto eng = m.chatItems(h.conv("C0ENG"));
-    CHECK(eng[2].header);
-    CHECK(eng[3].icon == uint16_t(gfx::Icon::Bell) && eng[5].icon == uint16_t(gfx::Icon::BellOff));
+    CHECK(eng[3].header);
+    CHECK(eng[4].icon == uint16_t(gfx::Icon::Bell) && eng[6].icon == uint16_t(gfx::Icon::BellOff));
     CHECK(eng[0].icon == ui::Button::kNoIcon);
     CHECK(eng.back().danger);
-    CHECK(labels(m.chatItems(h.conv("C0GENERAL"))).rfind("Unstar channel|-|", 0) == 0);
+    CHECK(
+        labels(m.chatItems(h.conv("C0GENERAL"))).rfind("Unstar channel|Move to section|-|", 0) == 0
+    );
     // showDmContextMenu (not an agent session)
-    CHECK_STR(labels(m.chatItems(h.conv("D0MIRA"))), "Star conversation|-|Mute");
+    CHECK_STR(labels(m.chatItems(h.conv("D0MIRA"))), "Star conversation|Move to section|-|Mute");
     // showMpdmContextMenu
     CHECK_STR(
         labels(m.chatItems(h.conv("G0TRIO"))),
-        "Name conversation…|-|Star conversation|-|Notify you about…|All new posts(on)|"
+        "Name conversation…|-|Star conversation|Move to section|-|Notify you about…|"
+        "All new posts(on)|"
         "Just mentions|Mute and hide|-|Leave conversation"
     );
     // main_window.cpp showWorkspaceMenu (me is not an admin: no "Workspace admin").
@@ -663,9 +792,9 @@ TEST("menus: channel, DM, group DM and workspace menus, item by item") {
     CHECK(labels(m.workspaceItems()).rfind("Workspace admin|Change icon…", 0) == 0);
     // Muted: "Mute and hide" is the checked level; a muted DM offers Unmute.
     h.backend.setMuted(h.conv("C0ENG"), true);
-    CHECK(m.chatItems(h.conv("C0ENG"))[5].checked);
+    CHECK(m.chatItems(h.conv("C0ENG"))[6].checked);
     h.backend.setMuted(h.conv("D0MIRA"), true);
-    CHECK_STR(labels(m.chatItems(h.conv("D0MIRA"))), "Star conversation|-|Unmute");
+    CHECK_STR(labels(m.chatItems(h.conv("D0MIRA"))), "Star conversation|Move to section|-|Unmute");
 }
 
 TEST("menus: conversation actions go through the backend") {
@@ -678,7 +807,7 @@ TEST("menus: conversation actions go through the backend") {
     CHECK_FALSE(h.store.conversation(eng).starred);
     m.run(shell::Menus::kNotifyMentions, eng);
     CHECK(h.store.conversation(eng).notify == NotifyLevel::Mentions);
-    CHECK(m.chatItems(eng)[4].checked);
+    CHECK(m.chatItems(eng)[5].checked);
     m.run(shell::Menus::kNotifyMute, eng); // "Mute and hide" = muted
     CHECK(h.store.conversation(eng).muted);
     m.run(shell::Menus::kNotifyAll, eng); // any level unmutes
@@ -743,17 +872,17 @@ TEST("menus: an untouched conversation follows the default level; All opts it ba
     shell::Menus &m   = h.sh->menus();
     const ConvRef rel = h.conv("C0RELEASES"); // unread, no mention
     CHECK(h.store.conversation(rel).notify == NotifyLevel::Default);
-    CHECK(m.chatItems(rel)[3].checked); // "All new posts", Settings' default
+    CHECK(m.chatItems(rel)[4].checked); // "All new posts", Settings' default
     CHECK(h.sh->sidebar().rowState(rel).dot);
     h.settings.notifyLevel = 1; // Settings → "Just mentions"
     h.sh->applySettings();
     pump();
-    CHECK(m.chatItems(rel)[4].checked); // the effective level is ticked
+    CHECK(m.chatItems(rel)[5].checked); // the effective level is ticked
     CHECK_FALSE(h.sh->sidebar().rowState(rel).dot);
     m.run(shell::Menus::kNotifyAll, rel);
     pump();
     CHECK(h.store.conversation(rel).notify == NotifyLevel::All);
-    CHECK(m.chatItems(rel)[3].checked);
+    CHECK(m.chatItems(rel)[4].checked);
     CHECK(h.sh->sidebar().rowState(rel).dot); // explicit "All new posts" wins
 }
 
@@ -787,8 +916,10 @@ TEST("menus: a sidebar row's menu works from the keyboard") {
     h.sh->menus().showChat(h.conv("C0ENG"), {100, 100});
     pump();
     REQUIRE(h.win->topPopup() != nullptr);
-    // Star channel, then the three levels (the header is skipped): Just mentions.
-    for (plat::Key k : {plat::Key::Down, plat::Key::Down, plat::Key::Down, plat::Key::Enter}) {
+    // Star channel, Move to section, then the three levels (the header is
+    // skipped): Just mentions.
+    for (plat::Key k :
+         {plat::Key::Down, plat::Key::Down, plat::Key::Down, plat::Key::Down, plat::Key::Enter}) {
         app().platform().testHooks()->injectKey(h.win->native(), k, true);
         app().platform().testHooks()->injectKey(h.win->native(), k, false);
     }

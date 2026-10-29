@@ -1,8 +1,10 @@
 #include "screens/shell/context_menus.h"
 
 #include "base/i18n.h"
+#include "base/str.h"
 #include "gfx/icons_generated.h"
 #include "screens/shell/shell.h"
+#include "screens/shell/shell_dialogs.h"
 
 #include <algorithm>
 #include <utility>
@@ -34,6 +36,8 @@ constexpr ui::MenuDef kDefs[] = {
     {Menus::kRename, kNone, N_("Name conversation…"), nullptr, nullptr},
     {Menus::kLeave, kNone, N_("Leave channel"), N_("Leave conversation"), nullptr},
     {Menus::kStopSession, kNone, N_("Stop"), nullptr, nullptr},
+    {Menus::kNewSection, kNone, N_("New section…"), nullptr, nullptr},
+    {Menus::kRemoveFromSection, kNone, N_("Remove from %1"), nullptr, nullptr},
     {Menus::kWorkspaceAdmin, kNone, N_("Workspace admin"), nullptr, nullptr},
     {Menus::kChangeIcon, kNone, N_("Change icon…"), nullptr, nullptr},
     {Menus::kMuteWorkspace, kNone, N_("Mute"), nullptr, nullptr},
@@ -45,11 +49,17 @@ constexpr ui::MenuDef kDefs[] = {
     {Menus::kEditTeammate, kNone, N_("Edit teammate…"), nullptr, nullptr},
     {Menus::kRestoreTeammate, kNone, N_("Restore default"), nullptr, nullptr},
     {Menus::kRemoveTeammate, kNone, N_("Remove teammate…"), nullptr, nullptr},
+    {Menus::kCreateSection, kNone, N_("Create a section…"), nullptr, nullptr},
+    {Menus::kRenameSection, kNone, N_("Rename section…"), nullptr, nullptr},
+    {Menus::kDeleteSection, kNone, N_("Delete section…"), nullptr, nullptr},
+    {Menus::kSectionUp, kNone, N_("Move section up"), nullptr, nullptr},
+    {Menus::kSectionDown, kNone, N_("Move section down"), nullptr, nullptr},
 };
 
 ui::MenuItem &add(std::vector<ui::MenuItem> &out, int id, bool direct = false, bool on = true) {
     ui::MenuItem &m = ui::addMenuItem(out, kDefs, id, direct, on);
-    m.danger        = id == Menus::kLeave || id == Menus::kSignOut || id == Menus::kRemoveTeammate;
+    m.danger = id == Menus::kLeave || id == Menus::kSignOut || id == Menus::kRemoveTeammate ||
+               id == Menus::kDeleteSection;
     return m;
 }
 
@@ -65,7 +75,36 @@ void notifySection(std::vector<ui::MenuItem> &out, NotifyLevel effective) {
         add(out, id).checked = id == level;
 }
 
+// A section as a menu shows it: its emoji, then its name.
+std::string sectionLabel(const model::Store &st, const model::Store::Section &s) {
+    const std::string glyph = s.emoji.empty() ? std::string() : st.emojiFor(s.emoji).unicode;
+    return glyph.empty() ? s.name : str::concat({glyph, "  ", s.name});
+}
+
 } // namespace
+
+// Under the star: "Move to section" (each section, the current one ticked,
+// then "New section…") and "Remove from <section>" while in one.
+void Menus::sectionMoves(std::vector<ui::MenuItem> &items, const model::Conversation &cv) const {
+    if (!_ctx.backend.capabilities().customSections)
+        return;
+    const model::Store          &st  = _ctx.store();
+    const model::Store::Section *cur = st.sectionOf(cv.id);
+    ui::MenuItem                 move;
+    move.label = tr("Move to section");
+    for (size_t i = 0; i < st.sections().size(); ++i) {
+        ui::MenuItem m;
+        m.id      = kMoveToSection + int(i);
+        m.label   = sectionLabel(st, st.sections()[i]);
+        m.checked = cur == &st.sections()[i];
+        move.sub.push_back(std::move(m));
+    }
+    ui::addMenuSeparator(move.sub);
+    add(move.sub, kNewSection);
+    items.push_back(std::move(move));
+    if (cur)
+        add(items, kRemoveFromSection).label = i18n::arg(tr("Remove from %1"), cur->name);
+}
 
 Menus::Menus(Shell &shell, screens::Context &ctx, ui::Window &win)
     : _shell(shell), _ctx(ctx), _win(win) {}
@@ -81,6 +120,7 @@ std::vector<ui::MenuItem> Menus::chatItems(ConvRef c) const {
             cv.localName.empty() ? tr("Name conversation…") : tr("Rename conversation…");
     ui::addMenuSeparator(items);
     add(items, cv.starred ? kUnstar : kStar, direct);
+    sectionMoves(items, cv);
     ui::addMenuSeparator(items);
     if (cv.kind == ConvKind::Dm) { // showDmContextMenu
         add(items, cv.muted ? kUnmute : kMute);
@@ -157,7 +197,59 @@ void Menus::runTeammate(int id, const std::string &role) {
     }
 }
 
+std::vector<ui::MenuItem> Menus::sectionItems(const std::string &section) const {
+    std::vector<ui::MenuItem> items;
+    if (!_ctx.backend.capabilities().customSections)
+        return items;
+    add(items, kCreateSection);
+    const auto &all = _ctx.store().sections();
+    for (size_t i = 0; i < all.size(); ++i)
+        if (all[i].id == section) {
+            add(items, kRenameSection);
+            ui::addMenuSeparator(items);
+            add(items, kSectionUp, false, i > 0);
+            add(items, kSectionDown, false, i + 1 < all.size());
+            ui::addMenuSeparator(items);
+            add(items, kDeleteSection);
+        }
+    return items;
+}
+
+void Menus::runSection(int id, const std::string &section) {
+    switch (id) {
+    case kCreateSection:
+        showSectionDialog(_ctx, _win, {}, kNoConv);
+        break;
+    case kRenameSection:
+        showSectionDialog(_ctx, _win, section, kNoConv);
+        break;
+    case kDeleteSection:
+        showDeleteSectionDialog(_ctx, _win, section);
+        break;
+    case kSectionUp:
+    case kSectionDown:
+        _ctx.backend.moveSection(section, id == kSectionUp ? -1 : 1);
+        break;
+    }
+}
+
+void Menus::showSection(const std::string &section, ui::PointF at) {
+    std::vector<ui::MenuItem> items = sectionItems(section);
+    if (items.empty())
+        return;
+    ui::Menu::popupAt(_win, at, std::move(items), [this, section](int id) {
+        if (id)
+            runSection(id, section);
+    });
+}
+
 void Menus::run(int id, uint32_t target) {
+    if (id >= kMoveToSection) { // ── "Move to section" → one of them ──
+        const auto &all = _ctx.store().sections();
+        if (target < _ctx.store().conversationCount() && size_t(id - kMoveToSection) < all.size())
+            _ctx.backend.moveToSection(target, all[size_t(id - kMoveToSection)].id);
+        return;
+    }
     if (id >= kFindSession) { // ── an agent workspace's "+" ──
         if (id == kFindSession)
             _shell.openSessionFinder();
@@ -207,6 +299,12 @@ void Menus::run(int id, uint32_t target) {
         }
         case kStopSession:
             be.stopSession(target);
+            break;
+        case kNewSection:
+            showSectionDialog(_ctx, _win, {}, target);
+            break;
+        case kRemoveFromSection:
+            be.moveToSection(target, {});
             break;
         }
     } else {

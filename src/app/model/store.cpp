@@ -172,6 +172,8 @@ void Store::clear() {
     _reminders.clear();
     _saved.clear();
     _scheduled.clear();
+    _sections.clear();
+    ++_sectionsRev;
     _usergroups.clear();
     _channelNames.clear();
     _linkedAuthors.clear();
@@ -1006,6 +1008,28 @@ void Store::removeScheduled(const std::string &id) {
     if (it == _scheduled.end())
         return;
     _scheduled.erase(it);
+    emit({ChangeKind::Meta});
+}
+
+const Store::Section *Store::sectionOf(std::string_view convId) const {
+    for (const Section &s : _sections)
+        if (std::find(s.convs.begin(), s.convs.end(), convId) != s.convs.end())
+            return &s;
+    return nullptr;
+}
+
+const Store::Section *Store::findSection(std::string_view id) const {
+    for (const Section &s : _sections)
+        if (s.id == id)
+            return &s;
+    return nullptr;
+}
+
+void Store::setSections(std::vector<Section> sections) {
+    if (sections == _sections)
+        return;
+    _sections = std::move(sections);
+    ++_sectionsRev;
     emit({ChangeKind::Meta});
 }
 

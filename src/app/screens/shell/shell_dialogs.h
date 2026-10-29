@@ -12,6 +12,8 @@
 //                "Rename session": a Name field (80 characters, the derived
 //                name as its placeholder), a hint, Cancel / Save. Sets the
 //                conversation's local name ("" = back to the derived one).
+//   Section      "Create a section" / "Rename section" / "Delete section":
+//                the sidebar's own sections.
 #pragma once
 
 #include "screens/common/context.h"
@@ -90,6 +92,15 @@ ui::Popup *showWorkspaceIconDialog(
 );
 
 ui::Popup *showRenameDialog(screens::Context &ctx, ui::Window &w, model::ConvRef conv);
+
+// "Create a section" (id "") / "Rename section": the emoji button and the
+// Name field (80 characters) in one box, a hint, Cancel / Create (Save). A
+// new section holds `first` (kNoConv: none).
+ui::Popup *showSectionDialog(
+    screens::Context &ctx, ui::Window &w, const std::string &id, model::ConvRef first
+);
+// "Delete section": Cancel / Delete; its conversations go back.
+ui::Popup *showDeleteSectionDialog(screens::Context &ctx, ui::Window &w, const std::string &id);
 
 // Settings → Tray icon: the
 // tray-like preview, Choose image… / Use default, the hint, "Convert to

@@ -774,4 +774,75 @@ TEST("slack features: an OAuth callback delivered twice exchanges the code once"
     CHECK(count("oauth.v2.access") == 1);
 }
 
+TEST("slack features: custom sidebar sections — the list, moves, create, a refused edit") {
+    if (!haveServer())
+        return;
+    // Listed out of order: the chain (next_channel_section_id) decides.
+    Env e(
+        R"({"users.channelSections.list": {"ok": true, "channel_sections": [
+        {"channel_section_id": "L2", "type": "standard", "name": "Later", "emoji": "",
+         "next_channel_section_id": "LCH", "channel_ids_page": {"channel_ids": [], "count": 0}},
+        {"channel_section_id": "LCH", "type": "channels", "name": "Channels",
+         "next_channel_section_id": null, "channel_ids_page": {"channel_ids": [], "count": 0}},
+        {"channel_section_id": "L1", "type": "standard", "name": "Projects", "emoji": "rocket",
+         "next_channel_section_id": "L2",
+         "channel_ids_page": {"channel_ids": ["C1", "D1"], "count": 2}},
+        {"channel_section_id": "LST", "type": "stars", "name": "",
+         "next_channel_section_id": "L1", "channel_ids_page": {"channel_ids": [], "count": 0}}]}})"
+    );
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.sections().size() == 2; }));
+    CHECK(e.be->capabilities().customSections);
+    CHECK_STR(e.store.sections()[0].name, "Projects");
+    CHECK_STR(e.store.sections()[0].emoji, "rocket");
+    CHECK_STR(e.store.sections()[1].id, "L2");
+    REQUIRE(e.store.sections()[0].convs.size() == 2);
+    CHECK_STR(e.store.sections()[0].convs[1], "D1");
+
+    // Out of its section, the channel goes back to Slack's Channels section.
+    e.be->moveToSection(e.conv("C1"), {});
+    CHECK(e.store.sectionOf("C1") == nullptr); // at once
+    REQUIRE(pumpUntil([] { return count("users.channelSections.channels.bulkUpdate") == 1; }));
+    json::Value f = Log().get("users.channelSections.channels.bulkUpdate")["form"];
+    CHECK_STR(
+        std::string(f["insert"].str()), R"([{"channel_section_id":"LCH","channel_ids":["C1"]}])"
+    );
+    CHECK_STR(
+        std::string(f["remove"].str()), R"([{"channel_section_id":"L1","channel_ids":["C1"]}])"
+    );
+
+    // A new section shows once Slack names it, with its first conversation.
+    ctl("POST",
+        "/_ctl/script",
+        R"({"method": "users.channelSections.create",
+            "responses": [{"ok": true, "channel_section_id": "L9"}]})");
+    e.be->createSection("Ops", "", e.conv("C1"));
+    REQUIRE(pumpUntil([&] { return e.store.sectionOf("C1") != nullptr; }));
+    CHECK_STR(e.store.sections()[0].id, "L9");
+    CHECK_STR(std::string(Log().get("users.channelSections.create")["form"]["name"].str()), "Ops");
+
+    // Refused: the banner says so, and Slack's list puts it back.
+    ctl("POST",
+        "/_ctl/script",
+        R"({"method": "users.channelSections.delete",
+            "responses": [{"ok": false, "error": "section_not_found"}]})");
+    const int lists = count("users.channelSections.list");
+    e.be->deleteSection("L2");
+    CHECK(e.store.findSection("L2") == nullptr);
+    REQUIRE(pumpUntil([&] { return count("users.channelSections.list") > lists; }));
+    REQUIRE(pumpUntil([&] { return e.store.findSection("L2") != nullptr; }));
+    REQUIRE(!e.errors.empty());
+    CHECK(e.errors.back().find("section_not_found") != std::string::npos);
+}
+
+TEST("slack features: an OAuth token has no custom sections") {
+    if (!haveServer())
+        return;
+    Env e({}, false);
+    REQUIRE(e.connect());
+    CHECK_FALSE(e.be->capabilities().customSections);
+    pumpFor(50);
+    CHECK(count("users.channelSections.list") == 0);
+}
+
 #endif // !_WIN32

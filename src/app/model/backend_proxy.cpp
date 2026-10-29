@@ -319,6 +319,21 @@ void BackendProxy::setZenMode(bool on) {
 void BackendProxy::setLocalName(ConvRef c, std::string name) {
     _t->setLocalName(c, std::move(name));
 }
+void BackendProxy::createSection(std::string name, std::string emoji, ConvRef first) {
+    _t->createSection(std::move(name), std::move(emoji), first);
+}
+void BackendProxy::updateSection(const std::string &id, std::string name, std::string emoji) {
+    _t->updateSection(id, std::move(name), std::move(emoji));
+}
+void BackendProxy::deleteSection(const std::string &id) {
+    _t->deleteSection(id);
+}
+void BackendProxy::moveToSection(ConvRef c, const std::string &id) {
+    _t->moveToSection(c, id);
+}
+void BackendProxy::moveSection(const std::string &id, int step) {
+    _t->moveSection(id, step);
+}
 void BackendProxy::loadChannelCanvas(ConvRef c, std::function<void(std::string)> done) {
     _t->loadChannelCanvas(c, std::move(done));
 }

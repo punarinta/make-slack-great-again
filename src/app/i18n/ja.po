@@ -842,7 +842,7 @@ msgstr "メッセージを削除"
 msgid "This action cannot be undone."
 msgstr "この操作は元に戻せません。"
 
-#: src/app/screens/messages/message_dialogs.cpp
+#: src/app/screens/messages/message_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp
 msgid "Delete"
 msgstr "削除"
 
@@ -2417,7 +2417,7 @@ msgstr "ステップ 2/2"
 msgid "Back"
 msgstr "戻る"
 
-#: src/app/screens/shell/channel_dialogs.cpp
+#: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp
 msgid "Create"
 msgstr "作成"
 
@@ -2688,6 +2688,14 @@ msgid "Stop"
 msgstr "停止"
 
 #: src/app/screens/shell/context_menus.cpp
+msgid "New section…"
+msgstr "新しいセクション…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Remove from %1"
+msgstr "%1 から外す"
+
+#: src/app/screens/shell/context_menus.cpp
 msgid "Workspace admin"
 msgstr "ワークスペース管理"
 
@@ -2720,8 +2728,32 @@ msgid "Remove teammate…"
 msgstr "チームメイトを外す…"
 
 #: src/app/screens/shell/context_menus.cpp
+msgid "Create a section…"
+msgstr "セクションを作成…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Rename section…"
+msgstr "セクション名を変更…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Delete section…"
+msgstr "セクションを削除…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Move section up"
+msgstr "セクションを上へ移動"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Move section down"
+msgstr "セクションを下へ移動"
+
+#: src/app/screens/shell/context_menus.cpp
 msgid "Notify you about…"
 msgstr "通知対象…"
+
+#: src/app/screens/shell/context_menus.cpp
+msgid "Move to section"
+msgstr "セクションに移動"
 
 #: src/app/screens/shell/context_menus.cpp
 msgid "Rename conversation…"
@@ -3180,6 +3212,30 @@ msgstr "この名前はmsgaにだけ表示され、Claude Codeは独自の名前
 #: src/app/screens/shell/shell_dialogs.cpp
 msgid "Only you see this name. Leave it empty to show the members' names again."
 msgstr "この名前は自分にだけ表示されます。空にするとメンバーの名前の表示に戻ります。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Rename section"
+msgstr "セクション名を変更"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Create a section"
+msgstr "セクションを作成"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "e.g. Projects"
+msgstr "例: プロジェクト"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Only you see your sections."
+msgstr "セクションは自分にだけ表示されます。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Delete section"
+msgstr "セクションを削除"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Delete \"%1\"? Its conversations go back to where they were listed before."
+msgstr "「%1」を削除しますか？ 中の会話は元の場所に戻ります。"
 
 #: src/app/screens/shell/shell_links.cpp
 msgid "The session is gone."
@@ -3900,6 +3956,10 @@ msgstr "コマンド /%1 が失敗しました: %2"
 msgid "Slack is rate-limiting requests (%1) — retrying in %n second."
 msgid_plural "Slack is rate-limiting requests (%1) — retrying in %n seconds."
 msgstr[0] "Slackがリクエストをレート制限しています (%1) — %n 秒後に再試行します。"
+
+#: src/app/slack/slack_backend.cpp
+msgid "Couldn't change the sidebar sections: %1"
+msgstr "サイドバーのセクションを変更できませんでした: %1"
 
 #: src/app/update/updater.cpp
 msgid "Cannot write update to %1"

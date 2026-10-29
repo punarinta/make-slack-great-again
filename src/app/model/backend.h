@@ -328,6 +328,21 @@ public:
     virtual void setLocalName(ConvRef conv, std::string name) {
         _store.updateConversation(conv, [&](Conversation &c) { c.localName = std::move(name); });
     }
+    // The sidebar's own sections (Capabilities::customSections,
+    // Store::sections). Every edit shows in the Store at once. These defaults
+    // keep the sections in this client (sectionsChanged() saves them); a
+    // service that has them (Slack) sends each edit on.
+    // createSection: a new section at the top, holding `first` (kNoConv: empty).
+    virtual void createSection(std::string name, std::string emoji, ConvRef first);
+    virtual void updateSection(const std::string &id, std::string name, std::string emoji);
+    // Its conversations go back to their own sections.
+    virtual void deleteSection(const std::string &id);
+    // Into section `id` ("" = out of its section). A conversation is in one
+    // place only: moving a starred one unstars it, starring one takes it out
+    // of its section (leaveSection).
+    virtual void moveToSection(ConvRef conv, const std::string &id);
+    // One place up (step -1) or down (+1) among the sections.
+    virtual void moveSection(const std::string &id, int step);
     // The signed-in user is typing in conv (thread 0 = the channel). Call
     // repeatedly while typing; backends rate-limit the outgoing event.
     virtual void userTyping(ConvRef conv, Ts threadTs);
@@ -351,6 +366,7 @@ public:
         bool fileUpload       = false; // Forward re-uploads a message's files (else: links)
         bool removePreview    = false; // deleteAttachment: a link preview's "Remove preview"
         bool sidebarTheme     = false; // loadSidebarTheme: Settings' "Use my Slack theme"
+        bool customSections   = false; // the sidebar's own sections (createSection…)
     };
     virtual Capabilities capabilities() const { return {}; }
 
@@ -752,6 +768,12 @@ public:
     std::function<void(ConvRef conv, Ts ts)> onReminderDue;
 
 protected:
+    // The local sections changed (the defaults above): saved by a backend
+    // that keeps them.
+    virtual void sectionsChanged() {}
+    // A starred conversation leaves its section (see moveToSection).
+    void         leaveSection(ConvRef conv);
+
     Store &_store;
 };
 
