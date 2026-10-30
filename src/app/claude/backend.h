@@ -378,6 +378,7 @@ private:
     void        typeLive(Tracked &t);
     void        dispatch(Tracked &t);
     void        readApproval(Tracked &t);
+    bool        hookApproval(Tracked &t);
     void        stopWorker(Tracked &t);
     void        adoptCopy(Tracked &t, const std::string &copyId);
     void        settleTurn(Tracked &t); // msga's turn: ended, or given up on
@@ -471,6 +472,8 @@ private:
     plat::App                                                   &_app;
     Credentials                                                  _creds;
     Paths                                                        _paths;
+    // Where the permission hook leaves its questions (approvals.h).
+    std::string                                                  _approvalsDir;
     Team                                                         _team;
     std::unique_ptr<Launcher>                                    _launcher;
     std::shared_ptr<bool>                                        _alive;

@@ -2,6 +2,7 @@
 // the CLI, typing into live workers, /btw branches, permission questions,
 // Stop, new sessions (see backend.h).
 #include "app/claude/backend.h"
+#include "app/claude/approvals.h"
 
 #include "app/claude/backend_internal.h"
 #include "app/claude/common.h"
@@ -473,6 +474,9 @@ void Backend::readApproval(Tracked &t) {
         t.approvalReads       = 0;
         t.approvalReadAfterMs = 0;
         t.approvalAnswered    = false;
+        t.approvalSinceMs     = nowMs();
+        t.hookQuestion.clear();
+        t.hookAnswers.clear();
     };
     if (!awaitsApproval(t.info)) {
         t.approvalNeeds.clear();
@@ -485,6 +489,8 @@ void Backend::readApproval(Tracked &t) {
         t.approvalNeeds = t.info.needs;
         reset();
     }
+    if (hookApproval(t))
+        return;
     // Never "answer it in a terminal": a read that fails is tried again, a
     // few times quickly, then slowly for as long as the question waits.
     if (!t.approvalOptions.empty() || t.approvalAnswered || nowMs() < t.approvalReadAfterMs)
@@ -537,6 +543,47 @@ void Backend::readApproval(Tracked &t) {
     sync(t); // no hint while it's being read
 }
 
+// The question as its hook (approvals.h) brought it: its options from there.
+// True while it is (or may yet be) answered that way — false leaves it to
+// the screen: a session without the hook, or a hook that gave up on msga.
+bool Backend::hookApproval(Tracked &t) {
+    if (!t.info.permissionHook)
+        return false;
+    for (HookQuestion &q : pendingHookQuestions(_approvalsDir)) {
+        if (q.sessionId != t.info.sessionId)
+            continue;
+        if (q.id != t.hookQuestion) { // a new one (perhaps asking just what the last did)
+            t.hookQuestion     = q.id;
+            t.approvalAnswered = false;
+            t.approvalOptions.clear();
+            t.hookAnswers.clear();
+            for (auto &o : q.options) {
+                t.approvalOptions.push_back({int(t.approvalOptions.size()) + 1, o.label});
+                t.hookAnswers.push_back(std::move(o.answer));
+            }
+            sync(t); // the buttons
+        }
+        takeHookQuestion(_approvalsDir, q.id);
+        return true;
+    }
+    if (!t.hookQuestion.empty()) {
+        if (t.approvalAnswered)
+            return true; // answered: Claude Code moves on in a moment
+        // Its hook gave up on it (or was ended): the dialog asks.
+        t.hookQuestion.clear();
+        t.hookAnswers.clear();
+        t.approvalOptions.clear();
+        sync(t);
+        return false;
+    }
+    // Not come through yet: the hook writes it as the session starts waiting.
+    const int64_t left = t.approvalSinceMs + kHookQuestionMs - nowMs();
+    if (left <= 0)
+        return false;
+    after(int(left) + 50, [this] { scheduleRefresh(); });
+    return true;
+}
+
 void Backend::pressButton(ConvRef conv, Ts, const std::string &buttonId, Done done) {
     const auto fail = [&](const std::string &why) { postDone(std::move(done), false, why); };
     Tracked   *t    = findRef(conv);
@@ -549,6 +596,23 @@ void Backend::pressButton(ConvRef conv, Ts, const std::string &buttonId, Done do
         if (c < '0' || c > '9')
             return fail("unknown button");
         number = number * 10 + (c - '0');
+    }
+    if (!t->hookQuestion.empty()) {
+        // Asked through the hook: its answer is left for it.
+        if (t->approvalAnswered || number < 1 || number > int(t->hookAnswers.size()) ||
+            !answerHookQuestion(
+                _approvalsDir, t->hookQuestion, t->hookAnswers[size_t(number - 1)]
+            )) {
+            scheduleRefresh();
+            return fail(tr("Claude isn't waiting for that approval any more."));
+        }
+        t->approvalOptions.clear();
+        t->hookAnswers.clear();
+        t->approvalAnswered = true;
+        sync(*t);
+        scheduleRefresh();
+        postDone(std::move(done), true, {});
+        return;
     }
     if (!t->answering.expired())
         return fail(tr("The answer is on its way."));

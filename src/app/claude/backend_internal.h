@@ -43,6 +43,9 @@ inline constexpr int64_t kTypeRetryMs     = 5'000;
 inline constexpr int kApprovalReads       = 3;      // quick tries at reading a question's options
 inline constexpr int kApprovalRetryMs     = 4'000;  // between them
 inline constexpr int kApprovalSlowRetryMs = 30'000; // and after them, for as long as it waits
+// A session with msga's permission hook: how long its question may take to
+// come through the hook before it's read off the screen instead.
+inline constexpr int kHookQuestionMs      = 3'000;
 
 int64_t     nowMs();
 // `path` from its start into `parser`, a megabyte at a time, as far as it
@@ -225,6 +228,11 @@ struct Backend::Tracked {
     int                                     approvalReads       = 0;
     int64_t                                 approvalReadAfterMs = 0; // next try, after a failed one
     bool                                    approvalAnswered    = false;
+    int64_t                                 approvalSinceMs     = 0; // when it began waiting
+    // Asked through msga's permission hook (approvals.h): the question's id
+    // (kept once answered), and what the hook prints for each option.
+    std::string                             hookQuestion;
+    std::vector<std::string>                hookAnswers;
     std::weak_ptr<AttachAnswer>             answering; // reading or answering it (as `typing`)
     // A session branched off another (a /btw, or `--fork-session` anywhere):
     // shown as a thread in its parent rather than in the list (detectForks).

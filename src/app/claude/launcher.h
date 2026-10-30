@@ -76,6 +76,10 @@ public:
     Launcher(const Launcher &)            = delete;
     Launcher &operator=(const Launcher &) = delete;
 
+    // `--settings` for the sessions it starts (see approvals.h), saved with
+    // each like its other start options; "" = none.
+    void setStartSettings(std::string settingsJson) { _startSettings = std::move(settingsJson); }
+
     // done(sessionId, error): sessionId empty on failure, error then says why.
     using Done = std::function<void(std::string sessionId, std::string error)>;
 
@@ -185,6 +189,7 @@ private:
     // The program to start for the CLI with `argv` (on Windows an npm install's
     // batch script goes through cmd.exe).
     void commandFor(std::string &program, std::vector<std::string> &argv) const;
+    void addStartSettings(std::vector<std::string> &args) const;
     // The CLI with `args` run to its end on a worker (base::run); done(result)
     // on the loop, unless the Launcher is gone by then.
     void spawn(
@@ -214,6 +219,7 @@ private:
 
     plat::App            &_app;
     std::string           _claudePath;
+    std::string           _startSettings;
     Paths                 _paths;
     std::shared_ptr<bool> _alive;
 };

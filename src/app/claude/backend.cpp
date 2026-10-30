@@ -3,6 +3,7 @@
 // timers (see backend.h).
 #include "app/claude/backend.h"
 
+#include "app/claude/approvals.h"
 #include "app/claude/backend_internal.h"
 #include "app/claude/common.h"
 #include "app/claude/outputs.h"
@@ -137,8 +138,14 @@ std::string profilePath() {
 
 Backend::Backend(model::Store &store, plat::App &app, Credentials creds)
     : model::Backend(store), _app(app), _creds(std::move(creds)), _paths(Paths::detect()),
-      _team(dirs().data + "/team"), _alive(std::make_shared<bool>(true)) {
+      _approvalsDir(dirs().data + "/approvals"), _team(dirs().data + "/team"),
+      _alive(std::make_shared<bool>(true)) {
     _launcher = std::make_unique<Launcher>(_app, _creds.claudePath, _paths);
+    // Sessions msga starts ask their permission questions through it too
+    // (approvals.h) — not in tests, whose sessions are fakes.
+    if (const std::string exe = base::executablePath();
+        !exe.empty() && !base::testProcess() && file::makeDirs(_approvalsDir))
+        _launcher->setStartSettings(permissionHookSettings(exe, _approvalsDir));
     loadKnown();
     loadProfile();
 }
@@ -169,6 +176,9 @@ void Backend::close() {
         if (const auto typing = std::exchange(t->typing, {}).lock())
             typing->cancel(); // its done finds the backend gone
         t->answering.reset();
+        // Without msga, a question it holds is the dialog's again.
+        if (!t->hookQuestion.empty() && !t->approvalAnswered)
+            answerHookQuestion(_approvalsDir, t->hookQuestion, {});
     }
 }
 
@@ -1376,9 +1386,10 @@ Message Backend::waitingMessage(const Tracked &t, Ts ts) {
                 model::Button b;
                 b.id    = "option:" + str::number(int64_t(o.number));
                 b.label = o.label;
-                if (str::startsWith(o.label, "Yes"))
+                // Read off the screen in English; through the hook, in msga's language.
+                if (str::startsWith(o.label, "Yes") || str::startsWith(o.label, tr("Yes")))
                     b.style = model::Button::Style::Primary;
-                else if (str::startsWith(o.label, "No"))
+                else if (str::startsWith(o.label, "No") || str::startsWith(o.label, tr("No")))
                     b.style = model::Button::Style::Danger;
                 m.extras().buttons.push_back(std::move(b));
             }
@@ -2476,12 +2487,14 @@ void Backend::watchCheck() {
         seen[sessionsDir] = {names(entries), s.mtimeMicros};
     else
         seen[sessionsDir] = {-1, 0};
-    if (file::stat(jobsDir, &s)) {
-        std::vector<file::DirEntry> jobs;
-        file::listDir(jobsDir, &jobs);
-        seen[jobsDir] = {names(jobs), s.mtimeMicros};
-    } else {
-        seen[jobsDir] = {-1, 0};
+    for (const std::string &dir : {jobsDir, _approvalsDir}) {
+        if (file::stat(dir, &s)) {
+            std::vector<file::DirEntry> list;
+            file::listDir(dir, &list);
+            seen[dir] = {names(list), s.mtimeMicros};
+        } else {
+            seen[dir] = {-1, 0};
+        }
     }
     for (const auto &p : want)
         seen[p] = file::stat(p, &s) ? std::pair{s.size, s.mtimeMicros}
@@ -2495,6 +2508,10 @@ void Backend::watchCheck() {
 void Backend::watchTick() {
     bool anyBusy = false;
     watchedFiles(&anyBusy);
+    // The questions msga holds for their hooks: it is still here.
+    for (const auto &[id, tp] : _sessions)
+        if (!tp->hookQuestion.empty() && !tp->approvalAnswered)
+            takeHookQuestion(_approvalsDir, tp->hookQuestion);
     // Watched, with no loop to wake (a headless app): what it says is read here.
     if (_watchAll && !_inotifyWatch)
         readWatchEvents();
@@ -2529,7 +2546,7 @@ void Backend::syncWatches() {
     if (_inotify < 0)
         return;
     std::vector<std::string> files = watchedFiles(nullptr);
-    std::vector<std::string> dirs{_paths.sessionsDir(), _paths.jobsDir()};
+    std::vector<std::string> dirs{_paths.sessionsDir(), _paths.jobsDir(), _approvalsDir};
     for (const std::string &f : files)
         if (const std::string d(file::dirName(f));
             std::find(dirs.begin(), dirs.end(), d) == dirs.end())
@@ -2598,6 +2615,8 @@ void Backend::readWatchEvents() {
                 IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF;
             if (dir->first == _paths.sessionsDir() ||
                 (dir->first == _paths.jobsDir() && (e->mask & kCameOrWent)) ||
+                (dir->first == _approvalsDir && (e->mask & kCameOrWent) &&
+                 str::endsWith(name, ".json")) ||
                 (!name.empty() && _watchFiles.count(str::concat({dir->first, "/", name}))))
                 changed = true;
         }

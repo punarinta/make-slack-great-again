@@ -144,6 +144,30 @@ msgstr "貼り付け"
 msgid "Select all"
 msgstr "すべて選択"
 
+#: src/app/claude/approvals.cpp
+msgid "Yes, and don't ask again for %1 commands in %2"
+msgstr "はい、%2 での %1 コマンドは今後確認しない"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, and don't ask again for %1"
+msgstr "はい、%1 は今後確認しない"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, and always allow access to %1 from this project"
+msgstr "はい、このプロジェクトでは %1 へのアクセスを常に許可"
+
+#: src/app/claude/approvals.cpp
+msgid "Yes, allow all edits during this session"
+msgstr "はい、このセッション中のすべての編集を許可"
+
+#: src/app/claude/approvals.cpp src/app/claude/backend.cpp
+msgid "Yes"
+msgstr "はい"
+
+#: src/app/claude/approvals.cpp src/app/claude/backend.cpp
+msgid "No"
+msgstr "いいえ"
+
 #: src/app/claude/backend.cpp src/app/screens/messages/rows.cpp src/app/screens/shell/typing_indicator.cpp
 msgid "You"
 msgstr "あなた"

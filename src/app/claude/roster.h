@@ -55,6 +55,9 @@ struct SessionInfo {
     // Background: `needs` is a permission prompt in the worker's terminal
     // ("approve Bash: …"), not a question a message answers.
     bool        awaitsApproval = false;
+    // Background: started with msga's permission hook (approvals.h), so its
+    // questions come to msga rather than only to its screen.
+    bool        permissionHook = false;
     // Background, blocked on a question: the reply Claude Code predicts
     // (state.json "suggestedReply"), "" when there is none to offer.
     std::string suggestedReply;

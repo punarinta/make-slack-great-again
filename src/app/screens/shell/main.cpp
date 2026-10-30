@@ -6,6 +6,9 @@
 //   --demo <dir>          the fake workspace in <dir>/fixture.json (only in
 //                         builds configured with -DMSGA_DEMO=ON)
 //   --demo-tour <file>    with --demo: msga's scripted walkthrough (demo/tour.json)
+//   --claude-permission-hook <dir>
+//                         Claude Code's permission hook for the sessions msga
+//                         starts (app/claude/approvals.h): no window, no app
 //
 // Diagnostics (screenshots, measurements):
 //   --theme light|dark   override the saved theme for this run
@@ -20,6 +23,7 @@
 // MSGA_MEMSTATS=<seconds> prints them that often.
 #include "app/auth/workspaces.h"
 #include "app/cache/workspace_cache.h"
+#include "app/claude/approvals.h"
 #include "app/crash/crash_handler.h"
 #include "app/i18n/languages.h"
 #include "app/identity.h"
@@ -167,6 +171,8 @@ std::string demoInstanceKey() {
 } // namespace
 
 int main(int argc, char **argv) {
+    if (argc == 3 && argv[1] == claude::kPermissionHookFlag)
+        return claude::runPermissionHook(argv[2]);
 #ifdef MSGA_DEMO
     std::string demo;
 #else

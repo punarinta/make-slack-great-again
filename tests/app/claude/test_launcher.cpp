@@ -431,6 +431,39 @@ TEST("launcher: a fork can go without tools, the question tool too") {
     );
 }
 
+TEST("launcher: the start settings go with every start that saves options") {
+    auto app = headlessApp();
+    REQUIRE(app);
+    FakeCli  f;
+    Launcher launcher(*app, f.cli, f.paths);
+    launcher.setStartSettings("{}");
+    DoneResult started, resumed, forked, first;
+    launcher.start(f.work, "first", false, {}, {}, collect(started));
+    REQUIRE(waitFor(*app, [&] { return started.called; }));
+    launcher.resume(kSid1, f.work, "second", true, false, collect(resumed));
+    REQUIRE(waitFor(*app, [&] { return resumed.called; }));
+    launcher.fork(kSid1, f.work, "third", collect(forked));
+    REQUIRE(waitFor(*app, [&] { return forked.called; }));
+    launcher.resume(
+        "fedcba98-0000-4000-8000-000000000009", f.work, "fourth", false, false, collect(first)
+    );
+    REQUIRE(waitFor(*app, [&] { return first.called; }));
+    const auto calls = f.calls();
+    REQUIRE(calls.size() == 5);
+    CHECK_STR(calls[0], "--bg --disallowedTools AskUserQuestion --settings {} -- first");
+    CHECK_STR(calls[1], "stop abcdef11");
+    // A background session keeps what it was started with: none again.
+    CHECK_STR(calls[2], std::string("--bg --resume ") + kSid1 + " -- second");
+    CHECK_STR(
+        calls[3], std::string("--bg --resume ") + kSid1 + " --fork-session --settings {} -- third"
+    );
+    CHECK_STR(
+        calls[4],
+        "--bg --resume fedcba98-0000-4000-8000-000000000009 --disallowedTools AskUserQuestion "
+        "--settings {} -- fourth"
+    );
+}
+
 TEST("launcher: stop waits for the worker; remove says why it kept a job") {
     auto app = headlessApp();
     REQUIRE(app);

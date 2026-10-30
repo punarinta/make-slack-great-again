@@ -3445,6 +3445,60 @@ TEST("backend: a live background session is typed to, not stopped, even while it
     CHECK_FALSE(live.stopped());
     CHECK(rig.errors.empty());
 
+    // Started with msga's permission hook (approvals.h): the question comes
+    // through it, options and all, and a press is left there as the hook's
+    // answer — the screen isn't read (it shows no question here at all).
+    writeFile(home.dir + "/attach-mode", "");
+    const std::string approvals = dirs().data + "/approvals";
+    REQUIRE(file::makeDirs(approvals));
+    writeFile(
+        approvals + "/7-1.json",
+        R"({"session_id":"abcdef11-0000-4000-8000-000000000001","cwd":"/w",)"
+        R"("hook_event_name":"PermissionRequest","tool_name":"Bash",)"
+        R"("tool_input":{"command":"rm -f nm"},"permission_suggestions":[)"
+        R"({"type":"addDirectories","directories":["/w/outside"],"destination":"session"}]})"
+    );
+    {
+        std::string job = jobDone;
+        job.replace(job.find("\"done\""), 6, "\"working\"");
+        job.insert(
+            job.rfind('}'),
+            R"(,"needs":"approve Bash: rm -f nm","respawnFlags":["--settings",)"
+            R"("{\"args\":[\"--claude-permission-hook\"]}"])"
+        );
+        writeFile(jobPath, job);
+    }
+    const model::Message *hooked = nullptr;
+    REQUIRE(rig.wait(
+        [&] {
+            for (const auto &m : rig.messages(conv))
+                if (m.extra && m.extra->buttons.size() == 3 &&
+                    m.text == "Waiting for your approval: Bash: rm -f nm")
+                    hooked = &m;
+            return hooked != nullptr;
+        },
+        10000
+    ));
+    const auto hookButtons = hooked->extra->buttons;
+    CHECK_STR(hookButtons[0].label, "Yes");
+    CHECK_STR(hookButtons[1].label, "Yes, and always allow access to /w/outside from this project");
+    CHECK_STR(hookButtons[2].label, "No");
+    CHECK(file::exists(approvals + "/7-1.seen")); // msga has it: the hook waits
+    bool hookPressed = false, hookOk = false;
+    rig.backend->pressButton(conv, hooked->ts, hookButtons[1].id, [&](bool o, const std::string &) {
+        hookPressed = true;
+        hookOk      = o;
+    });
+    REQUIRE(rig.wait([&] { return hookPressed; }, 5000));
+    CHECK(hookOk);
+    CHECK(contains(readText(approvals + "/7-1.answer"), R"("directories":["/w/outside"])"));
+    CHECK_STR(home.text("answered.log"), "3\n");          // nothing pressed on the screen
+    for (const char *ext : {".json", ".seen", ".answer"}) // the hook takes it and goes
+        file::remove(approvals + "/7-1" + ext);
+    writeFile(jobPath, jobDone);
+    rig.pump(500);
+    CHECK(rig.errors.empty());
+
     // Mid-turn Claude Code queues the prompt and may draw the box as it likes:
     // a hint in it, or the prompt seemingly still there. Delivered either way
     // (the transcript has it) — never "didn't take the message".

@@ -398,6 +398,13 @@ void Launcher::runNewSession(std::vector<std::string> args, const std::string &c
     });
 }
 
+void Launcher::addStartSettings(std::vector<std::string> &args) const {
+    if (_startSettings.empty())
+        return;
+    args.emplace_back("--settings");
+    args.push_back(_startSettings);
+}
+
 void Launcher::start(
     const std::string &cwd,
     const std::string &prompt,
@@ -407,6 +414,7 @@ void Launcher::start(
     Done               done
 ) {
     std::vector<std::string> args = {"--bg", "--disallowedTools", "AskUserQuestion"};
+    addStartSettings(args);
     if (skipPermissionChecks)
         args.emplace_back("--dangerously-skip-permissions");
     if (!rolePrompt.empty()) {
@@ -449,6 +457,7 @@ void Launcher::fork(
     const std::vector<std::string> &deniedTools
 ) {
     std::vector<std::string> args = {"--bg", "--resume", sessionId, "--fork-session"};
+    addStartSettings(args);
     if (!deniedTools.empty()) {
         // Saved with the branch like any start option (its job's respawnFlags,
         // seen 2.1.289): a flag-free resume or a fork of it keeps them.
@@ -476,6 +485,7 @@ void Launcher::resume(
         if (!isBackground) { // first time in the background: it takes flags
             args.emplace_back("--disallowedTools");
             args.emplace_back("AskUserQuestion");
+            addStartSettings(args);
         }
         args.emplace_back("--");
         args.push_back(prompt);

@@ -464,6 +464,27 @@ TEST("terminal: the screen shows when Claude Code's prompt takes typing") {
         );
     }
     {
+        // As 2.1.314 draws one (2026-10-30): a rule with the session's name
+        // under the question, and a dashed one around the command.
+        VtScreen s(50, 200);
+        s.feed(
+            "\x1b[H\x1b[2J\x1b[20;1H● Running 1 shell command…\x1b[22;1H" + rule(200) +
+            "\x1b[23;1H Bash command\x1b[24;1H   Stop test servers"
+            "\x1b[25;1H ╌╌╌╌╌╌\x1b[26;1H │ pkill -f \"next dev\"; rm -f server/node_modules"
+            "\x1b[27;1H ╌╌╌╌╌╌\x1b[28;1H │ server/node_modules resolves through a symlink"
+            "\x1b[30;1H Do you want to proceed?\x1b[31;1H ❯ 1. Yes"
+            "\x1b[32;1H   2. Yes, and always allow access to server/node_modules"
+            "\x1b[33;1H   3. No\x1b[35;1H Esc to cancel · Tab to amend\x1b[36;1H" +
+            rule(160, "lingolette b2c signup conversion") + "\x1b[31;2H"
+        );
+        const auto q = findPermissionQuestion(s);
+        REQUIRE(q);
+        REQUIRE(q->options.size() == 3);
+        CHECK(q->selected == 1);
+        CHECK_STR(q->options[2].label, "No");
+        CHECK(str_starts(q->text, "Bash command Stop test servers"));
+    }
+    {
         // The prompt box, or a numbered list in an answer: no question.
         VtScreen box(50, 160);
         box.feed(idleFrame());

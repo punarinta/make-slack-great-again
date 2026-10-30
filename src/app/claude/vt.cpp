@@ -522,13 +522,13 @@ bool readyForInput(const VtScreen &screen) {
            screen.cursorRow() == box->top;
 }
 
-std::optional<PermissionQuestion> findPermissionQuestion(const VtScreen &screen) {
-    const int rule = lastRule(screen, screen.rows());
-    if (rule < 0)
-        return std::nullopt;
+namespace {
+
+// The question drawn in rows [from, to): its text, then its numbered options.
+std::optional<PermissionQuestion> questionIn(const VtScreen &screen, int from, int to) {
     PermissionQuestion q;
     std::string        text;
-    for (int r = rule + 1; r < screen.rows(); ++r) {
+    for (int r = from; r < to; ++r) {
         const std::string row    = screen.row(r);
         int               number = 0;
         std::string       label;
@@ -557,6 +557,18 @@ std::optional<PermissionQuestion> findPermissionQuestion(const VtScreen &screen)
         return std::nullopt;
     q.text = std::move(text);
     return q;
+}
+
+} // namespace
+
+// Under the lowest rule that has one: 2.1.314 draws another rule (the
+// session's name) below the question.
+std::optional<PermissionQuestion> findPermissionQuestion(const VtScreen &screen) {
+    for (int to = screen.rows(), rule = lastRule(screen, to); rule >= 0;
+         to = rule, rule = lastRule(screen, rule))
+        if (auto q = questionIn(screen, rule + 1, to))
+            return q;
+    return std::nullopt;
 }
 
 } // namespace claude

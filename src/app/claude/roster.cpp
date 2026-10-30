@@ -1,4 +1,5 @@
 #include "app/claude/roster.h"
+#include "app/claude/approvals.h"
 
 #include "base/file.h"
 #include "base/json.h"
@@ -175,6 +176,8 @@ std::optional<SessionInfo> parseBackgroundJob(std::string_view json) {
                        (s.status != "blocked" || str::endsWith(s.needs, "attach to respond"));
     if (!s.needs.empty())
         s.status = "blocked";
+    for (const json::Value f : o["respawnFlags"])
+        s.permissionHook = s.permissionHook || hasPermissionHook(f.str());
     // Claude Code predicts the reply when a turn ends on a question (a bg
     // worker without a focused terminal predicts nothing else) and clears it
     // when the next turn starts — yet a stopped job can keep a stale one, and
