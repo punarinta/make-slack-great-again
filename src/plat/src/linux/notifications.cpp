@@ -139,11 +139,10 @@ void Notifier::requestCapabilities() {
     );
 }
 
-uint64_t Notifier::notify(const Notification &n) {
+bool Notifier::notify(uint64_t id, const Notification &n) {
     if (!available())
-        return 0;
-    const uint64_t id = _next++;
-    _entries[id]      = {};
+        return false;
+    _entries[id] = {};
     while (_entries.size() > kMaxEntries)
         forget(_entries.begin()->first);
     if (_capsKnown) {
@@ -152,7 +151,7 @@ uint64_t Notifier::notify(const Notification &n) {
         _queue.push_back({id, n});
         requestCapabilities();
     }
-    return id;
+    return true;
 }
 
 void Notifier::send(uint64_t id, const Notification &n) {

@@ -56,7 +56,13 @@ class WorkspaceStack;
 
 class Shell {
 public:
-    Shell(screens::Context &ctx, ui::Window &win, Settings &settings, std::string settingsPath);
+    Shell(
+        screens::Context &ctx,
+        ui::Window       &win,
+        Settings         &settings,
+        std::string       settingsPath,
+        std::string       notifyPath = {}
+    );
     ~Shell();
 
     // Signed in to a workspace (the default), or not: then the rail shows no
@@ -215,6 +221,11 @@ public:
     // The conversation, then the message (inside
     // its thread when `thread` is its root), scrolled to and flashed.
     void           jumpToMessage(model::ConvRef conv, model::Ts ts, model::Ts thread);
+    // NotificationActivated handling, also reachable via main.cpp's
+    // single-instance hand-off (another process received the click).
+    void           activateNotification(
+        uint64_t id, const std::string &action = {}, const std::string &token = {}
+    );
 
     // The Settings dialog (the rail's gear, the tray menu); a second call
     // while it is open does nothing.
@@ -239,6 +250,8 @@ public:
     Composer                   *threadComposer();
     // The thread panel (the messages screens' ThreadPanel), null without them.
     ui::View                   *threadPanel() const;
+    // The message list (the messages screens' MessageList), null without them.
+    ui::View                   *messagesView() const { return _messages; }
     ConvHeader                 &header() { return *_header; }
     ConvTabs                   &tabs() { return *_tabs; }
     TypingIndicator            &typing() { return *_typing; }
@@ -395,6 +408,15 @@ private:
     // The same without the wait on the UI thread: asked for now, written
     // on a worker (in order with every other settings write).
     void          saveSettingsAsync();
+    // _notified across restarts, debounced the same way as settings
+    // (saveSettingsSoon); loaded once in the constructor.
+    void          loadNotified();
+    void          saveNotifiedSoon();
+    void          saveNotifiedNow(); // what saveNotifiedSoon has waiting, written at once
+    // The id for the next plat::App::notify() call: persisted (same file as
+    // _notified) so it's never reused across a restart -- a backend only
+    // knows about requests from its own run, so we own uniqueness instead.
+    uint64_t      nextNotifyId();
     void
     showSampleNotification(plat::Notification n, std::function<void(const std::string &)> result);
     void sampleNotificationReady(const plat::Notification &n); // its picture is there
@@ -427,6 +449,7 @@ private:
     ui::Window       &_win;
     Settings         &_settings;
     std::string       _settingsPath;
+    std::string       _notifyPath; // _notified's file, empty = don't persist (tests, no app dir)
     Avatars           _avatars;
     DraftStash        _drafts;
 
@@ -473,15 +496,23 @@ private:
     int                         _lastBadge = -1, _lastTray = -1;
     bool                        _hidden = false, _hiddenMaximized = false;
     std::unique_ptr<plat::Tray> _tray;
+    // convId, not a ConvRef: a ConvRef is a transient Store index, dead
+    // after a restart reloads the Store. Resolved back on click.
     struct Notified {
-        std::string    key; // the workspace ("" = the open Store unattached)
-        model::ConvRef conv = model::kNoConv;
-        model::Ts      root = 0, ts = 0; // a reply's thread; ts: scroll to it (reminders)
-        std::string    join;             // a huddle's link (its "Join" action)
+        std::string key; // the workspace ("" = the open Store unattached)
+        std::string convId;
+        model::Ts   root = 0, ts = 0; // a reply's thread; ts: scroll to it (reminders)
+        std::string join;             // a huddle's link (its "Join" action)
+        int64_t     postedAt = 0;     // base::nowSecs(), set by postNotification -- pruning
     };
-    std::unordered_map<uint64_t, Notified> _notified;        // notification id → where it opens
+    // Notification id -> where it opens. Persisted to _notifyPath: macOS
+    // and Windows keep delivered notifications around across launches, so
+    // a click after a restart needs this to still resolve.
+    std::unordered_map<uint64_t, Notified> _notified;
     std::unordered_set<std::string>        _notifiedHuddles; // "key\x1Fconv": announced, still live
-    std::vector<plat::TimerId>             _resolveTimers;   // notifyWhenUsersResolve's
+    plat::TimerId                          _notifySaveTimer = 0; // saveNotifiedSoon's
+    uint64_t                               _nextNotifyId    = 1; // nextNotifyId's, persisted
+    std::vector<plat::TimerId>             _resolveTimers;       // notifyWhenUsersResolve's
     std::vector<std::unique_ptr<Running>>  _running;
     plat::TimerId                          _attentionTimer = 0;
     ui::Popup                             *_forward        = nullptr; // the open forward dialog

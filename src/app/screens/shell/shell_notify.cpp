@@ -7,6 +7,7 @@
 #include "app/screens/common/message_text.h"
 #include "base/i18n.h"
 #include "base/str.h"
+#include "base/time.h"
 #include "base/utf8.h"
 #include "screens/shell/header.h"
 #include "screens/shell/shell.h"
@@ -126,23 +127,30 @@ std::string Shell::workspaceIconFor(const model::Store &st) const {
 
 // The OS notification, where there is a notifier (Windows falls back to a
 // tray balloon by itself); 0 = none shown. Callers play the chime either way,
-// also for a tray balloon.
+// also for a tray balloon. We pick the id (persisted, never reused -- see
+// nextNotifyId), not the backend: a backend only knows about this run.
 uint64_t Shell::post(const plat::Notification &n) {
     plat::App &pa = _ctx.app.platform();
-    return pa.notificationsAvailable() ? pa.notify(n) : 0;
+    if (!pa.notificationsAvailable())
+        return 0;
+    const uint64_t id = nextNotifyId();
+    return pa.notify(id, n) ? id : 0;
 }
 
 void Shell::postNotification(plat::Notification n, std::vector<std::string> pics, Notified where) {
-    n.timeoutMs = kNotifyTimeoutMs;
+    n.timeoutMs    = kNotifyTimeoutMs;
     // The chosen sound is ours to play; whether the OS plays its own is
     // sounds.h's call.
-    n.silent    = sounds::kSilentNotifications;
+    n.silent       = sounds::kSilentNotifications;
+    where.postedAt = base::nowSecs();
     notificationImage(
         std::move(pics),
         [this, n = std::move(n), where = std::move(where)](plat::Image img) mutable {
             n.image = std::move(img);
-            if (const uint64_t id = post(n))
+            if (const uint64_t id = post(n)) {
                 _notified[id] = std::move(where);
+                saveNotifiedSoon();
+            }
             if (_settings.notifySound)
                 sounds::play(_ctx.app.platform(), _settings.soundId);
         }
@@ -255,7 +263,7 @@ void Shell::maybeNotify(
         pics = {screens::authorAvatar(st, m), m.extra ? m.extra->botAvatar : std::string()};
     else
         pics = {workspaceIconFor(st)};
-    postNotification(std::move(n), std::move(pics), {key, conv, root, 0, {}});
+    postNotification(std::move(n), std::move(pics), {key, c.id, root, m.ts, {}});
 }
 
 void Shell::notifyWhenUsersResolve(
@@ -334,7 +342,7 @@ void Shell::huddleChanged(model::Store &st, const std::string &key, ConvRef conv
     n.title          = teamTitle(st, key, std::move(n.title));
     n.actions        = {{"join", tr("Join")}};
     std::string join = c.huddleLink.empty() ? huddleJoinUrl(st, conv) : c.huddleLink;
-    postNotification(std::move(n), {std::move(pic)}, {key, conv, 0, 0, std::move(join)});
+    postNotification(std::move(n), {std::move(pic)}, {key, c.id, 0, 0, std::move(join)});
 }
 
 // Only the master switch gates it; the click opens
@@ -386,7 +394,7 @@ void Shell::notifyReminderDue(const std::string &key, model::Store &st, ConvRef 
     if (c.kind == model::ConvKind::Dm)
         pics.push_back(st.user(c.dmUser).avatar);
     pics.push_back(workspaceIconFor(st));
-    postNotification(std::move(n), std::move(pics), {key, conv, it->thread, ts, {}});
+    postNotification(std::move(n), std::move(pics), {key, c.id, it->thread, ts, {}});
 }
 
 } // namespace shell

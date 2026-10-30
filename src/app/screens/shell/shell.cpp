@@ -8,6 +8,7 @@
 #include "base/log.h"
 #include "base/file.h"
 #include "base/i18n.h"
+#include "base/json.h"
 #include "base/str.h"
 #include "base/time.h"
 #include "gfx/icons_generated.h"
@@ -753,9 +754,16 @@ private:
 
 // ── Shell ───────────────────────────────────────────────────────────────────
 
-Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string settingsPath)
+Shell::Shell(
+    screens::Context &ctx,
+    Window           &win,
+    Settings         &settings,
+    std::string       settingsPath,
+    std::string       notifyPath
+)
     : _ctx(ctx), _win(win), _settings(settings), _settingsPath(std::move(settingsPath)),
-      _avatars(ctx.images) {
+      _notifyPath(std::move(notifyPath)), _avatars(ctx.images) {
+    loadNotified();
     // Decoded avatars fill the bitmaps the views already hold: repaint.
     _avatars.setRemote(ctx.remote);
     // Only the views showing a picture that landed (every view drawing an
@@ -1011,6 +1019,88 @@ void Shell::saveSettingsNow() {
         LOG_WARN("shell", "could not save %s", _settingsPath.c_str());
 }
 
+// A month unclicked is never going to be clicked; keeps the file from
+// growing forever on a chatty workspace.
+constexpr int64_t kNotifyMaxAgeSecs = 30 * 86400;
+
+void Shell::loadNotified() {
+    // Seed from the clock, not 1, when nothing's persisted yet:
+    // - first run: only matters once, every later run resumes from disk.
+    // - tests: many Shells share one backend/process; a fixed 1 would
+    //   collide with ids an earlier test's Shell already used.
+    _nextNotifyId = uint64_t(base::nowMicros());
+    if (_notifyPath.empty())
+        return;
+    std::string    text;
+    json::Document d;
+    if (!file::readAll(_notifyPath, &text) || !d.parse(std::move(text), nullptr))
+        return;
+    const json::Value root = d.root();
+    if (const int64_t next = root["nextId"].integer(); next > 0)
+        _nextNotifyId = uint64_t(next);
+    const int64_t horizon = base::nowSecs() - kNotifyMaxAgeSecs;
+    for (const json::Value &e : root["entries"]) {
+        const int64_t postedAt = e["postedAt"].integer();
+        if (postedAt < horizon)
+            continue;
+        Notified n;
+        n.key                                  = json::owned(e["key"]);
+        n.convId                               = json::owned(e["convId"]);
+        n.root                                 = Ts(e["root"].integer());
+        n.ts                                   = Ts(e["ts"].integer());
+        n.join                                 = json::owned(e["join"]);
+        n.postedAt                             = postedAt;
+        _notified[uint64_t(e["id"].integer())] = std::move(n);
+    }
+}
+
+void Shell::saveNotifiedSoon() {
+    if (_notifySaveTimer)
+        return;
+    _notifySaveTimer = _ctx.app.addTimer(kSettingsSaveDelayMs, false, [this] {
+        _notifySaveTimer = 0;
+        saveNotifiedNow();
+    });
+}
+
+void Shell::saveNotifiedNow() {
+    if (_notifySaveTimer)
+        _ctx.app.cancelTimer(std::exchange(_notifySaveTimer, 0));
+    if (_notifyPath.empty())
+        return;
+    const int64_t horizon = base::nowSecs() - kNotifyMaxAgeSecs;
+    json::Writer  w;
+    w.beginObject();
+    w.key("nextId").value(int64_t(_nextNotifyId));
+    w.key("entries").beginArray();
+    for (const auto &[id, n] : _notified) {
+        if (n.postedAt < horizon)
+            continue; // pruned here too, not just on load
+        w.beginObject();
+        w.key("id").value(int64_t(id));
+        w.key("key").value(n.key);
+        w.key("convId").value(n.convId);
+        if (n.root)
+            w.key("root").value(int64_t(n.root));
+        if (n.ts)
+            w.key("ts").value(int64_t(n.ts));
+        if (!n.join.empty())
+            w.key("join").value(n.join);
+        w.key("postedAt").value(n.postedAt);
+        w.endObject();
+    }
+    w.endArray();
+    w.endObject();
+    if (!file::writeAtomic(_notifyPath, w.str(), 0600))
+        LOG_WARN("shell", "could not save %s", _notifyPath.c_str());
+}
+
+uint64_t Shell::nextNotifyId() {
+    const uint64_t id = _nextNotifyId++;
+    saveNotifiedSoon();
+    return id;
+}
+
 // ── Claude Code UI ──────────────────────────────────────────────────────────
 
 void Shell::wireAgentUi() {
@@ -1104,6 +1194,8 @@ Shell::~Shell() {
     _ctx.app.cancelTimer(_visitedTimer);
     if (_saveTimer) // a change still waiting is written now
         saveSettingsNow();
+    if (_notifySaveTimer) // same -- otherwise it fires later against a dead Shell
+        saveNotifiedNow();
 #ifdef MSGA_SELF_UPDATE
     // The updater outlives us (main owns it): no event or check may reach
     // a dead shell.
@@ -1584,8 +1676,7 @@ void Shell::showSampleNotification(
 }
 
 void Shell::sampleNotificationReady(const plat::Notification &n) {
-    plat::App &pa       = _ctx.app.platform();
-    _sampleNotification = pa.notificationsAvailable() ? pa.notify(n) : 0;
+    _sampleNotification = post(n);
 #ifdef __APPLE__
     if (_sampleResult)
         _sampleResult(
@@ -1609,7 +1700,7 @@ void Shell::notifySessionExpired(const std::string &workspace) {
     n.silent    = sounds::kSilentNotifications;
     notificationImage({workspaceIconPath()}, [this, n = std::move(n)](plat::Image img) mutable {
         n.image = std::move(img);
-        _ctx.app.platform().notify(n);
+        post(n);
     });
 }
 
@@ -2059,6 +2150,54 @@ void Shell::jumpToMessage(ConvRef conv, Ts ts, Ts thread) {
 #endif
 }
 
+void Shell::activateNotification(uint64_t id, const std::string &action, const std::string &token) {
+    if (id && id == _sampleNotification && action == "join") {
+        // The sample huddle's "Join": the open conversation's huddle link.
+        _ctx.app.platform().openUrl(
+            _current != kNoConv ? huddleJoinUrl(_ctx.store, _current)
+                                : std::string("https://app.slack.com")
+        );
+        return;
+    }
+    const auto it = _notified.find(id);
+    if (it == _notified.end()) {
+        restore(token);
+        return;
+    }
+    const Notified to = it->second;
+    _notified.erase(it);
+    saveNotifiedSoon();
+    // A huddle's "Join": the browser, the window left where it is.
+    if (action == "join" && !to.join.empty()) {
+        if (_ctx.openUrl)
+            _ctx.openUrl(to.join);
+        else
+            _ctx.app.platform().openUrl(to.join);
+        return;
+    }
+    // Another workspace's: switch to it first, then the chat if it is the one shown —
+    // a reply's thread with it, a reminder's message flashed.
+    if (!to.key.empty() && !(to.key == _activeKey && _signedIn) && onSwitchWorkspace)
+        onSwitchWorkspace(to.key);
+    const Running *r = to.key.empty() ? nullptr : findRunning(to.key);
+    if (!to.key.empty() && !(r && r->store == &_ctx.store() && _signedIn)) {
+        restore(token);
+        return;
+    }
+    model::Store &st   = to.key.empty() ? _ctx.store() : *r->store;
+    const ConvRef conv = to.convId.empty() ? kNoConv : st.findConversation(to.convId);
+    restore(token);
+    if (conv == kNoConv) // gone/left/stale (e.g. a restart-old click): just focus
+        return;
+    if (to.ts)
+        jumpToMessage(conv, to.ts, to.root);
+    else {
+        open(conv);
+        if (to.root && conv == _current)
+            openThread(conv, to.root);
+    }
+}
+
 bool Shell::threadOpen() const {
     return _thread && _thread->visible();
 }
@@ -2400,8 +2539,7 @@ void Shell::restore(const std::string &token) {
 }
 
 void Shell::handleAppEvent(const plat::Event &e) {
-    using T    = plat::EventType;
-    auto raise = [&] { restore(e.activationToken); };
+    using T = plat::EventType;
     switch (e.type) {
     case T::MonitorsChanged: // added, removed, resized, rescaled, a panel appeared
         fitToScreen();
@@ -2413,16 +2551,16 @@ void Shell::handleAppEvent(const plat::Event &e) {
         // Like Telegram: restore the window when it is
         // tucked away in the tray or minimised; otherwise do nothing.
         if (_hidden || !_win.native().isActive())
-            raise();
+            restore(e.activationToken);
         break;
     case T::TrayMenuItem:
         switch (e.id) {
         case kTraySettings:
-            raise();
+            restore(e.activationToken);
             openSettings();
             break;
         case kTrayResetSize:
-            raise();
+            restore(e.activationToken);
             resetWindowGeometry();
             break;
         case kTrayQuit:
@@ -2431,7 +2569,7 @@ void Shell::handleAppEvent(const plat::Event &e) {
         default:
             // A workspace: restore, then switch to it.
             if (e.id >= kTrayWorkspace) {
-                raise();
+                restore(e.activationToken);
                 const size_t i = e.id - kTrayWorkspace;
                 if (i < _workspaces.size() && _workspaces[i].key != _activeKey &&
                     onSwitchWorkspace) {
@@ -2447,49 +2585,14 @@ void Shell::handleAppEvent(const plat::Event &e) {
             _sampleResult(i18n::arg(tr("Notification status: %1"), e.text));
         break;
     case T::NotificationActivated:
-        if (e.id && e.id == _sampleNotification && e.action == "join") {
-            // The sample huddle's "Join": the open conversation's huddle link.
-            _ctx.app.platform().openUrl(
-                _current != kNoConv ? huddleJoinUrl(_ctx.store, _current)
-                                    : std::string("https://app.slack.com")
-            );
-            break;
-        }
-        if (const auto it = _notified.find(e.id); it != _notified.end()) {
-            const Notified to = it->second;
-            _notified.erase(it);
-            // A huddle's "Join": the browser, the window left where it is.
-            if (e.action == "join" && !to.join.empty()) {
-                if (_ctx.openUrl)
-                    _ctx.openUrl(to.join);
-                else
-                    _ctx.app.platform().openUrl(to.join);
-                break;
-            }
-            // Another workspace's: switch to it first, then the chat if it is the one shown —
-            // a reply's thread with it, a reminder's message flashed.
-            if (!to.key.empty() && !(to.key == _activeKey && _signedIn) && onSwitchWorkspace)
-                onSwitchWorkspace(to.key);
-            const Running *r = to.key.empty() ? nullptr : findRunning(to.key);
-            if (to.key.empty() || (r && r->store == &_ctx.store() && _signedIn)) {
-                raise();
-                if (to.ts)
-                    jumpToMessage(to.conv, to.ts, to.root);
-                else {
-                    open(to.conv);
-                    if (to.root && to.conv == _current)
-                        openThread(to.conv, to.root);
-                }
-                break;
-            }
-        }
-        raise();
+        activateNotification(e.id, e.action, e.activationToken);
         break;
     case T::NotificationClosed:
         _notified.erase(e.id);
+        saveNotifiedSoon();
         break;
     case T::InstanceActivated:
-        raise();
+        restore(e.activationToken);
         break; // a second launch: show this one
     default:
         break;
@@ -3298,6 +3401,7 @@ void Shell::saveState() {
         }
     }
     saveSettingsNow();
+    saveNotifiedNow();
 }
 
 } // namespace shell

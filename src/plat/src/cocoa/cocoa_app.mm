@@ -166,10 +166,7 @@ CocoaApp::CocoaApp() {
     _delegate          = d;
     NSApp.delegate     = d;
 
-    _alive->app    = this;
-    // Request identifiers are per process: Notification Center keeps
-    // delivered ones across launches, and plat ids restart at 1.
-    _notifySession = NSProcessInfo.processInfo.globallyUniqueString.UTF8String;
+    _alive->app = this;
 
     CFRunLoopRef rl = CFRunLoopGetMain();
 

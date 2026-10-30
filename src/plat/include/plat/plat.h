@@ -744,9 +744,11 @@ public:
     // Null when this desktop has no status area we can use.
     virtual std::unique_ptr<Tray> createTray() { return nullptr; }
 
-    virtual bool     notificationsAvailable() const { return false; }
-    // Returns an id (> 0), or 0 when the notification could not be submitted.
-    virtual uint64_t notify(const Notification &n) { return 0; }
+    virtual bool notificationsAvailable() const { return false; }
+    // `id` (caller-chosen, > 0) is what NotificationActivated/Closed carry
+    // back -- the caller owns generating and persisting it; backends just
+    // submit under it. False = couldn't submit.
+    virtual bool notify(uint64_t id, const Notification &n) { return false; }
 
     // Unread count on the Dock icon / taskbar button / launcher entry; 0 clears.
     virtual void setBadgeCount(int count) {}

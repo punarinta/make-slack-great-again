@@ -26,6 +26,11 @@ namespace {
 
 using Alive = CocoaApp::Alive;
 
+// Request identifiers: "msga.<id>". Fixed, not per-process -- the caller
+// (Shell) owns `id` and persists it, so a notification clicked after a
+// restart still carries an identifier we recognize as ours.
+constexpr std::string_view kNotifyPrefix = "msga.";
+
 // Run fn on the loop thread if the app still exists.
 void toLoop(const std::shared_ptr<Alive> &alive, std::function<void(CocoaApp *)> fn) {
     std::lock_guard lock(alive->mutex);
@@ -122,7 +127,7 @@ bool waitFor(dispatch_semaphore_t s) {
 @interface PlatNotifyDelegate : NSObject <UNUserNotificationCenterDelegate> {
 @public
     std::shared_ptr<Alive> alive;
-    std::string            prefix; // "<session>." — only our process's requests
+    std::string            prefix; // ours, not some other app's -- see kNotifyPrefix
 }
 @end
 
@@ -184,7 +189,7 @@ bool CocoaApp::setUpNotifications() const {
         return false;
     PlatNotifyDelegate *d = [PlatNotifyDelegate new];
     d->alive              = _alive;
-    d->prefix             = _notifySession + ".";
+    d->prefix             = kNotifyPrefix;
     center.delegate       = d; // weak in the center; _notifyDelegate keeps it
     _notifyDelegate       = d;
     _notifyState          = 1;
@@ -192,15 +197,14 @@ bool CocoaApp::setUpNotifications() const {
 }
 
 std::string CocoaApp::notificationIdentifier(uint64_t id) const {
-    return _notifySession + "." + std::to_string(id);
+    return std::string(kNotifyPrefix) + std::to_string(id);
 }
 
-uint64_t CocoaApp::notify(const Notification &n) {
+bool CocoaApp::notify(uint64_t id, const Notification &n) {
     ensureLaunched();
     if (!setUpNotifications())
-        return 0;
+        return false;
     @autoreleasepool {
-        const uint64_t                id      = _nextNotification++;
         UNMutableNotificationContent *content = [UNMutableNotificationContent new];
         content.title                         = nsString(n.title);
         content.body                          = nsString(n.body);
@@ -278,7 +282,7 @@ uint64_t CocoaApp::notify(const Notification &n) {
           }
         }];
         _liveNotifications.insert(id);
-        return id;
+        return true;
     }
 }
 
@@ -315,16 +319,10 @@ void CocoaApp::tearDownNotifications() {
     if (_notifyState <= 0)
         return;
     @autoreleasepool {
+        // Delivered ones are left in Notification Center on purpose: ids are
+        // caller-owned and persisted (Shell), so a click after this process
+        // is gone, even a clean quit, still resolves in the next one.
         UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
-        // Ids die with the process: a click on one of these could not be
-        // reported to anyone, so they leave Notification Center with us.
-        NSMutableArray           *ids    = [NSMutableArray array];
-        for (uint64_t id : _liveNotifications)
-            [ids addObject:nsString(notificationIdentifier(id))];
-        if (ids.count) {
-            [center removeDeliveredNotificationsWithIdentifiers:ids];
-            [center removePendingNotificationRequestsWithIdentifiers:ids];
-        }
         if (center.delegate == _notifyDelegate)
             center.delegate = nil;
     }

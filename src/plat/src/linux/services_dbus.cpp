@@ -152,8 +152,8 @@ public:
             return nullptr;
         return std::make_unique<SniTray>(_app, _address);
     }
-    bool     notificationsAvailable() const override { return _notifier.available(); }
-    uint64_t notify(const Notification &n) override { return _notifier.notify(n); }
+    bool notificationsAvailable() const override { return _notifier.available(); }
+    bool notify(uint64_t id, const Notification &n) override { return _notifier.notify(id, n); }
 
     void setBadgeCount(int count) override {
         _badge    = std::max(0, count);

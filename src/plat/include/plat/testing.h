@@ -49,7 +49,14 @@ public:
         std::vector<std::string> actionLabels;
         bool                     silent = false; // headless only: Notification::silent
     };
-    virtual bool notificationProbe(uint64_t id, NotificationProbe *out) { return false; }
+    virtual bool     notificationProbe(uint64_t id, NotificationProbe *out) { return false; }
+    // The highest id notify() has been called with so far (0 = none yet).
+    // Ids are caller-chosen now (see plat::App::notify), not a small backend
+    // counter a test could just scan from 1 -- this is how a test finds
+    // "the one just posted" instead.
+    virtual uint64_t maxNotificationId() const { return 0; }
+    // How many are currently known (posted, not yet closed) -- same reason.
+    virtual size_t   notificationCount() const { return 0; }
 
     // Touchpad input the OS can synthesise (gestures, phased scrolling).
     virtual bool injectGesture(Window &w, Gesture g, int fingers, double dx, double dy) {
