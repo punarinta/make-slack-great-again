@@ -349,11 +349,16 @@ bool Backend::typesLive(const Tracked &t) const {
     // A live background worker is typed to (Launcher::sendLive), busy or not:
     // stopping it to resume would end what it runs — a subagent, a background
     // command, a scheduled prompt — and a message would otherwise wait for
-    // all of that to finish. A slash command still takes the old way: some
-    // open a panel in the terminal UI that keeps its keyboard.
+    // all of that to finish. A slash command still takes the old way (some
+    // open a panel in the terminal UI that keeps its keyboard) — but for one
+    // that just runs (/compact) when only a background command holds it up:
+    // that may run for hours or never end, and the old way would kill it.
     if (t.info.kind != SessionInfo::Kind::Background || !t.info.running ||
-        t.info.sessionId.empty() || t.outbox.empty() ||
-        str::startsWith(str::trim(t.outbox.front().text), "/"))
+        t.info.sessionId.empty() || t.outbox.empty())
+        return false;
+    const std::string_view text = str::trim(t.outbox.front().text);
+    if (str::startsWith(text, "/") && (!AttachInput::isLiveCommand(text) ||
+                                       !statusHasShell(t.info.status) || t.sending || working(t)))
         return false;
     if (nowMs() < _typeLiveOffUntilMs)
         return false; // it hasn't been working lately: see typeLive

@@ -72,7 +72,10 @@ std::string plainLines(std::string_view in) {
     while (lead < text.size() && text[lead] == '\n')
         ++lead;
     text.erase(0, lead);
-    // "!…" would be a shell command, "/…" a slash command: a space keeps it text.
+    // A command meant to run that way starts the line; any other "!…" (a
+    // shell command) or "/…" (a slash command) is kept text by a space.
+    if (AttachInput::isLiveCommand(text))
+        return std::string(str::trimSpace(text));
     if (!text.empty() && (text[0] == '!' || text[0] == '/'))
         text.insert(text.begin(), ' ');
     return text;
@@ -94,6 +97,17 @@ size_t prefixUnits(std::string_view s, size_t units) {
 }
 
 } // namespace
+
+bool AttachInput::isLiveCommand(std::string_view text) {
+    text = str::trimSpace(text);
+    // One line: a second one would be typed after the command's name, into
+    // whatever the command leaves on screen.
+    if (text.find_first_of("\r\n") != std::string_view::npos)
+        return false;
+    const size_t           end  = text.find_first_of(" \t");
+    const std::string_view name = text.substr(0, end);
+    return name == "/compact";
+}
 
 std::vector<std::string> AttachInput::keystrokes(std::string_view text) {
     std::vector<std::string> out;

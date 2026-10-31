@@ -3562,6 +3562,46 @@ TEST("backend: Stop while a message waits for the prompt box stops the worker, t
     CHECK(rig.errors.empty());
 }
 
+// A background command keeps the worker from being stopped (it would die
+// with it), so a slash command, which otherwise goes by stop and resume,
+// waits for it to end — forever, for one that never does. /compact runs
+// without taking the keyboard: it is typed to the worker instead.
+TEST("backend: /compact is typed to a worker running a background command, other commands wait") {
+    LiveRig live;
+    REQUIRE(live.conv != kNoConv);
+    Rig            &rig  = *live.rig;
+    FakeClaudeHome &home = live.home;
+    const ConvRef   conv = live.conv;
+    rig.send(conv, "first");
+    REQUIRE(live.answered("echo first"));
+    const std::string worker(str::trim(home.text("wpid-abcdef11")));
+    REQUIRE(!worker.empty());
+    const char *sid = "abcdef11-0000-4000-8000-000000000001";
+    rig.pump(300);
+    home.writeWorker("wabcdef11.json", std::atoll(worker.c_str()), sid, "shell");
+    rig.pump(1500); // the roster has seen it
+
+    rig.send(conv, "/compact keep the API notes");
+    REQUIRE(live.answered("echo /compact keep the API notes"));
+    CHECK_STR(home.text("typed.log"), "/compact keep the API notes\n"); // no space before it
+    CHECK_FALSE(live.stopped());
+    CHECK(isProcessAlive(std::atoll(worker.c_str())));
+
+    // Any other command waits for the background command, untyped.
+    rig.send(conv, "/cost");
+    rig.pump(2500);
+    CHECK(!contains(home.text("typed.log"), "cost"));
+    CHECK_FALSE(live.stopped());
+    CHECK(!contains(home.text("calls.log"), "-- /cost"));
+
+    // Over: it goes the old way.
+    home.writeWorker("wabcdef11.json", std::atoll(worker.c_str()), sid, "idle");
+    REQUIRE(rig.wait([&] { return contains(home.text("calls.log"), "-- /cost"); }, 10000));
+    CHECK(live.stopped());
+    CHECK(!contains(home.text("typed.log"), "cost"));
+    CHECK(rig.errors.empty());
+}
+
 namespace {
 
 // Background sessions with no live worker (each turn is a launch), whose

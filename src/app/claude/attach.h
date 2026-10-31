@@ -19,7 +19,8 @@
 //   • A message starting with "!" switches the prompt to shell mode and runs
 //     as a command; one starting with "/" runs a slash command, and some open
 //     a panel that keeps the keyboard afterwards. A leading space keeps either
-//     plain text — messages meant as slash commands aren't sent this way.
+//     plain text — messages meant as slash commands aren't sent this way,
+//     but for the few that just run and give the prompt box back (isLiveCommand).
 //   • A permission question (the session's own or a subagent's) or a panel
 //     takes the prompt box's place and the keyboard: an Enter there answers
 //     it. A subagent's question isn't in any state file, so the screen is the
@@ -123,6 +124,10 @@ public:
     // once. False when typing has begun — it then goes on to the end.
     bool cancel();
 
+    // Whether `text` is a slash command typed as one: a command that runs and
+    // hands the prompt box back, no panel kept on screen — "/compact [focus]".
+    // Any other "/…" or "!…" message is typed as plain text.
+    static bool                     isLiveCommand(std::string_view text);
     // What goes to the terminal for `text`, write by write (exposed for tests).
     static std::vector<std::string> keystrokes(std::string_view text);
     // How long the prompt box is waited for, and how long it may keep the

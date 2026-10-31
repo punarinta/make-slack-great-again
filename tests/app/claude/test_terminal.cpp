@@ -580,6 +580,16 @@ TEST("terminal: a message is typed line by line, never as one big paste") {
     // "!" would run a shell command, "/" a slash command: a space keeps them text.
     CHECK((AttachInput::keystrokes("!rm -rf /") == Keys{paste(" !rm -rf /")}));
     CHECK((AttachInput::keystrokes("/cost") == Keys{paste(" /cost")}));
+    // But for a command that runs and hands the prompt box back: typed as one.
+    CHECK((AttachInput::keystrokes("/compact") == Keys{paste("/compact")}));
+    CHECK((AttachInput::keystrokes(" /compact keep it\n") == Keys{paste("/compact keep it")}));
+    CHECK(
+        (AttachInput::keystrokes("/compact\nmore") == Keys{paste(" /compact"), "\n", paste("more")})
+    );
+    CHECK((AttachInput::keystrokes("/compacting") == Keys{paste(" /compacting")}));
+    CHECK(AttachInput::isLiveCommand("/compact"));
+    CHECK_FALSE(AttachInput::isLiveCommand("/cost"));
+    CHECK_FALSE(AttachInput::isLiveCommand("compact"));
     // Control characters would be keys (Esc, Ctrl+C): dropped.
     CHECK((AttachInput::keystrokes("x\x1b[31my\x03") == Keys{paste("x[31my")}));
     // A long line goes in pieces; a character is never cut in two.
