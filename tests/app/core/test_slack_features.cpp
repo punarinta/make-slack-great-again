@@ -803,7 +803,8 @@ TEST("slack features: custom sidebar sections — the list, moves, create, a ref
     e.be->moveToSection(e.conv("C1"), {});
     CHECK(e.store.sectionOf("C1") == nullptr); // at once
     REQUIRE(pumpUntil([] { return count("users.channelSections.channels.bulkUpdate") == 1; }));
-    json::Value f = Log().get("users.channelSections.channels.bulkUpdate")["form"];
+    const Log   moved;
+    json::Value f = moved.get("users.channelSections.channels.bulkUpdate")["form"];
     CHECK_STR(
         std::string(f["insert"].str()), R"([{"channel_section_id":"LCH","channel_ids":["C1"]}])"
     );
@@ -959,7 +960,8 @@ TEST("slack features: the Activity feed — items, their messages from messages.
     // A tab asks for its types, the toggle for the unread ones, a next page
     // for its cursor.
     loadFeed(e, F::Mentions, true, "p2");
-    const json::Value next = Log().get("activity.feed", 1)["form"];
+    const Log         tab;
+    const json::Value next = tab.get("activity.feed", 1)["form"];
     CHECK_STR(next["unread_only"].str(), "true");
     CHECK_STR(next["cursor"].str(), "p2");
     CHECK(std::string(next["types"].str()).find("at_user") != std::string::npos);

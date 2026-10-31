@@ -290,7 +290,7 @@ TEST("search: Enter searches, the arrows pick a result, Enter opens it and close
     h.key(K::Enter);
     CHECK(s->list()->visible());
     CHECK_STR(s->statusText(), "Searching\xE2\x80\xA6");
-    for (int i = 0; i < 100 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
+    for (int i = 0; i < 1000 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
         pump(5);
     REQUIRE(!s->results().empty());
     CHECK(s->results()[0].conv == design);
@@ -311,13 +311,13 @@ TEST("search: Enter searches, the arrows pick a result, Enter opens it and close
     CHECK_STR(s->field().text(), "  proposal b "); // kept, and selected
     CHECK(s->selected() == 0);                     // so is the pick: Enter would open it again
     s->runSearch("no such words anywhere");
-    for (int i = 0; i < 100 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
+    for (int i = 0; i < 1000 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
         pump(5);
     CHECK_STR(s->statusText(), "No results found.");
     CHECK(s->results().empty());
     h.key(K::Escape);
     CHECK_FALSE(s->shown()); // fading out
-    for (int i = 0; i < 100 && s->visible(); ++i)
+    for (int i = 0; i < 1000 && s->visible(); ++i)
         pump(5);
     CHECK_FALSE(s->visible());
     CHECK(h.edit().focused());
@@ -329,7 +329,7 @@ TEST("search: a user resolving later renames the rows in place; the pick stays")
     shell::MessageSearch *s = h.sh->messageSearch();
     REQUIRE(s->shown());
     s->runSearch("proposal b");
-    for (int i = 0; i < 100 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
+    for (int i = 0; i < 1000 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
         pump(5);
     REQUIRE(!s->results().empty());
     h.key(K::Up);

@@ -282,7 +282,11 @@ TEST("slack write: edit, delete and react update the Store and send the right pa
     CHECK(e.store.findMessage(e.general, e.old)->edited);
     e.be->react(e.general, e.old, "tada", true);
     REQUIRE(e.store.findMessage(e.general, e.old)->reactions.size() == 1);
-    REQUIRE(pumpUntil([&] { return Log().count("reactions.add") == 1; }));
+    // Two independent requests: either can reach Slack first.
+    REQUIRE(pumpUntil([&] {
+        const Log l;
+        return l.count("chat.update") == 1 && l.count("reactions.add") == 1;
+    }));
     Log         log;
     json::Value up = log.get("chat.update")["form"];
     CHECK_STR(up["channel"].str(), "C1");

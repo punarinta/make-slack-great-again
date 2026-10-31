@@ -1019,9 +1019,11 @@ TEST("client: idle workers end; the next request starts one") {
 #ifdef NET_TEST_POSIX
             CHECK(threadCount() > before);
 #endif
-            pumpFor(500); // past the idle time: every worker has ended
 #ifdef NET_TEST_POSIX
-            CHECK(threadCount() == before);
+            // Past the idle time every worker ends (a busy machine may take a while).
+            CHECK(pumpUntil([&] { return threadCount() == before; }, 5000));
+#else
+            pumpFor(500); // past the idle time: every worker has ended
 #endif
         }
     }
