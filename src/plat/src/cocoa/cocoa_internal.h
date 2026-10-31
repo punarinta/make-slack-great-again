@@ -271,7 +271,7 @@ public:
 
     std::unique_ptr<Tray> createTray() override;
     bool                  notificationsAvailable() const override;
-    uint64_t              notify(const Notification &n) override;
+    bool                  notify(uint64_t id, const Notification &n) override;
     void                  setBadgeCount(int count) override;
 
     bool darkMode() const override;
@@ -423,8 +423,6 @@ private:
     std::shared_ptr<Alive> _alive          = std::make_shared<Alive>();
     mutable int            _notifyState    = 0; // 0 unknown, 1 usable, -1 unavailable
     mutable id             _notifyDelegate = nil;
-    std::string            _notifySession; // per-process prefix of request identifiers
-    uint64_t               _nextNotification = 1;
     std::set<uint64_t>     _liveNotifications; // submitted, not yet clicked or dismissed
 #ifdef PLAT_TEST_HOOKS
     // Attached picture per live id: its PNG's SHA-1 (hex) and pixel size,

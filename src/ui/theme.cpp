@@ -57,6 +57,7 @@ constexpr Color kLight[] = {
     0x261d9bd1, // MentionBg
     0xff1264a3, // MentionText
     0xfffff5d1, // MentionSelfBg
+    0xfffff5d1, // JumpFlashBg
     0xffe01e5a, // Danger
     0xff2bac76, // Online
     0xffffffff, // FormBg
@@ -165,6 +166,7 @@ constexpr Color kDark[] = {
     0x331d9bd1, // MentionBg
     0xff1d9bd1, // MentionText
     0x2afac83c, // MentionSelfBg
+    0x66fac83c, // JumpFlashBg
     0xffe01e5a, // Danger
     0xff2bac76, // Online
     0xff2a2a2a, // FormBg

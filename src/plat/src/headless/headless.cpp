@@ -248,11 +248,10 @@ public:
         trays.erase(std::remove(trays.begin(), trays.end(), t), trays.end());
     }
 
-    bool     notificationsAvailable() const override { return true; }
-    uint64_t notify(const Notification &n) override {
-        const uint64_t id = _nextNotification++;
+    bool notificationsAvailable() const override { return true; }
+    bool notify(uint64_t id, const Notification &n) override {
         notifications[id] = n;
-        return id;
+        return true;
     }
     void setBadgeCount(int n) override { badge = n; }
 
@@ -513,8 +512,15 @@ public:
             out->actionLabels.push_back(a.label);
         return true;
     }
-    int  badgeCount() override { return badge; }
-    bool wantsAttention(Window &w, bool *out) override {
+    uint64_t maxNotificationId() const override {
+        uint64_t m = 0;
+        for (const auto &[id, n] : notifications)
+            m = std::max(m, id);
+        return m;
+    }
+    size_t notificationCount() const override { return notifications.size(); }
+    int    badgeCount() override { return badge; }
+    bool   wantsAttention(Window &w, bool *out) override {
         *out = static_cast<HeadlessWindow &>(w).attention;
         return true;
     }
@@ -640,7 +646,6 @@ private:
     std::optional<DragDesc>                 _drag;
     HeadlessWindow                         *_dragSource = nullptr, *_dropTarget = nullptr;
     bool                                    _buttonHeld               = false;
-    uint64_t                                _nextNotification         = 1;
     uint32_t                                _mods                     = 0;
     bool                                    _down[size_t(Key::Count)] = {};
     Point                                   _pointer;

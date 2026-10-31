@@ -9,7 +9,7 @@ public:
     explicit StubServices(BackendApp &app) : Services(app) {}
     std::unique_ptr<Tray> createTray() override { return nullptr; }
     bool                  notificationsAvailable() const override { return false; }
-    uint64_t              notify(const Notification &) override { return 0; }
+    bool                  notify(uint64_t, const Notification &) override { return false; }
     void                  setBadgeCount(int) override {}
     std::optional<bool>   darkMode() const override { return std::nullopt; }
 #ifdef PLAT_TEST_HOOKS

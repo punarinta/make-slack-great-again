@@ -1273,7 +1273,8 @@ void MessageList::checkEdges() {
         }
     }
     const int first = _list->firstVisible();
-    if (c.hasMoreBefore && !_loadingOlder && (c.messages.empty() || (first >= 0 && first <= 3))) {
+    if (c.hasMoreBefore && !_loadingOlder &&
+        (c.messages.empty() || _jumpTs || (first >= 0 && first <= 3))) {
         _loadingOlder              = true;
         const Ts            before = c.messages.empty() ? 0 : c.messages.front().ts;
         const ConvRef       conv   = _conv;
@@ -2118,16 +2119,21 @@ void MessageList::jumpTo(Ts ts) {
     _jumpTs = ts;
     if (applyJump() || _conv == model::kNoConv)
         return;
-    // Not loaded: wait for the first page (checkEdges asks for it), or give
-    // up when messages are there already and it isn't among them. A thread's
-    // replies come in one load (Saved messages jumps to a reply).
+    // Not loaded: wait for an older page (checkEdges asks for it, forced
+    // regardless of scroll position while a jump is pending -- see
+    // _jumpTs there), or give up once there is truly nothing more before
+    // to find it in. A thread's replies come in one load (Saved messages
+    // jumps to a reply).
     if (threadMode()) {
         if (_ctx.store().replies(_conv, _root))
             _jumpTs = 0;
         return;
     }
     const model::Conversation &c = _ctx.store().conversation(_conv);
-    if (!c.messages.empty() || !c.hasMoreBefore)
+    // Only an older page can still bring it in -- a target at or after what's
+    // already loaded (not found there, or newer: a live arrival still to
+    // come) is never going to show up by loading further back.
+    if (!c.hasMoreBefore || (!c.messages.empty() && ts >= c.messages.front().ts))
         _jumpTs = 0;
 }
 

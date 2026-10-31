@@ -155,12 +155,7 @@ ui::View *findIn(ui::View *v, std::string_view name) {
 }
 
 int notificationCount() {
-    int n = 0;
-    for (uint64_t id = 1; id < 4096; ++id) {
-        plat::TestHooks::NotificationProbe p;
-        n += hooks().notificationProbe(id, &p);
-    }
-    return n;
+    return int(hooks().notificationCount());
 }
 
 } // namespace

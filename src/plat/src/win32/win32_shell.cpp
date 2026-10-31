@@ -381,7 +381,6 @@ struct Shell final : IconHost {
     std::vector<Win32Tray *>    trays;
     std::map<uint64_t, Balloon> balloons;
     UINT                        nextUid = 1;
-    uint64_t                    nextId  = 1;
 #ifdef PLAT_TEST_HOOKS
     bool forceBalloon = false;
 #endif
@@ -1096,14 +1095,13 @@ bool Win32App::notificationsAvailable() const {
     return self->shell().toastsReady() || self->shell().balloonsWork();
 }
 
-uint64_t Win32App::notify(const Notification &n) {
-    Shell         &s  = shell();
-    const uint64_t id = s.nextId++;
+bool Win32App::notify(uint64_t id, const Notification &n) {
+    Shell &s = shell();
 #if defined(PLAT_WINRT_TOAST)
     if (s.toastsReady())
-        return s.toastNotify(n, id);
+        return s.toastNotify(n, id) != 0;
 #endif
-    return s.balloonNotify(n, id);
+    return s.balloonNotify(n, id) != 0;
 }
 
 #ifdef PLAT_TEST_HOOKS

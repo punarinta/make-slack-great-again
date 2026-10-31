@@ -1006,7 +1006,9 @@ void SettingsDialog::buildNotifications() {
         _p->sampleResult->setText({});
         _p->sampleResult->setVisible(false);
         if (!_hooks.testNotification) {
-            _ctx.app.platform().notify(n);
+            // Never resolved (no Shell to click through to): any id will do.
+            static uint64_t id = 0;
+            _ctx.app.platform().notify(++id, n);
             return;
         }
         std::weak_ptr<char> alive = _p->alive;

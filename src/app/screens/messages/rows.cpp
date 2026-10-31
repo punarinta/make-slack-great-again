@@ -1868,7 +1868,7 @@ void MessageRow::paint(gfx::Painter &p) {
     if (_reminded) // a reminder tints the whole row
         p.fillRect(bounds(), bannerColor(2));
     if (_list.flashing(_ts))
-        p.fillRect(bounds(), ui::color(C::MentionBg));
+        p.fillRect(bounds(), ui::color(C::JumpFlashBg));
     else if (hovered() || _list.toolbarRow() == this)
         p.fillRect(bounds(), ui::color(C::SurfaceHover));
     const float scale  = windowScale();
