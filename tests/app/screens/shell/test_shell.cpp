@@ -3230,6 +3230,27 @@ TEST("updates: opening chats leaves the update check and its events alone") {
 }
 #endif
 
+#ifdef __APPLE__
+TEST("window: full screen drops the title bar strip and puts the header over the right pane") {
+    Harness       h;
+    plat::Window &w = h.win->native();
+    pump();
+    const float stripH = h.sh->header().windowRect().h;
+    CHECK(h.sh->sidebar().windowRect().y >= stripH - 1); // under the strip
+    w.setFullscreen(true);
+    pump();
+    CHECK(h.sh->sidebar().windowRect().y == 0);          // up to the top
+    const ui::RectF hr = h.sh->header().windowRect();
+    CHECK(hr.y == 0);
+    CHECK(hr.x >= h.sh->sidebar().windowRect().x + h.sh->sidebar().windowRect().w);
+    CHECK(h.sh->hitTest({10, 10}) == plat::HitArea::Client); // the sidebar, not a caption
+    w.setFullscreen(false);
+    pump();
+    CHECK(h.sh->sidebar().windowRect().y >= stripH - 1);
+    CHECK(h.sh->header().windowRect().x == 0); // back in the strip, window-wide
+}
+#endif
+
 TEST("window: fit to screen — shrink to the work area, pull back, refit (issue #45)") {
     Harness       h;
     plat::Window &w = h.win->native();

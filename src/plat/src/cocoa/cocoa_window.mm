@@ -841,6 +841,7 @@ constexpr NSEventModifierFlags kDevLCtrl = 0x0001, kDevLShift = 0x0002, kDevRShi
 // ── Window delegate ─────────────────────────────────────────────────────────
 @interface                                PlatWindowDelegate : NSObject <NSWindowDelegate>
 @property(nonatomic, assign) CocoaWindow *owner;
+@property(nonatomic, strong) NSToolbar   *parkedToolbar; // off while in full screen
 @end
 
 @implementation PlatWindowDelegate
@@ -871,6 +872,24 @@ constexpr NSEventModifierFlags kDevLCtrl = 0x0001, kDevLShift = 0x0002, kDevRShi
         return;
     _owner->stateMaybeChanged();
     _owner->requestFrame();
+}
+// A window with a toolbar keeps it (and the title bar) on screen in full
+// screen, an opaque band over the content; asking for an auto-hidden toolbar
+// instead leaves it stuck off screen on macOS 15. The toolbar is empty (it
+// only places the traffic lights), so full screen goes without it: the bare
+// title bar slides in with the menu bar like any other app's.
+- (void)windowWillEnterFullScreen:(NSNotification *)n {
+    NSWindow *w = n.object;
+    if (w.toolbar) {
+        _parkedToolbar = w.toolbar;
+        w.toolbar      = nil;
+    }
+}
+- (void)windowWillExitFullScreen:(NSNotification *)n {
+    if (_parkedToolbar) {
+        ((NSWindow *)n.object).toolbar = _parkedToolbar;
+        _parkedToolbar                 = nil;
+    }
 }
 - (void)windowDidEnterFullScreen:(NSNotification *)n {
     if (_owner)
