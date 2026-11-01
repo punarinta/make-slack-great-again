@@ -30,6 +30,7 @@ const struct {
     bool Settings::*field;
 } kBools[] = {
     {"useTray", &Settings::useTray},
+    {"showRail", &Settings::showRail},
     {"use24h", &Settings::use24h},
     {"threadsInline", &Settings::threadsInline},
     {"linkPreviews", &Settings::linkPreviews},

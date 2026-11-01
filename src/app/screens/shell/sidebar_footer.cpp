@@ -317,6 +317,12 @@ void SidebarFooter::toggleZen() {
         onZenToggled(_zenOn);
 }
 
+void SidebarFooter::toggleRail() {
+    _railShown = !_railShown;
+    if (onRailToggled)
+        onRailToggled(_railShown);
+}
+
 Clickable *SidebarFooter::zenToggle() const {
     return _zen;
 }
@@ -447,12 +453,21 @@ void SidebarFooter::showAvatarMenu() {
         st.enabled = bool(onManageStatus);
         items.push_back(std::move(st));
     }
+    MenuItem rail;
+    rail.id    = 3;
+    rail.label = _railShown ? tr("Hide workspaces") : tr("Show workspaces");
+    rail.icon  = uint16_t(_railShown ? Icon::PanelLeftClose : Icon::PanelLeftOpen);
+    items.push_back(std::move(rail));
     const RectF r = _avatarBtn->windowRect();
     Menu::show(
         *w,
         {r.x, r.y, 0, 0},
         std::move(items),
         [this](int id) {
+            if (id == 3) {
+                toggleRail();
+                return;
+            }
             auto &hook = id == 1 ? onManageProfile : onManageStatus;
             if (hook)
                 hook();

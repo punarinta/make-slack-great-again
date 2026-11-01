@@ -854,6 +854,13 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
     };
     _sidebar->footer().onManageProfile = [this] { ProfileDialog::show(_win, _ctx, _avatars); };
     _sidebar->footer().onError         = [this](const std::string &message) { showError(message); };
+    _rail->setVisible(_settings.showRail);
+    _sidebar->footer().setRailShown(_settings.showRail);
+    _sidebar->footer().onRailToggled = [this](bool shown) {
+        _settings.showRail = shown;
+        _rail->setVisible(shown);
+        saveSettingsSoon();
+    };
     _sidebar->onFindChannel            = [this] { openBrowseDialog(0); };
     _sidebar->onBrowsePeople           = [this] { openBrowseDialog(1); };
     _sidebar->onCreateChannel          = [this] { openCreateChannel(); };

@@ -39,6 +39,7 @@ struct Settings {
     ui::ThemeMode theme       = ui::ThemeMode::System;
     int           threadWidth = 360;  // thread panel width, px
     bool          useTray     = true; // the tray icon; the window's close hides it there
+    bool          showRail    = true; // the workspace rail; the footer's toggle hides it
 
     // ── Appearance ──────────────────────────────────────────────────────────
     int                      paletteLight = 0, paletteDark = 1; // ui::Palette per content mode

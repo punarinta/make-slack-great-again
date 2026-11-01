@@ -239,6 +239,7 @@ public:
     Composer                   *threadComposer();
     // The thread panel (the messages screens' ThreadPanel), null without them.
     ui::View                   *threadPanel() const;
+    ui::View                   *rail() const { return _rail; } // the workspace rail
     ConvHeader                 &header() { return *_header; }
     ConvTabs                   &tabs() { return *_tabs; }
     TypingIndicator            &typing() { return *_typing; }
