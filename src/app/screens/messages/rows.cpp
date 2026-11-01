@@ -876,19 +876,24 @@ public:
         Context     &ctx = list.ctx();
         const Store &st  = ctx.store;
         auto        *avs = add<ui::View>();
-        avs->style().row().spacing(3).margins(0, 0, 2, 0);
+        avs->style().row().spacing(3).margins(0, 0, 2, 0).noShrink();
+        _avs             = avs;
         for (size_t i = 0; i < m.replyUsers.size() && i < 5; ++i)
             avs->add<CachedImage>(
                    ctx.images, st.user(m.replyUsers[i]).avatar, ImageCache::Shape::Rounded, 5
             )
                 ->style()
                 .size(kThreadAv, kThreadAv);
-        add<ui::Label>(
+        // The avatars and the count never give way: in a narrow column only
+        // "Last reply …" is cut short.
+        _count = add<ui::Label>(
             m.replyCount == 1 ? std::string(tr("1 reply"))
                               : arg(tr("%1 replies"), str::number(m.replyCount)),
             Font::SmallBold,
             C::ReplyLink
         );
+        _count->setMaxLines(1);
+        _count->style().noShrink();
         _sub = add<ui::Label>("", Font::Small, C::TextMuted);
         _sub->setMaxLines(1);
         _sub->style().shrink = 1;
@@ -905,7 +910,13 @@ public:
         // The bar is half the text column (the spacer makes the flex
         // measure take all of it); the "Last reply" text shrinks first.
         const ui::SizeF s = measureFlex(aw, ah);
-        return {aw < ui::kInf ? std::floor(aw / 2) : s.w, s.h};
+        if (!(aw < ui::kInf))
+            return s;
+        // At least wide enough for the avatars and the count.
+        const float fixed = currentStyle().pad.l + currentStyle().pad.r + 6 +
+                            _avs->measure(ui::kInf, ah).w + _avs->currentStyle().margin.r +
+                            _count->measure(ui::kInf, ah).w;
+        return {std::min(aw, std::max(std::floor(aw / 2), std::ceil(fixed))), s.h};
     }
     bool onEvent(ui::Event &e) override {
         if (e.type == ui::EventType::PointerEnter || e.type == ui::EventType::PointerLeave) {
@@ -936,7 +947,8 @@ private:
     MessageList &_list;
     Ts           _ts;
     std::string  _last;
-    ui::Label   *_sub = nullptr, *_glyph = nullptr;
+    ui::View    *_avs   = nullptr;
+    ui::Label   *_count = nullptr, *_sub = nullptr, *_glyph = nullptr;
     bool         _hover = false;
 };
 
