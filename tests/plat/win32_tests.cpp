@@ -813,12 +813,12 @@ void caseBalloonFallback() {
         app().forceBalloonNotifications(false);
         return;
     }
-    Image      avatar{48, 48, std::vector<uint32_t>(48 * 48, 0xff2b8a3e)};
-    const auto a = g_app->notify(
-        {.title = "Balloon", .body = "clicked", .image = avatar, .actions = {{"reply", "Reply"}}}
-    );
-    const auto b = g_app->notify({.title = "Balloon", .body = "times out"});
-    CHECK(a && b && a != b);
+    Image          avatar{48, 48, std::vector<uint32_t>(48 * 48, 0xff2b8a3e)};
+    const uint64_t a = 1, b = 2;
+    CHECK(g_app->notify(
+        a, {.title = "Balloon", .body = "clicked", .image = avatar, .actions = {{"reply", "Reply"}}}
+    ));
+    CHECK(g_app->notify(b, {.title = "Balloon", .body = "times out"}));
     pumpFor(100);
     g_events.clear();
     CHECK(!hooks()->notificationInvoke(a, "reply")); // balloons have no buttons

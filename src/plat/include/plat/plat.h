@@ -588,6 +588,13 @@ struct AppInfo {
     // the AUMID (created shortly after start when missing). Builds before
     // 1903 get one for toasts either way.
     bool        startMenuShortcut = false;
+    // A stable name for this instance's notifications: the same across
+    // restarts, different for every instance that may run beside it (a demo
+    // run, another build under the same bundle id). macOS prefixes its
+    // request identifiers with it, so a notification still in Notification
+    // Center is recognized after a restart, and never by another instance.
+    // "" = per process: delivered ones leave with it.
+    std::string notificationScope;
 };
 
 struct DragDesc {
@@ -744,9 +751,16 @@ public:
     // Null when this desktop has no status area we can use.
     virtual std::unique_ptr<Tray> createTray() { return nullptr; }
 
-    virtual bool     notificationsAvailable() const { return false; }
-    // Returns an id (> 0), or 0 when the notification could not be submitted.
-    virtual uint64_t notify(const Notification &n) { return 0; }
+    virtual bool notificationsAvailable() const { return false; }
+    // `id` (caller-chosen, > 0) is what NotificationActivated/Closed carry
+    // back -- the caller owns generating and persisting it; backends just
+    // submit under it. False = couldn't submit.
+    virtual bool notify(uint64_t id, const Notification &n) { return false; }
+    // macOS: Notification Center started this process for a click on one of
+    // our notifications (set AppInfo first); the click then arrives as
+    // NotificationActivated from pump(). Finishes the launch to find out,
+    // with the notification delegate already listening. False elsewhere.
+    virtual bool launchedFromNotification() { return false; }
 
     // Unread count on the Dock icon / taskbar button / launcher entry; 0 clears.
     virtual void setBadgeCount(int count) {}

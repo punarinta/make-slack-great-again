@@ -1,5 +1,6 @@
-// org.freedesktop.Notifications client. notify() hands out our own ids at
-// once and maps them to the server's ids when the (async) Notify reply lands.
+// org.freedesktop.Notifications client. notify()'s id is the caller's (see
+// plat::App::notify), mapped to the server's id when the (async) Notify
+// reply lands.
 #pragma once
 
 #include "linux/dbus_conn.h"
@@ -29,7 +30,7 @@ public:
     bool available() const {
         return !_resolved || (_bus.ready() && (!_owner.empty() || _activatable));
     }
-    uint64_t notify(const Notification &n);
+    bool notify(uint64_t id, const Notification &n);
 
     // The server's id for one of ours, once the Notify reply arrived.
     bool serverId(uint64_t id, uint32_t *out) const;
@@ -61,7 +62,6 @@ private:
     bool                            _capsKnown    = false;
     bool                            _capsInFlight = false;
     bool                            _markup       = false; // server parses body markup: escape ours
-    uint64_t                        _next         = 1;
     static constexpr int            kResolveMs    = 2000;
     bool                            _resolved     = false; // owner and activatable both known
     bool                            _ownerKnown   = false;

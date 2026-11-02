@@ -8,6 +8,9 @@
 // calls are hidden, the eye while everything shows. While background jobs
 // run (model::jobs(): downloads, copies, …) a turning cog sits left of the
 // toggle; hovering it lists them ("%n background task(s) running").
+// Below them, behind a separator, "Show workspaces" (panel-left), ticked
+// while the workspace rail shows; unticking it gives a small screen the
+// rail's room for the conversation.
 #pragma once
 
 #include "app/model/jobs.h"
@@ -40,6 +43,12 @@ public:
     void                         toggleZen();
     ui::Clickable               *zenToggle() const;
 
+    // The rail item was picked; `shown` is the new state.
+    std::function<void(bool shown)> onRailToggled;
+    void                            setRailShown(bool shown) { _railShown = shown; }
+    bool                            railShown() const { return _railShown; }
+    void                            toggleRail();
+
     // The presence toggle's change failed: the message for the error banner.
     std::function<void(const std::string &message)> onError;
 
@@ -70,6 +79,7 @@ private:
     ui::Popup              *_tasksPopup   = nullptr;
     model::Jobs::ObserverId _jobsObserver = 0;
     bool                    _zenOn        = false;
+    bool                    _railShown    = true;
     plat::TimerId           _confirm      = 0; // settle back if the service never answers
 };
 

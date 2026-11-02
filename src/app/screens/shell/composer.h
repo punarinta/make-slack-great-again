@@ -179,6 +179,10 @@ public:
     // Adds files (absolute local paths; folders, missing files and ones
     // already attached are skipped). Returns how many were added.
     size_t                          addAttachments(const std::vector<std::string> &paths);
+    // Files the user hands over (dropped on the composer or the message list
+    // above it, pasted): attached, and the editor takes the focus so typing
+    // goes on there. The one way in for every drop and paste.
+    void                            attachFiles(const std::vector<std::string> &paths);
     void                            removeAttachment(size_t i);
     void                            clearAttachments(); // all of them, at once
     const std::vector<std::string> &attachments() const { return _files; }
