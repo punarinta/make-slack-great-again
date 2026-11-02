@@ -318,6 +318,10 @@ private:
     void        addWorkspace(ui::PointF anchor);
     void        togglePin();  // "Pin window on top"
     void        syncChrome(); // the OS-drawn chrome follows the app theme
+    // macOS full screen: no title bar strip; the conversation header moves
+    // over the right pane, so the rail and the sidebar reach the top.
+    void        syncFullScreenChrome();
+    float       titleBarHeight() const; // 0 while the strip is hidden
     void        updateTitleButtons();
     void        updateHeader();
     void        applyScheduleSend();

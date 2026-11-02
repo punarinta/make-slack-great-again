@@ -1441,6 +1441,7 @@ void Shell::buildTitleBar(View *parent) {
     _win.onEvent = [this](const plat::Event &e) {
         if (e.type == plat::EventType::StateChanged) {
             updateTitleButtons();
+            syncFullScreenChrome();
             syncWindowVisible(); // minimised or back
         } else if (e.type == plat::EventType::FocusIn || e.type == plat::EventType::FocusOut)
             updateReading();
@@ -1462,6 +1463,26 @@ void Shell::syncChrome() {
     const int   r = int((c >> 16) & 0xff), g = int((c >> 8) & 0xff), b = int(c & 0xff);
     const int   hsl = std::max({r, g, b}) + std::min({r, g, b}); // HSL lightness * 2
     _win.native().setDarkChrome(hsl < 255);
+}
+
+void Shell::syncFullScreenChrome() {
+#ifdef __APPLE__
+    if (!_titleBar || !_header || !_mainPane)
+        return;
+    const bool full = _win.native().isFullscreen();
+    View      *to   = full ? _mainPane : _titleBar;
+    if (_header->parent() == to)
+        return;
+    std::unique_ptr<View> h = _header->parent()->remove(_header);
+    // Over the pane it keeps the strip's height, the tabs right under it.
+    h->style().height(_titleBarH).noShrink();
+    to->adopt(std::move(h), full ? 0 : -1);
+    _titleBar->setVisible(!full);
+#endif
+}
+
+float Shell::titleBarHeight() const {
+    return _titleBar && _titleBar->visible() ? _titleBarH : 0;
 }
 
 void Shell::togglePin() {
@@ -3474,7 +3495,7 @@ plat::HitArea Shell::hitTest(plat::Point p) const {
     // AppKit resizes from its own edge zone (on and just outside the frame);
     // ours would only leave a dead band along the unified header's edges,
     // where the whole title bar drags.
-    const bool resizable = p.y >= _titleBarH;
+    const bool resizable = p.y >= titleBarHeight();
 #else
     const bool resizable = true;
 #endif
@@ -3498,7 +3519,7 @@ plat::HitArea Shell::hitTest(plat::Point p) const {
         if (t && !(_closeBtn && _closeBtn->windowRect().contains({float(p.x), float(p.y)})))
             return H::ResizeTop;
     }
-    if (p.y >= _titleBarH)
+    if (p.y >= titleBarHeight())
         return H::Client;
     const PointF pt{float(p.x), float(p.y)};
 #ifdef __APPLE__
