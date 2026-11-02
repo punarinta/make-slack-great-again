@@ -1094,7 +1094,9 @@ double CocoaWindow::titleBarHeight() const {
 }
 
 bool CocoaWindow::isMaximized() const {
-    return window.isZoomed;
+    // In full screen -isZoomed is a synchronous window-server round trip
+    // (~100 ms during the transition), and the answer is no anyway.
+    return !isFullscreen() && window.isZoomed;
 }
 bool CocoaWindow::isFullscreen() const {
     return (window.styleMask & NSWindowStyleMaskFullScreen) != 0;
@@ -1150,7 +1152,7 @@ void CocoaWindow::moved() {
 }
 
 void CocoaWindow::stateMaybeChanged() {
-    const bool z = window.isZoomed, m = window.isMiniaturized, f = isFullscreen();
+    const bool f = isFullscreen(), z = isMaximized(), m = window.isMiniaturized;
     if (z == _lastZoomed && m == _lastMini && f == _lastFull)
         return;
     _lastZoomed = z;
