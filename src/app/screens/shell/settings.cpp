@@ -65,6 +65,7 @@ const struct {
     {"fontSize", &Settings::fontSize, 0, 2},
     {"relevantDays", &Settings::relevantDays, 1, 365},
     {"names", &Settings::names, 0, 2},
+    {"quickReactions", &Settings::quickReactions, 0, 2},
     {"notifyLevel", &Settings::notifyLevel, 0, 1},
     {"cacheLimitMb", &Settings::cacheLimitMb, 50, 10240},
     {"presence", &Settings::presence, 0, 2},
@@ -99,6 +100,7 @@ const struct {
 } kStringLists[] = {
     {"spellLanguages", &Settings::spellLanguages},
     {"emojiRecent", &Settings::emojiRecent},
+    {"quickReactionNames", &Settings::quickReactionNames},
     {"zenWorkspaces", &Settings::zenWorkspaces},
 };
 
@@ -164,6 +166,22 @@ void Settings::applyPalettes() const {
 bool Settings::zenMode(std::string_view workspaceKey) const {
     return std::find(zenWorkspaces.begin(), zenWorkspaces.end(), workspaceKey) !=
            zenWorkspaces.end();
+}
+
+std::vector<std::string> Settings::oneClickReactions() const {
+    static const char *const kDefaults[] = {"white_check_mark", "eyes", "raised_hands"};
+    std::vector<std::string> out;
+    if (quickReactions == 0)
+        return out;
+    auto add = [&out](const std::string &n) {
+        if (out.size() < 3 && !n.empty() && std::find(out.begin(), out.end(), n) == out.end())
+            out.push_back(n);
+    };
+    for (const std::string &n : quickReactions == 2 ? quickReactionNames : emojiRecent)
+        add(n);
+    for (const char *n : kDefaults)
+        add(n);
+    return out;
 }
 
 void Settings::setZenMode(const std::string &workspaceKey, bool on) {

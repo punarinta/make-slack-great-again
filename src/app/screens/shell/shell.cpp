@@ -837,6 +837,7 @@ Shell::Shell(
     ctx.openConversation = [this](ConvRef c) { open(c); };
     ctx.openThread       = [this](ConvRef c, Ts root) { openThread(c, root); };
     ctx.closeThread      = [this] { closeThread(); };
+    ctx.quickReactions   = [this] { return _settings.oneClickReactions(); };
     ctx.openProfile      = [this](model::UserRef u) { showProfile(u); };
     ctx.openUrl          = [this](const std::string &url) { _ctx.app.platform().openUrl(url); };
     // A channel we never joined is joined first.

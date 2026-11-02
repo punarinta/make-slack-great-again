@@ -504,6 +504,20 @@ public:
     }
 };
 
+// A one-click reaction: the emoji where a toolbar button's icon would be.
+class QuickReaction final : public ui::Clickable {
+public:
+    QuickReaction(Context &ctx, const std::string &name) {
+        style().size(28, 28).stack().items(ui::Align::Center).noShrink();
+        setLook({C::None, C::RowHover, C::RowHover, C::None, 5});
+        setTooltip(arg(tr("React with :%1:"), name));
+        setRole(ui::Role::Button);
+        setFocusable(false);
+        EmojiPicker::addGlyph(this, ctx, name, 18);
+    }
+    bool tooltipImmediate() const override { return true; }
+};
+
 // ── MessageList ─────────────────────────────────────────────────────────────
 
 MessageList::MessageList(Context &ctx)
@@ -533,9 +547,11 @@ MessageList::MessageList(Context &ctx)
     };
     _typing = add<ui::Label>("", Font::Small, C::TextMuted);
     _typing->setMaxLines(1);
-    // The hover toolbar: Add reaction, Forward message, Save for later, Ask
-    // agent (agent thread links), More actions.
-    _toolbar          = add<ToolbarCard>();
+    // The hover toolbar: the one-click reactions, Add reaction, Forward
+    // message, Save for later, Ask agent (agent thread links), More actions.
+    _toolbar = add<ToolbarCard>();
+    _tbQuick = _toolbar->add<ui::View>();
+    _tbQuick->style().row().spacing(4).items(ui::Align::Center);
     _tbEmoji          = _toolbar->add<ActionButton>(gfx::Icon::Smile, tr("Add reaction"));
     _tbEmoji->onClick = [this] {
         if (_toolbarRow) {
@@ -1320,6 +1336,7 @@ void MessageList::placeToolbar() {
     // Emoji: caps.reactions, except on my own messages in an agent session;
     // Save: caps.messageReminders (not agent sessions).
     _tbEmoji->setVisible(!(agent && m->user == _ctx.store().me));
+    syncQuickReactions(_tbEmoji->visible());
     _tbSave->setVisible(!agent && _ctx.backend.capabilities().messageReminders);
     const bool saved = m->saved || _ctx.store().reminderAt(_conv, m->ts) != 0;
     _tbSave->setIcon(saved ? gfx::Icon::BookmarkFilled : gfx::Icon::Bookmark);
@@ -1338,6 +1355,32 @@ void MessageList::placeToolbar() {
     // 12 px from the right; clipped at the viewport's top.
     _toolbar->setFrame({std::floor(width() - 12 - sz.w), std::floor(o.y - sz.h / 2), sz.w, sz.h});
     _toolbar->setVisible(o.y < height() - _typingH);
+}
+
+// Rebuilt only when the names change (a pick moves Frequently used, or
+// Settings); a click adds the reaction, or takes back one of mine.
+void MessageList::syncQuickReactions(bool shown) {
+    std::vector<std::string> names;
+    if (shown && _ctx.quickReactions)
+        names = _ctx.quickReactions();
+    _tbQuick->setVisible(!names.empty());
+    if (names == _quickNames)
+        return;
+    _quickNames = names;
+    _tbQuick->clearChildren();
+    for (const std::string &n : names) {
+        auto *b    = _tbQuick->add<QuickReaction>(_ctx, n);
+        b->onClick = [this, n] {
+            const model::Message *m = _toolbarRow ? message(_toolbarRow->ts()) : nullptr;
+            if (!m)
+                return;
+            bool mine = false;
+            for (const model::Reaction &r : m->reactions)
+                if (r.name == n)
+                    mine = _ctx.store().reactedByMe(r);
+            _ctx.backend.react(_conv, m->ts, n, !mine);
+        };
+    }
 }
 
 void MessageList::hideToolbar() {

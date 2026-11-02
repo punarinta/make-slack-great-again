@@ -157,6 +157,8 @@ public:
     // message changing (MessageRow keeps its body only within one epoch).
     uint32_t              bodyEpoch() const { return _bodyEpoch; }
     MessageRow           *toolbarRow() const { return _toolbarRow; }
+    // The toolbar's one-click reactions (Context::quickReactions), a button each.
+    ui::View             *quickReactionBar() const { return _tbQuick; }
     // Tests: how many times a message row was (re)bound so far.
     int                   rowBinds() const { return _rowBinds; }
     bool                  flashing(Ts ts) const { return ts == _flashTs; }
@@ -260,6 +262,7 @@ private:
     void scheduleEdgeCheck();
     void checkEdges();
     void placeToolbar();
+    void syncQuickReactions(bool shown);
     void placeFileBar();
     bool applyJump();
 
@@ -315,7 +318,8 @@ private:
     ui::Label                 *_typing  = nullptr;
     ListState                 *_state   = nullptr;
     float                      _typingH = 22; // 0: no typing row (setTypingRow)
-    ui::View                  *_toolbar = nullptr;
+    ui::View                  *_toolbar = nullptr, *_tbQuick = nullptr;
+    std::vector<std::string>   _quickNames; // what _tbQuick's buttons are for
     ui::Clickable             *_tbEmoji = nullptr, *_tbForward = nullptr, *_tbMore = nullptr;
     class ActionButton        *_tbSave = nullptr, *_tbAgent = nullptr;
     ui::View                  *_fileBar = nullptr, *_fileView = nullptr; // the hovered file

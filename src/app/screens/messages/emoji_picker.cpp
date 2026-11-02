@@ -381,6 +381,17 @@ EmojiPicker::EmojiPicker(Context &ctx, Pick onPick) : _ctx(ctx), _onPick(std::mo
     filter({});
 }
 
+View *EmojiPicker::addGlyph(View *parent, Context &ctx, const std::string &name, float size) {
+    const model::Store::EmojiGlyph g = ctx.store().emojiFor(name);
+    if (!g.image.empty()) {
+        auto *img = parent->add<CachedImage>(ctx.images, g.image);
+        img->setPlaceholder(C::None);
+        img->style().size(size, size);
+        return img;
+    }
+    return parent->add<Label>(g.unicode.empty() ? ":" + name + ":" : g.unicode, Font::Body);
+}
+
 EmojiPicker *EmojiPicker::show(Window &w, RectF anchor, Context &ctx, Pick onPick) {
     auto p = std::make_unique<EmojiPicker>(ctx, std::move(onPick));
     p->setAnchor(anchor, Place::Above);

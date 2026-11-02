@@ -6,6 +6,9 @@
 
 #include "app/media/sounds.h"
 #include "app/spell/spell.h"
+#ifdef MSGA_HAVE_MESSAGES
+#include "app/screens/messages/emoji_picker.h"
+#endif
 #ifdef MSGA_SELF_UPDATE
 #include "app/update/updater.h"
 #endif
@@ -59,7 +62,10 @@ bool shell::Settings::*const kAppearanceBools[] = {
     &shell::Settings::animateMedia,
 };
 int shell::Settings::*const kAppearanceInts[] = {
-    &shell::Settings::fontSize, &shell::Settings::relevantDays, &shell::Settings::names
+    &shell::Settings::fontSize,
+    &shell::Settings::relevantDays,
+    &shell::Settings::names,
+    &shell::Settings::quickReactions,
 };
 bool shell::Settings::*const kNotifyBools[] = {
     &shell::Settings::notifications,
@@ -457,6 +463,53 @@ void SettingsDialog::buildAppearance() {
         &d.threadsInline
     );
 
+#ifdef MSGA_HAVE_MESSAGES
+    heading(_content, tr("One-click reactions"));
+    {
+        auto *modes = radios(
+            _content,
+            {tr("Off"), tr("My most frequently used emoji"), tr("Custom")},
+            &d.quickReactions
+        );
+        // Custom: three slots, each picked in the emoji picker; they start
+        // as what the toolbar would show with nothing picked yet.
+        shell::Settings custom = d;
+        custom.quickReactions  = 2;
+        d.quickReactionNames   = custom.oneClickReactions();
+
+        auto *slots = row(_content, 8);
+        slots->style().padding(24, 0, 0, 0); // under its radio
+        for (size_t i = 0; i < d.quickReactionNames.size(); ++i) {
+            auto *slot = slots->add<Clickable>();
+            slot->style().size(36, 36).stack().items(Align::Center).noShrink();
+            slot->setLook({C::FormBg, C::FormSunken, C::FormSunken, C::None, 6});
+            slot->setBorder(C::FieldBorder);
+            slot->setRole(Role::Button);
+            slot->setTooltip(tr("Choose emoji"));
+            screens::EmojiPicker::addGlyph(slot, _ctx, d.quickReactionNames[i], 20);
+            slot->onClick = [this, slot, i] {
+                if (Window *w = window())
+                    screens::EmojiPicker::show(
+                        *w, slot->windowRect(), _ctx, [this, slot, i](const std::string &n) {
+                            _draft.quickReactionNames[i] = n;
+                            slot->clearChildren();
+                            screens::EmojiPicker::addGlyph(slot, _ctx, n, 20);
+                        }
+                    );
+            };
+        }
+        slots->setVisible(d.quickReactions == 2);
+        modes->onChange = [this, slots](int i) {
+            _draft.quickReactions = i;
+            slots->setVisible(i == 2);
+        };
+        caption(
+            _content,
+            tr("Shown on a message's toolbar: a click adds the reaction, another takes it back.")
+        );
+    }
+#endif
+
     heading(_content, tr("Names"));
     radios(_content, {tr("As set in Slack"), tr("Full names"), tr("Display names")}, &d.names);
     caption(_content, tr("Where a person has no display name, their full name is shown."));
@@ -700,8 +753,9 @@ void SettingsDialog::saveAppearance() {
         _s.*f = _draft.*f;
     for (int shell::Settings::*f : kAppearanceInts)
         _s.*f = _draft.*f;
-    _s.language       = _draft.language;
-    _s.spellLanguages = _draft.spellLanguages;
+    _s.language           = _draft.language;
+    _s.spellLanguages     = _draft.spellLanguages;
+    _s.quickReactionNames = _draft.quickReactionNames;
     _ctx.app.setUserTextScale(_s.fontScale());
     changed();
     close();

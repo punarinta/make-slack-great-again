@@ -979,6 +979,10 @@ msgid "Loading your stuff..."
 msgstr "データを読み込み中..."
 
 #: src/app/screens/messages/message_list.cpp
+msgid "React with :%1:"
+msgstr ":%1: でリアクション"
+
+#: src/app/screens/messages/message_list.cpp
 msgid "Add reaction"
 msgstr "リアクションを追加"
 
@@ -1550,6 +1554,26 @@ msgstr "スタンドアロン（サイドパネルで返信を開く）"
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Inline (expand replies under the message)"
 msgstr "インライン（メッセージの下に返信を展開）"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "One-click reactions"
+msgstr "ワンクリックリアクション"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Off"
+msgstr "オフ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "My most frequently used emoji"
+msgstr "よく使う絵文字"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Choose emoji"
+msgstr "絵文字を選択"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Shown on a message's toolbar: a click adds the reaction, another takes it back."
+msgstr "メッセージのツールバーに表示されます。クリックでリアクションを追加し、もう一度クリックで取り消します。"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Names"

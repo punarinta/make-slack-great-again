@@ -233,6 +233,8 @@ TEST("settings: every value survives the file, which is owner-only") {
     s.spellLanguages             = {"en_US", "de_DE_frami"};
     s.emojiRecent                = {"tada", "+1"};
     s.emojiSkinTone              = 3;
+    s.quickReactions             = 2;
+    s.quickReactionNames         = {"tada", "fire", "eyes"};
     s.lastAttachDir              = "/tmp/pics";
     s.provider("anthropic")->key = "sk-ant-abcd1234";
     s.ai.push_back({"custom-1", "vLLM", "http://localhost:8000/v1", "", "qwen", ""});
@@ -272,6 +274,9 @@ TEST("settings: every value survives the file, which is owner-only") {
     REQUIRE(r.emojiRecent.size() == 2);
     CHECK_STR(r.emojiRecent[0], "tada");
     CHECK(r.emojiSkinTone == 3);
+    CHECK(r.quickReactions == 2);
+    REQUIRE(r.quickReactionNames.size() == 3);
+    CHECK_STR(r.quickReactionNames[1], "fire");
     CHECK_STR(r.lastAttachDir, "/tmp/pics");
     REQUIRE(r.ai.size() == 3);
     CHECK_STR(r.provider("anthropic")->key, "sk-ant-abcd1234");
@@ -287,6 +292,25 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK(c.paletteDark == int(ui::Palette::Count) - 1);
     CHECK(c.notifyLevel == 1);
     file::remove(path);
+}
+
+TEST("settings: one-click reactions are the most used, or the three picked, topped up") {
+    shell::Settings s;
+    using V = std::vector<std::string>;
+    // Nothing used yet: Slack's defaults.
+    CHECK(s.quickReactions == 1);
+    CHECK((s.oneClickReactions() == V{"white_check_mark", "eyes", "raised_hands"}));
+    // The emoji picker's Frequently used, newest first, then the defaults.
+    s.emojiRecent = {"tada", "eyes"};
+    CHECK((s.oneClickReactions() == V{"tada", "eyes", "white_check_mark"}));
+    s.emojiRecent = {"tada", "fire", "+1", "heart"};
+    CHECK((s.oneClickReactions() == V{"tada", "fire", "+1"}));
+    // Custom: the picked ones; one missing is filled in.
+    s.quickReactions     = 2;
+    s.quickReactionNames = {"rocket", "", "rocket"};
+    CHECK((s.oneClickReactions() == V{"rocket", "white_check_mark", "eyes"}));
+    s.quickReactions = 0;
+    CHECK(s.oneClickReactions().empty());
 }
 
 TEST("settings: the gear opens a window-filling overlay; Escape and the backdrop close it") {

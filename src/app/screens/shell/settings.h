@@ -63,6 +63,13 @@ struct Settings {
     int                      names        = 0;
     bool                     showAgentsApps = true, unreadsOnly = false;
     bool                     animateEmoji = true, animateMedia = true;
+    // The message toolbar's one-click reactions: 0 off, 1 the most used (the
+    // emoji picker's Frequently used), 2 quickReactionNames.
+    int                      quickReactions = 1;
+    std::vector<std::string> quickReactionNames;
+    // The three the toolbar shows (none when off), topped up with
+    // :white_check_mark: :eyes: :raised_hands:.
+    std::vector<std::string> oneClickReactions() const;
     bool                     customTrayIcon = false;
     // Claude Code workspaces: the footer's zen toggle (hide the tool-call
     // cards), per workspace: the keys of the

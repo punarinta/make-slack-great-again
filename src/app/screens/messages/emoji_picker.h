@@ -41,6 +41,9 @@ public:
     // saved, and is told whenever a pick or a tone changes either.
     using StateObserver = std::function<void(const std::vector<std::string> &recent, int tone)>;
     static void restoreState(std::vector<std::string> recent, int tone);
+    // An emoji by shortcode in `parent`, `size` px: a workspace emoji's
+    // picture, else its character (":name:" when unknown).
+    static ui::View *addGlyph(ui::View *parent, Context &ctx, const std::string &name, float size);
     static void setStateObserver(StateObserver fn);
     bool        onEvent(ui::Event &e) override;
 
