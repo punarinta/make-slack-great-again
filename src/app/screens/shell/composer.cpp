@@ -1540,6 +1540,11 @@ size_t Composer::addAttachments(const std::vector<std::string> &paths) {
     return added;
 }
 
+void Composer::attachFiles(const std::vector<std::string> &paths) {
+    addAttachments(paths);
+    _edit->focus();
+}
+
 void Composer::removeAttachment(size_t i) {
     if (i >= _files.size())
         return;
@@ -1640,8 +1645,7 @@ bool Composer::pasteMedia(const std::vector<std::string> &mimes, plat::Selection
                     [this, alive, path, ok] {
                         if (alive.expired() || !*ok)
                             return;
-                        addAttachments({path});
-                        _edit->focus();
+                        attachFiles({path});
                     }
                 );
             },
@@ -1660,8 +1664,7 @@ bool Composer::pasteMedia(const std::vector<std::string> &mimes, plat::Selection
             const std::vector<std::string> paths =
                 list ? screens::uriListPaths(*list) : std::vector<std::string>();
             if (!paths.empty()) {
-                addAttachments(paths);
-                _edit->focus();
+                attachFiles(paths);
             } else if (imgMime) {
                 pasteImage();
             } else {
@@ -1764,8 +1767,7 @@ bool Composer::onEvent(Event &e) {
         const auto paths = screens::droppedFiles(e.raw);
         if (paths.empty())
             return false;
-        addAttachments(paths);
-        _edit->focus();
+        attachFiles(paths);
         return true;
     }
     default:

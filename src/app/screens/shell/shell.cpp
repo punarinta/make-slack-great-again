@@ -794,7 +794,7 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
     ctx.window      = &win; // file dialogs' parent
     ctx.attachFiles = [this](std::vector<std::string> paths, bool thread) {
         if (Composer *c = thread ? threadComposer() : _composer)
-            c->addAttachments(paths);
+            c->attachFiles(paths);
     };
 
     auto *screen = win.root().add<View>();
@@ -961,7 +961,10 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
     shortcuts::install(win, Id::QuickSwitch, [this] { showQuickSwitcher(); });
     win.keyFilter = [this](const Event &e) {
         noteActivity();
-        return removeIdleSession(e);
+        if (removeIdleSession(e))
+            return true;
+        typeIntoComposer(e);
+        return false;
     };
     // The mouse's side buttons and trackpad swipes walk the same history.
     win.inputFilter = [this](const plat::Event &e) {
@@ -1836,6 +1839,41 @@ void Shell::openSearch() {
 // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered
 // before the focused view sees the key, because the composer keeps focus; a
 // text field with a selection keeps the key (Cut there).
+namespace {
+
+// A key that types a character (letters, digits, punctuation, space, the
+// keypad's), with no modifier but Shift: never a shortcut or navigation.
+bool typesText(const Event &e) {
+    using K = plat::Key;
+    if (e.mods & ui::kModMask & ~uint32_t(plat::ModShift))
+        return false;
+    const K k = e.key;
+    return (k >= K::A && k <= K::Num9) || (k >= K::Space && k <= K::Slash) ||
+           (k >= K::Kp0 && k <= K::KpAdd);
+}
+
+} // namespace
+
+// The message list takes the focus on a click (its keys scroll it), and so
+// does nothing with typing. A character typed there goes to the composer
+// below it instead, which takes the focus and the key with it: after a click
+// on a message (or on the list to bring the window back after dropping a
+// file on it) typing just goes on.
+void Shell::typeIntoComposer(const Event &e) {
+    if (e.type != EventType::KeyDown || !typesText(e) || topDialog() || _settingsDlg)
+        return;
+    View *f = _win.focusView();
+    if (!f || f->role() == Role::TextInput)
+        return;
+    Composer *c = nullptr;
+    if (_messages && _messages->isAncestorOf(f))
+        c = _composer;
+    else if (_thread && _thread->isAncestorOf(f) && !_thread->composer->isAncestorOf(f))
+        c = _thread->composer;
+    if (c && c->visible() && c->enabled())
+        c->edit().focus();
+}
+
 bool Shell::removeIdleSession(const Event &e) {
     if (!shortcuts::matches(shortcuts::Id::RemoveIdleSession, e) || topDialog() || _settingsDlg)
         return false;
