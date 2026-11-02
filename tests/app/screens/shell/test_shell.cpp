@@ -3253,6 +3253,160 @@ TEST("updates: opening chats leaves the update check and its events alone") {
 }
 #endif
 
+TEST("thread panel: a narrow window keeps it inside, a wider one brings the saved width back") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    CHECK(int(std::lround(h.sh->threadPanel()->width())) == h.settings.threadWidth);
+    w.setSize({900, 600});
+    pump();
+    const ui::RectF r = h.sh->threadPanel()->windowRect();
+    CHECK(r.x + r.w <= 900.5f); // not past the window's right edge
+    CHECK(r.w > 0);
+    CHECK(h.settings.threadWidth == 360); // the saved width is untouched
+    w.setSize({1600, 900});
+    pump();
+    CHECK(int(std::lround(h.sh->threadPanel()->width())) == 360);
+}
+
+TEST("thread panel: in a narrow window it opens at half and the splitter still moves it") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({900, 600});
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View   *area = h.sh->threadPanel()->parent();
+    const float body = area->parent()->width() - 7; // the splitter
+    REQUIRE(body < 360 + 360);                      // too narrow for the saved 360
+    CHECK(std::fabs(area->width() - std::floor(body / 2)) <= 1);
+    h.settings.threadWidth = 220; // as a drag would leave it
+    area->parent()->invalidateLayout();
+    pump();
+    CHECK(int(std::lround(area->width())) == 220);
+}
+
+TEST("thread panel: dragged well past its widest it takes the whole room, and drags back") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({900, 600});
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View *area     = h.sh->threadPanel()->parent();
+    ui::View *body     = area->parent();
+    ui::View *splitter = body->child(1);
+    ui::View *messages = body->child(0);
+    auto      send     = [&](plat::EventType t, float x, float y) {
+        plat::Event e;
+        e.type   = t;
+        e.window = &w;
+        e.pos    = {x, y};
+        h.win->handle(e);
+    };
+    auto drag = [&](float dx) {
+        const ui::RectF r = splitter->windowRect();
+        const float     x = r.x + r.w / 2, y = r.y + r.h / 2;
+        send(plat::EventType::PointerMove, x, y);
+        send(plat::EventType::PointerDown, x, y);
+        for (int i = 1; i <= 10; ++i)
+            send(plat::EventType::PointerMove, x + dx * i / 10, y);
+        send(plat::EventType::PointerUp, x + dx, y);
+        pump();
+    };
+    const float room = body->width() - 7;
+    drag(-60); // within range: the line follows the pointer
+    CHECK(messages->visible());
+    CHECK(std::fabs(area->width() - std::floor(room / 2)) <= 1); // already at its widest here
+    drag(-(room / 2));                                           // far past it
+    CHECK(!messages->visible());
+    CHECK(std::fabs(area->width() - room) <= 1);
+    drag(room / 2); // back
+    CHECK(messages->visible());
+    CHECK(area->width() < room - 100);
+    drag(-(room / 2));
+    REQUIRE(!messages->visible());
+    h.sh->closeThread(); // closing ends it: the next thread opens beside the messages
+    pump();
+    CHECK(messages->visible());
+}
+
+TEST("thread panel: at full width, whatever needs the messages brings them back") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({900, 600});
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View *area     = h.sh->threadPanel()->parent();
+    ui::View *body     = area->parent();
+    ui::View *splitter = body->child(1);
+    ui::View *messages = body->child(0);
+    auto      send     = [&](plat::EventType t, float x, float y) {
+        plat::Event e;
+        e.type   = t;
+        e.window = &w;
+        e.pos    = {x, y};
+        h.win->handle(e);
+    };
+    auto full = [&] {
+        const ui::RectF r = splitter->windowRect();
+        const float     x = r.x + r.w / 2, y = r.y + r.h / 2;
+        send(plat::EventType::PointerMove, x, y);
+        send(plat::EventType::PointerDown, x, y);
+        send(plat::EventType::PointerMove, x - body->width(), y);
+        send(plat::EventType::PointerUp, x - body->width(), y);
+        pump();
+        return !messages->visible();
+    };
+    // The focus in the messages' composer moves to the thread's, not nowhere.
+    h.sh->composer().edit().focus();
+    REQUIRE(full());
+    ui::View *f = h.win->focusView();
+    CHECK(f && area->isAncestorOf(f));
+    // The search opens over the messages, shown and focused.
+    h.sh->openSearch();
+    pump();
+    CHECK(messages->visible());
+    f = h.win->focusView();
+    CHECK(f && messages->isAncestorOf(f) && !h.sh->composer().isAncestorOf(f));
+    // Going full again closes that search: the next one opens rather than closes.
+    REQUIRE(full());
+    h.sh->openSearch();
+    pump();
+    CHECK(messages->visible());
+    f = h.win->focusView();
+    CHECK(f && messages->isAncestorOf(f) && !h.sh->composer().isAncestorOf(f));
+    // The header's tabs, the same conversation picked again, a jump in it.
+    REQUIRE(full());
+    h.sh->showCanvas(false);
+    pump();
+    CHECK(messages->visible());
+    REQUIRE(full());
+    h.sh->open(design);
+    pump();
+    CHECK(messages->visible());
+    CHECK(h.sh->threadOpen()); // the thread stays, beside them
+    REQUIRE(full());
+    h.sh->jumpToMessage(design, root, 0);
+    pump();
+    CHECK(messages->visible());
+}
+
 TEST("sidebar footer: the avatar menu hides the workspace rail and remembers it") {
     Harness h;
     CHECK(h.sh->rail()->visible());

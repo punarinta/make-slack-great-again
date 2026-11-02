@@ -314,6 +314,7 @@ private:
     void        buildTitleBar(ui::View *parent);
     void        buildRail(ui::View *parent);
     void        buildMain(ui::View *parent);
+    void        showMessageArea(); // out of a full-width thread panel
     void        addWorkspace(ui::PointF anchor);
     void        togglePin();  // "Pin window on top"
     void        syncChrome(); // the OS-drawn chrome follows the app theme

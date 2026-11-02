@@ -527,29 +527,35 @@ public:
     }
 };
 
-// The splitter handle between the messages and the thread panel: 1 px, with the panel's soft shadow
-// cast 6 px onto the chat.
+// The splitter handle between the messages and the thread panel: the panel's soft shadow cast
+// onto the chat, drawn inside a kW-wide grab zone (a 1 px one is hard to hit); the link colour
+// along its edge under the pointer says it can be dragged.
 class Splitter final : public View {
 public:
-    explicit Splitter(std::function<void(float dx)> onDrag) : _onDrag(std::move(onDrag)) {
-        style().width(1).noShrink();
+    static constexpr float kW = 7;
+    explicit Splitter(std::function<void(float dx, bool pressed)> onDrag)
+        : _onDrag(std::move(onDrag)) {
+        style().width(kW).noShrink();
         setCursor(plat::Cursor::ResizeH);
-        setPaintOutset(6);
+        setHoverRepaint(true);
     }
     void paint(gfx::Painter &p) override {
         p.fillRect(bounds(), color(C::Surface));
-        p.fillRectGradient({-5, 0, 6, height()}, {-5, 0}, 0, {1, 0}, 0x1c000000U);
+        p.fillRectGradient({0, 0, kW, height()}, {0, 0}, 0, {kW, 0}, 0x1c000000U);
+        if (hovered())
+            p.fillRect({kW - 2, 0, 2, height()}, color(C::Link));
     }
+    // dx: how far the pointer is from where it was pressed, so a line held
+    // at a limit follows the pointer again once it is back.
     bool onEvent(Event &e) override {
         switch (e.type) {
         case EventType::PointerDown:
-            _last = e.windowPos.x;
+            _from = e.windowPos.x;
+            _onDrag(0, true);
             return true;
         case EventType::PointerMove:
-            if (window() && window()->capture() == this) {
-                _onDrag(e.windowPos.x - _last);
-                _last = e.windowPos.x;
-            }
+            if (window() && window()->capture() == this)
+                _onDrag(e.windowPos.x - _from, false);
             return true;
         default:
             return false;
@@ -557,8 +563,61 @@ public:
     }
 
 private:
-    std::function<void(float)> _onDrag;
-    float                      _last = 0;
+    std::function<void(float, bool)> _onDrag;
+    float                            _from = 0;
+};
+
+// The messages and the thread panel side by side. The panel keeps its saved
+// width within range(): at least kPaneMinW each, and at most what leaves the
+// messages kMessagesW or half the room, whichever is more. A narrow window
+// thus splits 1:1 and still lets the splitter move the line; the saved width
+// is untouched, so a wider window brings it back. Dragged kSnapW past its
+// widest, the panel takes the whole room (full) until dragged back or closed.
+class ThreadBody final : public View {
+public:
+    static constexpr float kMessagesW = 360;
+    static constexpr float kPaneMinW  = 200;
+    static constexpr float kSnapW     = 80;
+
+    View *area = nullptr, *splitter = nullptr, *thread = nullptr;
+    int  *savedWidth = nullptr;
+
+    // The thread panel's allowed widths in `avail` (the splitter excluded).
+    static std::pair<float, float> range(float avail) {
+        const float most  = std::max(std::floor(avail / 2), avail - kMessagesW);
+        const float least = std::min(kPaneMinW, std::floor(avail / 2));
+        return {std::max(0.f, least), std::max(0.f, most)};
+    }
+    float avail() const { return width() - (splitter && splitter->visible() ? Splitter::kW : 0); }
+    bool  full() const { return _full; }
+    void  setFull(bool on) {
+        if (_full == on)
+            return;
+        _full = on;
+        if (area)
+            area->setVisible(!on);
+        invalidateLayout();
+    }
+
+    void layout() override {
+        if (area && thread && savedWidth) {
+            float msgMin = kMessagesW;
+            if (thread->visible()) {
+                const float a       = avail();
+                const auto [lo, hi] = range(a);
+                const float threadW = _full ? a : std::clamp(float(*savedWidth), lo, hi);
+                msgMin              = std::max(0.f, a - threadW);
+                if (thread->currentStyle().w != threadW)
+                    thread->style().width(threadW);
+            }
+            if (area->currentStyle().minW != msgMin)
+                area->style().minW = msgMin;
+        }
+        View::layout();
+    }
+
+private:
+    bool _full = false;
 };
 
 // The right-hand thread panel: the messages screens' ThreadPanel with our
@@ -1524,12 +1583,12 @@ void Shell::buildMain(View *parent) {
     }
     _parallelBanner->setVisible(false);
 
-    auto *body = _mainPane->add<View>();
+    auto *body = _mainPane->add<ThreadBody>();
     body->style().row().flex(1);
     // The message area, with the search overlay over all of it.
     auto *areaHost = body->add<View>();
     areaHost->style().stack().flex(1);
-    areaHost->style().minW = 360;
+    areaHost->style().minW = ThreadBody::kMessagesW;
     auto *area             = areaHost->add<View>();
     auto *stack            = area->add<View>();
     stack->style().stack().flex(1);
@@ -1567,18 +1626,38 @@ void Shell::buildMain(View *parent) {
             _composer->edit().focus();
     };
 
-    _splitter = body->add<Splitter>([this](float dx) {
-        // The splitter: the panel at least 100 px, the messages 200.
-        const float total = _thread->parent()->width();
-        _settings.threadWidth =
-            int(std::clamp(_thread->width() - dx, 100.f, std::max(100.f, total - 200)));
-        _thread->style().width(float(_settings.threadWidth));
+    _splitter = body->add<Splitter>([this, body, from = 0.f](float dx, bool pressed) mutable {
+        // The splitter: within the range ThreadBody lays the panel out in;
+        // well past its widest, the panel takes the whole room.
+        if (pressed) {
+            from = _thread->width();
+            return;
+        }
+        const auto [lo, hi] = ThreadBody::range(body->avail());
+        const float want    = from - dx;
+        const bool  full    = want >= hi + ThreadBody::kSnapW;
+        if (full && !body->full()) {
+            // The messages go: their search with them, and a focus held
+            // there moves to the thread's composer instead of nowhere.
+            _search->hideNow();
+            body->setFull(true);
+            if (!_win.focusView())
+                _thread->composer->edit().focus();
+        } else if (!full) {
+            body->setFull(false);
+            _settings.threadWidth = int(std::clamp(want, lo, hi));
+        }
+        body->invalidateLayout();
     });
     _thread   = body->add<ThreadArea>(_ctx, _avatars, _drafts);
     for (Composer *c : {_composer, _thread->composer})
         setupComposer(*c);
     applyScheduleSend(); // the demo's backend is in place already
     _thread->style().width(float(_settings.threadWidth)).noShrink();
+    body->area       = areaHost;
+    body->splitter   = _splitter;
+    body->thread     = _thread;
+    body->savedWidth = &_settings.threadWidth;
     _splitter->setVisible(false);
     _thread->setVisible(false);
     _header->setVisible(false);
@@ -1782,6 +1861,7 @@ void Shell::open(ConvRef conv) {
     leaveTeammate(); // the teammate page keeps what was typed to it
     leavePages();
     _search->hideNow();
+    showMessageArea();
     if (conv != _current && threadOpen())
         closeThread(); // a leave path: the thread composer stashes its draft
     _current = conv;
@@ -1974,8 +2054,17 @@ void Shell::closeFrontmost() {
 }
 
 void Shell::openSearch() {
-    if (_signedIn)
-        _search->toggle();
+    if (!_signedIn)
+        return;
+    showMessageArea(); // the search sits over the messages
+    _search->toggle();
+}
+
+// The messages back beside a full-width thread panel: for whatever needs them
+// on screen (a conversation opened, the search, the canvas tab, a jump).
+void Shell::showMessageArea() {
+    if (_thread)
+        static_cast<ThreadBody *>(_thread->parent())->setFull(false);
 }
 
 // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered
@@ -2043,13 +2132,7 @@ void Shell::openThread(ConvRef conv, Ts root) {
     // Its reply bar in the list says "Close thread".
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(root);
 #endif
-    if (!_thread->visible()) { // the saved width, clamped to what fits
-        const float total = _thread->parent()->width();
-        _thread->style().width(
-            std::clamp(float(_settings.threadWidth), 100.f, std::max(100.f, total - 200))
-        );
-    }
-    _thread->setVisible(true);
+    _thread->setVisible(true); // ThreadBody fits the saved width to the window
     _splitter->setVisible(true);
     _ctx.backend.loadThread(conv, root, nullptr);
     _ctx.backend.setActiveConversation(conv, root);
@@ -2060,6 +2143,7 @@ void Shell::closeThread() {
     if (!threadOpen())
         return;
     _thread->composer->stashNow();
+    showMessageArea();
     _thread->setVisible(false);
 #ifdef MSGA_HAVE_MESSAGES
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(0);
@@ -2226,6 +2310,7 @@ void Shell::jumpToMessage(ConvRef conv, Ts ts, Ts thread) {
         return;
 #ifdef MSGA_HAVE_MESSAGES
     if (!thread) {
+        showMessageArea();
         static_cast<screens::MessageList *>(_messages)->jumpTo(ts);
         return;
     }
@@ -2306,6 +2391,7 @@ Composer *Shell::threadComposer() {
 // The tabs: Messages, or the canvas page (the conversation's canvas, or
 // "Add canvas": a blank page the first save turns into one).
 void Shell::showCanvas(bool on) {
+    showMessageArea(); // both tabs live where the messages are
     on = on && _current != kNoConv;
     if (!on)
         _canvas->flushPendingSave(); // on every tab / conversation switch
