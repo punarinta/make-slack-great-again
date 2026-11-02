@@ -453,10 +453,13 @@ void SidebarFooter::showAvatarMenu() {
         st.enabled = bool(onManageStatus);
         items.push_back(std::move(st));
     }
+    // The rail on or off: ticked while it shows.
+    addMenuSeparator(items);
     MenuItem rail;
-    rail.id    = 3;
-    rail.label = _railShown ? tr("Hide workspaces") : tr("Show workspaces");
-    rail.icon  = uint16_t(_railShown ? Icon::PanelLeftClose : Icon::PanelLeftOpen);
+    rail.id      = 3;
+    rail.label   = tr("Show workspaces");
+    rail.icon    = uint16_t(Icon::PanelLeft);
+    rail.checked = _railShown;
     items.push_back(std::move(rail));
     const RectF r = _avatarBtn->windowRect();
     Menu::show(

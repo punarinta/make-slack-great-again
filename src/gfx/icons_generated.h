@@ -62,8 +62,7 @@ enum class Icon : uint16_t {
     MicStop,
     Mic,
     MoreHorizontal,
-    PanelLeftClose,
-    PanelLeftOpen,
+    PanelLeft,
     Paperclip,
     Pause,
     PinOff,
@@ -99,13 +98,13 @@ enum class Icon : uint16_t {
     Tray,
     Logo,
 };
-constexpr int kIconCount = 91;
+constexpr int kIconCount = 90;
 
 // Path data for drawIcon() (format: src/tools/icons.py).
 namespace iconData {
 constexpr int kUnit = 32; // quanta per viewBox unit
-extern const uint8_t  kData[8812];
-extern const uint16_t kOffsets[92];
+extern const uint8_t  kData[8710];
+extern const uint16_t kOffsets[91];
 } // namespace iconData
 
 } // namespace gfx

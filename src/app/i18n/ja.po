@@ -3527,10 +3527,6 @@ msgid "Manage status"
 msgstr "ステータスを管理"
 
 #: src/app/screens/shell/sidebar_footer.cpp
-msgid "Hide workspaces"
-msgstr "ワークスペースを隠す"
-
-#: src/app/screens/shell/sidebar_footer.cpp
 msgid "Show workspaces"
 msgstr "ワークスペースを表示"
 

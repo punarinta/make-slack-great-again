@@ -252,7 +252,8 @@ public:
     ui::View                   *threadPanel() const;
     // The message list (the messages screens' MessageList), null without them.
     ui::View                   *messagesView() const { return _messages; }
-    ui::View                   *rail() const { return _rail; } // the workspace rail
+    // The workspace rail.
+    ui::View                   *rail() const { return _rail; }
     ConvHeader                 &header() { return *_header; }
     ConvTabs                   &tabs() { return *_tabs; }
     TypingIndicator            &typing() { return *_typing; }

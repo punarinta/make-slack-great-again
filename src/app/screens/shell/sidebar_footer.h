@@ -8,8 +8,9 @@
 // calls are hidden, the eye while everything shows. While background jobs
 // run (model::jobs(): downloads, copies, …) a turning cog sits left of the
 // toggle; hovering it lists them ("%n background task(s) running").
-// The avatar menu's last item hides or brings back the workspace rail, room
-// a small screen wants for the conversation.
+// Below them, behind a separator, "Show workspaces" (panel-left), ticked
+// while the workspace rail shows; unticking it gives a small screen the
+// rail's room for the conversation.
 #pragma once
 
 #include "app/model/jobs.h"
