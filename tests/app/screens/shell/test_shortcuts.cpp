@@ -437,6 +437,36 @@ TEST("shortcuts: Alt+Left/Right and Back/Forward walk the conversations opened")
     CHECK(h.sh->current() == eng);
 }
 
+TEST("typing: a click on the message list, then typing, goes on in the composer") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    pump();
+    // The list takes the focus on a click (its keys scroll it)…
+    hooks().injectPointerMove(h.win->native(), {700, 300});
+    hooks().injectButton(h.win->native(), plat::Button::Left, true);
+    hooks().injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    REQUIRE(!edit.focused());
+    // …but a key that types hands it back to the composer, the key with it.
+    for (plat::Key k : {plat::Key::H, plat::Key::I}) {
+        hooks().injectKey(h.win->native(), k, true);
+        hooks().injectKey(h.win->native(), k, false);
+    }
+    pump();
+    CHECK(edit.focused());
+    CHECK_STR(edit.text(), "hi");
+    // Navigation keys and chords stay with the list.
+    hooks().injectPointerMove(h.win->native(), {700, 300});
+    hooks().injectButton(h.win->native(), plat::Button::Left, true);
+    hooks().injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    hooks().injectKey(h.win->native(), plat::Key::PageUp, true);
+    hooks().injectKey(h.win->native(), plat::Key::PageUp, false);
+    pump();
+    CHECK(!edit.focused());
+}
+
 TEST("navigation: the mouse's side buttons walk the history") {
     Harness       h;
     const ConvRef design = h.conv("C0DESIGN"), eng = h.conv("C0ENG");

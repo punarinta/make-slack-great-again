@@ -830,9 +830,10 @@ void caseNotification() {
     n.body            = "Did you see the new engine? ✓";
     n.image           = solidImage(64, 64, 0xff2b8a3e);
     n.actions         = {{"reply", "Reply"}, {"read", "Mark as read"}};
-    const uint64_t id = g_app->notify(n);
-    CHECK(id > 0);
-    if (!id)
+    const uint64_t id = 1;
+    const bool     ok = g_app->notify(id, n);
+    CHECK(ok);
+    if (!ok)
         return;
     pumpFor(500);
     if (const Event *f = find(EventType::NotificationFailed)) {
@@ -867,8 +868,8 @@ void caseNotification() {
         std::printf("    (no action buttons to click here)\n");
     }
 
-    const uint64_t id2 = g_app->notify({.title = "Second", .body = "body click"});
-    CHECK(id2 > 0 && id2 != id);
+    const uint64_t id2 = id + 1;
+    CHECK(g_app->notify(id2, {.title = "Second", .body = "body click"}));
     pumpFor(200);
     g_events.clear();
     const bool clickable = hooks()->notificationInvoke(id2, "");
