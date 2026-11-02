@@ -39,6 +39,13 @@ ThreadPanel::ThreadPanel(Context &ctx) : _ctx(ctx) {
     auto *header = add<View>();
     header->style().row().height(48).padding(16, 0, 8, 0).spacing(8).items(Align::Center);
     header->style().noShrink();
+    // Over the messages (a narrow window, or dragged full): back to them.
+    _back = header->add<RoundButton>(gfx::Icon::ChevronLeft, tr("Close thread"));
+    _back->setVisible(false);
+    _back->onClick = [this] {
+        if (_ctx.closeThread)
+            _ctx.closeThread();
+    };
     // The title keeps its width; a narrow header shortens the link chip
     // ("…") instead of squeezing "Thread".
     header->add<Label>(tr("Thread"), Font::BodyBold)->style().noShrink();

@@ -24,6 +24,7 @@ enum class Icon : uint16_t {
     CheckOnAccent,
     Check,
     ChevronDown,
+    ChevronLeft,
     ChevronRight,
     CircleUserRound,
     Clock,
@@ -98,13 +99,13 @@ enum class Icon : uint16_t {
     Tray,
     Logo,
 };
-constexpr int kIconCount = 90;
+constexpr int kIconCount = 91;
 
 // Path data for drawIcon() (format: src/tools/icons.py).
 namespace iconData {
 constexpr int kUnit = 32; // quanta per viewBox unit
-extern const uint8_t  kData[8710];
-extern const uint16_t kOffsets[91];
+extern const uint8_t  kData[8731];
+extern const uint16_t kOffsets[92];
 } // namespace iconData
 
 } // namespace gfx

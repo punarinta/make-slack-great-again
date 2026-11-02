@@ -573,6 +573,8 @@ private:
 // thus splits 1:1 and still lets the splitter move the line; the saved width
 // is untouched, so a wider window brings it back. Dragged kSnapW past its
 // widest, the panel takes the whole room (full) until dragged back or closed.
+// A window too narrow for both covers the messages with it too (narrow), with
+// no splitter, until the window is wide enough again.
 class ThreadBody final : public View {
 public:
     static constexpr float kMessagesW = 360;
@@ -594,30 +596,46 @@ public:
         if (_full == on)
             return;
         _full = on;
-        if (area)
-            area->setVisible(!on);
         invalidateLayout();
     }
+    // Judged on the whole width, so the splitter going doesn't flip it back.
+    bool narrow() const {
+        return thread && thread->visible() && width() < kMessagesW + kPaneMinW + Splitter::kW;
+    }
+    // The panel over the messages (full or narrow), as last laid out.
+    bool                      covering() const { return _covering; }
+    std::function<void(bool)> onCoveringChanged;
 
     void layout() override {
+        bool cover = false;
         if (area && thread && savedWidth) {
             float msgMin = kMessagesW;
             if (thread->visible()) {
+                const bool tight = narrow();
+                cover            = _full || tight;
+                if (splitter)
+                    splitter->setVisible(!tight);
                 const float a       = avail();
                 const auto [lo, hi] = range(a);
-                const float threadW = _full ? a : std::clamp(float(*savedWidth), lo, hi);
+                const float threadW = cover ? a : std::clamp(float(*savedWidth), lo, hi);
                 msgMin              = std::max(0.f, a - threadW);
                 if (thread->currentStyle().w != threadW)
                     thread->style().width(threadW);
             }
+            area->setVisible(!cover);
             if (area->currentStyle().minW != msgMin)
                 area->style().minW = msgMin;
         }
         View::layout();
+        if (cover != _covering) {
+            _covering = cover;
+            if (onCoveringChanged)
+                onCoveringChanged(cover);
+        }
     }
 
 private:
-    bool _full = false;
+    bool _full = false, _covering = false;
 };
 
 // The right-hand thread panel: the messages screens' ThreadPanel with our
@@ -672,6 +690,14 @@ public:
         list->setTarget(conv, root);
 #endif
         composer->setTarget(conv, root);
+    }
+    // Over the messages: a back arrow in the header leads back to them.
+    void setCovering(bool on) {
+#ifdef MSGA_HAVE_MESSAGES
+        panel->setBackShown(on);
+#else
+        (void)on;
+#endif
     }
     // Showing nothing: the workspace it showed is going away.
     void clear() {
@@ -1658,12 +1684,7 @@ void Shell::buildMain(View *parent) {
         const float want    = from - dx;
         const bool  full    = want >= hi + ThreadBody::kSnapW;
         if (full && !body->full()) {
-            // The messages go: their search with them, and a focus held
-            // there moves to the thread's composer instead of nowhere.
-            _search->hideNow();
-            body->setFull(true);
-            if (!_win.focusView())
-                _thread->composer->edit().focus();
+            body->setFull(true); // onCoveringChanged sees to the search and focus
         } else if (!full) {
             body->setFull(false);
             _settings.threadWidth = int(std::clamp(want, lo, hi));
@@ -1679,6 +1700,19 @@ void Shell::buildMain(View *parent) {
     body->splitter   = _splitter;
     body->thread     = _thread;
     body->savedWidth = &_settings.threadWidth;
+
+    body->onCoveringChanged = [this](bool on) {
+        _thread->setCovering(on);
+        if (!on)
+            return;
+        // The messages went: their search with them, and a focus held there
+        // moves to the thread's composer instead of nowhere.
+        _search->hideNow();
+        Composer *c = _thread->composer;
+        View     *f = _win.focusView();
+        if ((!f || !_thread->isAncestorOf(f)) && c->visible() && c->enabled())
+            c->edit().focus();
+    };
     _splitter->setVisible(false);
     _thread->setVisible(false);
     _header->setVisible(false);
@@ -2097,10 +2131,15 @@ void Shell::openSearch() {
 }
 
 // The messages back beside a full-width thread panel: for whatever needs them
-// on screen (a conversation opened, the search, the canvas tab, a jump).
+// on screen (a conversation opened, the search, the canvas tab, a jump). A
+// window too narrow for both shows them only with the thread closed.
 void Shell::showMessageArea() {
-    if (_thread)
-        static_cast<ThreadBody *>(_thread->parent())->setFull(false);
+    if (!_thread)
+        return;
+    auto *body = static_cast<ThreadBody *>(_thread->parent());
+    body->setFull(false);
+    if (body->narrow())
+        closeThread();
 }
 
 // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered
@@ -2179,7 +2218,7 @@ void Shell::closeThread() {
     if (!threadOpen())
         return;
     _thread->composer->stashNow();
-    showMessageArea();
+    static_cast<ThreadBody *>(_thread->parent())->setFull(false);
     _thread->setVisible(false);
 #ifdef MSGA_HAVE_MESSAGES
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(0);

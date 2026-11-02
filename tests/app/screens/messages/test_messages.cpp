@@ -1009,7 +1009,7 @@ TEST("thread: an agent's thread of a link has a chip back to the Slack thread") 
     CHECK(panel->linkChip()->tooltip().find(longName) != std::string::npos);
     panel->style().width(360);
     pump(4);
-    ui::View   *title = panel->child(0)->child(0);
+    ui::View   *title = panel->child(0)->child(1); // after the back arrow
     const float tw    = title->measure(ui::kInf, ui::kInf).w;
     CHECK(title->width() >= tw - 1);
     CHECK(title->height() < 2 * title->measure(ui::kInf, ui::kInf).h);
