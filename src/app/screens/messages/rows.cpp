@@ -877,7 +877,6 @@ public:
         const Store &st  = ctx.store;
         auto        *avs = add<ui::View>();
         avs->style().row().spacing(3).margins(0, 0, 2, 0).noShrink();
-        _avs             = avs;
         for (size_t i = 0; i < m.replyUsers.size() && i < 5; ++i)
             avs->add<CachedImage>(
                    ctx.images, st.user(m.replyUsers[i]).avatar, ImageCache::Shape::Rounded, 5
@@ -886,14 +885,14 @@ public:
                 .size(kThreadAv, kThreadAv);
         // The avatars and the count never give way: in a narrow column only
         // "Last reply …" is cut short.
-        _count = add<ui::Label>(
+        auto *count = add<ui::Label>(
             m.replyCount == 1 ? std::string(tr("1 reply"))
                               : arg(tr("%1 replies"), str::number(m.replyCount)),
             Font::SmallBold,
             C::ReplyLink
         );
-        _count->setMaxLines(1);
-        _count->style().noShrink();
+        count->setMaxLines(1);
+        count->style().noShrink();
         _sub = add<ui::Label>("", Font::Small, C::TextMuted);
         _sub->setMaxLines(1);
         _sub->style().shrink = 1;
@@ -912,10 +911,27 @@ public:
         const ui::SizeF s = measureFlex(aw, ah);
         if (!(aw < ui::kInf))
             return s;
-        // At least wide enough for the avatars and the count.
-        const float fixed = currentStyle().pad.l + currentStyle().pad.r + 6 +
-                            _avs->measure(ui::kInf, ah).w + _avs->currentStyle().margin.r +
-                            _count->measure(ui::kInf, ah).w;
+        // At least wide enough for the parts that never shrink (the avatars
+        // and the count) plus every gap, so the rest can give way to zero
+        // without anything leaving the bar. aw is the content width (measure()
+        // already took the padding off), and the children are asked at the
+        // same size measureFlex() just did, so their measure caches hit.
+        const float gap   = currentStyle().gap;
+        float       fixed = 0;
+        int         shown = 0;
+        for (size_t i = 0; i < childCount(); ++i) {
+            ui::View *c = child(i);
+            if (!c->visible())
+                continue;
+            ++shown;
+            const ui::Style &cs = c->currentStyle();
+            if (cs.shrink > 0 || cs.grow > 0)
+                continue;
+            const float mx = cs.margin.l + cs.margin.r, my = cs.margin.t + cs.margin.b;
+            fixed += c->measure(aw - mx, ah - my).w + mx;
+        }
+        if (shown > 1)
+            fixed += gap * float(shown - 1);
         return {std::min(aw, std::max(std::floor(aw / 2), std::ceil(fixed))), s.h};
     }
     bool onEvent(ui::Event &e) override {
@@ -947,8 +963,7 @@ private:
     MessageList &_list;
     Ts           _ts;
     std::string  _last;
-    ui::View    *_avs   = nullptr;
-    ui::Label   *_count = nullptr, *_sub = nullptr, *_glyph = nullptr;
+    ui::Label   *_sub = nullptr, *_glyph = nullptr;
     bool         _hover = false;
 };
 
