@@ -252,6 +252,8 @@ public:
     ui::View                   *threadPanel() const;
     // The message list (the messages screens' MessageList), null without them.
     ui::View                   *messagesView() const { return _messages; }
+    // The workspace rail.
+    ui::View                   *rail() const { return _rail; }
     ConvHeader                 &header() { return *_header; }
     ConvTabs                   &tabs() { return *_tabs; }
     TypingIndicator            &typing() { return *_typing; }
@@ -380,7 +382,9 @@ private:
     enum : uint32_t { kTraySettings = 1, kTrayResetSize, kTrayQuit, kTrayWorkspace = 100 };
     void          showWorkspaceMenu(const std::string &key, ui::PointF at);
     void          refreshRail(); // the tiles' names, icons and active state
-    bool          hideWindow();  // to the tray, while a tray host shows our icon
+    // Settings::showRail, the rail forced on while the sidebar is hidden.
+    void          updateRailVisible();
+    bool          hideWindow(); // to the tray, while a tray host shows our icon
     // The open chat is on screen and the window focused
     // (not hidden, minimized or in the background); updateReading tells the
     // message list.

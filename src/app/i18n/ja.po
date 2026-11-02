@@ -3526,6 +3526,10 @@ msgstr "プロフィールを管理"
 msgid "Manage status"
 msgstr "ステータスを管理"
 
+#: src/app/screens/shell/sidebar_footer.cpp
+msgid "Show workspaces"
+msgstr "ワークスペースを表示"
+
 #: src/app/screens/shell/signin_dialogs.cpp
 msgid "The Slack desktop app wasn't found on this computer."
 msgstr "このコンピューターにSlackデスクトップアプリが見つかりませんでした。"

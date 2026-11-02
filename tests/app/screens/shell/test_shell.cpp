@@ -3253,6 +3253,31 @@ TEST("updates: opening chats leaves the update check and its events alone") {
 }
 #endif
 
+TEST("sidebar footer: the avatar menu hides the workspace rail and remembers it") {
+    Harness h;
+    CHECK(h.sh->rail()->visible());
+    shell::SidebarFooter &f = h.sh->sidebar().footer();
+    CHECK(f.railShown());
+    f.toggleRail();
+    pump();
+    CHECK_FALSE(h.sh->rail()->visible());
+    CHECK_FALSE(h.settings.showRail);
+    CHECK_FALSE(f.railShown());
+    // Signed out the sidebar, and with it the avatar menu, is gone: the rail
+    // comes back meanwhile, the setting stays.
+    h.sh->setSignedIn(false);
+    pump();
+    CHECK(h.sh->rail()->visible());
+    CHECK_FALSE(h.settings.showRail);
+    h.sh->setSignedIn(true);
+    pump();
+    CHECK_FALSE(h.sh->rail()->visible());
+    f.toggleRail();
+    pump();
+    CHECK(h.sh->rail()->visible());
+    CHECK(h.settings.showRail);
+}
+
 TEST("window: fit to screen — shrink to the work area, pull back, refit (issue #45)") {
     Harness       h;
     plat::Window &w = h.win->native();

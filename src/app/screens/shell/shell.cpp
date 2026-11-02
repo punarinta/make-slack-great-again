@@ -863,10 +863,17 @@ Shell::Shell(
     };
     _sidebar->footer().onManageProfile = [this] { ProfileDialog::show(_win, _ctx, _avatars); };
     _sidebar->footer().onError         = [this](const std::string &message) { showError(message); };
-    _sidebar->onFindChannel            = [this] { openBrowseDialog(0); };
-    _sidebar->onBrowsePeople           = [this] { openBrowseDialog(1); };
-    _sidebar->onCreateChannel          = [this] { openCreateChannel(); };
-    ctx.forwardMessage                 = [this](ConvRef c, Ts ts, const std::string &file) {
+    _sidebar->footer().setRailShown(_settings.showRail);
+    _sidebar->footer().onRailToggled = [this](bool shown) {
+        _settings.showRail = shown;
+        updateRailVisible();
+        saveSettingsSoon();
+    };
+    updateRailVisible();
+    _sidebar->onFindChannel   = [this] { openBrowseDialog(0); };
+    _sidebar->onBrowsePeople  = [this] { openBrowseDialog(1); };
+    _sidebar->onCreateChannel = [this] { openCreateChannel(); };
+    ctx.forwardMessage        = [this](ConvRef c, Ts ts, const std::string &file) {
         // With two or more workspaces signed in, a picker chooses
         // where it goes (starting on this one).
         std::vector<ForwardWorkspace> targets;
@@ -1582,6 +1589,7 @@ void Shell::buildMain(View *parent) {
 void Shell::setSignedIn(bool on) {
     _signedIn = on;
     refreshRail(); // signed out, the rail stays, no workspace selected
+    updateRailVisible();
     _sidebar->setVisible(on);
     _listHandle->setVisible(on);
     _mainPane->setVisible(on);
@@ -1604,6 +1612,7 @@ void Shell::setWaiting(bool on) {
     if (on == _waiting)
         return;
     _waiting = on;
+    updateRailVisible();
     _sidebar->setVisible(_signedIn && !on);
     _listHandle->setVisible(_signedIn && !on);
     if (on) {
@@ -2941,6 +2950,13 @@ View *Shell::workspaceTile(const std::string &key) const {
 int Shell::workspaceDot(const std::string &key) const {
     const RailTile *t = _wsStack->find(key);
     return t ? t->dot : -1;
+}
+
+// The rail as Settings::showRail says, but always there while the sidebar
+// (its footer's avatar menu brings the rail back) is not: signed out or
+// waiting, the rail is the only way to another workspace or a new one.
+void Shell::updateRailVisible() {
+    _rail->setVisible(_settings.showRail || !_signedIn || _waiting);
 }
 
 void Shell::refreshRail() {
