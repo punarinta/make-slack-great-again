@@ -272,6 +272,7 @@ public:
     std::unique_ptr<Tray> createTray() override;
     bool                  notificationsAvailable() const override;
     bool                  notify(uint64_t id, const Notification &n) override;
+    bool                  launchedFromNotification() override;
     void                  setBadgeCount(int count) override;
 
     bool darkMode() const override;
@@ -338,6 +339,8 @@ public:
     void installUrlHandler(); // kAEGetURL → onUrls; again once AppKit launched
     void onUrls(std::vector<std::string> urls);
     void onReopen(); // Dock click / LaunchServices relaunch of the running bundle
+    // applicationDidFinishLaunching:'s NSApplicationLaunchIsDefaultLaunchKey.
+    void onLaunched(bool defaultLaunch) { _defaultLaunch = defaultLaunch; }
     void onSystemEvent(EventType t);
     void onNetwork(bool online);
     void onInstanceAccept();
@@ -392,6 +395,7 @@ private:
     bool                        _wakePosted = false;
     bool                        _quit       = false;
     bool                        _launching  = false; // inside ensureLaunched()'s -run
+    bool _defaultLaunch = true; // false: a notification (or a document) launched us
 
     // Round 3 services (cocoa_services.mm).
     PlatServicesObserver    *_services    = nil;
@@ -423,6 +427,9 @@ private:
     std::shared_ptr<Alive> _alive          = std::make_shared<Alive>();
     mutable int            _notifyState    = 0; // 0 unknown, 1 usable, -1 unavailable
     mutable id             _notifyDelegate = nil;
+    // The request identifiers' prefix, set by setUpNotifications():
+    // "<AppInfo::notificationScope>.", or "<per-process id>." without one.
+    mutable std::string    _notifyPrefix;
     std::set<uint64_t>     _liveNotifications; // submitted, not yet clicked or dismissed
 #ifdef PLAT_TEST_HOOKS
     // Attached picture per live id: its PNG's SHA-1 (hex) and pixel size,

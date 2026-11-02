@@ -2119,11 +2119,12 @@ void MessageList::jumpTo(Ts ts) {
     _jumpTs = ts;
     if (applyJump() || _conv == model::kNoConv)
         return;
-    // Not loaded: wait for an older page (checkEdges asks for it, forced
-    // regardless of scroll position while a jump is pending -- see
-    // _jumpTs there), or give up once there is truly nothing more before
-    // to find it in. A thread's replies come in one load (Saved messages
-    // jumps to a reply).
+    // Not loaded: wait for one older page (checkEdges asks for it while a
+    // jump is pending, wherever the list is scrolled) and give up when that
+    // page doesn't bring it either. So a target up to one page further back
+    // is reached, never a walk through the whole history for a deleted
+    // message. A thread's replies come in one load (Saved messages jumps to
+    // a reply).
     if (threadMode()) {
         if (_ctx.store().replies(_conv, _root))
             _jumpTs = 0;

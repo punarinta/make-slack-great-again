@@ -62,7 +62,6 @@ enum class C : uint8_t {
     MentionBg,
     MentionText,
     MentionSelfBg, // a mention of me, @here/@channel, my usergroup (yellow)
-    JumpFlashBg,   // a jumped-to message's brief highlight (yellow, like Slack's own)
     Danger,
     Online,
     // Form controls and dialogs (Settings): the form palette, so every

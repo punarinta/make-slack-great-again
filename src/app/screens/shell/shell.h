@@ -408,11 +408,15 @@ private:
     // The same without the wait on the UI thread: asked for now, written
     // on a worker (in order with every other settings write).
     void          saveSettingsAsync();
-    // _notified across restarts, debounced the same way as settings
-    // (saveSettingsSoon); loaded once in the constructor.
+    // _notified across restarts (_notifyPath), loaded once in the constructor.
+    // Saved debounced and on a worker like settings (saveSettingsSoon), or at
+    // once on this thread when quitting. Older than a month or beyond the
+    // newest 500 entries are dropped, in memory and in the file.
     void          loadNotified();
+    void          pruneNotified();
+    std::string   notifiedFileText(); // prunes first
     void          saveNotifiedSoon();
-    void          saveNotifiedNow(); // what saveNotifiedSoon has waiting, written at once
+    void          saveNotifiedNow();
     // The id for the next plat::App::notify() call: persisted (same file as
     // _notified) so it's never reused across a restart -- a backend only
     // knows about requests from its own run, so we own uniqueness instead.

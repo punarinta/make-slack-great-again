@@ -16,6 +16,8 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 
+#include <unistd.h> // getppid
+
 #include <cstdio>
 #include <cstdlib>
 
@@ -25,11 +27,6 @@ using plat::cocoa::nsString;
 namespace {
 
 using Alive = CocoaApp::Alive;
-
-// Request identifiers: "msga.<id>". Fixed, not per-process -- the caller
-// (Shell) owns `id` and persists it, so a notification clicked after a
-// restart still carries an identifier we recognize as ours.
-constexpr std::string_view kNotifyPrefix = "msga.";
 
 // Run fn on the loop thread if the app still exists.
 void toLoop(const std::shared_ptr<Alive> &alive, std::function<void(CocoaApp *)> fn) {
@@ -127,7 +124,7 @@ bool waitFor(dispatch_semaphore_t s) {
 @interface PlatNotifyDelegate : NSObject <UNUserNotificationCenterDelegate> {
 @public
     std::shared_ptr<Alive> alive;
-    std::string            prefix; // ours, not some other app's -- see kNotifyPrefix
+    std::string            prefix; // CocoaApp::_notifyPrefix: only this instance's requests
 }
 @end
 
@@ -187,9 +184,17 @@ bool CocoaApp::setUpNotifications() const {
     }
     if (!center)
         return false;
+    // Request identifiers are "<prefix><id>". The caller owns the ids; with
+    // a scope it keeps them across restarts, so a notification clicked after
+    // one still names this instance. Without one they are per process.
+    const std::string &scope = appInfo().notificationScope;
+    _notifyPrefix =
+        (scope.empty() ? std::string(NSProcessInfo.processInfo.globallyUniqueString.UTF8String)
+                       : scope) +
+        ".";
     PlatNotifyDelegate *d = [PlatNotifyDelegate new];
     d->alive              = _alive;
-    d->prefix             = kNotifyPrefix;
+    d->prefix             = _notifyPrefix;
     center.delegate       = d; // weak in the center; _notifyDelegate keeps it
     _notifyDelegate       = d;
     _notifyState          = 1;
@@ -197,7 +202,20 @@ bool CocoaApp::setUpNotifications() const {
 }
 
 std::string CocoaApp::notificationIdentifier(uint64_t id) const {
-    return std::string(kNotifyPrefix) + std::to_string(id);
+    return _notifyPrefix + std::to_string(id);
+}
+
+bool CocoaApp::launchedFromNotification() {
+    // Only LaunchServices starts us with launchd as the parent: a `msga`
+    // run from a shell never came from a click, and finishing its launch
+    // would put up a Dock icon for a process that may only hand off and exit.
+    if (getppid() != 1 || NSRunningApplication.currentApplication.isFinishedLaunching)
+        return false;
+    // The delegate first: the launch below is what delivers the click.
+    if (!setUpNotifications())
+        return false;
+    ensureLaunched();
+    return !_defaultLaunch;
 }
 
 bool CocoaApp::notify(uint64_t id, const Notification &n) {
@@ -319,10 +337,21 @@ void CocoaApp::tearDownNotifications() {
     if (_notifyState <= 0)
         return;
     @autoreleasepool {
-        // Delivered ones are left in Notification Center on purpose: ids are
-        // caller-owned and persisted (Shell), so a click after this process
-        // is gone, even a clean quit, still resolves in the next one.
+        // With a scope the delivered ones stay in Notification Center: the
+        // caller keeps its ids, so a click after we are gone, even after a
+        // clean quit, still resolves in the next run. Without one the ids
+        // die with the process: a click could not be reported to anyone, so
+        // they leave Notification Center with us.
         UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+        if (appInfo().notificationScope.empty()) {
+            NSMutableArray *ids = [NSMutableArray array];
+            for (uint64_t id : _liveNotifications)
+                [ids addObject:nsString(notificationIdentifier(id))];
+            if (ids.count) {
+                [center removeDeliveredNotificationsWithIdentifiers:ids];
+                [center removePendingNotificationRequestsWithIdentifiers:ids];
+            }
+        }
         if (center.delegate == _notifyDelegate)
             center.delegate = nil;
     }

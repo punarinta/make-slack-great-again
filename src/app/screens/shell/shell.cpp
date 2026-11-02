@@ -60,6 +60,7 @@
 #include <tuple>
 #include <cmath>
 #include <cstring>
+#include <mutex>
 
 using namespace ui;
 using gfx::Icon;
@@ -1019,9 +1020,29 @@ void Shell::saveSettingsNow() {
         LOG_WARN("shell", "could not save %s", _settingsPath.c_str());
 }
 
-// A month unclicked is never going to be clicked; keeps the file from
-// growing forever on a chatty workspace.
+// A month unclicked is never going to be clicked, and only the newest
+// clicks matter: keeps the file (and _notified) small on a chatty workspace.
 constexpr int64_t kNotifyMaxAgeSecs = 30 * 86400;
+constexpr size_t  kNotifyMaxEntries = 500;
+
+namespace {
+
+// notifications.json writes land in the order they were asked for: a late
+// worker never overwrites a newer file (as settings.cpp does for settings).
+std::mutex                                g_notifiedMutex;
+std::unordered_map<std::string, uint64_t> g_notifiedWritten;
+uint64_t                                  g_notifiedAsked = 0; // UI thread
+
+bool writeNotified(const std::string &path, const std::string &text, uint64_t n) {
+    std::lock_guard<std::mutex> lock(g_notifiedMutex);
+    uint64_t                   &done = g_notifiedWritten[path];
+    if (n <= done)
+        return true;
+    done = n;
+    return file::writeAtomic(path, text, 0600);
+}
+
+} // namespace
 
 void Shell::loadNotified() {
     // Seed from the clock, not 1, when nothing's persisted yet:
@@ -1038,44 +1059,67 @@ void Shell::loadNotified() {
     const json::Value root = d.root();
     if (const int64_t next = root["nextId"].integer(); next > 0)
         _nextNotifyId = uint64_t(next);
-    const int64_t horizon = base::nowSecs() - kNotifyMaxAgeSecs;
     for (const json::Value &e : root["entries"]) {
-        const int64_t postedAt = e["postedAt"].integer();
-        if (postedAt < horizon)
-            continue;
         Notified n;
         n.key                                  = json::owned(e["key"]);
         n.convId                               = json::owned(e["convId"]);
         n.root                                 = Ts(e["root"].integer());
         n.ts                                   = Ts(e["ts"].integer());
         n.join                                 = json::owned(e["join"]);
-        n.postedAt                             = postedAt;
+        n.postedAt                             = e["postedAt"].integer();
         _notified[uint64_t(e["id"].integer())] = std::move(n);
     }
+    pruneNotified();
+}
+
+void Shell::pruneNotified() {
+    const int64_t horizon = base::nowSecs() - kNotifyMaxAgeSecs;
+    std::erase_if(_notified, [&](const auto &e) { return e.second.postedAt < horizon; });
+    if (_notified.size() <= kNotifyMaxEntries)
+        return;
+    // The newest kNotifyMaxEntries stay; ids grow with time, so the oldest
+    // are the smallest.
+    std::vector<uint64_t> ids;
+    ids.reserve(_notified.size());
+    for (const auto &[id, n] : _notified)
+        ids.push_back(id);
+    const auto cut = ids.end() - ptrdiff_t(kNotifyMaxEntries);
+    std::nth_element(ids.begin(), cut, ids.end());
+    for (auto it = ids.begin(); it != cut; ++it)
+        _notified.erase(*it);
 }
 
 void Shell::saveNotifiedSoon() {
-    if (_notifySaveTimer)
+    if (_notifySaveTimer || _notifyPath.empty())
         return;
     _notifySaveTimer = _ctx.app.addTimer(kSettingsSaveDelayMs, false, [this] {
         _notifySaveTimer = 0;
-        saveNotifiedNow();
+        // Built here, written on a worker (in order with every other write).
+        model::runInBackground(
+            _ctx.app.platform(),
+            [path = _notifyPath, text = notifiedFileText(), n = ++g_notifiedAsked] {
+                if (!writeNotified(path, text, n))
+                    LOG_WARN("shell", "could not save %s", path.c_str());
+            },
+            [] {}
+        );
     });
 }
 
 void Shell::saveNotifiedNow() {
     if (_notifySaveTimer)
         _ctx.app.cancelTimer(std::exchange(_notifySaveTimer, 0));
-    if (_notifyPath.empty())
-        return;
-    const int64_t horizon = base::nowSecs() - kNotifyMaxAgeSecs;
-    json::Writer  w;
+    if (!_notifyPath.empty() && !writeNotified(_notifyPath, notifiedFileText(), ++g_notifiedAsked))
+        LOG_WARN("shell", "could not save %s", _notifyPath.c_str());
+}
+
+std::string Shell::notifiedFileText() {
+    pruneNotified();
+    json::Writer w;
     w.beginObject();
     w.key("nextId").value(int64_t(_nextNotifyId));
     w.key("entries").beginArray();
     for (const auto &[id, n] : _notified) {
-        if (n.postedAt < horizon)
-            continue; // pruned here too, not just on load
         w.beginObject();
         w.key("id").value(int64_t(id));
         w.key("key").value(n.key);
@@ -1091,14 +1135,12 @@ void Shell::saveNotifiedNow() {
     }
     w.endArray();
     w.endObject();
-    if (!file::writeAtomic(_notifyPath, w.str(), 0600))
-        LOG_WARN("shell", "could not save %s", _notifyPath.c_str());
+    return w.str();
 }
 
 uint64_t Shell::nextNotifyId() {
-    const uint64_t id = _nextNotifyId++;
-    saveNotifiedSoon();
-    return id;
+    // Saved along with the entry it goes to (postNotification), or at quit.
+    return _nextNotifyId++;
 }
 
 // ── Claude Code UI ──────────────────────────────────────────────────────────
@@ -2588,8 +2630,8 @@ void Shell::handleAppEvent(const plat::Event &e) {
         activateNotification(e.id, e.action, e.activationToken);
         break;
     case T::NotificationClosed:
-        _notified.erase(e.id);
-        saveNotifiedSoon();
+        if (_notified.erase(e.id))
+            saveNotifiedSoon();
         break;
     case T::InstanceActivated:
         restore(e.activationToken);

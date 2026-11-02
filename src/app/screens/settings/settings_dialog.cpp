@@ -12,6 +12,7 @@
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/str.h"
+#include "base/time.h"
 #include "gfx/icons_generated.h"
 
 #include <algorithm>
@@ -1006,9 +1007,10 @@ void SettingsDialog::buildNotifications() {
         _p->sampleResult->setText({});
         _p->sampleResult->setVisible(false);
         if (!_hooks.testNotification) {
-            // Never resolved (no Shell to click through to): any id will do.
-            static uint64_t id = 0;
-            _ctx.app.platform().notify(++id, n);
+            // No Shell to take the id from (Shell::post): one counted up
+            // from the clock like the Shell's, so never one it hands out.
+            static uint64_t id = uint64_t(base::nowMicros());
+            _ctx.app.platform().notify(id++, n);
             return;
         }
         std::weak_ptr<char> alive = _p->alive;

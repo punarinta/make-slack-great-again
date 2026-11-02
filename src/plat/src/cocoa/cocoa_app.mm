@@ -67,6 +67,11 @@ NSEvent *wakeEvent() {
     return NO; // the app decides what to show
 }
 - (void)applicationDidFinishLaunching:(NSNotification *)n {
+    // NO when Notification Center (or a document/URL open) launched us.
+    if (_owner) {
+        NSNumber *isDefault = n.userInfo[NSApplicationLaunchIsDefaultLaunchKey];
+        _owner->onLaunched(!isDefault || isDefault.boolValue);
+    }
     // createCocoaApp runs [NSApp run] only to get through launch (menu bar,
     // activation, Dock); stop it at once and hand the loop to pump().
     [NSApp stop:nil];

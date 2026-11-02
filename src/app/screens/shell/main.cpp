@@ -168,6 +168,29 @@ std::string demoInstanceKey() {
 }
 #endif
 
+// A notification click caught by a second process (macOS), handed to the
+// running msga through the single-instance channel: "<flag><id>[:<action>]".
+// A flag, never a msga:// URL: a web page can launch us with any URL of the
+// registered scheme, but only as that one argument.
+constexpr std::string_view kNotificationClickArg = "--notification-click=";
+
+[[maybe_unused]] std::string notificationClickArg(uint64_t id, const std::string &action) {
+    std::string s = str::concat({kNotificationClickArg, str::number(int64_t(id))});
+    if (!action.empty())
+        s += str::concat({":", action});
+    return s;
+}
+
+bool parseNotificationClick(std::string_view s, uint64_t *id, std::string *action) {
+    if (!str::startsWith(s, kNotificationClickArg))
+        return false;
+    s                = s.substr(kNotificationClickArg.size());
+    const size_t sep = s.find(':');
+    *id              = std::strtoull(std::string(s.substr(0, sep)).c_str(), nullptr, 10);
+    *action = sep == std::string_view::npos ? std::string() : std::string(s.substr(sep + 1));
+    return *id != 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -234,49 +257,6 @@ int main(int argc, char **argv) {
         return 1;
     }
     plat::App &pa = app->platform();
-    // Forces macOS's notification delegate to register now instead of
-    // lazily on first use -- a launch triggered by clicking a notification
-    // needs it listening immediately to catch that click.
-    pa.notificationsAvailable();
-    // The app's ids (app/identity.h), which msga.desktop, the Start-menu
-    // shortcut and the bundle carry: shells find the window's, the notifications'
-    // and the launcher badge's entry by them (Linux: app_id "msga", WM_CLASS
-    // "msga", "MSGA"; elsewhere com.nisdos.msga).
-    const char *appId = identity::appId();
-    // Windows: the "MSGA" Start-menu entry (with the AUMID), always
-    // (not for a demo run).
-    pa.setAppInfo({identity::kName, appId, {}, demo.empty()});
-    // An earlier version still running takes this launch, as its own second
-    // launches did; then a second launch of ours hands its arguments to the
-    // running one (which raises its window on InstanceActivated) and exits.
-    //
-    // No URL: could be a notification click that spawned a fresh process
-    // instead of waking a backgrounded instance. Give the delegate above a
-    // brief window to catch it, so the hand-off carries the actual click.
-    std::string              handOffUrl = urls.empty() ? std::string() : urls.front();
-    std::vector<plat::Event> missedEvents; // replayed once the real onEvent exists, below
-    if (handOffUrl.empty() && demo.empty()) {
-        std::optional<plat::Event> clicked;
-        app->onEvent = [&](const plat::Event &e) {
-            if (e.type == plat::EventType::NotificationActivated)
-                clicked = e;
-            else
-                // Not ours to handle yet (e.g. a deferred GetURL/OpenUrls
-                // for an OAuth callback -- see cocoa_services.mm's
-                // onUrls()): keep it for the real onEvent below instead of
-                // dropping it here.
-                missedEvents.push_back(e);
-        };
-        for (int i = 0; i < 15 && !clicked; ++i)
-            app->pump(20);
-        app->onEvent = nullptr;
-        if (clicked)
-            handOffUrl = "msga://_notify/" + std::to_string(clicked->id) +
-                         (clicked->action.empty() ? "" : "?action=" + clicked->action);
-    }
-    if (demo.empty() && identity::handOffToEarlierVersion(handOffUrl))
-        return 0;
-    std::vector<std::string> args(argv + 1, argv + argc);
     // A demo run has its own channel, one per process: it neither hands off to
     // the user's msga nor takes its launches, and overlapping demo runs (the
     // socket is in $XDG_RUNTIME_DIR, which isolateDemoState leaves alone so
@@ -286,6 +266,49 @@ int main(int argc, char **argv) {
         demo.empty() ? std::string(identity::instanceKey()) : demoInstanceKey();
 #else
     const std::string instance(identity::instanceKey());
+#endif
+    // The app's ids (app/identity.h), which msga.desktop, the Start-menu
+    // shortcut and the bundle carry: shells find the window's, the notifications'
+    // and the launcher badge's entry by them (Linux: app_id "msga", WM_CLASS
+    // "msga", "MSGA"; elsewhere com.nisdos.msga).
+    const char *appId = identity::appId();
+    // Windows: the "MSGA" Start-menu entry (with the AUMID), always
+    // (not for a demo run). Notifications are scoped to the instance, so a
+    // demo run never posts into or catches the real app's (macOS).
+    pa.setAppInfo({identity::kName, appId, {}, demo.empty(), instance});
+    // An earlier version still running takes this launch, as its own second
+    // launches did; then a second launch of ours hands its arguments to the
+    // running one (which raises its window on InstanceActivated) and exits.
+    if (demo.empty() &&
+        identity::handOffToEarlierVersion(urls.empty() ? std::string() : urls.front()))
+        return 0;
+    std::vector<std::string>   args(argv + 1, argv + argc);
+    // macOS: a click on one of our notifications sometimes starts a fresh
+    // process instead of waking the running msga, and only this process's
+    // delegate gets the click. Catch it before the single-instance check and
+    // carry it along: to the running msga as an argument only this produces
+    // (never a msga:// URL, which any web page can launch us with), or to
+    // ourselves once the Store is up. Only on a launch Notification Center
+    // made, so a normal start never waits.
+    std::optional<plat::Event> clicked;
+    std::vector<plat::Event>   missedEvents; // replayed once the real onEvent exists, below
+#ifdef __APPLE__
+    if (demo.empty() && pa.launchedFromNotification()) {
+        app->onEvent = [&](const plat::Event &e) {
+            if (e.type == plat::EventType::NotificationActivated && !clicked)
+                clicked = e;
+            else
+                // Not ours to handle yet (e.g. a deferred GetURL/OpenUrls
+                // for an OAuth callback, see cocoa_services.mm's onUrls()):
+                // kept for the real onEvent below.
+                missedEvents.push_back(e);
+        };
+        for (int i = 0; i < 15 && !clicked; ++i)
+            app->pump(20);
+        app->onEvent = nullptr;
+        if (clicked)
+            args.push_back(notificationClickArg(clicked->id, clicked->action));
+    }
 #endif
     if (!pa.claimSingleInstance(instance, args))
         return 0;
@@ -431,9 +454,9 @@ int main(int argc, char **argv) {
 
     shell::Shell sh(ctx, win, settings, settingsPath, notifyPath);
     // A restart (an applied update, new Slack app keys) runs with the same
-    // arguments, minus a one-off OAuth callback URL.
+    // arguments, minus a one-off OAuth callback URL or notification click.
     for (const std::string &a : args)
-        if (!str::startsWith(a, "msga://"))
+        if (!str::startsWith(a, "msga://") && !str::startsWith(a, kNotificationClickArg))
             sh.restartArgs.push_back(a);
 #ifdef MSGA_SELF_UPDATE
     if (!demoMode)
@@ -480,23 +503,6 @@ int main(int argc, char **argv) {
     };
 #endif
 
-    // Parses "msga://_notify/<id>[?action=...]" — shared by the
-    // InstanceActivated handler below and the cold-start self-click after
-    // acc.start().
-    auto activateNotifyUrl = [&sh](const std::string &s) {
-        if (!str::startsWith(s, "msga://_notify/"))
-            return;
-        // A named local, not str::split(s.substr(...), '?') inline: the
-        // substr's temporary would be destroyed at the end of that full
-        // expression, leaving parts' string_views dangling.
-        const std::string rest  = s.substr(std::strlen("msga://_notify/"));
-        const auto        parts = str::split(rest, '?');
-        std::string       action;
-        if (parts.size() > 1 && str::startsWith(parts[1], "action="))
-            action = std::string(parts[1].substr(7));
-        sh.activateNotification(std::strtoull(std::string(parts[0]).c_str(), nullptr, 10), action);
-    };
-
     std::optional<shell::Accounts> accounts;
     app->onEvent = [&](const plat::Event &e) {
         // msga:// URLs (the OAuth callback): opened by the OS, or handed over
@@ -508,12 +514,16 @@ int main(int argc, char **argv) {
                     accounts->handleUrl(s);
         if (accounts && e.type == plat::EventType::NetworkChanged)
             accounts->networkChanged(e.online);
-        // A second (short-lived) process's notification click, handed
-        // over — see the hand-off above.
-        if (e.type == plat::EventType::InstanceActivated)
-            for (const std::string &s : e.strings)
-                activateNotifyUrl(s);
         sh.handleAppEvent(e);
+        // A second (short-lived) process's notification click, handed over
+        // as its argument (see the probe above): after the raise above.
+        if (e.type == plat::EventType::InstanceActivated)
+            for (const std::string &s : e.strings) {
+                uint64_t    id = 0;
+                std::string action;
+                if (parseNotificationClick(s, &id, &action))
+                    sh.activateNotification(id, action, e.activationToken);
+            }
     };
 
     if (!demoMode) {
@@ -551,15 +561,13 @@ int main(int argc, char **argv) {
         // missedEvents), now that the real onEvent exists.
         for (const plat::Event &e : missedEvents)
             app->onEvent(e);
-        // Same click, but no earlier version was running to hand off to,
-        // so it self-activates instead:
-        // - after acc.start(), so the active workspace's Store is already
-        //   populated when the id gets resolved
-        // - via post(), not inline: app->run() hasn't started yet here,
-        //   and a window can't reliably come forward before the run loop
-        //   is pumping
-        if (!handOffUrl.empty())
-            pa.post([activateNotifyUrl, handOffUrl] { activateNotifyUrl(handOffUrl); });
+        // The probe's click with no msga running to hand it to: ours. After
+        // acc.start(), so the active workspace's Store is there to resolve
+        // it in; posted, as a window only comes forward once the loop runs.
+        if (clicked)
+            pa.post([&sh, id = clicked->id, action = clicked->action] {
+                sh.activateNotification(id, action);
+            });
     }
 #ifdef MSGA_DEMO
     else {

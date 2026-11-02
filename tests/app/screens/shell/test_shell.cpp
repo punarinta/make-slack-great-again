@@ -22,6 +22,7 @@
 #include "plat/audio.h"
 #include "plat/testing.h"
 #include "base/json.h"
+#include "base/str.h"
 #include "screens/common/file_dialogs.h"
 #include "screens/common/remote_images.h"
 #include "screens/shell/channel_dialogs.h"
@@ -52,6 +53,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <unistd.h>
 
 using namespace model;
@@ -3647,16 +3649,14 @@ TEST("reminders: the due notification names the place; its click opens the messa
 }
 
 TEST("notifications: a click survives a restart (persisted, resolved by stable conv id)") {
-    const std::string path = file::join(
-        std::getenv("XDG_CONFIG_HOME") ? std::getenv("XDG_CONFIG_HOME") : "/tmp",
-        "msga-shell-notify-test.json"
-    );
-    file::remove(path);
-    TwoWorkspaces  w(path);
-    Store         &a         = w.a;
-    const ConvRef  general   = a.findConversation("C0GENERAL");
-    const Ts       mentionTs = a.conversation(general).latest + 1000;
-    const uint64_t before    = lastNotification(nullptr);
+    const std::string dir = base::test::makeTempDir("msga_notify_");
+    REQUIRE(!dir.empty());
+    const std::string path = file::join(dir, "notifications.json");
+    TwoWorkspaces     w(path);
+    Store            &a         = w.a;
+    const ConvRef     general   = a.findConversation("C0GENERAL");
+    const Ts          mentionTs = a.conversation(general).latest + 1000;
+    const uint64_t    before    = lastNotification(nullptr);
     w.post(a, "C0GENERAL", ("ping <@" + a.user(a.me).id + ">").c_str());
     pump();
     plat::TestHooks::NotificationProbe n;
@@ -3679,7 +3679,41 @@ TEST("notifications: a click survives a restart (persisted, resolved by stable c
 #ifdef MSGA_HAVE_MESSAGES
     CHECK(static_cast<screens::MessageList *>(w.sh->messagesView())->flashing(mentionTs));
 #endif
-    file::remove(path);
+}
+
+TEST("notifications: the persisted clicks keep the newest 500 of the last month") {
+    const std::string dir = base::test::makeTempDir("msga_notify_");
+    REQUIRE(!dir.empty());
+    const std::string path = file::join(dir, "notifications.json");
+    // 600 recent entries (ids 1..600) and one from 40 days ago (id 700).
+    const int64_t     now  = base::nowSecs();
+    std::string       text = R"({"nextId":701,"entries":[)";
+    for (int id = 1; id <= 600; ++id)
+        text += str::concat(
+            {R"({"id":)",
+             str::number(id),
+             R"(,"key":"", "convId":"C0GENERAL","postedAt":)",
+             str::number(now),
+             "},"}
+        );
+    text += str::concat(
+        {R"({"id":700,"key":"","convId":"C0GENERAL","postedAt":)",
+         str::number(now - 40 * 86400),
+         "}]}"}
+    );
+    REQUIRE(file::writeAtomic(path, text, 0600));
+    TwoWorkspaces w(path);
+    w.sh->saveState(); // written at once, pruned
+    std::string    saved;
+    json::Document d;
+    REQUIRE(file::readAll(path, &saved) && d.parse(std::move(saved), nullptr));
+    std::set<int64_t> ids;
+    for (const json::Value &e : d.root()["entries"])
+        ids.insert(e["id"].integer());
+    CHECK(ids.size() == 500);
+    CHECK(!ids.count(1) && !ids.count(100) && ids.count(101) && ids.count(600));
+    CHECK(!ids.count(700)); // too old
+    CHECK(d.root()["nextId"].integer() == 701);
 }
 
 TEST("sidebar: the Threads entry is bright while followed threads have unread replies") {
