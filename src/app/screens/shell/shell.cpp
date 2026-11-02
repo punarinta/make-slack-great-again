@@ -870,10 +870,10 @@ Shell::Shell(
         _rail->setVisible(shown);
         saveSettingsSoon();
     };
-    _sidebar->onFindChannel            = [this] { openBrowseDialog(0); };
-    _sidebar->onBrowsePeople           = [this] { openBrowseDialog(1); };
-    _sidebar->onCreateChannel          = [this] { openCreateChannel(); };
-    ctx.forwardMessage                 = [this](ConvRef c, Ts ts, const std::string &file) {
+    _sidebar->onFindChannel   = [this] { openBrowseDialog(0); };
+    _sidebar->onBrowsePeople  = [this] { openBrowseDialog(1); };
+    _sidebar->onCreateChannel = [this] { openCreateChannel(); };
+    ctx.forwardMessage        = [this](ConvRef c, Ts ts, const std::string &file) {
         // With two or more workspaces signed in, a picker chooses
         // where it goes (starting on this one).
         std::vector<ForwardWorkspace> targets;
