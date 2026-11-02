@@ -8,6 +8,7 @@
 #include "base/log.h"
 #include "base/file.h"
 #include "base/i18n.h"
+#include "base/json.h"
 #include "base/str.h"
 #include "base/time.h"
 #include "gfx/icons_generated.h"
@@ -59,6 +60,7 @@
 #include <tuple>
 #include <cmath>
 #include <cstring>
+#include <mutex>
 
 using namespace ui;
 using gfx::Icon;
@@ -525,29 +527,35 @@ public:
     }
 };
 
-// The splitter handle between the messages and the thread panel: 1 px, with the panel's soft shadow
-// cast 6 px onto the chat.
+// The splitter handle between the messages and the thread panel: the panel's soft shadow cast
+// onto the chat, drawn inside a kW-wide grab zone (a 1 px one is hard to hit); the link colour
+// along its edge under the pointer says it can be dragged.
 class Splitter final : public View {
 public:
-    explicit Splitter(std::function<void(float dx)> onDrag) : _onDrag(std::move(onDrag)) {
-        style().width(1).noShrink();
+    static constexpr float kW = 7;
+    explicit Splitter(std::function<void(float dx, bool pressed)> onDrag)
+        : _onDrag(std::move(onDrag)) {
+        style().width(kW).noShrink();
         setCursor(plat::Cursor::ResizeH);
-        setPaintOutset(6);
+        setHoverRepaint(true);
     }
     void paint(gfx::Painter &p) override {
         p.fillRect(bounds(), color(C::Surface));
-        p.fillRectGradient({-5, 0, 6, height()}, {-5, 0}, 0, {1, 0}, 0x1c000000U);
+        p.fillRectGradient({0, 0, kW, height()}, {0, 0}, 0, {kW, 0}, 0x1c000000U);
+        if (hovered())
+            p.fillRect({kW - 2, 0, 2, height()}, color(C::Link));
     }
+    // dx: how far the pointer is from where it was pressed, so a line held
+    // at a limit follows the pointer again once it is back.
     bool onEvent(Event &e) override {
         switch (e.type) {
         case EventType::PointerDown:
-            _last = e.windowPos.x;
+            _from = e.windowPos.x;
+            _onDrag(0, true);
             return true;
         case EventType::PointerMove:
-            if (window() && window()->capture() == this) {
-                _onDrag(e.windowPos.x - _last);
-                _last = e.windowPos.x;
-            }
+            if (window() && window()->capture() == this)
+                _onDrag(e.windowPos.x - _from, false);
             return true;
         default:
             return false;
@@ -555,8 +563,61 @@ public:
     }
 
 private:
-    std::function<void(float)> _onDrag;
-    float                      _last = 0;
+    std::function<void(float, bool)> _onDrag;
+    float                            _from = 0;
+};
+
+// The messages and the thread panel side by side. The panel keeps its saved
+// width within range(): at least kPaneMinW each, and at most what leaves the
+// messages kMessagesW or half the room, whichever is more. A narrow window
+// thus splits 1:1 and still lets the splitter move the line; the saved width
+// is untouched, so a wider window brings it back. Dragged kSnapW past its
+// widest, the panel takes the whole room (full) until dragged back or closed.
+class ThreadBody final : public View {
+public:
+    static constexpr float kMessagesW = 360;
+    static constexpr float kPaneMinW  = 200;
+    static constexpr float kSnapW     = 80;
+
+    View *area = nullptr, *splitter = nullptr, *thread = nullptr;
+    int  *savedWidth = nullptr;
+
+    // The thread panel's allowed widths in `avail` (the splitter excluded).
+    static std::pair<float, float> range(float avail) {
+        const float most  = std::max(std::floor(avail / 2), avail - kMessagesW);
+        const float least = std::min(kPaneMinW, std::floor(avail / 2));
+        return {std::max(0.f, least), std::max(0.f, most)};
+    }
+    float avail() const { return width() - (splitter && splitter->visible() ? Splitter::kW : 0); }
+    bool  full() const { return _full; }
+    void  setFull(bool on) {
+        if (_full == on)
+            return;
+        _full = on;
+        if (area)
+            area->setVisible(!on);
+        invalidateLayout();
+    }
+
+    void layout() override {
+        if (area && thread && savedWidth) {
+            float msgMin = kMessagesW;
+            if (thread->visible()) {
+                const float a       = avail();
+                const auto [lo, hi] = range(a);
+                const float threadW = _full ? a : std::clamp(float(*savedWidth), lo, hi);
+                msgMin              = std::max(0.f, a - threadW);
+                if (thread->currentStyle().w != threadW)
+                    thread->style().width(threadW);
+            }
+            if (area->currentStyle().minW != msgMin)
+                area->style().minW = msgMin;
+        }
+        View::layout();
+    }
+
+private:
+    bool _full = false;
 };
 
 // The right-hand thread panel: the messages screens' ThreadPanel with our
@@ -753,9 +814,16 @@ private:
 
 // ── Shell ───────────────────────────────────────────────────────────────────
 
-Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string settingsPath)
+Shell::Shell(
+    screens::Context &ctx,
+    Window           &win,
+    Settings         &settings,
+    std::string       settingsPath,
+    std::string       notifyPath
+)
     : _ctx(ctx), _win(win), _settings(settings), _settingsPath(std::move(settingsPath)),
-      _avatars(ctx.images) {
+      _notifyPath(std::move(notifyPath)), _avatars(ctx.images) {
+    loadNotified();
     // Decoded avatars fill the bitmaps the views already hold: repaint.
     _avatars.setRemote(ctx.remote);
     // Only the views showing a picture that landed (every view drawing an
@@ -794,7 +862,7 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
     ctx.window      = &win; // file dialogs' parent
     ctx.attachFiles = [this](std::vector<std::string> paths, bool thread) {
         if (Composer *c = thread ? threadComposer() : _composer)
-            c->addAttachments(paths);
+            c->attachFiles(paths);
     };
 
     auto *screen = win.root().add<View>();
@@ -854,10 +922,17 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
     };
     _sidebar->footer().onManageProfile = [this] { ProfileDialog::show(_win, _ctx, _avatars); };
     _sidebar->footer().onError         = [this](const std::string &message) { showError(message); };
-    _sidebar->onFindChannel            = [this] { openBrowseDialog(0); };
-    _sidebar->onBrowsePeople           = [this] { openBrowseDialog(1); };
-    _sidebar->onCreateChannel          = [this] { openCreateChannel(); };
-    ctx.forwardMessage                 = [this](ConvRef c, Ts ts, const std::string &file) {
+    _sidebar->footer().setRailShown(_settings.showRail);
+    _sidebar->footer().onRailToggled = [this](bool shown) {
+        _settings.showRail = shown;
+        updateRailVisible();
+        saveSettingsSoon();
+    };
+    updateRailVisible();
+    _sidebar->onFindChannel   = [this] { openBrowseDialog(0); };
+    _sidebar->onBrowsePeople  = [this] { openBrowseDialog(1); };
+    _sidebar->onCreateChannel = [this] { openCreateChannel(); };
+    ctx.forwardMessage        = [this](ConvRef c, Ts ts, const std::string &file) {
         // With two or more workspaces signed in, a picker chooses
         // where it goes (starting on this one).
         std::vector<ForwardWorkspace> targets;
@@ -961,7 +1036,10 @@ Shell::Shell(screens::Context &ctx, Window &win, Settings &settings, std::string
     shortcuts::install(win, Id::QuickSwitch, [this] { showQuickSwitcher(); });
     win.keyFilter = [this](const Event &e) {
         noteActivity();
-        return removeIdleSession(e);
+        if (removeIdleSession(e))
+            return true;
+        typeIntoComposer(e);
+        return false;
     };
     // The mouse's side buttons and trackpad swipes walk the same history.
     win.inputFilter = [this](const plat::Event &e) {
@@ -1009,6 +1087,129 @@ void Shell::saveSettingsNow() {
         _ctx.app.cancelTimer(std::exchange(_saveTimer, 0));
     if (!_settings.save(_settingsPath) && !_settingsPath.empty())
         LOG_WARN("shell", "could not save %s", _settingsPath.c_str());
+}
+
+// A month unclicked is never going to be clicked, and only the newest
+// clicks matter: keeps the file (and _notified) small on a chatty workspace.
+constexpr int64_t kNotifyMaxAgeSecs = 30 * 86400;
+constexpr size_t  kNotifyMaxEntries = 500;
+
+namespace {
+
+// notifications.json writes land in the order they were asked for: a late
+// worker never overwrites a newer file (as settings.cpp does for settings).
+std::mutex                                g_notifiedMutex;
+std::unordered_map<std::string, uint64_t> g_notifiedWritten;
+uint64_t                                  g_notifiedAsked = 0; // UI thread
+
+bool writeNotified(const std::string &path, const std::string &text, uint64_t n) {
+    std::lock_guard<std::mutex> lock(g_notifiedMutex);
+    uint64_t                   &done = g_notifiedWritten[path];
+    if (n <= done)
+        return true;
+    done = n;
+    return file::writeAtomic(path, text, 0600);
+}
+
+} // namespace
+
+void Shell::loadNotified() {
+    // Seed from the clock, not 1, when nothing's persisted yet:
+    // - first run: only matters once, every later run resumes from disk.
+    // - tests: many Shells share one backend/process; a fixed 1 would
+    //   collide with ids an earlier test's Shell already used.
+    _nextNotifyId = uint64_t(base::nowMicros());
+    if (_notifyPath.empty())
+        return;
+    std::string    text;
+    json::Document d;
+    if (!file::readAll(_notifyPath, &text) || !d.parse(std::move(text), nullptr))
+        return;
+    const json::Value root = d.root();
+    if (const int64_t next = root["nextId"].integer(); next > 0)
+        _nextNotifyId = uint64_t(next);
+    for (const json::Value &e : root["entries"]) {
+        Notified n;
+        n.key                                  = json::owned(e["key"]);
+        n.convId                               = json::owned(e["convId"]);
+        n.root                                 = Ts(e["root"].integer());
+        n.ts                                   = Ts(e["ts"].integer());
+        n.join                                 = json::owned(e["join"]);
+        n.postedAt                             = e["postedAt"].integer();
+        _notified[uint64_t(e["id"].integer())] = std::move(n);
+    }
+    pruneNotified();
+}
+
+void Shell::pruneNotified() {
+    const int64_t horizon = base::nowSecs() - kNotifyMaxAgeSecs;
+    std::erase_if(_notified, [&](const auto &e) { return e.second.postedAt < horizon; });
+    if (_notified.size() <= kNotifyMaxEntries)
+        return;
+    // The newest kNotifyMaxEntries stay; ids grow with time, so the oldest
+    // are the smallest.
+    std::vector<uint64_t> ids;
+    ids.reserve(_notified.size());
+    for (const auto &[id, n] : _notified)
+        ids.push_back(id);
+    const auto cut = ids.end() - ptrdiff_t(kNotifyMaxEntries);
+    std::nth_element(ids.begin(), cut, ids.end());
+    for (auto it = ids.begin(); it != cut; ++it)
+        _notified.erase(*it);
+}
+
+void Shell::saveNotifiedSoon() {
+    if (_notifySaveTimer || _notifyPath.empty())
+        return;
+    _notifySaveTimer = _ctx.app.addTimer(kSettingsSaveDelayMs, false, [this] {
+        _notifySaveTimer = 0;
+        // Built here, written on a worker (in order with every other write).
+        model::runInBackground(
+            _ctx.app.platform(),
+            [path = _notifyPath, text = notifiedFileText(), n = ++g_notifiedAsked] {
+                if (!writeNotified(path, text, n))
+                    LOG_WARN("shell", "could not save %s", path.c_str());
+            },
+            [] {}
+        );
+    });
+}
+
+void Shell::saveNotifiedNow() {
+    if (_notifySaveTimer)
+        _ctx.app.cancelTimer(std::exchange(_notifySaveTimer, 0));
+    if (!_notifyPath.empty() && !writeNotified(_notifyPath, notifiedFileText(), ++g_notifiedAsked))
+        LOG_WARN("shell", "could not save %s", _notifyPath.c_str());
+}
+
+std::string Shell::notifiedFileText() {
+    pruneNotified();
+    json::Writer w;
+    w.beginObject();
+    w.key("nextId").value(int64_t(_nextNotifyId));
+    w.key("entries").beginArray();
+    for (const auto &[id, n] : _notified) {
+        w.beginObject();
+        w.key("id").value(int64_t(id));
+        w.key("key").value(n.key);
+        w.key("convId").value(n.convId);
+        if (n.root)
+            w.key("root").value(int64_t(n.root));
+        if (n.ts)
+            w.key("ts").value(int64_t(n.ts));
+        if (!n.join.empty())
+            w.key("join").value(n.join);
+        w.key("postedAt").value(n.postedAt);
+        w.endObject();
+    }
+    w.endArray();
+    w.endObject();
+    return w.str();
+}
+
+uint64_t Shell::nextNotifyId() {
+    // Saved along with the entry it goes to (postNotification), or at quit.
+    return _nextNotifyId++;
 }
 
 // ── Claude Code UI ──────────────────────────────────────────────────────────
@@ -1104,6 +1305,8 @@ Shell::~Shell() {
     _ctx.app.cancelTimer(_visitedTimer);
     if (_saveTimer) // a change still waiting is written now
         saveSettingsNow();
+    if (_notifySaveTimer) // same -- otherwise it fires later against a dead Shell
+        saveNotifiedNow();
 #ifdef MSGA_SELF_UPDATE
     // The updater outlives us (main owns it): no event or check may reach
     // a dead shell.
@@ -1401,12 +1604,12 @@ void Shell::buildMain(View *parent) {
     }
     _parallelBanner->setVisible(false);
 
-    auto *body = _mainPane->add<View>();
+    auto *body = _mainPane->add<ThreadBody>();
     body->style().row().flex(1);
     // The message area, with the search overlay over all of it.
     auto *areaHost = body->add<View>();
     areaHost->style().stack().flex(1);
-    areaHost->style().minW = 360;
+    areaHost->style().minW = ThreadBody::kMessagesW;
     auto *area             = areaHost->add<View>();
     auto *stack            = area->add<View>();
     stack->style().stack().flex(1);
@@ -1444,18 +1647,38 @@ void Shell::buildMain(View *parent) {
             _composer->edit().focus();
     };
 
-    _splitter = body->add<Splitter>([this](float dx) {
-        // The splitter: the panel at least 100 px, the messages 200.
-        const float total = _thread->parent()->width();
-        _settings.threadWidth =
-            int(std::clamp(_thread->width() - dx, 100.f, std::max(100.f, total - 200)));
-        _thread->style().width(float(_settings.threadWidth));
+    _splitter = body->add<Splitter>([this, body, from = 0.f](float dx, bool pressed) mutable {
+        // The splitter: within the range ThreadBody lays the panel out in;
+        // well past its widest, the panel takes the whole room.
+        if (pressed) {
+            from = _thread->width();
+            return;
+        }
+        const auto [lo, hi] = ThreadBody::range(body->avail());
+        const float want    = from - dx;
+        const bool  full    = want >= hi + ThreadBody::kSnapW;
+        if (full && !body->full()) {
+            // The messages go: their search with them, and a focus held
+            // there moves to the thread's composer instead of nowhere.
+            _search->hideNow();
+            body->setFull(true);
+            if (!_win.focusView())
+                _thread->composer->edit().focus();
+        } else if (!full) {
+            body->setFull(false);
+            _settings.threadWidth = int(std::clamp(want, lo, hi));
+        }
+        body->invalidateLayout();
     });
     _thread   = body->add<ThreadArea>(_ctx, _avatars, _drafts);
     for (Composer *c : {_composer, _thread->composer})
         setupComposer(*c);
     applyScheduleSend(); // the demo's backend is in place already
     _thread->style().width(float(_settings.threadWidth)).noShrink();
+    body->area       = areaHost;
+    body->splitter   = _splitter;
+    body->thread     = _thread;
+    body->savedWidth = &_settings.threadWidth;
     _splitter->setVisible(false);
     _thread->setVisible(false);
     _header->setVisible(false);
@@ -1466,6 +1689,7 @@ void Shell::buildMain(View *parent) {
 void Shell::setSignedIn(bool on) {
     _signedIn = on;
     refreshRail(); // signed out, the rail stays, no workspace selected
+    updateRailVisible();
     _sidebar->setVisible(on);
     _listHandle->setVisible(on);
     _mainPane->setVisible(on);
@@ -1488,6 +1712,7 @@ void Shell::setWaiting(bool on) {
     if (on == _waiting)
         return;
     _waiting = on;
+    updateRailVisible();
     _sidebar->setVisible(_signedIn && !on);
     _listHandle->setVisible(_signedIn && !on);
     if (on) {
@@ -1605,8 +1830,7 @@ void Shell::showSampleNotification(
 }
 
 void Shell::sampleNotificationReady(const plat::Notification &n) {
-    plat::App &pa       = _ctx.app.platform();
-    _sampleNotification = pa.notificationsAvailable() ? pa.notify(n) : 0;
+    _sampleNotification = post(n);
 #ifdef __APPLE__
     if (_sampleResult)
         _sampleResult(
@@ -1630,7 +1854,7 @@ void Shell::notifySessionExpired(const std::string &workspace) {
     n.silent    = sounds::kSilentNotifications;
     notificationImage({workspaceIconPath()}, [this, n = std::move(n)](plat::Image img) mutable {
         n.image = std::move(img);
-        _ctx.app.platform().notify(n);
+        post(n);
     });
 }
 
@@ -1658,6 +1882,7 @@ void Shell::open(ConvRef conv) {
     leaveTeammate(); // the teammate page keeps what was typed to it
     leavePages();
     _search->hideNow();
+    showMessageArea();
     if (conv != _current && threadOpen())
         closeThread(); // a leave path: the thread composer stashes its draft
     _current = conv;
@@ -1850,13 +2075,57 @@ void Shell::closeFrontmost() {
 }
 
 void Shell::openSearch() {
-    if (_signedIn)
-        _search->toggle();
+    if (!_signedIn)
+        return;
+    showMessageArea(); // the search sits over the messages
+    _search->toggle();
+}
+
+// The messages back beside a full-width thread panel: for whatever needs them
+// on screen (a conversation opened, the search, the canvas tab, a jump).
+void Shell::showMessageArea() {
+    if (_thread)
+        static_cast<ThreadBody *>(_thread->parent())->setFull(false);
 }
 
 // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered
 // before the focused view sees the key, because the composer keeps focus; a
 // text field with a selection keeps the key (Cut there).
+namespace {
+
+// A key that types a character (letters, digits, punctuation, space, the
+// keypad's), with no modifier but Shift: never a shortcut or navigation.
+bool typesText(const Event &e) {
+    using K = plat::Key;
+    if (e.mods & ui::kModMask & ~uint32_t(plat::ModShift))
+        return false;
+    const K k = e.key;
+    return (k >= K::A && k <= K::Num9) || (k >= K::Space && k <= K::Slash) ||
+           (k >= K::Kp0 && k <= K::KpAdd);
+}
+
+} // namespace
+
+// The message list takes the focus on a click (its keys scroll it), and so
+// does nothing with typing. A character typed there goes to the composer
+// below it instead, which takes the focus and the key with it: after a click
+// on a message (or on the list to bring the window back after dropping a
+// file on it) typing just goes on.
+void Shell::typeIntoComposer(const Event &e) {
+    if (e.type != EventType::KeyDown || !typesText(e) || topDialog() || _settingsDlg)
+        return;
+    View *f = _win.focusView();
+    if (!f || f->role() == Role::TextInput)
+        return;
+    Composer *c = nullptr;
+    if (_messages && _messages->isAncestorOf(f))
+        c = _composer;
+    else if (_thread && _thread->isAncestorOf(f) && !_thread->composer->isAncestorOf(f))
+        c = _thread->composer;
+    if (c && c->visible() && c->enabled())
+        c->edit().focus();
+}
+
 bool Shell::removeIdleSession(const Event &e) {
     if (!shortcuts::matches(shortcuts::Id::RemoveIdleSession, e) || topDialog() || _settingsDlg)
         return false;
@@ -1884,13 +2153,7 @@ void Shell::openThread(ConvRef conv, Ts root) {
     // Its reply bar in the list says "Close thread".
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(root);
 #endif
-    if (!_thread->visible()) { // the saved width, clamped to what fits
-        const float total = _thread->parent()->width();
-        _thread->style().width(
-            std::clamp(float(_settings.threadWidth), 100.f, std::max(100.f, total - 200))
-        );
-    }
-    _thread->setVisible(true);
+    _thread->setVisible(true); // ThreadBody fits the saved width to the window
     _splitter->setVisible(true);
     _ctx.backend.loadThread(conv, root, nullptr);
     _ctx.backend.setActiveConversation(conv, root);
@@ -1901,6 +2164,7 @@ void Shell::closeThread() {
     if (!threadOpen())
         return;
     _thread->composer->stashNow();
+    showMessageArea();
     _thread->setVisible(false);
 #ifdef MSGA_HAVE_MESSAGES
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(0);
@@ -2067,6 +2331,7 @@ void Shell::jumpToMessage(ConvRef conv, Ts ts, Ts thread) {
         return;
 #ifdef MSGA_HAVE_MESSAGES
     if (!thread) {
+        showMessageArea();
         static_cast<screens::MessageList *>(_messages)->jumpTo(ts);
         return;
     }
@@ -2078,6 +2343,54 @@ void Shell::jumpToMessage(ConvRef conv, Ts ts, Ts thread) {
     if (thread)
         openThread(conv, thread);
 #endif
+}
+
+void Shell::activateNotification(uint64_t id, const std::string &action, const std::string &token) {
+    if (id && id == _sampleNotification && action == "join") {
+        // The sample huddle's "Join": the open conversation's huddle link.
+        _ctx.app.platform().openUrl(
+            _current != kNoConv ? huddleJoinUrl(_ctx.store, _current)
+                                : std::string("https://app.slack.com")
+        );
+        return;
+    }
+    const auto it = _notified.find(id);
+    if (it == _notified.end()) {
+        restore(token);
+        return;
+    }
+    const Notified to = it->second;
+    _notified.erase(it);
+    saveNotifiedSoon();
+    // A huddle's "Join": the browser, the window left where it is.
+    if (action == "join" && !to.join.empty()) {
+        if (_ctx.openUrl)
+            _ctx.openUrl(to.join);
+        else
+            _ctx.app.platform().openUrl(to.join);
+        return;
+    }
+    // Another workspace's: switch to it first, then the chat if it is the one shown —
+    // a reply's thread with it, a reminder's message flashed.
+    if (!to.key.empty() && !(to.key == _activeKey && _signedIn) && onSwitchWorkspace)
+        onSwitchWorkspace(to.key);
+    const Running *r = to.key.empty() ? nullptr : findRunning(to.key);
+    if (!to.key.empty() && !(r && r->store == &_ctx.store() && _signedIn)) {
+        restore(token);
+        return;
+    }
+    model::Store &st   = to.key.empty() ? _ctx.store() : *r->store;
+    const ConvRef conv = to.convId.empty() ? kNoConv : st.findConversation(to.convId);
+    restore(token);
+    if (conv == kNoConv) // gone/left/stale (e.g. a restart-old click): just focus
+        return;
+    if (to.ts)
+        jumpToMessage(conv, to.ts, to.root);
+    else {
+        open(conv);
+        if (to.root && conv == _current)
+            openThread(conv, to.root);
+    }
 }
 
 bool Shell::threadOpen() const {
@@ -2099,6 +2412,7 @@ Composer *Shell::threadComposer() {
 // The tabs: Messages, or the canvas page (the conversation's canvas, or
 // "Add canvas": a blank page the first save turns into one).
 void Shell::showCanvas(bool on) {
+    showMessageArea(); // both tabs live where the messages are
     on = on && _current != kNoConv;
     if (!on)
         _canvas->flushPendingSave(); // on every tab / conversation switch
@@ -2421,8 +2735,7 @@ void Shell::restore(const std::string &token) {
 }
 
 void Shell::handleAppEvent(const plat::Event &e) {
-    using T    = plat::EventType;
-    auto raise = [&] { restore(e.activationToken); };
+    using T = plat::EventType;
     switch (e.type) {
     case T::MonitorsChanged: // added, removed, resized, rescaled, a panel appeared
         fitToScreen();
@@ -2434,16 +2747,16 @@ void Shell::handleAppEvent(const plat::Event &e) {
         // Like Telegram: restore the window when it is
         // tucked away in the tray or minimised; otherwise do nothing.
         if (_hidden || !_win.native().isActive())
-            raise();
+            restore(e.activationToken);
         break;
     case T::TrayMenuItem:
         switch (e.id) {
         case kTraySettings:
-            raise();
+            restore(e.activationToken);
             openSettings();
             break;
         case kTrayResetSize:
-            raise();
+            restore(e.activationToken);
             resetWindowGeometry();
             break;
         case kTrayQuit:
@@ -2452,7 +2765,7 @@ void Shell::handleAppEvent(const plat::Event &e) {
         default:
             // A workspace: restore, then switch to it.
             if (e.id >= kTrayWorkspace) {
-                raise();
+                restore(e.activationToken);
                 const size_t i = e.id - kTrayWorkspace;
                 if (i < _workspaces.size() && _workspaces[i].key != _activeKey &&
                     onSwitchWorkspace) {
@@ -2468,49 +2781,14 @@ void Shell::handleAppEvent(const plat::Event &e) {
             _sampleResult(i18n::arg(tr("Notification status: %1"), e.text));
         break;
     case T::NotificationActivated:
-        if (e.id && e.id == _sampleNotification && e.action == "join") {
-            // The sample huddle's "Join": the open conversation's huddle link.
-            _ctx.app.platform().openUrl(
-                _current != kNoConv ? huddleJoinUrl(_ctx.store, _current)
-                                    : std::string("https://app.slack.com")
-            );
-            break;
-        }
-        if (const auto it = _notified.find(e.id); it != _notified.end()) {
-            const Notified to = it->second;
-            _notified.erase(it);
-            // A huddle's "Join": the browser, the window left where it is.
-            if (e.action == "join" && !to.join.empty()) {
-                if (_ctx.openUrl)
-                    _ctx.openUrl(to.join);
-                else
-                    _ctx.app.platform().openUrl(to.join);
-                break;
-            }
-            // Another workspace's: switch to it first, then the chat if it is the one shown —
-            // a reply's thread with it, a reminder's message flashed.
-            if (!to.key.empty() && !(to.key == _activeKey && _signedIn) && onSwitchWorkspace)
-                onSwitchWorkspace(to.key);
-            const Running *r = to.key.empty() ? nullptr : findRunning(to.key);
-            if (to.key.empty() || (r && r->store == &_ctx.store() && _signedIn)) {
-                raise();
-                if (to.ts)
-                    jumpToMessage(to.conv, to.ts, to.root);
-                else {
-                    open(to.conv);
-                    if (to.root && to.conv == _current)
-                        openThread(to.conv, to.root);
-                }
-                break;
-            }
-        }
-        raise();
+        activateNotification(e.id, e.action, e.activationToken);
         break;
     case T::NotificationClosed:
-        _notified.erase(e.id);
+        if (_notified.erase(e.id))
+            saveNotifiedSoon();
         break;
     case T::InstanceActivated:
-        raise();
+        restore(e.activationToken);
         break; // a second launch: show this one
     default:
         break;
@@ -2779,6 +3057,13 @@ View *Shell::workspaceTile(const std::string &key) const {
 int Shell::workspaceDot(const std::string &key) const {
     const RailTile *t = _wsStack->find(key);
     return t ? t->dot : -1;
+}
+
+// The rail as Settings::showRail says, but always there while the sidebar
+// (its footer's avatar menu brings the rail back) is not: signed out or
+// waiting, the rail is the only way to another workspace or a new one.
+void Shell::updateRailVisible() {
+    _rail->setVisible(_settings.showRail || !_signedIn || _waiting);
 }
 
 void Shell::refreshRail() {
@@ -3319,6 +3604,7 @@ void Shell::saveState() {
         }
     }
     saveSettingsNow();
+    saveNotifiedNow();
 }
 
 } // namespace shell

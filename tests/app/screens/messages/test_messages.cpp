@@ -3608,6 +3608,28 @@ TEST("threads: inline, the reply bar opens the replies under the message, and cl
     CHECK(findLeaf(row, "Reply to thread") == nullptr);
 }
 
+TEST("threads: in a narrow column the reply bar keeps its count on one line") {
+    Env           e(true);
+    const ConvRef c = e.conv("C0DESIGN");
+    e.list->showConversation(c);
+    pump(8);
+    Ts root = 0;
+    for (const model::Message &m : e.store.conversation(c).messages)
+        if (m.replyCount > 1)
+            root = m.ts;
+    REQUIRE(root != 0);
+    e.win->native().setSize({380, 600});
+    e.list->scrollToMessage(root, false, false);
+    pump(8);
+    ui::View *row = e.row(root);
+    REQUIRE(row != nullptr);
+    ui::View *count = findLeaf(row, " replies");
+    REQUIRE(count != nullptr);
+    CHECK(count->height() < 24); // one line, not a word broken over three
+    const ui::RectF cr = count->windowRect(), br = count->parent()->windowRect();
+    CHECK(cr.x + cr.w <= br.x + br.w + 0.5f); // inside the bar
+}
+
 TEST("blocks: the canvas section diff writes only what changed") {
     using namespace screens::canvas;
     const std::string html =

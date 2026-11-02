@@ -22,12 +22,12 @@ public:
     static std::unique_ptr<Services> create(BackendApp &app);
     virtual ~Services() = default;
 
-    virtual std::unique_ptr<Tray> createTray()                   = 0;
-    virtual bool                  notificationsAvailable() const = 0;
-    virtual uint64_t              notify(const Notification &n)  = 0;
-    virtual void                  setBadgeCount(int count)       = 0;
+    virtual std::unique_ptr<Tray> createTray()                               = 0;
+    virtual bool                  notificationsAvailable() const             = 0;
+    virtual bool                  notify(uint64_t id, const Notification &n) = 0;
+    virtual void                  setBadgeCount(int count)                   = 0;
     // nullopt until/unless the portal answered; the backend keeps its default.
-    virtual std::optional<bool>   darkMode() const               = 0;
+    virtual std::optional<bool>   darkMode() const                           = 0;
     // Called when the portal reports a colour-scheme change; the backend
     // emits ThemeChanged to its windows.
     std::function<void()>         onThemeChanged;
@@ -81,10 +81,10 @@ class ServicesApp : public BackendApp
 {
 public:
     std::unique_ptr<Tray> createTray() override { return services().createTray(); }
-    bool     notificationsAvailable() const override { return services().notificationsAvailable(); }
-    uint64_t notify(const Notification &n) override { return services().notify(n); }
-    void     setBadgeCount(int n) override { services().setBadgeCount(n); }
-    bool     darkMode() const override { return services().darkMode().value_or(false); }
+    bool notificationsAvailable() const override { return services().notificationsAvailable(); }
+    bool notify(uint64_t id, const Notification &n) override { return services().notify(id, n); }
+    void setBadgeCount(int n) override { services().setBadgeCount(n); }
+    bool darkMode() const override { return services().darkMode().value_or(false); }
 
 #ifdef PLAT_TEST_HOOKS
     bool trayActivate(Tray &t) override { return services().trayActivate(t); }

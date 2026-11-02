@@ -262,8 +262,7 @@ void Shell::prefillTeammate(
             text = str::concat({_composer->mrkdwn(), "\n", text});
         loadMrkdwn(_composer->edit(), _ctx.store(), text);
     }
-    _composer->addAttachments(paths); // skips the ones attached already
-    _composer->edit().focus();
+    _composer->attachFiles(paths); // skips the ones attached already
 }
 
 void Shell::refreshTeammates() {

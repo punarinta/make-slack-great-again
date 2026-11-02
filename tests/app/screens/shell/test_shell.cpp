@@ -22,6 +22,7 @@
 #include "plat/audio.h"
 #include "plat/testing.h"
 #include "base/json.h"
+#include "base/str.h"
 #include "screens/common/file_dialogs.h"
 #include "screens/common/remote_images.h"
 #include "screens/shell/channel_dialogs.h"
@@ -44,6 +45,7 @@
 
 #ifdef MSGA_HAVE_MESSAGES
 #include "app/screens/messages/image_cache.h"
+#include "app/screens/messages/message_list.h"
 #endif
 
 #include <algorithm>
@@ -51,6 +53,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <unistd.h>
 
 using namespace model;
@@ -2914,7 +2917,7 @@ struct TwoWorkspaces {
     std::unique_ptr<shell::Shell> sh;
     std::vector<std::string>      switched;
 
-    TwoWorkspaces() {
+    explicit TwoWorkspaces(const std::string &notifyPath = {}) {
 #ifdef MSGA_HAVE_MESSAGES
         gNotifyImages = &images;
 #endif
@@ -2934,7 +2937,7 @@ struct TwoWorkspaces {
         d.size        = {1200, 800};
         d.decorations = plat::Decorations::Custom;
         win           = std::make_unique<ui::Window>(d);
-        sh            = std::make_unique<shell::Shell>(ctx, *win, settings, std::string());
+        sh = std::make_unique<shell::Shell>(ctx, *win, settings, std::string(), notifyPath);
         sh->attachWorkspace(kKeyA, a, fa);
         sh->attachWorkspace(kKeyB, b, fb);
         sh->setWorkspaceLive(kKeyA, true);
@@ -2954,6 +2957,29 @@ struct TwoWorkspaces {
         sh->detachWorkspace(kKeyA);
         sh->detachWorkspace(kKeyB);
         sh.reset();
+    }
+    // Simulates a restart: a fresh Shell (and window) over the same Stores,
+    // loading whatever `notifyPath` has on disk.
+    void restart(const std::string &notifyPath) {
+        sh->detachWorkspace(kKeyA);
+        sh->detachWorkspace(kKeyB);
+        sh.reset();
+        win.reset();
+        plat::WindowDesc d;
+        d.size        = {1200, 800};
+        d.decorations = plat::Decorations::Custom;
+        win           = std::make_unique<ui::Window>(d);
+        sh = std::make_unique<shell::Shell>(ctx, *win, settings, std::string(), notifyPath);
+        sh->attachWorkspace(kKeyA, a, fa);
+        sh->attachWorkspace(kKeyB, b, fb);
+        sh->setWorkspaceLive(kKeyA, true);
+        sh->setWorkspaceLive(kKeyB, true);
+        sh->onSwitchWorkspace = [this](const std::string &key) {
+            switched.push_back(key);
+            show(key);
+        };
+        show(kKeyA);
+        pump();
     }
     // Accounts::activate: the open one leaves, the proxy and the slot follow.
     void show(const std::string &key) {
@@ -2988,15 +3014,12 @@ uint64_t lastNotification(plat::TestHooks::NotificationProbe *out) {
     if (gNotifyImages)
         until([] { return gNotifyImages->pending() == 0; });
 #endif
-    uint64_t last = 0;
-    for (uint64_t id = 1; id < 4096; ++id) {
-        plat::TestHooks::NotificationProbe p;
-        if (app().platform().testHooks()->notificationProbe(id, &p)) {
-            last = id;
-            if (out)
-                *out = p;
-        }
-    }
+    // Ids are caller-chosen (Shell, persisted) now, not a small per-backend
+    // counter a scan from 1 could rely on -- maxNotificationId() is the
+    // backend's own idea of "the latest one," no scanning needed.
+    const uint64_t last = app().platform().testHooks()->maxNotificationId();
+    if (last && out)
+        app().platform().testHooks()->notificationProbe(last, out);
     return last;
 }
 
@@ -3229,6 +3252,185 @@ TEST("updates: opening chats leaves the update check and its events alone") {
     h.sh->setUpdater(nullptr);
 }
 #endif
+
+TEST("thread panel: a narrow window keeps it inside, a wider one brings the saved width back") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    CHECK(int(std::lround(h.sh->threadPanel()->width())) == h.settings.threadWidth);
+    w.setSize({900, 600});
+    pump();
+    const ui::RectF r = h.sh->threadPanel()->windowRect();
+    CHECK(r.x + r.w <= 900.5f); // not past the window's right edge
+    CHECK(r.w > 0);
+    CHECK(h.settings.threadWidth == 360); // the saved width is untouched
+    w.setSize({1600, 900});
+    pump();
+    CHECK(int(std::lround(h.sh->threadPanel()->width())) == 360);
+}
+
+TEST("thread panel: in a narrow window it opens at half and the splitter still moves it") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({900, 600});
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View   *area = h.sh->threadPanel()->parent();
+    const float body = area->parent()->width() - 7; // the splitter
+    REQUIRE(body < 360 + 360);                      // too narrow for the saved 360
+    CHECK(std::fabs(area->width() - std::floor(body / 2)) <= 1);
+    h.settings.threadWidth = 220; // as a drag would leave it
+    area->parent()->invalidateLayout();
+    pump();
+    CHECK(int(std::lround(area->width())) == 220);
+}
+
+TEST("thread panel: dragged well past its widest it takes the whole room, and drags back") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({900, 600});
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View *area     = h.sh->threadPanel()->parent();
+    ui::View *body     = area->parent();
+    ui::View *splitter = body->child(1);
+    ui::View *messages = body->child(0);
+    auto      send     = [&](plat::EventType t, float x, float y) {
+        plat::Event e;
+        e.type   = t;
+        e.window = &w;
+        e.pos    = {x, y};
+        h.win->handle(e);
+    };
+    auto drag = [&](float dx) {
+        const ui::RectF r = splitter->windowRect();
+        const float     x = r.x + r.w / 2, y = r.y + r.h / 2;
+        send(plat::EventType::PointerMove, x, y);
+        send(plat::EventType::PointerDown, x, y);
+        for (int i = 1; i <= 10; ++i)
+            send(plat::EventType::PointerMove, x + dx * i / 10, y);
+        send(plat::EventType::PointerUp, x + dx, y);
+        pump();
+    };
+    const float room = body->width() - 7;
+    drag(-60); // within range: the line follows the pointer
+    CHECK(messages->visible());
+    CHECK(std::fabs(area->width() - std::floor(room / 2)) <= 1); // already at its widest here
+    drag(-(room / 2));                                           // far past it
+    CHECK(!messages->visible());
+    CHECK(std::fabs(area->width() - room) <= 1);
+    drag(room / 2); // back
+    CHECK(messages->visible());
+    CHECK(area->width() < room - 100);
+    drag(-(room / 2));
+    REQUIRE(!messages->visible());
+    h.sh->closeThread(); // closing ends it: the next thread opens beside the messages
+    pump();
+    CHECK(messages->visible());
+}
+
+TEST("thread panel: at full width, whatever needs the messages brings them back") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({900, 600});
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View *area     = h.sh->threadPanel()->parent();
+    ui::View *body     = area->parent();
+    ui::View *splitter = body->child(1);
+    ui::View *messages = body->child(0);
+    auto      send     = [&](plat::EventType t, float x, float y) {
+        plat::Event e;
+        e.type   = t;
+        e.window = &w;
+        e.pos    = {x, y};
+        h.win->handle(e);
+    };
+    auto full = [&] {
+        const ui::RectF r = splitter->windowRect();
+        const float     x = r.x + r.w / 2, y = r.y + r.h / 2;
+        send(plat::EventType::PointerMove, x, y);
+        send(plat::EventType::PointerDown, x, y);
+        send(plat::EventType::PointerMove, x - body->width(), y);
+        send(plat::EventType::PointerUp, x - body->width(), y);
+        pump();
+        return !messages->visible();
+    };
+    // The focus in the messages' composer moves to the thread's, not nowhere.
+    h.sh->composer().edit().focus();
+    REQUIRE(full());
+    ui::View *f = h.win->focusView();
+    CHECK(f && area->isAncestorOf(f));
+    // The search opens over the messages, shown and focused.
+    h.sh->openSearch();
+    pump();
+    CHECK(messages->visible());
+    f = h.win->focusView();
+    CHECK(f && messages->isAncestorOf(f) && !h.sh->composer().isAncestorOf(f));
+    // Going full again closes that search: the next one opens rather than closes.
+    REQUIRE(full());
+    h.sh->openSearch();
+    pump();
+    CHECK(messages->visible());
+    f = h.win->focusView();
+    CHECK(f && messages->isAncestorOf(f) && !h.sh->composer().isAncestorOf(f));
+    // The header's tabs, the same conversation picked again, a jump in it.
+    REQUIRE(full());
+    h.sh->showCanvas(false);
+    pump();
+    CHECK(messages->visible());
+    REQUIRE(full());
+    h.sh->open(design);
+    pump();
+    CHECK(messages->visible());
+    CHECK(h.sh->threadOpen()); // the thread stays, beside them
+    REQUIRE(full());
+    h.sh->jumpToMessage(design, root, 0);
+    pump();
+    CHECK(messages->visible());
+}
+
+TEST("sidebar footer: the avatar menu hides the workspace rail and remembers it") {
+    Harness h;
+    CHECK(h.sh->rail()->visible());
+    shell::SidebarFooter &f = h.sh->sidebar().footer();
+    CHECK(f.railShown());
+    f.toggleRail();
+    pump();
+    CHECK_FALSE(h.sh->rail()->visible());
+    CHECK_FALSE(h.settings.showRail);
+    CHECK_FALSE(f.railShown());
+    // Signed out the sidebar, and with it the avatar menu, is gone: the rail
+    // comes back meanwhile, the setting stays.
+    h.sh->setSignedIn(false);
+    pump();
+    CHECK(h.sh->rail()->visible());
+    CHECK_FALSE(h.settings.showRail);
+    h.sh->setSignedIn(true);
+    pump();
+    CHECK_FALSE(h.sh->rail()->visible());
+    f.toggleRail();
+    pump();
+    CHECK(h.sh->rail()->visible());
+    CHECK(h.settings.showRail);
+}
 
 #ifdef __APPLE__
 TEST("window: full screen drops the title bar strip and puts the header over the right pane") {
@@ -3483,9 +3685,27 @@ TEST("notifications: the titles and gates — level, mutes, replies to unloaded 
     w.post(a, "C0GENERAL", "plain news");
     pump();
     CHECK(!fresh());
+    const Ts mentionTs = a.conversation(general).latest + 1000;
     w.post(a, "C0GENERAL", ("ping <@" + a.user(a.me).id + ">").c_str());
     pump();
     CHECK(fresh());
+#ifdef MSGA_HAVE_MESSAGES
+    // Its click doesn't just open the conversation -- it scrolls to and
+    // flashes that exact message (not only a reply's thread, see below).
+    w.sh->open(dm); // somewhere else, so the click has to navigate back
+    pump();
+    plat::Event mentionClick;
+    mentionClick.type = plat::EventType::NotificationActivated;
+    mentionClick.id   = last;
+    w.sh->handleAppEvent(mentionClick);
+    pump();
+    CHECK(w.sh->current() == general);
+    CHECK(static_cast<screens::MessageList *>(w.sh->messagesView())->flashing(mentionTs));
+    // Away again, somewhere neither general nor dm: both must stay
+    // off-screen for the rest of this test's notification checks.
+    w.sh->open(a.findConversation("C0DESIGN"));
+    pump();
+#endif
     w.post(a, "D0MIRA", "still here");
     pump();
     CHECK(fresh());
@@ -3626,6 +3846,74 @@ TEST("reminders: the due notification names the place; its click opens the messa
     REQUIRE(until([&] { return lastNotification(nullptr) > id; }));
     lastNotification(&n);
     CHECK_STR(n.body, "You asked to be reminded about a message.");
+}
+
+TEST("notifications: a click survives a restart (persisted, resolved by stable conv id)") {
+    const std::string dir = base::test::makeTempDir("msga_notify_");
+    REQUIRE(!dir.empty());
+    const std::string path = file::join(dir, "notifications.json");
+    TwoWorkspaces     w(path);
+    Store            &a         = w.a;
+    const ConvRef     general   = a.findConversation("C0GENERAL");
+    const Ts          mentionTs = a.conversation(general).latest + 1000;
+    const uint64_t    before    = lastNotification(nullptr);
+    w.post(a, "C0GENERAL", ("ping <@" + a.user(a.me).id + ">").c_str());
+    pump();
+    plat::TestHooks::NotificationProbe n;
+    REQUIRE(lastNotification(&n) > before);
+    const uint64_t id = lastNotification(nullptr);
+    // The debounced save actually lands on disk before "restarting".
+    REQUIRE(until([&] {
+        std::string text;
+        return file::readAll(path, &text) && !text.empty();
+    }));
+
+    w.restart(path); // a fresh Shell (and window), same Stores -- loads path
+
+    plat::Event e;
+    e.type = plat::EventType::NotificationActivated;
+    e.id   = id;
+    w.sh->handleAppEvent(e);
+    pump();
+    CHECK(w.sh->current() == general);
+#ifdef MSGA_HAVE_MESSAGES
+    CHECK(static_cast<screens::MessageList *>(w.sh->messagesView())->flashing(mentionTs));
+#endif
+}
+
+TEST("notifications: the persisted clicks keep the newest 500 of the last month") {
+    const std::string dir = base::test::makeTempDir("msga_notify_");
+    REQUIRE(!dir.empty());
+    const std::string path = file::join(dir, "notifications.json");
+    // 600 recent entries (ids 1..600) and one from 40 days ago (id 700).
+    const int64_t     now  = base::nowSecs();
+    std::string       text = R"({"nextId":701,"entries":[)";
+    for (int id = 1; id <= 600; ++id)
+        text += str::concat(
+            {R"({"id":)",
+             str::number(id),
+             R"(,"key":"", "convId":"C0GENERAL","postedAt":)",
+             str::number(now),
+             "},"}
+        );
+    text += str::concat(
+        {R"({"id":700,"key":"","convId":"C0GENERAL","postedAt":)",
+         str::number(now - 40 * 86400),
+         "}]}"}
+    );
+    REQUIRE(file::writeAtomic(path, text, 0600));
+    TwoWorkspaces w(path);
+    w.sh->saveState(); // written at once, pruned
+    std::string    saved;
+    json::Document d;
+    REQUIRE(file::readAll(path, &saved) && d.parse(std::move(saved), nullptr));
+    std::set<int64_t> ids;
+    for (const json::Value &e : d.root()["entries"])
+        ids.insert(e["id"].integer());
+    CHECK(ids.size() == 500);
+    CHECK(!ids.count(1) && !ids.count(100) && ids.count(101) && ids.count(600));
+    CHECK(!ids.count(700)); // too old
+    CHECK(d.root()["nextId"].integer() == 701);
 }
 
 TEST("sidebar: the Threads entry is bright while followed threads have unread replies") {

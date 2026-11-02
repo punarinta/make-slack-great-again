@@ -453,7 +453,7 @@ public:
 
     std::unique_ptr<Tray> createTray() override;
     bool                  notificationsAvailable() const override;
-    uint64_t              notify(const Notification &n) override;
+    bool                  notify(uint64_t id, const Notification &n) override;
     void                  setBadgeCount(int count) override;
 
     bool darkMode() const override;
