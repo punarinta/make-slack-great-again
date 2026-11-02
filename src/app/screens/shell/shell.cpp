@@ -533,7 +533,8 @@ public:
 class Splitter final : public View {
 public:
     static constexpr float kW = 7;
-    explicit Splitter(std::function<void(float dx, bool pressed)> onDrag) : _onDrag(std::move(onDrag)) {
+    explicit Splitter(std::function<void(float dx, bool pressed)> onDrag)
+        : _onDrag(std::move(onDrag)) {
         style().width(kW).noShrink();
         setCursor(plat::Cursor::ResizeH);
         setHoverRepaint(true);
@@ -587,11 +588,9 @@ public:
         const float least = std::min(kPaneMinW, std::floor(avail / 2));
         return {std::max(0.f, least), std::max(0.f, most)};
     }
-    float avail() const {
-        return width() - (splitter && splitter->visible() ? Splitter::kW : 0);
-    }
-    bool full() const { return _full; }
-    void setFull(bool on) {
+    float avail() const { return width() - (splitter && splitter->visible() ? Splitter::kW : 0); }
+    bool  full() const { return _full; }
+    void  setFull(bool on) {
         if (_full == on)
             return;
         _full = on;
@@ -604,10 +603,10 @@ public:
         if (area && thread && savedWidth) {
             float msgMin = kMessagesW;
             if (thread->visible()) {
-                const float a        = avail();
-                const auto [lo, hi]  = range(a);
-                const float threadW  = _full ? a : std::clamp(float(*savedWidth), lo, hi);
-                msgMin               = std::max(0.f, a - threadW);
+                const float a       = avail();
+                const auto [lo, hi] = range(a);
+                const float threadW = _full ? a : std::clamp(float(*savedWidth), lo, hi);
+                msgMin              = std::max(0.f, a - threadW);
                 if (thread->currentStyle().w != threadW)
                     thread->style().width(threadW);
             }
@@ -1636,9 +1635,18 @@ void Shell::buildMain(View *parent) {
         }
         const auto [lo, hi] = ThreadBody::range(body->avail());
         const float want    = from - dx;
-        body->setFull(want >= hi + ThreadBody::kSnapW);
-        if (!body->full())
+        const bool  full    = want >= hi + ThreadBody::kSnapW;
+        if (full && !body->full()) {
+            // The messages go: their search with them, and a focus held
+            // there moves to the thread's composer instead of nowhere.
+            _search->hideNow();
+            body->setFull(true);
+            if (!_win.focusView())
+                _thread->composer->edit().focus();
+        } else if (!full) {
+            body->setFull(false);
             _settings.threadWidth = int(std::clamp(want, lo, hi));
+        }
         body->invalidateLayout();
     });
     _thread   = body->add<ThreadArea>(_ctx, _avatars, _drafts);
@@ -1853,6 +1861,7 @@ void Shell::open(ConvRef conv) {
     leaveTeammate(); // the teammate page keeps what was typed to it
     leavePages();
     _search->hideNow();
+    showMessageArea();
     if (conv != _current && threadOpen())
         closeThread(); // a leave path: the thread composer stashes its draft
     _current = conv;
@@ -2045,8 +2054,17 @@ void Shell::closeFrontmost() {
 }
 
 void Shell::openSearch() {
-    if (_signedIn)
-        _search->toggle();
+    if (!_signedIn)
+        return;
+    showMessageArea(); // the search sits over the messages
+    _search->toggle();
+}
+
+// The messages back beside a full-width thread panel: for whatever needs them
+// on screen (a conversation opened, the search, the canvas tab, a jump).
+void Shell::showMessageArea() {
+    if (_thread)
+        static_cast<ThreadBody *>(_thread->parent())->setFull(false);
 }
 
 // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered
@@ -2125,7 +2143,7 @@ void Shell::closeThread() {
     if (!threadOpen())
         return;
     _thread->composer->stashNow();
-    static_cast<ThreadBody *>(_thread->parent())->setFull(false);
+    showMessageArea();
     _thread->setVisible(false);
 #ifdef MSGA_HAVE_MESSAGES
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(0);
@@ -2292,6 +2310,7 @@ void Shell::jumpToMessage(ConvRef conv, Ts ts, Ts thread) {
         return;
 #ifdef MSGA_HAVE_MESSAGES
     if (!thread) {
+        showMessageArea();
         static_cast<screens::MessageList *>(_messages)->jumpTo(ts);
         return;
     }
@@ -2372,6 +2391,7 @@ Composer *Shell::threadComposer() {
 // The tabs: Messages, or the canvas page (the conversation's canvas, or
 // "Add canvas": a blank page the first save turns into one).
 void Shell::showCanvas(bool on) {
+    showMessageArea(); // both tabs live where the messages are
     on = on && _current != kNoConv;
     if (!on)
         _canvas->flushPendingSave(); // on every tab / conversation switch
