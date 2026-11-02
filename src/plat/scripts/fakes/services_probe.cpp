@@ -125,8 +125,9 @@ void checkActivationTokens() {
         return;
     }
     g_events.clear();
-    const uint64_t id = g_app->notify({.title = "token", .body = "click me"});
-    report(id && hooks->notificationInvoke(id, ""), "notification clicked through the fake server");
+    const uint64_t id = 1;
+    const bool     ok = g_app->notify(id, {.title = "token", .body = "click me"});
+    report(ok && hooks->notificationInvoke(id, ""), "notification clicked through the fake server");
     const Event *e = nullptr;
     pumpUntil(
         [&] {
