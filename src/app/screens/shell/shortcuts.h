@@ -29,6 +29,7 @@ enum class Id : uint8_t {
     NavBack,
     NavForward,
     CloseFrontmost,
+    CloseThread, // Esc, after the focused view passes on it
     SearchMessages,
     QuickSwitch,
     OpenSettings,

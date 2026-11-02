@@ -3482,6 +3482,41 @@ TEST("thread panel: a window too narrow for both covers the messages, a wider on
     CHECK_FALSE(h.sh->threadOpen());
 }
 
+TEST("thread panel: Esc closes it once the focused view has no use for the key") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    auto esc = [&] {
+        plat::Event e;
+        e.type   = plat::EventType::KeyDown;
+        e.window = &w;
+        e.key    = plat::Key::Escape;
+        h.win->handle(e);
+        pump();
+    };
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadOpen());
+    h.sh->threadComposer()->edit().focus();
+    esc();
+    CHECK_FALSE(h.sh->threadOpen());
+    // A modal popup goes first; the thread stays for the next Esc.
+    h.sh->openThread(design, root);
+    pump();
+    h.sh->showQuickSwitcher();
+    pump();
+    ui::Popup *p = h.win->topPopup();
+    REQUIRE(p);
+    REQUIRE(p->modal());
+    esc();
+    CHECK(h.win->topPopup() != p);
+    CHECK(h.sh->threadOpen());
+    esc();
+    CHECK_FALSE(h.sh->threadOpen());
+}
+
 TEST("sidebar footer: the avatar menu hides the workspace rail and remembers it") {
     Harness h;
     CHECK(h.sh->rail()->visible());

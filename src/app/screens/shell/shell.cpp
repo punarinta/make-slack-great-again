@@ -1058,6 +1058,7 @@ Shell::Shell(
     shortcuts::install(win, Id::NavBack, [this] { navigateHistory(true); });
     shortcuts::install(win, Id::NavForward, [this] { navigateHistory(false); });
     shortcuts::install(win, Id::CloseFrontmost, [this] { closeFrontmost(); });
+    shortcuts::install(win, Id::CloseThread, [this] { closeThreadOnEscape(); });
     shortcuts::install(win, Id::SearchMessages, [this] { openSearch(); });
     shortcuts::install(win, Id::QuickSwitch, [this] { showQuickSwitcher(); });
     win.keyFilter = [this](const Event &e) {
@@ -2140,6 +2141,16 @@ void Shell::showMessageArea() {
     body->setFull(false);
     if (body->narrow())
         closeThread();
+}
+
+// Esc that the focused view passed on: a modal popup first (as the window
+// would), else the open thread.
+void Shell::closeThreadOnEscape() {
+    if (Popup *p = _win.topPopup(); p && p->modal()) {
+        _win.closePopup(p);
+        return;
+    }
+    closeThread();
 }
 
 // Shift+Del on an idle Claude Code session: "Remove from msga". Filtered

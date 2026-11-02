@@ -614,14 +614,6 @@ TEST("shortcuts: bindings that must not exist are gone") {
     h.chord(kAlt, K::Down);
     h.chord(kAlt, K::Up);
     CHECK(h.sh->current() == design);
-    // Escape closed the thread panel.
-    const Ts root = h.backend.findTs(design, "Proposal B");
-    REQUIRE(root != 0);
-    h.sh->openThread(design, root);
-    REQUIRE(h.sh->threadOpen());
-    h.key(K::Escape);
-    CHECK(h.sh->threadOpen());
-    h.sh->closeThread();
     // Up/Down on a focused sidebar row changed the conversation (the list
     // only scrolls).
     ui::View  *row  = nullptr;
