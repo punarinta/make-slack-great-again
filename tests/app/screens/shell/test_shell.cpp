@@ -3441,7 +3441,7 @@ TEST("window: full screen drops the title bar strip and puts the header over the
     CHECK(h.sh->sidebar().windowRect().y >= stripH - 1); // under the strip
     w.setFullscreen(true);
     pump();
-    CHECK(h.sh->sidebar().windowRect().y == 0);          // up to the top
+    CHECK(h.sh->sidebar().windowRect().y == 0); // up to the top
     const ui::RectF hr = h.sh->header().windowRect();
     CHECK(hr.y == 0);
     CHECK(hr.x >= h.sh->sidebar().windowRect().x + h.sh->sidebar().windowRect().w);

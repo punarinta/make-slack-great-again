@@ -877,25 +877,46 @@ constexpr NSEventModifierFlags kDevLCtrl = 0x0001, kDevLShift = 0x0002, kDevRShi
 // screen, an opaque band over the content; asking for an auto-hidden toolbar
 // instead leaves it stuck off screen on macOS 15. The toolbar is empty (it
 // only places the traffic lights), so full screen goes without it: the bare
-// title bar slides in with the menu bar like any other app's.
-- (void)windowWillEnterFullScreen:(NSNotification *)n {
-    NSWindow *w = n.object;
+// title bar slides in with the menu bar like any other app's. Every way out
+// of a transition puts it back on a windowed window: a failed entry (AppKit
+// refuses one, e.g. while the screen is locked) would otherwise leave the
+// traffic lights in a bare title bar for good, and a failed exit parks it
+// again.
+- (void)parkToolbar:(NSWindow *)w {
     if (w.toolbar) {
         _parkedToolbar = w.toolbar;
         w.toolbar      = nil;
     }
 }
-- (void)windowWillExitFullScreen:(NSNotification *)n {
+- (void)restoreToolbar:(NSWindow *)w {
     if (_parkedToolbar) {
-        ((NSWindow *)n.object).toolbar = _parkedToolbar;
-        _parkedToolbar                 = nil;
+        w.toolbar      = _parkedToolbar;
+        _parkedToolbar = nil;
     }
 }
+- (void)windowWillEnterFullScreen:(NSNotification *)n {
+    [self parkToolbar:n.object];
+}
+- (void)windowDidFailToEnterFullScreen:(NSWindow *)w {
+    [self restoreToolbar:w];
+    if (_owner)
+        _owner->stateMaybeChanged();
+}
+- (void)windowWillExitFullScreen:(NSNotification *)n {
+    [self restoreToolbar:n.object];
+}
+- (void)windowDidFailToExitFullScreen:(NSWindow *)w {
+    [self parkToolbar:w];
+    if (_owner)
+        _owner->stateMaybeChanged();
+}
 - (void)windowDidEnterFullScreen:(NSNotification *)n {
+    [self parkToolbar:n.object]; // a no-op after the will-; a net if none came
     if (_owner)
         _owner->stateMaybeChanged();
 }
 - (void)windowDidExitFullScreen:(NSNotification *)n {
+    [self restoreToolbar:n.object]; // likewise
     if (_owner)
         _owner->stateMaybeChanged();
 }

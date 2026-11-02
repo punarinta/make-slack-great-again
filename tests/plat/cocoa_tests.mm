@@ -313,11 +313,191 @@ void caseDropTargetEvents() {
     }
 }
 
+bool waitUntil(const std::function<bool()> &done, double seconds) {
+    const CFAbsoluteTime end = CFAbsoluteTimeGetCurrent() + seconds;
+    while (!done() && CFAbsoluteTimeGetCurrent() < end)
+        pumpRunLoop(0.02);
+    return done();
+}
+
+// Full screen goes without the empty title-bar toolbar, and every way out of
+// a transition (done, failed or cancelled) leaves a windowed window with it
+// back: the same object, the same title-bar height (the traffic lights'
+// placement).
+void caseFullScreenParksTheToolbar() {
+    @autoreleasepool {
+        std::string          err;
+        std::unique_ptr<App> app = createCocoaApp(&err);
+        if (!app) {
+            skip("no window-server session: " + err);
+            return;
+        }
+        std::unique_ptr<Window> win = app->createWindow(
+            {.title = "plat full screen", .size = {480, 320}, .decorations = Decorations::Custom}
+        );
+        auto                   &cw  = static_cast<cocoa::CocoaWindow &>(*win);
+        NSWindow               *w   = cw.window;
+        id<NSWindowDelegate>    d   = (id<NSWindowDelegate>)cw.delegate;
+        NSToolbar              *bar = w.toolbar;
+        const double            h0  = win->titleBarHeight();
+        CHECK(bar != nil);
+        CHECK(h0 > 0);
+        auto note = [&](NSNotificationName name) {
+            return [NSNotification notificationWithName:name object:w];
+        };
+        auto windowed = [&] { return w.toolbar == bar && win->titleBarHeight() == h0; };
+        // The optional ones: a delegate without them fails the case, not the run.
+        auto failedToEnter = [&] {
+            const bool has = [d respondsToSelector:@selector(windowDidFailToEnterFullScreen:)];
+            CHECK(has);
+            if (has)
+                [d windowDidFailToEnterFullScreen:w];
+        };
+        auto failedToExit = [&] {
+            const bool has = [d respondsToSelector:@selector(windowDidFailToExitFullScreen:)];
+            CHECK(has);
+            if (has)
+                [d windowDidFailToExitFullScreen:w];
+        };
+
+        // Entered, then left.
+        [d windowWillEnterFullScreen:note(NSWindowWillEnterFullScreenNotification)];
+        CHECK(w.toolbar == nil);
+        [d windowDidEnterFullScreen:note(NSWindowDidEnterFullScreenNotification)];
+        CHECK(w.toolbar == nil);
+        [d windowWillExitFullScreen:note(NSWindowWillExitFullScreenNotification)];
+        CHECK(windowed());
+        [d windowDidExitFullScreen:note(NSWindowDidExitFullScreenNotification)];
+        CHECK(windowed());
+
+        // AppKit refuses the entry: windowed again, with the toolbar.
+        [d windowWillEnterFullScreen:note(NSWindowWillEnterFullScreenNotification)];
+        failedToEnter();
+        CHECK(windowed());
+
+        // The exit fails: still full screen, so without it; a later exit
+        // brings it back.
+        [d windowWillEnterFullScreen:note(NSWindowWillEnterFullScreenNotification)];
+        [d windowDidEnterFullScreen:note(NSWindowDidEnterFullScreenNotification)];
+        [d windowWillExitFullScreen:note(NSWindowWillExitFullScreenNotification)];
+        failedToExit();
+        CHECK(w.toolbar == nil);
+        [d windowWillExitFullScreen:note(NSWindowWillExitFullScreenNotification)];
+        [d windowDidExitFullScreen:note(NSWindowDidExitFullScreenNotification)];
+        CHECK(windowed());
+
+        // The real transition, however AppKit ends it (it refuses while the
+        // screen is locked): full screen without the toolbar, windowed with it.
+        win->show();
+        pumpRunLoop(0.2);
+        win->setFullscreen(true);
+        waitUntil([&] { return win->isFullscreen() && w.toolbar == nil; }, 5);
+        pumpRunLoop(1.5); // a refused entry unwinds after the first resize
+        if (win->isFullscreen()) {
+            CHECK(w.toolbar == nil);
+            CHECK(!win->isMaximized());
+            win->setFullscreen(false);
+            waitUntil([&] { return !win->isFullscreen(); }, 5);
+            pumpRunLoop(1.0);
+        }
+        CHECK(!win->isFullscreen());
+        CHECK(windowed());
+
+        win.reset();
+        pumpRunLoop(0.05);
+    }
+}
+
+// A window with the system title bar has no toolbar to park.
+void caseFullScreenLeavesSystemDecorationsAlone() {
+    @autoreleasepool {
+        std::string          err;
+        std::unique_ptr<App> app = createCocoaApp(&err);
+        if (!app) {
+            skip("no window-server session: " + err);
+            return;
+        }
+        std::unique_ptr<Window> win = app->createWindow({.title = "plat system", .size = {320, 240}});
+        auto                   &cw  = static_cast<cocoa::CocoaWindow &>(*win);
+        NSWindow               *w   = cw.window;
+        id<NSWindowDelegate>    d   = (id<NSWindowDelegate>)cw.delegate;
+        CHECK(w.toolbar == nil);
+        [d windowWillEnterFullScreen:[NSNotification
+                                         notificationWithName:NSWindowWillEnterFullScreenNotification
+                                                       object:w]];
+        if ([d respondsToSelector:@selector(windowDidFailToEnterFullScreen:)])
+            [d windowDidFailToEnterFullScreen:w];
+        CHECK(w.toolbar == nil);
+        win.reset();
+        pumpRunLoop(0.05);
+    }
+}
+
+// The Window menu: one full-screen entry. AppKit puts its own (Globe+F) in
+// place of ours and hides ours, which keeps answering the classic ⌃⌘F.
+void caseWindowMenuHasOneFullScreenEntry() {
+    @autoreleasepool {
+        std::string          err;
+        std::unique_ptr<App> app = createCocoaApp(&err);
+        if (!app) {
+            skip("no window-server session: " + err);
+            return;
+        }
+        std::unique_ptr<Window> win = app->createWindow(
+            {.title = "plat menu", .size = {320, 240}, .decorations = Decorations::Custom}
+        );
+        NSWindow *w = static_cast<cocoa::CocoaWindow &>(*win).window;
+        win->show();
+        pumpRunLoop(0.3);
+        NSMenu *menu = NSApp.windowsMenu;
+        CHECK(menu != nil);
+        if (!menu)
+            return;
+        [menu update];
+        int shown = 0;
+        for (NSMenuItem *i in menu.itemArray)
+            if (i.action == @selector(toggleFullScreen:) && !i.hidden)
+                ++shown;
+        CHECK(shown == 1);
+
+        auto press = [&](NSEventModifierFlags mods) {
+            NSEvent *e = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                          location:NSZeroPoint
+                                     modifierFlags:mods
+                                         timestamp:0
+                                      windowNumber:w.windowNumber
+                                           context:nil
+                                        characters:@"f"
+                       charactersIgnoringModifiers:@"f"
+                                         isARepeat:NO
+                                           keyCode:3];
+            const bool handled = [NSApp.mainMenu performKeyEquivalent:e];
+            // However the transition ends, end up windowed for the next one.
+            pumpRunLoop(1.5);
+            if (win->isFullscreen()) {
+                win->setFullscreen(false);
+                waitUntil([&] { return !win->isFullscreen(); }, 5);
+                pumpRunLoop(1.0);
+            }
+            return handled;
+        };
+        CHECK(press(NSEventModifierFlagControl | NSEventModifierFlagCommand));
+        CHECK(press(NSEventModifierFlagFunction));
+        win.reset();
+        pumpRunLoop(0.05);
+    }
+}
+
 } // namespace
 
 int main() {
     runCase("a TIFF-only picture is offered and read as PNG", caseTiffOnlyPictureReadsAsPng);
     runCase("partial presents keep every frame", casePartialPresentsKeepEveryFrame);
     runCase("drop target: types while hovering, data once on drop", caseDropTargetEvents);
+    runCase("full screen parks the title-bar toolbar and always puts it back",
+            caseFullScreenParksTheToolbar);
+    runCase("full screen leaves a system title bar alone", caseFullScreenLeavesSystemDecorationsAlone);
+    runCase("the Window menu has one full-screen entry and both shortcuts",
+            caseWindowMenuHasOneFullScreenEntry);
     return summary();
 }
