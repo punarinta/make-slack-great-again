@@ -502,6 +502,10 @@ private:
     NavLocation                 _pendingNav;
     void                        applyPendingNav();
     NavLocation                 here(model::ConvRef conv) const;
+    // The open conversation or page as the history's current location: a
+    // jump being applied keeps the forward stack, a direct open clears it.
+    void                        noteNav(const NavLocation &loc);
+    bool                        pageAvailable(Page p) const; // the backend has it
     SwipeNav                    _swipe;
     SwipeIndicator             *_swipeBadge = nullptr;
     model::Store::ObserverId    _observer   = 0;

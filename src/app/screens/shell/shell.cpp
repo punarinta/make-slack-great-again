@@ -1886,14 +1886,7 @@ void Shell::open(ConvRef conv) {
     if (conv != _current && threadOpen())
         closeThread(); // a leave path: the thread composer stashes its draft
     _current = conv;
-    // Back/forward history: a jump being applied keeps the forward stack
-    // (editor undo/redo), every direct open discards it.
-    if (_navApplying) {
-        _nav.setCurrent(here(conv));
-    } else {
-        _nav.recordOpen(here(conv));
-        _pendingNav = {}; // a direct open wins over a jump still waiting
-    }
+    noteNav(here(conv));
     _welcome->setVisible(false);
     _header->setVisible(true);
     _tabs->setVisible(true);
@@ -1980,12 +1973,25 @@ NavLocation Shell::here(ConvRef conv) const {
     };
 }
 
+// Back/forward history: a jump being applied keeps the forward stack
+// (editor undo/redo), every direct open discards it.
+void Shell::noteNav(const NavLocation &loc) {
+    if (_navApplying) {
+        _nav.setCurrent(loc);
+    } else {
+        _nav.recordOpen(loc);
+        _pendingNav = {}; // a direct open wins over a jump still waiting
+    }
+}
+
 bool Shell::navigateHistory(bool back) {
-    // The open workspace's entries must still be listed (left since?); another
-    // workspace must still be running, its entry is checked when its
-    // conversations are there.
+    // The open workspace's entries must still be listed (left since?), its
+    // pages still offered; another workspace must still be running, its
+    // entry is checked when its conversations are there.
     const auto valid = [this](const NavLocation &l) {
         if (l.key == _activeKey && _signedIn) {
+            if (l.page)
+                return pageAvailable(Page(l.page));
             const ConvRef c = _ctx.store().findConversation(l.conv);
             return c != kNoConv && _sidebar->rowState(c).exists;
         }
@@ -2011,6 +2017,15 @@ bool Shell::navigateHistory(bool back) {
 void Shell::applyPendingNav() {
     if (!_pendingNav.valid() || _pendingNav.key != _activeKey || !_signedIn)
         return;
+    if (_pendingNav.page) { // a page needs no conversations
+        const Page p     = Page(_pendingNav.page);
+        _pendingNav      = {};
+        const bool outer = _navApplying;
+        _navApplying     = true;
+        showPage(p);
+        _navApplying = outer;
+        return;
+    }
     const model::Store &st = _ctx.store();
     const ConvRef       c  = st.findConversation(_pendingNav.conv);
     if (c == kNoConv || !(_sidebar->rowState(c).exists || st.conversation(c).member)) {
@@ -2242,16 +2257,28 @@ bool Shell::pageOpen(Page p) const {
     return v && v->visible();
 }
 
+bool Shell::pageAvailable(Page p) const {
+    const auto caps = _ctx.backend.capabilities();
+    switch (p) {
+    case Page::Activity:
+        return caps.activityView;
+    case Page::Threads:
+        return caps.threadsView;
+    case Page::Saved:
+        return caps.messageReminders;
+    case Page::Scheduled:
+        return caps.scheduledSend;
+    case Page::None:
+        break;
+    }
+    return false;
+}
+
 // Leaving the conversation for the overview: the conversation's chrome and
 // the composer go, the open chat's draft is stashed.
 void Shell::showPage(Page p) {
     OverviewPage *page = pageView(p);
-    const auto    caps = _ctx.backend.capabilities();
-    const bool    has  = p == Page::Activity  ? caps.activityView
-                         : p == Page::Threads ? caps.threadsView
-                         : p == Page::Saved   ? caps.messageReminders
-                                              : caps.scheduledSend;
-    if (!page || !_signedIn || !has)
+    if (!page || !_signedIn || !pageAvailable(p))
         return;
     leaveTeammate();
     for (Page o : {Page::Activity, Page::Threads, Page::Saved, Page::Scheduled})
@@ -2261,6 +2288,7 @@ void Shell::showPage(Page p) {
     _sidebar->selectNav(p);
     page->setVisible(true);
     page->open();
+    noteNav({_activeKey, {}, uint8_t(p)}); // back/forward lands here too
 }
 
 void Shell::leaveConversationChrome(bool keepComposer) {

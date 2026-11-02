@@ -2554,6 +2554,37 @@ TEST("activity page: an item opens its message or its thread and is read") {
     CHECK(root != 0);
 }
 
+TEST("history: back and forward step through the Activity page (issue #127)") {
+    Harness       h;
+    const ConvRef eng    = h.conv("C0ENG");
+    const ConvRef design = h.conv("C0DESIGN");
+    h.sh->open(eng);
+    h.sh->showPage(shell::Shell::Page::Activity);
+    shell::ActivityPage &page = *h.sh->activityPage();
+    waitForActivity(page);
+    h.sh->open(design); // an item's click opens its conversation the same way
+    // Back: the Activity page, not the chat before it.
+    REQUIRE(h.sh->navigateHistory(true));
+    CHECK(h.sh->pageOpen(shell::Shell::Page::Activity));
+    CHECK(h.sh->sidebar().selectedNav() == shell::Sidebar::Nav::Activity);
+    CHECK(h.sh->current() == kNoConv);
+    REQUIRE(h.sh->navigateHistory(true));
+    CHECK(!h.sh->pageOpen(shell::Shell::Page::Activity));
+    CHECK(h.sh->current() == eng);
+    // Forward: the page again, then the chat opened from it.
+    REQUIRE(h.sh->navigateHistory(false));
+    CHECK(h.sh->pageOpen(shell::Shell::Page::Activity));
+    REQUIRE(h.sh->navigateHistory(false));
+    CHECK(h.sh->current() == design);
+    CHECK_FALSE(h.sh->navigateHistory(false));
+    // Opening the page directly drops what was in front.
+    REQUIRE(h.sh->navigateHistory(true));
+    h.sh->showPage(shell::Shell::Page::Threads);
+    CHECK_FALSE(h.sh->navigateHistory(false));
+    REQUIRE(h.sh->navigateHistory(true));
+    CHECK(h.sh->pageOpen(shell::Shell::Page::Activity));
+}
+
 TEST("activity page: mark as read / unread, and the unread filter") {
     Harness h;
     h.sh->showPage(shell::Shell::Page::Activity);

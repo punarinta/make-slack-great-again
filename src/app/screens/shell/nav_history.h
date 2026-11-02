@@ -1,11 +1,13 @@
 // Back/forward conversation history, with text
 // editor undo/redo semantics: going back keeps the forward stack, opening a
-// conversation by a direct action (sidebar, switcher, notification, menu)
-// clears everything in front of the current one. Conversations only:
-// threads are not entries. A location is a conversation in a
-// (possibly background) workspace, so the history crosses workspaces.
+// conversation or an overview page by a direct action (sidebar, switcher,
+// notification, menu) clears everything in front of the current one.
+// Conversations and overview pages (Activity, Threads...): threads are not
+// entries. A location is in a (possibly background) workspace, so the
+// history crosses workspaces.
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -13,10 +15,12 @@
 namespace shell {
 
 // A location: the workspace's key and the conversation's id (ids,
-// not ConvRefs: a workspace's Store is rebuilt when it restarts).
+// not ConvRefs: a workspace's Store is rebuilt when it restarts), or an
+// overview page there (a Sidebar::Nav, conv empty).
 struct NavLocation {
     std::string key, conv;
-    bool        valid() const { return !conv.empty(); }
+    uint8_t     page = 0;
+    bool        valid() const { return !conv.empty() || page != 0; }
     bool        operator==(const NavLocation &) const = default;
 };
 
