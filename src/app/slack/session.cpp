@@ -50,8 +50,8 @@ std::string iconOf(const json::Value &icon) {
     return std::string(u);
 }
 
+// Links orgs to workspaces if they are in the same 'grid' and discard the org
 void linkOrgTokens(std::vector<Credentials> &creds) {
-    // Links orgs to workspaces if they are in the same 'grid' and discard the org
     const auto isOrg = [](const Credentials &c) {
         return !c.enterpriseId.empty() && !c.token.empty() &&
                (c.teamId == c.enterpriseId || str::startsWith(c.teamId, "E"));
@@ -63,7 +63,7 @@ void linkOrgTokens(std::vector<Credentials> &creds) {
         if (!isOrg(org))
             continue;
         bool linked = false;
-        for (auto &ws : creds)
+        for (auto &ws : creds) {
             if (&ws != &org && !isOrg(ws) && ws.enterpriseId == org.enterpriseId) {
                 if (ws.orgToken.empty()) {
                     ws.orgToken = org.token;
@@ -75,8 +75,11 @@ void linkOrgTokens(std::vector<Credentials> &creds) {
 
                 linked = true;
             }
-        if (linked)
+        }
+            
+        if (linked) {
             org.enterpriseId = kMark; // used: drop below
+        }
     }
 
     auto const marked = std::ranges::remove(creds, kMark, &Credentials::enterpriseId);

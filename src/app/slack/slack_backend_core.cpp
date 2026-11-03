@@ -16,7 +16,6 @@ SlackBackend::SlackBackend(
 )
     : Backend(store), _app(app), _client(client), _creds(std::move(creds)),
       _auth{_creds.token, _creds.cookie}, _alive(std::make_shared<bool>(true)) {
-    // Grid: the org token for the org's methods (web_api.h, isOrgMethod).
     _auth.orgToken  = _creds.orgToken;
     _auth.orgBase   = hostApiBase(_creds.orgUrl);
     _auth.orgTeamId = _creds.teamId;
