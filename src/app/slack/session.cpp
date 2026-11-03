@@ -8,6 +8,8 @@
 #include "base/str.h"
 
 #include <memory>
+#include <ranges>
+#include <algorithm>
 
 namespace slack {
 
@@ -17,13 +19,6 @@ constexpr int kTimeoutMs = 20000;
 
 bool tokenChar(char c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
-}
-
-std::string tokenAt(std::string_view s, size_t at) {
-    size_t end = at + 5; // past "xoxc-"
-    while (end < s.size() && tokenChar(s[end]))
-        ++end;
-    return end > at + 5 ? std::string(s.substr(at, end - at)) : std::string();
 }
 
 // Slack's own hosts, never a user's workspace.
@@ -55,24 +50,79 @@ std::string iconOf(const json::Value &icon) {
     return std::string(u);
 }
 
+void linkOrgTokens(std::vector<Credentials> &creds) {
+    // Enterprise Grid: an org-level credential (team id E…, or the same as its
+    // enterprise_id) hands its token and URL to every workspace of that
+    // enterprise as orgToken / orgUrl, and is dropped from the list once it has
+    // served one (it is not a workspace to open). One no workspace matched stays.
+    const auto isOrg = [](const Credentials &c) {
+        return !c.enterpriseId.empty() && !c.token.empty() &&
+               (c.teamId == c.enterpriseId || str::startsWith(c.teamId, "E"));
+    };
+    constexpr std::string_view kMark = "___";
+    // Creds is assumed to be a small collection
+    // so quadratic complexity is fine
+    for (auto &org : creds) {
+        if (!isOrg(org))
+            continue;
+        bool linked = false;
+        for (auto &ws : creds)
+            if (&ws != &org && !isOrg(ws) && ws.enterpriseId == org.enterpriseId) {
+                if (ws.orgToken.empty()) {
+                    ws.orgToken = org.token;
+                }
+
+                if (ws.orgUrl.empty()) {
+                    ws.orgUrl = org.workspaceUrl;
+                }
+
+                linked = true;
+            }
+        if (linked)
+            org.enterpriseId = kMark; // used: drop below
+    }
+
+    auto const marked = std::ranges::remove(creds, kMark, &Credentials::enterpriseId);
+    creds.erase(marked.begin(), marked.end());
+}
+
 } // namespace
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
-std::string scrapeToken(std::string_view html) {
-    static constexpr std::string_view kKeyed = "\"api_token\":\"xoxc-";
-    if (const size_t k = html.find(kKeyed); k != std::string_view::npos) {
-        std::string t = tokenAt(html, k + kKeyed.size() - 5);
-        if (!t.empty())
-            return t;
-    }
+BootTokens scrapeBootTokens(std::string_view html) {
+    static constexpr std::string_view kApi = "\"api_token\":\"";
+    static constexpr std::string_view kEnt = "\"enterprise_api_token\":\"";
+    constexpr auto tokenViewAt             = [](std::string_view s, size_t at) -> std::string_view {
+        size_t end = at + 5; // past "xoxc-"
+        while (end < s.size() && tokenChar(s[end]))
+            ++end;
+        return end > at + 5 ? s.substr(at, end - at) : std::string_view{};
+    };
+
+    BootTokens       out;
+    std::string_view firstAny;
     for (size_t at = html.find("xoxc-"); at != std::string_view::npos;
          at        = html.find("xoxc-", at + 5)) {
-        std::string t = tokenAt(html, at);
-        if (!t.empty())
-            return t;
+        const std::string_view t = tokenViewAt(html, at);
+        if (t.empty())
+            continue;
+        const std::string_view before = html.substr(0, at);
+        if (str::endsWith(before, kEnt)) {
+            if (out.enterpriseToken.empty())
+                out.enterpriseToken = t;
+        } else if (str::endsWith(before, kApi)) {
+            if (out.token.empty())
+                out.token = t;
+        } else if (firstAny.empty()) {
+            firstAny = t;
+        }
+        if (!out.token.empty() && !out.enterpriseToken.empty())
+            break;
     }
-    return {};
+    if (out.token.empty())
+        out.token = firstAny;
+    return out;
 }
 
 std::string normalizeWorkspaceUrl(std::string_view v) {
@@ -184,7 +234,8 @@ void TokenDeriver::run(std::string cookie, std::vector<TeamSession> candidates, 
 void TokenDeriver::next() {
     if (_index >= _queue.size()) {
         _pending = 0;
-        Done d   = std::move(_done);
+        linkOrgTokens(_valid);
+        Done d = std::move(_done);
         if (d)
             d(std::move(_valid), _valid.empty() ? _lastError : std::string());
         return;
@@ -221,12 +272,21 @@ void TokenDeriver::derive(const TeamSession &cand) {
             fail("network");
             return;
         }
-        std::string token = scrapeToken(r.body);
+        auto [token, enterpriseToken] = scrapeBootTokens(r.body);
         if (token.empty()) {
             fail("token_not_found");
             return;
         }
         validate(cand, std::move(token));
+        if (!enterpriseToken.empty() &&
+            std::ranges::find(_queue, enterpriseToken, &TeamSession::token) == _queue.end()) {
+            _queue.emplace_back(
+                TeamSession{
+                    .token        = std::move(enterpriseToken),
+                    .workspaceUrl = cand.workspaceUrl,
+                }
+            );
+        }
     });
 }
 
@@ -251,6 +311,7 @@ void TokenDeriver::validate(const TeamSession &cand, std::string token) {
             c.iconUrl      = cand.iconUrl;
             // auth.test's url is authoritative; the input is the fallback.
             c.workspaceUrl = std::string(o["url"].str(cand.workspaceUrl));
+            c.enterpriseId = std::string(o["enterprise_id"].str());
             if (c.teamId.empty()) {
                 fail("auth_failed");
                 return;

@@ -667,10 +667,10 @@ bool SlackBackend::Read::threadsRefused(const std::string &err, bool sentTeam, b
 // slack.com a Grid token lands in the org and is refused workspace methods
 // (issue #49). OAuth tokens are workspace-scoped: slack.com is fine.
 void SlackBackend::Read::applyApiBase(std::string_view workspaceUrl) {
-    net::Url u;
-    if (!session || !u.parse(str::trim(workspaceUrl)) || u.scheme != "https" || u.host.empty())
+    if (!session)
         return;
-    b._auth.base = str::concat({"https://", u.host, "/api/"});
+    if (std::string base = hostApiBase(workspaceUrl); !base.empty())
+        b._auth.base = std::move(base);
 }
 
 // ── Connect ─────────────────────────────────────────────────────────────────

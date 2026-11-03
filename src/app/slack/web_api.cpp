@@ -8,6 +8,19 @@
 #include <cstdlib>
 
 namespace slack {
+namespace {
+bool isOrgMethod(std::string_view method) {
+    // TODO cache this and update as we encounter 'team_is_restricted' error?
+    static constexpr std::string_view kOrg[] = {
+        "client.counts",
+        "subscriptions.thread.getView",
+        "subscriptions.thread.getTimestamps",
+        "commands.list",
+        "drafts.list",
+    };
+    return std::ranges::find(kOrg, method) != std::ranges::end(kOrg);
+}
+}
 
 std::string apiBase(const Auth &auth) {
     // Read per call (a getenv is cheap next to a request): test suites with
@@ -16,6 +29,13 @@ std::string apiBase(const Auth &auth) {
     if (override && *override)
         return override;
     return auth.base.empty() ? std::string(kApiBase) : auth.base;
+}
+
+std::string hostApiBase(std::string_view url) {
+    net::Url u;
+    if (!u.parse(str::trim(url)) || u.scheme != "https" || u.host.empty())
+        return {};
+    return str::concat({"https://", u.host, "/api/"});
 }
 
 void addAuthHeaders(std::vector<net::Header> &headers, const Auth &auth) {
@@ -89,12 +109,31 @@ public:
 net::RequestId apiCall(
     net::Client &client, const Auth &auth, std::string_view method, std::string form, ApiDone done
 ) {
+    // Grid: the org's methods go with the org token, on the org's host.
+    Auth        org;
+    const bool  toOrg = !auth.orgToken.empty() && isOrgMethod(method);
+    if (toOrg) {
+        org.token  = auth.orgToken;
+        org.cookie = auth.cookie;
+        org.base   = auth.orgBase.empty() ? auth.base : auth.orgBase;
+
+        // This could be removed, I don't think the web client actually sends it.
+        // But it contradicts a comment in slack_backend.cpp, which states that
+        // enterprise api needs the team_id, so for now leave it in, slack doesn't
+        // seem to care
+        if (!auth.orgTeamId.empty() && form.find("team_id=") == std::string::npos)
+            form.append(form.empty() ? "" : "&")
+                .append("team_id=")
+                .append(net::percentEncode(auth.orgTeamId));
+    }
+    const Auth &use = toOrg ? org : auth;
+
     net::Request req;
     req.method = "POST";
-    req.url    = apiBase(auth).append(method);
+    req.url    = apiBase(use).append(method);
     req.body   = std::move(form);
     req.headers.push_back({"Content-Type", "application/x-www-form-urlencoded; charset=utf-8"});
-    addAuthHeaders(req.headers, auth);
+    addAuthHeaders(req.headers, use);
     auto answer = std::make_shared<ApiAnswer>();
     req.handler = answer;
     return client.send(std::move(req), [answer, done = std::move(done)](net::Response) {
@@ -160,6 +199,7 @@ bool isMethodUnavailable(const std::string &e) {
         "invalid_arguments",
         "org_login_required",
         "enterprise_is_restricted",
+        "team_is_restricted",
         "user_is_restricted",
         "ekm_access_denied",
     };

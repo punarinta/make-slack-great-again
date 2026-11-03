@@ -59,8 +59,14 @@ private:
 
 // ── Pure helpers (tests) ────────────────────────────────────────────────────
 
+
+struct BootTokens {
+    std::string token;            // views into the scraped html:
+    std::string enterpriseToken;  // valid only while it is alive
+};
+
 // The xoxc- token in a boot page ("api_token":"xoxc-…", else any xoxc- run).
-std::string              scrapeToken(std::string_view html);
+BootTokens               scrapeBootTokens(std::string_view html);
 // "myteam", "myteam.slack.com" or a URL → "https://myteam.slack.com".
 std::string              normalizeWorkspaceUrl(std::string_view v);
 // A pasted cookie value: trimmed, a leading "d=" dropped.

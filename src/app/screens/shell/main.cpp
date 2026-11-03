@@ -211,6 +211,7 @@ int main(int argc, char **argv) {
     [[maybe_unused]] int         debugScroll = 0;
     [[maybe_unused]] int         soakRounds  = 0;
     [[maybe_unused]] bool        browseAll   = false;
+    std::string                  logPath;
     for (int i = 1; i < argc; ++i) {
         const std::string a    = argv[i];
         auto              next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
@@ -228,6 +229,12 @@ int main(int argc, char **argv) {
             openId = next();
         else if (a == "--thread")
             threadText = next();
+        else if (a == "--log")
+            logPath = next();
+        else if (str::startsWith(a, "--log="))
+            logPath = a.substr(6);
+        else if (a == "--verbose")
+            base::setLogLevel(base::LogLevel::Debug);
         else if (a == "--exit-after")
             exitAfter = std::atoi(next().c_str());
         else if (a == "--browse-all")
@@ -238,6 +245,10 @@ int main(int argc, char **argv) {
             urls.push_back(a);
         // Anything else is ignored.
     }
+
+    if (!logPath.empty() && !base::setLogFile(logPath.c_str()))
+        std::fprintf(stderr, "msga: cannot open log file %s\n", logPath.c_str());
+
 
     std::string err;
 #ifdef MSGA_DEMO
