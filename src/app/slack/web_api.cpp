@@ -18,6 +18,7 @@ bool isOrgMethod(std::string_view method) {
         "subscriptions.thread.getTimestamps",
         "commands.list",
         "drafts.list",
+        "messages.list",
     };
     return std::ranges::find(kOrg, method) != std::ranges::end(kOrg);
 }
