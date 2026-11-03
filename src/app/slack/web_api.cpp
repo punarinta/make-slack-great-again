@@ -12,6 +12,7 @@ namespace {
 bool isOrgMethod(std::string_view method) {
     // TODO cache this and update as we encounter 'team_is_restricted' error?
     static constexpr std::string_view kOrg[] = {
+        "activity.feed",
         "client.counts",
         "subscriptions.thread.getView",
         "subscriptions.thread.getTimestamps",
