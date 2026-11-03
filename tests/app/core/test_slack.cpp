@@ -178,10 +178,59 @@ TEST("slack: a file downloads with its own workspace's credentials") {
 }
 
 TEST("slack: token scraping from the boot page") {
-    CHECK(slack::scrapeToken(R"(x"api_token":"xoxc-123-456-abc"y)") == "xoxc-123-456-abc");
-    CHECK(slack::scrapeToken(R"(boot {"other":"xoxc-9-8"} )") == "xoxc-9-8");
-    CHECK(slack::scrapeToken(R"("api_token":null)").empty());
-    CHECK(slack::scrapeToken("xoxc-").empty());
+    using slack::scrapeBootTokens;
+    CHECK(scrapeBootTokens(R"(x"api_token":"xoxc-123-456-abc"y)").token == "xoxc-123-456-abc");
+    CHECK(scrapeBootTokens(R"(boot {"other":"xoxc-9-8"} )").token == "xoxc-9-8");
+    CHECK(scrapeBootTokens(R"("api_token":null)").token.empty());
+    CHECK(scrapeBootTokens("xoxc-").token.empty());
+    // Off Grid: no enterprise token, never a fallback one.
+    CHECK(scrapeBootTokens(R"(x"api_token":"xoxc-1-a"y)").enterpriseToken.empty());
+    CHECK(scrapeBootTokens(R"(boot {"other":"xoxc-9-8"} )").enterpriseToken.empty());
+}
+
+TEST("slack: token scraping — Enterprise Grid boot page") {
+    using slack::scrapeBootTokens;
+    // Both keyed, either order.
+    {
+        const auto t = scrapeBootTokens(
+            R"({"api_token":"xoxc-ws-1","enterprise_api_token":"xoxc-org-2"})"
+        );
+        CHECK(t.token == "xoxc-ws-1");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+    }
+    {
+        const auto t = scrapeBootTokens(
+            R"({"enterprise_api_token":"xoxc-org-2","api_token":"xoxc-ws-1"})"
+        );
+        CHECK(t.token == "xoxc-ws-1");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+    }
+    // The enterprise token is never taken for the workspace's: with no
+    // "api_token" the workspace token falls back to an unkeyed run only.
+    {
+        const auto t = scrapeBootTokens(
+            R"({"enterprise_api_token":"xoxc-org-2","x":"xoxc-other-3"})"
+        );
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+        CHECK(t.token == "xoxc-other-3");
+    }
+    {
+        const auto t = scrapeBootTokens(R"({"enterprise_api_token":"xoxc-org-2"})");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+        CHECK(t.token.empty());
+    }
+    // A keyed token wins over an earlier unkeyed one; the first of each key wins.
+    {
+        const auto t = scrapeBootTokens(
+            R"({"x":"xoxc-other-3","api_token":"xoxc-ws-1","api_token":"xoxc-ws-9",)"
+            R"("enterprise_api_token":"xoxc-org-2","enterprise_api_token":"xoxc-org-8"})"
+        );
+        CHECK(t.token == "xoxc-ws-1");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+    }
+    // An empty enterprise token ("xoxc-" with nothing after) is no token.
+    CHECK(scrapeBootTokens(R"({"api_token":"xoxc-ws-1","enterprise_api_token":"xoxc-"})")
+              .enterpriseToken.empty());
 }
 
 TEST("slack: workspace address and cookie normalisation") {

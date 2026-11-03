@@ -61,8 +61,8 @@ private:
 
 
 struct BootTokens {
-    std::string token;            // views into the scraped html:
-    std::string enterpriseToken;  // valid only while it is alive
+    std::string token;
+    std::string enterpriseToken;
 };
 
 // The xoxc- token in a boot page ("api_token":"xoxc-…", else any xoxc- run).
