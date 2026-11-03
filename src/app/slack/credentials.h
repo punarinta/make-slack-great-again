@@ -27,11 +27,11 @@ struct Credentials {
     // re-derived from a fresh cookie (the account cookie rotates on every
     // re-login and stales every session workspace at once).
     std::string workspaceUrl;
-    // Session auth on Enterprise Grid: auth.test's enterprise_id, and the
-    // org-level (E…) xoxc token with its URL ("https://org.enterprise.slack.com/")
-    // for the methods only the org token is served. Empty off Grid, or when the session had no org
-    // entry.
-    std::string enterpriseId, orgToken, orgUrl;
+
+    // Credentials for org-scope methods
+    std::string enterpriseId; // Enterprise id may differ from teamId if part of enterprise grid
+    std::string orgToken; // Only populated if the workspace is an actual workspace in an enterprise grid
+    std::string orgUrl; // Only populated if the workspace is an actual workspace in an enterprise grid
 
     bool sessionAuth() const { return !cookie.empty(); }
 };

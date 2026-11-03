@@ -51,10 +51,7 @@ std::string iconOf(const json::Value &icon) {
 }
 
 void linkOrgTokens(std::vector<Credentials> &creds) {
-    // Enterprise Grid: an org-level credential (team id E…, or the same as its
-    // enterprise_id) hands its token and URL to every workspace of that
-    // enterprise as orgToken / orgUrl, and is dropped from the list once it has
-    // served one (it is not a workspace to open). One no workspace matched stays.
+    // Links orgs to workspaces if they are in the same 'grid' and discard the org
     const auto isOrg = [](const Credentials &c) {
         return !c.enterpriseId.empty() && !c.token.empty() &&
                (c.teamId == c.enterpriseId || str::startsWith(c.teamId, "E"));
