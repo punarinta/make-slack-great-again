@@ -309,10 +309,17 @@ TEST("settings: one-click reactions are the most used, or the three picked, topp
     CHECK((s.oneClickReactions() == V{"tada", "eyes", "white_check_mark"}));
     s.emojiRecent = {"tada", "fire", "+1", "heart"};
     CHECK((s.oneClickReactions() == V{"tada", "fire", "+1"}));
-    // Custom: the picked ones; one missing is filled in.
+    // Only what the workspace has: another workspace's emoji is skipped.
+    s.emojiRecent = {"partyparrot", "tada", "shipit", "fire", "+1"};
+    auto standard = [](std::string_view n) { return n != "partyparrot" && n != "shipit"; };
+    CHECK((s.oneClickReactions(standard) == V{"tada", "fire", "+1"}));
+    CHECK((s.oneClickReactions() == V{"partyparrot", "tada", "shipit"}));
+    // Custom: the picked ones; one missing (or not here) is filled in.
     s.quickReactions     = 2;
     s.quickReactionNames = {"rocket", "", "rocket"};
     CHECK((s.oneClickReactions() == V{"rocket", "white_check_mark", "eyes"}));
+    s.quickReactionNames = {"shipit", "rocket", "fire"};
+    CHECK((s.oneClickReactions(standard) == V{"rocket", "fire", "white_check_mark"}));
     // An unknown mode counts as off.
     s.quickReactions = 7;
     CHECK(s.oneClickReactions().empty());

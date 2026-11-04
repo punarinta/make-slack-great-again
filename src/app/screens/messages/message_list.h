@@ -319,7 +319,8 @@ private:
     ListState                 *_state   = nullptr;
     float                      _typingH = 22; // 0: no typing row (setTypingRow)
     ui::View                  *_toolbar = nullptr, *_tbQuick = nullptr;
-    std::vector<std::string>   _quickNames; // what _tbQuick's buttons are for
+    std::vector<std::string>   _quickNames;  // what _tbQuick's buttons are for
+    std::vector<std::string>   _quickImages; // and their pictures (Store::EmojiGlyph::image)
     ui::Clickable             *_tbEmoji = nullptr, *_tbForward = nullptr, *_tbMore = nullptr;
     class ActionButton        *_tbSave = nullptr, *_tbAgent = nullptr;
     ui::View                  *_fileBar = nullptr, *_fileView = nullptr; // the hovered file

@@ -43,7 +43,7 @@ public:
     static void      restoreState(std::vector<std::string> recent, int tone);
     static void      setStateObserver(StateObserver fn);
     // An emoji by shortcode in `parent`, `size` px: a workspace emoji's
-    // picture, else its character (":name:" when unknown).
+    // picture, else its character (":name:" cut to `size` when unknown).
     static ui::View *addGlyph(ui::View *parent, Context &ctx, const std::string &name, float size);
     // Off: a pick is not added to "Frequently used" (a setting's choice
     // rather than a use).

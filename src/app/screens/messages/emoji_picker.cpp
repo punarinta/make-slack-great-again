@@ -389,7 +389,13 @@ View *EmojiPicker::addGlyph(View *parent, Context &ctx, const std::string &name,
         img->style().size(size, size);
         return img;
     }
-    return parent->add<Label>(g.unicode.empty() ? ":" + name + ":" : g.unicode, Font::Body);
+    if (!g.unicode.empty())
+        return parent->add<Label>(g.unicode, Font::Body);
+    // Unknown here (another workspace's emoji): the name, cut to the cell.
+    auto *l = parent->add<Label>(":" + name + ":", Font::Small, C::FormTextMuted);
+    l->setMaxLines(1);
+    l->style().maxW = size;
+    return l;
 }
 
 EmojiPicker *EmojiPicker::show(Window &w, RectF anchor, Context &ctx, Pick onPick) {

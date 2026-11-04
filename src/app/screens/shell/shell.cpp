@@ -837,7 +837,7 @@ Shell::Shell(
     ctx.openConversation = [this](ConvRef c) { open(c); };
     ctx.openThread       = [this](ConvRef c, Ts root) { openThread(c, root); };
     ctx.closeThread      = [this] { closeThread(); };
-    ctx.quickReactions   = [this] { return _settings.oneClickReactions(); };
+    ctx.quickReactions   = [this] { return quickReactions(); };
     ctx.openProfile      = [this](model::UserRef u) { showProfile(u); };
     ctx.openUrl          = [this](const std::string &url) { _ctx.app.platform().openUrl(url); };
     // A channel we never joined is joined first.
@@ -3149,6 +3149,12 @@ Shell::Running *Shell::findRunning(const std::string &key) {
         if (r->key == key)
             return r.get();
     return nullptr;
+}
+
+std::vector<std::string> Shell::quickReactions() {
+    return _settings.oneClickReactions([this](std::string_view n) {
+        return _ctx.store().emojiFor(n).resolved();
+    });
 }
 
 bool Shell::showWorkspaceOf(const model::Store *st) {

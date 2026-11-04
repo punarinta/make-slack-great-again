@@ -457,6 +457,10 @@ private:
     // The workspace whose Store is `st` comes on screen (switched to when
     // it isn't); true once its Store is the open one.
     bool showWorkspaceOf(const model::Store *st);
+    // Context::quickReactions: only emoji the open workspace has (another
+    // workspace's custom one would fail).
+    std::vector<std::string> quickReactions();
+
     claude::Links *_links = nullptr;
 
     screens::Context &_ctx;

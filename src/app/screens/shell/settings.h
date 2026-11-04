@@ -14,7 +14,9 @@
 #include "ui/ui.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -67,9 +69,6 @@ struct Settings {
     // emoji picker's Frequently used), 2 quickReactionNames.
     int                      quickReactions = 0;
     std::vector<std::string> quickReactionNames;
-    // The three the toolbar shows (none when off), topped up with
-    // :white_check_mark: :eyes: :raised_hands:.
-    std::vector<std::string> oneClickReactions() const;
     bool                     customTrayIcon = false;
     // Claude Code workspaces: the footer's zen toggle (hide the tool-call
     // cards), per workspace: the keys of the
@@ -142,6 +141,12 @@ struct Settings {
     // (MSGA_GIPHY_KEY in credentials.cmake; "" when the build has none).
     std::string        effectiveGiphyKey() const;
     static std::string buildGiphyKey();
+
+    // The three one-click reactions the toolbar shows (none when off), topped
+    // up with :white_check_mark: :eyes: :raised_hands:. With `usable`, only
+    // the names it accepts (the open workspace's emoji) are taken.
+    using EmojiFilter = std::function<bool(std::string_view)>;
+    std::vector<std::string> oneClickReactions(const EmojiFilter &usable = {}) const;
 
     // Missing or broken files leave the defaults.
     static Settings    load(const std::string &path);

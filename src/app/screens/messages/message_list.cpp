@@ -1357,18 +1357,24 @@ void MessageList::placeToolbar() {
     _toolbar->setVisible(o.y < height() - _typingH);
 }
 
-// Rebuilt only when the names change (a pick moves Frequently used, or
-// Settings); a click adds the reaction, or takes back one of mine.
+// Rebuilt only when what they show changes: the names (a pick moves Frequently
+// used, or Settings) or a workspace emoji's picture; a click adds the
+// reaction, or takes back one of mine.
 void MessageList::syncQuickReactions(bool shown) {
     std::vector<std::string> names;
     if (shown && _ctx.quickReactions)
         names = _ctx.quickReactions();
+    std::vector<std::string> images; // a workspace emoji's picture, by name
+    images.reserve(names.size());
+    for (const std::string &n : names)
+        images.push_back(_ctx.store().emojiFor(n).image);
     _tbQuick->setVisible(!names.empty());
-    if (names == _quickNames)
+    if (names == _quickNames && images == _quickImages)
         return;
-    _quickNames = names;
+    _quickNames  = std::move(names);
+    _quickImages = std::move(images);
     _tbQuick->clearChildren();
-    for (const std::string &n : names) {
+    for (const std::string &n : _quickNames) {
         auto *b    = _tbQuick->add<QuickReaction>(_ctx, n);
         b->onClick = [this, n] {
             const model::Message *m = _toolbarRow ? message(_toolbarRow->ts()) : nullptr;

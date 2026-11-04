@@ -168,17 +168,22 @@ bool Settings::zenMode(std::string_view workspaceKey) const {
            zenWorkspaces.end();
 }
 
-std::vector<std::string> Settings::oneClickReactions() const {
+std::vector<std::string> Settings::oneClickReactions(const EmojiFilter &usable) const {
     static const char *const kDefaults[] = {"white_check_mark", "eyes", "raised_hands"};
     std::vector<std::string> out;
     if (quickReactions != 1 && quickReactions != 2)
         return out;
-    auto add = [&out](const std::string &n) {
-        if (out.size() < 3 && !n.empty() && std::find(out.begin(), out.end(), n) == out.end())
-            out.push_back(n);
+    out.reserve(3);
+    auto add = [&](std::string_view n) {
+        if (out.size() < 3 && !n.empty() && std::find(out.begin(), out.end(), n) == out.end() &&
+            (!usable || usable(n)))
+            out.emplace_back(n);
     };
-    for (const std::string &n : quickReactions == 2 ? quickReactionNames : emojiRecent)
+    for (const std::string &n : quickReactions == 2 ? quickReactionNames : emojiRecent) {
+        if (out.size() == 3)
+            return out;
         add(n);
+    }
     for (const char *n : kDefaults)
         add(n);
     return out;
