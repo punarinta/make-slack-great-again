@@ -985,13 +985,15 @@ TEST("actions: the toolbar's one-click reactions add mine, and a second click ta
     e.ctx.quickReactions = [] { return std::vector<std::string>{"tada", "eyes", "+1"}; };
     e.list->showConversation(design);
     pump(10);
-    const Ts  ts  = e.store.conversation(design).messages.back().ts;
-    ui::View *row = e.row(ts);
+    ui::View *row = e.row(e.store.conversation(design).messages.back().ts);
     REQUIRE(row != nullptr);
     auto           *h  = app().platform().testHooks();
     const ui::RectF rr = row->windowRect();
     h->injectPointerMove(e.win->native(), {rr.x + 300, rr.y + 20});
     pump(4);
+    // The message the toolbar is on (the hover, whichever row it found).
+    REQUIRE(e.list->toolbarRow() != nullptr);
+    const Ts  ts  = e.list->toolbarRow()->ts();
     ui::View *bar = e.list->quickReactionBar();
     REQUIRE(bar->visible());
     REQUIRE(bar->childCount() == 3);
@@ -1005,12 +1007,19 @@ TEST("actions: the toolbar's one-click reactions add mine, and a second click ta
                 return e.store.reactedByMe(r);
         return false;
     };
+    // A real click: the pointer on the button, pressed and released.
+    auto press = [&](size_t i) {
+        const ui::RectF br = bar->child(i)->windowRect();
+        h->injectPointerMove(e.win->native(), {br.x + br.w / 2, br.y + br.h / 2});
+        pump(2);
+        h->injectButton(e.win->native(), plat::Button::Left, true);
+        h->injectButton(e.win->native(), plat::Button::Left, false);
+        pump(6);
+    };
     REQUIRE(!mine());
-    static_cast<ui::Clickable *>(bar->child(0))->activate();
-    pump(6);
+    press(0);
     CHECK(mine());
-    static_cast<ui::Clickable *>(bar->child(0))->activate();
-    pump(6);
+    press(0);
     CHECK_FALSE(mine());
     // Off (or no shell to ask): none.
     e.ctx.quickReactions = [] { return std::vector<std::string>{}; };
