@@ -202,6 +202,25 @@ private:
     bool                          _dark, _lSel = false;
 };
 
+#ifdef MSGA_HAVE_MESSAGES
+// One of Custom's one-click reactions: its emoji in a bordered cell, the
+// border drawn over the fill so it shows in every state.
+class EmojiSlot final : public Clickable {
+public:
+    EmojiSlot() {
+        style().size(36, 36).stack().items(Align::Center).noShrink();
+        setLook({C::FormBg, C::FormSunken, C::FormSunken, C::None, 6});
+        setRole(Role::Button);
+        setTooltip(tr("Choose emoji"));
+    }
+    std::string accessibleName() const override { return tooltip(); }
+    void        paint(gfx::Painter &p) override {
+        Clickable::paint(p);
+        p.strokeRoundRect(bounds(), 6, 1, color(C::FieldBorder));
+    }
+};
+#endif
+
 } // namespace
 
 std::vector<std::string> strs(std::initializer_list<const char *> l) {
@@ -480,22 +499,30 @@ void SettingsDialog::buildAppearance() {
         auto *slots = row(_content, 8);
         slots->style().padding(24, 0, 0, 0); // under its radio
         for (size_t i = 0; i < d.quickReactionNames.size(); ++i) {
-            auto *slot = slots->add<Clickable>();
-            slot->style().size(36, 36).stack().items(Align::Center).noShrink();
-            slot->setLook({C::FormBg, C::FormSunken, C::FormSunken, C::None, 6});
-            slot->setBorder(C::FieldBorder);
-            slot->setRole(Role::Button);
-            slot->setTooltip(tr("Choose emoji"));
+            auto *slot = slots->add<EmojiSlot>();
             screens::EmojiPicker::addGlyph(slot, _ctx, d.quickReactionNames[i], 20);
+            _p->quickSlots.push_back(slot);
             slot->onClick = [this, slot, i] {
-                if (Window *w = window())
-                    screens::EmojiPicker::show(
-                        *w, slot->windowRect(), _ctx, [this, slot, i](const std::string &n) {
-                            _draft.quickReactionNames[i] = n;
-                            slot->clearChildren();
-                            screens::EmojiPicker::addGlyph(slot, _ctx, n, 20);
-                        }
-                    );
+                Window *w = window();
+                if (!w)
+                    return;
+                // The pick lands only while this page is up (not after
+                // another page, or the dialog, replaced it).
+                auto *picker = screens::EmojiPicker::show(
+                    *w,
+                    slot->windowRect(),
+                    _ctx,
+                    [this, i, alive = std::weak_ptr<char>(_p->alive)](const std::string &n) {
+                        if (alive.expired() || i >= _p->quickSlots.size() ||
+                            i >= _draft.quickReactionNames.size())
+                            return;
+                        _draft.quickReactionNames[i] = n;
+                        Clickable *slotView          = _p->quickSlots[i];
+                        slotView->clearChildren();
+                        screens::EmojiPicker::addGlyph(slotView, _ctx, n, 20);
+                    }
+                );
+                picker->setRemembersPicks(false); // a choice, not a use
             };
         }
         slots->setVisible(d.quickReactions == 2);

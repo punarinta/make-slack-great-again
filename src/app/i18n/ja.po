@@ -1479,6 +1479,10 @@ msgstr "ダーク %1"
 msgid "Light %1"
 msgstr "ライト %1"
 
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Choose emoji"
+msgstr "絵文字を選択"
+
 #: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/shell.cpp
 msgid "Settings"
 msgstr "設定"
@@ -1566,10 +1570,6 @@ msgstr "オフ"
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "My most frequently used emoji"
 msgstr "よく使う絵文字"
-
-#: src/app/screens/settings/settings_dialog.cpp
-msgid "Choose emoji"
-msgstr "絵文字を選択"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Shown on a message's toolbar: a click adds the reaction, another takes it back."

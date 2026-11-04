@@ -22,6 +22,7 @@
 #include "screens/shell/shortcuts.h"
 
 #ifdef MSGA_HAVE_MESSAGES
+#include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/image_cache.h"
 #endif
 
@@ -540,6 +541,48 @@ TEST("settings: the Markdown formatting choice reaches the composer on Save") {
     c.edit().insertText("*it* **bold**");
     CHECK_STR(mrkdwn::compose(c.mrkdwn()).mrkdwn, "_it_ *bold*");
     CHECK(shell::Settings::load(path).markdownFormatting); // saved
+}
+
+TEST("settings: a one-click reaction picked in Settings is no use, and lands only on its page") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness h(path);
+    h.settings.emojiRecent = {"fire"};
+    screens::EmojiPicker::restoreState(h.settings.emojiRecent, 0);
+    SettingsDialog &d    = h.open();
+    ui::View       *most = d.find("My most frequently used emoji");
+    REQUIRE(most != nullptr);
+    ui::View *modes = most->parent();
+    REQUIRE(modes->childCount() == 3);
+    d.scroll().ensureVisible(modes);
+    pump();
+    h.click(modes->child(2)); // Custom
+    CHECK(d.draft().quickReactions == 2);
+    ui::View *slot = d.find("Choose emoji");
+    REQUIRE(slot != nullptr);
+    d.scroll().ensureVisible(slot);
+    pump();
+    h.click(slot);
+    auto *ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("rocket");
+    pump();
+    CHECK_STR(d.draft().quickReactionNames[0], "rocket");
+    // Not a use: Frequently used is as it was.
+    CHECK((h.settings.emojiRecent == std::vector<std::string>{"fire"}));
+    // A pick after the page was rebuilt goes nowhere.
+    slot = d.find("Choose emoji");
+    REQUIRE(slot != nullptr);
+    h.click(slot);
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    d.showPage(SettingsDialog::Page::About);
+    pump();
+    ep->pick("tada");
+    pump();
+    CHECK_STR(d.draft().quickReactionNames[0], "rocket");
+    screens::EmojiPicker::restoreState({}, 0);
+    file::remove(path);
 }
 
 TEST("settings: Appearance changes wait for Save, which applies them and closes") {

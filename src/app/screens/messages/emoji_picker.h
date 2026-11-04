@@ -41,10 +41,13 @@ public:
     // saved, and is told whenever a pick or a tone changes either.
     using StateObserver = std::function<void(const std::vector<std::string> &recent, int tone)>;
     static void      restoreState(std::vector<std::string> recent, int tone);
+    static void      setStateObserver(StateObserver fn);
     // An emoji by shortcode in `parent`, `size` px: a workspace emoji's
     // picture, else its character (":name:" when unknown).
     static ui::View *addGlyph(ui::View *parent, Context &ctx, const std::string &name, float size);
-    static void      setStateObserver(StateObserver fn);
+    // Off: a pick is not added to "Frequently used" (a setting's choice
+    // rather than a use).
+    void             setRemembersPicks(bool on) { _remember = on; }
     bool             onEvent(ui::Event &e) override;
 
 private:
@@ -64,6 +67,7 @@ private:
     std::vector<std::string>     _customFolded;
     uint64_t                     _customRev = ~uint64_t(0);
     bool                         _searching = false;
+    bool                         _remember  = true;
 };
 
 } // namespace screens
