@@ -147,6 +147,10 @@ struct Settings {
     // the names it accepts (the open workspace's emoji) are taken.
     using EmojiFilter = std::function<bool(std::string_view)>;
     std::vector<std::string> oneClickReactions(const EmojiFilter &usable = {}) const;
+    // Keeps each of `before`'s names that `names` still has in its place, the
+    // rest filling the freed places in order: the toolbar's buttons don't
+    // move under the pointer when one use reorders the most used.
+    static void keepPlaces(const std::vector<std::string> &before, std::vector<std::string> &names);
 
     // Missing or broken files leave the defaults.
     static Settings    load(const std::string &path);

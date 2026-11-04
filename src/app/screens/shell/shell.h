@@ -458,7 +458,8 @@ private:
     // it isn't); true once its Store is the open one.
     bool showWorkspaceOf(const model::Store *st);
     // Context::quickReactions: only emoji the open workspace has (another
-    // workspace's custom one would fail).
+    // workspace's custom one would fail), and the most used keep their
+    // places as their order changes.
     std::vector<std::string> quickReactions();
 
     claude::Links *_links = nullptr;
@@ -545,6 +546,7 @@ private:
     std::string               _builtLanguage; // the date language the rows were built in
     bool                      _builtEmoji = true;
     std::string               _trayImagePath; // the custom tray picture, decoded
+    std::vector<std::string>  _quickShown;    // the one-click reactions last shown
     std::shared_ptr<const gfx::Bitmap> _trayImage;
     // While it decodes off the UI thread the tray keeps what it shows; the
     // last state asked for is drawn once the picture is in.

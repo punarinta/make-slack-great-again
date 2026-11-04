@@ -327,6 +327,33 @@ TEST("settings: one-click reactions are the most used, or the three picked, topp
     CHECK(s.oneClickReactions().empty());
 }
 
+TEST("settings: one-click reactions keep their places as the most used reorder") {
+    using V = std::vector<std::string>;
+    V names = {"eyes", "tada", "fire"};
+    shell::Settings::keepPlaces({"tada", "fire", "eyes"}, names);
+    CHECK((names == V{"tada", "fire", "eyes"}));
+    // One drops out: the newcomer takes its place, the others stay.
+    names = {"rocket", "tada", "fire"};
+    shell::Settings::keepPlaces({"tada", "eyes", "fire"}, names);
+    CHECK((names == V{"tada", "rocket", "fire"}));
+    // Nothing before, or nothing shared: as given.
+    names = {"a", "b", "c"};
+    shell::Settings::keepPlaces({}, names);
+    CHECK((names == V{"a", "b", "c"}));
+    shell::Settings::keepPlaces({"x", "y", "z"}, names);
+    CHECK((names == V{"a", "b", "c"}));
+    // Fewer than before, or more.
+    names = {"c", "a"};
+    shell::Settings::keepPlaces({"a", "b", "c"}, names);
+    CHECK((names == V{"a", "c"}));
+    names = {"c", "a", "b"};
+    shell::Settings::keepPlaces({"a"}, names);
+    CHECK((names == V{"a", "c", "b"}));
+    names.clear();
+    shell::Settings::keepPlaces({"a"}, names);
+    CHECK(names.empty());
+}
+
 TEST("settings: the gear opens a window-filling overlay; Escape and the backdrop close it") {
     Harness   h;
     ui::View *gear = findIn(&h.win->root(), "Settings"); // the rail tooltip

@@ -189,6 +189,25 @@ std::vector<std::string> Settings::oneClickReactions(const EmojiFilter &usable) 
     return out;
 }
 
+void Settings::keepPlaces(const std::vector<std::string> &before, std::vector<std::string> &names) {
+    std::vector<std::string> placed(names.size());
+    std::vector<bool>        taken(names.size(), false);
+    for (size_t i = 0; i < placed.size() && i < before.size(); ++i)
+        if (const auto it = std::find(names.begin(), names.end(), before[i]); it != names.end()) {
+            placed[i]                         = before[i];
+            taken[size_t(it - names.begin())] = true;
+        }
+    size_t next = 0;
+    for (std::string &p : placed)
+        if (p.empty()) {
+            while (taken[next])
+                ++next;
+            p           = std::move(names[next]);
+            taken[next] = true;
+        }
+    names = std::move(placed);
+}
+
 void Settings::setZenMode(const std::string &workspaceKey, bool on) {
     std::erase(zenWorkspaces, workspaceKey);
     if (on)

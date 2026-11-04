@@ -3152,9 +3152,13 @@ Shell::Running *Shell::findRunning(const std::string &key) {
 }
 
 std::vector<std::string> Shell::quickReactions() {
-    return _settings.oneClickReactions([this](std::string_view n) {
+    std::vector<std::string> names = _settings.oneClickReactions([this](std::string_view n) {
         return _ctx.store().emojiFor(n).resolved();
     });
+    if (_settings.quickReactions == 1)
+        Settings::keepPlaces(_quickShown, names);
+    _quickShown = names;
+    return names;
 }
 
 bool Shell::showWorkspaceOf(const model::Store *st) {
