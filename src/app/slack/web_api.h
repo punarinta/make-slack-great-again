@@ -27,9 +27,9 @@ struct Auth {
     // "https://team.slack.com/api/" for session workspaces (a Grid session
     // token only resolves on its own workspace host); "" = kApiBase.
     std::string base;
-    
+
     // For enterprise grid workspaces
-    std::string orgToken; 
+    std::string orgToken;
     std::string orgBase;
     std::string orgTeamId;
 };

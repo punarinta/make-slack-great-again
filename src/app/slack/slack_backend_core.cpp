@@ -19,9 +19,9 @@ SlackBackend::SlackBackend(
     _auth.orgToken  = _creds.orgToken;
     _auth.orgBase   = hostApiBase(_creds.orgUrl);
     _auth.orgTeamId = _creds.teamId;
-    _read  = newRead(*this);
-    _write = newWrite(*this);
-    _live  = newLive(*this);
+    _read           = newRead(*this);
+    _write          = newWrite(*this);
+    _live           = newLive(*this);
 }
 
 SlackBackend::~SlackBackend() {

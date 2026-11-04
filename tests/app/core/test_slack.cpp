@@ -192,25 +192,22 @@ TEST("slack: token scraping — Enterprise Grid boot page") {
     using slack::scrapeBootTokens;
     // Both keyed, either order.
     {
-        const auto t = scrapeBootTokens(
-            R"({"api_token":"xoxc-ws-1","enterprise_api_token":"xoxc-org-2"})"
-        );
+        const auto t =
+            scrapeBootTokens(R"({"api_token":"xoxc-ws-1","enterprise_api_token":"xoxc-org-2"})");
         CHECK(t.token == "xoxc-ws-1");
         CHECK(t.enterpriseToken == "xoxc-org-2");
     }
     {
-        const auto t = scrapeBootTokens(
-            R"({"enterprise_api_token":"xoxc-org-2","api_token":"xoxc-ws-1"})"
-        );
+        const auto t =
+            scrapeBootTokens(R"({"enterprise_api_token":"xoxc-org-2","api_token":"xoxc-ws-1"})");
         CHECK(t.token == "xoxc-ws-1");
         CHECK(t.enterpriseToken == "xoxc-org-2");
     }
     // The enterprise token is never taken for the workspace's: with no
     // "api_token" the workspace token falls back to an unkeyed run only.
     {
-        const auto t = scrapeBootTokens(
-            R"({"enterprise_api_token":"xoxc-org-2","x":"xoxc-other-3"})"
-        );
+        const auto t =
+            scrapeBootTokens(R"({"enterprise_api_token":"xoxc-org-2","x":"xoxc-other-3"})");
         CHECK(t.enterpriseToken == "xoxc-org-2");
         CHECK(t.token == "xoxc-other-3");
     }

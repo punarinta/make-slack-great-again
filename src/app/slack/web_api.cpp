@@ -22,7 +22,7 @@ bool isOrgMethod(std::string_view method) {
     };
     return std::ranges::find(kOrg, method) != std::ranges::end(kOrg);
 }
-}
+} // namespace
 
 std::string apiBase(const Auth &auth) {
     // Read per call (a getenv is cheap next to a request): test suites with
@@ -112,8 +112,8 @@ net::RequestId apiCall(
     net::Client &client, const Auth &auth, std::string_view method, std::string form, ApiDone done
 ) {
     // Grid: the org's methods go with the org token, on the org's host.
-    Auth        org;
-    const bool  toOrg = !auth.orgToken.empty() && isOrgMethod(method);
+    Auth       org;
+    const bool toOrg = !auth.orgToken.empty() && isOrgMethod(method);
     if (toOrg) {
         org.token  = auth.orgToken;
         org.cookie = auth.cookie;

@@ -30,8 +30,9 @@ struct Credentials {
 
     // Credentials for org-scope methods
     std::string enterpriseId; // Enterprise id may differ from teamId if part of enterprise grid
-    std::string orgToken; // Only populated if the workspace is an actual workspace in an enterprise grid
-    std::string orgUrl; // Only populated if the workspace is an actual workspace in an enterprise grid
+    // Only populated if the workspace is an actual workspace in an enterprise grid
+    std::string orgToken;
+    std::string orgUrl;
 
     bool sessionAuth() const { return !cookie.empty(); }
 };

@@ -76,7 +76,7 @@ void linkOrgTokens(std::vector<Credentials> &creds) {
                 linked = true;
             }
         }
-            
+
         if (linked) {
             org.enterpriseId = kMark; // used: drop below
         }

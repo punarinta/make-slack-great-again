@@ -249,7 +249,6 @@ int main(int argc, char **argv) {
     if (!logPath.empty() && !base::setLogFile(logPath.c_str()))
         std::fprintf(stderr, "msga: cannot open log file %s\n", logPath.c_str());
 
-
     std::string err;
 #ifdef MSGA_DEMO
     if (!demo.empty() && !isolateDemoState(&err)) {

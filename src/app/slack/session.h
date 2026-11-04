@@ -59,7 +59,6 @@ private:
 
 // ── Pure helpers (tests) ────────────────────────────────────────────────────
 
-
 struct BootTokens {
     std::string token;
     std::string enterpriseToken;
