@@ -50,6 +50,10 @@ std::string iconOf(const json::Value &icon) {
     return std::string(u);
 }
 
+} // namespace
+
+// ── Pure helpers ────────────────────────────────────────────────────────────
+
 // Links orgs to workspaces if they are in the same 'grid' and discard the org
 void linkOrgTokens(std::vector<Credentials> &creds) {
     const auto isOrg = [](const Credentials &c) {
@@ -85,10 +89,6 @@ void linkOrgTokens(std::vector<Credentials> &creds) {
     auto const marked = std::ranges::remove(creds, kMark, &Credentials::enterpriseId);
     creds.erase(marked.begin(), marked.end());
 }
-
-} // namespace
-
-// ── Pure helpers ────────────────────────────────────────────────────────────
 
 BootTokens scrapeBootTokens(std::string_view html) {
     static constexpr std::string_view kApi = "\"api_token\":\"";
@@ -277,7 +277,8 @@ void TokenDeriver::derive(const TeamSession &cand) {
             fail("token_not_found");
             return;
         }
-        validate(cand, std::move(token));
+        // Queued before the validation goes out, so the org token is in the
+        // queue whenever that answer moves the deriver on.
         if (!enterpriseToken.empty() &&
             std::ranges::find(_queue, enterpriseToken, &TeamSession::token) == _queue.end()) {
             _queue.emplace_back(
@@ -287,6 +288,7 @@ void TokenDeriver::derive(const TeamSession &cand) {
                 }
             );
         }
+        validate(cand, std::move(token));
     });
 }
 
