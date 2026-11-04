@@ -1707,11 +1707,11 @@ void Shell::buildMain(View *parent) {
         if (!on)
             return;
         // The messages went: their search with them, and a focus held there
-        // moves to the thread's composer instead of nowhere.
+        // (hiding them dropped it) moves to the thread's composer instead of
+        // nowhere. A focus elsewhere (a dialog, the sidebar) stays put.
         _search->hideNow();
         Composer *c = _thread->composer;
-        View     *f = _win.focusView();
-        if ((!f || !_thread->isAncestorOf(f)) && c->visible() && c->enabled())
+        if (!_win.focusView() && c->visible() && c->enabled())
             c->edit().focus();
     };
     _splitter->setVisible(false);
@@ -2144,12 +2144,17 @@ void Shell::showMessageArea() {
 }
 
 // Esc that the focused view passed on: a modal popup first (as the window
-// would), else the open thread.
+// would), else the open thread, but only from inside it or with no focus. Esc
+// in the channel's composer (a draft there) or elsewhere leaves the thread be.
 void Shell::closeThreadOnEscape() {
     if (Popup *p = _win.topPopup(); p && p->modal()) {
         _win.closePopup(p);
         return;
     }
+    if (!threadOpen())
+        return;
+    if (View *f = _win.focusView(); f && !_thread->isAncestorOf(f))
+        return;
     closeThread();
 }
 

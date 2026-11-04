@@ -3463,6 +3463,7 @@ TEST("thread panel: a window too narrow for both covers the messages, a wider on
 #ifdef MSGA_HAVE_MESSAGES
     auto *panel = static_cast<screens::ThreadPanel *>(h.sh->threadPanel());
     CHECK(panel->backButton()->visible());
+    CHECK(!panel->closeButton()->visible()); // the back arrow stands in for it
 #endif
     w.setSize({1600, 900});
     pump();
@@ -3471,7 +3472,24 @@ TEST("thread panel: a window too narrow for both covers the messages, a wider on
     CHECK(int(std::lround(area->width())) == h.settings.threadWidth);
 #ifdef MSGA_HAVE_MESSAGES
     CHECK(!panel->backButton()->visible());
+    CHECK(panel->closeButton()->visible());
 #endif
+    // Narrowed under a modal popup, the focus stays in the popup.
+    h.sh->showQuickSwitcher();
+    pump();
+    ui::Popup *qs = h.win->topPopup();
+    REQUIRE(qs);
+    ui::View *held = h.win->focusView();
+    REQUIRE(held && qs->isAncestorOf(held));
+    w.setSize({640, 600});
+    pump();
+    CHECK(!messages->visible());
+    CHECK(h.win->focusView() == held);
+    h.win->closePopup(qs);
+    pump();
+    w.setSize({1600, 900});
+    pump();
+    REQUIRE(messages->visible());
     // Narrow again, the messages are only back with the thread closed.
     w.setSize({640, 600});
     pump();
@@ -3499,6 +3517,10 @@ TEST("thread panel: Esc closes it once the focused view has no use for the key")
     h.sh->openThread(design, root);
     pump();
     REQUIRE(h.sh->threadOpen());
+    // From the channel's composer (a draft there), Esc leaves the thread be.
+    h.sh->composer().edit().focus();
+    esc();
+    CHECK(h.sh->threadOpen());
     h.sh->threadComposer()->edit().focus();
     esc();
     CHECK_FALSE(h.sh->threadOpen());
@@ -3513,6 +3535,7 @@ TEST("thread panel: Esc closes it once the focused view has no use for the key")
     esc();
     CHECK(h.win->topPopup() != p);
     CHECK(h.sh->threadOpen());
+    h.sh->threadComposer()->edit().focus();
     esc();
     CHECK_FALSE(h.sh->threadOpen());
 }

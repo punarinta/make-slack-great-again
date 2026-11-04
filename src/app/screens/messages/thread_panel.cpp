@@ -73,8 +73,8 @@ ThreadPanel::ThreadPanel(Context &ctx) : _ctx(ctx) {
         if (onOpenAsSession && root())
             onOpenAsSession(conversation(), root());
     };
-    auto *close    = header->add<RoundButton>(gfx::Icon::X, tr("Close thread"));
-    close->onClick = [this] {
+    _close          = header->add<RoundButton>(gfx::Icon::X, tr("Close thread"));
+    _close->onClick = [this] {
         if (_ctx.closeThread)
             _ctx.closeThread();
     };
@@ -137,6 +137,11 @@ ui::View *ThreadPanel::setComposer(std::unique_ptr<ui::View> composer) {
 ui::View *ThreadPanel::setTyping(std::unique_ptr<ui::View> typing) {
     _typingSlot->clearChildren();
     return typing ? _typingSlot->adopt(std::move(typing)) : nullptr;
+}
+
+void ThreadPanel::setBackShown(bool on) {
+    _back->setVisible(on);
+    _close->setVisible(!on);
 }
 
 void ThreadPanel::toggleMuted() {
