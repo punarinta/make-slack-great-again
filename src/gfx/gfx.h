@@ -273,8 +273,9 @@ struct AnimOptions {
     // animation past it keeps its first frame only (shown still).
     int64_t maxPixels = 32ll << 20; // 128 MB of ARGB32
 };
-// Animated GIF → composited frames, decoded one at a time (never the whole
-// animation at canvas size); a still image yields one frame.
+// Animated GIF or WebP (when compiled in) → composited frames
+// decoded one at a time, never the whole animation at canvas size
+// a still image yields one frame
 bool decodeAnimation(std::string_view bytes, std::vector<AnimFrame> *out, const AnimOptions &o);
 inline bool decodeAnimation(std::string_view bytes, std::vector<AnimFrame> *out) {
     return decodeAnimation(bytes, out, AnimOptions{});

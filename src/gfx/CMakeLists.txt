@@ -29,11 +29,18 @@ target_link_libraries(msga_gfx PUBLIC msga_flags PRIVATE msga_stb msga_base)
 # translucent fills ~4x faster). Everything else stays at the size level.
 set_source_files_properties(blend.cpp PROPERTIES COMPILE_OPTIONS "-O2")
 
-option(MSGA_GFX_WEBP "Decode WebP through the system libwebp" OFF)
+option(MSGA_GFX_WEBP "Decode WebP (still and animated) through the system libwebp" OFF)
 if(MSGA_GFX_WEBP)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(MSGA_WEBP REQUIRED IMPORTED_TARGET libwebpdecoder)
-    target_compile_definitions(msga_gfx PRIVATE MSGA_GFX_WEBP)
+    # GIPHY GIFs can come back as animated WebP, not GIF
+    # both needed to actually play one, not just show its first frame:
+    # - libwebpdecoder: still frames (WebPDecodeRGBA)
+    # - libwebpdemux: animated frames (WebPAnimDecoder)
+    pkg_check_modules(MSGA_WEBP REQUIRED IMPORTED_TARGET libwebpdecoder libwebpdemux)
+    # PUBLIC: gfx_tests' own #ifdef MSGA_GFX_WEBP branches (gfx_tests.cpp)
+    # need to see this too, or they silently test the OFF behaviour even
+    # when webp is actually linked in -- caught live building this.
+    target_compile_definitions(msga_gfx PUBLIC MSGA_GFX_WEBP)
     target_link_libraries(msga_gfx PRIVATE PkgConfig::MSGA_WEBP)
 endif()
 

@@ -10,8 +10,10 @@
 
 #ifdef MSGA_GFX_WEBP
 #include <webp/decode.h>
+#include <webp/demux.h>
 #endif
 
+#include <algorithm>
 #include <cstdlib>
 
 namespace gfx {
@@ -54,6 +56,72 @@ bool decodeWebp(std::string_view bytes, Bitmap *out) {
     WebPFree(rgba);
     return true;
 }
+
+bool isWebp(std::string_view b) {
+    return b.size() >= 12 && b.substr(0, 4) == "RIFF" && b.substr(8, 4) == "WEBP";
+}
+
+// Cheap header-only peek
+// rejects an oversized or malformed file before the full demux
+// same reasoning as decodeWebp's own WebPGetInfo-before-allocate
+bool webpFeatures(std::string_view bytes, WebPBitstreamFeatures *f) {
+    return WebPGetFeatures(reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size(), f) ==
+           VP8_STATUS_OK;
+}
+
+// GIPHY can serve a picked GIF as animated WebP, not GIF
+// decodeWebp only handles a still frame -- without this it silently
+// shows nothing once posted
+bool decodeAnimatedWebp(std::string_view bytes, std::vector<AnimFrame> *out, const AnimOptions &o) {
+    WebPData               data{reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size()};
+    WebPAnimDecoderOptions opts;
+    if (!WebPAnimDecoderOptionsInit(&opts))
+        return false;
+    opts.color_mode            = MODE_RGBA;
+    WebPAnimDecoder *const dec = WebPAnimDecoderNew(&data, &opts);
+    if (!dec)
+        return false;
+    WebPAnimInfo info;
+    if (!WebPAnimDecoderGetInfo(dec, &info) ||
+        tooBig(int(info.canvas_width), int(info.canvas_height))) {
+        WebPAnimDecoderDelete(dec);
+        return false;
+    }
+    const bool   fit      = o.width > 0 && o.height > 0;
+    const size_t px       = size_t(info.canvas_width) * size_t(info.canvas_height);
+    int64_t      kept     = 0;
+    int          prevTsMs = 0;
+    bool         over     = false;
+    while (WebPAnimDecoderHasMoreFrames(dec)) {
+        uint8_t *buf     = nullptr;
+        int      endTsMs = 0;
+        if (!WebPAnimDecoderGetNext(dec, &buf, &endTsMs))
+            break;
+        AnimFrame f{Bitmap(int(info.canvas_width), int(info.canvas_height)), 100};
+        premultiplyRgba(buf, f.frame.pixels(), px);
+        if (fit && (f.frame.width() != o.width || f.frame.height() != o.height))
+            f.frame = coverResize(f.frame.view(), o.width, o.height);
+        // endTsMs is cumulative -- the gap from prevTsMs is this frame's delay
+        // same 0/10ms-means-unspecified floor as the GIF path
+        const int delay = endTsMs - prevTsMs;
+        f.delayMs       = delay <= 10 ? 100 : delay;
+        prevTsMs        = endTsMs;
+        kept += int64_t(f.frame.width()) * f.frame.height();
+        if (kept > o.maxPixels && !out->empty()) {
+            over = true; // past the budget: the first frame alone, still
+            break;
+        }
+        out->push_back(std::move(f));
+    }
+    WebPAnimDecoderDelete(dec);
+    // Over budget: show frame 0 still, not a partial replay
+    // same rule the GIF path below uses
+    if (over) {
+        out->resize(1);
+        out->shrink_to_fit();
+    }
+    return !out->empty();
+}
 #endif
 
 } // namespace
@@ -76,7 +144,7 @@ bool decodeImage(std::string_view bytes, Bitmap *out) {
     if (bytes.empty() || bytes.size() > 0x7fffffff)
         return false;
 #ifdef MSGA_GFX_WEBP
-    if (bytes.size() >= 12 && bytes.substr(0, 4) == "RIFF" && bytes.substr(8, 4) == "WEBP")
+    if (isWebp(bytes))
         return decodeWebp(bytes, out);
 #endif
     const auto *d = reinterpret_cast<const stbi_uc *>(bytes.data());
@@ -97,6 +165,18 @@ bool decodeImage(std::string_view bytes, Bitmap *out) {
 bool decodeAnimation(std::string_view bytes, std::vector<AnimFrame> *out, const AnimOptions &o) {
     out->clear();
     const bool fit = o.width > 0 && o.height > 0;
+#ifdef MSGA_GFX_WEBP
+    // Same decompression-bomb size cap as the paths below
+    // checked before the demux, not after
+    if (isWebp(bytes) && bytes.size() <= 0x7fffffff) {
+        WebPBitstreamFeatures f;
+        if (webpFeatures(bytes, &f) && f.has_animation) {
+            if (tooBig(f.width, f.height))
+                return false;
+            return decodeAnimatedWebp(bytes, out, o);
+        }
+    }
+#endif
     if (!isGif(bytes) || bytes.size() > 0x7fffffff) {
         Bitmap b;
         if (!decodeImage(bytes, &b))

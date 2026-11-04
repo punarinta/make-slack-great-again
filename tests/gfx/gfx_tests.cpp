@@ -1046,6 +1046,66 @@ bool near(uint32_t got, uint32_t want, int tol) {
     return true;
 }
 
+// GIPHY can serve a picked GIF as animated WebP, not GIF
+// a real one caught decodeAnimation returning just a static frame
+// fixture: a hand-made 4x4 red-then-blue animation
+// (`img2webp -loop 1 -d 100 red.png -d 150 blue.png`)
+void testAnimWebp() {
+    const std::string dir = MSGA_TEST_ASSETS;
+    std::string       bytes;
+    CHECK(readFile(dir + "/webp/two-frame-anim.webp", &bytes));
+    std::vector<AnimFrame> frames;
+#ifdef MSGA_GFX_WEBP
+    CHECK(decodeAnimation(bytes, &frames));
+    CHECK(frames.size() == 2);
+    if (frames.size() == 2) {
+        CHECK(frames[0].frame.width() == 4 && frames[0].frame.height() == 4);
+        CHECK(frames[0].delayMs == 100);
+        CHECK(frames[1].delayMs == 150);
+        CHECK(premulValid(frames[0].frame) && premulValid(frames[1].frame));
+        // red, then blue, opaque both frames
+        CHECK(near(px(frames[0].frame, 2, 2), 0xffff0000u, 3));
+        CHECK(near(px(frames[1].frame, 2, 2), 0xff0000ffu, 3));
+    }
+#else
+    // no libwebp compiled in: fails cleanly, never crashes
+    CHECK(!decodeAnimation(bytes, &frames));
+#endif
+    // Truncated and bit-flipped files must fail or decode, never crash
+    // same check testAnim() runs for every GIF fixture
+    for (size_t cut = 13; cut < bytes.size(); cut += std::max<size_t>(1, bytes.size() / 17)) {
+        std::vector<AnimFrame> part;
+        decodeAnimation(std::string_view(bytes).substr(0, cut), &part);
+        std::string flipped = bytes;
+        flipped[cut]        = char(flipped[cut] ^ 0x5a);
+        decodeAnimation(flipped, &part);
+    }
+}
+
+// Mirrors testAnimBudget, for the animated-WebP decoder's identical
+// kept-pixels early exit
+void testAnimWebpBudget() {
+    const std::string dir = MSGA_TEST_ASSETS;
+    std::string       bytes;
+    CHECK(readFile(dir + "/webp/three-frame-anim.webp", &bytes));
+#ifdef MSGA_GFX_WEBP
+    std::vector<AnimFrame> full;
+    CHECK(decodeAnimation(bytes, &full) && full.size() == 3);
+    AnimOptions            o;
+    std::vector<AnimFrame> capped;
+    // exactly the budget: every frame stays
+    o.maxPixels = int64_t(4) * 4 * int64_t(full.size());
+    CHECK(decodeAnimation(bytes, &capped, o) && capped.size() == full.size());
+    // one pixel short: the first frame alone, still
+    o.maxPixels -= 1;
+    CHECK(decodeAnimation(bytes, &capped, o) && capped.size() == 1);
+    CHECK(near(px(capped[0].frame, 2, 2), 0xffff0000u, 3)); // the first frame, red
+#else
+    std::vector<AnimFrame> frames;
+    CHECK(!decodeAnimation(bytes, &frames));
+#endif
+}
+
 void testPaint2() {
     { // linear gradient fill, horizontal, premultiplied interpolation
         Bitmap   b(100, 10);
@@ -1698,6 +1758,8 @@ const Group kGroups[] = {
     {"shadow", testShadow},
     {"decode", testDecode},
     {"anim", testAnim},
+    {"animwebp", testAnimWebp},
+    {"animwebpbudget", testAnimWebpBudget},
     {"animbudget", testAnimBudget},
     {"giflzwlimit", testGifLzwDictionaryLimit},
     {"snapped", testSnapped},

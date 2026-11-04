@@ -573,6 +573,10 @@ TEST("grouping: the rules — system lines, bots, authors, GIF paths") {
     CHECK(isGifPath("https://media.giphy.com/a/giphy.Gif?cid=1&rid=giphy.webp"));
     CHECK_FALSE(isGifPath("https://e/a.png?x=.gif"));
     CHECK_FALSE(isGifPath("/x/gif"));
+    // GIPHY's own messaging-bundle rendition for a picked GIF: .webp, not
+    // .gif -- still a GIF as far as the thumbnail is concerned.
+    CHECK(isGifPath("https://media4.giphy.com/media/x/200w.webp?cid=1&rid=200w.webp&ct=g"));
+    CHECK(isGifPath("/x/party.WEBP"));
 }
 
 TEST("users: a presence flip re-binds no row; a name re-binds only the rows showing it") {
