@@ -1442,6 +1442,23 @@ TEST("giphy: a search body maps to preview, posted rendition, size and title") {
     CHECK(shell::GifSearch::parseResponse(R"({"meta":{"status":401}})").empty());
 }
 
+TEST("giphy: a webp fixed_width rendition is skipped, falling back to one still GIF") {
+    // Live, confirmed on a real search: under bundle=messaging_non_clips,
+    // `fixed_width`'s url can come back as .webp, not .gif. This app has no
+    // WebP decoder, so posting that URL verbatim silently fails to render
+    // once sent (nothing even logs it) -- a real GIF someone picked never
+    // showing up in the channel.
+    const char *body = R"({"data":[
+        {"title":"Cat GIF","images":{
+            "fixed_width_downsampled":{"url":"https://m.giphy.com/1/200w_d.gif","width":"200","height":"150"},
+            "fixed_width":{"url":"https://m.giphy.com/1/200w.webp","width":"200","height":"150"},
+            "downsized":{"url":"https://m.giphy.com/1/200w.gif"}}}
+    ],"pagination":{"count":1}})";
+    const auto  gifs = shell::GifSearch::parseResponse(body);
+    REQUIRE(gifs.size() == 1);
+    CHECK_STR(gifs[0].url, "https://m.giphy.com/1/200w.gif"); // downsized, not the webp fixed_width
+}
+
 TEST("giphy: errors name the status, never the URL") {
     CHECK_STR(shell::GifSearch::errorMessage(429), "GIPHY rate limit reached. Try again shortly.");
     CHECK_STR(shell::GifSearch::errorMessage(500), "GIPHY request failed (HTTP 500).");

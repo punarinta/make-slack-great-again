@@ -1,5 +1,6 @@
 #include "screens/shell/gif_search.h"
 
+#include "app/screens/common/message_rules.h"
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/str.h"
@@ -34,6 +35,13 @@ std::vector<CacheEntry> &cache() {
 
 std::string cacheKey(std::string_view query) {
     return utf8::foldCase(str::trim(query));
+}
+
+// Literally a .gif URL
+// narrower than screens::isGifPath, which also matches .webp
+// prefers a rendition any GIF-only client can decode
+bool isLiterallyGif(std::string_view url) {
+    return str::iequals(screens::pathExtension(url), "gif");
 }
 
 // One rendition of a GIPHY images object. Sizes come as strings ("200").
@@ -93,12 +101,24 @@ std::vector<model::Backend::Gif> GifSearch::parseResponse(std::string_view body)
             !rendition(images, "fixed_width", &g.preview, &g.width, &g.height) &&
             !rendition(images, "preview_gif", &g.preview, &g.width, &g.height))
             continue;
-        // Posted: the 200 px `fixed_width` Slack's own picker sends
-        // ("…/200w.gif"), then "downsized" (≤ 2 MB), "downsized_medium"
-        // (≤ 5 MB). `original` has no url field, only mp4/webp links.
-        if (!rendition(images, "fixed_width", &g.url, nullptr, nullptr) &&
-            !rendition(images, "downsized", &g.url, nullptr, nullptr) &&
-            !rendition(images, "downsized_medium", &g.url, nullptr, nullptr))
+        // Posted rendition -- prefer whichever GIPHY serves as a literal
+        // .gif, tried in order:
+        // - fixed_width: the 200px size
+        // - downsized: ≤2MB fallback
+        // - downsized_medium: ≤5MB fallback
+        // - original: no url field, only mp4/webp
+        //
+        // Why check: fixed_width can come back as WebP under
+        // bundle=messaging_non_clips (confirmed live)
+        // trusting the field name would post a picture a GIF-only client can't decode
+        for (const char *key : {"fixed_width", "downsized", "downsized_medium"}) {
+            std::string url;
+            if (rendition(images, key, &url, nullptr, nullptr) && isLiterallyGif(url)) {
+                g.url = std::move(url);
+                break;
+            }
+        }
+        if (g.url.empty())
             g.url = g.preview;
         g.title = std::string(hit["alt_text"].str());
         if (g.title.empty())
