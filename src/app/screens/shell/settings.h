@@ -65,7 +65,7 @@ struct Settings {
     bool                     animateEmoji = true, animateMedia = true;
     // The message toolbar's one-click reactions: 0 off, 1 the most used (the
     // emoji picker's Frequently used), 2 quickReactionNames.
-    int                      quickReactions = 1;
+    int                      quickReactions = 0;
     std::vector<std::string> quickReactionNames;
     // The three the toolbar shows (none when off), topped up with
     // :white_check_mark: :eyes: :raised_hands:.

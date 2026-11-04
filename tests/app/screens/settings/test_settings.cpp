@@ -297,8 +297,11 @@ TEST("settings: every value survives the file, which is owner-only") {
 TEST("settings: one-click reactions are the most used, or the three picked, topped up") {
     shell::Settings s;
     using V = std::vector<std::string>;
+    // Off unless chosen: the toolbar stays as it was.
+    CHECK(s.quickReactions == 0);
+    CHECK(s.oneClickReactions().empty());
     // Nothing used yet: Slack's defaults.
-    CHECK(s.quickReactions == 1);
+    s.quickReactions = 1;
     CHECK((s.oneClickReactions() == V{"white_check_mark", "eyes", "raised_hands"}));
     // The emoji picker's Frequently used, newest first, then the defaults.
     s.emojiRecent = {"tada", "eyes"};
@@ -309,6 +312,9 @@ TEST("settings: one-click reactions are the most used, or the three picked, topp
     s.quickReactions     = 2;
     s.quickReactionNames = {"rocket", "", "rocket"};
     CHECK((s.oneClickReactions() == V{"rocket", "white_check_mark", "eyes"}));
+    // An unknown mode counts as off.
+    s.quickReactions = 7;
+    CHECK(s.oneClickReactions().empty());
     s.quickReactions = 0;
     CHECK(s.oneClickReactions().empty());
 }

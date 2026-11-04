@@ -171,7 +171,7 @@ bool Settings::zenMode(std::string_view workspaceKey) const {
 std::vector<std::string> Settings::oneClickReactions() const {
     static const char *const kDefaults[] = {"white_check_mark", "eyes", "raised_hands"};
     std::vector<std::string> out;
-    if (quickReactions == 0)
+    if (quickReactions != 1 && quickReactions != 2)
         return out;
     auto add = [&out](const std::string &n) {
         if (out.size() < 3 && !n.empty() && std::find(out.begin(), out.end(), n) == out.end())
