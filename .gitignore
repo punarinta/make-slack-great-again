@@ -8,3 +8,4 @@ build-cov/
 credentials.cmake
 .DS_Store
 result
+__pycache__
