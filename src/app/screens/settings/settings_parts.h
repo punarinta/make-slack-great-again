@@ -21,6 +21,7 @@ struct SettingsDialog::Parts {
     ui::Label                   *modeHint  = nullptr;
     ui::View                    *themeRows = nullptr, *customSection = nullptr;
     std::vector<ui::Clickable *> cards;
+    std::vector<ui::Clickable *> quickSlots; // One-click reactions: Custom's three
     ui::TextField               *importField = nullptr;
     ui::Label                   *contrast = nullptr, *customStatus = nullptr;
     ui::CheckBox                *inverted = nullptr, *gradient = nullptr;

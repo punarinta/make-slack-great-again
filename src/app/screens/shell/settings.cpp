@@ -65,6 +65,7 @@ const struct {
     {"fontSize", &Settings::fontSize, 0, 2},
     {"relevantDays", &Settings::relevantDays, 1, 365},
     {"names", &Settings::names, 0, 2},
+    {"quickReactions", &Settings::quickReactions, 0, 2},
     {"notifyLevel", &Settings::notifyLevel, 0, 1},
     {"cacheLimitMb", &Settings::cacheLimitMb, 50, 10240},
     {"presence", &Settings::presence, 0, 2},
@@ -99,6 +100,7 @@ const struct {
 } kStringLists[] = {
     {"spellLanguages", &Settings::spellLanguages},
     {"emojiRecent", &Settings::emojiRecent},
+    {"quickReactionNames", &Settings::quickReactionNames},
     {"zenWorkspaces", &Settings::zenWorkspaces},
 };
 
@@ -164,6 +166,46 @@ void Settings::applyPalettes() const {
 bool Settings::zenMode(std::string_view workspaceKey) const {
     return std::find(zenWorkspaces.begin(), zenWorkspaces.end(), workspaceKey) !=
            zenWorkspaces.end();
+}
+
+std::vector<std::string> Settings::oneClickReactions(const EmojiFilter &usable) const {
+    static const char *const kDefaults[] = {"white_check_mark", "eyes", "raised_hands"};
+    std::vector<std::string> out;
+    if (quickReactions != 1 && quickReactions != 2)
+        return out;
+    out.reserve(3);
+    auto add = [&](std::string_view n) {
+        if (out.size() < 3 && !n.empty() && std::find(out.begin(), out.end(), n) == out.end() &&
+            (!usable || usable(n)))
+            out.emplace_back(n);
+    };
+    for (const std::string &n : quickReactions == 2 ? quickReactionNames : emojiRecent) {
+        if (out.size() == 3)
+            return out;
+        add(n);
+    }
+    for (const char *n : kDefaults)
+        add(n);
+    return out;
+}
+
+void Settings::keepPlaces(const std::vector<std::string> &before, std::vector<std::string> &names) {
+    std::vector<std::string> placed(names.size());
+    std::vector<bool>        taken(names.size(), false);
+    for (size_t i = 0; i < placed.size() && i < before.size(); ++i)
+        if (const auto it = std::find(names.begin(), names.end(), before[i]); it != names.end()) {
+            placed[i]                         = before[i];
+            taken[size_t(it - names.begin())] = true;
+        }
+    size_t next = 0;
+    for (std::string &p : placed)
+        if (p.empty()) {
+            while (taken[next])
+                ++next;
+            p           = std::move(names[next]);
+            taken[next] = true;
+        }
+    names = std::move(placed);
 }
 
 void Settings::setZenMode(const std::string &workspaceKey, bool on) {

@@ -76,6 +76,9 @@ struct Context {
     // Settings → Threads "Inline": a thread's replies open under its message
     // in the list instead of the side panel (the shell rebuilds the rows).
     bool                                                             threadsInline = false;
+    // Settings → One-click reactions: the message toolbar's emoji, left to
+    // right (none when unset or empty). Set by the shell.
+    std::function<std::vector<std::string>()>                        quickReactions;
     // A canvas file shared in a message (the canvas page in a popup over
     // the window). Set by the shell; unset = the file's page.
     std::function<void(ConvRef, const model::File &)>                openCanvas;

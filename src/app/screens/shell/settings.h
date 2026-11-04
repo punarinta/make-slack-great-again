@@ -14,7 +14,9 @@
 #include "ui/ui.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -63,6 +65,10 @@ struct Settings {
     int                      names        = 0;
     bool                     showAgentsApps = true, unreadsOnly = false;
     bool                     animateEmoji = true, animateMedia = true;
+    // The message toolbar's one-click reactions: 0 off, 1 the most used (the
+    // emoji picker's Frequently used), 2 quickReactionNames.
+    int                      quickReactions = 0;
+    std::vector<std::string> quickReactionNames;
     bool                     customTrayIcon = false;
     // Claude Code workspaces: the footer's zen toggle (hide the tool-call
     // cards), per workspace: the keys of the
@@ -135,6 +141,16 @@ struct Settings {
     // (MSGA_GIPHY_KEY in credentials.cmake; "" when the build has none).
     std::string        effectiveGiphyKey() const;
     static std::string buildGiphyKey();
+
+    // The three one-click reactions the toolbar shows (none when off), topped
+    // up with :white_check_mark: :eyes: :raised_hands:. With `usable`, only
+    // the names it accepts (the open workspace's emoji) are taken.
+    using EmojiFilter = std::function<bool(std::string_view)>;
+    std::vector<std::string> oneClickReactions(const EmojiFilter &usable = {}) const;
+    // Keeps each of `before`'s names that `names` still has in its place, the
+    // rest filling the freed places in order: the toolbar's buttons don't
+    // move under the pointer when one use reorders the most used.
+    static void keepPlaces(const std::vector<std::string> &before, std::vector<std::string> &names);
 
     // Missing or broken files leave the defaults.
     static Settings    load(const std::string &path);

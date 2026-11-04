@@ -14,6 +14,7 @@
 #include "app/screens/common/message_text.h"
 #include "app/screens/common/remote_images.h"
 #include "app/screens/messages/audio_card.h"
+#include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/image_cache.h"
 #include "app/screens/messages/message_dialogs.h"
 #include "app/screens/messages/message_list.h"
@@ -978,6 +979,114 @@ TEST("actions: a reaction pill toggles mine; the newest message on screen marks 
     CHECK(e.win->topPopup() != nullptr);
 }
 
+TEST("actions: the toolbar's one-click reactions add mine, and a second click takes it back") {
+    Env           e(true);
+    const ConvRef design = e.conv("C0DESIGN");
+    e.ctx.quickReactions = [] { return std::vector<std::string>{"tada", "eyes", "+1"}; };
+    e.list->showConversation(design);
+    pump(10);
+    ui::View *row = e.row(e.store.conversation(design).messages.back().ts);
+    REQUIRE(row != nullptr);
+    auto           *h  = app().platform().testHooks();
+    const ui::RectF rr = row->windowRect();
+    h->injectPointerMove(e.win->native(), {rr.x + 300, rr.y + 20});
+    pump(4);
+    // The message the toolbar is on (the hover, whichever row it found).
+    REQUIRE(e.list->toolbarRow() != nullptr);
+    const Ts  ts  = e.list->toolbarRow()->ts();
+    ui::View *bar = e.list->quickReactionBar();
+    REQUIRE(bar->visible());
+    REQUIRE(bar->childCount() == 3);
+    CHECK_STR(bar->child(0)->tooltip(), "React with :tada:");
+    auto mine = [&]() -> bool {
+        const model::Message *m = e.store.findMessage(design, ts);
+        if (!m)
+            return false;
+        for (const model::Reaction &r : m->reactions)
+            if (r.name == "tada")
+                return e.store.reactedByMe(r);
+        return false;
+    };
+    // A real click: the pointer on the button, pressed and released.
+    auto press = [&](size_t i) {
+        const ui::RectF br = bar->child(i)->windowRect();
+        h->injectPointerMove(e.win->native(), {br.x + br.w / 2, br.y + br.h / 2});
+        pump(2);
+        h->injectButton(e.win->native(), plat::Button::Left, true);
+        h->injectButton(e.win->native(), plat::Button::Left, false);
+        pump(6);
+    };
+    REQUIRE(!mine());
+    press(0);
+    CHECK(mine());
+    press(0);
+    CHECK_FALSE(mine());
+    // Off (or no shell to ask): none.
+    e.ctx.quickReactions = [] { return std::vector<std::string>{}; };
+    e.list->refreshToolbar();
+    CHECK_FALSE(bar->visible());
+}
+
+TEST("actions: one-click reactions go in my skin tone and find mine under any tone or name") {
+    Env           e(true);
+    const ConvRef design = e.conv("C0DESIGN");
+    e.ctx.quickReactions = [] {
+        return std::vector<std::string>{"thumbsup", "raised_hands", "tada"};
+    };
+    screens::EmojiPicker::restoreState({}, 3);
+    e.list->showConversation(design);
+    pump(10);
+    ui::View *row = e.row(e.store.conversation(design).messages.back().ts);
+    REQUIRE(row != nullptr);
+    auto           *h  = app().platform().testHooks();
+    const ui::RectF rr = row->windowRect();
+    h->injectPointerMove(e.win->native(), {rr.x + 300, rr.y + 20});
+    pump(4);
+    // The message the toolbar is on (the hover, whichever row it found).
+    REQUIRE(e.list->toolbarRow() != nullptr);
+    const Ts  ts  = e.list->toolbarRow()->ts();
+    ui::View *bar = e.list->quickReactionBar();
+    REQUIRE(bar->visible());
+    REQUIRE(bar->childCount() == 3);
+    CHECK_STR(bar->child(0)->tooltip(), "React with :thumbsup:");
+    auto names = [&] {
+        std::vector<std::string> out;
+        for (const model::Reaction &r : e.store.findMessage(design, ts)->reactions)
+            if (e.store.reactedByMe(r))
+                out.push_back(r.name);
+        return out;
+    };
+    auto click = [&](size_t i) {
+        static_cast<ui::Clickable *>(bar->child(i))->activate();
+        pump(4);
+    };
+    using V = std::vector<std::string>;
+    // Skinnable: sent in the picker's tone; not skinnable: as it is.
+    click(1);
+    CHECK((names() == V{"raised_hands::skin-tone-3"}));
+    click(2);
+    CHECK((names() == V{"raised_hands::skin-tone-3", "tada"}));
+    click(1);
+    click(2);
+    CHECK(names().empty());
+    // Mine in another tone is taken back, not doubled.
+    e.store.setReaction(design, ts, "raised_hands::skin-tone-5", e.store.me, true);
+    click(1);
+    CHECK(names().empty());
+    // "thumbsup" is Slack's "+1": someone's "+1" is joined under that name,
+    // and the next click takes mine back.
+    e.store.setReaction(design, ts, "+1", 1, true);
+    click(0);
+    CHECK((names() == V{"+1::skin-tone-3"}));
+    click(0);
+    CHECK(names().empty());
+    // A new tone rebuilds the buttons.
+    screens::EmojiPicker::restoreState({}, 0);
+    e.list->refreshToolbar();
+    click(1);
+    CHECK((names() == V{"raised_hands"}));
+}
+
 TEST("thread: an agent's thread of a link has a chip back to the Slack thread") {
     Env           e(true);
     const ConvRef design = e.conv("C0DESIGN");
@@ -1704,32 +1813,34 @@ TEST("actions: the hover toolbar — react, forward, save, more; save toggles") 
     const ui::RectF rr = row->windowRect();
     h->injectPointerMove(e.win->native(), {rr.x + 300, rr.y + 20});
     pump(4);
-    // The four buttons, their tooltips, 28-px buttons in a 16/12-padded card
+    // The four buttons after the (empty) one-click reactions, their tooltips,
+    // 28-px buttons in a 16/12-padded card
     // (Ask agent hidden: no agent links here).
     ui::View *fwd = findByTooltip(e.win->root().child(0), "Forward message");
     REQUIRE(fwd != nullptr);
     ui::View *card = fwd->parent();
     REQUIRE(card->visible());
-    REQUIRE(card->childCount() == 5);
-    CHECK_STR(card->child(0)->tooltip(), "Add reaction");
-    CHECK_STR(card->child(2)->tooltip(), "Save for later");
-    CHECK_FALSE(card->child(3)->visible());
-    CHECK_STR(card->child(4)->tooltip(), "More actions");
+    REQUIRE(card->childCount() == 6);
+    CHECK_FALSE(card->child(0)->visible()); // no one-click reactions without the shell
+    CHECK_STR(card->child(1)->tooltip(), "Add reaction");
+    CHECK_STR(card->child(3)->tooltip(), "Save for later");
+    CHECK_FALSE(card->child(4)->visible());
+    CHECK_STR(card->child(5)->tooltip(), "More actions");
     CHECK(near(card->frame().w, 16 + 4 * 28 + 3 * 4) && near(card->frame().h, 40));
     // It straddles the row's top edge, 12 px from the right.
     CHECK(near(card->windowRect().y, rr.y - 20, 1));
     CHECK(near(card->windowRect().x + card->frame().w, e.win->size().w - 12, 1));
     // Forward asks the shell for its dialog; Save toggles the bookmark.
-    static_cast<ui::Clickable *>(card->child(1))->activate();
+    static_cast<ui::Clickable *>(card->child(2))->activate();
     CHECK(fwdConv == design && fwdTs == last.ts && fwdFile.empty());
-    static_cast<ui::Clickable *>(card->child(2))->activate();
+    static_cast<ui::Clickable *>(card->child(3))->activate();
     CHECK(e.store.findMessage(design, last.ts)->saved);
-    CHECK_STR(card->child(2)->tooltip(), "Remove from saved");
-    static_cast<ui::Clickable *>(card->child(2))->activate();
+    CHECK_STR(card->child(3)->tooltip(), "Remove from saved");
+    static_cast<ui::Clickable *>(card->child(3))->activate();
     CHECK_FALSE(e.store.findMessage(design, last.ts)->saved);
     // A reminder is a saved item too: Save removes it whole.
     e.backend.setReminder(design, last.ts, base::nowSecs() + 3600);
-    static_cast<ui::Clickable *>(card->child(2))->activate();
+    static_cast<ui::Clickable *>(card->child(3))->activate();
     CHECK(e.store.reminderAt(design, last.ts) == 0 && !e.store.findMessage(design, last.ts)->saved);
     // No toolbar on a pending send.
     e.backend.send(design, "pending one", 0, nullptr);
@@ -1777,7 +1888,7 @@ TEST("actions: the robot asks an agent, active on a linked thread; its menu item
     REQUIRE(robot != nullptr);
     REQUIRE(robot->visible());
     CHECK(robot->icon() == gfx::Icon::Bot);
-    CHECK(robot->parent()->child(4) == findByTooltip(e.win->root().child(0), "More actions"));
+    CHECK(robot->parent()->child(5) == findByTooltip(e.win->root().child(0), "More actions"));
     CHECK(robot->ink() != ui::C::Accent);
     robot->activate();
     REQUIRE(actions.size() == 1);

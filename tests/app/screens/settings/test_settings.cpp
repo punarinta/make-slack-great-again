@@ -22,6 +22,7 @@
 #include "screens/shell/shortcuts.h"
 
 #ifdef MSGA_HAVE_MESSAGES
+#include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/image_cache.h"
 #endif
 
@@ -233,6 +234,8 @@ TEST("settings: every value survives the file, which is owner-only") {
     s.spellLanguages             = {"en_US", "de_DE_frami"};
     s.emojiRecent                = {"tada", "+1"};
     s.emojiSkinTone              = 3;
+    s.quickReactions             = 2;
+    s.quickReactionNames         = {"tada", "fire", "eyes"};
     s.lastAttachDir              = "/tmp/pics";
     s.provider("anthropic")->key = "sk-ant-abcd1234";
     s.ai.push_back({"custom-1", "vLLM", "http://localhost:8000/v1", "", "qwen", ""});
@@ -272,6 +275,9 @@ TEST("settings: every value survives the file, which is owner-only") {
     REQUIRE(r.emojiRecent.size() == 2);
     CHECK_STR(r.emojiRecent[0], "tada");
     CHECK(r.emojiSkinTone == 3);
+    CHECK(r.quickReactions == 2);
+    REQUIRE(r.quickReactionNames.size() == 3);
+    CHECK_STR(r.quickReactionNames[1], "fire");
     CHECK_STR(r.lastAttachDir, "/tmp/pics");
     REQUIRE(r.ai.size() == 3);
     CHECK_STR(r.provider("anthropic")->key, "sk-ant-abcd1234");
@@ -287,6 +293,65 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK(c.paletteDark == int(ui::Palette::Count) - 1);
     CHECK(c.notifyLevel == 1);
     file::remove(path);
+}
+
+TEST("settings: one-click reactions are the most used, or the three picked, topped up") {
+    shell::Settings s;
+    using V = std::vector<std::string>;
+    // Off unless chosen: the toolbar stays as it was.
+    CHECK(s.quickReactions == 0);
+    CHECK(s.oneClickReactions().empty());
+    // Nothing used yet: Slack's defaults.
+    s.quickReactions = 1;
+    CHECK((s.oneClickReactions() == V{"white_check_mark", "eyes", "raised_hands"}));
+    // The emoji picker's Frequently used, newest first, then the defaults.
+    s.emojiRecent = {"tada", "eyes"};
+    CHECK((s.oneClickReactions() == V{"tada", "eyes", "white_check_mark"}));
+    s.emojiRecent = {"tada", "fire", "+1", "heart"};
+    CHECK((s.oneClickReactions() == V{"tada", "fire", "+1"}));
+    // Only what the workspace has: another workspace's emoji is skipped.
+    s.emojiRecent = {"partyparrot", "tada", "shipit", "fire", "+1"};
+    auto standard = [](std::string_view n) { return n != "partyparrot" && n != "shipit"; };
+    CHECK((s.oneClickReactions(standard) == V{"tada", "fire", "+1"}));
+    CHECK((s.oneClickReactions() == V{"partyparrot", "tada", "shipit"}));
+    // Custom: the picked ones; one missing (or not here) is filled in.
+    s.quickReactions     = 2;
+    s.quickReactionNames = {"rocket", "", "rocket"};
+    CHECK((s.oneClickReactions() == V{"rocket", "white_check_mark", "eyes"}));
+    s.quickReactionNames = {"shipit", "rocket", "fire"};
+    CHECK((s.oneClickReactions(standard) == V{"rocket", "fire", "white_check_mark"}));
+    // An unknown mode counts as off.
+    s.quickReactions = 7;
+    CHECK(s.oneClickReactions().empty());
+    s.quickReactions = 0;
+    CHECK(s.oneClickReactions().empty());
+}
+
+TEST("settings: one-click reactions keep their places as the most used reorder") {
+    using V = std::vector<std::string>;
+    V names = {"eyes", "tada", "fire"};
+    shell::Settings::keepPlaces({"tada", "fire", "eyes"}, names);
+    CHECK((names == V{"tada", "fire", "eyes"}));
+    // One drops out: the newcomer takes its place, the others stay.
+    names = {"rocket", "tada", "fire"};
+    shell::Settings::keepPlaces({"tada", "eyes", "fire"}, names);
+    CHECK((names == V{"tada", "rocket", "fire"}));
+    // Nothing before, or nothing shared: as given.
+    names = {"a", "b", "c"};
+    shell::Settings::keepPlaces({}, names);
+    CHECK((names == V{"a", "b", "c"}));
+    shell::Settings::keepPlaces({"x", "y", "z"}, names);
+    CHECK((names == V{"a", "b", "c"}));
+    // Fewer than before, or more.
+    names = {"c", "a"};
+    shell::Settings::keepPlaces({"a", "b", "c"}, names);
+    CHECK((names == V{"a", "c"}));
+    names = {"c", "a", "b"};
+    shell::Settings::keepPlaces({"a"}, names);
+    CHECK((names == V{"a", "c", "b"}));
+    names.clear();
+    shell::Settings::keepPlaces({"a"}, names);
+    CHECK(names.empty());
 }
 
 TEST("settings: the gear opens a window-filling overlay; Escape and the backdrop close it") {
@@ -510,6 +575,48 @@ TEST("settings: the Markdown formatting choice reaches the composer on Save") {
     c.edit().insertText("*it* **bold**");
     CHECK_STR(mrkdwn::compose(c.mrkdwn()).mrkdwn, "_it_ *bold*");
     CHECK(shell::Settings::load(path).markdownFormatting); // saved
+}
+
+TEST("settings: a one-click reaction picked in Settings is no use, and lands only on its page") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness h(path);
+    h.settings.emojiRecent = {"fire"};
+    screens::EmojiPicker::restoreState(h.settings.emojiRecent, 0);
+    SettingsDialog &d    = h.open();
+    ui::View       *most = d.find("My most frequently used emoji");
+    REQUIRE(most != nullptr);
+    ui::View *modes = most->parent();
+    REQUIRE(modes->childCount() == 3);
+    d.scroll().ensureVisible(modes);
+    pump();
+    h.click(modes->child(2)); // Custom
+    CHECK(d.draft().quickReactions == 2);
+    ui::View *slot = d.find("Choose emoji");
+    REQUIRE(slot != nullptr);
+    d.scroll().ensureVisible(slot);
+    pump();
+    h.click(slot);
+    auto *ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("rocket");
+    pump();
+    CHECK_STR(d.draft().quickReactionNames[0], "rocket");
+    // Not a use: Frequently used is as it was.
+    CHECK((h.settings.emojiRecent == std::vector<std::string>{"fire"}));
+    // A pick after the page was rebuilt goes nowhere.
+    slot = d.find("Choose emoji");
+    REQUIRE(slot != nullptr);
+    h.click(slot);
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    d.showPage(SettingsDialog::Page::About);
+    pump();
+    ep->pick("tada");
+    pump();
+    CHECK_STR(d.draft().quickReactionNames[0], "rocket");
+    screens::EmojiPicker::restoreState({}, 0);
+    file::remove(path);
 }
 
 TEST("settings: Appearance changes wait for Save, which applies them and closes") {

@@ -504,6 +504,20 @@ public:
     }
 };
 
+// A one-click reaction: the emoji where a toolbar button's icon would be.
+class QuickReaction final : public ui::Clickable {
+public:
+    QuickReaction(Context &ctx, const std::string &name) {
+        style().size(28, 28).stack().items(ui::Align::Center).noShrink();
+        setLook({C::None, C::RowHover, C::RowHover, C::None, 5});
+        setTooltip(arg(tr("React with :%1:"), name.substr(0, name.find("::"))));
+        setRole(ui::Role::Button);
+        setFocusable(false);
+        EmojiPicker::addGlyph(this, ctx, name, 18);
+    }
+    bool tooltipImmediate() const override { return true; }
+};
+
 // ── MessageList ─────────────────────────────────────────────────────────────
 
 MessageList::MessageList(Context &ctx)
@@ -533,9 +547,11 @@ MessageList::MessageList(Context &ctx)
     };
     _typing = add<ui::Label>("", Font::Small, C::TextMuted);
     _typing->setMaxLines(1);
-    // The hover toolbar: Add reaction, Forward message, Save for later, Ask
-    // agent (agent thread links), More actions.
-    _toolbar          = add<ToolbarCard>();
+    // The hover toolbar: the one-click reactions, Add reaction, Forward
+    // message, Save for later, Ask agent (agent thread links), More actions.
+    _toolbar = add<ToolbarCard>();
+    _tbQuick = _toolbar->add<ui::View>();
+    _tbQuick->style().row().spacing(4).items(ui::Align::Center);
     _tbEmoji          = _toolbar->add<ActionButton>(gfx::Icon::Smile, tr("Add reaction"));
     _tbEmoji->onClick = [this] {
         if (_toolbarRow) {
@@ -1320,6 +1336,7 @@ void MessageList::placeToolbar() {
     // Emoji: caps.reactions, except on my own messages in an agent session;
     // Save: caps.messageReminders (not agent sessions).
     _tbEmoji->setVisible(!(agent && m->user == _ctx.store().me));
+    syncQuickReactions(_tbEmoji->visible());
     _tbSave->setVisible(!agent && _ctx.backend.capabilities().messageReminders);
     const bool saved = m->saved || _ctx.store().reminderAt(_conv, m->ts) != 0;
     _tbSave->setIcon(saved ? gfx::Icon::BookmarkFilled : gfx::Icon::Bookmark);
@@ -1338,6 +1355,67 @@ void MessageList::placeToolbar() {
     // 12 px from the right; clipped at the viewport's top.
     _toolbar->setFrame({std::floor(width() - 12 - sz.w), std::floor(o.y - sz.h / 2), sz.w, sz.h});
     _toolbar->setVisible(o.y < height() - _typingH);
+}
+
+// Rebuilt only when what they show changes: the names (a pick moves Frequently
+// used, Settings, the skin tone) or a workspace emoji's picture.
+void MessageList::syncQuickReactions(bool shown) {
+    std::vector<std::string> names;
+    if (shown && _ctx.quickReactions)
+        names = _ctx.quickReactions();
+    std::vector<std::string> images; // a workspace emoji's picture, by name
+    images.reserve(names.size());
+    for (std::string &n : names) {
+        n = EmojiPicker::withSkinTone(n); // as the picker would send it
+        images.push_back(_ctx.store().emojiFor(n).image);
+    }
+    _tbQuick->setVisible(!names.empty());
+    if (names == _quickNames && images == _quickImages)
+        return;
+    _quickNames  = std::move(names);
+    _quickImages = std::move(images);
+    _tbQuick->clearChildren();
+    for (const std::string &n : _quickNames) {
+        auto *b    = _tbQuick->add<QuickReaction>(_ctx, n);
+        b->onClick = [this, n] { toggleQuickReaction(n); };
+    }
+}
+
+// Takes back my reaction of that emoji (in any skin tone, under any of its
+// names: "thumbsup" is Slack's "+1"), else adds it.
+void MessageList::toggleQuickReaction(const std::string &name) {
+    const model::Message *m = _toolbarRow ? message(_toolbarRow->ts()) : nullptr;
+    if (!m)
+        return;
+    const model::Store    &st     = _ctx.store();
+    auto                   baseOf = [](std::string_view n) { return n.substr(0, n.find("::")); };
+    const std::string_view base   = baseOf(name);
+    const model::Store::EmojiGlyph want = st.emojiFor(base);
+    const model::Reaction         *mine = nullptr, *same = nullptr;
+    for (const model::Reaction &r : m->reactions) {
+        const std::string_view rb = baseOf(r.name);
+        if (rb != base) {
+            const model::Store::EmojiGlyph g = st.emojiFor(rb);
+            if (!(want.unicode.empty() ? !want.image.empty() && g.image == want.image
+                                       : g.unicode == want.unicode))
+                continue;
+        }
+        if (!same)
+            same = &r;
+        if (st.reactedByMe(r) && (!mine || r.name == name))
+            mine = &r;
+    }
+    const Ts ts = m->ts;
+    if (mine) {
+        const std::string n = mine->name; // react() may change the message
+        _ctx.backend.react(_conv, ts, n, false);
+        return;
+    }
+    // Under the name the message already has it by, in my tone.
+    std::string add = name;
+    if (same && baseOf(same->name) != base)
+        add = str::concat({baseOf(same->name), std::string_view(name).substr(base.size())});
+    _ctx.backend.react(_conv, ts, add, true);
 }
 
 void MessageList::hideToolbar() {
