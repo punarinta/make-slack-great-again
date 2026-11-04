@@ -1267,7 +1267,7 @@ msgstr "最後の返信"
 msgid "Last reply %1"
 msgstr "最後の返信: %1"
 
-#: src/app/screens/messages/rows.cpp src/app/screens/messages/thread_panel.cpp src/app/screens/shell/shell.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/messages/thread_panel.cpp src/app/screens/shell/shell.cpp src/app/screens/shell/shortcuts.cpp
 msgid "Close thread"
 msgstr "スレッドを閉じる"
 

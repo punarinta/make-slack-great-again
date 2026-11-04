@@ -79,6 +79,10 @@ const Def kDefs[] = {
 #else
      {{K::W, Ctrl}, kNone}},
 #endif
+    // Only what the focused view leaves (an edit in progress, a selection, the
+    // search keep their Esc), only from inside the thread or with no focus,
+    // and a modal popup still goes first.
+    {Id::CloseThread, Scope::Window, false, N_("Close thread"), {{K::Escape, 0}, kNone}},
     // Claude Code workspace only, and only on an idle (gray-dot) session.
     {Id::RemoveIdleSession,
      Scope::Documented,

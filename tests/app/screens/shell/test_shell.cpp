@@ -46,6 +46,7 @@
 #ifdef MSGA_HAVE_MESSAGES
 #include "app/screens/messages/image_cache.h"
 #include "app/screens/messages/message_list.h"
+#include "app/screens/messages/thread_panel.h"
 #endif
 
 #include <algorithm>
@@ -3436,6 +3437,107 @@ TEST("thread panel: at full width, whatever needs the messages brings them back"
     h.sh->jumpToMessage(design, root, 0);
     pump();
     CHECK(messages->visible());
+}
+
+TEST("thread panel: a window too narrow for both covers the messages, a wider one splits again") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    w.setSize({640, 600});
+    h.sh->composer().edit().focus(); // where a reply bar's click leaves it
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadPanel());
+    ui::View *area     = h.sh->threadPanel()->parent();
+    ui::View *body     = area->parent();
+    ui::View *messages = body->child(0);
+    ui::View *splitter = body->child(1);
+    REQUIRE(body->width() < 360 + 200 + 7);
+    CHECK(!messages->visible());
+    CHECK(!splitter->visible());
+    CHECK(std::fabs(area->width() - body->width()) <= 1);
+    ui::View *f = h.win->focusView();
+    CHECK(f && area->isAncestorOf(f)); // the thread's composer, not nowhere
+#ifdef MSGA_HAVE_MESSAGES
+    auto *panel = static_cast<screens::ThreadPanel *>(h.sh->threadPanel());
+    CHECK(panel->backButton()->visible());
+    CHECK(!panel->closeButton()->visible()); // the back arrow stands in for it
+#endif
+    w.setSize({1600, 900});
+    pump();
+    CHECK(messages->visible());
+    CHECK(splitter->visible());
+    CHECK(int(std::lround(area->width())) == h.settings.threadWidth);
+#ifdef MSGA_HAVE_MESSAGES
+    CHECK(!panel->backButton()->visible());
+    CHECK(panel->closeButton()->visible());
+#endif
+    // Narrowed under a modal popup, the focus stays in the popup.
+    h.sh->showQuickSwitcher();
+    pump();
+    ui::Popup *qs = h.win->topPopup();
+    REQUIRE(qs);
+    ui::View *held = h.win->focusView();
+    REQUIRE(held && qs->isAncestorOf(held));
+    w.setSize({640, 600});
+    pump();
+    CHECK(!messages->visible());
+    CHECK(h.win->focusView() == held);
+    h.win->closePopup(qs);
+    pump();
+    w.setSize({1600, 900});
+    pump();
+    REQUIRE(messages->visible());
+    // Narrow again, the messages are only back with the thread closed.
+    w.setSize({640, 600});
+    pump();
+    REQUIRE(!messages->visible());
+    h.sh->openSearch();
+    pump();
+    CHECK(messages->visible());
+    CHECK_FALSE(h.sh->threadOpen());
+}
+
+TEST("thread panel: Esc closes it once the focused view has no use for the key") {
+    Harness       h;
+    plat::Window &w      = h.win->native();
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      root   = h.backend.findTs(design, "Proposal B");
+    REQUIRE(root != 0);
+    auto esc = [&] {
+        plat::Event e;
+        e.type   = plat::EventType::KeyDown;
+        e.window = &w;
+        e.key    = plat::Key::Escape;
+        h.win->handle(e);
+        pump();
+    };
+    h.sh->openThread(design, root);
+    pump();
+    REQUIRE(h.sh->threadOpen());
+    // From the channel's composer (a draft there), Esc leaves the thread be.
+    h.sh->composer().edit().focus();
+    esc();
+    CHECK(h.sh->threadOpen());
+    h.sh->threadComposer()->edit().focus();
+    esc();
+    CHECK_FALSE(h.sh->threadOpen());
+    // A modal popup goes first; the thread stays for the next Esc.
+    h.sh->openThread(design, root);
+    pump();
+    h.sh->showQuickSwitcher();
+    pump();
+    ui::Popup *p = h.win->topPopup();
+    REQUIRE(p);
+    REQUIRE(p->modal());
+    esc();
+    CHECK(h.win->topPopup() != p);
+    CHECK(h.sh->threadOpen());
+    h.sh->threadComposer()->edit().focus();
+    esc();
+    CHECK_FALSE(h.sh->threadOpen());
 }
 
 TEST("sidebar footer: the avatar menu hides the workspace rail and remembers it") {

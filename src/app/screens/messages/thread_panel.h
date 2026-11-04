@@ -1,8 +1,9 @@
 // ThreadPanel — the right-hand thread view: a 48 px header ("Thread", an
-// agent link's chip, then mute / download / open-as-session / close), the
-// root and its replies (a MessageList in thread mode), the shell's typing
-// indicator and composer in their slots, and "Also send to channel" under
-// the composer for a thread in a channel on a service that can broadcast.
+// agent link's chip, then mute / download / open-as-session / close; while it
+// covers the messages a back arrow on the left stands in for close), the root
+// and its replies (a MessageList in thread mode), the shell's typing indicator
+// and composer in their slots, and "Also send to channel" under the composer
+// for a thread in a channel on a service that can broadcast.
 //
 //   auto *tp = row->add<screens::ThreadPanel>(ctx);
 //   tp->style().width(420);
@@ -43,6 +44,12 @@ public:
     void          setBroadcastWanted(bool on);
     void          setBroadcastBlocked(bool blocked);
 
+    // While the panel covers the messages, the header's back arrow takes the
+    // close button's place (one "Close thread" button either way).
+    void      setBackShown(bool on);
+    ui::View *backButton() const { return _back; }
+    ui::View *closeButton() const { return _close; }
+
     ui::View *muteButton() const { return _mute; }
     void      toggleMuted();
     void      downloadThread();
@@ -61,6 +68,7 @@ private:
 
     Context       &_ctx;
     ui::Clickable *_mute = nullptr, *_download = nullptr, *_openSession = nullptr;
+    ui::Clickable *_back = nullptr, *_close = nullptr;
     ui::Clickable *_linkChip   = nullptr;
     ui::Label     *_linkText   = nullptr;
     MessageList   *_list       = nullptr;
