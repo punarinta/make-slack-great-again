@@ -510,7 +510,7 @@ public:
     QuickReaction(Context &ctx, const std::string &name) {
         style().size(28, 28).stack().items(ui::Align::Center).noShrink();
         setLook({C::None, C::RowHover, C::RowHover, C::None, 5});
-        setTooltip(arg(tr("React with :%1:"), name));
+        setTooltip(arg(tr("React with :%1:"), name.substr(0, name.find("::"))));
         setRole(ui::Role::Button);
         setFocusable(false);
         EmojiPicker::addGlyph(this, ctx, name, 18);
@@ -1358,16 +1358,17 @@ void MessageList::placeToolbar() {
 }
 
 // Rebuilt only when what they show changes: the names (a pick moves Frequently
-// used, or Settings) or a workspace emoji's picture; a click adds the
-// reaction, or takes back one of mine.
+// used, Settings, the skin tone) or a workspace emoji's picture.
 void MessageList::syncQuickReactions(bool shown) {
     std::vector<std::string> names;
     if (shown && _ctx.quickReactions)
         names = _ctx.quickReactions();
     std::vector<std::string> images; // a workspace emoji's picture, by name
     images.reserve(names.size());
-    for (const std::string &n : names)
+    for (std::string &n : names) {
+        n = EmojiPicker::withSkinTone(n); // as the picker would send it
         images.push_back(_ctx.store().emojiFor(n).image);
+    }
     _tbQuick->setVisible(!names.empty());
     if (names == _quickNames && images == _quickImages)
         return;
@@ -1376,17 +1377,45 @@ void MessageList::syncQuickReactions(bool shown) {
     _tbQuick->clearChildren();
     for (const std::string &n : _quickNames) {
         auto *b    = _tbQuick->add<QuickReaction>(_ctx, n);
-        b->onClick = [this, n] {
-            const model::Message *m = _toolbarRow ? message(_toolbarRow->ts()) : nullptr;
-            if (!m)
-                return;
-            bool mine = false;
-            for (const model::Reaction &r : m->reactions)
-                if (r.name == n)
-                    mine = _ctx.store().reactedByMe(r);
-            _ctx.backend.react(_conv, m->ts, n, !mine);
-        };
+        b->onClick = [this, n] { toggleQuickReaction(n); };
     }
+}
+
+// Takes back my reaction of that emoji (in any skin tone, under any of its
+// names: "thumbsup" is Slack's "+1"), else adds it.
+void MessageList::toggleQuickReaction(const std::string &name) {
+    const model::Message *m = _toolbarRow ? message(_toolbarRow->ts()) : nullptr;
+    if (!m)
+        return;
+    const model::Store    &st     = _ctx.store();
+    auto                   baseOf = [](std::string_view n) { return n.substr(0, n.find("::")); };
+    const std::string_view base   = baseOf(name);
+    const model::Store::EmojiGlyph want = st.emojiFor(base);
+    const model::Reaction         *mine = nullptr, *same = nullptr;
+    for (const model::Reaction &r : m->reactions) {
+        const std::string_view rb = baseOf(r.name);
+        if (rb != base) {
+            const model::Store::EmojiGlyph g = st.emojiFor(rb);
+            if (!(want.unicode.empty() ? !want.image.empty() && g.image == want.image
+                                       : g.unicode == want.unicode))
+                continue;
+        }
+        if (!same)
+            same = &r;
+        if (st.reactedByMe(r) && (!mine || r.name == name))
+            mine = &r;
+    }
+    const Ts ts = m->ts;
+    if (mine) {
+        const std::string n = mine->name; // react() may change the message
+        _ctx.backend.react(_conv, ts, n, false);
+        return;
+    }
+    // Under the name the message already has it by, in my tone.
+    std::string add = name;
+    if (same && baseOf(same->name) != base)
+        add = str::concat({baseOf(same->name), std::string_view(name).substr(base.size())});
+    _ctx.backend.react(_conv, ts, add, true);
 }
 
 void MessageList::hideToolbar() {

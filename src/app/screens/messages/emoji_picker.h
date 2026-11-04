@@ -45,10 +45,14 @@ public:
     // An emoji by shortcode in `parent`, `size` px: a workspace emoji's
     // picture, else its character (":name:" cut to `size` when unknown).
     static ui::View *addGlyph(ui::View *parent, Context &ctx, const std::string &name, float size);
+    // `name` in the chosen skin tone, as a pick would send it ("+1" →
+    // "+1::skin-tone-3"); a name with a tone already, or one without
+    // variants, comes back as it is.
+    static std::string withSkinTone(const std::string &name);
     // Off: a pick is not added to "Frequently used" (a setting's choice
     // rather than a use).
-    void             setRemembersPicks(bool on) { _remember = on; }
-    bool             onEvent(ui::Event &e) override;
+    void               setRemembersPicks(bool on) { _remember = on; }
+    bool               onEvent(ui::Event &e) override;
 
 private:
     bool searchKey(const ui::Event &e);

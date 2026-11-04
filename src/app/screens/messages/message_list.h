@@ -263,6 +263,7 @@ private:
     void checkEdges();
     void placeToolbar();
     void syncQuickReactions(bool shown);
+    void toggleQuickReaction(const std::string &name);
     void placeFileBar();
     bool applyJump();
 

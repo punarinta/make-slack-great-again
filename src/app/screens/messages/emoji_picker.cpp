@@ -398,6 +398,12 @@ View *EmojiPicker::addGlyph(View *parent, Context &ctx, const std::string &name,
     return l;
 }
 
+std::string EmojiPicker::withSkinTone(const std::string &name) {
+    if (!g_tone || name.find("::") != std::string::npos || !emoji::supportsSkinTone(name))
+        return name;
+    return str::concat({name, "::skin-tone-", str::number(int64_t(g_tone))});
+}
+
 EmojiPicker *EmojiPicker::show(Window &w, RectF anchor, Context &ctx, Pick onPick) {
     auto p = std::make_unique<EmojiPicker>(ctx, std::move(onPick));
     p->setAnchor(anchor, Place::Above);

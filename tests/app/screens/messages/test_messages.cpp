@@ -14,6 +14,7 @@
 #include "app/screens/common/message_text.h"
 #include "app/screens/common/remote_images.h"
 #include "app/screens/messages/audio_card.h"
+#include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/image_cache.h"
 #include "app/screens/messages/message_dialogs.h"
 #include "app/screens/messages/message_list.h"
@@ -1015,6 +1016,66 @@ TEST("actions: the toolbar's one-click reactions add mine, and a second click ta
     e.ctx.quickReactions = [] { return std::vector<std::string>{}; };
     e.list->refreshToolbar();
     CHECK_FALSE(bar->visible());
+}
+
+TEST("actions: one-click reactions go in my skin tone and find mine under any tone or name") {
+    Env           e(true);
+    const ConvRef design = e.conv("C0DESIGN");
+    e.ctx.quickReactions = [] {
+        return std::vector<std::string>{"thumbsup", "raised_hands", "tada"};
+    };
+    screens::EmojiPicker::restoreState({}, 3);
+    e.list->showConversation(design);
+    pump(10);
+    ui::View *row = e.row(e.store.conversation(design).messages.back().ts);
+    REQUIRE(row != nullptr);
+    auto           *h  = app().platform().testHooks();
+    const ui::RectF rr = row->windowRect();
+    h->injectPointerMove(e.win->native(), {rr.x + 300, rr.y + 20});
+    pump(4);
+    // The message the toolbar is on (the hover, whichever row it found).
+    REQUIRE(e.list->toolbarRow() != nullptr);
+    const Ts  ts  = e.list->toolbarRow()->ts();
+    ui::View *bar = e.list->quickReactionBar();
+    REQUIRE(bar->visible());
+    REQUIRE(bar->childCount() == 3);
+    CHECK_STR(bar->child(0)->tooltip(), "React with :thumbsup:");
+    auto names = [&] {
+        std::vector<std::string> out;
+        for (const model::Reaction &r : e.store.findMessage(design, ts)->reactions)
+            if (e.store.reactedByMe(r))
+                out.push_back(r.name);
+        return out;
+    };
+    auto click = [&](size_t i) {
+        static_cast<ui::Clickable *>(bar->child(i))->activate();
+        pump(4);
+    };
+    using V = std::vector<std::string>;
+    // Skinnable: sent in the picker's tone; not skinnable: as it is.
+    click(1);
+    CHECK((names() == V{"raised_hands::skin-tone-3"}));
+    click(2);
+    CHECK((names() == V{"raised_hands::skin-tone-3", "tada"}));
+    click(1);
+    click(2);
+    CHECK(names().empty());
+    // Mine in another tone is taken back, not doubled.
+    e.store.setReaction(design, ts, "raised_hands::skin-tone-5", e.store.me, true);
+    click(1);
+    CHECK(names().empty());
+    // "thumbsup" is Slack's "+1": someone's "+1" is joined under that name,
+    // and the next click takes mine back.
+    e.store.setReaction(design, ts, "+1", 1, true);
+    click(0);
+    CHECK((names() == V{"+1::skin-tone-3"}));
+    click(0);
+    CHECK(names().empty());
+    // A new tone rebuilds the buttons.
+    screens::EmojiPicker::restoreState({}, 0);
+    e.list->refreshToolbar();
+    click(1);
+    CHECK((names() == V{"raised_hands"}));
 }
 
 TEST("thread: an agent's thread of a link has a chip back to the Slack thread") {
