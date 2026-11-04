@@ -246,6 +246,31 @@ TEST("prompt history: Ctrl+R searches it, Enter takes one into the editor") {
     CHECK_STR(c.edit().text(), "first prompt");
 }
 
+// "/co" typed before Claude Code's commands came (msga's own only): the
+// list shows /compact the moment they do, with nothing typed since.
+TEST("slash commands: the list follows commands that arrive while typing") {
+    Harness    h;
+    auto      &c   = h.sh->composer();
+    const auto all = h.backend.cmds;
+    h.backend.cmds.pop_back(); // /compact
+    ++h.backend.cmdsRev;
+    c.edit().focus();
+    c.edit().insertText("/co");
+    pump();
+    CHECK(c.pickList() == nullptr); // nothing by that name yet
+    h.backend.cmds = all;
+    ++h.backend.cmdsRev;
+    h.sh->commandsChanged("other"); // another workspace's: not this composer's
+    pump();
+    CHECK(c.pickList() == nullptr);
+    h.sh->commandsChanged(std::string());
+    pump();
+    REQUIRE(c.pickList() != nullptr);
+    REQUIRE(c.pickList()->count() == 1);
+    CHECK_STR(c.pickList()->item(0).title, "/compact");
+    CHECK_STR(c.edit().text(), "/co");
+}
+
 TEST("slash commands: the list at the start, local ones run, the rest are sent") {
     Harness h;
     auto   &c = h.sh->composer();

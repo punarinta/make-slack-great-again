@@ -645,8 +645,10 @@ void Backend::postDone(Done done, bool ok, std::string error) {
 // ── Commands ────────────────────────────────────────────────────────────────
 
 Backend::CommandList *Backend::commandList(ConvRef conv) {
-    // Asked again after a while: skills and commands come and go.
+    // Asked again after a while: skills and commands come and go. A failed
+    // ask (Claude Code slow to start, or no answer) is retried sooner.
     constexpr int64_t kFreshMs = 5 * 60'000;
+    constexpr int64_t kRetryMs = 10'000;
     const Tracked    *t        = findRef(conv);
     if (!t || t->info.cwd.empty())
         return nullptr;
@@ -654,8 +656,7 @@ Backend::CommandList *Backend::commandList(ConvRef conv) {
     CommandList      &list = _commands[cwd];
     if (!list.rev)
         list.rev = ++_commandsRev;
-    if (!_creds.claudePath.empty() && !list.loading &&
-        (list.fetchedMs == 0 || nowMs() - list.fetchedMs > kFreshMs)) {
+    if (!_creds.claudePath.empty() && !list.loading && nowMs() >= list.fetchedMs) {
         list.loading = true;
         _launcher->listCommands(
             cwd, [this, alive = _alive, cwd](std::vector<SlashCommand> commands, Account account) {
@@ -663,13 +664,16 @@ Backend::CommandList *Backend::commandList(ConvRef conv) {
                     return;
                 CommandList &l = _commands[cwd];
                 l.loading      = false;
-                l.fetchedMs    = nowMs();
+                l.fetchedMs    = nowMs() + (commands.empty() ? kRetryMs : kFreshMs);
                 if (!account.empty())
                     _account = account;
                 if (commands.empty())
-                    return; // keep what we had; tried again after a while
+                    return; // keep what we had
                 l.commands = std::move(commands);
                 l.rev      = ++_commandsRev;
+                // Typed "/co" while it was being asked: the list shows it now.
+                if (onCommandsChanged)
+                    onCommandsChanged();
             }
         );
     }

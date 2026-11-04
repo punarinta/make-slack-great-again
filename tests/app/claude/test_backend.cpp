@@ -1433,6 +1433,64 @@ TEST("backend: /btw is offered with Claude Code's commands") {
     CHECK(clear.open == kNoConv);
 }
 
+#ifndef _WIN32 // /bin/sh scripts
+// The "/" list is asked of Claude Code in the background: its arrival is
+// announced (an open list follows), a failed ask isn't, and is retried soon
+// rather than after the usual while.
+TEST("backend: Claude Code's commands arriving are announced; a failed ask isn't") {
+    FakeClaudeHome    home;
+    const std::string work = tempDir("work");
+    home.trust(work);
+    // The first `-p` answers nothing; later ones list /compact.
+    const std::string cli   = writeCli(work, R"SH(#!/bin/sh
+[ "$1" = auth ] && { echo '{"loggedIn":true}'; exit 0; }
+if [ "$1" = -p ]; then
+  read -r req
+  echo x >> "$CLAUDE_CONFIG_DIR/asked.log"
+  [ "$(wc -l < "$CLAUDE_CONFIG_DIR/asked.log")" -eq 1 ] && exit 1
+  echo '{"type":"control_response","response":{"subtype":"success","request_id":"msga","response":{"commands":[{"name":"compact","description":"Free up context","builtin":true}]}}}'
+fi
+exit 0
+)SH");
+    const auto        asked = [&] { // how often the list was asked for
+        const std::string log = home.text("asked.log");
+        return std::count(log.begin(), log.end(), '\n');
+    };
+    const auto offers = [](const std::vector<model::Backend::Command> &cmds, std::string_view n) {
+        return std::any_of(cmds.begin(), cmds.end(), [&](const auto &c) { return c.name == n; });
+    };
+
+    Rig rig(Credentials{cli});
+    int announced                  = 0;
+    rig.backend->onCommandsChanged = [&] { ++announced; };
+    const ConvRef conv             = rig.start(work);
+    REQUIRE(conv != kNoConv);
+
+    // Asked, and nothing came: only msga's own, and no announcement.
+    const uint64_t rev = rig.backend->commandsRevision(conv);
+    REQUIRE(rig.wait([&] { return asked() == 1; }));
+    rig.pump(300);
+    CHECK(announced == 0);
+    CHECK(rig.backend->commandsRevision(conv) == rev);
+    CHECK_FALSE(offers(rig.backend->commands(conv), "compact"));
+    rig.pump(300);
+    CHECK(asked() == 1); // not asked again on every look
+
+    // Asked again a little later: it arrives, and says so.
+    REQUIRE(rig.wait(
+        [&] {
+            rig.backend->commandsRevision(conv);
+            return announced == 1;
+        },
+        15'000
+    ));
+    CHECK(asked() == 2);
+    CHECK(rig.backend->commandsRevision(conv) != rev);
+    CHECK(offers(rig.backend->commands(conv), "compact"));
+    CHECK(offers(rig.backend->commands(conv), "btw"));
+}
+#endif
+
 TEST("backend: a subagent run is a thread holding the subagent's transcript") {
     FakeClaudeHome home;
     home.writeSession("idle");

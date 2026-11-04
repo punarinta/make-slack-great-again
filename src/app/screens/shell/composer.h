@@ -249,6 +249,9 @@ public:
     void hiddenByAncestor() override { visibilityChanged(false); }
     // The tooltips that name a key which can change (the send key).
     void refreshTips();
+    // The backend's slash commands changed: an open "/" list (or one that
+    // found nothing yet) is looked up again.
+    void commandsChanged();
 
     std::function<void()> onSent;
     // The thread panel's "Also send to channel" tick, read at send.

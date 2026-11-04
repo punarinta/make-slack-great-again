@@ -123,6 +123,9 @@ public:
     );
     // "Session expired", when the window is hidden.
     void notifySessionExpired(const std::string &workspace);
+    // Workspace `key`'s slash commands changed (Backend::onCommandsChanged):
+    // a "/" list open in its composers follows.
+    void commandsChanged(const std::string &key);
     // A message workspace `key` never sent (Backend::onUnsent): back in the
     // composer showing (conv, thread) — in front of what's typed there since,
     // its files attached again — or else in front of that draft.

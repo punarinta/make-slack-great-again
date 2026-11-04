@@ -1315,8 +1315,12 @@ void Composer::setTarget(model::ConvRef conv, model::Ts thread) {
                    : thread                   ? std::string(tr("Reply in thread\xE2\x80\xA6"))
                                               : std::string();
     refreshPlaceholder(); // "Message #name"
-    if (conv != model::kNoConv)
+    if (conv != model::kNoConv) {
         setSuggestion(_ctx.backend.promptSuggestion(conv)); // simplified
+        // Asked for now, so the "/" list is there by the time "/" is typed.
+        if (_ctx.backend.capabilities().slashCommands)
+            _ctx.backend.commandsRevision(conv);
+    }
     refreshLook();
     compositionChanged();
 }
@@ -2129,6 +2133,11 @@ void Composer::updatePickList() {
     _pickInValid = true;
     computePickList();
     _pickShown = _pick != nullptr;
+}
+
+void Composer::commandsChanged() {
+    _pickInValid = false; // same text and caret, a different answer
+    updatePickList();
 }
 
 void Composer::computePickList() {

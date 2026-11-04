@@ -604,7 +604,7 @@ private:
     std::vector<Done> _connectDone; // connect()s waiting for the first scan
     struct CommandList {
         std::vector<SlashCommand> commands;
-        int64_t                   fetchedMs = 0;
+        int64_t                   fetchedMs = 0; // when asked again (0: now)
         uint64_t                  rev       = 0; // commandsRevision: unique across folders
         bool                      loading   = false;
     };

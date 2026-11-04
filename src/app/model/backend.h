@@ -806,6 +806,9 @@ public:
     // A message reminder went off: its saved item
     // (Store::findSaved) carries the preview. Set like onError.
     std::function<void(ConvRef conv, Ts ts)> onReminderDue;
+    // commands() answers differently now (a list asked for arrived): an open
+    // "/" list follows. Set like onError.
+    std::function<void()>                    onCommandsChanged;
 
 protected:
     // The local sections changed (the defaults above): saved by a backend

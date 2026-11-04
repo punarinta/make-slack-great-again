@@ -383,6 +383,10 @@ Accounts::Running *Accounts::ensure(const std::string &key) {
             if (Running *x = bySerial(serial))
                 _shell.giveBackUnsent(x->key, x->store, conv, thread, text, files);
         };
+        backend->onCommandsChanged = [this, serial] {
+            if (Running *x = bySerial(serial))
+                _shell.commandsChanged(x->key);
+        };
         backend->setZenMode(_settings.zenMode(key));
         backend->setWindowVisible(_shell.windowVisible());
         r->claude  = backend.get();

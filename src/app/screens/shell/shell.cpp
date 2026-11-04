@@ -1743,6 +1743,13 @@ void Shell::addWorkspace(PointF anchor) {
         onAddWorkspace(anchor);
 }
 
+void Shell::commandsChanged(const std::string &key) {
+    if (key == _drafts.scope())
+        for (Composer *c : {_composer, threadComposer()})
+            if (c)
+                c->commandsChanged();
+}
+
 void Shell::giveBackUnsent(
     const std::string              &key,
     const model::Store             &store,
