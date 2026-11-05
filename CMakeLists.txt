@@ -47,6 +47,14 @@ if(MINGW)
     # mingw gcc links with ld.bfd; lld's COFF ICF needs its own recipe
     # (see memory lld-coff-icf notes) — off until the Windows release script.
     set(MSGA_HAVE_LLD OFF)
+
+    # MSYS2 GCC 16: C++20 + -Os/-Oz leaves std::string's move ctor undefined
+    # (MINGW-packages#31015, GCC PR 125359). -Os/-Oz turn on -fdeclone-ctor-dtor.
+    check_cxx_compiler_flag(-fno-declone-ctor-dtor MSGA_HAVE_NO_DECLONE)
+    if(MSGA_HAVE_NO_DECLONE)
+        add_compile_options(
+            $<$<AND:$<CONFIG:MinSizeRel>,$<COMPILE_LANGUAGE:CXX>>:-fno-declone-ctor-dtor>)
+    endif()
 else()
     check_linker_flag(CXX "-fuse-ld=lld" MSGA_HAVE_LLD)
 endif()

@@ -1040,4 +1040,39 @@ TEST("slack write: downloadFile fetches with the workspace's credentials, writes
     file::remove(dir);
 }
 
+TEST("slack: on Grid the org's methods go with the org token and the workspace's team_id") {
+    if (!haveServer())
+        return;
+    ctl("POST", "/_ctl/reset");
+    net::Client client{app()};
+    slack::Auth a{"xoxc-ws", "xoxd-c"};
+    a.orgToken       = "xoxc-org";
+    a.orgTeamId      = "T1";
+    int        done  = 0;
+    const auto count = [&done](const json::Document &, const std::string &) { ++done; };
+    slack::apiCall(client, a, "client.counts", {}, count);
+    slack::apiCall(client, a, "subscriptions.thread.getView", "limit=10&team_id=T9", count);
+    slack::apiCall(client, a, "conversations.history", "channel=C1", count);
+    slack::Auth plain{"xoxc-ws", "xoxd-c"}; // off Grid: no org token
+    slack::apiCall(client, plain, "client.counts", {}, count);
+    REQUIRE(pumpUntil([&] { return done == 4; }));
+    const Log         log;
+    const json::Value counts = log.get("client.counts", 0);
+    CHECK_STR(counts["auth"].str(), "Bearer xoxc-org");
+    CHECK_STR(counts["cookie"].str(), "d=xoxd-c");
+    CHECK_STR(counts["form"]["team_id"].str(), "T1");
+    // A caller's own team_id stays, never a second one.
+    const json::Value view = log.get("subscriptions.thread.getView");
+    CHECK_STR(view["auth"].str(), "Bearer xoxc-org");
+    CHECK_STR(view["form"]["team_id"].str(), "T9");
+    CHECK_STR(view["form"]["limit"].str(), "10");
+    // Every other method is untouched.
+    const json::Value history = log.get("conversations.history");
+    CHECK_STR(history["auth"].str(), "Bearer xoxc-ws");
+    CHECK(history["form"]["team_id"].str().empty());
+    const json::Value offGrid = log.get("client.counts", 1);
+    CHECK_STR(offGrid["auth"].str(), "Bearer xoxc-ws");
+    CHECK(offGrid["form"]["team_id"].str().empty());
+}
+
 #endif // !_WIN32

@@ -32,6 +32,12 @@ auth::WorkspaceRecord toRecord(const Credentials &c) {
         w.key("cookie").value(c.cookie);
     if (!c.workspaceUrl.empty())
         w.key("workspaceUrl").value(c.workspaceUrl);
+    if (!c.enterpriseId.empty())
+        w.key("enterpriseId").value(c.enterpriseId);
+    if (!c.orgToken.empty())
+        w.key("orgToken").value(c.orgToken);
+    if (!c.orgUrl.empty())
+        w.key("orgUrl").value(c.orgUrl);
     w.endObject();
     auth::WorkspaceRecord r;
     r.service     = kService;
@@ -56,6 +62,9 @@ Credentials fromRecord(const auth::WorkspaceRecord &r) {
     c.expiresAt         = mapjson::epochSecs(e);
     c.cookie            = std::string(o["cookie"].str());
     c.workspaceUrl      = std::string(o["workspaceUrl"].str());
+    c.enterpriseId      = std::string(o["enterpriseId"].str());
+    c.orgToken          = std::string(o["orgToken"].str());
+    c.orgUrl            = std::string(o["orgUrl"].str());
     return c;
 }
 

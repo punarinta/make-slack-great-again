@@ -28,6 +28,12 @@ struct Credentials {
     // re-login and stales every session workspace at once).
     std::string workspaceUrl;
 
+    // Credentials for org-scope methods
+    std::string enterpriseId; // Enterprise id may differ from teamId if part of enterprise grid
+    // Only populated if the workspace is an actual workspace in an enterprise grid
+    std::string orgToken;
+    std::string orgUrl;
+
     bool sessionAuth() const { return !cookie.empty(); }
 };
 

@@ -181,10 +181,96 @@ TEST("slack: a file downloads with its own workspace's credentials") {
 }
 
 TEST("slack: token scraping from the boot page") {
-    CHECK(slack::scrapeToken(R"(x"api_token":"xoxc-123-456-abc"y)") == "xoxc-123-456-abc");
-    CHECK(slack::scrapeToken(R"(boot {"other":"xoxc-9-8"} )") == "xoxc-9-8");
-    CHECK(slack::scrapeToken(R"("api_token":null)").empty());
-    CHECK(slack::scrapeToken("xoxc-").empty());
+    using slack::scrapeBootTokens;
+    CHECK(scrapeBootTokens(R"(x"api_token":"xoxc-123-456-abc"y)").token == "xoxc-123-456-abc");
+    CHECK(scrapeBootTokens(R"(boot {"other":"xoxc-9-8"} )").token == "xoxc-9-8");
+    CHECK(scrapeBootTokens(R"("api_token":null)").token.empty());
+    CHECK(scrapeBootTokens("xoxc-").token.empty());
+    // Off Grid: no enterprise token, never a fallback one.
+    CHECK(scrapeBootTokens(R"(x"api_token":"xoxc-1-a"y)").enterpriseToken.empty());
+    CHECK(scrapeBootTokens(R"(boot {"other":"xoxc-9-8"} )").enterpriseToken.empty());
+}
+
+TEST("slack: token scraping — Enterprise Grid boot page") {
+    using slack::scrapeBootTokens;
+    // Both keyed, either order.
+    {
+        const auto t =
+            scrapeBootTokens(R"({"api_token":"xoxc-ws-1","enterprise_api_token":"xoxc-org-2"})");
+        CHECK(t.token == "xoxc-ws-1");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+    }
+    {
+        const auto t =
+            scrapeBootTokens(R"({"enterprise_api_token":"xoxc-org-2","api_token":"xoxc-ws-1"})");
+        CHECK(t.token == "xoxc-ws-1");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+    }
+    // The enterprise token is never taken for the workspace's: with no
+    // "api_token" the workspace token falls back to an unkeyed run only.
+    {
+        const auto t =
+            scrapeBootTokens(R"({"enterprise_api_token":"xoxc-org-2","x":"xoxc-other-3"})");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+        CHECK(t.token == "xoxc-other-3");
+    }
+    {
+        const auto t = scrapeBootTokens(R"({"enterprise_api_token":"xoxc-org-2"})");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+        CHECK(t.token.empty());
+    }
+    // A keyed token wins over an earlier unkeyed one; the first of each key wins.
+    {
+        const auto t = scrapeBootTokens(
+            R"({"x":"xoxc-other-3","api_token":"xoxc-ws-1","api_token":"xoxc-ws-9",)"
+            R"("enterprise_api_token":"xoxc-org-2","enterprise_api_token":"xoxc-org-8"})"
+        );
+        CHECK(t.token == "xoxc-ws-1");
+        CHECK(t.enterpriseToken == "xoxc-org-2");
+    }
+    // An empty enterprise token ("xoxc-" with nothing after) is no token.
+    CHECK(scrapeBootTokens(R"({"api_token":"xoxc-ws-1","enterprise_api_token":"xoxc-"})")
+              .enterpriseToken.empty());
+}
+
+TEST("slack: Grid org tokens link onto their workspaces") {
+    const auto cred = [](std::string team, std::string ent, std::string token) {
+        slack::Credentials c;
+        c.teamId       = std::move(team);
+        c.enterpriseId = std::move(ent);
+        c.token        = std::move(token);
+        c.workspaceUrl = "https://" + c.teamId + ".slack.com/";
+        return c;
+    };
+    std::vector<slack::Credentials> v;
+    v.push_back(cred("T1", "E1", "xoxc-ws-1"));
+    v.push_back(cred("E1", "E1", "xoxc-org-1")); // the org of T1 and T2
+    v.push_back(cred("T3", "", "xoxc-ws-3"));    // off Grid
+    v.push_back(cred("T2", "E1", "xoxc-ws-2"));
+    v.push_back(cred("E2", "E2", "xoxc-org-2")); // an org with no workspace here
+    v.push_back(cred("T4", "E3", "xoxc-ws-4"));  // a Grid workspace whose org is missing
+    slack::linkOrgTokens(v);
+    REQUIRE(v.size() == 5);
+    // The linked org is gone, the order of the rest kept.
+    CHECK_STR(v[0].teamId, "T1");
+    CHECK_STR(v[1].teamId, "T3");
+    CHECK_STR(v[2].teamId, "T2");
+    CHECK_STR(v[3].teamId, "E2");
+    CHECK_STR(v[4].teamId, "T4");
+    CHECK_STR(v[0].orgToken, "xoxc-org-1");
+    CHECK_STR(v[0].orgUrl, "https://E1.slack.com/");
+    CHECK_STR(v[2].orgToken, "xoxc-org-1");
+    CHECK(v[1].orgToken.empty() && v[1].orgUrl.empty());
+    CHECK(v[3].orgToken.empty() && v[3].token == "xoxc-org-2"); // kept as it was
+    CHECK(v[4].orgToken.empty());
+    // A workspace's own org token is never overwritten.
+    std::vector<slack::Credentials> w;
+    w.push_back(cred("T1", "E1", "xoxc-ws-1"));
+    w[0].orgToken = "xoxc-org-old";
+    w.push_back(cred("E1", "E1", "xoxc-org-1"));
+    slack::linkOrgTokens(w);
+    REQUIRE(w.size() == 1);
+    CHECK_STR(w[0].orgToken, "xoxc-org-old");
 }
 
 TEST("slack: workspace address and cookie normalisation") {

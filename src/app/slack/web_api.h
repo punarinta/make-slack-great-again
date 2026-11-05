@@ -27,7 +27,15 @@ struct Auth {
     // "https://team.slack.com/api/" for session workspaces (a Grid session
     // token only resolves on its own workspace host); "" = kApiBase.
     std::string base;
+
+    // For enterprise grid workspaces
+    std::string orgToken;
+    std::string orgBase;
+    std::string orgTeamId;
 };
+
+// "https://host/…" → "https://host/api/"; "" when it is not an https URL.
+std::string hostApiBase(std::string_view url);
 
 // Where calls go: MSGA_SLACK_API_BASE (tests point it at a local fake;
 // one process may run several), else auth.base, else kApiBase.
