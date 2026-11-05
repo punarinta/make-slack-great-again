@@ -2172,7 +2172,8 @@ void SlackBackend::Read::loadThreadPages(ConvRef c, Ts root, bool live, Backend:
         net::formEncode({{"channel", id}, {"ts", model::formatTs(root)}, {"limit", kHistoryLimit}}),
         "messages",
         [this, c, root, acc](const json::Value &arr) {
-            const std::string &me = s.user(s.me).id;
+            // A copy: toMessage may intern a user, which moves the users.
+            const std::string me = s.user(s.me).id;
             for (const json::Value v : arr) {
                 model::Message m = mapjson::toMessage(v, s);
                 if (m.ts == root) {
@@ -2930,7 +2931,9 @@ void SlackBackend::Read::pollThreadSubs() {
                     ) {
                         if (!err.empty() || t.conv >= s.conversationCount())
                             return; // the next tick asks again
-                        const std::string          &me = s.user(s.me).id;
+                        // A copy: toMessage may intern a user, which moves
+                        // the users.
+                        const std::string           me = s.user(s.me).id;
                         std::vector<model::Message> replies;
                         std::vector<char>           parentIsMe;
                         for (const json::Value r : doc.root()["messages"]) {

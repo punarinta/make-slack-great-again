@@ -1573,6 +1573,19 @@ public:
         setCard(false);
         setPaintOutset(6);
     }
+    // Closed by its own timer; a toast that goes another way (its window
+    // closing) takes the timer with it.
+    ~ClickToast() override {
+        if (_timer)
+            _app->cancelTimer(_timer);
+    }
+    void closeAfter(ui::App &app, int ms) {
+        _app   = &app;
+        _timer = app.addTimer(ms, false, [this] {
+            _timer = 0;
+            close();
+        });
+    }
     ui::View *hitTest(ui::PointF) override { return nullptr; }
     ui::SizeF measureContent(float, float) override {
         if (!_l) {
@@ -1611,6 +1624,8 @@ public:
 private:
     std::string                   _text;
     std::unique_ptr<text::Layout> _l;
+    ui::App                      *_app   = nullptr;
+    plat::TimerId                 _timer = 0;
 };
 
 } // namespace
@@ -1618,13 +1633,8 @@ private:
 void showClickToast(Context &ctx, ui::Window &w, const std::string &text, int ms, ui::PointF at) {
     auto *t = new ClickToast(text);
     t->setAnchor({at.x, at.y - 2, 1, 4}, ui::Popup::Place::Tip);
-    ui::Popup *raw  = w.showPopup(std::unique_ptr<ui::Popup>(t));
-    auto       gone = std::make_shared<bool>(false);
-    raw->onClosed   = [gone] { *gone = true; };
-    ctx.app.addTimer(ms, false, [raw, gone] {
-        if (!*gone)
-            raw->close();
-    });
+    w.showPopup(std::unique_ptr<ui::Popup>(t));
+    t->closeAfter(ctx.app, ms);
 }
 
 void MessageList::showToast(const std::string &text, int ms, ui::PointF at) {
