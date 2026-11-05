@@ -799,6 +799,31 @@ TEST("slack features: custom sidebar sections — the list, moves, create, a ref
     REQUIRE(e.store.sections()[0].convs.size() == 2);
     CHECK_STR(e.store.sections()[0].convs[1], "D1");
 
+    // Renamed or moved, a section goes whole through users.channelSections.set
+    // (its name, emoji and place; Slack clears what is left out).
+    const int listed = count("users.channelSections.list");
+    e.be->updateSection("L1", "Work", "fire");
+    CHECK_STR(e.store.sections()[0].name, "Work"); // at once
+    e.be->moveSection("L2", -1);
+    REQUIRE(pumpUntil([] { return count("users.channelSections.set") == 2; }));
+    {
+        const Log   sets;
+        json::Value r = sets.get("users.channelSections.set", 0)["form"];
+        CHECK_STR(std::string(r["channel_section_id"].str()), "L1");
+        CHECK_STR(std::string(r["name"].str()), "Work");
+        CHECK_STR(std::string(r["emoji"].str()), "fire");
+        CHECK_STR(std::string(r["next_channel_section_id"].str()), "L2"); // kept
+        json::Value m = sets.get("users.channelSections.set", 1)["form"];
+        CHECK_STR(std::string(m["channel_section_id"].str()), "L2");
+        CHECK_STR(std::string(m["name"].str()), "Later");
+        CHECK(m.has("emoji") && m["emoji"].str().empty());
+        CHECK_STR(std::string(m["next_channel_section_id"].str()), "L1");
+        CHECK(sets.count("users.channelSections.update") == 0);
+    }
+    // Then Slack's list sets the chain right.
+    REQUIRE(pumpUntil([&] { return count("users.channelSections.list") > listed; }));
+    pumpFor(100);
+
     // Out of its section, the channel goes back to Slack's Channels section.
     e.be->moveToSection(e.conv("C1"), {});
     CHECK(e.store.sectionOf("C1") == nullptr); // at once
