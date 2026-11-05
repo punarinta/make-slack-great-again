@@ -258,7 +258,7 @@ public:
                            std::function<void(const json::Document &)> onOk,
                            Done                                        done);
     // users.channelSections.set: the section's name and emoji as the Store
-    // has them, placed before `next`.
+    // has them; with a `next`, placed before that section.
     void               setSection(const std::string &id, std::string_view next);
     // "C0123" for a ConvRef ("" if unknown). Ts ↔ "1712345678.123456":
     // model::parseTs / model::formatTs.

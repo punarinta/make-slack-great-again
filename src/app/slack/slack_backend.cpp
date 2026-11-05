@@ -277,9 +277,6 @@ struct SlackBackend::Read {
     // Slack's own sections by type ("channels", "direct_messages",
     // "recent_apps"): where a conversation taken out of its section goes.
     std::unordered_map<std::string, std::string> systemSections;
-    // Each section's next_channel_section_id as last listed:
-    // users.channelSections.set clears what it is not sent.
-    std::unordered_map<std::string, std::string> sectionNext;
     void                                         refreshSections();
     void                                         sectionWriteDone(const std::string &err);
 
@@ -1649,10 +1646,6 @@ void SlackBackend::Read::refreshSections() {
             std::vector<model::Store::Section> list;
             systemSections.clear();
             mapjson::toSections(doc.root(), list, systemSections);
-            sectionNext.clear();
-            for (const json::Value sec : doc.root()["channel_sections"])
-                sectionNext[std::string(sec["channel_section_id"].str())] =
-                    std::string(sec["next_channel_section_id"].str());
             s.setSections(std::move(list));
         }
     );
@@ -1731,9 +1724,10 @@ void SlackBackend::createSection(std::string name, std::string emoji, ConvRef fi
     );
 }
 
-// users.channelSections.set writes a section whole: its name, emoji and
-// place (next_channel_section_id), each one not sent cleared. Afterwards
-// Slack's list sets the chain right.
+// users.channelSections.set: the section's name and emoji (both always:
+// one not sent is cleared), and with `next` its place. A rename must not
+// send next_channel_section_id (invalid_arguments). Afterwards Slack's
+// list sets the chain right.
 void SlackBackend::setSection(const std::string &id, std::string_view next) {
     const model::Store::Section *sec = _store.findSection(id);
     if (!sec)
@@ -1742,7 +1736,8 @@ void SlackBackend::setSection(const std::string &id, std::string_view next) {
     addParam(form, "channel_section_id", id);
     addParam(form, "name", sec->name);
     addParam(form, "emoji", sec->emoji);
-    addParam(form, "next_channel_section_id", next);
+    if (!next.empty())
+        addParam(form, "next_channel_section_id", next);
     sectionCall("users.channelSections.set", std::move(form), [this](const json::Document &) {
         _read->sectionsStale = true;
     });
@@ -1750,8 +1745,7 @@ void SlackBackend::setSection(const std::string &id, std::string_view next) {
 
 void SlackBackend::updateSection(const std::string &id, std::string name, std::string emoji) {
     Backend::updateSection(id, std::move(name), std::move(emoji));
-    const auto it = _read->sectionNext.find(id);
-    setSection(id, it != _read->sectionNext.end() ? it->second : std::string());
+    setSection(id, {});
 }
 
 void SlackBackend::deleteSection(const std::string &id) {
@@ -1803,7 +1797,6 @@ void SlackBackend::moveSection(const std::string &id, int step) {
     const std::string other = all[size_t(j)].id;
     const std::string first = step < 0 ? id : other, second = step < 0 ? other : id;
     Backend::moveSection(id, step);
-    _read->sectionNext[first] = second;
     setSection(first, second);
 }
 

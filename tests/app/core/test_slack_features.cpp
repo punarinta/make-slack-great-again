@@ -799,8 +799,9 @@ TEST("slack features: custom sidebar sections — the list, moves, create, a ref
     REQUIRE(e.store.sections()[0].convs.size() == 2);
     CHECK_STR(e.store.sections()[0].convs[1], "D1");
 
-    // Renamed or moved, a section goes whole through users.channelSections.set
-    // (its name, emoji and place; Slack clears what is left out).
+    // Renamed or moved, a section goes through users.channelSections.set:
+    // name and emoji always (Slack clears what is left out), its place only
+    // when it moves.
     const int listed = count("users.channelSections.list");
     e.be->updateSection("L1", "Work", "fire");
     CHECK_STR(e.store.sections()[0].name, "Work"); // at once
@@ -812,7 +813,7 @@ TEST("slack features: custom sidebar sections — the list, moves, create, a ref
         CHECK_STR(std::string(r["channel_section_id"].str()), "L1");
         CHECK_STR(std::string(r["name"].str()), "Work");
         CHECK_STR(std::string(r["emoji"].str()), "fire");
-        CHECK_STR(std::string(r["next_channel_section_id"].str()), "L2"); // kept
+        CHECK_FALSE(r.has("next_channel_section_id")); // invalid_arguments on a rename
         json::Value m = sets.get("users.channelSections.set", 1)["form"];
         CHECK_STR(std::string(m["channel_section_id"].str()), "L2");
         CHECK_STR(std::string(m["name"].str()), "Later");
