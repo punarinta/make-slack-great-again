@@ -240,6 +240,8 @@ struct SlackBackend::Read {
     void      loadNames();
     void      bootNames(const json::Value &boot); // a client.userBoot answer
     void      applyNames();
+    // ── VIP (users.prefs.get's vip_users, same call as Names) ───────────────
+    void      applyVips(const std::vector<std::string> &ids);
 
     // ── Users ───────────────────────────────────────────────────────────────
     std::unordered_set<std::string>          pendingUsers, presenceUnavailable, offRoster;
@@ -1027,14 +1029,14 @@ void SlackBackend::setNamesMode(NamesMode mode) {
         r.loadNames();
 }
 
-// Slack's "Names" preference, once per connect while it is asked for:
-// users.prefs.get, and team.prefs.get only when the user follows the
-// workspace default. Session tokens only (OAuth ones are refused both). On
-// the paced lane: after what the connect waits for.
+// Names and VIP share one users.prefs.get call, once per connect:
+// - VIP applies unconditionally -- nothing else fetches vip_users.
+// - Names only applies in Service mode (then team.prefs.get too, unless an
+//   override or client.userBoot's default already decided it).
+// Background lane: after what the connect itself waits on.
 void SlackBackend::Read::loadNames() {
-    if (!session || namesMode != NamesMode::Service)
+    if (!session)
         return;
-    namesAsked = true;
     call(
         "users.prefs.get",
         {},
@@ -1043,6 +1045,10 @@ void SlackBackend::Read::loadNames() {
                 LOG_WARN("slack", "users.prefs.get: %s", err.c_str());
                 return;
             }
+            applyVips(mapjson::vipUsers(doc.root()["prefs"]));
+            if (namesMode != NamesMode::Service)
+                return;
+            namesAsked    = true;
             namesOverride = mapjson::namesOverride(doc.root()["prefs"]);
             applyNames();
             if (namesOverride != 0 || bootDefault)
@@ -1094,6 +1100,22 @@ void SlackBackend::Read::applyNames() {
         real = savedNames != 0; // not decided yet, nor ever before: full names
     }
     s.setRealNames(real);
+}
+
+// Sets every user's vip flag from this run's list, clearing anyone dropped
+// from it. Interns ids first: a VIP nobody has messaged yet still counts.
+void SlackBackend::Read::applyVips(const std::vector<std::string> &ids) {
+    for (const std::string &id : ids)
+        s.internUser(id);
+    bool changed = false;
+    for (model::UserRef r = 0; r < s.userCount(); ++r) {
+        model::User &u = s.user(r);
+        const bool   v = std::find(ids.begin(), ids.end(), u.id) != ids.end();
+        changed        = changed || u.vip != v;
+        u.vip          = v;
+    }
+    if (changed)
+        s.usersChanged();
 }
 
 // A roster reload: what the API cannot
@@ -1422,6 +1444,10 @@ void SlackBackend::Read::fetchUserIfNeeded(UserRef ref) {
                 offRoster.insert(u.id); // only the daily re-probe refreshes it
                 probedAt[u.id] = now();
                 extrasChanged();
+            }
+            if (const UserRef r = s.findUser(u.id); r != kNoUser) {
+                u.active = s.user(r).active;
+                u.dnd    = s.user(r).dnd;
             }
             s.usersChanged(s.addUser(std::move(u)));
         }
@@ -3711,6 +3737,7 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.slashCommands    = true;                 // the built-ins, commands.list, chat.command
     c.sidebarTheme     = _creds.sessionAuth(); // users.prefs.get: xoxc only
     c.customSections   = _creds.sessionAuth(); // users.channelSections.*: xoxc only
+    c.vips             = _creds.sessionAuth(); // users.prefs.get's vip_users: xoxc only
     return c;
 }
 

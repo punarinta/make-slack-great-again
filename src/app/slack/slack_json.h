@@ -16,34 +16,37 @@ namespace slack::mapjson {
 
 // USLACKBOT (Slackbot) / USLACK (the "Slack" workspace notifier): absent
 // from users.list, is_bot=false, no observable presence.
-bool                isSlackSystemUser(std::string_view id);
+bool                     isSlackSystemUser(std::string_view id);
 // A users.list / users.info member. realName / profileName: real_name and
 // display_name (enterprise directories fill display_name with a login
 // slug); displayName as for full names (the Store re-resolves it); avatar:
 // profile.image_72.
-model::User         toUser(const json::Value &u);
+model::User              toUser(const json::Value &u);
 // Slack's "Names" preference. A user's display_real_names_override
 // (users.prefs.get, client.userBoot "prefs"): 1 full names, -1 display
 // names, 0 the workspace's default; kNoPref when absent. The workspace's
 // display_real_names (team.prefs.get, userBoot team prefs): 1 full names,
 // 0 display names, kNoPref when absent.
-constexpr int       kNoPref = 2;
-int                 namesOverride(const json::Value &prefs);
-int                 namesDefault(const json::Value &prefs);
+constexpr int            kNoPref = 2;
+int                      namesOverride(const json::Value &prefs);
+int                      namesDefault(const json::Value &prefs);
 // What they make together: 1 full names, 0 display names, kNoPref while
 // not decided (the override, or for 0 the default, not known).
-int                 realNamesFrom(int override, int teamDefault);
+int                      realNamesFrom(int override, int teamDefault);
+// users.prefs.get / client.userBoot "prefs"'s vip_users: the viewer's own
+// VIP list, a comma-separated string of user ids. Empty when absent.
+std::vector<std::string> vipUsers(const json::Value &prefs);
 // A conversations.list / client.userBoot / im.list / conversations.info
 // channel or IM. Unread falls back to 1 when latest > last_read (Slack often
 // reports unread_count 0 for channels).
-model::Conversation toConversation(const json::Value &c, model::Store &store);
+model::Conversation      toConversation(const json::Value &c, model::Store &store);
 // A message from conversations.history / .replies / chat.postMessage /
 // search: text, user or bot identity, files, attachments and unfurls,
 // reactions, thread fields, edited, subtype. A message_changed event maps
 // its nested "message". Messages whose blocks say more than `text` (bot
 // sections, headers, context lines, tables) get mrkdwn built from the
 // blocks instead of the fallback text.
-model::Message      toMessage(const json::Value &m, model::Store &store);
+model::Message           toMessage(const json::Value &m, model::Store &store);
 
 // Block Kit → mrkdwn (rich_text, section, header, context, table). Image
 // blocks are not text (see toBlocks).

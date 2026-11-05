@@ -393,6 +393,14 @@ int realNamesFrom(int override, int teamDefault) {
     return override == 0 ? teamDefault : kNoPref;
 }
 
+std::vector<std::string> vipUsers(const json::Value &prefs) {
+    std::vector<std::string> out;
+    for (const std::string_view id : str::split(prefs["vip_users"].str(), ','))
+        if (!id.empty())
+            out.emplace_back(id);
+    return out;
+}
+
 model::Conversation toConversation(const json::Value &o, model::Store &store) {
     model::Conversation c;
     c.id   = owned(o["id"]);
@@ -414,10 +422,11 @@ model::Conversation toConversation(const json::Value &o, model::Store &store) {
     c.lastRead              = model::parseTs(o["last_read"].str());
     c.latest                = latestTs(o);
     const int64_t unread    = o["unread_count"].integer();
-    c.unread   = unread > 0 ? uint32_t(unread) : (c.latest && c.lastRead && c.latest > c.lastRead);
-    c.mentions = uint32_t(o["mention_count"].integer());
-    c.muted    = o["is_muted"].boolean();
-    c.starred  = o["is_starred"].boolean();
+    c.unread    = unread > 0 ? uint32_t(unread) : (c.latest && c.lastRead && c.latest > c.lastRead);
+    c.mentions  = uint32_t(o["mention_count"].integer());
+    c.muted     = o["is_muted"].boolean();
+    c.starred   = o["is_starred"].boolean();
+    c.extShared = o["is_ext_shared"].boolean();
     const std::string_view pref = o["notification_preference"].str();
     c.notify                    = pref == "everything" ? model::NotifyLevel::All
                                   : pref == "mentions" ? model::NotifyLevel::Mentions

@@ -1224,9 +1224,9 @@ void MessageRow::buildHeader(ui::View *col, const model::Message &m, bool tight)
     // Tags after the name: "APP" for bots, "EXT" for Slack Connect
     // users; the time 8 px after the last.
     if (bot)
-        addTagBadge(hdr, false)->style().margins(6, 0, 0, 0);
+        addTagBadge(hdr, TagKind::App)->style().margins(6, 0, 0, 0);
     if (m.user != model::kNoUser && st.user(m.user).stranger)
-        addTagBadge(hdr, true)->style().margins(6, 0, 0, 0);
+        addTagBadge(hdr, TagKind::Ext)->style().margins(6, 0, 0, 0);
     hdr->add<ui::Label>(base::formatTime(model::tsSecs(m.ts)), Font::Small, C::TextFaint)
         ->style()
         .margins(8, 0, 0, 0);
@@ -1676,7 +1676,7 @@ void MessageRow::buildUnfurl(ui::View *col, const model::Message &m, size_t inde
     nameL->setMaxLines(1);
     nameL->style().shrink = 1;
     if (a.app)
-        addTagBadge(top, false)->style().margins(6, 0, 0, 0);
+        addTagBadge(top, TagKind::App)->style().margins(6, 0, 0, 0);
     if (a.ts)
         top->add<ui::Label>(base::formatTime(model::tsSecs(a.ts)), Font::Small, C::TextFaint)
             ->style()

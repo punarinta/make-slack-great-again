@@ -1,12 +1,12 @@
-// The tag pill after a name: "APP" after a bot's name,
-// "EXT" after a Slack Connect user's — in message headers, on shared-message
-// cards, and (sidebar = true, coloured for the rail) in the chats list.
+// The small tag pill: App/Ext after a name, or Vip on the sidebar's VIP
+// unreads header in place of its icon.
 #pragma once
 
 #include "ui/ui.h"
 
 namespace screens {
 
-ui::View *addTagBadge(ui::View *parent, bool ext, bool sidebar = false);
+enum class TagKind { App, Ext, Vip };
+ui::View *addTagBadge(ui::View *parent, TagKind kind, bool sidebar = false);
 
 } // namespace screens

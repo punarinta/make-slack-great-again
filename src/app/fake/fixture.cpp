@@ -43,6 +43,7 @@ const BoolField<model::User> kUserBools[] = {
     {"admin", &model::User::admin},
     {"owner", &model::User::owner},
     {"dnd", &model::User::dnd},
+    {"vip", &model::User::vip},
 };
 const StrField<model::Conversation> kConvStrings[] = {
     {"id", &model::Conversation::id},

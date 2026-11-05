@@ -258,11 +258,22 @@ bool deadDm(const model::Store &store, const model::Conversation &c) {
 
 class SectionHeader final : public HoverRow {
 public:
-    SectionHeader(Sidebar &sb, int k, Icon i, std::string text)
+    SectionHeader(Sidebar &sb, Sidebar::Kind k, Icon i, std::string text)
         : sidebar(sb), kind(k), icon(i), title(text) {
         setLook({C::None, C::SidebarHover, C::SidebarHover, C::None, 0}); // full width
         setRole(Role::Button);
-        style().row().height(rowH()).padding(kContentX, 0, kPadH, 0).items(Align::Center);
+        // VIP's "VIP" pill is a real row child, not painted in the icon's
+        // padding like every other kind's icon -- it needs more room than
+        // that padding gives, so it starts where the icon would instead.
+        style()
+            .row()
+            .height(rowH())
+            .padding(k == Sidebar::Vip ? kPadH : kContentX, 0, kPadH, 0)
+            .items(Align::Center);
+        if (k == Sidebar::Vip) {
+            vipBadge = screens::addTagBadge(this, screens::TagKind::Vip, true);
+            vipBadge->style().margins(0, 0, 6, 0);
+        }
         label = add<Label>(std::move(text), Font::Section, C::SidebarTextMuted);
         label->setMaxLines(1);
         label->style().shrink = 1;
@@ -271,19 +282,19 @@ public:
         // dialog's People tab; Sessions: find or create one (a right click
         // too); Team: add a teammate.
         const bool agents = sb._ctx.backend.capabilities().agentSessions;
-        if (k == 1 || k == 2 || k == 4) {
+        if (k == Sidebar::Channels || k == Sidebar::Direct || k == Sidebar::Team) {
             plus = add<HeaderButton>(
                 Icon::Plus,
-                k == 1   ? tr("Add channels")
-                : k == 4 ? tr("Add teammate")
-                : agents ? tr("Add sessions")
-                         : tr("Open a direct message")
+                k == Sidebar::Channels ? tr("Add channels")
+                : k == Sidebar::Team   ? tr("Add teammate")
+                : agents               ? tr("Add sessions")
+                                       : tr("Open a direct message")
             );
             plus->setVisible(false);
             plus->onClick = [this, k, agents] {
-                if (k == 1)
+                if (k == Sidebar::Channels)
                     sidebar.addChannelsMenu(plus->at);
-                else if (k == 4) {
+                else if (k == Sidebar::Team) {
                     if (sidebar.onAddTeammate)
                         sidebar.onAddTeammate();
                 } else if (agents) {
@@ -293,7 +304,7 @@ public:
                     sidebar.onBrowsePeople();
                 }
             };
-            if (k == 2 && agents)
+            if (k == Sidebar::Direct && agents)
                 plus->onRightClick = [this] {
                     if (sidebar.onSessionMenu)
                         sidebar.onSessionMenu(plus->at);
@@ -301,7 +312,7 @@ public:
         }
         // More actions: the section menu (sort, the user's sections); not
         // on the Team, which lists no conversations.
-        if (k != 4) {
+        if (k != Sidebar::Team) {
             more = add<HeaderButton>(Icon::EllipsisVertical, tr("More actions"));
             more->style().margins(plus ? 6 : 0, 0, 0, 0);
             more->setVisible(false);
@@ -356,6 +367,11 @@ public:
     }
     void paint(gfx::Painter &p) override {
         HoverRow::paint(p);
+        // VIP's icon is the "VIP" pill child view instead -- always visible;
+        // hiding it on hover would collapse its space and the label would
+        // slide under the chevron drawn below.
+        if (kind == Sidebar::Vip)
+            return;
         // The section's icon; hovered, the chevron previewing the click.
         const Icon  i = !lit() ? icon : collapsed ? Icon::ChevronRight : Icon::ChevronDown;
         const float y = snapPx((height() - 14) / 2);
@@ -375,18 +391,17 @@ public:
         gfx::drawIcon(p, i, {kPadH, y, 14, 14}, color(labelInk()));
     }
     Sidebar                      &sidebar;
-    // 0 starred, 1 channels, 2 direct messages, 3 agents & apps, 4 team,
-    // 5 a custom section (sectionId)
-    int                           kind;
+    Sidebar::Kind                 kind;
     Icon                          icon;
     std::string                   title;
-    std::string                   sectionId; // kind 5: Store::Section::id
-    std::string                   emoji;     // kind 5: its glyph ("" = the icon)
+    std::string                   sectionId; // Custom: Store::Section::id
+    std::string                   emoji;     // Custom: its glyph ("" = the icon)
     std::unique_ptr<text::Layout> emojiLayout;
     float                         emojiScale = 0;
     Label                        *label      = nullptr;
     HeaderButton                 *plus       = nullptr;
     HeaderButton                 *more       = nullptr;
+    ui::View                     *vipBadge   = nullptr; // Vip: the "VIP" pill
     std::vector<ConvRow *>        rows;
     std::vector<View *>           extras; // "N more channels", "Add channels"
     bool                          collapsed = false, unread = false, stale = false;
@@ -507,7 +522,9 @@ public:
             const auto &u = store.user(cv.dmUser);
             // The "EXT" pill after a Slack Connect peer's name.
             if (u.stranger)
-                screens::addTagBadge(this, true, true)->style().margins(6, 0, 0, 0);
+                screens::addTagBadge(this, screens::TagKind::Ext, true)
+                    ->style()
+                    .margins(6, 0, 0, 0);
             if (!u.statusEmoji.empty()) {
                 const model::Store::EmojiGlyph g = store.emojiFor(u.statusEmoji);
                 if (!g.unicode.empty()) {
@@ -797,11 +814,12 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             // flips (the selected row and Starred stay regardless).
             const bool  filterFlip =
                 _filters.unreadsOnly && ch.conv != _selected && !cv.starred &&
-                !(r && r->section->kind == 5) &&
+                !(r && r->section->kind == Sidebar::Custom) &&
                 (r ? r->unread != paintsUnread(cv) : cv.member && paintsUnread(cv));
-            const bool starFlip =
-                r && r->section->kind != 5 && (r->section->kind == 0) != cv.starred;
-            if (!r != !cv.member || starFlip || filterFlip)
+            // Same classify() rebuild() uses, so a row only looks "moved" when it would be.
+            const bool reclassified =
+                r && r->section->kind != Sidebar::Custom && r->section->kind != classify(cv);
+            if (!r != !cv.member || reclassified || filterFlip)
                 rebuildSoon(false); // once per burst; the list stays where it was scrolled
             else {
                 refresh(ch.conv);
@@ -858,6 +876,45 @@ bool Sidebar::isApp(const model::Conversation &c) const {
     return c.kind == ConvKind::Dm && c.dmUser != model::kNoUser && _ctx.store().user(c.dmUser).bot;
 }
 
+// A Slack Connect conversation, shared with another org.
+bool Sidebar::isExternal(const model::Conversation &c) const {
+    const auto &store = _ctx.store();
+    if (c.extShared)
+        return true;
+    if (c.kind == ConvKind::Dm)
+        return c.dmUser != model::kNoUser && store.user(c.dmUser).stranger;
+    if (c.kind == ConvKind::Group)
+        return std::any_of(c.members.begin(), c.members.end(), [&](model::UserRef u) {
+            return store.user(u).stranger;
+        });
+    return false;
+}
+
+// An unread DM/group DM from a VIP -- temporary like Slack's own "VIP
+// unreads": back to its normal section the moment it's read.
+bool Sidebar::isVip(const model::Conversation &c) const {
+    if (c.unread == 0 || muted(c) || !c.isDirect())
+        return false;
+    const auto &store = _ctx.store();
+    if (c.kind == ConvKind::Dm)
+        return c.dmUser != model::kNoUser && store.user(c.dmUser).vip;
+    return std::any_of(c.members.begin(), c.members.end(), [&](model::UserRef u) {
+        return store.user(u).vip;
+    });
+}
+
+Sidebar::Kind Sidebar::classify(const model::Conversation &c) const {
+    if (c.starred)
+        return Starred;
+    if (isApp(c))
+        return Apps;
+    if (_ctx.backend.capabilities().vips && isVip(c))
+        return Vip;
+    if (isExternal(c))
+        return External;
+    return c.isDirect() ? Direct : Channels;
+}
+
 void Sidebar::setVisited(std::unordered_map<std::string, int64_t> stamps) {
     _visited = std::move(stamps);
     rebuild();
@@ -891,7 +948,7 @@ bool Sidebar::relevant(ConvRef ref) const {
 
 void Sidebar::rebuild() {
     for (auto *h : _sections) { // survives the rebuild
-        if (h->kind == 5)
+        if (h->kind == Sidebar::Custom)
             _collapsedCustom[h->sectionId] = h->collapsed;
         else
             _collapsed[h->kind] = h->collapsed;
@@ -941,9 +998,8 @@ void Sidebar::rebuild() {
         _navSelected = Nav::None;
     showNavSelection();
 
-    // Starred first (any kind), then channels, direct messages, agents &
-    // apps; fixture (= server) order inside each.
-    std::vector<ConvRef> lists[4], hiddenCh;
+    // Bucketed by classify(); sorted per section by sortOf().
+    std::vector<ConvRef> lists[4], hiddenCh, hiddenExt, external, vipUnread;
     const auto           listed = [&](ConvRef c) {
         return !_filters.unreadsOnly || c == _selected || paintsUnread(store.conversation(c));
     };
@@ -984,28 +1040,59 @@ void Sidebar::rebuild() {
         const auto &cv = store.conversation(c);
         if (!cv.member || deadDm(store, cv) || inCustom[c]) // left channels, closed or dead DMs
             continue;
-        if (cv.starred)
-            lists[0].push_back(c);
-        else if (isApp(cv)) {
+        // classify() picks the bucket; each case keeps its own visibility
+        // rule (unread-only filter, relevance window, ...).
+        switch (classify(cv)) {
+        case Starred:
+            lists[Starred].push_back(c);
+            break;
+        case Apps:
             if (listed(c) && (_filters.showAgentsApps || c == _selected))
-                lists[3].push_back(c);
-        } else if (cv.isDirect()) {
+                lists[Apps].push_back(c);
+            break;
+        case Vip:
+            vipUnread.push_back(c); // unread already required; always shown
+            break;
+        case External:
             if (relevant(c) && listed(c))
-                lists[2].push_back(c);
-        } else if (relevant(c) && listed(c))
-            lists[1].push_back(c);
-        else
-            hiddenCh.push_back(c);
+                external.push_back(c);
+            // A separate hidden list: putting it in lists[Channels] would make
+            // reclassified above see it move every time it changes.
+            else if (!cv.isDirect())
+                hiddenExt.push_back(c);
+            break;
+        case Direct:
+            if (relevant(c) && listed(c))
+                lists[Direct].push_back(c);
+            break;
+        case Channels:
+            if (relevant(c) && listed(c))
+                lists[Channels].push_back(c);
+            else
+                hiddenCh.push_back(c);
+            break;
+        case Team:
+        case Custom:
+        case KindCount:
+            break; // classify() never returns these
+        }
     }
-    _hiddenChannels = _showAllChannels ? 0 : int(hiddenCh.size());
-    if (_showAllChannels)
-        lists[1].insert(lists[1].end(), hiddenCh.begin(), hiddenCh.end());
+    // Both kinds of hidden channel count toward "N more", or a Connect
+    // channel outside the relevance window becomes unreachable.
+    _hiddenChannels = _showAllChannels ? 0 : int(hiddenCh.size() + hiddenExt.size());
+    if (_showAllChannels) {
+        lists[Channels].insert(lists[Channels].end(), hiddenCh.begin(), hiddenCh.end());
+        external.insert(external.end(), hiddenExt.begin(), hiddenExt.end());
+    }
     const bool agents = caps.agentSessions;
     _team = agents ? _ctx.backend.agentRoles() : std::vector<model::Backend::AgentRole>{};
     struct Def {
         Icon        icon;
         const char *title;
     };
+    // lists[]/defs[] are both indexed by Kind -- reordering the enum would
+    // silently send every row to the wrong section.
+    static_assert(Starred == 0 && Channels == 1 && Direct == 2 && Apps == 3);
     const Def defs[] = {
         {Icon::Star, tr("Starred")},
         {Icon::Hash, tr("Channels")},
@@ -1013,13 +1100,13 @@ void Sidebar::rebuild() {
         {Icon::Bot, tr("Agents & apps")},
     };
     // A header and its rows (a click on the header collapses them).
-    const auto section = [&](int                         kind,
+    const auto section = [&](Kind                        kind,
                              Icon                        icon,
                              std::string                 title,
                              const std::vector<ConvRef> &rows,
                              const std::string          &id = {}) {
         auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
-        h->collapsed = kind < 5 && _collapsed[kind];
+        h->collapsed = kind != Custom && _collapsed[kind];
         _sections.push_back(h);
         h->onClick = [this, h] {
             h->collapsed = !h->collapsed;
@@ -1038,10 +1125,21 @@ void Sidebar::rebuild() {
         }
         return h;
     };
+    // Above everything, only while non-empty (see isVip).
+    if (!vipUnread.empty()) {
+        auto *h = section(Vip, Icon::Star, tr("VIP unreads"), vipUnread);
+        applyCollapse(h);
+    }
+    // Slack Connect channels/DMs, at the top -- same as real Slack's own
+    // "External connections" section.
+    if (!external.empty()) {
+        auto *h = section(External, Icon::Building, tr("External connections"), external);
+        applyCollapse(h);
+    }
     for (int s = 0; s < 4; ++s) {
-        if (s == 1) // the user's own sections, between Starred and Channels
+        if (s == Channels) // the user's own sections, between Starred and Channels
             for (size_t i = 0; i < custom.size(); ++i) {
-                auto *h = section(5, Icon::List, secs[i].name, custom[i], secs[i].id);
+                auto *h = section(Custom, Icon::List, secs[i].name, custom[i], secs[i].id);
                 if (!secs[i].emoji.empty())
                     h->setEmoji(store.emojiFor(secs[i].emoji).unicode);
                 const auto was = _collapsedCustom.find(secs[i].id);
@@ -1050,10 +1148,12 @@ void Sidebar::rebuild() {
             }
         // No Starred section until something is starred, no Agents & apps
         // without an app DM, and an agent workspace drops an empty Channels.
-        if (lists[s].empty() && (s == 0 || s == 3 || (s == 1 && agents && hiddenCh.empty())))
+        if (lists[s].empty() &&
+            (s == Starred || s == Apps ||
+             (s == Channels && agents && hiddenCh.empty() && hiddenExt.empty())))
             continue;
-        auto *h = section(s, defs[s].icon, defs[s].title, lists[s]);
-        if (s == 1 && _hiddenChannels > 0) {
+        auto *h = section(Kind(s), defs[s].icon, defs[s].title, lists[s]);
+        if (s == Channels && _hiddenChannels > 0) {
             auto *more = _items->add<ActionRow>(
                 i18n::arg(
                     tr("%1 more %2"),
@@ -1081,9 +1181,9 @@ void Sidebar::rebuild() {
         applyCollapse(h);
         // The team, under the sessions (the fourth section): the roles sessions
         // are started with.
-        if (s == 2 && !_team.empty()) {
-            auto *t      = _items->add<SectionHeader>(*this, 4, Icon::Users, tr("Team"));
-            t->collapsed = _collapsed[4];
+        if (s == Direct && !_team.empty()) {
+            auto *t      = _items->add<SectionHeader>(*this, Team, Icon::Users, tr("Team"));
+            t->collapsed = _collapsed[Team];
             _sections.push_back(t);
             t->onClick = [this, t] {
                 t->collapsed = !t->collapsed;
@@ -1127,12 +1227,21 @@ uint64_t Sidebar::userShape() const {
     mix(str::number(int64_t(store.me)));
     for (const ConvRow *r : _rows) {
         const auto &cv = store.conversation(r->conv);
+        if (cv.kind == ConvKind::Group) {
+            // A member turning VIP/stranger can move the row (isVip/
+            // isExternal read every member): one bit each is enough to
+            // notice, no need for the 1:1 DM's full per-user mix below.
+            mix(isExternal(cv) ? "1" : "0");
+            mix(isVip(cv) ? "1" : "0");
+            continue;
+        }
         if (cv.kind != ConvKind::Dm)
             continue;
         const model::User &u = store.user(cv.dmUser);
         mix(u.avatar);
         mix(u.label());
         mix(u.stranger ? "1" : "0");
+        mix(u.vip ? "1" : "0");
         mix(u.statusEmoji);
         if (!u.statusEmoji.empty()) {
             const model::Store::EmojiGlyph g = store.emojiFor(u.statusEmoji);
@@ -1292,29 +1401,49 @@ SectionSort SectionSort::decode(std::string_view s) {
     return sort;
 }
 
-std::string Sidebar::sectionKey(int kind, const std::string &id) {
+std::string Sidebar::sectionKey(Kind kind, const std::string &id) {
     switch (kind) {
-    case 0:
+    case Starred:
         return "#starred";
-    case 1:
+    case Channels:
         return "#channels";
-    case 2:
+    case Direct:
         return "#direct";
-    case 3:
+    case Apps:
         return "#apps";
-    case 5:
+    case Custom:
         return id;
+    case External:
+        return "#external";
+    case Vip:
+        return "#vip";
+    case Team:
+    case KindCount:
+        break; // the Team header has no key (no sort, no persisted collapse)
     }
     return {};
 }
 
+namespace {
+// A section's default: alphabetical, matching Slack -- except a custom one
+// (key not '#'-prefixed), which keeps its own dragged order, the point of
+// making one in the first place.
+SectionSort defaultSort(const std::string &key) {
+    const bool custom = !key.empty() && key[0] != '#';
+    return custom ? SectionSort{} : SectionSort{SectionSort::By::Alpha, false};
+}
+} // namespace
+
 SectionSort Sidebar::sortOf(const SectionHeader *h) const {
-    const auto it = _sorts.find(sectionKey(h->kind, h->sectionId));
-    return it == _sorts.end() ? SectionSort{} : it->second;
+    const std::string key = sectionKey(h->kind, h->sectionId);
+    const auto        it  = _sorts.find(key);
+    return it != _sorts.end() ? it->second : defaultSort(key);
 }
 
 void Sidebar::setSorts(Sorts sorts) {
-    std::erase_if(sorts, [](const auto &e) { return e.first.empty() || e.second.plain(); });
+    std::erase_if(sorts, [](const auto &e) {
+        return e.first.empty() || e.second == defaultSort(e.first);
+    });
     if (sorts == _sorts)
         return;
     _sorts = std::move(sorts);
@@ -1323,7 +1452,7 @@ void Sidebar::setSorts(Sorts sorts) {
 
 void Sidebar::setSort(const std::string &key, SectionSort sort) {
     Sorts next = _sorts;
-    if (sort.plain())
+    if (sort == defaultSort(key))
         next.erase(key);
     else
         next[key] = sort;
@@ -1340,9 +1469,10 @@ void Sidebar::sectionMenu(SectionHeader *h, PointF at) {
         return;
     const std::string key = sectionKey(h->kind, h->sectionId);
     _menus->showSection(
-        h->kind == 5 ? h->sectionId : std::string(), sortOf(h), at, [this, key](SectionSort sort) {
-            setSort(key, sort);
-        }
+        h->kind == Custom ? h->sectionId : std::string(),
+        sortOf(h),
+        at,
+        [this, key](SectionSort sort) { setSort(key, sort); }
     );
 }
 
@@ -1360,7 +1490,7 @@ void Sidebar::applyCollapse(SectionHeader *h) {
 // The section under the pointer: its header, its rows, the rows' extras.
 SectionHeader *Sidebar::sectionAt(PointF windowPos) const {
     for (SectionHeader *h : _sections) {
-        if (h->kind == 4) // the Team lists teammates, not conversations
+        if (h->kind == Team) // the Team lists teammates, not conversations
             continue;
         RectF span = h->windowRect();
         for (View *v : h->rows)
@@ -1380,9 +1510,10 @@ SectionHeader *Sidebar::sectionAt(PointF windowPos) const {
 static bool accepts(const SectionHeader *to, const SectionHeader *from) {
     if (!to || to == from)
         return false;
-    if (to->kind == 5 || to->kind == 0)
+    if (to->kind == Sidebar::Custom || to->kind == Sidebar::Starred)
         return true;
-    return from->kind == 5 || from->kind == 0; // back to its own section
+    return from->kind == Sidebar::Custom ||
+           from->kind == Sidebar::Starred; // back to its own section
 }
 
 void Sidebar::dragRow(ConvRow *row, PointF windowPos) {
@@ -1419,9 +1550,9 @@ void Sidebar::dropRow(bool drop) {
 
 void Sidebar::moveInto(ConvRef conv, SectionHeader *to) {
     model::Backend &be = _ctx.backend;
-    if (to->kind == 5)
+    if (to->kind == Custom)
         be.moveToSection(conv, to->sectionId);
-    else if (to->kind == 0)
+    else if (to->kind == Starred)
         be.setStarred(conv, true); // takes it out of its section too
     else {
         be.moveToSection(conv, {});
@@ -1520,7 +1651,7 @@ void Sidebar::selectTeammate(const std::string &role) {
     for (TeammateRow *r : _teamRows)
         if (r->role == role) {
             for (SectionHeader *h : _sections)
-                if (h->kind == 4 && h->collapsed) {
+                if (h->kind == Team && h->collapsed) {
                     h->collapsed = false;
                     applyCollapse(h);
                 }
@@ -1676,7 +1807,7 @@ std::vector<std::string> Sidebar::sectionTitles() const {
 
 std::string Sidebar::rowSection(ConvRef conv) const {
     const ConvRow *r = rowFor(conv);
-    return r && r->section->kind == 5 ? r->section->sectionId : std::string();
+    return r && r->section->kind == Custom ? r->section->sectionId : std::string();
 }
 
 bool Sidebar::toggleSection(std::string_view title) {

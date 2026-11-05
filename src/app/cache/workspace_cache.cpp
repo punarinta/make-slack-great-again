@@ -379,7 +379,7 @@ void fields(IO &io, model::Conversation &c) {
     io.num(c.lastRead);
     io.num(c.latest);
     io.cursors(false);
-    io.flags({&c.starred, &c.muted, &c.member});
+    io.flags({&c.starred, &c.muted, &c.member, &c.extShared});
     io.byte(reinterpret_cast<uint8_t &>(c.notify));
     io.str(c.canvasTitle);
     io.str(c.localName);
