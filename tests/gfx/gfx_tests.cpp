@@ -1071,6 +1071,21 @@ void testAnimWebp() {
     // no libwebp compiled in: fails cleanly, never crashes
     CHECK(!decodeAnimation(bytes, &frames));
 #endif
+    // The same frames on a 16384x16384 canvas (VP8X stores width-1 and
+    // height-1, 24-bit): refused from the header, before the demuxer
+    // allocates two canvas-sized buffers.
+    {
+        std::string  huge = bytes;
+        const size_t vp8x = huge.find("VP8X");
+        CHECK(vp8x != std::string::npos && vp8x + 18 <= huge.size());
+        if (vp8x != std::string::npos && vp8x + 18 <= huge.size()) {
+            const char side[3] = {char(0xff), char(0x3f), 0};
+            huge.replace(vp8x + 12, 3, side, 3);
+            huge.replace(vp8x + 15, 3, side, 3);
+            std::vector<AnimFrame> none;
+            CHECK(!decodeAnimation(huge, &none) && none.empty());
+        }
+    }
     // Truncated and bit-flipped files must fail or decode, never crash
     // same check testAnim() runs for every GIF fixture
     for (size_t cut = 13; cut < bytes.size(); cut += std::max<size_t>(1, bytes.size() / 17)) {

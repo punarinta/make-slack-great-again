@@ -71,7 +71,7 @@ bool webpFeatures(std::string_view bytes, WebPBitstreamFeatures *f) {
 
 // GIPHY can serve a picked GIF as animated WebP, not GIF
 // decodeWebp only handles a still frame -- without this it silently
-// shows nothing once posted
+// shows nothing once posted. The caller has checked the canvas size.
 bool decodeAnimatedWebp(std::string_view bytes, std::vector<AnimFrame> *out, const AnimOptions &o) {
     WebPData               data{reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size()};
     WebPAnimDecoderOptions opts;
@@ -82,13 +82,15 @@ bool decodeAnimatedWebp(std::string_view bytes, std::vector<AnimFrame> *out, con
     if (!dec)
         return false;
     WebPAnimInfo info;
-    if (!WebPAnimDecoderGetInfo(dec, &info) ||
-        tooBig(int(info.canvas_width), int(info.canvas_height))) {
+    if (!WebPAnimDecoderGetInfo(dec, &info)) {
         WebPAnimDecoderDelete(dec);
         return false;
     }
-    const bool   fit      = o.width > 0 && o.height > 0;
-    const size_t px       = size_t(info.canvas_width) * size_t(info.canvas_height);
+    const int    cw = int(info.canvas_width), ch = int(info.canvas_height);
+    const size_t px       = size_t(cw) * size_t(ch);
+    // Shrunk frames go through one canvas-sized scratch, not one each.
+    const bool   shrink   = o.width > 0 && o.height > 0 && (cw != o.width || ch != o.height);
+    Bitmap       canvas   = shrink ? Bitmap(cw, ch) : Bitmap();
     int64_t      kept     = 0;
     int          prevTsMs = 0;
     bool         over     = false;
@@ -97,10 +99,10 @@ bool decodeAnimatedWebp(std::string_view bytes, std::vector<AnimFrame> *out, con
         int      endTsMs = 0;
         if (!WebPAnimDecoderGetNext(dec, &buf, &endTsMs))
             break;
-        AnimFrame f{Bitmap(int(info.canvas_width), int(info.canvas_height)), 100};
-        premultiplyRgba(buf, f.frame.pixels(), px);
-        if (fit && (f.frame.width() != o.width || f.frame.height() != o.height))
-            f.frame = coverResize(f.frame.view(), o.width, o.height);
+        AnimFrame f{shrink ? Bitmap() : Bitmap(cw, ch), 100};
+        premultiplyRgba(buf, shrink ? canvas.pixels() : f.frame.pixels(), px);
+        if (shrink)
+            f.frame = coverResize(canvas.view(), o.width, o.height);
         // endTsMs is cumulative -- the gap from prevTsMs is this frame's delay
         // same 0/10ms-means-unspecified floor as the GIF path
         const int delay = endTsMs - prevTsMs;
@@ -131,11 +133,12 @@ bool canDecodeImage(std::string_view head) {
     if (m == "image/png" || m == "image/jpeg" || m == "image/gif")
         return true;
 #ifdef MSGA_GFX_WEBP
+    // Still WebP only: an animated one decodes through decodeAnimation
+    // alone, and a long recording's frames would cost too much memory for
+    // a preview, so it stays a file card.
     WebPBitstreamFeatures f;
     if (m == "image/webp")
-        return WebPGetFeatures(reinterpret_cast<const uint8_t *>(head.data()), head.size(), &f) ==
-                   VP8_STATUS_OK &&
-               !f.has_animation; // WebPDecodeRGBA refuses those
+        return webpFeatures(head, &f) && !f.has_animation;
 #endif
     return false;
 }
@@ -170,11 +173,8 @@ bool decodeAnimation(std::string_view bytes, std::vector<AnimFrame> *out, const 
     // checked before the demux, not after
     if (isWebp(bytes) && bytes.size() <= 0x7fffffff) {
         WebPBitstreamFeatures f;
-        if (webpFeatures(bytes, &f) && f.has_animation) {
-            if (tooBig(f.width, f.height))
-                return false;
-            return decodeAnimatedWebp(bytes, out, o);
-        }
+        if (webpFeatures(bytes, &f) && f.has_animation)
+            return !tooBig(f.width, f.height) && decodeAnimatedWebp(bytes, out, o);
     }
 #endif
     if (!isGif(bytes) || bytes.size() > 0x7fffffff) {
