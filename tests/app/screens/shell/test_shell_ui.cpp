@@ -1444,10 +1444,10 @@ TEST("giphy: a search body maps to preview, posted rendition, size and title") {
 
 TEST("giphy: a webp fixed_width rendition is skipped, falling back to one still GIF") {
     // Live, confirmed on a real search: under bundle=messaging_non_clips,
-    // `fixed_width`'s url can come back as .webp, not .gif. This app has no
-    // WebP decoder, so posting that URL verbatim silently fails to render
-    // once sent (nothing even logs it) -- a real GIF someone picked never
-    // showing up in the channel.
+    // `fixed_width`'s url can come back as .webp, not .gif. Release builds
+    // have no WebP decoder (MSGA_GFX_WEBP is off), so posting that URL
+    // verbatim silently fails to render once sent (nothing even logs it) --
+    // a real GIF someone picked never showing up in the channel.
     const char *body = R"({"data":[
         {"title":"Cat GIF","images":{
             "fixed_width_downsampled":{"url":"https://m.giphy.com/1/200w_d.gif","width":"200","height":"150"},
