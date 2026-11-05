@@ -34,9 +34,12 @@ if(MSGA_GFX_WEBP)
     find_package(PkgConfig REQUIRED)
     # GIPHY GIFs can come back as animated WebP, not GIF
     # both needed to actually play one, not just show its first frame:
-    # - libwebpdecoder: still frames (WebPDecodeRGBA)
+    # - libwebp: still frames (WebPDecodeRGBA)
     # - libwebpdemux: animated frames (WebPAnimDecoder)
-    pkg_check_modules(MSGA_WEBP REQUIRED IMPORTED_TARGET libwebpdecoder libwebpdemux)
+    # libwebp, not the decode-only libwebpdecoder: libwebpdemux depends on
+    # libwebp itself, so libwebpdecoder would load a second copy of the
+    # decoder (a static link only pulls in the decoder's objects).
+    pkg_check_modules(MSGA_WEBP REQUIRED IMPORTED_TARGET libwebp libwebpdemux)
     # PUBLIC: gfx_tests' own #ifdef MSGA_GFX_WEBP branches (gfx_tests.cpp)
     # need to see this too, or they silently test the OFF behaviour even
     # when webp is actually linked in -- caught live building this.
