@@ -11,6 +11,9 @@
 #include "base/process.h"
 #include "support/test.h"
 
+#include <algorithm>
+#include <string>
+
 TEST("slack: credentials round-trip through the stored auth blob") {
     slack::Credentials c;
     c.token                       = "xoxc-1-2-3";
@@ -287,6 +290,34 @@ TEST("slack json: a message_mention names the linked message's author for its ch
     REQUIRE(u != model::kNoUser);
     CHECK_STR(store.user(u).id, "U7");
     CHECK(store.linkedAuthor("C9", "1700000000.000200") == model::kNoUser);
+}
+
+TEST("slack json: a feed thread's replies by people new to the Store still know they answer me") {
+    // Each reply interns its author, so the users grow (and move) while the
+    // replies are read; my id is read once, before that.
+    model::Store store;
+    model::User  me;
+    me.id    = "UME";
+    store.me = store.addUser(me);
+    model::Conversation c;
+    c.id = "C1";
+    store.addConversation(std::move(c));
+    std::string replies;
+    for (int i = 0; i < 40; ++i)
+        replies += std::string(i ? "," : "") + R"({"ts": "1800000001.0)" +
+                   std::to_string(1000 + i) + R"(", "user": "UNEW)" + std::to_string(i) +
+                   R"(", "text": "r", "parent_user_id": "UME"})";
+    json::Document doc;
+    REQUIRE(doc.parse(
+        R"({"root_msg": {"channel": "C1", "ts": "1800000000.000100", "user": "UME"},
+            "latest_replies": [)" +
+        replies + "]}"
+    ));
+    slack::mapjson::FeedThread t;
+    REQUIRE(slack::mapjson::toFeedThread(doc.root(), store, t));
+    CHECK(t.replies.size() == 40);
+    CHECK(store.userCount() > 40);
+    CHECK(std::count(t.parentIsMe.begin(), t.parentIsMe.end(), 1) == 40);
 }
 
 TEST("slack json: structural blocks, shared-message unfurls, PDF pages, canvas titles") {

@@ -84,6 +84,14 @@ void operator delete(void *p) noexcept {
 void operator delete(void *p, size_t) noexcept {
     std::free(p);
 }
+// The nothrow pair too (std::stable_sort's buffer): left alone, it keeps the
+// runtime's allocator (ASan's) while its memory comes back through ours.
+void *operator new(size_t n, const std::nothrow_t &) noexcept {
+    return operator new(n);
+}
+void operator delete(void *p, const std::nothrow_t &) noexcept {
+    std::free(p);
+}
 
 namespace {
 

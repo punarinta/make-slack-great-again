@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 #include <string>
 
 using namespace gfx;
@@ -42,6 +43,15 @@ void operator delete(void *q) noexcept {
     std::free(p);
 }
 void operator delete(void *q, size_t) noexcept {
+    operator delete(q);
+}
+// The nothrow pair too (std::stable_sort's buffer): left alone, it keeps the
+// runtime's allocator while its memory comes back through ours, which would
+// read a header that isn't there.
+void *operator new(size_t n, const std::nothrow_t &) noexcept {
+    return operator new(n);
+}
+void operator delete(void *q, const std::nothrow_t &) noexcept {
     operator delete(q);
 }
 
@@ -816,6 +826,34 @@ void testAnim() {
     CHECK(readFile(dir + "/avatars/sam.png", &png));
     std::vector<AnimFrame> one;
     CHECK(decodeAnimation(png, &one) && one.size() == 1);
+}
+
+// Disposal method 3 ("restore to previous") twice in a row: the canvas goes
+// back to how it was before each frame, so the first one's pixels never come
+// back. A 2x1 GIF: red, red (kept); green at x=0 (restore); blue at x=0
+// (restore); black at x=1 (kept), over a canvas red at x=0 again, as giflib
+// and browsers play it.
+void testGifRestorePrevious() {
+    const std::string_view gif(
+        "\x47\x49\x46\x38\x39\x61\x02\x00\x01\x00\xf1\x00\x00\xff\x00\x00\x00\xff\x00\x00\x00\xff"
+        "\x00\x00\x00\x21\xff\x0b\x4e\x45\x54\x53\x43\x41\x50\x45\x32\x2e\x30\x03\x01\x00\x00\x00"
+        "\x21\xf9\x04\x04\x0a\x00\x00\x00\x2c\x00\x00\x00\x00\x02\x00\x01\x00\x00\x02\x02\x04\x51"
+        "\x00\x21\xf9\x04\x0c\x0a\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x4c"
+        "\x01\x00\x21\xf9\x04\x0c\x0a\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02"
+        "\x54\x01\x00\x21\xf9\x04\x04\x0a\x00\x00\x00\x2c\x01\x00\x00\x00\x01\x00\x01\x00\x00\x02"
+        "\x02\x5c\x01\x00\x3b",
+        137
+    );
+    std::vector<AnimFrame> f;
+    CHECK(decodeAnimation(gif, &f));
+    CHECK(f.size() == 4);
+    if (f.size() != 4)
+        return;
+    const uint32_t red = 0xffff0000u, green = 0xff00ff00u, blue = 0xff0000ffu, black = 0xff000000u;
+    CHECK(px(f[0].frame, 0, 0) == red && px(f[0].frame, 1, 0) == red);
+    CHECK(px(f[1].frame, 0, 0) == green && px(f[1].frame, 1, 0) == red);
+    CHECK(px(f[2].frame, 0, 0) == blue && px(f[2].frame, 1, 0) == red);
+    CHECK(px(f[3].frame, 0, 0) == red && px(f[3].frame, 1, 0) == black);
 }
 
 // The frame budget and the decode-time fit (P11): frames shrunk as they are
@@ -1827,6 +1865,7 @@ const Group kGroups[] = {
     {"shadow", testShadow},
     {"decode", testDecode},
     {"anim", testAnim},
+    {"gifrestore", testGifRestorePrevious},
     {"animwebp", testAnimWebp},
     {"animwebpgif", testAnimWebpMatchesGif},
     {"animwebpbudget", testAnimWebpBudget},

@@ -83,9 +83,12 @@ void Backend::deleteSection(const std::string &id) {
     sectionsChanged();
 }
 
-void Backend::moveToSection(ConvRef conv, const std::string &id) {
+void Backend::moveToSection(ConvRef conv, const std::string &sectionId) {
     if (conv >= _store.conversationCount())
         return;
+    // A copy: the caller's may be the Store's own (a menu's section id),
+    // which setSections replaces.
+    const std::string           id     = sectionId;
     const std::string           convId = _store.conversation(conv).id;
     std::vector<Store::Section> all    = _store.sections();
     for (Store::Section &s : all) {

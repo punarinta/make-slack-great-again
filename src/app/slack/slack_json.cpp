@@ -902,7 +902,8 @@ bool toFeedThread(const Value &t, model::Store &store, FeedThread &out) {
         return false;
     // latest_replies on a read thread, unread_replies (alone) on one with
     // news: both, deduplicated.
-    const std::string &me = store.user(store.me).id;
+    // A copy: toMessage may intern a user, which moves the users.
+    const std::string me = store.user(store.me).id;
     for (const char *k : {"latest_replies", "unread_replies"})
         for (const Value r : t[k]) {
             model::Message m = toMessage(r, store);
