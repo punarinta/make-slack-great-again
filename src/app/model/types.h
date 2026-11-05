@@ -267,7 +267,8 @@ struct Conversation {
     Ts                   latest      = 0;
     bool                 starred     = false;
     bool                 muted       = false;
-    bool                 member      = true; // channels: joined; DMs: open (not closed)
+    bool                 member      = true;  // channels: joined; DMs: open (not closed)
+    bool                 extShared   = false; // a Slack Connect channel, shared with another org
     NotifyLevel          notify      = NotifyLevel::Default;
     std::string          canvasTitle; // non-empty: the channel has a canvas
     std::string          canvasId;    // its file ("F0123"); "" while unknown or none

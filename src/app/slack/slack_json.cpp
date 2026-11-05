@@ -414,10 +414,11 @@ model::Conversation toConversation(const json::Value &o, model::Store &store) {
     c.lastRead              = model::parseTs(o["last_read"].str());
     c.latest                = latestTs(o);
     const int64_t unread    = o["unread_count"].integer();
-    c.unread   = unread > 0 ? uint32_t(unread) : (c.latest && c.lastRead && c.latest > c.lastRead);
-    c.mentions = uint32_t(o["mention_count"].integer());
-    c.muted    = o["is_muted"].boolean();
-    c.starred  = o["is_starred"].boolean();
+    c.unread    = unread > 0 ? uint32_t(unread) : (c.latest && c.lastRead && c.latest > c.lastRead);
+    c.mentions  = uint32_t(o["mention_count"].integer());
+    c.muted     = o["is_muted"].boolean();
+    c.starred   = o["is_starred"].boolean();
+    c.extShared = o["is_ext_shared"].boolean();
     const std::string_view pref = o["notification_preference"].str();
     c.notify                    = pref == "everything" ? model::NotifyLevel::All
                                   : pref == "mentions" ? model::NotifyLevel::Mentions

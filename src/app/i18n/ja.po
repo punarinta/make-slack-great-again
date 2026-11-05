@@ -3466,6 +3466,10 @@ msgid "Agents & apps"
 msgstr "エージェントとアプリ"
 
 #: src/app/screens/shell/sidebar.cpp
+msgid "External connections"
+msgstr "外部との接続"
+
+#: src/app/screens/shell/sidebar.cpp
 msgid "%1 more %2"
 msgstr "他%1件の%2"
 
@@ -4128,6 +4132,12 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid "VIP"
+#~ msgstr "VIP"
+
+#~ msgid "VIP unreads"
+#~ msgstr "VIPの未読"
 
 #~ msgid "Just now"
 #~ msgstr "たった今"

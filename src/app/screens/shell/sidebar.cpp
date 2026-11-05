@@ -857,11 +857,27 @@ bool Sidebar::isApp(const model::Conversation &c) const {
     return c.kind == ConvKind::Dm && c.dmUser != model::kNoUser && _ctx.store().user(c.dmUser).bot;
 }
 
+// A Slack Connect conversation, shared with another org.
+bool Sidebar::isExternal(const model::Conversation &c) const {
+    const auto &store = _ctx.store();
+    if (c.extShared)
+        return true;
+    if (c.kind == ConvKind::Dm)
+        return c.dmUser != model::kNoUser && store.user(c.dmUser).stranger;
+    if (c.kind == ConvKind::Group)
+        return std::any_of(c.members.begin(), c.members.end(), [&](model::UserRef u) {
+            return store.user(u).stranger;
+        });
+    return false;
+}
+
 Sidebar::Kind Sidebar::classify(const model::Conversation &c) const {
     if (c.starred)
         return Starred;
     if (isApp(c))
         return Apps;
+    if (isExternal(c))
+        return External;
     return c.isDirect() ? Direct : Channels;
 }
 
@@ -948,8 +964,8 @@ void Sidebar::rebuild() {
         _navSelected = Nav::None;
     showNavSelection();
 
-    // Bucketed by classify(); fixture (= server) order inside each.
-    std::vector<ConvRef> lists[4], hiddenCh;
+    // Bucketed by classify(); sorted per section by sortOf().
+    std::vector<ConvRef> lists[4], hiddenCh, hiddenExt, external;
     const auto           listed = [&](ConvRef c) {
         return !_filters.unreadsOnly || c == _selected || paintsUnread(store.conversation(c));
     };
@@ -1000,6 +1016,14 @@ void Sidebar::rebuild() {
             if (listed(c) && (_filters.showAgentsApps || c == _selected))
                 lists[Apps].push_back(c);
             break;
+        case External:
+            if (relevant(c) && listed(c))
+                external.push_back(c);
+            // A separate hidden list: putting it in lists[Channels] would make
+            // reclassified above see it move every time it changes.
+            else if (!cv.isDirect())
+                hiddenExt.push_back(c);
+            break;
         case Direct:
             if (relevant(c) && listed(c))
                 lists[Direct].push_back(c);
@@ -1016,9 +1040,13 @@ void Sidebar::rebuild() {
             break; // classify() never returns these
         }
     }
-    _hiddenChannels = _showAllChannels ? 0 : int(hiddenCh.size());
-    if (_showAllChannels)
-        lists[1].insert(lists[1].end(), hiddenCh.begin(), hiddenCh.end());
+    // Both kinds of hidden channel count toward "N more", or a Connect
+    // channel outside the relevance window becomes unreachable.
+    _hiddenChannels = _showAllChannels ? 0 : int(hiddenCh.size() + hiddenExt.size());
+    if (_showAllChannels) {
+        lists[Channels].insert(lists[Channels].end(), hiddenCh.begin(), hiddenCh.end());
+        external.insert(external.end(), hiddenExt.begin(), hiddenExt.end());
+    }
     const bool agents = caps.agentSessions;
     _team = agents ? _ctx.backend.agentRoles() : std::vector<model::Backend::AgentRole>{};
     struct Def {
@@ -1060,6 +1088,12 @@ void Sidebar::rebuild() {
         }
         return h;
     };
+    // Slack Connect channels/DMs, at the top -- same as real Slack's own
+    // "External connections" section.
+    if (!external.empty()) {
+        auto *h = section(External, Icon::Building, tr("External connections"), external);
+        applyCollapse(h);
+    }
     for (int s = 0; s < 4; ++s) {
         if (s == Channels) // the user's own sections, between Starred and Channels
             for (size_t i = 0; i < custom.size(); ++i) {
@@ -1073,7 +1107,8 @@ void Sidebar::rebuild() {
         // No Starred section until something is starred, no Agents & apps
         // without an app DM, and an agent workspace drops an empty Channels.
         if (lists[s].empty() &&
-            (s == Starred || s == Apps || (s == Channels && agents && hiddenCh.empty())))
+            (s == Starred || s == Apps ||
+             (s == Channels && agents && hiddenCh.empty() && hiddenExt.empty())))
             continue;
         auto *h = section(Kind(s), defs[s].icon, defs[s].title, lists[s]);
         if (s == Channels && _hiddenChannels > 0) {
@@ -1150,6 +1185,10 @@ uint64_t Sidebar::userShape() const {
     mix(str::number(int64_t(store.me)));
     for (const ConvRow *r : _rows) {
         const auto &cv = store.conversation(r->conv);
+        if (cv.kind == ConvKind::Group) {
+            mix(isExternal(cv) ? "1" : "0");
+            continue;
+        }
         if (cv.kind != ConvKind::Dm)
             continue;
         const model::User &u = store.user(cv.dmUser);
@@ -1327,6 +1366,8 @@ std::string Sidebar::sectionKey(Kind kind, const std::string &id) {
         return "#apps";
     case Custom:
         return id;
+    case External:
+        return "#external";
     case Team:
     case KindCount:
         break; // the Team header has no key (no sort, no persisted collapse)

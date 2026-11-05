@@ -829,6 +829,37 @@ TEST("sort: alphabetically, most recent first, unreads on top; kept per workspac
     CHECK(loaded.count("#channels") && loaded.at("#channels").by == shell::SectionSort::By::Recent);
 }
 
+// ── External connections ────────────────────────────────────────────────────
+
+TEST("sections: a Slack Connect channel sits in External connections, above Starred") {
+    Harness         h;
+    shell::Sidebar &sb     = h.sh->sidebar();
+    const ConvRef   random = h.conv("C0RANDOM");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    h.store.updateConversation(random, [](Conversation &c) { c.extShared = true; });
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|External connections|Starred|Channels|Direct messages");
+    CHECK_STR(sb.rowSection(random), "");
+    const auto order = sb.order();
+    REQUIRE(!order.empty());
+    CHECK(order[0] == random); // only row in External connections, which sits first
+    h.store.updateConversation(random, [](Conversation &c) { c.extShared = false; });
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+}
+
+TEST("sections: a DM with a stranger peer is external too") {
+    Harness         h;
+    shell::Sidebar &sb       = h.sh->sidebar();
+    const ConvRef   mira     = h.conv("D0MIRA");
+    const UserRef   u        = h.store.findUser("U0MIRA");
+    h.store.user(u).stranger = true;
+    h.store.usersChanged(u);
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|External connections|Starred|Channels|Direct messages");
+    CHECK(std::find(sb.order().begin(), sb.order().end(), mira) != sb.order().end());
+}
+
 // ── Files: the chooser helper, attachments, drops, Save as ──────────────────
 
 namespace {

@@ -96,7 +96,7 @@ public:
     // A section header's kind. Every Custom section (Store::sections) shares
     // this one value, told apart by sectionId. Team lists teammates, not
     // conversations.
-    enum Kind : uint8_t { Starred, Channels, Direct, Apps, Team, Custom, KindCount };
+    enum Kind : uint8_t { Starred, Channels, Direct, Apps, Team, Custom, External, KindCount };
 
     // The Settings → Appearance / Notifications choices the list follows.
     struct Filters {
@@ -223,6 +223,7 @@ private:
     model::NotifyLevel level(const model::Conversation &c) const;
     bool               muted(const model::Conversation &c) const;
     bool               isApp(const model::Conversation &c) const;
+    bool               isExternal(const model::Conversation &c) const;
     // The section kind this conversation belongs in. Shared by rebuild() and
     // the Meta-event flip check so they can't disagree.
     Kind               classify(const model::Conversation &c) const;

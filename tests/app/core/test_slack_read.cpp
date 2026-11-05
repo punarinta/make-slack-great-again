@@ -83,10 +83,11 @@ const char *kWorkspace = R"({
  "users.conversations?cursor=c2": {"ok": true, "channels": [
      {"id": "D2", "is_im": true, "user": "UEXT"},
      {"id": "G1", "is_mpim": true, "name": "mpdm-me--mira--jonas-1"},
-     {"id": "C2", "name": "random", "is_channel": true, "is_member": true, "is_muted": true}],
+     {"id": "C2", "name": "random", "is_channel": true, "is_member": true, "is_muted": true,
+      "is_ext_shared": true}],
    "response_metadata": {"next_cursor": ""}},
  "users.info?user=UEXT": {"ok": true, "user": {"id": "UEXT", "name": "ext",
-     "profile": {"real_name": "Ext Partner"}}},
+     "profile": {"real_name": "Ext Partner"}, "is_stranger": true}},
  "client.counts": {"ok": true,
    "channels": [{"id": "C1", "latest": "1700000100.000000", "last_read": "1700000000.000000",
                  "mention_count": 1, "has_unreads": true}],
@@ -189,6 +190,7 @@ TEST("slack read: connect fills users, conversations, unread, stars, emoji, grou
     CHECK_STR(general.topic, "Company news");
     CHECK(general.memberCount == 12);
     CHECK(e.store.conversation(e.conv("C2")).muted);
+    CHECK(e.store.conversation(e.conv("C2")).extShared);
     const model::Conversation &dm = e.store.conversation(e.conv("D1"));
     CHECK(dm.kind == model::ConvKind::Dm && dm.dmUser == e.store.findUser("UMIRA"));
     CHECK_STR(e.store.displayName(e.conv("D1")), "Mira Okafor");
@@ -204,6 +206,7 @@ TEST("slack read: connect fills users, conversations, unread, stars, emoji, grou
     // The DM peer users.list omits is resolved through users.info.
     REQUIRE(pumpUntil([&] { return !e.user("UEXT").placeholder; }, 3000));
     CHECK_STR(e.store.displayName(e.conv("D2")), "Ext Partner");
+    CHECK(e.user("UEXT").stranger);
     // Stars (conversation stars only), custom emoji with aliases, my groups,
     // my presence.
     REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C2")).starred; }, 3000));
