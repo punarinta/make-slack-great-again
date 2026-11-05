@@ -34,6 +34,7 @@
 #endif
 
 #include <cmath>
+#include <functional>
 #include <memory>
 
 using namespace model;
@@ -91,6 +92,12 @@ struct Fake : fake::FakeBackend {
         done(false, statusError);
     }
     void loadMembers(ConvRef conv, MembersDone done) override {
+        if (holdMembers) { // the test lets the list come with heldMembers()
+            heldMembers = [this, conv, done = std::move(done)]() mutable {
+                fake::FakeBackend::loadMembers(conv, std::move(done));
+            };
+            return;
+        }
         if (membersError.empty())
             return fake::FakeBackend::loadMembers(conv, std::move(done));
         done({}, membersError);
@@ -120,13 +127,15 @@ struct Fake : fake::FakeBackend {
     std::string promptSuggestion(ConvRef c) const override {
         return c == suggestFor ? std::string("run the  tests\nagain") : std::string();
     }
-    bool        broadcast = false, huddles = false, schedule = false, gifs = true;
-    int         broadcasts = 0;
-    ConvRef     suggestFor = kNoConv;
-    std::string membersError, lastBlocks;
-    std::string scheduleError; // scheduleMessage fails with it
-    void        refreshScheduled() override { ++scheduledRefreshes; }
-    void        cancelScheduled(const std::string &id, Done done) override {
+    bool                  broadcast = false, huddles = false, schedule = false, gifs = true;
+    int                   broadcasts = 0;
+    ConvRef               suggestFor = kNoConv;
+    std::string           membersError, lastBlocks;
+    bool                  holdMembers = false;
+    std::function<void()> heldMembers;
+    std::string           scheduleError; // scheduleMessage fails with it
+    void                  refreshScheduled() override { ++scheduledRefreshes; }
+    void                  cancelScheduled(const std::string &id, Done done) override {
         cancelled.push_back(id);
         if (cancelError.empty())
             store().removeScheduled(id);
@@ -735,15 +744,17 @@ TEST("header: the members popup grows to its list when the count was unknown") {
     hd.refresh();
     CHECK_FALSE(hd.memberCount()->visible());
     const ui::RectF anchor{900, 40, 40, 28};
+    h.backend.holdMembers = true; // a loaded run could bring the list within the first pump
     hd.openMembers(anchor);
     pump();
     ui::Popup *p = h.win->topPopup();
     REQUIRE(p != nullptr);
+    REQUIRE(h.backend.heldMembers != nullptr);
     const float loading = p->frame().h; // one row while the count is unknown
+    h.backend.heldMembers();
     REQUIRE(until([&] { return hasText(p, "9 members"); }));
-    pump();
     // Six whole rows of 60 (the cap), still under the button and in the window.
-    CHECK(std::fabs(p->frame().h - loading - 5 * 60) < 0.5f);
+    CHECK(until([&] { return std::fabs(p->frame().h - loading - 5 * 60) < 0.5f; }));
     CHECK(p->frame().y >= anchor.y + anchor.h);
     CHECK(p->frame().y + p->frame().h <= h.win->size().h);
     CHECK(p->frame().x + p->frame().w <= h.win->size().w);

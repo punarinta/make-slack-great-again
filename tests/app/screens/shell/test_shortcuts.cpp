@@ -289,7 +289,8 @@ TEST("search: Enter searches, the arrows pick a result, Enter opens it and close
     s->field().setText("  proposal b ");
     h.key(K::Enter);
     CHECK(s->list()->visible());
-    CHECK_STR(s->statusText(), "Searching\xE2\x80\xA6");
+    // The key's pump may already have brought the results ("Searching…" is
+    // checked below, straight after a direct runSearch).
     for (int i = 0; i < 1000 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
         pump(5);
     REQUIRE(!s->results().empty());
@@ -311,6 +312,7 @@ TEST("search: Enter searches, the arrows pick a result, Enter opens it and close
     CHECK_STR(s->field().text(), "  proposal b "); // kept, and selected
     CHECK(s->selected() == 0);                     // so is the pick: Enter would open it again
     s->runSearch("no such words anywhere");
+    CHECK_STR(s->statusText(), "Searching\xE2\x80\xA6"); // until the backend answers
     for (int i = 0; i < 1000 && s->statusText() == "Searching\xE2\x80\xA6"; ++i)
         pump(5);
     CHECK_STR(s->statusText(), "No results found.");
