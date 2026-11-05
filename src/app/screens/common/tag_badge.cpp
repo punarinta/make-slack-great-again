@@ -16,7 +16,7 @@ namespace {
 // app font at 0.62 in bold.
 class TagBadge final : public ui::View {
 public:
-    TagBadge(bool ext, bool sidebar) : _ext(ext), _sidebar(sidebar) { style().noShrink(); }
+    TagBadge(TagKind kind, bool sidebar) : _kind(kind), _sidebar(sidebar) { style().noShrink(); }
     void      styleChanged() override { _l.reset(), View::styleChanged(); }
     ui::SizeF measureContent(float, float) override {
         build();
@@ -25,12 +25,21 @@ public:
     void paint(gfx::Painter &p) override {
         build();
         gfx::Color bg = 0;
-        if (!_ext)
+        switch (_kind) {
+        case TagKind::App:
             bg = ui::byTheme(0x1effffffU, 0x211d1c1dU);
-        else if (!_sidebar)
-            bg = ui::byTheme(0x1ee6c98aU, 0x26c6920aU);
-        else
-            bg = lightRail() ? 0x26c6920aU : 0x26e6c98aU;
+            break;
+        case TagKind::Ext:
+            bg = !_sidebar     ? ui::byTheme(0x1ee6c98aU, 0x26c6920aU)
+                 : lightRail() ? 0x26c6920aU
+                               : 0x26e6c98aU;
+            break;
+        case TagKind::Vip:
+            bg = !_sidebar     ? ui::byTheme(0x1eb595f8U, 0x267c3aedU)
+                 : lightRail() ? 0x267c3aedU
+                               : 0x26b595f8U;
+            break;
+        }
         p.fillRoundRect(bounds(), 2, bg);
         _l->paint(
             p,
@@ -50,27 +59,37 @@ private:
     void build() {
         if (_l)
             return;
-        gfx::Color fg = 0;
-        if (!_ext)
-            fg = ui::byTheme(0xffa8a8a8U, 0xff616061U);
-        else if (!_sidebar)
-            fg = ui::byTheme(0xffd9b45cU, 0xff8a6508U);
-        else
-            fg = lightRail() ? 0xff8a6508U : 0xffe6c98aU;
-        _l = text::layoutPlain(
-            _ext ? tr("EXT") : tr("APP"),
-            ui::pxFont(15 * 0.62f, text::Weight::Bold, fg),
-            windowScale()
-        );
+        gfx::Color  fg = 0;
+        std::string text;
+        switch (_kind) {
+        case TagKind::App:
+            fg   = ui::byTheme(0xffa8a8a8U, 0xff616061U);
+            text = tr("APP");
+            break;
+        case TagKind::Ext:
+            fg   = !_sidebar     ? ui::byTheme(0xffd9b45cU, 0xff8a6508U)
+                   : lightRail() ? 0xff8a6508U
+                                 : 0xffe6c98aU;
+            text = tr("EXT");
+            break;
+        case TagKind::Vip:
+            fg   = !_sidebar     ? ui::byTheme(0xffb595f8U, 0xff7c3aedU)
+                   : lightRail() ? 0xff7c3aedU
+                                 : 0xffb595f8U;
+            text = tr("VIP");
+            break;
+        }
+        _l = text::layoutPlain(text, ui::pxFont(15 * 0.62f, text::Weight::Bold, fg), windowScale());
     }
     std::unique_ptr<text::Layout> _l;
-    bool                          _ext, _sidebar;
+    TagKind                       _kind;
+    bool                          _sidebar;
 };
 
 } // namespace
 
-ui::View *addTagBadge(ui::View *parent, bool ext, bool sidebar) {
-    return parent->add<TagBadge>(ext, sidebar);
+ui::View *addTagBadge(ui::View *parent, TagKind kind, bool sidebar) {
+    return parent->add<TagBadge>(kind, sidebar);
 }
 
 } // namespace screens

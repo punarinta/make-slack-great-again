@@ -393,6 +393,14 @@ int realNamesFrom(int override, int teamDefault) {
     return override == 0 ? teamDefault : kNoPref;
 }
 
+std::vector<std::string> vipUsers(const json::Value &prefs) {
+    std::vector<std::string> out;
+    for (const std::string_view id : str::split(prefs["vip_users"].str(), ','))
+        if (!id.empty())
+            out.emplace_back(id);
+    return out;
+}
+
 model::Conversation toConversation(const json::Value &o, model::Store &store) {
     model::Conversation c;
     c.id   = owned(o["id"]);

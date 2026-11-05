@@ -782,13 +782,17 @@ msgstr "ファイルを添付"
 msgid "Attach a file"
 msgstr "ファイルを添付"
 
+#: src/app/screens/common/tag_badge.cpp src/app/screens/shell/composer_popups.cpp
+msgid "APP"
+msgstr "アプリ"
+
 #: src/app/screens/common/tag_badge.cpp
 msgid "EXT"
 msgstr "外部"
 
-#: src/app/screens/common/tag_badge.cpp src/app/screens/shell/composer_popups.cpp
-msgid "APP"
-msgstr "アプリ"
+#: src/app/screens/common/tag_badge.cpp
+msgid "VIP"
+msgstr "VIP"
 
 #: src/app/screens/messages/audio_card.cpp
 msgid "%1 · transcribed by %2"
@@ -3466,6 +3470,10 @@ msgid "Agents & apps"
 msgstr "エージェントとアプリ"
 
 #: src/app/screens/shell/sidebar.cpp
+msgid "VIP unreads"
+msgstr "VIPの未読"
+
+#: src/app/screens/shell/sidebar.cpp
 msgid "External connections"
 msgstr "外部との接続"
 
@@ -4132,12 +4140,6 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
-
-#~ msgid "VIP"
-#~ msgstr "VIP"
-
-#~ msgid "VIP unreads"
-#~ msgstr "VIPの未読"
 
 #~ msgid "Just now"
 #~ msgstr "たった今"

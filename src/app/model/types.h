@@ -61,6 +61,7 @@ struct User {
     // Deactivated, or a Slack Connect stranger (conversations.open rejects
     // them): never offered as someone to message (Find a channel's People).
     bool        deleted = false, stranger = false;
+    bool        vip = false; // viewer's own VIP list, not a fact about this user
 
     // What the UI shows: the display name, else the handle, else the id.
     std::string_view label() const;

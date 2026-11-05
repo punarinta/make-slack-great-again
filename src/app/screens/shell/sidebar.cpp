@@ -262,7 +262,18 @@ public:
         : sidebar(sb), kind(k), icon(i), title(text) {
         setLook({C::None, C::SidebarHover, C::SidebarHover, C::None, 0}); // full width
         setRole(Role::Button);
-        style().row().height(rowH()).padding(kContentX, 0, kPadH, 0).items(Align::Center);
+        // VIP's "VIP" pill is a real row child, not painted in the icon's
+        // padding like every other kind's icon -- it needs more room than
+        // that padding gives, so it starts where the icon would instead.
+        style()
+            .row()
+            .height(rowH())
+            .padding(k == Sidebar::Vip ? kPadH : kContentX, 0, kPadH, 0)
+            .items(Align::Center);
+        if (k == Sidebar::Vip) {
+            vipBadge = screens::addTagBadge(this, screens::TagKind::Vip, true);
+            vipBadge->style().margins(0, 0, 6, 0);
+        }
         label = add<Label>(std::move(text), Font::Section, C::SidebarTextMuted);
         label->setMaxLines(1);
         label->style().shrink = 1;
@@ -356,6 +367,11 @@ public:
     }
     void paint(gfx::Painter &p) override {
         HoverRow::paint(p);
+        // VIP's icon is the "VIP" pill child view instead -- always visible;
+        // hiding it on hover would collapse its space and the label would
+        // slide under the chevron drawn below.
+        if (kind == Sidebar::Vip)
+            return;
         // The section's icon; hovered, the chevron previewing the click.
         const Icon  i = !lit() ? icon : collapsed ? Icon::ChevronRight : Icon::ChevronDown;
         const float y = snapPx((height() - 14) / 2);
@@ -385,6 +401,7 @@ public:
     Label                        *label      = nullptr;
     HeaderButton                 *plus       = nullptr;
     HeaderButton                 *more       = nullptr;
+    ui::View                     *vipBadge   = nullptr; // Vip: the "VIP" pill
     std::vector<ConvRow *>        rows;
     std::vector<View *>           extras; // "N more channels", "Add channels"
     bool                          collapsed = false, unread = false, stale = false;
@@ -505,7 +522,9 @@ public:
             const auto &u = store.user(cv.dmUser);
             // The "EXT" pill after a Slack Connect peer's name.
             if (u.stranger)
-                screens::addTagBadge(this, true, true)->style().margins(6, 0, 0, 0);
+                screens::addTagBadge(this, screens::TagKind::Ext, true)
+                    ->style()
+                    .margins(6, 0, 0, 0);
             if (!u.statusEmoji.empty()) {
                 const model::Store::EmojiGlyph g = store.emojiFor(u.statusEmoji);
                 if (!g.unicode.empty()) {
@@ -871,11 +890,26 @@ bool Sidebar::isExternal(const model::Conversation &c) const {
     return false;
 }
 
+// An unread DM/group DM from a VIP -- temporary like Slack's own "VIP
+// unreads": back to its normal section the moment it's read.
+bool Sidebar::isVip(const model::Conversation &c) const {
+    if (c.unread == 0 || muted(c) || !c.isDirect())
+        return false;
+    const auto &store = _ctx.store();
+    if (c.kind == ConvKind::Dm)
+        return c.dmUser != model::kNoUser && store.user(c.dmUser).vip;
+    return std::any_of(c.members.begin(), c.members.end(), [&](model::UserRef u) {
+        return store.user(u).vip;
+    });
+}
+
 Sidebar::Kind Sidebar::classify(const model::Conversation &c) const {
     if (c.starred)
         return Starred;
     if (isApp(c))
         return Apps;
+    if (_ctx.backend.capabilities().vips && isVip(c))
+        return Vip;
     if (isExternal(c))
         return External;
     return c.isDirect() ? Direct : Channels;
@@ -965,7 +999,7 @@ void Sidebar::rebuild() {
     showNavSelection();
 
     // Bucketed by classify(); sorted per section by sortOf().
-    std::vector<ConvRef> lists[4], hiddenCh, hiddenExt, external;
+    std::vector<ConvRef> lists[4], hiddenCh, hiddenExt, external, vipUnread;
     const auto           listed = [&](ConvRef c) {
         return !_filters.unreadsOnly || c == _selected || paintsUnread(store.conversation(c));
     };
@@ -1015,6 +1049,9 @@ void Sidebar::rebuild() {
         case Apps:
             if (listed(c) && (_filters.showAgentsApps || c == _selected))
                 lists[Apps].push_back(c);
+            break;
+        case Vip:
+            vipUnread.push_back(c); // unread already required; always shown
             break;
         case External:
             if (relevant(c) && listed(c))
@@ -1088,6 +1125,11 @@ void Sidebar::rebuild() {
         }
         return h;
     };
+    // Above everything, only while non-empty (see isVip).
+    if (!vipUnread.empty()) {
+        auto *h = section(Vip, Icon::Star, tr("VIP unreads"), vipUnread);
+        applyCollapse(h);
+    }
     // Slack Connect channels/DMs, at the top -- same as real Slack's own
     // "External connections" section.
     if (!external.empty()) {
@@ -1186,7 +1228,11 @@ uint64_t Sidebar::userShape() const {
     for (const ConvRow *r : _rows) {
         const auto &cv = store.conversation(r->conv);
         if (cv.kind == ConvKind::Group) {
+            // A member turning VIP/stranger can move the row (isVip/
+            // isExternal read every member): one bit each is enough to
+            // notice, no need for the 1:1 DM's full per-user mix below.
             mix(isExternal(cv) ? "1" : "0");
+            mix(isVip(cv) ? "1" : "0");
             continue;
         }
         if (cv.kind != ConvKind::Dm)
@@ -1195,6 +1241,7 @@ uint64_t Sidebar::userShape() const {
         mix(u.avatar);
         mix(u.label());
         mix(u.stranger ? "1" : "0");
+        mix(u.vip ? "1" : "0");
         mix(u.statusEmoji);
         if (!u.statusEmoji.empty()) {
             const model::Store::EmojiGlyph g = store.emojiFor(u.statusEmoji);
@@ -1368,6 +1415,8 @@ std::string Sidebar::sectionKey(Kind kind, const std::string &id) {
         return id;
     case External:
         return "#external";
+    case Vip:
+        return "#vip";
     case Team:
     case KindCount:
         break; // the Team header has no key (no sort, no persisted collapse)

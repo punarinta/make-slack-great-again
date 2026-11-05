@@ -458,6 +458,7 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     c.canvases         = true;
     c.fileUpload       = true;
     c.customSections   = true; // this run only
+    c.vips             = true;
     return c;
 }
 

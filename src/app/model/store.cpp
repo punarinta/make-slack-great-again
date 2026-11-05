@@ -194,8 +194,11 @@ void Store::clear() {
 UserRef Store::addUser(User u) {
     u.resolveName(_realNames);
     if (const auto it = _userIndex.find(u.id); it != _userIndex.end()) {
+        // vip is local, never a fact a backend JSON carries: a replace must not wipe it.
+        const bool vip                 = _users[it->second].vip;
         _users[it->second]             = std::move(u); // same ref: messages keep pointing at it
         _users[it->second].placeholder = false;
+        _users[it->second].vip         = vip;
         _touchedUsers.push_back(it->second);
         return it->second;
     }
@@ -275,7 +278,8 @@ void Store::noteUserRevisions() {
             char(u.placeholder),
             char(u.unavailable),
             char(u.deleted),
-            char(u.stranger)
+            char(u.stranger),
+            char(u.vip)
         };
         h = mixHash(h, std::string_view(flags, sizeof flags));
         h = mixHash(h, std::string_view(reinterpret_cast<const char *>(&u.tzOffset), 4));
