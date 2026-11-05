@@ -28,7 +28,14 @@ std::string_view   authorName(const model::Store &st, const model::Message &m);
 // The author's picture, by the same rule.
 const std::string &authorAvatar(const model::Store &st, const model::Message &m);
 
-// An image path or URL that is a GIF (any case, a URL's ?query ignored).
+// A path or URL's file extension, query ignored
+// shared by isGifPath and gif_search.cpp's isLiterallyGif
+std::string_view pathExtension(std::string_view path);
+
+// An image path or URL that might animate:
+// - .gif
+// - .webp (GIPHY can serve a GIF as animated WebP)
+// decodeAnimation sniffs the real bytes -- a still WebP just decodes to one frame
 bool isGifPath(std::string_view path);
 
 } // namespace screens

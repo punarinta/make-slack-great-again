@@ -53,8 +53,16 @@ const std::string &authorAvatar(const model::Store &st, const model::Message &m)
     return st.user(m.user).avatar;
 }
 
+std::string_view pathExtension(std::string_view path) {
+    return file::extension(path.substr(0, path.find('?')));
+}
+
 bool isGifPath(std::string_view path) {
-    return str::iequals(file::extension(path.substr(0, path.find('?'))), "gif");
+    const std::string_view ext = pathExtension(path);
+    // .webp too: GIPHY can serve a GIF as animated WebP
+    // decodeAnimation sniffs the real bytes
+    // a still WebP just decodes to one frame
+    return str::iequals(ext, "gif") || str::iequals(ext, "webp");
 }
 
 } // namespace screens

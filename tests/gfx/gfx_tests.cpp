@@ -1084,6 +1084,135 @@ bool near(uint32_t got, uint32_t want, int tol) {
     return true;
 }
 
+// GIPHY can serve a picked GIF as animated WebP, not GIF
+// a real one caught decodeAnimation returning just a static frame
+// fixture: a hand-made 4x4 red-then-blue animation
+// (`img2webp -loop 1 -d 100 red.png -d 150 blue.png`)
+void testAnimWebp() {
+    const std::string dir = MSGA_TEST_ASSETS;
+    std::string       bytes;
+    CHECK(readFile(dir + "/webp/two-frame-anim.webp", &bytes));
+    std::vector<AnimFrame> frames;
+#ifdef MSGA_GFX_WEBP
+    CHECK(decodeAnimation(bytes, &frames));
+    CHECK(frames.size() == 2);
+    if (frames.size() == 2) {
+        CHECK(frames[0].frame.width() == 4 && frames[0].frame.height() == 4);
+        CHECK(frames[0].delayMs == 100);
+        CHECK(frames[1].delayMs == 150);
+        CHECK(premulValid(frames[0].frame) && premulValid(frames[1].frame));
+        // red, then blue, opaque both frames
+        CHECK(near(px(frames[0].frame, 2, 2), 0xffff0000u, 3));
+        CHECK(near(px(frames[1].frame, 2, 2), 0xff0000ffu, 3));
+    }
+#else
+    // no libwebp compiled in: fails cleanly, never crashes
+    CHECK(!decodeAnimation(bytes, &frames));
+#endif
+    // The same frames on a 16384x16384 canvas (VP8X stores width-1 and
+    // height-1, 24-bit): refused from the header, before the demuxer
+    // allocates two canvas-sized buffers.
+    {
+        std::string  huge = bytes;
+        const size_t vp8x = huge.find("VP8X");
+        CHECK(vp8x != std::string::npos && vp8x + 18 <= huge.size());
+        if (vp8x != std::string::npos && vp8x + 18 <= huge.size()) {
+            const char side[3] = {char(0xff), char(0x3f), 0};
+            huge.replace(vp8x + 12, 3, side, 3);
+            huge.replace(vp8x + 15, 3, side, 3);
+            std::vector<AnimFrame> none;
+            CHECK(!decodeAnimation(huge, &none) && none.empty());
+        }
+    }
+    // Truncated and bit-flipped files must fail or decode, never crash
+    // same check testAnim() runs for every GIF fixture
+    for (size_t cut = 13; cut < bytes.size(); cut += std::max<size_t>(1, bytes.size() / 17)) {
+        std::vector<AnimFrame> part;
+        decodeAnimation(std::string_view(bytes).substr(0, cut), &part);
+        std::string flipped = bytes;
+        flipped[cut]        = char(flipped[cut] ^ 0x5a);
+        decodeAnimation(flipped, &part);
+    }
+}
+
+// A GIPHY-like WebP: lossy, many frames, transparency, frames drawn over
+// the previous ones. Each fixture is the GIF of the same name through
+// `gif2webp -lossy -q 70`, so it must play like that GIF: as many frames,
+// the same delays, and nearly the same composited pixels.
+void testAnimWebpMatchesGif() {
+    const std::string dir = MSGA_TEST_ASSETS;
+    for (const char *name : {"bouncing-ball", "pulse-rings"}) {
+        std::string gifBytes, webpBytes;
+        CHECK(readFile(dir + "/gifs/" + name + ".gif", &gifBytes));
+        CHECK(readFile(dir + "/webp/" + name + ".webp", &webpBytes));
+        std::vector<AnimFrame> gif, webp;
+        CHECK(decodeAnimation(gifBytes, &gif) && gif.size() > 1);
+#ifdef MSGA_GFX_WEBP
+        CHECK(decodeAnimation(webpBytes, &webp));
+        CHECK(webp.size() == gif.size());
+        for (size_t i = 0; i < std::min(gif.size(), webp.size()); ++i) {
+            const Bitmap &a = gif[i].frame, &b = webp[i].frame;
+            CHECK(webp[i].delayMs == gif[i].delayMs);
+            CHECK(premulValid(b));
+            CHECK(a.width() == b.width() && a.height() == b.height());
+            if (a.width() != b.width() || a.height() != b.height())
+                continue;
+            // Lossy: the mean channel error stays small, and no pixel is
+            // badly off (lossy edges reach ~85, a wrong blend or disposal
+            // ~230).
+            int64_t sum   = 0;
+            int     worst = 0;
+            for (int y = 0; y < a.height(); ++y)
+                for (int x = 0; x < a.width(); ++x)
+                    for (int s = 0; s < 32; s += 8) {
+                        const int d = std::abs(
+                            int((px(a, x, y) >> s) & 0xff) - int((px(b, x, y) >> s) & 0xff)
+                        );
+                        sum += d;
+                        worst = std::max(worst, d);
+                    }
+            const double mean = double(sum) / (int64_t(a.width()) * a.height() * 4);
+            CHECK(mean < 4.0);
+            CHECK(worst < 128);
+        }
+        // Shrunk while decoding, like a thumbnail: every frame at the size.
+        AnimOptions o;
+        o.width  = 80;
+        o.height = 60;
+        std::vector<AnimFrame> small;
+        CHECK(decodeAnimation(webpBytes, &small, o) && small.size() == gif.size());
+        for (const AnimFrame &f : small)
+            CHECK(f.frame.width() == 80 && f.frame.height() == 60 && premulValid(f.frame));
+#else
+        CHECK(!decodeAnimation(webpBytes, &webp));
+#endif
+    }
+}
+
+// Mirrors testAnimBudget, for the animated-WebP decoder's identical
+// kept-pixels early exit
+void testAnimWebpBudget() {
+    const std::string dir = MSGA_TEST_ASSETS;
+    std::string       bytes;
+    CHECK(readFile(dir + "/webp/three-frame-anim.webp", &bytes));
+#ifdef MSGA_GFX_WEBP
+    std::vector<AnimFrame> full;
+    CHECK(decodeAnimation(bytes, &full) && full.size() == 3);
+    AnimOptions            o;
+    std::vector<AnimFrame> capped;
+    // exactly the budget: every frame stays
+    o.maxPixels = int64_t(4) * 4 * int64_t(full.size());
+    CHECK(decodeAnimation(bytes, &capped, o) && capped.size() == full.size());
+    // one pixel short: the first frame alone, still
+    o.maxPixels -= 1;
+    CHECK(decodeAnimation(bytes, &capped, o) && capped.size() == 1);
+    CHECK(near(px(capped[0].frame, 2, 2), 0xffff0000u, 3)); // the first frame, red
+#else
+    std::vector<AnimFrame> frames;
+    CHECK(!decodeAnimation(bytes, &frames));
+#endif
+}
+
 void testPaint2() {
     { // linear gradient fill, horizontal, premultiplied interpolation
         Bitmap   b(100, 10);
@@ -1737,6 +1866,9 @@ const Group kGroups[] = {
     {"decode", testDecode},
     {"anim", testAnim},
     {"gifrestore", testGifRestorePrevious},
+    {"animwebp", testAnimWebp},
+    {"animwebpgif", testAnimWebpMatchesGif},
+    {"animwebpbudget", testAnimWebpBudget},
     {"animbudget", testAnimBudget},
     {"giflzwlimit", testGifLzwDictionaryLimit},
     {"snapped", testSnapped},

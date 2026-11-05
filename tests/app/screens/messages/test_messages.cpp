@@ -479,6 +479,33 @@ TEST("image: animations decode at the asked size, frame by frame") {
         CHECK(a.frame.width() == 80 && a.frame.height() == 60);
 }
 
+TEST("image: a GIPHY .webp picture paints and animates where WebP is compiled in") {
+    // Red for 100 ms, then blue for 150 ms, looping (tests/assets/webp).
+    Env               e(false);
+    const std::string path = asset("webp/two-frame-anim.webp");
+    auto *img = e.win->root().add<CachedImage>(e.images, path, ImageCache::Shape::Square);
+    img->setAnimated(isGifPath(path));
+    img->style().size(40, 40).alignSelf(ui::Align::Start);
+    pump();
+    REQUIRE(until([&] { return e.images.pending() == 0; }));
+    pump();
+    const auto at = [&] {
+        uint32_t px = 0;
+        app().platform().testHooks()->readPixel(e.win->native(), 20, 20, &px);
+        return px;
+    };
+    const auto red  = [](uint32_t c) { return ((c >> 16) & 0xff) > 200 && (c & 0xff) < 60; };
+    const auto blue = [](uint32_t c) { return (c & 0xff) > 200 && ((c >> 16) & 0xff) < 60; };
+#ifdef MSGA_GFX_WEBP
+    CHECK(red(at()));                               // frame 0 painted
+    CHECK(until([&] { return blue(at()); }, 1000)); // then frame 1
+    CHECK(until([&] { return red(at()); }, 1000));  // and around again
+#else
+    // No decoder: it fails like any undecodable picture, nothing painted.
+    CHECK(!red(at()) && !blue(at()));
+#endif
+}
+
 TEST("grouping: same author within 5 minutes; roots and system lines stand alone") {
     Env                         e(false);
     const int64_t               t0 = base::nowSecs() - 3600;
@@ -581,6 +608,10 @@ TEST("grouping: the rules — system lines, bots, authors, GIF paths") {
     CHECK(isGifPath("https://media.giphy.com/a/giphy.Gif?cid=1&rid=giphy.webp"));
     CHECK_FALSE(isGifPath("https://e/a.png?x=.gif"));
     CHECK_FALSE(isGifPath("/x/gif"));
+    // GIPHY's own messaging-bundle rendition for a picked GIF: .webp, not
+    // .gif -- still a GIF as far as the thumbnail is concerned.
+    CHECK(isGifPath("https://media4.giphy.com/media/x/200w.webp?cid=1&rid=200w.webp&ct=g"));
+    CHECK(isGifPath("/x/party.WEBP"));
 }
 
 TEST("users: a presence flip re-binds no row; a name re-binds only the rows showing it") {
