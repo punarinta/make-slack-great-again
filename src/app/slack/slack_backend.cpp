@@ -20,6 +20,7 @@
 #include "net/net.h"
 #include "plat/plat.h"
 
+#include <set>
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -252,6 +253,9 @@ struct SlackBackend::Read {
     SelfPresence                             self;
     size_t                                   presenceIdx = 0;
     std::vector<int64_t> awayProbeAt; // by UserRef: now() of the last away-author probe
+    // Replies to a thread that isn't loaded are counted on the root and announced, but stored
+    // nowhere, so findMessage can't see them: remember them, or every poll re-announces (chimes) them.
+    std::set<std::pair<ConvRef, Ts>> announcedReplies;
 
     void fetchUserIfNeeded(UserRef u);
     void fetchMissingDmUsers();
@@ -3410,6 +3414,8 @@ bool SlackBackend::Read::inject(ConvRef c, model::Message m, bool parentIsMe) {
         pullWatch(c, m.threadTs, m.ts);
     if (c >= s.conversationCount() || s.findMessage(c, m.ts))
         return false; // seen already (a history page, the send's own echo)
+    if (m.isReply() && announcedReplies.count({c, m.ts}))
+        return false; // a reply to an unloaded thread, already counted and announced
     const bool own  = s.me != kNoUser && m.user == s.me;
     const Ts   root = m.isReply() ? m.threadTs : 0;
     if (own) {
@@ -3459,7 +3465,10 @@ bool SlackBackend::Read::inject(ConvRef c, model::Message m, bool parentIsMe) {
                 std::find(r.replyUsers.begin(), r.replyUsers.end(), author) == r.replyUsers.end())
                 r.replyUsers.push_back(author);
         });
-        // Still news: what notifies.
+        // Still news: what notifies. Once.
+        if (announcedReplies.size() > 4096)
+            announcedReplies.clear();
+        announcedReplies.insert({c, ts});
         s.announceReply(c, m);
     } else {
         s.addMessage(c, std::move(m));
