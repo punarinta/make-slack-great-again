@@ -78,7 +78,7 @@
 #include <string>
 #include <string_view>
 
-#if defined(MSGA_DEMO) && defined(__linux__)
+#if defined(MSGA_DEMO) && (defined(__linux__) || defined(__APPLE__))
 #include <cerrno>
 #include <csignal>
 #include <dirent.h>
@@ -102,13 +102,12 @@ volatile std::sig_atomic_t gStatsSignal = 0;
 #endif
 
 #ifdef MSGA_DEMO
-// A demo run keeps nothing of the user's — its
-// HOME and XDG dirs point at a fresh <tmp>/msga-demo-state-<pid>, so the
-// settings, workspaces, caches and the credential store it reads and
-// writes are throwaway ones. Before the platform starts: it reads them on first
-// use. Per process so that demo runs can overlap (scripts/demo-video.sh in
-// parallel); the dirs of earlier runs that are gone are removed here.
-#ifdef __linux__
+// Demo mode must never touch the real signed-in state:
+// - HOME/XDG point at a fresh <tmp>/msga-demo-state-<pid> (macOS: HOME alone,
+//   NSFileManager derives ~/Library/... from it for an unsandboxed app).
+// - Keyed by pid, not a fixed name, so parallel demo runs don't collide.
+// - Stale dirs (pid no longer running) are GC'd here, not left to pile up.
+#if defined(__linux__) || defined(__APPLE__)
 bool wipeDir(const std::string &dir) {
     return nftw(
                dir.c_str(),
@@ -119,48 +118,60 @@ bool wipeDir(const std::string &dir) {
                FTW_DEPTH | FTW_PHYS
            ) == 0;
 }
+
+// Both isolation runs GC the same way: a prior run's dir whose pid is gone.
+void gcStaleDemoState(const std::string &tmp, std::string_view prefix) {
+    DIR *d = opendir(tmp.c_str());
+    if (!d)
+        return;
+    while (const dirent *e = readdir(d)) {
+        const std::string_view name = e->d_name;
+        if (!str::startsWith(name, prefix))
+            continue;
+        const int pid = std::atoi(std::string(name.substr(prefix.size())).c_str());
+        if (pid > 0 && kill(pid, 0) != 0 && errno == ESRCH)
+            wipeDir(file::join(tmp, name));
+    }
+    closedir(d);
+}
 #endif
 
 bool isolateDemoState(std::string *error) {
-#if !defined(__linux__)
-    *error = "demo mode redirects HOME/XDG_* and is Linux-only for now";
+#if !defined(__linux__) && !defined(__APPLE__)
+    *error = "demo mode redirects HOME/XDG_* and is Linux/macOS-only for now";
     return false;
 #else
     const char                *tmpEnv = std::getenv("TMPDIR");
     const std::string          tmp    = tmpEnv && *tmpEnv ? tmpEnv : "/tmp";
     constexpr std::string_view prefix = "msga-demo-state-";
-    if (DIR *d = opendir(tmp.c_str())) {
-        while (const dirent *e = readdir(d)) {
-            const std::string_view name = e->d_name;
-            if (!str::startsWith(name, prefix))
-                continue;
-            const int pid = std::atoi(std::string(name.substr(prefix.size())).c_str());
-            if (pid > 0 && kill(pid, 0) != 0 && errno == ESRCH)
-                wipeDir(file::join(tmp, name));
-        }
-        closedir(d);
-    }
+    gcStaleDemoState(tmp, prefix);
     const std::string state = file::join(tmp, str::concat({prefix, str::number(getpid())}));
     if (file::exists(state) && !wipeDir(state)) {
         *error = "cannot wipe " + state;
         return false;
     }
+#ifdef __APPLE__
+    for (const char *sub : {"Library/Application Support", "Library/Caches"})
+#else
     for (const char *sub : {"config", "data", "cache", "state"})
+#endif
         if (!file::makeDirs(file::join(state, sub))) {
             *error = "cannot create " + file::join(state, sub);
             return false;
         }
     setenv("HOME", state.c_str(), 1);
+#ifndef __APPLE__
     setenv("XDG_CONFIG_HOME", file::join(state, "config").c_str(), 1);
     setenv("XDG_DATA_HOME", file::join(state, "data").c_str(), 1);
     setenv("XDG_CACHE_HOME", file::join(state, "cache").c_str(), 1);
     setenv("XDG_STATE_HOME", file::join(state, "state").c_str(), 1);
+#endif
     return true;
 #endif
 }
 
 std::string demoInstanceKey() {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     return str::concat({identity::instanceKey(), "-demo-", str::number(getpid())});
 #else
     return str::concat({identity::instanceKey(), "-demo"});
