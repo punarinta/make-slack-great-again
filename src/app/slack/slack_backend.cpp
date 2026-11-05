@@ -667,10 +667,10 @@ bool SlackBackend::Read::threadsRefused(const std::string &err, bool sentTeam, b
 // slack.com a Grid token lands in the org and is refused workspace methods
 // (issue #49). OAuth tokens are workspace-scoped: slack.com is fine.
 void SlackBackend::Read::applyApiBase(std::string_view workspaceUrl) {
-    net::Url u;
-    if (!session || !u.parse(str::trim(workspaceUrl)) || u.scheme != "https" || u.host.empty())
+    if (!session)
         return;
-    b._auth.base = str::concat({"https://", u.host, "/api/"});
+    if (std::string base = hostApiBase(workspaceUrl); !base.empty())
+        b._auth.base = std::move(base);
 }
 
 // ── Connect ─────────────────────────────────────────────────────────────────
@@ -1717,19 +1717,35 @@ void SlackBackend::createSection(std::string name, std::string emoji, ConvRef fi
             std::vector<model::Store::Section> all = _store.sections();
             all.insert(all.begin(), model::Store::Section{id, name, emoji, {}});
             _store.setSections(std::move(all));
+            _read->sectionsStale = true; // a list brings its place in Slack's chain
             if (first != kNoConv)
                 moveToSection(first, id);
         }
     );
 }
 
-void SlackBackend::updateSection(const std::string &id, std::string name, std::string emoji) {
+// users.channelSections.set: the section's name and emoji (both always:
+// one not sent is cleared), and with `next` its place. A rename must not
+// send next_channel_section_id (invalid_arguments). Afterwards Slack's
+// list sets the chain right.
+void SlackBackend::setSection(const std::string &id, std::string_view next) {
+    const model::Store::Section *sec = _store.findSection(id);
+    if (!sec)
+        return;
     std::string form;
     addParam(form, "channel_section_id", id);
-    addParam(form, "name", name);
-    addParam(form, "emoji", emoji);
+    addParam(form, "name", sec->name);
+    addParam(form, "emoji", sec->emoji);
+    if (!next.empty())
+        addParam(form, "next_channel_section_id", next);
+    sectionCall("users.channelSections.set", std::move(form), [this](const json::Document &) {
+        _read->sectionsStale = true;
+    });
+}
+
+void SlackBackend::updateSection(const std::string &id, std::string name, std::string emoji) {
     Backend::updateSection(id, std::move(name), std::move(emoji));
-    sectionCall("users.channelSections.update", std::move(form), {});
+    setSection(id, {});
 }
 
 void SlackBackend::deleteSection(const std::string &id) {
@@ -1781,10 +1797,7 @@ void SlackBackend::moveSection(const std::string &id, int step) {
     const std::string other = all[size_t(j)].id;
     const std::string first = step < 0 ? id : other, second = step < 0 ? other : id;
     Backend::moveSection(id, step);
-    std::string form;
-    addParam(form, "channel_section_id", first);
-    addParam(form, "next_channel_section_id", second);
-    sectionCall("users.channelSections.update", std::move(form), {});
+    setSection(first, second);
 }
 
 // saved.list (session tokens only): "save for later"

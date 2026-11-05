@@ -12,9 +12,11 @@
 
 #include <algorithm>
 
+#ifndef MSGA_DISABLE_WIN_SPELLCHECK
 #if __has_include(<spellcheck.h>)
 #include <spellcheck.h>
 #define MSGA_WIN_SPELLCHECK 1
+#endif
 #endif
 
 namespace spell {

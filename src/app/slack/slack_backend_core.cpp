@@ -16,9 +16,12 @@ SlackBackend::SlackBackend(
 )
     : Backend(store), _app(app), _client(client), _creds(std::move(creds)),
       _auth{_creds.token, _creds.cookie}, _alive(std::make_shared<bool>(true)) {
-    _read  = newRead(*this);
-    _write = newWrite(*this);
-    _live  = newLive(*this);
+    _auth.orgToken  = _creds.orgToken;
+    _auth.orgBase   = hostApiBase(_creds.orgUrl);
+    _auth.orgTeamId = _creds.teamId;
+    _read           = newRead(*this);
+    _write          = newWrite(*this);
+    _live           = newLive(*this);
 }
 
 SlackBackend::~SlackBackend() {
