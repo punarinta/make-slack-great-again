@@ -381,16 +381,16 @@ TEST("sidebar: starring moves a row") {
     Harness       h;
     const ConvRef eng   = h.conv("C0ENG");
     auto          order = h.sh->sidebar().order();
-    // Starred (general, design) first, then channels, then DMs.
+    // Starred (design, general; alphabetically) first, then channels, then DMs.
     REQUIRE(order.size() == h.store.conversationCount());
-    CHECK(order[0] == h.conv("C0GENERAL"));
-    CHECK(order[1] == h.conv("C0DESIGN"));
-    CHECK(order[2] == eng);
+    CHECK(order[0] == h.conv("C0DESIGN"));
+    CHECK(order[1] == h.conv("C0GENERAL"));
+    CHECK(order[2] == eng); // "engineering": first channel alphabetically
 
     h.backend.setStarred(eng, true);
     pump();
     order = h.sh->sidebar().order();
-    CHECK(order[2] == eng); // now the last starred row
+    CHECK(order[1] == eng); // "engineering" sorts between design and general
     CHECK(h.store.conversation(eng).starred);
 }
 
@@ -463,7 +463,16 @@ TEST("quick switcher: filters by name, best match first") {
     Harness    h;
     const auto order = h.sh->sidebar().order();
     auto       r     = shell::quickSwitchFilter(h.store, "", order);
-    CHECK(r == order); // all of them, no cap
+    REQUIRE(r.size() == order.size()); // all of them, no cap
+    // Ties keep `order`, except every group DM scores half a match behind
+    // the rest (it matches every member's own DM too, and is usually more
+    // recent, so it would otherwise bury them -- issue #61): a stable
+    // partition of `order` by "not a group", not `order` itself.
+    std::vector<ConvRef> want = order;
+    std::stable_partition(want.begin(), want.end(), [&](ConvRef c) {
+        return h.store.conversation(c).kind != ConvKind::Group;
+    });
+    CHECK(r == want);
     r = shell::quickSwitchFilter(h.store, "des", order);
     REQUIRE(r.size() == 1);
     CHECK(r[0] == h.conv("C0DESIGN"));
@@ -757,29 +766,33 @@ TEST("sort: alphabetically, most recent first, unreads on top; kept per workspac
     pump();
     const std::vector<ConvRef> listed = channelRows(h);
     REQUIRE(listed.size() >= 3);
-    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
-    pump();
-    std::vector<ConvRef> rows = channelRows(h);
-    CHECK(rows.size() == listed.size());
-    CHECK(std::is_sorted(rows.begin(), rows.end(), [&](ConvRef a, ConvRef b) {
+    // A built-in section defaults to alphabetical, nothing to persist for it.
+    CHECK(std::is_sorted(listed.begin(), listed.end(), [&](ConvRef a, ConvRef b) {
         return utf8::foldCase(h.store.displayName(a)) < utf8::foldCase(h.store.displayName(b));
     }));
+    CHECK(h.settings.sidebarSorts.empty());
+
+    sb.setSort("#channels", {shell::SectionSort::By::Recent});
+    pump();
     // Saved for the open workspace.
     REQUIRE(h.settings.sidebarSorts.size() == 1);
     const std::string ws = h.settings.sidebarSorts[0].workspace;
     CHECK_STR(h.settings.sidebarSorts[0].section, "#channels");
-    CHECK_STR(h.settings.sidebarSorts[0].sort, "alpha");
-
-    sb.setSort("#channels", {shell::SectionSort::By::Recent});
-    pump();
-    rows                = channelRows(h);
-    const auto activity = [&](ConvRef c) {
+    CHECK_STR(h.settings.sidebarSorts[0].sort, "recent");
+    std::vector<ConvRef> rows     = channelRows(h);
+    const auto           activity = [&](ConvRef c) {
         const auto &cv = h.store.conversation(c);
         return std::max(cv.latest, cv.lastRead);
     };
     CHECK(std::is_sorted(rows.begin(), rows.end(), [&](ConvRef a, ConvRef b) {
         return activity(a) > activity(b);
     }));
+
+    // Explicitly alphabetical is the default: nothing left to persist.
+    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
+    pump();
+    CHECK(h.settings.sidebarSorts.empty());
+    CHECK(channelRows(h) == listed);
 
     // Unreads on top over the default order: the bold rows first, each part
     // as listed.
@@ -802,17 +815,18 @@ TEST("sort: alphabetically, most recent first, unreads on top; kept per workspac
     CHECK_FALSE(sb.rowState(first).bold);
     CHECK(std::find(rows.begin(), rows.end(), first) - rows.begin() > 0);
 
-    // Back to default: nothing is kept; a workspace switch loads its own.
-    sb.setSort("#channels", {});
+    // Back to default (alphabetical): nothing is kept; a workspace switch
+    // loads its own.
+    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
     pump();
     CHECK(h.settings.sidebarSorts.empty());
     CHECK(channelRows(h) == listed);
-    h.settings.sidebarSorts = {{ws, "#channels", "alpha"}, {ws + "x", "#direct", "recent"}};
+    h.settings.sidebarSorts = {{ws, "#channels", "recent"}, {ws + "x", "#direct", "recent"}};
     h.sh->workspaceChanged(); // a switch reloads the workspace's own
     pump();
     const shell::Sidebar::Sorts &loaded = sb.sorts();
     REQUIRE(loaded.size() == 1);
-    CHECK(loaded.count("#channels") && loaded.at("#channels").by == shell::SectionSort::By::Alpha);
+    CHECK(loaded.count("#channels") && loaded.at("#channels").by == shell::SectionSort::By::Recent);
 }
 
 // ── Files: the chooser helper, attachments, drops, Save as ──────────────────

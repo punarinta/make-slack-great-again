@@ -1308,13 +1308,26 @@ std::string Sidebar::sectionKey(int kind, const std::string &id) {
     return {};
 }
 
+namespace {
+// A section's default: alphabetical, matching Slack -- except a custom one
+// (key not '#'-prefixed), which keeps its own dragged order, the point of
+// making one in the first place.
+SectionSort defaultSort(const std::string &key) {
+    const bool custom = !key.empty() && key[0] != '#';
+    return custom ? SectionSort{} : SectionSort{SectionSort::By::Alpha, false};
+}
+} // namespace
+
 SectionSort Sidebar::sortOf(const SectionHeader *h) const {
-    const auto it = _sorts.find(sectionKey(h->kind, h->sectionId));
-    return it == _sorts.end() ? SectionSort{} : it->second;
+    const std::string key = sectionKey(h->kind, h->sectionId);
+    const auto        it  = _sorts.find(key);
+    return it != _sorts.end() ? it->second : defaultSort(key);
 }
 
 void Sidebar::setSorts(Sorts sorts) {
-    std::erase_if(sorts, [](const auto &e) { return e.first.empty() || e.second.plain(); });
+    std::erase_if(sorts, [](const auto &e) {
+        return e.first.empty() || e.second == defaultSort(e.first);
+    });
     if (sorts == _sorts)
         return;
     _sorts = std::move(sorts);
@@ -1323,7 +1336,7 @@ void Sidebar::setSorts(Sorts sorts) {
 
 void Sidebar::setSort(const std::string &key, SectionSort sort) {
     Sorts next = _sorts;
-    if (sort.plain())
+    if (sort == defaultSort(key))
         next.erase(key);
     else
         next[key] = sort;

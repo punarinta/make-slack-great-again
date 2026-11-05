@@ -73,6 +73,8 @@ struct SectionSort {
     enum class By : uint8_t { Default, Alpha, Recent };
     By                 by           = By::Default;
     bool               unreadsFirst = false;
+    // sortedOrder's own "nothing to sort" fast path -- not the same as
+    // "nothing to persist". The real default is Alpha (Sidebar::sortOf).
     bool               plain() const { return by == By::Default && !unreadsFirst; }
     bool               operator==(const SectionSort &) const = default;
     // "alpha", "recent,unreads"… ("" = plain); unknown parts are ignored.
