@@ -20,7 +20,7 @@ bool isOrgMethod(std::string_view method) {
         "drafts.list",
         "messages.list",
     };
-    return std::ranges::find(kOrg, method) != std::ranges::end(kOrg);
+    return std::ranges::find(kOrg, method) != std::ranges::end(kOrg) || method.starts_with("users.channelSections.");
 }
 } // namespace
 
