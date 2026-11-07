@@ -916,8 +916,13 @@ Shell::Shell(
         });
     };
     loadSorts();
+    loadCollapsed();
     _sidebar->onSortsChanged = [this] {
         storeSorts();
+        saveSettingsSoon();
+    };
+    _sidebar->onCollapsedChanged = [this] {
+        storeCollapsed();
         saveSettingsSoon();
     };
     _listHandle = body->add<ListHandle>(*_sidebar);
@@ -1917,6 +1922,7 @@ void Shell::workspaceChanged() {
     updateHeader();
     _sidebar->footer().setZenOn(_settings.zenMode(_activeKey)); // its own
     loadSorts();
+    loadCollapsed();
 }
 
 void Shell::open(ConvRef conv) {
@@ -3684,6 +3690,30 @@ void Shell::storeSorts() {
         _settings.sidebarSorts.begin(),
         _settings.sidebarSorts.end(),
         [](const Settings::SectionSortPref &a, const Settings::SectionSortPref &b) {
+            return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
+        }
+    );
+}
+
+void Shell::loadCollapsed() {
+    Sidebar::Collapsed collapsed;
+    for (const Settings::SectionCollapsedPref &p : _settings.sidebarCollapsed)
+        if (p.workspace == _activeKey && !p.section.empty())
+            collapsed[p.section] = true;
+    _sidebar->setCollapsed(std::move(collapsed));
+}
+
+void Shell::storeCollapsed() {
+    std::erase_if(_settings.sidebarCollapsed, [this](const Settings::SectionCollapsedPref &p) {
+        return p.workspace == _activeKey;
+    });
+    for (const auto &[section, on] : _sidebar->collapsed())
+        if (on && !section.empty())
+            _settings.sidebarCollapsed.push_back({_activeKey, section});
+    std::sort(
+        _settings.sidebarCollapsed.begin(),
+        _settings.sidebarCollapsed.end(),
+        [](const Settings::SectionCollapsedPref &a, const Settings::SectionCollapsedPref &b) {
             return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
         }
     );

@@ -116,6 +116,12 @@ struct Settings {
         std::string workspace, section, sort;
     };
     std::vector<SectionSortPref> sidebarSorts;
+    // Collapsed sidebar sections (sectionKey), per workspace. Only collapsed
+    // sections are stored.
+    struct SectionCollapsedPref {
+        std::string workspace, section;
+    };
+    std::vector<SectionCollapsedPref> sidebarCollapsed;
     bool                         trayMonochrome = true; // the custom tray icon turned monochrome
 
     // ── Claude Code ─────────────────────────────────────────────────────────

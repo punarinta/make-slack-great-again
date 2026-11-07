@@ -127,8 +127,15 @@ public:
     const Sorts          &sorts() const { return _sorts; }
     std::function<void()> onSortsChanged;
     void                  setSort(const std::string &key, SectionSort sort);
+    // Each section's collapsed state by its key (sectionKey; only collapsed
+    // sections stored). Persisted per workspace like sorts.
+    using Collapsed = std::unordered_map<std::string, bool>;
+    void                  setCollapsed(Collapsed collapsed);
+    const Collapsed      &collapsed() const { return _collapsed; }
+    std::function<void()> onCollapsedChanged;
+    void                  setCollapsedState(const std::string &key, bool on);
     // A section's key: a custom one's id, a "#"-prefixed name for every
-    // other built-in ("" for the Team, which has no sort or collapse state).
+    // other built-in.
     static std::string    sectionKey(Kind kind, const std::string &id);
 
     void                        rebuild();                   // from the Store (roster changed)
@@ -293,9 +300,7 @@ private:
     int                      _rebuilds             = 0;
     bool                     _revealOnRebuild      = false;
     int                      _hiddenChannels       = 0;
-    // By Kind; Custom uses _collapsedCustom (keyed by sectionId) instead.
-    bool                     _collapsed[KindCount] = {};
-    std::unordered_map<std::string, bool> _collapsedCustom; // the user's sections, by id
+    Collapsed                _collapsed; // sectionKey -> collapsed (only true stored)
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged
     bool     _showAllChannels = false;
