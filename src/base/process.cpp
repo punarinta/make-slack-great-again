@@ -59,6 +59,18 @@ void markTestProcess() {
     g_testProcess = true;
 }
 
+namespace {
+bool g_isolatedStorage = false;
+}
+
+bool isolatedStorage() {
+    return g_isolatedStorage || testProcess();
+}
+
+void markIsolatedStorage() {
+    g_isolatedStorage = true;
+}
+
 std::string findExecutable(std::string_view name) {
     if (name.find('/') != std::string_view::npos || name.find('\\') != std::string_view::npos)
         return file::exists(name) && !file::isDir(name) ? std::string(name) : std::string();

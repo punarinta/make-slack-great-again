@@ -38,6 +38,7 @@
 #include "base/i18n.h"
 #include "base/time.h"
 #include "base/log.h"
+#include "base/process.h"
 #include "base/str.h"
 #include "gfx/icons_generated.h"
 #include "net/net.h"
@@ -103,8 +104,13 @@ volatile std::sig_atomic_t gStatsSignal = 0;
 
 #ifdef MSGA_DEMO
 // Demo mode must never touch the real signed-in state:
-// - HOME/XDG point at a fresh <tmp>/msga-demo-state-<pid> (macOS: HOME alone,
-//   NSFileManager derives ~/Library/... from it for an unsandboxed app).
+// - HOME and the XDG dirs point at a fresh <tmp>/msga-demo-state-<pid>; on
+//   macOS so does CFFIXED_USER_HOME, as Foundation takes the home dir (and
+//   with it ~/Library/Application Support and ~/Library/Caches) from the user
+//   database, not from HOME.
+// - Credentials and settings go to the INI file under that XDG_CONFIG_HOME
+//   (base::markIsolatedStorage), never the keychain or CFPreferences.
+// - Before the platform starts: it reads all of these on first use.
 // - Keyed by pid, not a fixed name, so parallel demo runs don't collide.
 // - Stale dirs (pid no longer running) are GC'd here, not left to pile up.
 #if defined(__linux__) || defined(__APPLE__)
@@ -150,22 +156,29 @@ bool isolateDemoState(std::string *error) {
         *error = "cannot wipe " + state;
         return false;
     }
+    for (const char *sub : {
+             "config",
+             "data",
+             "cache",
+             "state",
 #ifdef __APPLE__
-    for (const char *sub : {"Library/Application Support", "Library/Caches"})
-#else
-    for (const char *sub : {"config", "data", "cache", "state"})
+             "Library/Application Support",
+             "Library/Caches",
 #endif
+         })
         if (!file::makeDirs(file::join(state, sub))) {
             *error = "cannot create " + file::join(state, sub);
             return false;
         }
     setenv("HOME", state.c_str(), 1);
-#ifndef __APPLE__
+#ifdef __APPLE__
+    setenv("CFFIXED_USER_HOME", state.c_str(), 1);
+#endif
     setenv("XDG_CONFIG_HOME", file::join(state, "config").c_str(), 1);
     setenv("XDG_DATA_HOME", file::join(state, "data").c_str(), 1);
     setenv("XDG_CACHE_HOME", file::join(state, "cache").c_str(), 1);
     setenv("XDG_STATE_HOME", file::join(state, "state").c_str(), 1);
-#endif
+    base::markIsolatedStorage();
     return true;
 #endif
 }

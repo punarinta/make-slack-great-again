@@ -89,6 +89,13 @@ std::string homeDir();
 bool testProcess();
 void markTestProcess();
 
+// A process whose stores are throwaway: a test process, or one marked here
+// (a demo run, whose HOME and XDG dirs are temporary). Its credentials and
+// settings go to the INI file under $XDG_CONFIG_HOME, never the user's
+// keychain or native settings store (secret.h, old_settings.h).
+bool isolatedStorage();
+void markIsolatedStorage();
+
 // The running executable's absolute path ("" when the OS won't say).
 std::string executablePath();
 // A restart: once the app has exited — main
