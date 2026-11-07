@@ -777,8 +777,16 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             if (ch.thread == 0 && ch.conv < _ctx.store().conversationCount() && !rowFor(ch.conv) &&
                 _ctx.store().conversation(ch.conv).member && relevant(ch.conv))
                 rebuildSoon();
-            else if (ch.thread == 0 && rowFor(ch.conv)) // most recent first may move it
-                resortSoon();
+            else if (ch.thread == 0 && rowFor(ch.conv)) {
+                // A group DM's new message may lift it into VIP unreads (isVip
+                // reads it); else most recent first may move it.
+                const ConvRow *r = rowFor(ch.conv);
+                if (r->section->kind != Sidebar::Custom &&
+                    r->section->kind != classify(_ctx.store().conversation(ch.conv)))
+                    rebuildSoon(false);
+                else
+                    resortSoon();
+            }
             [[fallthrough]];
         case model::ChangeKind::Update:
         case model::ChangeKind::Remove:
@@ -890,26 +898,32 @@ bool Sidebar::isExternal(const model::Conversation &c) const {
     return false;
 }
 
-// An unread DM/group DM from a VIP -- temporary like Slack's own "VIP
-// unreads": back to its normal section the moment it's read.
+// An unread DM or group DM from a VIP -- temporary like Slack's own "VIP
+// unreads": back to its normal section the moment it's read. A DM's unread
+// messages are its peer's; a group DM's newest one must be loaded and a
+// VIP's, as being in the group is not having sent the unread message.
 bool Sidebar::isVip(const model::Conversation &c) const {
     if (c.unread == 0 || muted(c) || !c.isDirect())
         return false;
     const auto &store = _ctx.store();
     if (c.kind == ConvKind::Dm)
         return c.dmUser != model::kNoUser && store.user(c.dmUser).vip;
-    return std::any_of(c.members.begin(), c.members.end(), [&](model::UserRef u) {
-        return store.user(u).vip;
-    });
+    if (c.messages.empty())
+        return false;
+    const model::Message &last = c.messages.back();
+    return last.ts == c.latest && last.ts > c.lastRead && last.user != model::kNoUser &&
+           store.user(last.user).vip;
 }
 
+// VIP unreads first: Slack lifts them above every section, starred and app
+// DMs included (a VIP may be an app).
 Sidebar::Kind Sidebar::classify(const model::Conversation &c) const {
+    if (_ctx.backend.capabilities().vips && isVip(c))
+        return Vip;
     if (c.starred)
         return Starred;
     if (isApp(c))
         return Apps;
-    if (_ctx.backend.capabilities().vips && isVip(c))
-        return Vip;
     if (isExternal(c))
         return External;
     return c.isDirect() ? Direct : Channels;
@@ -1130,13 +1144,13 @@ void Sidebar::rebuild() {
         auto *h = section(Vip, Icon::Star, tr("VIP unreads"), vipUnread);
         applyCollapse(h);
     }
-    // Slack Connect channels/DMs, at the top -- same as real Slack's own
-    // "External connections" section.
-    if (!external.empty()) {
-        auto *h = section(External, Icon::Building, tr("External connections"), external);
-        applyCollapse(h);
-    }
     for (int s = 0; s < 4; ++s) {
+        // Slack Connect channels and DMs, under Direct messages (and the
+        // Team): a new section, so nobody's own order above it shifts.
+        if (s == Apps && !external.empty()) {
+            auto *h = section(External, Icon::Building, tr("External connections"), external);
+            applyCollapse(h);
+        }
         if (s == Channels) // the user's own sections, between Starred and Channels
             for (size_t i = 0; i < custom.size(); ++i) {
                 auto *h = section(Custom, Icon::List, secs[i].name, custom[i], secs[i].id);
@@ -1424,26 +1438,13 @@ std::string Sidebar::sectionKey(Kind kind, const std::string &id) {
     return {};
 }
 
-namespace {
-// A section's default: alphabetical, matching Slack -- except a custom one
-// (key not '#'-prefixed), which keeps its own dragged order, the point of
-// making one in the first place.
-SectionSort defaultSort(const std::string &key) {
-    const bool custom = !key.empty() && key[0] != '#';
-    return custom ? SectionSort{} : SectionSort{SectionSort::By::Alpha, false};
-}
-} // namespace
-
 SectionSort Sidebar::sortOf(const SectionHeader *h) const {
-    const std::string key = sectionKey(h->kind, h->sectionId);
-    const auto        it  = _sorts.find(key);
-    return it != _sorts.end() ? it->second : defaultSort(key);
+    const auto it = _sorts.find(sectionKey(h->kind, h->sectionId));
+    return it == _sorts.end() ? SectionSort{} : it->second;
 }
 
 void Sidebar::setSorts(Sorts sorts) {
-    std::erase_if(sorts, [](const auto &e) {
-        return e.first.empty() || e.second == defaultSort(e.first);
-    });
+    std::erase_if(sorts, [](const auto &e) { return e.first.empty() || e.second.plain(); });
     if (sorts == _sorts)
         return;
     _sorts = std::move(sorts);
@@ -1452,7 +1453,7 @@ void Sidebar::setSorts(Sorts sorts) {
 
 void Sidebar::setSort(const std::string &key, SectionSort sort) {
     Sorts next = _sorts;
-    if (sort == defaultSort(key))
+    if (sort.plain())
         next.erase(key);
     else
         next[key] = sort;

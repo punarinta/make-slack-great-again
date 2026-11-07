@@ -381,16 +381,16 @@ TEST("sidebar: starring moves a row") {
     Harness       h;
     const ConvRef eng   = h.conv("C0ENG");
     auto          order = h.sh->sidebar().order();
-    // Starred (design, general; alphabetically) first, then channels, then DMs.
+    // Starred (general, design) first, then channels, then DMs.
     REQUIRE(order.size() == h.store.conversationCount());
-    CHECK(order[0] == h.conv("C0DESIGN"));
-    CHECK(order[1] == h.conv("C0GENERAL"));
-    CHECK(order[2] == eng); // "engineering": first channel alphabetically
+    CHECK(order[0] == h.conv("C0GENERAL"));
+    CHECK(order[1] == h.conv("C0DESIGN"));
+    CHECK(order[2] == eng);
 
     h.backend.setStarred(eng, true);
     pump();
     order = h.sh->sidebar().order();
-    CHECK(order[1] == eng); // "engineering" sorts between design and general
+    CHECK(order[2] == eng); // now the last starred row
     CHECK(h.store.conversation(eng).starred);
 }
 
@@ -463,16 +463,7 @@ TEST("quick switcher: filters by name, best match first") {
     Harness    h;
     const auto order = h.sh->sidebar().order();
     auto       r     = shell::quickSwitchFilter(h.store, "", order);
-    REQUIRE(r.size() == order.size()); // all of them, no cap
-    // Ties keep `order`, except every group DM scores half a match behind
-    // the rest (it matches every member's own DM too, and is usually more
-    // recent, so it would otherwise bury them -- issue #61): a stable
-    // partition of `order` by "not a group", not `order` itself.
-    std::vector<ConvRef> want = order;
-    std::stable_partition(want.begin(), want.end(), [&](ConvRef c) {
-        return h.store.conversation(c).kind != ConvKind::Group;
-    });
-    CHECK(r == want);
+    CHECK(r == order); // all of them, no cap
     r = shell::quickSwitchFilter(h.store, "des", order);
     REQUIRE(r.size() == 1);
     CHECK(r[0] == h.conv("C0DESIGN"));
@@ -766,33 +757,29 @@ TEST("sort: alphabetically, most recent first, unreads on top; kept per workspac
     pump();
     const std::vector<ConvRef> listed = channelRows(h);
     REQUIRE(listed.size() >= 3);
-    // A built-in section defaults to alphabetical, nothing to persist for it.
-    CHECK(std::is_sorted(listed.begin(), listed.end(), [&](ConvRef a, ConvRef b) {
+    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
+    pump();
+    std::vector<ConvRef> rows = channelRows(h);
+    CHECK(rows.size() == listed.size());
+    CHECK(std::is_sorted(rows.begin(), rows.end(), [&](ConvRef a, ConvRef b) {
         return utf8::foldCase(h.store.displayName(a)) < utf8::foldCase(h.store.displayName(b));
     }));
-    CHECK(h.settings.sidebarSorts.empty());
-
-    sb.setSort("#channels", {shell::SectionSort::By::Recent});
-    pump();
     // Saved for the open workspace.
     REQUIRE(h.settings.sidebarSorts.size() == 1);
     const std::string ws = h.settings.sidebarSorts[0].workspace;
     CHECK_STR(h.settings.sidebarSorts[0].section, "#channels");
-    CHECK_STR(h.settings.sidebarSorts[0].sort, "recent");
-    std::vector<ConvRef> rows     = channelRows(h);
-    const auto           activity = [&](ConvRef c) {
+    CHECK_STR(h.settings.sidebarSorts[0].sort, "alpha");
+
+    sb.setSort("#channels", {shell::SectionSort::By::Recent});
+    pump();
+    rows                = channelRows(h);
+    const auto activity = [&](ConvRef c) {
         const auto &cv = h.store.conversation(c);
         return std::max(cv.latest, cv.lastRead);
     };
     CHECK(std::is_sorted(rows.begin(), rows.end(), [&](ConvRef a, ConvRef b) {
         return activity(a) > activity(b);
     }));
-
-    // Explicitly alphabetical is the default: nothing left to persist.
-    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
-    pump();
-    CHECK(h.settings.sidebarSorts.empty());
-    CHECK(channelRows(h) == listed);
 
     // Unreads on top over the default order: the bold rows first, each part
     // as listed.
@@ -815,65 +802,86 @@ TEST("sort: alphabetically, most recent first, unreads on top; kept per workspac
     CHECK_FALSE(sb.rowState(first).bold);
     CHECK(std::find(rows.begin(), rows.end(), first) - rows.begin() > 0);
 
-    // Back to default (alphabetical): nothing is kept; a workspace switch
-    // loads its own.
-    sb.setSort("#channels", {shell::SectionSort::By::Alpha});
+    // Back to default: nothing is kept; a workspace switch loads its own.
+    sb.setSort("#channels", {});
     pump();
     CHECK(h.settings.sidebarSorts.empty());
     CHECK(channelRows(h) == listed);
-    h.settings.sidebarSorts = {{ws, "#channels", "recent"}, {ws + "x", "#direct", "recent"}};
+    h.settings.sidebarSorts = {{ws, "#channels", "alpha"}, {ws + "x", "#direct", "recent"}};
     h.sh->workspaceChanged(); // a switch reloads the workspace's own
     pump();
     const shell::Sidebar::Sorts &loaded = sb.sorts();
     REQUIRE(loaded.size() == 1);
-    CHECK(loaded.count("#channels") && loaded.at("#channels").by == shell::SectionSort::By::Recent);
+    CHECK(loaded.count("#channels") && loaded.at("#channels").by == shell::SectionSort::By::Alpha);
 }
 
 // ── External connections ────────────────────────────────────────────────────
 
-TEST("sections: a Slack Connect channel sits in External connections, above Starred") {
+TEST("sections: a Slack Connect channel sits in External connections, under Direct messages") {
     Harness         h;
     shell::Sidebar &sb     = h.sh->sidebar();
     const ConvRef   random = h.conv("C0RANDOM");
     CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    const std::vector<ConvRef> before = sb.order();
     h.store.updateConversation(random, [](Conversation &c) { c.extShared = true; });
     pump();
-    CHECK_STR(titles(sb), "Activity|Threads|External connections|Starred|Channels|Direct messages");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages|External connections");
     CHECK_STR(sb.rowSection(random), "");
-    const auto order = sb.order();
-    REQUIRE(!order.empty());
-    CHECK(order[0] == random); // only row in External connections, which sits first
+    // Only the shared channel moved: the rest keep their order, and it ends the list.
+    std::vector<ConvRef> want = before;
+    want.erase(std::find(want.begin(), want.end(), random));
+    want.push_back(random);
+    CHECK(sb.order() == want);
     h.store.updateConversation(random, [](Conversation &c) { c.extShared = false; });
     pump();
     CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    CHECK(sb.order() == before);
 }
 
-TEST("sections: a DM with a stranger peer is external too") {
+TEST("sections: DMs with a stranger are external too; a starred one stays starred") {
     Harness         h;
     shell::Sidebar &sb       = h.sh->sidebar();
     const ConvRef   mira     = h.conv("D0MIRA");
+    const ConvRef   trio     = h.conv("G0TRIO"); // Mira and Jonas
     const UserRef   u        = h.store.findUser("U0MIRA");
     h.store.user(u).stranger = true;
     h.store.usersChanged(u);
     pump();
-    CHECK_STR(titles(sb), "Activity|Threads|External connections|Starred|Channels|Direct messages");
-    CHECK(std::find(sb.order().begin(), sb.order().end(), mira) != sb.order().end());
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages|External connections");
+    // Both her DM and the group DM she is in end the list.
+    std::vector<ConvRef> order = sb.order();
+    REQUIRE(order.size() >= 2);
+    std::vector<ConvRef> tail(order.end() - 2, order.end());
+    std::sort(tail.begin(), tail.end());
+    std::vector<ConvRef> want = {mira, trio};
+    std::sort(want.begin(), want.end());
+    CHECK(tail == want);
+    h.backend.setStarred(mira, true);
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages|External connections");
+    order = sb.order();
+    CHECK(order.back() == trio);
+    CHECK(std::find(order.begin(), order.end(), mira) < order.end() - 1); // starred, above
 }
 
 // ── VIP unreads ──────────────────────────────────────────────────────────────
+
+namespace {
+void makeVip(Harness &h, const char *id) {
+    const UserRef u     = h.store.findUser(id);
+    h.store.user(u).vip = true;
+    h.store.usersChanged(u);
+    pump();
+}
+} // namespace
 
 TEST("sections: an unread VIP DM sits in its own VIP unreads section, above everything") {
     Harness         h;
     shell::Sidebar &sb  = h.sh->sidebar();
     const ConvRef   sam = h.conv("D0SAM"); // read, in the fixture
-    const UserRef   u   = h.store.findUser("U0SAM");
     CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
-    h.store.user(u).vip = true;
-    h.store.usersChanged(u);
-    pump();
-    CHECK_STR(
-        titles(sb), "Activity|Threads|Starred|Channels|Direct messages"
-    ); // read: no section yet
+    makeVip(h, "U0SAM");
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages"); // read: none yet
     h.backend.markUnread(sam, h.store.conversation(sam).latest);
     pump();
     CHECK_STR(titles(sb), "Activity|Threads|VIP unreads|Starred|Channels|Direct messages");
@@ -884,12 +892,43 @@ TEST("sections: an unread VIP DM sits in its own VIP unreads section, above ever
     CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
 }
 
+TEST("sections: a starred VIP DM is lifted while unread, then back to Starred") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   sam = h.conv("D0SAM");
+    h.backend.setStarred(sam, true);
+    makeVip(h, "U0SAM");
+    h.backend.markUnread(sam, h.store.conversation(sam).latest);
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|VIP unreads|Starred|Channels|Direct messages");
+    CHECK(sb.order()[0] == sam);
+    h.backend.markRead(sam, h.store.conversation(sam).latest);
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    CHECK(h.store.conversation(sam).starred);
+}
+
+TEST("sections: a group DM is a VIP unread only when the VIP wrote the unread message") {
+    Harness         h;
+    shell::Sidebar &sb   = h.sh->sidebar();
+    const ConvRef   trio = h.conv("G0TRIO"); // Mira and Jonas
+    makeVip(h, "U0JONAS");
+    // Mira writes: a VIP is in the group, but not the one who wrote.
+    h.backend.postAs(trio, h.store.findUser("U0MIRA"), "lunch?");
+    pump();
+    REQUIRE(h.store.conversation(trio).unread > 0);
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    // Jonas writes: now it is.
+    h.backend.postAs(trio, h.store.findUser("U0JONAS"), "yes");
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|VIP unreads|Starred|Channels|Direct messages");
+    CHECK(sb.order()[0] == trio);
+}
+
 TEST("sections: a muted VIP's unreads don't jump the queue") {
     Harness       h;
-    const ConvRef sam   = h.conv("D0SAM");
-    const UserRef u     = h.store.findUser("U0SAM");
-    h.store.user(u).vip = true;
-    h.store.usersChanged(u);
+    const ConvRef sam = h.conv("D0SAM");
+    makeVip(h, "U0SAM");
     h.backend.setMuted(sam, true);
     h.backend.markUnread(sam, h.store.conversation(sam).latest);
     pump();

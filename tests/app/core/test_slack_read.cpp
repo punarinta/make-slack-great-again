@@ -1013,6 +1013,42 @@ TEST("slack read: vipUsers reads the comma-separated vip_users pref") {
     CHECK(vipUsers(prefs(R"({"vip_users": "U1"})")->root()) == u1);
 }
 
+TEST("slack read: the VIP list comes with the connect's users.prefs.get") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"vip_users": "UMEG,UNEW"}}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.user("UMEG").vip; }, 3000));
+    CHECK_FALSE(e.user("UMIRA").vip);
+    // A VIP nobody has messaged yet is known too.
+    const model::UserRef fresh = e.store.findUser("UNEW");
+    REQUIRE(fresh != model::kNoUser);
+    CHECK(e.store.user(fresh).vip);
+    CHECK(Log().count("users.prefs.get") == 1);
+}
+
+TEST("slack read: switching Names away and back while Slack is asked asks once") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"display_real_names_override": -1},
+                                 "__delay": 3.0}})");
+    REQUIRE(e.connect());
+    // Once the connect has settled (users.list too), with users.prefs.get
+    // still on its way: switch away and back.
+    pumpUntil([] { return false; }, 1000);
+    REQUIRE(Log().count("users.prefs.get") == 1);
+    e.be->setNamesMode(model::Backend::NamesMode::Full);
+    e.be->setNamesMode(model::Backend::NamesMode::Service);
+    REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 5000));
+    // Past the paced lane's spacing: a second ask would have gone out.
+    pumpUntil([] { return false; }, 2500);
+    CHECK(Log().count("users.prefs.get") == 1);
+}
+
 TEST("slack read: a local Names choice ignores Slack's answer until switched back") {
     if (!haveServer())
         return;
