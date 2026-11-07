@@ -38,6 +38,20 @@ public:
         _pending.append(resp);
     }
 
+    // Queue a 200 OK JSON response that also sets cookies, the way Slack sets
+    // `d-s`/`uc` on every reply. Used to prove the client does NOT echo them
+    // back: replaying them is what made Slack revoke the session outright.
+    void enqueueWithSetCookie(const QByteArray &json, const QList<QByteArray> &setCookies) {
+        QByteArray resp = "HTTP/1.1 200 OK\r\n";
+        resp += "Content-Type: application/json\r\n";
+        for (const QByteArray &c : setCookies)
+            resp += "Set-Cookie: " + c + "\r\n";
+        resp += "Content-Length: " + QByteArray::number(json.size()) + "\r\n";
+        resp += "Connection: close\r\n\r\n";
+        resp += json;
+        _pending.append(resp);
+    }
+
     // Queue an HTTP 429 with a Retry-After header (seconds), to exercise the
     // queue's rate-limit backpressure.
     void enqueue429(int retryAfterSecs) {

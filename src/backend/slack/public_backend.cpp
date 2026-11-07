@@ -5,6 +5,7 @@
 #include "slack_auth.h"
 #include "socket_mode_realtime.h"
 #include "session_realtime.h"
+#include "session_import/token_deriver.h"
 #include "auth/token_store.h"
 #include "backend/common_commands.h"
 #include "network/form_urlencode.h"
@@ -45,6 +46,13 @@ bool isMethodUnavailable(const QString &err) {
         QStringLiteral("org_login_required"),
         QStringLiteral("enterprise_is_restricted"),
         QStringLiteral("user_is_restricted"),
+        // An Enterprise Grid admin has restricted this method for the workspace.
+        // Definitive for the token, and worth latching: retrying a method the org
+        // has switched off just produces a stream of rejected calls, which is
+        // both useless and the pattern Slack's session heuristics react badly to.
+        QStringLiteral("team_is_restricted"),
+        // Refused locally by minimal mode's transport allowlist.
+        QStringLiteral("blocked_by_allowlist"),
         QStringLiteral("ekm_access_denied"),
     };
     return codes.contains(err);
@@ -94,6 +102,9 @@ PublicBackend::PublicBackend(
     _api->setToken(creds.xoxp);
     _historyApi->setToken(creds.xoxp);
     _infoApi->setToken(creds.xoxp);
+    _cookie        = creds.cookie;
+    _workspaceUrl  = creds.workspaceUrl;
+    _teamName      = creds.teamName;
     // Session-authed workspaces (xoxc token) also need the `d` cookie on every
     // request; no-op for OAuth workspaces where the cookie is empty. These
     // workspaces have no Socket Mode socket (needs an xapp token), so realtime
@@ -119,12 +130,31 @@ PublicBackend::PublicBackend(
         // the shared slack.com base already resolves it unambiguously.
         applyApiBase(apiBaseFor(creds.workspaceUrl));
     }
+    // One unambiguous line per workspace. Which refresh path a token_expired
+    // takes depends entirely on these flags, so record them up front instead of
+    // inferring them from which endpoints happened to be called.
+    qInfo().noquote() << "[Backend] team" << _teamId
+                      << (_sessionAuth ? "| auth: session (xoxc+cookie)" : "| auth: oauth")
+                      << "| cookie:" << (_cookie.isEmpty() ? "absent" : "present")
+                      << "| workspaceUrl:" << (_workspaceUrl.isEmpty() ? "absent" : _workspaceUrl)
+                      << "| refreshToken:" << (_refreshToken.isEmpty() ? "absent" : "present");
     // Pace the background lane on the info client: a reconnect enqueues one
     // conversations.info per DM/MPDM (100+ on a busy workspace), and that method
     // is Slack Tier 3 (~50/min). ~1.2 s spacing keeps the whole sweep under the
     // tier so it never 429s, while interactive (Normal) info calls still preempt
     // and run unpaced.
-    _infoApi->setBackgroundPaceMs(1200);
+    _rateGovernor = std::make_shared<net::RateGovernor>();
+    _api->setGovernor(_rateGovernor);
+    _historyApi->setGovernor(_rateGovernor);
+    _infoApi->setGovernor(_rateGovernor);
+    applySyncMode(net::SyncConfig::instance().syncMode());
+    QObject::connect(
+        &net::SyncConfig::instance(),
+        &net::SyncConfig::syncModeChanged,
+        _api,
+        [this](net::SyncMode mode) { applySyncMode(mode); }
+    );
+
     // Pre-warm TLS so the first API calls skip the handshake latency. The info
     // client is not pre-warmed: its background sweep starts well after launch.
     const QString apiHost = QUrl(_apiBase).host();
@@ -233,7 +263,152 @@ void PublicBackend::maybeProactiveRefresh() {
     triggerRefresh([](bool) {});
 }
 
+void PublicBackend::applySyncMode(net::SyncMode mode) {
+    // The methods minimal mode lets through: enough to list conversations, read
+    // and poll the open one, resolve the authors on screen, and act on messages.
+    // Everything else — users.list, presence, client.counts, stars, saved,
+    // emoji, commands, the threads feed — is refused at the transport. That is a
+    // guarantee about the wire, not a best effort spread over the call sites.
+    static const QSet<QString> kMinimal = {
+        // session + conversation list (conversations.list, or the Grid fallback)
+        QStringLiteral("auth.test"),
+        QStringLiteral("users.conversations"), // membership only — see loadMemberConversations
+        QStringLiteral("client.userBoot"),
+        QStringLiteral("im.list"),
+        // reading the open conversation
+        QStringLiteral("conversations.history"),
+        QStringLiteral("conversations.replies"),
+        QStringLiteral("conversations.info"),
+        QStringLiteral("conversations.mark"),
+        QStringLiteral("conversations.open"),
+        QStringLiteral("users.info"),
+        QStringLiteral("bots.info"),
+        QStringLiteral("files.info"),
+        // acting on messages
+        QStringLiteral("chat.postMessage"),
+        QStringLiteral("chat.update"),
+        QStringLiteral("chat.delete"),
+        QStringLiteral("reactions.add"),
+        QStringLiteral("reactions.remove"),
+        QStringLiteral("files.getUploadURLExternal"),
+        QStringLiteral("files.completeUploadExternal"),
+    };
+    const QSet<QString> allow = (mode == net::SyncMode::Minimal) ? kMinimal : QSet<QString>{};
+    for (WebApiClient *c : {_api, _historyApi, _infoApi})
+        c->setMethodAllowlist(allow);
+
+    switch (mode) {
+    case net::SyncMode::Minimal:
+        _rateGovernor->setMinimalMode();
+        _infoApi->setBackgroundPaceMs(5000);
+        break;
+    case net::SyncMode::Conservative:
+        _rateGovernor->setConservativeMode(true);
+        _infoApi->setBackgroundPaceMs(2500);
+        break;
+    case net::SyncMode::Normal:
+        _rateGovernor->setConservativeMode(false);
+        _infoApi->setBackgroundPaceMs(1200);
+        break;
+    }
+}
+
 void PublicBackend::doRefresh(std::function<void(RefreshResult)> done) {
+    if (_sessionAuth) {
+        if (_cookie.isEmpty()) {
+            qDebug() << "[TokenRefresh] session auth: no cookie stored — forcing logout";
+            done(RefreshResult::AuthError);
+            return;
+        }
+        // Candidate boot pages to scrape a fresh xoxc- token from, most specific
+        // first. On Enterprise the stored workspaceUrl is often the ORG host
+        // (<org>.enterprise.slack.com) while auth.test reports the workspace host
+        // — and which of the two serves a usable token varies by org config. The
+        // deriver walks the list and keeps the first that validates, so offering
+        // both costs one extra GET in the worst case and turns an unrecoverable
+        // logout into a silent refresh.
+        QStringList urls;
+        for (const QString &u : {_workspaceUrl, _teamUrl})
+            if (!u.isEmpty() && !urls.contains(u))
+                urls.append(u);
+        if (urls.isEmpty()) {
+            qDebug() << "[TokenRefresh] session auth: no workspace URL — forcing logout";
+            done(RefreshResult::AuthError);
+            return;
+        }
+        qDebug() << "[TokenRefresh] attempting session token re-derivation for team" << _teamId
+                 << "from cookie; candidates:" << urls;
+        auto *deriver = new session::TokenDeriver(_api);
+        // Validate on the SAME host the workspace's calls are pinned to. On
+        // Enterprise the shared slack.com host resolves a session token in the
+        // org context and refuses workspace-scoped methods (see apiBaseFor), so
+        // validating there would reject a token that is in fact good.
+        deriver->setApiBase(_apiBase);
+        QList<session::TeamSession> cands;
+        for (const QString &u : urls) {
+            session::TeamSession cand;
+            cand.teamId       = _teamId;
+            cand.teamName     = _teamName;
+            cand.workspaceUrl = u;
+            cands.append(cand);
+        }
+        QObject::connect(
+            deriver,
+            &session::TokenDeriver::finished,
+            _api,
+            [this, deriver, done](const QList<Credentials> &valid, const QString &err) {
+                deriver->deleteLater();
+                if (!valid.isEmpty()) {
+                    const auto &newCreds = valid.first();
+                    qDebug() << "[TokenRefresh] session token successfully re-derived for team"
+                             << _teamId;
+                    _api->setToken(newCreds.xoxp);
+                    _historyApi->setToken(newCreds.xoxp);
+                    _infoApi->setToken(newCreds.xoxp);
+                    if (!newCreds.cookie.isEmpty()) {
+                        _cookie = newCreds.cookie;
+                        _api->setCookie(_cookie);
+                        _historyApi->setCookie(_cookie);
+                        _infoApi->setCookie(_cookie);
+                    }
+                    if (!newCreds.workspaceUrl.isEmpty()) {
+                        _workspaceUrl = newCreds.workspaceUrl;
+                        // The workspace host can move (Grid migration); keep the
+                        // pinned API base in step with it.
+                        applyApiBase(apiBaseFor(_workspaceUrl));
+                    }
+
+                    const WorkspaceKey key{Service::Slack, _teamId};
+                    Credentials        saved = fromRecord(
+                        TokenStore::loadWorkspace(key).value_or(
+                            TokenStore::WorkspaceRecord{key, {}, {}, {}}
+                        )
+                    );
+                    saved.xoxp         = newCreds.xoxp;
+                    saved.cookie       = _cookie;
+                    saved.workspaceUrl = _workspaceUrl;
+                    // Never write a record that would lose the workspace's name
+                    // (the rail label) if the stored one was somehow missing.
+                    if (saved.teamName.isEmpty())
+                        saved.teamName = _teamName;
+                    TokenStore::saveWorkspace(toRecord(saved));
+
+                    done(RefreshResult::Success);
+                    return;
+                }
+
+                qWarning() << "[TokenRefresh] session token re-derivation failed:" << err;
+                if (err == QLatin1String("network") || err == QLatin1String("temporary_failure")) {
+                    done(RefreshResult::TransientError);
+                } else {
+                    done(RefreshResult::AuthError);
+                }
+            }
+        );
+        deriver->run(_cookie, cands);
+        return;
+    }
+
     if (_refreshToken.isEmpty()) {
         qDebug() << "[TokenRefresh] no refresh token stored — forcing logout";
         done(RefreshResult::AuthError);
@@ -460,8 +635,11 @@ rpl::producer<UserId> PublicBackend::loadMe() {
                 // auth.test's `url` is the authoritative workspace host. Adopt it
                 // for a session workspace whose stored credentials predate
                 // workspaceUrl (or carry a stale one) — see apiBaseFor.
-                if (_sessionAuth)
+                if (_sessionAuth) {
+                    if (_workspaceUrl.isEmpty())
+                        _workspaceUrl = _teamUrl;
                     applyApiBase(apiBaseFor(_teamUrl));
+                }
                 if (!resp.value("enterprise_id").toString().isEmpty())
                     qInfo().noquote()
                         << "Slack workspace" << _teamId << "is part of Enterprise Grid org"
@@ -488,6 +666,12 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
         // so a failed load must complete without a value rather than hand over an
         // empty list (which would wipe the sidebar and the cache with it).
         auto fail = [consumer]() mutable { consumer.put_done(); };
+        // Minimal mode lists only the conversations the user is IN — see
+        // loadMemberConversations for why conversations.list is wrong there.
+        if (net::SyncConfig::instance().isMinimal()) {
+            loadMemberConversations(deliver, fail);
+            return rpl::lifetime();
+        }
         // A Grid workspace never gets a usable answer out of conversations.list,
         // so once it has told us so we go straight to the web-client route.
         if (_convListRestricted) {
@@ -508,6 +692,11 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
         if (!_teamId.isEmpty())
             params.addQueryItem("team_id", _teamId);
 
+        // Bounded like the roster walk: a long cursor chase is what Slack's
+        // abuse detection reacts to (see WebApiClient::paginate). 3 pages at
+        // limit=1000 is far more conversations than any account really has;
+        // anything past that is reachable through search and channel browse.
+        const int kConvListMaxPages = net::SyncConfig::instance().isMinimal() ? 1 : 3;
         _api->paginate(
             "conversations.list",
             "channels",
@@ -533,10 +722,73 @@ rpl::producer<std::vector<Conversation>> PublicBackend::loadConversations() {
                 }
                 qWarning() << "loadConversations error:" << err;
                 fail();
-            }
+            },
+            kConvListMaxPages
         );
         return rpl::lifetime();
     };
+}
+
+void PublicBackend::loadMemberConversations(
+    std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
+) {
+    // conversations.list lists every PUBLIC channel in the workspace, member or
+    // not. On an Enterprise Grid workspace a single 1000-item page was measured
+    // as 618 channels the user isn't in, 5 they are, and not one DM — so the
+    // sidebar had nothing to open and nothing was ever polled. users.conversations
+    // returns only the user's own conversations, and is served to session tokens.
+    //
+    // Two single-page requests split by type, and NO cursor follow-ups: the
+    // sustained cursor chase is the request shape Slack revokes sessions for, and
+    // minimal mode's whole point is to stay well clear of it. Channels + DMs fit
+    // one page; group DMs (measured 816 on that org) get their own.
+    struct Accum {
+        std::vector<Conversation>                      convs;
+        int                                            pending  = 2;
+        int                                            failures = 0;
+        std::function<void(std::vector<Conversation>)> done;
+        std::function<void()>                          fail;
+        void                                           finish() {
+            if (--pending > 0)
+                return;
+            // Both halves must land: delivering channels-without-DMs (or the
+            // reverse) would REPLACE the roster with half of itself.
+            if (failures > 0)
+                fail();
+            else
+                done(std::move(convs));
+        }
+    };
+    auto acc  = std::make_shared<Accum>();
+    acc->done = std::move(done);
+    acc->fail = std::move(fail);
+
+    for (const QString &types : {QStringLiteral("public_channel,private_channel,im"),
+                                 QStringLiteral("mpim")}) {
+        QUrlQuery params;
+        params.addQueryItem("types", types);
+        params.addQueryItem("exclude_archived", "true");
+        params.addQueryItem("limit", "1000");
+        if (!_teamId.isEmpty())
+            params.addQueryItem("team_id", _teamId);
+        _api->call(
+            "users.conversations",
+            params,
+            [acc](QJsonObject resp) {
+                auto batch = JsonMappers::toConversations(resp.value("channels").toArray());
+                for (auto &c : batch)
+                    c.isMember = true; // the endpoint lists memberships, by definition
+                acc->convs.insert(acc->convs.end(), batch.begin(), batch.end());
+                acc->finish();
+            },
+            [acc, types](QString err) {
+                qWarning() << "loadConversations (users.conversations" << types
+                           << ") error:" << err;
+                ++acc->failures;
+                acc->finish();
+            }
+        );
+    }
 }
 
 void PublicBackend::loadConversationsViaWebClient(
@@ -603,6 +855,8 @@ void PublicBackend::loadConversationsViaWebClient(
     imParams.addQueryItem("get_latest", "true");
     imParams.addQueryItem("get_read_state", "true");
     imParams.addQueryItem("limit", "1000");
+    // Same bound as the other listings — an org's DM list is unbounded.
+    constexpr int kImListMaxPages = 3;
     _api->paginate(
         "im.list",
         "ims",
@@ -620,7 +874,8 @@ void PublicBackend::loadConversationsViaWebClient(
             qWarning() << "loadConversations (im.list) error:" << err;
             ++acc->failures;
             acc->finish();
-        }
+        },
+        kImListMaxPages
     );
 }
 
@@ -703,6 +958,7 @@ rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
         // token, ignored for a workspace-level one.
         if (!_teamId.isEmpty())
             params.addQueryItem("team_id", _teamId);
+        params.addQueryItem("limit", "1000");
         _historyApi->paginate(
             "users.list",
             "members",
@@ -721,7 +977,22 @@ rpl::producer<std::vector<User>> PublicBackend::loadUsers() {
             [consumer](QString err) mutable {
                 qWarning() << "loadUsers error:" << err;
                 consumer.put_done();
-            }
+            },
+            // The roster walk is the one call that reliably gets a session
+            // revoked. users.list on an Enterprise Grid workspace enumerates the
+            // whole ORG directory, not the workspace's members — measured at
+            // 1000 users a page with no end in sight, and Slack killed the
+            // session on page 4 (scripts/slack-session-probe.py, phase 5).
+            //
+            // ONE page. Slack appears to count bulk directory paging across the
+            // whole session rather than per-walk: with users.list capped at 2 and
+            // conversations.list at 3, the session still died once the combined
+            // total passed ~4 pages. The roster is the cheapest of those to give
+            // up, because it is the one with a working fallback — every name not
+            // in the first page is resolved on demand by fetchUserIfNeeded /
+            // fetchMissingDmUsers via users.info, exactly as already happens for
+            // the external peers users.list never returns at all.
+            /*maxPages=*/1
         );
         return rpl::lifetime();
     };
@@ -1303,6 +1574,14 @@ std::vector<SlashCommand> PublicBackend::nativeCommands() const {
 
 rpl::producer<std::vector<SlashCommand>> PublicBackend::listCommands() {
     return [this](auto consumer) mutable {
+        // commands.list is undocumented official-client API. An Enterprise Grid
+        // org commonly refuses it (team_is_restricted), and re-asking on every
+        // start is pure noise — the Session falls back to the built-in command
+        // set either way. Latch it off the first time the workspace says no.
+        if (_commandsUnavailable) {
+            consumer.put_done();
+            return rpl::lifetime();
+        }
         _api->call(
             "commands.list",
             {},
@@ -1310,11 +1589,16 @@ rpl::producer<std::vector<SlashCommand>> PublicBackend::listCommands() {
                 consumer.put_next(JsonMappers::toSlashCommands(resp.value("commands")));
                 consumer.put_done();
             },
-            [consumer](QString err) mutable {
+            [this, consumer](QString err) mutable {
                 // not_allowed_token_type is the norm for OAuth tokens (see the
                 // comment above) — built-ins take over, nothing to report.
                 if (err != QLatin1String("not_allowed_token_type"))
                     qWarning() << "listCommands error:" << err;
+                if (isMethodUnavailable(err)) {
+                    _commandsUnavailable = true;
+                    qWarning() << "commands.list rejected:" << err
+                               << "— slash-command discovery disabled for this workspace";
+                }
                 consumer.put_done();
             },
             /*quietErrors=*/true
@@ -1696,11 +1980,14 @@ rpl::producer<std::vector<ConversationId>> PublicBackend::loadStarredConversatio
             consumer.put_done();
             return rpl::lifetime();
         }
-        auto acc = std::make_shared<std::vector<ConversationId>>();
+        auto      acc = std::make_shared<std::vector<ConversationId>>();
+        QUrlQuery params;
+        params.addQueryItem("limit", "1000");
+        constexpr int kStarsMaxPages = 3;
         _api->paginate(
             "stars.list",
             "items",
-            {},
+            params,
             [acc](QJsonArray page) {
                 auto ids = JsonMappers::toStarredConversationIds(page);
                 acc->insert(acc->end(), ids.begin(), ids.end());
@@ -1720,7 +2007,8 @@ rpl::producer<std::vector<ConversationId>> PublicBackend::loadStarredConversatio
                                << "— starred conversations disabled for this workspace";
                 }
                 consumer.put_done();
-            }
+            },
+            kStarsMaxPages
         );
         return rpl::lifetime();
     };

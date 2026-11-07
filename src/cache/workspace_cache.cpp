@@ -600,6 +600,24 @@ qint64 WorkspaceCache::loadActivitySweepAt() const {
     return metaObject().value("sweepAt").toVariant().toLongLong();
 }
 
+void WorkspaceCache::saveActivitySweepCursor(int index) {
+    metaObject()["sweepCursor"] = index;
+    writeMeta();
+}
+
+int WorkspaceCache::loadActivitySweepCursor() const {
+    return metaObject().value("sweepCursor").toInt();
+}
+
+void WorkspaceCache::saveRosterFetchedAt(qint64 unixSecs) {
+    metaObject()["rosterAt"] = unixSecs;
+    writeMeta();
+}
+
+qint64 WorkspaceCache::loadRosterFetchedAt() const {
+    return metaObject().value("rosterAt").toVariant().toLongLong();
+}
+
 void WorkspaceCache::saveMutedThreads(const QStringList &keys) {
     metaObject()["mutedThreads"] = QJsonArray::fromStringList(keys);
     writeMeta();

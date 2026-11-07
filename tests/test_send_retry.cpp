@@ -641,3 +641,62 @@ TEST_CASE_METHOD(
     REQUIRE(server.requestPaths.size() == 2);
     CHECK(server.requestPaths[1] == "/conversations.replies");
 }
+
+// ── pagination is bounded ────────────────────────────────────────────────────
+// paginate() used to chase next_cursor to exhaustion. On an Enterprise Grid
+// workspace users.list enumerates the whole ORG directory, so that walk became a
+// long uninterrupted burst — and Slack revoked the session on the 4th page,
+// after 3000 records (scripts/slack-session-probe.py, phase 5). That single
+// unbounded loop is what had been logging the user out of every device.
+
+TEST_CASE("paginate stops at maxPages instead of chasing every cursor",
+          "[send_retry][pagination]") {
+    FakeHttpServer server;
+    // Every page advertises another cursor: an uncapped walk would never stop.
+    for (int i = 0; i < 10; ++i)
+        server.enqueue(R"({"ok":true,"members":[{"id":"U1"}],)"
+                       R"("response_metadata":{"next_cursor":"more"}})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("xoxc-tok");
+
+    int  pages = 0;
+    bool done  = false;
+    client.paginate(
+        "users.list", "members", QUrlQuery{},
+        [&](QJsonArray) { ++pages; },
+        [&] { done = true; },
+        [](QString) {},
+        /*maxPages=*/3
+    );
+
+    REQUIRE(waitFor([&] { return done; }));
+    CHECK(pages == 3);                 // stopped at the cap…
+    CHECK(server.requestCount == 3);   // …and made no further requests
+}
+
+TEST_CASE("a capped walk still delivers what it fetched", "[send_retry][pagination]") {
+    FakeHttpServer server;
+    for (int i = 0; i < 5; ++i)
+        server.enqueue(R"({"ok":true,"members":[{"id":"U1"},{"id":"U2"}],)"
+                       R"("response_metadata":{"next_cursor":"more"}})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("xoxc-tok");
+
+    int  records = 0;
+    bool done = false, failed = false;
+    client.paginate(
+        "users.list", "members", QUrlQuery{},
+        [&](QJsonArray a) { records += int(a.size()); },
+        [&] { done = true; },
+        [&](QString) { failed = true; },
+        /*maxPages=*/2
+    );
+
+    REQUIRE(waitFor([&] { return done; }));
+    CHECK(records == 4);      // both pages handed over
+    CHECK_FALSE(failed);      // hitting the cap is a clean finish, not an error
+}

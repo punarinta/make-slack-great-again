@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
 #include "http_queue.h"
+#include "rate_governor.h"
 
 #include "form_urlencode.h"
 
@@ -16,6 +17,10 @@
 namespace net {
 
 const QString HttpQueue::kConnectionLost = "connection_lost";
+// Deliberately NOT an auth error (token_expired/invalid_auth): a refused call
+// must never trigger a token refresh, and it IS a "method unavailable" answer so
+// the backend's per-method latches stop asking for it.
+const QString HttpQueue::kBlockedByAllowlist = "blocked_by_allowlist";
 
 namespace {
 
@@ -60,17 +65,60 @@ FailureClass classifyTransportError(QNetworkReply::NetworkError e) {
 
 HttpQueue::HttpQueue(QObject *parent) : QObject(parent), _nam(new QNetworkAccessManager(this)) {}
 
+HttpQueue::~HttpQueue() {
+    if (_governor)
+        _governor->unregisterQueue(this);
+}
+
+void HttpQueue::setGovernor(std::shared_ptr<RateGovernor> governor) {
+    if (_governor) {
+        _governor->unregisterQueue(this);
+        disconnect(_governor.get(), nullptr, this, nullptr);
+    }
+    _governor = std::move(governor);
+    if (_governor) {
+        _governor->registerQueue(this);
+        connect(_governor.get(), &RateGovernor::slotAvailable, this, &HttpQueue::tryNext);
+    }
+}
+
+bool HttpQueue::hasWaitingNormalCall() const {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (const auto &c : _queue) {
+        if (c.priority == Priority::Normal) {
+            const qint64 readyAt = _methodReadyAtMs.value(c.method, 0);
+            if (readyAt <= now)
+                return true;
+        }
+    }
+    return false;
+}
+
 void HttpQueue::applyAuth(QNetworkRequest &req) const {
     req.setRawHeader("Authorization", ("Bearer " + _token).toUtf8());
+    // Qt defaults to a bare "User-Agent: Mozilla/5.0". A session (xoxc) token is
+    // a BROWSER credential, and several endpoints we rely on (client.userBoot,
+    // client.counts, subscriptions.thread.getView) are web-client-only — so that
+    // default is an unmistakable non-browser fingerprint. Ordinary workspaces
+    // tolerate it; a strict Enterprise Grid org revokes the session within a
+    // handful of calls. Present as the desktop browser the session was minted in.
+    if (!_userAgent.isEmpty())
+        req.setRawHeader("User-Agent", _userAgent.toUtf8());
     // Session auth requires the `d` cookie on every call; the token alone is
     // rejected. Sent verbatim (the stored value already carries its `xoxd-` prefix).
     if (!_cookie.isEmpty()) {
-        req.setRawHeader("Cookie", ("d=" + _cookie).toUtf8());
+        // ONLY `d`. Slack also sets companion cookies (d-s, uc) on every
+        // response and its browser client echoes them back, so replaying them
+        // looked like the more faithful thing to do — but a controlled probe
+        // (scripts/slack-session-probe.py) shows a session sending nothing but
+        // `d` handles every call we make, indefinitely, on an Enterprise Grid
+        // workspace. Don't send back state we don't understand.
+        req.setRawHeader("Cookie", "d=" + _cookie.toUtf8());
         // QNAM's default cookie handling (CookieLoadControlAttribute == Automatic)
         // rebuilds the Cookie header from its own (empty) jar and clobbers the one
         // set above — so without this the cookie never goes out and Slack answers
         // invalid_auth. Manual mode tells QNAM to leave our header alone (and not
-        // to harvest Set-Cookie into the jar).
+        // to harvest Set-Cookie into the jar); we do the harvesting ourselves.
         req.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);
         req.setAttribute(QNetworkRequest::CookieSaveControlAttribute, QNetworkRequest::Manual);
     }
@@ -135,6 +183,19 @@ void HttpQueue::downloadUrl(
 }
 
 void HttpQueue::enqueue(PendingCall c) {
+    if (!isAllowed(c.method)) {
+        if (!_blockedLogged.contains(c.method)) {
+            _blockedLogged.insert(c.method);
+            qInfo().noquote() << "[API blocked]" << c.method << "— not on the allowlist";
+        }
+        // Fail asynchronously: callers expect onError after enqueue returns,
+        // never re-entrantly from inside it.
+        if (c.onError)
+            QTimer::singleShot(0, this, [onError = std::move(c.onError)] {
+                onError(kBlockedByAllowlist);
+            });
+        return;
+    }
     _queue.enqueue(std::move(c));
     tryNext();
 }
@@ -186,11 +247,21 @@ void HttpQueue::tryNext() {
             scheduleWake(soonest);
         return;
     }
+    const Priority prio = _queue.at(idx).priority;
+    if (_governor) {
+        const qint64 govDelay = _governor->delayUntilEligibleMs(prio);
+        if (govDelay > 0) {
+            scheduleWake(now + govDelay);
+            return;
+        }
+    }
     // Arm the pace gate before dispatching a Background call, so the next one waits
     // out the interval no matter how quickly this reply lands.
-    if (_queue.at(idx).priority == Priority::Background && _backgroundPaceMs > 0)
+    if (prio == Priority::Background && _backgroundPaceMs > 0)
         _backgroundReadyAtMs = now + _backgroundPaceMs;
     _inflight = true;
+    if (_governor)
+        _governor->recordDispatched(prio);
     execute(_queue.takeAt(idx));
 }
 
@@ -223,6 +294,22 @@ void HttpQueue::requeueWithDelay(PendingCall c, int delayMs) {
 void HttpQueue::execute(const PendingCall &c) {
     QUrl            url(_baseUrl + c.method);
     QNetworkRequest req;
+    // Ordered, per-host trace of every API request. Slack revokes a session
+    // based on the SHAPE of the request stream (bulk directory paging in
+    // particular), so reasoning about it requires knowing exactly what went out
+    // and in what order — inferring it from which calls happened to fail is how
+    // several wrong conclusions got drawn. Opt-in: set MSGA_API_TRACE=1.
+    if (qEnvironmentVariableIntValue("MSGA_API_TRACE") != 0) {
+        static int seq = 0;
+        qDebug().noquote() << QStringLiteral("[API %1] %2 %3%4")
+                                  .arg(++seq, 4)
+                                  .arg(url.host(), c.method)
+                                  .arg(
+                                      c.params.hasQueryItem(QStringLiteral("cursor"))
+                                          ? QStringLiteral(" (cursor)")
+                                          : QString()
+                                  );
+    }
     applyAuth(req);
     req.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy
@@ -267,6 +354,8 @@ void HttpQueue::execute(const PendingCall &c) {
 void HttpQueue::handleReply(QNetworkReply *reply, PendingCall c) {
     reply->deleteLater();
     _inflight = false;
+    if (_governor)
+        _governor->recordFinished(c.priority);
 
     const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 

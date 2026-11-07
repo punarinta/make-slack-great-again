@@ -214,3 +214,70 @@ TEST_CASE("one dead candidate doesn't sink the rest", "[token_deriver]") {
     CHECK(out.valid[0].xoxp == "xoxc-good");
     CHECK(out.error.isEmpty()); // partial success reports no error
 }
+
+// ── Enterprise Grid: the org is not a workspace ──────────────────────────────
+// A session minted at the org host (<org>.enterprise.slack.com) passes auth.test
+// but is useless for real work: every workspace-scoped call is rejected
+// (conversations.list/stars.list → enterprise_is_restricted, users.list →
+// invalid_auth) and Slack answers that stream of rejections by revoking the
+// whole session, logging the user out everywhere. So an org-scoped result must
+// never be stored as a workspace — it must expand into the member workspaces.
+
+TEST_CASE("an org-scoped Enterprise session expands into member workspaces",
+          "[token_deriver][enterprise]") {
+    FakeHttpServer server;
+    // 1. org boot page → org token
+    server.enqueueStatus(403, "Forbidden", "text/html", bootPage("\"xoxc-org\""));
+    // 2. auth.test says: org-scoped (team_id == enterprise_id)
+    server.enqueue(R"({"ok":true,"team_id":"E1","team":"On","enterprise_id":"E1",
+                       "url":"https://on.enterprise.slack.com/"})");
+    // 3. client.userBoot enumerates the real workspaces. `url` points at the
+    //    fake server so the follow-up scrape stays local; in production Slack
+    //    returns `domain` and the code builds the host itself.
+    server.enqueue(QByteArray(R"({"ok":true,"workspaces":[{"id":"T10","name":"Alpha",)"
+                              R"("domain":"alpha","url":")") + server.baseUrl().toUtf8() +
+                   R"("}]})");
+    // 4. member workspace boot page → workspace token
+    server.enqueueStatus(403, "Forbidden", "text/html", bootPage("\"xoxc-alpha\""));
+    // 5. auth.test for the member workspace
+    server.enqueue(R"({"ok":true,"team_id":"T10","team":"Alpha"})");
+    // 6. team.info icon
+    server.enqueue(R"({"ok":true,"team":{"icon":{"image_88":"https://x/a.png"}}})");
+
+    QObject     owner;
+    Result      out;
+    auto       *d = deriverFor(server, out, &owner);
+    TeamSession org;
+    org.workspaceUrl = server.baseUrl();
+    d->run("xoxd-c", {org});
+
+    REQUIRE(waitFor([&] { return out.done; }));
+    REQUIRE(out.valid.size() == 1);
+    // The stored workspace is the member team, never the org.
+    CHECK(out.valid[0].teamId.toStdString() == "T10");
+    CHECK(out.valid[0].xoxp.toStdString() == "xoxc-alpha");
+    CHECK(out.valid[0].teamId.toStdString() != "E1");
+}
+
+TEST_CASE("an org with no enumerable workspaces is reported, not stored",
+          "[token_deriver][enterprise]") {
+    FakeHttpServer server;
+    server.enqueueStatus(403, "Forbidden", "text/html", bootPage("\"xoxc-org\""));
+    server.enqueue(R"({"ok":true,"team_id":"E1","team":"On","enterprise_id":"E1",
+                       "url":"https://on.enterprise.slack.com/"})");
+    // Slack refuses BOTH enumeration endpoints for this session.
+    server.enqueue(R"({"ok":false,"error":"not_allowed_token_type"})"); // client.userBoot
+    server.enqueue(R"({"ok":false,"error":"not_allowed_token_type"})"); // auth.teams.list
+
+    QObject     owner;
+    Result      out;
+    auto       *d = deriverFor(server, out, &owner);
+    TeamSession org;
+    org.workspaceUrl = server.baseUrl();
+    d->run("xoxd-c", {org});
+
+    REQUIRE(waitFor([&] { return out.done; }));
+    // Crucially: the org is NOT committed as a workspace.
+    CHECK(out.valid.isEmpty());
+    CHECK(out.error.toStdString() == "enterprise_no_workspaces");
+}

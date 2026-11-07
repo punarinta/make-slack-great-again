@@ -8,6 +8,8 @@
 #include "shared_realtime.h"
 #include "slack_auth.h"
 #include "web_api_client.h"
+#include "network/sync_config.h"
+#include "network/rate_governor.h"
 
 #include <QJsonArray>
 #include <QNetworkAccessManager>
@@ -49,7 +51,9 @@ public:
     // Session auth has no Socket Mode, so the open-conversation poll IS the
     // delivery path — poll it every few seconds (spends the user's own rate
     // limits) instead of the 60 s app-token backstop cadence.
-    int  foregroundPollGapMs() const override { return _sessionAuth ? 5'000 : 60'000; }
+    int  foregroundPollGapMs() const override {
+        return net::SyncConfig::instance().foregroundPollGapMs(_sessionAuth);
+    }
     // Session auth has no push (classic RTM is unusable — Slack caps the legacy
     // socket at ~5 s); the Session drives discovery/roster refresh by polling.
     bool hasRealtimePush() const override { return !_sessionAuth; }
@@ -270,10 +274,17 @@ private:
     // Enterprise Grid conversation listing: client.userBoot + im.list, the pair
     // the web client itself boots with. Used when conversations.list is refused
     // with `enterprise_is_restricted`.
+    // Minimal mode: the user's own conversations via users.conversations, two
+    // single-page requests, no cursor follow-ups.
+    void                loadMemberConversations(
+                       std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
+                   );
     void                loadConversationsViaWebClient(
                        std::function<void(std::vector<Conversation>)> done, std::function<void()> fail
                    );
     void triggerRefresh(std::function<void(bool)> done);
+    // Apply a sync mode's rate preset and (minimal only) the transport allowlist.
+    void applySyncMode(net::SyncMode mode);
     void maybeProactiveRefresh();
 
     QString       _teamId;
@@ -289,6 +300,7 @@ private:
     WebApiClient *_api;
     WebApiClient *_historyApi; // dedicated client for loadHistory/loadThread
     WebApiClient *_infoApi;    // low-priority client for background conversations.info sweeps
+    std::shared_ptr<net::RateGovernor> _rateGovernor;
     // Refcounted app-level Socket Mode socket: created on the first Slack
     // backend, released on the last. _sharedRealtime caches the handle's socket
     // (null when no xapp token is configured). Held only by OAuth workspaces —
@@ -317,6 +329,9 @@ private:
     // additionally needs the `stars:read` scope, which tokens issued before it
     // was requested lack (→ missing_scope until the user re-authorises).
     bool                             _starsUnavailable       = false;
+    // Same latch for commands.list (undocumented slash-command discovery); a Grid
+    // org routinely refuses it with team_is_restricted.
+    bool                             _commandsUnavailable    = false;
     // Per-workspace RTM realtime for session auth (null for OAuth workspaces).
     std::unique_ptr<SessionRealtime> _sessionRealtime;
     QTimer                          *_proactiveRefreshTimer = nullptr;
@@ -327,6 +342,9 @@ private:
 
     UserId  _meUserId; // cached from auth.test; used to reconcile lost sends
     QString _teamUrl;  // workspace web base URL from auth.test's `url` field
+    QString _cookie;
+    QString _workspaceUrl;
+    QString _teamName;
     int     _sendRetryDelayMs = 1000;
 
     rpl::variable<AuthState> _authState{AuthState::LoggedIn};

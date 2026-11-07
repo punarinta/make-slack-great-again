@@ -106,3 +106,67 @@ TEST_CASE("transport emits the d cookie header only when a cookie is set", "[ses
         CHECK(headerValue(server.requestHeaders[0], "Cookie").isEmpty());
     }
 }
+
+// Slack sets companion cookies (`d-s`, a session-freshness timestamp, and `uc`)
+// on every response, and its browser client echoes them back. msga briefly did
+// the same, on the theory that looking more browser-like would stop Enterprise
+// Grid orgs revoking the session. It did the opposite: a controlled probe
+// (scripts/slack-session-probe.py, phase 3) showed the session dying with
+// invalid_auth on the SECOND call that replayed them, while a client sending
+// nothing but `d` ran indefinitely. Never send back session state we don't own.
+TEST_CASE("companion cookies from Set-Cookie are never echoed back", "[session_auth]") {
+    FakeHttpServer server;
+    server.enqueueWithSetCookie(
+        R"({"ok":true})",
+        {"d-s=1789211363; path=/; domain=.slack.com; secure; httponly",
+         "uc=xoxd-SOMEUSERCOOKIE; path=/; domain=.slack.com"}
+    );
+    server.enqueue(R"({"ok":true})");
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("xoxc-tok");
+    client.setCookie("xoxd-thecookie");
+
+    int done = 0;
+    client.call("auth.test", QUrlQuery{}, [&](QJsonObject) { ++done; });
+    REQUIRE(waitFor([&] { return done == 1; }));
+    // Second call goes out AFTER the Set-Cookie reply has been seen.
+    client.call("conversations.list", QUrlQuery{}, [&](QJsonObject) { ++done; });
+    REQUIRE(waitFor([&] { return done == 2; }));
+
+    REQUIRE(server.requestHeaders.size() == 2);
+    const QByteArray second = headerValue(server.requestHeaders[1], "Cookie");
+    CHECK(second == "d=xoxd-thecookie");
+    CHECK_FALSE(second.contains("d-s"));
+    CHECK_FALSE(second.contains("uc="));
+}
+
+// Minimal sync mode's guarantee lives at the transport: a method that is not on
+// the allowlist must never reach the network, whichever call site asked for it,
+// and must fail with an error that is NOT an auth error (so it can't trigger a
+// token refresh, and the backend latches the method off instead of retrying).
+TEST_CASE("the method allowlist refuses calls locally, without network traffic",
+          "[session_auth][allowlist]") {
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true})"); // only the allowed call may consume this
+
+    WebApiClient client;
+    client.setBaseUrl(server.baseUrl());
+    client.setToken("xoxc-tok");
+    client.setCookie("xoxd-c");
+    client.setMethodAllowlist({QStringLiteral("auth.test")});
+
+    QString blockedErr;
+    bool    blockedDone = false, allowedDone = false;
+    client.call(
+        "users.list", QUrlQuery{}, [](QJsonObject) {},
+        [&](QString e) { blockedErr = e; blockedDone = true; }
+    );
+    client.call("auth.test", QUrlQuery{}, [&](QJsonObject) { allowedDone = true; });
+
+    REQUIRE(waitFor([&] { return blockedDone && allowedDone; }));
+    CHECK(blockedErr == WebApiClient::kBlockedByAllowlist);
+    CHECK(server.requestCount == 1);                      // only auth.test went out
+    CHECK(server.requestPaths.value(0) == "/auth.test");
+}

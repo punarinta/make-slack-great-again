@@ -19,6 +19,7 @@
 #include "cache/workspace_cache.h"
 #include "rpl/producer.h"
 #include "rpl/variable.h"
+#include "network/sync_config.h"
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -3019,6 +3020,44 @@ TEST_CASE_METHOD(
     CHECK_FALSE(stub->infoRequested.contains("C2"));
 }
 
+// A workspace with hundreds of DMs must never enqueue one conversations.info per
+// DM in a single burst: that is ~15 minutes of unbroken API traffic and it is
+// what makes Slack fire unexpected_api_call_volume and revoke every session.
+// The sweep walks the list in bounded batches from a persisted cursor instead.
+TEST_CASE_METHOD(
+    SessionFixture,
+    "activity sweep batches a large DM list instead of bursting",
+    "[session][sweep]"
+) {
+    std::vector<Conversation> convs{kGeneral};
+    for (int i = 0; i < 300; ++i) {
+        convs.push_back(
+            Conversation{
+                .id       = ConversationId{QString("D%1").arg(1000 + i)},
+                .kind     = ConvKind::Im,
+                .isMember = true,
+                .latestTs = QString("%1.000").arg(1000 + i),
+                .dmUser   = UserId{QString("U%1").arg(1000 + i)},
+            }
+        );
+    }
+    stub->infoRequested.clear();
+    stub->_convs = convs;
+    QCoreApplication::processEvents();
+
+    // One batch only — bounded well below the number of DMs.
+    const int batched = stub->infoRequested.size();
+    CHECK(batched > 0);
+    CHECK(batched <= 25);
+
+    // A second pass in the same window must not stack another batch on top of
+    // the one still in flight (two roster reloads used to double the burst).
+    const int before = stub->infoRequested.size();
+    session->reloadConversationsForTest();
+    QCoreApplication::processEvents();
+    CHECK(stub->infoRequested.size() == before);
+}
+
 TEST_CASE_METHOD(
     SessionFixture,
     "activity sweep merges last_read/latest cursors but not unread",
@@ -4993,4 +5032,29 @@ TEST_CASE_METHOD(
         }
     CHECK(hits == 1);
     CHECK(stub->messageAtCalls.size() == 1);
+}
+
+// Minimal sync mode serves the cached roster instead of re-listing. On a large
+// Enterprise workspace each listing enumerates thousands of records, and the org
+// revokes sessions on cumulative enumeration volume — so a launch with a fresh
+// cache must make no listing call at all.
+TEST_CASE_METHOD(SessionFixture, "minimal mode reuses a fresh cached roster", "[session][minimal]") {
+    auto &sync = net::SyncConfig::instance();
+    // The fixture's start() fetched a roster, which also stamped its fetch time.
+    REQUIRE(stub->loadConversationsCalls >= 1);
+    REQUIRE_FALSE(session->conversationsForTest().empty());
+
+    sync.setSyncMode(net::SyncMode::Minimal);
+    const int before = stub->loadConversationsCalls;
+    session->reloadConversationsForTest();
+    QCoreApplication::processEvents();
+    const int minimalCalls = stub->loadConversationsCalls - before;
+    sync.setSyncMode(net::SyncMode::Normal);
+
+    CHECK(minimalCalls == 0); // cached roster served — no listing request
+
+    // Outside minimal mode the reload still happens as before.
+    session->reloadConversationsForTest();
+    QCoreApplication::processEvents();
+    CHECK(stub->loadConversationsCalls == before + 1);
 }

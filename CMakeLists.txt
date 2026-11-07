@@ -128,6 +128,8 @@ add_executable(msga MACOSX_BUNDLE WIN32
 
     # Network (transport mechanics, service-agnostic)
     src/network/http_queue.cpp
+    src/network/rate_governor.cpp
+    src/network/sync_config.cpp
 
     # Auth (neutral strategy interface + factory; per-service flows live below the seam)
     src/auth/token_store.cpp

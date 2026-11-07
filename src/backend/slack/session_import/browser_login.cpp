@@ -233,6 +233,12 @@ bool isInfraSubdomain(const QString &sub) {
         QStringLiteral("slack"),
         QStringLiteral("join"),
         QStringLiteral("signin"),
+        // An Enterprise Grid ORG host (<org>.enterprise.slack.com) matches the
+        // "<sub>.slack.com" shape, but the org is not a workspace: a session
+        // minted there fails every workspace-scoped call and Slack revokes it.
+        // Never propose it as a candidate — TokenDeriver expands orgs into their
+        // member workspaces instead.
+        QStringLiteral("enterprise"),
     };
     return infra.contains(sub);
 }

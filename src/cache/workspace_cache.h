@@ -43,10 +43,26 @@ public:
     void   saveMeUserId(const UserId &id);
     UserId loadMeUserId() const;
 
-    // When the background conversations.info activity sweep last completed
-    // (Unix seconds; 0 = never). Used to throttle the sweep across restarts.
+    // When the background conversations.info activity sweep last completed a
+    // FULL pass (Unix seconds; 0 = never). Used to throttle the sweep across
+    // restarts.
     void   saveActivitySweepAt(qint64 unixSecs);
     qint64 loadActivitySweepAt() const;
+
+    // How far through the DM/MPDM list the activity sweep has got. The sweep
+    // runs in small batches (see Session::enrichDmActivity) so a workspace with
+    // hundreds of DMs trickles through them across many runs instead of firing
+    // one huge burst that trips Slack's API-volume anomaly detector. Reset to 0
+    // when a full pass completes.
+    void saveActivitySweepCursor(int index);
+    int  loadActivitySweepCursor() const;
+
+    // When the conversation roster was last fetched from the server (Unix
+    // seconds; 0 = never). Minimal sync mode serves the cached roster and only
+    // re-lists when this is old, because each listing enumerates thousands of
+    // records and Enterprise orgs revoke sessions on enumeration volume.
+    void   saveRosterFetchedAt(qint64 unixSecs);
+    qint64 loadRosterFetchedAt() const;
 
     void                    saveEmojiMap(const QHash<QString, QString> &map);
     QHash<QString, QString> loadEmojiMap() const;

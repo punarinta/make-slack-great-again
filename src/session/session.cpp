@@ -4,6 +4,7 @@
 #include "backend/backend.h"
 #include "backend/common_commands.h"
 #include "cache/workspace_cache.h"
+#include "network/sync_config.h"
 #include "text/mrkdwn_parser.h"
 #include "util/time_format.h"
 
@@ -134,6 +135,20 @@ void Session::start() {
     }
 
     _backend->connectRealtime();
+
+    _backend->authState() |
+        rpl::on_next(
+            [this](AuthState state) {
+                if (state == AuthState::NotLoggedIn) {
+                    _realtimeSafetyTimer.stop();
+                    _selfPresenceTimer.stop();
+                    _reminderTimer.stop();
+                    _saveUnreadsTimer.stop();
+                    _unreadPatchTimer.stop();
+                }
+            },
+            _lifetime
+        );
 
     // Resolve our own user id first — optimistic sends and own-message
     // detection depend on it.
@@ -271,12 +286,10 @@ void Session::start() {
                                     if (_meUserId.value.isEmpty())
                                         fetchMe();
 
-                                    // Poll current presence for every DM conversation partner so
-                                    // the list shows the right indicator without waiting for the
-                                    // first change.
-                                    for (const auto &conv : _conversations.current())
-                                        if (conv.dmUser && !conv.dmUser->value.isEmpty())
-                                            requestPresence(*conv.dmUser);
+                                     // Poll current presence for the most active DM partners on the
+                                     // paced background lane instead of spamming unpaced presence queries
+                                     // for all historical DMs. Opening any DM loads presence on demand.
+                                     pollDmPresence();
 
                                     // Resolve DM peers users.list omits now that the
                                     // full list is known (conversations may already
@@ -653,7 +666,7 @@ void Session::checkRealtimeHealth() {
     // EvRealtimeReconnected instead, so skip it there.
     if (!_backend->hasRealtimePush()) {
         const qint64 nowRoster = QDateTime::currentMSecsSinceEpoch();
-        if (nowRoster - _lastRosterReloadMs >= kRosterReloadGapMs) {
+        if (nowRoster - _lastRosterReloadMs >= net::SyncConfig::instance().rosterReloadGapMs()) {
             _lastRosterReloadMs = nowRoster;
             reloadConversations(/*refreshEmoji=*/false);
         }
@@ -667,7 +680,7 @@ void Session::checkRealtimeHealth() {
         // diff when the backend can't serve it.
         if (!_countsDisabled) {
             const qint64 nowCounts = QDateTime::currentMSecsSinceEpoch();
-            if (nowCounts - _lastCountsPollMs >= kCountsPollGapMs) {
+            if (nowCounts - _lastCountsPollMs >= net::SyncConfig::instance().countsPollGapMs()) {
                 _lastCountsPollMs = nowCounts;
                 pollUnreadCounts();
             }
@@ -680,7 +693,7 @@ void Session::checkRealtimeHealth() {
         // that reports them, whole-workspace, in a single request.
         if (_backend->capabilities().threadsView) {
             const qint64 nowThreads = QDateTime::currentMSecsSinceEpoch();
-            if (nowThreads - _lastThreadsPollMs >= kThreadsPollGapMs) {
+            if (nowThreads - _lastThreadsPollMs >= net::SyncConfig::instance().threadsPollGapMs()) {
                 _lastThreadsPollMs = nowThreads;
                 pollThreadReplies();
             }
@@ -737,11 +750,18 @@ void Session::checkRealtimeHealth() {
     // the user happened to open or hover them, which are the only other probes).
     {
         const qint64 nowPres = QDateTime::currentMSecsSinceEpoch();
-        if (nowPres - _lastPresencePollMs >= kPresencePollGapMs) {
+        if (nowPres - _lastPresencePollMs >= net::SyncConfig::instance().presencePollGapMs()) {
             _lastPresencePollMs = nowPres;
             pollDmPresence();
         }
     }
+
+    // (3d) Advance the batched DM/MPDM activity sweep. Driven from here, not only
+    // from reloadConversations, so a pass keeps trickling forward on its own
+    // cadence regardless of how often the roster is refetched. enrichDmActivity
+    // is self-throttling (batch gap + in-flight guard), so calling it every tick
+    // is cheap and issues nothing most of the time.
+    enrichDmActivity();
 
     // Background rotation: sweeps member conversations OTHER than the open one
     // (if any) on a slower cadence. This used to run only when nothing was open
@@ -756,8 +776,12 @@ void Session::checkRealtimeHealth() {
     // A hit reestablishes the shared socket, restoring realtime for every
     // workspace; the message itself badges and fires a notification.
     const qint64 now2 = QDateTime::currentMSecsSinceEpoch();
-    if (now2 - _lastBackgroundPollMs < kBackgroundPollGapMs)
+    if (now2 - _lastBackgroundPollMs < net::SyncConfig::instance().backgroundPollGapMs())
         return;
+    if (!net::SyncConfig::instance().isAppActive() && net::SyncConfig::instance().isConservative())
+        return; // conservative mode skips background rotation while app is inactive/unfocused
+    if (net::SyncConfig::instance().isMinimal())
+        return; // minimal mode: only the open conversation is ever polled
     _lastBackgroundPollMs   = now2;
     const ConversationId bg = nextBackgroundPollTarget(_openConv);
     if (!bg.value.isEmpty())
@@ -928,6 +952,10 @@ void Session::pollConversationForMissed(ConversationId conv, bool foreground, Ts
 }
 
 void Session::pollThreadReplies() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     _backend->loadThreadsView(/*cursor=*/{}) |
         rpl::on_next(
             [this](ThreadsViewPage page) {
@@ -1029,6 +1057,10 @@ void Session::pollThreadReplies() {
 }
 
 void Session::pollUnreadCounts() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     // `got` distinguishes the two ways the producer can complete: with a snapshot
     // (success, even an empty one) or without (unsupported / rejected / failed).
     // The backend latches a definitive rejection itself, so what we guard against
@@ -1157,7 +1189,7 @@ void Session::applyActivitySnapshot(const std::vector<ConvCounts> &snapshot) {
         return a.now.latestTs > b.now.latestTs;
     });
 
-    int budget = kMaxDiffPollsPerTick;
+    int budget = net::SyncConfig::instance().maxDiffPollsPerTick();
     for (const auto &m : moved) {
         const Conversation *c = findConversation(m.conv);
         // A muted conversation is silent for plain traffic (no notification, no
@@ -1249,6 +1281,21 @@ static void carryLocalConvState(Conversation &fresh, const Conversation &old) {
 }
 
 void Session::reloadConversations(bool refreshEmoji) {
+    // Minimal sync mode: cache-first roster. Listing a large Enterprise workspace
+    // enumerates thousands of records per call, and the org revokes sessions on
+    // cumulative enumeration volume — slowly or not. So once a roster is cached,
+    // serve it and re-list at most every kMinimalRosterTtlSecs. A normal launch
+    // then makes ZERO bulk calls: only the open chat and on-demand lookups.
+    if (net::SyncConfig::instance().isMinimal()) {
+        constexpr qint64 kMinimalRosterTtlSecs = qint64(6) * 3600;
+        const qint64     age = QDateTime::currentSecsSinceEpoch() - _cache->loadRosterFetchedAt();
+        if (!_conversations.current().empty() && age < kMinimalRosterTtlSecs) {
+            qInfo().noquote() << "[Roster] minimal mode: using cached roster ("
+                              << _conversations.current().size() << "conversations, fetched"
+                              << age / 60 << "min ago) — no listing call";
+            return;
+        }
+    }
     _backend->loadConversations() | rpl::on_next(
                                         [this, refreshEmoji](std::vector<Conversation> convs) {
                                             // Snapshot the SERVER's activity numbers before the
@@ -1293,6 +1340,9 @@ void Session::reloadConversations(bool refreshEmoji) {
                                             // (invited/unarchived while the app was closed).
                                             reconcileDeadConvIds(convs);
                                             _cache->saveConversations(convs);
+                                            _cache->saveRosterFetchedAt(
+                                                QDateTime::currentSecsSinceEpoch()
+                                            );
                                             _conversations = std::move(convs);
                                             // After the assignment: the diff reads the merged list
                                             // (membership, mute state) and may fold cursors back
@@ -1485,6 +1535,11 @@ std::vector<ConversationId> Session::dmSweepTargets() const {
     // Unanalyzed DMs/MPDMs start hidden in the conversation list and pop in as
     // their info arrives, so sweep 1:1 DMs first — they matter more — and the
     // lower-priority MPDMs after.
+    //
+    // Returns the FULL ordered list; callers are responsible for taking a
+    // bounded slice (enrichDmActivity walks it in batches from a persisted
+    // cursor, resyncUnreads takes the head). Ordering is stable so the cursor
+    // stays meaningful across runs.
     std::vector<ConversationId> targets;
     for (const auto &c : _conversations.current())
         if (c.kind == ConvKind::Im && !isDeadDm(c) && !_deadConvIds.contains(c.id.value))
@@ -1496,6 +1551,10 @@ std::vector<ConversationId> Session::dmSweepTargets() const {
 }
 
 void Session::resyncUnreads() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (now - _lastUnreadResyncMs < kUnreadResyncGapMs)
         return;
@@ -1503,13 +1562,22 @@ void Session::resyncUnreads() {
     // stack a second one that would just re-enqueue the same DMs behind it.
     if (_unreadResyncInFlight > 0)
         return;
-    const auto targets = dmSweepTargets();
-    if (targets.empty())
+    const auto all = dmSweepTargets();
+    if (all.empty())
         return;
+    // Bounded head slice: this is a reconnect recovery, not an exhaustive sweep,
+    // and dmSweepTargets is ordered DMs-first so the head is the part that
+    // matters. Recovering unread for hundreds of DMs in one go is precisely the
+    // burst that trips Slack's API-volume anomaly detector.
+    const int batchSize = std::max(1, net::SyncConfig::instance().maxSweepTargets());
+    const std::vector<ConversationId> targets(
+        all.begin(), all.begin() + std::min<int>(batchSize, int(all.size()))
+    );
     _lastUnreadResyncMs   = now;
     _unreadResyncInFlight = int(targets.size());
 
-    qDebug() << "[UnreadResync] recovering unread for" << targets.size() << "DMs/MPDMs";
+    qDebug() << "[UnreadResync] recovering unread for" << targets.size() << "of" << all.size()
+             << "DMs/MPDMs";
     for (const auto &id : targets) {
         _backend->loadConversationInfo(id, /*background=*/true) |
             rpl::on_next_done(
@@ -1589,24 +1657,64 @@ void Session::applyPendingUnreadInfos() {
 }
 
 void Session::enrichDmActivity() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     // conversations.list no longer returns last_read / latest, so without extra
     // calls we cannot tell how old a DM or MPDM is. Fetch conversations.info for
     // each of them on the backend's low-priority queue, merge only the activity
-    // fields, and persist — so the cost is one sweep per kActivitySweepGapSecs
-    // across restarts. Realtime events keep latestTs fresh in between; channels
-    // are excluded since they get visit/unread stamps through normal use.
-    constexpr qint64 kActivitySweepGapSecs = qint64(12) * 3600;
-    const qint64     now                   = QDateTime::currentSecsSinceEpoch();
-    if (now - _cache->loadActivitySweepAt() < kActivitySweepGapSecs)
+    // fields, and persist. Realtime events keep latestTs fresh in between;
+    // channels are excluded since they get visit/unread stamps through normal use.
+    //
+    // The sweep runs in SMALL BATCHES walked by a cursor persisted in the cache,
+    // not as one burst. A workspace with 784 DMs used to enqueue 784
+    // conversations.info calls at once; even paced at ~1.2 s that is a quarter
+    // hour of unbroken traffic, which is exactly the shape Slack's anomaly
+    // detector flags as unexpected_api_call_volume (and it then revokes every
+    // session). Batching spreads the same work over many minutes, resumes where
+    // it left off after a restart, and is bounded at every point.
+    constexpr qint64 kFullPassGapSecs = qint64(12) * 3600;
+
+    // A batch is still draining on the paced background lane — never stack a
+    // second one on top of it (two reloadConversations() in quick succession
+    // would otherwise fire two full batches; see the duplicated sweep logs).
+    if (_activitySweepInFlight > 0)
         return;
 
-    const auto targets = dmSweepTargets();
-    if (targets.empty())
+    const qint64 nowSecs = QDateTime::currentSecsSinceEpoch();
+    const qint64 nowMs   = QDateTime::currentMSecsSinceEpoch();
+
+    int cursor = _cache->loadActivitySweepCursor();
+    // The 12 h throttle gates starting a FRESH pass only. A pass already under
+    // way (cursor > 0) keeps advancing on the much shorter batch cadence,
+    // otherwise a capped batch plus a 12 h gap would take a year to cover a
+    // large workspace and the tail would never be swept at all.
+    if (cursor == 0 && nowSecs - _cache->loadActivitySweepAt() < kFullPassGapSecs)
+        return;
+    if (nowMs - _lastActivityBatchMs < kActivityBatchGapMs)
         return;
 
-    qDebug() << "[ActivitySweep] fetching conversations.info for" << targets.size() << "DMs/MPDMs";
-    auto remaining = std::make_shared<int>(int(targets.size()));
-    for (const auto &id : targets) {
+    const auto all = dmSweepTargets();
+    if (all.empty()) {
+        _cache->saveActivitySweepCursor(0);
+        return;
+    }
+    if (cursor >= static_cast<int>(all.size()))
+        cursor = 0; // list shrank since the cursor was written
+
+    const int batchSize = std::max(1, net::SyncConfig::instance().maxSweepTargets());
+    const int end       = std::min(cursor + batchSize, static_cast<int>(all.size()));
+    const std::vector<ConversationId> batch(all.begin() + cursor, all.begin() + end);
+    const bool                        lastBatch = (end >= static_cast<int>(all.size()));
+
+    _lastActivityBatchMs   = nowMs;
+    _activitySweepInFlight = int(batch.size());
+
+    qDebug() << "[ActivitySweep] conversations.info batch" << cursor << "-" << end << "of"
+             << all.size() << "DMs/MPDMs";
+    auto remaining = std::make_shared<int>(int(batch.size()));
+    for (const auto &id : batch) {
         _backend->loadConversationInfo(id, /*background=*/true) |
             rpl::on_next_done(
                 [this, id](Conversation info) {
@@ -1632,14 +1740,23 @@ void Session::enrichDmActivity() {
                     }
                     _conversations = std::move(convs);
                 },
-                [this, now, remaining] {
-                    // Fires on success and error alike — the sweep is complete
-                    // when every call has settled.
+                [this, nowSecs, end, lastBatch, remaining] {
+                    // Fires on success and error alike — the batch is complete
+                    // when every call in it has settled.
                     if (--*remaining > 0)
                         return;
+                    _activitySweepInFlight = 0;
                     _cache->saveConversations(_conversations.current());
-                    _cache->saveActivitySweepAt(now);
-                    qDebug() << "[ActivitySweep] done";
+                    if (lastBatch) {
+                        // Full pass done: reset the cursor and arm the 12 h gap.
+                        _cache->saveActivitySweepCursor(0);
+                        _cache->saveActivitySweepAt(nowSecs);
+                        qDebug() << "[ActivitySweep] full pass complete";
+                    } else {
+                        // Persist progress so a restart resumes here instead of
+                        // re-sweeping everything from the top.
+                        _cache->saveActivitySweepCursor(end);
+                    }
                 },
                 _lifetime
             );
@@ -1744,14 +1861,25 @@ void Session::fetchMissingDmUsers() {
     // load handler calls us again once the full list has arrived.
     if (_users.current().empty())
         return;
+    const int limit = net::SyncConfig::instance().missingDmUsersLimit();
+    int       count = 0;
     for (const auto &c : _conversations.current()) {
-        if (c.kind == ConvKind::Im && c.dmUser)
+        if (count >= limit)
+            break;
+        if (c.kind == ConvKind::Im && c.dmUser) {
             fetchUserIfNeeded(*c.dmUser);
+            ++count;
+        }
         // Multi-person DMs name themselves from their members; resolve any that
         // users.list omitted so the title shows names, not raw ids.
-        if (c.kind == ConvKind::Mpim)
-            for (const auto &uid : c.members)
+        if (c.kind == ConvKind::Mpim) {
+            for (const auto &uid : c.members) {
+                if (count >= limit)
+                    break;
                 fetchUserIfNeeded(uid);
+                ++count;
+            }
+        }
     }
 }
 
@@ -2442,6 +2570,10 @@ void Session::requestPresence(UserId userId, bool background) {
 }
 
 void Session::pollDmPresence() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     if (!_backend->capabilities().presence)
         return;
     // Single-peer DMs only: MPDMs draw no per-member dot, and requestPresence
@@ -2460,9 +2592,12 @@ void Session::pollDmPresence() {
         return a.first > b.first; // most recently active first
     });
     const int n   = static_cast<int>(dms.size());
-    const int hot = std::min(kPresenceHotCount, n);
+    const int hot = std::min(net::SyncConfig::instance().presenceHotCount(), n);
     for (int i = 0; i < hot; ++i)
         requestPresence(dms[i].second, /*background=*/true);
+    // In conservative mode, skip rotating the long tail: only check the hot DMs.
+    if (net::SyncConfig::instance().isConservative())
+        return;
     // Rotate a window over everyone below the hot set so the long tail is
     // re-checked too, a few per round.
     const int rest = n - hot;
@@ -2486,6 +2621,10 @@ SelfPresence Session::currentSelfPresence() const {
 }
 
 void Session::refreshSelfPresence() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     _backend->loadSelfPresence() |
         rpl::on_next(
             [this](SelfPresence sp) {
@@ -2998,6 +3137,10 @@ void Session::emitReminderDue(const QString &key) {
 }
 
 void Session::refreshStarred() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     _lastStarredRefreshMs = QDateTime::currentMSecsSinceEpoch();
     _backend->loadStarredConversations() |
         rpl::on_next(
@@ -3036,6 +3179,10 @@ void Session::refreshStarred() {
 }
 
 void Session::refreshReminders() {
+    // Minimal sync mode: background API work is off entirely (see SyncMode).
+    if (net::SyncConfig::instance().isMinimal())
+        return;
+
     _lastRemindersRefreshMs = QDateTime::currentMSecsSinceEpoch();
     _backend->loadMessageReminders() |
         rpl::on_next(

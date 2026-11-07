@@ -430,6 +430,7 @@ public:
     // kRosterReloadGapMs cadence, so the reload's activity diff (and the merge it
     // feeds) can be exercised twice in a row.
     void reloadConversationsForTest() { reloadConversations(/*refreshEmoji=*/false); }
+    const std::vector<Conversation> &conversationsForTest() const { return _conversations.current(); }
 
     // Test hook: run one unread-counts tick synchronously, bypassing the cadence
     // throttle (normally paced by kCountsPollGapMs inside checkRealtimeHealth).
@@ -828,6 +829,18 @@ private:
     // sweep while one is in flight would just re-enqueue the same DMs. Skip until
     // the outstanding batch finishes so the paced lane can't accumulate duplicates.
     int                        _unreadResyncInFlight  = 0;
+    // Activity sweep (enrichDmActivity) batching state. The sweep walks the
+    // DM/MPDM list in small batches from a cursor persisted in the cache, so a
+    // workspace with hundreds of DMs trickles through them over many minutes
+    // instead of enqueueing one burst of conversations.info calls — the shape
+    // Slack's anomaly detector flags as unexpected_api_call_volume. In-flight
+    // count guards against a second batch stacking on an unfinished one (two
+    // reloadConversations() in quick succession would otherwise double up).
+    int                        _activitySweepInFlight = 0;
+    qint64                     _lastActivityBatchMs   = 0;
+    // Gap between batches WITHIN one pass; the 12 h throttle applies only to
+    // starting a fresh pass (see enrichDmActivity).
+    static constexpr qint64    kActivityBatchGapMs    = 60'000;
     // Throttle the safety poll's forced socket re-establish so a persistently
     // sick socket can't drive a reconnect → reload storm.
     static constexpr qint64    kReestablishGapMs      = 60'000;

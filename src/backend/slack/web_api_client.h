@@ -59,14 +59,29 @@ public:
 
     // Paginated load: fires onPage for each page's array items, then onDone.
     // Follows next_cursor until exhausted.
+    // Walks a cursor-paginated method, handing each page to onPage.
+    //
+    // maxPages BOUNDS THE WALK, and that bound is a safety mechanism, not a
+    // nicety. Chasing next_cursor to exhaustion is fine on an ordinary
+    // workspace but catastrophic on Enterprise Grid, where users.list
+    // enumerates the entire company directory: Slack reads the resulting burst
+    // as scraping and revokes the session outright — measured dying on the 4th
+    // page, after 3000 records (scripts/slack-session-probe.py, phase 5).
+    // Stopping early is not a failure: onDone still fires with whatever arrived,
+    // and unresolved users are filled in on demand via users.info.
     void paginate(
         const QString                  &method,
         const QString                  &arrayKey,
         QUrlQuery                       params,
         std::function<void(QJsonArray)> onPage,
         std::function<void()>           onDone,
-        OnError                         onError = {}
+        OnError                         onError = {},
+        int                             maxPages = kDefaultMaxPages
     );
+
+    // Generous blanket cap: enough for any realistic single-workspace listing,
+    // low enough that a runaway cursor can't turn into an abuse signal.
+    static constexpr int kDefaultMaxPages = 20;
 
     // POST a Slack API method with a JSON body (e.g. files.completeUploadExternal).
     // Goes through the rate-limit queue; treated as non-idempotent.

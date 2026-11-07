@@ -17,6 +17,8 @@
 #include <functional>
 
 class QNetworkAccessManager;
+class QNetworkReply;
+class QJsonArray;
 
 namespace slack::session {
 
@@ -43,6 +45,17 @@ private:
     // onToken(token, reason): token empty ⇒ reason says why (see run()).
     void deriveToken(const TeamSession &cand, std::function<void(QString, QString)> onToken);
     void validate(const TeamSession &cand, const QString &token);
+    // Enterprise Grid: turn an org-scoped (E…) session into the member
+    // workspaces (T…), appending them to the queue. Storing the org itself gets
+    // the session revoked — see the note at the call site. client.userBoot is
+    // tried first (auth.teams.list is refused for session tokens with
+    // not_allowed_token_type), auth.teams.list second.
+    void           expandOrg(const QString &orgToken);
+    void           expandOrgViaTeamsList(const QString &orgToken);
+    // Appends {id,name,url|domain,icon} entries to the queue; returns how many.
+    int            queueWorkspaces(const QJsonArray &entries);
+    // POST `method` with an empty form body and the session token attached.
+    QNetworkReply *postApi(const QString &method, const QString &token);
     void fetchIconThenCommit(slack::Credentials creds);
     void commit(slack::Credentials creds);
 
@@ -51,6 +64,8 @@ private:
     QString                   _cookie;
     QList<TeamSession>        _queue;
     int                       _idx = 0;
+    // Guards the org→workspaces expansion so the expanded teams can't re-expand.
+    bool                      _expandedOrg = false;
     QList<slack::Credentials> _valid;
     QString                   _lastError;
 };

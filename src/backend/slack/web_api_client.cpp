@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026  Vladimir Osipov
+#include <algorithm>
 #include "web_api_client.h"
 
 #include <QHttpMultiPart>
@@ -120,7 +121,8 @@ void WebApiClient::paginate(
     QUrlQuery                       params,
     std::function<void(QJsonArray)> onPage,
     std::function<void()>           onDone,
-    OnError                         onError
+    OnError                         onError,
+    int                             maxPages
 ) {
     if (!params.hasQueryItem("limit"))
         params.addQueryItem("limit", "200");
@@ -133,10 +135,19 @@ void WebApiClient::paginate(
         std::function<void(QJsonArray)> onPage;
         std::function<void()>           onDone;
         OnError                         onError;
+        int                             maxPages = kDefaultMaxPages;
+        int                             page     = 0;
         std::function<void(QUrlQuery)>  loadPage;
     };
     auto ctx = std::make_shared<Ctx>(Ctx{
-        this, method, arrayKey, params, std::move(onPage), std::move(onDone), std::move(onError)
+        this,
+        method,
+        arrayKey,
+        params,
+        std::move(onPage),
+        std::move(onDone),
+        std::move(onError),
+        std::max(1, maxPages)
     });
 
     // loadPage is a member of Ctx but captures only a *weak_ptr* to it, so it
@@ -165,14 +176,24 @@ void WebApiClient::paginate(
 
                 auto cursor =
                     resp.value("response_metadata").toObject().value("next_cursor").toString();
-                if (!cursor.isEmpty()) {
-                    auto next = ctx->params;
-                    next.removeQueryItem("cursor");
-                    next.addQueryItem("cursor", cursor);
-                    ctx->loadPage(next);
-                } else {
+                if (cursor.isEmpty()) {
                     ctx->onDone();
+                    return;
                 }
+                if (++ctx->page >= ctx->maxPages) {
+                    // Deliberate early stop — see the note on paginate(). The
+                    // caller keeps every page fetched so far; going further is
+                    // what gets the session revoked on a large org.
+                    qWarning() << "WebApiClient:" << ctx->method << "stopped after"
+                               << ctx->page << "pages (cap reached); remaining records are"
+                               << "resolved on demand";
+                    ctx->onDone();
+                    return;
+                }
+                auto next = ctx->params;
+                next.removeQueryItem("cursor");
+                next.addQueryItem("cursor", cursor);
+                ctx->loadPage(next);
             },
             [ctx](QString err) {
                 if (ctx->onError)

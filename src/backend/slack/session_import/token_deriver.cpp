@@ -10,6 +10,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
+#include <QJsonArray>
 #include <QUrl>
 
 namespace slack::session {
@@ -52,6 +53,7 @@ void TokenDeriver::run(const QString &cookie, const QList<TeamSession> &candidat
     _queue  = candidates;
     _idx    = 0;
     _valid.clear();
+    _expandedOrg = false;
     _lastError.clear();
 
     // Seed the `d` cookie for all *.slack.com so it rides every request and every
@@ -145,7 +147,124 @@ void TokenDeriver::validate(const TeamSession &cand, const QString &token) {
         // Store the workspace URL so the token can be re-derived from a future
         // fresh cookie. auth.test's `url` is authoritative; fall back to the input.
         creds.workspaceUrl = obj.value(QStringLiteral("url")).toString(cand.workspaceUrl);
+
+        // On Enterprise Grid the ORG (E…) is not a workspace. A session minted at
+        // the org host validates fine here, but every workspace-scoped call made
+        // with it fails — conversations.list and stars.list answer
+        // enterprise_is_restricted, users.list answers invalid_auth — and Slack
+        // responds to that stream of rejected calls by revoking the whole
+        // session, logging the user out of every device. Storing the org as a
+        // workspace is therefore not merely useless, it is actively harmful.
+        // Detect it and expand into the member workspaces (T…) instead.
+        const QString enterpriseId = obj.value(QStringLiteral("enterprise_id")).toString();
+        const bool    orgScoped =
+            !enterpriseId.isEmpty() &&
+            (creds.teamId == enterpriseId ||
+             QUrl(creds.workspaceUrl).host().endsWith(QLatin1String(".enterprise.slack.com")));
+        if (orgScoped && !_expandedOrg) {
+            _expandedOrg = true; // once only — the expanded teams must not re-expand
+            qInfo().noquote() << "[TokenDeriver] org-scoped session detected (enterprise"
+                              << enterpriseId
+                              << "); enumerating member workspaces instead of storing the org";
+            expandOrg(token);
+            return;
+        }
         fetchIconThenCommit(std::move(creds));
+    });
+}
+
+QNetworkReply *TokenDeriver::postApi(const QString &method, const QString &token) {
+    // POST with an empty form body — the shape Slack's own client uses for these
+    // endpoints, and the one verified to be accepted for session tokens. The `d`
+    // cookie rides along from the jar seeded in run().
+    QNetworkRequest req{QUrl(_apiBase + method)};
+    req.setRawHeader("Authorization", QByteArray("Bearer ") + token.toUtf8());
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    req.setTransferTimeout(kTransferTimeoutMs);
+    return _nam->post(req, QByteArray());
+}
+
+int TokenDeriver::queueWorkspaces(const QJsonArray &entries) {
+    int added = 0;
+    for (const auto &v : entries) {
+        const QJsonObject t      = v.toObject();
+        const QString     domain = t.value(QStringLiteral("domain")).toString();
+        const QString     id     = t.value(QStringLiteral("id")).toString();
+        if (domain.isEmpty() && id.isEmpty())
+            continue;
+        TeamSession s;
+        s.teamId   = id;
+        s.teamName = t.value(QStringLiteral("name")).toString();
+        // Always the workspace host, never the org host: the per-team boot page
+        // is what carries a workspace-scoped api_token.
+        s.workspaceUrl = t.value(QStringLiteral("url")).toString();
+        if (s.workspaceUrl.isEmpty() && !domain.isEmpty())
+            s.workspaceUrl = QStringLiteral("https://") + domain + QStringLiteral(".slack.com");
+        if (s.workspaceUrl.isEmpty())
+            continue;
+        const QJsonObject ico = t.value(QStringLiteral("icon")).toObject();
+        s.iconUrl             = ico.value(QStringLiteral("image_88"))
+                        .toString(ico.value(QStringLiteral("image_68")).toString());
+        _queue.append(s); // picked up by processNext
+        ++added;
+    }
+    return added;
+}
+
+void TokenDeriver::expandOrg(const QString &orgToken) {
+    // Enumerate the workspaces this session can actually use.
+    //
+    // auth.teams.list would be the obvious call, but Slack refuses it for a
+    // session (xoxc) token with `not_allowed_token_type`. client.userBoot — the
+    // endpoint the web client itself boots with — is served to session tokens
+    // and carries a `workspaces` array of {id, name, url, domain}, which is
+    // exactly what we need. Try it first and keep auth.teams.list as a fallback
+    // in case an org serves one but not the other.
+    auto *reply = postApi(QStringLiteral("client.userBoot"), orgToken);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, orgToken]() {
+        reply->deleteLater();
+        const auto obj   = QJsonDocument::fromJson(reply->readAll()).object();
+        const int  added = obj.value(QStringLiteral("ok")).toBool()
+                               ? queueWorkspaces(obj.value(QStringLiteral("workspaces")).toArray())
+                               : 0;
+        if (added > 0) {
+            qInfo().noquote() << "[TokenDeriver] org expanded into" << added
+                              << "workspace(s) via client.userBoot";
+            ++_idx; // skip the org candidate itself
+            processNext();
+            return;
+        }
+        const QString why = obj.value(QStringLiteral("error")).toString();
+        qInfo().noquote() << "[TokenDeriver] client.userBoot gave no workspaces"
+                          << (why.isEmpty() ? QString() : QStringLiteral("(") + why + u')')
+                          << "— trying auth.teams.list";
+        expandOrgViaTeamsList(orgToken);
+    });
+}
+
+void TokenDeriver::expandOrgViaTeamsList(const QString &orgToken) {
+    auto *reply = postApi(QStringLiteral("auth.teams.list"), orgToken);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        const auto obj   = QJsonDocument::fromJson(reply->readAll()).object();
+        const int  added = obj.value(QStringLiteral("ok")).toBool()
+                               ? queueWorkspaces(obj.value(QStringLiteral("teams")).toArray())
+                               : 0;
+        if (added == 0) {
+            // Nothing enumerable. Report it rather than silently storing the org
+            // and letting it burn the session again.
+            _lastError = QStringLiteral("enterprise_no_workspaces");
+            qWarning().noquote()
+                << "[TokenDeriver] could not enumerate org workspaces ("
+                << obj.value(QStringLiteral("error")).toString(QStringLiteral("no teams"))
+                << ") — the org URL cannot be used directly; sign in with the browser flow or "
+                   "enter a workspace's own https://<workspace>.slack.com address";
+        } else {
+            qInfo().noquote() << "[TokenDeriver] org expanded into" << added
+                              << "workspace(s) via auth.teams.list";
+        }
+        ++_idx; // skip the org candidate itself
+        processNext();
     });
 }
 

@@ -21,6 +21,7 @@
 #include "backend/slack/slack_auth.h"
 #include "backend/slack/web_api_client.h"
 #include "fake_http_server.h"
+#include "network/sync_config.h"
 #include "rpl/producer.h"
 
 using namespace slack;
@@ -206,5 +207,67 @@ TEST_CASE("an ordinary failure completes without wiping the roster", "[grid]") {
     load.run(backend);
     REQUIRE(waitFor([&] { return load.done; }));
     CHECK(server.requestPaths.size() == 1); // no Grid fallback for an unrelated error
+    CHECK_FALSE(load.got.has_value());
+}
+
+// =============================================================================
+// minimal sync mode: membership-only roster
+// =============================================================================
+// conversations.list lists every public channel in the workspace. On a real Grid
+// workspace one page held 618 channels the user wasn't in and zero DMs, so the
+// sidebar had nothing openable and nothing was ever polled. Minimal mode lists
+// memberships via users.conversations, in two single-page requests, and never
+// follows a cursor.
+
+TEST_CASE("minimal mode lists only member conversations, without paging", "[grid][minimal]") {
+    auto &sync = net::SyncConfig::instance();
+    sync.setSyncMode(net::SyncMode::Minimal);
+
+    FakeHttpServer server;
+    // Both pages advertise more data: minimal mode must not chase either cursor.
+    server.enqueue(R"({"ok":true,"channels":[{"id":"C1","name":"eng"},)"
+                   R"({"id":"D1","is_im":true,"user":"U9"}],)"
+                   R"("response_metadata":{"next_cursor":"more"}})");
+    server.enqueue(R"({"ok":true,"channels":[{"id":"G1","is_mpim":true,"name":"mpdm-a--b"}],)"
+                   R"("response_metadata":{"next_cursor":"more"}})");
+
+    PublicBackend backend{sessionCreds(""), kTestApp};
+    backend.setApiBaseUrlForTests(server.baseUrl());
+    ConvLoad load;
+    load.run(backend);
+    // Minimal mode spaces requests >= 3 s apart, so two need more than the
+    // default 3 s wait.
+    REQUIRE(waitFor([&] { return load.done; }, 10000));
+    sync.setSyncMode(net::SyncMode::Normal);
+
+    REQUIRE(load.got.has_value());
+    CHECK(load.got->size() == 3);
+    for (const auto &c : *load.got)
+        CHECK(c.isMember);
+
+    // Exactly the two membership requests: no conversations.list, no cursors.
+    REQUIRE(server.requestCount == 2);
+    for (const auto &target : server.requestTargets) {
+        CHECK(target.startsWith("/users.conversations"));
+        CHECK_FALSE(target.contains("cursor="));
+    }
+}
+
+TEST_CASE("minimal mode keeps the roster when one half fails", "[grid][minimal]") {
+    auto &sync = net::SyncConfig::instance();
+    sync.setSyncMode(net::SyncMode::Minimal);
+
+    FakeHttpServer server;
+    server.enqueue(R"({"ok":true,"channels":[{"id":"C1","name":"eng"}]})");
+    server.enqueue(R"({"ok":false,"error":"internal_error_permanent"})");
+
+    PublicBackend backend{sessionCreds(""), kTestApp};
+    backend.setApiBaseUrlForTests(server.baseUrl());
+    ConvLoad load;
+    load.run(backend);
+    REQUIRE(waitFor([&] { return load.done; }, 8000));
+    sync.setSyncMode(net::SyncMode::Normal);
+
+    // No value = "load failed, keep the current roster" — never half a roster.
     CHECK_FALSE(load.got.has_value());
 }

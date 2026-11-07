@@ -7,12 +7,16 @@
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QQueue>
+#include <QSet>
 #include <QUrlQuery>
 #include <functional>
+#include <memory>
 
 class QNetworkRequest;
 
 namespace net {
+
+class RateGovernor;
 
 // Protocol-agnostic queued HTTP client — the transport mechanics shared by any
 // HTTP-based backend (Slack today, Teams next). Holds NO API semantics: no base
@@ -48,6 +52,12 @@ public:
     enum class Priority { Normal, Background };
 
     explicit HttpQueue(QObject *parent = nullptr);
+    ~HttpQueue() override;
+
+    // Optional rate governor shared across multiple queues (e.g. within a workspace)
+    void setGovernor(std::shared_ptr<RateGovernor> governor);
+    [[nodiscard]] std::shared_ptr<RateGovernor> governor() const { return _governor; }
+    [[nodiscard]] bool hasWaitingNormalCall() const;
 
     void               setToken(const QString &token) { _token = token; }
     [[nodiscard]] bool hasToken() const { return !_token.isEmpty(); }
@@ -57,6 +67,23 @@ public:
     // required alongside an xoxc- token. Empty (the default) for OAuth workspaces,
     // where no cookie header is emitted at all.
     void setCookie(const QString &cookie) { _cookie = cookie; }
+
+    // User-Agent sent on every request. A session (xoxc) token is a browser
+    // credential, so presenting Qt's bare "Mozilla/5.0" against web-client-only
+    // endpoints is a giveaway that gets strict Enterprise orgs to revoke the
+    // session. Defaults to a current desktop Chrome string.
+    void setUserAgent(const QString &ua) { _userAgent = ua; }
+
+    // Hard transport-level allowlist of API methods. Empty (the default) allows
+    // everything. When set, any other method is refused locally — it never
+    // reaches the network — and fails with kBlockedByAllowlist. Used by minimal
+    // sync mode, where the goal is a guarantee about what goes on the wire, not
+    // a best effort spread across dozens of call sites.
+    static const QString kBlockedByAllowlist;
+    void setMethodAllowlist(const QSet<QString> &methods) { _allowlist = methods; }
+    [[nodiscard]] bool isAllowed(const QString &method) const {
+        return _allowlist.isEmpty() || _allowlist.contains(method);
+    }
 
     // The API base URL every queued method is appended to (tests override it).
     void setBaseUrl(const QString &url) { _baseUrl = url; }
@@ -161,8 +188,16 @@ private:
     QNetworkAccessManager *_nam;
     QString                _token;
     QString                _cookie; // Slack `d` session cookie (session auth); empty for OAuth
+    QSet<QString>          _allowlist;     // empty = every method allowed
+    QSet<QString>          _blockedLogged; // methods already reported as blocked
+    // Current desktop Chrome on Linux — the profile browser_login signs in with.
+    QString                _userAgent = QStringLiteral(
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    );
     QString                _baseUrl;
     QQueue<PendingCall>    _queue;
+    std::shared_ptr<RateGovernor> _governor;
     bool                   _inflight  = false;
     bool                   _throttled = false; // global pause: token refresh / transport backoff
     int                    _retryBaseDelayMs  = 1000;

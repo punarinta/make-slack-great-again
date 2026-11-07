@@ -227,6 +227,8 @@ target_link_libraries(test_notif_token PRIVATE Qt6::Gui)
 # network / factory tests so each lists it once.
 set(SLACK_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/rate_governor.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/web_api_client.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/public_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/json_mappers.cpp
@@ -235,6 +237,7 @@ set(SLACK_BACKEND_SRCS
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_events.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/shared_realtime.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/backend/slack/session_import/token_deriver.cpp
 )
 
 # Microsoft Teams backend below the seam (excludes oauth_flow.cpp — added per-test
@@ -356,6 +359,7 @@ add_msga_test(test_fake_backend
 add_msga_qt_test(test_session
     test_session.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -378,6 +382,7 @@ add_msga_widget_test(test_message_render
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -420,6 +425,7 @@ add_msga_widget_test(test_canvas_page
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -440,6 +446,7 @@ add_msga_widget_test(test_canvas_emoji
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/relative_time.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/base_stubs.cpp
@@ -522,6 +529,7 @@ add_msga_widget_test(test_search_widget
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/popup_tooltip/popup_tooltip.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -581,10 +589,22 @@ add_msga_qt_test(test_send_retry
 target_link_libraries(test_send_retry PRIVATE Qt6::Network Qt6::WebSockets)
 set_target_properties(test_send_retry PROPERTIES AUTOMOC ON)
 
+# RateGovernor & SyncConfig: pacing, inflight concurrency, adaptive cadences.
+add_msga_qt_test(test_rate_governor
+    test_rate_governor.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/rate_governor.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
+)
+target_link_libraries(test_rate_governor PRIVATE Qt6::Network)
+set_target_properties(test_rate_governor PROPERTIES AUTOMOC ON)
+
 # Session-token (xoxc/xoxd) sign-in: blob round-trip + Cookie-header emission.
 add_msga_qt_test(test_session_auth
     test_session_auth.cpp
     ${CMAKE_SOURCE_DIR}/src/network/http_queue.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/rate_governor.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/web_api_client.cpp
     ${CMAKE_SOURCE_DIR}/src/backend/slack/slack_auth.cpp
     ${CMAKE_SOURCE_DIR}/src/auth/token_store.cpp
@@ -705,6 +725,7 @@ add_msga_widget_test(test_composer
     ${CMAKE_SOURCE_DIR}/src/ui/styled_line_edit/styled_line_edit.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/icon_button/icon_button.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -743,6 +764,7 @@ add_msga_widget_test(test_conv_list_widget
     ${CMAKE_SOURCE_DIR}/src/ui/theme.cpp
     ${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -794,6 +816,7 @@ add_msga_widget_test(test_thread_panel
     ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp
@@ -850,6 +873,7 @@ add_msga_widget_test(test_message_list
     ${CMAKE_SOURCE_DIR}/src/llm/llm_provider.cpp
     ${CMAKE_SOURCE_DIR}/src/llm/llm_token_store.cpp
     ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/sync_config.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/workspace_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/cache/cache_evictor.cpp
     ${CMAKE_SOURCE_DIR}/src/text/mrkdwn_parser.cpp

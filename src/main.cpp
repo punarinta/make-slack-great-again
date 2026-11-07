@@ -7,12 +7,16 @@
 #include "ui/imap_add_account/imap_add_account_dialog.h"
 #include "app/crash_handler.h"
 #include "app/single_instance.h"
+#include "auth/token_store.h"
+#include "network/sync_config.h"
 #include "util/desktop_integration.h"
 #include "util/time_format.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QFont>
 #include <QHostInfo>
@@ -171,6 +175,23 @@ int main(int argc, char *argv[]) {
             s.setValue("notifications/defaultMigrated", true);
         }
     }
+    // Drop any Enterprise Grid ORG (E…) entry left behind by an older build.
+    // The org is not a workspace: every workspace-scoped call made with an
+    // org-scoped session is rejected, and Slack answers that stream of
+    // rejections by revoking the session — which also kills the sibling
+    // workspaces sharing the same `d` cookie. Import no longer creates these
+    // (TokenDeriver expands an org into its member workspaces), but an install
+    // that already has one would keep poisoning every session until it is gone.
+    {
+        for (const auto &key : TokenStore::workspaceKeys()) {
+            if (key.service != Service::Slack || !key.id.startsWith(QLatin1Char('E')))
+                continue;
+            qWarning().noquote()
+                << "[msga] removing stale Enterprise org workspace" << key.id
+                << "— the org is not a workspace and its failed calls revoke the session";
+            TokenStore::removeWorkspace(key);
+        }
+    }
     // A crash now prints a stack trace (stderr + crash.log in AppDataLocation)
     // instead of a bare "Segmentation fault", then still core-dumps as before.
     CrashHandler::install();
@@ -190,6 +211,43 @@ int main(int argc, char *argv[]) {
 #if defined(Q_OS_LINUX)
     app.setFont(detectSystemFont());
 #endif
+
+    // Parse command line arguments for sync mode (--slow-sync / --conservative-sync)
+    for (int i = 1; i < argc; ++i) {
+        const QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg == "--help" || arg == "-h") {
+            fprintf(
+                stdout,
+                "Usage: msga [options] [msga://...]\n\n"
+                "Options:\n"
+                "  --minimal-sync         Smallest possible API footprint: only the open chat\n"
+                "                         is polled; roster, presence, unread counts, stars,\n"
+                "                         emoji and the threads feed are off. For workspaces\n"
+                "                         that revoke sessions on API activity.\n"
+                "  --slow-sync, --conservative-sync, -s\n"
+                "                         Paced loading and conservative sync mode to avoid\n"
+                "                         Slack API rate limits and unexpected call volume.\n"
+                "  --no-slow-sync, --fast-sync\n"
+                "                         Disable slow sync mode (use standard polling).\n"
+                "  --sync-mode=<mode>     minimal | conservative (slow) | normal (fast).\n"
+                "  --help, -h             Show this help message.\n"
+            );
+            return 0;
+        }
+    }
+    net::SyncConfig::instance().parseArgs(argc, argv);
+
+    // Startup banner. The stamp is the RUNNING binary's own mtime, not a
+    // compile-time macro: __DATE__/__TIME__ only move when this translation unit
+    // is recompiled, so a rebuild of any other file would leave it lying. A log
+    // can never again be ambiguous about whether it came from a stale binary —
+    // the exact symptom that sent two rounds of Slack rate-limit debugging
+    // chasing a fix that was not actually running.
+    qInfo().noquote() << "[msga] binary"
+                      << QFileInfo(QCoreApplication::applicationFilePath())
+                             .lastModified()
+                             .toString(Qt::ISODate)
+                      << "| sync mode:" << net::SyncConfig::instance().modeName();
 
     // Collect any msga:// URL argument (delivered by the OS after OAuth redirect).
     QString urlArg;
@@ -303,6 +361,7 @@ int main(int argc, char *argv[]) {
         &QApplication::applicationStateChanged,
         &window,
         [&window](Qt::ApplicationState state) {
+            net::SyncConfig::instance().setAppActive(state == Qt::ApplicationActive);
             if (state == Qt::ApplicationActive && !window.isVisible()) {
                 window.show();
                 window.raise();
