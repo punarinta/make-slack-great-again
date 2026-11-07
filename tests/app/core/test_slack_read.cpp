@@ -1029,6 +1029,28 @@ TEST("slack read: the VIP list comes with the connect's users.prefs.get") {
     CHECK(Log().count("users.prefs.get") == 1);
 }
 
+TEST("slack read: switching to Slack's Names while the connect asks waits for its answer") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"display_real_names_override": -1},
+                                 "__delay": 3.0}})");
+    e.be->setNamesMode(model::Backend::NamesMode::Full);
+    REQUIRE(e.connect());
+    // Once the connect has settled, with users.prefs.get still on its way.
+    pumpUntil([] { return false; }, 1000);
+    REQUIRE(Log().count("users.prefs.get") == 1);
+    CHECK(e.store.realNames());
+    e.be->setNamesMode(model::Backend::NamesMode::Service);
+    // That answer, read in the mode it finds, decides.
+    REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 5000));
+    CHECK_STR(e.user("UMEG").displayName, "Meg");
+    // Past the paced lane's spacing: a second ask would have gone out.
+    pumpUntil([] { return false; }, 2500);
+    CHECK(Log().count("users.prefs.get") == 1);
+}
+
 TEST("slack read: switching Names away and back while Slack is asked asks once") {
     if (!haveServer())
         return;

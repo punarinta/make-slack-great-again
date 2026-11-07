@@ -240,6 +240,7 @@ struct SlackBackend::Read {
     int       savedNames  = mapjson::kNoPref;
     bool      bootDefault = false;
     bool      namesAsked  = false; // loadNames ran
+    bool      prefsBusy   = false; // loadNames' users.prefs.get not answered yet
     void      loadNames();
     void      bootNames(const json::Value &boot); // a client.userBoot answer
     void      applyNames();
@@ -1029,27 +1030,31 @@ void SlackBackend::setNamesMode(NamesMode mode) {
     Read &r     = *_read;
     r.namesMode = mode;
     r.applyNames();
-    // Switched to Slack's own while connected: ask it now.
-    if (mode == NamesMode::Service && !r.namesAsked && r.started)
+    // Switched to Slack's own while connected: ask it now, unless the
+    // connect's ask is still on its way (its answer reads the mode then).
+    if (mode == NamesMode::Service && !r.namesAsked && r.started && !r.prefsBusy)
         r.loadNames();
 }
 
 // Names and VIP share one users.prefs.get call, once per connect:
 // - VIP applies unconditionally -- nothing else fetches vip_users.
 // - Names only applies in Service mode (then team.prefs.get too, unless an
-//   override or client.userBoot's default already decided it). Marked asked
-//   before the call, so switching to Service meanwhile asks no second time.
+//   override or client.userBoot's default already decided it), the mode
+//   at the answer: switching to Service while it is on its way asks no
+//   second time (setNamesMode waits for it).
 // Background lane: after what the connect itself waits on.
 void SlackBackend::Read::loadNames() {
     if (!session)
         return;
     if (namesMode == NamesMode::Service)
         namesAsked = true;
-    lastVips = now();
+    lastVips  = now();
+    prefsBusy = true;
     call(
         "users.prefs.get",
         {},
         [this](const json::Document &doc, const std::string &err) {
+            prefsBusy = false;
             if (!err.empty()) {
                 LOG_WARN("slack", "users.prefs.get: %s", err.c_str());
                 return;

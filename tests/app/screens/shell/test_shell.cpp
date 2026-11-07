@@ -886,6 +886,10 @@ TEST("sections: an unread VIP DM sits in its own VIP unreads section, above ever
     pump();
     CHECK_STR(titles(sb), "Activity|Threads|VIP unreads|Starred|Channels|Direct messages");
     CHECK(sb.order()[0] == sam);
+    // Its header folds nothing away: it has no chevron to show it would.
+    REQUIRE(sb.toggleSection("VIP unreads"));
+    pump();
+    CHECK(sb.rowState(sam).visible);
     // Reading it drops the section again.
     h.backend.markRead(sam, h.store.conversation(sam).latest);
     pump();

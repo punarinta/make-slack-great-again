@@ -261,7 +261,7 @@ public:
     SectionHeader(Sidebar &sb, Sidebar::Kind k, Icon i, std::string text)
         : sidebar(sb), kind(k), icon(i), title(text) {
         setLook({C::None, C::SidebarHover, C::SidebarHover, C::None, 0}); // full width
-        setRole(Role::Button);
+        setRole(k == Sidebar::Vip ? Role::Text : Role::Button); // VIP unreads takes no click
         // VIP's "VIP" pill is a real row child, not painted in the icon's
         // padding like every other kind's icon -- it needs more room than
         // that padding gives, so it starts where the icon would instead.
@@ -1122,10 +1122,13 @@ void Sidebar::rebuild() {
         auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
         h->collapsed = kind != Custom && _collapsed[kind];
         _sections.push_back(h);
-        h->onClick = [this, h] {
-            h->collapsed = !h->collapsed;
-            applyCollapse(h);
-        };
+        // VIP unreads never collapses: a lift for unreads, not a section to
+        // fold away (its header shows the pill, no chevron to say so).
+        if (kind != Vip)
+            h->onClick = [this, h] {
+                h->collapsed = !h->collapsed;
+                applyCollapse(h);
+            };
         h->sectionId = id;
         for (size_t i : sortedOrder(sortOf(h), rows)) {
             const ConvRef c   = rows[i];
