@@ -13,9 +13,10 @@
 //   elsewhere the settings store of earlier versions (msga.conf / the
 //             registry), their fallback: no OS keychain backend there.
 //
-//   tests     (base::testProcess(), marked by the test harness) the settings
-//             store on every OS — a temporary INI file there — never a
-//             keychain: a test process that reaches the keychain aborts.
+//   tests     (base::testProcess(), marked by the test harness) and demo
+//             runs (base::isolatedStorage()): the settings store on every
+//             OS — a temporary INI file there — never a keychain: such a
+//             process that reaches the keychain aborts.
 //
 // Keys are opaque, caller-owned ("workspace/slack:T0123/auth") and the old
 // app's own. Values are UTF-8. Calls block (a keychain may prompt); make them

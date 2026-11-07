@@ -719,9 +719,10 @@ bool nativeInTests = false;
 namespace {
 // Tests keep to the INI file under their temporary XDG_CONFIG_HOME: the
 // native store is the user's (CFPreferences, the registry), shared by every
-// test process at once and outliving them.
+// test process at once and outliving them. So does a demo run
+// (base::isolatedStorage()), under its throwaway XDG_CONFIG_HOME.
 bool nativeStore() {
-    return detail::nativeInTests || !base::testProcess();
+    return detail::nativeInTests || !base::isolatedStorage();
 }
 } // namespace
 #endif

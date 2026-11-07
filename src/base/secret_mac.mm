@@ -51,9 +51,10 @@ using base::cfString;
 // place for test items. Their credentials go where Linux and Windows keep
 // them, the settings store of earlier versions, which in tests is a temporary INI file
 // (old_settings.h). Only test_secret.cpp's throwaway keychain file
-// (detail::testKeychain) is a real one.
+// (detail::testKeychain) is a real one. A demo run (base::isolatedStorage())
+// keeps to that INI file too, under its throwaway XDG_CONFIG_HOME.
 bool testStore() {
-    return !detail::testKeychain && base::testProcess();
+    return !detail::testKeychain && base::isolatedStorage();
 }
 
 // msga's own items, and earlier versions' (the top of this file). Tests' items in
@@ -65,7 +66,7 @@ enum class Service { Own, Old };
 // testStore() stops, loudly, before the keychain can prompt.
 CFMutableDictionaryRef itemQuery(Service which, std::string_view key) {
     if (testStore()) {
-        std::fprintf(stderr, "secret: a test reached the user's keychain; aborting\n");
+        std::fprintf(stderr, "secret: an isolated process reached the user's keychain; aborting\n");
         std::abort();
     }
     CFMutableDictionaryRef q = CFDictionaryCreateMutable(

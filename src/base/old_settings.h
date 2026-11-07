@@ -19,10 +19,11 @@
 //
 // A test process (base::testProcess(), which the test harness marks) uses
 // the INI file on every OS, under the XDG_CONFIG_HOME the harness points at
-// a temporary directory: no test reaches CFPreferences or the registry. Only
-// the native backends' own tests do (detail::nativeInTests), in the domain
-// "com.msga-tests.<app>" / key "Software\msga-tests\<app>", and remove
-// what they wrote.
+// a temporary directory: no test reaches CFPreferences or the registry. A
+// demo run (base::isolatedStorage()) does the same under its own throwaway
+// XDG_CONFIG_HOME. Only the native backends' own tests do
+// (detail::nativeInTests), in the domain "com.msga-tests.<app>" / key
+// "Software\msga-tests\<app>", and remove what they wrote.
 #pragma once
 
 #include <cstdint>
