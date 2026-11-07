@@ -447,11 +447,17 @@ bool SpinBox::onEvent(Event &e) {
     switch (e.type) {
     case EventType::FocusIn:
         _fresh = true;
+        if (window()) { // typed digits arrive as TextInput only while this is on
+            const PointF o = mapToWindow({0, 0});
+            window()->setTextInput(true, {o.x, o.y, width(), height()});
+        }
         update();
         return false;
     case EventType::FocusOut:
         _fresh = false;
         commit();
+        if (window())
+            window()->setTextInput(false, {});
         update();
         return false;
     case EventType::PointerMove: {

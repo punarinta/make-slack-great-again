@@ -63,6 +63,7 @@ bool shell::Settings::*const kAppearanceBools[] = {
 };
 int shell::Settings::*const kAppearanceInts[] = {
     &shell::Settings::fontSize,
+    &shell::Settings::fontPercent,
     &shell::Settings::relevantDays,
     &shell::Settings::names,
     &shell::Settings::quickReactions,
@@ -440,7 +441,21 @@ void SettingsDialog::buildAppearance() {
     buildCustomEditor();
 
     heading(_content, tr("Font size"));
-    radios(_content, {tr("Small"), tr("Medium (default)"), tr("Large")}, &d.fontSize);
+    {
+        auto *sizes = radios(
+            _content, {tr("Small"), tr("Medium (default)"), tr("Large"), tr("Custom")}, &d.fontSize
+        );
+        auto *custom = row(_content);
+        custom->style().padding(24, 0, 0, 0); // under its radio
+        auto *pct = custom->add<SpinBox>(d.fontPercent, 50, 200, "%");
+        pct->style().width(90);
+        pct->onChange = [this](int v) { _draft.fontPercent = v; };
+        custom->setVisible(d.fontSize == 3);
+        sizes->onChange = [this, custom](int i) {
+            _draft.fontSize = i;
+            custom->setVisible(i == 3);
+        };
+    }
 
     heading(_content, tr("Language"));
     {

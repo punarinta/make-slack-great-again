@@ -62,7 +62,8 @@ const struct {
     {"threadWidth", &Settings::threadWidth, 100, 4000},
     {"paletteLight", &Settings::paletteLight, 0, int(ui::Palette::Count) - 1},
     {"paletteDark", &Settings::paletteDark, 0, int(ui::Palette::Count) - 1},
-    {"fontSize", &Settings::fontSize, 0, 2},
+    {"fontSize", &Settings::fontSize, 0, 3},
+    {"fontPercent", &Settings::fontPercent, 50, 200},
     {"relevantDays", &Settings::relevantDays, 1, 365},
     {"names", &Settings::names, 0, 2},
     {"quickReactions", &Settings::quickReactions, 0, 2},
@@ -161,6 +162,10 @@ void Settings::applyPalettes() const {
     ui::setCustomPalette(custom);
     ui::setPalette(false, ui::Palette(paletteLight));
     ui::setPalette(true, ui::Palette(paletteDark));
+}
+
+float Settings::fontScale() const {
+    return fontSize == 0 ? 0.9f : fontSize == 2 ? 1.15f : fontSize == 3 ? fontPercent / 100.f : 1.f;
 }
 
 bool Settings::zenMode(std::string_view workspaceKey) const {

@@ -190,6 +190,20 @@ TEST(
     CHECK(t.primary == 0xff3f0e40u && t.itemSelText == 0xffffffffu);
 }
 
+TEST("settings: a custom font size survives the file, clamped") {
+    const std::string path = testPath();
+    shell::Settings   s;
+    s.fontSize    = 3;
+    s.fontPercent = 130;
+    REQUIRE(s.save(path));
+    shell::Settings r = shell::Settings::load(path);
+    CHECK(r.fontSize == 3 && r.fontPercent == 130);
+    CHECK(r.fontScale() == 1.3f);
+    s.fontPercent = 1000;
+    REQUIRE(s.save(path));
+    CHECK(shell::Settings::load(path).fontPercent == 200);
+}
+
 TEST("settings: every value survives the file, which is owner-only") {
     const std::string path = testPath();
     file::remove(path);
@@ -693,18 +707,15 @@ TEST("settings: unread-only greys out the activity window; typing digits sets it
     CHECK(days->enabled());
     days->focus();
     pump();
-    plat::Event t;
-    t.type = plat::EventType::TextInput;
-    t.text = "30";
-    ui::Event e{ui::EventType::TextInput};
-    e.raw = &t;
-    days->onEvent(e);
+    // Real keys: the platform types text only while the box asks for it.
+    h.key(plat::Key::Num3);
+    h.key(plat::Key::Num0);
     h.key(plat::Key::Enter);
     CHECK(days->value() == 30);
     CHECK(d.draft().relevantDays == 30);
     // Clamped to the range.
-    t.text = "999";
-    days->onEvent(e);
+    for (int i = 0; i < 3; ++i)
+        h.key(plat::Key::Num9);
     h.key(plat::Key::Enter);
     CHECK(days->value() == 365);
 }
