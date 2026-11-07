@@ -1,6 +1,8 @@
 #include "screens/shell/sidebar.h"
 
+#include "screens/common/remote_images.h"
 #include "screens/common/tag_badge.h"
+#include "screens/messages/image_cache.h"
 
 #include "base/crypto.h"
 #include "base/i18n.h"
@@ -350,11 +352,14 @@ public:
         }
         return HoverRow::onEvent(e);
     }
-    // A custom section's emoji, drawn where the icon goes ("" = the icon).
-    void setEmoji(std::string glyph) {
-        emoji = std::move(glyph);
+    // A custom section's emoji, drawn where the icon goes (empty = the icon).
+    void setEmoji(model::Store::EmojiGlyph g) {
+        emoji        = std::move(g.unicode);
+        emojiImage   = std::move(g.image);
         emojiLayout.reset();
+        emojiHeld.reset();
     }
+    ~SectionHeader() override { sidebar._ctx.images.forget(this); }
     void refreshLook() override {
         const C bg = dropTarget ? C::SidebarSelected : lit() ? C::SidebarHover : C::None;
         setLook({bg, bg, C::SidebarHover, C::None, 0});
@@ -375,18 +380,29 @@ public:
         // The section's icon; hovered, the chevron previewing the click.
         const Icon  i = !lit() ? icon : collapsed ? Icon::ChevronRight : Icon::ChevronDown;
         const float y = snapPx((height() - 14) / 2);
-        if (!lit() && !emoji.empty()) {
-            const float scale = windowScale();
-            if (!emojiLayout || emojiScale != scale) {
-                text::AttributedText t;
-                t.append(emoji, font(Font::Body, C::SidebarText));
-                emojiLayout = text::Layout::build(std::move(t), {}, scale);
-                emojiScale  = scale;
+        if (!lit()) {
+            if (!emoji.empty()) {
+                const float scale = windowScale();
+                if (!emojiLayout || emojiScale != scale) {
+                    text::AttributedText t;
+                    t.append(emoji, font(Font::Body, C::SidebarText));
+                    emojiLayout = text::Layout::build(std::move(t), {}, scale);
+                    emojiScale  = scale;
+                }
+                emojiLayout->paint(
+                    p, {kPadH + (14 - emojiLayout->width()) / 2, (height() - emojiLayout->height()) / 2}
+                );
+                return;
             }
-            emojiLayout->paint(
-                p, {kPadH + (14 - emojiLayout->width()) / 2, (height() - emojiLayout->height()) / 2}
-            );
-            return;
+            if (!emojiImage.empty()) {
+                const int sz = int(std::lround(14 * windowScale()));
+                screens::ImageCache::Ref ref{emojiImage, sz, sz, screens::ImageCache::Shape::Rounded, 3.f * windowScale()};
+                if (auto bmp = sidebar._ctx.images.get(ref, this, &emojiHeld)) {
+                    p.drawBitmap(bmp->view(), {kPadH, y, 14, 14});
+                    return;
+                }
+                // Still loading: fall through to the default icon for now.
+            }
         }
         gfx::drawIcon(p, i, {kPadH, y, 14, 14}, color(labelInk()));
     }
@@ -395,9 +411,11 @@ public:
     Icon                          icon;
     std::string                   title;
     std::string                   sectionId; // Custom: Store::Section::id
-    std::string                   emoji;     // Custom: its glyph ("" = the icon)
+    std::string                   emoji;     // Custom: its unicode glyph ("" = none/image/icon)
+    std::string                   emojiImage;
     std::unique_ptr<text::Layout> emojiLayout;
     float                         emojiScale = 0;
+    screens::ImageCache::Handle   emojiHeld;
     Label                        *label      = nullptr;
     HeaderButton                 *plus       = nullptr;
     HeaderButton                 *more       = nullptr;
@@ -1158,7 +1176,7 @@ void Sidebar::rebuild() {
             for (size_t i = 0; i < custom.size(); ++i) {
                 auto *h = section(Custom, Icon::List, secs[i].name, custom[i], secs[i].id);
                 if (!secs[i].emoji.empty())
-                    h->setEmoji(store.emojiFor(secs[i].emoji).unicode);
+                    h->setEmoji(store.emojiFor(secs[i].emoji));
                 const auto was = _collapsedCustom.find(secs[i].id);
                 h->collapsed   = was != _collapsedCustom.end() && was->second;
                 applyCollapse(h);
