@@ -782,13 +782,17 @@ msgstr "ファイルを添付"
 msgid "Attach a file"
 msgstr "ファイルを添付"
 
+#: src/app/screens/common/tag_badge.cpp src/app/screens/shell/composer_popups.cpp
+msgid "APP"
+msgstr "アプリ"
+
 #: src/app/screens/common/tag_badge.cpp
 msgid "EXT"
 msgstr "外部"
 
-#: src/app/screens/common/tag_badge.cpp src/app/screens/shell/composer_popups.cpp
-msgid "APP"
-msgstr "アプリ"
+#: src/app/screens/common/tag_badge.cpp
+msgid "VIP"
+msgstr "VIP"
 
 #: src/app/screens/messages/audio_card.cpp
 msgid "%1 · transcribed by %2"
@@ -3464,6 +3468,14 @@ msgstr "ダイレクトメッセージ"
 #: src/app/screens/shell/sidebar.cpp
 msgid "Agents & apps"
 msgstr "エージェントとアプリ"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "VIP unreads"
+msgstr "VIPの未読"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "External connections"
+msgstr "外部との接続"
 
 #: src/app/screens/shell/sidebar.cpp
 msgid "%1 more %2"

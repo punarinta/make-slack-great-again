@@ -83,10 +83,11 @@ const char *kWorkspace = R"({
  "users.conversations?cursor=c2": {"ok": true, "channels": [
      {"id": "D2", "is_im": true, "user": "UEXT"},
      {"id": "G1", "is_mpim": true, "name": "mpdm-me--mira--jonas-1"},
-     {"id": "C2", "name": "random", "is_channel": true, "is_member": true, "is_muted": true}],
+     {"id": "C2", "name": "random", "is_channel": true, "is_member": true, "is_muted": true,
+      "is_ext_shared": true}],
    "response_metadata": {"next_cursor": ""}},
  "users.info?user=UEXT": {"ok": true, "user": {"id": "UEXT", "name": "ext",
-     "profile": {"real_name": "Ext Partner"}}},
+     "profile": {"real_name": "Ext Partner"}, "is_stranger": true}},
  "client.counts": {"ok": true,
    "channels": [{"id": "C1", "latest": "1700000100.000000", "last_read": "1700000000.000000",
                  "mention_count": 1, "has_unreads": true}],
@@ -189,6 +190,7 @@ TEST("slack read: connect fills users, conversations, unread, stars, emoji, grou
     CHECK_STR(general.topic, "Company news");
     CHECK(general.memberCount == 12);
     CHECK(e.store.conversation(e.conv("C2")).muted);
+    CHECK(e.store.conversation(e.conv("C2")).extShared);
     const model::Conversation &dm = e.store.conversation(e.conv("D1"));
     CHECK(dm.kind == model::ConvKind::Dm && dm.dmUser == e.store.findUser("UMIRA"));
     CHECK_STR(e.store.displayName(e.conv("D1")), "Mira Okafor");
@@ -204,6 +206,7 @@ TEST("slack read: connect fills users, conversations, unread, stars, emoji, grou
     // The DM peer users.list omits is resolved through users.info.
     REQUIRE(pumpUntil([&] { return !e.user("UEXT").placeholder; }, 3000));
     CHECK_STR(e.store.displayName(e.conv("D2")), "Ext Partner");
+    CHECK(e.user("UEXT").stranger);
     // Stars (conversation stars only), custom emoji with aliases, my groups,
     // my presence.
     REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C2")).starred; }, 3000));
@@ -995,7 +998,80 @@ TEST("slack read: app keys never ask for the Names prefs; a local choice still a
     CHECK(Log().count("users.prefs.get") == 0);
 }
 
-TEST("slack read: a local Names choice asks Slack nothing until switched back") {
+TEST("slack read: vipUsers reads the comma-separated vip_users pref") {
+    using namespace slack::mapjson;
+    const auto prefs = [](const char *text) {
+        auto d = std::make_shared<json::Document>();
+        CHECK(d->parse(std::string(text), nullptr));
+        return d;
+    };
+    const std::vector<std::string> u1u2u3 = {"U1", "U2", "U3"}, u1u2 = {"U1", "U2"}, u1 = {"U1"};
+    CHECK(vipUsers(prefs(R"({"vip_users": "U1,U2,U3"})")->root()) == u1u2u3);
+    CHECK(vipUsers(prefs(R"({})")->root()).empty());
+    CHECK(vipUsers(prefs(R"({"vip_users": ""})")->root()).empty());
+    CHECK(vipUsers(prefs(R"({"vip_users": "U1,,U2,"})")->root()) == u1u2);
+    CHECK(vipUsers(prefs(R"({"vip_users": "U1"})")->root()) == u1);
+}
+
+TEST("slack read: the VIP list comes with the connect's users.prefs.get") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"vip_users": "UMEG,UNEW"}}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.user("UMEG").vip; }, 3000));
+    CHECK_FALSE(e.user("UMIRA").vip);
+    // A VIP nobody has messaged yet is known too.
+    const model::UserRef fresh = e.store.findUser("UNEW");
+    REQUIRE(fresh != model::kNoUser);
+    CHECK(e.store.user(fresh).vip);
+    CHECK(Log().count("users.prefs.get") == 1);
+}
+
+TEST("slack read: switching to Slack's Names while the connect asks waits for its answer") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"display_real_names_override": -1},
+                                 "__delay": 3.0}})");
+    e.be->setNamesMode(model::Backend::NamesMode::Full);
+    REQUIRE(e.connect());
+    // Once the connect has settled, with users.prefs.get still on its way.
+    pumpUntil([] { return false; }, 1000);
+    REQUIRE(Log().count("users.prefs.get") == 1);
+    CHECK(e.store.realNames());
+    e.be->setNamesMode(model::Backend::NamesMode::Service);
+    // That answer, read in the mode it finds, decides.
+    REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 5000));
+    CHECK_STR(e.user("UMEG").displayName, "Meg");
+    // Past the paced lane's spacing: a second ask would have gone out.
+    pumpUntil([] { return false; }, 2500);
+    CHECK(Log().count("users.prefs.get") == 1);
+}
+
+TEST("slack read: switching Names away and back while Slack is asked asks once") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"display_real_names_override": -1},
+                                 "__delay": 3.0}})");
+    REQUIRE(e.connect());
+    // Once the connect has settled (users.list too), with users.prefs.get
+    // still on its way: switch away and back.
+    pumpUntil([] { return false; }, 1000);
+    REQUIRE(Log().count("users.prefs.get") == 1);
+    e.be->setNamesMode(model::Backend::NamesMode::Full);
+    e.be->setNamesMode(model::Backend::NamesMode::Service);
+    REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 5000));
+    // Past the paced lane's spacing: a second ask would have gone out.
+    pumpUntil([] { return false; }, 2500);
+    CHECK(Log().count("users.prefs.get") == 1);
+}
+
+TEST("slack read: a local Names choice ignores Slack's answer until switched back") {
     if (!haveServer())
         return;
     Env e;
@@ -1003,13 +1079,14 @@ TEST("slack read: a local Names choice asks Slack nothing until switched back") 
     set(R"({"users.prefs.get": {"ok": true, "prefs": {"display_real_names_override": -1}}})");
     e.be->setNamesMode(model::Backend::NamesMode::Full);
     REQUIRE(e.connect());
-    pumpUntil([] { return false; }, 200);
-    CHECK(Log().count("users.prefs.get") == 0);
+    // users.prefs.get still fires once per connect for VIP, but its
+    // Names-specific result (the override) is ignored while not in Service.
+    REQUIRE(pumpUntil([] { return Log().count("users.prefs.get") == 1; }, 3000));
     CHECK_STR(e.user("UMEG").displayName, "Meg Ryan");
     e.be->setNamesMode(model::Backend::NamesMode::Service);
     REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 3000));
     CHECK_STR(e.user("UMEG").displayName, "Meg");
-    CHECK(Log().count("users.prefs.get") == 1);
+    CHECK(Log().count("users.prefs.get") == 2);
 }
 
 TEST("slack read: app-key workspaces sweep DM activity instead of client.counts") {

@@ -371,6 +371,7 @@ public:
         bool removePreview    = false; // deleteAttachment: a link preview's "Remove preview"
         bool sidebarTheme     = false; // loadSidebarTheme: Settings' "Use my Slack theme"
         bool customSections   = false; // the sidebar's own sections (createSection…)
+        bool vips             = false; // the sidebar's "VIP unreads" section
     };
     virtual Capabilities capabilities() const { return {}; }
 
