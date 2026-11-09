@@ -396,11 +396,8 @@ public:
                 return;
             }
             if (!emojiImage.empty()) {
-                const int                sz = int(std::lround(14 * windowScale()));
-                screens::ImageCache::Ref ref{
-                    emojiImage, sz, sz, screens::ImageCache::Shape::Rounded, 3.f * windowScale()
-                };
-                if (auto bmp = images.get(ref, this, &emojiHeld)) {
+                const int sz = int(std::lround(14 * windowScale()));
+                if (auto bmp = images.get({emojiImage, sz, sz}, this, &emojiHeld)) {
                     p.drawBitmap(bmp->view(), {kPadH, y, 14, 14});
                     return;
                 }
