@@ -235,6 +235,7 @@ private:
     void               moveInto(model::ConvRef conv, SectionHeader *to);
     // reveal: scroll the selected row into view afterwards.
     void               rebuildSoon(bool reveal = true);
+    void               revealSelectedAfterLayout(); // once its row has a frame
     void               usersSoon();
     void               sectionsSoon(); // refreshSections + refreshTeammates, coalesced
     uint64_t           userShape() const;
@@ -284,7 +285,7 @@ private:
     model::UserRef           _shapeMe                = model::kNoUser;
     int                      _rebuilds               = 0;
     bool                     _revealOnRebuild        = false;
-    bool                     _revealSelectedOnLayout = false; // scroll to it once rows have frames
+    bool                     _revealSelectedOnLayout = false; // see revealSelectedAfterLayout()
     int                      _hiddenChannels         = 0;
     // By Kind; Custom uses _collapsedCustom (keyed by sectionId) instead.
     bool                     _collapsed[KindCount]   = {};

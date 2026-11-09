@@ -328,6 +328,13 @@ TEST("sidebar: selecting a row below the fold keeps the scroll position") {
     h.sh->open(h.conv("C0RANDOM"));
     pump();
     CHECK(sv->scrollOffset() > 0);
+    // ...and the reveal still happens, once the new row has a frame.
+    const ui::View *opened = h.sidebar().rowView(h.conv("C0RANDOM"));
+    REQUIRE(opened != nullptr);
+    const ui::RectF orr = opened->windowRect(), vr = sv->windowRect();
+    CHECK(orr.h > 0);
+    CHECK(orr.y >= vr.y);
+    CHECK(orr.y + orr.h <= vr.y + vr.h);
 }
 
 TEST("sidebar: keyboard focus on a row survives a rebuild") {

@@ -244,6 +244,21 @@ bool looksLikeUserId(std::string_view s) {
     return true;
 }
 
+// The list's content. Rows a rebuild just made have no frames until the
+// layout pass, so revealing one waits for this view's layout: after it, the
+// rows sit where they will be drawn (scrolling from paint instead would move
+// content that is already being drawn).
+class ListItems : public View {
+public:
+    std::function<void()> onLaidOut;
+
+    void layout() override {
+        View::layout();
+        if (onLaidOut)
+            onLaidOut();
+    }
+};
+
 } // namespace
 
 bool deadDm(const model::Store &store, const model::Conversation &c) {
@@ -757,7 +772,13 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
     _scroll->setClickFocus(true);
     _scroll->setThinThumb(C::SidebarScrollbar);
     _scroll->style().flex(1);
-    _items = _scroll->content();
+    auto *items      = static_cast<ListItems *>(_scroll->setContent(std::make_unique<ListItems>()));
+    items->onLaidOut = [this] {
+        if (std::exchange(_revealSelectedOnLayout, false))
+            if (ConvRow *r = rowFor(_selected))
+                _scroll->ensureVisible(r, 8);
+    };
+    _items = items;
     _items->style().padding(0, kTopPad, 0, 0).spacing(0);
     _footer = add<SidebarFooter>(*this, ctx, avatars);
 
@@ -852,14 +873,11 @@ Sidebar::~Sidebar() {
 
 void Sidebar::paint(gfx::Painter &p) {
     paintNavGradient(*this, p, C::Sidebar);
-    // A reveal asked for by a rebuild runs here: after the layout pass, when
-    // the rebuilt rows have frames (calling it inside the timer would read
-    // them at the content's origin and scroll to the top).
-    if (_revealSelectedOnLayout) {
-        _revealSelectedOnLayout = false;
-        if (ConvRow *r = rowFor(_selected))
-            _scroll->ensureVisible(r, 8);
-    }
+}
+
+void Sidebar::revealSelectedAfterLayout() {
+    _revealSelectedOnLayout = true;
+    _items->invalidateLayout(); // the pass that runs it comes for sure
 }
 
 void Sidebar::setFilters(const Filters &f) {
@@ -1611,7 +1629,7 @@ void Sidebar::rebuildSoon(bool reveal) {
         _rebuildTimer = 0;
         rebuild();
         if (std::exchange(_revealOnRebuild, false))
-            _revealSelectedOnLayout = true;
+            revealSelectedAfterLayout(); // the new rows have no frames yet
     });
 }
 
@@ -1808,7 +1826,7 @@ void Sidebar::select(ConvRef conv) {
         if (r->height() > 0)
             _scroll->ensureVisible(r, 8); // laid out: reveal at once
         else
-            _revealSelectedOnLayout = true; // rebuilt just now: reveal after layout
+            revealSelectedAfterLayout(); // rebuilt just now: no frame yet
     }
     refreshSections();
 }
