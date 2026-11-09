@@ -59,6 +59,7 @@ bool shell::Settings::*const kAppearanceBools[] = {
     &shell::Settings::showAgentsApps,
     &shell::Settings::externalSection,
     &shell::Settings::unreadsOnly,
+    &shell::Settings::directAndExternalFirst,
     &shell::Settings::animateEmoji,
     &shell::Settings::animateMedia,
 };
@@ -642,6 +643,8 @@ void SettingsDialog::buildAppearance() {
             _draft.unreadsOnly = on;
             sync(on);
         };
+        check(g, tr("Show direct messages and external conversations at the top"),
+              &d.directAndExternalFirst, true);
     }
 
     heading(_content, tr("Visual effects"));
