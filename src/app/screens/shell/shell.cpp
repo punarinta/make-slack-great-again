@@ -3525,15 +3525,17 @@ void Shell::applySettings() {
         }
     }
     // Settings → Appearance (relevant days, Agents & apps, External
-    // connections, unreads only) and Notifications (the default level,
-    // "Highlight mentions-only channels").
+    // connections, unreads only and its scopes) and Notifications (the
+    // default level, "Highlight mentions-only channels").
     Sidebar::Filters f;
-    f.relevantDays          = _settings.relevantDays;
-    f.showAgentsApps        = _settings.showAgentsApps;
-    f.externalSection       = _settings.externalSection;
-    f.unreadsOnly           = _settings.unreadsOnly;
-    f.highlightMentionsOnly = _settings.boldMentionsOnly;
-    f.defaultLevel          = defaultLevel();
+    f.relevantDays                       = _settings.relevantDays;
+    f.showAgentsApps                     = _settings.showAgentsApps;
+    f.externalSection                    = _settings.externalSection;
+    f.unreadsOnly                        = _settings.unreadsOnly;
+    f.unreadsOnlyAppliesToCustomSections = _settings.unreadsOnlyAppliesToCustomSections;
+    f.unreadsOnlyAppliesToStarred        = _settings.unreadsOnlyAppliesToStarred;
+    f.highlightMentionsOnly              = _settings.boldMentionsOnly;
+    f.defaultLevel                       = defaultLevel();
     _sidebar->setFilters(f);
     for (const auto &r : _running)
         r->dirty = true; // the default level decides what counts

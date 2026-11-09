@@ -278,6 +278,25 @@ TEST("sidebar: \"Show only unread conversations\" keeps the unread, the open and
     CHECK(h.sidebar().rowState(h.conv("C0RANDOM")).exists);
 }
 
+TEST("sidebar: the unreads-only scope flags decide what read starred and custom rows survive") {
+    Harness       h;
+    const ConvRef general = h.conv("C0GENERAL"); // starred, read
+    const ConvRef random  = h.conv("C0RANDOM");  // read, own section
+    h.backend.createSection("Projects", "", random);
+    h.settings.unreadsOnly = true;
+    h.sh->applySettings();
+    pump();
+    // Default (both flags off): upstream behaviour, read rows stay.
+    CHECK(h.sidebar().rowState(general).exists);
+    CHECK(h.sidebar().rowState(random).exists);
+    h.settings.unreadsOnlyAppliesToStarred = true;
+    h.settings.unreadsOnlyAppliesToCustomSections = true;
+    h.sh->applySettings();
+    pump();
+    CHECK_FALSE(h.sidebar().rowState(general).exists);
+    CHECK_FALSE(h.sidebar().rowState(random).exists);
+}
+
 TEST("sidebar: bot DMs live under Agents & apps, which Settings can hide") {
     Harness       h;
     const UserRef bot = h.store.findUser("U0DEPLOY"); // the fixture's Deploybot

@@ -68,6 +68,8 @@ struct Settings {
     // Slack Connect channels and DMs in their own External connections
     // section; off, they stay in Channels / Direct messages.
     bool                     externalSection = true;
+    bool                     unreadsOnlyAppliesToCustomSections = false,
+                             unreadsOnlyAppliesToStarred = false;
     bool                     animateEmoji = true, animateMedia = true;
     // The message toolbar's one-click reactions: 0 off, 1 the most used (the
     // emoji picker's Frequently used), 2 quickReactionNames.

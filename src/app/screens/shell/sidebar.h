@@ -105,6 +105,8 @@ public:
         int                relevantDays   = 14;
         bool               showAgentsApps = true, unreadsOnly = false;
         bool               externalSection = true; // off: Connect chats stay in Channels / DMs
+        bool               unreadsOnlyAppliesToCustomSections = false,
+                           unreadsOnlyAppliesToStarred = false;
         bool               highlightMentionsOnly = true; // "Highlight mentions-only channels…"
         model::NotifyLevel defaultLevel          = model::NotifyLevel::All;
         bool               operator==(const Filters &) const = default;

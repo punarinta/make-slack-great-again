@@ -59,6 +59,8 @@ bool shell::Settings::*const kAppearanceBools[] = {
     &shell::Settings::showAgentsApps,
     &shell::Settings::externalSection,
     &shell::Settings::unreadsOnly,
+    &shell::Settings::unreadsOnlyAppliesToCustomSections,
+    &shell::Settings::unreadsOnlyAppliesToStarred,
     &shell::Settings::animateEmoji,
     &shell::Settings::animateMedia,
 };
@@ -628,19 +630,34 @@ void SettingsDialog::buildAppearance() {
         caption(
             g,
             tr("The conversation you are reading stays listed until you move on.\n"
-               "Starred conversations are always shown.")
+               "Starred conversations and custom sections stay listed too unless you\n"
+               "turn their filters on below.")
         );
+        auto *applyCustom =
+            check(g, tr("Apply \"Show only unread\" to custom sections"),
+                  &d.unreadsOnlyAppliesToCustomSections, true);
+        auto *applyStarred =
+            check(g, tr("Apply \"Show only unread\" to starred conversations"),
+                  &d.unreadsOnlyAppliesToStarred, true);
         // The activity window has nothing to decide while only unread chats
         // are listed: grey it out so the two don't read as competing.
-        auto sync = [this](bool unreadsOnly) {
+        auto sync = [this, applyCustom, applyStarred](bool unreadsOnly) {
             _p->days->setEnabled(!unreadsOnly);
             _p->daysLabel->setColor(unreadsOnly ? C::FormTextFaint : C::FormText);
             _p->daysDesc->setColor(unreadsOnly ? C::FormTextFaint : C::FormTextMuted);
+            applyCustom->setEnabled(unreadsOnly);
+            applyStarred->setEnabled(unreadsOnly);
         };
         sync(d.unreadsOnly);
         unread->onChange = [this, sync](bool on) {
             _draft.unreadsOnly = on;
             sync(on);
+        };
+        applyCustom->onChange = [this](bool on) {
+            _draft.unreadsOnlyAppliesToCustomSections = on;
+        };
+        applyStarred->onChange = [this](bool on) {
+            _draft.unreadsOnlyAppliesToStarred = on;
         };
     }
 
