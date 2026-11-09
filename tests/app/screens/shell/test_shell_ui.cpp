@@ -278,6 +278,21 @@ TEST("sidebar: \"Show only unread conversations\" keeps the unread, the open and
     CHECK(h.sidebar().rowState(h.conv("C0RANDOM")).exists);
 }
 
+TEST("sidebar: an unsent draft lists its conversation under Drafts") {
+    Harness       h;
+    const ConvRef eng = h.conv("C0ENG");
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") == std::string::npos);
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") != std::string::npos);
+    CHECK(h.sidebar().rowState(eng).exists);
+    // Sent or cleared: the section goes, the conversation is back where it was.
+    h.store.setDraft(eng, 0, "", {});
+    pump();
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") == std::string::npos);
+    CHECK(h.sidebar().rowState(eng).exists);
+}
+
 TEST("sidebar: bot DMs live under Agents & apps, which Settings can hide") {
     Harness       h;
     const UserRef bot = h.store.findUser("U0DEPLOY"); // the fixture's Deploybot
