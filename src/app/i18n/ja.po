@@ -2884,6 +2884,10 @@ msgid "Unreads on top"
 msgstr "未読を上に表示"
 
 #: src/app/screens/shell/context_menus.cpp
+msgid "Mentions on top"
+msgstr "メンションを上に表示"
+
+#: src/app/screens/shell/context_menus.cpp
 msgid "Notify you about…"
 msgstr "通知対象…"
 

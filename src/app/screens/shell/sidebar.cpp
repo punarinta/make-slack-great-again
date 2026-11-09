@@ -638,11 +638,8 @@ public:
         const bool  quiet = sidebar.muted(cv);
         const bool  stale =
             cv.latest && tsSecs(cv.latest) < sidebar._ctx.backend.nowSecs() - kMaxNotifyAgeSecs;
-        unread        = sidebar.paintsUnread(cv);
-        // DMs count every unread message (an agent session only what needs
-        // me: Session counts those as mentions); channels their mentions.
-        const int red = cv.isDirect() && !caps.agentSessions ? int(cv.unread) : int(cv.mentions);
-        count         = !stale && !quiet && red > 0 ? red : 0;
+        unread = sidebar.paintsUnread(cv);
+        count  = sidebar.redCount(cv);
         dot = !stale && !quiet && sidebar.level(cv) == model::NotifyLevel::All && !cv.isDirect() &&
               cv.mentions == 0 && cv.unread > 0;
         const C text = ink(sel, unread);
@@ -878,6 +875,15 @@ bool Sidebar::paintsUnread(const model::Conversation &c) const {
         level(c) == model::NotifyLevel::Mentions && !_filters.highlightMentionsOnly &&
         !c.isDirect() && c.mentions == 0
     );
+}
+
+int Sidebar::redCount(const model::Conversation &c) const {
+    if (muted(c) || (c.latest && tsSecs(c.latest) < _ctx.backend.nowSecs() - kMaxNotifyAgeSecs))
+        return 0;
+    // DMs count every unread message (an agent session only what needs me:
+    // Session counts those as mentions); channels their mentions.
+    return c.isDirect() && !_ctx.backend.capabilities().agentSessions ? int(c.unread)
+                                                                      : int(c.mentions);
 }
 
 bool Sidebar::isApp(const model::Conversation &c) const {
@@ -1367,14 +1373,16 @@ std::vector<size_t> Sidebar::sortedOrder(SectionSort sort, const std::vector<Con
         return order;
     const auto &store = _ctx.store();
     struct Key {
-        bool        unread = false;
-        model::Ts   recent = 0;
+        bool        mention = false;
+        bool        unread  = false;
+        model::Ts   recent  = 0;
         std::string name; // case-folded
     };
     std::vector<Key> keys(rows.size());
     for (size_t i = 0; i < rows.size(); ++i) {
-        const auto &cv = store.conversation(rows[i]);
-        keys[i].unread = sort.unreadsFirst && paintsUnread(cv);
+        const auto &cv  = store.conversation(rows[i]);
+        keys[i].mention = sort.mentionsFirst && redCount(cv) > 0;
+        keys[i].unread  = sort.unreadsFirst && paintsUnread(cv);
         if (sort.by == SectionSort::By::Recent)
             keys[i].recent = std::max(cv.latest, cv.lastRead);
         else if (sort.by == SectionSort::By::Alpha)
@@ -1382,6 +1390,8 @@ std::vector<size_t> Sidebar::sortedOrder(SectionSort sort, const std::vector<Con
     }
     std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
         const Key &x = keys[a], &y = keys[b];
+        if (x.mention != y.mention)
+            return x.mention;
         if (x.unread != y.unread)
             return x.unread;
         switch (sort.by) {
@@ -1403,6 +1413,8 @@ std::string SectionSort::encode() const {
     std::string out = by == By::Alpha ? "alpha" : by == By::Recent ? "recent" : "";
     if (unreadsFirst)
         out += out.empty() ? "unreads" : ",unreads";
+    if (mentionsFirst)
+        out += out.empty() ? "mentions" : ",mentions";
     return out;
 }
 
@@ -1415,6 +1427,8 @@ SectionSort SectionSort::decode(std::string_view s) {
             sort.by = By::Recent;
         else if (part == "unreads")
             sort.unreadsFirst = true;
+        else if (part == "mentions")
+            sort.mentionsFirst = true;
     return sort;
 }
 

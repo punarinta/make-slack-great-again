@@ -68,15 +68,19 @@ bool deadDm(const model::Store &store, const model::Conversation &c);
 
 // How a section orders its rows: as listed (the service's order, a custom
 // section's own), by name, or most recent activity first; unreads on top
-// lifts the bold rows over the rest, each part in that order.
+// lifts the bold rows over the rest, mentions on top the rows with a red
+// count (a mention, an unread direct message) over those, each part in that
+// order.
 struct SectionSort {
     enum class By : uint8_t { Default, Alpha, Recent };
-    By                 by           = By::Default;
-    bool               unreadsFirst = false;
-    bool               plain() const { return by == By::Default && !unreadsFirst; }
-    bool               operator==(const SectionSort &) const = default;
-    // "alpha", "recent,unreads"… ("" = plain); unknown parts are ignored.
-    std::string        encode() const;
+    By          by            = By::Default;
+    bool        unreadsFirst  = false;
+    bool        mentionsFirst = false;
+    bool        plain() const { return by == By::Default && !unreadsFirst && !mentionsFirst; }
+    bool        operator==(const SectionSort &) const = default;
+    // "alpha", "recent,unreads,mentions"… ("" = plain); unknown parts are
+    // ignored.
+    std::string encode() const;
     static SectionSort decode(std::string_view s);
 };
 
@@ -218,6 +222,9 @@ private:
     void               showNavSelection(); // the entries' checked look
     // The unread / effective level (Settings' default) / badge rules.
     bool               paintsUnread(const model::Conversation &c) const;
+    // The red count a row shows (0: none): every unread message of a direct
+    // conversation, a channel's mentions; nothing muted or long gone quiet.
+    int                redCount(const model::Conversation &c) const;
     model::NotifyLevel level(const model::Conversation &c) const;
     bool               muted(const model::Conversation &c) const;
     bool               isApp(const model::Conversation &c) const;

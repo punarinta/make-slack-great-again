@@ -80,6 +80,7 @@ public:
         kSortAlpha,
         kSortRecent,
         kUnreadsFirst,
+        kMentionsFirst,
         // "Move to section" → the n-th section (target: ConvRef)
         kMoveToSection = 200,
     };
