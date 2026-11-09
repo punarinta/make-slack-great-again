@@ -209,10 +209,10 @@ void Window::forget(View *v) {
 
 // ── Focus ───────────────────────────────────────────────────────────────────
 
-void Window::setFocus(View *v) {
+void Window::setFocus(View *v, bool visible) {
     if (v == _focus || (v && !v->enabled()))
         return;
-    _focusVisible = false;
+    _focusVisible = visible;
     View *old     = _focus;
     _focus        = v;
     if (old) {

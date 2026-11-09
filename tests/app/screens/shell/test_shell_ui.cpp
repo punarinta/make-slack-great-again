@@ -330,6 +330,33 @@ TEST("sidebar: selecting a row below the fold keeps the scroll position") {
     CHECK(sv->scrollOffset() > 0);
 }
 
+TEST("sidebar: keyboard focus on a row survives a rebuild") {
+    Harness h;
+    h.sh->open(h.conv("C0GENERAL"));
+    pump();
+    auto row = [&] { return const_cast<ui::View *>(h.sidebar().rowView(h.conv("C0GENERAL"))); };
+    ui::View *before = row();
+    REQUIRE(before != nullptr);
+    h.win->setFocus(before, true); // as if reached with Tab: the ring shows
+    // Synchronous: a filter change rebuilds the rows at once.
+    shell::Sidebar::Filters f;
+    f.relevantDays = 1;
+    h.sidebar().setFilters(f);
+    pump();
+    REQUIRE(row() != nullptr);
+    CHECK(row() != before); // the rows were recreated
+    CHECK(h.win->focusView() == row());
+    CHECK(h.win->focusVisible());
+    // Deferred: rebuildSoon() after the click that asked for it.
+    before = row();
+    h.sidebar().showAllChannels();
+    pump();
+    REQUIRE(row() != nullptr);
+    CHECK(row() != before);
+    CHECK(h.win->focusView() == row());
+    CHECK(h.win->focusVisible());
+}
+
 TEST("sidebar: bot DMs live under Agents & apps, which Settings can hide") {
     Harness       h;
     const UserRef bot = h.store.findUser("U0DEPLOY"); // the fixture's Deploybot

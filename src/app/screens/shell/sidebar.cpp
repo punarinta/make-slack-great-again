@@ -969,6 +969,16 @@ bool Sidebar::relevant(ConvRef ref) const {
 }
 
 void Sidebar::rebuild() {
+    // Keyboard focus on a row survives: it moves to the same conversation's new row.
+    Window *win       = window();
+    ConvRef focusConv = kNoConv;
+    if (View *f = win ? win->focusView() : nullptr)
+        for (ConvRow *r : _rows)
+            if (r == f) {
+                focusConv = r->conv;
+                break;
+            }
+    const bool focusRing = win && win->focusVisible();
     for (auto *h : _sections) { // survives the rebuild
         if (h->kind == Sidebar::Custom)
             _collapsedCustom[h->sectionId] = h->collapsed;
@@ -1229,6 +1239,8 @@ void Sidebar::rebuild() {
     _sectionsRev = store.sectionsRevision();
     ++_rebuilds;
     invalidateLayout();
+    if (ConvRow *r = rowFor(focusConv); r && r->visible() && !win->focusView())
+        win->setFocus(r, focusRing);
 }
 
 // Everything rebuild() reads from the users: which DMs are dead or apps (they
@@ -1596,14 +1608,10 @@ void Sidebar::rebuildSoon(bool reveal) {
     _rebuildTimer            = _ctx.app.platform().addTimer(0, false, [this, alive] {
         if (alive.expired())
             return;
-        _rebuildTimer           = 0;
-        ConvRow   *oldSelected  = rowFor(_selected);
-        const bool restoreFocus = oldSelected && window() && window()->focusView() == oldSelected;
+        _rebuildTimer = 0;
         rebuild();
         if (std::exchange(_revealOnRebuild, false))
             _revealSelectedOnLayout = true;
-        if (ConvRow *r = rowFor(_selected); r && restoreFocus)
-            r->focus();
     });
 }
 
