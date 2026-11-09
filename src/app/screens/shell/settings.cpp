@@ -38,6 +38,7 @@ const struct {
     {"spellCheck", &Settings::spellCheck},
     {"markdownFormatting", &Settings::markdownFormatting},
     {"showAgentsApps", &Settings::showAgentsApps},
+    {"externalSection", &Settings::externalSection},
     {"unreadsOnly", &Settings::unreadsOnly},
     {"animateEmoji", &Settings::animateEmoji},
     {"animateMedia", &Settings::animateMedia},

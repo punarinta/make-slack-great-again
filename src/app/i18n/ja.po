@@ -1676,6 +1676,10 @@ msgid "Show the Agents & apps section"
 msgstr "「エージェントとアプリ」セクションを表示"
 
 #: src/app/screens/settings/settings_dialog.cpp
+msgid "Show the External connections section"
+msgstr "「外部との接続」セクションを表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
 msgid "Show only unread conversations"
 msgstr "未読の会話のみ表示"
 

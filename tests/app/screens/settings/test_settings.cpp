@@ -695,6 +695,29 @@ TEST("settings: Appearance changes wait for Save, which applies them and closes"
     file::remove(path);
 }
 
+TEST("settings: the External connections section can be turned off, on Save") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness         h(path);
+    SettingsDialog &d   = h.open();
+    ui::View       *box = d.find("Show the External connections section");
+    REQUIRE(box != nullptr);
+    CHECK(static_cast<ui::CheckBox *>(box)->checked()); // on by default, as before
+    d.scroll().ensureVisible(box);
+    pump();
+    h.click(box);
+    CHECK_FALSE(d.draft().externalSection);
+    CHECK(h.settings.externalSection); // waits for Save
+    ui::View *save = d.find("Save");
+    REQUIRE(save != nullptr);
+    d.scroll().ensureVisible(save);
+    pump();
+    h.click(save);
+    CHECK_FALSE(h.settings.externalSection);
+    CHECK_FALSE(shell::Settings::load(path).externalSection);
+    file::remove(path);
+}
+
 TEST("settings: unread-only greys out the activity window; typing digits sets it") {
     Harness         h;
     SettingsDialog &d    = h.open();

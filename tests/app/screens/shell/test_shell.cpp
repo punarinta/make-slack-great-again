@@ -943,6 +943,39 @@ TEST("sections: DMs with a stranger are external too; a starred one stays starre
     CHECK(std::find(order.begin(), order.end(), mira) < order.end() - 1); // starred, above
 }
 
+TEST("sections: with External connections off, Connect chats stay in Channels and DMs") {
+    Harness                    h;
+    shell::Sidebar            &sb     = h.sh->sidebar();
+    const ConvRef              random = h.conv("C0RANDOM");
+    const ConvRef              mira   = h.conv("D0MIRA");
+    const ConvRef              trio   = h.conv("G0TRIO"); // Mira and Jonas
+    const std::vector<ConvRef> before = sb.order();
+    h.settings.externalSection        = false;
+    h.sh->applySettings();
+    h.store.updateConversation(random, [](Conversation &c) { c.extShared = true; });
+    const UserRef u          = h.store.findUser("U0MIRA");
+    h.store.user(u).stranger = true;
+    h.store.usersChanged(u);
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    CHECK(sb.order() == before); // nothing moved
+    // Back on: both move to the section at once, no restart.
+    h.settings.externalSection = true;
+    h.sh->applySettings();
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages|External connections");
+    std::vector<ConvRef> want = before;
+    want.erase(std::find(want.begin(), want.end(), random));
+    for (ConvRef c : {mira, trio})
+        want.erase(std::find(want.begin(), want.end(), c));
+    CHECK(std::equal(want.begin(), want.end(), sb.order().begin()));
+    h.settings.externalSection = false;
+    h.sh->applySettings();
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+    CHECK(sb.order() == before);
+}
+
 // ── VIP unreads ──────────────────────────────────────────────────────────────
 
 namespace {

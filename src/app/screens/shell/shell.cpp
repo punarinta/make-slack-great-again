@@ -3524,11 +3524,13 @@ void Shell::applySettings() {
                 _thread->show(_thread->conv, _thread->root);
         }
     }
-    // Settings → Appearance (relevant days, Agents & apps, unreads only) and
-    // Notifications (the default level, "Highlight mentions-only channels").
+    // Settings → Appearance (relevant days, Agents & apps, External
+    // connections, unreads only) and Notifications (the default level,
+    // "Highlight mentions-only channels").
     Sidebar::Filters f;
     f.relevantDays          = _settings.relevantDays;
     f.showAgentsApps        = _settings.showAgentsApps;
+    f.externalSection       = _settings.externalSection;
     f.unreadsOnly           = _settings.unreadsOnly;
     f.highlightMentionsOnly = _settings.boldMentionsOnly;
     f.defaultLevel          = defaultLevel();

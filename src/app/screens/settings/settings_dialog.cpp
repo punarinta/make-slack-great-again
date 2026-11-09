@@ -57,6 +57,7 @@ bool shell::Settings::*const kAppearanceBools[] = {
     &shell::Settings::spellCheck,
     &shell::Settings::markdownFormatting,
     &shell::Settings::showAgentsApps,
+    &shell::Settings::externalSection,
     &shell::Settings::unreadsOnly,
     &shell::Settings::animateEmoji,
     &shell::Settings::animateMedia,
@@ -622,6 +623,7 @@ void SettingsDialog::buildAppearance() {
                "under an \"N more...\" row at the bottom of each section.")
         );
         check(g, tr("Show the Agents & apps section"), &d.showAgentsApps, true);
+        check(g, tr("Show the External connections section"), &d.externalSection, true);
         auto *unread = check(g, tr("Show only unread conversations"), &d.unreadsOnly, true);
         caption(
             g,

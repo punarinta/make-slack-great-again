@@ -930,7 +930,7 @@ Sidebar::Kind Sidebar::classify(const model::Conversation &c) const {
         return Starred;
     if (isApp(c))
         return Apps;
-    if (isExternal(c))
+    if (_filters.externalSection && isExternal(c))
         return External;
     return c.isDirect() ? Direct : Channels;
 }
