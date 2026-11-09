@@ -1,6 +1,5 @@
 #include "screens/shell/sidebar.h"
 
-#include "screens/common/remote_images.h"
 #include "screens/common/tag_badge.h"
 #include "screens/messages/image_cache.h"
 
@@ -261,7 +260,7 @@ bool deadDm(const model::Store &store, const model::Conversation &c) {
 class SectionHeader final : public HoverRow {
 public:
     SectionHeader(Sidebar &sb, Sidebar::Kind k, Icon i, std::string text)
-        : sidebar(sb), kind(k), icon(i), title(text) {
+        : sidebar(sb), images(sb._ctx.images), kind(k), icon(i), title(text) {
         setLook({C::None, C::SidebarHover, C::SidebarHover, C::None, 0}); // full width
         setRole(k == Sidebar::Vip ? Role::Text : Role::Button); // VIP unreads takes no click
         // VIP's "VIP" pill is a real row child, not painted in the icon's
@@ -359,7 +358,7 @@ public:
         emojiLayout.reset();
         emojiHeld.reset();
     }
-    ~SectionHeader() override { sidebar._ctx.images.forget(this); }
+    ~SectionHeader() override { images.forget(this); }
     void refreshLook() override {
         const C bg = dropTarget ? C::SidebarSelected : lit() ? C::SidebarHover : C::None;
         setLook({bg, bg, C::SidebarHover, C::None, 0});
@@ -401,7 +400,7 @@ public:
                 screens::ImageCache::Ref ref{
                     emojiImage, sz, sz, screens::ImageCache::Shape::Rounded, 3.f * windowScale()
                 };
-                if (auto bmp = sidebar._ctx.images.get(ref, this, &emojiHeld)) {
+                if (auto bmp = images.get(ref, this, &emojiHeld)) {
                     p.drawBitmap(bmp->view(), {kPadH, y, 14, 14});
                     return;
                 }
@@ -411,6 +410,7 @@ public:
         gfx::drawIcon(p, i, {kPadH, y, 14, 14}, color(labelInk()));
     }
     Sidebar                      &sidebar;
+    screens::ImageCache          &images; // outlives the Sidebar: forget() in the destructor
     Sidebar::Kind                 kind;
     Icon                          icon;
     std::string                   title;
