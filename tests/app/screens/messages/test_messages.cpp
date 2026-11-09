@@ -1993,16 +1993,99 @@ TEST("actions: the file bar on hovered files; right click on them does nothing")
     REQUIRE(dl != nullptr);
     ui::View *bar = dl->parent();
     CHECK(bar->visible());
-    CHECK(near(bar->frame().w, 108) && near(bar->frame().h, 40));
+    CHECK(near(bar->frame().w, 140) && near(bar->frame().h, 40));
     CHECK(near(bar->windowRect().y, c.y - 20, 1));
-    CHECK(near(bar->windowRect().x + 108, c.x + c.w - 1, 1));
+    CHECK(near(bar->windowRect().x + 140, c.x + c.w - 1, 1));
     CHECK_STR(bar->child(1)->tooltip(), "Share");
     static_cast<ui::Clickable *>(bar->child(1))->activate();
     CHECK_STR(shared, csv); // "Forward this file"
+    // Download, Share, Add reaction, More actions: the reaction comes from
+    // the hovered file's message, like the message toolbar's.
+    ui::View *react = findByTooltip(bar, "Add reaction");
+    REQUIRE(react != nullptr);
+    CHECK(react == bar->child(2));
+    CHECK(react->visible());
+    static_cast<ui::Clickable *>(react)->activate();
+    pump(2);
+    auto *ep = static_cast<screens::EmojiPicker *>(e.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("tada");
+    pump(4);
+    const model::Message *fileMsg = e.store.findMessage(general, csvTs);
+    REQUIRE(fileMsg != nullptr);
+    bool reacted = false;
+    for (const model::Reaction &r : fileMsg->reactions)
+        if (r.name == "tada")
+            reacted = e.store.reactedByMe(r);
+    CHECK(reacted);
+    if (e.win->topPopup() == ep)
+        ep->close();
+    pump(2);
     h->injectButton(e.win->native(), plat::Button::Right, true);
     h->injectButton(e.win->native(), plat::Button::Right, false);
     pump(2);
     CHECK(e.win->topPopup() == nullptr);
+}
+
+TEST("actions: the file bar reacts to an image thumbnail too") {
+    Env e(false);
+    const int64_t     t0 = base::nowSecs() - 600;
+    model::File       img;
+    img.id     = "FIMG";
+    img.name   = "mira.png";
+    img.mime   = "image/png";
+    img.path   = asset("avatars/mira.png");
+    img.width  = 256;
+    img.height = 256;
+    model::Message m = msg(0, t0, "look");
+    m.extras().files.push_back(img);
+    std::vector<model::Message> ms;
+    ms.push_back(std::move(m));
+    const ConvRef conv = addConv(e.store, std::move(ms));
+    e.list->showConversation(conv);
+    pump(10);
+    const Ts  ts  = t0 * 1000000;
+    ui::View *row = e.row(ts);
+    REQUIRE(row != nullptr);
+    // The thumbnail: the image leaf (256 px), not the 36-px avatar.
+    ui::View                       *thumb = nullptr;
+    std::function<void(ui::View *)> find  = [&](ui::View *v) {
+        for (size_t i = 0; i < v->childCount(); ++i) {
+            ui::View *c = v->child(i);
+            if (c->childCount() == 0 && c->frame().h > 100)
+                thumb = c;
+            find(c);
+        }
+    };
+    find(row);
+    REQUIRE(thumb != nullptr);
+    auto            *h = app().platform().testHooks();
+    const ui::RectF  t = thumb->windowRect();
+    h->injectPointerMove(e.win->native(), {t.x + t.w / 2, t.y + t.h / 2});
+    pump(4);
+    ui::View *dl = findByTooltip(e.win->root().child(0), "Download");
+    REQUIRE(dl != nullptr);
+    ui::View *bar = dl->parent();
+    REQUIRE(bar->visible());
+    ui::View *react = findByTooltip(bar, "Add reaction");
+    REQUIRE(react != nullptr);
+    CHECK(react->visible());
+    static_cast<ui::Clickable *>(react)->activate();
+    pump(2);
+    auto *ep = static_cast<screens::EmojiPicker *>(e.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("tada");
+    pump(4);
+    const model::Message *imgMsg = e.store.findMessage(conv, ts);
+    REQUIRE(imgMsg != nullptr);
+    bool reacted = false;
+    for (const model::Reaction &r : imgMsg->reactions)
+        if (r.name == "tada")
+            reacted = e.store.reactedByMe(r);
+    CHECK(reacted);
+    if (e.win->topPopup() == ep)
+        ep->close();
+    pump(2);
 }
 
 TEST("actions: the delete, move to thread and reminder dialogs and the CSV viewer") {

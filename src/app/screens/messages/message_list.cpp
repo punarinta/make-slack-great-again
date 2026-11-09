@@ -582,7 +582,7 @@ MessageList::MessageList(Context &ctx)
         }
     };
     _toolbar->setVisible(false);
-    // The file action bar: Download, Share, More actions.
+    // The file action bar: Download, Share, Add reaction, More actions.
     _fileBar          = add<ToolbarCard>();
     auto *download    = _fileBar->add<ActionButton>(gfx::Icon::Download, tr("Download"));
     download->onClick = [this] { downloadFile(_fileTs, _filePath); };
@@ -590,6 +590,11 @@ MessageList::MessageList(Context &ctx)
     share->onClick    = [this] {
         if (_ctx.forwardMessage && _fileTs)
             _ctx.forwardMessage(_conv, _fileTs, _filePath);
+    };
+    _fbReact          = _fileBar->add<ActionButton>(gfx::Icon::Smile, tr("Add reaction"));
+    _fbReact->onClick = [this] {
+        const ui::RectF r = _fbReact->windowRect();
+        openReactionPicker(_fileTs, {r.x, r.y + r.h, 0, 0});
     };
     auto *fileMore    = _fileBar->add<ActionButton>(gfx::Icon::MoreHorizontal, tr("More actions"));
     fileMore->onClick = [this, fileMore] {
@@ -669,10 +674,15 @@ void MessageList::fileHovered(ui::View *v, Ts ts, const std::string &path, bool 
 }
 
 void MessageList::placeFileBar() {
-    if (!_fileView || !_fileView->window()) {
+    const model::Message *m = message(_fileTs);
+    if (!_fileView || !_fileView->window() || !m || m->pending) {
         _fileBar->setVisible(false);
         return;
     }
+    // Emoji: caps.reactions, except on my own messages in an agent session,
+    // as the message toolbar does.
+    const bool agent = _ctx.backend.isAgentSession(_conv);
+    _fbReact->setVisible(!(agent && m->user == _ctx.store().me));
     // cardTop = file top − 20 (straddling it); right edge on the file's
     // last pixel column.
     const ui::SizeF  sz = _fileBar->measure(ui::kInf, ui::kInf);
