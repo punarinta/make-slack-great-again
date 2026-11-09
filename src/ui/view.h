@@ -451,7 +451,7 @@ public:
 
     // ── Focus ───────────────────────────────────────────────────────────────
     View *focusView() const { return _focus; }
-    void  setFocus(View *v); // null clears
+    void  setFocus(View *v, bool visible = false); // null clears; visible: keep the focus ring
     // Next/previous focusable view in tree order (inside the top modal popup
     // if one is open). Returns false when there is none.
     bool  focusNext(bool backward);

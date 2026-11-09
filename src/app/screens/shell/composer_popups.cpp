@@ -306,6 +306,10 @@ void PickList::build() {
     select(0);
 }
 
+float PickList::scrollOffset() const {
+    return _scroll->scrollOffset();
+}
+
 void PickList::select(int i) {
     if (_rows.empty())
         return;
