@@ -348,7 +348,9 @@ void ScrollView::setOffset(float y) {
 }
 
 void ScrollView::ensureVisible(const View *d, float margin, bool animated) {
-    if (!d || !_content || !_content->isAncestorOf(d))
+    // A view created by a rebuild has no frame until the next layout pass:
+    // asking where it is would answer the content's origin (scroll to top).
+    if (!d || !_content || !_content->isAncestorOf(d) || d->height() <= 0)
         return;
     const float top = d->mapToWindow({0, 0}).y - _content->mapToWindow({0, 0}).y;
     const float bot = top + d->height();

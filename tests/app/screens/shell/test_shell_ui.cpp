@@ -278,6 +278,58 @@ TEST("sidebar: \"Show only unread conversations\" keeps the unread, the open and
     CHECK(h.sidebar().rowState(h.conv("C0RANDOM")).exists);
 }
 
+TEST("sidebar: selecting a row below the fold keeps the scroll position") {
+    Harness h;
+    for (int i = 0; i < 40; ++i) {
+        Conversation c;
+        c.id     = "C0PAD" + std::to_string(i);
+        c.name   = "pad" + std::to_string(i);
+        c.member = true;
+        h.store.addConversation(std::move(c));
+    }
+    h.sidebar().rebuild();
+    pump();
+    auto *sv = static_cast<ui::ScrollView *>(h.sidebar().child(0));
+    REQUIRE(sv != nullptr);
+    sv->scrollBy(10000);
+    pump();
+    const float scrolled = sv->scrollOffset();
+    REQUIRE(scrolled > 100);
+    // The last row fully inside the viewport: clicking it opens it.
+    const ui::RectF view = sv->windowRect();
+    ui::View      *target = nullptr;
+    for (ConvRef c : h.sidebar().order()) {
+        ui::View *r = const_cast<ui::View *>(h.sidebar().rowView(c));
+        if (!r)
+            continue;
+        const ui::RectF rr = r->windowRect();
+        if (rr.y >= view.y + 8 && rr.y + rr.h <= view.y + view.h - 8)
+            target = r;
+    }
+    REQUIRE(target != nullptr);
+    const ui::RectF tr = target->windowRect();
+    auto           *hk = app().platform().testHooks();
+    REQUIRE(hk != nullptr);
+    hk->injectPointerMove(h.win->native(), {tr.x + tr.w / 2, tr.y + tr.h / 2});
+    hk->injectButton(h.win->native(), plat::Button::Left, true);
+    hk->injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    CHECK(sv->scrollOffset() > 0);
+    CHECK(sv->scrollOffset() >= scrolled - 60); // a small ensureVisible nudge is fine
+    // A channel outside the relevance window has no row: selecting it rebuilds
+    // the list just before revealing it, which must not jump to the top.
+    shell::Sidebar::Filters f;
+    f.relevantDays = 1;
+    h.sidebar().setFilters(f);
+    pump();
+    sv->scrollBy(10000);
+    pump();
+    REQUIRE(sv->scrollOffset() > 0);
+    h.sh->open(h.conv("C0RANDOM"));
+    pump();
+    CHECK(sv->scrollOffset() > 0);
+}
+
 TEST("sidebar: bot DMs live under Agents & apps, which Settings can hide") {
     Harness       h;
     const UserRef bot = h.store.findUser("U0DEPLOY"); // the fixture's Deploybot

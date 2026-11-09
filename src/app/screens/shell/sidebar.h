@@ -284,6 +284,7 @@ private:
     model::UserRef           _shapeMe              = model::kNoUser;
     int                      _rebuilds             = 0;
     bool                     _revealOnRebuild      = false;
+    bool                     _revealSelectedOnLayout = false; // scroll to it once rows have frames
     int                      _hiddenChannels       = 0;
     // By Kind; Custom uses _collapsedCustom (keyed by sectionId) instead.
     bool                     _collapsed[KindCount] = {};
