@@ -1596,7 +1596,7 @@ void Sidebar::rebuildSoon(bool reveal) {
     _rebuildTimer            = _ctx.app.platform().addTimer(0, false, [this, alive] {
         if (alive.expired())
             return;
-        _rebuildTimer = 0;
+        _rebuildTimer           = 0;
         ConvRow   *oldSelected  = rowFor(_selected);
         const bool restoreFocus = oldSelected && window() && window()->focusView() == oldSelected;
         rebuild();

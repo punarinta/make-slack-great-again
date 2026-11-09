@@ -296,8 +296,8 @@ TEST("sidebar: selecting a row below the fold keeps the scroll position") {
     const float scrolled = sv->scrollOffset();
     REQUIRE(scrolled > 100);
     // The last row fully inside the viewport: clicking it opens it.
-    const ui::RectF view = sv->windowRect();
-    ui::View      *target = nullptr;
+    const ui::RectF view   = sv->windowRect();
+    ui::View       *target = nullptr;
     for (ConvRef c : h.sidebar().order()) {
         ui::View *r = const_cast<ui::View *>(h.sidebar().rowView(c));
         if (!r)

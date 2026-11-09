@@ -281,13 +281,13 @@ private:
     // The Store and its profile / text revisions _userShape was taken at.
     const model::Store      *_shapeStore      = nullptr;
     uint64_t                 _shapeProfileRev = 0, _shapeTextRev = 0;
-    model::UserRef           _shapeMe              = model::kNoUser;
-    int                      _rebuilds             = 0;
-    bool                     _revealOnRebuild      = false;
+    model::UserRef           _shapeMe                = model::kNoUser;
+    int                      _rebuilds               = 0;
+    bool                     _revealOnRebuild        = false;
     bool                     _revealSelectedOnLayout = false; // scroll to it once rows have frames
-    int                      _hiddenChannels       = 0;
+    int                      _hiddenChannels         = 0;
     // By Kind; Custom uses _collapsedCustom (keyed by sectionId) instead.
-    bool                     _collapsed[KindCount] = {};
+    bool                     _collapsed[KindCount]   = {};
     std::unordered_map<std::string, bool> _collapsedCustom; // the user's sections, by id
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged
