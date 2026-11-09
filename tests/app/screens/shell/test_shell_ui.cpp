@@ -1324,6 +1324,34 @@ TEST("composer: @ lists people and @channel & co.; a pick is a pill that sends t
     CHECK_STR(c.pickList()->item(0).subtitle, "Notify everyone in this channel");
 }
 
+TEST("composer: a new set of @ rows scrolls back to the first, which it selects") {
+    Harness h;
+    for (int i = 0; i < 50; ++i) { // 40 "zqprobe…" and 10 "zqx…"
+        User u;
+        u.id          = "U0ZQ" + std::to_string(i);
+        u.name        = (i < 40 ? "zqprobe" : "zqx") + std::to_string(i);
+        u.displayName = u.name;
+        h.store.addUser(std::move(u));
+    }
+    auto &c = h.composer();
+    c.edit().focus();
+    c.edit().insertText("@zq");
+    pump();
+    shell::PickList *p = c.pickList();
+    REQUIRE(p != nullptr);
+    REQUIRE(p->count() > 20);
+    p->select(20);
+    pump();
+    REQUIRE(p->scrollOffset() > 0);
+    const int builds = p->builds();
+    c.edit().insertText("p"); // fewer rows: made anew
+    pump();
+    REQUIRE(c.pickList() == p);
+    REQUIRE(p->builds() > builds);
+    CHECK(p->selected() == 0);
+    CHECK(p->scrollOffset() == 0);
+}
+
 TEST("composer: # lists channels, : completes emoji") {
     Harness h;
     auto   &c = h.composer();
