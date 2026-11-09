@@ -354,8 +354,8 @@ public:
     }
     // A custom section's emoji, drawn where the icon goes (empty = the icon).
     void setEmoji(model::Store::EmojiGlyph g) {
-        emoji        = std::move(g.unicode);
-        emojiImage   = std::move(g.image);
+        emoji      = std::move(g.unicode);
+        emojiImage = std::move(g.image);
         emojiLayout.reset();
         emojiHeld.reset();
     }
@@ -390,13 +390,17 @@ public:
                     emojiScale  = scale;
                 }
                 emojiLayout->paint(
-                    p, {kPadH + (14 - emojiLayout->width()) / 2, (height() - emojiLayout->height()) / 2}
+                    p,
+                    {kPadH + (14 - emojiLayout->width()) / 2,
+                     (height() - emojiLayout->height()) / 2}
                 );
                 return;
             }
             if (!emojiImage.empty()) {
-                const int sz = int(std::lround(14 * windowScale()));
-                screens::ImageCache::Ref ref{emojiImage, sz, sz, screens::ImageCache::Shape::Rounded, 3.f * windowScale()};
+                const int                sz = int(std::lround(14 * windowScale()));
+                screens::ImageCache::Ref ref{
+                    emojiImage, sz, sz, screens::ImageCache::Shape::Rounded, 3.f * windowScale()
+                };
                 if (auto bmp = sidebar._ctx.images.get(ref, this, &emojiHeld)) {
                     p.drawBitmap(bmp->view(), {kPadH, y, 14, 14});
                     return;
@@ -416,10 +420,10 @@ public:
     std::unique_ptr<text::Layout> emojiLayout;
     float                         emojiScale = 0;
     screens::ImageCache::Handle   emojiHeld;
-    Label                        *label      = nullptr;
-    HeaderButton                 *plus       = nullptr;
-    HeaderButton                 *more       = nullptr;
-    ui::View                     *vipBadge   = nullptr; // Vip: the "VIP" pill
+    Label                        *label    = nullptr;
+    HeaderButton                 *plus     = nullptr;
+    HeaderButton                 *more     = nullptr;
+    ui::View                     *vipBadge = nullptr; // Vip: the "VIP" pill
     std::vector<ConvRow *>        rows;
     std::vector<View *>           extras; // "N more channels", "Add channels"
     bool                          collapsed = false, unread = false, stale = false;
