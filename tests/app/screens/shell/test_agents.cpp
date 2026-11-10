@@ -195,6 +195,38 @@ TEST("agents: Sessions, then the Team section with every teammate") {
     CHECK_STR(mates[2], "copy");
 }
 
+TEST("agents: with direct messages at the top, Sessions and the Team come first") {
+    Harness    h;
+    const auto join = [](const std::vector<std::string> &v) {
+        std::string out;
+        for (const auto &t : v)
+            out += (out.empty() ? "" : "|") + t;
+        return out;
+    };
+    const std::vector<std::string> off = h.sidebar().sectionTitles();
+    h.settings.directAndExternalFirst  = true;
+    h.sh->applySettings();
+    pump();
+    const std::vector<std::string> on = h.sidebar().sectionTitles();
+    REQUIRE(on.size() == off.size());
+    // The nav entries, then Sessions and its Team, then the rest as before.
+    std::vector<std::string> want;
+    for (const auto &t : off)
+        if (t == "Sessions" || t == "Team")
+            continue;
+        else
+            want.push_back(t);
+    const auto first = std::find(off.begin(), off.end(), "Sessions") - off.begin();
+    REQUIRE(first < ptrdiff_t(off.size()));
+    size_t nav = 0;
+    while (nav < off.size() && off[nav] != "Starred" && off[nav] != "Channels" &&
+           off[nav] != "Sessions")
+        ++nav;
+    want.insert(want.begin() + ptrdiff_t(nav), {"Sessions", "Team"});
+    CHECK_STR(join(on), join(want));
+    CHECK(join(on).find("Sessions|Team") != std::string::npos);
+}
+
 TEST("agents: the yellow dot for an unavailable session and teammate, Shift+Del skips it") {
     Harness       h;
     const ConvRef dm   = h.conv("D0JONAS");
