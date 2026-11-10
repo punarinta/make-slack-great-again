@@ -1079,6 +1079,10 @@ msgid "Copy message"
 msgstr "メッセージをコピー"
 
 #: src/app/screens/messages/message_list.cpp
+msgid "Mark unread"
+msgstr "未読にする"
+
+#: src/app/screens/messages/message_list.cpp
 msgid "Pin to channel"
 msgstr "チャンネルにピン留め"
 

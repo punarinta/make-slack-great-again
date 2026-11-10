@@ -777,6 +777,7 @@ void MessageList::showThread(ConvRef conv, Ts root) {
     _openPending   = false;
     _conv          = conv;
     _root          = root;
+    _markedTs      = 0; // shown again: it reads itself again (unless held)
     _jumpTs        = 0;
     _loadingThread = false;
     // A thread reads from its root down; a short one sits at the top.
@@ -800,6 +801,8 @@ void MessageList::showThread(ConvRef conv, Ts root) {
         });
     }
     updateState();
+    if (conv != model::kNoConv)
+        scheduleEdgeCheck(); // a loaded thread reads itself at once
 }
 
 namespace {
@@ -1259,10 +1262,11 @@ void MessageList::checkEdges() {
         return;
     if (_root != 0) {
         // An open thread reads itself — on load and on each new reply
-        // (markThreadRead: its cursor, the Threads entry).
+        // (markThreadRead: its cursor, the Threads entry) — unless it was
+        // marked unread here.
         const auto *replies = _ctx.store().replies(_conv, _root);
         if (!_loadingThread && replies && !replies->empty() && !replies->back().pending &&
-            replies->back().ts != _markedTs) {
+            replies->back().ts != _markedTs && !_ctx.unreadHeld(_conv, _root)) {
             _markedTs = replies->back().ts;
             _ctx.backend.markThreadRead(_conv, _root, _markedTs);
         }
@@ -1274,7 +1278,9 @@ void MessageList::checkEdges() {
         return;
     }
     const model::Conversation &c = _ctx.store().conversation(_conv);
-    if (_reading && !_openPending && !c.messages.empty() &&
+    // Marked unread here: it stays so, new messages and all, until opened
+    // again.
+    if (_reading && !_openPending && !c.messages.empty() && !_ctx.unreadHeld(_conv, 0) &&
         _list->lastVisible() >= int(_items.size()) - 1) {
         const Ts newest = c.messages.back().ts;
         if (newest > c.lastRead && newest != _markedTs && !c.messages.back().pending) {
@@ -1552,6 +1558,41 @@ void MessageList::reply(Ts ts) {
         _ctx.openThread(_conv, ts);
 }
 
+Ts MessageList::unreadThreadOf(const model::Message &m) const {
+    if (_conv == model::kNoConv)
+        return 0;
+    if (_root != 0) // the thread panel: its root is a channel message
+        return m.ts == _root ? 0 : _root;
+    if (!m.isReply())
+        return 0;
+    // A reply in the channel's own list was also sent to the channel; one
+    // expanded inline under its root is the thread's.
+    const auto &msgs = _ctx.store().conversation(_conv).messages;
+    const auto  it =
+        std::lower_bound(msgs.begin(), msgs.end(), m.ts, [](const model::Message &x, Ts t) {
+            return x.ts < t;
+        });
+    return it != msgs.end() && it->ts == m.ts ? 0 : m.threadTs;
+}
+
+// Moves the cursor back to just before the message and holds it there while
+// it is on screen (Context::unreadHolds): no reading it again until it is
+// opened again.
+void MessageList::markUnread(Ts ts) {
+    const model::Message *m = message(ts);
+    if (!m || m->pending || _conv == model::kNoConv)
+        return;
+    if (const Ts thread = unreadThreadOf(*m)) {
+        if (!_ctx.backend.canMarkThreadUnread(_conv, thread))
+            return;
+        _ctx.holdUnread(_conv, thread);
+        _ctx.backend.markThreadUnread(_conv, thread, ts);
+    } else {
+        _ctx.holdUnread(_conv, 0);
+        _ctx.backend.markUnread(_conv, ts);
+    }
+}
+
 void MessageList::openReactionPicker(Ts ts, ui::RectF anchor) {
     if (!window())
         return;
@@ -1704,6 +1745,7 @@ constexpr ui::MenuDef kItemDefs[] = {
      nullptr,
      nullptr},
     {MessageList::kCopyText, uint16_t(gfx::Icon::Copy), N_("Copy message"), nullptr, "Ctrl+C"},
+    {MessageList::kMarkUnread, uint16_t(gfx::Icon::Eye), N_("Mark unread"), nullptr, "U"},
     {MessageList::kPin, uint16_t(gfx::Icon::Pin), N_("Pin to channel"), nullptr, "P"},
     {MessageList::kUnpin, uint16_t(gfx::Icon::PinOff), N_("Unpin from channel"), nullptr, "P"},
     {MessageList::kSave, uint16_t(gfx::Icon::Bookmark), N_("Save for later"), nullptr, nullptr},
@@ -1836,6 +1878,11 @@ std::vector<ui::MenuItem> MessageList::menuItems(Ts ts) const {
         addItem(items, kCopyLinkInText);
     addItem(items, kCopyText);
     ui::addMenuSeparator(items);
+    // A reply only where the thread has a cursor of its own to move back
+    // (a followed thread); otherwise the conversation's, where I'm in it.
+    if (const Ts thread = unreadThreadOf(*m);
+        thread ? _ctx.backend.canMarkThreadUnread(_conv, thread) : st.conversation(_conv).member)
+        addItem(items, kMarkUnread);
     if (!agent)
         addItem(items, m->pinned ? kUnpin : kPin);
     // Slack's Later list: session-token workspaces only (saved.*).
@@ -2004,6 +2051,9 @@ void MessageList::runMenuAction(Ts ts, int id, const std::string &path, ui::Poin
         break;
     case kCopyText: // shortened link labels copy as their full URLs
         copy = plainText(_ctx.store(), msg->text, true);
+        break;
+    case kMarkUnread:
+        markUnread(ts);
         break;
     case kPin:
     case kUnpin:

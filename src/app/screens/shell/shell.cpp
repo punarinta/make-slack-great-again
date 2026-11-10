@@ -1922,6 +1922,8 @@ void Shell::workspaceChanged() {
 void Shell::open(ConvRef conv) {
     if (!_signedIn || conv == kNoConv || conv >= _ctx.store().conversationCount())
         return;
+    // Opened again: one marked unread is read like any other now.
+    _ctx.releaseUnread(conv, 0);
     leaveTeammate(); // the teammate page keeps what was typed to it
     leavePages();
     _search->hideNow();
@@ -1966,6 +1968,7 @@ void Shell::open(ConvRef conv) {
 void Shell::leaveWorkspace() {
     leaveTeammate();
     leavePages();
+    _ctx.unreadHolds.clear(); // they name the old workspace's conversations
     if (_activityPage)
         _activityPage->clear(); // its items point into the old workspace
     if (_threadsPage)
@@ -2226,7 +2229,8 @@ bool Shell::removeIdleSession(const Event &e) {
 void Shell::openThread(ConvRef conv, Ts root) {
     if (conv != _current)
         open(conv);
-    _thread->show(conv, root); // stashes the previous thread's draft
+    _ctx.releaseUnread(conv, root); // opened again (see open)
+    _thread->show(conv, root);      // stashes the previous thread's draft
 #ifdef MSGA_HAVE_MESSAGES
     // Its reply bar in the list says "Close thread".
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(root);
@@ -2599,7 +2603,8 @@ void Shell::onChange(const model::Change &ch) {
     model::Store &st = _ctx.store();
     if (const std::vector<model::Message> *list =
             ch.thread ? st.replies(ch.conv, ch.thread) : &st.conversation(ch.conv).messages;
-        ch.kind == K::Append && list && reading() && ch.conv == _current && !ch.thread)
+        ch.kind == K::Append && list && reading() && ch.conv == _current && !ch.thread &&
+        !_ctx.unreadHeld(ch.conv, 0)) // marked unread: it stays so until opened again
         for (size_t i = list->size() - std::min<size_t>(ch.count, list->size()); i < list->size();
              ++i)
             if (const model::Message &m = (*list)[i]; m.user != st.me && !m.pending)

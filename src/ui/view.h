@@ -620,6 +620,10 @@ private:
     bool                               _dying = false, _textInput = false, _buttonHeld = false;
     bool                               _focusVisible = false, _frameAgain = false;
     bool                               _hoverDirty = false, _pointerInside = false;
+    // A key press that was taken and moved the focus (a menu's shortcut
+    // chose an item and closed): its text, which follows it, is dropped
+    // instead of typing into the view that has the focus now.
+    bool                               _dropKeyText = false;
     gfx::PaintScratch                  _paintScratch; // the frame painters' working memory
 #ifdef MSGA_UI_VERIFY
     bool                  _verify = false;
