@@ -1,1 +1,1 @@
-set(MSGA_VERSION 44)   # increment on each public release
+set(MSGA_VERSION 45)   # increment on each public release
