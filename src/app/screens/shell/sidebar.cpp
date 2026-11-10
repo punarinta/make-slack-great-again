@@ -871,15 +871,17 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             }
             if (ch.conv >= _ctx.store().conversationCount())
                 break;
-            const auto &cv = _ctx.store().conversation(ch.conv);
-            ConvRow    *r  = rowFor(ch.conv);
+            const auto &cv    = _ctx.store().conversation(ch.conv);
+            ConvRow    *r     = rowFor(ch.conv);
             // Under unreads-only a row comes or goes when its bold state
-            // flips (the selected row stays regardless).
+            // flips (the selected row and Drafts stay regardless; Starred and
+            // the user's sections unless their scope is on). A starred one in
+            // one of the user's sections is listed there: that scope decides.
+            const bool  inOwn = r && r->section->kind == Sidebar::Custom;
             const bool  filterFlip =
                 _filters.unreadsOnly && ch.conv != _selected &&
-                !(cv.starred && !_filters.unreadsOnlyAppliesToStarred) &&
-                !(r && r->section->kind == Sidebar::Custom &&
-                  !_filters.unreadsOnlyAppliesToCustomSections) &&
+                !(cv.starred && !inOwn && !_filters.unreadsOnlyAppliesToStarred) &&
+                !(inOwn && !_filters.unreadsOnlyAppliesToCustomSections) &&
                 !(r && r->section->kind == Sidebar::Drafts) &&
                 (r ? r->unread != paintsUnread(cv) : cv.member && paintsUnread(cv));
             // Same classify() rebuild() uses, so a row only looks "moved" when it would be.

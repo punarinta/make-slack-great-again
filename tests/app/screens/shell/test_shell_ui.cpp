@@ -334,6 +334,26 @@ TEST("sidebar: with its scopes on, unread-only lists read starred and own rows a
     CHECK(h.sidebar().rowState(general).exists);
 }
 
+TEST("sidebar: a starred conversation in one of your sections follows that section's scope") {
+    Harness       h;
+    const ConvRef random = h.conv("C0RANDOM"); // read
+    h.backend.createSection("Projects", "", random);
+    // Starred as well (as the Store may have it from the server): the
+    // section lists it, so the section's scope decides.
+    h.store.updateConversation(random, [](Conversation &c) { c.starred = true; });
+    h.settings.unreadsOnly                        = true;
+    h.settings.unreadsOnlyAppliesToCustomSections = true;
+    h.sh->applySettings();
+    pump();
+    REQUIRE(!h.sidebar().rowState(random).exists);
+    h.backend.markUnread(random, h.store.conversation(random).latest);
+    pump();
+    REQUIRE(h.sidebar().rowState(random).section == "Projects");
+    h.backend.markRead(random, h.store.conversation(random).latest);
+    pump();
+    CHECK_FALSE(h.sidebar().rowState(random).exists); // read elsewhere: gone at once
+}
+
 TEST("sidebar: an unsent draft lists its conversation under Drafts") {
     Harness       h;
     const ConvRef eng = h.conv("C0ENG");
