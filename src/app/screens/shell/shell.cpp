@@ -3709,21 +3709,30 @@ void Shell::storeSorts() {
     );
 }
 
+// workspaceChanged also runs for the open one (connected, its icon): the
+// sidebar's state is already what the settings have for it then, and the
+// sections opened up for its chats stay open.
 void Shell::loadCollapsed() {
+    if (_collapsedFor == _activeKey)
+        return;
     Sidebar::Collapsed collapsed;
     for (const Settings::SectionCollapsedPref &p : _settings.sidebarCollapsed)
         if (p.workspace == _activeKey && !p.section.empty())
             collapsed[p.section] = true;
+    _collapsedFor = _activeKey;
     _sidebar->setCollapsed(std::move(collapsed));
 }
 
 void Shell::storeCollapsed() {
-    std::erase_if(_settings.sidebarCollapsed, [this](const Settings::SectionCollapsedPref &p) {
-        return p.workspace == _activeKey;
+    if (!_collapsedFor)
+        return;
+    const std::string &key = *_collapsedFor;
+    std::erase_if(_settings.sidebarCollapsed, [&key](const Settings::SectionCollapsedPref &p) {
+        return p.workspace == key;
     });
     for (const auto &[section, on] : _sidebar->collapsed())
         if (on && !section.empty())
-            _settings.sidebarCollapsed.push_back({_activeKey, section});
+            _settings.sidebarCollapsed.push_back({key, section});
     std::sort(
         _settings.sidebarCollapsed.begin(),
         _settings.sidebarCollapsed.end(),

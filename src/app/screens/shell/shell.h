@@ -19,6 +19,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -446,8 +447,9 @@ private:
     void applyUpdate(); // the update bar's button
 #endif
     void storeVisited(); // the sidebar's visit stamps into _settings
-    // The open workspace's section sorts/collapse: from _settings into the sidebar,
-    // and back when changed.
+    // The open workspace's section sorts and collapsed sections: from
+    // _settings into the sidebar, and back when the section menu or a header
+    // click changed them.
     void loadSorts();
     void storeSorts();
     void loadCollapsed();
@@ -493,6 +495,11 @@ private:
     bool                   _haveWorkspaces = false; // setWorkspaces was called
     ui::View              *_listHandle = nullptr, *_signedOut = nullptr, *_addBtn = nullptr;
     bool                   _signedIn = true;
+
+    // The workspace whose collapsed sections the sidebar holds: they are
+    // stored under it, and loaded again only for another one.
+    std::optional<std::string> _collapsedFor;
+
     ui::Button    *_pinBtn = nullptr, *_minBtn = nullptr, *_maxBtn = nullptr, *_closeBtn = nullptr;
     ui::Clickable *_prefsBtn                = nullptr;
     ConvHeader    *_header                  = nullptr;

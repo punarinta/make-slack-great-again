@@ -1022,12 +1022,7 @@ void Sidebar::rebuild() {
                 break;
             }
     const bool focusRing = win && win->focusVisible();
-    for (auto *h : _sections) { // survives the rebuild
-        const std::string key = sectionKey(h->kind, h->sectionId);
-        if (!key.empty())
-            setCollapsedState(key, h->collapsed);
-    }
-    _dragRow = nullptr; // a drag under way ends with its row
+    _dragRow             = nullptr; // a drag under way ends with its row
     _items->clearChildren();
     _rows.clear();
     _rowOf.assign(_ctx.store().conversationCount(), nullptr);
@@ -1179,24 +1174,14 @@ void Sidebar::rebuild() {
                              std::string                 title,
                              const std::vector<ConvRef> &rows,
                              const std::string          &id = {}) {
-        auto             *h   = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
-        const std::string key = sectionKey(kind, id);
-        h->collapsed          = !key.empty() && _collapsed.count(key);
+        auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
+        h->sectionId = id;
+        restoreCollapse(h);
         _sections.push_back(h);
         // VIP unreads never collapses: a lift for unreads, not a section to
         // fold away (its header shows the pill, no chevron to say so).
         if (kind != Vip)
-            h->onClick = [this, h] {
-                h->collapsed = !h->collapsed;
-                applyCollapse(h);
-                const std::string k = sectionKey(h->kind, h->sectionId);
-                if (!k.empty()) {
-                    setCollapsedState(k, h->collapsed);
-                    if (onCollapsedChanged)
-                        onCollapsedChanged();
-                }
-            };
-        h->sectionId = id;
+            h->onClick = [this, h] { toggleCollapse(h); };
         for (size_t i : sortedOrder(sortOf(h), rows)) {
             const ConvRef c   = rows[i];
             auto         *row = _items->add<ConvRow>(*this, c);
@@ -1264,16 +1249,10 @@ void Sidebar::rebuild() {
         // The team, under the sessions (the fourth section): the roles sessions
         // are started with.
         if (s == Direct && !_team.empty()) {
-            auto *t      = _items->add<SectionHeader>(*this, Team, Icon::Users, tr("Team"));
-            t->collapsed = _collapsed.count(sectionKey(Team, {})) != 0;
+            auto *t = _items->add<SectionHeader>(*this, Team, Icon::Users, tr("Team"));
+            restoreCollapse(t);
             _sections.push_back(t);
-            t->onClick = [this, t] {
-                t->collapsed = !t->collapsed;
-                applyCollapse(t);
-                setCollapsedState(sectionKey(Team, {}), t->collapsed);
-                if (onCollapsedChanged)
-                    onCollapsedChanged();
-            };
+            t->onClick = [this, t] { toggleCollapse(t); };
             for (const auto &mate : _team) {
                 auto *row = _items->add<TeammateRow>(*this, mate);
                 t->extras.push_back(row);
@@ -1547,21 +1526,18 @@ void Sidebar::setSort(const std::string &key, SectionSort sort) {
         onSortsChanged();
 }
 
+// A switch: the workspace's own, applied to the headers there are (no
+// rebuild); what was opened up for the last one's chats closes again.
 void Sidebar::setCollapsed(Collapsed collapsed) {
     std::erase_if(collapsed, [](const auto &e) { return e.first.empty() || !e.second; });
-    if (collapsed == _collapsed)
-        return;
     _collapsed = std::move(collapsed);
-    rebuild();
-}
-
-void Sidebar::setCollapsedState(const std::string &key, bool on) {
-    if (key.empty())
-        return;
-    if (on)
-        _collapsed[key] = true;
-    else
-        _collapsed.erase(key);
+    _openedUp.clear();
+    for (SectionHeader *h : _sections) {
+        const bool was = h->collapsed;
+        restoreCollapse(h);
+        if (h->collapsed != was)
+            applyCollapse(h);
+    }
 }
 
 void Sidebar::sectionMenu(SectionHeader *h, PointF at) {
@@ -1574,6 +1550,36 @@ void Sidebar::sectionMenu(SectionHeader *h, PointF at) {
         at,
         [this, key](SectionSort sort) { setSort(key, sort); }
     );
+}
+
+void Sidebar::restoreCollapse(SectionHeader *h) {
+    const std::string key = sectionKey(h->kind, h->sectionId);
+    h->collapsed          = !key.empty() && _collapsed.count(key) && !_openedUp.count(key);
+}
+
+// The user's choice: kept, and told to the shell to store.
+void Sidebar::toggleCollapse(SectionHeader *h) {
+    h->collapsed = !h->collapsed;
+    applyCollapse(h);
+    const std::string key = sectionKey(h->kind, h->sectionId);
+    if (key.empty())
+        return;
+    _openedUp.erase(key);
+    const bool changed =
+        h->collapsed ? _collapsed.emplace(key, true).second : _collapsed.erase(key) > 0;
+    if (changed && onCollapsedChanged)
+        onCollapsedChanged();
+}
+
+// Not the user's choice: the section stays collapsed in _collapsed (and in
+// the settings), open until the workspace is set again.
+void Sidebar::openUp(SectionHeader *h) {
+    if (!h->collapsed)
+        return;
+    h->collapsed = false;
+    applyCollapse(h);
+    if (const std::string key = sectionKey(h->kind, h->sectionId); !key.empty())
+        _openedUp.insert(key);
 }
 
 // Collapsed, a section lists nothing under its header.
@@ -1750,10 +1756,8 @@ void Sidebar::selectTeammate(const std::string &role) {
     for (TeammateRow *r : _teamRows)
         if (r->role == role) {
             for (SectionHeader *h : _sections)
-                if (h->kind == Team && h->collapsed) {
-                    h->collapsed = false;
-                    applyCollapse(h);
-                }
+                if (h->kind == Team)
+                    openUp(h);
             _scroll->ensureVisible(r, 8);
         }
 }
@@ -1873,10 +1877,8 @@ void Sidebar::select(ConvRef conv) {
     // lists it (relevance, unreads-only, apps) and
     // expands its section. Rebuilt after the click that got here.
     ConvRow *r = rowFor(conv);
-    if (r && r->section->collapsed) {
-        r->section->collapsed = false;
-        applyCollapse(r->section);
-    }
+    if (r)
+        openUp(r->section);
     if ((conv != kNoConv && !r) || (_filters.unreadsOnly && old != kNoConv && old != conv))
         rebuildSoon(); // the one left may drop out of unreads-only
     if (r) {

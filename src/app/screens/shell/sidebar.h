@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace shell {
@@ -127,13 +128,15 @@ public:
     const Sorts          &sorts() const { return _sorts; }
     std::function<void()> onSortsChanged;
     void                  setSort(const std::string &key, SectionSort sort);
-    // Each section's collapsed state by its key (sectionKey; only collapsed
-    // sections stored). Persisted per workspace like sorts.
+    // The sections the user collapsed, by key (sectionKey; only collapsed
+    // ones listed). The shell keeps them per workspace and sets them when one
+    // opens; onCollapsedChanged fires when a header click changed them. A
+    // section opened up to show the chat being opened stays collapsed here:
+    // that is no choice of the user's, and it lasts until the next set.
     using Collapsed = std::unordered_map<std::string, bool>;
     void                  setCollapsed(Collapsed collapsed);
     const Collapsed      &collapsed() const { return _collapsed; }
     std::function<void()> onCollapsedChanged;
-    void                  setCollapsedState(const std::string &key, bool on);
     // A section's key: a custom one's id, a "#"-prefixed name for every
     // other built-in.
     static std::string    sectionKey(Kind kind, const std::string &id);
@@ -243,6 +246,10 @@ private:
     Kind               classify(const model::Conversation &c) const;
     bool               relevant(model::ConvRef c) const;
     void               applyCollapse(SectionHeader *h);
+    // A header's state from _collapsed and _openedUp, its rows shown or hidden.
+    void               restoreCollapse(SectionHeader *h);
+    void               toggleCollapse(SectionHeader *h); // a click on the header
+    void               openUp(SectionHeader *h);         // shows a row in it
     // A conversation row dragged onto a section (ConvRow's press handling).
     SectionHeader     *sectionAt(ui::PointF windowPos) const;
     void               dragRow(ConvRow *row, ui::PointF windowPos);
@@ -302,11 +309,16 @@ private:
     bool                     _revealOnRebuild        = false;
     bool                     _revealSelectedOnLayout = false; // see revealSelectedAfterLayout()
     int                      _hiddenChannels         = 0;
-    Collapsed                _collapsed;           // sectionKey -> collapsed (only true stored)
-    uint64_t                 _sectionsRev     = 0; // Store::sectionsRevision at the last rebuild
-    ConvRow                 *_dragRow         = nullptr; // a row being dragged
-    bool                     _showAllChannels = false;
-    bool                     _resort = false; // sectionsSoon checks the sorted sections' order
+
+    // The user's collapsed sections, and those of them opened up to show a
+    // chat (see setCollapsed).
+    Collapsed                       _collapsed;
+    std::unordered_set<std::string> _openedUp;
+
+    uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
+    ConvRow *_dragRow         = nullptr; // a row being dragged
+    bool     _showAllChannels = false;
+    bool     _resort          = false; // sectionsSoon checks the sorted sections' order
 };
 
 } // namespace shell

@@ -3464,6 +3464,99 @@ TEST("zen mode: each workspace keeps its own") {
     CHECK(f.zenOn());
 }
 
+namespace {
+// Its sections (workspace, key) as the settings keep them.
+std::vector<std::string> collapsedPrefs(const shell::Settings &s) {
+    std::vector<std::string> out;
+    for (const auto &p : s.sidebarCollapsed)
+        out.push_back(p.workspace + " " + p.section);
+    return out;
+}
+} // namespace
+
+TEST("collapse: each workspace keeps its own, across switches and a restart") {
+    TwoWorkspaces   w;
+    const ConvRef   engA = w.a.findConversation("C0ENG");
+    const ConvRef   engB = w.b.findConversation("C0ENG");
+    const ConvRef   dmB  = w.b.findConversation("D0MIRA");
+    shell::Sidebar *sb   = &w.sh->sidebar();
+    REQUIRE(sb->toggleSection("Channels"));
+    pump();
+    CHECK_FALSE(sb->rowState(engA).visible);
+    CHECK(
+        collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #channels")}
+    );
+    // The other one has nothing collapsed: none of the first one's leaks in.
+    w.show(kKeyB);
+    CHECK(sb->collapsed().empty());
+    CHECK(sb->rowState(engB).visible);
+    REQUIRE(sb->toggleSection("Direct messages"));
+    pump();
+    CHECK_FALSE(sb->rowState(dmB).visible);
+    const std::vector<std::string> both = {
+        kKeyA + std::string(" #channels"), kKeyB + std::string(" #direct")
+    };
+    CHECK(collapsedPrefs(w.settings) == both);
+    w.show(kKeyA);
+    CHECK_FALSE(sb->rowState(engA).visible);
+    CHECK(sb->rowState(w.a.findConversation("D0MIRA")).visible);
+    CHECK(collapsedPrefs(w.settings) == both);
+    // A restart opens with each one's own.
+    w.restart({});
+    sb = &w.sh->sidebar();
+    CHECK_FALSE(sb->rowState(engA).visible);
+    w.show(kKeyB);
+    CHECK(sb->rowState(engB).visible);
+    CHECK_FALSE(sb->rowState(dmB).visible);
+    CHECK(collapsedPrefs(w.settings) == both);
+    // Expanded again: nothing left for it.
+    REQUIRE(sb->toggleSection("Direct messages"));
+    pump();
+    CHECK(sb->rowState(dmB).visible);
+    CHECK(
+        collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #channels")}
+    );
+}
+
+TEST("collapse: a chat opened in a collapsed section opens it up, not stored") {
+    TwoWorkspaces   w;
+    const ConvRef   eng = w.a.findConversation("C0ENG");
+    shell::Sidebar &sb  = w.sh->sidebar();
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    w.sh->open(eng);
+    pump();
+    CHECK(sb.rowState(eng).visible);
+    CHECK(sb.collapsed().count("#channels"));
+    // Open through rebuilds and the open workspace's own workspaceChanged
+    // (connected, its icon), and another section's click stores only that.
+    sb.rebuild();
+    w.sh->workspaceChanged();
+    pump();
+    CHECK(sb.rowState(eng).visible);
+    REQUIRE(sb.toggleSection("Direct messages"));
+    pump();
+    const std::vector<std::string> both = {
+        kKeyA + std::string(" #channels"), kKeyA + std::string(" #direct")
+    };
+    CHECK(collapsedPrefs(w.settings) == both);
+    // Back from another workspace, it is collapsed again.
+    w.show(kKeyB);
+    w.show(kKeyA);
+    CHECK_FALSE(sb.rowState(eng).visible);
+    // Opened up, one click collapses it (it already is, for the settings).
+    w.sh->open(eng);
+    pump();
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    CHECK_FALSE(sb.rowState(eng).visible);
+    CHECK(collapsedPrefs(w.settings) == both);
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    CHECK(sb.rowState(eng).visible);
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #direct")});
+}
+
 TEST("header: names, presence, DND and my phantom state follow the Store") {
     TwoWorkspaces w;
     Store        &st   = w.a;
