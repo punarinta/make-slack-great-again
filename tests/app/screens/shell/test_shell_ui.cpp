@@ -478,21 +478,23 @@ TEST("sidebar: keyboard focus on a row survives a rebuild") {
     ui::View *before = row();
     REQUIRE(before != nullptr);
     h.win->setFocus(before, true); // as if reached with Tab: the ring shows
-    // Synchronous: a filter change rebuilds the rows at once.
+    // Synchronous: a filter change rebuilds the rows at once. (The count, not
+    // the row's address: a new row can be allocated where the old one was.)
+    int                     rebuilt = h.sidebar().rebuildCount();
     shell::Sidebar::Filters f;
     f.relevantDays = 1;
     h.sidebar().setFilters(f);
+    CHECK(h.sidebar().rebuildCount() > rebuilt); // the rows were recreated
     pump();
     REQUIRE(row() != nullptr);
-    CHECK(row() != before); // the rows were recreated
     CHECK(h.win->focusView() == row());
     CHECK(h.win->focusVisible());
     // Deferred: rebuildSoon() after the click that asked for it.
-    before = row();
+    rebuilt = h.sidebar().rebuildCount();
     h.sidebar().showAllChannels();
+    REQUIRE(until([&] { return h.sidebar().rebuildCount() > rebuilt; }));
     pump();
     REQUIRE(row() != nullptr);
-    CHECK(row() != before);
     CHECK(h.win->focusView() == row());
     CHECK(h.win->focusVisible());
 }
