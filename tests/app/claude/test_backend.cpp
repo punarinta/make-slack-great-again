@@ -2450,6 +2450,7 @@ TEST("backend: the sidebar's own sections are kept with the known sessions") {
     // The next run lists them again, the session still in its section.
     Rig rig;
     REQUIRE(rig.store.sections().size() == 1);
+    CHECK(rig.store.sectionsComplete()); // its own file keeps them all
     CHECK_STR(rig.store.sections()[0].name, "Releases");
     CHECK_STR(rig.store.sections()[0].emoji, "ship");
     REQUIRE(rig.store.sections()[0].convs.size() == 1);

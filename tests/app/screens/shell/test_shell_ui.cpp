@@ -297,6 +297,145 @@ TEST("sidebar: the unreads-only scope flags decide what read starred and custom 
     CHECK_FALSE(h.sidebar().rowState(random).exists);
 }
 
+TEST("sidebar: an unsent draft lists its conversation under Drafts") {
+    Harness       h;
+    const ConvRef eng = h.conv("C0ENG");
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") == std::string::npos);
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") != std::string::npos);
+    CHECK(h.sidebar().rowState(eng).exists);
+    // Sent or cleared: the section goes, the conversation is back where it was.
+    h.store.setDraft(eng, 0, "", {});
+    pump();
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") == std::string::npos);
+    CHECK(h.sidebar().rowState(eng).exists);
+}
+
+TEST("sidebar: a drafted row says Draft, made only then, and not while its chat is open") {
+    Harness       h;
+    const ConvRef eng  = h.conv("C0ENG");
+    const ConvRef open = h.sh->current();
+    REQUIRE(open != kNoConv);
+    REQUIRE(open != eng);
+    CHECK_FALSE(h.sidebar().rowState(eng).draft);
+    const size_t bare = h.sidebar().rowView(eng)->childCount();
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    CHECK(h.sidebar().rowState(eng).draft);
+    CHECK(h.sidebar().rowView(eng)->childCount() == bare + 1); // the label, made now
+    // Open, the composer holds the draft (live): the row says nothing.
+    h.sh->open(eng);
+    pump();
+    CHECK(h.sidebar().rowState(eng).selected);
+    CHECK_FALSE(h.sidebar().rowState(eng).draft);
+    h.sh->open(open); // left with the draft still in the composer: stashed again
+    pump();
+    CHECK(h.sidebar().rowState(eng).draft);
+}
+
+TEST("sidebar: under unreads-only a drafted row's unread change rebuilds nothing") {
+    Harness       h;
+    const ConvRef random = h.conv("C0RANDOM"); // read
+    h.store.setDraft(random, 0, "<p>later</p>", {});
+    h.settings.unreadsOnly = true;
+    h.sh->applySettings();
+    pump();
+    REQUIRE(h.sidebar().rowState(random).section == "Drafts");
+    const int rebuilds = h.sidebar().rebuildCount();
+    h.backend.markUnread(random, h.store.conversation(random).latest);
+    pump();
+    CHECK(h.sidebar().rowState(random).bold);
+    CHECK(h.sidebar().rebuildCount() == rebuilds); // listed either way: restyled in place
+    CHECK_STR(h.sidebar().rowState(random).section, "Drafts");
+}
+
+TEST("sidebar: selecting a row below the fold keeps the scroll position") {
+    Harness h;
+    for (int i = 0; i < 40; ++i) {
+        Conversation c;
+        c.id     = "C0PAD" + std::to_string(i);
+        c.name   = "pad" + std::to_string(i);
+        c.member = true;
+        h.store.addConversation(std::move(c));
+    }
+    h.sidebar().rebuild();
+    pump();
+    auto *sv = static_cast<ui::ScrollView *>(h.sidebar().child(0));
+    REQUIRE(sv != nullptr);
+    sv->scrollBy(10000);
+    pump();
+    const float scrolled = sv->scrollOffset();
+    REQUIRE(scrolled > 100);
+    // The last row fully inside the viewport: clicking it opens it.
+    const ui::RectF view   = sv->windowRect();
+    ui::View       *target = nullptr;
+    for (ConvRef c : h.sidebar().order()) {
+        ui::View *r = const_cast<ui::View *>(h.sidebar().rowView(c));
+        if (!r)
+            continue;
+        const ui::RectF rr = r->windowRect();
+        if (rr.y >= view.y + 8 && rr.y + rr.h <= view.y + view.h - 8)
+            target = r;
+    }
+    REQUIRE(target != nullptr);
+    const ui::RectF tr = target->windowRect();
+    auto           *hk = app().platform().testHooks();
+    REQUIRE(hk != nullptr);
+    hk->injectPointerMove(h.win->native(), {tr.x + tr.w / 2, tr.y + tr.h / 2});
+    hk->injectButton(h.win->native(), plat::Button::Left, true);
+    hk->injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    CHECK(sv->scrollOffset() > 0);
+    CHECK(sv->scrollOffset() >= scrolled - 60); // a small ensureVisible nudge is fine
+    // A channel outside the relevance window has no row: selecting it rebuilds
+    // the list just before revealing it, which must not jump to the top.
+    shell::Sidebar::Filters f;
+    f.relevantDays = 1;
+    h.sidebar().setFilters(f);
+    pump();
+    sv->scrollBy(10000);
+    pump();
+    REQUIRE(sv->scrollOffset() > 0);
+    h.sh->open(h.conv("C0RANDOM"));
+    pump();
+    CHECK(sv->scrollOffset() > 0);
+    // ...and the reveal still happens, once the new row has a frame.
+    const ui::View *opened = h.sidebar().rowView(h.conv("C0RANDOM"));
+    REQUIRE(opened != nullptr);
+    const ui::RectF orr = opened->windowRect(), vr = sv->windowRect();
+    CHECK(orr.h > 0);
+    CHECK(orr.y >= vr.y);
+    CHECK(orr.y + orr.h <= vr.y + vr.h);
+}
+
+TEST("sidebar: keyboard focus on a row survives a rebuild") {
+    Harness h;
+    h.sh->open(h.conv("C0GENERAL"));
+    pump();
+    auto row = [&] { return const_cast<ui::View *>(h.sidebar().rowView(h.conv("C0GENERAL"))); };
+    ui::View *before = row();
+    REQUIRE(before != nullptr);
+    h.win->setFocus(before, true); // as if reached with Tab: the ring shows
+    // Synchronous: a filter change rebuilds the rows at once.
+    shell::Sidebar::Filters f;
+    f.relevantDays = 1;
+    h.sidebar().setFilters(f);
+    pump();
+    REQUIRE(row() != nullptr);
+    CHECK(row() != before); // the rows were recreated
+    CHECK(h.win->focusView() == row());
+    CHECK(h.win->focusVisible());
+    // Deferred: rebuildSoon() after the click that asked for it.
+    before = row();
+    h.sidebar().showAllChannels();
+    pump();
+    REQUIRE(row() != nullptr);
+    CHECK(row() != before);
+    CHECK(h.win->focusView() == row());
+    CHECK(h.win->focusVisible());
+}
+
 TEST("sidebar: bot DMs live under Agents & apps, which Settings can hide") {
     Harness       h;
     const UserRef bot = h.store.findUser("U0DEPLOY"); // the fixture's Deploybot
@@ -1255,6 +1394,34 @@ TEST("composer: @ lists people and @channel & co.; a pick is a pill that sends t
     REQUIRE(c.pickList() != nullptr);
     CHECK_STR(c.pickList()->item(0).title, "@channel");
     CHECK_STR(c.pickList()->item(0).subtitle, "Notify everyone in this channel");
+}
+
+TEST("composer: a new set of @ rows scrolls back to the first, which it selects") {
+    Harness h;
+    for (int i = 0; i < 50; ++i) { // 40 "zqprobe…" and 10 "zqx…"
+        User u;
+        u.id          = "U0ZQ" + std::to_string(i);
+        u.name        = (i < 40 ? "zqprobe" : "zqx") + std::to_string(i);
+        u.displayName = u.name;
+        h.store.addUser(std::move(u));
+    }
+    auto &c = h.composer();
+    c.edit().focus();
+    c.edit().insertText("@zq");
+    pump();
+    shell::PickList *p = c.pickList();
+    REQUIRE(p != nullptr);
+    REQUIRE(p->count() > 20);
+    p->select(20);
+    pump();
+    REQUIRE(p->scrollOffset() > 0);
+    const int builds = p->builds();
+    c.edit().insertText("p"); // fewer rows: made anew
+    pump();
+    REQUIRE(c.pickList() == p);
+    REQUIRE(p->builds() > builds);
+    CHECK(p->selected() == 0);
+    CHECK(p->scrollOffset() == 0);
 }
 
 TEST("composer: # lists channels, : completes emoji") {

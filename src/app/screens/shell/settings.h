@@ -67,7 +67,12 @@ struct Settings {
     bool                     showAgentsApps = true, unreadsOnly = false;
     // Slack Connect channels and DMs in their own External connections
     // section; off, they stay in Channels / Direct messages.
-    bool                     externalSection = true;
+    bool                     externalSection        = true;
+    // Direct messages/Sessions and External connections above Starred,
+    // custom sections and Channels; off, the existing order is unchanged.
+    bool                     directAndExternalFirst = false;
+    // "Show only unread conversations" also hides the read ones in the
+    // user's own sections / in Starred (off: those are always listed).
     bool                     unreadsOnlyAppliesToCustomSections = false,
                              unreadsOnlyAppliesToStarred = false;
     bool                     animateEmoji = true, animateMedia = true;
@@ -119,6 +124,12 @@ struct Settings {
     };
     std::vector<SectionSortPref> sidebarSorts;
     bool                         trayMonochrome = true; // the custom tray icon turned monochrome
+    // Collapsed sidebar sections (sectionKey), per workspace. Only collapsed
+    // sections are stored.
+    struct SectionCollapsedPref {
+        std::string workspace, section;
+    };
+    std::vector<SectionCollapsedPref> sidebarCollapsed;
 
     // ── Claude Code ─────────────────────────────────────────────────────────
     // The folder the last session started in (claudeCode/lastDir; "" = home),

@@ -725,6 +725,18 @@ public:
     }
     // My read cursor in a followed thread moves to ts (best effort).
     virtual void markThreadRead(ConvRef conv, Ts root, Ts ts) { (void)conv, (void)root, (void)ts; }
+    // "Mark unread" on a reply: the thread's read cursor moves back to just
+    // before ts, so the thread is unread again from that reply (the Threads
+    // entry, the Threads page); the channel's own cursor stays. Only where
+    // canMarkThreadUnread says so (a followed thread, where the service
+    // keeps a cursor for it).
+    virtual bool canMarkThreadUnread(ConvRef conv, Ts root) const {
+        (void)conv, (void)root;
+        return false;
+    }
+    virtual void markThreadUnread(ConvRef conv, Ts root, Ts ts) {
+        (void)conv, (void)root, (void)ts;
+    }
 
     // The sidebar's "Activity" page (Capabilities::activityView): what
     // notified me, newest first — mentions, thread replies, reactions to my

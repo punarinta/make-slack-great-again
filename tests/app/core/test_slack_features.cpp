@@ -792,6 +792,7 @@ TEST("slack features: custom sidebar sections — the list, moves, create, a ref
     );
     REQUIRE(e.connect());
     REQUIRE(pumpUntil([&] { return e.store.sections().size() == 2; }));
+    CHECK(e.store.sectionsComplete()); // the whole list: a section not in it is gone
     CHECK(e.be->capabilities().customSections);
     CHECK_STR(e.store.sections()[0].name, "Projects");
     CHECK_STR(e.store.sections()[0].emoji, "rocket");

@@ -10,6 +10,7 @@ public:
     std::unique_ptr<Tray> createTray() override { return nullptr; }
     bool                  notificationsAvailable() const override { return false; }
     bool                  notify(uint64_t, const Notification &) override { return false; }
+    void                  withdrawNotification(uint64_t) override {}
     void                  setBadgeCount(int) override {}
     std::optional<bool>   darkMode() const override { return std::nullopt; }
 #ifdef PLAT_TEST_HOOKS

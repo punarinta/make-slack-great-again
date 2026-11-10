@@ -1079,6 +1079,10 @@ msgid "Copy message"
 msgstr "メッセージをコピー"
 
 #: src/app/screens/messages/message_list.cpp
+msgid "Mark unread"
+msgstr "未読にする"
+
+#: src/app/screens/messages/message_list.cpp
 msgid "Pin to channel"
 msgstr "チャンネルにピン留め"
 
@@ -1678,6 +1682,18 @@ msgstr "「エージェントとアプリ」セクションを表示"
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Show the External connections section"
 msgstr "「外部との接続」セクションを表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Show direct messages and External connections at the top"
+msgstr "ダイレクトメッセージと「外部との接続」を一番上に表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"External connections moves up only while its section is shown.\n"
+"In a Claude Code workspace, Sessions moves up."
+msgstr ""
+"「外部との接続」は、そのセクションを表示している間だけ上に移ります。\n"
+"Claude Codeのワークスペースでは「セッション」が上に移ります。"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Show only unread conversations"
@@ -3462,6 +3478,10 @@ msgid "you"
 msgstr "自分"
 
 #: src/app/screens/shell/sidebar.cpp
+msgid "Draft"
+msgstr "下書き"
+
+#: src/app/screens/shell/sidebar.cpp
 msgid "Starred"
 msgstr "スター付き"
 
@@ -3480,6 +3500,10 @@ msgstr "エージェントとアプリ"
 #: src/app/screens/shell/sidebar.cpp
 msgid "VIP unreads"
 msgstr "VIPの未読"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Drafts"
+msgstr "下書き"
 
 #: src/app/screens/shell/sidebar.cpp
 msgid "External connections"

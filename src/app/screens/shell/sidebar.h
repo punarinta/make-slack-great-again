@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace shell {
@@ -98,7 +99,18 @@ public:
     // A section header's kind. Every Custom section (Store::sections) shares
     // this one value, told apart by sectionId. Team lists teammates, not
     // conversations.
-    enum Kind : uint8_t { Starred, Channels, Direct, Apps, Team, Custom, External, Vip, KindCount };
+    enum Kind : uint8_t {
+        Starred,
+        Channels,
+        Direct,
+        Apps,
+        Team,
+        Custom,
+        External,
+        Vip,
+        Drafts,
+        KindCount
+    };
 
     // The Settings → Appearance / Notifications choices the list follows.
     struct Filters {
@@ -107,8 +119,9 @@ public:
         bool               externalSection = true; // off: Connect chats stay in Channels / DMs
         bool               unreadsOnlyAppliesToCustomSections = false,
                            unreadsOnlyAppliesToStarred = false;
-        bool               highlightMentionsOnly = true; // "Highlight mentions-only channels…"
-        model::NotifyLevel defaultLevel          = model::NotifyLevel::All;
+        bool               directAndExternalFirst = false;
+        bool               highlightMentionsOnly  = true; // "Highlight mentions-only channels…"
+        model::NotifyLevel defaultLevel           = model::NotifyLevel::All;
         bool               operator==(const Filters &) const = default;
     };
     void setFilters(const Filters &f);
@@ -129,8 +142,22 @@ public:
     const Sorts          &sorts() const { return _sorts; }
     std::function<void()> onSortsChanged;
     void                  setSort(const std::string &key, SectionSort sort);
+    // The sections the user collapsed, by key (sectionKey; only collapsed
+    // ones listed). The shell keeps them per workspace and sets them when one
+    // opens; onCollapsedChanged fires when a header click changed them, or a
+    // custom section in them was deleted (onSortsChanged likewise for the
+    // sorts). A section opened up to show the chat being opened stays
+    // collapsed here: that is no choice of the user's, and it lasts until the
+    // next set.
+    using Collapsed = std::unordered_map<std::string, bool>;
+    void                  setCollapsed(Collapsed collapsed);
+    // The Store open at the last setCollapsed goes (detached): nothing is
+    // pruned against the open one until the next set.
+    void                  forgetStore();
+    const Collapsed      &collapsed() const { return _collapsed; }
+    std::function<void()> onCollapsedChanged;
     // A section's key: a custom one's id, a "#"-prefixed name for every
-    // other built-in ("" for the Team, which has no sort or collapse state).
+    // other built-in.
     static std::string    sectionKey(Kind kind, const std::string &id);
 
     void                        rebuild();                   // from the Store (roster changed)
@@ -141,9 +168,11 @@ public:
 
     // What a row shows (tests, and the tray/badge code).
     struct RowState {
-        bool exists = false, visible = false, bold = false, dot = false, selected = false;
-        int  badge  = 0;
-        int  huddle = 0; // a live huddle's pill: its participant count (1 when none listed)
+        bool        exists = false, visible = false, bold = false, dot = false, selected = false;
+        int         badge  = 0;
+        int         huddle = 0; // a live huddle's pill: its participant count (1 when none listed)
+        std::string section;    // its section header's title
+        bool        draft = false; // the "Draft" label shows
     };
     RowState                 rowState(model::ConvRef conv) const;
     // Tests: how many times the rows were rebuilt, and a row's identity (the
@@ -235,9 +264,15 @@ private:
     bool               isVip(const model::Conversation &c) const;
     // The section kind this conversation belongs in. Shared by rebuild() and
     // the Meta-event flip check so they can't disagree.
-    Kind               classify(const model::Conversation &c) const;
+    Kind               classify(model::ConvRef ref) const;
+    bool               misplaced(model::ConvRef ref) const; // its row would move
     bool               relevant(model::ConvRef c) const;
     void               applyCollapse(SectionHeader *h);
+    // A header's state from _collapsed and _openedUp, its rows shown or hidden.
+    void               restoreCollapse(SectionHeader *h);
+    void               toggleCollapse(SectionHeader *h); // a click on the header
+    void               openUp(SectionHeader *h);         // shows a row in it
+    void               forgetDeletedSections();          // see its definition
     // A conversation row dragged onto a section (ConvRow's press handling).
     SectionHeader     *sectionAt(ui::PointF windowPos) const;
     void               dragRow(ConvRow *row, ui::PointF windowPos);
@@ -245,6 +280,7 @@ private:
     void               moveInto(model::ConvRef conv, SectionHeader *to);
     // reveal: scroll the selected row into view afterwards.
     void               rebuildSoon(bool reveal = true);
+    void               revealSelectedAfterLayout(); // once its row has a frame
     void               usersSoon();
     void               sectionsSoon(); // refreshSections + refreshTeammates, coalesced
     uint64_t           userShape() const;
@@ -291,13 +327,21 @@ private:
     // The Store and its profile / text revisions _userShape was taken at.
     const model::Store      *_shapeStore      = nullptr;
     uint64_t                 _shapeProfileRev = 0, _shapeTextRev = 0;
-    model::UserRef           _shapeMe              = model::kNoUser;
-    int                      _rebuilds             = 0;
-    bool                     _revealOnRebuild      = false;
-    int                      _hiddenChannels       = 0;
-    // By Kind; Custom uses _collapsedCustom (keyed by sectionId) instead.
-    bool                     _collapsed[KindCount] = {};
-    std::unordered_map<std::string, bool> _collapsedCustom; // the user's sections, by id
+    model::UserRef           _shapeMe                = model::kNoUser;
+    int                      _rebuilds               = 0;
+    bool                     _revealOnRebuild        = false;
+    bool                     _revealSelectedOnLayout = false; // see revealSelectedAfterLayout()
+    int                      _hiddenChannels         = 0;
+
+    // The user's collapsed sections, and those of them opened up to show a
+    // chat (see setCollapsed).
+    Collapsed                       _collapsed;
+    std::unordered_set<std::string> _openedUp;
+    // The Store open at setCollapsed, and the one (and its sections
+    // revision) deleted sections were last looked for in.
+    const model::Store             *_collapsedOf = nullptr, *_prunedOf = nullptr;
+    uint64_t                        _prunedRev = 0;
+
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged
     bool     _showAllChannels = false;

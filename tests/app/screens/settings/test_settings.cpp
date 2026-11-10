@@ -204,6 +204,24 @@ TEST("settings: a custom font size survives the file, clamped") {
     CHECK(shell::Settings::load(path).fontPercent == 200);
 }
 
+TEST("settings: collapsed sidebar sections survive the file, nameless ones dropped") {
+    const std::string path = testPath();
+    shell::Settings   s;
+    s.sidebarCollapsed = {{"slack:T1", "#channels"}, {"slack:T1", "S0WORK"}, {"slack:T2", ""}};
+    REQUIRE(s.save(path));
+    const shell::Settings r = shell::Settings::load(path);
+    REQUIRE(r.sidebarCollapsed.size() == 2);
+    CHECK_STR(r.sidebarCollapsed[0].workspace, "slack:T1");
+    CHECK_STR(r.sidebarCollapsed[0].section, "#channels");
+    CHECK_STR(r.sidebarCollapsed[1].section, "S0WORK");
+    s.sidebarCollapsed.clear(); // none: no key in the file at all
+    REQUIRE(s.save(path));
+    std::string text;
+    REQUIRE(file::readAll(path, &text));
+    CHECK(text.find("sidebarCollapsed") == std::string::npos);
+    CHECK(shell::Settings::load(path).sidebarCollapsed.empty());
+}
+
 TEST("settings: every value survives the file, which is owner-only") {
     const std::string path = testPath();
     file::remove(path);
@@ -214,6 +232,7 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK(def.paletteLight == int(ui::Palette::Purple));
     CHECK(def.paletteDark == int(ui::Palette::Charcoal));
     CHECK(def.relevantDays == 14);
+    CHECK_FALSE(def.directAndExternalFirst);
     CHECK(def.names == 0); // as set in Slack
     CHECK(def.cacheLimitMb == 250);
     CHECK_STR(def.language, "system");
@@ -234,6 +253,7 @@ TEST("settings: every value survives the file, which is owner-only") {
     s.relevantDays               = 45;
     s.names                      = 2;
     s.unreadsOnly                = true;
+    s.directAndExternalFirst     = true;
     s.animateMedia               = false;
     s.notifyLevel                = 1;
     s.notifySound                = false;
@@ -270,6 +290,7 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK(r.fontScale() > 1.1f);
     CHECK_STR(r.language, "ja");
     CHECK(r.use24h && r.threadsInline && r.ctrlEnterSends && r.unreadsOnly);
+    CHECK(r.directAndExternalFirst);
     CHECK_FALSE(r.linkPreviews);
     CHECK_FALSE(r.animateMedia);
     CHECK(r.relevantDays == 45);
@@ -715,6 +736,46 @@ TEST("settings: the External connections section can be turned off, on Save") {
     h.click(save);
     CHECK_FALSE(h.settings.externalSection);
     CHECK_FALSE(shell::Settings::load(path).externalSection);
+    file::remove(path);
+}
+
+TEST("settings: direct messages at the top, under the External connections box, on Save") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness         h(path);
+    SettingsDialog &d      = h.open();
+    ui::View       *box    = d.find("Show direct messages and External connections at the top");
+    ui::View       *ext    = d.find("Show the External connections section");
+    ui::View       *unread = d.find("Show only unread conversations");
+    REQUIRE(box != nullptr);
+    REQUIRE(ext != nullptr);
+    REQUIRE(unread != nullptr);
+    CHECK_FALSE(static_cast<ui::CheckBox *>(box)->checked()); // off by default
+    // In the Conversations group, right under External connections and
+    // before the unreads-only box.
+    REQUIRE(box->parent() == ext->parent());
+    REQUIRE(unread->parent() == box->parent());
+    const ui::View *g  = box->parent();
+    const auto      at = [g](const ui::View *v) {
+        size_t i = 0;
+        while (g->child(i) != v)
+            ++i;
+        return i;
+    };
+    CHECK(at(box) == at(ext) + 1);
+    CHECK(at(unread) > at(box));
+    d.scroll().ensureVisible(box);
+    pump();
+    h.click(box);
+    CHECK(d.draft().directAndExternalFirst);
+    CHECK_FALSE(h.settings.directAndExternalFirst); // waits for Save
+    ui::View *save = d.find("Save");
+    REQUIRE(save != nullptr);
+    d.scroll().ensureVisible(save);
+    pump();
+    h.click(save);
+    CHECK(h.settings.directAndExternalFirst);
+    CHECK(shell::Settings::load(path).directAndExternalFirst);
     file::remove(path);
 }
 
