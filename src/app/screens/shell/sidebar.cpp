@@ -1527,9 +1527,13 @@ void Sidebar::setSort(const std::string &key, SectionSort sort) {
 }
 
 // A switch: the workspace's own, applied to the headers there are (no
-// rebuild); what was opened up for the last one's chats closes again.
+// rebuild); what was opened up for the last one's chats closes again. VIP
+// unreads never collapses (an edited settings file may still say so).
 void Sidebar::setCollapsed(Collapsed collapsed) {
-    std::erase_if(collapsed, [](const auto &e) { return e.first.empty() || !e.second; });
+    const std::string vip = sectionKey(Vip, {});
+    std::erase_if(collapsed, [&vip](const auto &e) {
+        return e.first.empty() || !e.second || e.first == vip;
+    });
     _collapsed = std::move(collapsed);
     _openedUp.clear();
     for (SectionHeader *h : _sections) {
@@ -1554,7 +1558,7 @@ void Sidebar::sectionMenu(SectionHeader *h, PointF at) {
 
 void Sidebar::restoreCollapse(SectionHeader *h) {
     const std::string key = sectionKey(h->kind, h->sectionId);
-    h->collapsed          = !key.empty() && _collapsed.count(key) && !_openedUp.count(key);
+    h->collapsed = h->kind != Vip && !key.empty() && _collapsed.count(key) && !_openedUp.count(key);
 }
 
 // The user's choice: kept, and told to the shell to store.

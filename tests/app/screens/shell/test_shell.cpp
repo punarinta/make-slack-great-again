@@ -1008,6 +1008,22 @@ TEST("sections: an unread VIP DM sits in its own VIP unreads section, above ever
     CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
 }
 
+TEST("sections: VIP unreads stays open whatever the collapsed sections say") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   sam = h.conv("D0SAM");
+    makeVip(h, "U0SAM");
+    h.backend.markUnread(sam, h.store.conversation(sam).latest);
+    pump();
+    REQUIRE(sb.rowState(sam).visible);
+    sb.setCollapsed({{"#vip", true}, {"#channels", true}}); // an edited settings file
+    CHECK(sb.rowState(sam).visible);
+    CHECK_FALSE(sb.rowState(h.conv("C0ENG")).visible);
+    CHECK(sb.collapsed().size() == 1 && sb.collapsed().count("#channels"));
+    sb.rebuild();
+    CHECK(sb.rowState(sam).visible);
+}
+
 TEST("sections: a starred VIP DM is lifted while unread, then back to Starred") {
     Harness         h;
     shell::Sidebar &sb  = h.sh->sidebar();
