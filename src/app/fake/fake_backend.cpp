@@ -83,12 +83,7 @@ void FakeBackend::loadThreadsView(std::string, ThreadsViewDone done) {
         for (ConvRef c = 0; c < _store.conversationCount(); ++c)
             for (const model::Thread &t : _store.conversation(c).threads) {
                 const model::Message *root = _store.findMessage(c, t.root);
-                if (t.replies.empty() || !root)
-                    continue;
-                bool mine = root->user == _store.me;
-                for (const model::Message &r : t.replies)
-                    mine = mine || r.user == _store.me;
-                if (!mine)
+                if (t.replies.empty() || !root || !follows(c, t.root))
                     continue;
                 FollowedThread f;
                 f.conv         = c;
@@ -109,9 +104,44 @@ void FakeBackend::loadThreadsView(std::string, ThreadsViewDone done) {
     });
 }
 
+// The threads I started or replied in.
+bool FakeBackend::follows(ConvRef conv, Ts root) const {
+    const model::Message *r = _store.findMessage(conv, root);
+    if (!r)
+        return false;
+    bool mine = r->user == _store.me;
+    if (const std::vector<model::Message> *replies = _store.replies(conv, root))
+        for (const model::Message &m : *replies)
+            mine = mine || m.user == _store.me;
+    return mine;
+}
+
+// The Threads entry: followed threads with a reply past my cursor.
+void FakeBackend::publishUnreadThreads() {
+    int n = 0;
+    for (const ThreadRead &r : _threadRead)
+        if (const std::vector<model::Message> *replies = _store.replies(r.conv, r.root))
+            n += !replies->empty() && replies->back().ts > r.read && follows(r.conv, r.root) &&
+                 !_store.threadMuted(r.conv, r.root);
+    _store.setUnreadThreads(n);
+}
+
 void FakeBackend::markThreadRead(ConvRef conv, Ts root, Ts ts) {
     Ts &cursor = threadRead(conv, root);
     cursor     = std::max(cursor, ts);
+    publishUnreadThreads();
+    _store.threadRead(conv, root, ts);
+}
+
+bool FakeBackend::canMarkThreadUnread(ConvRef conv, Ts root) const {
+    return root && follows(conv, root);
+}
+
+void FakeBackend::markThreadUnread(ConvRef conv, Ts root, Ts ts) {
+    if (!canMarkThreadUnread(conv, root) || ts <= root)
+        return;
+    threadRead(conv, root) = ts - 1;
+    publishUnreadThreads();
 }
 
 void FakeBackend::loadThread(ConvRef conv, Ts root, Done done) {

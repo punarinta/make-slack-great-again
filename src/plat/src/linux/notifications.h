@@ -31,14 +31,19 @@ public:
         return !_resolved || (_bus.ready() && (!_owner.empty() || _activatable));
     }
     bool notify(uint64_t id, const Notification &n);
+    // CloseNotification: off the screen and out of the server's history
+    // (GNOME's message tray, Plasma's history). Our mapping goes first, so
+    // the NotificationClosed it causes reaches no one.
+    void withdraw(uint64_t id);
 
     // The server's id for one of ours, once the Notify reply arrived.
     bool serverId(uint64_t id, uint32_t *out) const;
 
 private:
     struct Entry {
-        uint32_t server = 0; // 0 until the Notify reply
-        bool     closed = false;
+        uint32_t server    = 0; // 0 until the Notify reply
+        bool     closed    = false;
+        bool     withdrawn = false; // before the Notify reply: close it once that lands
     };
     struct Queued {
         uint64_t     id;
@@ -48,6 +53,7 @@ private:
     void ownerChanged(const std::string &owner);
     void requestCapabilities();
     void send(uint64_t id, const Notification &n);
+    void closeOnServer(uint32_t server);
     void onActionInvoked(DBusMessage *m);
     void onClosed(DBusMessage *m);
     bool fromServer(DBusMessage *m) const;

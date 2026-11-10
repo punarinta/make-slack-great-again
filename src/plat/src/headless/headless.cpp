@@ -251,8 +251,11 @@ public:
     bool notificationsAvailable() const override { return true; }
     bool notify(uint64_t id, const Notification &n) override {
         notifications[id] = n;
+        maxNotifyId       = std::max(maxNotifyId, id);
         return true;
     }
+    // Gone from the "server": a probe no longer finds it.
+    void withdrawNotification(uint64_t id) override { notifications.erase(id); }
     void setBadgeCount(int n) override { badge = n; }
 
     // ── Round 3 ─────────────────────────────────────────────────────────────
@@ -512,15 +515,10 @@ public:
             out->actionLabels.push_back(a.label);
         return true;
     }
-    uint64_t maxNotificationId() const override {
-        uint64_t m = 0;
-        for (const auto &[id, n] : notifications)
-            m = std::max(m, id);
-        return m;
-    }
-    size_t notificationCount() const override { return notifications.size(); }
-    int    badgeCount() override { return badge; }
-    bool   wantsAttention(Window &w, bool *out) override {
+    uint64_t maxNotificationId() const override { return maxNotifyId; }
+    size_t   notificationCount() const override { return notifications.size(); }
+    int      badgeCount() override { return badge; }
+    bool     wantsAttention(Window &w, bool *out) override {
         *out = static_cast<HeadlessWindow &>(w).attention;
         return true;
     }
@@ -535,7 +533,8 @@ public:
     std::vector<std::string>         openedUrls;
     std::vector<HeadlessTray *>      trays;
     std::map<uint64_t, Notification> notifications;
-    int                              badge = 0;
+    uint64_t                         maxNotifyId = 0; // withdrawn ones too
+    int                              badge       = 0;
 
 private:
     Event dropEvent(EventType t, Point p, bool withData) {

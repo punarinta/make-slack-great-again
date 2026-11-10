@@ -204,6 +204,24 @@ TEST("settings: a custom font size survives the file, clamped") {
     CHECK(shell::Settings::load(path).fontPercent == 200);
 }
 
+TEST("settings: collapsed sidebar sections survive the file, nameless ones dropped") {
+    const std::string path = testPath();
+    shell::Settings   s;
+    s.sidebarCollapsed = {{"slack:T1", "#channels"}, {"slack:T1", "S0WORK"}, {"slack:T2", ""}};
+    REQUIRE(s.save(path));
+    const shell::Settings r = shell::Settings::load(path);
+    REQUIRE(r.sidebarCollapsed.size() == 2);
+    CHECK_STR(r.sidebarCollapsed[0].workspace, "slack:T1");
+    CHECK_STR(r.sidebarCollapsed[0].section, "#channels");
+    CHECK_STR(r.sidebarCollapsed[1].section, "S0WORK");
+    s.sidebarCollapsed.clear(); // none: no key in the file at all
+    REQUIRE(s.save(path));
+    std::string text;
+    REQUIRE(file::readAll(path, &text));
+    CHECK(text.find("sidebarCollapsed") == std::string::npos);
+    CHECK(shell::Settings::load(path).sidebarCollapsed.empty());
+}
+
 TEST("settings: every value survives the file, which is owner-only") {
     const std::string path = testPath();
     file::remove(path);
@@ -214,44 +232,50 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK(def.paletteLight == int(ui::Palette::Purple));
     CHECK(def.paletteDark == int(ui::Palette::Charcoal));
     CHECK(def.relevantDays == 14);
+    CHECK_FALSE(def.directAndExternalFirst);
+    CHECK_FALSE(def.unreadsOnlyAppliesToCustomSections);
+    CHECK_FALSE(def.unreadsOnlyAppliesToStarred);
     CHECK(def.names == 0); // as set in Slack
     CHECK(def.cacheLimitMb == 250);
     CHECK_STR(def.language, "system");
     CHECK(def.ai.size() == 2);
 
     shell::Settings s;
-    s.paletteLight               = int(ui::Palette::Green);
-    s.paletteDark                = int(ui::Palette::Custom);
-    s.custom.primary             = 0xff123456;
-    s.custom.brightness          = 3;
-    s.custom.sidebarInverted     = false;
-    s.fontSize                   = 2;
-    s.language                   = "ja";
-    s.use24h                     = true;
-    s.threadsInline              = true;
-    s.linkPreviews               = false;
-    s.ctrlEnterSends             = true;
-    s.relevantDays               = 45;
-    s.names                      = 2;
-    s.unreadsOnly                = true;
-    s.animateMedia               = false;
-    s.notifyLevel                = 1;
-    s.notifySound                = false;
-    s.cacheLimitMb               = 600;
-    s.minimizeToTray             = true;
-    s.useTray                    = false;
-    s.presence                   = 2;
-    s.slackSession               = false;
-    s.slackClientId              = "123.456";
-    s.giphyKey                   = "gk";
-    s.voiceGlossary              = "gRPC\nnginx";
-    s.spellLanguages             = {"en_US", "de_DE_frami"};
-    s.emojiRecent                = {"tada", "+1"};
-    s.emojiSkinTone              = 3;
-    s.quickReactions             = 2;
-    s.quickReactionNames         = {"tada", "fire", "eyes"};
-    s.lastAttachDir              = "/tmp/pics";
-    s.provider("anthropic")->key = "sk-ant-abcd1234";
+    s.paletteLight                       = int(ui::Palette::Green);
+    s.paletteDark                        = int(ui::Palette::Custom);
+    s.custom.primary                     = 0xff123456;
+    s.custom.brightness                  = 3;
+    s.custom.sidebarInverted             = false;
+    s.fontSize                           = 2;
+    s.language                           = "ja";
+    s.use24h                             = true;
+    s.threadsInline                      = true;
+    s.linkPreviews                       = false;
+    s.ctrlEnterSends                     = true;
+    s.relevantDays                       = 45;
+    s.names                              = 2;
+    s.unreadsOnly                        = true;
+    s.directAndExternalFirst             = true;
+    s.unreadsOnlyAppliesToCustomSections = true;
+    s.unreadsOnlyAppliesToStarred        = true;
+    s.animateMedia                       = false;
+    s.notifyLevel                        = 1;
+    s.notifySound                        = false;
+    s.cacheLimitMb                       = 600;
+    s.minimizeToTray                     = true;
+    s.useTray                            = false;
+    s.presence                           = 2;
+    s.slackSession                       = false;
+    s.slackClientId                      = "123.456";
+    s.giphyKey                           = "gk";
+    s.voiceGlossary                      = "gRPC\nnginx";
+    s.spellLanguages                     = {"en_US", "de_DE_frami"};
+    s.emojiRecent                        = {"tada", "+1"};
+    s.emojiSkinTone                      = 3;
+    s.quickReactions                     = 2;
+    s.quickReactionNames                 = {"tada", "fire", "eyes"};
+    s.lastAttachDir                      = "/tmp/pics";
+    s.provider("anthropic")->key         = "sk-ant-abcd1234";
     s.ai.push_back({"custom-1", "vLLM", "http://localhost:8000/v1", "", "qwen", ""});
     s.aiDefault = "custom-1";
     REQUIRE(s.save(path));
@@ -270,6 +294,8 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK(r.fontScale() > 1.1f);
     CHECK_STR(r.language, "ja");
     CHECK(r.use24h && r.threadsInline && r.ctrlEnterSends && r.unreadsOnly);
+    CHECK(r.directAndExternalFirst);
+    CHECK(r.unreadsOnlyAppliesToCustomSections && r.unreadsOnlyAppliesToStarred);
     CHECK_FALSE(r.linkPreviews);
     CHECK_FALSE(r.animateMedia);
     CHECK(r.relevantDays == 45);
@@ -718,6 +744,46 @@ TEST("settings: the External connections section can be turned off, on Save") {
     file::remove(path);
 }
 
+TEST("settings: direct messages at the top, under the External connections box, on Save") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness         h(path);
+    SettingsDialog &d      = h.open();
+    ui::View       *box    = d.find("Show direct messages and External connections at the top");
+    ui::View       *ext    = d.find("Show the External connections section");
+    ui::View       *unread = d.find("Show only unread conversations");
+    REQUIRE(box != nullptr);
+    REQUIRE(ext != nullptr);
+    REQUIRE(unread != nullptr);
+    CHECK_FALSE(static_cast<ui::CheckBox *>(box)->checked()); // off by default
+    // In the Conversations group, right under External connections and
+    // before the unreads-only box.
+    REQUIRE(box->parent() == ext->parent());
+    REQUIRE(unread->parent() == box->parent());
+    const ui::View *g  = box->parent();
+    const auto      at = [g](const ui::View *v) {
+        size_t i = 0;
+        while (g->child(i) != v)
+            ++i;
+        return i;
+    };
+    CHECK(at(box) == at(ext) + 1);
+    CHECK(at(unread) > at(box));
+    d.scroll().ensureVisible(box);
+    pump();
+    h.click(box);
+    CHECK(d.draft().directAndExternalFirst);
+    CHECK_FALSE(h.settings.directAndExternalFirst); // waits for Save
+    ui::View *save = d.find("Save");
+    REQUIRE(save != nullptr);
+    d.scroll().ensureVisible(save);
+    pump();
+    h.click(save);
+    CHECK(h.settings.directAndExternalFirst);
+    CHECK(shell::Settings::load(path).directAndExternalFirst);
+    file::remove(path);
+}
+
 TEST("settings: unread-only greys out the activity window; typing digits sets it") {
     Harness         h;
     SettingsDialog &d    = h.open();
@@ -741,6 +807,43 @@ TEST("settings: unread-only greys out the activity window; typing digits sets it
         h.key(plat::Key::Num9);
     h.key(plat::Key::Enter);
     CHECK(days->value() == 365);
+}
+
+TEST("settings: unread-only's scopes are greyed out without it, and written on Save") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness         h(path);
+    SettingsDialog &d       = h.open();
+    ui::View       *unread  = d.find("Show only unread conversations");
+    ui::View       *own     = d.find("Hide read conversations in your sections too");
+    ui::View       *starred = d.find("Hide read starred conversations too");
+    REQUIRE(unread != nullptr);
+    REQUIRE(own != nullptr);
+    REQUIRE(starred != nullptr);
+    CHECK_FALSE(static_cast<ui::CheckBox *>(own)->checked()); // off by default
+    CHECK_FALSE(static_cast<ui::CheckBox *>(starred)->checked());
+    CHECK_FALSE(own->enabled()); // nothing to scope while unread-only is off
+    CHECK_FALSE(starred->enabled());
+    h.click(unread);
+    CHECK(own->enabled());
+    CHECK(starred->enabled());
+    d.scroll().ensureVisible(starred);
+    pump();
+    h.click(own);
+    h.click(starred);
+    CHECK(d.draft().unreadsOnlyAppliesToCustomSections);
+    CHECK(d.draft().unreadsOnlyAppliesToStarred);
+    CHECK_FALSE(h.settings.unreadsOnlyAppliesToStarred); // waits for Save
+    ui::View *save = d.find("Save");
+    REQUIRE(save != nullptr);
+    d.scroll().ensureVisible(save);
+    pump();
+    h.click(save);
+    CHECK(h.settings.unreadsOnly);
+    CHECK(h.settings.unreadsOnlyAppliesToCustomSections && h.settings.unreadsOnlyAppliesToStarred);
+    const shell::Settings r = shell::Settings::load(path);
+    CHECK(r.unreadsOnlyAppliesToCustomSections && r.unreadsOnlyAppliesToStarred);
+    file::remove(path);
 }
 
 TEST("settings: notification level, and the master switch greys out the rest") {

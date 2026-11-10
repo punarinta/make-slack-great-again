@@ -113,6 +113,31 @@ struct Context {
     // An agent session's thread that answers a link: where its questions
     // come from ("#general in Lumen", the thread panel's chip); "" = none.
     std::function<std::string(ConvRef, Ts root)>              agentLinkSource;
+
+    // "Mark unread" (the message menu): a conversation (root 0) or a thread
+    // marked unread stays unread while it is on screen — the lists and the
+    // shell don't read it — until it is opened again (the shell drops the
+    // hold then, and on a workspace switch).
+    struct UnreadHold {
+        ConvRef conv = model::kNoConv;
+        Ts      root = 0;
+    };
+    std::vector<UnreadHold> unreadHolds;
+    bool                    unreadHeld(ConvRef conv, Ts root) const {
+        for (const UnreadHold &h : unreadHolds)
+            if (h.conv == conv && h.root == root)
+                return true;
+        return false;
+    }
+    void holdUnread(ConvRef conv, Ts root) {
+        if (!unreadHeld(conv, root))
+            unreadHolds.push_back({conv, root});
+    }
+    void releaseUnread(ConvRef conv, Ts root) {
+        std::erase_if(unreadHolds, [&](const UnreadHold &h) {
+            return h.conv == conv && h.root == root;
+        });
+    }
 };
 
 } // namespace screens

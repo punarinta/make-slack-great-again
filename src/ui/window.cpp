@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 
 namespace ui {
 
@@ -650,13 +651,20 @@ void Window::key(const plat::Event &pe) {
         return;
     }
     hideTooltip();
+    // Taken, and the focus moved meanwhile: the text that follows this press
+    // is not typed (see _dropKeyText).
+    View      *focusBefore = _focus;
+    const auto taken       = [&] { _dropKeyText = _focus != focusBefore; };
     if (keyFilter) {
         auto filter = keyFilter; // may replace itself
         if (filter(e))
-            return;
+            return taken();
+        // A filter that passes the key on may have handed the focus to the
+        // view that should get it, text and all (typing on into a field).
+        focusBefore = _focus;
     }
     if (_focus && dispatch(_focus, e))
-        return;
+        return taken();
     const uint32_t mods = pe.mods & kModMask;
     for (const Shortcut &s : _shortcuts) {
         uint32_t want = s.mods & ~kPrimary;
@@ -665,7 +673,7 @@ void Window::key(const plat::Event &pe) {
         if (s.key == pe.key && want == mods) {
             auto fn = s.fn; // the handler may remove its own shortcut
             fn();
-            return;
+            return taken();
         }
     }
     if (pe.key == plat::Key::Tab && !(mods & ~plat::ModShift)) {
@@ -743,7 +751,11 @@ void Window::setTextInput(bool enabled, RectF caret) {
 
 void Window::handle(const plat::Event &e) {
     ++_depth;
-    using T = plat::EventType;
+    using T             = plat::EventType;
+    // Only the very next event can be that press's text: every platform
+    // sends it right after the KeyDown (a key that types nothing must not
+    // leave the next IME commit to be dropped).
+    const bool dropText = std::exchange(_dropKeyText, false);
     if (inputFilter) {
         switch (e.type) {
         case T::PointerDown:
@@ -824,6 +836,8 @@ void Window::handle(const plat::Event &e) {
         break;
     case T::TextInput:
     case T::TextPreedit:
+        if (e.type == T::TextInput && dropText)
+            break; // the text of a key press that was taken (see key())
         if (_focus && _focus->enabled()) {
             Event te{e.type == T::TextInput ? EventType::TextInput : EventType::TextPreedit};
             te.raw = &e;

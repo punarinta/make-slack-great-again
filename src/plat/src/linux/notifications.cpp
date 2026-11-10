@@ -220,9 +220,45 @@ void Notifier::send(uint64_t id, const Notification &n) {
         }
         if (it == _entries.end())
             return; // evicted meanwhile
+        if (it->second.withdrawn) {
+            _entries.erase(it);
+            closeOnServer(server);
+            return;
+        }
         it->second.server = server;
         _byServer[server] = id;
     });
+}
+
+void Notifier::withdraw(uint64_t id) {
+    auto it = _entries.find(id);
+    if (it == _entries.end())
+        return;
+    // Still waiting for GetCapabilities: never sent at all.
+    const auto queued =
+        std::find_if(_queue.begin(), _queue.end(), [id](const Queued &q) { return q.id == id; });
+    if (queued != _queue.end()) {
+        _queue.erase(queued);
+        _entries.erase(it);
+        return;
+    }
+    if (!it->second.server) { // the Notify reply is on its way
+        it->second.withdrawn = true;
+        return;
+    }
+    const uint32_t server = it->second.server;
+    forget(id);
+    std::erase(_closedOrder, id);
+    closeOnServer(server);
+}
+
+void Notifier::closeOnServer(uint32_t server) {
+    if (!_bus.ready())
+        return; // server ids died with the connection (dropServerIds)
+    auto      m = methodCall(kName, kPath, kIface, "CloseNotification");
+    MsgWriter w(m.get());
+    w.u32(server);
+    _bus.call(m); // an error (already gone) is no news
 }
 
 bool Notifier::serverId(uint64_t id, uint32_t *out) const {

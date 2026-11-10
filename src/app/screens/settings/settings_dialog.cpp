@@ -59,6 +59,9 @@ bool shell::Settings::*const kAppearanceBools[] = {
     &shell::Settings::showAgentsApps,
     &shell::Settings::externalSection,
     &shell::Settings::unreadsOnly,
+    &shell::Settings::unreadsOnlyAppliesToCustomSections,
+    &shell::Settings::unreadsOnlyAppliesToStarred,
+    &shell::Settings::directAndExternalFirst,
     &shell::Settings::animateEmoji,
     &shell::Settings::animateMedia,
 };
@@ -624,18 +627,41 @@ void SettingsDialog::buildAppearance() {
         );
         check(g, tr("Show the Agents & apps section"), &d.showAgentsApps, true);
         check(g, tr("Show the External connections section"), &d.externalSection, true);
+        check(
+            g,
+            tr("Show direct messages and External connections at the top"),
+            &d.directAndExternalFirst,
+            true
+        );
+        caption(
+            g,
+            tr("External connections moves up only while its section is shown.\n"
+               "In a Claude Code workspace, Sessions moves up.")
+        );
         auto *unread = check(g, tr("Show only unread conversations"), &d.unreadsOnly, true);
         caption(
             g,
             tr("The conversation you are reading stays listed until you move on.\n"
-               "Starred conversations are always shown.")
+               "Drafts are always shown, and so are starred conversations and your\n"
+               "sections unless you hide their read ones below.")
+        );
+        auto *applyCustom = check(
+            g,
+            tr("Hide read conversations in your sections too"),
+            &d.unreadsOnlyAppliesToCustomSections,
+            true
+        );
+        auto *applyStarred = check(
+            g, tr("Hide read starred conversations too"), &d.unreadsOnlyAppliesToStarred, true
         );
         // The activity window has nothing to decide while only unread chats
         // are listed: grey it out so the two don't read as competing.
-        auto sync = [this](bool unreadsOnly) {
+        auto sync = [this, applyCustom, applyStarred](bool unreadsOnly) {
             _p->days->setEnabled(!unreadsOnly);
             _p->daysLabel->setColor(unreadsOnly ? C::FormTextFaint : C::FormText);
             _p->daysDesc->setColor(unreadsOnly ? C::FormTextFaint : C::FormTextMuted);
+            applyCustom->setEnabled(unreadsOnly);
+            applyStarred->setEnabled(unreadsOnly);
         };
         sync(d.unreadsOnly);
         unread->onChange = [this, sync](bool on) {

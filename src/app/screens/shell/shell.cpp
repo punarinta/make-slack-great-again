@@ -916,8 +916,13 @@ Shell::Shell(
         });
     };
     loadSorts();
+    loadCollapsed();
     _sidebar->onSortsChanged = [this] {
         storeSorts();
+        saveSettingsSoon();
+    };
+    _sidebar->onCollapsedChanged = [this] {
+        storeCollapsed();
         saveSettingsSoon();
     };
     _listHandle = body->add<ListHandle>(*_sidebar);
@@ -1164,6 +1169,7 @@ void Shell::loadNotified() {
         n.ts                                   = Ts(e["ts"].integer());
         n.join                                 = json::owned(e["join"]);
         n.postedAt                             = e["postedAt"].integer();
+        n.onRead                               = e["onRead"].boolean();
         _notified[uint64_t(e["id"].integer())] = std::move(n);
     }
     pruneNotified();
@@ -1228,6 +1234,8 @@ std::string Shell::notifiedFileText() {
         if (!n.join.empty())
             w.key("join").value(n.join);
         w.key("postedAt").value(n.postedAt);
+        if (n.onRead)
+            w.key("onRead").value(true);
         w.endObject();
     }
     w.endArray();
@@ -1917,11 +1925,14 @@ void Shell::workspaceChanged() {
     updateHeader();
     _sidebar->footer().setZenOn(_settings.zenMode(_activeKey)); // its own
     loadSorts();
+    loadCollapsed();
 }
 
 void Shell::open(ConvRef conv) {
     if (!_signedIn || conv == kNoConv || conv >= _ctx.store().conversationCount())
         return;
+    // Opened again: one marked unread is read like any other now.
+    _ctx.releaseUnread(conv, 0);
     leaveTeammate(); // the teammate page keeps what was typed to it
     leavePages();
     _search->hideNow();
@@ -1966,6 +1977,7 @@ void Shell::open(ConvRef conv) {
 void Shell::leaveWorkspace() {
     leaveTeammate();
     leavePages();
+    _ctx.unreadHolds.clear(); // they name the old workspace's conversations
     if (_activityPage)
         _activityPage->clear(); // its items point into the old workspace
     if (_threadsPage)
@@ -2007,6 +2019,23 @@ void Shell::purgeHistory(const std::string &key) {
     _nav.purge(key);
     if (_pendingNav.key == key)
         _pendingNav = {};
+}
+
+void Shell::forgetSidebarPrefs(const std::string &key) {
+    const auto sorts =
+        std::erase_if(_settings.sidebarSorts, [&key](const Settings::SectionSortPref &p) {
+            return p.workspace == key;
+        });
+    const auto collapsed =
+        std::erase_if(_settings.sidebarCollapsed, [&key](const Settings::SectionCollapsedPref &p) {
+            return p.workspace == key;
+        });
+    if (sorts + collapsed > 0)
+        saveSettingsSoon();
+    if (_collapsedFor == key) { // nothing of it stored back, the next one loads
+        _collapsedFor.reset();
+        _sidebar->setCollapsed({});
+    }
 }
 
 NavLocation Shell::here(ConvRef conv) const {
@@ -2226,7 +2255,8 @@ bool Shell::removeIdleSession(const Event &e) {
 void Shell::openThread(ConvRef conv, Ts root) {
     if (conv != _current)
         open(conv);
-    _thread->show(conv, root); // stashes the previous thread's draft
+    _ctx.releaseUnread(conv, root); // opened again (see open)
+    _thread->show(conv, root);      // stashes the previous thread's draft
 #ifdef MSGA_HAVE_MESSAGES
     // Its reply bar in the list says "Close thread".
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(root);
@@ -2578,6 +2608,10 @@ void Shell::onChange(const model::Change &ch) {
         _composer->refreshPlaceholder();
         return;
     }
+    // Read here or elsewhere: its notifications go (an attached
+    // workspace's own observer does that).
+    if ((ch.kind == K::Meta || ch.kind == K::ThreadRead) && !attached)
+        withdrawRead(_ctx.store(), {}, ch);
     if (ch.kind == K::Meta || ch.kind == K::Roster) {
         if (ch.kind == K::Meta && !attached && _live)
             huddleChanged(_ctx.store(), {}, ch.conv);
@@ -2599,7 +2633,8 @@ void Shell::onChange(const model::Change &ch) {
     model::Store &st = _ctx.store();
     if (const std::vector<model::Message> *list =
             ch.thread ? st.replies(ch.conv, ch.thread) : &st.conversation(ch.conv).messages;
-        ch.kind == K::Append && list && reading() && ch.conv == _current && !ch.thread)
+        ch.kind == K::Append && list && reading() && ch.conv == _current && !ch.thread &&
+        !_ctx.unreadHeld(ch.conv, 0)) // marked unread: it stays so until opened again
         for (size_t i = list->size() - std::min<size_t>(ch.count, list->size()); i < list->size();
              ++i)
             if (const model::Message &m = (*list)[i]; m.user != st.me && !m.pending)
@@ -3260,6 +3295,11 @@ void Shell::detachWorkspace(const std::string &key) {
         return;
     (*it)->store->unobserve((*it)->observer);
     _running.erase(it);
+    // A Store attached again for it is new: its collapsed sections load anew.
+    if (_collapsedFor == key) {
+        _collapsedFor.reset();
+        _sidebar->forgetStore();
+    }
     std::erase_if(_notified, [&](const auto &n) { return n.second.key == key; });
     // Dialogs that reach every workspace let it go.
     if (_forward)
@@ -3323,6 +3363,8 @@ void Shell::onWorkspaceChange(const std::string &key, const model::Change &ch) {
     Running *r = findRunning(key);
     if (!r)
         return;
+    if (ch.kind == K::Meta || ch.kind == K::ThreadRead)
+        withdrawRead(*r->store, key, ch);
     if (ch.kind == K::Meta || ch.kind == K::Roster) {
         r->dirty = true;
         if (r->store != &_ctx.store())
@@ -3525,15 +3567,19 @@ void Shell::applySettings() {
         }
     }
     // Settings → Appearance (relevant days, Agents & apps, External
-    // connections, unreads only) and Notifications (the default level,
-    // "Highlight mentions-only channels").
+    // connections, DMs and external conversations first, unreads only and
+    // its scopes) and Notifications (the default level, "Highlight
+    // mentions-only channels").
     Sidebar::Filters f;
-    f.relevantDays          = _settings.relevantDays;
-    f.showAgentsApps        = _settings.showAgentsApps;
-    f.externalSection       = _settings.externalSection;
-    f.unreadsOnly           = _settings.unreadsOnly;
-    f.highlightMentionsOnly = _settings.boldMentionsOnly;
-    f.defaultLevel          = defaultLevel();
+    f.relevantDays                       = _settings.relevantDays;
+    f.showAgentsApps                     = _settings.showAgentsApps;
+    f.externalSection                    = _settings.externalSection;
+    f.unreadsOnly                        = _settings.unreadsOnly;
+    f.unreadsOnlyAppliesToCustomSections = _settings.unreadsOnlyAppliesToCustomSections;
+    f.unreadsOnlyAppliesToStarred        = _settings.unreadsOnlyAppliesToStarred;
+    f.directAndExternalFirst             = _settings.directAndExternalFirst;
+    f.highlightMentionsOnly              = _settings.boldMentionsOnly;
+    f.defaultLevel                       = defaultLevel();
     _sidebar->setFilters(f);
     for (const auto &r : _running)
         r->dirty = true; // the default level decides what counts
@@ -3684,6 +3730,39 @@ void Shell::storeSorts() {
         _settings.sidebarSorts.begin(),
         _settings.sidebarSorts.end(),
         [](const Settings::SectionSortPref &a, const Settings::SectionSortPref &b) {
+            return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
+        }
+    );
+}
+
+// workspaceChanged also runs for the open one (connected, its icon): the
+// sidebar's state is already what the settings have for it then, and the
+// sections opened up for its chats stay open.
+void Shell::loadCollapsed() {
+    if (_collapsedFor == _activeKey)
+        return;
+    Sidebar::Collapsed collapsed;
+    for (const Settings::SectionCollapsedPref &p : _settings.sidebarCollapsed)
+        if (p.workspace == _activeKey && !p.section.empty())
+            collapsed[p.section] = true;
+    _collapsedFor = _activeKey;
+    _sidebar->setCollapsed(std::move(collapsed));
+}
+
+void Shell::storeCollapsed() {
+    if (!_collapsedFor)
+        return;
+    const std::string &key = *_collapsedFor;
+    std::erase_if(_settings.sidebarCollapsed, [&key](const Settings::SectionCollapsedPref &p) {
+        return p.workspace == key;
+    });
+    for (const auto &[section, on] : _sidebar->collapsed())
+        if (on && !section.empty())
+            _settings.sidebarCollapsed.push_back({key, section});
+    std::sort(
+        _settings.sidebarCollapsed.begin(),
+        _settings.sidebarCollapsed.end(),
+        [](const Settings::SectionCollapsedPref &a, const Settings::SectionCollapsedPref &b) {
             return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
         }
     );

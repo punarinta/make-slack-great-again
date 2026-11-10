@@ -1079,6 +1079,10 @@ msgid "Copy message"
 msgstr "メッセージをコピー"
 
 #: src/app/screens/messages/message_list.cpp
+msgid "Mark unread"
+msgstr "未読にする"
+
+#: src/app/screens/messages/message_list.cpp
 msgid "Pin to channel"
 msgstr "チャンネルにピン留め"
 
@@ -1680,16 +1684,38 @@ msgid "Show the External connections section"
 msgstr "「外部との接続」セクションを表示"
 
 #: src/app/screens/settings/settings_dialog.cpp
+msgid "Show direct messages and External connections at the top"
+msgstr "ダイレクトメッセージと「外部との接続」を一番上に表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"External connections moves up only while its section is shown.\n"
+"In a Claude Code workspace, Sessions moves up."
+msgstr ""
+"「外部との接続」は、そのセクションを表示している間だけ上に移ります。\n"
+"Claude Codeのワークスペースでは「セッション」が上に移ります。"
+
+#: src/app/screens/settings/settings_dialog.cpp
 msgid "Show only unread conversations"
 msgstr "未読の会話のみ表示"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid ""
 "The conversation you are reading stays listed until you move on.\n"
-"Starred conversations are always shown."
+"Drafts are always shown, and so are starred conversations and your\n"
+"sections unless you hide their read ones below."
 msgstr ""
 "閲覧中の会話は、別の会話に移るまで表示されたままになります。\n"
-"スター付きの会話は常に表示されます。"
+"下書きは常に表示されます。スター付きの会話とセクションも、下で既読のものを\n"
+"非表示にしない限り表示されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hide read conversations in your sections too"
+msgstr "セクション内の既読の会話も非表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hide read starred conversations too"
+msgstr "スター付きの既読の会話も非表示"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Visual effects"
@@ -3462,6 +3488,10 @@ msgid "you"
 msgstr "自分"
 
 #: src/app/screens/shell/sidebar.cpp
+msgid "Draft"
+msgstr "下書き"
+
+#: src/app/screens/shell/sidebar.cpp
 msgid "Starred"
 msgstr "スター付き"
 
@@ -3480,6 +3510,10 @@ msgstr "エージェントとアプリ"
 #: src/app/screens/shell/sidebar.cpp
 msgid "VIP unreads"
 msgstr "VIPの未読"
+
+#: src/app/screens/shell/sidebar.cpp
+msgid "Drafts"
+msgstr "下書き"
 
 #: src/app/screens/shell/sidebar.cpp
 msgid "External connections"
@@ -4148,6 +4182,13 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid ""
+#~ "The conversation you are reading stays listed until you move on.\n"
+#~ "Starred conversations are always shown."
+#~ msgstr ""
+#~ "閲覧中の会話は、別の会話に移るまで表示されたままになります。\n"
+#~ "スター付きの会話は常に表示されます。"
 
 #~ msgid "Just now"
 #~ msgstr "たった今"

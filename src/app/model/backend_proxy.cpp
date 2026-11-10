@@ -207,6 +207,12 @@ void BackendProxy::loadThreadsView(std::string cursor, ThreadsViewDone done) {
 void BackendProxy::markThreadRead(ConvRef c, Ts root, Ts ts) {
     _t->markThreadRead(c, root, ts);
 }
+bool BackendProxy::canMarkThreadUnread(ConvRef c, Ts root) const {
+    return _t->canMarkThreadUnread(c, root);
+}
+void BackendProxy::markThreadUnread(ConvRef c, Ts root, Ts ts) {
+    _t->markThreadUnread(c, root, ts);
+}
 void BackendProxy::loadActivity(
     ActivityFilter f, bool unreadOnly, std::string cursor, ActivityDone done
 ) {
