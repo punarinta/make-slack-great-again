@@ -2245,6 +2245,62 @@ TEST("actions: the file bar on a file narrower than it stays inside the list") {
     CHECK(bar->windowRect().x + bar->frame().w <= list.x + list.w);
 }
 
+TEST("actions: the file bar goes with its file: a message deleted under the pointer") {
+    Env           e(false);
+    const int64_t t0 = base::nowSecs() - 600;
+    model::File   img;
+    img.id           = "FGONE";
+    img.name         = "mira.png";
+    img.mime         = "image/png";
+    img.path         = asset("avatars/mira.png");
+    img.width        = 256;
+    img.height       = 256;
+    model::Message m = msg(0, t0, "look");
+    m.extras().files.push_back(img);
+    std::vector<model::Message> ms;
+    ms.push_back(std::move(m));
+    ms.push_back(msg(0, t0 + 60, "and this"));
+    const ConvRef conv = addConv(e.store, std::move(ms));
+    e.list->showConversation(conv);
+    pump(10);
+    const Ts  ts  = t0 * 1000000;
+    ui::View *row = e.row(ts);
+    REQUIRE(row != nullptr);
+    ui::View                       *thumb = nullptr;
+    std::function<void(ui::View *)> find  = [&](ui::View *v) {
+        for (size_t i = 0; i < v->childCount(); ++i) {
+            ui::View *c = v->child(i);
+            if (c->childCount() == 0 && c->frame().h > 100)
+                thumb = c;
+            find(c);
+        }
+    };
+    find(row);
+    REQUIRE(thumb != nullptr);
+    auto           *h = app().platform().testHooks();
+    const ui::RectF t = thumb->windowRect();
+    h->injectPointerMove(e.win->native(), {t.x + t.w / 2, t.y + t.h / 2});
+    pump(4);
+    ui::View *dl = findByTooltip(e.win->root().child(0), "Download");
+    REQUIRE(dl != nullptr);
+    ui::View *bar = dl->parent();
+    REQUIRE(bar->visible());
+    // Deleted (here or elsewhere) while the pointer rests on it: its row and
+    // the picture go, and the bar with them; its buttons would act on a
+    // message that is no longer there.
+    REQUIRE(e.store.removeMessage(conv, ts));
+    pump(4);
+    CHECK_FALSE(bar->visible());
+    // The pointer moving on finds nothing of it (no stale view to ask).
+    h->injectPointerMove(e.win->native(), {t.x + t.w / 2, t.y + t.h / 2 + 40});
+    pump(4);
+    CHECK_FALSE(bar->visible());
+    // Another conversation under a resting pointer: the same.
+    e.list->showConversation(e.conv("C0GENERAL"));
+    pump(4);
+    CHECK_FALSE(bar->visible());
+}
+
 TEST("actions: the delete, move to thread and reminder dialogs and the CSV viewer") {
     Env           e(true);
     const ConvRef eng = e.conv("C0DESIGN"); // it has a thread

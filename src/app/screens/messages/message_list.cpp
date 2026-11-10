@@ -673,6 +673,15 @@ void MessageList::fileHovered(ui::View *v, Ts ts, const std::string &path, bool 
     });
 }
 
+void MessageList::fileGone(ui::View *v) {
+    if (!v || v != _fileView)
+        return;
+    _fileView = nullptr;
+    _fileTs   = 0;
+    _filePath.clear();
+    _fileBar->setVisible(false);
+}
+
 void MessageList::placeFileBar() {
     const model::Message *m = message(_fileTs);
     if (!_fileView || !_fileView->window() || !m || m->pending) {
@@ -703,7 +712,8 @@ MessageList::~MessageList() {
     _ctx.app.cancelTimer(_usersTimer);
     stopDragScroll();
     _toolbarRow = nullptr;
-    clearChildren(); // rows reach back into this object while being destroyed
+    _fileView   = nullptr; // the file views going below find nothing to hide
+    clearChildren();       // rows reach back into this object while being destroyed
 }
 
 const model::Message *MessageList::message(Ts ts) const {
