@@ -643,8 +643,12 @@ void SettingsDialog::buildAppearance() {
             _draft.unreadsOnly = on;
             sync(on);
         };
-        check(g, tr("Show direct messages and external conversations at the top"),
-              &d.directAndExternalFirst, true);
+        check(
+            g,
+            tr("Show direct messages and external conversations at the top"),
+            &d.directAndExternalFirst,
+            true
+        );
     }
 
     heading(_content, tr("Visual effects"));

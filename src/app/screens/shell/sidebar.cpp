@@ -1279,7 +1279,7 @@ void Sidebar::rebuild() {
             more->onClick = [this] { showAllChannels(); };
             h->extras.push_back(more);
         }
-        auto *add = _items->add<ActionRow>(tr("Add channels"), true);
+        auto *add    = _items->add<ActionRow>(tr("Add channels"), true);
         add->onClick = [this, add] { addChannelsMenu(add); };
         h->extras.push_back(add);
         applyCollapse(h);
@@ -1287,7 +1287,7 @@ void Sidebar::rebuild() {
     const auto renderDirect = [&] {
         auto *h = section(Direct, defs[Direct].icon, defs[Direct].title, lists[Direct]);
         if (agents) {
-            auto *add = _items->add<ActionRow>(tr("Add sessions"), true);
+            auto *add    = _items->add<ActionRow>(tr("Add sessions"), true);
             add->onClick = [this, add] {
                 if (onSessionMenu) {
                     const RectF r = add->windowRect();

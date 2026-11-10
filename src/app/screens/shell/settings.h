@@ -67,7 +67,7 @@ struct Settings {
     bool                     showAgentsApps = true, unreadsOnly = false;
     // Slack Connect channels and DMs in their own External connections
     // section; off, they stay in Channels / Direct messages.
-    bool                     externalSection = true;
+    bool                     externalSection        = true;
     // Direct messages/Sessions and External connections above Starred,
     // custom sections and Channels; off, the existing order is unchanged.
     bool                     directAndExternalFirst = false;
