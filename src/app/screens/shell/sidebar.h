@@ -317,13 +317,17 @@ private:
 
     // The user's collapsed sections, and those of them opened up to show a
     // chat (see setCollapsed).
-    Collapsed                                                        _collapsed;
-    std::unordered_set<std::string>                                  _openedUp;
+    Collapsed                       _collapsed;
+    std::unordered_set<std::string> _openedUp;
     // The workspace given to setCollapsed and the Store open then.
-    std::string                                                      _collapsedKey;
-    const model::Store                                              *_collapsedOf = nullptr;
-    // The custom sections' ids seen last, by workspace key.
-    std::unordered_map<std::string, std::unordered_set<std::string>> _sectionIds;
+    std::string                     _collapsedKey;
+    const model::Store             *_collapsedOf = nullptr;
+    // The custom sections seen last in a workspace's Store, by its key.
+    struct SeenSections {
+        uint64_t                        rev = 0; // Store::sectionsRevision
+        std::unordered_set<std::string> ids;
+    };
+    std::unordered_map<std::string, SeenSections> _sectionIds;
 
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged

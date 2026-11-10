@@ -1284,18 +1284,22 @@ bool Sidebar::forgetDeletedSections() {
     const model::Store &store = _ctx.store();
     if (_collapsedKey.empty() || &store != _collapsedOf)
         return false;
+    const auto [it, first] = _sectionIds.try_emplace(_collapsedKey);
+    SeenSections &seen     = it->second;
+    if (!first && seen.rev == store.sectionsRevision())
+        return false; // the same list (most rebuilds)
     std::unordered_set<std::string> ids;
     for (const model::Store::Section &sec : store.sections())
         ids.insert(sec.id);
-    const auto [it, first] = _sectionIds.try_emplace(_collapsedKey);
-    bool pruned            = false;
+    bool pruned = false;
     if (!first)
-        for (const std::string &id : it->second)
+        for (const std::string &id : seen.ids)
             if (!ids.count(id)) {
                 _openedUp.erase(id);
                 pruned = _collapsed.erase(id) > 0 || pruned;
             }
-    it->second = std::move(ids);
+    seen.rev = store.sectionsRevision();
+    seen.ids = std::move(ids);
     return pruned;
 }
 
