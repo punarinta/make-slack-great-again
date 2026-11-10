@@ -1179,9 +1179,9 @@ void Sidebar::rebuild() {
                              std::string                 title,
                              const std::vector<ConvRef> &rows,
                              const std::string          &id = {}) {
-        auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
+        auto             *h   = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
         const std::string key = sectionKey(kind, id);
-        h->collapsed = !key.empty() && _collapsed.count(key);
+        h->collapsed          = !key.empty() && _collapsed.count(key);
         _sections.push_back(h);
         // VIP unreads never collapses: a lift for unreads, not a section to
         // fold away (its header shows the pill, no chevron to say so).

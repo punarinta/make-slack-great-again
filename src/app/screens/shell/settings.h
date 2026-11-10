@@ -122,7 +122,7 @@ struct Settings {
         std::string workspace, section;
     };
     std::vector<SectionCollapsedPref> sidebarCollapsed;
-    bool                         trayMonochrome = true; // the custom tray icon turned monochrome
+    bool trayMonochrome = true; // the custom tray icon turned monochrome
 
     // ── Claude Code ─────────────────────────────────────────────────────────
     // The folder the last session started in (claudeCode/lastDir; "" = home),

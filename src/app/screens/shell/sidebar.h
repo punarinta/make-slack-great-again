@@ -302,11 +302,11 @@ private:
     bool                     _revealOnRebuild        = false;
     bool                     _revealSelectedOnLayout = false; // see revealSelectedAfterLayout()
     int                      _hiddenChannels         = 0;
-    Collapsed                _collapsed; // sectionKey -> collapsed (only true stored)
-    uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
-    ConvRow *_dragRow         = nullptr; // a row being dragged
-    bool     _showAllChannels = false;
-    bool     _resort          = false; // sectionsSoon checks the sorted sections' order
+    Collapsed                _collapsed;           // sectionKey -> collapsed (only true stored)
+    uint64_t                 _sectionsRev     = 0; // Store::sectionsRevision at the last rebuild
+    ConvRow                 *_dragRow         = nullptr; // a row being dragged
+    bool                     _showAllChannels = false;
+    bool                     _resort = false; // sectionsSoon checks the sorted sections' order
 };
 
 } // namespace shell
