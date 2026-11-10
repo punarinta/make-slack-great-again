@@ -684,11 +684,14 @@ void MessageList::placeFileBar() {
     const bool agent = _ctx.backend.isAgentSession(_conv);
     _fbReact->setVisible(!(agent && m->user == _ctx.store().me));
     // cardTop = file top − 20 (straddling it); right edge on the file's
-    // last pixel column.
+    // last pixel column, but never out of the list on the left (a file
+    // narrower than the bar, a small image): 12 px in, as the message
+    // toolbar is on the right.
     const ui::SizeF  sz = _fileBar->measure(ui::kInf, ui::kInf);
     const ui::RectF  r  = _fileView->windowRect();
     const ui::PointF o  = mapFromWindow({r.x, r.y});
-    _fileBar->setFrame({std::floor(o.x + r.w - 1 - sz.w), std::floor(o.y - 20), sz.w, sz.h});
+    const float      x  = std::max(12.f, o.x + r.w - 1 - sz.w);
+    _fileBar->setFrame({std::floor(x), std::floor(o.y - 20), sz.w, sz.h});
     _fileBar->setVisible(true);
 }
 

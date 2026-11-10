@@ -2199,6 +2199,52 @@ TEST("actions: the file bar reacts to an image thumbnail too") {
     pump(2);
 }
 
+TEST("actions: the file bar on a file narrower than it stays inside the list") {
+    Env           e(false);
+    const int64_t t0 = base::nowSecs() - 600;
+    model::File   img;
+    img.id           = "FTINY";
+    img.name         = "dot.png";
+    img.mime         = "image/png";
+    img.path         = asset("avatars/mira.png");
+    img.width        = 16;
+    img.height       = 16;
+    model::Message m = msg(0, t0, "");
+    m.extras().files.push_back(img);
+    std::vector<model::Message> ms;
+    ms.push_back(std::move(m));
+    const ConvRef conv = addConv(e.store, std::move(ms));
+    e.list->showConversation(conv);
+    pump(10);
+    ui::View *row = e.row(t0 * 1000000);
+    REQUIRE(row != nullptr);
+    // The 16-px image, far narrower than the bar.
+    ui::View                       *thumb = nullptr;
+    std::function<void(ui::View *)> find  = [&](ui::View *v) {
+        for (size_t i = 0; i < v->childCount(); ++i) {
+            ui::View *c = v->child(i);
+            if (c->childCount() == 0 && near(c->frame().w, 16) && near(c->frame().h, 16))
+                thumb = c;
+            find(c);
+        }
+    };
+    find(row);
+    REQUIRE(thumb != nullptr);
+    auto           *h = app().platform().testHooks();
+    const ui::RectF t = thumb->windowRect();
+    h->injectPointerMove(e.win->native(), {t.x + t.w / 2, t.y + t.h / 2});
+    pump(4);
+    ui::View *dl = findByTooltip(e.win->root().child(0), "Download");
+    REQUIRE(dl != nullptr);
+    ui::View *bar = dl->parent();
+    REQUIRE(bar->visible());
+    // 12 px in from the list's left edge: every button on screen.
+    const ui::RectF list = e.list->windowRect();
+    CHECK(near(bar->windowRect().x, list.x + 12, 1));
+    CHECK(dl->windowRect().x >= list.x);
+    CHECK(bar->windowRect().x + bar->frame().w <= list.x + list.w);
+}
+
 TEST("actions: the delete, move to thread and reminder dialogs and the CSV viewer") {
     Env           e(true);
     const ConvRef eng = e.conv("C0DESIGN"); // it has a thread
