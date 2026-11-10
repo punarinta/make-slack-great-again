@@ -878,7 +878,7 @@ void Accounts::signOut(const std::string &key) {
     drop(find(k), false);
     cache::WorkspaceCache::remove(_ctx.app.platform(), k); // its drafts go with it
     _shell.purgeHistory(k);
-    _shell.forgetCollapsed(k);
+    _shell.forgetSidebarPrefs(k);
     _store.remove(k);
     std::erase(_pending, k);
     if (open && !_store.active().empty())

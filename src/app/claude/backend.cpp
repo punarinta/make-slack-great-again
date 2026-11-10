@@ -2633,7 +2633,7 @@ void Backend::connect(Done done) {
     _store.workspaceName      = "Claude Code";
     _store.workspaceIcon      = agentAvatarPath();
     _store.answersAreMentions = true;
-    _store.setSections(_sections);
+    _store.setSections(_sections, true); // its own file keeps them all
     syncUsers();
     if (!_started) {
         firstScan(std::move(done));

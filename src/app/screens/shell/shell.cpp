@@ -2021,16 +2021,20 @@ void Shell::purgeHistory(const std::string &key) {
         _pendingNav = {};
 }
 
-void Shell::forgetCollapsed(const std::string &key) {
-    const auto gone =
+void Shell::forgetSidebarPrefs(const std::string &key) {
+    const auto sorts =
+        std::erase_if(_settings.sidebarSorts, [&key](const Settings::SectionSortPref &p) {
+            return p.workspace == key;
+        });
+    const auto collapsed =
         std::erase_if(_settings.sidebarCollapsed, [&key](const Settings::SectionCollapsedPref &p) {
             return p.workspace == key;
         });
-    if (gone > 0)
+    if (sorts + collapsed > 0)
         saveSettingsSoon();
     if (_collapsedFor == key) { // nothing of it stored back, the next one loads
         _collapsedFor.reset();
-        _sidebar->setCollapsed({}, {});
+        _sidebar->setCollapsed({});
     }
 }
 
@@ -3292,9 +3296,10 @@ void Shell::detachWorkspace(const std::string &key) {
     (*it)->store->unobserve((*it)->observer);
     _running.erase(it);
     // A Store attached again for it is new: its collapsed sections load anew.
-    _sidebar->forgetSections(key);
-    if (_collapsedFor == key)
+    if (_collapsedFor == key) {
         _collapsedFor.reset();
+        _sidebar->forgetStore();
+    }
     std::erase_if(_notified, [&](const auto &n) { return n.second.key == key; });
     // Dialogs that reach every workspace let it go.
     if (_forward)
@@ -3737,7 +3742,7 @@ void Shell::loadCollapsed() {
         if (p.workspace == _activeKey && !p.section.empty())
             collapsed[p.section] = true;
     _collapsedFor = _activeKey;
-    _sidebar->setCollapsed(_activeKey, std::move(collapsed));
+    _sidebar->setCollapsed(std::move(collapsed));
 }
 
 void Shell::storeCollapsed() {

@@ -173,6 +173,7 @@ void Store::clear() {
     _saved.clear();
     _scheduled.clear();
     _sections.clear();
+    _sectionsComplete = false;
     ++_sectionsRev;
     _usergroups.clear();
     _channelNames.clear();
@@ -1036,10 +1037,11 @@ const Store::Section *Store::findSection(std::string_view id) const {
     return nullptr;
 }
 
-void Store::setSections(std::vector<Section> sections) {
-    if (sections == _sections)
+void Store::setSections(std::vector<Section> sections, bool complete) {
+    if (sections == _sections && (!complete || _sectionsComplete))
         return;
     _sections = std::move(sections);
+    _sectionsComplete |= complete;
     ++_sectionsRev;
     emit({ChangeKind::Meta});
 }

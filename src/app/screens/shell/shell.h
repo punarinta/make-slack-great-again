@@ -160,8 +160,9 @@ public:
     void           leaveWorkspace();
     // A signed-out workspace: its history entries go.
     void           purgeHistory(const std::string &key);
-    // ...and its collapsed sidebar sections (signing in again starts afresh).
-    void           forgetCollapsed(const std::string &key);
+    // ...and its sidebar sections' sorts and collapsed state (signing in
+    // again starts afresh).
+    void           forgetSidebarPrefs(const std::string &key);
     model::ConvRef current() const { return _current; }
     bool           threadOpen() const;
     void           showQuickSwitcher();

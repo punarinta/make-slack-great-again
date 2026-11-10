@@ -1709,7 +1709,7 @@ void SlackBackend::Read::refreshSections() {
             std::vector<model::Store::Section> list;
             systemSections.clear();
             mapjson::toSections(doc.root(), list, systemSections);
-            s.setSections(std::move(list));
+            s.setSections(std::move(list), true); // every section (only channel ids page)
         }
     );
 }
