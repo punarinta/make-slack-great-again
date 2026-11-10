@@ -826,8 +826,7 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
                 // A group DM's new message may lift it into VIP unreads (isVip
                 // reads it); else most recent first may move it.
                 const ConvRow *r = rowFor(ch.conv);
-                if (r->section->kind != Sidebar::Custom &&
-                    r->section->kind != classify(ch.conv))
+                if (r->section->kind != Sidebar::Custom && r->section->kind != classify(ch.conv))
                     rebuildSoon(false);
                 else
                     resortSoon();
