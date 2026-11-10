@@ -877,7 +877,8 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             // flips (the selected row and Starred stay regardless).
             const bool  filterFlip =
                 _filters.unreadsOnly && ch.conv != _selected && !cv.starred &&
-                !(r && r->section->kind == Sidebar::Custom) &&
+                !(r &&
+                  (r->section->kind == Sidebar::Custom || r->section->kind == Sidebar::Drafts)) &&
                 (r ? r->unread != paintsUnread(cv) : cv.member && paintsUnread(cv));
             // Same classify() rebuild() uses, so a row only looks "moved" when it would be.
             const bool reclassified = r && misplaced(ch.conv);

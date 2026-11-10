@@ -315,6 +315,22 @@ TEST("sidebar: a drafted row says Draft, made only then, and not while its chat 
     CHECK(h.sidebar().rowState(eng).draft);
 }
 
+TEST("sidebar: under unreads-only a drafted row's unread change rebuilds nothing") {
+    Harness       h;
+    const ConvRef random = h.conv("C0RANDOM"); // read
+    h.store.setDraft(random, 0, "<p>later</p>", {});
+    h.settings.unreadsOnly = true;
+    h.sh->applySettings();
+    pump();
+    REQUIRE(h.sidebar().rowState(random).section == "Drafts");
+    const int rebuilds = h.sidebar().rebuildCount();
+    h.backend.markUnread(random, h.store.conversation(random).latest);
+    pump();
+    CHECK(h.sidebar().rowState(random).bold);
+    CHECK(h.sidebar().rebuildCount() == rebuilds); // listed either way: restyled in place
+    CHECK_STR(h.sidebar().rowState(random).section, "Drafts");
+}
+
 TEST("sidebar: selecting a row below the fold keeps the scroll position") {
     Harness h;
     for (int i = 0; i < 40; ++i) {
