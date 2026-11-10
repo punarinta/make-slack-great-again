@@ -78,7 +78,10 @@ struct Harness {
         backend.setFixture(MSGA_TEST_ASSETS, base::fromLocal(2026, 9, 21, 16, 0));
         bool done = false;
         backend.connect([&](bool ok, const std::string &) { done = ok; });
-        for (int i = 0; i < 200 && !done; ++i)
+        // By the clock: pump() returns early on every post from a worker
+        // thread, so a count of pumps can run out before the connect.
+        const int64_t end = base::monotonicMs() + 10000;
+        while (!done && base::monotonicMs() < end)
             app().pump(5);
         plat::WindowDesc d;
         d.size                = {1200, 800};

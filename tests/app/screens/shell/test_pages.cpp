@@ -58,7 +58,8 @@ void pump(int n = 10) {
 
 template <class F>
 bool until(F done, int ms = 3000) {
-    for (int t = 0; t < ms && !done(); t += 5)
+    const int64_t end = base::monotonicMs() + ms; // pump() can return early
+    while (!done() && base::monotonicMs() < end)
         app().pump(5);
     return done();
 }
@@ -85,7 +86,10 @@ struct Harness {
         backend.setFixture(MSGA_TEST_ASSETS, base::fromLocal(2026, 9, 21, 16, 0));
         bool done = false;
         backend.connect([&](bool ok, const std::string &) { done = ok; });
-        for (int i = 0; i < 200 && !done; ++i)
+        // By the clock: pump() returns early on every post from a worker
+        // thread, so a count of pumps can run out before the connect.
+        const int64_t end = base::monotonicMs() + 10000;
+        while (!done && base::monotonicMs() < end)
             app().pump(5);
         plat::WindowDesc d;
         d.size        = {1200, 800};
