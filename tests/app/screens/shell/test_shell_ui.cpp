@@ -286,7 +286,7 @@ TEST("sidebar: the unreads-only scope flags decide what read starred and custom 
     h.settings.unreadsOnly = true;
     h.sh->applySettings();
     pump();
-    // Default (both flags off): upstream behaviour, read rows stay.
+    // Default (both flags off): as before, read rows stay.
     CHECK(h.sidebar().rowState(general).exists);
     CHECK(h.sidebar().rowState(random).exists);
     h.settings.unreadsOnlyAppliesToStarred        = true;
@@ -295,6 +295,43 @@ TEST("sidebar: the unreads-only scope flags decide what read starred and custom 
     pump();
     CHECK_FALSE(h.sidebar().rowState(general).exists);
     CHECK_FALSE(h.sidebar().rowState(random).exists);
+}
+
+TEST("sidebar: with its scopes on, unread-only lists read starred and own rows as they flip") {
+    Harness       h;
+    const ConvRef general = h.conv("C0GENERAL"); // starred, read
+    const ConvRef random  = h.conv("C0RANDOM");  // read, own section
+    h.backend.createSection("Projects", "", random);
+    h.settings.unreadsOnly                        = true;
+    h.settings.unreadsOnlyAppliesToStarred        = true;
+    h.settings.unreadsOnlyAppliesToCustomSections = true;
+    h.sh->applySettings();
+    pump();
+    REQUIRE(!h.sidebar().rowState(general).exists);
+    REQUIRE(!h.sidebar().rowState(random).exists);
+    // Something new comes in: listed at once, in its own section; read
+    // elsewhere, gone again. Each on its own: its change alone must do it.
+    for (const ConvRef c : {general, random}) {
+        h.backend.markUnread(c, h.store.conversation(c).latest);
+        pump();
+        CHECK_STR(h.sidebar().rowState(c).section, c == general ? "Starred" : "Projects");
+        h.backend.markRead(c, h.store.conversation(c).latest);
+        pump();
+        CHECK_FALSE(h.sidebar().rowState(c).exists);
+    }
+    // Open, a read one stays listed until left; a draft keeps one in Drafts.
+    h.sh->open(random);
+    pump();
+    CHECK(h.sidebar().rowState(random).exists);
+    h.store.setDraft(general, 0, "<p>later</p>", {});
+    pump();
+    CHECK_STR(h.sidebar().rowState(general).section, "Drafts");
+    // The scopes alone hide nothing: unread-only off, all are listed.
+    h.settings.unreadsOnly = false;
+    h.sh->applySettings();
+    pump();
+    CHECK(h.sidebar().rowState(random).exists);
+    CHECK(h.sidebar().rowState(general).exists);
 }
 
 TEST("sidebar: an unsent draft lists its conversation under Drafts") {
