@@ -204,6 +204,24 @@ TEST("settings: a custom font size survives the file, clamped") {
     CHECK(shell::Settings::load(path).fontPercent == 200);
 }
 
+TEST("settings: collapsed sidebar sections survive the file, nameless ones dropped") {
+    const std::string path = testPath();
+    shell::Settings   s;
+    s.sidebarCollapsed = {{"slack:T1", "#channels"}, {"slack:T1", "S0WORK"}, {"slack:T2", ""}};
+    REQUIRE(s.save(path));
+    const shell::Settings r = shell::Settings::load(path);
+    REQUIRE(r.sidebarCollapsed.size() == 2);
+    CHECK_STR(r.sidebarCollapsed[0].workspace, "slack:T1");
+    CHECK_STR(r.sidebarCollapsed[0].section, "#channels");
+    CHECK_STR(r.sidebarCollapsed[1].section, "S0WORK");
+    s.sidebarCollapsed.clear(); // none: no key in the file at all
+    REQUIRE(s.save(path));
+    std::string text;
+    REQUIRE(file::readAll(path, &text));
+    CHECK(text.find("sidebarCollapsed") == std::string::npos);
+    CHECK(shell::Settings::load(path).sidebarCollapsed.empty());
+}
+
 TEST("settings: every value survives the file, which is owner-only") {
     const std::string path = testPath();
     file::remove(path);

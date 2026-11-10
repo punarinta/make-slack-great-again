@@ -71,6 +71,29 @@ TEST("store: a composer draft is kept per conversation and thread") {
     CHECK_FALSE(f.s.draft(f.c, 0));
 }
 
+TEST("store: a whole sections list stays whole; telling it alone is a change") {
+    Store s;
+    int   metas = 0;
+    s.observe(Store::kAnyConv, [&](const Change &ch) { metas += ch.kind == ChangeKind::Meta; });
+    const Store::Section work = {"S1", "Work", "", {}};
+    CHECK_FALSE(s.sectionsComplete());
+    s.setSections({work}); // made here before the list came
+    CHECK_FALSE(s.sectionsComplete());
+    CHECK(metas == 1);
+    const uint64_t rev = s.sectionsRevision();
+    s.setSections({work}, true); // the same list, now known whole
+    CHECK(s.sectionsComplete());
+    CHECK(s.sectionsRevision() > rev);
+    CHECK(metas == 2);
+    s.setSections({work}, true); // nothing new
+    CHECK(metas == 2);
+    s.setSections({}); // an edit of the whole list keeps it whole
+    CHECK(s.sectionsComplete());
+    CHECK(s.sections().empty());
+    s.clear();
+    CHECK_FALSE(s.sectionsComplete());
+}
+
 TEST("store: ts strings round-trip as micros") {
     CHECK(parseTs("1758445200.123456") == 1758445200123456);
     CHECK(parseTs("1758445200.1") == 1758445200100000);

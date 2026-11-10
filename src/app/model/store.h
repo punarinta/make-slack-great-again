@@ -335,8 +335,12 @@ public:
     const Section              *sectionOf(std::string_view convId) const;
     const Section              *findSection(std::string_view id) const;
     // Replaces the list; fires Meta with conv = kNoConv when it changed.
-    void                        setSections(std::vector<Section> sections);
-    // Grows with every change of the list.
+    // `complete`: the whole list, as where it is kept has it (the server's
+    // answer, the backend's own file), so a section missing from it is gone.
+    // Once complete the list stays so: edits from here apply to all of it.
+    void                        setSections(std::vector<Section> sections, bool complete = false);
+    bool                        sectionsComplete() const { return _sectionsComplete; }
+    // Grows with every change of the list (or of its completeness).
     uint64_t                    sectionsRevision() const { return _sectionsRev; }
 
     // ── "Transcribe with AI" ────────────────────────────────────────────────
@@ -423,7 +427,8 @@ private:
     std::vector<SavedItem>                       _saved;
     std::vector<ScheduledItem>                   _scheduled;
     std::vector<Section>                         _sections;
-    uint64_t                                     _sectionsRev = 0;
+    uint64_t                                     _sectionsRev      = 0;
+    bool                                         _sectionsComplete = false;
     std::vector<Usergroup>                       _usergroups;
     std::unordered_map<std::string, std::string> _channelNames;
     std::unordered_map<std::string, UserRef>     _linkedAuthors; // "conv/ts"

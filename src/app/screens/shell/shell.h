@@ -19,6 +19,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -159,6 +160,9 @@ public:
     void           leaveWorkspace();
     // A signed-out workspace: its history entries go.
     void           purgeHistory(const std::string &key);
+    // ...and its sidebar sections' sorts and collapsed state (signing in
+    // again starts afresh).
+    void           forgetSidebarPrefs(const std::string &key);
     model::ConvRef current() const { return _current; }
     bool           threadOpen() const;
     void           showQuickSwitcher();
@@ -446,10 +450,13 @@ private:
     void applyUpdate(); // the update bar's button
 #endif
     void storeVisited(); // the sidebar's visit stamps into _settings
-    // The open workspace's section sorts: from _settings into the sidebar,
-    // and back when the section menu changed one.
+    // The open workspace's section sorts and collapsed sections: from
+    // _settings into the sidebar, and back when the section menu or a header
+    // click changed them.
     void loadSorts();
     void storeSorts();
+    void loadCollapsed();
+    void storeCollapsed();
     // Claude Code UI for agent sessions: the
     // composer's lock and suggestion, slash commands that msga runs itself,
     // the footer's zen toggle, the thread panel's "Open as session".
@@ -491,6 +498,11 @@ private:
     bool                   _haveWorkspaces = false; // setWorkspaces was called
     ui::View              *_listHandle = nullptr, *_signedOut = nullptr, *_addBtn = nullptr;
     bool                   _signedIn = true;
+
+    // The workspace whose collapsed sections the sidebar holds: they are
+    // stored under it, and loaded again only for another one.
+    std::optional<std::string> _collapsedFor;
+
     ui::Button    *_pinBtn = nullptr, *_minBtn = nullptr, *_maxBtn = nullptr, *_closeBtn = nullptr;
     ui::Clickable *_prefsBtn                = nullptr;
     ConvHeader    *_header                  = nullptr;
