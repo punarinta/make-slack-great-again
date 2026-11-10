@@ -289,7 +289,7 @@ TEST("sidebar: the unreads-only scope flags decide what read starred and custom 
     // Default (both flags off): upstream behaviour, read rows stay.
     CHECK(h.sidebar().rowState(general).exists);
     CHECK(h.sidebar().rowState(random).exists);
-    h.settings.unreadsOnlyAppliesToStarred = true;
+    h.settings.unreadsOnlyAppliesToStarred        = true;
     h.settings.unreadsOnlyAppliesToCustomSections = true;
     h.sh->applySettings();
     pump();

@@ -1140,7 +1140,8 @@ void Sidebar::rebuild() {
                 continue;
             inCustom[c] = 1;
             if (store.conversation(c).member && !deadDm(store, store.conversation(c)) &&
-                (!_filters.unreadsOnly || !_filters.unreadsOnlyAppliesToCustomSections || listed(c)))
+                (!_filters.unreadsOnly || !_filters.unreadsOnlyAppliesToCustomSections ||
+                 listed(c)))
                 custom[s].push_back(c);
         }
     for (ConvRef c = 0; c < store.conversationCount(); ++c) {
