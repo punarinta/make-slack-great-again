@@ -40,6 +40,7 @@ const struct {
     {"showAgentsApps", &Settings::showAgentsApps},
     {"externalSection", &Settings::externalSection},
     {"unreadsOnly", &Settings::unreadsOnly},
+    {"directAndExternalFirst", &Settings::directAndExternalFirst},
     {"animateEmoji", &Settings::animateEmoji},
     {"animateMedia", &Settings::animateMedia},
     {"customTrayIcon", &Settings::customTrayIcon},

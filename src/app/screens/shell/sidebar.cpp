@@ -1242,28 +1242,32 @@ void Sidebar::rebuild() {
         auto *h = section(Drafts, Icon::Edit3, tr("Drafts"), drafts);
         applyCollapse(h);
     }
-    for (int s = 0; s < 4; ++s) {
-        // Slack Connect channels and DMs, under Direct messages (and the
-        // Team): a new section, so nobody's own order above it shifts.
-        if (s == Apps && !external.empty()) {
-            auto *h = section(External, Icon::Building, tr("External connections"), external);
+
+    const auto renderCustom = [&] {
+        for (size_t i = 0; i < custom.size(); ++i) {
+            auto *h = section(Custom, Icon::List, secs[i].name, custom[i], secs[i].id);
+            if (!secs[i].emoji.empty())
+                h->setEmoji(store.emojiFor(secs[i].emoji));
             applyCollapse(h);
         }
-        if (s == Channels) // the user's own sections, between Starred and Channels
-            for (size_t i = 0; i < custom.size(); ++i) {
-                auto *h = section(Custom, Icon::List, secs[i].name, custom[i], secs[i].id);
-                if (!secs[i].emoji.empty())
-                    h->setEmoji(store.emojiFor(secs[i].emoji));
-                applyCollapse(h);
-            }
-        // No Starred section until something is starred, no Agents & apps
-        // without an app DM, and an agent workspace drops an empty Channels.
-        if (lists[s].empty() &&
-            (s == Starred || s == Apps ||
-             (s == Channels && agents && hiddenCh.empty() && hiddenExt.empty())))
-            continue;
-        auto *h = section(Kind(s), defs[s].icon, defs[s].title, lists[s]);
-        if (s == Channels && _hiddenChannels > 0) {
+    };
+    const auto renderExternal = [&] {
+        if (external.empty())
+            return;
+        auto *h = section(External, Icon::Building, tr("External connections"), external);
+        applyCollapse(h);
+    };
+    const auto renderStarred = [&] {
+        if (lists[Starred].empty())
+            return;
+        auto *h = section(Starred, defs[Starred].icon, defs[Starred].title, lists[Starred]);
+        applyCollapse(h);
+    };
+    const auto renderChannels = [&] {
+        if (lists[Channels].empty() && agents && hiddenCh.empty() && hiddenExt.empty())
+            return;
+        auto *h = section(Channels, defs[Channels].icon, defs[Channels].title, lists[Channels]);
+        if (_hiddenChannels > 0) {
             auto *more = _items->add<ActionRow>(
                 i18n::arg(
                     tr("%1 more %2"),
@@ -1275,13 +1279,17 @@ void Sidebar::rebuild() {
             more->onClick = [this] { showAllChannels(); };
             h->extras.push_back(more);
         }
-        if (s == 1 || (s == 2 && agents)) {
-            auto *add =
-                _items->add<ActionRow>(s == 1 ? tr("Add channels") : tr("Add sessions"), true);
-            add->onClick = [this, add, s] {
-                if (s == 1) {
-                    addChannelsMenu(add);
-                } else if (onSessionMenu) { // Sessions: find one or create one
+        auto *add    = _items->add<ActionRow>(tr("Add channels"), true);
+        add->onClick = [this, add] { addChannelsMenu(add); };
+        h->extras.push_back(add);
+        applyCollapse(h);
+    };
+    const auto renderDirect = [&] {
+        auto *h = section(Direct, defs[Direct].icon, defs[Direct].title, lists[Direct]);
+        if (agents) {
+            auto *add    = _items->add<ActionRow>(tr("Add sessions"), true);
+            add->onClick = [this, add] {
+                if (onSessionMenu) {
                     const RectF r = add->windowRect();
                     onSessionMenu({r.x + kContentX, r.y + r.h / 2});
                 }
@@ -1291,7 +1299,7 @@ void Sidebar::rebuild() {
         applyCollapse(h);
         // The team, under the sessions (the fourth section): the roles sessions
         // are started with.
-        if (s == Direct && !_team.empty()) {
+        if (!_team.empty()) {
             auto *t = _items->add<SectionHeader>(*this, Team, Icon::Users, tr("Team"));
             restoreCollapse(t);
             _sections.push_back(t);
@@ -1303,6 +1311,28 @@ void Sidebar::rebuild() {
             }
             applyCollapse(t);
         }
+    };
+    const auto renderApps = [&] {
+        if (lists[Apps].empty())
+            return;
+        auto *h = section(Apps, defs[Apps].icon, defs[Apps].title, lists[Apps]);
+        applyCollapse(h);
+    };
+
+    if (_filters.directAndExternalFirst) {
+        renderDirect();
+        renderExternal();
+        renderStarred();
+        renderCustom();
+        renderChannels();
+        renderApps();
+    } else {
+        renderStarred();
+        renderCustom();
+        renderChannels();
+        renderDirect();
+        renderExternal();
+        renderApps();
     }
     refreshTeammates();
     refreshAll();

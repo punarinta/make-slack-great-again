@@ -938,6 +938,43 @@ TEST("sections: a Slack Connect channel sits in External connections, under Dire
     CHECK(sb.order() == before);
 }
 
+TEST("sections: the DMs-first option lifts Direct messages and External connections") {
+    Harness         h;
+    shell::Sidebar &sb     = h.sh->sidebar();
+    const ConvRef   random = h.conv("C0RANDOM");
+    h.store.updateConversation(random, [](Conversation &c) { c.extShared = true; });
+    h.backend.createSection("Projects", "", h.conv("C0ENG"));
+    pump();
+    const std::string usual =
+        "Activity|Threads|Starred|Projects|Channels|Direct messages|External connections";
+    REQUIRE(titles(sb) == usual);
+    const std::vector<ConvRef> before = sb.order();
+    h.settings.directAndExternalFirst = true;
+    h.sh->applySettings();
+    pump();
+    CHECK_STR(
+        titles(sb),
+        "Activity|Threads|Direct messages|External connections|Starred|Projects|Channels"
+    );
+    // The keys and the quick switcher go through them in that order too.
+    CHECK_STR(sb.rowState(sb.order().front()).section, "Direct messages");
+    CHECK_STR(sb.rowState(sb.order().back()).section, "Channels");
+    // Without its section the shared channel is back in Channels: nothing
+    // moves up for it.
+    h.settings.externalSection = false;
+    h.sh->applySettings();
+    pump();
+    CHECK_STR(titles(sb), "Activity|Threads|Direct messages|Starred|Projects|Channels");
+    CHECK_STR(sb.rowState(random).section, "Channels");
+    // Both off: the order as it was.
+    h.settings.externalSection        = true;
+    h.settings.directAndExternalFirst = false;
+    h.sh->applySettings();
+    pump();
+    CHECK_STR(titles(sb), usual);
+    CHECK(sb.order() == before);
+}
+
 TEST("sections: DMs with a stranger are external too; a starred one stays starred") {
     Harness         h;
     shell::Sidebar &sb       = h.sh->sidebar();
