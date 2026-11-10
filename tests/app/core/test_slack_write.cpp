@@ -1093,6 +1093,9 @@ TEST("slack: on Grid the org's methods go with the org token and the workspace's
     slack::apiCall(client, a, "client.counts", {}, count);
     slack::apiCall(client, a, "subscriptions.thread.getView", "limit=10&team_id=T9", count);
     slack::apiCall(client, a, "conversations.history", "channel=C1", count);
+    // Answered first: concurrent calls reach the log in any order, and the
+    // two client.counts entries below are told apart by position.
+    REQUIRE(pumpUntil([&] { return done == 3; }));
     slack::Auth plain{"xoxc-ws", "xoxd-c"}; // off Grid: no org token
     slack::apiCall(client, plain, "client.counts", {}, count);
     REQUIRE(pumpUntil([&] { return done == 4; }));
