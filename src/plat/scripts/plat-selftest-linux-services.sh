@@ -210,8 +210,26 @@ if [ -s "$tmp/wl.log" ]; then
     check_settings "$tmp/wl.log" Wayland
     require_pass "$tmp/wl.log" "Wayland + fakes" "${roundThree[@]}"
 fi
+# withdrawNotification reached the server: every "Withdrawn"/"Early" one was
+# closed there (CloseNotification), never the "Kept" one.
+check_withdrawn() {
+    local log=$tmp/fake.log bad=0 n=0 id summary
+    while read -r id summary; do
+        n=$((n + 1))
+        if [ "$summary" = Kept ]; then
+            grep -qF "close: #$id " "$log" && { echo "FAIL withdraw: #$id (Kept) was closed"; bad=1; }
+        elif ! grep -qF "close: #$id (open)" "$log"; then
+            echo "FAIL withdraw: #$id ($summary) not closed on the server"
+            bad=1
+        fi
+    done < <(sed -nE "s/.*notify: #([0-9]+) app=.* summary='(Withdrawn|Early|Kept)'.*/\1 \2/p" "$log")
+    [ $n -eq 0 ] && { echo "FAIL withdraw: the fake saw none of the case's notifications"; bad=1; }
+    [ $bad -eq 0 ] && echo "PASS withdrawn notifications closed on the server ($n seen)"
+    note $bad
+}
+check_withdrawn
 echo "# what the fakes saw:"
-grep -E 'host:|notify:|launcher:|portal: (Open|Save)|logind:|nm:|portal: network' \
+grep -E 'host:|notify:|close:|launcher:|portal: (Open|Save)|logind:|nm:|portal: network' \
     "$tmp/fake.log" | sed 's/^fake: /#   /' | head -n 70
 takes=$(grep -c 'inhibitor taken' "$tmp/fake.log")
 releases=$(grep -c 'inhibitor released' "$tmp/fake.log")

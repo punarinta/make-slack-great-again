@@ -103,6 +103,19 @@ std::string toastArguments(uint64_t id, std::string_view key) {
     return "plat:" + std::to_string(id) + ":" + core::percentEncode(key);
 }
 
+#if defined(PLAT_WINRT_TOAST)
+// A toast's tag and group in the Action Centre.
+constexpr std::wstring_view kToastGroup = L"plat";
+std::wstring                toastTag(uint64_t id) {
+    std::wstring tag;
+    do {
+        tag.insert(tag.begin(), L"0123456789abcdef"[id & 15]);
+        id >>= 4;
+    } while (id);
+    return tag;
+}
+#endif
+
 bool parseToastArguments(std::string_view args, uint64_t *id, std::string *key) {
     if (args.substr(0, 5) != "plat:")
         return false;
@@ -366,12 +379,14 @@ struct Shell final : IconHost {
     };
     uint64_t toastNotify(const Notification &n, uint64_t id);
     void     toastForget(uint64_t id);
+    void     toastWithdraw(uint64_t id);
     void     toastActivated(uint64_t id, const std::string &args);
     bool     registerAumid();
 
     std::shared_ptr<ToastSink>     sink;
     wr::IToastNotifier            *notifier = nullptr;
     wr::IToastNotificationFactory *factory  = nullptr;
+    wr::IToastNotificationHistory *history  = nullptr; // null before 10 (no Action Centre removal)
     std::map<uint64_t, Toast>      toasts;
     int                            imageRotation = 0;
 #endif
@@ -413,6 +428,8 @@ Shell::~Shell() {
         notifier->Release();
     if (factory)
         factory->Release();
+    if (history)
+        history->Release();
 #endif
     while (!balloons.empty())
         balloonRemove(balloons.begin()->first, false);
@@ -895,6 +912,18 @@ bool Shell::toastsReady() {
     registerAumid(); // best effort: a failure shows up as NotificationFailed / nothing shown
     HStr          id(toWide(app->appInfo().id));
     const HRESULT hr = mgr->CreateToastNotifierWithId(id.h, &notifier);
+    {
+        // The Action Centre's list, for withdrawing one by its tag.
+        wr::IToastNotificationManagerStatics2 *mgr2 = nullptr;
+        if (SUCCEEDED(mgr->QueryInterface(
+                __uuidof(wr::IToastNotificationManagerStatics2), reinterpret_cast<void **>(&mgr2)
+            )) &&
+            mgr2) {
+            if (FAILED(mgr2->get_History(&history)))
+                history = nullptr;
+            mgr2->Release();
+        }
+    }
     mgr->Release();
     toastsOk = SUCCEEDED(hr) && notifier;
     return toastsOk;
@@ -955,6 +984,18 @@ uint64_t Shell::toastNotify(const Notification &n, uint64_t id) {
         return 0;
     for (const auto &a : n.actions)
         t.actionKeys.push_back(a.key);
+    // Tagged with our id (hex: at most 16 characters, the limit before 1703),
+    // so withdrawing finds it in the Action Centre, also after a restart.
+    wr::IToastNotification2 *t2 = nullptr;
+    if (SUCCEEDED(t.toast->QueryInterface(
+            __uuidof(wr::IToastNotification2), reinterpret_cast<void **>(&t2)
+        )) &&
+        t2) {
+        HStr tag(toastTag(id)), group(kToastGroup);
+        t2->put_Tag(tag.h);
+        t2->put_Group(group.h);
+        t2->Release();
+    }
 
     auto *onActivated = new ToastHandler(
         __uuidof(ActivatedHandler),
@@ -1071,6 +1112,19 @@ void Shell::toastForget(uint64_t id) {
     t.toast->Release();
 }
 
+// Off the screen (Hide; its Dismissed finds nobody once forgotten) and out
+// of the Action Centre (by tag).
+void Shell::toastWithdraw(uint64_t id) {
+    if (auto it = toasts.find(id); it != toasts.end()) {
+        notifier->Hide(it->second.toast);
+        toastForget(id);
+    }
+    if (history) {
+        HStr tag(toastTag(id)), group(kToastGroup), aumid(toWide(app->appInfo().id));
+        history->RemoveGroupedTagWithId(tag.h, group.h, aumid.h);
+    }
+}
+
 void Shell::toastActivated(uint64_t id, const std::string &args) {
     uint64_t    parsed = 0;
     std::string key;
@@ -1102,6 +1156,17 @@ bool Win32App::notify(uint64_t id, const Notification &n) {
         return s.toastNotify(n, id) != 0;
 #endif
     return s.balloonNotify(n, id) != 0;
+}
+
+void Win32App::withdrawNotification(uint64_t id) {
+    Shell &s = shell();
+#if defined(PLAT_WINRT_TOAST)
+    if (s.toastsReady()) {
+        s.toastWithdraw(id);
+        return;
+    }
+#endif
+    s.balloonRemove(id, false);
 }
 
 #ifdef PLAT_TEST_HOOKS

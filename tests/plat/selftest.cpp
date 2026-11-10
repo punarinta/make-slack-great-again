@@ -884,6 +884,44 @@ void caseNotification() {
         skip("content and image verified; clicks cannot be synthesised here");
 }
 
+// withdrawNotification: gone from the server without a NotificationClosed,
+// also when it comes before the server has answered the Notify.
+void caseNotificationWithdraw() {
+    if (!g_app->notificationsAvailable()) {
+        skip("no notification service");
+        return;
+    }
+    if (!hooks()) {
+        skip("no test hooks");
+        return;
+    }
+    const uint64_t shown = 101, early = 102, kept = 103;
+    CHECK(g_app->notify(shown, {.title = "Withdrawn", .body = "read elsewhere"}));
+    CHECK(g_app->notify(kept, {.title = "Kept", .body = "still unread"}));
+    pumpFor(300);
+    if (find(EventType::NotificationFailed)) {
+        skip("OS refused the notification");
+        return;
+    }
+    TestHooks::NotificationProbe probe;
+    const bool                   readable = hooks()->notificationProbe(shown, &probe);
+    g_events.clear();
+    g_app->withdrawNotification(shown);
+    CHECK(g_app->notify(early, {.title = "Early", .body = "withdrawn at once"}));
+    g_app->withdrawNotification(early); // before its Notify reply
+    g_app->withdrawNotification(999);   // never shown: ignored
+    pumpFor(500);
+    CHECK(!find(EventType::NotificationClosed));
+    CHECK(!find(EventType::NotificationFailed));
+    if (!readable) {
+        skip("withdrawn without errors; no server-side readback here");
+        return;
+    }
+    CHECK(!hooks()->notificationProbe(shown, &probe));
+    CHECK(!hooks()->notificationProbe(early, &probe));
+    CHECK(hooks()->notificationProbe(kept, &probe) && probe.title == "Kept");
+}
+
 // ── Round 3: monitors, instances, system events, files ──────────────────────
 
 std::string g_self; // absolute path of this executable, for the second-instance case
@@ -1457,6 +1495,7 @@ int main(int argc, char **argv) {
     runCase("badge count reaches the Dock/taskbar/launcher", caseBadge);
     runCase("tray: icon, tooltip, menu; click and menu events", caseTray);
     runCase("notification: content, action and body clicks", caseNotification);
+    runCase("notification: withdrawn ones leave quietly", caseNotificationWithdraw);
 
     runCase("monitors: sane bounds, work areas, one primary", caseMonitors);
     runCase("window position can be read and set", caseWindowPosition);

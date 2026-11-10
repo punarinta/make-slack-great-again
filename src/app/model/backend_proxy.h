@@ -140,6 +140,8 @@ public:
     void unwatchThread(ConvRef c, Ts root) override;
     void loadThreadsView(std::string cursor, ThreadsViewDone done) override;
     void markThreadRead(ConvRef c, Ts root, Ts ts) override;
+    bool canMarkThreadUnread(ConvRef c, Ts root) const override;
+    void markThreadUnread(ConvRef c, Ts root, Ts ts) override;
     void
     loadActivity(ActivityFilter f, bool unreadOnly, std::string cursor, ActivityDone done) override;
     void    setActivityRead(const ActivityItem &item, bool read) override;

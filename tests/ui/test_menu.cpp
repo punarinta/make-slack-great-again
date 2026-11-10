@@ -267,6 +267,25 @@ TEST("menu: an item's shortcut hint chooses it (T, E, Del, Ctrl+C)") {
     CHECK(w.w->topPopup() == nullptr);
 }
 
+TEST("menu: a letter shortcut doesn't also type into the field the focus goes back to") {
+    Win   w(600, 400);
+    auto *edit = w.root().add<ui::TextEdit>();
+    edit->style().size(200, 30);
+    w.frame();
+    edit->focus();
+    w.key(plat::Key::A);
+    REQUIRE(edit->text() == "a"); // keys type here
+    int chosen = -1;
+    ui::Menu::popupAt(*w.w, {40, 80}, {{1, "Mark unread", "U"}}, [&](int id) { chosen = id; });
+    w.frame();
+    w.key(plat::Key::U);
+    CHECK(chosen == 1);
+    CHECK(w.w->focusView() == edit);
+    CHECK_STR(edit->text(), "a");
+    w.key(plat::Key::B); // and the next key types as usual
+    CHECK_STR(edit->text(), "ab");
+}
+
 TEST("menu: table-driven items and separators") {
     constexpr ui::MenuDef kDefs[] = {
         {1, ui::Button::kNoIcon, "Star channel", "Star conversation", nullptr},

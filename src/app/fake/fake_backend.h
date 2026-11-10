@@ -70,6 +70,8 @@ public:
     // replies each, one page; every fixture thread starts out read.
     void loadThreadsView(std::string cursor, ThreadsViewDone done) override;
     void markThreadRead(model::ConvRef conv, model::Ts root, model::Ts ts) override;
+    bool canMarkThreadUnread(model::ConvRef conv, model::Ts root) const override;
+    void markThreadUnread(model::ConvRef conv, model::Ts root, model::Ts ts) override;
     // The demo's activity: mentions of me, the newest message of each
     // direct message, replies in my threads, reactions to my messages —
     // unread past the read cursors; one page.
@@ -151,6 +153,8 @@ private:
     };
     std::vector<ThreadRead> _threadRead; // my cursor per thread (few: linear is fine)
     model::Ts              &threadRead(model::ConvRef conv, model::Ts root);
+    bool                    follows(model::ConvRef conv, model::Ts root) const;
+    void                    publishUnreadThreads();
     // Items marked read or unread on the Activity page, by key.
     std::vector<std::pair<std::string, bool>> _activityRead;
     struct CanvasEdit {
