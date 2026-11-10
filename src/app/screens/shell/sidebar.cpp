@@ -576,9 +576,11 @@ public:
                 you->style().margins(4, 0, 0, 0).noShrink();
             }
         }
-        add<View>()->style().flex(1);
-        // The badge and the huddle pill (in that order, last) are made the
-        // first time they show: most rows never need either.
+        spacer = add<View>();
+        spacer->style().flex(1);
+        // The "Draft" label (before the spacer), the badge and the huddle pill
+        // (in that order, last) are made the first time they show: most rows
+        // never need any.
         onClick = [this] {
             if (sidebar._ctx.openConversation)
                 sidebar._ctx.openConversation(conv);
@@ -625,6 +627,17 @@ public:
     PointF                 pressAt;
     bool                   pressing = false;
 
+    Label *makeDraft() {
+        if (!draft) {
+            draft = new Label(tr("Draft"), Font::Small, C::SidebarTextMuted);
+            draft->style().margins(6, 0, 0, 0).noShrink();
+            int at = 0;
+            while (child(size_t(at)) != spacer)
+                ++at;
+            adopt(std::unique_ptr<View>(draft), at);
+        }
+        return draft;
+    }
     CountBadge *makeBadge() {
         if (!badge) { // before the huddle pill, when there is one
             badge = new CountBadge();
@@ -684,6 +697,11 @@ public:
             glyph->setTint(text);
         if (you)
             you->setColor(sel ? text : C::SidebarTextMuted);
+        // Not on the open chat's row: its draft is in the composer, live,
+        // while the Store keeps the one stashed when it was last left.
+        const bool drafted = !sel && store.draft(conv, 0) != nullptr;
+        if (drafted || draft)
+            makeDraft()->setVisible(drafted);
         refreshPresence();
         if (count > 0 || dot || badge)
             makeBadge()->set(count, count == 0 && dot);
@@ -711,6 +729,8 @@ public:
     Avatar        *avatar  = nullptr;
     IconView      *glyph   = nullptr;
     Label         *you     = nullptr;
+    Label         *draft   = nullptr; // "Draft" (makeDraft)
+    View          *spacer  = nullptr; // between the name and the badge
     CountBadge    *badge   = nullptr;
     HuddlePill    *huddle  = nullptr;
     SectionHeader *section = nullptr;
@@ -817,9 +837,7 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             else if (ch.thread == 0 && rowFor(ch.conv)) {
                 // A group DM's new message may lift it into VIP unreads (isVip
                 // reads it); else most recent first may move it.
-                const ConvRow *r = rowFor(ch.conv);
-                if (r->section->kind != Sidebar::Custom &&
-                    r->section->kind != classify(_ctx.store().conversation(ch.conv)))
+                if (misplaced(ch.conv))
                     rebuildSoon(false);
                 else
                     resortSoon();
@@ -859,11 +877,11 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             // flips (the selected row and Starred stay regardless).
             const bool  filterFlip =
                 _filters.unreadsOnly && ch.conv != _selected && !cv.starred &&
-                !(r && r->section->kind == Sidebar::Custom) &&
+                !(r &&
+                  (r->section->kind == Sidebar::Custom || r->section->kind == Sidebar::Drafts)) &&
                 (r ? r->unread != paintsUnread(cv) : cv.member && paintsUnread(cv));
             // Same classify() rebuild() uses, so a row only looks "moved" when it would be.
-            const bool reclassified =
-                r && r->section->kind != Sidebar::Custom && r->section->kind != classify(cv);
+            const bool reclassified = r && misplaced(ch.conv);
             if (!r != !cv.member || reclassified || filterFlip)
                 rebuildSoon(false); // once per burst; the list stays where it was scrolled
             else {
@@ -967,10 +985,15 @@ bool Sidebar::isVip(const model::Conversation &c) const {
 }
 
 // VIP unreads first: Slack lifts them above every section, starred and app
-// DMs included (a VIP may be an app).
-Sidebar::Kind Sidebar::classify(const model::Conversation &c) const {
+// DMs included (a VIP may be an app). Then a conversation with an unsent
+// draft goes to Drafts, out of Starred and the user's sections too (see
+// rebuild), so the draft is never out of sight.
+Sidebar::Kind Sidebar::classify(model::ConvRef ref) const {
+    const auto &c = _ctx.store().conversation(ref);
     if (_ctx.backend.capabilities().vips && isVip(c))
         return Vip;
+    if (_ctx.store().draft(ref, 0) != nullptr)
+        return Drafts;
     if (c.starred)
         return Starred;
     if (isApp(c))
@@ -992,6 +1015,17 @@ void Sidebar::clearVisited() {
     rebuild();
     if (onVisitedChanged)
         onVisitedChanged();
+}
+
+// A listed row in a section classify() would no longer put it in. One in
+// a section of the user's stays there unless a draft lifts it to Drafts
+// (as rebuild does).
+bool Sidebar::misplaced(ConvRef ref) const {
+    const ConvRow *r = rowFor(ref);
+    if (!r)
+        return false;
+    const Kind want = classify(ref);
+    return r->section->kind == Custom ? want == Drafts : r->section->kind != want;
 }
 
 // Relevant: unread, open, visited or active within the window, or a
@@ -1068,7 +1102,7 @@ void Sidebar::rebuild() {
     showNavSelection();
 
     // Bucketed by classify(); sorted per section by sortOf().
-    std::vector<ConvRef> lists[4], hiddenCh, hiddenExt, external, vipUnread;
+    std::vector<ConvRef> lists[4], hiddenCh, hiddenExt, external, vipUnread, drafts;
     const auto           listed = [&](ConvRef c) {
         return !_filters.unreadsOnly || c == _selected || paintsUnread(store.conversation(c));
     };
@@ -1099,7 +1133,7 @@ void Sidebar::rebuild() {
     for (size_t s = 0; s < custom.size(); ++s)
         for (const std::string &id : secs[s].convs) {
             const ConvRef c = store.findConversation(id);
-            if (c == kNoConv || inCustom[c])
+            if (c == kNoConv || inCustom[c] || classify(c) == Drafts) // a draft lifts it out
                 continue;
             inCustom[c] = 1;
             if (store.conversation(c).member && !deadDm(store, store.conversation(c)))
@@ -1111,7 +1145,10 @@ void Sidebar::rebuild() {
             continue;
         // classify() picks the bucket; each case keeps its own visibility
         // rule (unread-only filter, relevance window, ...).
-        switch (classify(cv)) {
+        switch (classify(c)) {
+        case Drafts:
+            drafts.push_back(c); // a draft is never hidden by the filters
+            break;
         case Starred:
             lists[Starred].push_back(c);
             break;
@@ -1197,6 +1234,12 @@ void Sidebar::rebuild() {
     // Above everything, only while non-empty (see isVip).
     if (!vipUnread.empty()) {
         auto *h = section(Vip, Icon::Star, tr("VIP unreads"), vipUnread);
+        applyCollapse(h);
+    }
+    // Unsent drafts, right under VIP unreads: the conversations whose
+    // composer still holds something.
+    if (!drafts.empty()) {
+        auto *h = section(Drafts, Icon::Edit3, tr("Drafts"), drafts);
         applyCollapse(h);
     }
     for (int s = 0; s < 4; ++s) {
@@ -1521,6 +1564,8 @@ std::string Sidebar::sectionKey(Kind kind, const std::string &id) {
         return "#vip";
     case Team:
         return "#team";
+    case Drafts:
+        return "#drafts";
     case KindCount:
         break;
     }
@@ -1655,6 +1700,11 @@ SectionHeader *Sidebar::sectionAt(PointF windowPos) const {
 // Starred, or out of its custom section / Starred via the other built-ins.
 static bool accepts(const SectionHeader *to, const SectionHeader *from) {
     if (!to || to == from)
+        return false;
+    // Drafts is where a draft puts a conversation, not a place to move one:
+    // dropped there it would only lose its star or section, and taken out
+    // it would stay listed there until the draft goes.
+    if (to->kind == Sidebar::Drafts || from->kind == Sidebar::Drafts)
         return false;
     if (to->kind == Sidebar::Custom || to->kind == Sidebar::Starred)
         return true;
@@ -1975,6 +2025,8 @@ Sidebar::RowState Sidebar::rowState(ConvRef conv) const {
     s.badge    = r->count;
     s.selected = r->checked();
     s.huddle   = r->huddleCount;
+    s.section  = r->section->title;
+    s.draft    = r->draft && r->draft->visible();
     return s;
 }
 

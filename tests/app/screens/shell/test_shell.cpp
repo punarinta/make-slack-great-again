@@ -672,6 +672,27 @@ TEST("sections: a dropped row lands in the section; Channels takes it back") {
     CHECK(h.store.conversation(eng).starred);
 }
 
+TEST("sections: Drafts takes no dropped row, and its rows are not dragged out") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    const ConvRef   eng     = h.conv("C0ENG");
+    h.backend.createSection("Projects", "", kNoConv);
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    REQUIRE(titles(sb).find("Drafts") != std::string::npos);
+    // Dropped there it would only lose its star (Drafts is the draft's).
+    CHECK_FALSE(sb.dropOnSection(general, "Drafts"));
+    pump();
+    CHECK(h.store.conversation(general).starred);
+    // Taken out it would stay in Drafts while its draft lasts.
+    CHECK_FALSE(sb.dropOnSection(eng, "Starred"));
+    CHECK_FALSE(sb.dropOnSection(eng, "Projects"));
+    pump();
+    CHECK_FALSE(h.store.conversation(eng).starred);
+    CHECK(h.store.sections()[0].convs.empty());
+}
+
 TEST("sections: under unreads-only a section keeps its read rows") {
     Harness       h;
     const ConvRef random = h.conv("C0RANDOM"); // read
@@ -1022,6 +1043,47 @@ TEST("sections: VIP unreads stays open whatever the collapsed sections say") {
     CHECK(sb.collapsed().size() == 1 && sb.collapsed().count("#channels"));
     sb.rebuild();
     CHECK(sb.rowState(sam).visible);
+}
+
+TEST("sections: a draft lifts its conversation out of Starred and the user's sections") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    const ConvRef   random  = h.conv("C0RANDOM");
+    h.backend.createSection("Projects", "", random);
+    pump();
+    REQUIRE(sb.rowState(general).section == "Starred");
+    REQUIRE(sb.rowState(random).section == "Projects");
+    // Each on its own: the change of one row alone must move it.
+    h.store.setDraft(random, 0, "<p>b</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(random).section, "Drafts");
+    CHECK_STR(sb.rowSection(random), "");
+    h.store.setDraft(general, 0, "<p>a</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(general).section, "Drafts");
+    // Sent or cleared: each is back where it was, the section's list kept.
+    h.store.setDraft(random, 0, "", {});
+    pump();
+    CHECK_STR(sb.rowState(random).section, "Projects");
+    h.store.setDraft(general, 0, "", {});
+    pump();
+    CHECK_STR(sb.rowState(general).section, "Starred");
+    CHECK(h.store.sections()[0].convs.size() == 1);
+}
+
+TEST("sections: VIP unreads keeps a VIP's unread conversation with a draft, then Drafts does") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   sam = h.conv("D0SAM");
+    makeVip(h, "U0SAM");
+    h.backend.markUnread(sam, h.store.conversation(sam).latest);
+    h.store.setDraft(sam, 0, "<p>reply</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(sam).section, "VIP unreads");
+    h.backend.markRead(sam, h.store.conversation(sam).latest);
+    pump();
+    CHECK_STR(sb.rowState(sam).section, "Drafts");
 }
 
 TEST("sections: a starred VIP DM is lifted while unread, then back to Starred") {

@@ -99,7 +99,18 @@ public:
     // A section header's kind. Every Custom section (Store::sections) shares
     // this one value, told apart by sectionId. Team lists teammates, not
     // conversations.
-    enum Kind : uint8_t { Starred, Channels, Direct, Apps, Team, Custom, External, Vip, KindCount };
+    enum Kind : uint8_t {
+        Starred,
+        Channels,
+        Direct,
+        Apps,
+        Team,
+        Custom,
+        External,
+        Vip,
+        Drafts,
+        KindCount
+    };
 
     // The Settings → Appearance / Notifications choices the list follows.
     struct Filters {
@@ -154,9 +165,11 @@ public:
 
     // What a row shows (tests, and the tray/badge code).
     struct RowState {
-        bool exists = false, visible = false, bold = false, dot = false, selected = false;
-        int  badge  = 0;
-        int  huddle = 0; // a live huddle's pill: its participant count (1 when none listed)
+        bool        exists = false, visible = false, bold = false, dot = false, selected = false;
+        int         badge  = 0;
+        int         huddle = 0; // a live huddle's pill: its participant count (1 when none listed)
+        std::string section;    // its section header's title
+        bool        draft = false; // the "Draft" label shows
     };
     RowState                 rowState(model::ConvRef conv) const;
     // Tests: how many times the rows were rebuilt, and a row's identity (the
@@ -248,7 +261,8 @@ private:
     bool               isVip(const model::Conversation &c) const;
     // The section kind this conversation belongs in. Shared by rebuild() and
     // the Meta-event flip check so they can't disagree.
-    Kind               classify(const model::Conversation &c) const;
+    Kind               classify(model::ConvRef ref) const;
+    bool               misplaced(model::ConvRef ref) const; // its row would move
     bool               relevant(model::ConvRef c) const;
     void               applyCollapse(SectionHeader *h);
     // A header's state from _collapsed and _openedUp, its rows shown or hidden.

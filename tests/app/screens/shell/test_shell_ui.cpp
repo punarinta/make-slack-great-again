@@ -278,6 +278,59 @@ TEST("sidebar: \"Show only unread conversations\" keeps the unread, the open and
     CHECK(h.sidebar().rowState(h.conv("C0RANDOM")).exists);
 }
 
+TEST("sidebar: an unsent draft lists its conversation under Drafts") {
+    Harness       h;
+    const ConvRef eng = h.conv("C0ENG");
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") == std::string::npos);
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") != std::string::npos);
+    CHECK(h.sidebar().rowState(eng).exists);
+    // Sent or cleared: the section goes, the conversation is back where it was.
+    h.store.setDraft(eng, 0, "", {});
+    pump();
+    CHECK(joined(h.sidebar().sectionTitles()).find("Drafts") == std::string::npos);
+    CHECK(h.sidebar().rowState(eng).exists);
+}
+
+TEST("sidebar: a drafted row says Draft, made only then, and not while its chat is open") {
+    Harness       h;
+    const ConvRef eng  = h.conv("C0ENG");
+    const ConvRef open = h.sh->current();
+    REQUIRE(open != kNoConv);
+    REQUIRE(open != eng);
+    CHECK_FALSE(h.sidebar().rowState(eng).draft);
+    const size_t bare = h.sidebar().rowView(eng)->childCount();
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    CHECK(h.sidebar().rowState(eng).draft);
+    CHECK(h.sidebar().rowView(eng)->childCount() == bare + 1); // the label, made now
+    // Open, the composer holds the draft (live): the row says nothing.
+    h.sh->open(eng);
+    pump();
+    CHECK(h.sidebar().rowState(eng).selected);
+    CHECK_FALSE(h.sidebar().rowState(eng).draft);
+    h.sh->open(open); // left with the draft still in the composer: stashed again
+    pump();
+    CHECK(h.sidebar().rowState(eng).draft);
+}
+
+TEST("sidebar: under unreads-only a drafted row's unread change rebuilds nothing") {
+    Harness       h;
+    const ConvRef random = h.conv("C0RANDOM"); // read
+    h.store.setDraft(random, 0, "<p>later</p>", {});
+    h.settings.unreadsOnly = true;
+    h.sh->applySettings();
+    pump();
+    REQUIRE(h.sidebar().rowState(random).section == "Drafts");
+    const int rebuilds = h.sidebar().rebuildCount();
+    h.backend.markUnread(random, h.store.conversation(random).latest);
+    pump();
+    CHECK(h.sidebar().rowState(random).bold);
+    CHECK(h.sidebar().rebuildCount() == rebuilds); // listed either way: restyled in place
+    CHECK_STR(h.sidebar().rowState(random).section, "Drafts");
+}
+
 TEST("sidebar: selecting a row below the fold keeps the scroll position") {
     Harness h;
     for (int i = 0; i < 40; ++i) {
