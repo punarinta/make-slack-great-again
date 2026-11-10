@@ -313,6 +313,8 @@ public:
             });
     }
     ~AudioCard() override {
+        if (_list)
+            _list->fileGone(this);
         if (_ctx.audio)
             _ctx.audio->unobserve(_audioObs);
         if (_ctx.ai)

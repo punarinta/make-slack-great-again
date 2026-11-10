@@ -95,7 +95,12 @@ public:
         const float s = aw > 0 && aw < _dw ? aw / _dw : 1.f;
         return {std::floor(_dw * s), std::floor(_dh * s)};
     }
-    void setTs(Ts ts) { _ts = ts; }
+    ~Thumb() override { _list.fileGone(this); }
+    void setTs(Ts ts) {
+        if (ts != _ts)
+            _list.fileGone(this); // its file bar named the old message
+        _ts = ts;
+    }
     // A gallery tile: the placeholder is clipped to the rounded tile
     // and has no "Loading image…" (a tile is too narrow for it).
     void setTile() {
@@ -217,6 +222,10 @@ public:
         _sub = f.prettyType;
         if (const std::string sz = str::byteSize(f.size, str::ByteSize::File); !sz.empty())
             _sub = _sub.empty() ? sz : _sub + " \xC2\xB7 " + sz;
+    }
+    ~FileChip() override {
+        if (_list)
+            _list->fileGone(this);
     }
     bool onEvent(ui::Event &e) override {
         if (_list &&
