@@ -169,6 +169,7 @@ public:
         int         badge  = 0;
         int         huddle = 0; // a live huddle's pill: its participant count (1 when none listed)
         std::string section;    // its section header's title
+        bool        draft = false; // the "Draft" label shows
     };
     RowState                 rowState(model::ConvRef conv) const;
     // Tests: how many times the rows were rebuilt, and a row's identity (the

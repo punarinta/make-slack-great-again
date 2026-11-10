@@ -576,12 +576,11 @@ public:
                 you->style().margins(4, 0, 0, 0).noShrink();
             }
         }
-        draft = add<Label>(tr("Draft"), Font::Small, C::SidebarTextMuted);
-        draft->style().margins(6, 0, 0, 0).noShrink();
-        draft->setVisible(false);
-        add<View>()->style().flex(1);
-        // The badge and the huddle pill (in that order, last) are made the
-        // first time they show: most rows never need either.
+        spacer = add<View>();
+        spacer->style().flex(1);
+        // The "Draft" label (before the spacer), the badge and the huddle pill
+        // (in that order, last) are made the first time they show: most rows
+        // never need any.
         onClick = [this] {
             if (sidebar._ctx.openConversation)
                 sidebar._ctx.openConversation(conv);
@@ -628,6 +627,17 @@ public:
     PointF                 pressAt;
     bool                   pressing = false;
 
+    Label *makeDraft() {
+        if (!draft) {
+            draft = new Label(tr("Draft"), Font::Small, C::SidebarTextMuted);
+            draft->style().margins(6, 0, 0, 0).noShrink();
+            int at = 0;
+            while (child(size_t(at)) != spacer)
+                ++at;
+            adopt(std::unique_ptr<View>(draft), at);
+        }
+        return draft;
+    }
     CountBadge *makeBadge() {
         if (!badge) { // before the huddle pill, when there is one
             badge = new CountBadge();
@@ -687,10 +697,11 @@ public:
             glyph->setTint(text);
         if (you)
             you->setColor(sel ? text : C::SidebarTextMuted);
-        if (draft) {
-            draft->setVisible(store.draft(conv, 0) != nullptr);
-            draft->setColor(sel ? text : C::SidebarTextMuted);
-        }
+        // Not on the open chat's row: its draft is in the composer, live,
+        // while the Store keeps the one stashed when it was last left.
+        const bool drafted = !sel && store.draft(conv, 0) != nullptr;
+        if (drafted || draft)
+            makeDraft()->setVisible(drafted);
         refreshPresence();
         if (count > 0 || dot || badge)
             makeBadge()->set(count, count == 0 && dot);
@@ -718,7 +729,8 @@ public:
     Avatar        *avatar  = nullptr;
     IconView      *glyph   = nullptr;
     Label         *you     = nullptr;
-    Label         *draft   = nullptr;
+    Label         *draft   = nullptr; // "Draft" (makeDraft)
+    View          *spacer  = nullptr; // between the name and the badge
     CountBadge    *badge   = nullptr;
     HuddlePill    *huddle  = nullptr;
     SectionHeader *section = nullptr;
@@ -2013,6 +2025,7 @@ Sidebar::RowState Sidebar::rowState(ConvRef conv) const {
     s.selected = r->checked();
     s.huddle   = r->huddleCount;
     s.section  = r->section->title;
+    s.draft    = r->draft && r->draft->visible();
     return s;
 }
 

@@ -293,6 +293,28 @@ TEST("sidebar: an unsent draft lists its conversation under Drafts") {
     CHECK(h.sidebar().rowState(eng).exists);
 }
 
+TEST("sidebar: a drafted row says Draft, made only then, and not while its chat is open") {
+    Harness       h;
+    const ConvRef eng  = h.conv("C0ENG");
+    const ConvRef open = h.sh->current();
+    REQUIRE(open != kNoConv);
+    REQUIRE(open != eng);
+    CHECK_FALSE(h.sidebar().rowState(eng).draft);
+    const size_t bare = h.sidebar().rowView(eng)->childCount();
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    CHECK(h.sidebar().rowState(eng).draft);
+    CHECK(h.sidebar().rowView(eng)->childCount() == bare + 1); // the label, made now
+    // Open, the composer holds the draft (live): the row says nothing.
+    h.sh->open(eng);
+    pump();
+    CHECK(h.sidebar().rowState(eng).selected);
+    CHECK_FALSE(h.sidebar().rowState(eng).draft);
+    h.sh->open(open); // left with the draft still in the composer: stashed again
+    pump();
+    CHECK(h.sidebar().rowState(eng).draft);
+}
+
 TEST("sidebar: selecting a row below the fold keeps the scroll position") {
     Harness h;
     for (int i = 0; i < 40; ++i) {
