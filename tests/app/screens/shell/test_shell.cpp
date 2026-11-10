@@ -672,6 +672,27 @@ TEST("sections: a dropped row lands in the section; Channels takes it back") {
     CHECK(h.store.conversation(eng).starred);
 }
 
+TEST("sections: Drafts takes no dropped row, and its rows are not dragged out") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    const ConvRef   eng     = h.conv("C0ENG");
+    h.backend.createSection("Projects", "", kNoConv);
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    REQUIRE(titles(sb).find("Drafts") != std::string::npos);
+    // Dropped there it would only lose its star (Drafts is the draft's).
+    CHECK_FALSE(sb.dropOnSection(general, "Drafts"));
+    pump();
+    CHECK(h.store.conversation(general).starred);
+    // Taken out it would stay in Drafts while its draft lasts.
+    CHECK_FALSE(sb.dropOnSection(eng, "Starred"));
+    CHECK_FALSE(sb.dropOnSection(eng, "Projects"));
+    pump();
+    CHECK_FALSE(h.store.conversation(eng).starred);
+    CHECK(h.store.sections()[0].convs.empty());
+}
+
 TEST("sections: under unreads-only a section keeps its read rows") {
     Harness       h;
     const ConvRef random = h.conv("C0RANDOM"); // read

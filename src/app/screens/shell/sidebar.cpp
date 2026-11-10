@@ -1678,6 +1678,11 @@ SectionHeader *Sidebar::sectionAt(PointF windowPos) const {
 static bool accepts(const SectionHeader *to, const SectionHeader *from) {
     if (!to || to == from)
         return false;
+    // Drafts is where a draft puts a conversation, not a place to move one:
+    // dropped there it would only lose its star or section, and taken out
+    // it would stay listed there until the draft goes.
+    if (to->kind == Sidebar::Drafts || from->kind == Sidebar::Drafts)
+        return false;
     if (to->kind == Sidebar::Custom || to->kind == Sidebar::Starred)
         return true;
     return from->kind == Sidebar::Custom ||
