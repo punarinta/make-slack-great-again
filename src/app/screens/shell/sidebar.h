@@ -130,11 +130,15 @@ public:
     void                  setSort(const std::string &key, SectionSort sort);
     // The sections the user collapsed, by key (sectionKey; only collapsed
     // ones listed). The shell keeps them per workspace and sets them when one
-    // opens; onCollapsedChanged fires when a header click changed them. A
-    // section opened up to show the chat being opened stays collapsed here:
-    // that is no choice of the user's, and it lasts until the next set.
+    // opens (its key, "" for none); onCollapsedChanged fires when a header
+    // click changed them, or a custom section in them was deleted. A section
+    // opened up to show the chat being opened stays collapsed here: that is
+    // no choice of the user's, and it lasts until the next set.
     using Collapsed = std::unordered_map<std::string, bool>;
-    void                  setCollapsed(Collapsed collapsed);
+    void                  setCollapsed(const std::string &workspace, Collapsed collapsed);
+    // A workspace's Store goes (detached): what was seen of its custom
+    // sections goes with it.
+    void                  forgetSections(const std::string &workspace);
     const Collapsed      &collapsed() const { return _collapsed; }
     std::function<void()> onCollapsedChanged;
     // A section's key: a custom one's id, a "#"-prefixed name for every
@@ -250,6 +254,7 @@ private:
     void               restoreCollapse(SectionHeader *h);
     void               toggleCollapse(SectionHeader *h); // a click on the header
     void               openUp(SectionHeader *h);         // shows a row in it
+    bool               forgetDeletedSections();          // true: _collapsed changed
     // A conversation row dragged onto a section (ConvRow's press handling).
     SectionHeader     *sectionAt(ui::PointF windowPos) const;
     void               dragRow(ConvRow *row, ui::PointF windowPos);
@@ -312,8 +317,13 @@ private:
 
     // The user's collapsed sections, and those of them opened up to show a
     // chat (see setCollapsed).
-    Collapsed                       _collapsed;
-    std::unordered_set<std::string> _openedUp;
+    Collapsed                                                        _collapsed;
+    std::unordered_set<std::string>                                  _openedUp;
+    // The workspace given to setCollapsed and the Store open then.
+    std::string                                                      _collapsedKey;
+    const model::Store                                              *_collapsedOf = nullptr;
+    // The custom sections' ids seen last, by workspace key.
+    std::unordered_map<std::string, std::unordered_set<std::string>> _sectionIds;
 
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged

@@ -1016,7 +1016,7 @@ TEST("sections: VIP unreads stays open whatever the collapsed sections say") {
     h.backend.markUnread(sam, h.store.conversation(sam).latest);
     pump();
     REQUIRE(sb.rowState(sam).visible);
-    sb.setCollapsed({{"#vip", true}, {"#channels", true}}); // an edited settings file
+    sb.setCollapsed("slack:T0", {{"#vip", true}, {"#channels", true}}); // an edited settings file
     CHECK(sb.rowState(sam).visible);
     CHECK_FALSE(sb.rowState(h.conv("C0ENG")).visible);
     CHECK(sb.collapsed().size() == 1 && sb.collapsed().count("#channels"));
@@ -3571,6 +3571,76 @@ TEST("collapse: a chat opened in a collapsed section opens it up, not stored") {
     pump();
     CHECK(sb.rowState(eng).visible);
     CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #direct")});
+}
+
+TEST("collapse: a deleted section's state goes, deleted here or while another workspace is open") {
+    TwoWorkspaces        w;
+    shell::Sidebar      &sb   = w.sh->sidebar();
+    const Store::Section work = {"S0WORK", "Work", "", {"C0ENG"}};
+    const Store::Section play = {"S0PLAY", "Play", "", {"C0RANDOM"}};
+    w.a.setSections({work, play});
+    pump();
+    REQUIRE(sb.toggleSection("Work"));
+    REQUIRE(sb.toggleSection("Play"));
+    pump();
+    const std::vector<std::string> both = {kKeyA + " S0PLAY", kKeyA + " S0WORK"};
+    CHECK(collapsedPrefs(w.settings) == both);
+    w.a.setSections({play});
+    pump();
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0PLAY"});
+    // The other workspace's list says nothing about this one's sections.
+    w.show(kKeyB);
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0PLAY"});
+    w.a.setSections({});
+    pump();
+    w.show(kKeyA);
+    CHECK(collapsedPrefs(w.settings).empty());
+    CHECK(sb.collapsed().empty());
+}
+
+TEST(
+    "collapse: a Store attached again (signed in after it expired) keeps the sections it lists late"
+) {
+    TwoWorkspaces        w;
+    shell::Sidebar      &sb   = w.sh->sidebar();
+    const Store::Section work = {"S0WORK", "Work", "", {"C0ENG"}};
+    w.a.setSections({work});
+    pump();
+    REQUIRE(sb.toggleSection("Work"));
+    pump();
+    // The new Store has no list until the first answer: nothing was deleted.
+    w.sh->detachWorkspace(kKeyA);
+    w.a.setSections({});
+    pump();
+    w.sh->attachWorkspace(kKeyA, w.a, w.fa);
+    w.show(kKeyA);
+    w.a.setSections({work});
+    pump();
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0WORK"});
+    CHECK_FALSE(sb.rowState(w.a.findConversation("C0ENG")).visible);
+}
+
+TEST("collapse: a signed-out workspace's go; signed in again it starts afresh") {
+    TwoWorkspaces   w;
+    shell::Sidebar &sb = w.sh->sidebar();
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    w.show(kKeyB);
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    w.show(kKeyA);
+    w.sh->forgetCollapsed(kKeyB);
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " #channels"});
+    CHECK_FALSE(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    // The open one: nothing of it is stored back afterwards.
+    w.sh->forgetCollapsed(kKeyA);
+    CHECK(collapsedPrefs(w.settings).empty());
+    CHECK(sb.collapsed().empty());
+    CHECK(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    w.show(kKeyB);
+    w.show(kKeyA);
+    CHECK(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    CHECK(collapsedPrefs(w.settings).empty());
 }
 
 TEST("header: names, presence, DND and my phantom state follow the Store") {

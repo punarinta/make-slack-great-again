@@ -1265,11 +1265,38 @@ void Sidebar::rebuild() {
     refreshAll();
     _footer->refresh();
     noteShape(userShape());
-    _sectionsRev = store.sectionsRevision();
+    const bool pruned = forgetDeletedSections();
+    _sectionsRev      = store.sectionsRevision();
     ++_rebuilds;
     invalidateLayout();
     if (ConvRow *r = rowFor(focusConv); r && r->visible() && !win->focusView())
         win->setFocus(r, focusRing);
+    if (pruned && onCollapsedChanged)
+        onCollapsedChanged();
+}
+
+// A custom section gone from the list it was in (deleted, here or in another
+// client) takes its collapsed state along. Only a change of the list seen
+// last in the same workspace's Store counts (it may have changed while
+// another was open): the first one seen says nothing about what went, and
+// the slot's rebuild for the next workspace runs before its state is set.
+bool Sidebar::forgetDeletedSections() {
+    const model::Store &store = _ctx.store();
+    if (_collapsedKey.empty() || &store != _collapsedOf)
+        return false;
+    std::unordered_set<std::string> ids;
+    for (const model::Store::Section &sec : store.sections())
+        ids.insert(sec.id);
+    const auto [it, first] = _sectionIds.try_emplace(_collapsedKey);
+    bool pruned            = false;
+    if (!first)
+        for (const std::string &id : it->second)
+            if (!ids.count(id)) {
+                _openedUp.erase(id);
+                pruned = _collapsed.erase(id) > 0 || pruned;
+            }
+    it->second = std::move(ids);
+    return pruned;
 }
 
 // Everything rebuild() reads from the users: which DMs are dead or apps (they
@@ -1529,19 +1556,29 @@ void Sidebar::setSort(const std::string &key, SectionSort sort) {
 // A switch: the workspace's own, applied to the headers there are (no
 // rebuild); what was opened up for the last one's chats closes again. VIP
 // unreads never collapses (an edited settings file may still say so).
-void Sidebar::setCollapsed(Collapsed collapsed) {
+void Sidebar::setCollapsed(const std::string &workspace, Collapsed collapsed) {
     const std::string vip = sectionKey(Vip, {});
     std::erase_if(collapsed, [&vip](const auto &e) {
         return e.first.empty() || !e.second || e.first == vip;
     });
     _collapsed = std::move(collapsed);
     _openedUp.clear();
+    _collapsedKey = workspace;
+    _collapsedOf  = &_ctx.store();
     for (SectionHeader *h : _sections) {
         const bool was = h->collapsed;
         restoreCollapse(h);
         if (h->collapsed != was)
             applyCollapse(h);
     }
+    if (forgetDeletedSections() && onCollapsedChanged)
+        onCollapsedChanged(); // deleted while another workspace was open
+}
+
+void Sidebar::forgetSections(const std::string &workspace) {
+    _sectionIds.erase(workspace);
+    if (workspace == _collapsedKey)
+        _collapsedOf = nullptr; // its Store goes: no other may stand in for it
 }
 
 void Sidebar::sectionMenu(SectionHeader *h, PointF at) {
