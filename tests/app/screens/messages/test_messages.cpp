@@ -2139,15 +2139,15 @@ TEST("actions: the file bar on hovered files; right click on them does nothing")
 }
 
 TEST("actions: the file bar reacts to an image thumbnail too") {
-    Env e(false);
-    const int64_t     t0 = base::nowSecs() - 600;
-    model::File       img;
-    img.id     = "FIMG";
-    img.name   = "mira.png";
-    img.mime   = "image/png";
-    img.path   = asset("avatars/mira.png");
-    img.width  = 256;
-    img.height = 256;
+    Env           e(false);
+    const int64_t t0 = base::nowSecs() - 600;
+    model::File   img;
+    img.id           = "FIMG";
+    img.name         = "mira.png";
+    img.mime         = "image/png";
+    img.path         = asset("avatars/mira.png");
+    img.width        = 256;
+    img.height       = 256;
     model::Message m = msg(0, t0, "look");
     m.extras().files.push_back(img);
     std::vector<model::Message> ms;
@@ -2170,8 +2170,8 @@ TEST("actions: the file bar reacts to an image thumbnail too") {
     };
     find(row);
     REQUIRE(thumb != nullptr);
-    auto            *h = app().platform().testHooks();
-    const ui::RectF  t = thumb->windowRect();
+    auto           *h = app().platform().testHooks();
+    const ui::RectF t = thumb->windowRect();
     h->injectPointerMove(e.win->native(), {t.x + t.w / 2, t.y + t.h / 2});
     pump(4);
     ui::View *dl = findByTooltip(e.win->root().child(0), "Download");

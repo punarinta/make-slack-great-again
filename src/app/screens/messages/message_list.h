@@ -332,7 +332,7 @@ private:
     class ActionButton        *_tbSave = nullptr, *_tbAgent = nullptr;
     ui::View                  *_fileBar = nullptr, *_fileView = nullptr; // the hovered file
     class ActionButton        *_fbReact = nullptr;
-    Ts                         _fileTs = 0;
+    Ts                         _fileTs  = 0;
     std::string                _filePath;
     MessageRow                *_toolbarRow = nullptr;
     std::vector<Item>          _items;
