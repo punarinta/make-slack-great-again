@@ -25,6 +25,7 @@ public:
     virtual std::unique_ptr<Tray> createTray()                               = 0;
     virtual bool                  notificationsAvailable() const             = 0;
     virtual bool                  notify(uint64_t id, const Notification &n) = 0;
+    virtual void                  withdrawNotification(uint64_t id)          = 0;
     virtual void                  setBadgeCount(int count)                   = 0;
     // nullopt until/unless the portal answered; the backend keeps its default.
     virtual std::optional<bool>   darkMode() const                           = 0;
@@ -83,6 +84,7 @@ public:
     std::unique_ptr<Tray> createTray() override { return services().createTray(); }
     bool notificationsAvailable() const override { return services().notificationsAvailable(); }
     bool notify(uint64_t id, const Notification &n) override { return services().notify(id, n); }
+    void withdrawNotification(uint64_t id) override { services().withdrawNotification(id); }
     void setBadgeCount(int n) override { services().setBadgeCount(n); }
     bool darkMode() const override { return services().darkMode().value_or(false); }
 

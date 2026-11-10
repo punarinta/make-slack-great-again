@@ -1164,6 +1164,7 @@ void Shell::loadNotified() {
         n.ts                                   = Ts(e["ts"].integer());
         n.join                                 = json::owned(e["join"]);
         n.postedAt                             = e["postedAt"].integer();
+        n.onRead                               = e["onRead"].boolean();
         _notified[uint64_t(e["id"].integer())] = std::move(n);
     }
     pruneNotified();
@@ -1228,6 +1229,8 @@ std::string Shell::notifiedFileText() {
         if (!n.join.empty())
             w.key("join").value(n.join);
         w.key("postedAt").value(n.postedAt);
+        if (n.onRead)
+            w.key("onRead").value(true);
         w.endObject();
     }
     w.endArray();
@@ -2582,6 +2585,10 @@ void Shell::onChange(const model::Change &ch) {
         _composer->refreshPlaceholder();
         return;
     }
+    // Read here or elsewhere: its notifications go (an attached
+    // workspace's own observer does that).
+    if ((ch.kind == K::Meta || ch.kind == K::ThreadRead) && !attached)
+        withdrawRead(_ctx.store(), {}, ch);
     if (ch.kind == K::Meta || ch.kind == K::Roster) {
         if (ch.kind == K::Meta && !attached && _live)
             huddleChanged(_ctx.store(), {}, ch.conv);
@@ -3328,6 +3335,8 @@ void Shell::onWorkspaceChange(const std::string &key, const model::Change &ch) {
     Running *r = findRunning(key);
     if (!r)
         return;
+    if (ch.kind == K::Meta || ch.kind == K::ThreadRead)
+        withdrawRead(*r->store, key, ch);
     if (ch.kind == K::Meta || ch.kind == K::Roster) {
         r->dirty = true;
         if (r->store != &_ctx.store())

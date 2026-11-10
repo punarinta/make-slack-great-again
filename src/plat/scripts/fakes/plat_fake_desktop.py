@@ -217,6 +217,7 @@ class Notifications(dbus.service.Object):
     @dbus.service.method(IFACE, in_signature="u")
     def CloseNotification(self, nid):
         n = self.shown.get(nid)
+        log("close: #%d (%s)" % (nid, "open" if n and not n["closed"] else "gone"))
         if n and not n["closed"]:
             n["closed"] = True
             self.NotificationClosed(nid, 3)

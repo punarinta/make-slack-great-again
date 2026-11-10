@@ -4112,6 +4112,83 @@ TEST("notifications: the titles and gates — level, mutes, replies to unloaded 
     (void)dm;
 }
 
+// Issue #151: reading a conversation (here or on another client: a Meta
+// with the cursor moved) or a thread takes its notifications back from the
+// OS; other conversations' and threads' stay, and so do the unread ones.
+TEST("notifications: read conversations and threads take theirs back, others stay") {
+    TwoWorkspaces                      w;
+    Store                             &b       = w.b;
+    const ConvRef                      general = b.findConversation("C0GENERAL");
+    const ConvRef                      dm      = b.findConversation("D0MIRA");
+    plat::TestHooks::NotificationProbe n;
+    auto                               shown = [&](uint64_t id) {
+        return app().platform().testHooks()->notificationProbe(id, &n);
+    };
+    auto next = [&](uint64_t after) {
+        uint64_t id = 0;
+        until([&] { return (id = lastNotification(nullptr)) > after; });
+        return id > after ? id : 0;
+    };
+    const uint64_t before = lastNotification(nullptr);
+    w.post(b, "C0GENERAL", "first");
+    const uint64_t first = next(before);
+    REQUIRE(first);
+    const Ts firstTs = b.conversation(general).latest;
+    w.post(b, "C0GENERAL", "second");
+    const uint64_t second = next(first);
+    REQUIRE(second);
+    const Ts secondTs = b.conversation(general).latest;
+    w.post(b, "D0MIRA", "a dm");
+    const uint64_t direct = next(second);
+    REQUIRE(direct);
+    // A reply in a followed thread of general.
+    Message reply;
+    reply.ts          = secondTs + 5000;
+    reply.threadTs    = firstTs;
+    reply.user        = b.findUser("U0MIRA");
+    reply.text        = "thread news";
+    w.fb.followedRoot = reply.threadTs;
+    b.announceReply(general, reply);
+    const uint64_t threaded = next(direct);
+    REQUIRE(threaded);
+    // Read up to the first one only: the second is still unread.
+    b.markRead(general, firstTs);
+    pump();
+    CHECK(!shown(first));
+    CHECK(shown(second));
+    CHECK(shown(direct));
+    CHECK(shown(threaded)); // a thread is read on its own
+    // Read on another client (channel_marked): the rest of general goes.
+    b.updateConversation(general, [&](Conversation &c) { c.lastRead = secondTs; });
+    pump();
+    CHECK(!shown(second));
+    CHECK(shown(direct));
+    CHECK(shown(threaded));
+    // Another thread's read leaves it; its own takes it back.
+    b.threadRead(general, secondTs, reply.ts);
+    b.threadRead(dm, firstTs, reply.ts);
+    pump();
+    CHECK(shown(threaded));
+    b.threadRead(general, firstTs, reply.ts - 1);
+    pump();
+    CHECK(shown(threaded)); // read, but not up to it
+    b.threadRead(general, firstTs, reply.ts);
+    pump();
+    CHECK(!shown(threaded));
+    CHECK(shown(direct));
+    // The same conversation in the other workspace is not this one.
+    w.a.markRead(w.a.findConversation("D0MIRA"), b.conversation(dm).latest);
+    pump();
+    CHECK(shown(direct));
+    // Read in the open chat: opening the DM reads it.
+    w.show(kKeyB);
+    w.sh->open(dm);
+    pump();
+    REQUIRE(until([&] { return b.conversation(dm).lastRead >= b.conversation(dm).latest; }));
+    pump();
+    CHECK(!shown(direct));
+}
+
 TEST("notifications: a sender's picture not decoded yet is waited for, not skipped") {
     TwoWorkspaces w;
     Store        &a = w.a;

@@ -352,6 +352,9 @@ struct SlackBackend::Read {
     // Followed threads with an
     // unread reply (key → its newest), and how far I read each one.
     std::unordered_map<std::string, Ts> unreadThreads, threadReadFloor;
+    // The feed's read cursor last passed on (Store::threadRead): a thread
+    // read on another client takes its notifications back here too.
+    std::unordered_map<std::string, Ts> threadReadSeen;
     void                                noteUnreadThreadReply(ConvRef c, Ts root, Ts ts);
     void                                threadRead(ConvRef c, Ts root, Ts upTo);
     void                                threadUnread(ConvRef c, Ts root, Ts to);
@@ -2905,6 +2908,11 @@ bool SlackBackend::Read::feedThread(
 ) {
     follow(key); // the feed IS the subscription list
     pullWatch(c, root, newest);
+    // Read further on some client (here or another): its notifications go.
+    if (Ts &seen = threadReadSeen[key]; lastRead > seen) {
+        seen = lastRead;
+        s.threadRead(c, root, lastRead);
+    }
     // The Threads entry: the feed's own
     // read cursor or mine, whichever is further; the first page
     // after a start restores it.
@@ -3054,6 +3062,7 @@ void SlackBackend::Read::threadRead(ConvRef c, Ts root, Ts upTo) {
     if (const auto it = unreadThreads.find(key); it != unreadThreads.end() && it->second <= upTo)
         unreadThreads.erase(it);
     publishUnreadThreads();
+    s.threadRead(c, root, upTo);
 }
 
 // "Mark unread" on a reply: the floor goes back to `to` (just before the
@@ -3631,7 +3640,7 @@ void SlackBackend::Read::pruneThreadState() {
         std::erase_if(followed, [cut](const std::string &k) { return keyTs(k) < cut; });
         extrasChanged();
     }
-    for (auto *m : {&threadBaseline, &threadReadFloor}) {
+    for (auto *m : {&threadBaseline, &threadReadFloor, &threadReadSeen}) {
         if (m->size() <= 2 * kMaxThreadState)
             continue;
         std::vector<Ts> roots;

@@ -130,6 +130,7 @@ void FakeBackend::markThreadRead(ConvRef conv, Ts root, Ts ts) {
     Ts &cursor = threadRead(conv, root);
     cursor     = std::max(cursor, ts);
     publishUnreadThreads();
+    _store.threadRead(conv, root, ts);
 }
 
 bool FakeBackend::canMarkThreadUnread(ConvRef conv, Ts root) const {

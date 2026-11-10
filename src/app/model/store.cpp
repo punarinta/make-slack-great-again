@@ -795,6 +795,11 @@ void Store::markRead(ConvRef ref, Ts ts) {
     emit({ChangeKind::Meta, ref});
 }
 
+void Store::threadRead(ConvRef ref, Ts root, Ts ts) {
+    if (ref < _convs.size() && root && ts)
+        emit({ChangeKind::ThreadRead, ref, root, ts});
+}
+
 void Store::markUnread(ConvRef ref, Ts ts) {
     if (ref >= _convs.size() || ts <= 0)
         return;

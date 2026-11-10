@@ -756,6 +756,11 @@ public:
     // back -- the caller owns generating and persisting it; backends just
     // submit under it. False = couldn't submit.
     virtual bool notify(uint64_t id, const Notification &n) { return false; }
+    // Takes notification `id` back: off the screen and out of the
+    // notification centre / history, where the OS lets us. No
+    // NotificationClosed follows; an id unknown (gone, from an earlier run
+    // where the OS forgets them) is ignored.
+    virtual void withdrawNotification(uint64_t id) {}
     // macOS: Notification Center started this process for a click on one of
     // our notifications (set AppInfo first); the click then arrives as
     // NotificationActivated from pump(). Finishes the launch to find out,

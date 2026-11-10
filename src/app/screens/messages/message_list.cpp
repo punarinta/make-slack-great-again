@@ -975,6 +975,7 @@ void MessageList::onChange(const model::Change &ch) {
         return;
     case CK::Meta:
     case CK::Roster:
+    case CK::ThreadRead:
         return;
     case CK::Users:
         // A burst (a presence round, a users.list page) → one pass.
