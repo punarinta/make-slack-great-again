@@ -154,6 +154,7 @@ public:
     }
     bool notificationsAvailable() const override { return _notifier.available(); }
     bool notify(uint64_t id, const Notification &n) override { return _notifier.notify(id, n); }
+    void withdrawNotification(uint64_t id) override { _notifier.withdraw(id); }
 
     void setBadgeCount(int count) override {
         _badge    = std::max(0, count);

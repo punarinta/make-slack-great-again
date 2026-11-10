@@ -289,6 +289,11 @@ void fromJson(const json::Value r, Settings &s) {
                  std::string(e["section"].str()),
                  std::string(e["sort"].str())}
             );
+    for (const json::Value e : r["sidebarCollapsed"])
+        if (!e["section"].str().empty())
+            s.sidebarCollapsed.push_back(
+                {std::string(e["workspace"].str()), std::string(e["section"].str())}
+            );
     for (const json::Value e : r["claudeRecentDirs"])
         if (!e["path"].str().empty())
             s.claudeRecentDirs.push_back({std::string(e["path"].str()), e["usedAt"].integer()});
@@ -379,6 +384,17 @@ std::string Settings::toFile() const {
                 .value(p.section)
                 .key("sort")
                 .value(p.sort)
+                .endObject();
+        w.endArray();
+    }
+    if (!sidebarCollapsed.empty()) {
+        w.key("sidebarCollapsed").beginArray();
+        for (const SectionCollapsedPref &p : sidebarCollapsed)
+            w.beginObject()
+                .key("workspace")
+                .value(p.workspace)
+                .key("section")
+                .value(p.section)
                 .endObject();
         w.endArray();
     }

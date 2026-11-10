@@ -56,6 +56,7 @@ public:
     void        update(std::vector<Item> items, bool wide, ui::PointF anchor);
     // Tests: how many times the rows were made.
     int         builds() const { return _builds; }
+    float       scrollOffset() const;          // tests: how far the rows are scrolled
     bool        handleKey(const ui::Event &e); // true when it took the key
     int         selected() const { return _sel; }
     size_t      count() const { return _items.size(); }

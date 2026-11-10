@@ -672,6 +672,27 @@ TEST("sections: a dropped row lands in the section; Channels takes it back") {
     CHECK(h.store.conversation(eng).starred);
 }
 
+TEST("sections: Drafts takes no dropped row, and its rows are not dragged out") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    const ConvRef   eng     = h.conv("C0ENG");
+    h.backend.createSection("Projects", "", kNoConv);
+    h.store.setDraft(eng, 0, "<p>half a thought</p>", {});
+    pump();
+    REQUIRE(titles(sb).find("Drafts") != std::string::npos);
+    // Dropped there it would only lose its star (Drafts is the draft's).
+    CHECK_FALSE(sb.dropOnSection(general, "Drafts"));
+    pump();
+    CHECK(h.store.conversation(general).starred);
+    // Taken out it would stay in Drafts while its draft lasts.
+    CHECK_FALSE(sb.dropOnSection(eng, "Starred"));
+    CHECK_FALSE(sb.dropOnSection(eng, "Projects"));
+    pump();
+    CHECK_FALSE(h.store.conversation(eng).starred);
+    CHECK(h.store.sections()[0].convs.empty());
+}
+
 TEST("sections: under unreads-only a section keeps its read rows") {
     Harness       h;
     const ConvRef random = h.conv("C0RANDOM"); // read
@@ -1006,6 +1027,63 @@ TEST("sections: an unread VIP DM sits in its own VIP unreads section, above ever
     h.backend.markRead(sam, h.store.conversation(sam).latest);
     pump();
     CHECK_STR(titles(sb), "Activity|Threads|Starred|Channels|Direct messages");
+}
+
+TEST("sections: VIP unreads stays open whatever the collapsed sections say") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   sam = h.conv("D0SAM");
+    makeVip(h, "U0SAM");
+    h.backend.markUnread(sam, h.store.conversation(sam).latest);
+    pump();
+    REQUIRE(sb.rowState(sam).visible);
+    sb.setCollapsed({{"#vip", true}, {"#channels", true}}); // an edited settings file
+    CHECK(sb.rowState(sam).visible);
+    CHECK_FALSE(sb.rowState(h.conv("C0ENG")).visible);
+    CHECK(sb.collapsed().size() == 1 && sb.collapsed().count("#channels"));
+    sb.rebuild();
+    CHECK(sb.rowState(sam).visible);
+}
+
+TEST("sections: a draft lifts its conversation out of Starred and the user's sections") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    const ConvRef   random  = h.conv("C0RANDOM");
+    h.backend.createSection("Projects", "", random);
+    pump();
+    REQUIRE(sb.rowState(general).section == "Starred");
+    REQUIRE(sb.rowState(random).section == "Projects");
+    // Each on its own: the change of one row alone must move it.
+    h.store.setDraft(random, 0, "<p>b</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(random).section, "Drafts");
+    CHECK_STR(sb.rowSection(random), "");
+    h.store.setDraft(general, 0, "<p>a</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(general).section, "Drafts");
+    // Sent or cleared: each is back where it was, the section's list kept.
+    h.store.setDraft(random, 0, "", {});
+    pump();
+    CHECK_STR(sb.rowState(random).section, "Projects");
+    h.store.setDraft(general, 0, "", {});
+    pump();
+    CHECK_STR(sb.rowState(general).section, "Starred");
+    CHECK(h.store.sections()[0].convs.size() == 1);
+}
+
+TEST("sections: VIP unreads keeps a VIP's unread conversation with a draft, then Drafts does") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   sam = h.conv("D0SAM");
+    makeVip(h, "U0SAM");
+    h.backend.markUnread(sam, h.store.conversation(sam).latest);
+    h.store.setDraft(sam, 0, "<p>reply</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(sam).section, "VIP unreads");
+    h.backend.markRead(sam, h.store.conversation(sam).latest);
+    pump();
+    CHECK_STR(sb.rowState(sam).section, "Drafts");
 }
 
 TEST("sections: a starred VIP DM is lifted while unread, then back to Starred") {
@@ -3464,6 +3542,212 @@ TEST("zen mode: each workspace keeps its own") {
     CHECK(f.zenOn());
 }
 
+namespace {
+// Its sections (workspace, key) as the settings keep them.
+std::vector<std::string> collapsedPrefs(const shell::Settings &s) {
+    std::vector<std::string> out;
+    for (const auto &p : s.sidebarCollapsed)
+        out.push_back(p.workspace + " " + p.section);
+    return out;
+}
+std::vector<std::string> sortPrefs(const shell::Settings &s) {
+    std::vector<std::string> out;
+    for (const auto &p : s.sidebarSorts)
+        out.push_back(p.workspace + " " + p.section + " " + p.sort);
+    return out;
+}
+} // namespace
+
+TEST("collapse: each workspace keeps its own, across switches and a restart") {
+    TwoWorkspaces   w;
+    const ConvRef   engA = w.a.findConversation("C0ENG");
+    const ConvRef   engB = w.b.findConversation("C0ENG");
+    const ConvRef   dmB  = w.b.findConversation("D0MIRA");
+    shell::Sidebar *sb   = &w.sh->sidebar();
+    REQUIRE(sb->toggleSection("Channels"));
+    pump();
+    CHECK_FALSE(sb->rowState(engA).visible);
+    CHECK(
+        collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #channels")}
+    );
+    // The other one has nothing collapsed: none of the first one's leaks in.
+    w.show(kKeyB);
+    CHECK(sb->collapsed().empty());
+    CHECK(sb->rowState(engB).visible);
+    REQUIRE(sb->toggleSection("Direct messages"));
+    pump();
+    CHECK_FALSE(sb->rowState(dmB).visible);
+    const std::vector<std::string> both = {
+        kKeyA + std::string(" #channels"), kKeyB + std::string(" #direct")
+    };
+    CHECK(collapsedPrefs(w.settings) == both);
+    w.show(kKeyA);
+    CHECK_FALSE(sb->rowState(engA).visible);
+    CHECK(sb->rowState(w.a.findConversation("D0MIRA")).visible);
+    CHECK(collapsedPrefs(w.settings) == both);
+    // A restart opens with each one's own.
+    w.restart({});
+    sb = &w.sh->sidebar();
+    CHECK_FALSE(sb->rowState(engA).visible);
+    w.show(kKeyB);
+    CHECK(sb->rowState(engB).visible);
+    CHECK_FALSE(sb->rowState(dmB).visible);
+    CHECK(collapsedPrefs(w.settings) == both);
+    // Expanded again: nothing left for it.
+    REQUIRE(sb->toggleSection("Direct messages"));
+    pump();
+    CHECK(sb->rowState(dmB).visible);
+    CHECK(
+        collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #channels")}
+    );
+}
+
+TEST("collapse: a chat opened in a collapsed section opens it up, not stored") {
+    TwoWorkspaces   w;
+    const ConvRef   eng = w.a.findConversation("C0ENG");
+    shell::Sidebar &sb  = w.sh->sidebar();
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    w.sh->open(eng);
+    pump();
+    CHECK(sb.rowState(eng).visible);
+    CHECK(sb.collapsed().count("#channels"));
+    // Open through rebuilds and the open workspace's own workspaceChanged
+    // (connected, its icon), and another section's click stores only that.
+    sb.rebuild();
+    w.sh->workspaceChanged();
+    pump();
+    CHECK(sb.rowState(eng).visible);
+    REQUIRE(sb.toggleSection("Direct messages"));
+    pump();
+    const std::vector<std::string> both = {
+        kKeyA + std::string(" #channels"), kKeyA + std::string(" #direct")
+    };
+    CHECK(collapsedPrefs(w.settings) == both);
+    // Back from another workspace, it is collapsed again.
+    w.show(kKeyB);
+    w.show(kKeyA);
+    CHECK_FALSE(sb.rowState(eng).visible);
+    // Opened up, one click collapses it (it already is, for the settings).
+    w.sh->open(eng);
+    pump();
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    CHECK_FALSE(sb.rowState(eng).visible);
+    CHECK(collapsedPrefs(w.settings) == both);
+    REQUIRE(sb.toggleSection("Channels"));
+    pump();
+    CHECK(sb.rowState(eng).visible);
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + std::string(" #direct")});
+}
+
+TEST("collapse: a deleted section's state and sort go, deleted here or while another is open") {
+    TwoWorkspaces        w;
+    shell::Sidebar      &sb   = w.sh->sidebar();
+    const Store::Section work = {"S0WORK", "Work", "", {"C0ENG"}};
+    const Store::Section play = {"S0PLAY", "Play", "", {"C0RANDOM"}};
+    w.a.setSections({work, play}, true); // the server's whole list
+    w.b.setSections({}, true);           // the other one has none
+    pump();
+    REQUIRE(sb.toggleSection("Work"));
+    REQUIRE(sb.toggleSection("Play"));
+    sb.setSort("S0PLAY", {shell::SectionSort::By::Alpha});
+    pump();
+    const std::vector<std::string> both = {kKeyA + " S0PLAY", kKeyA + " S0WORK"};
+    CHECK(collapsedPrefs(w.settings) == both);
+    CHECK(sortPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0PLAY alpha"});
+    // Deleted here or in another client: its state and its sort go.
+    w.a.setSections({work});
+    pump();
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0WORK"});
+    CHECK(w.settings.sidebarSorts.empty());
+    // Deleted while another workspace is open: gone on coming back, and
+    // the other one's list never touched this one's.
+    w.show(kKeyB);
+    w.a.setSections({});
+    pump();
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0WORK"});
+    w.show(kKeyA);
+    CHECK(collapsedPrefs(w.settings).empty());
+    CHECK(sb.collapsed().empty());
+}
+
+TEST("collapse: nothing goes before the whole list came; then those deleted while closed do") {
+    TwoWorkspaces        w;
+    const Store::Section work   = {"S0WORK", "Work", "", {"C0ENG"}};
+    // A restart: the settings name sections the Store has not listed yet
+    // (the list is not cached).
+    w.settings.sidebarCollapsed = {{kKeyA, "#channels"}, {kKeyA, "S0GONE"}, {kKeyA, "S0WORK"}};
+    w.settings.sidebarSorts     = {{kKeyA, "S0GONE", "alpha"}, {kKeyA, "S0WORK", "alpha"}};
+    w.restart({});
+    shell::Sidebar &sb = w.sh->sidebar();
+    sb.rebuild();
+    CHECK(collapsedPrefs(w.settings).size() == 3);
+    CHECK(sb.collapsed().size() == 3);
+    // A section made here before the list came is no whole list either.
+    w.a.setSections({work});
+    pump();
+    CHECK(collapsedPrefs(w.settings).size() == 3);
+    CHECK(w.settings.sidebarSorts.size() == 2);
+    CHECK_FALSE(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    // The server's answer: S0GONE was deleted while msga was closed.
+    w.a.setSections({work}, true);
+    pump();
+    const std::vector<std::string> left = {kKeyA + " #channels", kKeyA + " S0WORK"};
+    CHECK(collapsedPrefs(w.settings) == left);
+    CHECK(sortPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0WORK alpha"});
+    CHECK_FALSE(sb.rowState(w.a.findConversation("C0ENG")).visible);
+}
+
+TEST("collapse: a detached workspace's Store prunes nothing until it is opened again") {
+    TwoWorkspaces        w;
+    shell::Sidebar      &sb   = w.sh->sidebar();
+    const Store::Section work = {"S0WORK", "Work", "", {"C0ENG"}};
+    const Store::Section play = {"S0PLAY", "Play", "", {"C0RANDOM"}};
+    w.a.setSections({work, play}, true);
+    pump();
+    REQUIRE(sb.toggleSection("Play"));
+    pump();
+    w.sh->detachWorkspace(kKeyA); // signed out after its session expired
+    w.a.setSections({work});
+    pump();
+    sb.rebuild();
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " S0PLAY"});
+    CHECK(sb.collapsed().count("S0PLAY"));
+    // Attached and opened again, its whole list counts.
+    w.sh->attachWorkspace(kKeyA, w.a, w.fa);
+    w.show(kKeyB);
+    w.show(kKeyA);
+    CHECK(collapsedPrefs(w.settings).empty());
+}
+
+TEST("collapse: a signed-out workspace's go; signed in again it starts afresh") {
+    TwoWorkspaces   w;
+    shell::Sidebar &sb = w.sh->sidebar();
+    REQUIRE(sb.toggleSection("Channels"));
+    sb.setSort("#direct", {shell::SectionSort::By::Alpha});
+    pump();
+    w.show(kKeyB);
+    REQUIRE(sb.toggleSection("Channels"));
+    sb.setSort("#direct", {shell::SectionSort::By::Recent});
+    pump();
+    w.show(kKeyA);
+    w.sh->forgetSidebarPrefs(kKeyB);
+    CHECK(collapsedPrefs(w.settings) == std::vector<std::string>{kKeyA + " #channels"});
+    CHECK(sortPrefs(w.settings) == std::vector<std::string>{kKeyA + " #direct alpha"});
+    CHECK_FALSE(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    // The open one: nothing of it is stored back afterwards.
+    w.sh->forgetSidebarPrefs(kKeyA);
+    CHECK(collapsedPrefs(w.settings).empty());
+    CHECK(w.settings.sidebarSorts.empty());
+    CHECK(sb.collapsed().empty());
+    CHECK(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    w.show(kKeyB);
+    w.show(kKeyA);
+    CHECK(sb.rowState(w.a.findConversation("C0ENG")).visible);
+    CHECK(collapsedPrefs(w.settings).empty());
+}
+
 TEST("header: names, presence, DND and my phantom state follow the Store") {
     TwoWorkspaces w;
     Store        &st   = w.a;
@@ -4110,6 +4394,83 @@ TEST("notifications: the titles and gates — level, mutes, replies to unloaded 
     CHECK(w.sh->current() == general);
     CHECK(w.sh->threadOpen());
     (void)dm;
+}
+
+// Issue #151: reading a conversation (here or on another client: a Meta
+// with the cursor moved) or a thread takes its notifications back from the
+// OS; other conversations' and threads' stay, and so do the unread ones.
+TEST("notifications: read conversations and threads take theirs back, others stay") {
+    TwoWorkspaces                      w;
+    Store                             &b       = w.b;
+    const ConvRef                      general = b.findConversation("C0GENERAL");
+    const ConvRef                      dm      = b.findConversation("D0MIRA");
+    plat::TestHooks::NotificationProbe n;
+    auto                               shown = [&](uint64_t id) {
+        return app().platform().testHooks()->notificationProbe(id, &n);
+    };
+    auto next = [&](uint64_t after) {
+        uint64_t id = 0;
+        until([&] { return (id = lastNotification(nullptr)) > after; });
+        return id > after ? id : 0;
+    };
+    const uint64_t before = lastNotification(nullptr);
+    w.post(b, "C0GENERAL", "first");
+    const uint64_t first = next(before);
+    REQUIRE(first);
+    const Ts firstTs = b.conversation(general).latest;
+    w.post(b, "C0GENERAL", "second");
+    const uint64_t second = next(first);
+    REQUIRE(second);
+    const Ts secondTs = b.conversation(general).latest;
+    w.post(b, "D0MIRA", "a dm");
+    const uint64_t direct = next(second);
+    REQUIRE(direct);
+    // A reply in a followed thread of general.
+    Message reply;
+    reply.ts          = secondTs + 5000;
+    reply.threadTs    = firstTs;
+    reply.user        = b.findUser("U0MIRA");
+    reply.text        = "thread news";
+    w.fb.followedRoot = reply.threadTs;
+    b.announceReply(general, reply);
+    const uint64_t threaded = next(direct);
+    REQUIRE(threaded);
+    // Read up to the first one only: the second is still unread.
+    b.markRead(general, firstTs);
+    pump();
+    CHECK(!shown(first));
+    CHECK(shown(second));
+    CHECK(shown(direct));
+    CHECK(shown(threaded)); // a thread is read on its own
+    // Read on another client (channel_marked): the rest of general goes.
+    b.updateConversation(general, [&](Conversation &c) { c.lastRead = secondTs; });
+    pump();
+    CHECK(!shown(second));
+    CHECK(shown(direct));
+    CHECK(shown(threaded));
+    // Another thread's read leaves it; its own takes it back.
+    b.threadRead(general, secondTs, reply.ts);
+    b.threadRead(dm, firstTs, reply.ts);
+    pump();
+    CHECK(shown(threaded));
+    b.threadRead(general, firstTs, reply.ts - 1);
+    pump();
+    CHECK(shown(threaded)); // read, but not up to it
+    b.threadRead(general, firstTs, reply.ts);
+    pump();
+    CHECK(!shown(threaded));
+    CHECK(shown(direct));
+    // The same conversation in the other workspace is not this one.
+    w.a.markRead(w.a.findConversation("D0MIRA"), b.conversation(dm).latest);
+    pump();
+    CHECK(shown(direct));
+    // Read in the open chat: opening the DM reads it.
+    w.show(kKeyB);
+    w.sh->open(dm);
+    pump();
+    REQUIRE(until([&] { return b.conversation(dm).lastRead >= b.conversation(dm).latest; }));
+    pump();
+    CHECK(!shown(direct));
 }
 
 TEST("notifications: a sender's picture not decoded yet is waited for, not skipped") {
