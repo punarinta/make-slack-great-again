@@ -1045,6 +1045,47 @@ TEST("sections: VIP unreads stays open whatever the collapsed sections say") {
     CHECK(sb.rowState(sam).visible);
 }
 
+TEST("sections: a draft lifts its conversation out of Starred and the user's sections") {
+    Harness         h;
+    shell::Sidebar &sb      = h.sh->sidebar();
+    const ConvRef   general = h.conv("C0GENERAL"); // starred in the fixture
+    const ConvRef   random  = h.conv("C0RANDOM");
+    h.backend.createSection("Projects", "", random);
+    pump();
+    REQUIRE(sb.rowState(general).section == "Starred");
+    REQUIRE(sb.rowState(random).section == "Projects");
+    // Each on its own: the change of one row alone must move it.
+    h.store.setDraft(random, 0, "<p>b</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(random).section, "Drafts");
+    CHECK_STR(sb.rowSection(random), "");
+    h.store.setDraft(general, 0, "<p>a</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(general).section, "Drafts");
+    // Sent or cleared: each is back where it was, the section's list kept.
+    h.store.setDraft(random, 0, "", {});
+    pump();
+    CHECK_STR(sb.rowState(random).section, "Projects");
+    h.store.setDraft(general, 0, "", {});
+    pump();
+    CHECK_STR(sb.rowState(general).section, "Starred");
+    CHECK(h.store.sections()[0].convs.size() == 1);
+}
+
+TEST("sections: VIP unreads keeps a VIP's unread conversation with a draft, then Drafts does") {
+    Harness         h;
+    shell::Sidebar &sb  = h.sh->sidebar();
+    const ConvRef   sam = h.conv("D0SAM");
+    makeVip(h, "U0SAM");
+    h.backend.markUnread(sam, h.store.conversation(sam).latest);
+    h.store.setDraft(sam, 0, "<p>reply</p>", {});
+    pump();
+    CHECK_STR(sb.rowState(sam).section, "VIP unreads");
+    h.backend.markRead(sam, h.store.conversation(sam).latest);
+    pump();
+    CHECK_STR(sb.rowState(sam).section, "Drafts");
+}
+
 TEST("sections: a starred VIP DM is lifted while unread, then back to Starred") {
     Harness         h;
     shell::Sidebar &sb  = h.sh->sidebar();

@@ -825,8 +825,7 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             else if (ch.thread == 0 && rowFor(ch.conv)) {
                 // A group DM's new message may lift it into VIP unreads (isVip
                 // reads it); else most recent first may move it.
-                const ConvRow *r = rowFor(ch.conv);
-                if (r->section->kind != Sidebar::Custom && r->section->kind != classify(ch.conv))
+                if (misplaced(ch.conv))
                     rebuildSoon(false);
                 else
                     resortSoon();
@@ -869,8 +868,7 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
                 !(r && r->section->kind == Sidebar::Custom) &&
                 (r ? r->unread != paintsUnread(cv) : cv.member && paintsUnread(cv));
             // Same classify() rebuild() uses, so a row only looks "moved" when it would be.
-            const bool reclassified =
-                r && r->section->kind != Sidebar::Custom && r->section->kind != classify(ch.conv);
+            const bool reclassified = r && misplaced(ch.conv);
             if (!r != !cv.member || reclassified || filterFlip)
                 rebuildSoon(false); // once per burst; the list stays where it was scrolled
             else {
@@ -974,14 +972,15 @@ bool Sidebar::isVip(const model::Conversation &c) const {
 }
 
 // VIP unreads first: Slack lifts them above every section, starred and app
-// DMs included (a VIP may be an app). A conversation with an unsent draft
-// goes to Drafts: its own section, and the draft is never out of sight.
+// DMs included (a VIP may be an app). Then a conversation with an unsent
+// draft goes to Drafts, out of Starred and the user's sections too (see
+// rebuild), so the draft is never out of sight.
 Sidebar::Kind Sidebar::classify(model::ConvRef ref) const {
     const auto &c = _ctx.store().conversation(ref);
-    if (_ctx.store().draft(ref, 0) != nullptr)
-        return Drafts;
     if (_ctx.backend.capabilities().vips && isVip(c))
         return Vip;
+    if (_ctx.store().draft(ref, 0) != nullptr)
+        return Drafts;
     if (c.starred)
         return Starred;
     if (isApp(c))
@@ -1003,6 +1002,17 @@ void Sidebar::clearVisited() {
     rebuild();
     if (onVisitedChanged)
         onVisitedChanged();
+}
+
+// A listed row in a section classify() would no longer put it in. One in
+// a section of the user's stays there unless a draft lifts it to Drafts
+// (as rebuild does).
+bool Sidebar::misplaced(ConvRef ref) const {
+    const ConvRow *r = rowFor(ref);
+    if (!r)
+        return false;
+    const Kind want = classify(ref);
+    return r->section->kind == Custom ? want == Drafts : r->section->kind != want;
 }
 
 // Relevant: unread, open, visited or active within the window, or a
@@ -1110,7 +1120,7 @@ void Sidebar::rebuild() {
     for (size_t s = 0; s < custom.size(); ++s)
         for (const std::string &id : secs[s].convs) {
             const ConvRef c = store.findConversation(id);
-            if (c == kNoConv || inCustom[c])
+            if (c == kNoConv || inCustom[c] || classify(c) == Drafts) // a draft lifts it out
                 continue;
             inCustom[c] = 1;
             if (store.conversation(c).member && !deadDm(store, store.conversation(c)))
@@ -2002,6 +2012,7 @@ Sidebar::RowState Sidebar::rowState(ConvRef conv) const {
     s.badge    = r->count;
     s.selected = r->checked();
     s.huddle   = r->huddleCount;
+    s.section  = r->section->title;
     return s;
 }
 
