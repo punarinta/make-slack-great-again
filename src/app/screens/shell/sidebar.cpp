@@ -871,14 +871,18 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
             }
             if (ch.conv >= _ctx.store().conversationCount())
                 break;
-            const auto &cv = _ctx.store().conversation(ch.conv);
-            ConvRow    *r  = rowFor(ch.conv);
+            const auto &cv    = _ctx.store().conversation(ch.conv);
+            ConvRow    *r     = rowFor(ch.conv);
             // Under unreads-only a row comes or goes when its bold state
-            // flips (the selected row and Starred stay regardless).
+            // flips (the selected row and Drafts stay regardless; Starred and
+            // the user's sections unless their scope is on). A starred one in
+            // one of the user's sections is listed there: that scope decides.
+            const bool  inOwn = r && r->section->kind == Sidebar::Custom;
             const bool  filterFlip =
-                _filters.unreadsOnly && ch.conv != _selected && !cv.starred &&
-                !(r &&
-                  (r->section->kind == Sidebar::Custom || r->section->kind == Sidebar::Drafts)) &&
+                _filters.unreadsOnly && ch.conv != _selected &&
+                !(cv.starred && !inOwn && !_filters.unreadsOnlyAppliesToStarred) &&
+                !(inOwn && !_filters.unreadsOnlyAppliesToCustomSections) &&
+                !(r && r->section->kind == Sidebar::Drafts) &&
                 (r ? r->unread != paintsUnread(cv) : cv.member && paintsUnread(cv));
             // Same classify() rebuild() uses, so a row only looks "moved" when it would be.
             const bool reclassified = r && misplaced(ch.conv);
@@ -1124,8 +1128,9 @@ void Sidebar::rebuild() {
     if (seeded && onVisitedChanged)
         onVisitedChanged();
     // The user's own sections, under Starred: each lists its conversations
-    // in its own order, like Starred regardless of the filters, and takes
-    // them out of the other sections (Starred too).
+    // in its own order, like Starred regardless of the filters (unless
+    // unreads-only is set to hide their read ones too), and takes them out
+    // of the other sections (Starred too).
     const bool                        own  = caps.customSections;
     const auto                       &secs = store.sections();
     std::vector<std::vector<ConvRef>> custom(own ? secs.size() : 0);
@@ -1136,7 +1141,9 @@ void Sidebar::rebuild() {
             if (c == kNoConv || inCustom[c] || classify(c) == Drafts) // a draft lifts it out
                 continue;
             inCustom[c] = 1;
-            if (store.conversation(c).member && !deadDm(store, store.conversation(c)))
+            if (store.conversation(c).member && !deadDm(store, store.conversation(c)) &&
+                (!_filters.unreadsOnly || !_filters.unreadsOnlyAppliesToCustomSections ||
+                 listed(c)))
                 custom[s].push_back(c);
         }
     for (ConvRef c = 0; c < store.conversationCount(); ++c) {
@@ -1150,7 +1157,8 @@ void Sidebar::rebuild() {
             drafts.push_back(c); // a draft is never hidden by the filters
             break;
         case Starred:
-            lists[Starred].push_back(c);
+            if (!_filters.unreadsOnly || !_filters.unreadsOnlyAppliesToStarred || listed(c))
+                lists[Starred].push_back(c);
             break;
         case Apps:
             if (listed(c) && (_filters.showAgentsApps || c == _selected))

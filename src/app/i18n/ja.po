@@ -1702,10 +1702,20 @@ msgstr "未読の会話のみ表示"
 #: src/app/screens/settings/settings_dialog.cpp
 msgid ""
 "The conversation you are reading stays listed until you move on.\n"
-"Starred conversations are always shown."
+"Drafts are always shown, and so are starred conversations and your\n"
+"sections unless you hide their read ones below."
 msgstr ""
 "閲覧中の会話は、別の会話に移るまで表示されたままになります。\n"
-"スター付きの会話は常に表示されます。"
+"下書きは常に表示されます。スター付きの会話とセクションも、下で既読のものを\n"
+"非表示にしない限り表示されます。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hide read conversations in your sections too"
+msgstr "セクション内の既読の会話も非表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Hide read starred conversations too"
+msgstr "スター付きの既読の会話も非表示"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Visual effects"
@@ -4172,6 +4182,13 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid ""
+#~ "The conversation you are reading stays listed until you move on.\n"
+#~ "Starred conversations are always shown."
+#~ msgstr ""
+#~ "閲覧中の会話は、別の会話に移るまで表示されたままになります。\n"
+#~ "スター付きの会話は常に表示されます。"
 
 #~ msgid "Just now"
 #~ msgstr "たった今"
