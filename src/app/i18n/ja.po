@@ -1684,6 +1684,18 @@ msgid "Show the External connections section"
 msgstr "「外部との接続」セクションを表示"
 
 #: src/app/screens/settings/settings_dialog.cpp
+msgid "Show direct messages and External connections at the top"
+msgstr "ダイレクトメッセージと「外部との接続」を一番上に表示"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid ""
+"External connections moves up only while its section is shown.\n"
+"In a Claude Code workspace, Sessions moves up."
+msgstr ""
+"「外部との接続」は、そのセクションを表示している間だけ上に移ります。\n"
+"Claude Codeのワークスペースでは「セッション」が上に移ります。"
+
+#: src/app/screens/settings/settings_dialog.cpp
 msgid "Show only unread conversations"
 msgstr "未読の会話のみ表示"
 

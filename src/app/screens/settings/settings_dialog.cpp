@@ -625,6 +625,17 @@ void SettingsDialog::buildAppearance() {
         );
         check(g, tr("Show the Agents & apps section"), &d.showAgentsApps, true);
         check(g, tr("Show the External connections section"), &d.externalSection, true);
+        check(
+            g,
+            tr("Show direct messages and External connections at the top"),
+            &d.directAndExternalFirst,
+            true
+        );
+        caption(
+            g,
+            tr("External connections moves up only while its section is shown.\n"
+               "In a Claude Code workspace, Sessions moves up.")
+        );
         auto *unread = check(g, tr("Show only unread conversations"), &d.unreadsOnly, true);
         caption(
             g,
@@ -643,12 +654,6 @@ void SettingsDialog::buildAppearance() {
             _draft.unreadsOnly = on;
             sync(on);
         };
-        check(
-            g,
-            tr("Show direct messages and external conversations at the top"),
-            &d.directAndExternalFirst,
-            true
-        );
     }
 
     heading(_content, tr("Visual effects"));
