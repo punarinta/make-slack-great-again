@@ -679,8 +679,8 @@ void MessageList::placeFileBar() {
         _fileBar->setVisible(false);
         return;
     }
-    // Emoji: caps.reactions, except on my own messages in an agent session,
-    // as the message toolbar does.
+    // Add reaction: on every message but my own in an agent session, as on
+    // the message toolbar (every backend takes reactions).
     const bool agent = _ctx.backend.isAgentSession(_conv);
     _fbReact->setVisible(!(agent && m->user == _ctx.store().me));
     // cardTop = file top − 20 (straddling it); right edge on the file's
@@ -1353,8 +1353,8 @@ void MessageList::placeToolbar() {
         return;
     }
     const bool agent = _ctx.backend.isAgentSession(_conv);
-    // Emoji: caps.reactions, except on my own messages in an agent session;
-    // Save: caps.messageReminders (not agent sessions).
+    // Emoji: on every message but my own in an agent session (every backend
+    // takes reactions); Save: caps.messageReminders (not agent sessions).
     _tbEmoji->setVisible(!(agent && m->user == _ctx.store().me));
     syncQuickReactions(_tbEmoji->visible());
     _tbSave->setVisible(!agent && _ctx.backend.capabilities().messageReminders);
