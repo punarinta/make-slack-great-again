@@ -642,20 +642,17 @@ void SettingsDialog::buildAppearance() {
         caption(
             g,
             tr("The conversation you are reading stays listed until you move on.\n"
-               "Starred conversations and custom sections stay listed too unless you\n"
-               "turn their filters on below.")
+               "Drafts are always shown, and so are starred conversations and your\n"
+               "sections unless you hide their read ones below.")
         );
         auto *applyCustom = check(
             g,
-            tr("Apply \"Show only unread\" to custom sections"),
+            tr("Hide read conversations in your sections too"),
             &d.unreadsOnlyAppliesToCustomSections,
             true
         );
         auto *applyStarred = check(
-            g,
-            tr("Apply \"Show only unread\" to starred conversations"),
-            &d.unreadsOnlyAppliesToStarred,
-            true
+            g, tr("Hide read starred conversations too"), &d.unreadsOnlyAppliesToStarred, true
         );
         // The activity window has nothing to decide while only unread chats
         // are listed: grey it out so the two don't read as competing.
@@ -671,8 +668,6 @@ void SettingsDialog::buildAppearance() {
             _draft.unreadsOnly = on;
             sync(on);
         };
-        applyCustom->onChange = [this](bool on) { _draft.unreadsOnlyAppliesToCustomSections = on; };
-        applyStarred->onChange = [this](bool on) { _draft.unreadsOnlyAppliesToStarred = on; };
     }
 
     heading(_content, tr("Visual effects"));

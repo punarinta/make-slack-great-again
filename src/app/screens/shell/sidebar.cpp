@@ -1126,9 +1126,9 @@ void Sidebar::rebuild() {
     if (seeded && onVisitedChanged)
         onVisitedChanged();
     // The user's own sections, under Starred: each lists its conversations
-    // in its own order, like Starred regardless of the filters, except
-    // unreads-only which still applies, and takes
-    // them out of the other sections (Starred too).
+    // in its own order, like Starred regardless of the filters (unless
+    // unreads-only is set to hide their read ones too), and takes them out
+    // of the other sections (Starred too).
     const bool                        own  = caps.customSections;
     const auto                       &secs = store.sections();
     std::vector<std::vector<ConvRef>> custom(own ? secs.size() : 0);
