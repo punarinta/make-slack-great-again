@@ -245,6 +245,21 @@ bool looksLikeUserId(std::string_view s) {
     return true;
 }
 
+// The list's content. Rows a rebuild just made have no frames until the
+// layout pass, so revealing one waits for this view's layout: after it, the
+// rows sit where they will be drawn (scrolling from paint instead would move
+// content that is already being drawn).
+class ListItems : public View {
+public:
+    std::function<void()> onLaidOut;
+
+    void layout() override {
+        View::layout();
+        if (onLaidOut)
+            onLaidOut();
+    }
+};
+
 } // namespace
 
 bool deadDm(const model::Store &store, const model::Conversation &c) {
@@ -773,7 +788,13 @@ Sidebar::Sidebar(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(
     _scroll->setClickFocus(true);
     _scroll->setThinThumb(C::SidebarScrollbar);
     _scroll->style().flex(1);
-    _items = _scroll->content();
+    auto *items      = static_cast<ListItems *>(_scroll->setContent(std::make_unique<ListItems>()));
+    items->onLaidOut = [this] {
+        if (std::exchange(_revealSelectedOnLayout, false))
+            if (ConvRow *r = rowFor(_selected))
+                _scroll->ensureVisible(r, 8);
+    };
+    _items = items;
     _items->style().padding(0, kTopPad, 0, 0).spacing(0);
     _footer = add<SidebarFooter>(*this, ctx, avatars);
 
@@ -868,6 +889,11 @@ Sidebar::~Sidebar() {
 
 void Sidebar::paint(gfx::Painter &p) {
     paintNavGradient(*this, p, C::Sidebar);
+}
+
+void Sidebar::revealSelectedAfterLayout() {
+    _revealSelectedOnLayout = true;
+    _items->invalidateLayout(); // the pass that runs it comes for sure
 }
 
 void Sidebar::setFilters(const Filters &f) {
@@ -986,6 +1012,16 @@ bool Sidebar::relevant(ConvRef ref) const {
 }
 
 void Sidebar::rebuild() {
+    // Keyboard focus on a row survives: it moves to the same conversation's new row.
+    Window *win       = window();
+    ConvRef focusConv = kNoConv;
+    if (View *f = win ? win->focusView() : nullptr)
+        for (ConvRow *r : _rows)
+            if (r == f) {
+                focusConv = r->conv;
+                break;
+            }
+    const bool focusRing = win && win->focusVisible();
     for (auto *h : _sections) { // survives the rebuild
         const std::string key = sectionKey(h->kind, h->sectionId);
         if (!key.empty())
@@ -1253,6 +1289,8 @@ void Sidebar::rebuild() {
     _sectionsRev = store.sectionsRevision();
     ++_rebuilds;
     invalidateLayout();
+    if (ConvRow *r = rowFor(focusConv); r && r->visible() && !win->focusView())
+        win->setFocus(r, focusRing);
 }
 
 // Everything rebuild() reads from the users: which DMs are dead or apps (they
@@ -1648,9 +1686,8 @@ void Sidebar::rebuildSoon(bool reveal) {
             return;
         _rebuildTimer = 0;
         rebuild();
-        if (ConvRow *r = rowFor(_selected); r && std::exchange(_revealOnRebuild, false))
-            _scroll->ensureVisible(r, 8);
-        _revealOnRebuild = false;
+        if (std::exchange(_revealOnRebuild, false))
+            revealSelectedAfterLayout(); // the new rows have no frames yet
     });
 }
 
@@ -1844,7 +1881,10 @@ void Sidebar::select(ConvRef conv) {
         rebuildSoon(); // the one left may drop out of unreads-only
     if (r) {
         r->refresh();
-        _scroll->ensureVisible(r, 8);
+        if (r->height() > 0)
+            _scroll->ensureVisible(r, 8); // laid out: reveal at once
+        else
+            revealSelectedAfterLayout(); // rebuilt just now: no frame yet
     }
     refreshSections();
 }

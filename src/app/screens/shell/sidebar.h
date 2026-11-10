@@ -250,6 +250,7 @@ private:
     void               moveInto(model::ConvRef conv, SectionHeader *to);
     // reveal: scroll the selected row into view afterwards.
     void               rebuildSoon(bool reveal = true);
+    void               revealSelectedAfterLayout(); // once its row has a frame
     void               usersSoon();
     void               sectionsSoon(); // refreshSections + refreshTeammates, coalesced
     uint64_t           userShape() const;
@@ -296,10 +297,11 @@ private:
     // The Store and its profile / text revisions _userShape was taken at.
     const model::Store      *_shapeStore      = nullptr;
     uint64_t                 _shapeProfileRev = 0, _shapeTextRev = 0;
-    model::UserRef           _shapeMe              = model::kNoUser;
-    int                      _rebuilds             = 0;
-    bool                     _revealOnRebuild      = false;
-    int                      _hiddenChannels       = 0;
+    model::UserRef           _shapeMe                = model::kNoUser;
+    int                      _rebuilds               = 0;
+    bool                     _revealOnRebuild        = false;
+    bool                     _revealSelectedOnLayout = false; // see revealSelectedAfterLayout()
+    int                      _hiddenChannels         = 0;
     Collapsed                _collapsed; // sectionKey -> collapsed (only true stored)
     uint64_t _sectionsRev     = 0;       // Store::sectionsRevision at the last rebuild
     ConvRow *_dragRow         = nullptr; // a row being dragged

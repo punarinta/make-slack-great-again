@@ -35,6 +35,9 @@ enum class ChangeKind : uint8_t {
     // (no list holds it), yet new — Store::arrived() is the message while
     // the observers run. thread = its root, ts = its ts.
     Arrived,
+    // A thread read up to `ts` (thread = its root), here or on another
+    // client; the backend keeps the cursor, nothing in the Store changes.
+    ThreadRead,
 };
 
 struct Change {
@@ -192,6 +195,8 @@ public:
     // Moves the read cursor and recomputes unread/mentions from the loaded
     // messages after it. Fires Meta.
     void                     markRead(ConvRef c, Ts ts);
+    // A thread's read cursor moved (backends call it): fires ThreadRead.
+    void                     threadRead(ConvRef c, Ts root, Ts ts);
     // Muted threads get no notifications ("Mute thread"; app-local).
     bool                     threadMuted(ConvRef c, Ts root) const;
     void                     setThreadMuted(ConvRef c, Ts root, bool on); // fires Meta

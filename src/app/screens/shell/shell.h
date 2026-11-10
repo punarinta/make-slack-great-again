@@ -376,6 +376,10 @@ private:
     // `n` with the first of `pics` there is, timed out and silent (the
     // chosen sound is played here), its click opening `where`.
     void postNotification(plat::Notification n, std::vector<std::string> pics, Notified where);
+    // A Meta (the read cursor) or ThreadRead from workspace `key`'s Store:
+    // the message notifications it read up to leave the OS's notification
+    // centre (issue #151).
+    void withdrawRead(const model::Store &st, const std::string &key, const model::Change &ch);
 
     struct Running; // an attached workspace
     Running   *findRunning(const std::string &key);
@@ -533,6 +537,7 @@ private:
         model::Ts   root = 0, ts = 0; // a reply's thread; ts: scroll to it (reminders)
         std::string join;             // a huddle's link (its "Join" action)
         int64_t     postedAt = 0;     // base::nowSecs(), set by postNotification -- pruning
+        bool        onRead   = false; // a new message's: taken back once read (withdrawRead)
     };
     // Notification id -> where it opens. Persisted to _notifyPath: macOS
     // and Windows keep delivered notifications around across launches, so

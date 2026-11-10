@@ -1169,6 +1169,7 @@ void Shell::loadNotified() {
         n.ts                                   = Ts(e["ts"].integer());
         n.join                                 = json::owned(e["join"]);
         n.postedAt                             = e["postedAt"].integer();
+        n.onRead                               = e["onRead"].boolean();
         _notified[uint64_t(e["id"].integer())] = std::move(n);
     }
     pruneNotified();
@@ -1233,6 +1234,8 @@ std::string Shell::notifiedFileText() {
         if (!n.join.empty())
             w.key("join").value(n.join);
         w.key("postedAt").value(n.postedAt);
+        if (n.onRead)
+            w.key("onRead").value(true);
         w.endObject();
     }
     w.endArray();
@@ -1928,6 +1931,8 @@ void Shell::workspaceChanged() {
 void Shell::open(ConvRef conv) {
     if (!_signedIn || conv == kNoConv || conv >= _ctx.store().conversationCount())
         return;
+    // Opened again: one marked unread is read like any other now.
+    _ctx.releaseUnread(conv, 0);
     leaveTeammate(); // the teammate page keeps what was typed to it
     leavePages();
     _search->hideNow();
@@ -1972,6 +1977,7 @@ void Shell::open(ConvRef conv) {
 void Shell::leaveWorkspace() {
     leaveTeammate();
     leavePages();
+    _ctx.unreadHolds.clear(); // they name the old workspace's conversations
     if (_activityPage)
         _activityPage->clear(); // its items point into the old workspace
     if (_threadsPage)
@@ -2232,7 +2238,8 @@ bool Shell::removeIdleSession(const Event &e) {
 void Shell::openThread(ConvRef conv, Ts root) {
     if (conv != _current)
         open(conv);
-    _thread->show(conv, root); // stashes the previous thread's draft
+    _ctx.releaseUnread(conv, root); // opened again (see open)
+    _thread->show(conv, root);      // stashes the previous thread's draft
 #ifdef MSGA_HAVE_MESSAGES
     // Its reply bar in the list says "Close thread".
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(root);
@@ -2584,6 +2591,10 @@ void Shell::onChange(const model::Change &ch) {
         _composer->refreshPlaceholder();
         return;
     }
+    // Read here or elsewhere: its notifications go (an attached
+    // workspace's own observer does that).
+    if ((ch.kind == K::Meta || ch.kind == K::ThreadRead) && !attached)
+        withdrawRead(_ctx.store(), {}, ch);
     if (ch.kind == K::Meta || ch.kind == K::Roster) {
         if (ch.kind == K::Meta && !attached && _live)
             huddleChanged(_ctx.store(), {}, ch.conv);
@@ -2605,7 +2616,8 @@ void Shell::onChange(const model::Change &ch) {
     model::Store &st = _ctx.store();
     if (const std::vector<model::Message> *list =
             ch.thread ? st.replies(ch.conv, ch.thread) : &st.conversation(ch.conv).messages;
-        ch.kind == K::Append && list && reading() && ch.conv == _current && !ch.thread)
+        ch.kind == K::Append && list && reading() && ch.conv == _current && !ch.thread &&
+        !_ctx.unreadHeld(ch.conv, 0)) // marked unread: it stays so until opened again
         for (size_t i = list->size() - std::min<size_t>(ch.count, list->size()); i < list->size();
              ++i)
             if (const model::Message &m = (*list)[i]; m.user != st.me && !m.pending)
@@ -3329,6 +3341,8 @@ void Shell::onWorkspaceChange(const std::string &key, const model::Change &ch) {
     Running *r = findRunning(key);
     if (!r)
         return;
+    if (ch.kind == K::Meta || ch.kind == K::ThreadRead)
+        withdrawRead(*r->store, key, ch);
     if (ch.kind == K::Meta || ch.kind == K::Roster) {
         r->dirty = true;
         if (r->store != &_ctx.store())

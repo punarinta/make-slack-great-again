@@ -258,11 +258,16 @@ bool CocoaApp::notify(uint64_t id, const Notification &n) {
         auto                      fail   = [alive, id](std::string why) {
             toLoop(alive, [id, why](CocoaApp *app) { app->onNotificationFailed(id, why); });
         };
+        auto added = [alive, id] {
+            toLoop(alive, [id](CocoaApp *app) { app->onNotificationAdded(id); });
+        };
         auto submit = ^{
           [center addNotificationRequest:req
                    withCompletionHandler:^(NSError *error) {
                      if (error)
                          fail(error.localizedDescription.UTF8String);
+                     else
+                         added();
                    }];
         };
         // A new category must be registered before a request names it, or
@@ -300,7 +305,29 @@ bool CocoaApp::notify(uint64_t id, const Notification &n) {
           }
         }];
         _liveNotifications.insert(id);
+        _submitting.insert(id);
         return true;
+    }
+}
+
+// By its request identifier: with a scope that names one from an earlier run
+// too (still in Notification Center). The delegate hears nothing of it. One
+// still on its way to the center (notify() is asynchronous) is removed again
+// once it is added.
+void CocoaApp::withdrawNotification(uint64_t id) {
+    if (!setUpNotifications())
+        return;
+    if (_submitting.count(id))
+        _withdrawOnAdd.insert(id);
+    _liveNotifications.erase(id);
+#ifdef PLAT_TEST_HOOKS
+    _notifyImages.erase(id);
+#endif
+    @autoreleasepool {
+        UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+        NSArray                  *ids    = @[ nsString(notificationIdentifier(id)) ];
+        [center removeDeliveredNotificationsWithIdentifiers:ids];
+        [center removePendingNotificationRequestsWithIdentifiers:ids];
     }
 }
 
@@ -320,8 +347,17 @@ void CocoaApp::onNotificationResponse(uint64_t id, std::string action, bool dism
     noteWork();
 }
 
+void CocoaApp::onNotificationAdded(uint64_t id) {
+    _submitting.erase(id);
+    if (_withdrawOnAdd.erase(id))
+        withdrawNotification(id);
+}
+
 void CocoaApp::onNotificationFailed(uint64_t id, std::string reason) {
     _liveNotifications.erase(id);
+    _submitting.erase(id);
+    if (_withdrawOnAdd.erase(id))
+        return; // taken back already: nobody waits for news of it
 #ifdef PLAT_TEST_HOOKS
     _notifyImages.erase(id);
 #endif

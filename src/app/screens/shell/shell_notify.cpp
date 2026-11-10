@@ -263,7 +263,32 @@ void Shell::maybeNotify(
         pics = {screens::authorAvatar(st, m), m.extra ? m.extra->botAvatar : std::string()};
     else
         pics = {workspaceIconFor(st)};
-    postNotification(std::move(n), std::move(pics), {key, c.id, root, m.ts, {}});
+    postNotification(std::move(n), std::move(pics), {key, c.id, root, m.ts, {}, 0, true});
+}
+
+// Read on any client: the conversation's top-level messages up to its read
+// cursor, or a thread's replies up to ch.ts. Huddles and reminders stay.
+void Shell::withdrawRead(const model::Store &st, const std::string &key, const model::Change &ch) {
+    if (_notified.empty() || ch.conv >= st.conversationCount())
+        return;
+    const model::Conversation &c      = st.conversation(ch.conv);
+    const bool                 thread = ch.kind == model::ChangeKind::ThreadRead;
+    const Ts                   root   = thread ? ch.thread : 0;
+    const Ts                   upTo   = thread ? ch.ts : c.lastRead;
+    if (!upTo)
+        return;
+    std::vector<uint64_t> gone;
+    for (const auto &[id, n] : _notified)
+        if (n.onRead && n.ts <= upTo && n.root == root && n.convId == c.id && n.key == key)
+            gone.push_back(id);
+    if (gone.empty())
+        return;
+    plat::App &pa = _ctx.app.platform();
+    for (const uint64_t id : gone) {
+        pa.withdrawNotification(id);
+        _notified.erase(id);
+    }
+    saveNotifiedSoon();
 }
 
 void Shell::notifyWhenUsersResolve(

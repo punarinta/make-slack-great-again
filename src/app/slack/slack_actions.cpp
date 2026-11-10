@@ -273,45 +273,63 @@ struct SlackBackend::Write {
         );
     }
 
-    // conversations.mark, one at a time per conversation: two in flight may
-    // land in either order, and the cursor must end where the user last put
-    // it (read, then "Mark unread"). While one is out, only the newest
-    // waiting cursor is kept and sent once it answers.
+    // Read cursors (conversations.mark per conversation,
+    // subscriptions.thread.mark per thread), one at a time per cursor: two
+    // in flight may land in either order, and the cursor must end where the
+    // user last put it (read, then "Mark unread"). While one is out, only
+    // the newest waiting form is kept and sent once it answers.
     struct Mark {
-        std::string channel, waiting; // waiting: the next ts to send ("" none)
+        std::string key, waiting; // waiting: the next form to send ("" none)
         bool        inFlight = false;
     };
     std::vector<Mark> marks;
 
     void mark(const std::string &channel, std::string ts) {
+        markCursor(
+            "conversations.mark", channel, net::formEncode({{"channel", channel}, {"ts", ts}})
+        );
+    }
+    void markThread(const std::string &channel, Ts root, std::string form) {
+        markCursor(
+            "subscriptions.thread.mark", channel + "/" + model::formatTs(root), std::move(form)
+        );
+    }
+
+    void markCursor(const char *method, const std::string &key, std::string form) {
         Mark *m = nullptr;
         for (auto &x : marks)
-            if (x.channel == channel)
+            if (x.key == key)
                 m = &x;
         if (!m) {
-            marks.push_back({channel, {}, false});
+            marks.push_back({key, {}, false});
             m = &marks.back();
         }
         if (m->inFlight) {
-            m->waiting = std::move(ts);
+            m->waiting = std::move(form);
             return;
         }
         m->inFlight = true;
         // Retried like a read: a lost mark leaves the chat unread elsewhere.
         b.readCall(
-            "conversations.mark",
-            net::formEncode({{"channel", channel}, {"ts", ts}}),
-            [this, channel](const json::Document &, const std::string &err) {
-                if (!err.empty() && err != "cancelled")
-                    LOG_WARN("slack", "conversations.mark: %s", err.c_str());
+            method,
+            std::move(form),
+            [this, method, key](const json::Document &, const std::string &err) {
+                if (!err.empty() && err != "cancelled") {
+                    LOG_WARN("slack", "%s: %s", method, err.c_str());
+                    // The thread cursor is an internal method: off for good
+                    // where the token can't call it.
+                    if (std::string_view(method) == "subscriptions.thread.mark" &&
+                        isMethodUnavailable(err))
+                        threadMarkUnavailable = true;
+                }
                 for (size_t i = 0; i < marks.size(); ++i) {
-                    if (marks[i].channel != channel)
+                    if (marks[i].key != key)
                         continue;
                     marks[i].inFlight = false;
                     std::string next  = std::move(marks[i].waiting);
                     marks.erase(marks.begin() + i);
                     if (!next.empty())
-                        mark(channel, std::move(next));
+                        markCursor(method, key, std::move(next));
                     return;
                 }
             }
@@ -1455,26 +1473,41 @@ void SlackBackend::markThreadRead(ConvRef conv, Ts root, Ts ts) {
     threadRead(conv, root, ts); // the Threads entry
     if (!_creds.sessionAuth() || _write->threadMarkUnavailable)
         return;
+    _write->markThread(convId(conv), root, threadMarkForm(conv, root, ts, true));
+}
+
+std::string SlackBackend::threadMarkForm(ConvRef conv, Ts root, Ts ts, bool read) const {
     std::string form = net::formEncode(
         {{"channel", convId(conv)},
          {"thread_ts", model::formatTs(root)},
          {"ts", model::formatTs(ts)}}
     );
+    // The official client's "Mark unread" on a reply: read=0.
+    if (!read)
+        form += "&read=0";
     // On Grid, as the feed found it needs: with team_id.
     if (_threadsTeamId)
         form +=
             "&" + net::formEncode(
                       {{"team_id", _store.workspaceId.empty() ? _creds.teamId : _store.workspaceId}}
                   );
-    api("subscriptions.thread.mark",
-        std::move(form),
-        [this](const json::Document &, const std::string &err) {
-            if (!err.empty() && err != "cancelled") {
-                LOG_WARN("slack", "subscriptions.thread.mark: %s", err.c_str());
-                if (isMethodUnavailable(err))
-                    _write->threadMarkUnavailable = true;
-            }
-        });
+    return form;
+}
+
+// Only where the thread's cursor is mine to move: a followed thread, on a
+// session token (the method is internal), while Slack takes it.
+bool SlackBackend::canMarkThreadUnread(ConvRef conv, Ts root) const {
+    return conv < _store.conversationCount() && root && _creds.sessionAuth() &&
+           !_write->threadMarkUnavailable && threadFollowed(conv, root);
+}
+
+void SlackBackend::markThreadUnread(ConvRef conv, Ts root, Ts ts) {
+    // The thread's cursor goes back to just before the reply (as the
+    // channel's does in markUnread); the channel's stays where it is.
+    if (!canMarkThreadUnread(conv, root) || ts <= root)
+        return;
+    threadUnread(conv, root, ts - 1); // the Threads entry
+    _write->markThread(convId(conv), root, threadMarkForm(conv, root, ts - 1, false));
 }
 
 void SlackBackend::markUnread(ConvRef conv, Ts ts) {

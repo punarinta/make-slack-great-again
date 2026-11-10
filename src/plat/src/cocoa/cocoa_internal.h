@@ -272,6 +272,7 @@ public:
     std::unique_ptr<Tray> createTray() override;
     bool                  notificationsAvailable() const override;
     bool                  notify(uint64_t id, const Notification &n) override;
+    void                  withdrawNotification(uint64_t id) override;
     bool                  launchedFromNotification() override;
     void                  setBadgeCount(int count) override;
 
@@ -351,6 +352,7 @@ public:
     // Notification delegate callbacks (cocoa_notify.mm), on the loop thread.
     void onNotificationResponse(uint64_t id, std::string action, bool dismissed);
     void onNotificationFailed(uint64_t id, std::string reason);
+    void onNotificationAdded(uint64_t id);
 
     std::vector<CocoaWindow *> windows;
 
@@ -431,6 +433,9 @@ private:
     // "<AppInfo::notificationScope>.", or "<per-process id>." without one.
     mutable std::string    _notifyPrefix;
     std::set<uint64_t>     _liveNotifications; // submitted, not yet clicked or dismissed
+    // Handed to the center, not added yet (the settings check runs first),
+    // and those of them withdrawn meanwhile: taken back once added.
+    std::set<uint64_t>     _submitting, _withdrawOnAdd;
 #ifdef PLAT_TEST_HOOKS
     // Attached picture per live id: its PNG's SHA-1 (hex) and pixel size,
     // for notificationProbe (the center's copy is not readable by us).

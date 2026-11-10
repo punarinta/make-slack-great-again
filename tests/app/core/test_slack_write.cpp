@@ -409,6 +409,46 @@ TEST("slack write: read cursors — conversations.mark, thread marks, mark unrea
     CHECK(tm["ts"].str() == model::formatTs(e.old + 50));
 }
 
+TEST("slack write: Mark unread on a reply — subscriptions.thread.mark read=0, after the read") {
+    if (!haveServer())
+        return;
+    Env                         e;
+    std::vector<model::Message> page;
+    for (Ts d : {50, 80}) {
+        model::Message reply;
+        reply.ts       = e.old + d;
+        reply.threadTs = e.old;
+        reply.user     = e.mira;
+        page.push_back(std::move(reply));
+    }
+    e.store.addPage(e.general, std::move(page));
+    // My thread (I started it): its cursor is mine to move; an unknown one's isn't.
+    CHECK(e.be->canMarkThreadUnread(e.general, e.old));
+    CHECK_FALSE(e.be->canMarkThreadUnread(e.general, e.old + 999));
+    e.be->markThreadRead(e.general, e.old, e.old + 80);
+    CHECK(e.store.unreadThreads() == 0);
+    e.be->markThreadUnread(e.general, e.old, e.old + 50);
+    CHECK(e.store.unreadThreads() == 1);                  // the Threads entry
+    CHECK(e.store.conversation(e.general).lastRead == 0); // the channel's cursor stays
+    REQUIRE(pumpUntil([&] { return Log().count("subscriptions.thread.mark") == 2; }));
+    pumpFor(100);
+    Log log;
+    CHECK(log.count("subscriptions.thread.mark") == 2);
+    CHECK(log.count("conversations.mark") == 0);
+    // One at a time, in the order asked: the read, then the unread.
+    json::Value rd = log.get("subscriptions.thread.mark")["form"];
+    CHECK(rd["ts"].str() == model::formatTs(e.old + 80));
+    CHECK(rd["read"].str().empty());
+    json::Value un = log.get("subscriptions.thread.mark", 1)["form"];
+    CHECK(un["channel"].str() == "C1");
+    CHECK(un["thread_ts"].str() == model::formatTs(e.old));
+    CHECK(un["ts"].str() == model::formatTs(e.old + 49));
+    CHECK(un["read"].str() == "0");
+    // Read again up to its newest: the entry goes.
+    e.be->markThreadRead(e.general, e.old, e.old + 80);
+    CHECK(e.store.unreadThreads() == 0);
+}
+
 TEST("slack write: an upload goes URL, bytes, complete, then replaces the pending copy") {
     if (!haveServer())
         return;
