@@ -79,6 +79,7 @@ struct Loaded {
     hb_font_t                                    *hbDefault = nullptr;
     FT_Face                                       ft        = nullptr;
     float                                         upem      = 1000;
+    float                                         opsz      = 0;
     FaceMetrics                                   m;
     std::vector<std::pair<uint16_t, hb_font_t *>> var; // per requested wght
     int                                           wghtAxis = -1;
@@ -242,6 +243,19 @@ Loaded &load(uint32_t face) {
     L.upem      = float(hb_face_get_upem(L.hbFace));
     hb_font_set_scale(L.hbDefault, int(L.upem), int(L.upem));
 
+#ifdef __APPLE__
+    // Use the text optical cut for the system UI face. Leaving SFNS at
+    // its file default can give small UI text display-style spacing.
+    if (!std::strcmp(g->ix.str(rec.family), "system font")) {
+        hb_ot_var_axis_info_t axis;
+        if (hb_ot_var_find_axis_info(L.hbFace, HB_TAG('o', 'p', 's', 'z'), &axis)) {
+            L.opsz = std::clamp(14.f, axis.min_value, axis.max_value);
+            hb_variation_t v{HB_TAG('o', 'p', 's', 'z'), L.opsz};
+            hb_font_set_variations(L.hbDefault, &v, 1);
+        }
+    }
+#endif
+
     hb_font_extents_t e{};
     if (hb_font_get_h_extents(L.hbDefault, &e)) {
         L.m.ascent  = float(e.ascender) / L.upem;
@@ -267,8 +281,14 @@ Loaded &load(uint32_t face) {
                 L.defCoords.push_back(mm->axis[a].def);
                 if (mm->axis[a].tag == FT_MAKE_TAG('w', 'g', 'h', 't'))
                     L.wghtAxis = int(a);
+                if (L.opsz && mm->axis[a].tag == FT_MAKE_TAG('o', 'p', 's', 'z'))
+                    L.defCoords.back() = FT_Fixed(std::lround(L.opsz * 65536.f));
             }
             FT_Done_MM_Var(g->ft, mm);
+            if (L.opsz)
+                FT_Set_Var_Design_Coordinates(
+                    L.ft, FT_UInt(L.defCoords.size()), L.defCoords.data()
+                );
         }
     }
     L.ok = true;
@@ -466,8 +486,11 @@ hb_font_t *hbFont(FontKey k) {
             return f;
     hb_font_t *f = hb_font_create(L.hbFace);
     hb_font_set_scale(f, int(L.upem), int(L.upem));
-    hb_variation_t v{HB_TAG('w', 'g', 'h', 't'), float(w)};
-    hb_font_set_variations(f, &v, 1);
+    hb_variation_t v[] = {
+        {HB_TAG('w', 'g', 'h', 't'), float(w)},
+        {HB_TAG('o', 'p', 's', 'z'), L.opsz}
+    };
+    hb_font_set_variations(f, v, L.opsz ? 2 : 1);
     L.var.push_back({w, f});
     return f;
 }
