@@ -273,6 +273,38 @@ struct SlackBackend::Write {
         );
     }
 
+    // users.prefs.set writes the whole muted_channels list, so one call at a
+    // time, the newest list waiting: two toggles landing out of order would
+    // otherwise leave the older state on the server.
+    std::string mutePrefWaiting;
+    bool        mutePrefWaitingSet = false, mutePrefInFlight = false;
+    void        setMutedPrefs(std::string channels) {
+        if (mutePrefInFlight) {
+            mutePrefWaiting    = std::move(channels);
+            mutePrefWaitingSet = true;
+            return;
+        }
+        sendMutedPrefs(std::move(channels));
+    }
+    void sendMutedPrefs(std::string channels) {
+        mutePrefInFlight = true;
+        json::Writer w;
+        w.beginObject().key("muted_channels").value(channels).endObject();
+        b.readCall(
+            "users.prefs.set",
+            net::formEncode({{"prefs", w.str()}, {"reason", "update-muted-channels"}}),
+            [this](const json::Document &, const std::string &err) {
+                mutePrefInFlight = false;
+                if (!err.empty() && err != "cancelled")
+                    LOG_WARN("slack", "users.prefs.set (mute): %s", err.c_str());
+                if (!mutePrefWaitingSet)
+                    return;
+                mutePrefWaitingSet = false;
+                sendMutedPrefs(std::move(mutePrefWaiting));
+            }
+        );
+    }
+
     // Read cursors (conversations.mark per conversation,
     // subscriptions.thread.mark per thread), one at a time per cursor: two
     // in flight may land in either order, and the cursor must end where the
@@ -1538,11 +1570,31 @@ void SlackBackend::setStarred(ConvRef conv, bool starred) {
     );
 }
 
-// Mute and the notification level are kept locally, in the Store: Slack's
-// per-channel prefs aren't reachable over the public API.
+// Mute is the web client's muted_channels pref (users.prefs.get); write it
+// back with users.prefs.set so Slack and this app agree. The notification
+// level has no read API for the per-channel value, so it stays local.
 void SlackBackend::setMuted(ConvRef conv, bool muted) {
-    if (conv < _store.conversationCount())
-        _store.updateConversation(conv, [muted](model::Conversation &c) { c.muted = muted; });
+    if (conv >= _store.conversationCount())
+        return;
+    const std::string id = _store.conversation(conv).id;
+    _store.updateConversation(conv, [muted](model::Conversation &c) { c.muted = muted; });
+    // Only once Slack's list is known: writing before the first users.prefs.get
+    // would send a list missing every mute set elsewhere.
+    if (!_creds.sessionAuth() || !_mutedKnown)
+        return;
+    if (muted)
+        _mutedConvs.insert(id);
+    else
+        _mutedConvs.erase(id);
+    std::vector<std::string> ids(_mutedConvs.begin(), _mutedConvs.end());
+    std::sort(ids.begin(), ids.end());
+    std::string channels;
+    for (const std::string &x : ids) {
+        if (!channels.empty())
+            channels += ',';
+        channels += x;
+    }
+    _write->setMutedPrefs(std::move(channels));
 }
 
 void SlackBackend::setNotifyLevel(ConvRef conv, model::NotifyLevel level) {

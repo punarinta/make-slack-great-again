@@ -30,6 +30,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace plat {
@@ -380,6 +381,13 @@ private:
     net::Client                       &transfers();
     std::vector<std::shared_ptr<Done>> _downloads; // downloadFile's, until answered
     bool                               _authLost = false;
+    // The viewer's muted conversations, from users.prefs.get /
+    // client.userBoot's muted_channels (the web client's own list; the
+    // conversation object carries no per-user mute). _mutedKnown once Slack
+    // answered: until then the cached local mute flags stand.
+    std::unordered_set<std::string>    _mutedConvs;
+    bool                               _mutedKnown = false;
+    void                               applyMutedChannels(const std::vector<std::string> &ids);
     // Enterprise Grid (auth.test's enterprise_id), and the thread
     // methods there refused without team_id once: they send it since.
     bool                               _grid = false, _threadsTeamId = false;

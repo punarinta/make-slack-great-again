@@ -36,6 +36,12 @@ int                      realNamesFrom(int override, int teamDefault);
 // users.prefs.get / client.userBoot "prefs"'s vip_users: the viewer's own
 // VIP list, a comma-separated string of user ids. Empty when absent.
 std::vector<std::string> vipUsers(const json::Value &prefs);
+// The viewer's muted conversations (the web client's "Mute and hide"):
+// users.prefs.get / client.userBoot "prefs"'s muted_channels, a
+// comma-separated string of conversation ids (an array is accepted too).
+// False when the pref is absent, so an old answer can't clear every mute;
+// true with an empty list when Slack says nothing is muted.
+bool                     mutedChannels(const json::Value &prefs, std::vector<std::string> &out);
 // A conversations.list / client.userBoot / im.list / conversations.info
 // channel or IM. Unread falls back to 1 when latest > last_read (Slack often
 // reports unread_count 0 for channels).

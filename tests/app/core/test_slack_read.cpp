@@ -1013,6 +1013,59 @@ TEST("slack read: vipUsers reads the comma-separated vip_users pref") {
     CHECK(vipUsers(prefs(R"({"vip_users": "U1"})")->root()) == u1);
 }
 
+TEST("slack read: mutedChannels reads the comma-separated muted_channels pref") {
+    using namespace slack::mapjson;
+    const auto prefs = [](const char *text) {
+        auto d = std::make_shared<json::Document>();
+        CHECK(d->parse(std::string(text), nullptr));
+        return d;
+    };
+    const std::vector<std::string> c1c2 = {"C1", "C2"}, c1 = {"C1"};
+    std::vector<std::string>       ids;
+    CHECK(mutedChannels(prefs(R"({"muted_channels": "C1,C2"})")->root(), ids));
+    CHECK(ids == c1c2);
+    CHECK(mutedChannels(prefs(R"({"muted_channels": ""})")->root(), ids));
+    CHECK(ids.empty());
+    CHECK(mutedChannels(prefs(R"({"muted_channels": "C1,,C2,"})")->root(), ids));
+    CHECK(ids == c1c2);
+    CHECK(mutedChannels(prefs(R"({"muted_channels": ["C1"]})")->root(), ids));
+    CHECK(ids == c1);
+    // Absent (an older answer): not an authoritative empty list.
+    CHECK_FALSE(mutedChannels(prefs(R"({})")->root(), ids));
+    CHECK(ids == c1);
+}
+
+TEST("slack read: mutes come from users.prefs.get's muted_channels") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    // Slack's list decides: C2's is_muted is not enough (it is not muted now).
+    CHECK(!e.store.conversation(e.conv("C2")).muted);
+}
+
+TEST("slack read: muting writes the web client's muted_channels pref") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}},
+            "users.prefs.set": {"ok": true}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    e.be->setMuted(e.conv("C2"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.set") == 1; }, 3000));
+    Log               l;
+    const json::Value form = l.get("users.prefs.set")["form"];
+    CHECK_STR(form["reason"].str(), "update-muted-channels");
+    json::Document prefs;
+    REQUIRE(prefs.parse(std::string(form["prefs"].str()), nullptr));
+    CHECK_STR(prefs.root()["muted_channels"].str(), "C1,C2");
+}
+
 TEST("slack read: the VIP list comes with the connect's users.prefs.get") {
     if (!haveServer())
         return;
