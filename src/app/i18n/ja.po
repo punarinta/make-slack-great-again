@@ -1063,6 +1063,14 @@ msgid "Unmute thread"
 msgstr "スレッドのミュート解除"
 
 #: src/app/screens/messages/message_list.cpp
+msgid "Get notified about new replies"
+msgstr "新しい返信について通知を受け取る"
+
+#: src/app/screens/messages/message_list.cpp
+msgid "Turn off notifications for replies"
+msgstr "返信の通知をオフにする"
+
+#: src/app/screens/messages/message_list.cpp
 msgid "Edit message"
 msgstr "メッセージを編集"
 

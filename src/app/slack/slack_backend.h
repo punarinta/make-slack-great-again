@@ -88,6 +88,7 @@ public:
     void loadMessage(model::ConvRef conv, model::Ts ts, MessageDone done) override;
     void resolveChannel(const std::string &id) override;
     bool threadFollowed(model::ConvRef conv, model::Ts root) const override;
+    bool canFollowThread(model::ConvRef conv, model::Ts root) const override;
     void resolveUser(model::UserRef u) override;
     void requestPresence(model::UserRef u) override;
 
@@ -105,6 +106,8 @@ public:
     void react(model::ConvRef conv, model::Ts ts, std::string_view name, bool add) override;
     void markRead(model::ConvRef conv, model::Ts ts) override;
     void markUnread(model::ConvRef conv, model::Ts ts) override;
+    // subscriptions.thread.add / remove, one at a time per thread.
+    void setThreadFollowed(model::ConvRef conv, model::Ts root, bool follow) override;
     void setStarred(model::ConvRef conv, bool starred) override;
     void setMuted(model::ConvRef conv, bool muted) override;
     void setNotifyLevel(model::ConvRef conv, model::NotifyLevel level) override;
@@ -318,6 +321,12 @@ private:
     void        threadRead(model::ConvRef c, model::Ts root, model::Ts upTo);
     // ...or moved back ("Mark unread" on a reply): unread past `to` again.
     void        threadUnread(model::ConvRef c, model::Ts root, model::Ts to);
+    // A follow change of mine (setThreadFollowed): the read half's state at
+    // once, held against the feed until followSettled (Slack answered).
+    void        setFollowLocal(model::ConvRef c, model::Ts root, bool on);
+    void        followSettled(model::ConvRef c, model::Ts root);
+    // subscriptions.thread.add / remove's form.
+    std::string threadSubForm(model::ConvRef c, model::Ts root) const;
     // subscriptions.thread.mark's form (read = false: "Mark unread").
     std::string threadMarkForm(model::ConvRef c, model::Ts root, model::Ts ts, bool read) const;
     // The DM read-cursor sweeps (the DM activity sweep, resyncUnreads;
@@ -386,6 +395,9 @@ private:
     // The activity feed refused for good (its code, for the page), or on
     // Grid refused without team_id once (slack_activity.cpp).
     bool                               _activityUnavailable = false, _activityTeamId = false;
+    // subscriptions.thread.add / remove refused as a method: no following
+    // by hand (canFollowThread).
+    bool                               _followUnavailable = false;
     std::string                        _activityError;
     // The page's messages: messages.list, or one conversations.history each
     // where that is refused.

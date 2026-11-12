@@ -1409,19 +1409,21 @@ TEST("actions: the message menu, item for item, acts through the backend") {
     // message_list.cpp showContextMenu for someone else's message in Slack.
     CHECK_STR(
         menuLabels(e.list->menuItems(linked)),
-        "Reply in thread|-|Copy link|Copy link from message|Copy message|-|Mark unread|"
-        "Pin to channel|Save for later|Remind me|-|Forward message|Summarize down"
+        "Reply in thread|Get notified about new replies|-|Copy link|Copy link from message|"
+        "Copy message|-|Mark unread|Pin to channel|Save for later|Remind me|-|Forward message|"
+        "Summarize down"
     );
     const auto items = e.list->menuItems(linked);
     CHECK_STR(items[0].hint, "T");
-    CHECK_STR(items[2].hint, "L");
-    CHECK_STR(items[4].hint, "Ctrl+C");
-    CHECK_STR(items[6].hint, "U");
-    CHECK_STR(items[7].hint, "P");
+    CHECK_STR(items[3].hint, "L");
+    CHECK_STR(items[5].hint, "Ctrl+C");
+    CHECK_STR(items[7].hint, "U");
+    CHECK_STR(items[8].hint, "P");
     CHECK(items[0].icon == uint16_t(gfx::Icon::MessageSquareReply));
-    CHECK(items[6].icon == uint16_t(gfx::Icon::Eye));
-    CHECK(items[9].icon == uint16_t(gfx::Icon::AlarmClock));
-    CHECK(!items[11].enabled && !items[12].enabled); // no forwarding hook / AI provider here
+    CHECK(items[1].icon == uint16_t(gfx::Icon::Bell));
+    CHECK(items[7].icon == uint16_t(gfx::Icon::Eye));
+    CHECK(items[10].icon == uint16_t(gfx::Icon::AlarmClock));
+    CHECK(!items[12].enabled && !items[13].enabled); // no forwarding hook / AI provider here
 
     using M = MessageList;
     e.list->runMenuAction(linked, M::kCopyLinkInText);
@@ -1462,12 +1464,16 @@ TEST("actions: the message menu, item for item, acts through the backend") {
     e.list->onEdit   = [&](ConvRef, Ts ts) { editing = ts; };
     CHECK_STR(
         menuLabels(e.list->menuItems(mine)),
-        "Reply in thread|-|Edit message|-|Copy link|Copy message|-|Mark unread|Pin to channel|"
-        "Save for later|Remind me|-|Forward message|Move to thread…|Summarize down|-|"
-        "Delete message…"
+        "Reply in thread|Turn off notifications for replies|-|Edit message|-|Copy link|"
+        "Copy message|-|Mark unread|Pin to channel|Save for later|Remind me|-|Forward message|"
+        "Move to thread…|Summarize down|-|Delete message…"
     );
     e.list->runMenuAction(mine, M::kEdit);
     CHECK(editing == mine);
+    // My own thread is followed; it can be turned off too.
+    CHECK(e.backend.threadFollowed(eng, mine));
+    e.list->runMenuAction(mine, M::kUnfollowThread);
+    CHECK_FALSE(e.backend.threadFollowed(eng, mine));
     e.list->runMenuAction(mine, M::kDelete); // the confirmation first
     auto *dlg = static_cast<ui::Dialog *>(e.win->topPopup());
     REQUIRE(dlg != nullptr);
@@ -1475,13 +1481,25 @@ TEST("actions: the message menu, item for item, acts through the backend") {
     pump(2);
     CHECK(e.store.findMessage(eng, mine) == nullptr);
 
+    // Following by hand: on (Get notified about new replies), off again
+    // (Turn off notifications for replies), the label following the state.
+    CHECK_FALSE(e.backend.threadFollowed(eng, linked));
+    e.list->runMenuAction(linked, M::kFollowThread);
+    CHECK(e.backend.threadFollowed(eng, linked));
+    CHECK(
+        menuLabels(e.list->menuItems(linked))
+            .rfind("Reply in thread|Turn off notifications for replies|-|", 0) == 0
+    );
+    e.list->runMenuAction(linked, M::kUnfollowThread);
+    CHECK_FALSE(e.backend.threadFollowed(eng, linked));
+
     // A thread's messages can mute it (Mute thread).
     Ts root = 0;
     for (const model::Message &m : e.store.conversation(eng).messages)
         if (m.replyCount > 0)
             root = m.ts;
     if (root) {
-        CHECK(menuLabels(e.list->menuItems(root)).rfind("Reply in thread|Mute thread|-|", 0) == 0);
+        CHECK(menuLabels(e.list->menuItems(root)).rfind("Reply in thread|Mute thread|", 0) == 0);
         e.list->runMenuAction(root, M::kMuteThread);
         CHECK(e.store.threadMuted(eng, root));
     }

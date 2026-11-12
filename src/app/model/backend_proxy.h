@@ -153,6 +153,8 @@ public:
     void editCanvas(const std::string &fileId, std::vector<CanvasChange> changes, Done d) override;
     void deleteCanvas(const std::string &fileId, Done d) override;
     bool threadFollowed(ConvRef c, Ts root) const override;
+    bool canFollowThread(ConvRef c, Ts root) const override;
+    void setThreadFollowed(ConvRef c, Ts root, bool follow) override;
     void resolveUser(UserRef u) override;
     void resolveChannel(const std::string &id) override;
     void loadSidebarTheme(std::function<void(SidebarTheme, std::string)> done) override;

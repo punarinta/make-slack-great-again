@@ -104,8 +104,12 @@ void FakeBackend::loadThreadsView(std::string, ThreadsViewDone done) {
     });
 }
 
-// The threads I started or replied in.
+// The threads I started or replied in, or follow by hand (unless I
+// turned them off by hand).
 bool FakeBackend::follows(ConvRef conv, Ts root) const {
+    for (const FollowSet &f : _followSet)
+        if (f.conv == conv && f.root == root)
+            return f.on;
     const model::Message *r = _store.findMessage(conv, root);
     if (!r)
         return false;
@@ -124,6 +128,14 @@ void FakeBackend::publishUnreadThreads() {
             n += !replies->empty() && replies->back().ts > r.read && follows(r.conv, r.root) &&
                  !_store.threadMuted(r.conv, r.root);
     _store.setUnreadThreads(n);
+}
+
+void FakeBackend::setThreadFollowed(ConvRef conv, Ts root, bool follow) {
+    if (!canFollowThread(conv, root))
+        return;
+    std::erase_if(_followSet, [&](const FollowSet &f) { return f.conv == conv && f.root == root; });
+    _followSet.push_back({conv, root, follow});
+    publishUnreadThreads();
 }
 
 void FakeBackend::markThreadRead(ConvRef conv, Ts root, Ts ts) {
@@ -267,6 +279,12 @@ void FakeBackend::sendWithFiles(
         });
         return;
     }
+    // Replying follows the thread again, after a "Turn off notifications
+    // for replies" too.
+    if (threadTs)
+        std::erase_if(_followSet, [&](const FollowSet &f) {
+            return f.conv == conv && f.root == threadTs && !f.on;
+        });
     model::Message m;
     m.ts                     = nextTs();
     m.threadTs               = threadTs;

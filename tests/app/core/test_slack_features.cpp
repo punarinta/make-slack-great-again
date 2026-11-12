@@ -643,6 +643,63 @@ TEST("slack features: a followed thread's reply notifies even when the thread is
     e.store.unobserve(obs);
 }
 
+TEST("slack features: a thread unfollowed on another client is unfollowed here") {
+    if (!haveServer())
+        return;
+    // My thread, followed; then the feed says subscribed: false.
+    Env e(
+        R"({"subscriptions.thread.getView": [
+        {"ok": true, "total_unread_replies": 0, "threads": [
+          {"root_msg": {"channel": "C1", "ts": "1800000000.000100", "user": "UME", "text": "root"},
+           "latest_replies": [{"ts": "1800000001.000100", "user": "UMIRA", "text": "old"}]}]},
+        {"ok": true, "total_unread_replies": 1, "threads": [
+          {"root_msg": {"channel": "C1", "ts": "1800000000.000100", "user": "UME", "text": "root",
+                        "subscribed": false, "last_read": "1800000001.000100"},
+           "latest_replies": [{"ts": "1800000002.000100", "user": "UMIRA", "text": "new one"}]}]}],
+        "conversations.history?channel=C1": {"ok": true, "has_more": false, "messages": [
+          {"type": "message", "ts": "1800000000.000100", "user": "UME", "text": "root",
+           "thread_ts": "1800000000.000100", "reply_count": 2}]}})"
+    );
+    REQUIRE(e.connect());
+    const ConvRef c    = e.conv("C1");
+    const Ts      root = model::parseTs("1800000000.000100");
+    REQUIRE(pumpUntil([&] { return count("subscriptions.thread.getView") >= 3; }, 5000));
+    CHECK(!e.be->threadFollowed(c, root));
+    CHECK(e.store.unreadThreads() == 0);
+    // Its root loaded (mine): still not followed, though I started it.
+    REQUIRE(e.history(c));
+    REQUIRE(e.store.findMessage(c, root));
+    CHECK(!e.be->threadFollowed(c, root));
+}
+
+TEST("slack features: my follow change holds against a feed poll sent before Slack took it") {
+    if (!haveServer())
+        return;
+    // The feed keeps showing the thread as followed, with an unread reply;
+    // the remove is slow.
+    Env e(R"({"subscriptions.thread.getView": {"ok": true, "total_unread_replies": 1, "threads": [
+          {"root_msg": {"channel": "C1", "ts": "1800000000.000100", "user": "UMIRA", "text": "root",
+                        "last_read": "1800000000.000100"},
+           "latest_replies": [{"ts": "1800000001.000100", "user": "UMIRA", "text": "reply"}]}]},
+          "subscriptions.thread.remove": {"ok": true, "__delay": 1.0}})");
+    REQUIRE(e.connect());
+    const ConvRef c    = e.conv("C1");
+    const Ts      root = model::parseTs("1800000000.000100");
+    REQUIRE(pumpUntil([&] { return e.store.unreadThreads() == 1; }, 5000));
+    CHECK(e.be->threadFollowed(c, root)); // the feed is the subscription list
+    e.be->setThreadFollowed(c, root, false);
+    CHECK(!e.be->threadFollowed(c, root));
+    CHECK(e.store.unreadThreads() == 0); // the Threads entry lets go at once
+    // Feed polls while the remove is out don't bring it back.
+    const int polls = count("subscriptions.thread.getView");
+    REQUIRE(pumpUntil([&] { return count("subscriptions.thread.getView") >= polls + 2; }, 5000));
+    CHECK(count("subscriptions.thread.remove") == 1);
+    CHECK(!e.be->threadFollowed(c, root));
+    CHECK(e.store.unreadThreads() == 0);
+    // Once Slack took it, the feed rules again (here it still lists it).
+    REQUIRE(pumpUntil([&] { return e.be->threadFollowed(c, root); }, 5000));
+}
+
 TEST("slack features: banners — rate limits (throttled) and failed sends in words") {
     if (!haveServer())
         return;

@@ -780,6 +780,20 @@ public:
         (void)conv, (void)root;
         return false;
     }
+    // Following a thread by hand, kept in the service so its other clients
+    // agree: "Get notified about new replies" on any thread (even one I
+    // never replied in), "Turn off notifications for replies" on one I
+    // follow (even one I started). canFollowThread: where the service keeps
+    // that (root: the thread's root, which may have no replies yet).
+    virtual bool canFollowThread(ConvRef conv, Ts root) const {
+        (void)conv, (void)root;
+        return false;
+    }
+    // At once here (threadFollowed answers the new state), then in the
+    // service; a refusal puts it back.
+    virtual void setThreadFollowed(ConvRef conv, Ts root, bool follow) {
+        (void)conv, (void)root, (void)follow;
+    }
     // A user known only by id (a placeholder): looked up;
     // the Store fills the record in when it answers.
     virtual void resolveUser(UserRef u) { (void)u; }

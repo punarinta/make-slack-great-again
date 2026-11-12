@@ -901,13 +901,12 @@ int64_t epochSecs(const Value &v) {
 
 bool toFeedThread(const Value &t, model::Store &store, FeedThread &out) {
     const Value rootObj = t["root_msg"];
-    if (rootObj.has("subscribed") && !rootObj["subscribed"].boolean())
-        return false;
     // root_msg is a whole message and, unlike history ones, names its channel.
-    out.conv     = store.findConversation(rootObj["channel"].str());
-    out.root     = model::parseTs(rootObj["ts"].str());
-    out.lastRead = model::parseTs(rootObj["last_read"].str());
-    if (out.conv == model::kNoConv || !out.root)
+    out.conv            = store.findConversation(rootObj["channel"].str());
+    out.root            = model::parseTs(rootObj["ts"].str());
+    out.lastRead        = model::parseTs(rootObj["last_read"].str());
+    out.subscribed      = !rootObj.has("subscribed") || rootObj["subscribed"].boolean();
+    if (!out.subscribed || out.conv == model::kNoConv || !out.root)
         return false;
     // latest_replies on a read thread, unread_replies (alone) on one with
     // news: both, deduplicated.

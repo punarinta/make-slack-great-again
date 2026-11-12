@@ -347,6 +347,57 @@ struct SlackBackend::Write {
     };
     std::vector<Reaction> reactions; // in flight
 
+    // Following a thread, the same way: one call at a time per thread, in
+    // order, the latest wish sent once it answers. A refusal puts the
+    // follow state back; any answer lets the feed rule on it again.
+    struct Follow {
+        ConvRef conv;
+        Ts      root;
+        int     want = -1; // the state wanted next (-1 none)
+    };
+    std::vector<Follow> follows; // in flight
+
+    void follow(ConvRef conv, Ts root, bool on) {
+        for (Follow &f : follows)
+            if (f.conv == conv && f.root == root) {
+                f.want = on;
+                return;
+            }
+        follows.push_back({conv, root, -1});
+        const char *method = on ? "subscriptions.thread.add" : "subscriptions.thread.remove";
+        b.readCall(
+            method,
+            b.threadSubForm(conv, root),
+            [this, conv, root, on, method](const json::Document &, const std::string &err) {
+                int want = -1;
+                for (size_t i = 0; i < follows.size(); ++i)
+                    if (follows[i].conv == conv && follows[i].root == root) {
+                        want = follows[i].want;
+                        follows.erase(follows.begin() + long(i));
+                        break;
+                    }
+                if (err == "cancelled")
+                    return; // the backend is going away
+                const bool fine = err.empty();
+                if (!fine)
+                    LOG_WARN("slack", "%s: %s", method, err.c_str());
+                if (want >= 0 && bool(want) != on) {
+                    follow(conv, root, bool(want)); // the newer wish goes out now
+                    return;
+                }
+                if (!fine && !transient(err)) {
+                    // Off for good only where the token can't call the
+                    // method at all (not a refusal of this one thread).
+                    if (err == "unknown_method" || err == "method_deprecated" ||
+                        err == "not_allowed_token_type" || err == "missing_scope")
+                        b._followUnavailable = true;
+                    b.setFollowLocal(conv, root, !on); // refused: back as it was
+                }
+                b.followSettled(conv, root);
+            }
+        );
+    }
+
     void react(ConvRef conv, Ts ts, const std::string &name, bool add) {
         for (Reaction &r : reactions)
             if (r.conv == conv && r.ts == ts && r.name == name) {
@@ -1508,6 +1559,26 @@ void SlackBackend::markThreadUnread(ConvRef conv, Ts root, Ts ts) {
         return;
     threadUnread(conv, root, ts - 1); // the Threads entry
     _write->markThread(convId(conv), root, threadMarkForm(conv, root, ts - 1, false));
+}
+
+// The thread's subscription, as the official client sets it from the
+// message menu; on Grid, as the feed found it needs, with team_id.
+std::string SlackBackend::threadSubForm(ConvRef conv, Ts root) const {
+    std::string form =
+        net::formEncode({{"channel", convId(conv)}, {"thread_ts", model::formatTs(root)}});
+    if (_threadsTeamId)
+        form +=
+            "&" + net::formEncode(
+                      {{"team_id", _store.workspaceId.empty() ? _creds.teamId : _store.workspaceId}}
+                  );
+    return form;
+}
+
+void SlackBackend::setThreadFollowed(ConvRef conv, Ts root, bool follow) {
+    if (!canFollowThread(conv, root) || threadFollowed(conv, root) == follow)
+        return;
+    setFollowLocal(conv, root, follow);
+    _write->follow(conv, root, follow);
 }
 
 void SlackBackend::markUnread(ConvRef conv, Ts ts) {

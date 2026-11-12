@@ -72,6 +72,14 @@ public:
     void markThreadRead(model::ConvRef conv, model::Ts root, model::Ts ts) override;
     bool canMarkThreadUnread(model::ConvRef conv, model::Ts root) const override;
     void markThreadUnread(model::ConvRef conv, model::Ts root, model::Ts ts) override;
+    // Started or replied in, unless turned off by hand; or followed by hand.
+    bool threadFollowed(model::ConvRef conv, model::Ts root) const override {
+        return follows(conv, root);
+    }
+    bool canFollowThread(model::ConvRef conv, model::Ts root) const override {
+        return conv < _store.conversationCount() && root;
+    }
+    void setThreadFollowed(model::ConvRef conv, model::Ts root, bool follow) override;
     // The demo's activity: mentions of me, the newest message of each
     // direct message, replies in my threads, reactions to my messages —
     // unread past the read cursors; one page.
@@ -154,7 +162,13 @@ private:
     std::vector<ThreadRead> _threadRead; // my cursor per thread (few: linear is fine)
     model::Ts              &threadRead(model::ConvRef conv, model::Ts root);
     bool                    follows(model::ConvRef conv, model::Ts root) const;
-    void                    publishUnreadThreads();
+    struct FollowSet {
+        model::ConvRef conv;
+        model::Ts      root;
+        bool           on;
+    };
+    std::vector<FollowSet>                    _followSet; // set by hand (few: linear is fine)
+    void                                      publishUnreadThreads();
     // Items marked read or unread on the Activity page, by key.
     std::vector<std::pair<std::string, bool>> _activityRead;
     struct CanvasEdit {

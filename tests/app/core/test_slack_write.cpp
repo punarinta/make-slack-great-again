@@ -196,6 +196,73 @@ TEST("slack write: replying in a thread follows it") {
     CHECK(!e.be->threadFollowed(e.general, 0));
 }
 
+TEST("slack write: following by hand — subscriptions.thread.add / remove, at once, in order") {
+    if (!haveServer())
+        return;
+    Env      e;
+    const Ts root = model::parseTs("1690000000.000100"); // someone's, not loaded
+    CHECK(e.be->canFollowThread(e.general, root));
+    CHECK_FALSE(e.be->canFollowThread(e.general, 0));
+    CHECK_FALSE(e.be->canFollowThread(model::ConvRef(99), root));
+    // "Get notified about new replies" on a thread I never replied in.
+    CHECK(!e.be->threadFollowed(e.general, root));
+    e.be->setThreadFollowed(e.general, root, true);
+    CHECK(e.be->threadFollowed(e.general, root)); // at once, before the answer
+    REQUIRE(pumpUntil([&] { return Log().count("subscriptions.thread.add") == 1; }));
+    const Log   addLog;
+    json::Value add = addLog.get("subscriptions.thread.add")["form"];
+    CHECK_STR(add["channel"].str(), "C1");
+    CHECK(add["thread_ts"].str() == model::formatTs(root));
+    // "Turn off notifications for replies" on one I started.
+    CHECK(e.be->threadFollowed(e.general, e.old));
+    e.be->setThreadFollowed(e.general, e.old, false);
+    CHECK(!e.be->threadFollowed(e.general, e.old));
+    REQUIRE(pumpUntil([&] { return Log().count("subscriptions.thread.remove") == 1; }));
+    const Log   rmLog;
+    json::Value rm = rmLog.get("subscriptions.thread.remove")["form"];
+    CHECK(rm["thread_ts"].str() == model::formatTs(e.old));
+    pumpFor(100);
+    CHECK(!e.be->threadFollowed(e.general, e.old)); // Slack took it: it stays off
+    // Already so: nothing is sent.
+    e.be->setThreadFollowed(e.general, e.old, false);
+    pumpFor(100);
+    CHECK(Log().count("subscriptions.thread.remove") == 1);
+    // Replying follows it again, as in Slack.
+    e.be->send(e.general, "back in", e.old, nullptr);
+    CHECK(e.be->threadFollowed(e.general, e.old));
+}
+
+TEST("slack write: following flip-flops coalesce; a refusal puts it back") {
+    if (!haveServer())
+        return;
+    Env      e;
+    const Ts root = model::parseTs("1690000000.000100");
+    // On, then off and on again while the add is out: the last wish equals
+    // what is in flight, so nothing more is sent.
+    script("subscriptions.thread.add", R"([{"ok": true, "__delay": 0.3}])");
+    e.be->setThreadFollowed(e.general, root, true);
+    REQUIRE(pumpUntil([&] { return Log().count("subscriptions.thread.add") == 1; }));
+    e.be->setThreadFollowed(e.general, root, false);
+    CHECK(!e.be->threadFollowed(e.general, root));
+    e.be->setThreadFollowed(e.general, root, true);
+    pumpFor(500);
+    Log log;
+    CHECK(log.count("subscriptions.thread.add") == 1);
+    CHECK(log.count("subscriptions.thread.remove") == 0);
+    CHECK(e.be->threadFollowed(e.general, root));
+    // A refusal: back as it was, and still offered.
+    script("subscriptions.thread.remove", R"([{"ok": false, "error": "thread_not_found"}])");
+    e.be->setThreadFollowed(e.general, root, false);
+    CHECK(!e.be->threadFollowed(e.general, root));
+    REQUIRE(pumpUntil([&] { return e.be->threadFollowed(e.general, root); }));
+    CHECK(e.be->canFollowThread(e.general, root));
+    // The method itself refused: no following by hand any more.
+    script("subscriptions.thread.remove", R"([{"ok": false, "error": "unknown_method"}])");
+    e.be->setThreadFollowed(e.general, root, false);
+    REQUIRE(pumpUntil([&] { return e.be->threadFollowed(e.general, root); }));
+    CHECK_FALSE(e.be->canFollowThread(e.general, root));
+}
+
 TEST("slack write: a lost answer to a delivered post reconciles, never posts twice") {
     if (!haveServer())
         return;
