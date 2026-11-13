@@ -11,6 +11,7 @@
 #include <deque>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 
@@ -167,6 +168,12 @@ struct Backend::Tracked {
     // Its background jobs (pumpJobs) by id: running, and ended ones not yet dismissed.
     std::map<std::string, model::BackgroundJob> jobs;
     std::map<std::string, int64_t>              jobEndSeenMs; // when msga saw each end
+    // Reports that reached 100%, by "report:<name>": the file's time then.
+    std::map<std::string, int64_t>              reportDoneAtMs;
+    // Running commands' output files, by task id (stopJob finds the process by it).
+    std::map<std::string, std::string>          jobOutputs;
+    // Commands the user stopped: "stopped" however their notification reads.
+    std::set<std::string>                       userStopped;
     bool                               wasLive = false; // listed or sending at the previous refresh
     // Its user as last pushed (syncMeta): only pushed when it changed.
     std::string                        userSig;

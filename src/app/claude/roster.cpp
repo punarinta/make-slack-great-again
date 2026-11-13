@@ -391,6 +391,48 @@ void signalProcess(int64_t pid, bool force) {
 #endif
 }
 
+int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputPath) {
+#ifdef __linux__
+    if (sessionId.empty() || outputPath.empty())
+        return 0;
+    const std::string           idVar = str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId});
+    std::vector<file::DirEntry> entries;
+    file::listDir("/proc", &entries);
+    for (const auto &entry : entries) {
+        int64_t pid = 0;
+        for (const char c : entry.name) {
+            if (c < '0' || c > '9') {
+                pid = 0;
+                break;
+            }
+            pid = pid * 10 + (c - '0');
+        }
+        if (pid <= 0 || ::getpgid(pid_t(pid)) != pid_t(pid))
+            continue; // only group leaders: a command and what it started
+        char          link[4096];
+        const ssize_t n =
+            ::readlink(str::concat({"/proc/", entry.name, "/fd/1"}).c_str(), link, sizeof link);
+        if (n <= 0 || std::string_view(link, size_t(n)) != outputPath)
+            continue;
+        if (contains(procStrings(pid, "environ"), idVar))
+            return pid;
+    }
+#else
+    (void)sessionId;
+    (void)outputPath;
+#endif
+    return 0;
+}
+
+bool signalProcessGroup(int64_t group) {
+#ifdef _WIN32
+    (void)group;
+    return false;
+#else
+    return group > 0 && ::kill(-pid_t(group), SIGTERM) == 0;
+#endif
+}
+
 void applyWorker(SessionInfo &job, const SessionInfo &worker) {
     // The worker stays alive (idle) after a turn even though the job reads
     // "done", and resuming it then only starts a copy: it counts as running.

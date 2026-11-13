@@ -44,6 +44,8 @@ public:
     bool isAgentSession(ConvRef c) const override;
     bool canStopSession(ConvRef c) const override;
     void stopSession(ConvRef c) override;
+    bool canStopJob(ConvRef c, const std::string &jobId) const override;
+    void stopJob(ConvRef c, const std::string &jobId) override;
     std::vector<AgentRole> agentRoles() const override;
     std::string            saveAgentRole(const AgentRole &role, std::string *error) override;
     void                   removeAgentRole(const std::string &id) override;

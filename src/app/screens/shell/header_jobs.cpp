@@ -4,6 +4,7 @@
 #include "base/str.h"
 #include "base/time.h"
 #include "screens/shell/typing_indicator.h"
+#include "ui/controls.h"
 #include "ui/scroll.h"
 
 #include <algorithm>
@@ -161,7 +162,12 @@ public:
             });
             _ordered = true;
         }
+        // Not under the pointer on a Stop button: rebuilt, it would lose the click.
+        for (const Button *b : _stops)
+            if (b->hovered())
+                return;
         _rows->clearChildren();
+        _stops.clear();
         int running = 0, failed = 0, done = 0;
         for (const std::string &id : _order) {
             const auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BackgroundJob &j) {
@@ -189,6 +195,29 @@ public:
         _summary->setText(std::move(s));
         invalidateLayout();
     }
+    // Stop job `id` ("name"), once the user confirms.
+    void confirmStop(const std::string &id, const std::string &name) {
+        Window *w = window();
+        if (!w)
+            return;
+        auto d = Dialog::confirm(
+            tr("Stop background job"),
+            i18n::arg(
+                tr("Stop \xE2\x80\x9C%1\xE2\x80\x9D? The session is told that it was stopped.\nA "
+                   "job that writes files (a build, a migration) may leave them half-done."),
+                name
+            ),
+            tr("Stop job"),
+            Button::Kind::Danger,
+            themed(C::TextMuted)
+        );
+        screens::Context &ctx  = _ctx;
+        const auto        conv = _conv;
+        d->onAccepted          = [&ctx, conv, id] { ctx.backend.stopJob(conv, id); };
+        close(); // the dialog in its place
+        w->showPopup(std::move(d));
+    }
+    size_t                          stopButtons() const { return _stops.size(); }
     // The failed jobs it showed: seen once it closes.
     const std::vector<std::string> &seenFailed() const { return _seenFailed; }
     size_t                          rowCount() const { return (_rows->childCount() + 1) / 2; }
@@ -237,6 +266,14 @@ private:
             break;
         }
         line1->add<Label>(std::move(end), endFont, endColor)->style().noShrink();
+        // A running command can be stopped from here (asked first).
+        if (j.state == State::Running && !j.report && _ctx.backend.canStopJob(_conv, j.id)) {
+            auto *stop = line1->add<Button>(tr("Stop"), Button::Kind::Ghost, Button::Form::Small);
+            stop->setTooltip(tr("Stop this background job"));
+            stop->style().noShrink();
+            stop->onClick = [this, id = j.id, name = j.name] { confirmStop(id, name); };
+            _stops.push_back(stop);
+        }
         auto *cmd = col->add<Label>(
             j.report ? i18n::arg(tr("Reported by %1"), sessionName()) : j.command,
             j.report ? Font::Small : Font::Mono,
@@ -272,6 +309,7 @@ private:
     View                    *_rows    = nullptr;
     std::vector<std::string> _order, _seenFailed;
     bool                     _ordered = false;
+    std::vector<Button *>    _stops; // in the rows now
 };
 
 // ── The header element ──────────────────────────────────────────────────────

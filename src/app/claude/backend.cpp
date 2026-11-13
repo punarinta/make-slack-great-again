@@ -2466,9 +2466,10 @@ bool Backend::pumpJobs(Tracked &t) {
         return kv.second.report && kv.second.state == model::BackgroundJob::State::Running;
     });
     const int64_t reportsSince   = t.workSinceMs;
-    if (!working)
+    if (!working) {
         t.workSinceMs = 0;
-    else if (t.workSinceMs == 0) {
+        t.reportDoneAtMs.clear(); // new work reads only reports made since it began
+    } else if (t.workSinceMs == 0) {
         int64_t since =
             isBusy ? std::min(
                          now, t.parser.turnStartedAt() > 0 ? t.parser.turnStartedAt() / 1000 : now
@@ -2482,8 +2483,10 @@ bool Backend::pumpJobs(Tracked &t) {
     }
 
     std::unordered_set<std::string> seen;
+    t.jobOutputs.clear();
     for (const auto &c : commands) {
-        Job &j = t.jobs[c.taskId];
+        t.jobOutputs[c.taskId] = c.outputPath;
+        Job &j                 = t.jobs[c.taskId];
         if (j.id.empty()) {
             j.id        = c.taskId;
             j.command   = c.command;
@@ -2517,22 +2520,38 @@ bool Backend::pumpJobs(Tracked &t) {
                                   : std::string_view(t.info.jobId)}
         );
         for (Report &r : readReports(jobDir)) {
-            const std::string id = "report:" + r.name;
-            if (r.atMs < since - 1000 || (!working && !t.jobs.count(id)))
+            const std::string key = "report:" + r.name;
+            if (r.atMs < since - 1000 || (!working && !t.jobs.count(key)))
                 continue;
-            Job &j = t.jobs[id];
-            if (j.id.empty()) {
-                j.id        = id;
+            // A report that got there is done for good: its file, still
+            // saying so, is no news until the agent writes another.
+            const auto done = t.reportDoneAtMs.find(key);
+            if (done != t.reportDoneAtMs.end() && r.atMs <= done->second)
+                continue;
+            Job &j = t.jobs[key];
+            if (j.id.empty() || j.state != Job::State::Running) {
+                // A run of its own (the same name again: a new job, which
+                // the last one's dismissal mustn't hide).
+                j           = Job{};
                 j.report    = true;
                 j.name      = r.name.empty() ? std::string(tr("status")) : r.name;
                 j.startedMs = std::min(r.atMs, now);
+                j.id        = str::concat({key, "@", str::number(j.startedMs)});
             }
-            j.state    = Job::State::Running;
             j.line     = std::move(r.text);
             j.progress = r.progress;
             j.ratio    = std::move(r.ratio);
+            if (j.progress >= 1) {
+                // 100%: done now, not when the session's other work ends.
+                j.state               = Job::State::Done;
+                j.endedMs             = now;
+                t.reportDoneAtMs[key] = r.atMs;
+                t.jobEndSeenMs[j.id]  = now;
+                continue;
+            }
+            j.state = Job::State::Running;
             if (working)
-                seen.insert(id);
+                seen.insert(j.id);
         }
     }
     // Those that ran and don't now: how they ended. A report ends with its
@@ -2548,6 +2567,10 @@ bool Backend::pumpJobs(Tracked &t) {
                     continue;
                 }
                 j.state   = Job::State::Done;
+                j.endedMs = now;
+            } else if (t.userStopped.count(j.id)) {
+                // Stopped from msga: its notification reads "failed".
+                j.state   = Job::State::Stopped;
                 j.endedMs = now;
             } else if (const auto *e = t.parser.taskEnd(j.id)) {
                 using Kind = TranscriptParser::TaskEnd::Kind;
@@ -2570,6 +2593,7 @@ bool Backend::pumpJobs(Tracked &t) {
             ((t.ref != kNoConv && _store.jobDismissed(t.ref, j.id)) ||
              now - t.jobEndSeenMs[j.id] > kEndedKeepMs)) {
             t.jobEndSeenMs.erase(j.id);
+            t.userStopped.erase(j.id);
             it = t.jobs.erase(it);
             continue;
         }

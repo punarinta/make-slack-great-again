@@ -89,6 +89,12 @@ bool BackendProxy::canStopSession(ConvRef c) const {
 void BackendProxy::stopSession(ConvRef c) {
     _t->stopSession(c);
 }
+bool BackendProxy::canStopJob(ConvRef c, const std::string &jobId) const {
+    return _t->canStopJob(c, jobId);
+}
+void BackendProxy::stopJob(ConvRef c, const std::string &jobId) {
+    _t->stopJob(c, jobId);
+}
 void BackendProxy::userTyping(ConvRef c, Ts thread) {
     _t->userTyping(c, thread);
 }

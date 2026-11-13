@@ -120,6 +120,8 @@ public:
     // terminal or another program drives are theirs to stop.
     bool canStopSession(model::ConvRef conv) const override;
     void stopSession(model::ConvRef conv) override;
+    bool canStopJob(model::ConvRef conv, const std::string &jobId) const override;
+    void stopJob(model::ConvRef conv, const std::string &jobId) override;
     // The buttons on "Waiting for your approval": each one is an option of
     // the permission question on Claude Code's screen, picked there.
     void

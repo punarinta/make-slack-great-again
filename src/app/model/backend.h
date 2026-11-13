@@ -114,6 +114,12 @@ public:
     virtual bool isAgentSession(ConvRef) const { return false; }
     virtual bool canStopSession(ConvRef) const { return false; }
     virtual void stopSession(ConvRef) {}
+    // A background job of a session (Store::jobs) msga can stop: a command
+    // it runs, whose process msga can find here. Stopping ends the command
+    // (the session is told, as when it stops one itself); the job then shows
+    // as stopped.
+    virtual bool canStopJob(ConvRef, const std::string &jobId) const { return (void)jobId, false; }
+    virtual void stopJob(ConvRef, const std::string &jobId) { (void)jobId; }
 
     // ── Agent sessions, the rest (Claude Code; defaults: nothing of it) ────
     // The team a session can be started with: the

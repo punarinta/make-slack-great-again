@@ -2845,7 +2845,7 @@ msgstr "チャンネルから退出"
 msgid "Leave conversation"
 msgstr "会話から退出"
 
-#: src/app/screens/shell/context_menus.cpp
+#: src/app/screens/shell/context_menus.cpp src/app/screens/shell/header_jobs.cpp
 msgid "Stop"
 msgstr "停止"
 
@@ -3070,6 +3070,22 @@ msgid_plural "%n done"
 msgstr[0] "%n件完了"
 
 #: src/app/screens/shell/header_jobs.cpp
+msgid "Stop background job"
+msgstr "バックグラウンドジョブを停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid ""
+"Stop “%1”? The session is told that it was stopped.\n"
+"A job that writes files (a build, a migration) may leave them half-done."
+msgstr ""
+"「%1」を停止しますか？停止したことはセッションに伝えられます。\n"
+"ファイルを書き込むジョブ（ビルド、マイグレーションなど）は途中の状態のまま残ることがあります。"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Stop job"
+msgstr "ジョブを停止"
+
+#: src/app/screens/shell/header_jobs.cpp
 msgid "done · %1"
 msgstr "完了 · %1"
 
@@ -3080,6 +3096,10 @@ msgstr "失敗 · 終了コード %1"
 #: src/app/screens/shell/header_jobs.cpp
 msgid "stopped"
 msgstr "停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Stop this background job"
+msgstr "このバックグラウンドジョブを停止"
 
 #: src/app/screens/shell/header_jobs.cpp
 msgid "Reported by %1"
