@@ -74,6 +74,10 @@ struct SessionInfo {
     // Background: the worktree Claude Code made for the job (state.json
     // "worktreePath"), "" when it works in its folder as it is.
     std::string worktreePath;
+    // Background: commands of its running in the background now (state.json
+    // inFlight.kinds "local_bash"): the transcript can't tell those a dead
+    // worker left behind.
+    bool        commandsRunning                       = false;
     bool        operator==(const SessionInfo &) const = default;
 };
 

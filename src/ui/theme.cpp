@@ -118,6 +118,7 @@ constexpr Color kLight[] = {
     0x0c000000, // MenuHover
     0x12000000, // MenuSeparator
     0xfff0f0f0, // DividerSubtle
+    0xff611f69, // Progress (the palette's accent: colorIn)
 };
 
 constexpr Color kDark[] = {
@@ -226,6 +227,7 @@ constexpr Color kDark[] = {
     0x0c000000, // MenuHover
     0x12000000, // MenuSeparator
     0xff2a2a2a, // DividerSubtle
+    0xff53b4e5, // Progress
 };
 static_assert(sizeof(kLight) / sizeof(Color) == size_t(C::Count), "kLight out of sync with C");
 static_assert(sizeof(kDark) / sizeof(Color) == size_t(C::Count), "kDark out of sync with C");
@@ -526,6 +528,8 @@ constexpr PaletteSlots paletteSlots() {
 constexpr PaletteSlots kPaletteSlots = paletteSlots();
 
 Color colorIn(C c, bool dark) {
+    if (c == C::Progress && !dark)
+        c = C::Accent;
     const size_t i = size_t(c) < size_t(C::Count) ? size_t(c) : 0;
     if (const uint8_t at = kPaletteSlots.at[i]) {
         if (!g_cached[dark]) {

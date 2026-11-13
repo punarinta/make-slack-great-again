@@ -473,7 +473,7 @@ bool skimRecord(std::string_view line, RecordSkim *r) {
             ok = skimMessage(s, r);
         } else if (k == "toolUseResult" && once(1u << 11) && s.peek() == '{') {
             s.enter('{', 1);
-            bool sawAgent = false, sawStatus = false;
+            bool sawAgent = false, sawStatus = false, sawTask = false;
             ok = true;
             for (bool firstKey = true; ok && s.more('}', firstKey);) {
                 std::string_view rk;
@@ -483,6 +483,8 @@ bool skimRecord(std::string_view line, RecordSkim *r) {
                     ok = s.plain(&r->agentId, 2);
                 else if (rk == "status" && !std::exchange(sawStatus, true))
                     ok = s.plain(&r->status, 2);
+                else if (rk == "backgroundTaskId" && !std::exchange(sawTask, true))
+                    ok = s.plain(&r->backgroundTaskId, 2);
                 else
                     ok = s.skip(2);
             }
@@ -628,6 +630,14 @@ int64_t TranscriptParser::taskStoppedAt(const std::string &taskId) const {
     return it == _taskStopped.end() ? 0 : it->second;
 }
 
+std::vector<TranscriptParser::BackgroundCommand> TranscriptParser::runningCommands() const {
+    std::vector<BackgroundCommand> out;
+    for (const BackgroundCommand &c : _commands)
+        if (taskStoppedAt(c.taskId) < c.startedAt)
+            out.push_back(c);
+    return out;
+}
+
 int64_t TranscriptParser::nextTs(int64_t micros) {
     // Strictly increasing, so two records in the same millisecond (a text block
     // and a tool call streamed together) still get distinct, ordered ids.
@@ -746,7 +756,75 @@ void TranscriptParser::addCommandOutput(std::string_view output, int64_t micros)
 void TranscriptParser::noteTaskStopped(std::string_view taskId, int64_t micros) {
     int64_t &at = _taskStopped[std::string(taskId)];
     at          = std::max(at, micros);
+    std::erase_if(_commands, [&](const BackgroundCommand &c) {
+        return c.taskId == taskId && c.startedAt <= at;
+    });
 }
+
+void TranscriptParser::noteBackgroundCommand(
+    std::string_view taskId, std::string_view toolUseId, const json::Value &content, int64_t micros
+) {
+    // The output file is named in the result's text, ending "<id>.output".
+    std::string text;
+    if (content.isString())
+        text = content.str();
+    else
+        for (const json::Value b : content)
+            if (b["type"].str() == "text")
+                text.append(b["text"].str()).push_back('\n');
+    const std::string name = str::concat({taskId, ".output"});
+    const size_t      end  = text.find(name);
+    if (taskId.empty() || micros <= 0 || end == std::string::npos)
+        return;
+    size_t begin = end;
+    while (begin > 0 && text[begin - 1] != ' ' && text[begin - 1] != '\n' &&
+           text[begin - 1] != '\t')
+        --begin;
+    BackgroundCommand c;
+    c.taskId     = taskId;
+    c.outputPath = text.substr(begin, end + name.size() - begin);
+    c.startedAt  = micros;
+    // The command itself: the call's summary is its description when it has one.
+    if (const auto cmd = _bashCommands.find(std::string(toolUseId)); cmd != _bashCommands.end())
+        c.command = cmd->second;
+    for (auto it = _items.rbegin(); it != _items.rend() && c.command.empty(); ++it)
+        for (const ToolCall &call : it->tools)
+            if (call.toolUseId == toolUseId)
+                c.command = call.summary;
+    // Already stopped: a notification read before (a copy's history).
+    if (taskStoppedAt(c.taskId) >= micros)
+        return;
+    std::erase_if(_commands, [&](const BackgroundCommand &x) { return x.taskId == taskId; });
+    _commands.push_back(std::move(c));
+}
+
+namespace {
+
+// How a task ended, as its notification says: "<status>failed</status>" and
+// "<summary>Background command "x" failed with exit code 3</summary>".
+TranscriptParser::TaskEnd taskEndIn(std::string_view text, int64_t micros) {
+    using Kind = TranscriptParser::TaskEnd::Kind;
+    TranscriptParser::TaskEnd e;
+    e.at                         = micros;
+    constexpr std::string_view k = "<status>";
+    std::string_view           status;
+    if (const size_t at = text.find(k); at != std::string_view::npos) {
+        const size_t end = text.find('<', at + k.size());
+        status           = str::trimSpace(text.substr(at + k.size(), end - at - k.size()));
+    }
+    constexpr std::string_view code = "exit code ";
+    if (const size_t at = text.find(code); at != std::string_view::npos)
+        for (size_t i = at + code.size();
+             i < text.size() && text[i] >= '0' && text[i] <= '9' && e.exitCode < 100000;
+             ++i)
+            e.exitCode = e.exitCode * 10 + (text[i] - '0');
+    e.kind = status == "killed" || status == "stopped" ? Kind::Stopped
+             : status == "failed" || e.exitCode != 0   ? Kind::Failed
+                                                       : Kind::Done;
+    return e;
+}
+
+} // namespace
 
 void TranscriptParser::noteTaskNotification(std::string_view text, int64_t micros) {
     // Only a notification itself: its <result> may quote anything.
@@ -758,10 +836,18 @@ void TranscriptParser::noteTaskNotification(std::string_view text, int64_t micro
         const size_t end = text.find('<', at);
         if (end == std::string_view::npos)
             break;
-        if (end > at && text.substr(end, kClose.size()) == kClose)
-            noteTaskStopped(str::trimSpace(text.substr(at, end - at)), micros);
+        if (end > at && text.substr(end, kClose.size()) == kClose) {
+            const std::string_view id = str::trimSpace(text.substr(at, end - at));
+            noteTaskStopped(id, micros);
+            _taskEnds[std::string(id)] = taskEndIn(text, micros);
+        }
         at = end;
     }
+}
+
+const TranscriptParser::TaskEnd *TranscriptParser::taskEnd(const std::string &taskId) const {
+    const auto it = _taskEnds.find(taskId);
+    return it == _taskEnds.end() ? nullptr : &it->second;
 }
 
 bool TranscriptParser::hasRecord(std::string_view uuid) const {
@@ -796,7 +882,7 @@ bool TranscriptParser::beginRecord(
 // origin, not meta, no pasted image — from its skim alone.
 bool TranscriptParser::handleToolResults(const RecordSkim &r) {
     if (r.type != "user" || r.origin || r.isMeta || r.isCompactSummary || !r.contentArray ||
-        r.image || r.toolResults.empty())
+        r.image || r.toolResults.empty() || !r.backgroundTaskId.empty())
         return false;
     int64_t micros = 0;
     if (!beginRecord(r.uuid, r.timestamp, r.version, r.permissionMode, &micros))
@@ -910,6 +996,8 @@ void TranscriptParser::toolResult(
     int64_t          micros
 ) {
     // Newest first: the call is almost always in the latest item.
+    if (!_bashCommands.empty())
+        _bashCommands.erase(std::string(id));
     for (auto it = _items.rbegin(); it != _items.rend(); ++it) {
         auto call = std::find_if(it->tools.begin(), it->tools.end(), [&](const ToolCall &c) {
             return c.toolUseId == id;
@@ -969,6 +1057,9 @@ void TranscriptParser::handleUser(
             if (bt == "tool_result") {
                 sawToolResult            = true;
                 const json::Value result = o["toolUseResult"];
+                // Before toolResult, which forgets the call's command.
+                if (const std::string_view task = result["backgroundTaskId"].str(); !task.empty())
+                    noteBackgroundCommand(task, b["tool_use_id"].str(), b["content"], micros);
                 toolResult(
                     b["tool_use_id"].str(),
                     b["is_error"].boolean(),
@@ -1082,6 +1173,24 @@ void TranscriptParser::handleAssistant(
             const json::Value input = b["input"];
             call.summary            = summarizeToolInput(call.name, input);
             openTurn(micros);
+            // A command, kept until its result says whether it went on in
+            // the background (noteBackgroundCommand names the job by it).
+            if (call.name == "Bash" && !call.toolUseId.empty()) {
+                if (_bashCommands.size() >= 64)
+                    _bashCommands.clear(); // results that never came
+                _bashCommands[call.toolUseId] = std::string(input["command"].str());
+            }
+            // Claude stopping a task of its own: no notification follows.
+            if (call.name == "TaskStop" || call.name == "KillShell" || call.name == "KillBash") {
+                std::string_view id = input["task_id"].str();
+                if (id.empty())
+                    id = input["shell_id"].str();
+                if (!id.empty() && micros > 0) {
+                    noteTaskStopped(id, micros);
+                    TaskEnd &e = _taskEnds[std::string(id)];
+                    e          = TaskEnd{micros, TaskEnd::Kind::Stopped, 0};
+                }
+            }
             if (call.name == "SubagentHandback") {
                 // A subagent's report to its session: its answer, in its thread.
                 const std::string_view report = str::trimSpace(input["message"].str());

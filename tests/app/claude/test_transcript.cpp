@@ -1361,3 +1361,135 @@ TEST("transcript: the parser knows the records it read") {
     CHECK_FALSE(p.hasRecord("a1"));
     CHECK_FALSE(p.hasRecord(""));
 }
+
+namespace {
+
+// A Bash call's result as Claude Code 2.1.323 writes it for a command sent to
+// the background: the task id in toolUseResult, the output file in the text.
+std::string backgroundStarted(std::string_view toolUseId, std::string_view taskId, const char *ts) {
+    const std::string text = str::concat(
+        {"Command running in background with ID: ",
+         taskId,
+         ". Output is being written to: /tmp/claude-1000/-src-app/S1/tasks/",
+         taskId,
+         ".output. You will be notified when it completes."}
+    );
+    return str::concat(
+        {R"({"type":"user","uuid":"u-)",
+         taskId,
+         R"(","timestamp":")",
+         ts,
+         R"(","message":{"role":"user","content":[{"tool_use_id":)",
+         q(toolUseId),
+         R"(,"type":"tool_result","content":)",
+         q(text),
+         R"(,"is_error":false}]},"toolUseResult":{"stdout":"","stderr":"","interrupted":false,)",
+         R"("backgroundTaskId":)",
+         q(taskId),
+         "}}\n"}
+    );
+}
+
+} // namespace
+
+TEST("transcript: a background command runs until its notification") {
+    TranscriptParser p;
+    p.feed(
+        // The command, not its description, names the job.
+        toolUse(
+            "t1",
+            "Bash",
+            R"({"command":"ctest -j8","description":"Run the tests"})",
+            "2026-09-25T10:00:00.000Z"
+        ) +
+        backgroundStarted("t1", "bq1", "2026-09-25T10:00:01.000Z") +
+        toolUse("t2", "Bash", R"({"command":"make docs"})", "2026-09-25T10:00:02.000Z") +
+        backgroundStarted("t2", "bq2", "2026-09-25T10:00:03.000Z")
+    );
+    auto running = p.runningCommands();
+    REQUIRE(running.size() == 2);
+    CHECK_STR(running[0].taskId, "bq1");
+    CHECK_STR(running[0].outputPath, "/tmp/claude-1000/-src-app/S1/tasks/bq1.output");
+    CHECK_STR(running[0].command, "ctest -j8");
+    CHECK(running[0].startedAt == 1790330401000000);
+    CHECK_STR(running[1].taskId, "bq2");
+    // The tool calls show as ever.
+    REQUIRE(!p.items().empty());
+
+    // One stops: the other runs on.
+    p.feed(taskStopped("bq1", "2026-09-25T10:05:00.000Z"));
+    running = p.runningCommands();
+    REQUIRE(running.size() == 1);
+    CHECK_STR(running[0].taskId, "bq2");
+    p.feed(taskStopped("bq2", "2026-09-25T10:06:00.000Z"));
+    CHECK(p.runningCommands().empty());
+
+    // A plain tool result starts nothing.
+    TranscriptParser q2;
+    q2.feed(
+        toolUse("t1", "Bash", R"({"command":"ls"})", "2026-09-25T10:00:00.000Z") +
+        str::concat(
+            {R"({"type":"user","timestamp":"2026-09-25T10:00:01.000Z","message":{"content":[{"type":"tool_result",)",
+             R"("tool_use_id":"t1","content":"bq9.output"}]},"toolUseResult":{"stdout":"x"}})",
+             "\n"}
+        )
+    );
+    CHECK(q2.runningCommands().empty());
+}
+
+TEST("transcript: how a background command ended") {
+    const auto notice =
+        [](std::string_view id, std::string_view status, std::string_view summary, const char *ts) {
+            return str::concat(
+                {R"({"type":"queue-operation","operation":"enqueue","timestamp":")",
+                 ts,
+                 R"(","content":)",
+                 q(str::concat(
+                     {"<task-notification>\n<task-id>",
+                      id,
+                      "</task-id>\n<status>",
+                      status,
+                      "</status>\n<summary>",
+                      summary,
+                      "</summary>\n</task-notification>"}
+                 )),
+                 "}\n"}
+            );
+        };
+    using Kind = TranscriptParser::TaskEnd::Kind;
+    TranscriptParser p;
+    p.feed(
+        toolUse("t1", "Bash", R"({"command":"ok"})", "2026-09-25T10:00:00.000Z") +
+        backgroundStarted("t1", "bq1", "2026-09-25T10:00:01.000Z") +
+        toolUse("t2", "Bash", R"({"command":"bad"})", "2026-09-25T10:00:02.000Z") +
+        backgroundStarted("t2", "bq2", "2026-09-25T10:00:03.000Z") +
+        toolUse("t3", "Bash", R"({"command":"sleep 300"})", "2026-09-25T10:00:04.000Z") +
+        backgroundStarted("t3", "bq3", "2026-09-25T10:00:05.000Z")
+    );
+    CHECK(p.taskEnd("bq1") == nullptr);
+    p.feed(
+        notice(
+            "bq1",
+            "completed",
+            "Background command \"ok\" completed (exit code 0)",
+            "2026-09-25T10:01:00.000Z"
+        ) +
+        notice(
+            "bq2",
+            "failed",
+            "Background command \"bad\" failed with exit code 3",
+            "2026-09-25T10:02:00.000Z"
+        ) +
+        // Claude stops one itself: no notification follows (2.1.323).
+        toolUse("t4", "TaskStop", R"({"task_id":"bq3"})", "2026-09-25T10:03:00.000Z")
+    );
+    REQUIRE(p.taskEnd("bq1") != nullptr);
+    CHECK(p.taskEnd("bq1")->kind == Kind::Done);
+    CHECK(p.taskEnd("bq1")->at == 1790330460000000);
+    REQUIRE(p.taskEnd("bq2") != nullptr);
+    CHECK(p.taskEnd("bq2")->kind == Kind::Failed);
+    CHECK(p.taskEnd("bq2")->exitCode == 3);
+    REQUIRE(p.taskEnd("bq3") != nullptr);
+    CHECK(p.taskEnd("bq3")->kind == Kind::Stopped);
+    CHECK(p.runningCommands().empty());
+}

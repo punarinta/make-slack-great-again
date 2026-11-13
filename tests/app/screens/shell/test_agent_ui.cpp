@@ -7,6 +7,8 @@
 #include "base/time.h"
 #include "plat/testing.h"
 #include "screens/shell/composer.h"
+#include "screens/shell/header.h"
+#include "screens/shell/header_jobs.h"
 #include "screens/shell/shell.h"
 #include "screens/shell/sidebar_footer.h"
 #include "screens/shell/typing_indicator.h"
@@ -478,3 +480,95 @@ TEST("message buttons: drawn under the message, a press goes to the backend") {
     CHECK_STR(h.backend.pressed, "option:2");
 }
 #endif
+
+namespace {
+
+model::BackgroundJob
+testJob(std::string id, std::string name, float progress, model::BackgroundJob::State state = {}) {
+    model::BackgroundJob j;
+    j.id        = std::move(id);
+    j.name      = std::move(name);
+    j.command   = "./scripts/" + j.name + ".sh";
+    j.line      = "6200/10000 programs, 0 failures";
+    j.ratio     = progress >= 0 ? "6200/10000" : "";
+    j.progress  = progress;
+    j.state     = state;
+    j.startedMs = base::nowMicros() / 1000 - 850'000; // 14m 10s ago
+    if (state != model::BackgroundJob::State::Running)
+        j.endedMs = base::nowMicros() / 1000;
+    if (state == model::BackgroundJob::State::Failed)
+        j.exitCode = 1;
+    return j;
+}
+
+} // namespace
+
+TEST("header: an agent's background jobs show beside the name") {
+    using Job  = model::BackgroundJob;
+    using Form = shell::JobsButton::Form;
+    Harness h;
+    auto   *jobs = h.sh->header().jobs();
+    REQUIRE(jobs != nullptr);
+    CHECK_FALSE(jobs->visible()); // none yet
+
+    // One job: its ring, name and how far along, with room to spare.
+    h.store.setJobs(h.dm, {testJob("bq1", "fuzz-checkout", 0.62f)});
+    pump();
+    CHECK(jobs->visible());
+    CHECK(jobs->form() == Form::Label);
+    CHECK_STR(shell::JobsButton::shortValue(jobs->jobs()[0], base::nowMicros() / 1000), "62%");
+    CHECK_STR(jobs->slotTooltip(0), "fuzz-checkout \xC2\xB7 62% (6200/10000) \xC2\xB7 14m 10s");
+    CHECK(jobs->width() > 100);
+
+    // Three: rings only; six: two rings and "+4", a failed one first.
+    h.store.setJobs(
+        h.dm,
+        {testJob("a", "fuzz-checkout", 0.62f),
+         testJob("b", "cmake --build", -1),
+         testJob("c", "ctest", -1, Job::State::Failed)}
+    );
+    pump();
+    CHECK(jobs->form() == Form::Rings);
+    CHECK(jobs->slots().size() == 3);
+    CHECK_STR(jobs->jobs()[0].id, "c");
+    CHECK_STR(jobs->slotTooltip(0), "ctest \xC2\xB7 failed, exit code 1");
+    CHECK_STR(jobs->summary(), "3 background jobs, 1 failed");
+    std::vector<Job> six;
+    for (int i = 0; i < 6; ++i)
+        six.push_back(testJob("j" + std::to_string(i), "job" + std::to_string(i), 0.5f));
+    h.store.setJobs(h.dm, six);
+    pump();
+    CHECK((jobs->slots() == std::vector<int>{0, 1, -1}));
+    CHECK_STR(jobs->slotTooltip(2), "4 more background jobs");
+
+    // No room: the name gives way first, then the jobs fold to a count.
+    CHECK(jobs->fit(1000) == Form::Rings);
+    CHECK(jobs->fit(40) == Form::Count);
+
+    // A failed job stays until seen: the popover opened and closed.
+    h.store.setJobs(
+        h.dm,
+        {testJob("ok", "fuzz-checkout", 0.3f), testJob("bad", "ctest", -1, Job::State::Failed)}
+    );
+    pump();
+    jobs->openPopover();
+    pump();
+    REQUIRE(jobs->popover() != nullptr);
+    CHECK(jobs->checked());
+    h.win->closeAllPopups();
+    pump();
+    CHECK(jobs->popover() == nullptr);
+    REQUIRE(h.store.jobs(h.dm).size() == 1);
+    CHECK_STR(h.store.jobs(h.dm)[0].id, "ok");
+    // …and set again by the backend, it stays out.
+    h.store.setJobs(
+        h.dm,
+        {testJob("ok", "fuzz-checkout", 0.4f), testJob("bad", "ctest", -1, Job::State::Failed)}
+    );
+    CHECK(h.store.jobs(h.dm).size() == 1);
+
+    // Gone: the element goes too.
+    h.store.setJobs(h.dm, {});
+    pump();
+    CHECK_FALSE(jobs->visible());
+}

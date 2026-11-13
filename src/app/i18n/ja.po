@@ -224,6 +224,10 @@ msgstr " · 権限の確認なし"
 msgid "The session was removed from msga."
 msgstr "セッションはmsgaから削除されました。"
 
+#: src/app/claude/backend.cpp
+msgid "status"
+msgstr "状況"
+
 #: src/app/claude/backend_branch.cpp
 msgid "Thinking…"
 msgstr "考え中…"
@@ -1214,11 +1218,11 @@ msgstr "コピーしました"
 msgid "No email app — address copied"
 msgstr "メールアプリがないため、アドレスをコピーしました"
 
-#: src/app/screens/messages/rows.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/header_jobs.cpp
 msgid "%1m"
 msgstr "%1分"
 
-#: src/app/screens/messages/rows.cpp src/app/screens/shell/typing_indicator.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/header_jobs.cpp src/app/screens/shell/typing_indicator.cpp
 msgid "%1h %2m"
 msgstr "%1時間%2分"
 
@@ -3042,6 +3046,75 @@ msgstr "canvasを追加"
 msgid "Untitled"
 msgstr "無題"
 
+#: src/app/screens/shell/header_jobs.cpp src/app/screens/shell/typing_indicator.cpp
+msgid "%1s"
+msgstr "%1秒"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Background jobs"
+msgstr "バックグラウンドジョブ"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n running"
+msgid_plural "%n running"
+msgstr[0] "%n件実行中"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n failed"
+msgid_plural "%n failed"
+msgstr[0] "%n件失敗"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n done"
+msgid_plural "%n done"
+msgstr[0] "%n件完了"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "done · %1"
+msgstr "完了 · %1"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "failed · exit code %1"
+msgstr "失敗 · 終了コード %1"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "stopped"
+msgstr "停止"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "Reported by %1"
+msgstr "%1による報告"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "done"
+msgstr "完了"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "failed"
+msgstr "失敗"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "running"
+msgstr "実行中"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "done in %1"
+msgstr "%1で完了"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "failed, exit code %1"
+msgstr "失敗、終了コード %1"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n background job"
+msgid_plural "%n background jobs"
+msgstr[0] "%n件のバックグラウンドジョブ"
+
+#: src/app/screens/shell/header_jobs.cpp
+msgid "%n more background job"
+msgid_plural "%n more background jobs"
+msgstr[0] "他%n件のバックグラウンドジョブ"
+
 #: src/app/screens/shell/huddle_banner.cpp
 msgid "A huddle is happening"
 msgstr "ハドルが開催中です"
@@ -3931,10 +4004,6 @@ msgstr "スレッドを読み込めませんでした。後でもう一度お試
 #: src/app/screens/shell/threads_page.cpp
 msgid "Threads you're following will appear here."
 msgstr "フォロー中のスレッドがここに表示されます。"
-
-#: src/app/screens/shell/typing_indicator.cpp
-msgid "%1s"
-msgstr "%1秒"
 
 #: src/app/screens/shell/typing_indicator.cpp
 msgid "%1m %2s"

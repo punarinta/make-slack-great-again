@@ -60,6 +60,9 @@ struct RecordSkim {
     };
     std::vector<ToolResult> toolResults;     // …its "tool_result" blocks, in order
     std::string_view        agentId, status; // toolUseResult's
+    // toolUseResult's: a command that went on in the background (the record
+    // is then read whole, for where its output goes).
+    std::string_view        backgroundTaskId;
 };
 // Fills *out from `line`; false when it isn't one valid JSON object, or has a
 // string this can't hand out as is (one of the fields above, or a member name
@@ -149,6 +152,31 @@ public:
     // stops — it may start again, on its own or for a relayed reply. A
     // foreground subagent's stop is its Agent call's result.
     int64_t                     taskStoppedAt(const std::string &taskId) const;
+    // A command Claude runs in the background (Bash run_in_background, or one
+    // moved there): its output is written to `outputPath` as it comes, and
+    // its stop is a task notification. Verified with Claude Code 2.1.323: the
+    // call's result has toolUseResult.backgroundTaskId and says "Output is
+    // being written to: <path>" (/tmp/claude-<uid>/<project>/<session>/tasks/
+    // <id>.output).
+    struct BackgroundCommand {
+        std::string taskId, outputPath;
+        std::string command;   // the call's summary, "" when not found
+        int64_t     startedAt; // epoch micros
+    };
+    // Those not stopped as far as the transcript says, oldest first.
+    std::vector<BackgroundCommand> runningCommands() const;
+    // How a background task (a command) ended, as its notification says
+    // ("<status>completed|failed</status>", "… exit code 3" in its summary),
+    // or stopped by Claude (a TaskStop / KillShell call, which no
+    // notification follows — verified with 2.1.323).
+    struct TaskEnd {
+        enum class Kind : uint8_t { Done, Failed, Stopped };
+        int64_t at       = 0; // epoch micros
+        Kind    kind     = Kind::Done;
+        int     exitCode = 0;
+    };
+    // Null while it hasn't ended (as far as the transcript says).
+    const TaskEnd *taskEnd(const std::string &taskId) const;
 
     // As of the newest record that says: the Claude Code version that wrote
     // it, the model that answered, the permission mode of the last prompt.
@@ -199,13 +227,19 @@ private:
     // A "<task-notification>…" the session was sent: its task(s) stopped at `micros`.
     void    noteTaskNotification(std::string_view text, int64_t micros);
     void    noteTaskStopped(std::string_view taskId, int64_t micros);
+    void    noteBackgroundCommand(
+        std::string_view   taskId,
+        std::string_view   toolUseId,
+        const json::Value &content,
+        int64_t            micros
+    );
     // What another agent sent the session (`origin` of kind "peer"), as a
     // PeerMessage; false when `origin` isn't a peer's. `newTurn`: it arrived on
     // its own rather than queued into a turn under way.
-    bool    addPeerMessage(const json::Value &origin, int64_t micros, bool newTurn);
+    bool addPeerMessage(const json::Value &origin, int64_t micros, bool newTurn);
     // What a command Claude Code runs itself printed: an answer, and the turn's end.
-    void    addCommandOutput(std::string_view output, int64_t micros);
-    void    addPrompt(
+    void addCommandOutput(std::string_view output, int64_t micros);
+    void addPrompt(
         std::string_view         text,
         int64_t                  micros,
         std::vector<std::string> images     = {},
@@ -220,8 +254,11 @@ private:
     int64_t                                  _lastActivity = 0;
     std::vector<int64_t>                     _activity;
     bool                                     _keepActivity = false;
-    std::unordered_map<std::string, int64_t> _taskStopped;        // by task id
-    int                                      _openToolGroup = -1; // index into _items, -1 when none
+    std::unordered_map<std::string, int64_t> _taskStopped;      // by task id
+    std::vector<BackgroundCommand>           _commands;         // newest last, stopped dropped
+    std::unordered_map<std::string, TaskEnd> _taskEnds;         // by task id
+    std::unordered_map<std::string, std::string> _bashCommands; // Bash calls awaiting results
+    int         _openToolGroup = -1;                            // index into _items, -1 when none
     int         _pendingText   = -1; // index of the Pending text, -1 when none
     int         _commandOutput = -1; // index of the latest command output, -1 when none
     bool        _turnOpen      = false;

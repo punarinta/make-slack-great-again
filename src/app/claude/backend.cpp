@@ -4,6 +4,7 @@
 #include "app/claude/backend.h"
 
 #include "app/claude/approvals.h"
+#include "app/claude/progress.h"
 #include "app/claude/backend_internal.h"
 #include "app/claude/common.h"
 #include "app/claude/outputs.h"
@@ -144,8 +145,10 @@ Backend::Backend(model::Store &store, plat::App &app, Credentials creds)
     // Sessions msga starts ask their permission questions through it too
     // (approvals.h) — not in tests, whose sessions are fakes.
     if (const std::string exe = base::executablePath();
-        !exe.empty() && !base::testProcess() && file::makeDirs(_approvalsDir))
+        !exe.empty() && !base::testProcess() && file::makeDirs(_approvalsDir)) {
         _launcher->setStartSettings(permissionHookSettings(exe, _approvalsDir));
+        _launcher->setPromptNote(progressNote(exe));
+    }
     loadKnown();
     loadProfile();
 }
@@ -2382,8 +2385,10 @@ void Backend::announceRoles() {
 void Backend::pumpTyping(bool looked) {
     using Key = std::tuple<ConvRef, UserRef, Ts>;
     std::map<Key, int64_t> want;
+    bool                   jobsRunning = false;
     for (auto &[id, tp] : _sessions) {
-        Tracked &t = *tp;
+        Tracked &t  = *tp;
+        jobsRunning = pumpJobs(t) || jobsRunning;
         if (!busy(t)) {
             t.busySinceMs = 0;
             continue;
@@ -2416,19 +2421,172 @@ void Backend::pumpTyping(bool looked) {
     // Always set again: a message of the typer's own clears its indicator.
     for (const auto &[key, since] : want)
         _store.setTyping(std::get<0>(key), std::get<1>(key), std::get<2>(key), true, since);
-    _typing = std::move(want);
-    if (!_typing.empty() && !_typingTimer)
+    _typing         = std::move(want);
+    // Looked at again every 3 s while anything works: the clocks, and the
+    // jobs' output (a background command's shows in no roster file).
+    const bool tick = !_typing.empty() || jobsRunning;
+    if (tick && !_typingTimer)
         _typingTimer = _app.addTimer(3000, true, [this, alive = _alive] {
             if (*alive)
                 pumpTyping();
         });
-    else if (_typing.empty() && _typingTimer) {
+    else if (!tick && _typingTimer) {
         _app.cancelTimer(_typingTimer);
         _typingTimer = 0;
     }
     // A subagent starting or stopping turns its teammate's dot — the stop
     // too: this is the last tick when nothing else works.
     announceRoles();
+}
+
+namespace {
+// How much of a command's output is read for its last line.
+constexpr size_t  kOutputTail  = 4096;
+// An ended job nobody looked at is forgotten after this long.
+constexpr int64_t kEndedKeepMs = 24 * 3600 * 1000;
+} // namespace
+
+bool Backend::pumpJobs(Tracked &t) {
+    using Job                                               = model::BackgroundJob;
+    const bool                                       isBusy = busy(t);
+    // Commands it runs in the background, while the job says some run:
+    // the transcript alone can't tell those a dead worker left behind.
+    std::vector<TranscriptParser::BackgroundCommand> commands;
+    if (t.info.running &&
+        (t.info.kind == SessionInfo::Kind::Background ? t.info.commandsRunning
+                                                      : isBusy || statusHasShell(t.info.status)))
+        commands = t.parser.runningCommands();
+    // Its work: from the turn's start or the oldest command's, whichever is
+    // first, for as long as either goes on. A report from before is old news.
+    const bool    working        = isBusy || !commands.empty();
+    const int64_t now            = nowMs();
+    // The reports are read once more as the work ends: a last one ("done,
+    // --progress 1") is often the work's very last act.
+    const bool    reportsRunning = std::any_of(t.jobs.begin(), t.jobs.end(), [](const auto &kv) {
+        return kv.second.report && kv.second.state == model::BackgroundJob::State::Running;
+    });
+    const int64_t reportsSince   = t.workSinceMs;
+    if (!working)
+        t.workSinceMs = 0;
+    else if (t.workSinceMs == 0) {
+        int64_t since =
+            isBusy ? std::min(
+                         now, t.parser.turnStartedAt() > 0 ? t.parser.turnStartedAt() / 1000 : now
+                     )
+                   : now;
+        if (!commands.empty())
+            since = std::min(since, commands.front().startedAt / 1000);
+        if (t.sending && t.sendStartedMs > 0)
+            since = std::min(since, t.sendStartedMs);
+        t.workSinceMs = since;
+    }
+
+    std::unordered_set<std::string> seen;
+    for (const auto &c : commands) {
+        Job &j = t.jobs[c.taskId];
+        if (j.id.empty()) {
+            j.id        = c.taskId;
+            j.command   = c.command;
+            j.name      = jobName(c.command);
+            j.startedMs = c.startedAt / 1000;
+            if (j.name.empty())
+                j.name = c.taskId;
+        }
+        j.state            = Job::State::Running;
+        const int64_t size = file::size(c.outputPath);
+        std::string   tail;
+        if (size > 0 &&
+            file::readRange(
+                c.outputPath, std::max<int64_t>(0, size - int64_t(kOutputTail)), kOutputTail, &tail
+            )) {
+            j.line = lastOutputLine(tail);
+            j.ratio.clear();
+            j.progress = progressInLine(j.line, &j.ratio);
+        }
+        seen.insert(j.id);
+    }
+    // Its own reports, made during this work (a background job's: in its
+    // folder, $CLAUDE_JOB_DIR). A second's slack: its clock and Claude Code's.
+    if ((working || reportsRunning) && t.info.kind == SessionInfo::Kind::Background &&
+        !t.info.sessionId.empty()) {
+        const int64_t     since  = working ? t.workSinceMs : reportsSince;
+        const std::string jobDir = str::concat(
+            {_paths.jobsDir(),
+             "/",
+             t.info.jobId.empty() ? std::string_view(t.info.sessionId).substr(0, 8)
+                                  : std::string_view(t.info.jobId)}
+        );
+        for (Report &r : readReports(jobDir)) {
+            const std::string id = "report:" + r.name;
+            if (r.atMs < since - 1000 || (!working && !t.jobs.count(id)))
+                continue;
+            Job &j = t.jobs[id];
+            if (j.id.empty()) {
+                j.id        = id;
+                j.report    = true;
+                j.name      = r.name.empty() ? std::string(tr("status")) : r.name;
+                j.startedMs = std::min(r.atMs, now);
+            }
+            j.state    = Job::State::Running;
+            j.line     = std::move(r.text);
+            j.progress = r.progress;
+            j.ratio    = std::move(r.ratio);
+            if (working)
+                seen.insert(id);
+        }
+    }
+    // Those that ran and don't now: how they ended. A report ends with its
+    // work — done when it said it got there, else it just goes; a command as
+    // its notification says, or stopped (a worker gone without one).
+    bool running = false;
+    for (auto it = t.jobs.begin(); it != t.jobs.end();) {
+        Job &j = it->second;
+        if (j.state == Job::State::Running && !seen.count(j.id)) {
+            if (j.report) {
+                if (working || j.progress < 1) {
+                    it = t.jobs.erase(it);
+                    continue;
+                }
+                j.state   = Job::State::Done;
+                j.endedMs = now;
+            } else if (const auto *e = t.parser.taskEnd(j.id)) {
+                using Kind = TranscriptParser::TaskEnd::Kind;
+                j.state    = e->kind == Kind::Done     ? Job::State::Done
+                             : e->kind == Kind::Failed ? Job::State::Failed
+                                                       : Job::State::Stopped;
+                j.exitCode = e->exitCode;
+                j.endedMs  = std::min(now, e->at / 1000);
+            } else {
+                j.state   = Job::State::Stopped;
+                j.endedMs = now;
+            }
+            if (j.state == Job::State::Done && j.progress >= 0)
+                j.progress = 1;
+            t.jobEndSeenMs[j.id] = now;
+        }
+        // An ended one stays until the user is done with it (the header's
+        // to say), or a day went by.
+        if (j.state != Job::State::Running &&
+            ((t.ref != kNoConv && _store.jobDismissed(t.ref, j.id)) ||
+             now - t.jobEndSeenMs[j.id] > kEndedKeepMs)) {
+            t.jobEndSeenMs.erase(j.id);
+            it = t.jobs.erase(it);
+            continue;
+        }
+        running = running || j.state == Job::State::Running;
+        ++it;
+    }
+    if (t.ref == kNoConv || asThread(t))
+        return running;
+    std::vector<Job> list;
+    list.reserve(t.jobs.size());
+    for (const auto &[id, j] : t.jobs)
+        list.push_back(j);
+    std::sort(list.begin(), list.end(), [](const Job &a, const Job &b) {
+        return a.startedMs != b.startedMs ? a.startedMs < b.startedMs : a.id < b.id;
+    });
+    _store.setJobs(t.ref, std::move(list));
+    return running;
 }
 
 // File watching: the roster dirs (sessions come and go), every live

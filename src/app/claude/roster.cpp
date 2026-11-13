@@ -188,9 +188,11 @@ std::optional<SessionInfo> parseBackgroundJob(std::string_view json) {
     s.transcriptPath = text(o["linkScanPath"]);
     s.worktreePath   = text(o["worktreePath"]);
     s.statusSinceMs  = isoToMs(o["updatedAt"].str());
+    for (const json::Value k : o["inFlight"]["kinds"])
+        s.commandsRunning = s.commandsRunning || k.str() == "local_bash";
     // Running = its worker process is alive, which only the worker's own
     // sessions/<pid>.json tells (applyWorker); a job file alone runs nothing.
-    s.running        = false;
+    s.running = false;
     return s;
 }
 

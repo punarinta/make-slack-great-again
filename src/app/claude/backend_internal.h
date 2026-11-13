@@ -161,17 +161,22 @@ struct Backend::Tracked {
     bool                      announcedInit     = false;
     bool                      announcedAsThread = false; // how `announced` was taken
     bool                      lastBusy          = false;
-    int64_t     busySinceMs = 0;     // epoch ms the turn under way began (pumpTyping); 0 = not busy
-    bool        wasLive     = false; // listed or sending at the previous refresh
+    int64_t busySinceMs = 0; // epoch ms the turn under way began (pumpTyping); 0 = not busy
+    // Since when it works (a turn, or a background command), epoch ms; 0 = idle.
+    int64_t workSinceMs = 0;
+    // Its background jobs (pumpJobs) by id: running, and ended ones not yet dismissed.
+    std::map<std::string, model::BackgroundJob> jobs;
+    std::map<std::string, int64_t>              jobEndSeenMs; // when msga saw each end
+    bool                               wasLive = false; // listed or sending at the previous refresh
     // Its user as last pushed (syncMeta): only pushed when it changed.
-    std::string userSig;
+    std::string                        userSig;
     // `announced` changes (announcedGen), and what syncMeta counted in it as of
     // which change and read mark.
-    uint64_t    announcedGen = 0, countedGen = 0;
-    model::Ts   countedRead = -1;
-    uint32_t    unread = 0, mentions = 0;
-    model::Ts   latest    = 0;
-    uint64_t    syncedKey = 0; // syncKey() after the last sync
+    uint64_t                           announcedGen = 0, countedGen = 0;
+    model::Ts                          countedRead = -1;
+    uint32_t                           unread = 0, mentions = 0;
+    model::Ts                          latest    = 0;
+    uint64_t                           syncedKey = 0; // syncKey() after the last sync
     // Where its Subagent items are in parser.items(), as of subagentsKey
     // (the parser's revision, items and offset then).
     std::vector<size_t>                subagentItems;

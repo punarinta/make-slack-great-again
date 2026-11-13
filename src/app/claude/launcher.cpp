@@ -417,9 +417,14 @@ void Launcher::start(
     addStartSettings(args);
     if (skipPermissionChecks)
         args.emplace_back("--dangerously-skip-permissions");
-    if (!rolePrompt.empty()) {
+    // One appended part (the flag takes one): the role's — whose header
+    // line, first, tells the role (roles.h) — then msga's note.
+    std::string appended = rolePrompt;
+    if (!_promptNote.empty())
+        appended = appended.empty() ? _promptNote : str::concat({appended, "\n\n", _promptNote});
+    if (!appended.empty()) {
         args.emplace_back("--append-system-prompt");
-        args.push_back(rolePrompt);
+        args.push_back(std::move(appended));
     }
     if (!agentsJson.empty()) {
         args.emplace_back("--agents");

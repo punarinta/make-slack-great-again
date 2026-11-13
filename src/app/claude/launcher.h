@@ -79,6 +79,9 @@ public:
     // `--settings` for the sessions it starts (see approvals.h), saved with
     // each like its other start options; "" = none.
     void setStartSettings(std::string settingsJson) { _startSettings = std::move(settingsJson); }
+    // Text appended to the system prompt of the sessions it starts, after
+    // the role's (progress.h progressNote); "" = none.
+    void setPromptNote(std::string note) { _promptNote = std::move(note); }
 
     // done(sessionId, error): sessionId empty on failure, error then says why.
     using Done = std::function<void(std::string sessionId, std::string error)>;
@@ -220,6 +223,7 @@ private:
     plat::App            &_app;
     std::string           _claudePath;
     std::string           _startSettings;
+    std::string           _promptNote;
     Paths                 _paths;
     std::shared_ptr<bool> _alive;
 };
