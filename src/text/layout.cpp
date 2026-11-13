@@ -235,7 +235,7 @@ void LayoutImpl::shapeRun(
 ) {
     Scratch     &sc   = scratch();
     hb_buffer_t *buf  = sc.buf;
-    hb_font_t   *font = fonts::hbFont(r.font);
+    hb_font_t   *font = fonts::hbFont(r.font, _styles[r.span].size);
     r.g0 = r.g1 = uint32_t(_glyphs.size());
     if (!font)
         return;
@@ -248,10 +248,6 @@ void LayoutImpl::shapeRun(
         hb_buffer_set_script(buf, hb_script_t(script));
     static hb_language_t lang = hb_language_get_default();
     hb_buffer_set_language(buf, lang);
-#ifdef __APPLE__
-    // Tracking uses logical point size, independent of Retina pixel scale.
-    hb_font_set_ptem(font, _styles[r.span].size);
-#endif
     hb_shape(font, buf, nullptr, 0);
 
     unsigned             n     = 0;
