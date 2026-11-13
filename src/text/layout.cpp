@@ -235,7 +235,7 @@ void LayoutImpl::shapeRun(
 ) {
     Scratch     &sc   = scratch();
     hb_buffer_t *buf  = sc.buf;
-    hb_font_t   *font = fonts::hbFont(r.font);
+    hb_font_t   *font = fonts::hbFont(r.font, _styles[r.span].size);
     r.g0 = r.g1 = uint32_t(_glyphs.size());
     if (!font)
         return;

@@ -78,6 +78,10 @@ set(_hb_off HB_NO_BUFFER_MESSAGE HB_NO_BUFFER_SERIALIZE HB_NO_BUFFER_VERIFY
     HB_NO_LAYOUT_FEATURE_PARAMS HB_NO_LAYOUT_UNUSED HB_NO_OT_FONT_GLYPH_NAMES HB_NO_GETENV
     HB_NO_SETLOCALE HB_NO_OPEN HB_NO_MMAP HB_NO_ERRNO HB_NO_ATEXIT HB_DISABLE_DEPRECATED
     HB_NO_CUBIC_GLYF HB_NO_VAR_COMPOSITES HB_NO_VAR_HVF)
+if(APPLE)
+    # Apple's size-dependent tracking requires HarfBuzz's STAT support.
+    list(REMOVE_ITEM _hb_off HB_NO_STYLE)
+endif()
 if(NOT APPLE)
     # Apple Color Emoji's ZWJ sequences are AAT (morx); fonts elsewhere are OpenType.
     list(APPEND _hb_off HB_NO_AAT)

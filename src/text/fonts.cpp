@@ -13,6 +13,9 @@
 
 #include <hb-ot.h>
 #include <hb.h>
+#ifdef __APPLE__
+#include <hb-aat.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -73,16 +76,26 @@ struct Family {
     int                   rank = 50;
 };
 
+// A HarfBuzz font for a variation (varKey()) and point size (0 when the
+// face ignores it).
+struct VarFont {
+    uint16_t   key;
+    float      ptem;
+    hb_font_t *font;
+};
+
 struct Loaded {
-    bool                                          tried = false, ok = false;
-    hb_face_t                                    *hbFace    = nullptr;
-    hb_font_t                                    *hbDefault = nullptr;
-    FT_Face                                       ft        = nullptr;
-    float                                         upem      = 1000;
-    FaceMetrics                                   m;
-    std::vector<std::pair<uint16_t, hb_font_t *>> var; // per requested wght
-    int                                           wghtAxis = -1;
-    uint16_t              ftWght = 0; // variation currently set on ft (0 = default)
+    bool                  tried = false, ok = false;
+    hb_face_t            *hbFace    = nullptr;
+    hb_font_t            *hbDefault = nullptr;
+    FT_Face               ft        = nullptr;
+    float                 upem      = 1000;
+    FaceMetrics           m;
+    std::vector<VarFont>  var;
+    int                   wghtAxis = -1, opszAxis = -1;
+    float                 opszMin = 0, opszDef = 0, opszMax = 0;
+    bool                  tracked = false; // HarfBuzz applies trak: it reads ptem
+    uint16_t              ftVar   = 0;     // varKey() currently set on ft (0 = default)
     std::vector<FT_Fixed> defCoords;
 };
 
@@ -115,6 +128,8 @@ struct State {
     std::vector<Resolved> resolved;
     gfx::Bitmap           scratchColor;
     uint8_t               gamma[256];
+    // The optical sizes FontKeys use, in whole points: slot i + 1 is opsz[i].
+    std::vector<uint16_t> opsz;
 };
 State *g = nullptr;
 
@@ -242,6 +257,27 @@ Loaded &load(uint32_t face) {
     L.upem      = float(hb_face_get_upem(L.hbFace));
     hb_font_set_scale(L.hbDefault, int(L.upem), int(L.upem));
 
+#ifdef __APPLE__
+    // HarfBuzz applies trak (size-dependent tracking, which San Francisco
+    // relies on) only to fonts that also have STAT, so only those get a font
+    // per point size in hbFont().
+    if (hb_aat_layout_has_tracking(L.hbFace)) {
+        hb_blob_t *stat = hb_face_reference_table(L.hbFace, HB_TAG('S', 'T', 'A', 'T'));
+        L.tracked       = hb_blob_get_length(stat) > 0;
+        hb_blob_destroy(stat);
+    }
+    // Metrics stay those of the default instance, as for weights: SFNS's
+    // MVAR varies no line metrics (ascender, descender, gap) with opsz.
+    hb_ot_var_axis_info_t axis;
+    if (hb_ot_var_find_axis_info(L.hbFace, HB_TAG('o', 'p', 's', 'z'), &axis) &&
+        axis.min_value < axis.max_value) {
+        L.opszAxis = int(axis.axis_index);
+        L.opszMin  = axis.min_value;
+        L.opszDef  = axis.default_value;
+        L.opszMax  = axis.max_value;
+    }
+#endif
+
     hb_font_extents_t e{};
     if (hb_font_get_h_extents(L.hbDefault, &e)) {
         L.m.ascent  = float(e.ascender) / L.upem;
@@ -260,7 +296,7 @@ Loaded &load(uint32_t face) {
     if (hb_ot_metrics_get_position(L.hbDefault, HB_OT_METRICS_TAG_STRIKEOUT_SIZE, &v) && v > 0)
         L.m.strikeThick = float(v) / L.upem;
 
-    if (rec.wghtMax) {
+    if (rec.wghtMax || L.opszAxis >= 0) {
         FT_MM_Var *mm = nullptr;
         if (FT_Get_MM_Var(L.ft, &mm) == 0) {
             for (FT_UInt a = 0; a < mm->num_axis; ++a) {
@@ -270,6 +306,8 @@ Loaded &load(uint32_t face) {
             }
             FT_Done_MM_Var(g->ft, mm);
         }
+        if (size_t(L.opszAxis + 1) > L.defCoords.size())
+            L.opszAxis = -1; // FreeType disagrees with HarfBuzz: leave opsz alone
     }
     L.ok = true;
     return L;
@@ -311,6 +349,45 @@ FontKey resolveIn(uint32_t fam, uint16_t weight, bool italic) {
     const FontKey key  = makeKey(uint32_t(best), wght, bold, obl);
     g->resolved.push_back({fam, weight, italic, key});
     return key;
+}
+
+// The variation part of a key (weight, optical size slot), 0 = default.
+uint16_t varKey(FontKey k) {
+    return uint16_t(wghtOf(k) | opszOf(k) << 10);
+}
+
+// The slot (1..15) for an optical size in whole points. The table only grows
+// with the distinct sizes in use; when full, the nearest value is used.
+uint32_t opszSlot(uint16_t v) {
+    auto &t = g->opsz;
+    if (auto it = std::find(t.begin(), t.end(), v); it != t.end())
+        return uint32_t(it - t.begin()) + 1;
+    if (t.size() < 15) {
+        t.push_back(v);
+        return uint32_t(t.size());
+    }
+    size_t best = 0;
+    for (size_t i = 1; i < t.size(); ++i)
+        if (std::abs(int(t[i]) - int(v)) < std::abs(int(t[best]) - int(v)))
+            best = i;
+    return uint32_t(best) + 1;
+}
+
+// Automatic optical sizing, as CoreText does: a face with an opsz axis is
+// drawn with the design for its point size (logical px are points on macOS),
+// clamped to the axis and rounded to whole points. Every size at or below the
+// axis minimum (SFNS: 17, its text design) shares one key and so its glyphs;
+// the axis default needs no variation at all (SFNS: 28).
+FontKey sized(FontKey k, float size) {
+    if (k == kNoFont)
+        return k;
+    const Loaded &L = load(faceOf(k));
+    if (L.opszAxis < 0)
+        return k;
+    const auto v = uint16_t(std::lround(std::clamp(size, L.opszMin, L.opszMax)));
+    if (v == std::lround(L.opszDef))
+        return k;
+    return k | opszSlot(v) << 28;
 }
 
 size_t fbSlot(uint32_t cp, size_t mask) {
@@ -393,8 +470,8 @@ void shutdown() {
     if (!g)
         return;
     for (Loaded &L : g->loaded) {
-        for (auto &[w, f] : L.var)
-            hb_font_destroy(f);
+        for (const VarFont &v : L.var)
+            hb_font_destroy(v.font);
         hb_font_destroy(L.hbDefault);
         hb_face_destroy(L.hbFace); // before the mapping its blob borrows
         if (L.ft)
@@ -410,7 +487,9 @@ void shutdown() {
 }
 
 FontKey primary(const Style &s) {
-    return resolveIn(uint32_t(s.mono ? g->mono : g->ui), uint16_t(s.weight), s.italic);
+    return sized(
+        resolveIn(uint32_t(s.mono ? g->mono : g->ui), uint16_t(s.weight), s.italic), s.size
+    );
 }
 
 FontKey emoji() {
@@ -443,7 +522,7 @@ FontKey fallback(uint32_t cp, const Style &s) {
     FontKey k = resolveIn(fam, s.mono ? 400 : uint16_t(s.weight), s.italic);
     if (!hasGlyph(k, cp))
         k = makeKey(g->fams[fam].faces[0], 0, false, false);
-    return k;
+    return sized(k, s.size);
 }
 
 bool hasGlyph(FontKey k, uint32_t cp) {
@@ -454,21 +533,31 @@ bool hasGlyph(FontKey k, uint32_t cp) {
     return hb_font_get_nominal_glyph(L.hbDefault, cp, &gid);
 }
 
-hb_font_t *hbFont(FontKey k) {
+hb_font_t *hbFont(FontKey k, float ptem) {
     Loaded &L = load(faceOf(k));
     if (!L.ok)
         return nullptr;
-    const auto w = uint16_t(wghtOf(k));
-    if (!w)
+    const uint16_t key = varKey(k);
+    // Quarter points: float noise in computed sizes doesn't make new fonts.
+    const float    pt  = L.tracked && ptem > 0 ? std::max(0.25f, std::round(ptem * 4) / 4) : 0.f;
+    if (!key && !pt)
         return L.hbDefault;
-    for (auto &[vw, f] : L.var)
-        if (vw == w)
-            return f;
+    for (const VarFont &v : L.var)
+        if (v.key == key && v.ptem == pt)
+            return v.font;
     hb_font_t *f = hb_font_create(L.hbFace);
     hb_font_set_scale(f, int(L.upem), int(L.upem));
-    hb_variation_t v{HB_TAG('w', 'g', 'h', 't'), float(w)};
-    hb_font_set_variations(f, &v, 1);
-    L.var.push_back({w, f});
+    hb_variation_t v[2];
+    unsigned       n = 0;
+    if (wghtOf(k))
+        v[n++] = {HB_TAG('w', 'g', 'h', 't'), float(wghtOf(k))};
+    if (opszOf(k))
+        v[n++] = {HB_TAG('o', 'p', 's', 'z'), float(g->opsz[opszOf(k) - 1])};
+    if (n)
+        hb_font_set_variations(f, v, n);
+    if (pt > 0)
+        hb_font_set_ptem(f, pt);
+    L.var.push_back({key, pt, f});
     return f;
 }
 
@@ -564,12 +653,14 @@ bool rasterize(FontKey k, uint32_t glyph, uint32_t ppem64, int phase, Raster *ou
         }
     }
 
-    if (L.wghtAxis >= 0 && L.ftWght != wghtOf(k)) {
+    if (const uint16_t key = varKey(k); L.ftVar != key && !L.defCoords.empty()) {
         std::vector<FT_Fixed> c = L.defCoords;
-        if (wghtOf(k))
+        if (wghtOf(k) && L.wghtAxis >= 0)
             c[size_t(L.wghtAxis)] = FT_Fixed(wghtOf(k)) << 16;
+        if (opszOf(k) && L.opszAxis >= 0)
+            c[size_t(L.opszAxis)] = FT_Fixed(g->opsz[opszOf(k) - 1]) << 16;
         FT_Set_Var_Design_Coordinates(f, FT_UInt(c.size()), c.data());
-        L.ftWght = uint16_t(wghtOf(k));
+        L.ftVar = key;
     }
     if (FT_Set_Char_Size(f, 0, FT_F26Dot6(ppem64), 72, 72) != 0)
         return false;

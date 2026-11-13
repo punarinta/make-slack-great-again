@@ -555,7 +555,7 @@ void emojiColor() {
     }
     std::printf("  emoji font: %s\n", fonts::familyName(k).c_str());
     hb_codepoint_t gid = 0;
-    CHECK(hb_font_get_nominal_glyph(fonts::hbFont(k), 0x1F600, &gid)); // 😀
+    CHECK(hb_font_get_nominal_glyph(fonts::hbFont(k, 0), 0x1F600, &gid)); // 😀
     // 30 and 36 fall between Apple Color Emoji's strikes (20 26 32 40 …).
     for (uint32_t px : {20u, 30u, 36u, 64u}) {
         fonts::Raster r;
@@ -699,7 +699,7 @@ void colrV1() {
     };
     for (const Probe &pr : probes) {
         hb_codepoint_t gid = 0;
-        CHECK(hb_font_get_nominal_glyph(fonts::hbFont(k), pr.cp, &gid));
+        CHECK(hb_font_get_nominal_glyph(fonts::hbFont(k, 0), pr.cp, &gid));
         fonts::Raster r;
         CHECK(fonts::rasterize(k, gid, uint32_t(kPpem * 64), 0, &r));
         CHECK(r.color && r.argb);
@@ -946,6 +946,53 @@ void caretLongLine() {
     CHECK(w->wordStart(1000) == 2);
 }
 
+// Optical size and tracking (macOS): San Francisco's opsz follows the point
+// size, clamped to its axis (17..96, default 28), and HarfBuzz gets one font
+// per point size for trak instead of a shared font changed while shaping.
+// Elsewhere keys and fonts don't depend on the size.
+void opticalSize() {
+    auto key = [](float size) {
+        Style st;
+        st.size = size;
+        return fonts::primary(st);
+    };
+    const FontKey k13 = key(13), k15 = key(15), k20 = key(20), k28 = key(28);
+    const bool    sf = fonts::familyName(k13) == "system font";
+    std::printf("  ui font: %s\n", fonts::familyName(k13).c_str());
+    CHECK(fonts::faceOf(k13) == fonts::faceOf(k28));
+    CHECK(k13 == k15); // both at or below the axis minimum, or not sized
+#ifdef __APPLE__
+    if (sf) {
+        CHECK(fonts::opszOf(k13) != 0);
+        CHECK(fonts::opszOf(k20) != 0 && k20 != k13);
+        CHECK(fonts::opszOf(k28) == 0); // the axis default: no variation
+    }
+#else
+    CHECK(fonts::opszOf(k13) == 0 && k13 == k20 && k13 == k28);
+#endif
+    hb_font_t *f13 = fonts::hbFont(k13, 13);
+    CHECK(f13 && fonts::hbFont(k13, 13) == f13);
+    hb_font_t *f15 = fonts::hbFont(k13, 15);
+    auto       w   = [](float size) {
+        Style st;
+        st.size = size;
+        return lay("Hamburgefonstiv 0123456789", 1e9f, 1, st)->width() / size;
+    };
+    const float em12 = w(12), em24 = w(24);
+    std::printf("  width per em: 12 px %.4f, 24 px %.4f\n", em12, em24);
+#ifdef __APPLE__
+    if (sf) {
+        CHECK(f15 != f13);
+        CHECK(hb_font_get_ptem(f13) == 13 && hb_font_get_ptem(f15) == 15);
+        CHECK(std::fabs(em12 - em24) > 0.01f); // trak and opsz depend on the size
+    }
+#else
+    CHECK(f15 == f13);
+    CHECK(std::fabs(em12 - em24) < 0.01f);
+#endif
+    (void)sf;
+}
+
 struct Case {
     const char *name;
     void (*fn)();
@@ -976,6 +1023,7 @@ constexpr Case kCases[] = {
     {"caret_long_line", caretLongLine},
     {"underline_link", underlineLink},
     {"selection_order", selectionOrder},
+    {"optical_size", opticalSize},
 };
 
 } // namespace
