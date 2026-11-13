@@ -2441,9 +2441,13 @@ void Backend::pumpTyping(bool looked) {
 
 namespace {
 // How much of a command's output is read for its last line.
-constexpr size_t  kOutputTail  = 4096;
+constexpr size_t  kOutputTail    = 4096;
 // An ended job nobody looked at is forgotten after this long.
-constexpr int64_t kEndedKeepMs = 24 * 3600 * 1000;
+constexpr int64_t kEndedKeepMs   = 24 * 3600 * 1000;
+// A command whose output file is missing is looked for this long after it
+// started at the earliest (the file may come a moment after), then this often.
+constexpr int64_t kOrphanGraceMs = 10'000;
+constexpr int64_t kOrphanLookMs  = 30'000;
 } // namespace
 
 bool Backend::pumpJobs(Tracked &t) {
@@ -2485,6 +2489,23 @@ bool Backend::pumpJobs(Tracked &t) {
     std::unordered_set<std::string> seen;
     t.jobOutputs.clear();
     for (const auto &c : commands) {
+        // Stopped from msga: ended, whatever the transcript says.
+        if (t.userStopped.count(c.taskId))
+            continue;
+        // Its file gone: its worker went away (Claude Code deletes a worker's
+        // command files) and no notification will come. It may run on,
+        // orphaned (and can be stopped from here); one that doesn't has
+        // ended — looked for now and then, as that walks over /proc.
+        if (file::size(c.outputPath) < 0 && now - c.startedAt / 1000 > kOrphanGraceMs) {
+            int64_t &looked = t.orphanLookedMs[c.taskId];
+            if (now - looked >= kOrphanLookMs) {
+                looked = now;
+                if (commandProcessGroup(t.info.sessionId, c.outputPath) == 0)
+                    t.orphansGone.insert(c.taskId);
+            }
+            if (t.orphansGone.count(c.taskId))
+                continue;
+        }
         t.jobOutputs[c.taskId] = c.outputPath;
         Job &j                 = t.jobs[c.taskId];
         if (j.id.empty()) {
@@ -2594,6 +2615,8 @@ bool Backend::pumpJobs(Tracked &t) {
              now - t.jobEndSeenMs[j.id] > kEndedKeepMs)) {
             t.jobEndSeenMs.erase(j.id);
             t.userStopped.erase(j.id);
+            t.orphanLookedMs.erase(j.id);
+            t.orphansGone.erase(j.id);
             it = t.jobs.erase(it);
             continue;
         }

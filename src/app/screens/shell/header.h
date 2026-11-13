@@ -59,14 +59,16 @@ public:
     void layout() override;
 
 private:
-    screens::Context               &_ctx;
-    Avatars                        &_avatars;
-    HeaderAvatar                   *_avatar = nullptr;
-    ui::Label                      *_title = nullptr, *_count = nullptr;
-    ui::Clickable                  *_members = nullptr, *_huddle = nullptr, *_search = nullptr;
-    StarButton                     *_star  = nullptr;
-    JobsButton                     *_jobs  = nullptr;
-    ui::View                       *_blank = nullptr, *_actions = nullptr; // macOS columns
+    screens::Context &_ctx;
+    Avatars          &_avatars;
+    HeaderAvatar     *_avatar = nullptr;
+    ui::Label        *_title = nullptr, *_count = nullptr;
+    ui::Clickable    *_members = nullptr, *_huddle = nullptr, *_search = nullptr;
+    StarButton       *_star = nullptr;
+    JobsButton       *_jobs = nullptr;
+#ifdef __APPLE__
+    ui::View *_blank = nullptr, *_actions = nullptr; // the unified header's side columns
+#endif
     model::ConvRef                  _conv = model::kNoConv;
     std::unordered_set<std::string> _membersAsked; // group DMs whose members were asked for
 };

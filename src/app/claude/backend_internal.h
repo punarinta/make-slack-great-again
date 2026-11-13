@@ -174,6 +174,10 @@ struct Backend::Tracked {
     std::map<std::string, std::string>          jobOutputs;
     // Commands the user stopped: "stopped" however their notification reads.
     std::set<std::string>                       userStopped;
+    // Commands left by a gone worker (their files deleted): when each was
+    // last looked for, and those found ended.
+    std::map<std::string, int64_t>              orphanLookedMs;
+    std::set<std::string>                       orphansGone;
     bool                               wasLive = false; // listed or sending at the previous refresh
     // Its user as last pushed (syncMeta): only pushed when it changed.
     std::string                        userSig;

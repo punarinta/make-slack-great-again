@@ -848,6 +848,8 @@ void Backend::stopJob(ConvRef conv, const std::string &jobId) {
     // Found and signalled on a worker (a walk over /proc); the process group
     // goes, as Claude Code's own stop ends it, and Claude Code tells the session.
     const std::string sessionId = t->info.sessionId, output = t->jobOutputs[jobId];
+    const auto        found   = t->jobs.find(jobId);
+    const std::string name    = found != t->jobs.end() ? found->second.name : jobId;
     auto              stopped = std::make_shared<bool>(false);
     model::runInBackground(
         _app,
@@ -855,9 +857,20 @@ void Backend::stopJob(ConvRef conv, const std::string &jobId) {
             const int64_t group = commandProcessGroup(sessionId, output);
             *stopped            = group > 0 && signalProcessGroup(group);
         },
-        [this, alive = _alive, conv, jobId, stopped] {
-            if (!*alive || !*stopped)
+        [this, alive = _alive, conv, jobId, name, stopped] {
+            if (!*alive)
                 return;
+            if (!*stopped) {
+                reportError(
+                    i18n::arg(
+                        tr("Couldn't stop \xE2\x80\x9C%1\xE2\x80\x9D: its process wasn't found."),
+                        name
+                    )
+                );
+                return;
+            }
+            // Gone now: no notification may follow (a command its worker
+            // left behind is nobody's), so it ends here.
             if (Tracked *t = findRef(conv)) {
                 t->userStopped.insert(jobId);
                 pumpTyping();

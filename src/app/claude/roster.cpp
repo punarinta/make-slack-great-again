@@ -412,7 +412,10 @@ int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputP
         char          link[4096];
         const ssize_t n =
             ::readlink(str::concat({"/proc/", entry.name, "/fd/1"}).c_str(), link, sizeof link);
-        if (n <= 0 || std::string_view(link, size_t(n)) != outputPath)
+        // A worker that went away deleted its commands' files; a command it
+        // left running writes on into the deleted one.
+        const std::string_view target(link, n > 0 ? size_t(n) : 0);
+        if (target != outputPath && target != str::concat({outputPath, " (deleted)"}))
             continue;
         if (contains(procStrings(pid, "environ"), idVar))
             return pid;

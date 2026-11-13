@@ -401,6 +401,10 @@ msgid "The answer is on its way."
 msgstr "回答を送信中です。"
 
 #: src/app/claude/backend_send.cpp
+msgid "Couldn't stop “%1”: its process wasn't found."
+msgstr "「%1」を停止できませんでした：プロセスが見つかりません。"
+
+#: src/app/claude/backend_send.cpp
 msgid "%1 isn't a folder."
 msgstr "%1 はフォルダーではありません。"
 

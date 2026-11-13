@@ -137,8 +137,9 @@ void    signalProcess(int64_t pid, bool force);
 // The process group of a background command a session runs: the group
 // leader with CLAUDE_CODE_SESSION_ID=<sessionId> whose output (fd 1) is
 // `outputPath` (each command leads a group of its own, its output in a file
-// of its own — verified with Claude Code 2.1.323). 0 when not found, and
-// always elsewhere than on Linux.
+// of its own — verified with Claude Code 2.1.323), the file deleted or not
+// (a command its worker left behind runs on, orphaned, into the deleted
+// file). 0 when not found, and always elsewhere than on Linux.
 int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputPath);
 // SIGTERM to a whole process group; false when it couldn't be sent.
 bool    signalProcessGroup(int64_t group);

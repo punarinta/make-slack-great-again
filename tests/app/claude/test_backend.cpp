@@ -1528,25 +1528,18 @@ TEST("backend: a background command stopped from msga") {
     const int64_t pid = std::atoll(readText(pidFile).c_str());
     REQUIRE(pid > 1);
     CHECK(claude::commandProcessGroup("S1", output) == pid);
+    // Its worker gone, Claude Code deletes its file: it runs on, orphaned,
+    // into the deleted file — still found (Linux: "<path> (deleted)").
+    REQUIRE(file::remove(output));
+    CHECK(claude::commandProcessGroup("S1", output) == pid);
     CHECK(claude::commandProcessGroup("S2", output) == 0); // another session's: no
     CHECK(rig.backend->canStopJob(ref, "bs1"));
     CHECK_FALSE(rig.backend->canStopJob(ref, "nothing"));
 
-    // Stopped: the process goes; Claude Code's notification says "failed"
-    // (exit code 144), yet it shows as stopped.
+    // Stopped: the process goes, and the job shows as stopped.
     rig.backend->stopJob(ref, "bs1");
     REQUIRE(rig.wait([&] { return ::kill(pid_t(pid), 0) != 0; }, 5000));
-    home.append(
-        str::concat(
-            {R"({"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-25T10:05:00.000Z","content":)",
-             q("<task-notification>\n<task-id>bs1</task-id>\n<status>failed</"
-               "status>\n<summary>Background "
-               "command \"sleep 60\" failed with exit code 144</summary>\n</task-notification>"),
-             "}\n"}
-        )
-    );
-    job(false);
-    home.writeWorker("1.json", getpid(), "S1", "idle", {}, "/src/app");
+    // No notification follows (nobody runs an orphan now): stopped all the same.
     REQUIRE(rig.wait(
         [&] {
             const auto &jobs = rig.store.jobs(ref);
