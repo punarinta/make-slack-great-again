@@ -82,10 +82,8 @@ public:
     }
     void setJob(const BackgroundJob &j) {
         _job = j;
-        if (indeterminate(_job) && !_spinning) {
-            _spinning = true;
-            startTicking();
-        }
+        if (indeterminate(_job))
+            startTicking(); // a no-op while it ticks already
         update();
     }
     void paint(gfx::Painter &p) override {
@@ -93,13 +91,11 @@ public:
     }
     bool tick(double) override {
         update();
-        _spinning = indeterminate(_job);
-        return _spinning;
+        return indeterminate(_job);
     }
 
 private:
     BackgroundJob _job;
-    bool          _spinning = false;
 };
 
 // A job's 3 px bar.
@@ -246,7 +242,8 @@ private:
             j.report ? Font::Small : Font::Mono,
             C::TextFaint
         );
-        cmd->setMaxLines(1);
+        // The whole command, wrapped: up to five lines, then cut.
+        cmd->setMaxLines(5);
         if (!j.line.empty()) {
             auto *text = col->add<Label>(j.line, Font::Small, C::TextMuted);
             text->setMaxLines(2);
@@ -342,10 +339,11 @@ void JobsButton::reload() {
     rebuild();
     if (_popover)
         _popover->refresh();
-    if (anySpinner() && !_ticking) {
-        _ticking = true;
+    // A spinner turns every frame. startTicking() is a no-op while it ticks
+    // already; hiding the element took it off the window's list (and its
+    // flag), so it is asked again rather than remembered here.
+    if (anySpinner() && visible())
         startTicking();
-    }
     // The header picks the form anew (its room may have changed).
     invalidateLayout();
     if (parent())
@@ -549,15 +547,12 @@ void JobsButton::paint(gfx::Painter &p) {
 
 bool JobsButton::tick(double) {
     update();
-    _ticking = anySpinner() && visible();
-    return _ticking;
+    return anySpinner() && visible();
 }
 
 void JobsButton::windowChanged() {
-    if (window() && anySpinner() && !_ticking) {
-        _ticking = true;
+    if (window() && anySpinner() && visible())
         startTicking();
-    }
 }
 
 // ── Rings ───────────────────────────────────────────────────────────────────

@@ -571,4 +571,17 @@ TEST("header: an agent's background jobs show beside the name") {
     h.store.setJobs(h.dm, {});
     pump();
     CHECK_FALSE(jobs->visible());
+
+    // A spinner turns every frame — also once the element was hidden and
+    // shown again (hiding takes it off the window's tick list: it lagged,
+    // redrawn only by the 1 s clock).
+    h.store.setJobs(h.dm, {testJob("s1", "cd", -1)});
+    pump();
+    CHECK(jobs->spinning());
+    h.store.setJobs(h.dm, {});
+    pump();
+    h.store.setJobs(h.dm, {testJob("s2", "make", -1)});
+    pump();
+    CHECK(jobs->visible());
+    CHECK(jobs->spinning());
 }

@@ -161,7 +161,8 @@ std::string jobName(std::string_view command) {
             ++i;
         size_t j = i;
         while (j < command.size() && command[j] != ' ' && command[j] != '\t' && command[j] != '|' &&
-               command[j] != ';' && command[j] != '&' && command[j] != '>' && command[j] != '<')
+               command[j] != ';' && command[j] != '&' && command[j] != '>' && command[j] != '<' &&
+               command[j] != '\n' && command[j] != '\r')
             ++j;
         if (j == i)
             break; // an operator: the first command is all there is to name
@@ -174,11 +175,19 @@ std::string jobName(std::string_view command) {
             words.push_back(w);
         i = j;
     }
-    // "cd dir && make": the command after the cd.
-    if (words.size() >= 2 && words[0] == "cd") {
-        const size_t amp = command.find("&&");
-        if (amp != std::string_view::npos)
-            return jobName(command.substr(amp + 2));
+    // "cd dir && make", "cd dir; make", a cd on a line of its own: the
+    // command after the cd.
+    if (!words.empty() && words[0] == "cd") {
+        const size_t next = command.find_first_of(";&\n");
+        if (next != std::string_view::npos) {
+            size_t from = next;
+            while (from < command.size() &&
+                   (command[from] == ';' || command[from] == '&' || command[from] == '\n' ||
+                    command[from] == '\r' || command[from] == ' '))
+                ++from;
+            if (from < command.size())
+                return jobName(command.substr(from));
+        }
     }
     if (words.empty())
         return {};
@@ -205,12 +214,16 @@ std::string jobName(std::string_view command) {
     std::string name(first);
     if (std::find(std::begin(kRunners), std::end(kRunners), first) != std::end(kRunners))
         for (size_t k = 1; k < words.size(); ++k) {
-            // The next word that isn't a flag's value or a path-like option.
+            // The next word that isn't an option or an option's value.
             const std::string_view w = words[k];
             if (w.empty() || (w[0] == '-' && w.size() > 2 && w[1] != '-'))
-                continue; // -j8, -C: a short option
-            if (w[0] == '-' && (w == "-C" || w == "-j"))
+                continue; // -j8: a short option with its value
+            if (w.size() == 2 && w[0] == '-') {
+                // -f Makefile, -C build, -j 8: a short option, then its value.
+                if (k + 1 < words.size() && !words[k + 1].empty() && words[k + 1][0] != '-')
+                    ++k;
                 continue;
+            }
             std::string_view shown = w;
             if (w.find('/') != std::string_view::npos && w[0] != '-') {
                 shown = file::baseName(w);

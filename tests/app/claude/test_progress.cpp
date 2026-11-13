@@ -139,6 +139,12 @@ TEST("progress: a job is named from its command line") {
     CHECK_STR(jobName("CI=1 ctest --test-dir build -j 8"), "ctest");
     CHECK_STR(jobName("cd build && ninja -j8 2>&1 | tail"), "ninja");
     CHECK_STR(jobName("/usr/bin/rsync -a src/ dst/"), "rsync");
+    // After a cd, however it's joined; options with their values skipped.
+    CHECK_STR(jobName("cd /tmp/x; ./run-batch.sh --all"), "run-batch");
+    CHECK_STR(jobName("cd /tmp/x\npython3 tools/import.py"), "import");
+    CHECK_STR(jobName("cd /home/me/os && make -f Makefile.ci test"), "make test");
+    CHECK_STR(jobName("make -f Makefile"), "make");
+    CHECK_STR(jobName("make -C build -j 8 all"), "make all");
     CHECK_STR(jobName(""), "");
 }
 

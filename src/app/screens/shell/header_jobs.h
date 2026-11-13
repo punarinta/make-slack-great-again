@@ -54,6 +54,8 @@ public:
     std::string             slotTooltip(size_t i) const;
     std::string             summary() const;
     JobsPopover            *popover() const { return _popover; }
+    // Turning every frame (a spinner shown): on the window's tick list.
+    bool                    spinning() const { return flag(Ticking); }
     void                    openPopover();
 
     ui::SizeF   measureContent(float availW, float availH) override;
@@ -94,7 +96,6 @@ private:
     ui::Label                               *_value    = nullptr;
     ui::Label                               *_more     = nullptr;
     int                                      _hover    = -1;
-    bool                                     _ticking  = false;
     plat::TimerId                            _timer    = 0;
     model::Store::ObserverId                 _observer = 0;
     std::unordered_map<std::string, int64_t> _shownMs; // ended jobs' time on screen
