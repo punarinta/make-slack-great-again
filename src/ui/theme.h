@@ -131,6 +131,10 @@ enum class C : uint8_t {
     MenuHover,
     MenuSeparator,
     DividerSubtle, // divider.subtle: the rule under macOS's unified header
+    // Progress marks (a job's ring, its bar): the accent in light (it follows
+    // the palette); in dark a light blue, the dark accent being too faint
+    // on the dark surface for a state mark.
+    Progress,
     Count
 };
 

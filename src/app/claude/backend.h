@@ -120,6 +120,8 @@ public:
     // terminal or another program drives are theirs to stop.
     bool canStopSession(model::ConvRef conv) const override;
     void stopSession(model::ConvRef conv) override;
+    bool canStopJob(model::ConvRef conv, const std::string &jobId) const override;
+    void stopJob(model::ConvRef conv, const std::string &jobId) override;
     // The buttons on "Waiting for your approval": each one is an option of
     // the permission question on Claude Code's screen, picked there.
     void
@@ -240,6 +242,10 @@ private:
     std::vector<std::string>   watchedFiles(bool *anyBusy) const;
     // `looked`: findSubagentRuns has just run (the refresh's own look).
     void                       pumpTyping(bool looked = false);
+    // Its background jobs into the Store (progress.h): the commands it runs
+    // in the background, its own reports, and those it saw end until the
+    // user is done with them. True while any runs.
+    bool                       pumpJobs(Tracked &t);
     void                       announceRoles();
     // Puts what the session shows into the Store: its messages (where its
     // history was loaded), its conversation and its user.

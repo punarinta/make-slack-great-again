@@ -1,7 +1,7 @@
 // The conversation header and its tab strip, with the header avatar and the
 // members popup:
 //
-//   [avatar] #name ··········· [people 9] [headphones] [star] [search]
+//   [avatar] #name ······ [jobs] [people 9] [headphones] [star] [search]
 //   Messages | Design crit — week 38                    (or "Add canvas")
 //
 // 48 px tall, 16 px in on the left, 8 on the right. A DM shows the peer's
@@ -11,6 +11,8 @@
 // service has huddles. On macOS the header is the unified title bar's
 // content instead: the name centred, the
 // actions on the right, as tall as the title bar.
+// [jobs]: an agent session's background jobs (header_jobs.h). The name gives
+// way first, down to 120 px; then the jobs fold into rings, then a count.
 #pragma once
 
 #include "screens/common/context.h"
@@ -25,6 +27,7 @@
 namespace shell {
 
 class HeaderAvatar;
+class JobsButton;
 class StarButton;
 
 class ConvHeader : public ui::View {
@@ -42,6 +45,7 @@ public:
     ui::Clickable *huddle() const { return _huddle; }
     ui::Clickable *star() const;
     ui::Clickable *search() const { return _search; }
+    JobsButton    *jobs() const { return _jobs; }
     bool           starred() const;
     int            avatarPresence() const; // tests: a DM's Avatar::Presence, else -1
 
@@ -52,13 +56,19 @@ public:
     // The member list: shown under `anchor` (window rect).
     void                  openMembers(ui::RectF anchor);
 
+    void layout() override;
+
 private:
-    screens::Context               &_ctx;
-    Avatars                        &_avatars;
-    HeaderAvatar                   *_avatar = nullptr;
-    ui::Label                      *_title = nullptr, *_count = nullptr;
-    ui::Clickable                  *_members = nullptr, *_huddle = nullptr, *_search = nullptr;
-    StarButton                     *_star = nullptr;
+    screens::Context &_ctx;
+    Avatars          &_avatars;
+    HeaderAvatar     *_avatar = nullptr;
+    ui::Label        *_title = nullptr, *_count = nullptr;
+    ui::Clickable    *_members = nullptr, *_huddle = nullptr, *_search = nullptr;
+    StarButton       *_star = nullptr;
+    JobsButton       *_jobs = nullptr;
+#ifdef __APPLE__
+    ui::View *_blank = nullptr, *_actions = nullptr; // the unified header's side columns
+#endif
     model::ConvRef                  _conv = model::kNoConv;
     std::unordered_set<std::string> _membersAsked; // group DMs whose members were asked for
 };

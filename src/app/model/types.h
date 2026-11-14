@@ -304,4 +304,23 @@ struct Typing {
     int64_t sinceMs = 0;
 };
 
+// A long job an agent session runs on the side: a command it started in the
+// background, or a job it reports on itself (`msga --claude-status`). Shown
+// in the conversation header while it runs, and briefly once it ended.
+struct BackgroundJob {
+    enum class State : uint8_t { Running, Done, Failed, Stopped };
+    std::string id;             // stable for its life (a task id, or "report:<name>")
+    std::string name;           // short: "fuzz-checkout", "npm test"
+    std::string command;        // its command line; "" for a report
+    std::string line;           // its latest output line, or the report's text
+    std::string ratio;          // "6200/10000" when the line or report said so
+    float       progress  = -1; // 0…1; < 0 = not known
+    int64_t     startedMs = 0;  // epoch ms
+    int64_t     endedMs   = 0;  // epoch ms, once it ended
+    State       state     = State::Running;
+    int         exitCode  = 0;     // Failed: what it exited with
+    bool        report    = false; // the agent's own report, not a command
+    bool        operator==(const BackgroundJob &) const = default;
+};
+
 } // namespace model

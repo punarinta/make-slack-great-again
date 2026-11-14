@@ -9,6 +9,9 @@
 //   --claude-permission-hook <dir>
 //                         Claude Code's permission hook for the sessions msga
 //                         starts (app/claude/approvals.h): no window, no app
+//   --claude-status "<line>" [--progress <p>]
+//                         a Claude Code session's progress report, shown
+//                         beside its "thinking" (app/claude/progress.h)
 //
 // Diagnostics (screenshots, measurements):
 //   --theme light|dark   override the saved theme for this run
@@ -24,6 +27,7 @@
 #include "app/auth/workspaces.h"
 #include "app/cache/workspace_cache.h"
 #include "app/claude/approvals.h"
+#include "app/claude/progress.h"
 #include "app/crash/crash_handler.h"
 #include "app/i18n/languages.h"
 #include "app/identity.h"
@@ -220,6 +224,8 @@ bool parseNotificationClick(std::string_view s, uint64_t *id, std::string *actio
 int main(int argc, char **argv) {
     if (argc == 3 && argv[1] == claude::kPermissionHookFlag)
         return claude::runPermissionHook(argv[2]);
+    if (argc >= 2 && argv[1] == claude::kStatusFlag)
+        return claude::runStatusCommand(argc, argv);
 #ifdef MSGA_DEMO
     std::string demo;
 #else

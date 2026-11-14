@@ -347,8 +347,23 @@ struct SlackBackend::Read {
     bool        threadsUnavailable = false, threadsPrimed = false;
     std::string threadsError;           // the refusal that gave up on the feed
     bool        threadsViaSubs = false; // getView refused: the feed is getTimestamps
-    std::unordered_map<std::string, Ts> threadBaseline;
-    std::unordered_set<std::string>     followed; // threads I started, replied in, or follow
+    std::unordered_map<std::string, Ts>       threadBaseline;
+    std::unordered_set<std::string>           followed; // threads I started, replied in, or follow
+    // Threads I stopped following ("Turn off notifications for replies",
+    // here or on another client), key → when (a ts): a reply in one I
+    // started no longer follows it, and only my own reply after that does.
+    std::unordered_map<std::string, Ts>       unfollowed;
+    // Follow changes made here, key → the first feed poll whose answer may
+    // overrule them (kHeld while the write is out): a poll sent before
+    // Slack took the change still shows the old state.
+    static constexpr uint64_t                 kHeld = UINT64_MAX;
+    std::unordered_map<std::string, uint64_t> followHeld;
+    uint64_t                                  feedSent = 0; // feed polls sent so far
+    bool                                      feedOwns(const std::string &key, uint64_t sent);
+    // Followed, or one I started (parent_user_id) that I didn't unfollow.
+    bool isFollowed(const std::string &key, bool parentIsMe) const {
+        return followed.count(key) || (parentIsMe && !unfollowed.count(key));
+    }
     // Followed threads with an
     // unread reply (key → its newest), and how far I read each one.
     std::unordered_map<std::string, Ts> unreadThreads, threadReadFloor;
@@ -360,6 +375,7 @@ struct SlackBackend::Read {
     void                                threadUnread(ConvRef c, Ts root, Ts to);
     void                                publishUnreadThreads();
     bool                                follow(const std::string &key); // true: newly followed
+    void                                unfollow(const std::string &key);
     void                                pruneThreadState();
 
     void tick();
@@ -376,6 +392,7 @@ struct SlackBackend::Read {
         Ts                 newest,
         Ts                 lastRead,
         bool               priming,
+        uint64_t           sent,
         Ts                &baseline
     );
     void announceReplies(
@@ -2146,10 +2163,19 @@ void SlackBackend::setHuddle(
 // A thread I follow, or
 // one I started.
 bool SlackBackend::threadFollowed(ConvRef c, Ts root) const {
-    if (_read->followed.count(threadKey(c, root)))
+    const std::string key = threadKey(c, root);
+    if (_read->followed.count(key))
         return true;
+    if (_read->unfollowed.count(key))
+        return false;
     const model::Message *r = _store.findMessage(c, root);
     return r && _store.me != kNoUser && r->user == _store.me;
+}
+
+// subscriptions.thread.add / remove: internal methods, session tokens only,
+// while Slack takes them.
+bool SlackBackend::canFollowThread(ConvRef c, Ts root) const {
+    return c < _store.conversationCount() && root && _creds.sessionAuth() && !_followUnavailable;
 }
 
 void SlackBackend::resolveUser(UserRef u) {
@@ -2446,6 +2472,10 @@ void SlackBackend::Read::saveExtras(json::Writer &w) {
     for (const std::string &k : followed)
         if (!conv(k).empty())
             w.beginArray().value(conv(k)).value(int64_t(keyTs(k))).endArray();
+    w.endArray().key("unfollowed").beginArray();
+    for (const auto &[k, at] : unfollowed)
+        if (!conv(k).empty())
+            w.beginArray().value(conv(k)).value(int64_t(keyTs(k))).value(int64_t(at)).endArray();
     // Probe times run on the monotonic clock (now()); disk keeps unix secs.
     const int64_t t = now(), wall = base::nowSecs();
     w.endArray().key("probed").beginArray();
@@ -2487,6 +2517,10 @@ void SlackBackend::Read::loadExtras(const json::Value &x) {
     for (const json::Value v : x["followed"])
         if (const ConvRef c = s.findConversation(v[0].str()); c != kNoConv && v[1].integer())
             followed.insert(threadKey(c, v[1].integer()));
+    for (const json::Value v : x["unfollowed"])
+        if (const ConvRef c = s.findConversation(v[0].str()); c != kNoConv && v[1].integer())
+            if (std::string k = threadKey(c, v[1].integer()); !followed.count(k))
+                unfollowed[std::move(k)] = v[2].integer();
     const int64_t t = now(), wall = base::nowSecs();
     for (const json::Value v : x["probed"])
         if (!v[0].str().empty())
@@ -2900,7 +2934,9 @@ void SlackBackend::Read::pollThreadReplies() {
     call(
         "subscriptions.thread.getView",
         threadsForm("limit=10&priority_mode=all"),
-        [this, sentTeam = b._threadsTeamId](const json::Document &doc, const std::string &err) {
+        [this,
+         sentTeam = b._threadsTeamId,
+         sent     = ++feedSent](const json::Document &doc, const std::string &err) {
             if (!err.empty()) {
                 if (isFeedRefusal(err)) {
                     LOG_WARN("slack", "subscriptions.thread.getView: %s", err.c_str());
@@ -2913,12 +2949,19 @@ void SlackBackend::Read::pollThreadReplies() {
             int injected       = 0;
             for (const json::Value t : doc.root()["threads"]) {
                 mapjson::FeedThread ft;
-                if (!mapjson::toFeedThread(t, s, ft))
+                if (!mapjson::toFeedThread(t, s, ft)) {
+                    // Unfollowed on another client: here too.
+                    if (!ft.subscribed && ft.conv != kNoConv && ft.root) {
+                        const std::string key = threadKey(ft.conv, ft.root);
+                        if (feedOwns(key, sent) && b.threadFollowed(ft.conv, ft.root))
+                            unfollow(key);
+                    }
                     continue;
+                }
                 const std::string key    = threadKey(ft.conv, ft.root);
                 const Ts          newest = ft.replies.empty() ? 0 : ft.replies.back().ts;
                 Ts                baseline;
-                if (feedThread(key, ft.conv, ft.root, newest, ft.lastRead, priming, baseline))
+                if (feedThread(key, ft.conv, ft.root, newest, ft.lastRead, priming, sent, baseline))
                     announceReplies(
                         key, ft.conv, baseline, newest, ft.replies, ft.parentIsMe, injected
                     );
@@ -2935,9 +2978,19 @@ void SlackBackend::Read::pollThreadReplies() {
 // entry's unread state; baseline: where its news starts. false: none to
 // announce (it has nothing past its read cursor yet).
 bool SlackBackend::Read::feedThread(
-    const std::string &key, ConvRef c, Ts root, Ts newest, Ts lastRead, bool priming, Ts &baseline
+    const std::string &key,
+    ConvRef            c,
+    Ts                 root,
+    Ts                 newest,
+    Ts                 lastRead,
+    bool               priming,
+    uint64_t           sent,
+    Ts                &baseline
 ) {
-    follow(key); // the feed IS the subscription list
+    // The feed IS the subscription list (but not over a change of mine
+    // Slack may not have had yet).
+    if (feedOwns(key, sent))
+        follow(key);
     pullWatch(c, root, newest);
     // Read further on some client (here or another): its notifications go.
     if (Ts &seen = threadReadSeen[key]; lastRead > seen) {
@@ -2948,7 +3001,7 @@ bool SlackBackend::Read::feedThread(
     // read cursor or mine, whichever is further; the first page
     // after a start restores it.
     const Ts floor = std::max(lastRead, threadReadFloor[key]);
-    if (newest > floor && !s.threadMuted(c, root))
+    if (newest > floor && !s.threadMuted(c, root) && followed.count(key))
         unreadThreads[key] = newest;
     else
         unreadThreads.erase(key);
@@ -3009,7 +3062,9 @@ void SlackBackend::Read::pollThreadSubs() {
     call(
         "subscriptions.thread.getTimestamps",
         threadsForm(kSubsForm),
-        [this, sentTeam = b._threadsTeamId](const json::Document &doc, const std::string &err) {
+        [this,
+         sentTeam = b._threadsTeamId,
+         sent     = ++feedSent](const json::Document &doc, const std::string &err) {
             if (!err.empty()) {
                 if (isFeedRefusal(err)) {
                     LOG_WARN("slack", "subscriptions.thread.getTimestamps: %s", err.c_str());
@@ -3026,7 +3081,7 @@ void SlackBackend::Read::pollThreadSubs() {
                     continue;
                 const std::string key = threadKey(t.conv, t.root);
                 Ts                baseline;
-                if (!feedThread(key, t.conv, t.root, t.latest, t.lastRead, priming, baseline))
+                if (!feedThread(key, t.conv, t.root, t.latest, t.lastRead, priming, sent, baseline))
                     continue;
                 if (t.latest <= baseline) {
                     threadBaseline[key] = baseline;
@@ -3555,10 +3610,15 @@ bool SlackBackend::Read::inject(ConvRef c, model::Message m, bool parentIsMe) {
     const UserRef     author  = m.user;
     const bool        mention = s.mentionsMe(m.text);
     const std::string key     = root ? threadKey(c, root) : std::string();
-    // Replying subscribes, as Slack does; a thread I started (parent_user_id)
-    // is followed whether or not its root is loaded.
-    if (root && (own || parentIsMe))
+    // Replying subscribes, as Slack does (again, after an unfollow: a reply
+    // newer than it); a thread I started (parent_user_id) is followed
+    // whether or not its root is loaded, unless I unfollowed it.
+    if (root && own) {
+        if (const auto it = unfollowed.find(key); it == unfollowed.end() || m.ts > it->second)
+            follow(key);
+    } else if (root && parentIsMe && !unfollowed.count(key)) {
         follow(key);
+    }
     // Someone held as away just posted: one probe instead of waiting a round
     // (at most one per user per kAwayProbeGapMs: a busy channel's away
     // poster would ask on every message).
@@ -3604,19 +3664,19 @@ bool SlackBackend::Read::inject(ConvRef c, model::Message m, bool parentIsMe) {
 
     // A reply in a thread I follow, or one that
     // mentions me, makes the Threads entry unread.
-    if (!own && root && !s.threadMuted(c, root) && (parentIsMe || followed.count(key) || mention))
+    if (!own && root && !s.threadMuted(c, root) && (isFollowed(key, parentIsMe) || mention))
         noteUnreadThreadReply(c, root, ts);
 
     uint32_t du = 0, dm = 0;
     if (counted) {
         const bool threadMuted = root && s.threadMuted(c, root);
-        const bool isFollowed  = !threadMuted && root && (parentIsMe || followed.count(key));
-        if (root && !mention && !isFollowed && (threadMuted || !isDm)) {
+        const bool following   = !threadMuted && root && isFollowed(key, parentIsMe);
+        if (root && !mention && !following && (threadMuted || !isDm)) {
             // lives in the thread, not the channel
         } else if (!muted) {
             du = 1;
-            dm = isDm || mention || isFollowed;
-        } else if (!isDm && (mention || isFollowed)) {
+            dm = isDm || mention || following;
+        } else if (!isDm && (mention || following)) {
             du = dm = 1;
         }
     }
@@ -3652,10 +3712,53 @@ void SlackBackend::followThread(ConvRef c, Ts root) {
 }
 
 bool SlackBackend::Read::follow(const std::string &key) {
-    if (!followed.insert(key).second)
+    const bool wasOff = unfollowed.erase(key) > 0;
+    if (!followed.insert(key).second) {
+        if (wasOff)
+            extrasChanged();
         return false;
+    }
     extrasChanged();
     return true;
+}
+
+// Not followed any more, even one I started: its replies stop notifying
+// and badging, and the Threads entry lets go of it.
+void SlackBackend::Read::unfollow(const std::string &key) {
+    followed.erase(key);
+    unfollowed[key] = base::nowMicros();
+    if (unreadThreads.erase(key))
+        publishUnreadThreads();
+    extrasChanged();
+}
+
+// A feed answer may set this thread's follow state: no change of mine is
+// out, or the poll went after Slack took it.
+bool SlackBackend::Read::feedOwns(const std::string &key, uint64_t sent) {
+    const auto it = followHeld.find(key);
+    if (it == followHeld.end())
+        return true;
+    if (sent < it->second)
+        return false;
+    followHeld.erase(it);
+    return true;
+}
+
+// "Get notified about new replies" / "Turn off notifications for replies":
+// here at once, held against the feed until Slack answers.
+void SlackBackend::setFollowLocal(ConvRef c, Ts root, bool on) {
+    const std::string key  = threadKey(c, root);
+    _read->followHeld[key] = Read::kHeld;
+    if (on)
+        _read->follow(key);
+    else
+        _read->unfollow(key);
+}
+
+// Slack answered the change: the feed polls sent from now on overrule it.
+void SlackBackend::followSettled(ConvRef c, Ts root) {
+    if (const auto it = _read->followHeld.find(threadKey(c, root)); it != _read->followHeld.end())
+        it->second = _read->feedSent + 1;
 }
 
 // The thread state that would otherwise grow for the whole run: the followed
@@ -3671,6 +3774,17 @@ void SlackBackend::Read::pruneThreadState() {
         std::erase_if(followed, [cut](const std::string &k) { return keyTs(k) < cut; });
         extrasChanged();
     }
+    if (unfollowed.size() > 2 * kMaxFollowed) {
+        std::vector<Ts> roots;
+        for (const auto &[k, at] : unfollowed)
+            roots.push_back(keyTs(k));
+        const Ts cut = pruneCut(std::move(roots), kMaxFollowed);
+        std::erase_if(unfollowed, [cut](const auto &kv) { return keyTs(kv.first) < cut; });
+        extrasChanged();
+    }
+    // Settled changes to threads the feed never showed again.
+    if (followHeld.size() > kMaxThreadState)
+        std::erase_if(followHeld, [](const auto &kv) { return kv.second != kHeld; });
     for (auto *m : {&threadBaseline, &threadReadFloor, &threadReadSeen}) {
         if (m->size() <= 2 * kMaxThreadState)
             continue;

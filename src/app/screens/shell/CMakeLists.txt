@@ -13,6 +13,7 @@ add_library(msga_screens_shell STATIC
     fuzzy_match.cpp
     gif_search.cpp
     header.cpp
+    header_jobs.cpp
     huddle_banner.cpp
     nav_chrome.cpp
     nav_history.cpp

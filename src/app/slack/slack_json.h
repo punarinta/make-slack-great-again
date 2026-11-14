@@ -105,11 +105,13 @@ int64_t     epochSecs(const json::Value &v);
 // One thread of subscriptions.thread.getView (the Threads feed): where it
 // is, how far I read it, and its replies (latest_replies and
 // unread_replies, deduplicated, oldest first, threadTs set) with each
-// reply's parent_user_id == me. False for one to skip: unsubscribed, or in a
-// conversation the Store doesn't have.
+// reply's parent_user_id == me. False for one to skip: unsubscribed
+// (subscribed false, conv and root still set), or in a conversation the
+// Store doesn't have.
 struct FeedThread {
     model::ConvRef              conv = model::kNoConv;
     model::Ts                   root = 0, lastRead = 0;
+    bool                        subscribed = true;
     std::vector<model::Message> replies;
     std::vector<char>           parentIsMe; // per reply
 };

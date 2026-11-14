@@ -89,6 +89,12 @@ bool BackendProxy::canStopSession(ConvRef c) const {
 void BackendProxy::stopSession(ConvRef c) {
     _t->stopSession(c);
 }
+bool BackendProxy::canStopJob(ConvRef c, const std::string &jobId) const {
+    return _t->canStopJob(c, jobId);
+}
+void BackendProxy::stopJob(ConvRef c, const std::string &jobId) {
+    _t->stopJob(c, jobId);
+}
 void BackendProxy::userTyping(ConvRef c, Ts thread) {
     _t->userTyping(c, thread);
 }
@@ -374,6 +380,12 @@ void BackendProxy::deleteCanvas(const std::string &fileId, Done d) {
 }
 bool BackendProxy::threadFollowed(ConvRef c, Ts root) const {
     return _t->threadFollowed(c, root);
+}
+bool BackendProxy::canFollowThread(ConvRef c, Ts root) const {
+    return _t->canFollowThread(c, root);
+}
+void BackendProxy::setThreadFollowed(ConvRef c, Ts root, bool follow) {
+    _t->setThreadFollowed(c, root, follow);
 }
 void BackendProxy::resolveUser(UserRef u) {
     _t->resolveUser(u);

@@ -188,9 +188,11 @@ std::optional<SessionInfo> parseBackgroundJob(std::string_view json) {
     s.transcriptPath = text(o["linkScanPath"]);
     s.worktreePath   = text(o["worktreePath"]);
     s.statusSinceMs  = isoToMs(o["updatedAt"].str());
+    for (const json::Value k : o["inFlight"]["kinds"])
+        s.commandsRunning = s.commandsRunning || k.str() == "local_bash";
     // Running = its worker process is alive, which only the worker's own
     // sessions/<pid>.json tells (applyWorker); a job file alone runs nothing.
-    s.running        = false;
+    s.running = false;
     return s;
 }
 
@@ -386,6 +388,51 @@ void signalProcess(int64_t pid, bool force) {
 #else
     if (pid > 0)
         ::kill(pid_t(pid), force ? SIGKILL : SIGTERM);
+#endif
+}
+
+int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputPath) {
+#ifdef __linux__
+    if (sessionId.empty() || outputPath.empty())
+        return 0;
+    const std::string           idVar = str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId});
+    std::vector<file::DirEntry> entries;
+    file::listDir("/proc", &entries);
+    for (const auto &entry : entries) {
+        int64_t pid = 0;
+        for (const char c : entry.name) {
+            if (c < '0' || c > '9') {
+                pid = 0;
+                break;
+            }
+            pid = pid * 10 + (c - '0');
+        }
+        if (pid <= 0 || ::getpgid(pid_t(pid)) != pid_t(pid))
+            continue; // only group leaders: a command and what it started
+        char          link[4096];
+        const ssize_t n =
+            ::readlink(str::concat({"/proc/", entry.name, "/fd/1"}).c_str(), link, sizeof link);
+        // A worker that went away deleted its commands' files; a command it
+        // left running writes on into the deleted one.
+        const std::string_view target(link, n > 0 ? size_t(n) : 0);
+        if (target != outputPath && target != str::concat({outputPath, " (deleted)"}))
+            continue;
+        if (contains(procStrings(pid, "environ"), idVar))
+            return pid;
+    }
+#else
+    (void)sessionId;
+    (void)outputPath;
+#endif
+    return 0;
+}
+
+bool signalProcessGroup(int64_t group) {
+#ifdef _WIN32
+    (void)group;
+    return false;
+#else
+    return group > 0 && ::kill(-pid_t(group), SIGTERM) == 0;
 #endif
 }
 

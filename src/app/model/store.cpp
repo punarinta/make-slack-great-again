@@ -92,9 +92,10 @@ MessageExtras &Message::extras() {
 }
 
 namespace {
-const MessageExtras       kNoExtras;
-const User                kNoUserRecord;
-const std::vector<Typing> kNoTyping;
+const MessageExtras              kNoExtras;
+const User                       kNoUserRecord;
+const std::vector<Typing>        kNoTyping;
+const std::vector<BackgroundJob> kNoJobs;
 } // namespace
 
 const std::string &Message::subtype() const {
@@ -160,6 +161,8 @@ void Store::clear() {
     _convs.clear();
     _convIndex.clear();
     _typing.clear();
+    _jobs.clear();
+    _jobsDismissed.clear();
     _customEmoji.clear();
     customEmojiChanged();
     myGroups.clear();
@@ -1221,6 +1224,54 @@ void Store::setTyping(ConvRef ref, UserRef u, Ts thread, bool on, int64_t sinceM
 
 const std::vector<Typing> &Store::typing(ConvRef ref) const {
     return ref < _typing.size() ? _typing[ref] : kNoTyping;
+}
+
+void Store::setJobs(ConvRef ref, std::vector<BackgroundJob> jobs) {
+    if (ref >= _typing.size())
+        return;
+    // Those dismissed stay out; a dismissal is forgotten once its job is.
+    if (auto d = _jobsDismissed.find(ref); d != _jobsDismissed.end()) {
+        std::erase_if(d->second, [&](const std::string &id) {
+            return std::none_of(jobs.begin(), jobs.end(), [&](const BackgroundJob &j) {
+                return j.id == id;
+            });
+        });
+        std::erase_if(jobs, [&](const BackgroundJob &j) { return d->second.count(j.id) > 0; });
+        if (d->second.empty())
+            _jobsDismissed.erase(d);
+    }
+    auto it = _jobs.find(ref);
+    if (it == _jobs.end() ? jobs.empty() : it->second == jobs)
+        return;
+    if (jobs.empty())
+        _jobs.erase(it);
+    else
+        _jobs[ref] = std::move(jobs);
+    emit({ChangeKind::Jobs, ref});
+}
+
+const std::vector<BackgroundJob> &Store::jobs(ConvRef ref) const {
+    const auto it = _jobs.find(ref);
+    return it == _jobs.end() ? kNoJobs : it->second;
+}
+
+void Store::dismissJob(ConvRef ref, const std::string &id) {
+    auto it = _jobs.find(ref);
+    if (it == _jobs.end())
+        return;
+    const size_t before = it->second.size();
+    std::erase_if(it->second, [&](const BackgroundJob &j) { return j.id == id; });
+    if (it->second.size() == before)
+        return;
+    _jobsDismissed[ref].insert(id);
+    if (it->second.empty())
+        _jobs.erase(it);
+    emit({ChangeKind::Jobs, ref});
+}
+
+bool Store::jobDismissed(ConvRef ref, const std::string &id) const {
+    const auto it = _jobsDismissed.find(ref);
+    return it != _jobsDismissed.end() && it->second.count(id) > 0;
 }
 
 void Store::customEmojiChanged() {

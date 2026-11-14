@@ -74,6 +74,10 @@ struct SessionInfo {
     // Background: the worktree Claude Code made for the job (state.json
     // "worktreePath"), "" when it works in its folder as it is.
     std::string worktreePath;
+    // Background: commands of its running in the background now (state.json
+    // inFlight.kinds "local_bash"): the transcript can't tell those a dead
+    // worker left behind.
+    bool        commandsRunning                       = false;
     bool        operator==(const SessionInfo &) const = default;
 };
 
@@ -129,7 +133,16 @@ std::vector<int64_t> leftoverProcesses(std::string_view sessionId, std::string_v
 std::vector<int64_t>
 strandedWorker(const Paths &paths, std::string_view sessionId, std::string_view jobId = {});
 // SIGTERM, or SIGKILL when `force`. Not on Windows.
-void signalProcess(int64_t pid, bool force);
+void    signalProcess(int64_t pid, bool force);
+// The process group of a background command a session runs: the group
+// leader with CLAUDE_CODE_SESSION_ID=<sessionId> whose output (fd 1) is
+// `outputPath` (each command leads a group of its own, its output in a file
+// of its own — verified with Claude Code 2.1.323), the file deleted or not
+// (a command its worker left behind runs on, orphaned, into the deleted
+// file). 0 when not found, and always elsewhere than on Linux.
+int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputPath);
+// SIGTERM to a whole process group; false when it couldn't be sent.
+bool    signalProcessGroup(int64_t group);
 
 // Each job's state.json and each sessions/<pid>.json as parsed when it last
 // changed (size and mtime), so a scan that runs every few seconds reads only

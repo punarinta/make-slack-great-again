@@ -14,6 +14,7 @@
 #include "app/claude/catalog.h"
 #include "app/claude/common.h"
 #include "app/claude/outputs.h"
+#include "app/claude/progress.h"
 #include "app/claude/render.h"
 #include "app/claude/roles.h"
 #include "app/claude/roster.h"
@@ -30,6 +31,7 @@
 #include "plat/plat.h"
 
 #include <algorithm>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -1303,6 +1305,251 @@ TEST("backend: a reply to a background job's question works though the job reads
     );
     REQUIRE(rig.wait([&] { return !active(); }, 5000));
 }
+
+TEST("backend: a session's background jobs, as they run and end") {
+    FakeClaudeHome    home;
+    const std::string output = home.dir + "/bq1.output";
+    // A turn that left a command running in the background (Claude Code
+    // 2.1.323's records: the task id in toolUseResult, the file in the text).
+    home.append(
+        prompt("run the fuzz suite", "2026-09-25T10:00:00.000Z") +
+        toolUse(
+            "t1",
+            "Bash",
+            R"({"command":"./scripts/fuzz-checkout.sh --all","run_in_background":true})",
+            "2026-09-25T10:00:01.000Z"
+        ) +
+        str::concat(
+            {R"({"type":"user","timestamp":"2026-09-25T10:00:02.000Z","message":{"role":"user",)",
+             R"("content":[{"tool_use_id":"t1","type":"tool_result","content":)",
+             q(str::concat(
+                 {"Command running in background with ID: bq1. Output is being written to: ",
+                  output,
+                  ". You will be notified when it completes."}
+             )),
+             R"(}]},"toolUseResult":{"stdout":"","backgroundTaskId":"bq1"}})",
+             "\n"}
+        ) +
+        assistantText("Started; I'll report back.", "2026-09-25T10:00:03.000Z") +
+        turnEnd("2026-09-25T10:00:04.000Z")
+    );
+    const auto job = [&](std::string_view state, bool command) {
+        home.writeJob(
+            "S1",
+            str::concat(
+                {R"({"state":")",
+                 state,
+                 R"(","inFlight":{"tasks":)",
+                 command ? "1" : "0",
+                 R"(,"kinds":)",
+                 command ? R"(["local_bash"])" : "[]",
+                 R"(},"updatedAt":"2026-09-25T10:00:04.000Z","sessionId":"S1","cwd":"/src/app",)",
+                 R"("name":"fuzz","linkScanPath":)",
+                 q(home.transcript),
+                 "}"}
+            )
+        );
+    };
+    job("done", true);
+    writeFile(output, "starting\n\x1b[32m[ 42/120]\x1b[0m programs ok\r");
+    home.writeWorker("1.json", getpid(), "S1", "shell", {}, "/src/app");
+    Rig           rig;
+    const ConvRef ref = rig.ref("S1");
+    using Job         = model::BackgroundJob;
+    const auto find   = [&](std::string_view id) -> std::optional<Job> {
+        for (const Job &j : rig.store.jobs(ref))
+            if (j.id == id ||
+                (str::startsWith(id, "report:") && str::startsWith(j.id, str::concat({id, "@"}))))
+                return j;
+        return std::nullopt;
+    };
+    const auto lineIs = [&](std::string_view id, std::string_view line) {
+        const auto j = find(id);
+        return j && j->line == line;
+    };
+
+    // The command: named from its command line, its last line of output and
+    // how far along that says it is. Idle but for it: nobody is thinking.
+    REQUIRE(rig.wait([&] { return lineIs("bq1", "[ 42/120] programs ok"); }, 5000));
+    Job j = *find("bq1");
+    CHECK_STR(j.name, "fuzz-checkout");
+    CHECK(j.command.find("fuzz-checkout.sh --all") != std::string::npos);
+    CHECK(j.state == Job::State::Running);
+    CHECK(j.startedMs == 1790330402000);
+    CHECK(std::fabs(j.progress - 0.35f) < 1e-4f);
+    CHECK_STR(j.ratio, "42/120");
+    CHECK_FALSE(j.report);
+    CHECK_FALSE(rig.typing(ref).has_value());
+    appendFile(output, "\n[120/120] programs ok, 0 failures\n");
+    REQUIRE(rig.wait([&] { return lineIs("bq1", "[120/120] programs ok, 0 failures"); }, 5000));
+    CHECK(find("bq1")->progress == 1.f);
+
+    // Its own reports (msga --claude-status), each name a job of its own; one
+    // from before this work began is old news.
+    claude::Report r;
+    r.name     = "migration";
+    r.text     = "6200/10000 orders migrated";
+    r.progress = 0.62f;
+    r.ratio    = "6200/10000";
+    r.atMs     = base::nowMicros() / 1000;
+    writeFile(claude::reportPath(home.dir + "/jobs/S1", r.name), claude::reportJson(r));
+    claude::Report old;
+    old.text = "from yesterday";
+    old.atMs = 1790330000000;
+    writeFile(claude::reportPath(home.dir + "/jobs/S1"), claude::reportJson(old));
+    REQUIRE(
+        rig.wait([&] { return lineIs("report:migration", "6200/10000 orders migrated"); }, 5000)
+    );
+    j = *find("report:migration");
+    CHECK_STR(j.name, "migration");
+    CHECK(j.report);
+    CHECK_STR(j.ratio, "6200/10000");
+    CHECK_FALSE(find("report:").has_value());
+    CHECK(rig.store.jobs(ref).size() == 2);
+    CHECK_STR(rig.store.jobs(ref)[0].id, "bq1"); // oldest first
+
+    // The report gets there: done at once, while the command runs on.
+    r.progress = 1;
+    r.text     = "10000/10000 orders migrated";
+    writeFile(claude::reportPath(home.dir + "/jobs/S1", r.name), claude::reportJson(r));
+    REQUIRE(rig.wait(
+        [&] {
+            const auto b = find("report:migration");
+            return b && b->state == Job::State::Done;
+        },
+        5000
+    ));
+    CHECK(find("bq1")->state == Job::State::Running);
+    // Seen (dismissed): its file, still saying 100%, doesn't bring it back…
+    rig.store.dismissJob(ref, find("report:migration")->id);
+    rig.pump(3500);
+    CHECK_FALSE(find("report:migration").has_value());
+    // …a new report under the name is a new job.
+    r.progress = 0.1f;
+    r.text     = "second batch";
+    r.atMs     = base::nowMicros() / 1000 + 1;
+    writeFile(claude::reportPath(home.dir + "/jobs/S1", r.name), claude::reportJson(r));
+    REQUIRE(rig.wait([&] { return lineIs("report:migration", "second batch"); }, 5000));
+    CHECK(find("report:migration")->state == Job::State::Running);
+    // It gets there too; the command fails: both end.
+    r.progress = 1;
+    r.atMs += 1;
+    writeFile(claude::reportPath(home.dir + "/jobs/S1", r.name), claude::reportJson(r));
+    home.append(
+        str::concat(
+            {R"({"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-25T10:30:00.000Z","content":)",
+             q("<task-notification>\n<task-id>bq1</task-id>\n<status>failed</"
+               "status>\n<summary>Background "
+               "command \"./scripts/fuzz-checkout.sh --all\" failed with exit code 3</summary>\n"
+               "</task-notification>"),
+             "}\n"}
+        )
+    );
+    job("done", false);
+    home.writeWorker("1.json", getpid(), "S1", "idle", {}, "/src/app");
+    REQUIRE(rig.wait(
+        [&] {
+            const auto a = find("bq1"), b = find("report:migration");
+            return a && a->state == Job::State::Failed && b && b->state == Job::State::Done;
+        },
+        5000
+    ));
+    CHECK(find("bq1")->exitCode == 3);
+    CHECK(find("bq1")->endedMs == 1790332200000);
+
+    // Dismissed (seen in the header): gone, and stays gone.
+    rig.store.dismissJob(ref, "bq1");
+    rig.store.dismissJob(ref, find("report:migration")->id);
+    CHECK(rig.store.jobs(ref).empty());
+    home.writeWorker("1.json", getpid(), "S1", "idle", {}, "/src/app"); // a refresh
+    rig.pump(3500);
+    CHECK(rig.store.jobs(ref).empty());
+}
+
+#ifdef __linux__ // the process is found through /proc
+TEST("backend: a background command stopped from msga") {
+    FakeClaudeHome    home;
+    const std::string output  = home.dir + "/bs1.output";
+    // A real command, as Claude Code runs one: a process group of its own,
+    // its output in the file, the session's id in its environment.
+    const std::string pidFile = home.dir + "/wpid-bs1";
+    REQUIRE(
+        std::system(
+            str::concat({"CLAUDE_CODE_SESSION_ID=S1 setsid sh -c 'echo $$ > ",
+                         pidFile,
+                         "; exec sleep 60' > ",
+                         output,
+                         " 2>&1 &"})
+                .c_str()
+        ) == 0
+    );
+    home.append(
+        prompt("watch the tests", "2026-09-25T10:00:00.000Z") +
+        toolUse(
+            "t1",
+            "Bash",
+            R"({"command":"sleep 60","run_in_background":true})",
+            "2026-09-25T10:00:01.000Z"
+        ) +
+        str::concat(
+            {R"({"type":"user","timestamp":"2026-09-25T10:00:02.000Z","message":{"role":"user",)",
+             R"("content":[{"tool_use_id":"t1","type":"tool_result","content":)",
+             q(str::concat(
+                 {"Command running in background with ID: bs1. Output is being written to: ",
+                  output,
+                  ". You will be notified when it completes."}
+             )),
+             R"(}]},"toolUseResult":{"stdout":"","backgroundTaskId":"bs1"}})",
+             "\n"}
+        ) +
+        turnEnd("2026-09-25T10:00:04.000Z")
+    );
+    const auto job = [&](bool command) {
+        home.writeJob(
+            "S1",
+            str::concat(
+                {R"({"state":"done","inFlight":{"tasks":)",
+                 command ? "1" : "0",
+                 R"(,"kinds":)",
+                 command ? R"(["local_bash"])" : "[]",
+                 R"(},"updatedAt":"2026-09-25T10:00:04.000Z","sessionId":"S1","cwd":"/src/app",)",
+                 R"("name":"watch","linkScanPath":)",
+                 q(home.transcript),
+                 "}"}
+            )
+        );
+    };
+    job(true);
+    home.writeWorker("1.json", getpid(), "S1", "shell", {}, "/src/app");
+    Rig           rig;
+    const ConvRef ref = rig.ref("S1");
+    REQUIRE(rig.wait([&] { return !rig.store.jobs(ref).empty(); }, 5000));
+    REQUIRE(rig.wait([&] { return file::exists(pidFile); }, 5000));
+    const int64_t pid = std::atoll(readText(pidFile).c_str());
+    REQUIRE(pid > 1);
+    CHECK(claude::commandProcessGroup("S1", output) == pid);
+    // Its worker gone, Claude Code deletes its file: it runs on, orphaned,
+    // into the deleted file — still found (Linux: "<path> (deleted)").
+    REQUIRE(file::remove(output));
+    CHECK(claude::commandProcessGroup("S1", output) == pid);
+    CHECK(claude::commandProcessGroup("S2", output) == 0); // another session's: no
+    CHECK(rig.backend->canStopJob(ref, "bs1"));
+    CHECK_FALSE(rig.backend->canStopJob(ref, "nothing"));
+
+    // Stopped: the process goes, and the job shows as stopped.
+    rig.backend->stopJob(ref, "bs1");
+    REQUIRE(rig.wait([&] { return ::kill(pid_t(pid), 0) != 0; }, 5000));
+    // No notification follows (nobody runs an orphan now): stopped all the same.
+    REQUIRE(rig.wait(
+        [&] {
+            const auto &jobs = rig.store.jobs(ref);
+            return !jobs.empty() && jobs[0].state == model::BackgroundJob::State::Stopped;
+        },
+        5000
+    ));
+    CHECK_FALSE(rig.backend->canStopJob(ref, "bs1"));
+}
+#endif
 
 #ifndef _WIN32 // a `sleep` worker started through /bin/sh
 TEST("backend: the suggested reply is offered until the reply is under way") {

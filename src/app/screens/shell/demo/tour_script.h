@@ -49,6 +49,7 @@ struct TourStep {
                       // arg2 = where to look: sidebar | dialog | "" (popups, then the window)
         Point,        // as Click, but only moves the pointer there (what shows on hover)
         Field,        // num = which text field of the topmost dialog (0 = first) — click it
+        Jobs,         // click the header's background jobs (opens their popover)
         Quit,         //
     };
     Kind                     kind = Kind::Wait;

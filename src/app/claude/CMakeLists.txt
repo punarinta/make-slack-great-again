@@ -12,6 +12,7 @@ add_library(msga_app_claude STATIC
     attach.cpp
     launcher.cpp
     approvals.cpp
+    progress.cpp
     # what Claude Code writes: the roster, transcripts
     roster.cpp
     transcript.cpp

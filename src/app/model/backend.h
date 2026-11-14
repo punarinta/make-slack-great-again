@@ -114,6 +114,12 @@ public:
     virtual bool isAgentSession(ConvRef) const { return false; }
     virtual bool canStopSession(ConvRef) const { return false; }
     virtual void stopSession(ConvRef) {}
+    // A background job of a session (Store::jobs) msga can stop: a command
+    // it runs, whose process msga can find here. Stopping ends the command
+    // (the session is told, as when it stops one itself); the job then shows
+    // as stopped.
+    virtual bool canStopJob(ConvRef, const std::string &jobId) const { return (void)jobId, false; }
+    virtual void stopJob(ConvRef, const std::string &jobId) { (void)jobId; }
 
     // ── Agent sessions, the rest (Claude Code; defaults: nothing of it) ────
     // The team a session can be started with: the
@@ -779,6 +785,20 @@ public:
     virtual bool threadFollowed(ConvRef conv, Ts root) const {
         (void)conv, (void)root;
         return false;
+    }
+    // Following a thread by hand, kept in the service so its other clients
+    // agree: "Get notified about new replies" on any thread (even one I
+    // never replied in), "Turn off notifications for replies" on one I
+    // follow (even one I started). canFollowThread: where the service keeps
+    // that (root: the thread's root, which may have no replies yet).
+    virtual bool canFollowThread(ConvRef conv, Ts root) const {
+        (void)conv, (void)root;
+        return false;
+    }
+    // At once here (threadFollowed answers the new state), then in the
+    // service; a refusal puts it back.
+    virtual void setThreadFollowed(ConvRef conv, Ts root, bool follow) {
+        (void)conv, (void)root, (void)follow;
     }
     // A user known only by id (a placeholder): looked up;
     // the Store fills the record in when it answers.

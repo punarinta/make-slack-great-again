@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace model {
@@ -29,6 +30,7 @@ enum class ChangeKind : uint8_t {
     Reset,   // the whole list was replaced: rebuild
     Meta,    // conversation fields: unread, mentions, starred, name, topic…
     Typing,  // the conversation's typing list changed
+    Jobs,    // the conversation's background jobs changed
     Roster,  // conversations added/removed (conv = kNoConv)
     Users,   // users added or changed (conv = kNoConv)
     // A live reply to a thread that isn't loaded: counted on its root only
@@ -358,6 +360,15 @@ public:
     void setTyping(ConvRef c, UserRef u, Ts thread, bool on, int64_t sinceMs = 0);
     const std::vector<Typing> &typing(ConvRef c) const;
 
+    // ── Background jobs ─────────────────────────────────────────────────────
+    // An agent session's jobs (BackgroundJob), as its backend sees them now:
+    // running ones and those it saw end. One the user has done with
+    // (dismissJob) stays out, however often it is set again.
+    void                              setJobs(ConvRef c, std::vector<BackgroundJob> jobs);
+    const std::vector<BackgroundJob> &jobs(ConvRef c) const;
+    void                              dismissJob(ConvRef c, const std::string &id);
+    bool                              jobDismissed(ConvRef c, const std::string &id) const;
+
     // ── Custom emoji ────────────────────────────────────────────────────────
     // name → image path/URL, or "alias:other".
     void setCustomEmoji(std::string name, std::string value);
@@ -409,19 +420,21 @@ private:
     void                  logText(TextChange::Kind kind, std::string id);
     void                  textUnlisted(); // a step whose changes have no ids
 
-    std::vector<User>                            _users;
-    std::unordered_map<std::string, UserRef>     _userIndex;
-    std::vector<Conversation>                    _convs;
-    std::unordered_map<std::string, ConvRef>     _convIndex;
-    std::vector<std::vector<Typing>>             _typing; // by ConvRef
-    std::unordered_map<std::string, std::string> _customEmoji;
+    std::vector<User>                                            _users;
+    std::unordered_map<std::string, UserRef>                     _userIndex;
+    std::vector<Conversation>                                    _convs;
+    std::unordered_map<std::string, ConvRef>                     _convIndex;
+    std::vector<std::vector<Typing>>                             _typing; // by ConvRef
+    std::unordered_map<ConvRef, std::vector<BackgroundJob>>      _jobs;
+    std::unordered_map<ConvRef, std::unordered_set<std::string>> _jobsDismissed;
+    std::unordered_map<std::string, std::string>                 _customEmoji;
     // The sorted views of _customEmoji, rebuilt on first use after a change.
-    mutable std::vector<CustomEmoji>             _emojiImages;
-    mutable std::vector<std::string_view>        _emojiNames;
-    mutable bool                                 _emojiSorted = true;
-    uint64_t                                     _emojiRev    = 0;
-    void                                         customEmojiChanged();
-    void                                         sortCustomEmoji() const;
+    mutable std::vector<CustomEmoji>                             _emojiImages;
+    mutable std::vector<std::string_view>                        _emojiNames;
+    mutable bool                                                 _emojiSorted = true;
+    uint64_t                                                     _emojiRev    = 0;
+    void                                                         customEmojiChanged();
+    void                                                         sortCustomEmoji() const;
     std::vector<Mark>                            _mutedThreads, _reminders; // few: linear is fine
     std::vector<Draft>                           _drafts;                   // few: linear is fine
     std::vector<SavedItem>                       _saved;

@@ -56,6 +56,7 @@ constexpr Verb kVerbs[] = {
     {"click", K::Click, Verb::Text},
     {"point", K::Point, Verb::Text},
     {"field", K::Field, Verb::Number},
+    {"jobs", K::Jobs, Verb::None},
     {"quit", K::Quit, Verb::None},
 };
 

@@ -827,6 +827,58 @@ void Backend::adoptCopy(Tracked &t, const std::string &copyId) {
     stopRemoved(old, t.info.cwd);
 }
 
+bool Backend::canStopJob(ConvRef conv, const std::string &jobId) const {
+#ifdef __linux__ // the process is found through /proc (commandProcessGroup)
+    const Tracked *t = findRef(conv);
+    if (!t || t->info.sessionId.empty() || !t->jobOutputs.count(jobId))
+        return false;
+    const auto j = t->jobs.find(jobId);
+    return j != t->jobs.end() && j->second.state == model::BackgroundJob::State::Running;
+#else
+    (void)conv;
+    (void)jobId;
+    return false;
+#endif
+}
+
+void Backend::stopJob(ConvRef conv, const std::string &jobId) {
+    Tracked *t = findRef(conv);
+    if (!canStopJob(conv, jobId) || !t)
+        return;
+    // Found and signalled on a worker (a walk over /proc); the process group
+    // goes, as Claude Code's own stop ends it, and Claude Code tells the session.
+    const std::string sessionId = t->info.sessionId, output = t->jobOutputs[jobId];
+    const auto        found   = t->jobs.find(jobId);
+    const std::string name    = found != t->jobs.end() ? found->second.name : jobId;
+    auto              stopped = std::make_shared<bool>(false);
+    model::runInBackground(
+        _app,
+        [sessionId, output, stopped] {
+            const int64_t group = commandProcessGroup(sessionId, output);
+            *stopped            = group > 0 && signalProcessGroup(group);
+        },
+        [this, alive = _alive, conv, jobId, name, stopped] {
+            if (!*alive)
+                return;
+            if (!*stopped) {
+                reportError(
+                    i18n::arg(
+                        tr("Couldn't stop \xE2\x80\x9C%1\xE2\x80\x9D: its process wasn't found."),
+                        name
+                    )
+                );
+                return;
+            }
+            // Gone now: no notification may follow (a command its worker
+            // left behind is nobody's), so it ends here.
+            if (Tracked *t = findRef(conv)) {
+                t->userStopped.insert(jobId);
+                pumpTyping();
+            }
+        }
+    );
+}
+
 bool Backend::canStopSession(ConvRef conv) const {
     const Tracked *t = findRef(conv);
     if (!t || asThread(*t) || t->stopping || t->stopRequested)

@@ -1,4 +1,5 @@
 #include "screens/shell/header.h"
+#include "screens/shell/header_jobs.h"
 
 #include "base/i18n.h"
 #include "base/str.h"
@@ -20,6 +21,12 @@ using model::ConvRef;
 using model::kNoConv;
 
 namespace shell {
+
+#ifdef __APPLE__
+// The macOS unified header's side columns: room for the members button
+// beside the three icons (and the jobs, when there are any).
+constexpr float kActionsW = 200;
+#endif
 
 // ── Header parts ────────────────────────────────────────────────────────────
 
@@ -292,10 +299,10 @@ ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _av
     // The macOS unified header, which Shell puts in the title bar: the name centred in the window
     // between a blank column and the actions, both 200 px wide (room for the members button beside
     // the three icons), over the title bar's bottom rule.
-    constexpr float kActionsW = 200;
     style().row().margins(0, 0, 0, 1);
     setBackground(C::Surface);
-    add<View>()->style().width(kActionsW).noShrink();
+    _blank = add<View>();
+    _blank->style().width(kActionsW).noShrink();
     View *heading = add<View>();
     heading->style().row().flex(1).items(Align::Center);
     heading->add<View>()->style().flex(1);
@@ -303,6 +310,7 @@ ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _av
     actions->style().row().width(kActionsW).padding(0, 0, 8, 0).spacing(2).noShrink();
     actions->style().items(Align::Center);
     actions->add<View>()->style().flex(1);
+    _actions = actions;
 #else
     style().row().height(48).padding(16, 0, 8, 0).spacing(8).items(Align::Center).noShrink();
     View *heading = this, *actions = this;
@@ -326,6 +334,10 @@ ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _av
     _title->setMaxLines(1);
     _title->style().flex(1).shrink = 1;
 #endif
+    // The jobs: after the name (its flex pushes them to the actions); on
+    // macOS first among the actions.
+    _jobs = actions->add<JobsButton>(ctx);
+    _jobs->style().margins(0, 0, 4, 0);
     auto *members = actions->add<MembersButton>();
     members->style().margins(0, 0, 2, 0);
     members->onClick = [this, members] { openMembers(members->windowRect()); };
@@ -374,7 +386,47 @@ int ConvHeader::avatarPresence() const {
 
 void ConvHeader::show(ConvRef conv) {
     _conv = conv;
+    _jobs->setConv(conv);
     refresh();
+}
+
+void ConvHeader::layout() {
+    // The jobs' form for the room there is: the name gives way first, down
+    // to 120 px (or its own width), then the jobs fold.
+    if (_jobs->visible()) {
+        const float titleMin = std::min(std::ceil(_title->measure(kInf, kInf).w), 120.f);
+#ifdef __APPLE__
+        // The name stays centred: both side columns grow by the jobs' width.
+        const float room = (width() - 2 * kActionsW - titleMin) / 2 - 4;
+        _jobs->setForm(_jobs->fit(room));
+        const float w = kActionsW + _jobs->widthOf(_jobs->form()) + 4;
+        if (_blank->currentStyle().w != w) {
+            _blank->style().width(w);
+            _actions->style().width(w);
+        }
+#else
+        const Style &st   = currentStyle();
+        float        used = st.pad.l + st.pad.r + titleMin + 4; // the jobs' margin
+        int          n    = 0;
+        for (size_t i = 0; i < childCount(); ++i) {
+            View *c = child(i);
+            if (c == _title || c == _jobs || !c->visible())
+                continue;
+            used +=
+                c->measure(kInf, kInf).w + c->currentStyle().margin.l + c->currentStyle().margin.r;
+            ++n;
+        }
+        used += float(n + 1) * st.gap; // between them, the name and the jobs
+        _jobs->setForm(_jobs->fit(width() - used));
+#endif
+    }
+#ifdef __APPLE__
+    else if (_blank->currentStyle().w != kActionsW) {
+        _blank->style().width(kActionsW);
+        _actions->style().width(kActionsW);
+    }
+#endif
+    View::layout();
 }
 
 void ConvHeader::refresh() {

@@ -44,6 +44,8 @@ public:
     bool isAgentSession(ConvRef c) const override;
     bool canStopSession(ConvRef c) const override;
     void stopSession(ConvRef c) override;
+    bool canStopJob(ConvRef c, const std::string &jobId) const override;
+    void stopJob(ConvRef c, const std::string &jobId) override;
     std::vector<AgentRole> agentRoles() const override;
     std::string            saveAgentRole(const AgentRole &role, std::string *error) override;
     void                   removeAgentRole(const std::string &id) override;
@@ -153,6 +155,8 @@ public:
     void editCanvas(const std::string &fileId, std::vector<CanvasChange> changes, Done d) override;
     void deleteCanvas(const std::string &fileId, Done d) override;
     bool threadFollowed(ConvRef c, Ts root) const override;
+    bool canFollowThread(ConvRef c, Ts root) const override;
+    void setThreadFollowed(ConvRef c, Ts root, bool follow) override;
     void resolveUser(UserRef u) override;
     void resolveChannel(const std::string &id) override;
     void loadSidebarTheme(std::function<void(SidebarTheme, std::string)> done) override;

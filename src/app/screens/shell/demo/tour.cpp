@@ -7,6 +7,7 @@
 #include "screens/common/context.h"
 #include "screens/settings/settings_dialog.h"
 #include "screens/shell/header.h"
+#include "screens/shell/header_jobs.h"
 #include "screens/shell/message_search.h"
 #include "screens/shell/shell.h"
 
@@ -690,6 +691,17 @@ void Tour::run(const TourStep &step, Done done) {
             return;
         }
         click(centerOf(fields[n]), done);
+        return;
+    }
+
+    case K::Jobs: {
+        View *v = _sh.header().jobs();
+        if (!v->visible()) {
+            std::fprintf(stderr, "tour: no background jobs in the header\n");
+            done();
+            return;
+        }
+        click(centerOf(v), done);
         return;
     }
 
