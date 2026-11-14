@@ -30,6 +30,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace plat {
@@ -389,6 +390,29 @@ private:
     net::Client                       &transfers();
     std::vector<std::shared_ptr<Done>> _downloads; // downloadFile's, until answered
     bool                               _authLost = false;
+    // The viewer's muted conversations, from users.prefs.get /
+    // client.userBoot's muted_channels (the web client's own list; the
+    // conversation object carries no per-user mute). _mutedKnown once Slack
+    // answered: until then the cached local mute flags stand. _mutedLocal:
+    // mutes set here before the first sync that Slack's list lacked, kept
+    // local (meta.json, with _muteSynced); _mutedCached: the cache's mutes
+    // until that first list. _muteEpoch moves with every mute change here
+    // and every confirmed write: a list read before it is stale.
+    // _muteLocalOnly: the account has no muted_channels pref.
+    // _mutedOffline: mutes made here while _muteLocalOnly, kept as local ones
+    // should the list show up later.
+    std::unordered_set<std::string>    _mutedConvs, _mutedLocal, _mutedCached, _mutedOffline;
+    bool                               _mutedKnown = false, _muteSynced = false;
+    bool                               _muteLocalOnly = false;
+    uint64_t                           _muteEpoch     = 0;
+    void                               applyMutedChannels(const json::Value &prefs, uint64_t epoch);
+    void                               adoptMuted(std::unordered_set<std::string> list);
+    bool                               mutedNow(const std::string &id, bool fallback) const;
+    void                               restyleMutes();
+    void                               mutesSaved(bool first = false);
+    void                               rereadMutes();
+    const bool                        *muteWish(const std::string &id) const; // slack_actions.cpp
+    bool                               muteWriting() const;                   // slack_actions.cpp
     // Enterprise Grid (auth.test's enterprise_id), and the thread
     // methods there refused without team_id once: they send it since.
     bool                               _grid = false, _threadsTeamId = false;

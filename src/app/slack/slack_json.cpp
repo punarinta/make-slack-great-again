@@ -401,6 +401,23 @@ std::vector<std::string> vipUsers(const json::Value &prefs) {
     return out;
 }
 
+bool mutedChannels(const json::Value &prefs, std::vector<std::string> &out) {
+    const Value v = prefs["muted_channels"];
+    if (!v.exists())
+        return false;
+    out.clear();
+    if (v.isArray()) { // defensive: the pref travels as a string today
+        for (const Value id : v)
+            if (!id.str().empty())
+                out.emplace_back(id.str());
+        return true;
+    }
+    for (const std::string_view id : str::split(v.str(), ','))
+        if (!id.empty())
+            out.emplace_back(id);
+    return true;
+}
+
 model::Conversation toConversation(const json::Value &o, model::Store &store) {
     model::Conversation c;
     c.id   = owned(o["id"]);
