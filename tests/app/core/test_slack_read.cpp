@@ -1148,7 +1148,77 @@ TEST("slack read: a refused mute that landed anyway stays") {
     REQUIRE(pumpUntil([&] { return Log().count("users.prefs.get") == gets + 2; }, 3000));
     fakeslack::pumpFor(100);
     CHECK(e.store.conversation(e.conv("C2")).muted);
-    CHECK(Log().count("users.prefs.set") >= 1); // fatal_error: retried, then checked
+    CHECK(Log().count("users.prefs.set") == 1); // sent once, then checked by a read
+}
+
+TEST("slack read: a failed mute write is never re-sent with an old list") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    fakeslack::pumpFor(100);
+    // The cycle's read sees C1; the set fails with a 5xx; G1 is muted in Slack
+    // meanwhile, so the check after it and the next cycle see C1,G1.
+    script("users.prefs.get", R"([{"ok": true, "prefs": {"muted_channels": "C1"}}])");
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1,G1"}}})");
+    script("users.prefs.set", R"([{"ok": false, "error": "fatal_error"}, {"ok": true}])");
+    e.be->setMuted(e.conv("C2"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.set") == 2; }, 5000));
+    fakeslack::pumpFor(150);
+    Log        l;
+    const auto sent = [&](int n) {
+        json::Document d;
+        d.parse(std::string(l.get("users.prefs.set", n)["form"]["prefs"].str()), nullptr);
+        return std::string(d.root()["muted_channels"].str());
+    };
+    CHECK_STR(sent(0), "C1,C2");
+    CHECK_STR(sent(1), "C1,G1,C2"); // from a fresh read, not the first list again
+    CHECK(l.count("users.prefs.set") == 2);
+    CHECK(e.store.conversation(e.conv("C2")).muted);
+    CHECK(e.store.conversation(e.conv("G1")).muted);
+}
+
+TEST("slack read: a cancelled mute write doesn't stall the sync") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}},
+            "users.prefs.set": [{"ok": false, "error": "cancelled"}, {"ok": true}]})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    e.be->setMuted(e.conv("C2"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.set") == 2; }, 5000));
+    fakeslack::pumpFor(150);
+    CHECK(e.store.conversation(e.conv("C2")).muted);
+    // Later wishes still go out (the fake keeps no prefs: say C2 is in).
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1,C2"}}})");
+    e.be->setMuted(e.conv("G1"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.set") == 3; }, 5000));
+    fakeslack::pumpFor(150);
+    CHECK(e.store.conversation(e.conv("C2")).muted);
+    CHECK(e.store.conversation(e.conv("G1")).muted);
+}
+
+TEST("slack read: a failed mute and unmute leave the last wish's original") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    // No read of Slack's list works: nothing is known of it.
+    set(R"({"users.prefs.get": {"ok": false, "error": "invalid_arguments"}})");
+    REQUIRE(e.connect());
+    REQUIRE(!e.store.conversation(e.conv("C1")).muted);
+    e.be->setMuted(e.conv("C1"), true);
+    e.be->setMuted(e.conv("C1"), false); // waits behind the mute, then fails too
+    const int gets = Log().count("users.prefs.get");
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.get") >= gets + 2; }, 3000));
+    fakeslack::pumpFor(200);
+    CHECK(!e.store.conversation(e.conv("C1")).muted);
+    CHECK(Log().count("users.prefs.set") == 0);
 }
 
 TEST("slack read: a list read before a mute here does not undo it") {

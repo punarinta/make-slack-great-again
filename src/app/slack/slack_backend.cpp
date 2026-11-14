@@ -1207,14 +1207,20 @@ void SlackBackend::adoptMuted(std::unordered_set<std::string> list) {
     _mutedConvs    = std::move(list);
     _mutedKnown    = true;
     _muteLocalOnly = false;
-    bool save      = false;
+    bool save = false, first = false;
     if (!_muteSynced) {
-        _muteSynced = save = true;
+        _muteSynced = save = first = true;
         for (const std::string &id : _mutedCached)
             if (!_mutedConvs.count(id))
                 _mutedLocal.insert(id);
         _mutedCached.clear();
     }
+    // Mutes made while the account showed no list are local ones, too.
+    for (const std::string &id : _mutedOffline)
+        if (!_mutedConvs.count(id))
+            _mutedLocal.insert(id);
+    save = save || !_mutedOffline.empty();
+    _mutedOffline.clear();
     for (auto it = _mutedLocal.begin(); it != _mutedLocal.end();)
         if (_mutedConvs.count(*it)) {
             it   = _mutedLocal.erase(it);
@@ -1223,7 +1229,7 @@ void SlackBackend::adoptMuted(std::unordered_set<std::string> list) {
             ++it;
         }
     if (save)
-        mutesSaved();
+        mutesSaved(first);
 }
 
 // A conversation's mute: a wish Slack has not confirmed yet, else Slack's
@@ -1245,8 +1251,17 @@ void SlackBackend::restyleMutes() {
     }
 }
 
-void SlackBackend::mutesSaved() {
+// first: the sync's first list, written out now: a quit before the next
+// write would take the cache's flags, Slack's mutes by then, for local ones.
+void SlackBackend::mutesSaved(bool first) {
     _read->extrasChanged();
+    if (first && _read->cache)
+        _read->cache->flush();
+}
+
+// A fresh look at Slack's list (a mute write failed before any was read).
+void SlackBackend::rereadMutes() {
+    _read->refreshVips();
 }
 
 // A roster reload: what the API cannot

@@ -680,6 +680,37 @@ TEST("slack cache: mutes set here before Slack's list was read stay, and only he
     wipe();
 }
 
+TEST("slack cache: unmuting a local-only mute holds even when Slack refuses the batch") {
+    if (!haveServer())
+        return;
+    wipe();
+    ctl("POST", "/_ctl/reset");
+    set(kWorkspace);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {}}})");
+    {
+        Env e(false);
+        REQUIRE(e.connect());
+        e.store.updateConversation(e.conv("C1"), [](model::Conversation &c) { c.muted = true; });
+    }
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "D1"}},
+            "users.prefs.set": {"ok": false, "error": "invalid_prefs"}})");
+    Env e(false);
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.c("D1").muted; }, 3000));
+    REQUIRE(e.c("C1").muted); // local-only
+    // A first cycle out (D1), then C1's unmute in one batch with a real
+    // change (D1 again), which Slack refuses.
+    e.be->setMuted(e.conv("D1"), false);
+    e.be->setMuted(e.conv("D1"), true);
+    e.be->setMuted(e.conv("D1"), false);
+    e.be->setMuted(e.conv("C1"), false);
+    REQUIRE(pumpUntil([&] { return count("users.prefs.set") == 2; }, 5000));
+    fakeslack::pumpFor(200);
+    CHECK(e.c("D1").muted);  // Slack refused: its list stands
+    CHECK(!e.c("C1").muted); // never needed Slack
+    wipe();
+}
+
 TEST("slack cache: a users.list under a day old stands in; a warm start lists no users") {
     if (!haveServer())
         return;

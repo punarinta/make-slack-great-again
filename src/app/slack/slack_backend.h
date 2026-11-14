@@ -399,7 +399,9 @@ private:
     // until that first list. _muteEpoch moves with every mute change here
     // and every confirmed write: a list read before it is stale.
     // _muteLocalOnly: the account has no muted_channels pref.
-    std::unordered_set<std::string>    _mutedConvs, _mutedLocal, _mutedCached;
+    // _mutedOffline: mutes made here while _muteLocalOnly, kept as local ones
+    // should the list show up later.
+    std::unordered_set<std::string>    _mutedConvs, _mutedLocal, _mutedCached, _mutedOffline;
     bool                               _mutedKnown = false, _muteSynced = false;
     bool                               _muteLocalOnly = false;
     uint64_t                           _muteEpoch     = 0;
@@ -407,7 +409,8 @@ private:
     void                               adoptMuted(std::unordered_set<std::string> list);
     bool                               mutedNow(const std::string &id, bool fallback) const;
     void                               restyleMutes();
-    void                               mutesSaved();
+    void                               mutesSaved(bool first = false);
+    void                               rereadMutes();
     const bool                        *muteWish(const std::string &id) const; // slack_actions.cpp
     bool                               muteWriting() const;                   // slack_actions.cpp
     // Enterprise Grid (auth.test's enterprise_id), and the thread

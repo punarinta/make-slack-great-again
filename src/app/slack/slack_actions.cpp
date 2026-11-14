@@ -279,21 +279,32 @@ struct SlackBackend::Write {
     // order kept, nothing else touched), and users.prefs.set only when that
     // changes it. A mute or unmute made in Slack since the last read survives;
     // only one made inside the get-to-set round trip can still be lost, as
-    // the API offers no compare-and-set. Wishes made meanwhile wait for the
-    // next cycle. A refused set is checked by another read (it may have landed
-    // with its answer lost); when even that fails, the wishes are put back.
+    // the API offers no compare-and-set. The set is never re-sent as is: a
+    // failed one is checked by another read (it may have landed with its
+    // answer lost), and a passing fault (a 5xx, a lost connection, a rate
+    // limit) starts the whole cycle again later, from a fresh list. A refusal
+    // puts the wishes back to what Slack holds; when even the read fails, to
+    // what they were. Wishes made meanwhile wait for the next cycle. Any
+    // error counts, "cancelled" too: a transport's own cancel can reach here,
+    // while the backend's teardown runs no callback at all.
     struct MuteWish {
         bool want;   // muted or not, as asked
         bool before; // the flag before the first wish: what a failure restores
     };
+    static constexpr int kMuteRetries = 5; // cycles again after a passing fault
     std::unordered_map<std::string, MuteWish> muteWaiting, muteSending;
-    bool                                      muteBusy = false;
+    bool                                      muteBusy    = false;
+    int                                       muteRetries = 0; // passing faults in a row
 
     void mute(const std::string &id, bool want, bool before) {
-        if (const auto it = muteWaiting.find(id); it != muteWaiting.end())
+        if (const auto it = muteWaiting.find(id); it != muteWaiting.end()) {
             it->second.want = want;
-        else
+        } else {
+            // Over a wish still out: a failure restores what that one would.
+            if (const auto out = muteSending.find(id); out != muteSending.end())
+                before = out->second.before;
             muteWaiting.emplace(id, MuteWish{want, before});
+        }
         if (!muteBusy)
             muteCycle();
     }
@@ -309,7 +320,8 @@ struct SlackBackend::Write {
 
     void muteCycle() {
         if (muteWaiting.empty()) {
-            muteBusy = false;
+            muteBusy    = false;
+            muteRetries = 0;
             return;
         }
         muteBusy    = true;
@@ -317,8 +329,6 @@ struct SlackBackend::Write {
         muteWaiting.clear();
         b.readCall(
             "users.prefs.get", {}, [this](const json::Document &doc, const std::string &err) {
-                if (err == "cancelled")
-                    return; // the backend is going away
                 std::vector<std::string> list;
                 if (!err.empty()) {
                     LOG_WARN("slack", "users.prefs.get (mute): %s", err.c_str());
@@ -328,6 +338,11 @@ struct SlackBackend::Write {
                 if (!mapjson::mutedChannels(doc.root()["prefs"], list)) {
                     // No such pref for this account: mutes stay local, as
                     // they were before Slack's list was read.
+                    for (const auto &[id, w] : muteSending)
+                        if (w.want)
+                            b._mutedOffline.insert(id);
+                        else
+                            b._mutedOffline.erase(id);
                     b._muteLocalOnly = true;
                     muteSending.clear();
                     muteCycle();
@@ -364,62 +379,99 @@ struct SlackBackend::Write {
         }
         json::Writer w;
         w.beginObject().key("muted_channels").value(channels).endObject();
-        // Retried like a read: the same whole list twice is the same state.
-        b.readCall(
+        // Once, no automatic retry: a re-send later would carry this list
+        // over changes Slack has had since.
+        b.api(
             "users.prefs.set",
             net::formEncode({{"prefs", w.str()}, {"reason", "update-muted-channels"}}),
             [this, next = std::move(next)](const json::Document &, const std::string &err) mutable {
-                if (err == "cancelled")
-                    return;
                 if (err.empty()) {
                     muteConfirmed(std::move(next), true);
                     return;
                 }
                 LOG_WARN("slack", "users.prefs.set (mute): %s", err.c_str());
-                b.readCall(
-                    "users.prefs.get",
-                    {},
-                    [this](const json::Document &doc, const std::string &err) {
-                        if (err == "cancelled")
-                            return;
-                        std::vector<std::string> list;
-                        if (err.empty() && mapjson::mutedChannels(doc.root()["prefs"], list))
-                            muteConfirmed(std::move(list), false);
-                        else
-                            muteFailed();
-                    }
+                muteCheck(
+                    (isTransientSlackError(err) || isTransportError(err) || err == "ratelimited" ||
+                     err == "cancelled") &&
+                    muteRetries < kMuteRetries
                 );
             }
         );
     }
 
+    // After a failed set: what Slack holds now decides. All the wishes are
+    // in it (the set landed): done. Else a passing fault cycles again later,
+    // from a fresh read; a refusal leaves Slack's list standing.
+    void muteCheck(bool again) {
+        b.readCall(
+            "users.prefs.get",
+            {},
+            [this, again](const json::Document &doc, const std::string &err) {
+                std::vector<std::string> list;
+                if (!err.empty() || !mapjson::mutedChannels(doc.root()["prefs"], list)) {
+                    muteFailed();
+                    return;
+                }
+                const std::unordered_set<std::string> now(list.begin(), list.end());
+                bool                                  landed = true;
+                for (const auto &[id, w] : muteSending)
+                    landed = landed && w.want == (now.count(id) != 0);
+                if (landed || !again) {
+                    muteConfirmed(std::move(list), landed);
+                    return;
+                }
+                b.adoptMuted(std::unordered_set<std::string>(now));
+                for (auto &[id, w] : muteSending) // a newer wish stays newer
+                    if (const auto it = muteWaiting.find(id); it == muteWaiting.end())
+                        muteWaiting.emplace(id, w);
+                    else
+                        it->second.before = w.before;
+                muteSending.clear();
+                ++b._muteEpoch;
+                b.restyleMutes(); // Slack's own changes show while this waits
+                const int64_t speed = testSpeedup();
+                later(int(retryBackoffMs(muteRetries++) / speed), [this] {
+                    muteBusy = false;
+                    muteCycle();
+                });
+            }
+        );
+    }
+
     // Slack's list as it now stands. applied: it holds the sent wishes, so
-    // they also retire the matching locally-kept mutes (an unmute here of a
-    // mute Slack never had changes no list, and lands as applied too).
+    // they also retire the matching local-only mutes. An unmute of a
+    // local-only mute retires it either way: it never needed Slack.
     void muteConfirmed(std::vector<std::string> list, bool applied) {
         b.adoptMuted(
             std::unordered_set<std::string>(
                 std::make_move_iterator(list.begin()), std::make_move_iterator(list.end())
             )
         );
-        if (applied) {
-            bool dropped = false;
-            for (const auto &[id, w] : muteSending)
-                dropped = b._mutedLocal.erase(id) != 0 || dropped;
-            if (dropped)
-                b.mutesSaved();
-        }
+        retireLocal(applied);
         muteSending.clear();
+        muteRetries = 0;
         ++b._muteEpoch;
         b.restyleMutes();
         muteCycle();
     }
 
+    void retireLocal(bool applied) {
+        bool dropped = false;
+        for (const auto &[id, w] : muteSending)
+            if (applied || !w.want)
+                dropped = b._mutedLocal.erase(id) != 0 || dropped;
+        if (dropped)
+            b.mutesSaved();
+    }
+
     // Nothing is known of Slack's list: each sent wish not overtaken by a
     // newer one goes back to what Slack last said (else to its old flag).
+    // With no list read yet, one is asked for, so Slack's mutes still show.
     void muteFailed() {
-        std::unordered_map<std::string, MuteWish> sent = std::move(muteSending);
+        retireLocal(false);
+        const std::unordered_map<std::string, MuteWish> sent = std::move(muteSending);
         muteSending.clear();
+        muteRetries = 0;
         ++b._muteEpoch;
         model::Store &s = b._store;
         for (const auto &[id, w] : sent) {
@@ -432,6 +484,8 @@ struct SlackBackend::Write {
             if (s.conversation(r).muted != muted)
                 s.updateConversation(r, [muted](model::Conversation &c) { c.muted = muted; });
         }
+        if (!b._mutedKnown && muteWaiting.empty())
+            b.rereadMutes();
         muteCycle();
     }
 
@@ -1783,8 +1837,15 @@ void SlackBackend::setMuted(ConvRef conv, bool muted) {
     const bool        before = _store.conversation(conv).muted;
     if (before != muted)
         _store.updateConversation(conv, [muted](model::Conversation &c) { c.muted = muted; });
-    if (!_creds.sessionAuth() || _muteLocalOnly)
+    if (!_creds.sessionAuth())
         return;
+    if (_muteLocalOnly) { // kept apart: a list that shows up later can't wipe it
+        if (muted)
+            _mutedOffline.insert(id);
+        else
+            _mutedOffline.erase(id);
+        return;
+    }
     ++_muteEpoch; // a users.prefs.get already out predates this
     _write->mute(id, muted, before);
 }
