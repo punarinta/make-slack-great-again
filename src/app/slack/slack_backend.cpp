@@ -1022,9 +1022,12 @@ void SlackBackend::Read::loadViaWebClient(std::function<void(const std::string &
     call(
         "client.userBoot",
         "min_channel_updated=0",
-        [this, add, finish](const json::Document &doc, const std::string &err) {
+        [this, add, finish, epoch = b._muteEpoch](
+            const json::Document &doc, const std::string &err
+        ) {
             if (err.empty()) {
                 add(doc.root()["channels"]);
+                b.applyMutedChannels(doc.root()["prefs"], epoch);
                 bootNames(doc.root());
             } else {
                 LOG_WARN("slack", "client.userBoot: %s", err.c_str());
@@ -1074,7 +1077,7 @@ void SlackBackend::Read::loadNames() {
     call(
         "users.prefs.get",
         {},
-        [this](const json::Document &doc, const std::string &err) {
+        [this, epoch = b._muteEpoch](const json::Document &doc, const std::string &err) {
             prefsBusy = false;
             if (!err.empty()) {
                 LOG_WARN("slack", "users.prefs.get: %s", err.c_str());
@@ -1082,8 +1085,7 @@ void SlackBackend::Read::loadNames() {
             }
             const json::Value prefs = doc.root()["prefs"];
             applyVips(mapjson::vipUsers(prefs));
-            if (std::vector<std::string> muted; mapjson::mutedChannels(prefs, muted))
-                b.applyMutedChannels(muted);
+            b.applyMutedChannels(prefs, epoch);
             if (namesMode != NamesMode::Service)
                 return;
             namesAsked    = true;
@@ -1114,8 +1116,6 @@ void SlackBackend::Read::loadNames() {
 // client.userBoot (the Grid roster) carries both prefs: the user's, and the
 // workspace's in team.prefs or in its workspaces[] entry.
 void SlackBackend::Read::bootNames(const json::Value &boot) {
-    if (std::vector<std::string> muted; mapjson::mutedChannels(boot["prefs"], muted))
-        b.applyMutedChannels(muted);
     if (const int o = mapjson::namesOverride(boot["prefs"]); o != mapjson::kNoPref)
         namesOverride = o;
     int d = mapjson::namesDefault(boot["team"]["prefs"]);
@@ -1151,13 +1151,12 @@ void SlackBackend::Read::refreshVips() {
     call(
         "users.prefs.get",
         {},
-        [this](const json::Document &doc, const std::string &err) {
+        [this, epoch = b._muteEpoch](const json::Document &doc, const std::string &err) {
             if (!err.empty())
                 return;
             const json::Value prefs = doc.root()["prefs"];
             applyVips(mapjson::vipUsers(prefs));
-            if (std::vector<std::string> muted; mapjson::mutedChannels(prefs, muted))
-                b.applyMutedChannels(muted);
+            b.applyMutedChannels(prefs, epoch);
         },
         Lane::Background
     );
@@ -1186,16 +1185,68 @@ void SlackBackend::Read::applyVips(const std::vector<std::string> &ids) {
 // place a channel's mute is exposed (the conversation object's is_muted is
 // not in the public API). It is authoritative once it arrives: carryLocal
 // and every later roster apply it, so an unmute in Slack clears here too.
-void SlackBackend::applyMutedChannels(const std::vector<std::string> &ids) {
-    _mutedKnown = true;
-    _mutedConvs.clear();
-    for (const std::string &id : ids)
-        _mutedConvs.insert(id);
-    for (ConvRef r = 0; r < _store.conversationCount(); ++r) {
-        const bool muted = _mutedConvs.count(_store.conversation(r).id) != 0;
-        if (_store.conversation(r).muted != muted)
-            _store.updateConversation(r, [muted](model::Conversation &c) { c.muted = muted; });
+// An answer to a call sent before the last mute change here, or while the
+// mute write is busy, is stale: it is dropped (the write reads its own).
+void SlackBackend::applyMutedChannels(const json::Value &prefs, uint64_t epoch) {
+    std::vector<std::string> ids;
+    if (!mapjson::mutedChannels(prefs, ids) || epoch != _muteEpoch || muteWriting())
+        return;
+    adoptMuted(
+        std::unordered_set<std::string>(
+            std::make_move_iterator(ids.begin()), std::make_move_iterator(ids.end())
+        )
+    );
+    restyleMutes();
+}
+
+// Slack's list becomes the known one. The first time on this workspace,
+// mutes the cache kept from before the sync (set here, never in Slack) stay
+// on as local ones instead of being wiped, and are not pushed to Slack
+// unasked; unmuting one here retires it. A mute Slack holds is Slack's.
+void SlackBackend::adoptMuted(std::unordered_set<std::string> list) {
+    _mutedConvs    = std::move(list);
+    _mutedKnown    = true;
+    _muteLocalOnly = false;
+    bool save      = false;
+    if (!_muteSynced) {
+        _muteSynced = save = true;
+        for (const std::string &id : _mutedCached)
+            if (!_mutedConvs.count(id))
+                _mutedLocal.insert(id);
+        _mutedCached.clear();
     }
+    for (auto it = _mutedLocal.begin(); it != _mutedLocal.end();)
+        if (_mutedConvs.count(*it)) {
+            it   = _mutedLocal.erase(it);
+            save = true;
+        } else {
+            ++it;
+        }
+    if (save)
+        mutesSaved();
+}
+
+// A conversation's mute: a wish Slack has not confirmed yet, else Slack's
+// list and the local ones once known, else `fallback`.
+bool SlackBackend::mutedNow(const std::string &id, bool fallback) const {
+    if (const bool *want = muteWish(id))
+        return *want;
+    if (!_mutedKnown)
+        return fallback;
+    return _mutedConvs.count(id) != 0 || _mutedLocal.count(id) != 0;
+}
+
+void SlackBackend::restyleMutes() {
+    for (ConvRef r = 0; r < _store.conversationCount(); ++r) {
+        const model::Conversation &c     = _store.conversation(r);
+        const bool                 muted = mutedNow(c.id, c.muted);
+        if (c.muted != muted)
+            _store.updateConversation(r, [muted](model::Conversation &x) { x.muted = muted; });
+    }
+}
+
+void SlackBackend::mutesSaved() {
+    _read->extrasChanged();
 }
 
 // A roster reload: what the API cannot
@@ -1217,8 +1268,7 @@ void SlackBackend::Read::applyRoster(std::vector<model::Conversation> convs) {
         } else {
             if (starsPrimed && serverStars.count(fresh.id))
                 fresh.starred = true; // stars.list answered before the roster did
-            if (b._mutedKnown)
-                fresh.muted = b._mutedConvs.count(fresh.id) != 0;
+            fresh.muted = b.mutedNow(fresh.id, fresh.muted);
         }
     }
     s.addConversations(std::move(convs)); // a cold start: one Roster emit, not one per row
@@ -1246,7 +1296,7 @@ void SlackBackend::Read::carryLocal(
         fresh.notify = old.notify; // no read API for the per-channel level
     // Once users.prefs.get's muted_channels answered, it decides (Slack can
     // unmute, too); before it, the cache's local flag stands.
-    fresh.muted = b._mutedKnown ? b._mutedConvs.count(fresh.id) != 0 : fresh.muted || old.muted;
+    fresh.muted = b.mutedNow(fresh.id, fresh.muted || old.muted);
     if (fresh.localName.empty())
         fresh.localName = old.localName;
     if (fresh.members.empty())
@@ -2406,6 +2456,12 @@ bool SlackBackend::openCache(std::string dir) {
     const bool     warm = r.cache->load(&meta);
     if (warm)
         r.loadExtras(meta.root()["x"]);
+    // Mutes cached before Slack's list was ever read here were set in this
+    // app: kept local when the first list doesn't have them (adoptMuted).
+    if (warm && !_muteSynced)
+        for (ConvRef c = 0; c < _store.conversationCount(); ++c)
+            if (_store.conversation(c).muted)
+                _mutedCached.insert(_store.conversation(c).id);
     // A cache written before toUser flagged them still says is_bot=false.
     for (const char *id : {"USLACKBOT", "USLACK"})
         if (const UserRef u = _store.findUser(id); u != kNoUser)
@@ -2489,6 +2545,12 @@ void SlackBackend::Read::saveExtras(json::Writer &w) {
     for (const std::string &id : dead)
         w.value(id);
     w.endArray();
+    if (b._muteSynced) { // Slack's mute list was read here once: the local leftovers
+        w.key("mute").beginObject().key("synced").value(true).key("local").beginArray();
+        for (const std::string &id : b._mutedLocal)
+            w.value(id);
+        w.endArray().endObject();
+    }
 }
 
 void SlackBackend::Read::loadExtras(const json::Value &x) {
@@ -2535,6 +2597,12 @@ void SlackBackend::Read::loadExtras(const json::Value &x) {
     for (const json::Value v : x["dead"])
         if (!v.str().empty())
             dead.emplace(v.str());
+    if (x["mute"]["synced"].boolean()) {
+        b._muteSynced = true;
+        for (const json::Value v : x["mute"]["local"])
+            if (!v.str().empty())
+                b._mutedLocal.emplace(v.str());
+    }
     armReminders();
 }
 

@@ -1066,6 +1066,156 @@ TEST("slack read: muting writes the web client's muted_channels pref") {
     CHECK_STR(prefs.root()["muted_channels"].str(), "C1,C2");
 }
 
+TEST("slack read: a mute keeps what Slack changed since the last read") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}},
+            "users.prefs.set": {"ok": true}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    // Muted in Slack meanwhile (G1, and a conversation this app doesn't list).
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1,C9,G1"}}})");
+    e.be->setMuted(e.conv("C2"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.set") == 1; }, 3000));
+    Log            l;
+    json::Document prefs;
+    REQUIRE(prefs.parse(std::string(l.get("users.prefs.set")["form"]["prefs"].str()), nullptr));
+    CHECK_STR(prefs.root()["muted_channels"].str(), "C1,C9,G1,C2");
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("G1")).muted; }, 3000));
+    CHECK(e.store.conversation(e.conv("C2")).muted);
+}
+
+TEST("slack read: an unmute that changes nothing in Slack writes nothing") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}},
+            "users.prefs.set": {"ok": true}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    fakeslack::pumpFor(100);
+    const int gets = Log().count("users.prefs.get");
+    // Unmuted in Slack meanwhile: the unmute here finds nothing to change.
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": ""}}})");
+    e.be->setMuted(e.conv("C1"), false);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.get") == gets + 1; }, 3000));
+    fakeslack::pumpFor(150);
+    CHECK(Log().count("users.prefs.set") == 0);
+    CHECK(!e.store.conversation(e.conv("C1")).muted);
+}
+
+TEST("slack read: a refused mute goes back") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}},
+            "users.prefs.set": {"ok": false, "error": "invalid_prefs"}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    e.be->setMuted(e.conv("C2"), true);
+    CHECK(e.store.conversation(e.conv("C2")).muted); // shown at once
+    REQUIRE(pumpUntil(
+        [&] {
+            return Log().count("users.prefs.set") == 1 && !e.store.conversation(e.conv("C2")).muted;
+        },
+        3000
+    ));
+    CHECK(e.store.conversation(e.conv("C1")).muted);
+}
+
+TEST("slack read: a refused mute that landed anyway stays") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": "C1"}},
+            "users.prefs.set": {"ok": false, "error": "fatal_error"}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C1")).muted; }, 3000));
+    fakeslack::pumpFor(100);
+    const int gets = Log().count("users.prefs.get");
+    // The read before the set, then the check after the refusal.
+    script(
+        "users.prefs.get",
+        R"([{"ok": true, "prefs": {"muted_channels": "C1"}},
+            {"ok": true, "prefs": {"muted_channels": "C1,C2"}}])"
+    );
+    e.be->setMuted(e.conv("C2"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.get") == gets + 2; }, 3000));
+    fakeslack::pumpFor(100);
+    CHECK(e.store.conversation(e.conv("C2")).muted);
+    CHECK(Log().count("users.prefs.set") >= 1); // fatal_error: retried, then checked
+}
+
+TEST("slack read: a list read before a mute here does not undo it") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    // The connect's read answers late, with the list as it was before.
+    script("users.prefs.get", R"([{"ok": true, "prefs": {"muted_channels": ""}, "__delay": 0.6}])");
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {"muted_channels": ""}},
+            "users.prefs.set": {"ok": true}})");
+    bool called = false;
+    e.be->connect([&](bool, const std::string &) { called = true; });
+    REQUIRE(pumpUntil([&] { return e.conv("C2") != kNoConv; }, 3000));
+    e.be->setMuted(e.conv("C1"), true);
+    bool flipped = false;
+    REQUIRE(pumpUntil(
+        [&] {
+            flipped = flipped || !e.store.conversation(e.conv("C1")).muted;
+            return called && !e.be->connecting() && Log().count("users.prefs.set") == 1 &&
+                   Log().count("users.prefs.get") >= 2;
+        },
+        5000
+    ));
+    fakeslack::pumpFor(800); // the late answer has landed
+    CHECK(!flipped);
+    CHECK(e.store.conversation(e.conv("C1")).muted);
+    Log            l;
+    json::Document prefs;
+    REQUIRE(prefs.parse(std::string(l.get("users.prefs.set")["form"]["prefs"].str()), nullptr));
+    CHECK_STR(prefs.root()["muted_channels"].str(), "C1");
+}
+
+TEST("slack read: without the muted_channels pref, mutes stay local") {
+    if (!haveServer())
+        return;
+    Env e;
+    set(kMeg);
+    set(R"({"users.prefs.get": {"ok": true, "prefs": {}}, "users.prefs.set": {"ok": true}})");
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return e.store.conversation(e.conv("C2")).muted; }, 3000)); // is_muted
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.get") == 1; }, 3000)); // the connect's
+    fakeslack::pumpFor(150);
+    const int gets = Log().count("users.prefs.get");
+    e.be->setMuted(e.conv("C1"), true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.prefs.get") == gets + 1; }, 3000));
+    fakeslack::pumpFor(150);             // its answer lands
+    e.be->setMuted(e.conv("C2"), false); // known by now: no more reads
+    fakeslack::pumpFor(200);
+    Log l;
+    CHECK(l.count("users.prefs.get") == gets + 1);
+    CHECK(l.count("users.prefs.set") == 0);
+    CHECK(e.store.conversation(e.conv("C1")).muted);
+    CHECK(!e.store.conversation(e.conv("C2")).muted);
+}
+
+TEST("slack read: an app-key workspace keeps mutes local") {
+    if (!haveServer())
+        return;
+    Env e(kWorkspace, false);
+    REQUIRE(e.connect());
+    e.be->setMuted(e.conv("C1"), true);
+    fakeslack::pumpFor(200);
+    CHECK(e.store.conversation(e.conv("C1")).muted);
+    CHECK(Log().count("users.prefs.set") == 0);
+}
+
 TEST("slack read: the VIP list comes with the connect's users.prefs.get") {
     if (!haveServer())
         return;
