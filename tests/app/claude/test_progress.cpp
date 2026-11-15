@@ -146,6 +146,51 @@ TEST("progress: a job is named from its command line") {
     CHECK_STR(jobName("make -f Makefile"), "make");
     CHECK_STR(jobName("make -C build -j 8 all"), "make all");
     CHECK_STR(jobName(""), "");
+    // Wrappers and subshells: what they run names the job.
+    CHECK_STR(
+        jobName(
+            "PECC_FUZZ_N=10000 PECC_FUZZ_SEED=7100000 timeout 3500 make -s pecc-fuzz > "
+            "$CLAUDE_JOB_DIR/tmp/pecc-fuzz.log 2>&1; echo exit=$?"
+        ),
+        "make pecc-fuzz"
+    );
+    CHECK_STR(
+        jobName("cd /w && (timeout 3000 make -s pecc-tests > a.log 2>&1) & (make b) & wait"),
+        "make pecc-tests"
+    );
+    CHECK_STR(jobName("timeout -k 5 600 ./run.sh"), "run");
+    CHECK_STR(jobName("nice -n 10 ionice -c 3 cargo test"), "cargo test");
+    CHECK_STR(jobName("env CI=1 FOO=bar ctest -j 8"), "ctest");
+    CHECK_STR(jobName("nohup stdbuf -oL ./fuzz.sh &"), "fuzz");
+    CHECK_STR(jobName("{ make all; } 2>&1"), "make all");
+}
+
+TEST("progress: where a command sends its output") {
+    using V                = std::vector<std::string>;
+    const std::string home = base::homeDir();
+    CHECK(
+        redirectTargets(
+            "make -s fuzz > $CLAUDE_JOB_DIR/tmp/f.log 2>&1; echo x >> ${CLAUDE_JOB_DIR}/tmp/f.log",
+            "/j/abc",
+            "/w"
+        ) == V{"/j/abc/tmp/f.log"}
+    );
+    // No job folder: nothing to fill $CLAUDE_JOB_DIR with.
+    CHECK(redirectTargets("make > $CLAUDE_JOB_DIR/f.log", "", "/w").empty());
+    // stderr, fd copies, /dev and unknown variables are not the output.
+    CHECK(redirectTargets("a 2> e.log >&2 >/dev/null > $OUT/x 2>>e2.log", "/j", "/w").empty());
+    CHECK(redirectTargets("a 1>o.log &>b.log >|c.log", "", "/w") == (V{"/w/o.log", "/w/b.log"}));
+    // Relative: from a leading cd, else the session's folder; none without one.
+    CHECK(redirectTargets("cd /src && make >build.log", "", "/w") == V{"/src/build.log"});
+    CHECK(redirectTargets("cd sub; make > 'my log.txt'", "", "/w") == V{"/w/sub/my log.txt"});
+    CHECK(redirectTargets("make > build.log", "", "").empty());
+    CHECK(
+        redirectTargets("x > ~/l.txt; y > $HOME/m.txt", "", "") ==
+        (V{home + "/l.txt", home + "/m.txt"})
+    );
+    // Inside quotes it's text, not a redirect.
+    CHECK(redirectTargets("echo 'a > b' \"c > d\"", "", "/w").empty());
+    CHECK(redirectTargets("tail -f x.log", "", "/w").empty());
 }
 
 TEST("progress: named reports each keep a file of their own") {

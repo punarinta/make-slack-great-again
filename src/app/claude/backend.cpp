@@ -2519,6 +2519,7 @@ bool Backend::pumpJobs(Tracked &t) {
         j.state            = Job::State::Running;
         const int64_t size = file::size(c.outputPath);
         std::string   tail;
+        bool          ownLine = false;
         if (size > 0 &&
             file::readRange(
                 c.outputPath, std::max<int64_t>(0, size - int64_t(kOutputTail)), kOutputTail, &tail
@@ -2526,6 +2527,49 @@ bool Backend::pumpJobs(Tracked &t) {
             j.line = lastOutputLine(tail);
             j.ratio.clear();
             j.progress = progressInLine(j.line, &j.ratio);
+            ownLine    = !j.line.empty();
+        }
+        // Nothing of its own to show: its output may go to a file it names
+        // ("make > $CLAUDE_JOB_DIR/tmp/x.log 2>&1"). Written since it began
+        // (not a last run's), the one that tells how far it is, else the
+        // latest written.
+        if (!ownLine) {
+            const std::string jobDir =
+                t.info.kind == SessionInfo::Kind::Background && !t.info.sessionId.empty()
+                    ? str::concat(
+                          {_paths.jobsDir(),
+                           "/",
+                           t.info.jobId.empty() ? std::string_view(t.info.sessionId).substr(0, 8)
+                                                : std::string_view(t.info.jobId)}
+                      )
+                    : std::string();
+            int64_t bestMicros = 0;
+            bool    bestTells  = false;
+            for (const std::string &path : redirectTargets(c.command, jobDir, t.info.cwd)) {
+                file::Stat st;
+                if (!file::stat(path, &st) || st.isDir || st.size <= 0 ||
+                    st.mtimeMicros / 1000 < j.startedMs - 2000)
+                    continue;
+                std::string fileTail;
+                if (!file::readRange(
+                        path,
+                        std::max<int64_t>(0, st.size - int64_t(kOutputTail)),
+                        kOutputTail,
+                        &fileTail
+                    ))
+                    continue;
+                std::string       ratio;
+                const std::string line = lastOutputLine(fileTail);
+                const float       p    = progressInLine(line, &ratio);
+                if (line.empty() || (bestTells && p < 0) ||
+                    (bestTells == (p >= 0) && st.mtimeMicros < bestMicros))
+                    continue;
+                bestTells  = p >= 0;
+                bestMicros = st.mtimeMicros;
+                j.line     = line;
+                j.ratio    = ratio;
+                j.progress = p;
+            }
         }
         seen.insert(j.id);
     }

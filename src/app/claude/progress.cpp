@@ -153,10 +153,33 @@ std::vector<Report> readReports(std::string_view jobDir) {
     return out;
 }
 
+namespace {
+// Commands that run the next one ("timeout 3500 make test"): the job is
+// named after what they run.
+bool isWrapper(std::string_view w) {
+    static constexpr std::string_view kWrappers[] = {
+        "timeout",
+        "nice",
+        "nohup",
+        "env",
+        "time",
+        "stdbuf",
+        "ionice",
+        "taskset",
+        "setsid",
+        "exec",
+        "command",
+        "chrt"
+    };
+    return std::find(std::begin(kWrappers), std::end(kWrappers), w) != std::end(kWrappers);
+}
+} // namespace
+
 std::string jobName(std::string_view command) {
-    // Words, quotes kept off; leading VAR=value settings skipped.
+    // Words, quotes and subshell brackets kept off; leading VAR=value
+    // settings skipped.
     std::vector<std::string_view> words;
-    for (size_t i = 0; i < command.size() && words.size() < 8;) {
+    for (size_t i = 0; i < command.size() && words.size() < 16;) {
         while (i < command.size() && (command[i] == ' ' || command[i] == '\t'))
             ++i;
         size_t j = i;
@@ -167,13 +190,34 @@ std::string jobName(std::string_view command) {
         if (j == i)
             break; // an operator: the first command is all there is to name
         std::string_view w = command.substr(i, j - i);
-        while (!w.empty() && (w.front() == '"' || w.front() == '\''))
+        while (!w.empty() &&
+               (w.front() == '"' || w.front() == '\'' || w.front() == '(' || w.front() == '{'))
             w.remove_prefix(1);
-        while (!w.empty() && (w.back() == '"' || w.back() == '\''))
+        while (!w.empty() &&
+               (w.back() == '"' || w.back() == '\'' || w.back() == ')' || w.back() == '}'))
             w.remove_suffix(1);
-        if (!(words.empty() && w.find('=') != std::string_view::npos))
+        if (!w.empty() && !(words.empty() && w.find('=') != std::string_view::npos))
             words.push_back(w);
         i = j;
+    }
+    // "timeout 3500 make test", "nice -n 10 ./run.sh", "env A=1 ctest": the
+    // wrapper, its options and its own argument go.
+    while (!words.empty() && words[0] != "cd" && isWrapper(file::baseName(words[0]))) {
+        const std::string_view wrapper = file::baseName(words[0]);
+        words.erase(words.begin());
+        while (!words.empty() &&
+               ((words[0].size() > 1 && words[0][0] == '-') ||
+                (wrapper == "env" && words[0].find('=') != std::string_view::npos))) {
+            // -n 10, -k 5, -c 3: a short option of nice/ionice/timeout with its value.
+            const bool takesValue =
+                words[0].size() == 2 && words[0][0] == '-' &&
+                (wrapper == "nice" || wrapper == "ionice" || wrapper == "timeout") &&
+                words.size() > 1;
+            words.erase(words.begin(), words.begin() + (takesValue ? 2 : 1));
+        }
+        // timeout's duration, taskset's mask, chrt's priority.
+        if ((wrapper == "timeout" || wrapper == "taskset" || wrapper == "chrt") && !words.empty())
+            words.erase(words.begin());
     }
     // "cd dir && make", "cd dir; make", a cd on a line of its own: the
     // command after the cd.
@@ -219,8 +263,13 @@ std::string jobName(std::string_view command) {
             if (w.empty() || (w[0] == '-' && w.size() > 2 && w[1] != '-'))
                 continue; // -j8: a short option with its value
             if (w.size() == 2 && w[0] == '-') {
-                // -f Makefile, -C build, -j 8: a short option, then its value.
-                if (k + 1 < words.size() && !words[k + 1].empty() && words[k + 1][0] != '-')
+                // -f Makefile, -C build, -j 8: a short option, then its value
+                // (make's -s, -k, -n… take none).
+                const bool noValue =
+                    first == "make" &&
+                    std::string_view("sknBiqwerRStd").find(w[1]) != std::string_view::npos;
+                if (!noValue && k + 1 < words.size() && !words[k + 1].empty() &&
+                    words[k + 1][0] != '-')
                     ++k;
                 continue;
             }
@@ -355,6 +404,120 @@ std::string lastOutputLine(std::string_view tail, size_t maxChars) {
     return {};
 }
 
+std::vector<std::string>
+redirectTargets(std::string_view command, std::string_view jobDir, std::string_view cwd) {
+    const std::string home   = base::homeDir();
+    // $CLAUDE_JOB_DIR, $HOME and ~ filled in; false for anything else to expand.
+    auto              expand = [&](std::string_view w, std::string *out) {
+        *out = str::startsWith(w, "~/") ? str::concat({home, w.substr(1)}) : std::string(w);
+        struct Var {
+            std::string_view braced, bare, value;
+        };
+        const Var vars[] = {
+            {"${CLAUDE_JOB_DIR}", "$CLAUDE_JOB_DIR", jobDir},
+            {"${HOME}", "$HOME", home},
+        };
+        for (const Var &v : vars)
+            for (std::string_view name : {v.braced, v.bare})
+                for (size_t at; (at = out->find(name)) != std::string::npos;) {
+                    if (v.value.empty())
+                        return false;
+                    out->replace(at, name.size(), v.value);
+                }
+        return !out->empty() && out->find_first_of("$`*?") == std::string::npos;
+    };
+    auto isEnd = [](char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';' || c == '&' ||
+               c == '|' || c == '<' || c == '>' || c == '(' || c == ')';
+    };
+    // The word at `i` (quotes taken off); `i` ends past it.
+    auto word = [&](size_t &i) {
+        std::string w;
+        char        quote = 0;
+        for (; i < command.size(); ++i) {
+            const char c = command[i];
+            if (quote) {
+                if (c == quote)
+                    quote = 0;
+                else
+                    w += c;
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (isEnd(c)) {
+                break;
+            } else {
+                w += c;
+            }
+        }
+        return w;
+    };
+    auto skipBlanks = [&](size_t &i) {
+        while (i < command.size() && (command[i] == ' ' || command[i] == '\t'))
+            ++i;
+    };
+
+    // Relative paths are from the directory a leading cd goes to, else the
+    // session's.
+    std::string base(cwd);
+    {
+        size_t i = 0;
+        skipBlanks(i);
+        if (command.substr(i, 3) == "cd " || command.substr(i, 3) == "cd\t") {
+            i += 3;
+            skipBlanks(i);
+            std::string dir;
+            if (!expand(word(i), &dir))
+                base.clear();
+            else if (file::isAbsolute(dir))
+                base = dir;
+            else if (!base.empty())
+                base = file::join(base, dir);
+        }
+    }
+
+    std::vector<std::string> out;
+    char                     quote = 0;
+    for (size_t i = 0; i < command.size() && out.size() < 4; ++i) {
+        const char c = command[i];
+        if (quote) {
+            if (c == quote)
+                quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+            continue;
+        }
+        if (c != '>')
+            continue;
+        // 2>file, 2>>file: not the output; 1>file, &>file, >file, >>file are.
+        if (i > 0 && isDigit(command[i - 1]) && command[i - 1] != '1') {
+            if (i + 1 < command.size() && command[i + 1] == '>')
+                ++i; // 2>>: its second '>' is no redirect of its own
+            continue;
+        }
+        size_t k = i + 1;
+        if (k < command.size() && command[k] == '>')
+            ++k;
+        if (k < command.size() && (command[k] == '&' || command[k] == '|'))
+            continue; // >&2, >|
+        skipBlanks(k);
+        const std::string raw = word(k);
+        i                     = k - 1;
+        std::string path;
+        if (!expand(raw, &path) || str::startsWith(path, "/dev/"))
+            continue;
+        if (!file::isAbsolute(path)) {
+            if (base.empty())
+                continue;
+            path = file::join(base, path);
+        }
+        if (std::find(out.begin(), out.end(), path) == out.end())
+            out.push_back(std::move(path));
+    }
+    return out;
+}
+
 std::string progressNote(std::string_view exe) {
     return str::concat(
         {"# Progress reports (msga)\n"
@@ -368,7 +531,10 @@ std::string progressNote(std::string_view exe) {
          "Call it from the script or loop itself, at most every few seconds, and once when it "
          "ends (with --progress 1 when it finished). Give jobs running side by side each its own "
          "--name. A command whose output already ends in such a line (\"9846/10000\", \"98%\") "
-         "needs no reports: msga shows its last line."}
+         "needs no reports: msga shows its last line, also when it goes to a file with \">\". "
+         "When a command never prints how far it is (a make target, a fuzz run, a long "
+         "download), run a small loop beside it that works out the count (files done, lines "
+         "in its log) and reports it every half minute or so, ending with it."}
     );
 }
 

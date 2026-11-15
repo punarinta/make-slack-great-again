@@ -1466,6 +1466,68 @@ TEST("backend: a session's background jobs, as they run and end") {
     CHECK(rig.store.jobs(ref).empty());
 }
 
+TEST("backend: a background command whose output goes to a file of its own") {
+    FakeClaudeHome    home;
+    const std::string output = home.dir + "/bq2.output";
+    const std::string log    = home.dir + "/jobs/S1/tmp/fuzz.log";
+    // `make > $CLAUDE_JOB_DIR/… 2>&1`: Claude Code's output file stays empty;
+    // the log is what tells how it goes.
+    home.append(
+        prompt("fuzz it", "2026-09-25T10:00:00.000Z") +
+        toolUse(
+            "t1",
+            "Bash",
+            R"({"command":"FUZZ_N=10000 timeout 3500 make -s pecc-fuzz > $CLAUDE_JOB_DIR/tmp/fuzz.log 2>&1; echo exit=$? >> $CLAUDE_JOB_DIR/tmp/fuzz.log","run_in_background":true})",
+            "2026-09-25T10:00:01.000Z"
+        ) +
+        str::concat(
+            {R"({"type":"user","timestamp":"2026-09-25T10:00:02.000Z","message":{"role":"user",)",
+             R"("content":[{"tool_use_id":"t1","type":"tool_result","content":)",
+             q(str::concat(
+                 {"Command running in background with ID: bq2. Output is being written to: ",
+                  output,
+                  ". You will be notified when it completes."}
+             )),
+             R"(}]},"toolUseResult":{"stdout":"","backgroundTaskId":"bq2"}})",
+             "\n"}
+        ) +
+        assistantText("Started.", "2026-09-25T10:00:03.000Z") + turnEnd("2026-09-25T10:00:04.000Z")
+    );
+    home.writeJob(
+        "S1",
+        str::concat(
+            {R"({"state":"done","inFlight":{"tasks":1,"kinds":["local_bash"]},)",
+             R"("updatedAt":"2026-09-25T10:00:04.000Z","sessionId":"S1","cwd":"/src/app",)",
+             R"("name":"fuzz","linkScanPath":)",
+             q(home.transcript),
+             "}"}
+        )
+    );
+    writeFile(output, "");
+    writeFile(log, "pecc-fuzz: 10000 programs\n2100/10000, 0 failed\n");
+    home.writeWorker("1.json", getpid(), "S1", "shell", {}, "/src/app");
+    Rig           rig;
+    const ConvRef ref  = rig.ref("S1");
+    const auto    line = [&]() -> std::string {
+        for (const model::BackgroundJob &j : rig.store.jobs(ref))
+            if (j.id == "bq2")
+                return j.line;
+        return "-";
+    };
+    REQUIRE(rig.wait([&] { return line() == "2100/10000, 0 failed"; }, 5000));
+    for (const model::BackgroundJob &j : rig.store.jobs(ref))
+        if (j.id == "bq2") {
+            CHECK_STR(j.name, "make pecc-fuzz");
+            CHECK_STR(j.ratio, "2100/10000");
+            CHECK(std::fabs(j.progress - 0.21f) < 1e-4f);
+        }
+    appendFile(log, "4400/10000, 0 failed\n");
+    REQUIRE(rig.wait([&] { return line() == "4400/10000, 0 failed"; }, 5000));
+    // Output of its own wins over the file.
+    writeFile(output, "linking\n");
+    REQUIRE(rig.wait([&] { return line() == "linking"; }, 5000));
+}
+
 #ifdef __linux__ // the process is found through /proc
 TEST("backend: a background command stopped from msga") {
     FakeClaudeHome    home;

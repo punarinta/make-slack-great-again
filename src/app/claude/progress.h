@@ -4,7 +4,8 @@
 //   • A command it runs in the background (TranscriptParser::runningCommands)
 //     writes its output to a file as it comes; its last line is shown as is,
 //     with a bar when the line reads "N/M" or "NN%". Nothing to ask of anyone:
-//     a test runner's "9846/10000 passed" is already there.
+//     a test runner's "9846/10000 passed" is already there. Sent to a file of
+//     its own instead ("make > log 2>&1"), that file's last line is.
 //   • A report of its own: `msga --claude-status "<line>" [--progress <p>]
 //     [--name <job>]`,
 //     run by the session (or a script of its) — the sessions msga starts are
@@ -59,6 +60,14 @@ float progressInLine(std::string_view line, std::string *ratio = nullptr);
 // "cmake --build"); a script run by an interpreter names itself ("python3
 // tools/gen.py" → "gen").
 std::string jobName(std::string_view command);
+
+// Where a command sends its output with ">", ">>", "1>" or "&>" (not 2>, not
+// /dev/…), as absolute paths: $CLAUDE_JOB_DIR is `jobDir` (left out when ""),
+// $HOME and ~ the home directory; relative paths are from a leading cd's
+// directory, else `cwd` (left out when ""). Paths with other $variables or
+// globs are left out. At most 4, each once, in order.
+std::vector<std::string>
+redirectTargets(std::string_view command, std::string_view jobDir, std::string_view cwd);
 
 // The line to show from the end of a command's output (`tail`): the last one
 // with something on it — a progress bar redrawn with "\r" counts its last
