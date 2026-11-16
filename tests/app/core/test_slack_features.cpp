@@ -358,6 +358,81 @@ TEST("slack features: bot buttons press through blocks.actions; legacy ones can'
     CHECK(count("blocks.actions") == 1);
 }
 
+TEST("slack features: a Calls API call (Zoom) is a call card with a Join until it ends") {
+    if (!haveServer())
+        return;
+    // Zoom's post as Slack sends it: the call block (no button element in
+    // it), then a section with the passcode.
+    Env e(
+        R"({"conversations.history?channel=C1": {"ok": true, "has_more": false, "messages": [
+        {"type": "message", "subtype": "bot_message", "ts": "1800000000.000200",
+         "bot_id": "BZOOM", "text": "arun has started a meeting", "blocks": [
+            {"type": "call", "call_id": "R1", "block_id": "c1", "api_decoration_available": false,
+             "call": {"v1": {"id": "R1", "app_id": "A1", "name": "Zoom meeting started by Arun",
+                             "app_icon_urls": {"image_32": "https://i/32", "image_72": "https://i/72"},
+                             "date_start": 1800000000, "display_id": "878-4151-9687",
+                             "active_participants": [{"slack_id": "UMIRA"}, {"external_id": "x"}],
+                             "all_participants": [{"slack_id": "UMIRA"}],
+                             "join_url": "https://zoom.us/j/1",
+                             "desktop_app_join_url": "zoommtg://zoom.us/join?confno=1",
+                             "date_end": 0, "has_ended": false},
+                      "media_backend_type": "platform_call"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": "Meeting passcode: abc"}}]},
+        {"type": "message", "subtype": "bot_message", "ts": "1800000000.000300",
+         "bot_id": "BMEET", "text": "A call", "blocks": [
+            {"type": "call", "call": {"v1": {"join_url": "https://meet.example/1"}}}]},
+        {"type": "message", "subtype": "bot_message", "ts": "1800000000.000100",
+         "bot_id": "BZOOM", "text": "arun ended a meeting", "blocks": [
+            {"type": "call", "call_id": "R0", "call": {"v1": {"id": "R0",
+             "join_url": "https://zoom.us/j/0", "date_start": 1799997900,
+             "date_end": 1800000100, "has_ended": true, "active_participants": [],
+             "all_participants": [{"slack_id": "UJAMES"}, {"slack_id": "UMIRA"}]}}}]}]}})"
+    );
+    REQUIRE(e.connect());
+    const ConvRef c = e.conv("C1");
+    REQUIRE(e.history(c));
+    const model::Message *live = e.store.findMessage(c, model::parseTs("1800000000.000200"));
+    REQUIRE(live && live->extra);
+    REQUIRE(live->extra->buttons.size() == 1);
+    const model::Button &join = live->extra->buttons[0];
+    CHECK_STR(join.label, "Join");
+    CHECK_STR(join.url, "https://zoom.us/j/1");
+    CHECK(join.attachment == -1); // drawn in the card
+    const model::Call &call = live->extra->call;
+    CHECK_STR(call.id, "R1");
+    CHECK_STR(call.name, "Zoom meeting started by Arun");
+    CHECK_STR(call.displayId, "878-4151-9687");
+    CHECK_STR(call.icon, "https://i/72");
+    CHECK(call.startSec == 1800000000);
+    CHECK_FALSE(call.ended);
+    REQUIRE(call.people.size() == 1); // the outside participant has no Slack id
+    CHECK_STR(e.store.user(call.people[0]).id, "UMIRA");
+    // The passcode stays the message's text (drawn above the card).
+    CHECK_STR(live->text, "Meeting passcode: abc");
+    const model::Message *ended = e.store.findMessage(c, model::parseTs("1800000000.000100"));
+    REQUIRE(ended && ended->extra);
+    CHECK(ended->extra->buttons.empty());
+    CHECK(ended->extra->call.ended);
+    CHECK(ended->extra->call.endSec == 1800000100);
+    // Ended: active_participants is empty, all_participants keeps who was in it.
+    REQUIRE(ended->extra->call.people.size() == 2);
+    CHECK_STR(e.store.user(ended->extra->call.people[0]).id, "UJAMES");
+    CHECK_STR(e.store.user(ended->extra->call.people[1]).id, "UMIRA");
+    CHECK(ended->extra->call.peopleKnown);
+    // Another provider's call that says only where to join: each part is
+    // left out on its own, and the Join still has its card (an id).
+    const model::Message *bare = e.store.findMessage(c, model::parseTs("1800000000.000300"));
+    REQUIRE(bare && bare->extra);
+    const model::Call &b = bare->extra->call;
+    CHECK_FALSE(b.id.empty());
+    CHECK(b.name.empty() && b.displayId.empty() && b.icon.empty());
+    CHECK(b.startSec == 0 && !b.ended && b.people.empty());
+    CHECK_FALSE(b.peopleKnown);
+    REQUIRE(bare->extra->buttons.size() == 1);
+    CHECK_STR(bare->extra->buttons[0].url, "https://meet.example/1");
+    CHECK(bare->extra->buttons[0].attachment == -1);
+}
+
 TEST("slack features: the account's Slack theme from users.prefs.get") {
     if (!haveServer())
         return;

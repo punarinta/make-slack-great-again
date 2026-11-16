@@ -328,7 +328,7 @@ msgstr "セッション ID"
 msgid "Background"
 msgstr "バックグラウンド"
 
-#: src/app/claude/backend_manage.cpp
+#: src/app/claude/backend_manage.cpp src/app/screens/messages/rows.cpp
 msgid "Ended"
 msgstr "終了済み"
 
@@ -1235,17 +1235,17 @@ msgid "%1h"
 msgstr "%1時間"
 
 #: src/app/screens/messages/rows.cpp
+msgid "%n other"
+msgid_plural "%n others"
+msgstr[0] "他%n人"
+
+#: src/app/screens/messages/rows.cpp
 msgid "Nobody joined the huddle."
 msgstr "ハドルには誰も参加しませんでした。"
 
 #: src/app/screens/messages/rows.cpp
 msgid "The huddle is waiting for people to join."
 msgstr "ハドルの参加者を待っています。"
-
-#: src/app/screens/messages/rows.cpp
-msgid "%n other"
-msgid_plural "%n others"
-msgstr[0] "他%n人"
 
 #: src/app/screens/messages/rows.cpp
 msgid "%1 are in the huddle."
@@ -1270,6 +1270,34 @@ msgstr "%1がハドルに%2参加しました。"
 #: src/app/screens/messages/rows.cpp
 msgid "%1 was in the huddle for %2."
 msgstr "%1がハドルに%2参加しました。"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Ended · lasted %1"
+msgstr "終了済み · %1"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Started %1"
+msgstr "%1に開始"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 were in the call"
+msgstr "%1が通話に参加していました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 was in the call"
+msgstr "%1が通話に参加していました"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 are in the call"
+msgstr "%1が通話に参加しています"
+
+#: src/app/screens/messages/rows.cpp
+msgid "%1 is in the call"
+msgstr "%1が通話に参加しています"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Waiting for people to join"
+msgstr "参加者を待っています"
 
 #: src/app/screens/messages/rows.cpp src/app/screens/shell/canvas_viewer.cpp
 msgid "Canvas"
@@ -1330,6 +1358,14 @@ msgstr "リマインダー — %1"
 #: src/app/screens/messages/rows.cpp src/app/screens/shell/saved_page.cpp
 msgid "Saved for later"
 msgstr "後で見るために保存済み"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Call"
+msgstr "通話"
+
+#: src/app/screens/messages/rows.cpp
+msgid "Meeting ID: %1"
+msgstr "ミーティング ID: %1"
 
 #: src/app/screens/messages/rows.cpp
 msgid "Show less"
@@ -1925,7 +1961,7 @@ msgstr "%1: お知らせ、デプロイは15時に行われます"
 msgid "%1 started a huddle"
 msgstr "%1さんがハドルを開始しました"
 
-#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/huddle_banner.cpp src/app/screens/shell/shell_notify.cpp
+#: src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/huddle_banner.cpp src/app/screens/shell/shell_notify.cpp src/app/slack/slack_json.cpp
 msgid "Join"
 msgstr "参加"
 
@@ -4276,6 +4312,10 @@ msgstr[0] "Slackがリクエストをレート制限しています (%1) — %n 
 #: src/app/slack/slack_backend.cpp
 msgid "Couldn't change the sidebar sections: %1"
 msgstr "サイドバーのセクションを変更できませんでした: %1"
+
+#: src/app/slack/slack_json.cpp
+msgid "(A %1 block msga can't show yet)"
+msgstr "（msgaではまだ表示できない%1ブロック）"
 
 #: src/app/update/updater.cpp
 msgid "Cannot write update to %1"

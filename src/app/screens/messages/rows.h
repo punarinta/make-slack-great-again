@@ -42,6 +42,15 @@ class SelectableText;
 // A huddle row's sentence ("Mira and Jonas were in
 // the huddle for 1h 5m.").
 std::string huddleSummaryText(const Store &st, const model::Huddle &h);
+// A call card's two lines:
+// - under its name: "Started 5 minutes ago" or "Ended · lasted 12m"
+// - by its Join: who is in it ("Waiting for people to join"), or once
+//   ended who was ("" for nobody)
+std::string callStartedText(const model::Call &c, int64_t now);
+std::string callStatusText(const Store &st, const model::Call &c);
+// Its people's avatars' alpha: faded once it has ended, as Slack greys them
+// (msga's inactive look is a fade; it has no greyscale filter).
+float       callAvatarAlpha(const model::Call &c);
 
 // The texts a message's selection runs over (MessageRow::selectionLabels'),
 // for rows not on screen: its body, or its text blocks.
@@ -118,6 +127,8 @@ private:
     // The buttons of attachment `owner` (1-based; 0 = the message's own) as a row.
     void      buildButtons(ui::View *col, const model::Message &m, int32_t owner);
     void      buildUnfurl(ui::View *col, const model::Message &m, size_t index);
+    // A call block's card (MessageExtras::call), its Join inside.
+    void      buildCallCard(ui::View *col, const model::Message &m);
     ui::RectF dismissRect() const; // local; empty while no card is hovered
     // The gutter strip from the "×" to the card, as tall as the card: the
     // pointer on its way to the "×" (the 4-px gap, a diagonal) keeps it shown.
@@ -150,9 +161,9 @@ private:
     ui::View                     *_attachCard = nullptr; // the hovered attachment card
     int                           _attach     = -1;      // … its index
     Ts                            _ts         = 0;
-    int64_t                       _dueAt      = 0; // an upcoming reminder (secs)
-    int64_t                       _day        = 0; // local day when built
-    bool                          _reminded   = false;
+    int64_t                       _dueAt = 0; // an upcoming reminder, a call's next minute (secs)
+    int64_t                       _day   = 0; // local day when built
+    bool                          _reminded = false;
     int                           _kind;
     bool                          _pending = false, _overDismiss = false;
 

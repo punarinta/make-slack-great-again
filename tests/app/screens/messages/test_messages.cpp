@@ -4200,6 +4200,54 @@ TEST("blocks: a huddle row says who, how many and how long in one sentence") {
     CHECK_STR(screens::huddleSummaryText(st, h), "Nobody joined the huddle.");
 }
 
+TEST("blocks: a call card says when it started and who is in it") {
+    model::Store st;
+    model::User  u;
+    u.id                      = "UME";
+    u.name                    = "me";
+    st.me                     = st.addUser(u);
+    u.id                      = "UMIRA";
+    u.name                    = "mira";
+    u.displayName             = "Mira";
+    const model::UserRef mira = st.addUser(u);
+    model::Call          c;
+    c.startSec    = 1000;
+    c.peopleKnown = true;
+    CHECK_STR(screens::callStartedText(c, 1000 + 7 * 60 + 5), "Started 7 minutes ago");
+    CHECK_STR(screens::callStartedText(c, 1010), "Started just now");
+    CHECK_STR(screens::callStatusText(st, c), "Waiting for people to join");
+    c.people = {mira};
+    CHECK_STR(screens::callStatusText(st, c), "Mira is in the call");
+    c.people = {st.me, mira};
+    CHECK_STR(screens::callStatusText(st, c), "You and Mira are in the call");
+    CHECK(screens::callAvatarAlpha(c) == 1.f);
+    // Ended: how long it lasted, and who was in it, their avatars faded.
+    c.ended = true;
+    CHECK(screens::callAvatarAlpha(c) < 1.f);
+    c.endSec = 1000 + 12 * 60;
+    CHECK_STR(screens::callStartedText(c, 5000), "Ended \xC2\xB7 lasted 12m");
+    CHECK_STR(screens::callStatusText(st, c), "You and Mira were in the call");
+    c.people = {mira};
+    CHECK_STR(screens::callStatusText(st, c), "Mira was in the call");
+    c.people.clear();
+    CHECK_STR(screens::callStatusText(st, c), "");
+}
+
+TEST("blocks: a call card leaves out what the call didn't say") {
+    model::Store st;
+    model::Call  c; // a provider that sent nothing but the call
+    c.id = "call";
+    // No start: no age line; no participants list: no "Waiting…" either.
+    CHECK_STR(screens::callStartedText(c, 5000), "");
+    CHECK_STR(screens::callStatusText(st, c), "");
+    // An empty list is news: nobody yet.
+    c.peopleKnown = true;
+    CHECK_STR(screens::callStatusText(st, c), "Waiting for people to join");
+    // Ended without times: just "Ended".
+    c.ended = true;
+    CHECK_STR(screens::callStartedText(c, 5000), "Ended");
+}
+
 // ── Inline audio player ─────────────────────────────────────────────────────
 
 namespace {

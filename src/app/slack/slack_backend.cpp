@@ -1644,6 +1644,9 @@ void SlackBackend::Read::resolveAuthors(const std::vector<model::Message> &page)
         if (m.isHuddle()) // a huddle row's attendees too
             for (UserRef u : m.extra->huddle.attendees)
                 fetchUserIfNeeded(u);
+        if (m.extra && !m.extra->call.id.empty()) // a call card's people too
+            for (UserRef u : m.extra->call.people)
+                fetchUserIfNeeded(u);
     }
 }
 

@@ -361,6 +361,15 @@ void fields(IO &io, model::Message &m) {
         io.num(x.huddle.startSec);
         io.num(x.huddle.endSec);
         io.flags({&x.huddle.ended});
+        // A call block's call.
+        io.str(x.call.id);
+        io.str(x.call.name);
+        io.str(x.call.displayId);
+        io.str(x.call.icon);
+        users(io, x.call.people);
+        io.num(x.call.startSec);
+        io.num(x.call.endSec);
+        io.flags({&x.call.ended, &x.call.peopleKnown});
         io.close();
     }
 }
