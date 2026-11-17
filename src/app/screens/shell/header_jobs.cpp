@@ -201,7 +201,7 @@ public:
     }
     // A second on: the running jobs' clocks, the rest as it was (the jobs
     // themselves change through refresh()).
-    void tick() {
+    void second() {
         if (_stale) {
             refresh();
             return;
@@ -435,7 +435,7 @@ void JobsButton::second() {
     if (_form == Form::Label && !_jobs.empty())
         _value->setText(shortValue(_jobs[0], nowMs()));
     if (_popover)
-        _popover->tick();
+        _popover->second();
     update();
 }
 
