@@ -2208,6 +2208,30 @@ void Composer::computePickList() {
                         it.status = tr("Disabled in threads");
                     items.push_back(std::move(it));
                 }
+        // User groups: mentioned like a person, though listed above people
+        // because there are only a handful of them and "@handle" is the whole
+        // name to match on. They work in DMs and threads alike: a group
+        // mention notifies its members, it isn't a broadcast of this channel.
+        int addedGroups = 0;
+        for (const model::Store::Usergroup &g : st.usergroups()) {
+            if (addedGroups >= 50) // as many as a list of people: a workspace
+                break;             // can have hundreds
+            if (g.handle.empty())
+                continue;
+            if (!query.empty() && !utf8::containsFoldedNeedle(g.handle, fq) &&
+                !utf8::containsFoldedNeedle(g.name, fq))
+                continue;
+            PickList::Item it;
+            it.kind    = PickList::Item::Kind::Group;
+            it.display = str::concat({"@", g.handle});
+            it.title   = it.display;
+            // Slack's own form: <!subteam^S…|@handle>.
+            it.insert  = str::concat({"<!subteam^", g.id, "|", it.display, ">"});
+            if (!g.name.empty() && g.name != g.handle)
+                it.subtitle = g.name;
+            items.push_back(std::move(it));
+            ++addedGroups;
+        }
         wide      = _threadMode && !dm;
         int added = 0;
         if (_foldedStore != &st) { // another workspace: its revisions are its own
@@ -2471,6 +2495,14 @@ void loadMrkdwnAs(TextEdit &edit, const model::Store &store, std::string_view te
                  : c != model::kNoConv ? store.conversation(c).name
                                        : std::string(head.substr(1))}
             );
+        } else if (str::startsWith(head, "!subteam^")) {
+            // <!subteam^S…|@handle>: a user group mention, shown by the group's
+            // live handle as the messages show it; one the Store doesn't know
+            // keeps Slack's label.
+            if (const model::Store::Usergroup *g = store.findUsergroup(head.substr(9)))
+                display = str::concat({"@", g->handle.empty() ? g->name : g->handle});
+            else if (!lab.empty())
+                display = std::string(lab);
         } else if (head == "!here" || head == "!channel" || head == "!everyone") {
             display = str::concat({"@", head.substr(1)});
         } else if (giphy(head)) {

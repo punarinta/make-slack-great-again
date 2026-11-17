@@ -1459,6 +1459,53 @@ TEST("composer: @ lists people and @channel & co.; a pick is a pill that sends t
     CHECK_STR(c.pickList()->item(0).subtitle, "Notify everyone in this channel");
 }
 
+TEST("composer: @ lists user groups under the aliases, and a pick is a subteam pill") {
+    Harness h;
+    h.store.setUsergroups({
+        {"S0DEV0001", "developers", "Developers", {}},
+        {"S0OPS0001", "oncall", "On-call", {}},
+    });
+    auto &c = h.composer();
+    c.edit().focus();
+    // A bare "@": the aliases, then the groups, then people.
+    c.edit().insertText("@");
+    pump();
+    shell::PickList *p = c.pickList();
+    REQUIRE(p != nullptr);
+    REQUIRE(p->count() >= 5);
+    CHECK_STR(p->item(0).title, "@channel");
+    CHECK_STR(p->item(3).title, "@developers");
+    CHECK_STR(p->item(3).subtitle, "Developers");
+    // The handle finds it as the name does, whatever the case.
+    for (const char *typed : {"@dev", "@Developer"}) {
+        c.edit().clear();
+        c.edit().insertText(typed);
+        pump();
+        REQUIRE(c.pickList() != nullptr);
+        REQUIRE(c.pickList()->count() >= 1);
+        CHECK_STR(c.pickList()->item(0).title, "@developers");
+    }
+    c.edit().clear();
+    c.edit().insertText("ping @dev");
+    pump();
+    p = c.pickList();
+    REQUIRE(p != nullptr);
+    p->confirm();
+    pump();
+    CHECK_STR(c.edit().text(), "ping @developers ");
+    CHECK_STR(c.mrkdwn(), "ping <!subteam^S0DEV0001|@developers> ");
+    // An edit reads the token back as the handle pill, and saves it again.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "ping <!subteam^S0DEV0001|@developers> ");
+    CHECK_STR(c.edit().text(), "ping @developers ");
+    CHECK_STR(c.mrkdwn(), "ping <!subteam^S0DEV0001|@developers> ");
+    // A group the Store has never heard of still shows Slack's own label.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "hi <!subteam^S0GONE|@old-team> ");
+    CHECK_STR(c.edit().text(), "hi @old-team ");
+    CHECK_STR(c.mrkdwn(), "hi <!subteam^S0GONE|@old-team> ");
+}
+
 TEST("composer: a new set of @ rows scrolls back to the first, which it selects") {
     Harness h;
     for (int i = 0; i < 50; ++i) { // 40 "zqprobe…" and 10 "zqx…"
