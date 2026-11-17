@@ -357,7 +357,17 @@ private:
     struct FoldedName {
         std::string name, folded;
     };
-    std::vector<FoldedName>              _foldedConvs;
+    std::vector<FoldedName> _foldedConvs;
+
+    // The @ filter's folded user groups, by index into Store::usergroups():
+    // "handle\nname" folded, with where the handle ends (refolded when the
+    // group at that index is another one or renamed).
+    struct FoldedGroup {
+        std::string handle, name, folded;
+        uint32_t    handleEnd = 0;
+    };
+    std::vector<FoldedGroup> _foldedGroups;
+
     // The / list: the conversation's commands as last fetched, and the same
     // sorted by name with their names folded (redone when the list changes).
     model::ConvRef                       _cmdConv = model::kNoConv;

@@ -242,10 +242,15 @@ void PickList::build() {
             _badges.push_back(enterBadge(row));
         } else {
             row->style().padding(8, 0).spacing(8);
-            if (it.kind == Item::Kind::Alias) {
+            if (it.kind == Item::Kind::Alias || it.kind == Item::Kind::Group) {
+                // A broadcast or a group: a symbol rather than a picture.
                 auto *box = row->add<View>();
                 box->style().size(26, 26).stack().items(Align::Center).noShrink();
-                box->add<IconView>(Icon::Megaphone, 20, C::FormTextMuted);
+                box->add<IconView>(
+                    it.kind == Item::Kind::Group ? Icon::Users : Icon::Megaphone,
+                    20,
+                    C::FormTextMuted
+                );
             } else {
                 auto *av = row->add<Avatar>();
                 av->style().size(26, 26).noShrink();
@@ -288,7 +293,8 @@ void PickList::build() {
                 auto *s = row->add<Label>(
                     it.subtitle,
                     Font::Field,
-                    it.kind == Item::Kind::Alias ? C::FormTextMuted : C::FormTextFaint
+                    it.kind == Item::Kind::Alias || it.kind == Item::Kind::Group ? C::FormTextMuted
+                                                                                 : C::FormTextFaint
                 );
                 s->setMaxLines(1);
                 s->style().shrink = 1;
