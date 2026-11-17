@@ -711,6 +711,27 @@ void TextEdit::insertText(std::string_view s) {
     replace(std::min(_caret, _anchor), std::max(_caret, _anchor), s, nullptr, f, EditKind::Other);
 }
 
+void TextEdit::replaceTyped(uint32_t from, uint32_t to, std::string_view s) {
+    // The caret stays where it was in the text around the range (after the
+    // space that finished a smiley), not after what went in.
+    const uint32_t caret = _caret, anchor = _anchor;
+    const auto     moved = [&](uint32_t o) {
+        return o >= to ? o - (to - from) + uint32_t(s.size()) : std::min(o, from);
+    };
+    // Not Typing: what is typed next must not join this edit's undo step.
+    replace(from, to, s, nullptr, typingFormat(), EditKind::Other);
+    _caret  = std::min(moved(caret), uint32_t(_text.size()));
+    _anchor = std::min(moved(anchor), uint32_t(_text.size()));
+    if (!_undo.empty()) { // redo puts the caret back here too
+        _undo.back().caretAfter  = _caret;
+        _undo.back().anchorAfter = _anchor;
+    }
+    update();
+    ensureCaretVisible();
+    updateIme();
+    selectionChanged();
+}
+
 void TextEdit::insertHtml(std::string_view html) {
     std::string              t;
     std::vector<uint16_t>    f;

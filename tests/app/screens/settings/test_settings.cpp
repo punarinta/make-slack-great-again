@@ -272,6 +272,8 @@ TEST("settings: every value survives the file, which is owner-only") {
     s.slackClientId                      = "123.456";
     s.giphyKey                           = "gk";
     s.voiceGlossary                      = "gRPC\nnginx";
+    s.smileyToEmoji                      = false;
+    s.smileyMap                          = ":-) :wave:\n:) \xF0\x9F\x99\x82";
     s.spellLanguages                     = {"en_US", "de_DE_frami"};
     s.emojiRecent                        = {"tada", "+1"};
     s.emojiSkinTone                      = 3;
@@ -313,6 +315,8 @@ TEST("settings: every value survives the file, which is owner-only") {
     CHECK_STR(r.slackClientId, "123.456");
     CHECK_STR(r.giphyKey, "gk");
     CHECK_STR(r.voiceGlossary, "gRPC\nnginx");
+    CHECK_FALSE(r.smileyToEmoji);
+    CHECK_STR(r.smileyMap, ":-) :wave:\n:) \xF0\x9F\x99\x82");
     REQUIRE(r.spellLanguages.size() == 2);
     CHECK_STR(r.spellLanguages[1], "de_DE_frami");
     REQUIRE(r.emojiRecent.size() == 2);
@@ -618,6 +622,39 @@ TEST("settings: the Markdown formatting choice reaches the composer on Save") {
     c.edit().insertText("*it* **bold**");
     CHECK_STR(mrkdwn::compose(c.mrkdwn()).mrkdwn, "_it_ *bold*");
     CHECK(shell::Settings::load(path).markdownFormatting); // saved
+}
+
+TEST("settings: smileys are on by default and listed; the map is theirs to edit") {
+    const std::string path = testPath();
+    file::remove(path);
+    Harness         h(path);
+    SettingsDialog &d = h.open();
+    CHECK(h.settings.smileyToEmoji); // the default, as in Slack
+    REQUIRE(d.find("Turn text smileys into emoji") != nullptr);
+    auto *map = static_cast<ui::TextField *>(d.find(":) :slightly_smiling_face:"));
+    REQUIRE(map != nullptr);
+    // The field lists the usual set, so it can be edited; left as it is, the
+    // setting stays empty and so follows a later version's list.
+    CHECK(map->text().find(":) slightly_smiling_face") != std::string::npos);
+    h.click(d.find("Save"));
+    CHECK_STR(h.settings.smileyMap, "");
+
+    // Pairs of their own, and off: the composer hears about both on Save.
+    SettingsDialog &d2   = h.open();
+    auto           *map2 = static_cast<ui::TextField *>(d2.find(":) :slightly_smiling_face:"));
+    REQUIRE(map2 != nullptr);
+    map2->setText("  :-) :wave:  \n\n :) \xF0\x9F\x99\x82 \n");
+    h.click(d2.find("Turn text smileys into emoji"));
+    CHECK_FALSE(d2.draft().smileyToEmoji);
+    CHECK(h.settings.smileyToEmoji); // until Save
+    h.click(d2.find("Save"));
+    CHECK_STR(h.settings.smileyMap, ":-) :wave:\n:) \xF0\x9F\x99\x82"); // tidied
+    CHECK_FALSE(h.settings.smileyToEmoji);
+    CHECK_FALSE(h.ctx.smileyToEmoji);
+    CHECK_STR(h.ctx.smileyMap, ":-) :wave:\n:) \xF0\x9F\x99\x82");
+    const shell::Settings r = shell::Settings::load(path);
+    CHECK_FALSE(r.smileyToEmoji);
+    CHECK_STR(r.smileyMap, ":-) :wave:\n:) \xF0\x9F\x99\x82");
 }
 
 TEST("settings: a one-click reaction picked in Settings is no use, and lands only on its page") {

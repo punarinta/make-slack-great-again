@@ -31,6 +31,7 @@ struct SettingsDialog::Parts {
     ui::Button                  *trayChange    = nullptr;
     ui::View                    *spellGrid     = nullptr;
     ui::Label                   *spellHint     = nullptr;
+    ui::TextField               *smileys       = nullptr;
     bool                         spellFilled   = false; // the grid was filled once
     // Notifications
     ui::RadioGroup              *notifyLevel   = nullptr;

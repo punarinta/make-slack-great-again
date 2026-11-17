@@ -1777,6 +1777,104 @@ TEST("composer: CommonMark habits go out as mrkdwn") {
     CHECK_STR(mrkdwn::convertOutgoing("> **q**"), "> *q*");
 }
 
+TEST("composer: a typed smiley becomes its emoji as the word ends, unless that is off") {
+    Harness    h;
+    auto      &c        = h.composer();
+    auto      &e        = c.edit();
+    const auto lastText = [&] {
+        return h.store.conversation(h.conv("C0DESIGN")).messages.back().text;
+    };
+    // Key by key, as typing goes.
+    const auto type = [&e](std::string_view s) {
+        for (char ch : s)
+            e.insertText(std::string(1, ch));
+    };
+    const std::string smile = emoji::toUnicode("slightly_smiling_face");
+    REQUIRE(!smile.empty());
+    CHECK(h.ctx.smileyToEmoji); // on by default, as in Slack
+    // Type by type: the box turns it as soon as the word ends, not before.
+    e.setText("");
+    type("on it :)");
+    CHECK_STR(e.text(), "on it :)"); // nothing has ended it yet
+    type(" ");
+    CHECK_STR(e.text(), "on it " + smile + " ");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "on it " + smile);
+    // Punctuation ends it as a space does.
+    e.setText("");
+    type("ok :),");
+    CHECK_STR(e.text(), "ok " + smile + ",");
+    // Undo gives the smiley back, and it stays given back; the typing that
+    // follows the emoji is a step of its own.
+    e.setText("");
+    type("yes :) ");
+    CHECK_STR(e.text(), "yes " + smile + " ");
+    REQUIRE(e.undo());
+    CHECK_STR(e.text(), "yes :) ");
+    e.setText("");
+    type("yes :) and");
+    CHECK_STR(e.text(), "yes " + smile + " and"); // the caret stayed after the space
+    REQUIRE(e.undo());
+    CHECK_STR(e.text(), "yes " + smile + " an");
+    // A colon that starts a word is not a smiley: ":Date:" stays as typed.
+    e.setText("");
+    type(":Date: ");
+    CHECK_STR(e.text(), ":Date: ");
+    // A word in another script before it: still a word with a colon in it.
+    e.setText("");
+    type("caf\xC3\xA9:) ");
+    CHECK_STR(e.text(), "caf\xC3\xA9:) ");
+    // Code is code: in backticks, and formatted as code from the toolbar.
+    e.setText("");
+    type("use `:) ");
+    CHECK_STR(e.text(), "use `:) ");
+    e.setText("");
+    e.toggleFormat(ui::TextEdit::Code);
+    type("f(a :) ");
+    CHECK_STR(e.text(), "f(a :) ");
+    // A link's label is the link's: a smiley that ends it stays.
+    shell::loadMrkdwn(e, h.store, "<https://x.test|see :)>");
+    type(" ");
+    CHECK_STR(e.text(), "see :) ");
+    // A paste is not typing: what was pasted stays as pasted.
+    e.setText("");
+    e.insertText("pasted :) ");
+    CHECK_STR(e.text(), "pasted :) ");
+    // Lists and product names are not faces.
+    e.setText("");
+    type("plan B) or XD ");
+    CHECK_STR(e.text(), "plan B) or XD ");
+    // The end of the message closes one too, so what is sent is what was shown.
+    e.setText("");
+    type("thanks :)");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "thanks " + smile);
+    // "<3" at the end goes as the heart, not as the escaped "&lt;3".
+    e.setText("");
+    type("love it <3");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "love it " + emoji::toUnicode("heart"));
+    // A map of their own: only what it lists.
+    h.ctx.smileyMap = ":-) :wave:";
+    e.setText("");
+    type("hi :) ");
+    CHECK_STR(e.text(), "hi :) "); // not in their map
+    type(":-) ");
+    CHECK_STR(e.text(), "hi :) " + emoji::toUnicode("wave") + " ");
+    // Off: what was typed stays as typed, the end of the message included.
+    h.ctx.smileyToEmoji = false;
+    h.ctx.smileyMap.clear();
+    e.setText("");
+    type("on it :) ");
+    CHECK_STR(e.text(), "on it :) ");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "on it :)");
+}
+
 TEST("composer: the typing indicator names who types") {
     Harness       h;
     const ConvRef design = h.conv("C0DESIGN");

@@ -6,6 +6,7 @@
 #include "app/mrkdwn/emoji.h"
 #include "app/spell/spell.h"
 #include "app/mrkdwn/mrkdwn.h"
+#include "app/mrkdwn/smileys.h"
 #include "base/file.h"
 #include "base/i18n.h"
 #include "base/mime.h"
@@ -25,6 +26,7 @@
 #include "app/screens/messages/image_cache.h"
 #endif
 
+#include <cctype>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -573,6 +575,7 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
     _edit->setPlainPaste(true);                // pasted rich text arrives as plain
     _edit->setLinkBackground(C::AccentSubtle); // mention / channel / GIF pills
     _edit->onChange = [this] {
+        finishSmiley();
         typing();
         refreshLook();
         updatePickList();
@@ -1352,6 +1355,9 @@ void Composer::redialect(bool toMarkdown) {
 }
 
 bool Composer::send() {
+    // A smiley the end of the message closes ("thanks :)" with no space
+    // after it) becomes its emoji in the box first; typing did the rest.
+    finishSmileyAt(uint32_t(_edit->text().size()));
     if (onSendRequest) // an embedded composer (the forward dialog's)
         return onSendRequest();
     // CommonMark habits become mrkdwn, and
@@ -1786,6 +1792,50 @@ void Composer::layout() {
         _edit->setMaxLines(std::max(1, int((w->size().h / 2 - 20) / std::max(1.f, line))));
     }
     View::layout();
+}
+
+// A smiley finished — "it works :)" has just had its space — becomes its emoji
+// where it stands, as Slack's own client does, so the box shows what is sent. A
+// smiley is only finished by a space or punctuation typed after it, which is
+// what keeps ":D" from eating the start of ":Date:". Only one character typed
+// at the end counts: a paste, an undo or a caret moved back is not typing.
+void Composer::finishSmiley() {
+    if (_finishingSmiley)
+        return;
+    const std::string &text   = _edit->text();
+    const size_t       before = _smileyTextLen;
+    _smileyTextLen            = text.size();
+    if (text.size() != before + 1 || _edit->caret() != text.size())
+        return;
+    const auto typed = static_cast<unsigned char>(text.back());
+    if (typed >= 0x80 || std::isalnum(typed) || typed == '_') // not a word's end
+        return;
+    finishSmileyAt(uint32_t(text.size() - 1));
+}
+
+void Composer::finishSmileyAt(uint32_t stop) {
+    // Claude Code prompts are code and paths as often as words: left as typed.
+    if (!_ctx.smileyToEmoji || _ctx.backend.capabilities().agentSessions || _edit->hasSelection())
+        return;
+    if (!_smileysParsed || _smileyMapParsed != _ctx.smileyMap) { // parsed once per map
+        _smileys         = mrkdwn::parseSmileys(_ctx.smileyMap);
+        _smileyMapParsed = _ctx.smileyMap;
+        _smileysParsed   = true;
+    }
+    const std::string      &text = _edit->text();
+    const mrkdwn::SmileyHit hit  = mrkdwn::smileyEndingAt(text, stop, _smileys);
+    // A pair that maps a smiley onto itself would keep going round.
+    if (!hit || std::string_view(text).substr(hit.at, hit.len) == hit.glyph)
+        return;
+    // Inside a pill (its label is the token's) or text formatted as code: as is.
+    for (const TextEdit::Run &r : _edit->runs())
+        if (r.start < hit.at + hit.len && hit.at < r.end &&
+            (!r.link.empty() || (r.format & TextEdit::Code)))
+            return;
+    _finishingSmiley = true;
+    _edit->replaceTyped(hit.at, hit.at + hit.len, hit.glyph);
+    _finishingSmiley = false;
+    _smileyTextLen   = _edit->text().size();
 }
 
 void Composer::typing() {

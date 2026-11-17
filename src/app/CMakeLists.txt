@@ -16,6 +16,7 @@ add_library(msga_app_core STATIC
     mrkdwn/markdown.cpp
     mrkdwn/link_labels.cpp
     mrkdwn/emoji.cpp
+    mrkdwn/smileys.cpp
     i18n/languages.cpp
     i18n/languages_generated.cpp
     crash/crash_handler.cpp

@@ -57,6 +57,12 @@ struct Settings {
     // The composer reads *x* as Markdown's italic, **x** as bold (shell::
     // markdownFormatting); what is sent is mrkdwn either way.
     bool                     markdownFormatting = false;
+    // Text smileys become emoji as they are typed ("it works :)" shows "it
+    // works 🙂" once the word ends), the pairs being smileyMap: one to a line,
+    // the smiley, then the emoji — its shortcode or the character
+    // (mrkdwn/smileys.h). Empty: the usual set.
+    bool                     smileyToEmoji      = true;
+    std::string              smileyMap;
     // The spell checker's languages (the spell backend's
     // codes, "en_US" / "en-US"); empty = the system language's.
     std::vector<std::string> spellLanguages;

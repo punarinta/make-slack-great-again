@@ -22,6 +22,7 @@
 // size on plates; remove); sending hands them to Backend::sendWithFiles.
 #pragma once
 
+#include "app/mrkdwn/smileys.h"
 #include "screens/common/context.h"
 #include "screens/shell/composer_popups.h"
 #include "screens/shell/shortcuts.h"
@@ -294,6 +295,8 @@ private:
     void insertPill(uint32_t from, uint32_t to, const std::string &display, const std::string &raw);
     void pick(const PickList::Item &it);
     void typing();
+    void finishSmiley();                // a smiley the word just ended becomes its emoji
+    void finishSmileyAt(uint32_t stop); // the one ending at `stop`, if any
     void compositionChanged();
     void offerUndo(const std::string &html, const std::vector<std::string> &files);
     void withdrawUndo();
@@ -307,29 +310,34 @@ private:
     VoiceJob *voiceJobHere() const;
     void      voiceEnded(const void *owner, const std::string *text, const std::string *error);
 
-    screens::Context        &_ctx;
-    DraftStash              &_drafts;
-    Avatars                 *_avatars = nullptr;
-    DraftStash::Key          _key;
-    ui::TextEdit            *_edit      = nullptr;
-    GlyphButton             *_tools[10] = {};
-    GlyphButton             *_bottom[4] = {}; // attach, emoji, GIF, mention
-    GlyphButton             *_gifBtn = nullptr, *_mentionBtn = nullptr, *_emojiBtn = nullptr;
-    GlyphButton             *_sendBtn = nullptr, *_dropBtn = nullptr, *_micBtn = nullptr;
-    ui::View                *_sendGroup = nullptr;
-    ui::View                *_seps[2]   = {};
-    ui::View                *_editBar   = nullptr;
-    std::string              _editStash; // the draft set aside while editing
-    std::string              _placeholder, _fixedPlaceholder, _suggestion, _lock;
-    std::vector<std::string> _history; // the source's, while stepping (_historyIndex >= 0)
-    int                      _historyIndex  = -1;
-    HistorySearch           *_historySearch = nullptr;
-    ui::View                *_popupArea     = nullptr;
-    model::Ts                _editTs        = 0;
-    ui::View                *_box = nullptr, *_chips = nullptr;
-    ui::View                *_chipRow  = nullptr;
-    PickList                *_pick     = nullptr;
-    uint32_t                 _pickFrom = 0; // the trigger character's offset
+    screens::Context           &_ctx;
+    DraftStash                 &_drafts;
+    Avatars                    *_avatars = nullptr;
+    DraftStash::Key             _key;
+    ui::TextEdit               *_edit            = nullptr;
+    bool                        _finishingSmiley = false; // in finishSmiley(): its own change
+    bool                        _smileysParsed   = false; // _smileys is _smileyMapParsed's
+    size_t                      _smileyTextLen   = 0;     // the text's size at the last change
+    std::string                 _smileyMapParsed;
+    std::vector<mrkdwn::Smiley> _smileys;
+    GlyphButton                *_tools[10] = {};
+    GlyphButton                *_bottom[4] = {}; // attach, emoji, GIF, mention
+    GlyphButton                *_gifBtn = nullptr, *_mentionBtn = nullptr, *_emojiBtn = nullptr;
+    GlyphButton                *_sendBtn = nullptr, *_dropBtn = nullptr, *_micBtn = nullptr;
+    ui::View                   *_sendGroup = nullptr;
+    ui::View                   *_seps[2]   = {};
+    ui::View                   *_editBar   = nullptr;
+    std::string                 _editStash; // the draft set aside while editing
+    std::string                 _placeholder, _fixedPlaceholder, _suggestion, _lock;
+    std::vector<std::string>    _history; // the source's, while stepping (_historyIndex >= 0)
+    int                         _historyIndex  = -1;
+    HistorySearch              *_historySearch = nullptr;
+    ui::View                   *_popupArea     = nullptr;
+    model::Ts                   _editTs        = 0;
+    ui::View                   *_box = nullptr, *_chips = nullptr;
+    ui::View                   *_chipRow  = nullptr;
+    PickList                   *_pick     = nullptr;
+    uint32_t                    _pickFrom = 0; // the trigger character's offset
     // What the last updatePickList saw (text, caret, anchor…): the same again
     // (an edit's onSelectionChange after its onChange) changes nothing.
     struct PickInputs {
