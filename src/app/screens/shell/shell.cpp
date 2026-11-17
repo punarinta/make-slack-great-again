@@ -3498,6 +3498,8 @@ void Shell::applySettings() {
         base::setDateLanguage(_settings.language);
     _ctx.linkPreviews   = _settings.linkPreviews;
     _ctx.threadsInline  = _settings.threadsInline;
+    _ctx.smileyToEmoji  = _settings.smileyToEmoji;
+    _ctx.smileyMap      = _settings.smileyMap;
     // Settings → System → Presence: global, applied to every running
     // workspace (Accounts hands it to every new one).
     const auto presence = model::Backend::PresenceMode(_settings.presence);

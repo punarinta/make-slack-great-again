@@ -73,6 +73,10 @@ struct Context {
     std::function<void(std::vector<std::string> paths, bool thread)> attachFiles;
     // Settings → Link previews (the shell sets it and rebuilds the rows).
     bool                                                             linkPreviews  = true;
+    // Settings → Smileys: a typed ":)" becomes an emoji as the word ends, the
+    // pairs being smileyMap (mrkdwn/smileys.h; empty = the usual set).
+    bool                                                             smileyToEmoji = true;
+    std::string                                                      smileyMap;
     // Settings → Threads "Inline": a thread's replies open under its message
     // in the list instead of the side panel (the shell rebuilds the rows).
     bool                                                             threadsInline = false;

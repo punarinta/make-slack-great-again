@@ -294,6 +294,7 @@ private:
     void insertPill(uint32_t from, uint32_t to, const std::string &display, const std::string &raw);
     void pick(const PickList::Item &it);
     void typing();
+    void finishSmiley(); // a smiley the word just ended becomes its emoji
     void compositionChanged();
     void offerUndo(const std::string &html, const std::vector<std::string> &files);
     void withdrawUndo();
@@ -311,9 +312,10 @@ private:
     DraftStash              &_drafts;
     Avatars                 *_avatars = nullptr;
     DraftStash::Key          _key;
-    ui::TextEdit            *_edit      = nullptr;
-    GlyphButton             *_tools[10] = {};
-    GlyphButton             *_bottom[4] = {}; // attach, emoji, GIF, mention
+    ui::TextEdit            *_edit            = nullptr;
+    bool                     _finishingSmiley = false; // in finishSmiley(): its own change
+    GlyphButton             *_tools[10]       = {};
+    GlyphButton             *_bottom[4]       = {}; // attach, emoji, GIF, mention
     GlyphButton             *_gifBtn = nullptr, *_mentionBtn = nullptr, *_emojiBtn = nullptr;
     GlyphButton             *_sendBtn = nullptr, *_dropBtn = nullptr, *_micBtn = nullptr;
     ui::View                *_sendGroup = nullptr;

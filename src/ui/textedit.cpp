@@ -711,6 +711,10 @@ void TextEdit::insertText(std::string_view s) {
     replace(std::min(_caret, _anchor), std::max(_caret, _anchor), s, nullptr, f, EditKind::Other);
 }
 
+void TextEdit::replaceTyped(uint32_t from, uint32_t to, std::string_view s) {
+    replace(from, to, s, nullptr, typingFormat(), EditKind::Typing);
+}
+
 void TextEdit::insertHtml(std::string_view html) {
     std::string              t;
     std::vector<uint16_t>    f;

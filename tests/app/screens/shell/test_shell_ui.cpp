@@ -1618,6 +1618,65 @@ TEST("composer: CommonMark habits go out as mrkdwn") {
     CHECK_STR(mrkdwn::convertOutgoing("> **q**"), "> *q*");
 }
 
+TEST("composer: a typed smiley becomes its emoji as the word ends, unless that is off") {
+    Harness    h;
+    auto      &c        = h.composer();
+    auto      &e        = c.edit();
+    const auto lastText = [&] {
+        return h.store.conversation(h.conv("C0DESIGN")).messages.back().text;
+    };
+    const std::string smile = emoji::toUnicode("slightly_smiling_face");
+    REQUIRE(!smile.empty());
+    CHECK(h.ctx.smileyToEmoji); // on by default, as in Slack
+    // Type by type: the box turns it as soon as the word ends, not before.
+    e.setText("");
+    e.insertText("on it :");
+    e.insertText(")");
+    CHECK_STR(e.text(), "on it :)"); // nothing has ended it yet
+    e.insertText(" ");
+    CHECK_STR(e.text(), "on it " + smile + " ");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "on it " + smile);
+    // A colon that starts a word is not a smiley: ":Date:" stays as typed.
+    e.setText("");
+    e.insertText(":D");
+    e.insertText("ate");
+    e.insertText(":");
+    e.insertText(" ");
+    CHECK_STR(e.text(), ":Date: ");
+    // Code is code.
+    e.setText("");
+    e.insertText("use `:) ");
+    CHECK_STR(e.text(), "use `:) ");
+    // The end of the message closes one too, so what is sent is what was shown.
+    e.setText("");
+    e.insertText("thanks :)");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "thanks " + smile);
+    // A map of their own: only what it lists.
+    h.ctx.smileyMap = ":-) :wave:";
+    e.setText("");
+    e.insertText("hi :");
+    e.insertText(")");
+    e.insertText(" ");
+    CHECK_STR(e.text(), "hi :) "); // not in their map
+    e.insertText(":-");
+    e.insertText(") ");
+    CHECK_STR(e.text(), "hi :) " + emoji::toUnicode("wave") + " ");
+    // Off: what was typed stays as typed, the end of the message included.
+    h.ctx.smileyToEmoji = false;
+    h.ctx.smileyMap.clear();
+    e.setText("");
+    e.insertText("on it :");
+    e.insertText(") ");
+    CHECK_STR(e.text(), "on it :) ");
+    REQUIRE(c.send());
+    pump();
+    CHECK_STR(lastText(), "on it :)");
+}
+
 TEST("composer: the typing indicator names who types") {
     Harness       h;
     const ConvRef design = h.conv("C0DESIGN");

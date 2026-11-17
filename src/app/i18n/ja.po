@@ -1672,6 +1672,22 @@ msgstr ""
 "どちらの場合も、メッセージは Slack の書式で送信されます。"
 
 #: src/app/screens/settings/settings_dialog.cpp
+msgid "Smileys"
+msgstr "顔文字"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "Turn text smileys into emoji"
+msgstr "テキストの顔文字を絵文字に変換"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "\":)\" becomes 🙂 as you type, once a space or the end of the message closes it."
+msgstr "「:)」は入力中に「🙂」になります（空白かメッセージの最後で確定します）。"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "One to a line: the smiley, then the emoji — its shortcode or the character itself. Empty keeps the usual set."
+msgstr "1行に1組：顔文字、空白、絵文字（ショートコードか文字そのもの）。空欄なら標準の一覧を使います。"
+
+#: src/app/screens/settings/settings_dialog.cpp
 msgid "Conversations"
 msgstr "会話"
 
@@ -4283,6 +4299,12 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid "When a message is sent, \":)\" becomes 🙂 — the message box keeps what you typed."
+#~ msgstr "送信するときに「:)」は「🙂」になります（入力欄は入力したまま）。"
+
+#~ msgid "\":)\" goes out as \"🙂\": when the message is sent, not as you type."
+#~ msgstr "「:)」は送信のときに「🙂」になります（入力中は変わりません）。"
 
 #~ msgid ""
 #~ "The conversation you are reading stays listed until you move on.\n"

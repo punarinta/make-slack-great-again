@@ -6,6 +6,7 @@
 #include "app/mrkdwn/emoji.h"
 #include "app/spell/spell.h"
 #include "app/mrkdwn/mrkdwn.h"
+#include "app/mrkdwn/smileys.h"
 #include "base/file.h"
 #include "base/i18n.h"
 #include "base/mime.h"
@@ -573,6 +574,7 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
     _edit->setPlainPaste(true);                // pasted rich text arrives as plain
     _edit->setLinkBackground(C::AccentSubtle); // mention / channel / GIF pills
     _edit->onChange = [this] {
+        finishSmiley();
         typing();
         refreshLook();
         updatePickList();
@@ -1355,8 +1357,16 @@ bool Composer::send() {
     if (onSendRequest) // an embedded composer (the forward dialog's)
         return onSendRequest();
     // CommonMark habits become mrkdwn, and
-    // a list also travels as a rich_text block.
-    mrkdwn::Composed  composed = mrkdwn::compose(mrkdwn());
+    // a list also travels as a rich_text block. A smiley the end of the message
+    // closes — "thanks :)" with no space after it — is an emoji here; typing has
+    // already done the rest, before the text is parsed (a list's rich_text
+    // carries the text too).
+    std::string typed = mrkdwn();
+    if (_ctx.smileyToEmoji)
+        if (const mrkdwn::SmileyHit hit =
+                mrkdwn::smileyEndingAt(typed, typed.size(), _ctx.smileyMap))
+            typed.replace(hit.at, hit.len, hit.glyph);
+    mrkdwn::Composed  composed = mrkdwn::compose(typed);
     const std::string text(str::trim(composed.mrkdwn));
     if (_editTs) { // saving an edit (an emptied message keeps its text)
         // Files attached while editing post on their own (chat.update takes
@@ -1786,6 +1796,28 @@ void Composer::layout() {
         _edit->setMaxLines(std::max(1, int((w->size().h / 2 - 20) / std::max(1.f, line))));
     }
     View::layout();
+}
+
+// A smiley finished — "it works :)" has just had its space — becomes its emoji
+// where it stands, as Slack's own client does, so the box shows what is sent. A
+// smiley is only finished by a space or punctuation after it, which is what
+// keeps ":D" from eating the start of ":Date:".
+void Composer::finishSmiley() {
+    if (!_ctx.smileyToEmoji || _finishingSmiley || _edit->hasSelection())
+        return;
+    const std::string &text  = _edit->text();
+    const uint32_t     caret = _edit->caret();
+    // Only where typing goes on at the end: a caret moved back is someone
+    // editing, and what follows it is not the word being typed.
+    if (caret == 0 || caret != text.size())
+        return;
+    const mrkdwn::SmileyHit hit = mrkdwn::smileyEndingAt(text, caret - 1, _ctx.smileyMap);
+    // A pair that maps a smiley onto itself would keep going round.
+    if (!hit || std::string_view(text).substr(hit.at, hit.len) == hit.glyph)
+        return;
+    _finishingSmiley = true;
+    _edit->replaceTyped(hit.at, hit.at + hit.len, hit.glyph);
+    _finishingSmiley = false;
 }
 
 void Composer::typing() {
