@@ -382,6 +382,7 @@ public:
         bool sidebarTheme     = false; // loadSidebarTheme: Settings' "Use my Slack theme"
         bool customSections   = false; // the sidebar's own sections (createSection…)
         bool vips             = false; // the sidebar's "VIP unreads" section
+        bool groupDms         = false; // People's "New group DM" (openDmGroup)
     };
     virtual Capabilities capabilities() const { return {}; }
 

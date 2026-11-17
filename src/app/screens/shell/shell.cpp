@@ -3445,13 +3445,18 @@ void Shell::openBrowseDialog(int tab) {
                     openCreateChannel();
             });
         },
-        [this, alive](const std::vector<model::UserRef> &people) {
-            // Several people: conversations.open makes (or finds) the mpdm.
-            _ctx.backend.openDmGroup(people, [this, alive](ConvRef c) {
-                if (!alive.expired() && c != kNoConv)
-                    open(c);
-            });
-        }
+        // Several people: conversations.open makes (or finds) the mpdm. A
+        // backend without group DMs gets no "New group DM" button.
+        _ctx.backend.capabilities().groupDms
+            ? std::function<void(const std::vector<model::UserRef> &)>(
+                  [this, alive](const std::vector<model::UserRef> &people) {
+                      _ctx.backend.openDmGroup(people, [this, alive](ConvRef c) {
+                          if (!alive.expired() && c != kNoConv)
+                              open(c);
+                      });
+                  }
+              )
+            : nullptr
     );
 }
 

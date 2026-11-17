@@ -79,13 +79,13 @@ public:
         BrowseList::Options opt;
         opt.multi = true;
         _list->setOptions(opt);
-        _list->setItems(peopleItems(ctx.store));
+        _list->setItems(groupItems(ctx.store));
         _list->onPickedChanged = [this] { refreshMessageButton(); };
         // The people a roster load brings in land in the open list.
         _observer = ctx.store.observe(model::Store::kAnyConv, [this](const model::Change &ch) {
             if (ch.kind != model::ChangeKind::Roster)
                 return;
-            _list->refreshItems(peopleItems(_ctx.store));
+            _list->refreshItems(groupItems(_ctx.store));
             _list->applyFilter(_search->text());
         });
         _search->edit().onChange = [this] { _list->applyFilter(_search->text()); };
@@ -105,6 +105,15 @@ public:
     Button     &messageButton() { return *_message; }
 
 private:
+    // The People list without me: I am in every group DM I start.
+    static std::vector<BrowseList::Item> groupItems(const model::Store &store) {
+        std::vector<BrowseList::Item> items = peopleItems(store);
+        if (store.me != model::kNoUser) {
+            const std::string &me = store.user(store.me).id;
+            std::erase_if(items, [&me](const BrowseList::Item &it) { return it.id == me; });
+        }
+        return items;
+    }
     void refreshMessageButton() {
         const size_t n = _list->picked().size();
         _message->setEnabled(n > 0);
@@ -169,12 +178,17 @@ public:
             Window *w = window();
             if (!w)
                 return;
-            auto *d = new GroupFinder(_ctx, _avatars, [this](const std::vector<UserRef> &users) {
-                auto cb = _people;
-                reject();
-                if (cb)
-                    cb(users);
-            });
+            // The finder may be gone by the time Message is pressed: the
+            // group starts all the same, and only a live finder closes.
+            std::weak_ptr<int> alive = _alive;
+            auto              *d     = new GroupFinder(
+                _ctx, _avatars, [this, alive, cb = _people](const std::vector<UserRef> &users) {
+                    if (!alive.expired())
+                        reject();
+                    if (cb)
+                        cb(users);
+                }
+            );
             w->showPopup(std::unique_ptr<Popup>(d));
             d->search().edit().focus(); // the popup takes the focus when it shows
         };
@@ -271,6 +285,7 @@ private:
     BrowseList                                       *_lists[2] = {};
     int                                               _tab      = 0;
     model::Store::ObserverId                          _observer = 0;
+    std::shared_ptr<int>                              _alive    = std::make_shared<int>(0);
 };
 
 // ── Create a channel ────────────────────────────────────────────────────────

@@ -1961,11 +1961,13 @@ void SlackBackend::openDmGroup(
         openDm(members.front(), std::move(done));
         return;
     }
-    // The group of exactly these people, if the roster already knows it: no
-    // round trip, and its history is here rather than up on the server.
+    // The group of exactly these people, if the roster already knows it open:
+    // no round trip, and its history is here rather than up on the server. A
+    // closed one goes to conversations.open, which reopens it.
     for (ConvRef c = 0; c < _store.conversationCount(); ++c) {
         const model::Conversation &cv = _store.conversation(c);
-        if (cv.kind != model::ConvKind::Group || cv.members.size() != members.size() + 1)
+        if (cv.kind != model::ConvKind::Group || !cv.member ||
+            cv.members.size() != members.size() + 1)
             continue;
         bool all = true;
         for (model::UserRef u : members)

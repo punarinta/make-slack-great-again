@@ -2219,6 +2219,17 @@ TEST("group DM: two people picked make the group of exactly them; a third makes 
     REQUIRE(made != h.conv("G0TRIO"));
     CHECK(h.store.conversation(made).kind == ConvKind::Group);
     CHECK(h.store.conversation(made).members.size() == 3); // me and the two
+
+    // I am in every group I start, so I am not one of the rows to pick.
+    open();
+    const model::User &me = h.store.user(h.store.me);
+    pick((me.displayName.empty() ? me.name : me.displayName).c_str());
+    CHECK(findNamed(dlg, "1 person") == nullptr);
+    msg = findNamed(dlg, "Message");
+    REQUIRE(msg != nullptr);
+    CHECK(!msg->enabled());
+    press(*h.win, plat::Key::Escape);
+    pump();
 }
 
 TEST("create a channel: a name, Next, Private, Create — the backend makes it") {

@@ -453,7 +453,7 @@ void FakeBackend::openDmGroup(
             for (ConvRef c = 0; c < _store.conversationCount() && found == model::kNoConv; ++c) {
                 const auto &cv = _store.conversation(c);
                 if (cv.kind != model::ConvKind::Group || cv.members.size() != members.size() + 1)
-                    continue;
+                    continue; // a closed one too: conversations.open reopens it
                 bool all = true;
                 for (model::UserRef u : members)
                     all = all &&
@@ -470,6 +470,8 @@ void FakeBackend::openDmGroup(
             c.memberCount   = uint32_t(c.members.size());
             c.hasMoreBefore = false;
             found           = _store.addConversation(std::move(c));
+        } else if (found != model::kNoConv && !_store.conversation(found).member) {
+            setConvFlag(found, ConvFlag::Member, 1);
         }
         if (done)
             done(found);
@@ -548,6 +550,7 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     c.fileUpload       = true;
     c.customSections   = true; // this run only
     c.vips             = true;
+    c.groupDms         = true;
     return c;
 }
 
