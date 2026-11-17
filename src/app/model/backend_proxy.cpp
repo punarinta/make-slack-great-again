@@ -49,6 +49,11 @@ void BackendProxy::leave(ConvRef c) {
 void BackendProxy::openDm(UserRef u, std::function<void(ConvRef)> done) {
     _t->openDm(u, std::move(done));
 }
+void BackendProxy::openDmGroup(
+    const std::vector<UserRef> &users, std::function<void(ConvRef)> done
+) {
+    _t->openDmGroup(users, std::move(done));
+}
 
 void BackendProxy::joinChannel(ConvRef c, ConvDone done) {
     _t->joinChannel(c, std::move(done));

@@ -23,15 +23,17 @@ namespace shell {
 
 // "Find a channel" on its Channels (tab 0) or People (tab 1) tab. channel(c)
 // / person(u) after a row was chosen, create() after "Create channel" (the
-// dialog is closed in each case).
+// dialog is closed in each case). people(users) starts the group DM picked in
+// "New group DM", the People tab's other button; null leaves that button out.
 ui::Popup *showFindChannel(
-    screens::Context                   &ctx,
-    ui::Window                         &w,
-    Avatars                            &avatars,
-    int                                 tab,
-    std::function<void(model::ConvRef)> channel,
-    std::function<void(model::UserRef)> person,
-    std::function<void()>               create
+    screens::Context                                        &ctx,
+    ui::Window                                              &w,
+    Avatars                                                 &avatars,
+    int                                                      tab,
+    std::function<void(model::ConvRef)>                      channel,
+    std::function<void(model::UserRef)>                      person,
+    std::function<void()>                                    create,
+    std::function<void(const std::vector<model::UserRef> &)> people = {}
 );
 
 // "Create a channel": done(name, isPrivate) after Create; the name is

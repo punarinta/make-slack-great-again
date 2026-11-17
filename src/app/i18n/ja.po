@@ -64,7 +64,7 @@ msgstr "表示"
 msgid "Hide"
 msgstr "非表示"
 
-#: src/ui/controls.cpp src/ui/filebrowser.cpp src/app/screens/messages/message_dialogs.cpp src/app/screens/settings/settings_pages.cpp src/app/screens/shell/composer.cpp src/app/screens/shell/composer_popups.cpp src/app/screens/shell/scheduled_page.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp src/app/screens/shell/signin_dialogs.cpp src/app/screens/shell/status_dialog.cpp
+#: src/ui/controls.cpp src/ui/filebrowser.cpp src/app/screens/messages/message_dialogs.cpp src/app/screens/settings/settings_pages.cpp src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/composer.cpp src/app/screens/shell/composer_popups.cpp src/app/screens/shell/scheduled_page.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/shell_dialogs.cpp src/app/screens/shell/signin_dialogs.cpp src/app/screens/shell/status_dialog.cpp
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -2528,6 +2528,23 @@ msgid "Canvas deletion failed: %1"
 msgstr "canvasの削除に失敗しました: %1"
 
 #: src/app/screens/shell/channel_dialogs.cpp
+msgid "New group DM"
+msgstr "グループDMを作成"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "Search for people"
+msgstr "メンバーを検索"
+
+#: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
+msgid "Message"
+msgstr "メッセージ"
+
+#: src/app/screens/shell/channel_dialogs.cpp
+msgid "%n person"
+msgid_plural "%n people"
+msgstr[0] "%n人"
+
+#: src/app/screens/shell/channel_dialogs.cpp
 msgid "Search for channels"
 msgstr "チャンネルを検索"
 
@@ -2542,10 +2559,6 @@ msgstr "チャンネル"
 #: src/app/screens/shell/channel_dialogs.cpp
 msgid "People"
 msgstr "メンバー"
-
-#: src/app/screens/shell/channel_dialogs.cpp
-msgid "Search for people"
-msgstr "メンバーを検索"
 
 #: src/app/screens/shell/channel_dialogs.cpp src/app/screens/shell/sidebar.cpp
 msgid "Create a channel"
@@ -3174,10 +3187,6 @@ msgstr "アプリ"
 #: src/app/screens/shell/profile_card.cpp
 msgid "%1 local time"
 msgstr "現地時間 %1"
-
-#: src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
-msgid "Message"
-msgstr "メッセージ"
 
 #: src/app/screens/shell/quick_switcher.cpp
 msgid "Jump to a conversation…"

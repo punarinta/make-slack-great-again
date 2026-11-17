@@ -2167,6 +2167,71 @@ TEST("find a channel: an unjoined channel is joined and opens; People opens the 
     CHECK(h.sh->current() == h.conv("D0JONAS"));
 }
 
+// The People tab's "New group DM": its rows are picks, and Message starts the
+// conversation with all of them.
+TEST("group DM: two people picked make the group of exactly them; a third makes a new one") {
+    Harness    h;
+    ui::Popup *dlg  = nullptr;
+    const auto pick = [&](const char *query) {
+        typeInto(*h.win, query);
+        press(*h.win, plat::Key::Down);
+        press(*h.win, plat::Key::Enter);
+        for (size_t i = 0; i < std::string_view(query).size(); ++i)
+            press(*h.win, plat::Key::Backspace);
+    };
+    const auto open = [&] {
+        h.sh->openBrowseDialog(1);
+        pump();
+        auto *finder = h.win->topPopup();
+        REQUIRE(finder != nullptr);
+        auto *button = findNamed(finder, "New group DM");
+        REQUIRE(button != nullptr);
+        static_cast<ui::Clickable *>(button)->activate();
+        pump();
+        dlg = h.win->topPopup();
+        REQUIRE(dlg != nullptr);
+    };
+    open();
+    CHECK(findNamed(dlg, "Message") != nullptr);
+    pick("jonas");
+    CHECK(findNamed(dlg, "1 person") != nullptr);
+    pick("mira");
+    CHECK(findNamed(dlg, "2 people") != nullptr);
+    auto *msg = findNamed(dlg, "Message");
+    REQUIRE(msg != nullptr);
+    CHECK(msg->enabled());
+    static_cast<ui::Clickable *>(msg)->activate();
+    pump(30);
+    CHECK(h.win->topPopup() == nullptr); // both dialogs are gone
+    // G0TRIO is the group of Jonas and Mira: reopened, not remade.
+    CHECK(h.sh->current() == h.conv("G0TRIO"));
+    CHECK(h.store.conversationCount() == 11);
+
+    // Jonas and Priya have no group yet: conversations.open makes one.
+    open();
+    pick("jonas");
+    pick("priya");
+    msg = findNamed(dlg, "Message");
+    REQUIRE(msg != nullptr);
+    static_cast<ui::Clickable *>(msg)->activate();
+    pump(30);
+    const ConvRef made = h.sh->current();
+    REQUIRE(made != h.conv("G0TRIO"));
+    CHECK(h.store.conversation(made).kind == ConvKind::Group);
+    CHECK(h.store.conversation(made).members.size() == 3); // me and the two
+
+    // I am in every group I start, so I am not one of the rows to pick.
+    open();
+    const model::User &me = h.store.user(h.store.me);
+    pick((me.displayName.empty() ? me.name : me.displayName).c_str());
+    CHECK(findNamed(dlg, "1 person") == nullptr);
+    msg = findNamed(dlg, "Message");
+    REQUIRE(msg != nullptr);
+    CHECK(!msg->enabled());
+    press(*h.win, plat::Key::Escape);
+    pump();
+}
+
 TEST("create a channel: a name, Next, Private, Create — the backend makes it") {
     Harness h;
     h.sh->openCreateChannel();
