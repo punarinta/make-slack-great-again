@@ -39,8 +39,8 @@ public:
     // Replace the selection (typing formats apply) / insert parsed HTML.
     void               insertText(std::string_view utf8);
     // Replace a byte range with what the owner rewrote it into — a smiley
-    // finished into its emoji — as one edit of its own, in the formatting being
-    // typed, the caret after what went in (Undo steps back over the typing).
+    // finished into its emoji — as one undo step of its own, in the formatting
+    // being typed. The caret keeps its place in the text around the range.
     void               replaceTyped(uint32_t from, uint32_t to, std::string_view utf8);
     void               insertHtml(std::string_view html);
     // The selection (or everything when there is none) as an HTML fragment.

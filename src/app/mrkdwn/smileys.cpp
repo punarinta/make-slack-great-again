@@ -39,10 +39,7 @@ constexpr const char *kDefaults = ":) slightly_smiling_face\n"
                                   ":-* kiss\n"
                                   ":'( cry\n"
                                   ">:( angry\n"
-                                  "<3 heart\n"
-                                  "xD laughing\n"
-                                  "XD laughing\n"
-                                  "B) sunglasses\n";
+                                  "<3 heart\n";
 
 // The emoji a right-hand side stands for: the character itself, or a shortcode
 // resolved through the compiled-in table. An unknown shortcode stays as typed.
@@ -54,22 +51,22 @@ std::string resolveTo(std::string_view rhs) {
     return glyph.empty() ? std::string(rhs) : glyph;
 }
 
+// A letter, a digit or "_" in any script: any byte of a multi-byte UTF-8
+// character counts, so "café:)" is a word with a colon in it too.
+bool wordByte(unsigned char c) {
+    return c >= 0x80 || std::isalnum(c) || c == '_';
+}
+
 // A smiley stands alone: not inside a word, and not part of a shortcode or a
 // longer token (":D" in ":Date:" is the start of a word).
 bool standsAlone(std::string_view text, size_t at, size_t len) {
     if (at > 0) {
         const auto c = static_cast<unsigned char>(text[at - 1]);
-        if (std::isalnum(c) || c == '_' || c == ':' || c == ';' || c == '<' || c == '>' ||
-            c == '@' || c == '#')
+        if (wordByte(c) || c == ':' || c == ';' || c == '<' || c == '>' || c == '@' || c == '#')
             return false;
     }
     const size_t end = at + len;
-    if (end < text.size()) {
-        const auto c = static_cast<unsigned char>(text[end]);
-        if (std::isalnum(c) || c == '_')
-            return false;
-    }
-    return true;
+    return end >= text.size() || !wordByte(static_cast<unsigned char>(text[end]));
 }
 
 // Where the run of code (or the fenced block) starting at `at` ends: the text
@@ -137,10 +134,14 @@ std::vector<Smiley> parseSmileys(std::string_view map) {
 }
 
 SmileyHit smileyEndingAt(std::string_view text, size_t stop, std::string_view map) {
+    return smileyEndingAt(text, stop, parseSmileys(map));
+}
+
+SmileyHit smileyEndingAt(std::string_view text, size_t stop, const std::vector<Smiley> &smileys) {
     if (stop == 0 || stop > text.size())
         return {};
     // Longest first, so ":-)" wins over ":)"; the first hit is the one to take.
-    for (const Smiley &s : parseSmileys(map)) {
+    for (const Smiley &s : smileys) {
         if (s.from.size() > stop)
             continue;
         const size_t at = stop - s.from.size();

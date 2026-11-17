@@ -3,6 +3,7 @@
 // user's, one to a line in Settings.
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,5 +41,8 @@ struct SmileyHit {
 // so is ":D" in ":Date:". Code spans and fenced blocks are left alone — a smiley
 // in code is code. An empty `map` is the usual set.
 SmileyHit smileyEndingAt(std::string_view text, size_t stop, std::string_view map);
+// The same with the pairs parsed already (parseSmileys), for a caller that
+// asks on every keystroke and keeps them.
+SmileyHit smileyEndingAt(std::string_view text, size_t stop, const std::vector<Smiley> &smileys);
 
 } // namespace mrkdwn

@@ -26,6 +26,7 @@
 #include "app/screens/messages/image_cache.h"
 #endif
 
+#include <cctype>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -1354,19 +1355,14 @@ void Composer::redialect(bool toMarkdown) {
 }
 
 bool Composer::send() {
+    // A smiley the end of the message closes ("thanks :)" with no space
+    // after it) becomes its emoji in the box first; typing did the rest.
+    finishSmileyAt(uint32_t(_edit->text().size()));
     if (onSendRequest) // an embedded composer (the forward dialog's)
         return onSendRequest();
     // CommonMark habits become mrkdwn, and
-    // a list also travels as a rich_text block. A smiley the end of the message
-    // closes — "thanks :)" with no space after it — is an emoji here; typing has
-    // already done the rest, before the text is parsed (a list's rich_text
-    // carries the text too).
-    std::string typed = mrkdwn();
-    if (_ctx.smileyToEmoji)
-        if (const mrkdwn::SmileyHit hit =
-                mrkdwn::smileyEndingAt(typed, typed.size(), _ctx.smileyMap))
-            typed.replace(hit.at, hit.len, hit.glyph);
-    mrkdwn::Composed  composed = mrkdwn::compose(typed);
+    // a list also travels as a rich_text block.
+    mrkdwn::Composed  composed = mrkdwn::compose(mrkdwn());
     const std::string text(str::trim(composed.mrkdwn));
     if (_editTs) { // saving an edit (an emptied message keeps its text)
         // Files attached while editing post on their own (chat.update takes
@@ -1800,24 +1796,46 @@ void Composer::layout() {
 
 // A smiley finished — "it works :)" has just had its space — becomes its emoji
 // where it stands, as Slack's own client does, so the box shows what is sent. A
-// smiley is only finished by a space or punctuation after it, which is what
-// keeps ":D" from eating the start of ":Date:".
+// smiley is only finished by a space or punctuation typed after it, which is
+// what keeps ":D" from eating the start of ":Date:". Only one character typed
+// at the end counts: a paste, an undo or a caret moved back is not typing.
 void Composer::finishSmiley() {
-    if (!_ctx.smileyToEmoji || _finishingSmiley || _edit->hasSelection())
+    if (_finishingSmiley)
         return;
-    const std::string &text  = _edit->text();
-    const uint32_t     caret = _edit->caret();
-    // Only where typing goes on at the end: a caret moved back is someone
-    // editing, and what follows it is not the word being typed.
-    if (caret == 0 || caret != text.size())
+    const std::string &text   = _edit->text();
+    const size_t       before = _smileyTextLen;
+    _smileyTextLen            = text.size();
+    if (text.size() != before + 1 || _edit->caret() != text.size())
         return;
-    const mrkdwn::SmileyHit hit = mrkdwn::smileyEndingAt(text, caret - 1, _ctx.smileyMap);
+    const auto typed = static_cast<unsigned char>(text.back());
+    if (typed >= 0x80 || std::isalnum(typed) || typed == '_') // not a word's end
+        return;
+    finishSmileyAt(uint32_t(text.size() - 1));
+}
+
+void Composer::finishSmileyAt(uint32_t stop) {
+    // Claude Code prompts are code and paths as often as words: left as typed.
+    if (!_ctx.smileyToEmoji || _ctx.backend.capabilities().agentSessions || _edit->hasSelection())
+        return;
+    if (!_smileysParsed || _smileyMapParsed != _ctx.smileyMap) { // parsed once per map
+        _smileys         = mrkdwn::parseSmileys(_ctx.smileyMap);
+        _smileyMapParsed = _ctx.smileyMap;
+        _smileysParsed   = true;
+    }
+    const std::string      &text = _edit->text();
+    const mrkdwn::SmileyHit hit  = mrkdwn::smileyEndingAt(text, stop, _smileys);
     // A pair that maps a smiley onto itself would keep going round.
     if (!hit || std::string_view(text).substr(hit.at, hit.len) == hit.glyph)
         return;
+    // Inside a pill (its label is the token's) or text formatted as code: as is.
+    for (const TextEdit::Run &r : _edit->runs())
+        if (r.start < hit.at + hit.len && hit.at < r.end &&
+            (!r.link.empty() || (r.format & TextEdit::Code)))
+            return;
     _finishingSmiley = true;
     _edit->replaceTyped(hit.at, hit.at + hit.len, hit.glyph);
     _finishingSmiley = false;
+    _smileyTextLen   = _edit->text().size();
 }
 
 void Composer::typing() {
