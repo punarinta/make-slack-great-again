@@ -455,6 +455,70 @@ TEST("store: thread replies update their root") {
     CHECK((r.log[1].kind == ChangeKind::Update && r.log[1].ts == 100));
 }
 
+TEST("store: a thread root older than the loaded history is kept beside its replies") {
+    Fixture f;
+    f.s.addPage(f.c, page({500, 600}, f.mira)); // the latest page only
+    std::vector<Message> replies;
+    replies.push_back(msg(150, f.me, "reply", 100));
+    f.s.addPage(f.c, std::move(replies));
+    CHECK_FALSE(f.s.findMessage(f.c, 100));
+    Recorder r;
+    f.s.observe(f.c, r.fn());
+    Message root    = msg(100, f.mira, "old root");
+    root.replyCount = 1;
+    f.s.setThreadRoot(f.c, std::move(root));
+    const Message *held = f.s.findMessage(f.c, 100);
+    REQUIRE(held);
+    CHECK_STR(held->text, "old root");
+    CHECK_FALSE(held->isReply());
+    CHECK(f.s.conversation(f.c).messages.size() == 2); // no gap in the history
+    REQUIRE(r.log.size() == 1);
+    CHECK((r.log[0].kind == ChangeKind::Update && r.log[0].thread == 0 && r.log[0].ts == 100));
+    // Live changes reach it: a reaction, a new reply.
+    CHECK(f.s.setReaction(f.c, 100, "tada", f.me, true));
+    f.s.addMessage(f.c, msg(160, f.mira, "another", 100));
+    CHECK(f.s.findMessage(f.c, 100)->replyCount == 2);
+    // The same root again: no news.
+    r.log.clear();
+    f.s.setThreadRoot(f.c, f.s.findMessage(f.c, 100)->clone());
+    CHECK(r.log.empty());
+    // Older history reaching it: the list's copy takes over.
+    f.s.addPage(f.c, page({100}, f.mira));
+    CHECK(f.s.conversation(f.c).messages.size() == 3);
+    CHECK(f.s.findMessage(f.c, 100) == &f.s.conversation(f.c).messages.front());
+    CHECK(f.s.replies(f.c, 100)->size() == 2);
+}
+
+TEST("store: removing a detached thread root takes its replies, not a history message") {
+    Fixture f;
+    f.s.addPage(f.c, page({500, 600}, f.mira));
+    f.s.addMessage(f.c, msg(150, f.me, "reply", 100));
+    f.s.setThreadRoot(f.c, msg(100, f.mira, "old root"));
+    Recorder r;
+    f.s.observe(f.c, r.fn());
+    CHECK(f.s.removeMessage(f.c, 100));
+    CHECK_FALSE(f.s.findMessage(f.c, 100));
+    CHECK_FALSE(f.s.replies(f.c, 100));
+    CHECK(f.s.conversation(f.c).messages.size() == 2);
+    REQUIRE(r.log.size() == 1);
+    CHECK((r.log[0].kind == ChangeKind::Remove && r.log[0].thread == 0 && r.log[0].ts == 100));
+}
+
+TEST("store: a thread root in the history gets only its thread fields refreshed") {
+    Fixture f;
+    f.s.addPage(f.c, page({100}, f.mira));
+    Message root     = msg(100, f.mira, "server text");
+    root.replyCount  = 3;
+    root.latestReply = 180;
+    f.s.setThreadRoot(f.c, std::move(root));
+    const Message *held = f.s.findMessage(f.c, 100);
+    CHECK(held == &f.s.conversation(f.c).messages.front());
+    CHECK(held->replyCount == 3);
+    CHECK(held->latestReply == 180);
+    CHECK_STR(held->text, "hi");
+    CHECK_FALSE(f.s.replies(f.c, 100)); // no thread entry made for it
+}
+
 TEST("store: reactions, updates and removal notify with the ts") {
     Fixture f;
     f.s.addPage(f.c, page({100, 200}, f.mira));

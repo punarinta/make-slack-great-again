@@ -248,8 +248,12 @@ struct Message {
 };
 
 struct Thread {
-    Ts                   root = 0;
-    std::vector<Message> replies; // oldest first
+    Ts                       root = 0;
+    std::vector<Message>     replies; // oldest first
+    // The root itself when Conversation::messages doesn't hold it (older than
+    // the loaded history): conversations.replies brings it with the replies.
+    // Never in `messages` -- that would leave a gap in the history list.
+    std::unique_ptr<Message> detachedRoot;
 };
 
 // A new metadata field also goes into store.cpp's sameMeta (addConversation

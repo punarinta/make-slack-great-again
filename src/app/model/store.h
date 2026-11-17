@@ -167,7 +167,8 @@ public:
     void updateConversation(ConvRef c, const std::function<void(Conversation &)> &fn);
 
     // ── Messages ────────────────────────────────────────────────────────────
-    // A message by ts, top-level or in any loaded thread; null if absent.
+    // A message by ts, top-level, in any loaded thread or a thread's detached
+    // root (setThreadRoot); null if absent.
     Message                    *findMessage(ConvRef c, Ts ts);
     const Message              *findMessage(ConvRef c, Ts ts) const;
     // Replies of a loaded thread (null if never loaded).
@@ -187,6 +188,11 @@ public:
     // (and mention) count; a reply updates its root's replyCount,
     // latestReply and replyUsers. Clears that user's typing indicator.
     void addMessage(ConvRef c, Message m);
+    // A thread's root as conversations.replies returns it. One the history
+    // holds gets its thread fields refreshed; one older than the loaded
+    // history is kept beside the thread's replies (Thread::detachedRoot), so
+    // the thread view can show it. Fires Update.
+    void setThreadRoot(ConvRef c, Message root);
     // Edits a message in place (top-level or reply), then fires Update.
     bool updateMessage(ConvRef c, Ts ts, const std::function<void(Message &)> &fn);
     bool removeMessage(ConvRef c, Ts ts); // a removed reply also decrements its root

@@ -809,7 +809,10 @@ void MessageList::showThread(ConvRef conv, Ts root) {
     resetRows();
     subscribe();
     updateTyping();
-    if (conv != model::kNoConv && !_ctx.store().replies(conv, root)) {
+    // Its replies, and its root when that is older than the loaded history
+    // (a live reply can land in a thread whose root the Store lacks).
+    if (conv != model::kNoConv &&
+        (!_ctx.store().replies(conv, root) || !_ctx.store().findMessage(conv, root))) {
         // The ring shows, not the root, until the thread's page is in.
         _loadingThread = true;
         rebuild(false);
@@ -2309,7 +2312,7 @@ void MessageList::jumpTo(Ts ts) {
     // message. A thread's replies come in one load (Saved messages jumps to
     // a reply).
     if (threadMode()) {
-        if (_ctx.store().replies(_conv, _root))
+        if (!_loadingThread && _ctx.store().replies(_conv, _root))
             _jumpTs = 0;
         return;
     }

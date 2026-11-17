@@ -2944,6 +2944,39 @@ TEST("loading: a thread shows the ring, not its root, until the replies are in")
     CHECK(messages == 2);
 }
 
+TEST("loading: a thread whose root is older than the loaded history loads and shows it") {
+    using State = MessageList::State;
+    HoldEnv                     e;
+    const ConvRef               c = e.conv("C2");
+    std::vector<model::Message> history;
+    history.push_back(msg(e.mira, 5000, "recent"));
+    e.store.addPage(c, std::move(history));
+    // A reply in an old thread: the replies are held, the root is not.
+    const Ts       rootTs = msg(e.mira, 2000, "").ts;
+    model::Message reply  = msg(e.mira, 2100, "reply");
+    reply.threadTs        = rootTs;
+    std::vector<model::Message> replies;
+    replies.push_back(std::move(reply));
+    e.store.addPage(c, std::move(replies));
+    e.list->showThread(c, rootTs);
+    CHECK(e.list->state() == State::Loading); // not "No messages yet"
+    REQUIRE(e.backend.threads.size() == 1);
+    model::Message root = msg(e.mira, 2000, "old root");
+    root.replyCount     = 1;
+    e.store.setThreadRoot(c, std::move(root));
+    e.backend.threads.front()(true, {});
+    pump();
+    CHECK(e.list->state() == State::None);
+    size_t messages = 0;
+    for (const auto &it : e.list->items())
+        messages += it.kind == Kind::Message;
+    CHECK(messages == 2);
+    // Shown again, root and replies held: no new load.
+    e.list->showThread(c, rootTs);
+    CHECK(e.backend.threads.size() == 1);
+    CHECK(e.list->state() == State::None);
+}
+
 // ── Summarize down (the job and its dialog) ─────────────────────────────────
 
 namespace {

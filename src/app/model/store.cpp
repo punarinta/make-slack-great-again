@@ -529,9 +529,12 @@ Message *Store::findMessage(ConvRef ref, Ts ts) {
     Conversation &c = _convs[ref];
     if (auto it = lowerByTs(c.messages, ts); it != c.messages.end() && it->ts == ts)
         return &*it;
-    for (auto &t : c.threads)
+    for (auto &t : c.threads) {
         if (auto it = lowerByTs(t.replies, ts); it != t.replies.end() && it->ts == ts)
             return &*it;
+        if (t.root == ts && t.detachedRoot)
+            return t.detachedRoot.get();
+    }
     return nullptr;
 }
 
@@ -613,8 +616,13 @@ void Store::addPage(ConvRef ref, std::vector<Message> page) {
         list.insert(
             list.end(), std::make_move_iterator(after.begin()), std::make_move_iterator(after.end())
         );
-    if (!thread && !list.empty())
+    if (!thread && !list.empty()) {
         c.latest = std::max(c.latest, list.back().ts);
+        // Older history reached a detached root: the list's copy is the one.
+        for (Thread &t : c.threads)
+            if (t.detachedRoot && indexOf(ref, t.root) != SIZE_MAX)
+                t.detachedRoot.reset();
+    }
 
     for (Ts ts : updated)
         emit({ChangeKind::Update, ref, thread, ts});
@@ -702,6 +710,34 @@ void Store::addMessage(ConvRef ref, Message m) {
         emit({ChangeKind::Typing, ref, thread});
 }
 
+void Store::setThreadRoot(ConvRef ref, Message root) {
+    if (ref >= _convs.size() || !root.ts)
+        return;
+    const Ts ts   = root.ts;
+    root.threadTs = ts;
+    if (indexOf(ref, ts) != SIZE_MAX) {
+        updateMessage(ref, ts, [&](Message &r) {
+            r.replyCount  = root.replyCount;
+            r.latestReply = root.latestReply;
+            r.replyUsers  = std::move(root.replyUsers);
+            r.threadTs    = ts;
+        });
+        return;
+    }
+    Conversation &c = _convs[ref];
+    listFor(c, ts, true);
+    Thread *t = findThread(c, ts);
+    if (t->detachedRoot) {
+        root.saved = t->detachedRoot->saved; // app-side state the server doesn't send
+        if (*t->detachedRoot == root)
+            return;
+        *t->detachedRoot = std::move(root);
+    } else {
+        t->detachedRoot = std::make_unique<Message>(std::move(root));
+    }
+    emit({ChangeKind::Update, ref, 0, ts});
+}
+
 bool Store::updateMessage(ConvRef ref, Ts ts, const std::function<void(Message &)> &fn) {
     Message *m = findMessage(ref, ts);
     if (!m)
@@ -718,6 +754,12 @@ bool Store::removeMessage(ConvRef ref, Ts ts) {
     Conversation &c      = _convs[ref];
     const Ts      thread = m->isReply() ? m->threadTs : 0;
     auto         &list   = *listFor(c, thread, false);
+    if (!thread && indexOf(ref, ts) == SIZE_MAX) {
+        // A detached root (setThreadRoot): it goes with its replies.
+        std::erase_if(c.threads, [&](const Thread &t) { return t.root == ts; });
+        emit({ChangeKind::Remove, ref, 0, ts});
+        return true;
+    }
     list.erase(lowerByTs(list, ts));
     if (thread) {
         if (Message *root = findMessage(ref, thread)) {
