@@ -28,7 +28,14 @@ public:
     struct Item {
         // Command: a two-line slash-command row (icon, "/name usage",
         // "source · description").
-        enum class Kind : uint8_t { Mention, Alias, Channel, Plain, Command } kind = Kind::Plain;
+        enum class Kind : uint8_t {
+            Mention,
+            Alias,
+            Group,
+            Channel,
+            Plain,
+            Command
+        } kind = Kind::Plain;
         std::string display; // what goes into the editor (mentions: "@Name")
         std::string insert;  // the raw token ("<@U…>", "<#C…|name>", "👋")
         std::string title, subtitle, status;

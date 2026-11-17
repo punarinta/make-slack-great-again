@@ -4026,6 +4026,7 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.sidebarTheme     = _creds.sessionAuth(); // users.prefs.get: xoxc only
     c.customSections   = _creds.sessionAuth(); // users.channelSections.*: xoxc only
     c.vips             = _creds.sessionAuth(); // users.prefs.get's vip_users: xoxc only
+    c.groupDms         = true;                 // conversations.open with several users
     return c;
 }
 

@@ -119,6 +119,9 @@ public:
     void moveToSection(model::ConvRef conv, const std::string &id) override;
     void moveSection(const std::string &id, int step) override;
     void openDm(model::UserRef user, std::function<void(model::ConvRef)> done) override;
+    void openDmGroup(
+        const std::vector<model::UserRef> &users, std::function<void(model::ConvRef)> done
+    ) override;
     void joinChannel(model::ConvRef conv, ConvDone done) override;
     void createChannel(std::string name, bool isPrivate, ConvDone done) override;
     void loadChannelDirectory() override;

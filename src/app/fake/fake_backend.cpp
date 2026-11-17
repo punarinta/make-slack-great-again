@@ -435,6 +435,49 @@ void FakeBackend::openDm(model::UserRef user, std::function<void(ConvRef)> done)
     });
 }
 
+void FakeBackend::openDmGroup(
+    const std::vector<model::UserRef> &users, std::function<void(ConvRef)> done
+) {
+    std::vector<model::UserRef> members;
+    for (model::UserRef u : users)
+        if (u < _store.userCount() && u != _store.me &&
+            std::find(members.begin(), members.end(), u) == members.end())
+            members.push_back(u);
+    if (members.size() == 1) { // a group of two is a DM
+        openDm(members.front(), std::move(done));
+        return;
+    }
+    later(kReadLatencyMs, [this, members = std::move(members), done = std::move(done)] {
+        ConvRef found = model::kNoConv;
+        if (!members.empty())
+            for (ConvRef c = 0; c < _store.conversationCount() && found == model::kNoConv; ++c) {
+                const auto &cv = _store.conversation(c);
+                if (cv.kind != model::ConvKind::Group || cv.members.size() != members.size() + 1)
+                    continue; // a closed one too: conversations.open reopens it
+                bool all = true;
+                for (model::UserRef u : members)
+                    all = all &&
+                          std::find(cv.members.begin(), cv.members.end(), u) != cv.members.end();
+                if (all)
+                    found = c;
+            }
+        if (found == model::kNoConv && !members.empty()) { // conversations.open creates it
+            model::Conversation c;
+            c.id      = "G" + _store.user(members.front()).id + str::number(members.size());
+            c.kind    = model::ConvKind::Group;
+            c.members = members;
+            c.members.push_back(_store.me);
+            c.memberCount   = uint32_t(c.members.size());
+            c.hasMoreBefore = false;
+            found           = _store.addConversation(std::move(c));
+        } else if (found != model::kNoConv && !_store.conversation(found).member) {
+            setConvFlag(found, ConvFlag::Member, 1);
+        }
+        if (done)
+            done(found);
+    });
+}
+
 void FakeBackend::joinChannel(ConvRef conv, ConvDone done) {
     later(kReadLatencyMs, [this, conv, done = std::move(done)] {
         if (conv >= _store.conversationCount() || _store.conversation(conv).isDirect()) {
@@ -507,6 +550,7 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     c.fileUpload       = true;
     c.customSections   = true; // this run only
     c.vips             = true;
+    c.groupDms         = true;
     return c;
 }
 

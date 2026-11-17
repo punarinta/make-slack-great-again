@@ -22,6 +22,15 @@ void Backend::openDm(UserRef, std::function<void(ConvRef)> done) {
         done(kNoConv);
 }
 
+void Backend::openDmGroup(const std::vector<UserRef> &users, std::function<void(ConvRef)> done) {
+    // A backend without group DMs still has DMs: one person is a DM, and a
+    // list of nobody is nothing at all.
+    if (users.size() == 1)
+        return openDm(users.front(), std::move(done));
+    if (done)
+        done(kNoConv);
+}
+
 void Backend::setPinned(ConvRef, Ts, bool) {}
 void Backend::setSaved(ConvRef, Ts, bool) {}
 void Backend::deleteFile(ConvRef, Ts, const std::string &) {}

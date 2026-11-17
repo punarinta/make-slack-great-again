@@ -66,6 +66,10 @@ public:
     virtual void leave(ConvRef conv);
     // The DM with `user` (opened or created); done gets kNoConv on failure.
     virtual void openDm(UserRef user, std::function<void(ConvRef)> done);
+    // A group DM (Slack's mpdm) with `users`, me implied: an existing group of
+    // exactly those people is reopened, never remade. One user is a DM (that
+    // is what openDm does). done gets kNoConv on failure.
+    virtual void openDmGroup(const std::vector<UserRef> &users, std::function<void(ConvRef)> done);
     virtual void setPinned(ConvRef conv, Ts ts, bool pinned);
     virtual void setSaved(ConvRef conv, Ts ts, bool saved);
     // Deletes a file from a message (own or as an admin).
@@ -378,6 +382,7 @@ public:
         bool sidebarTheme     = false; // loadSidebarTheme: Settings' "Use my Slack theme"
         bool customSections   = false; // the sidebar's own sections (createSection…)
         bool vips             = false; // the sidebar's "VIP unreads" section
+        bool groupDms         = false; // People's "New group DM" (openDmGroup)
     };
     virtual Capabilities capabilities() const { return {}; }
 

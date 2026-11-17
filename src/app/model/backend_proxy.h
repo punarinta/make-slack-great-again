@@ -32,6 +32,7 @@ public:
     void setNotifyLevel(ConvRef c, NotifyLevel level) override;
     void leave(ConvRef c) override;
     void openDm(UserRef u, std::function<void(ConvRef)> done) override;
+    void openDmGroup(const std::vector<UserRef> &users, std::function<void(ConvRef)> done) override;
     void joinChannel(ConvRef c, ConvDone done) override;
     void createChannel(std::string name, bool isPrivate, ConvDone done) override;
     void loadChannelDirectory() override;

@@ -1459,6 +1459,106 @@ TEST("composer: @ lists people and @channel & co.; a pick is a pill that sends t
     CHECK_STR(c.pickList()->item(0).subtitle, "Notify everyone in this channel");
 }
 
+TEST("composer: @ lists user groups, and a pick is a subteam pill") {
+    Harness h;
+    h.store.setUsergroups({
+        {"S0DEV0001", "developers", "Developers", {}},
+        {"S0OPS0001", "oncall", "On-call", {}},
+    });
+    auto &c = h.composer();
+    c.edit().focus();
+    auto titles = [&c] {
+        std::vector<std::string> out;
+        for (size_t i = 0; i < c.pickList()->count(); ++i)
+            out.push_back(c.pickList()->item(i).title);
+        return out;
+    };
+    // A bare "@": the aliases, then people, then the groups.
+    c.edit().insertText("@");
+    pump();
+    shell::PickList *p = c.pickList();
+    REQUIRE(p != nullptr);
+    REQUIRE(p->count() >= 6);
+    CHECK_STR(p->item(0).title, "@channel");
+    CHECK(p->item(3).kind == shell::PickList::Item::Kind::Mention);
+    CHECK_STR(p->item(p->count() - 2).title, "@developers");
+    CHECK_STR(p->item(p->count() - 2).subtitle, "Developers");
+    CHECK(p->item(p->count() - 2).kind == shell::PickList::Item::Kind::Group);
+    CHECK_STR(p->item(p->count() - 1).title, "@oncall");
+    // The handle's start, in any case, puts the group before people.
+    for (const char *typed : {"@dev", "@Developer"}) {
+        c.edit().clear();
+        c.edit().insertText(typed);
+        pump();
+        REQUIRE(c.pickList() != nullptr);
+        REQUIRE(c.pickList()->count() >= 1);
+        CHECK_STR(c.pickList()->item(0).title, "@developers");
+    }
+    // Elsewhere in the handle, or in the name only: after people.
+    for (const char *typed : {"@call", "@On-"}) {
+        c.edit().clear();
+        c.edit().insertText(typed);
+        pump();
+        REQUIRE(c.pickList() != nullptr);
+        const std::vector<std::string> t = titles();
+        REQUIRE(!t.empty());
+        CHECK_STR(t.back(), "@oncall");
+    }
+    // A rename shows at the next keystroke.
+    h.store.setUsergroups({
+        {"S0DEV0001", "engineers", "Engineers", {}},
+        {"S0OPS0001", "oncall", "On-call", {}},
+    });
+    c.edit().clear();
+    c.edit().insertText("@engin");
+    pump();
+    REQUIRE(c.pickList() != nullptr);
+    CHECK_STR(c.pickList()->item(0).title, "@engineers");
+    h.store.setUsergroups({
+        {"S0DEV0001", "developers", "Developers", {}},
+        {"S0OPS0001", "oncall", "On-call", {}},
+    });
+    c.edit().clear();
+    c.edit().insertText("ping @dev");
+    pump();
+    p = c.pickList();
+    REQUIRE(p != nullptr);
+    p->confirm();
+    pump();
+    CHECK_STR(c.edit().text(), "ping @developers ");
+    CHECK_STR(c.mrkdwn(), "ping <!subteam^S0DEV0001|@developers> ");
+    // An edit reads the token back as the handle pill, and saves it again.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "ping <!subteam^S0DEV0001|@developers> ");
+    CHECK_STR(c.edit().text(), "ping @developers ");
+    CHECK_STR(c.mrkdwn(), "ping <!subteam^S0DEV0001|@developers> ");
+    // A group the Store has never heard of still shows Slack's own label.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "hi <!subteam^S0GONE|@old-team> ");
+    CHECK_STR(c.edit().text(), "hi @old-team ");
+    CHECK_STR(c.mrkdwn(), "hi <!subteam^S0GONE|@old-team> ");
+    // A label without its "@" reads as a mention all the same.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "hi <!subteam^S0GONE|old-team> ");
+    CHECK_STR(c.edit().text(), "hi @old-team ");
+    CHECK_STR(c.mrkdwn(), "hi <!subteam^S0GONE|old-team> ");
+    // No label at all (rich_text's form) and no group known: the id, still a
+    // pill, so saving sends the token and not escaped text.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "hi <!subteam^S0GONE> ");
+    CHECK_STR(c.edit().text(), "hi @S0GONE ");
+    CHECK_STR(c.mrkdwn(), "hi <!subteam^S0GONE> ");
+    // A known group shows its live handle, whatever the label says.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "hi <!subteam^S0OPS0001> ");
+    CHECK_STR(c.edit().text(), "hi @oncall ");
+    CHECK_STR(c.mrkdwn(), "hi <!subteam^S0OPS0001> ");
+    // Nothing to name it by stays the text it was.
+    c.edit().clear();
+    shell::loadMrkdwn(c.edit(), h.store, "hi <!subteam^> ");
+    CHECK_STR(c.edit().text(), "hi <!subteam^> ");
+}
+
 TEST("composer: a new set of @ rows scrolls back to the first, which it selects") {
     Harness h;
     for (int i = 0; i < 50; ++i) { // 40 "zqprobe…" and 10 "zqx…"
@@ -1523,7 +1623,66 @@ TEST("composer: # lists channels, : completes emoji") {
     c.pickList()->confirm();
     pump();
     CHECK(c.edit().text().find(":xq_bcdq:") != std::string::npos);
+    // A workspace alias of a standard emoji completes to its character, the
+    // same as a pick of it from the picker.
+    h.store.setCustomEmoji("yes_qzv", "alias:white_check_mark");
+    c.edit().clear();
+    c.edit().insertText(":yes_qz");
+    pump();
+    REQUIRE(c.pickList() != nullptr);
+    CHECK_STR(c.pickList()->item(0).display, emoji::toUnicode("white_check_mark") + "  :yes_qzv:");
+    c.pickList()->confirm();
+    pump();
+    CHECK_STR(c.edit().text(), emoji::toUnicode("white_check_mark") + " ");
 }
+
+#ifdef MSGA_HAVE_MESSAGES
+TEST("composer: a pick from the emoji picker is the glyph, not the :code:") {
+    Harness h;
+    auto   &c = h.composer();
+    c.edit().focus();
+    c.openEmoji();
+    pump();
+    auto *ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("tada");
+    pump(4);
+    // The same thing the ":" completion inserts: the character itself, not a
+    // shortcode for Slack to parse (issue #161).
+    CHECK_STR(c.edit().text(), emoji::toUnicode("tada"));
+    // A custom emoji has no character, so its :code: is the only thing that
+    // works for it.
+    h.store.setCustomEmoji("partyparrot", "https://emoji.example/parrot.png");
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("partyparrot");
+    pump(4);
+    CHECK_STR(c.edit().text(), ":partyparrot:");
+    // A skin-tone pick carries its tone into the character.
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("+1::skin-tone-3");
+    pump(4);
+    CHECK_STR(c.edit().text(), emoji::toUnicode("+1::skin-tone-3"));
+    CHECK(c.edit().text() != emoji::toUnicode("+1"));
+    // A workspace alias of a standard emoji is that emoji's character.
+    h.store.setCustomEmoji("yes_qzv", "alias:white_check_mark");
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("yes_qzv");
+    pump(4);
+    CHECK_STR(c.edit().text(), emoji::toUnicode("white_check_mark"));
+}
+#endif
 
 TEST("composer: editing shows the banner; Escape and its cross leave it") {
     Harness       h;

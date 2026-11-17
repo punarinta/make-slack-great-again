@@ -70,6 +70,9 @@ public:
         bool  onPress  = true;
         bool  fill     = true; // paints its own background (else its parent's shows)
         bool  initials = true; // the first letter on a picture still missing
+        // Multi-select: a check box at the row's end, and a click toggles the
+        // row (picked()) instead of activating it.
+        bool  multi    = false;
     };
     explicit BrowseList(Avatars &avatars);
     ~BrowseList() override;
@@ -98,17 +101,26 @@ public:
     bool        navKey(const ui::Event &e);
     std::function<void(const std::string &id)> onActivated;
 
+    // Multi-select (Options::multi): the ids picked so far, in the order they
+    // were picked; onPickedChanged runs after a click toggled one, for the
+    // button a dialog labels with the count.
+    const std::vector<std::string> &picked() const { return _picked; }
+    void                            clearPicked();
+    std::function<void()>           onPickedChanged;
+
     void paint(gfx::Painter &p) override;
 
 private:
     friend struct BrowseListData;
     void bindRow(ui::View &row, int index);
+    void togglePicked(int index);
 
-    Avatars &_avatars;
-    Options  _opt;
-    int      _selected  = -1;
-    float    _radius    = -1;
-    bool     _onContent = false;
+    Avatars                 &_avatars;
+    Options                  _opt;
+    int                      _selected  = -1;
+    float                    _radius    = -1;
+    bool                     _onContent = false;
+    std::vector<std::string> _picked;
 };
 
 // The finders' close button (32 px, a 14 px cross).
