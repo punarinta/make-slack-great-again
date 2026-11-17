@@ -1939,6 +1939,88 @@ void SlackBackend::openDm(model::UserRef user, std::function<void(ConvRef)> done
         });
 }
 
+// A group DM: conversations.open with the whole list of people creates the
+// mpdm, or answers the one that already exists (Slack keeps one per set).
+// Me is never in the list; a single person is a DM.
+void SlackBackend::openDmGroup(
+    const std::vector<model::UserRef> &users, std::function<void(ConvRef)> done
+) {
+    std::vector<model::UserRef> members;
+    for (model::UserRef u : users)
+        if (u < _store.userCount() && u != _store.me &&
+            std::find(members.begin(), members.end(), u) == members.end())
+            members.push_back(u);
+    if (members.empty()) {
+        _write->post([done] {
+            if (done)
+                done(model::kNoConv);
+        });
+        return;
+    }
+    if (members.size() == 1) {
+        openDm(members.front(), std::move(done));
+        return;
+    }
+    // The group of exactly these people, if the roster already knows it: no
+    // round trip, and its history is here rather than up on the server.
+    for (ConvRef c = 0; c < _store.conversationCount(); ++c) {
+        const model::Conversation &cv = _store.conversation(c);
+        if (cv.kind != model::ConvKind::Group || cv.members.size() != members.size() + 1)
+            continue;
+        bool all = true;
+        for (model::UserRef u : members)
+            all = all && std::find(cv.members.begin(), cv.members.end(), u) != cv.members.end();
+        if (all) {
+            _write->post([done, c] {
+                if (done)
+                    done(c);
+            });
+            return;
+        }
+    }
+    std::string ids;
+    for (model::UserRef u : members) {
+        if (!ids.empty())
+            ids += ',';
+        ids += _store.user(u).id;
+    }
+    api("conversations.open",
+        net::formEncode({{"users", ids}}),
+        [this,
+         members = std::move(members),
+         done](const json::Document &doc, const std::string &err) {
+            if (err == "cancelled")
+                return;
+            const std::string id(doc.root()["channel"]["id"].str());
+            ConvRef           found = model::kNoConv;
+            if (err.empty() && !id.empty()) {
+                markAlive(id);
+                found = _store.findConversation(id);
+                if (found == model::kNoConv) {
+                    model::Conversation c; // the roster refresh fills in the rest
+                    c.id      = id;
+                    c.kind    = model::ConvKind::Group;
+                    // Slack names an mpdm "mpdm-a--b-1"; the members are what
+                    // the UI shows, so the name is left to the roster too.
+                    c.members = members;
+                    c.members.push_back(_store.me);
+                    c.memberCount = uint32_t(c.members.size());
+                    found         = _store.addConversation(std::move(c));
+                } else {
+                    _store.updateConversation(found, [](model::Conversation &c) {
+                        c.member = true;
+                    });
+                }
+            } else {
+                LOG_WARN("slack", "conversations.open: %s", err.c_str());
+                if (onError && !err.empty())
+                    onError(err);
+            }
+            if (done)
+                done(found);
+        });
+}
+
 // conversations.join, then the channel is a member one (only the
 // membership changes; the roster is not reloaded).
 void SlackBackend::joinChannel(ConvRef conv, ConvDone done) {

@@ -3444,6 +3444,13 @@ void Shell::openBrowseDialog(int tab) {
                 if (!alive.expired())
                     openCreateChannel();
             });
+        },
+        [this, alive](const std::vector<model::UserRef> &people) {
+            // Several people: conversations.open makes (or finds) the mpdm.
+            _ctx.backend.openDmGroup(people, [this, alive](ConvRef c) {
+                if (!alive.expired() && c != kNoConv)
+                    open(c);
+            });
         }
     );
 }
