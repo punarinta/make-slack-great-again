@@ -1523,6 +1523,17 @@ TEST("composer: # lists channels, : completes emoji") {
     c.pickList()->confirm();
     pump();
     CHECK(c.edit().text().find(":xq_bcdq:") != std::string::npos);
+    // A workspace alias of a standard emoji completes to its character, the
+    // same as a pick of it from the picker.
+    h.store.setCustomEmoji("yes_qzv", "alias:white_check_mark");
+    c.edit().clear();
+    c.edit().insertText(":yes_qz");
+    pump();
+    REQUIRE(c.pickList() != nullptr);
+    CHECK_STR(c.pickList()->item(0).display, emoji::toUnicode("white_check_mark") + "  :yes_qzv:");
+    c.pickList()->confirm();
+    pump();
+    CHECK_STR(c.edit().text(), emoji::toUnicode("white_check_mark") + " ");
 }
 
 #ifdef MSGA_HAVE_MESSAGES
@@ -1560,6 +1571,16 @@ TEST("composer: a pick from the emoji picker is the glyph, not the :code:") {
     pump(4);
     CHECK_STR(c.edit().text(), emoji::toUnicode("+1::skin-tone-3"));
     CHECK(c.edit().text() != emoji::toUnicode("+1"));
+    // A workspace alias of a standard emoji is that emoji's character.
+    h.store.setCustomEmoji("yes_qzv", "alias:white_check_mark");
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("yes_qzv");
+    pump(4);
+    CHECK_STR(c.edit().text(), emoji::toUnicode("white_check_mark"));
 }
 #endif
 

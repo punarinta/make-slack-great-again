@@ -2320,13 +2320,17 @@ void Composer::computePickList() {
             for (const EmojiCompletion &e : emojiCompletions(_ctx.store(), query)) {
                 PickList::Item it;
                 it.kind = PickList::Item::Kind::Plain;
-                if (e.custom) { // no Unicode form: the :code: Slack renders
+                // A workspace alias of a standard emoji is its character, as
+                // a pick from the picker inserts it; a custom picture has no
+                // Unicode form, so it goes as the :code: Slack renders.
+                const std::string g =
+                    e.custom ? _ctx.store().emojiFor(e.name).unicode : emoji::toUnicode(e.name);
+                if (g.empty()) {
                     it.display = str::concat({":", e.name, ":"});
                     it.insert  = it.display;
                 } else {
-                    const std::string g = emoji::toUnicode(e.name);
-                    it.display          = str::concat({g, "  :", e.name, ":"});
-                    it.insert           = g;
+                    it.display = str::concat({g, "  :", e.name, ":"});
+                    it.insert  = g;
                 }
                 items.push_back(std::move(it));
             }
