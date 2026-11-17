@@ -712,6 +712,8 @@ void X11App::handle(xcb_generic_event_t *ev) {
             w->hover    = true;
             _pointerWin = w;
             _pointerPos = p;
+            if (!(_buttonsHeld & 0x30e))
+                w->pointerAt(p);
             w->emit({.type = EventType::PointerEnter, .pos = p, .mods = pointerMods(e->state)});
         } else if (type == XCB_LEAVE_NOTIFY && w->hover) {
             w->hover = false;
@@ -819,8 +821,13 @@ void X11App::handleMotion(X11Window *w, double px, double py, uint32_t mods, xcb
 void X11App::flushMotion() {
     const xcb_window_t id = _motionWin;
     _motionWin            = 0;
-    if (X11Window *w = id ? findWindow(id) : nullptr)
+    if (X11Window *w = id ? findWindow(id) : nullptr) {
+        // Not while a button is held: a press that started inside (a text
+        // selection) keeps its cursor when it crosses the border.
+        if (!(_buttonsHeld & 0x30e))
+            w->pointerAt(_motionPos);
         w->emit({.type = EventType::PointerMove, .pos = _motionPos, .mods = _motionMods});
+    }
 }
 
 void X11App::handleXkb(xcb_generic_event_t *ev) {

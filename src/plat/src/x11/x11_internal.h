@@ -153,6 +153,9 @@ public:
     int          physH() const { return _ph; }
     bool         textInputEnabled() const { return _textInput.enabled; }
     HitArea      hitTest(Point p) const { return _hitTest ? _hitTest(p) : HitArea::Client; }
+    // The pointer is at p (logical, no button held): over our own resize
+    // border show the matching resize cursor, elsewhere the app's.
+    void         pointerAt(Point p);
 
     void onConfigure(const xcb_configure_notify_event_t *e);
     void onReparent(xcb_window_t parent);
@@ -188,6 +191,7 @@ private:
     void writeWmHints();
     void activateAt(xcb_timestamp_t t);
     void sendStartupRemove(std::string_view id);
+    void applyCursor();
     // Where the content really is: one round trip, for the cases where the
     // event itself does not say (a real ConfigureNotify inside a WM frame).
     void queryRootPos();
@@ -212,9 +216,12 @@ private:
     bool                          _maximized = false, _fullscreen = false, _hidden = false;
     bool                          _above     = false;
     bool                          _active    = false;
-    bool                          _attention = false; // urgency / demands-attention set
-    Cursor                        _cursor    = Cursor::Arrow;
-    xcb_window_t                  _parent    = 0;         // root, or the WM's frame
+    bool                          _attention = false;         // urgency / demands-attention set
+    Cursor                        _cursor    = Cursor::Arrow; // what the app asked for
+    Cursor                        _edge      = Cursor::Arrow; // resize border under the pointer…
+    bool                          _onEdge    = false;         // …when it is over one
+    Cursor                        _shown     = Cursor::Arrow; // what the window has
+    xcb_window_t                  _parent    = 0;             // root, or the WM's frame
     int                           _rootX = 0, _rootY = 0; // content top-left, physical root coords
     bool                          _userPos = false; // an explicit position: USPosition in the hints
     int                           _userX = 0, _userY = 0; // …and that position, physical

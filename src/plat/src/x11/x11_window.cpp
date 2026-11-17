@@ -424,10 +424,47 @@ void X11Window::activateAt(xcb_timestamp_t t) {
 }
 
 void X11Window::setCursor(Cursor cur) {
-    if (cur == _cursor)
+    _cursor = cur;
+    applyCursor();
+}
+
+void X11Window::pointerAt(Point p) {
+    // The WM shows resize cursors over its own frame; we asked for none, so
+    // over our border we have to, or the edges look inert until dragged.
+    _onEdge = false;
+    if (_hitTest && _resizable && !_maximized && !_fullscreen) {
+        _onEdge = true;
+        switch (_hitTest(p)) {
+        case HitArea::ResizeTop:
+        case HitArea::ResizeBottom:
+            _edge = Cursor::ResizeV;
+            break;
+        case HitArea::ResizeLeft:
+        case HitArea::ResizeRight:
+            _edge = Cursor::ResizeH;
+            break;
+        case HitArea::ResizeTopLeft:
+        case HitArea::ResizeBottomRight:
+            _edge = Cursor::ResizeNWSE;
+            break;
+        case HitArea::ResizeTopRight:
+        case HitArea::ResizeBottomLeft:
+            _edge = Cursor::ResizeNESW;
+            break;
+        default:
+            _onEdge = false;
+            break;
+        }
+    }
+    applyCursor();
+}
+
+void X11Window::applyCursor() {
+    const Cursor want = _onEdge ? _edge : _cursor;
+    if (want == _shown)
         return;
-    _cursor              = cur;
-    const xcb_cursor_t x = _app->cursor(cur);
+    _shown               = want;
+    const xcb_cursor_t x = _app->cursor(want);
     xcb_change_window_attributes(_app->conn(), _win, XCB_CW_CURSOR, &x);
     xcb_flush(_app->conn());
 }
