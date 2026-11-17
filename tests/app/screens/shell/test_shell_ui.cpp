@@ -1523,7 +1523,66 @@ TEST("composer: # lists channels, : completes emoji") {
     c.pickList()->confirm();
     pump();
     CHECK(c.edit().text().find(":xq_bcdq:") != std::string::npos);
+    // A workspace alias of a standard emoji completes to its character, the
+    // same as a pick of it from the picker.
+    h.store.setCustomEmoji("yes_qzv", "alias:white_check_mark");
+    c.edit().clear();
+    c.edit().insertText(":yes_qz");
+    pump();
+    REQUIRE(c.pickList() != nullptr);
+    CHECK_STR(c.pickList()->item(0).display, emoji::toUnicode("white_check_mark") + "  :yes_qzv:");
+    c.pickList()->confirm();
+    pump();
+    CHECK_STR(c.edit().text(), emoji::toUnicode("white_check_mark") + " ");
 }
+
+#ifdef MSGA_HAVE_MESSAGES
+TEST("composer: a pick from the emoji picker is the glyph, not the :code:") {
+    Harness h;
+    auto   &c = h.composer();
+    c.edit().focus();
+    c.openEmoji();
+    pump();
+    auto *ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("tada");
+    pump(4);
+    // The same thing the ":" completion inserts: the character itself, not a
+    // shortcode for Slack to parse (issue #161).
+    CHECK_STR(c.edit().text(), emoji::toUnicode("tada"));
+    // A custom emoji has no character, so its :code: is the only thing that
+    // works for it.
+    h.store.setCustomEmoji("partyparrot", "https://emoji.example/parrot.png");
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("partyparrot");
+    pump(4);
+    CHECK_STR(c.edit().text(), ":partyparrot:");
+    // A skin-tone pick carries its tone into the character.
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("+1::skin-tone-3");
+    pump(4);
+    CHECK_STR(c.edit().text(), emoji::toUnicode("+1::skin-tone-3"));
+    CHECK(c.edit().text() != emoji::toUnicode("+1"));
+    // A workspace alias of a standard emoji is that emoji's character.
+    h.store.setCustomEmoji("yes_qzv", "alias:white_check_mark");
+    c.edit().clear();
+    c.openEmoji();
+    pump();
+    ep = static_cast<screens::EmojiPicker *>(h.win->topPopup());
+    REQUIRE(ep != nullptr);
+    ep->pick("yes_qzv");
+    pump(4);
+    CHECK_STR(c.edit().text(), emoji::toUnicode("white_check_mark"));
+}
+#endif
 
 TEST("composer: editing shows the banner; Escape and its cross leave it") {
     Harness       h;

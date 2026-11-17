@@ -2057,14 +2057,18 @@ void Composer::openEmoji() {
     if (!w)
         return;
 #ifdef MSGA_HAVE_MESSAGES
-    // The messages screens' searchable picker (shared with reactions); it
-    // inserts the shortcode, which Slack renders.
+    // The messages screens' searchable picker (shared with reactions). A pick
+    // is the emoji itself, as the ":" completion inserts it; a custom emoji
+    // has only its picture, so it goes as the :code: Slack renders.
     std::weak_ptr<int> alive = _alive;
     screens::EmojiPicker::show(
         *w, _emojiBtn->windowRect(), _ctx, [this, alive](const std::string &name) {
             if (alive.expired())
                 return;
-            _edit->insertText(str::concat({":", name, ":"}));
+            std::string glyph = _ctx.store().emojiFor(name).unicode;
+            if (glyph.empty())
+                glyph = str::concat({":", name, ":"});
+            _edit->insertText(glyph);
             _edit->focus();
         }
     );
@@ -2316,13 +2320,17 @@ void Composer::computePickList() {
             for (const EmojiCompletion &e : emojiCompletions(_ctx.store(), query)) {
                 PickList::Item it;
                 it.kind = PickList::Item::Kind::Plain;
-                if (e.custom) { // no Unicode form: the :code: Slack renders
+                // A workspace alias of a standard emoji is its character, as
+                // a pick from the picker inserts it; a custom picture has no
+                // Unicode form, so it goes as the :code: Slack renders.
+                const std::string g =
+                    e.custom ? _ctx.store().emojiFor(e.name).unicode : emoji::toUnicode(e.name);
+                if (g.empty()) {
                     it.display = str::concat({":", e.name, ":"});
                     it.insert  = it.display;
                 } else {
-                    const std::string g = emoji::toUnicode(e.name);
-                    it.display          = str::concat({g, "  :", e.name, ":"});
-                    it.insert           = g;
+                    it.display = str::concat({g, "  :", e.name, ":"});
+                    it.insert  = g;
                 }
                 items.push_back(std::move(it));
             }

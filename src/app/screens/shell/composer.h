@@ -50,7 +50,7 @@ std::string toMrkdwn(std::string_view text, const std::vector<ui::TextEdit::Run>
 // At most 8.
 struct EmojiCompletion {
     std::string name;
-    bool        custom = false; // inserted as :name: (no Unicode form)
+    bool        custom = false; // a workspace emoji: :name:, or an alias's character
 };
 std::vector<EmojiCompletion> emojiCompletions(const model::Store &store, std::string_view query);
 // The other way, for editing a sent message: the
