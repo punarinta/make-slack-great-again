@@ -252,7 +252,7 @@ void MessageSearch::runSearch(const std::string &query) {
     addStatus(tr("Searching\xE2\x80\xA6"));
     const uint32_t     gen   = ++_generation;
     std::weak_ptr<int> alive = _alive;
-    _ctx.backend.search(query, [this, alive, gen](std::vector<model::Backend::SearchHit> hits) {
+    _ctx.backend().search(query, [this, alive, gen](std::vector<model::Backend::SearchHit> hits) {
         if (alive.expired() || gen != _generation)
             return;
         _results = std::move(hits);

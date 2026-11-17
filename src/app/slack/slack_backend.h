@@ -311,6 +311,10 @@ private:
     // Merges a conversation the server just described (channel_created,
     // conversations.info) keeping what only this client knows.
     model::ConvRef       mergeConversation(model::Conversation fresh);
+    // Merges a user the server just described (users.list, users.info,
+    // user_change) keeping presence and DND: polled separately, never in
+    // the user object. The caller notifies (usersChanged).
+    model::UserRef       mergeUser(model::User fresh);
     void                 reloadConversations();
     void                 backfillOpen(); // the open chat's head page, now
     void                 reloadUsergroups();
@@ -369,6 +373,12 @@ private:
     // `done`, which also puts a failure on the error banner as tr(what) with
     // the re-auth hint (the profile and photo errors).
     Done bannerOnFailure(const char *what, Done done);
+    // conversations.open for `users` (comma-separated ids): the DM or group
+    // DM it answers, reopened, or `fresh` with that id when the roster lacks
+    // it; a failure goes to onError and done(kNoConv) (slack_actions.cpp).
+    void openConversation(
+        std::string users, model::Conversation fresh, std::function<void(model::ConvRef)> done
+    );
     // A reminder was set or moved here: the alarm re-arms (slack_backend.cpp).
     void rearmReminders();
     // cancelScheduled's calls (slack_actions.cpp): a session's draft (retry:

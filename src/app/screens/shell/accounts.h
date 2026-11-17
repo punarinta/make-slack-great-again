@@ -1,13 +1,12 @@
 // Signing in and out (adding a workspace, connecting Slack or Claude Code,
 // importing sessions, signing out, switching): owns the workspace store and
 // every signed-in workspace's backend and Store. They all run —
-// the open one behind the screens' BackendProxy and StoreSlot, the others
+// the open one behind the screens' BackendSlot and StoreSlot, the others
 // in the background, still polling, counting unreads and notifying (the
 // shell's attachWorkspace). Switching only swaps what the screens show.
 #pragma once
 
 #include "app/auth/workspaces.h"
-#include "app/model/backend_proxy.h"
 #include "app/model/null_backend.h"
 #include "app/slack/credentials.h"
 #include "app/slack/session.h"
@@ -44,8 +43,7 @@ public:
         ui::Window           &win,
         Settings             &settings,
         std::function<void()> saveSettings,
-        model::BackendProxy  &proxy,
-        model::Backend       &none, // the proxy's target while signed out
+        model::Backend       &none, // the screens' backend while signed out
         net::Client          &client,
         std::string           storePath
     );
@@ -135,7 +133,6 @@ private:
     ui::Window                           &_win;
     Settings                             &_settings;
     std::function<void()>                 _saveSettings;
-    model::BackendProxy                  &_proxy;
     net::Client                          &_client;
     auth::WorkspaceStore                  _store;
     model::Backend                       &_none;  // main's: outlives the shell

@@ -332,8 +332,7 @@ void Backend::removeOwned(
 ) {
     hide(sessionId);
     // The job's worktree is read now: `claude rm` drops the job.
-    const std::string job  = jobId.empty() ? sessionId.substr(0, 8) : jobId;
-    auto              refs = worktreesOfJob(readJobState(_paths, job));
+    auto refs = worktreesOfJob(readJobState(_paths, jobIdOr(sessionId, jobId)));
     ++cleanup->pending;
     auto stopped = [this, sessionId, cwd, refs, cleanup]() mutable {
         std::string transcript = noteStopped(sessionId);

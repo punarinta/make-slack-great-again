@@ -104,9 +104,9 @@ void ThreadPanel::show(ConvRef conv, Ts root) {
     // (relayed by the session), or a side conversation branched off it
     // (/btw), which is also a session of its own. A subagent that hasn't
     // started yet takes nothing: no composer.
-    const bool agent    = conv != model::kNoConv && _ctx.backend.capabilities().agentSessions;
-    const bool readOnly = agent && !_ctx.backend.threadAcceptsReplies(conv, root);
-    _openSession->setVisible(agent && _ctx.backend.threadOpensAsSession(conv, root));
+    const bool agent    = conv != model::kNoConv && _ctx.backend().capabilities().agentSessions;
+    const bool readOnly = agent && !_ctx.backend().threadAcceptsReplies(conv, root);
+    _openSession->setVisible(agent && _ctx.backend().threadOpensAsSession(conv, root));
     if (_composer) {
         _composer->setVisible(!readOnly);
         _composer->setEnabled(!readOnly);
@@ -181,7 +181,7 @@ void ThreadPanel::setBroadcastBlocked(bool blocked) {
 void ThreadPanel::refreshBroadcast() {
     // Only a channel thread has a channel to also send the reply to.
     const ConvRef c    = conversation();
-    const bool    show = c != model::kNoConv && _ctx.backend.capabilities().replyBroadcast &&
+    const bool    show = c != model::kNoConv && _ctx.backend().capabilities().replyBroadcast &&
                          !_ctx.store().conversation(c).isDirect();
     _broadcastRow->setVisible(show);
     _broadcast->setEnabled(show && !_blocked);

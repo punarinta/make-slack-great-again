@@ -586,7 +586,7 @@ public:
     TextEdit *search() const { return _search; }
 
 private:
-    bool service() const { return _ctx.backend.gifSearchAvailable(); }
+    bool service() const { return _ctx.backend().gifSearchAvailable(); }
     void build() {
         clearChildren();
         _grid             = nullptr;
@@ -703,7 +703,7 @@ private:
             );
             return;
         }
-        _ctx.backend.searchGifs(q, [this, alive, q](std::vector<model::Backend::Gif> gifs) {
+        _ctx.backend().searchGifs(q, [this, alive, q](std::vector<model::Backend::Gif> gifs) {
             if (alive.expired() || q != _pending)
                 return;
             if (gifs.empty())

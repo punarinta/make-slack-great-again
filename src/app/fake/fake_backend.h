@@ -143,7 +143,6 @@ public:
 private:
     enum class ConvFlag : uint8_t { Starred, Muted, Notify, Member };
     void           setConvFlag(model::ConvRef conv, ConvFlag f, int v);
-    void           setMessageFlag(model::ConvRef conv, model::Ts ts, bool pinFlag, bool on);
     void           later(int ms, std::function<void()> fn);
     model::Ts      nextTs();
     void           scheduleAutoReply(model::ConvRef conv, model::Ts thread);

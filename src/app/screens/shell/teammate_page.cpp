@@ -169,11 +169,11 @@ void TeammatePage::rebuild(bool fresh) {
         model::Ts        activity = 0;
     };
     std::vector<Row> rows;
-    const int64_t    now = _ctx.backend.nowSecs();
+    const int64_t    now = _ctx.backend().nowSecs();
     for (ConvRef c = 0; c < st.conversationCount(); ++c) {
         const model::Conversation &cv = st.conversation(c);
         if (!cv.member || cv.kind != model::ConvKind::Dm || cv.dmUser >= st.userCount() ||
-            _ctx.backend.agentSessionRole(c) != _mate.id)
+            _ctx.backend().agentSessionRole(c) != _mate.id)
             continue;
         const model::User &u = st.user(cv.dmUser);
         Row                r;
@@ -220,7 +220,7 @@ void TeammatePage::rebuild(bool fresh) {
 
 void TeammatePage::setFolder(const std::string &dir) {
     _folder                  = dir;
-    _blocker                 = _ctx.backend.agentSessionBlocker(dir);
+    _blocker                 = _ctx.backend().agentSessionBlocker(dir);
     // "Start new session in <b>~/src/x</b>".
     const std::string    fmt = tr("Start new session in %1");
     const size_t         at  = fmt.find("%1");
@@ -246,7 +246,7 @@ std::vector<MenuItem> TeammatePage::folderMenuItems(std::vector<std::string> *pa
         const model::Conversation &cv = st.conversation(c);
         if (cv.kind != model::ConvKind::Dm)
             continue;
-        const std::string dir = _ctx.backend.agentSessionFolder(c);
+        const std::string dir = _ctx.backend().agentSessionFolder(c);
         if (!dir.empty())
             sessions.push_back({dir, model::tsSecs(activityOf(cv))});
     }
@@ -261,7 +261,7 @@ std::vector<MenuItem> TeammatePage::folderMenuItems(std::vector<std::string> *pa
         choices.insert(choices.begin(), recent_folders::Choice{current});
 
     std::vector<MenuItem> items;
-    const int64_t         now = _ctx.backend.nowSecs();
+    const int64_t         now = _ctx.backend().nowSecs();
     for (const auto &c : choices) {
         MenuItem it;
         it.id      = int(items.size()) + 1;

@@ -59,7 +59,7 @@ void Shell::setAgentLinks(claude::Links *links) {
 // be asked; never in a Claude Code workspace itself.
 screens::Context::AgentLink Shell::agentLink(ConvRef conv, const model::Message &m) const {
     screens::Context::AgentLink out;
-    if (!_links || !_links->available() || _ctx.backend.capabilities().agentSessions ||
+    if (!_links || !_links->available() || _ctx.backend().capabilities().agentSessions ||
         &_ctx.store() == _links->agentStore())
         return out;
     const model::Store &st          = _ctx.store();

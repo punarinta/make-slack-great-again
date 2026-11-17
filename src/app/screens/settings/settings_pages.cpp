@@ -814,10 +814,7 @@ void SettingsDialog::buildSystem() {
              tr("Leave my presence to the official Slack apps")},
             &_s.presence
         );
-        rg->onChange = [this](int i) {
-            _s.presence = i;
-            changed();
-        };
+        andThen(rg, [this](int) { changed(); });
         caption(
             g,
             tr("Slack only shows you as active while a Slack app is connected. MSGA can hold "

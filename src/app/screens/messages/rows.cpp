@@ -1798,7 +1798,9 @@ void MessageRow::buildReactions(ui::View *col, const model::Message &m) {
         }
         pill->setTooltip(arg(tr("%1 reacted with :%2:"), who, r.name));
         const std::string name = r.name;
-        pill->onClick = [&ctx, conv, ts, name, mine] { ctx.backend.react(conv, ts, name, !mine); };
+        pill->onClick          = [&ctx, conv, ts, name, mine] {
+            ctx.backend().react(conv, ts, name, !mine);
+        };
     }
     // No "+" pill after the chips: reactions are added from the
     // toolbar's Add reaction.

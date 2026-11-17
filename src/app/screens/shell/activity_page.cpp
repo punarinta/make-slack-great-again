@@ -98,7 +98,7 @@ ActivityPage::Row::Row(ActivityPage &page, size_t index) : _page(page), _index(i
         page._avatars,
         who,
         picture,
-        base::dateTimeLabel(model::tsSecs(it.ts), ctx.backend.nowSecs())
+        base::dateTimeLabel(model::tsSecs(it.ts), ctx.backend().nowSecs())
     );
     style().padding(16, 12, 16, 12);
     const std::string text = m.ts ? searchPreview(st, m.text) : std::string();
@@ -252,7 +252,7 @@ void ActivityPage::loadPage(std::string cursor) {
     }
     const uint32_t     gen   = ++_generation;
     std::weak_ptr<int> alive = _alive;
-    _ctx.backend.loadActivity(
+    _ctx.backend().loadActivity(
         _filter,
         _unreadOnly,
         std::move(cursor),
@@ -317,7 +317,7 @@ void ActivityPage::activate(size_t i) {
         return;
     Item &it = _items[i];
     if (it.unread) {
-        _ctx.backend.setActivityRead(it, true);
+        _ctx.backend().setActivityRead(it, true);
         it.unread = false;
     }
     const ConvRef conv = it.conv;
@@ -334,7 +334,7 @@ void ActivityPage::toggleRead(size_t i) {
         return;
     Item &it  = _items[i];
     it.unread = !it.unread;
-    _ctx.backend.setActivityRead(it, !it.unread);
+    _ctx.backend().setActivityRead(it, !it.unread);
     if (i < _rows.size())
         _rows[i]->refreshLook();
 }

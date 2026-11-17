@@ -849,6 +849,21 @@ void Backend::whenParsed(Tracked &t, std::function<void()> then) {
         then();
 }
 
+void Backend::feedAppended(
+    const std::string &path, int64_t size, int64_t &offset, TranscriptParser &parser
+) {
+    // Only the bytes appended since the last look: a long session's
+    // transcript runs to tens of MB, and a streamed answer grows it several
+    // times a second.
+    std::string chunk;
+    if (size > offset && file::readRange(path, offset, size_t(size - offset), &chunk) &&
+        !chunk.empty()) {
+        parser.feed(chunk);
+        offset += int64_t(chunk.size());
+        _counters.bytesRead += chunk.size();
+    }
+}
+
 void Backend::tail(Tracked &t) {
     if (t.info.sessionId.empty() || t.parsing)
         return;
@@ -882,18 +897,7 @@ void Backend::tail(Tracked &t) {
         parseOnWorker(t);
         return;
     }
-    if (size > t.offset) {
-        // Only the bytes appended since the last look: a long session's
-        // transcript runs to tens of MB, and a streamed answer grows it
-        // several times a second.
-        std::string chunk;
-        if (file::readRange(t.transcriptPath, t.offset, size_t(size - t.offset), &chunk) &&
-            !chunk.empty()) {
-            t.parser.feed(chunk);
-            t.offset += int64_t(chunk.size());
-            _counters.bytesRead += chunk.size();
-        }
-    }
+    feedAppended(t.transcriptPath, size, t.offset, t.parser);
     // A role this machine doesn't know (another machine's teammate, a deleted
     // file) keeps the name its sessions give it.
     if (_team.noteFormer(t.parser.role(), t.parser.roleName()))
@@ -918,15 +922,7 @@ Backend::SubagentFeed &Backend::subagentFeed(const Tracked &t, const std::string
         parseSubagentOnWorker(path, t, f);
         return f;
     }
-    if (size > f.offset) {
-        // Only what was appended since the last look, as tail().
-        std::string chunk;
-        if (file::readRange(path, f.offset, size_t(size - f.offset), &chunk) && !chunk.empty()) {
-            f.parser.feed(chunk);
-            f.offset += int64_t(chunk.size());
-            _counters.bytesRead += chunk.size();
-        }
-    }
+    feedAppended(path, size, f.offset, f.parser);
     if (f.counted != f.parser.revision()) {
         f.counted = f.parser.revision();
         f.zenCount =
@@ -2448,7 +2444,49 @@ constexpr int64_t kEndedKeepMs   = 24 * 3600 * 1000;
 // started at the earliest (the file may come a moment after), then this often.
 constexpr int64_t kOrphanGraceMs = 10'000;
 constexpr int64_t kOrphanLookMs  = 30'000;
+// The jobs' files (output, reports) are read at most this often while work
+// goes on: a streamed answer pumps several times a second.
+constexpr int64_t kJobReadMs     = 1000;
+
+// The last line of a file `size` bytes long (its last kOutputTail bytes'),
+// and how far it says the work is. False when there is nothing to read.
+struct TailLine {
+    std::string line, ratio;
+    float       progress = -1;
+};
+bool readTailLine(const std::string &path, int64_t size, TailLine *out) {
+    std::string tail;
+    if (size <= 0 || !file::readRange(
+                         path, std::max<int64_t>(0, size - int64_t(kOutputTail)), kOutputTail, &tail
+                     ))
+        return false;
+    out->line     = lastOutputLine(tail);
+    out->progress = progressInLine(out->line, &out->ratio);
+    return true;
+}
 } // namespace
+
+// Whether a command its worker left behind still runs: a walk over /proc
+// (every process's environment), so on a worker. One found gone ends.
+void Backend::lookForOrphan(
+    const Tracked &t, const std::string &taskId, const std::string &output
+) {
+    auto gone = std::make_shared<bool>(false);
+    model::runInBackground(
+        _app,
+        [gone, sessionId = t.info.sessionId, output] {
+            *gone = commandProcessGroup(sessionId, output) == 0;
+        },
+        [this, alive = _alive, gone, convId = t.convId, taskId] {
+            if (!*alive || !*gone)
+                return;
+            if (Tracked *t = find(convId)) {
+                t->orphansGone.insert(taskId);
+                pumpTyping();
+            }
+        }
+    );
+}
 
 bool Backend::pumpJobs(Tracked &t) {
     using Job                                               = model::BackgroundJob;
@@ -2486,6 +2524,16 @@ bool Backend::pumpJobs(Tracked &t) {
         t.workSinceMs = since;
     }
 
+    // A background job's folder ($CLAUDE_JOB_DIR), where its reports and
+    // often its logs go.
+    const bool isJob = t.info.kind == SessionInfo::Kind::Background && !t.info.sessionId.empty();
+    const std::string jobDir =
+        isJob ? _paths.jobDir(jobIdOr(t.info.sessionId, t.info.jobId)) : std::string();
+    // A new command's output and the last look as the work ends are read at
+    // once, the rest once kJobReadMs went by.
+    const bool readNow = !working || now - t.jobsReadMs >= kJobReadMs;
+    if (readNow)
+        t.jobsReadMs = now;
     std::unordered_set<std::string> seen;
     t.jobOutputs.clear();
     for (const auto &c : commands) {
@@ -2496,19 +2544,20 @@ bool Backend::pumpJobs(Tracked &t) {
         // command files) and no notification will come. It may run on,
         // orphaned (and can be stopped from here); one that doesn't has
         // ended — looked for now and then, as that walks over /proc.
-        if (file::size(c.outputPath) < 0 && now - c.startedAt / 1000 > kOrphanGraceMs) {
+        const int64_t size = file::size(c.outputPath);
+        if (size < 0 && now - c.startedAt / 1000 > kOrphanGraceMs) {
             int64_t &looked = t.orphanLookedMs[c.taskId];
             if (now - looked >= kOrphanLookMs) {
                 looked = now;
-                if (commandProcessGroup(t.info.sessionId, c.outputPath) == 0)
-                    t.orphansGone.insert(c.taskId);
+                lookForOrphan(t, c.taskId, c.outputPath);
             }
             if (t.orphansGone.count(c.taskId))
                 continue;
         }
         t.jobOutputs[c.taskId] = c.outputPath;
-        Job &j                 = t.jobs[c.taskId];
-        if (j.id.empty()) {
+        Job       &j           = t.jobs[c.taskId];
+        const bool fresh       = j.id.empty();
+        if (fresh) {
             j.id        = c.taskId;
             j.command   = c.command;
             j.name      = jobName(c.command);
@@ -2516,74 +2565,52 @@ bool Backend::pumpJobs(Tracked &t) {
             if (j.name.empty())
                 j.name = c.taskId;
         }
-        j.state            = Job::State::Running;
-        const int64_t size = file::size(c.outputPath);
-        std::string   tail;
-        bool          ownLine = false;
-        if (size > 0 &&
-            file::readRange(
-                c.outputPath, std::max<int64_t>(0, size - int64_t(kOutputTail)), kOutputTail, &tail
-            )) {
-            j.line = lastOutputLine(tail);
-            j.ratio.clear();
-            j.progress = progressInLine(j.line, &j.ratio);
-            ownLine    = !j.line.empty();
+        j.state = Job::State::Running;
+        seen.insert(j.id);
+        if (!readNow && !fresh)
+            continue;
+        TailLine   own;
+        const bool read    = readTailLine(c.outputPath, size, &own);
+        const bool ownLine = read && !own.line.empty();
+        if (read) {
+            j.line     = std::move(own.line);
+            j.ratio    = std::move(own.ratio);
+            j.progress = own.progress;
         }
         // Nothing of its own to show: its output may go to a file it names
         // ("make > $CLAUDE_JOB_DIR/tmp/x.log 2>&1"). Written since it began
         // (not a last run's), the one that tells how far it is, else the
         // latest written.
         if (!ownLine) {
-            const std::string jobDir =
-                t.info.kind == SessionInfo::Kind::Background && !t.info.sessionId.empty()
-                    ? str::concat(
-                          {_paths.jobsDir(),
-                           "/",
-                           t.info.jobId.empty() ? std::string_view(t.info.sessionId).substr(0, 8)
-                                                : std::string_view(t.info.jobId)}
-                      )
-                    : std::string();
             int64_t bestMicros = 0;
             bool    bestTells  = false;
             for (const std::string &path : redirectTargets(c.command, jobDir, t.info.cwd)) {
                 file::Stat st;
-                if (!file::stat(path, &st) || st.isDir || st.size <= 0 ||
-                    st.mtimeMicros / 1000 < j.startedMs - 2000)
+                TailLine   tl;
+                if (!file::stat(path, &st) || st.isDir ||
+                    st.mtimeMicros / 1000 < j.startedMs - 2000 || !readTailLine(path, st.size, &tl))
                     continue;
-                std::string fileTail;
-                if (!file::readRange(
-                        path,
-                        std::max<int64_t>(0, st.size - int64_t(kOutputTail)),
-                        kOutputTail,
-                        &fileTail
-                    ))
+                const bool tells = tl.progress >= 0;
+                if (tl.line.empty() || (bestTells && !tells) ||
+                    (bestTells == tells && st.mtimeMicros < bestMicros))
                     continue;
-                std::string       ratio;
-                const std::string line = lastOutputLine(fileTail);
-                const float       p    = progressInLine(line, &ratio);
-                if (line.empty() || (bestTells && p < 0) ||
-                    (bestTells == (p >= 0) && st.mtimeMicros < bestMicros))
-                    continue;
-                bestTells  = p >= 0;
+                bestTells  = tells;
                 bestMicros = st.mtimeMicros;
-                j.line     = line;
-                j.ratio    = ratio;
-                j.progress = p;
+                j.line     = std::move(tl.line);
+                j.ratio    = std::move(tl.ratio);
+                j.progress = tl.progress;
             }
         }
-        seen.insert(j.id);
     }
     // Its own reports, made during this work (a background job's: in its
     // folder, $CLAUDE_JOB_DIR). A second's slack: its clock and Claude Code's.
-    if ((working || reportsRunning) && t.info.kind == SessionInfo::Kind::Background &&
-        !t.info.sessionId.empty()) {
-        const int64_t     since  = working ? t.workSinceMs : reportsSince;
-        const std::string jobDir = str::concat(
-            {_paths.jobsDir(),
-             "/",
-             t.info.jobId.empty() ? std::string_view(t.info.sessionId).substr(0, 8)
-                                  : std::string_view(t.info.jobId)}
-        );
+    if ((working || reportsRunning) && isJob && !readNow) {
+        // Not read this time: the running ones run on as last read.
+        for (const auto &[key, j] : t.jobs)
+            if (j.report && j.state == Job::State::Running)
+                seen.insert(j.id);
+    } else if ((working || reportsRunning) && isJob) {
+        const int64_t since = working ? t.workSinceMs : reportsSince;
         for (Report &r : readReports(jobDir)) {
             const std::string key = "report:" + r.name;
             if (r.atMs < since - 1000 || (!working && !t.jobs.count(key)))
@@ -2695,16 +2722,14 @@ constexpr int kWatchSweepMs = 10'000;
 
 // What watchCheck looks at besides the sessions folder's own files: live
 // background sessions' state files and live transcripts.
-std::vector<std::string> Backend::watchedFiles(bool *anyBusy) const {
+std::vector<std::string> Backend::watchedFiles() const {
     std::vector<std::string> want;
     for (const auto &[id, tp] : _sessions) {
         const Tracked &t = *tp;
-        if (anyBusy)
-            *anyBusy = *anyBusy || t.sending || busy(t);
         if ((!t.listed && !t.sending) || t.info.sessionId.empty())
             continue;
         if (t.info.kind == SessionInfo::Kind::Background)
-            want.push_back(_paths.jobsDir() + "/" + t.info.sessionId.substr(0, 8) + "/state.json");
+            want.push_back(_paths.jobDir(jobIdOr(t.info.sessionId, t.info.jobId)) + "/state.json");
         if (!t.transcriptPath.empty())
             want.push_back(t.transcriptPath);
     }
@@ -2724,7 +2749,7 @@ void Backend::watchCheck() {
     syncWatches(); // first: what changes from here on wakes the loop
     std::vector<file::DirEntry> entries;
     file::listDir(sessionsDir, &entries);
-    std::vector<std::string> want = watchedFiles(nullptr);
+    std::vector<std::string> want = watchedFiles();
     for (const auto &e : entries)
         if (!e.isDir && str::endsWith(e.name, ".json"))
             want.push_back(sessionsDir + "/" + e.name);
@@ -2755,8 +2780,9 @@ void Backend::watchCheck() {
 }
 
 void Backend::watchTick() {
-    bool anyBusy = false;
-    watchedFiles(&anyBusy);
+    const bool anyBusy = std::any_of(_sessions.begin(), _sessions.end(), [this](const auto &kv) {
+        return kv.second->sending || busy(*kv.second);
+    });
     // The questions msga holds for their hooks: it is still here.
     for (const auto &[id, tp] : _sessions)
         if (!tp->hookQuestion.empty() && !tp->approvalAnswered)
@@ -2794,7 +2820,7 @@ void Backend::syncWatches() {
     }
     if (_inotify < 0)
         return;
-    std::vector<std::string> files = watchedFiles(nullptr);
+    std::vector<std::string> files = watchedFiles();
     std::vector<std::string> dirs{_paths.sessionsDir(), _paths.jobsDir(), _approvalsDir};
     for (const std::string &f : files)
         if (const std::string d(file::dirName(f));

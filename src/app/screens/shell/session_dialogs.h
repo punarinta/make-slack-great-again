@@ -125,6 +125,14 @@ private:
 
 // The finders' close button (32 px, a 14 px cross).
 ui::Clickable *addDialogCloseButton(ui::View *parent);
+// A finder's top bar: a row with the search field (`search`) first, `bottom`
+// px of padding under it. The caller adds its buttons, then the close button.
+ui::View *
+addFinderBar(ui::View *content, float bottom, const char *placeholder, ui::TextField *&search);
+// The bar's primary button (it takes no focus from the search field): closes
+// `dialog`, then calls `then`.
+ui::Button *
+addFinderButton(ui::Dialog &dialog, ui::View *bar, const char *label, std::function<void()> then);
 
 // "Find a session". pick(id) after a row was chosen (the dialog is closed),
 // create() after "Create a session".
@@ -158,6 +166,9 @@ ui::Popup *showTeammateDialog(
 // "Remove teammate": remove() after Remove.
 ui::Popup *
 showRemoveTeammateDialog(ui::Window &w, const std::string &name, std::function<void()> remove);
+
+// A person's row: `name` over "@handle" (when that differs), their picture.
+BrowseList::Item userItem(const model::User &u, const std::string &name);
 
 // The finder's row for a session;
 // `home` is replaced by "~".

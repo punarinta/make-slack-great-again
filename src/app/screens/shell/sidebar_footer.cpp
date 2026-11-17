@@ -336,8 +336,8 @@ SidebarFooter::~SidebarFooter() {
 
 void SidebarFooter::refresh() {
     const auto &store = _ctx.store();
-    const auto  caps  = _ctx.backend.capabilities();
-    const auto  sp    = _ctx.backend.selfPresence();
+    const auto  caps  = _ctx.backend().capabilities();
+    const auto  sp    = _ctx.backend().selfPresence();
     const auto &me    = store.user(store.me);
     // Presence is supported with presence && self presence: a zen-mode service
     // (Claude Code) has presence dots but no self presence to toggle.
@@ -365,7 +365,7 @@ void SidebarFooter::refresh() {
     // The presence tooltip: while away only for want of a connected client,
     // it says why the presence link isn't (yet) fixing that.
     using L          = model::Backend::PresenceLink;
-    const L     link = _ctx.backend.presenceLink();
+    const L     link = _ctx.backend().presenceLink();
     const char *tip  = nullptr;
     if (_toggle->hidden())
         tip =
@@ -413,10 +413,10 @@ void SidebarFooter::togglePresence() {
         pa.cancelTimer(_confirm);
     _confirm = pa.addTimer(kConfirmMs, false, [this] {
         _confirm = 0;
-        _toggle->show(_ctx.backend.selfPresence().manualAway, true);
+        _toggle->show(_ctx.backend().selfPresence().manualAway, true);
         refresh();
     });
-    _ctx.backend.setPresence(target, [this](bool ok, const std::string &err) {
+    _ctx.backend().setPresence(target, [this](bool ok, const std::string &err) {
         // A failure says so (with the re-sign-in
         // hint a missing scope needs).
         if (!ok && onError)
@@ -431,7 +431,7 @@ void SidebarFooter::togglePresence() {
             _ctx.app.platform().cancelTimer(_confirm);
             _confirm = 0;
         }
-        _toggle->show(_ctx.backend.selfPresence().manualAway, true);
+        _toggle->show(_ctx.backend().selfPresence().manualAway, true);
         refresh();
     });
 }
@@ -445,7 +445,7 @@ void SidebarFooter::showAvatarMenu() {
     items[0].label   = tr("Manage profile");
     items[0].icon    = uint16_t(Icon::CircleUserRound);
     items[0].enabled = bool(onManageProfile);
-    if (_ctx.backend.capabilities().selfStatus) {
+    if (_ctx.backend().capabilities().selfStatus) {
         MenuItem st;
         st.id      = 2;
         st.label   = tr("Manage status");

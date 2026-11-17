@@ -50,9 +50,9 @@ void SlackBackend::loadActivity(
          {"exclude_automations", "false"}}
     );
     if (!cursor.empty())
-        form += "&" + net::formEncode({{"cursor", cursor}});
+        addParam(form, "cursor", cursor);
     if (_activityTeamId)
-        form += "&" + net::formEncode({{"team_id", _store.workspaceId}});
+        addParam(form, "team_id", _store.workspaceId);
     readCall(
         "activity.feed",
         std::move(form),
@@ -194,7 +194,7 @@ void SlackBackend::setActivityRead(const ActivityItem &item, bool read) {
     entries.key("feed_ts").value(item.feedTs).endObject().endArray();
     std::string form = net::formEncode({{"entries", entries.str()}});
     if (_activityTeamId)
-        form += "&" + net::formEncode({{"team_id", _store.workspaceId}});
+        addParam(form, "team_id", _store.workspaceId);
     api(read ? "activity.markRead" : "activity.markUnread",
         std::move(form),
         std::function<void(const json::Document &)>(),

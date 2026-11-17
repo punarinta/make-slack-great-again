@@ -756,7 +756,7 @@ TEST("store slot: observers move to the new Store and hear Roster then Users") {
     const Store::ObserverId id = slot.observe(Store::kAnyConv, views.fn());
     b.observe(Store::kAnyConv, pinned.fn()); // b's own (a background workspace's)
     CHECK(&slot() == &a);
-    a.updateConversation(0, [](Conversation &) {});
+    a.updateConversation(0, [](Conversation &c) { c.topic += "!"; });
     REQUIRE(views.log.size() == 1);
     CHECK(views.log[0].kind == ChangeKind::Meta);
 
@@ -770,16 +770,16 @@ TEST("store slot: observers move to the new Store and hear Roster then Users") {
 
     // a's changes no longer reach the views; b's do, and b's own observer too.
     views.log.clear();
-    a.updateConversation(0, [](Conversation &) {});
+    a.updateConversation(0, [](Conversation &c) { c.topic += "!"; });
     CHECK(views.log.empty());
-    b.updateConversation(0, [](Conversation &) {});
+    b.updateConversation(0, [](Conversation &c) { c.topic += "!"; });
     CHECK(views.log.size() == 1);
     CHECK(pinned.log.size() == 1);
 
     // The slot's id unobserves wherever the observer lives now.
     slot.unobserve(id);
     views.log.clear();
-    b.updateConversation(0, [](Conversation &) {});
+    b.updateConversation(0, [](Conversation &c) { c.topic += "!"; });
     CHECK(views.log.empty());
     slot.setTarget(a); // nobody left to tell
     CHECK(views.log.empty());
@@ -807,7 +807,7 @@ TEST("store slot: an observer may unobserve itself while hearing the switch") {
     });
     slot.setTarget(b);
     CHECK(heard == 1); // Roster, then gone before Users
-    b.updateConversation(0, [](Conversation &) {});
+    b.updateConversation(0, [](Conversation &c) { c.topic += "!"; });
     CHECK(heard == 1);
 }
 
@@ -824,4 +824,40 @@ TEST("backend: calls a service lacks default to nothing") {
     b.setPinned(0, 1, true);
     b.userTyping(0, 0);
     CHECK(s.conversationCount() == 0);
+}
+
+TEST("store: an edit or a read that changed nothing emits no Meta") {
+    Fixture f;
+    f.s.addMessage(f.c, msg(100, f.mira));
+    Recorder r;
+    f.s.observe(f.c, r.fn());
+    f.s.updateConversation(f.c, [](Conversation &c) { c.starred = false; }); // already
+    f.s.markRead(f.c, 100);
+    REQUIRE(r.log.size() == 1); // the read moved the cursor
+    f.s.markRead(f.c, 100);     // again: nothing new
+    f.s.markRead(f.c, 50);      // never backwards
+    CHECK(r.log.size() == 1);
+    f.s.updateConversation(f.c, [](Conversation &c) { c.starred = true; });
+    CHECK(r.log.size() == 2);
+    CHECK(r.log.back().kind == ChangeKind::Meta);
+}
+
+TEST("store: setSaved sets the flag, the reminder and the item with one Update") {
+    Fixture f;
+    f.s.addMessage(f.c, msg(100, f.mira));
+    Recorder r;
+    f.s.observe(f.c, r.fn());
+    f.s.setSaved(f.c, 100, true, 1900000000);
+    CHECK(f.s.findMessage(f.c, 100)->saved);
+    CHECK(f.s.reminderAt(f.c, 100) == 1900000000);
+    REQUIRE(f.s.findSaved(f.c, 100));
+    CHECK(f.s.findSaved(f.c, 100)->due == 1900000000);
+    CHECK(r.log.size() == 1);
+    f.s.setSaved(f.c, 100, true, 1900000000); // the same again: no news
+    CHECK(r.log.size() == 1);
+    f.s.setSaved(f.c, 100, false, 1900000000); // unsaved: the reminder goes too
+    CHECK_FALSE(f.s.findMessage(f.c, 100)->saved);
+    CHECK(f.s.reminderAt(f.c, 100) == 0);
+    CHECK_FALSE(f.s.findSaved(f.c, 100));
+    CHECK(r.log.size() == 2);
 }

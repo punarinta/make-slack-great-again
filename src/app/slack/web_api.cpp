@@ -109,6 +109,14 @@ public:
 
 } // namespace
 
+void addParam(std::string &form, std::string_view key, std::string_view value) {
+    if (!form.empty())
+        form += '&';
+    form += net::percentEncode(key);
+    form += '=';
+    form += net::percentEncode(value);
+}
+
 net::RequestId apiCall(
     net::Client &client, const Auth &auth, std::string_view method, std::string form, ApiDone done
 ) {
@@ -125,9 +133,7 @@ net::RequestId apiCall(
         // enterprise api needs the team_id, so for now leave it in, slack doesn't
         // seem to care
         if (!auth.orgTeamId.empty() && form.find("team_id=") == std::string::npos)
-            form.append(form.empty() ? "" : "&")
-                .append("team_id=")
-                .append(net::percentEncode(auth.orgTeamId));
+            addParam(form, "team_id", auth.orgTeamId);
     }
     const Auth &use = toOrg ? org : auth;
 

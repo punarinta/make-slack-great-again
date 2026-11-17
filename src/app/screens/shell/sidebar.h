@@ -265,6 +265,7 @@ private:
     // The section kind this conversation belongs in. Shared by rebuild() and
     // the Meta-event flip check so they can't disagree.
     Kind               classify(model::ConvRef ref) const;
+    Kind               classify(model::ConvRef ref, bool drafted) const;
     bool               misplaced(model::ConvRef ref) const; // its row would move
     bool               relevant(model::ConvRef c) const;
     void               applyCollapse(SectionHeader *h);

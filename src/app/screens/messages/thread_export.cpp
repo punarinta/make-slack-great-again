@@ -228,7 +228,7 @@ void exportThread(
         if (ch.kind == model::ChangeKind::Roster && !s->valid())
             s->fail("the workspace changed");
     });
-    ctx.backend.loadThread(conv, root, [x](bool ok, const std::string &err) {
+    ctx.backend().loadThread(conv, root, [x](bool ok, const std::string &err) {
         if (x->over)
             return;
         if (!ok) {

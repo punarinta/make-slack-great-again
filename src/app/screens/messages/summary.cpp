@@ -139,7 +139,7 @@ void fetchNext(const JobPtr &j) {
         return;
     }
     const Ts root = j->roots[j->next];
-    j->ctx.backend.loadThread(j->conv, root, [j, root](bool, const std::string &) {
+    j->ctx.backend().loadThread(j->conv, root, [j, root](bool, const std::string &) {
         if (j->asked || j->next >= j->roots.size() || j->roots[j->next] != root)
             return; // the deadline went on without it
         if (j->sameStore())

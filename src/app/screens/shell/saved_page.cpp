@@ -54,7 +54,7 @@ public:
             page._avatars,
             who,
             !item.botAvatar.empty() ? item.botAvatar : u.avatar,
-            base::dateTimeLabel(model::tsSecs(item.ts), ctx.backend.nowSecs())
+            base::dateTimeLabel(model::tsSecs(item.ts), ctx.backend().nowSecs())
         );
         const std::string text = searchPreview(st, item.text);
         col->add<Label>(text.empty() ? std::string(tr("No preview available")) : text, Font::Body)
@@ -80,9 +80,9 @@ public:
     // The saved item goes, reminder or not.
     void remove() {
         if (_item.due > 0)
-            _page._ctx.backend.setReminder(_item.conv, _item.ts, 0);
+            _page._ctx.backend().setReminder(_item.conv, _item.ts, 0);
         else
-            _page._ctx.backend.setSaved(_item.conv, _item.ts, false);
+            _page._ctx.backend().setSaved(_item.conv, _item.ts, false);
     }
 
 private:
@@ -154,7 +154,7 @@ void SavedPage::resolvePreviews() {
         _tried.push_back(key);
         std::weak_ptr<int> alive = _alive;
         const std::string  ws    = _ctx.store().workspaceId;
-        _ctx.backend.loadMessage(s.conv, s.ts, [this, alive, ws, key](bool ok, model::Message m) {
+        _ctx.backend().loadMessage(s.conv, s.ts, [this, alive, ws, key](bool ok, model::Message m) {
             if (alive.expired() || _ctx.store().workspaceId != ws)
                 return;
             _ctx.store().setSavedPreview(key.first, key.second, ok ? &m : nullptr);

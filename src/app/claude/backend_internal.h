@@ -178,6 +178,7 @@ struct Backend::Tracked {
     // last looked for, and those found ended.
     std::map<std::string, int64_t>              orphanLookedMs;
     std::set<std::string>                       orphansGone;
+    int64_t                            jobsReadMs = 0;  // when pumpJobs last read the jobs' files
     bool                               wasLive = false; // listed or sending at the previous refresh
     // Its user as last pushed (syncMeta): only pushed when it changed.
     std::string                        userSig;

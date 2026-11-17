@@ -387,7 +387,7 @@ void Tour::run(const TourStep &step, Done done) {
         case K::React:
             moveTo(pos, [this, c, ts, emoji = step.arg2, done] {
                 after(350, [this, c, ts, emoji, done] {
-                    _ctx.backend.react(c, ts, emoji, true);
+                    _ctx.backend().react(c, ts, emoji, true);
                     done();
                 });
             });

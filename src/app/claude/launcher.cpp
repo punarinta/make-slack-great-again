@@ -306,8 +306,8 @@ void Launcher::reapLeftovers(
     const std::string &sessionId, std::function<void()> done, const std::string &jobId
 ) {
     // Looked for on a worker: that reads every process's environment (/proc).
-    const std::string shortId = jobId.empty() ? sessionId.substr(0, 8) : jobId;
-    const auto        signal  = [paths = _paths, sessionId, shortId](bool force) {
+    const std::string shortId(jobIdOr(sessionId, jobId));
+    const auto        signal = [paths = _paths, sessionId, shortId](bool force) {
         auto pids = leftoverProcesses(sessionId, shortId);
         for (const int64_t pid : strandedWorker(paths, sessionId, shortId))
             pids.push_back(pid);
@@ -364,8 +364,8 @@ void Launcher::remove(
     const std::string                       &cwd,
     std::function<void(std::string refusal)> done
 ) {
-    const std::string shortId = jobId.empty() ? sessionId.substr(0, 8) : jobId;
-    auto              pids    = liveWorkerPids(_paths, sessionId, shortId);
+    const std::string shortId(jobIdOr(sessionId, jobId));
+    auto              pids = liveWorkerPids(_paths, sessionId, shortId);
     run({"rm", shortId},
         cwd,
         [this, sessionId, shortId, pids = std::move(pids), done = std::move(done)](

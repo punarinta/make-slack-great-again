@@ -198,12 +198,9 @@ public:
         for (const auto &[name, u] : byName) {
             const model::User &user = st.user(u);
             const std::string  label(user.label());
-            BrowseList::Item   it;
-            it.id     = user.id;
-            it.avatar = user.avatar;
-            it.title  = u == st.me ? i18n::arg(tr("%1 (you)"), label) : label;
-            if (!user.name.empty() && user.name != label)
-                it.subtitle = "@" + user.name;
+            BrowseList::Item   it = userItem(user, label);
+            if (u == st.me)
+                it.title = i18n::arg(tr("%1 (you)"), label);
             if (!user.title.empty())
                 it.subtitle += (it.subtitle.empty() ? "" : " \xC2\xB7 ") + user.title;
             it.searchKey = screens::userSearchKey(user, true);
@@ -318,7 +315,7 @@ ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _av
     _avatar = heading->add<HeaderAvatar>();
     _avatar->setVisible(false);
     _avatar->onClick = [this] {
-        if (_avatar->isGroup() && _ctx.backend.capabilities().memberList)
+        if (_avatar->isGroup() && _ctx.backend().capabilities().memberList)
             openMembers(_avatar->windowRect());
     };
 #ifdef __APPLE__
@@ -356,7 +353,7 @@ ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _av
     _star->style().margins(0, 0, 2, 0);
     _star->onClick = [this] {
         if (_conv != kNoConv)
-            _ctx.backend.setStarred(_conv, !_ctx.store().conversation(_conv).starred);
+            _ctx.backend().setStarred(_conv, !_ctx.store().conversation(_conv).starred);
     };
     auto *search =
         actions->add<GlyphButton>(Icon::Search, 32, 16, C::FormIcon, tr("Search messages"));
@@ -434,7 +431,7 @@ void ConvHeader::refresh() {
         return;
     const auto &st   = _ctx.store();
     const auto &c    = st.conversation(_conv);
-    const auto  caps = _ctx.backend.capabilities();
+    const auto  caps = _ctx.backend().capabilities();
     _title->setText(convTitle(st, _conv));
     _star->setVisible(true);
     _star->setStarred(c.starred);
@@ -461,7 +458,7 @@ void ConvHeader::refresh() {
         // connected, and for any peer that can't be reached (an agent
         // session that is gone: presenceOf).
         const bool self = c.dmUser == st.me;
-        const auto sp   = _ctx.backend.selfPresence();
+        const auto sp   = _ctx.backend().selfPresence();
         a->setPresence(
             Avatar::presenceOf(&u, caps.presence, self && sp.phantomAway()),
             C::BadgeText // the header dot's ring is white
@@ -480,7 +477,7 @@ void ConvHeader::refresh() {
         // conversations.list leaves a renamed group DM's members out: ask once
         // (the backend files them into the conversation, which repaints this).
         if (caps.memberList && c.members.empty() && _membersAsked.insert(c.id).second)
-            _ctx.backend.loadMembers(_conv, [](std::vector<model::UserRef>, std::string) {});
+            _ctx.backend().loadMembers(_conv, [](std::vector<model::UserRef>, std::string) {});
         std::vector<std::shared_ptr<const gfx::Bitmap>> pics;
         std::vector<std::string_view>                   names;
         for (model::UserRef u : c.members)
@@ -513,7 +510,7 @@ void ConvHeader::openMembers(RectF anchor) {
     // token, so the token dies with it.
     auto token    = std::make_shared<int>(0);
     raw->onClosed = [token] {};
-    _ctx.backend.loadMembers(
+    _ctx.backend().loadMembers(
         _conv,
         [raw, weak = std::weak_ptr<int>(token)](std::vector<model::UserRef> ids, std::string err) {
             if (weak.expired())

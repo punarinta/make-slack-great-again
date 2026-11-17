@@ -205,17 +205,20 @@ public:
 
 private:
     // ── backend.cpp ─────────────────────────────────────────────────────────
-    void                       loadKnown();
-    void                       saveKnown();
-    void                       scheduleSaveKnown();
-    void                       sectionsChanged() override; // kept with the known sessions
-    Tracked                   &ensureTracked(const std::string &convId);
-    Tracked                   *find(std::string_view convId);
-    const Tracked             *find(std::string_view convId) const;
-    Tracked                   *findRef(model::ConvRef conv);
-    const Tracked             *findRef(model::ConvRef conv) const;
-    std::string                convIdFor(const std::string &sessionId) const;
-    void                       tail(Tracked &t);
+    void           loadKnown();
+    void           saveKnown();
+    void           scheduleSaveKnown();
+    void           sectionsChanged() override; // kept with the known sessions
+    Tracked       &ensureTracked(const std::string &convId);
+    Tracked       *find(std::string_view convId);
+    const Tracked *find(std::string_view convId) const;
+    Tracked       *findRef(model::ConvRef conv);
+    const Tracked *findRef(model::ConvRef conv) const;
+    std::string    convIdFor(const std::string &sessionId) const;
+    void           tail(Tracked &t);
+    // What a transcript `size` bytes long has past `offset`, fed to `parser`.
+    void
+    feedAppended(const std::string &path, int64_t size, int64_t &offset, TranscriptParser &parser);
     // A whole transcript (re)read from its start: on a worker (parseOnWorker,
     // when it's big), the session read nothing meanwhile (Tracked::parsing).
     void                       parseOnWorker(Tracked &t);
@@ -239,25 +242,27 @@ private:
     void                       watchCheck(); // the look: what changed since the last
     void                       syncWatches();
     void                       readWatchEvents();
-    std::vector<std::string>   watchedFiles(bool *anyBusy) const;
+    std::vector<std::string>   watchedFiles() const;
     // `looked`: findSubagentRuns has just run (the refresh's own look).
     void                       pumpTyping(bool looked = false);
     // Its background jobs into the Store (progress.h): the commands it runs
     // in the background, its own reports, and those it saw end until the
     // user is done with them. True while any runs.
     bool                       pumpJobs(Tracked &t);
-    void                       announceRoles();
+    // A gone worker's command: still running? (on a worker; orphansGone)
+    void lookForOrphan(const Tracked &t, const std::string &taskId, const std::string &output);
+    void announceRoles();
     // Puts what the session shows into the Store: its messages (where its
     // history was loaded), its conversation and its user.
-    void                       sync(Tracked &t);
-    void                       syncMeta(Tracked &t);
-    void                       syncThreads(Tracked &t);
-    void           syncList(model::ConvRef conv, model::Ts root, const std::vector<Visible> &want);
-    void           syncUsers();
+    void sync(Tracked &t);
+    void syncMeta(Tracked &t);
+    void syncThreads(Tracked &t);
+    void syncList(model::ConvRef conv, model::Ts root, const std::vector<Visible> &want);
+    void syncUsers();
     // Puts a user into the Store and tells its observers (Store::addUser
     // alone fires nothing: a dot or a name would change unseen). Inside a
     // roster refresh the users change once, at its end.
-    void           putUser(model::User u);
+    void putUser(model::User u);
     model::UserRef userRef(const std::string &id);
     model::UserRef roleUser(const std::string &role);
     model::UserRef sessionUser(const Tracked &t);

@@ -170,7 +170,7 @@ void CanvasPage::loadContent() {
     const uint64_t seq = _seq;
     _refetching        = true;
     // The meta first: the file's title names the title h1 in the HTML.
-    _ctx.backend.loadCanvasMeta(
+    _ctx.backend().loadCanvasMeta(
         _fileId,
         [this,
          alive = std::weak_ptr<bool>(_alive),
@@ -210,7 +210,7 @@ void CanvasPage::loadContent() {
             _permalink = std::move(link);
             if (!title.empty())
                 _serverTitle = std::move(title);
-            _ctx.backend.loadCanvasContent(
+            _ctx.backend().loadCanvasContent(
                 _fileId, [this, alive, seq](std::string html, std::string error) {
                     if (alive.expired() || seq != _seq)
                         return;
@@ -292,7 +292,7 @@ void CanvasPage::flushPendingSave() {
         // The body only; the title follows as a rename (it is a separate
         // field Slack renders as a leading h1 — "# title" would repeat it).
         _bodyDirty = _titleDirty = false;
-        _ctx.backend.createChannelCanvas(
+        _ctx.backend().createChannelCanvas(
             _conv, md, [this, alive, seq, title](std::string fileId, std::string error) {
                 if (alive.expired())
                     return;
@@ -309,7 +309,7 @@ void CanvasPage::flushPendingSave() {
                     // It had a canvas we didn't know about (a free team's
                     // canvas tab): adopt it and save as an edit instead.
                     if (error.find("already_exists") != std::string::npos) {
-                        _ctx.backend.loadChannelCanvas(_conv, [this, alive, seq](std::string id) {
+                        _ctx.backend().loadChannelCanvas(_conv, [this, alive, seq](std::string id) {
                             if (alive.expired() || seq != _seq || id.empty())
                                 return;
                             _fileId = std::move(id);
@@ -333,7 +333,7 @@ void CanvasPage::flushPendingSave() {
                 if (title.empty())
                     finish(true, {});
                 else
-                    _ctx.backend.editCanvas(_fileId, {{Change::Op::Rename, title}}, finish);
+                    _ctx.backend().editCanvas(_fileId, {{Change::Op::Rename, title}}, finish);
             }
         );
         return;
@@ -372,7 +372,7 @@ void CanvasPage::flushPendingSave() {
         _saving = false;
         return;
     }
-    _ctx.backend.editCanvas(
+    _ctx.backend().editCanvas(
         _fileId, std::move(changes), [this, alive, seq](bool ok, const std::string &error) {
             if (alive.expired())
                 return;
@@ -461,7 +461,7 @@ void CanvasPage::confirmDelete() {
         // Pending edits would re-create content on a dead canvas.
         dropTimer();
         _bodyDirty = _titleDirty = false;
-        _ctx.backend.deleteCanvas(_fileId, [this, alive](bool ok, const std::string &error) {
+        _ctx.backend().deleteCanvas(_fileId, [this, alive](bool ok, const std::string &error) {
             if (alive.expired())
                 return;
             if (!ok) {

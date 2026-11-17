@@ -333,14 +333,9 @@ void SlackBackend::Live::apply(const json::Value &ev, bool ours) {
         model::User u = mapjson::toUser(ev["user"]);
         if (u.id.empty())
             return;
-        const UserRef r = s.findUser(u.id);
-        if (r == kNoUser && !ours)
+        if (!ours && s.findUser(u.id) == kNoUser)
             return;
-        if (r != kNoUser) {
-            u.active = s.user(r).active;
-            u.dnd    = s.user(r).dnd;
-        }
-        s.usersChanged(s.addUser(std::move(u)));
+        s.usersChanged(b.mergeUser(std::move(u)));
         return;
     }
     if (type == "subteam_created" || type == "subteam_updated" ||

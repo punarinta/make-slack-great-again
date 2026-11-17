@@ -159,32 +159,13 @@ public:
         std::function<void(const std::string &)> pick,
         std::function<void()>                    create
     )
-        : Dialog(std::string(), 720), _ctx(ctx), _pick(std::move(pick)),
-          _create(std::move(create)) {
+        : Dialog(std::string(), 720), _ctx(ctx), _pick(std::move(pick)) {
         // A bare card: its own chrome, the list edge to edge.
         content()->style().spacing(0).minH = 520;
 
-        auto *top = content()->add<View>();
-        top->style()
-            .row()
-            .items(Align::Center)
-            .spacing(8)
-            .padding(24, 20, 24 - Dialog::kCloseInset, 12);
-        _search = top->add<TextField>(
-            tr("Search for sessions"), TextField::Size::Normal, uint16_t(Icon::Search)
-        );
-        _search->style().flex(1).minW = 200;
-        if (_create) { // not in the session picker
-            auto *createBtn =
-                top->add<Button>(tr("Create a session"), V::Primary, Button::Form::Normal);
-            createBtn->setFocusable(false);
-            createBtn->onClick = [this] {
-                auto cb = _create;
-                reject();
-                if (cb)
-                    cb();
-            };
-        }
+        auto *top = addFinderBar(content(), 12, tr("Search for sessions"), _search);
+        if (create) // not in the session picker
+            addFinderButton(*this, top, tr("Create a session"), std::move(create));
         top->add<CloseX>()->onClick = [this] { reject(); };
 
         content()->add<Separator>(false, C::FormDivider);
@@ -243,7 +224,6 @@ private:
 
     screens::Context                        &_ctx;
     std::function<void(const std::string &)> _pick;
-    std::function<void()>                    _create;
     TextField                               *_search = nullptr;
     Label                                   *_status = nullptr;
     BrowseList                              *_list   = nullptr;
@@ -464,6 +444,30 @@ Clickable *addDialogCloseButton(View *parent) {
     return parent->add<CloseX>();
 }
 
+View *addFinderBar(View *content, float bottom, const char *placeholder, TextField *&search) {
+    auto *top = content->add<View>();
+    top->style()
+        .row()
+        .items(Align::Center)
+        .spacing(8)
+        .padding(24, 20, 24 - Dialog::kCloseInset, bottom);
+    search = top->add<TextField>(placeholder, TextField::Size::Normal, uint16_t(Icon::Search));
+    search->style().flex(1).minW = 200;
+    return top;
+}
+
+Button *addFinderButton(Dialog &dialog, View *bar, const char *label, std::function<void()> then) {
+    auto *b = bar->add<Button>(label, V::Primary, Button::Form::Normal);
+    b->setFocusable(false);
+    b->onClick = [&dialog, then = std::move(then)] {
+        auto cb = then; // closing tears down this button (deferred)
+        dialog.reject();
+        if (cb)
+            cb();
+    };
+    return b;
+}
+
 // ── BrowseList ──────────────────────────────────────────────────────────────
 
 std::unique_ptr<View> BrowseListData::Rows::create(int) {
@@ -621,6 +625,16 @@ void BrowseList::paint(gfx::Painter &p) {
     if (_opt.fill)
         p.fillRect(bounds(), color(_onContent ? C::Surface : C::FormBg));
     VirtualList::paint(p);
+}
+
+BrowseList::Item userItem(const model::User &u, const std::string &name) {
+    BrowseList::Item it;
+    it.id     = u.id;
+    it.title  = name;
+    it.avatar = u.avatar;
+    if (!u.name.empty() && u.name != name)
+        it.subtitle = "@" + u.name;
+    return it;
 }
 
 BrowseList::Item

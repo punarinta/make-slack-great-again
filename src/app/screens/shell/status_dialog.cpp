@@ -180,7 +180,7 @@ int64_t StatusDialog::expiry(int64_t now) const {
 }
 
 void StatusDialog::apply(std::string emoji, std::string text, int64_t expiry) {
-    _ctx.backend.setStatus(
+    _ctx.backend().setStatus(
         std::move(emoji),
         std::move(text),
         expiry,
@@ -265,7 +265,7 @@ ProfileDialog::ProfileDialog(screens::Context &ctx, Avatars &avatars)
     Label *emailLabel = lastLabel;
     _phone            = field(tr("Phone"), tr("Optional"));
     // A profile that is only a name and a picture (Claude Code) has no contacts.
-    if (!_ctx.backend.capabilities().profileContact)
+    if (!_ctx.backend().capabilities().profileContact)
         for (View *v : {(View *)emailLabel, (View *)_email, (View *)lastLabel, (View *)_phone})
             v->setVisible(false);
     // StyledLineEdit's max-length counter: the characters left of 80.
@@ -292,7 +292,7 @@ ProfileDialog::ProfileDialog(screens::Context &ctx, Avatars &avatars)
     _name->setText(me.label());
     _avatar->setBitmap(avatars.get(me.avatar, 240));
     std::weak_ptr<int> alive = _alive;
-    ctx.backend.loadMyProfile([this, alive](model::Backend::MyProfile p) {
+    ctx.backend().loadMyProfile([this, alive](model::Backend::MyProfile p) {
         if (alive.expired())
             return;
         _loaded   = p;
@@ -328,7 +328,7 @@ void ProfileDialog::pickPhoto() {
         if (alive.expired() || paths.empty())
             return;
         status(tr("Uploading photo\xE2\x80\xA6"), false);
-        _ctx.backend.setPhoto(paths[0], [this, alive](bool ok, const std::string &err) {
+        _ctx.backend().setPhoto(paths[0], [this, alive](bool ok, const std::string &err) {
             if (alive.expired())
                 return;
             if (!ok)
@@ -351,15 +351,17 @@ void ProfileDialog::save() {
     _save->setEnabled(false);
     status(tr("Saving\xE2\x80\xA6"), false);
     std::weak_ptr<int> alive = _alive;
-    _ctx.backend.updateProfile(name, email, phone, [this, alive](bool ok, const std::string &err) {
-        if (alive.expired())
-            return;
-        if (!ok) {
-            _save->setEnabled(true);
-            return status(i18n::arg(tr("Could not save: %1"), err), true);
+    _ctx.backend().updateProfile(
+        name, email, phone, [this, alive](bool ok, const std::string &err) {
+            if (alive.expired())
+                return;
+            if (!ok) {
+                _save->setEnabled(true);
+                return status(i18n::arg(tr("Could not save: %1"), err), true);
+            }
+            accept();
         }
-        accept();
-    });
+    );
 }
 
 } // namespace shell

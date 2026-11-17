@@ -377,15 +377,6 @@ void FakeBackend::setConvFlag(ConvRef conv, ConvFlag f, int v) {
     });
 }
 
-void FakeBackend::setMessageFlag(ConvRef conv, Ts ts, bool pinFlag, bool on) {
-    const model::UserRef me = _store.me;
-    _store.updateMessage(conv, ts, [pinFlag, on, me](model::Message &m) {
-        (pinFlag ? m.pinned : m.saved) = on;
-        if (pinFlag)
-            m.pinnedBy = on ? me : model::kNoUser;
-    });
-}
-
 void FakeBackend::setStarred(ConvRef conv, bool starred) {
     if (starred)
         leaveSection(conv);
@@ -516,21 +507,20 @@ void FakeBackend::createChannel(std::string name, bool isPrivate, ConvDone done)
 }
 
 void FakeBackend::setPinned(ConvRef conv, Ts ts, bool pinned) {
-    setMessageFlag(conv, ts, true, pinned);
+    _store.updateMessage(conv, ts, [pinned, me = _store.me](model::Message &m) {
+        m.pinned   = pinned;
+        m.pinnedBy = pinned ? me : model::kNoUser;
+    });
 }
 
 void FakeBackend::setSaved(ConvRef conv, Ts ts, bool saved) {
-    setMessageFlag(conv, ts, false, saved);
-    _store.setReminderAt(conv, ts, 0);
-    _store.setSavedItem(conv, ts, saved, 0);
+    _store.setSaved(conv, ts, saved);
 }
 
 void FakeBackend::setReminder(ConvRef conv, Ts ts, int64_t due) {
     // A reminder is a saved item with a due date; removing it removes both.
     // (The fake never fires it: Slack's due time only moves it in Later.)
-    setMessageFlag(conv, ts, false, due > 0);
-    _store.setReminderAt(conv, ts, due);
-    _store.setSavedItem(conv, ts, due > 0, due);
+    _store.setSaved(conv, ts, due > 0, due);
 }
 
 void FakeBackend::deleteFile(ConvRef conv, Ts ts, const std::string &fileId) {

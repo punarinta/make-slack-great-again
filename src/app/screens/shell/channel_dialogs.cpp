@@ -155,21 +155,12 @@ public:
         std::function<void(const std::vector<UserRef> &)> people
     )
         : Dialog(std::string(), 720), _ctx(ctx), _avatars(avatars), _channel(std::move(channel)),
-          _person(std::move(person)), _create(std::move(create)), _people(std::move(people)) {
+          _person(std::move(person)), _people(std::move(people)) {
         // A bare card: its own chrome, the lists edge to edge.
         content()->style().spacing(0);
 
         // ── Top bar: search + the dialog's buttons + close ──
-        auto *top = content()->add<View>();
-        top->style()
-            .row()
-            .items(Align::Center)
-            .spacing(8)
-            .padding(24, 20, 24 - Dialog::kCloseInset, 16);
-        _search = top->add<TextField>(
-            tr("Search for channels"), TextField::Size::Normal, uint16_t(Icon::Search)
-        );
-        _search->style().flex(1).minW = 200;
+        auto *top = addFinderBar(content(), 16, tr("Search for channels"), _search);
         // The People tab's second button: a DM between several people.
         _groupBtn =
             top->add<Button>(tr("New group DM"), Button::Kind::Secondary, Button::Form::Normal);
@@ -192,16 +183,8 @@ public:
             w->showPopup(std::unique_ptr<Popup>(d));
             d->search().edit().focus(); // the popup takes the focus when it shows
         };
-        auto *createBtn = top->add<Button>(
-            tr("Create Channel"), V::Primary, Button::Form::Normal
-        ); // this casing on purpose
-        createBtn->setFocusable(false);
-        createBtn->onClick = [this] {
-            auto cb = _create;
-            reject();
-            if (cb)
-                cb();
-        };
+        // "Create Channel": this casing on purpose.
+        addFinderButton(*this, top, tr("Create Channel"), std::move(create));
         addDialogCloseButton(top)->onClick = [this] { reject(); };
 
         // ── Tab bar ──
@@ -233,7 +216,7 @@ public:
             if (_tab == 0)
                 applyFilter();
         });
-        ctx.backend.loadChannelDirectory();
+        ctx.backend().loadChannelDirectory();
 
         _search->edit().onChange = [this] { applyFilter(); };
         // The search field drives the open list: arrows move, Enter opens.
@@ -277,7 +260,6 @@ private:
     Avatars                                          &_avatars;
     std::function<void(ConvRef)>                      _channel;
     std::function<void(UserRef)>                      _person;
-    std::function<void()>                             _create;
     std::function<void(const std::vector<UserRef> &)> _people;
     TextField                                        *_search   = nullptr;
     Button                                           *_groupBtn = nullptr;
@@ -452,15 +434,9 @@ std::vector<BrowseList::Item> peopleItems(const model::Store &store) {
     std::vector<BrowseList::Item> items;
     items.reserve(people.size());
     for (UserRef r : people) {
-        const model::User &u    = store.user(r);
-        const std::string &name = u.displayName.empty() ? u.name : u.displayName;
-        BrowseList::Item   it;
-        it.id     = u.id;
-        it.title  = name;
-        it.avatar = u.avatar;
-        if (!u.name.empty() && u.name != name)
-            it.subtitle = "@" + u.name;
-        it.searchKey = screens::userSearchKey(u);
+        const model::User &u  = store.user(r);
+        BrowseList::Item   it = userItem(u, u.displayName.empty() ? u.name : u.displayName);
+        it.searchKey          = screens::userSearchKey(u);
         items.push_back(std::move(it));
     }
     return items;

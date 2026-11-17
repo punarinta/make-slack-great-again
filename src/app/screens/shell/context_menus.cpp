@@ -91,7 +91,7 @@ std::string sectionLabel(const model::Store &st, const model::Store::Section &s)
 // Under the star: "Move to section" (each section, the current one ticked,
 // then "New section…") and "Remove from <section>" while in one.
 void Menus::sectionMoves(std::vector<ui::MenuItem> &items, const model::Conversation &cv) const {
-    if (!_ctx.backend.capabilities().customSections)
+    if (!_ctx.backend().capabilities().customSections)
         return;
     const model::Store          &st  = _ctx.store();
     const model::Store::Section *cur = st.sectionOf(cv.id);
@@ -129,10 +129,10 @@ std::vector<ui::MenuItem> Menus::chatItems(ConvRef c) const {
     ui::addMenuSeparator(items);
     if (cv.kind == ConvKind::Dm) { // showDmContextMenu
         add(items, cv.muted ? kUnmute : kMute);
-        if (_ctx.backend.isAgentSession(c)) {
+        if (_ctx.backend().isAgentSession(c)) {
             // Claude Code: stop a running turn; the session stays in Claude
             // Code when it leaves the list.
-            if (_ctx.backend.canStopSession(c))
+            if (_ctx.backend().canStopSession(c))
                 add(items, kStopSession);
             add(items, kRename).label = tr("Rename session…");
             ui::addMenuSeparator(items);
@@ -204,7 +204,7 @@ void Menus::runTeammate(int id, const std::string &role) {
 
 std::vector<ui::MenuItem> Menus::sectionItems(const std::string &section, SectionSort sort) const {
     std::vector<ui::MenuItem> items;
-    if (_ctx.backend.capabilities().customSections) {
+    if (_ctx.backend().capabilities().customSections) {
         add(items, kCreateSection);
         const auto &all = _ctx.store().sections();
         for (size_t i = 0; i < all.size(); ++i)
@@ -264,7 +264,7 @@ void Menus::runSection(int id, const std::string &section) {
         break;
     case kSectionUp:
     case kSectionDown:
-        _ctx.backend.moveSection(section, id == kSectionUp ? -1 : 1);
+        _ctx.backend().moveSection(section, id == kSectionUp ? -1 : 1);
         break;
     }
 }
@@ -293,7 +293,7 @@ void Menus::run(int id, uint32_t target) {
     if (id >= kMoveToSection) { // ── "Move to section" → one of them ──
         const auto &all = _ctx.store().sections();
         if (target < _ctx.store().conversationCount() && size_t(id - kMoveToSection) < all.size())
-            _ctx.backend.moveToSection(target, all[size_t(id - kMoveToSection)].id);
+            _ctx.backend().moveToSection(target, all[size_t(id - kMoveToSection)].id);
         return;
     }
     if (id >= kFindSession) { // ── an agent workspace's "+" ──
@@ -404,14 +404,14 @@ void Menus::showWorkspace(const Workspace &w, ui::PointF at) {
 }
 
 void Menus::showSessions(ui::PointF at) {
-    if (!_ctx.backend.capabilities().agentSessions)
+    if (!_ctx.backend().capabilities().agentSessions)
         return;
     if (ui::Menu *m = show(sessionItems(), 0, at))
         m->setMinWidth(140); // at least 140 px, wider for longer labels
 }
 
 void Menus::showTeammate(const std::string &role, ui::PointF at) {
-    for (const auto &mate : _ctx.backend.agentRoles())
+    for (const auto &mate : _ctx.backend().agentRoles())
         if (mate.id == role) {
             ui::Menu::popupAt(_win, at, teammateItems(mate), [this, role](int id) {
                 if (id)

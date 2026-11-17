@@ -258,8 +258,8 @@ private:
         }
         // An agent workspace's teammates:
         // writing to one starts a session with it.
-        if (!chans && _ctx.backend.capabilities().agentSessions)
-            for (const model::Backend::AgentRole &r : _ctx.backend.agentRoles())
+        if (!chans && _ctx.backend().capabilities().agentSessions)
+            for (const model::Backend::AgentRole &r : _ctx.backend().agentRoles())
                 if (!r.id.empty() && match(r.name))
                     out.push_back({kNoConv, kNoUser, r.name, r.id});
         if (!chans) { // people without a DM (up to 50): prefix matches first
@@ -453,8 +453,8 @@ public:
           _conv(conv), _ts(ts), _onlyFile(std::move(onlyFile)), _onError(std::move(onError)),
           _workspaces(std::move(workspaces)), _prefillTeammate(std::move(prefillTeammate)) {
         // The message's workspace: the open one. Its own backend reads its
-        // files (not the screens' proxy, which follows the next switch).
-        model::Backend *srcBackend = &ctx.backend;
+        // files, also after a switch.
+        model::Backend *srcBackend = &ctx.backend();
         int             at         = -1;
         for (size_t i = 0; i < _workspaces.size(); ++i)
             if (_workspaces[i].store == &ctx.store()) {
@@ -462,7 +462,7 @@ public:
                 at         = int(i);
             }
         if (at < 0) { // the demo, tests: the open workspace alone
-            _workspaces = {ForwardWorkspace{{}, {}, &ctx.store(), &ctx.backend, {}}};
+            _workspaces = {ForwardWorkspace{{}, {}, &ctx.store(), &ctx.backend(), {}}};
             at          = 0;
         }
         _src = contextFor(ctx, ctx.store(), *srcBackend);
@@ -1326,7 +1326,7 @@ Popup *showRenameDialog(screens::Context &ctx, Window &w, ConvRef c) {
     if (c >= ctx.store().conversationCount())
         return nullptr;
     const model::Conversation &cv    = ctx.store().conversation(c);
-    const bool                 agent = ctx.backend.isAgentSession(c);
+    const bool                 agent = ctx.backend().isAgentSession(c);
     auto d = std::make_unique<Dialog>(agent ? tr("Rename session") : tr("Name conversation"));
     styledLabel(d->content(), tr("Name"), pxFont(15, text::Weight::Bold, color(C::FormText)));
     auto *field = d->content()->add<TextField>(
@@ -1351,7 +1351,7 @@ Popup *showRenameDialog(screens::Context &ctx, Window &w, ConvRef c) {
     save->onClick = [raw, field, &ctx, c] {
         std::string name(str::trim(field->text()));
         raw->accept();
-        ctx.backend.setLocalName(c, std::move(name));
+        ctx.backend().setLocalName(c, std::move(name));
     };
     field->onReturn = save->onClick;
     w.showPopup(std::move(d));
@@ -1453,9 +1453,9 @@ Popup *showSectionDialog(screens::Context &ctx, Window &w, const std::string &id
         std::string e = *emoji;
         raw->accept();
         if (id.empty())
-            ctx.backend.createSection(std::move(name), std::move(e), first);
+            ctx.backend().createSection(std::move(name), std::move(e), first);
         else
-            ctx.backend.updateSection(id, std::move(name), std::move(e));
+            ctx.backend().updateSection(id, std::move(name), std::move(e));
     };
     field->onSubmit = [save] { return save->onClick(), true; };
     w.showPopup(std::move(d));
@@ -1478,7 +1478,7 @@ Popup *showDeleteSectionDialog(screens::Context &ctx, Window &w, const std::stri
         themed(C::FormText)
     );
     Dialog *raw   = d.get();
-    d->onAccepted = [&ctx, id] { ctx.backend.deleteSection(id); };
+    d->onAccepted = [&ctx, id] { ctx.backend().deleteSection(id); };
     w.showPopup(std::move(d));
     return raw;
 }

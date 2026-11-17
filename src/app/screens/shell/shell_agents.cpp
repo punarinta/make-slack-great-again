@@ -48,7 +48,7 @@ void Shell::buildTeammatePage(View *stack) {
     _teammatePage->onFolderChanged = [this] {
         // ↑'s history for the folder: asked now, so a first look reads it
         // ahead on a worker rather than at the first ↑.
-        _ctx.backend.folderPromptHistory(_teammatePage->folder());
+        _ctx.backend().folderPromptHistory(_teammatePage->folder());
         applyTeammateComposer();
         if (teammateOpen()) // a folder picked: ready to write
             _composer->edit().focus();
@@ -65,7 +65,7 @@ bool Shell::teammateOpen() const {
 // ── The Sessions "+" ────────────────────────────────────────────────────────
 
 void Shell::openSessionFinder() {
-    if (!_ctx.backend.capabilities().agentSessions)
+    if (!_ctx.backend().capabilities().agentSessions)
         return;
     std::weak_ptr<int> alive = _agentAlive;
     showSessionFinder(
@@ -75,7 +75,7 @@ void Shell::openSessionFinder() {
         [this, alive](const std::string &id) {
             if (alive.expired())
                 return;
-            const ConvRef conv = _ctx.backend.addFoundSession(id);
+            const ConvRef conv = _ctx.backend().addFoundSession(id);
             if (conv == kNoConv) {
                 showError(tr("That session is gone: Claude Code no longer has it."));
                 return;
@@ -98,7 +98,7 @@ void Shell::openSessionFinder() {
 // Pick the directory the new session works in, and open its conversation
 // (listed when done runs). The session itself starts with the first message.
 void Shell::startAgentSession(bool skipPermissionChecks) {
-    if (!_ctx.backend.capabilities().agentSessions)
+    if (!_ctx.backend().capabilities().agentSessions)
         return;
     plat::FileDialogDesc d;
     d.mode       = plat::FileDialogDesc::Mode::PickFolder;
@@ -117,7 +117,7 @@ void Shell::startAgentSession(bool skipPermissionChecks) {
             _settings.claudeLastDir = dir;
             saveSettingsSoon();
             // The generalist; a specialist is written to on its page.
-            _ctx.backend.startAgentSession(
+            _ctx.backend().startAgentSession(
                 dir,
                 skipPermissionChecks,
                 {},
@@ -142,7 +142,7 @@ void Shell::startAgentSession(bool skipPermissionChecks) {
 void Shell::openTeammate(const std::string &role) {
     if (!_teammatePage || !_signedIn)
         return;
-    const auto       team = _ctx.backend.agentRoles();
+    const auto       team = _ctx.backend().agentRoles();
     const AgentRole *mate = findRole(team, role);
     if (!mate)
         return;
@@ -225,7 +225,7 @@ bool Shell::startSessionWithTeammate() {
     _composer->edit().clear();
     _composer->clearAttachments();
     std::weak_ptr<int> alive = _agentAlive;
-    _ctx.backend.startAgentSession(
+    _ctx.backend().startAgentSession(
         dir, false, role, [this, alive, dir, text, files](ConvRef conv, const std::string &err) {
             if (alive.expired())
                 return;
@@ -240,9 +240,9 @@ bool Shell::startSessionWithTeammate() {
             // open it, then the text is its first message.
             open(conv);
             if (files.empty())
-                _ctx.backend.send(conv, text, 0, nullptr);
+                _ctx.backend().send(conv, text, 0, nullptr);
             else
-                _ctx.backend.sendWithFiles(conv, text, 0, files, nullptr);
+                _ctx.backend().sendWithFiles(conv, text, 0, files, nullptr);
         }
     );
     return true;
@@ -269,8 +269,8 @@ void Shell::refreshTeammates() {
     _sidebar->rebuild();
     if (!teammateOpen())
         return;
-    const auto team = _ctx.backend.capabilities().agentSessions ? _ctx.backend.agentRoles()
-                                                                : std::vector<AgentRole>{};
+    const auto team = _ctx.backend().capabilities().agentSessions ? _ctx.backend().agentRoles()
+                                                                  : std::vector<AgentRole>{};
     // The page shows the teammate as it is now — or, once it's off the team,
     // the Generalist.
     if (const AgentRole *r = findRole(team, _teammatePage->teammate().id)) {
@@ -292,7 +292,7 @@ void Shell::editTeammate(const std::string &id) {
         role.glyph = "pen-tool"; // a starting point, changed in the dialog
         role.color = 0x0e8c9a;
     } else {
-        const auto       team = _ctx.backend.agentRoles();
+        const auto       team = _ctx.backend().agentRoles();
         const AgentRole *r    = findRole(team, id);
         if (!r)
             return;
@@ -303,12 +303,12 @@ void Shell::editTeammate(const std::string &id) {
         if (alive.expired())
             return;
         if (restore) {
-            _ctx.backend.restoreAgentRole(id);
+            _ctx.backend().restoreAgentRole(id);
             refreshTeammates();
             return;
         }
         std::string       error;
-        const std::string saved = _ctx.backend.saveAgentRole(edited, &error);
+        const std::string saved = _ctx.backend().saveAgentRole(edited, &error);
         if (saved.empty()) {
             showError(error);
             return;
@@ -320,12 +320,12 @@ void Shell::editTeammate(const std::string &id) {
 }
 
 void Shell::restoreTeammate(const std::string &id) {
-    _ctx.backend.restoreAgentRole(id);
+    _ctx.backend().restoreAgentRole(id);
     refreshTeammates();
 }
 
 void Shell::removeTeammate(const std::string &id) {
-    const auto       team = _ctx.backend.agentRoles();
+    const auto       team = _ctx.backend().agentRoles();
     const AgentRole *r    = findRole(team, id);
     if (!r || r->name.empty())
         return;
@@ -333,7 +333,7 @@ void Shell::removeTeammate(const std::string &id) {
     showRemoveTeammateDialog(_win, r->name, [this, alive, id] {
         if (alive.expired())
             return;
-        _ctx.backend.removeAgentRole(id);
+        _ctx.backend().removeAgentRole(id);
         refreshTeammates();
     });
 }

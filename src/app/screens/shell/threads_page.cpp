@@ -36,7 +36,7 @@ public:
             avatars,
             std::string(screens::authorName(st, m)),
             screens::authorAvatar(st, m),
-            base::dateTimeLabel(model::tsSecs(m.ts), ctx.backend.nowSecs())
+            base::dateTimeLabel(model::tsSecs(m.ts), ctx.backend().nowSecs())
         );
         auto *body = col->add<View>();
         body->style().spacing(2);
@@ -167,7 +167,7 @@ void ThreadsPage::Card::rebuildReplies() {
 
 void ThreadsPage::Card::markRead() {
     const Ts upTo = _latest ? _latest : _item.root.ts;
-    _page._ctx.backend.markThreadRead(_item.conv, _item.root.ts, upTo);
+    _page._ctx.backend().markThreadRead(_item.conv, _item.root.ts, upTo);
     _item.lastRead = upTo;
     _newPill->setVisible(false);
 }
@@ -316,7 +316,7 @@ void ThreadsPage::loadPage(std::string cursor) {
         setStatus(tr("Loading threads…"));
     const uint32_t     gen   = ++_generation;
     std::weak_ptr<int> alive = _alive;
-    _ctx.backend.loadThreadsView(
+    _ctx.backend().loadThreadsView(
         std::move(cursor), [this, alive, gen, first](bool ok, model::Backend::ThreadsView page) {
             if (alive.expired() || gen != _generation)
                 return;

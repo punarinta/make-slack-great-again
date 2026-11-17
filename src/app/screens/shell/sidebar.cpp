@@ -297,7 +297,7 @@ public:
         // Channels: "+" → find or create one; Direct messages: the browse
         // dialog's People tab; Sessions: find or create one (a right click
         // too); Team: add a teammate.
-        const bool agents = sb._ctx.backend.capabilities().agentSessions;
+        const bool agents = sb._ctx.backend().capabilities().agentSessions;
         if (k == Sidebar::Channels || k == Sidebar::Direct || k == Sidebar::Team) {
             plus = add<HeaderButton>(
                 Icon::Plus,
@@ -503,8 +503,8 @@ public:
 
 // What a conversation row and a teammate row share: selection on press
 // (not on release), the row's context menu, a hover repaint (the presence
-// dot's ring takes the hover colour), and the full name over a truncated one
-// (a tooltip).
+// dot's ring takes the hover colour: only that, not a full refresh), and the
+// full name over a truncated one (a tooltip).
 class SidebarRow : public Clickable {
 public:
     bool onEvent(Event &e) override {
@@ -515,7 +515,7 @@ public:
             return true;
         }
         if (e.type == EventType::PointerEnter || e.type == EventType::PointerLeave)
-            refresh();
+            refreshPresence();
         return Clickable::onEvent(e);
     }
     std::string tooltip() const override {
@@ -525,6 +525,7 @@ public:
 
 protected:
     virtual void refresh()                 = 0;
+    virtual void refreshPresence()         = 0; // the dot's ring, all hover changes
     virtual bool showMenu(PointF windowAt) = 0; // false: no menu here
     Label       *label                     = nullptr;
 };
@@ -657,17 +658,17 @@ public:
     }
 
     // The DM's presence dot (a users change that moved nothing else).
-    void refreshPresence() {
+    void refreshPresence() override {
         if (!avatar)
             return;
         const auto &store   = sidebar._ctx.store();
         const auto &cv      = store.conversation(conv);
         const bool  sel     = sidebar._selected == conv;
         const bool  phantom = cv.dmUser == store.me && store.me != model::kNoUser &&
-                              sidebar._ctx.backend.selfPresence().phantomAway();
+                              sidebar._ctx.backend().selfPresence().phantomAway();
         avatar->setPresence(
             Avatar::presenceOf(
-                &store.user(cv.dmUser), sidebar._ctx.backend.capabilities().presence, phantom
+                &store.user(cv.dmUser), sidebar._ctx.backend().capabilities().presence, phantom
             ),
             sel         ? C::SidebarSelected
             : hovered() ? C::SidebarHover
@@ -680,11 +681,11 @@ public:
     void refresh() override {
         const auto &store = sidebar._ctx.store();
         const auto &cv    = store.conversation(conv);
-        const auto  caps  = sidebar._ctx.backend.capabilities();
+        const auto  caps  = sidebar._ctx.backend().capabilities();
         const bool  sel   = sidebar._selected == conv;
         const bool  quiet = sidebar.muted(cv);
         const bool  stale =
-            cv.latest && tsSecs(cv.latest) < sidebar._ctx.backend.nowSecs() - kMaxNotifyAgeSecs;
+            cv.latest && tsSecs(cv.latest) < sidebar._ctx.backend().nowSecs() - kMaxNotifyAgeSecs;
         unread = sidebar.paintsUnread(cv);
         count  = sidebar.redCount(cv);
         dot = !stale && !quiet && sidebar.level(cv) == model::NotifyLevel::All && !cv.isDirect() &&
@@ -773,23 +774,27 @@ public:
     }
     // `unread` as Sidebar::refreshTeammates found it.
     void refresh() override {
-        const auto &store = sidebar._ctx.store();
-        const bool  sel   = sidebar._selectedTeammate == role;
+        const bool sel = sidebar._selectedTeammate == role;
         label->setFont(unread ? Font::BodySemibold : Font::Body);
         label->setColor(
             sel      ? C::SidebarSelectedText
             : unread ? C::SidebarText
                      : C::SidebarTextMuted
         );
-        const model::User *u = user < store.userCount() ? &store.user(user) : nullptr;
+        refreshPresence();
+        setChecked(sel);
+    }
+    void refreshPresence() override {
+        const auto        &store = sidebar._ctx.store();
+        const bool         sel   = sidebar._selectedTeammate == role;
+        const model::User *u     = user < store.userCount() ? &store.user(user) : nullptr;
         avatar->setPresence(
-            Avatar::presenceOf(u, sidebar._ctx.backend.capabilities().presence),
+            Avatar::presenceOf(u, sidebar._ctx.backend().capabilities().presence),
             sel         ? C::SidebarSelected
             : hovered() ? C::SidebarHover
                         : C::Sidebar,
             sel
         );
-        setChecked(sel);
     }
 
     Sidebar       &sidebar;
@@ -945,12 +950,12 @@ bool Sidebar::paintsUnread(const model::Conversation &c) const {
 }
 
 int Sidebar::redCount(const model::Conversation &c) const {
-    if (muted(c) || (c.latest && tsSecs(c.latest) < _ctx.backend.nowSecs() - kMaxNotifyAgeSecs))
+    if (muted(c) || (c.latest && tsSecs(c.latest) < _ctx.backend().nowSecs() - kMaxNotifyAgeSecs))
         return 0;
     // DMs count every unread message (an agent session only what needs me:
     // Session counts those as mentions); channels their mentions.
-    return c.isDirect() && !_ctx.backend.capabilities().agentSessions ? int(c.unread)
-                                                                      : int(c.mentions);
+    return c.isDirect() && !_ctx.backend().capabilities().agentSessions ? int(c.unread)
+                                                                        : int(c.mentions);
 }
 
 bool Sidebar::isApp(const model::Conversation &c) const {
@@ -993,10 +998,15 @@ bool Sidebar::isVip(const model::Conversation &c) const {
 // draft goes to Drafts, out of Starred and the user's sections too (see
 // rebuild), so the draft is never out of sight.
 Sidebar::Kind Sidebar::classify(model::ConvRef ref) const {
+    return classify(ref, _ctx.store().draft(ref, 0) != nullptr);
+}
+
+// drafted: it has an unsent draft (rebuild finds them all at once).
+Sidebar::Kind Sidebar::classify(model::ConvRef ref, bool drafted) const {
     const auto &c = _ctx.store().conversation(ref);
-    if (_ctx.backend.capabilities().vips && isVip(c))
+    if (_ctx.backend().capabilities().vips && isVip(c))
         return Vip;
-    if (_ctx.store().draft(ref, 0) != nullptr)
+    if (drafted)
         return Drafts;
     if (c.starred)
         return Starred;
@@ -1036,10 +1046,10 @@ bool Sidebar::misplaced(ConvRef ref) const {
 // channel nothing is known about yet. Agent sessions are always listed.
 bool Sidebar::relevant(ConvRef ref) const {
     const auto &c = _ctx.store().conversation(ref);
-    if (c.unread > 0 || ref == _selected || _ctx.backend.capabilities().agentSessions)
+    if (c.unread > 0 || ref == _selected || _ctx.backend().capabilities().agentSessions)
         return true;
     const int64_t cutoff =
-        _ctx.backend.nowSecs() - int64_t(std::max(1, _filters.relevantDays)) * 86400;
+        _ctx.backend().nowSecs() - int64_t(std::max(1, _filters.relevantDays)) * 86400;
     const auto v = _visited.find(c.id);
     if (v != _visited.end() && v->second >= cutoff)
         return true;
@@ -1073,7 +1083,7 @@ void Sidebar::rebuild() {
     _scheduledRow     = nullptr;
     _activityRow      = nullptr;
     const auto &store = _ctx.store();
-    const auto  caps  = _ctx.backend.capabilities();
+    const auto  caps  = _ctx.backend().capabilities();
 
     auto nav = [&](Icon icon, const char *text, std::function<void()> *hook) {
         auto *r    = _items->add<NavRow>(icon, text);
@@ -1112,7 +1122,7 @@ void Sidebar::rebuild() {
     };
     // The seed: a conversation with unread messages is stamped, so it stays
     // listed for the whole window once read.
-    const int64_t now    = _ctx.backend.nowSecs();
+    const int64_t now    = _ctx.backend().nowSecs();
     const int64_t cutoff = now - int64_t(std::max(1, _filters.relevantDays)) * 86400;
     bool          seeded = false;
     for (ConvRef c = 0; c < store.conversationCount(); ++c) {
@@ -1127,6 +1137,12 @@ void Sidebar::rebuild() {
     }
     if (seeded && onVisitedChanged)
         onVisitedChanged();
+    // The conversations with an unsent draft, for classify() (one pass, not
+    // a draft lookup per conversation).
+    std::vector<char> drafted(store.conversationCount(), 0);
+    for (const model::Store::Draft &d : store.drafts())
+        if (d.thread == 0 && d.conv < drafted.size())
+            drafted[d.conv] = 1;
     // The user's own sections, under Starred: each lists its conversations
     // in its own order, like Starred regardless of the filters (unless
     // unreads-only is set to hide their read ones too), and takes them out
@@ -1138,7 +1154,8 @@ void Sidebar::rebuild() {
     for (size_t s = 0; s < custom.size(); ++s)
         for (const std::string &id : secs[s].convs) {
             const ConvRef c = store.findConversation(id);
-            if (c == kNoConv || inCustom[c] || classify(c) == Drafts) // a draft lifts it out
+            // A draft lifts it out.
+            if (c == kNoConv || inCustom[c] || classify(c, drafted[c]) == Drafts)
                 continue;
             inCustom[c] = 1;
             if (store.conversation(c).member && !deadDm(store, store.conversation(c)) &&
@@ -1152,7 +1169,7 @@ void Sidebar::rebuild() {
             continue;
         // classify() picks the bucket; each case keeps its own visibility
         // rule (unread-only filter, relevance window, ...).
-        switch (classify(c)) {
+        switch (classify(c, drafted[c])) {
         case Drafts:
             drafts.push_back(c); // a draft is never hidden by the filters
             break;
@@ -1199,7 +1216,7 @@ void Sidebar::rebuild() {
         external.insert(external.end(), hiddenExt.begin(), hiddenExt.end());
     }
     const bool agents = caps.agentSessions;
-    _team = agents ? _ctx.backend.agentRoles() : std::vector<model::Backend::AgentRole>{};
+    _team = agents ? _ctx.backend().agentRoles() : std::vector<model::Backend::AgentRole>{};
     struct Def {
         Icon        icon;
         const char *title;
@@ -1213,12 +1230,8 @@ void Sidebar::rebuild() {
         {Icon::MessagesSquare, agents ? tr("Sessions") : tr("Direct messages")},
         {Icon::Bot, tr("Agents & apps")},
     };
-    // A header and its rows (a click on the header collapses them).
-    const auto section = [&](Kind                        kind,
-                             Icon                        icon,
-                             std::string                 title,
-                             const std::vector<ConvRef> &rows,
-                             const std::string          &id = {}) {
+    // A header (a click on it collapses what is under it).
+    const auto header = [&](Kind kind, Icon icon, std::string title, const std::string &id = {}) {
         auto *h      = _items->add<SectionHeader>(*this, kind, icon, std::move(title));
         h->sectionId = id;
         restoreCollapse(h);
@@ -1227,6 +1240,15 @@ void Sidebar::rebuild() {
         // fold away (its header shows the pill, no chevron to say so).
         if (kind != Vip)
             h->onClick = [this, h] { toggleCollapse(h); };
+        return h;
+    };
+    // A header and its rows.
+    const auto section = [&](Kind                        kind,
+                             Icon                        icon,
+                             std::string                 title,
+                             const std::vector<ConvRef> &rows,
+                             const std::string          &id = {}) {
+        auto *h = header(kind, icon, std::move(title), id);
         for (size_t i : sortedOrder(sortOf(h), rows)) {
             const ConvRef c   = rows[i];
             auto         *row = _items->add<ConvRow>(*this, c);
@@ -1239,17 +1261,17 @@ void Sidebar::rebuild() {
         }
         return h;
     };
+    // A section of rows alone, only while it has any.
+    const auto plain =
+        [&](Kind kind, Icon icon, const char *title, const std::vector<ConvRef> &rows) {
+            if (!rows.empty())
+                applyCollapse(section(kind, icon, title, rows));
+        };
     // Above everything, only while non-empty (see isVip).
-    if (!vipUnread.empty()) {
-        auto *h = section(Vip, Icon::Star, tr("VIP unreads"), vipUnread);
-        applyCollapse(h);
-    }
+    plain(Vip, Icon::Star, tr("VIP unreads"), vipUnread);
     // Unsent drafts, right under VIP unreads: the conversations whose
     // composer still holds something.
-    if (!drafts.empty()) {
-        auto *h = section(Drafts, Icon::Edit3, tr("Drafts"), drafts);
-        applyCollapse(h);
-    }
+    plain(Drafts, Icon::Edit3, tr("Drafts"), drafts);
 
     const auto renderCustom = [&] {
         for (size_t i = 0; i < custom.size(); ++i) {
@@ -1260,16 +1282,10 @@ void Sidebar::rebuild() {
         }
     };
     const auto renderExternal = [&] {
-        if (external.empty())
-            return;
-        auto *h = section(External, Icon::Building, tr("External connections"), external);
-        applyCollapse(h);
+        plain(External, Icon::Building, tr("External connections"), external);
     };
     const auto renderStarred = [&] {
-        if (lists[Starred].empty())
-            return;
-        auto *h = section(Starred, defs[Starred].icon, defs[Starred].title, lists[Starred]);
-        applyCollapse(h);
+        plain(Starred, defs[Starred].icon, defs[Starred].title, lists[Starred]);
     };
     const auto renderChannels = [&] {
         if (lists[Channels].empty() && agents && hiddenCh.empty() && hiddenExt.empty())
@@ -1308,10 +1324,7 @@ void Sidebar::rebuild() {
         // The team, under the sessions (the fourth section): the roles sessions
         // are started with.
         if (!_team.empty()) {
-            auto *t = _items->add<SectionHeader>(*this, Team, Icon::Users, tr("Team"));
-            restoreCollapse(t);
-            _sections.push_back(t);
-            t->onClick = [this, t] { toggleCollapse(t); };
+            auto *t = header(Team, Icon::Users, tr("Team"));
             for (const auto &mate : _team) {
                 auto *row = _items->add<TeammateRow>(*this, mate);
                 t->extras.push_back(row);
@@ -1320,12 +1333,7 @@ void Sidebar::rebuild() {
             applyCollapse(t);
         }
     };
-    const auto renderApps = [&] {
-        if (lists[Apps].empty())
-            return;
-        auto *h = section(Apps, defs[Apps].icon, defs[Apps].title, lists[Apps]);
-        applyCollapse(h);
-    };
+    const auto renderApps = [&] { plain(Apps, defs[Apps].icon, defs[Apps].title, lists[Apps]); };
 
     if (_filters.directAndExternalFirst) {
         renderDirect();
@@ -1424,8 +1432,8 @@ uint64_t Sidebar::userShape() const {
             mix(g.image);
         }
     }
-    if (_ctx.backend.capabilities().agentSessions)
-        for (const auto &mate : _ctx.backend.agentRoles()) {
+    if (_ctx.backend().capabilities().agentSessions)
+        for (const auto &mate : _ctx.backend().agentRoles()) {
             mix(mate.id);
             mix(mate.name);
             mix(mate.avatar);
@@ -1452,8 +1460,9 @@ void Sidebar::usersSoon() {
         // a presence round, which only moves the dots. An agent workspace
         // (its team may change with its users) always takes the long way.
         const auto &st = _ctx.store();
-        if (!_ctx.backend.capabilities().agentSessions && _shapeStore == &st && _shapeMe == st.me &&
-            _shapeProfileRev == st.profileRevision() && _shapeTextRev == st.textRevision()) {
+        if (!_ctx.backend().capabilities().agentSessions && _shapeStore == &st &&
+            _shapeMe == st.me && _shapeProfileRev == st.profileRevision() &&
+            _shapeTextRev == st.textRevision()) {
             for (ConvRow *r : _rows)
                 r->refreshPresence();
             _footer->refresh();
@@ -1751,7 +1760,7 @@ static bool accepts(const SectionHeader *to, const SectionHeader *from) {
 }
 
 void Sidebar::dragRow(ConvRow *row, PointF windowPos) {
-    if (!_ctx.backend.capabilities().customSections)
+    if (!_ctx.backend().capabilities().customSections)
         return;
     _dragRow           = row;
     SectionHeader *to  = sectionAt(windowPos);
@@ -1863,7 +1872,7 @@ void Sidebar::refreshTeammates() {
     for (ConvRef c = 0; c < store.conversationCount(); ++c) {
         const auto &cv = store.conversation(c);
         if (cv.member && paintsUnread(cv))
-            if (std::string role = _ctx.backend.agentSessionRole(c);
+            if (std::string role = _ctx.backend().agentSessionRole(c);
                 std::find(roles.begin(), roles.end(), role) == roles.end())
                 roles.push_back(std::move(role));
     }
@@ -1995,7 +2004,7 @@ void Sidebar::select(ConvRef conv) {
     }
     if (conv < _ctx.store().conversationCount()) { // a visit keeps it relevant for the whole window
         if (const std::string &id = _ctx.store().conversation(conv).id; !id.empty()) {
-            _visited[id] = _ctx.backend.nowSecs();
+            _visited[id] = _ctx.backend().nowSecs();
             if (onVisitedChanged)
                 onVisitedChanged();
         }
@@ -2085,7 +2094,7 @@ bool Sidebar::joinHuddle(ConvRef conv) {
 }
 
 int Sidebar::attentionCount() const {
-    return workspaceAttention(_ctx.store(), _filters.defaultLevel, _ctx.backend.nowSecs())
+    return workspaceAttention(_ctx.store(), _filters.defaultLevel, _ctx.backend().nowSecs())
         .important;
 }
 

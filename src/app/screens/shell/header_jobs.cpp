@@ -162,12 +162,15 @@ public:
             });
             _ordered = true;
         }
-        // Not under the pointer on a Stop button: rebuilt, it would lose the click.
-        for (const Button *b : _stops)
-            if (b->hovered())
-                return;
+        // Not under the pointer on a Stop button: rebuilt, it would lose the
+        // click. The next second's tick tries again.
+        _stale =
+            std::any_of(_stops.begin(), _stops.end(), [](const Button *b) { return b->hovered(); });
+        if (_stale)
+            return;
         _rows->clearChildren();
         _stops.clear();
+        _clocks.clear();
         int running = 0, failed = 0, done = 0;
         for (const std::string &id : _order) {
             const auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BackgroundJob &j) {
@@ -179,7 +182,8 @@ public:
             running += it->state == State::Running;
             failed += it->state == State::Failed;
             done += it->state == State::Done;
-            if (it->state == State::Failed)
+            if (it->state == State::Failed &&
+                std::find(_seenFailed.begin(), _seenFailed.end(), it->id) == _seenFailed.end())
                 _seenFailed.push_back(it->id);
         }
         std::string s;
@@ -194,6 +198,17 @@ public:
             add(i18n::trn("%n done", "%n done", done));
         _summary->setText(std::move(s));
         invalidateLayout();
+    }
+    // A second on: the running jobs' clocks, the rest as it was (the jobs
+    // themselves change through refresh()).
+    void tick() {
+        if (_stale) {
+            refresh();
+            return;
+        }
+        const int64_t now = nowMs();
+        for (const auto &[label, startedMs] : _clocks)
+            label->setText(TypingIndicator::formatElapsed(now - startedMs));
     }
     // Stop job `id` ("name"), once the user confirms.
     void confirmStop(const std::string &id, const std::string &name) {
@@ -213,7 +228,7 @@ public:
         );
         screens::Context &ctx  = _ctx;
         const auto        conv = _conv;
-        d->onAccepted          = [&ctx, conv, id] { ctx.backend.stopJob(conv, id); };
+        d->onAccepted          = [&ctx, conv, id] { ctx.backend().stopJob(conv, id); };
         close(); // the dialog in its place
         w->showPopup(std::move(d));
     }
@@ -265,9 +280,12 @@ private:
             end = tr("stopped");
             break;
         }
-        line1->add<Label>(std::move(end), endFont, endColor)->style().noShrink();
+        auto *endLabel = line1->add<Label>(std::move(end), endFont, endColor);
+        endLabel->style().noShrink();
+        if (j.state == State::Running)
+            _clocks.emplace_back(endLabel, j.startedMs);
         // A running command can be stopped from here (asked first).
-        if (j.state == State::Running && !j.report && _ctx.backend.canStopJob(_conv, j.id)) {
+        if (j.state == State::Running && !j.report && _ctx.backend().canStopJob(_conv, j.id)) {
             auto *stop = line1->add<Button>(tr("Stop"), Button::Kind::Ghost, Button::Form::Small);
             stop->setTooltip(tr("Stop this background job"));
             stop->style().noShrink();
@@ -302,14 +320,17 @@ private:
         return std::string(c.isDirect() ? st.user(c.dmUser).label() : std::string_view(c.name));
     }
 
-    screens::Context        &_ctx;
-    model::ConvRef           _conv;
-    Label                   *_summary = nullptr;
-    ScrollView              *_scroll  = nullptr;
-    View                    *_rows    = nullptr;
-    std::vector<std::string> _order, _seenFailed;
-    bool                     _ordered = false;
-    std::vector<Button *>    _stops; // in the rows now
+    screens::Context                        &_ctx;
+    model::ConvRef                           _conv;
+    Label                                   *_summary = nullptr;
+    ScrollView                              *_scroll  = nullptr;
+    View                                    *_rows    = nullptr;
+    std::vector<std::string>                 _order, _seenFailed;
+    bool                                     _ordered = false;
+    bool                                     _stale   = false; // a refresh() put off
+    std::vector<Button *>                    _stops;           // in the rows now
+    // The running rows' elapsed-time labels, with their jobs' start.
+    std::vector<std::pair<Label *, int64_t>> _clocks;
 };
 
 // ── The header element ──────────────────────────────────────────────────────
@@ -414,7 +435,7 @@ void JobsButton::second() {
     if (_form == Form::Label && !_jobs.empty())
         _value->setText(shortValue(_jobs[0], nowMs()));
     if (_popover)
-        _popover->refresh();
+        _popover->tick();
     update();
 }
 

@@ -86,14 +86,13 @@ Accounts::Accounts(
     ui::Window           &win,
     Settings             &settings,
     std::function<void()> saveSettings,
-    model::BackendProxy  &proxy,
     model::Backend       &none,
     net::Client          &client,
     std::string           storePath
 )
     : _ctx(ctx), _shell(shell), _win(win), _settings(settings),
-      _saveSettings(std::move(saveSettings)), _proxy(proxy), _client(client),
-      _store(std::move(storePath)), _none(none), _blank(ctx.store()) {
+      _saveSettings(std::move(saveSettings)), _client(client), _store(std::move(storePath)),
+      _none(none), _blank(ctx.store()) {
     imageAuth();
     // The links live in the Claude Code workspace's files (links.json) and
     // fetch the askers' files into its cache.
@@ -120,7 +119,7 @@ Accounts::~Accounts() {
         _ctx.remote->setAuth({}); // it captured a backend
     if (_active)
         _shell.leaveWorkspace(); // drafts stashed, the open chat and thread closed
-    _proxy.setTarget(_none);
+    _ctx.backend.setTarget(_none);
     _ctx.store.setTarget(_blank);
     _active = nullptr;
     _shell.setAgentLinks(nullptr);
@@ -536,8 +535,8 @@ void Accounts::activate(const std::string &key) {
         _active->backend->setActiveConversation(model::kNoConv, 0); // no foreground poll
         _shell.leaveWorkspace(); // drafts stashed, nothing points into its Store
     }
-    // The proxy first: the views the slot wakes ask the backend what it can do.
-    _proxy.setTarget(*r->backend);
+    // The backend first: the views the Store's slot wakes ask it what it can do.
+    _ctx.backend.setTarget(*r->backend);
     // Before the slot wakes the views: their downloads go out with r's
     // credentials, and failures from before it was on screen are retried.
     _active = r;
@@ -693,7 +692,7 @@ void Accounts::showSignedOut() {
         _active->backend->setActiveConversation(model::kNoConv, 0);
     }
     _shell.leaveWorkspace();
-    _proxy.setTarget(_none);
+    _ctx.backend.setTarget(_none);
     _ctx.store.setTarget(_blank);
     _active = nullptr;
     _activeKey.clear();

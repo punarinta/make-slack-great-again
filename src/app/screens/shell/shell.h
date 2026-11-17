@@ -457,6 +457,11 @@ private:
     void storeSorts();
     void loadCollapsed();
     void storeCollapsed();
+
+    // A conversation-made callback (openDm, ...) that opens it: not after a
+    // failure (kNoConv) or once the Shell is gone.
+    std::function<void(model::ConvRef)> opener();
+
     // Claude Code UI for agent sessions: the
     // composer's lock and suggestion, slash commands that msga runs itself,
     // the footer's zen toggle, the thread panel's "Open as session".

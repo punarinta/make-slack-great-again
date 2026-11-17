@@ -689,7 +689,7 @@ public:
     // error "", or no messages and the service's reason the thread can't be
     // read any more ("thread_not_found", "channel_not_found"…), once per
     // streak of it — the watch goes on until unwatched. Set on the
-    // workspace's own backend (a BackendProxy's is never called), once.
+    // workspace's own backend, once.
     std::function<
         void(ConvRef conv, Ts root, std::vector<ThreadReply> replies, const std::string &error)>
                 onThreadReplies;

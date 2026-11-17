@@ -66,6 +66,9 @@ bool isAuthError(const std::string &error);
 // (0-based).
 int  retryBackoffMs(int attempt);
 
+// Appends key=value to a form body, percent-encoded, "&"-joined.
+void addParam(std::string &form, std::string_view key, std::string_view value);
+
 net::RequestId apiCall(
     net::Client &client, const Auth &auth, std::string_view method, std::string form, ApiDone done
 );

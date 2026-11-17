@@ -32,7 +32,7 @@ std::unique_ptr<ui::View> composer(
     edit->style().padding(14, 10);
     edit->onSubmit = [&ctx, edit, conv, thread] {
         if (!edit->empty())
-            ctx.backend.send(conv(), edit->text(), thread(), nullptr);
+            ctx.backend().send(conv(), edit->text(), thread(), nullptr);
         edit->clear();
         return true;
     };

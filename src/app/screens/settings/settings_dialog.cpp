@@ -485,10 +485,7 @@ void SettingsDialog::buildAppearance() {
         pct->style().width(90);
         pct->onChange = [this](int v) { _draft.fontPercent = v; };
         custom->setVisible(d.fontSize == 3);
-        sizes->onChange = [this, custom](int i) {
-            _draft.fontSize = i;
-            custom->setVisible(i == 3);
-        };
+        andThen(sizes, [custom](int i) { custom->setVisible(i == 3); });
     }
 
     heading(_content, tr("Language"));
@@ -575,10 +572,7 @@ void SettingsDialog::buildAppearance() {
             };
         }
         slots->setVisible(d.quickReactions == 2);
-        modes->onChange = [this, slots](int i) {
-            _draft.quickReactions = i;
-            slots->setVisible(i == 2);
-        };
+        andThen(modes, [slots](int i) { slots->setVisible(i == 2); });
         caption(
             _content,
             tr("Shown on a message's toolbar: a click adds the reaction, another takes it back.")
@@ -621,12 +615,11 @@ void SettingsDialog::buildAppearance() {
         sec->setVisible(d.spellCheck);
         if (d.spellCheck)
             refreshSpellLanguages();
-        spell->onChange = [this, sec](bool on) {
-            _draft.spellCheck = on;
+        andThen(spell, [this, sec](bool on) {
             if (on)
                 refreshSpellLanguages();
             sec->setVisible(on);
-        };
+        });
     }
 
     heading(_content, tr("Formatting"));
@@ -662,10 +655,7 @@ void SettingsDialog::buildAppearance() {
                "itself. Empty keeps the usual set.")
         );
         sec->setVisible(d.smileyToEmoji);
-        sm->onChange = [this, sec](bool on) {
-            _draft.smileyToEmoji = on;
-            sec->setVisible(on);
-        };
+        andThen(sm, [sec](bool on) { sec->setVisible(on); });
     }
 
     heading(_content, tr("Conversations"));
@@ -721,10 +711,7 @@ void SettingsDialog::buildAppearance() {
             applyStarred->setEnabled(unreadsOnly);
         };
         sync(d.unreadsOnly);
-        unread->onChange = [this, sync](bool on) {
-            _draft.unreadsOnly = on;
-            sync(on);
-        };
+        andThen(unread, sync);
     }
 
     heading(_content, tr("Visual effects"));
@@ -1205,14 +1192,8 @@ void SettingsDialog::buildNotifications() {
         });
     };
 
-    master->onChange = [this](bool on) {
-        _draft.notifications = on;
-        syncNotifyEnabled();
-    };
-    _p->notifySound->onChange = [this](bool on) {
-        _draft.notifySound = on;
-        syncNotifyEnabled();
-    };
+    andThen(master, [this](bool) { syncNotifyEnabled(); });
+    andThen(_p->notifySound, [this](bool) { syncNotifyEnabled(); });
     syncNotifyEnabled();
     saveButton(&SettingsDialog::saveNotifications);
 }

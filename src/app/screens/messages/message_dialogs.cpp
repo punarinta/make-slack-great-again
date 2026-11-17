@@ -109,7 +109,7 @@ ui::Popup *showDeleteMessageDialog(Context &ctx, ui::Window &w, ConvRef conv, Ts
         [&](ui::View *content) { addMessagePreview(ctx, content, *m, 160, false); }
     );
     ui::Dialog *raw = d.get();
-    d->onAccepted   = [&ctx, conv, ts] { ctx.backend.remove(conv, ts); };
+    d->onAccepted   = [&ctx, conv, ts] { ctx.backend().remove(conv, ts); };
     w.showPopup(std::move(d));
     return raw;
 }
@@ -291,9 +291,9 @@ private:
         const ConvRef     conv = _conv;
         const Ts          ts   = _ts;
         // The original goes only once the copy is in the thread.
-        ctx.backend.send(conv, text, root, [&ctx, conv, ts](bool ok, const std::string &) {
+        ctx.backend().send(conv, text, root, [&ctx, conv, ts](bool ok, const std::string &) {
             if (ok) {
-                ctx.backend.remove(conv, ts);
+                ctx.backend().remove(conv, ts);
                 return;
             }
             // The send path has said why; this says what it means for the move.
@@ -361,7 +361,7 @@ ui::Popup *showReminderDialog(Context &ctx, ui::Window &w, ConvRef conv, Ts ts) 
         // Due never earlier than a minute from now.
         const int64_t due =
             base::fromLocal(date->year(), date->month(), date->day(), time->hour(), time->minute());
-        ctx.backend.setReminder(conv, ts, std::max(due, base::nowSecs() + 60));
+        ctx.backend().setReminder(conv, ts, std::max(due, base::nowSecs() + 60));
     };
     w.showPopup(std::move(d));
     date->focus();

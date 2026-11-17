@@ -722,7 +722,7 @@ void Composer::refreshTips() {
     // GIPHY key is set.
     _sendBtn->setTooltip(shortcuts::tip(tr("Send message"), shortcuts::Id::SendMessage));
     // Configured: a GIPHY key, or the service's own search (the demo's).
-    const bool gif = _ctx.backend.gifSearchAvailable() || (gifKey && !gifKey().empty());
+    const bool gif = _ctx.backend().gifSearchAvailable() || (gifKey && !gifKey().empty());
     _gifBtn->setTooltip(
         gif ? tr("Search GIFs") : tr("Search GIFs \xE2\x80\x94 needs a GIPHY API key")
     );
@@ -900,7 +900,7 @@ void Composer::formatAction(shortcuts::Id id) {
 // Up in an empty editor: edit my newest message here (the newest
 // that is mine and not a system line). Agent sessions have no edit.
 void Composer::editLast() {
-    if (_key.conv == model::kNoConv || _ctx.backend.isAgentSession(_key.conv))
+    if (_key.conv == model::kNoConv || _ctx.backend().isAgentSession(_key.conv))
         return;
     const model::Store &st   = _ctx.store;
     const auto          mine = [&](const model::Message &m) {
@@ -1319,10 +1319,10 @@ void Composer::setTarget(model::ConvRef conv, model::Ts thread) {
                                               : std::string();
     refreshPlaceholder(); // "Message #name"
     if (conv != model::kNoConv) {
-        setSuggestion(_ctx.backend.promptSuggestion(conv)); // simplified
+        setSuggestion(_ctx.backend().promptSuggestion(conv)); // simplified
         // Asked for now, so the "/" list is there by the time "/" is typed.
-        if (_ctx.backend.capabilities().slashCommands)
-            _ctx.backend.commandsRevision(conv);
+        if (_ctx.backend().capabilities().slashCommands)
+            _ctx.backend().commandsRevision(conv);
     }
     refreshLook();
     compositionChanged();
@@ -1368,14 +1368,14 @@ bool Composer::send() {
         // Files attached while editing post on their own (chat.update takes
         // none).
         if (!_files.empty()) {
-            _ctx.backend.sendWithFiles(_key.conv, {}, _key.thread, std::move(_files), nullptr);
+            _ctx.backend().sendWithFiles(_key.conv, {}, _key.thread, std::move(_files), nullptr);
             _files.clear();
             rebuildChips();
         }
         if (!text.empty() && !composed.blocks.empty())
-            _ctx.backend.editBlocks(_key.conv, _editTs, text, std::move(composed.blocks));
+            _ctx.backend().editBlocks(_key.conv, _editTs, text, std::move(composed.blocks));
         else if (!text.empty())
-            _ctx.backend.edit(_key.conv, _editTs, text);
+            _ctx.backend().edit(_key.conv, _editTs, text);
         endEdit();
         return true;
     }
@@ -1386,12 +1386,12 @@ bool Composer::send() {
     // posting — only a known one, so a message that merely starts with "/"
     // still goes out; the rest are messages to the agent.
     if (_files.empty() && text.size() > 1 && text[0] == '/' && onCommand &&
-        _ctx.backend.capabilities().slashCommands) {
+        _ctx.backend().capabilities().slashCommands) {
         const size_t      sp   = text.find(' ');
         const std::string name = utf8::foldCase(
             text.substr(1, sp == std::string::npos ? std::string::npos : sp - 1)
         ); // folded once, not per command
-        for (const auto &c : _ctx.backend.commands(_key.conv)) {
+        for (const auto &c : _ctx.backend().commands(_key.conv)) {
             if (!c.local || utf8::foldCase(c.name) != name)
                 continue;
             const std::string args(
@@ -1409,15 +1409,15 @@ bool Composer::send() {
     const std::vector<std::string> files = _files;
     const bool broadcast = _files.empty() && _key.thread && broadcastWanted && broadcastWanted();
     if (!_files.empty())
-        _ctx.backend.sendWithFiles(_key.conv, text, _key.thread, std::move(_files), nullptr);
+        _ctx.backend().sendWithFiles(_key.conv, text, _key.thread, std::move(_files), nullptr);
     else if (!composed.blocks.empty())
-        _ctx.backend.sendBlocks(
+        _ctx.backend().sendBlocks(
             _key.conv, text, std::move(composed.blocks), _key.thread, broadcast, nullptr
         );
     else if (broadcast)
-        _ctx.backend.sendBroadcast(_key.conv, text, _key.thread, nullptr);
+        _ctx.backend().sendBroadcast(_key.conv, text, _key.thread, nullptr);
     else
-        _ctx.backend.send(_key.conv, text, _key.thread, nullptr);
+        _ctx.backend().send(_key.conv, text, _key.thread, nullptr);
     offerUndo(html, files); // the pending copy is in the Store: what an undo deletes
     _files.clear();
     rebuildChips();
@@ -1435,7 +1435,7 @@ bool Composer::send() {
 
 void Composer::offerUndo(const std::string &html, const std::vector<std::string> &files) {
     // Only where messages can be deleted, never in agent sessions.
-    if (_ctx.backend.isAgentSession(_key.conv) || !window())
+    if (_ctx.backend().isAgentSession(_key.conv) || !window())
         return;
     // The ghost: my newest pending message in this list.
     const auto *list = _key.thread ? _ctx.store().replies(_key.conv, _key.thread)
@@ -1492,7 +1492,7 @@ bool Composer::undoSend() {
     const std::string              html  = std::move(_undoHtml);
     const std::vector<std::string> files = std::move(_undoFiles);
     withdrawUndo();
-    _ctx.backend.remove(_key.conv, ts); // in flight or confirmed: the server copy goes
+    _ctx.backend().remove(_key.conv, ts); // in flight or confirmed: the server copy goes
     endEdit();
     // The text comes back; whatever was typed since follows it on a new line.
     const std::string typed = _edit->empty() ? std::string() : _edit->html();
@@ -1815,7 +1815,7 @@ void Composer::finishSmiley() {
 
 void Composer::finishSmileyAt(uint32_t stop) {
     // Claude Code prompts are code and paths as often as words: left as typed.
-    if (!_ctx.smileyToEmoji || _ctx.backend.capabilities().agentSessions || _edit->hasSelection())
+    if (!_ctx.smileyToEmoji || _ctx.backend().capabilities().agentSessions || _edit->hasSelection())
         return;
     if (!_smileysParsed || _smileyMapParsed != _ctx.smileyMap) { // parsed once per map
         _smileys         = mrkdwn::parseSmileys(_ctx.smileyMap);
@@ -1844,7 +1844,7 @@ void Composer::typing() {
     if (_edit->empty() || now - _lastTyping < 3000 || _key.conv == model::kNoConv)
         return;
     _lastTyping = now;
-    _ctx.backend.userTyping(_key.conv, _key.thread);
+    _ctx.backend().userTyping(_key.conv, _key.thread);
 }
 
 // Each line the selection touches gets the
@@ -2094,11 +2094,11 @@ void Composer::openSchedule() {
         refreshLook();
         compositionChanged();
         if (!composed.blocks.empty())
-            _ctx.backend.scheduleBlocks(
+            _ctx.backend().scheduleBlocks(
                 key.conv, text, std::move(composed.blocks), key.thread, at, std::move(done)
             );
         else
-            _ctx.backend.scheduleMessage(key.conv, text, key.thread, at, std::move(done));
+            _ctx.backend().scheduleMessage(key.conv, text, key.thread, at, std::move(done));
     });
 }
 
@@ -2352,7 +2352,7 @@ void Composer::computePickList() {
     } else if (trig == '/' && start == 0) {
         // Slash commands only at the very start of the message; a bare
         // "/" lists them all, by name.
-        if (!_ctx.backend.capabilities().slashCommands || _key.conv == model::kNoConv) {
+        if (!_ctx.backend().capabilities().slashCommands || _key.conv == model::kNoConv) {
             dismiss();
             return;
         }
@@ -2467,10 +2467,10 @@ void Composer::computePickList() {
 // backend's revision moved (a session's commands come and go; without one,
 // each time), sorted and folded only when they changed.
 void Composer::refreshCommands() {
-    const uint64_t rev = _ctx.backend.commandsRevision(_key.conv);
+    const uint64_t rev = _ctx.backend().commandsRevision(_key.conv);
     if (rev && rev == _cmdRev && _cmdConv == _key.conv)
         return;
-    std::vector<model::Backend::Command> cmds = _ctx.backend.commands(_key.conv);
+    std::vector<model::Backend::Command> cmds = _ctx.backend().commands(_key.conv);
     bool same = _cmdConv == _key.conv && _cmdRev == rev && cmds.size() == _cmdNames.size();
     _cmdRev   = rev;
     for (size_t i = 0; same && i < cmds.size(); ++i)

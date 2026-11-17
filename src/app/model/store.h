@@ -163,7 +163,8 @@ public:
     size_t              conversationCount() const { return _convs.size(); }
     // Title for lists and headers: "general", a DM peer's label, "Mira, Jonas".
     std::string         displayName(ConvRef c) const;
-    // Changes conversation fields, then fires Meta.
+    // Changes conversation fields, then fires Meta if any changed (the
+    // loaded messages and threads aren't fields here).
     void updateConversation(ConvRef c, const std::function<void(Conversation &)> &fn);
 
     // ── Messages ────────────────────────────────────────────────────────────
@@ -298,6 +299,10 @@ public:
     // or removes it (on = false); the preview comes from the message when it
     // is loaded. savedAt 0 = now for a new item. Fires Update for ts.
     void setSavedItem(ConvRef c, Ts ts, bool on, int64_t due = 0, int64_t savedAt = 0);
+    // A message saved or not, with its reminder's due time (0: none; none
+    // when not saved): Message::saved, reminderAt and the Saved page's item
+    // at once, savedAt as setSavedItem. One Update, none when nothing changed.
+    void setSaved(ConvRef c, Ts ts, bool on, int64_t due = 0, int64_t savedAt = 0);
     // The preview of an item from its message (fetched: Backend::loadMessage;
     // null = it is gone). Fires Update for ts.
     void setSavedPreview(ConvRef c, Ts ts, const Message *m);
@@ -423,6 +428,10 @@ private:
     void                  noteUserRevisions(); // before a Users emit
     ConvRef               mergeConversation(Conversation c, bool *added);
     void                  sortSaved();
+    // setReminderAt's and setSavedItem's changes without their Update; true
+    // when something changed.
+    bool                  putReminder(ConvRef c, Ts ts, int64_t due);
+    bool                  putSavedItem(ConvRef c, Ts ts, bool on, int64_t due, int64_t savedAt);
     void                  logText(TextChange::Kind kind, std::string id);
     void                  textUnlisted(); // a step whose changes have no ids
 

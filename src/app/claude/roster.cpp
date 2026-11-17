@@ -8,6 +8,7 @@
 #include "base/time.h"
 
 #include <unordered_map>
+#include <unordered_set>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -199,7 +200,7 @@ std::optional<SessionInfo> parseBackgroundJob(std::string_view json) {
 std::string readJobState(const Paths &paths, std::string_view jobId) {
     if (jobId.empty())
         return {};
-    return readSmallFile(str::concat({paths.jobsDir(), "/", jobId, "/state.json"}));
+    return readSmallFile(paths.jobDir(jobId) + "/state.json");
 }
 
 bool isProcessAlive(int64_t pid) {
@@ -221,7 +222,7 @@ bool isProcessAlive(int64_t pid) {
 std::vector<int64_t>
 liveWorkerPids(const Paths &paths, std::string_view sessionId, std::string_view jobIdOrEmpty) {
     std::vector<int64_t>   out;
-    const std::string_view jobId = jobIdOrEmpty.empty() ? sessionId.substr(0, 8) : jobIdOrEmpty;
+    const std::string_view jobId = jobIdOr(sessionId, jobIdOrEmpty);
     for (const std::string &f : jsonFiles(paths.sessionsDir())) {
         const auto s = parseInteractiveSession(readSmallFile(f));
         if (s && s->kind == SessionInfo::Kind::Background &&
@@ -286,6 +287,17 @@ bool contains(const std::vector<std::string> &v, std::string_view s) {
     return false;
 }
 
+// A /proc entry's pid; 0 for one that isn't a process.
+int64_t procPid(std::string_view name) {
+    int64_t pid = 0;
+    for (const char c : name) {
+        if (c < '0' || c > '9')
+            return 0;
+        pid = pid * 10 + (c - '0');
+    }
+    return pid;
+}
+
 int64_t parentPid(int64_t pid) {
     std::string stat;
     if (!readProc(pid, "stat", &stat))
@@ -326,18 +338,8 @@ std::vector<int64_t> leftoverProcesses(std::string_view sessionId, std::string_v
     std::vector<file::DirEntry> entries;
     file::listDir("/proc", &entries);
     for (const auto &entry : entries) {
-        if (!entry.isDir || entry.name.empty())
-            continue;
-        int64_t pid   = 0;
-        bool    isPid = true;
-        for (const char c : entry.name) {
-            if (c < '0' || c > '9') {
-                isPid = false;
-                break;
-            }
-            pid = pid * 10 + (c - '0');
-        }
-        if (!isPid || pid == self)
+        const int64_t pid = entry.isDir ? procPid(entry.name) : 0;
+        if (pid <= 0 || pid == self)
             continue;
         const auto env    = procStrings(pid, "environ");
         bool       hasJob = false;
@@ -399,14 +401,7 @@ int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputP
     std::vector<file::DirEntry> entries;
     file::listDir("/proc", &entries);
     for (const auto &entry : entries) {
-        int64_t pid = 0;
-        for (const char c : entry.name) {
-            if (c < '0' || c > '9') {
-                pid = 0;
-                break;
-            }
-            pid = pid * 10 + (c - '0');
-        }
+        const int64_t pid = procPid(entry.name);
         if (pid <= 0 || ::getpgid(pid_t(pid)) != pid_t(pid))
             continue; // only group leaders: a command and what it started
         char          link[4096];
@@ -508,6 +503,9 @@ scanSessions(const Paths &paths, std::vector<SessionInfo> *live, JobStateCache *
             out.push_back(std::move(*s));
         }
     }
+    std::unordered_set<std::string> listed; // the session ids in `out`
+    for (const auto &e : out)
+        listed.insert(e.sessionId);
     const std::string           jobsDir = paths.jobsDir();
     std::vector<file::DirEntry> jobs;
     file::listDir(jobsDir, &jobs);
@@ -525,13 +523,7 @@ scanSessions(const Paths &paths, std::vector<SessionInfo> *live, JobStateCache *
             continue;
         // A session both listed as interactive and as a job (a job attached in a
         // terminal) keeps its interactive entry: that one has the live status.
-        bool dup = false;
-        for (const auto &e : out)
-            if (e.sessionId == s->sessionId) {
-                dup = true;
-                break;
-            }
-        if (dup)
+        if (!listed.insert(s->sessionId).second)
             continue;
         if (const auto w = workersOfJob.find(d.name); w != workersOfJob.end())
             applyWorker(*s, w->second);

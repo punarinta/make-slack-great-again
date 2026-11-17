@@ -6,7 +6,6 @@
 #include "app/llm/service.h"
 #include "support/fake_llm_server.h"
 #include "app/llm/voice_input.h"
-#include "app/model/backend_proxy.h"
 #include "app/model/jobs.h"
 #ifdef MSGA_SELF_UPDATE
 #include "app/update/updater.h"
@@ -3344,22 +3343,21 @@ struct LiveFake : fake::FakeBackend {
 };
 
 // Two signed-in workspaces the way Accounts runs them: each its own Store
-// and backend, attached to the shell; the screens' slot and proxy show one.
+// and backend, attached to the shell; the screens' slots show one.
 #ifdef MSGA_HAVE_MESSAGES
 screens::ImageCache *gNotifyImages = nullptr; // the live TwoWorkspaces' cache
 #endif
 
 struct TwoWorkspaces {
-    Store               blank, a, b;
-    LiveFake            fa{a, app().platform()}, fb{b, app().platform()};
-    model::BackendProxy proxy{blank, fa};
+    Store    blank, a, b;
+    LiveFake fa{a, app().platform()}, fb{b, app().platform()};
 #ifdef MSGA_HAVE_MESSAGES
     screens::ImageCache images{app().platform()};
-    screens::Context    ctx{app(), a, proxy, images, {}, {}, {}, {}, {}};
+    screens::Context    ctx{app(), a, fa, images, {}, {}, {}, {}, {}};
 #else
     alignas(16) char noCache[16]{};
     screens::Context ctx{
-        app(), a, proxy, *reinterpret_cast<screens::ImageCache *>(noCache), {}, {}, {}, {}, {}
+        app(), a, fa, *reinterpret_cast<screens::ImageCache *>(noCache), {}, {}, {}, {}, {}
     };
 #endif
     shell::Settings               settings;
@@ -3431,10 +3429,10 @@ struct TwoWorkspaces {
         show(kKeyA);
         pump();
     }
-    // Accounts::activate: the open one leaves, the proxy and the slot follow.
+    // Accounts::activate: the open one leaves, the slots follow.
     void show(const std::string &key) {
         sh->leaveWorkspace();
-        proxy.setTarget(key == kKeyA ? fa : fb);
+        ctx.backend.setTarget(key == kKeyA ? fa : fb);
         ctx.store.setTarget(key == kKeyA ? a : b);
         sh->setWorkspaces(
             {{kKeyA, "T0LUMEN", "Lumen Studio", "", false},
@@ -3586,7 +3584,7 @@ TEST("workspaces: the slot leaving for the blank Store under an open chat and th
     pump();
     // Accounts' teardown: the screens let go, then the slot moves.
     w.sh->leaveWorkspace();
-    w.proxy.setTarget(w.fa);
+    w.ctx.backend.setTarget(w.fa);
     w.ctx.store.setTarget(w.blank);
     pump();
     CHECK(w.sh->current() == kNoConv);

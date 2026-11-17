@@ -24,11 +24,13 @@ struct Paths {
     static Paths detect();
     std::string  sessionsDir() const { return home + "/sessions"; }
     std::string  jobsDir() const { return home + "/jobs"; }
-    std::string  projectsDir() const { return home + "/projects"; }
+    // A background job's folder: jobs/<id>.
+    std::string jobDir(std::string_view jobId) const { return jobsDir().append("/").append(jobId); }
+    std::string projectsDir() const { return home + "/projects"; }
     // The transcript for a session, found by id under projects/*/ — the folder
     // name is derived from the cwd differently per platform, so never rebuild it.
     // Empty when there is none (yet).
-    std::string  findTranscript(std::string_view sessionId) const;
+    std::string findTranscript(std::string_view sessionId) const;
     // A session's subagent transcript: <transcript dir>/<sessionId>/subagents/agent-<id>.jsonl.
     static std::string
     subagentTranscript(std::string_view transcriptPath, std::string_view agentId);
@@ -38,6 +40,12 @@ struct Paths {
     // last extension.
     static std::string_view transcriptSessionId(std::string_view transcriptPath);
 };
+
+// A background session's job id: its own, else the short session id (its
+// first 8 characters) it defaults to.
+inline std::string_view jobIdOr(std::string_view sessionId, std::string_view jobId) {
+    return jobId.empty() ? sessionId.substr(0, 8) : jobId;
+}
 
 struct SessionInfo {
     enum class Kind : uint8_t { Interactive, Background };

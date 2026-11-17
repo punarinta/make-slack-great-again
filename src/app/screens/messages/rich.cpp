@@ -176,7 +176,7 @@ struct Builder {
                 s.linkId = target(e.kind, e.data);
                 // One the roster doesn't list: its name is looked up once.
                 if (store.findConversation(e.data) == model::kNoConv && !store.channelName(e.data))
-                    ctx.backend.resolveChannel(e.data);
+                    ctx.backend().resolveChannel(e.data);
                 const std::string name = entityText(store, e);
                 t.append(name.empty() ? std::string(slice) : name, s);
                 break;

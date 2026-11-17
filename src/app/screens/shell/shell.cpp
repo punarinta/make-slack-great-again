@@ -875,7 +875,7 @@ Shell::Shell(
             return;
         }
         std::weak_ptr<int> alive = _agentAlive;
-        _ctx.backend.joinChannel(
+        _ctx.backend().joinChannel(
             c, [this, alive, ts, thread](ConvRef joined, const std::string &err) {
                 if (alive.expired())
                     return;
@@ -1007,8 +1007,8 @@ Shell::Shell(
             };
     };
     ctx.openAiSettings = [this] { openAiSettings(); };
-    // What the screens report through the backend they hold (main's proxy:
-    // a failed move, a preview removal) reaches the banner too.
+    // What the screens report through their backend slot (a failed move, a
+    // preview removal) reaches the banner too.
     if (!ctx.backend.onError) {
         ctx.backend.onError = [this](const std::string &message) { showError(message); };
         _ownsBackendError   = true;
@@ -1022,17 +1022,13 @@ Shell::Shell(
     ctx.messageUser = [this](model::UserRef u) {
         // A teammate has no DM of its own; its page is
         // where writing to it starts a session.
-        if (_ctx.backend.capabilities().agentSessions)
-            for (const model::Backend::AgentRole &r : _ctx.backend.agentRoles())
+        if (_ctx.backend().capabilities().agentSessions)
+            for (const model::Backend::AgentRole &r : _ctx.backend().agentRoles())
                 if (r.user != model::kNoUser && r.user == u) {
                     openTeammate(r.id);
                     return;
                 }
-        std::weak_ptr<int> alive = _agentAlive;
-        _ctx.backend.openDm(u, [this, alive](ConvRef c) {
-            if (!alive.expired() && c != kNoConv)
-                open(c);
-        });
+        _ctx.backend().openDm(u, opener());
     };
     _menus->hooks.changeWorkspaceIcon = [this](const std::string &key) {
         const auto done = [this](const std::string &) { refreshWorkspaceIcon(); };
@@ -1258,9 +1254,9 @@ void Shell::wireAgentUi() {
     // session's first prompt: the page's onSendRequest takes the send.)
     _composer->historySource = [this] {
         if (teammateOpen())
-            return _ctx.backend.folderPromptHistory(teammatePage()->folder());
+            return _ctx.backend().folderPromptHistory(teammatePage()->folder());
         return _current == kNoConv ? std::vector<std::string>()
-                                   : _ctx.backend.promptHistory(_current);
+                                   : _ctx.backend().promptHistory(_current);
     };
     _composer->onCommand = [this](const std::string &name, const std::string &args) {
         runCommand(_current, 0, name, args);
@@ -1272,7 +1268,7 @@ void Shell::wireAgentUi() {
     footer.onZenToggled = [this](bool on) {
         _settings.setZenMode(_activeKey, on);
         saveSettingsSoon();
-        _ctx.backend.setZenMode(on);
+        _ctx.backend().setZenMode(on);
 #ifdef MSGA_HAVE_MESSAGES
         if (_current != kNoConv)
             static_cast<screens::MessageList *>(_messages)->showConversation(_current);
@@ -1287,7 +1283,7 @@ void Shell::wireAgentUi() {
     _thread->composer->setPopupArea(_thread->panel); // its popups stay inside the panel
     // "Open as session": a branched agent thread moves to the list.
     _thread->panel->onOpenAsSession = [this](ConvRef conv, Ts root) {
-        const ConvRef session = _ctx.backend.openThreadAsSession(conv, root);
+        const ConvRef session = _ctx.backend().openThreadAsSession(conv, root);
         if (session == kNoConv)
             return;
         closeThread();
@@ -1304,7 +1300,7 @@ void Shell::wireAgentUi() {
 void Shell::applyComposerAccess() {
     if (_current == kNoConv || _current >= _ctx.store().conversationCount())
         return;
-    const std::string suggestion = _ctx.backend.promptSuggestion(_current);
+    const std::string suggestion = _ctx.backend().promptSuggestion(_current);
     if (suggestion != _composerSuggestion) {
         _composerSuggestion = suggestion;
         _composer->setSuggestion(suggestion);
@@ -1322,7 +1318,7 @@ void Shell::applyComposerAccess() {
 void Shell::runCommand(ConvRef conv, Ts thread, const std::string &name, const std::string &args) {
     if (conv == kNoConv)
         return;
-    const auto r = _ctx.backend.runLocalCommand(conv, thread, name, args);
+    const auto r = _ctx.backend().runLocalCommand(conv, thread, name, args);
     if (!r.error.empty())
         showError(r.error);
     if (!r.status.empty())
@@ -1846,7 +1842,7 @@ void Shell::noteActivity() {
     _lastActivityNote = now;
     // Every running workspace's link: presence is per workspace, the user is the same.
     if (_running.empty())
-        _ctx.backend.noteUserActivity();
+        _ctx.backend().noteUserActivity();
     for (const auto &r : _running)
         r->backend->noteUserActivity();
 }
@@ -1860,7 +1856,7 @@ void Shell::syncWindowVisible() {
         return;
     _windowVisible = visible;
     if (_running.empty())
-        _ctx.backend.setWindowVisible(visible);
+        _ctx.backend().setWindowVisible(visible);
     for (const auto &r : _running)
         r->backend->setWindowVisible(visible);
 }
@@ -1911,9 +1907,9 @@ void Shell::notifySessionExpired(const std::string &workspace) {
 
 // Schedule-send is Slack's (chat.scheduleMessage): both composers' chevrons
 // follow the open workspace. The shell is built before any workspace is
-// behind the proxy, so this runs again on every switch.
+// in the backend slot, so this runs again on every switch.
 void Shell::applyScheduleSend() {
-    const bool on = _ctx.backend.capabilities().scheduledSend;
+    const bool on = _ctx.backend().capabilities().scheduledSend;
     _composer->setScheduleVisible(on);
     _thread->composer->setScheduleVisible(on);
 }
@@ -1926,6 +1922,13 @@ void Shell::workspaceChanged() {
     _sidebar->footer().setZenOn(_settings.zenMode(_activeKey)); // its own
     loadSorts();
     loadCollapsed();
+}
+
+std::function<void(ConvRef)> Shell::opener() {
+    return [this, alive = std::weak_ptr<int>(_agentAlive)](ConvRef c) {
+        if (!alive.expired() && c != kNoConv)
+            open(c);
+    };
 }
 
 void Shell::open(ConvRef conv) {
@@ -1948,7 +1951,7 @@ void Shell::open(ConvRef conv) {
     _composer->setTarget(conv, 0);
     _composer->setEnabled(conv != model::kNoConv); // disabled until one is open
     _composerLock.clear();
-    _composerSuggestion = _ctx.backend.promptSuggestion(conv); // setTarget gave it
+    _composerSuggestion = _ctx.backend().promptSuggestion(conv); // setTarget gave it
     applyComposerAccess();
     _typing->setTarget(conv, 0);
     _sidebar->select(conv);
@@ -1958,18 +1961,18 @@ void Shell::open(ConvRef conv) {
     // poll's next round.
     if (const auto &c = _ctx.store().conversation(conv);
         c.kind == model::ConvKind::Dm && c.dmUser != model::kNoUser)
-        _ctx.backend.requestPresence(c.dmUser);
+        _ctx.backend().requestPresence(c.dmUser);
     lookUpCanvas(conv);
-    _ctx.backend.setActiveConversation(conv, 0);
+    _ctx.backend().setActiveConversation(conv, 0);
 #ifdef MSGA_HAVE_MESSAGES
     // The list loads history and marks read once the newest message shows.
     static_cast<screens::MessageList *>(_messages)->showConversation(conv);
 #else
     static_cast<MessageStandIn *>(_messages)->setTarget(conv, 0);
-    _ctx.backend.loadHistory(conv, 0, nullptr);
+    _ctx.backend().loadHistory(conv, 0, nullptr);
     const auto &c = _ctx.store().conversation(conv);
     if (c.latest && c.latest > c.lastRead)
-        _ctx.backend.markRead(conv, c.latest);
+        _ctx.backend().markRead(conv, c.latest);
 #endif
     _composer->edit().focus();
 }
@@ -2240,7 +2243,7 @@ bool Shell::removeIdleSession(const Event &e) {
         f && f->role() == Role::TextInput && static_cast<const TextEdit *>(f)->hasSelection())
         return false;
     const ConvRef c = _sidebar->selected();
-    if (c >= _ctx.store().conversationCount() || !_ctx.backend.isAgentSession(c))
+    if (c >= _ctx.store().conversationCount() || !_ctx.backend().isAgentSession(c))
         return false;
     const model::Conversation &cv = _ctx.store().conversation(c);
     // Exactly what the row paints: an idle session has a gray dot — neither
@@ -2263,8 +2266,8 @@ void Shell::openThread(ConvRef conv, Ts root) {
 #endif
     _thread->setVisible(true); // ThreadBody fits the saved width to the window
     _splitter->setVisible(true);
-    _ctx.backend.loadThread(conv, root, nullptr);
-    _ctx.backend.setActiveConversation(conv, root);
+    _ctx.backend().loadThread(conv, root, nullptr);
+    _ctx.backend().setActiveConversation(conv, root);
     // The focus stays where it was (the reply bar that opened it).
 }
 
@@ -2278,7 +2281,7 @@ void Shell::closeThread() {
     static_cast<screens::MessageList *>(_messages)->setOpenThreadRoot(0);
 #endif
     _splitter->setVisible(false);
-    _ctx.backend.setActiveConversation(_current, 0);
+    _ctx.backend().setActiveConversation(_current, 0);
     _composer->edit().focus();
 }
 
@@ -2351,7 +2354,7 @@ bool Shell::pageOpen(Page p) const {
 }
 
 bool Shell::pageAvailable(Page p) const {
-    const auto caps = _ctx.backend.capabilities();
+    const auto caps = _ctx.backend().capabilities();
     switch (p) {
     case Page::Activity:
         return caps.activityView;
@@ -2403,7 +2406,7 @@ void Shell::leaveConversationChrome(bool keepComposer) {
     _canvas->setVisible(false);
     _typing->setTarget(kNoConv, 0);
     _typing->setVisible(false);
-    _ctx.backend.setActiveConversation(kNoConv, 0);
+    _ctx.backend().setActiveConversation(kNoConv, 0);
 }
 
 void Shell::leavePage(Page p) {
@@ -2550,7 +2553,7 @@ void Shell::showCanvas(bool on) {
 // screen) has a live huddle, where the service has huddles.
 void Shell::updateHuddleBanner() {
     const bool on = _current != kNoConv && _header->visible() &&
-                    _ctx.backend.capabilities().huddles &&
+                    _ctx.backend().capabilities().huddles &&
                     _ctx.store().conversation(_current).huddleActive;
     if (_huddleBanner->visible() != on)
         _huddleBanner->setVisible(on);
@@ -2566,7 +2569,7 @@ void Shell::updateHeader() {
     // bots, whose canvases are app-owned), where the service has them.
     const bool app = c.kind == model::ConvKind::Dm && _ctx.store().user(c.dmUser).bot;
     _tabs->setCanvas(
-        _ctx.backend.capabilities().canvases && !app,
+        _ctx.backend().capabilities().canvases && !app,
         !c.canvasId.empty() || !c.canvasTitle.empty(),
         c.canvasTitle
     );
@@ -2578,12 +2581,12 @@ void Shell::updateHeader() {
 void Shell::lookUpCanvas(ConvRef conv) {
     const auto &c   = _ctx.store().conversation(conv);
     const bool  app = c.kind == model::ConvKind::Dm && _ctx.store().user(c.dmUser).bot;
-    if (!_ctx.backend.capabilities().canvases || app)
+    if (!_ctx.backend().capabilities().canvases || app)
         return;
-    _ctx.backend.loadChannelCanvas(conv, [this, conv](std::string fileId) {
+    _ctx.backend().loadChannelCanvas(conv, [this, conv](std::string fileId) {
         if (fileId.empty() || conv != _current)
             return;
-        _ctx.backend.loadCanvasMeta(fileId, nullptr); // the Store gets the title
+        _ctx.backend().loadCanvasMeta(fileId, nullptr); // the Store gets the title
     });
 }
 
@@ -2638,7 +2641,7 @@ void Shell::onChange(const model::Change &ch) {
         for (size_t i = list->size() - std::min<size_t>(ch.count, list->size()); i < list->size();
              ++i)
             if (const model::Message &m = (*list)[i]; m.user != st.me && !m.pending)
-                _ctx.backend.markRead(ch.conv, m.ts);
+                _ctx.backend().markRead(ch.conv, m.ts);
     if (!attached)
         messagesArrived(st, {}, ch);
 }
@@ -2951,7 +2954,7 @@ void Shell::updateAttention() {
         }
     }
     if (!attached && _signedIn) { // the demo, tests: the open Store alone
-        const Attention a = workspaceAttention(open, fallback, _ctx.backend.nowSecs());
+        const Attention a = workspaceAttention(open, fallback, _ctx.backend().nowSecs());
         if (RailTile *t = _wsStack->find(_activeKey))
             t->setDot(a.dot());
         if (!open.workspaceMuted) {
@@ -3121,11 +3124,11 @@ void Shell::openSettingsAt(uint8_t page) {
         if (r->backend->capabilities().sidebarTheme &&
             (themeKey.empty() || (r->store == &_ctx.store() && _signedIn)))
             themeKey = r->key;
-    if (!themeKey.empty() || (_running.empty() && _ctx.backend.capabilities().sidebarTheme))
+    if (!themeKey.empty() || (_running.empty() && _ctx.backend().capabilities().sidebarTheme))
         hooks.fetchSlackTheme = [this,
                                  themeKey](settings::SettingsDialog::Hooks::SlackThemeDone done) {
             const Running  *r = themeKey.empty() ? nullptr : findRunning(themeKey);
-            model::Backend *b = r ? r->backend : themeKey.empty() ? &_ctx.backend : nullptr;
+            model::Backend *b = r ? r->backend : themeKey.empty() ? &_ctx.backend() : nullptr;
             if (!b) {
                 done({}, {}, "no_workspace");
                 return;
@@ -3423,7 +3426,7 @@ void Shell::openBrowseDialog(int tab) {
                 open(c);
                 return;
             }
-            _ctx.backend.joinChannel(c, [this, alive](ConvRef joined, const std::string &err) {
+            _ctx.backend().joinChannel(c, [this, alive](ConvRef joined, const std::string &err) {
                 if (alive.expired())
                     return;
                 if (joined == kNoConv)
@@ -3432,12 +3435,9 @@ void Shell::openBrowseDialog(int tab) {
                     open(joined);
             });
         },
-        [this, alive](model::UserRef u) {
+        [this](model::UserRef u) {
             // The DM, created by conversations.open if never messaged.
-            _ctx.backend.openDm(u, [this, alive](ConvRef c) {
-                if (!alive.expired() && c != kNoConv)
-                    open(c);
-            });
+            _ctx.backend().openDm(u, opener());
         },
         [this, alive] {
             _ctx.app.platform().post([this, alive] {
@@ -3447,13 +3447,10 @@ void Shell::openBrowseDialog(int tab) {
         },
         // Several people: conversations.open makes (or finds) the mpdm. A
         // backend without group DMs gets no "New group DM" button.
-        _ctx.backend.capabilities().groupDms
+        _ctx.backend().capabilities().groupDms
             ? std::function<void(const std::vector<model::UserRef> &)>(
-                  [this, alive](const std::vector<model::UserRef> &people) {
-                      _ctx.backend.openDmGroup(people, [this, alive](ConvRef c) {
-                          if (!alive.expired() && c != kNoConv)
-                              open(c);
-                      });
+                  [this](const std::vector<model::UserRef> &people) {
+                      _ctx.backend().openDmGroup(people, opener());
                   }
               )
             : nullptr
@@ -3465,10 +3462,12 @@ void Shell::openCreateChannel() {
     showCreateChannel(
         _win, _ctx.store().workspaceName, [this, alive](const std::string &name, bool priv) {
             // Created, and the list shows it; nothing opens.
-            _ctx.backend.createChannel(name, priv, [this, alive](ConvRef, const std::string &err) {
-                if (!alive.expired() && !err.empty())
-                    showError(err);
-            });
+            _ctx.backend().createChannel(
+                name, priv, [this, alive](ConvRef, const std::string &err) {
+                    if (!alive.expired() && !err.empty())
+                        showError(err);
+                }
+            );
         }
     );
 }
@@ -3516,13 +3515,13 @@ void Shell::applySettings() {
     // workspace (Accounts hands it to every new one).
     const auto presence = model::Backend::PresenceMode(_settings.presence);
     if (_running.empty())
-        _ctx.backend.setPresenceMode(presence);
+        _ctx.backend().setPresenceMode(presence);
     for (const auto &r : _running)
         r->backend->setPresenceMode(presence);
     // Settings → Appearance → Names: the same, per workspace Store.
     const auto names = model::Backend::NamesMode(_settings.names);
     if (_running.empty())
-        _ctx.backend.setNamesMode(names);
+        _ctx.backend().setNamesMode(names);
     for (const auto &r : _running)
         r->backend->setNamesMode(names);
     // Settings → Check spelling: loads (or frees) the dictionaries; the
@@ -3718,13 +3717,28 @@ plat::HitArea Shell::hitTest(plat::Point p) const {
 // relevance window (pruned, so the store never grows).
 void Shell::storeVisited() {
     const int64_t horizon =
-        _ctx.backend.nowSecs() - int64_t(std::max(1, _settings.relevantDays)) * 86400 * 2;
+        _ctx.backend().nowSecs() - int64_t(std::max(1, _settings.relevantDays)) * 86400 * 2;
     _settings.visitedAt.clear();
     for (const auto &[id, at] : _sidebar->visited())
         if (at >= horizon)
             _settings.visitedAt.emplace_back(id, at);
     std::sort(_settings.visitedAt.begin(), _settings.visitedAt.end()); // a stable file
 }
+
+namespace {
+
+// A workspace's per-section prefs replaced by what `fill` appends, the whole
+// list sorted by (workspace, section): a stable file.
+template <class Pref, class Fill>
+void replacePrefs(std::vector<Pref> &prefs, const std::string &workspace, Fill fill) {
+    std::erase_if(prefs, [&workspace](const Pref &p) { return p.workspace == workspace; });
+    fill(prefs);
+    std::sort(prefs.begin(), prefs.end(), [](const Pref &a, const Pref &b) {
+        return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
+    });
+}
+
+} // namespace
 
 void Shell::loadSorts() {
     Sidebar::Sorts sorts;
@@ -3735,18 +3749,10 @@ void Shell::loadSorts() {
 }
 
 void Shell::storeSorts() {
-    std::erase_if(_settings.sidebarSorts, [this](const Settings::SectionSortPref &p) {
-        return p.workspace == _activeKey;
+    replacePrefs(_settings.sidebarSorts, _activeKey, [this](auto &prefs) {
+        for (const auto &[section, sort] : _sidebar->sorts())
+            prefs.push_back({_activeKey, section, sort.encode()});
     });
-    for (const auto &[section, sort] : _sidebar->sorts())
-        _settings.sidebarSorts.push_back({_activeKey, section, sort.encode()});
-    std::sort( // a stable file
-        _settings.sidebarSorts.begin(),
-        _settings.sidebarSorts.end(),
-        [](const Settings::SectionSortPref &a, const Settings::SectionSortPref &b) {
-            return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
-        }
-    );
 }
 
 // workspaceChanged also runs for the open one (connected, its icon): the
@@ -3767,19 +3773,11 @@ void Shell::storeCollapsed() {
     if (!_collapsedFor)
         return;
     const std::string &key = *_collapsedFor;
-    std::erase_if(_settings.sidebarCollapsed, [&key](const Settings::SectionCollapsedPref &p) {
-        return p.workspace == key;
+    replacePrefs(_settings.sidebarCollapsed, key, [this, &key](auto &prefs) {
+        for (const auto &[section, on] : _sidebar->collapsed())
+            if (on && !section.empty())
+                prefs.push_back({key, section});
     });
-    for (const auto &[section, on] : _sidebar->collapsed())
-        if (on && !section.empty())
-            _settings.sidebarCollapsed.push_back({key, section});
-    std::sort(
-        _settings.sidebarCollapsed.begin(),
-        _settings.sidebarCollapsed.end(),
-        [](const Settings::SectionCollapsedPref &a, const Settings::SectionCollapsedPref &b) {
-            return std::tie(a.workspace, a.section) < std::tie(b.workspace, b.section);
-        }
-    );
 }
 
 void Shell::saveState() {
