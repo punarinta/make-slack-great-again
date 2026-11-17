@@ -2057,14 +2057,18 @@ void Composer::openEmoji() {
     if (!w)
         return;
 #ifdef MSGA_HAVE_MESSAGES
-    // The messages screens' searchable picker (shared with reactions); it
-    // inserts the shortcode, which Slack renders.
+    // The messages screens' searchable picker (shared with reactions). A pick
+    // is the emoji itself, as the ":" completion inserts it; a custom emoji
+    // has only its picture, so it goes as the :code: Slack renders.
     std::weak_ptr<int> alive = _alive;
     screens::EmojiPicker::show(
         *w, _emojiBtn->windowRect(), _ctx, [this, alive](const std::string &name) {
             if (alive.expired())
                 return;
-            _edit->insertText(str::concat({":", name, ":"}));
+            std::string glyph = _ctx.store().emojiFor(name).unicode;
+            if (glyph.empty())
+                glyph = str::concat({":", name, ":"});
+            _edit->insertText(glyph);
             _edit->focus();
         }
     );
