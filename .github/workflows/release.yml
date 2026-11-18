@@ -276,11 +276,19 @@ jobs:
         timeout-minutes: 45 # a slow Ubuntu mirror once took 32 min for Wine
         run: |
           sudo apt-get update -q
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends flatpak
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends flatpak dbus-daemon
           # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # A runner has no login session: no session bus (the Builder app asks
+      # the host's flatpak to install runtimes over it: a private one for the
+      # build) and no XDG_RUNTIME_DIR (where flatpak keeps its instances).
       - name: Build and lint
-        run: packaging/flatpak/build-local.sh --lint
+        run: |
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          sudo mkdir -p "$XDG_RUNTIME_DIR"
+          sudo chown "$(id -u):$(id -g)" "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-run-session -- packaging/flatpak/build-local.sh --lint
 
   # ── Publish: only after every build and test passed ────────────────────────
   publish:
