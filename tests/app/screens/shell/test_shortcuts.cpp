@@ -750,12 +750,21 @@ TEST("shortcuts: Up in an empty composer edits my last message, Escape leaves th
     auto         &c      = h.composer();
     h.edit().insertText("mine");
     h.key(K::Enter);
-    pump(20);
-    const Message *last = nullptr;
-    for (const Message &m : h.store.conversation(design).messages)
-        if (m.user == h.store.me && !m.pending)
-            last = &m;
+    // Until the send has landed (the fake answers after a delay): Up edits
+    // that message, not an older one of mine.
+    const Message *last     = nullptr;
+    const int64_t  deadline = base::monotonicMs() + 3000;
+    while (base::monotonicMs() < deadline) {
+        pump(2);
+        last = nullptr;
+        for (const Message &m : h.store.conversation(design).messages)
+            if (m.user == h.store.me && !m.pending)
+                last = &m;
+        if (last && last->text == "mine")
+            break;
+    }
     REQUIRE(last != nullptr);
+    REQUIRE(last->text == "mine");
     const Ts ts = last->ts;
     h.edit().insertText("x");
     h.key(K::Up); // not empty: just the caret

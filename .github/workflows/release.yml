@@ -134,9 +134,10 @@ jobs:
       # Fonts for the text/UI tests (mounted into the build container) and
       # Xvfb for the smoke launch.
       - name: Install fonts and Xvfb
+        timeout-minutes: 45 # a slow Ubuntu mirror once took 32 min for Wine
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends xvfb xauth \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends xvfb xauth \
               fonts-dejavu-core fonts-liberation2 fonts-noto-core fonts-noto-color-emoji fonts-noto-cjk
       - name: Build, test, smoke launch
         run: scripts/release-linux-static.sh
@@ -162,9 +163,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Wine and Xvfb
+        timeout-minutes: 45 # a slow Ubuntu mirror once took 32 min for Wine
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends wine wine64 xvfb xauth fonts-dejavu-core
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends wine wine64 xvfb xauth fonts-dejavu-core
       - name: Build, smoke launch under Wine
         run: scripts/release-windows.sh
       - uses: actions/upload-artifact@v7
@@ -266,10 +268,15 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-      - name: Install flatpak-builder
+      # Only flatpak itself: build-local.sh then builds with Flathub's own
+      # org.flatpak.Builder app (current flatpak-builder, appstream, eu-strip,
+      # the linter), as Flathub does. Ubuntu 24.04's flatpak-builder and
+      # appstreamcli are too old for the metainfo.
+      - name: Install flatpak
+        timeout-minutes: 45 # a slow Ubuntu mirror once took 32 min for Wine
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends flatpak flatpak-builder elfutils
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends flatpak
           # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build and lint

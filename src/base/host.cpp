@@ -140,9 +140,11 @@ bool signal(int64_t pid, int sig, bool group) {
     default:
         return false;
     }
-    // "-s NAME --": the form dash's kill takes a negative (group) pid in.
+    // "-s NAME --": the form dash's kill takes a negative (group) pid in;
+    // BusyBox's rejects the "--" and takes it without.
     const std::string target = group ? str::concat({"-", str::number(pid)}) : str::number(pid);
-    const RunResult   r      = sh("kill -s \"$1\" -- \"$2\"", {name, target});
+    const RunResult   r =
+        sh("kill -s \"$1\" -- \"$2\" 2>/dev/null || kill -s \"$1\" \"$2\"", {name, target});
     return r.started && !r.timedOut && r.code == 0;
 }
 
