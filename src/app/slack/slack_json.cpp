@@ -237,9 +237,10 @@ std::string unknownBlockMrkdwn(const Value &b, std::string_view *fallback) {
         *fallback = {};
         return part;
     }
-    return str::concat(
-        {"_", i18n::arg(i18n::tr("(A %1 block msga can't show yet)"), b["type"].str()), "_"}
-    );
+    // Its type as words: "poll_widget" reads "poll widget".
+    std::string kind(b["type"].str());
+    std::replace(kind.begin(), kind.end(), '_', ' ');
+    return str::concat({"_", i18n::arg(i18n::tr("(A %1 block msga can't show yet)"), kind), "_"});
 }
 
 // One block's text as mrkdwn (rich_text, section, header, context, table;
