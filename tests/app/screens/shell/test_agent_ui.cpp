@@ -20,6 +20,7 @@
 #include "app/screens/messages/thread_panel.h"
 #endif
 
+#include <functional>
 #include <memory>
 
 using namespace model;
@@ -475,9 +476,214 @@ TEST("message buttons: drawn under the message, a press goes to the backend") {
     });
     screens::MessageList ml(h.ctx);
     ml.showConversation(h.dm);
-    ml.pressButton(ts, "option:2", {10, 10});
+    ml.pressButton(ts, h.store.findMessage(h.dm, ts)->extra->buttons[1], {10, 10});
     pump();
     CHECK_STR(h.backend.pressed, "option:2");
+}
+
+namespace {
+bool until(const std::function<bool()> &done, int ms = 3000) {
+    const int64_t end = base::monotonicMs() + ms;
+    while (!done()) {
+        if (base::monotonicMs() > end)
+            return false;
+        app().pump(5);
+    }
+    return true;
+}
+
+// The view whose accessible name is `name`.
+ui::View *labelled(ui::View *v, std::string_view name) {
+    if (v->accessibleName() == name)
+        return v;
+    for (size_t i = 0; i < v->childCount(); ++i)
+        if (ui::View *f = labelled(v->child(i), name))
+            return f;
+    return nullptr;
+}
+
+// The message button labelled `label`: its label's parent.
+// Every caller matches a label whose parent is a real Clickable (a link
+// button, the "Call" fold) — never one of the plain informational labels
+// in the card, which labelled() (above) covers instead.
+ui::Clickable *buttonLabelled(ui::View *v, std::string_view label) {
+    if (v->accessibleName() == label && v->parent())
+        return static_cast<ui::Clickable *>(v->parent());
+    for (size_t i = 0; i < v->childCount(); ++i)
+        if (ui::Clickable *f = buttonLabelled(v->child(i), label))
+            return f;
+    return nullptr;
+}
+} // namespace
+
+TEST("message buttons: a link button opens its own URL, even without an id") {
+    Harness h;
+    auto   &msgs = h.store.conversation(h.dm).messages;
+    REQUIRE(!msgs.empty());
+    const Ts ts = msgs.back().ts;
+    // A call's Join and a legacy link button: neither has an id to tell
+    // them apart by.
+    h.store.updateMessage(h.dm, ts, [](Message &m) {
+        Button join{"", "Zoom link", Button::Style::Primary};
+        join.url = "https://zoom.us/j/1";
+        Button docs{"", "Docs link"};
+        docs.url = "https://x/docs";
+        m.extras().buttons.push_back(join);
+        m.extras().buttons.push_back(docs);
+    });
+    std::string opened;
+    h.ctx.openUrl       = [&](const std::string &u) { opened = u; };
+    ui::Clickable *docs = nullptr;
+    REQUIRE(until([&] { return (docs = buttonLabelled(&h.win->root(), "Docs link")) != nullptr; }));
+    docs->onClick();
+    CHECK_STR(opened, "https://x/docs");
+    ui::Clickable *join = buttonLabelled(&h.win->root(), "Zoom link");
+    REQUIRE(join != nullptr);
+    join->onClick();
+    CHECK_STR(opened, "https://zoom.us/j/1");
+    CHECK(h.backend.pressed.empty()); // links never reach the backend
+}
+
+TEST("message buttons: a call is drawn as its card, the Join inside it") {
+    Harness h;
+    auto   &msgs = h.store.conversation(h.dm).messages;
+    REQUIRE(!msgs.empty());
+    const Ts ts = msgs.back().ts;
+    h.store.updateMessage(h.dm, ts, [](Message &m) {
+        Call &c       = m.extras().call;
+        c.id          = "R1";
+        c.name        = "Zoom meeting started by Arun";
+        c.displayId   = "878-4151-9687";
+        c.startSec    = base::nowSecs() - 5 * 60;
+        c.peopleKnown = true;
+        Button join{"", "Join call", Button::Style::Primary};
+        join.url        = "https://zoom.us/j/1";
+        join.attachment = -1;
+        m.extras().buttons.push_back(join);
+    });
+    std::string opened;
+    h.ctx.openUrl       = [&](const std::string &u) { opened = u; };
+    ui::Clickable *join = nullptr;
+    REQUIRE(until([&] { return (join = buttonLabelled(&h.win->root(), "Join call")) != nullptr; }));
+    // The card holds the name, the lines and the button.
+    ui::View *card = join->parent();
+    while (card && !labelled(card, "Zoom meeting started by Arun"))
+        card = card->parent();
+    REQUIRE(card != nullptr);
+    CHECK(labelled(card, "Started 5 minutes ago") != nullptr);
+    CHECK(labelled(card, "Meeting ID: 878-4151-9687") != nullptr);
+    // Slack's 440 px, never wider than the column it sits in.
+    REQUIRE(card->parent() != nullptr);
+    CHECK(std::abs(card->width() - std::min(440.f, card->parent()->width())) < 1);
+    // The status shares the Join's row (status left, Join right).
+    ui::View *statusLabel = labelled(card, "Waiting for people to join");
+    REQUIRE(statusLabel != nullptr);
+    CHECK(statusLabel->parent() == join->parent());
+    // The message's text first, then "Call ▾" and the card, always (Slack
+    // draws Zoom's [call, section] that way too).
+    ui::View *body = card->parent();
+    REQUIRE(body != nullptr);
+    ui::Clickable *fold = buttonLabelled(body, "Call");
+    REQUIRE(fold != nullptr);
+    const size_t n = body->childCount();
+    REQUIRE(n >= 3);
+    CHECK(body->child(n - 1) == card);
+    CHECK(body->child(n - 2) == fold);
+    join->onClick();
+    CHECK_STR(opened, "https://zoom.us/j/1");
+    // The caret folds the card away, and back.
+    fold->onClick();
+    REQUIRE(until([&] { return buttonLabelled(&h.win->root(), "Join call") == nullptr; }));
+    CHECK(buttonLabelled(&h.win->root(), "Call") != nullptr);
+    buttonLabelled(&h.win->root(), "Call")->onClick();
+    REQUIRE(until([&] { return buttonLabelled(&h.win->root(), "Join call") != nullptr; }));
+}
+
+TEST("message buttons: a call with people in it shows their avatars by the Join") {
+    Harness h;
+    auto   &msgs = h.store.conversation(h.dm).messages;
+    REQUIRE(!msgs.empty());
+    const Ts      ts   = msgs.back().ts;
+    const UserRef mira = h.store.findUser("U0MIRA");
+    REQUIRE(mira != kNoUser);
+    const UserRef me = h.store.me;
+    h.store.updateMessage(h.dm, ts, [&](Message &m) {
+        Call &c    = m.extras().call;
+        c.id       = "R1";
+        c.name     = "Zoom meeting started by Arun";
+        c.startSec = base::nowSecs() - 60;
+        c.people   = {me, mira};
+        Button join{"", "Join call", Button::Style::Primary};
+        join.url        = "https://zoom.us/j/1";
+        join.attachment = -1;
+        m.extras().buttons.push_back(join);
+    });
+    ui::Clickable *join = nullptr;
+    REQUIRE(until([&] { return (join = buttonLabelled(&h.win->root(), "Join call")) != nullptr; }));
+    // The Join's row: the avatars (me, Mira), "You and … are in the call",
+    // the Join.
+    ui::View *row = join->parent();
+    REQUIRE(row != nullptr);
+    REQUIRE(row->childCount() == 3);
+    CHECK(row->child(0)->childCount() == 2);
+    const std::string who =
+        "You and " + std::string(h.store.user(mira).label()) + " are in the call";
+    CHECK(row->child(1)->accessibleName() == who);
+}
+
+TEST("message buttons: a call that says only where to join is still a card with its Join") {
+    Harness h;
+    auto   &msgs = h.store.conversation(h.dm).messages;
+    REQUIRE(!msgs.empty());
+    const Ts ts = msgs.back().ts;
+    h.store.updateMessage(h.dm, ts, [](Message &m) {
+        m.extras().call.id = "call"; // no name, id, icon, start or people
+        Button join{"", "Join call", Button::Style::Primary};
+        join.url        = "https://meet.example/1";
+        join.attachment = -1;
+        m.extras().buttons.push_back(join);
+    });
+    std::string opened;
+    h.ctx.openUrl       = [&](const std::string &u) { opened = u; };
+    ui::Clickable *join = nullptr;
+    REQUIRE(until([&] { return (join = buttonLabelled(&h.win->root(), "Join call")) != nullptr; }));
+    // The card: its generic title over the Join's row alone.
+    ui::View *card = join->parent()->parent();
+    REQUIRE(card != nullptr);
+    REQUIRE(card->childCount() == 3); // the title row, a hairline, the Join's row
+    CHECK(labelled(card->child(0), "Call") != nullptr);
+    CHECK(labelled(card, "Waiting for people to join") == nullptr);
+    join->onClick();
+    CHECK_STR(opened, "https://meet.example/1");
+}
+
+TEST("message buttons: an ended call shows who was in it, with no Join") {
+    Harness h;
+    auto   &msgs = h.store.conversation(h.dm).messages;
+    REQUIRE(!msgs.empty());
+    const Ts      ts   = msgs.back().ts;
+    const UserRef mira = h.store.findUser("U0MIRA");
+    REQUIRE(mira != kNoUser);
+    const UserRef me = h.store.me;
+    h.store.updateMessage(h.dm, ts, [&](Message &m) {
+        Call &c    = m.extras().call;
+        c.id       = "R1";
+        c.name     = "Zoom meeting started by Arun";
+        c.ended    = true;
+        c.startSec = 1000;
+        c.endSec   = 1000 + 35 * 60;
+        c.people   = {mira, me};
+    });
+    const std::string who =
+        "You and " + std::string(h.store.user(mira).label()) + " were in the call";
+    ui::View *label = nullptr;
+    REQUIRE(until([&] { return (label = labelled(&h.win->root(), who)) != nullptr; }));
+    // Its row: their avatars, then the sentence; nothing to join.
+    ui::View *row = label->parent();
+    REQUIRE(row->childCount() == 2);
+    CHECK(row->child(0)->childCount() == 2);
+    CHECK(labelled(&h.win->root(), "Ended \xC2\xB7 lasted 35m") != nullptr);
+    CHECK(labelled(row, "Join") == nullptr);
 }
 #endif
 

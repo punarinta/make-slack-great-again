@@ -136,6 +136,7 @@ bool Block::operator==(const Block &) const                     = default;
 bool Attachment::operator==(const Attachment &) const           = default;
 bool Button::operator==(const Button &) const                   = default;
 bool Huddle::operator==(const Huddle &) const                   = default;
+bool Call::operator==(const Call &) const                       = default;
 bool MessageExtras::operator==(const MessageExtras &) const     = default;
 
 bool Message::operator==(const Message &o) const {

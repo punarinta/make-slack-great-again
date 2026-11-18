@@ -55,12 +55,13 @@ model::Conversation      toConversation(const json::Value &c, model::Store &stor
 model::Message           toMessage(const json::Value &m, model::Store &store);
 
 // Block Kit → mrkdwn (rich_text, section, header, context, table). Image
-// blocks are not text (see toBlocks).
-std::string               blocksToMrkdwn(const json::Value &blocks);
+// blocks are not text (see toBlocks). An unknown type falls back per
+// unknownBlockMrkdwn, using `*fallback` for the "message's text" leg.
+std::string blocksToMrkdwn(const json::Value &blocks, std::string_view *fallback = nullptr);
 // The blocks as structure (model::Block) when any is a header, divider,
 // image or table — what is drawn as such; else none (the mrkdwn is enough).
 // Text blocks become Text blocks of their mrkdwn; actions/inputs are skipped.
-std::vector<model::Block> toBlocks(const json::Value &blocks);
+std::vector<model::Block> toBlocks(const json::Value &blocks, std::string_view *fallback = nullptr);
 
 // A conversation's live huddle from a "room" object:
 // false when it is no huddle (call_family != "huddle").

@@ -181,7 +181,7 @@ struct Button {
     // pressed; the others are pressed with their block and value.
     std::string url, blockId, value;
     // The attachment it belongs to, 1-based (drawn in that card, as Slack
-    // does); 0 = the message's own.
+    // does); 0 = the message's own; -1 = its call card's (Call).
     int32_t     attachment = 0;
     bool        operator==(const Button &) const;
 };
@@ -195,6 +195,20 @@ struct Huddle {
     bool                 operator==(const Huddle &) const;
 };
 
+// A Calls API call (Zoom's "/zoom", …), drawn as Slack's call card; its
+// Join is a link Button with attachment -1 (drawn in the card).
+struct Call {
+    std::string          id; // call_id; "" = no call
+    // Each may be missing (another Calls provider than Zoom): the card leaves
+    // its part out ("Call" for no name).
+    std::string          name, displayId, icon;
+    std::vector<UserRef> people; // live: in it now; ended: everyone who was
+    int64_t              startSec = 0, endSec = 0;
+    bool                 ended       = false;
+    bool                 peopleKnown = false; // the call said who (else no "Waiting…")
+    bool                 operator==(const Call &) const;
+};
+
 // The parts most messages don't have.
 struct MessageExtras {
     std::string             subtype; // "bot_message", "channel_join", …
@@ -205,6 +219,7 @@ struct MessageExtras {
     std::vector<Block>      blocks; // drawn instead of `text` when present (see Block)
     std::string             botId;  // Slack: the posting app's bot id (a button press names it)
     Huddle                  huddle; // subtype "huddle_thread": its room's summary
+    Call                    call;   // a call block's call
 
     // Out of line (store.cpp): the implicit ones would inline a dozen string
     // and vector destructors into every function that drops a message.

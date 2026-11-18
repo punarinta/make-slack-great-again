@@ -218,10 +218,10 @@ public:
     void openCsvPreview(const model::File &f);         // "Preview" (the table viewer)
     void openReactionPicker(Ts ts, ui::RectF anchorWindowRect);
     void openImage(const std::string &path, int w, int h);
-    // A message's button (MessageExtras::buttons) pressed: Backend::
-    // pressButton, then a toast at the button ("Sent to the app", or
-    // "Couldn't press the button: …").
-    void pressButton(Ts ts, const std::string &buttonId, ui::PointF windowPos);
+    // A message's button (MessageExtras::buttons) pressed: a link button
+    // opens its URL; the rest go to Backend::pressButton, then a toast at
+    // the button ("Sent to the app", or "Couldn't press the button: …").
+    void pressButton(Ts ts, const model::Button &button, ui::PointF windowPos);
     void showToast(const std::string &text, int ms, ui::PointF windowPos);
     void reply(Ts ts);
     // "Mark unread": what the message's read cursor is — 0 for the

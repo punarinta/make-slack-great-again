@@ -418,15 +418,14 @@ std::string huddleDuration(int64_t secs) {
     return m ? arg(tr("%1h %2m"), str::number(h), str::number(m)) : arg(tr("%1h"), str::number(h));
 }
 
-} // namespace
-
-// Who is (or was) in the huddle and for how long —
-// "You" first, then the others in Slack's order, more than three cut to two
-// and "N others".
-std::string huddleSummaryText(const Store &st, const model::Huddle &h) {
+// Who's in it, joined ("A, B and C"):
+// - "You" first, then the rest in Slack's order
+// - more than three cut to two names plus "N others"
+// - "" for nobody; `plural` set for more than one, or for me alone
+std::string peopleText(const Store &st, const std::vector<model::UserRef> &users, bool &plural) {
     std::vector<std::string> names;
     bool                     withMe = false;
-    for (model::UserRef u : h.attendees) {
+    for (model::UserRef u : users) {
         if (u == st.me && st.me != model::kNoUser) {
             withMe = true;
             continue;
@@ -436,10 +435,9 @@ std::string huddleSummaryText(const Store &st, const model::Huddle &h) {
     }
     if (withMe)
         names.insert(names.begin(), tr("You"));
+    plural = names.size() > 1 || withMe;
     if (names.empty())
-        return h.ended ? tr("Nobody joined the huddle.")
-                       : tr("The huddle is waiting for people to join.");
-    const bool plural = names.size() > 1 || withMe;
+        return {};
     if (names.size() > 3) {
         const int64_t rest = int64_t(names.size()) - 2;
         names.resize(2);
@@ -452,6 +450,18 @@ std::string huddleSummaryText(const Store &st, const model::Huddle &h) {
             lead += (i ? ", " : "") + names[i];
         who = arg(tr("%1 and %2"), lead, names.back());
     }
+    return who;
+}
+
+} // namespace
+
+// Who is (or was) in the huddle and for how long.
+std::string huddleSummaryText(const Store &st, const model::Huddle &h) {
+    bool              plural = false;
+    const std::string who    = peopleText(st, h.attendees, plural);
+    if (who.empty())
+        return h.ended ? tr("Nobody joined the huddle.")
+                       : tr("The huddle is waiting for people to join.");
     if (!h.ended)
         return arg(plural ? tr("%1 are in the huddle.") : tr("%1 is in the huddle."), who);
     if (h.startSec <= 0 || h.endSec < h.startSec)
@@ -461,6 +471,35 @@ std::string huddleSummaryText(const Store &st, const model::Huddle &h) {
         who,
         huddleDuration(h.endSec - h.startSec)
     );
+}
+
+std::string callStartedText(const model::Call &c, int64_t now) {
+    if (c.ended)
+        return c.startSec > 0 && c.endSec >= c.startSec
+                   ? arg(tr("Ended \xC2\xB7 lasted %1"), huddleDuration(c.endSec - c.startSec))
+                   : std::string(tr("Ended"));
+    return c.startSec > 0 ? arg(tr("Started %1"), base::relativeTime(c.startSec, now))
+                          : std::string();
+}
+
+float callAvatarAlpha(const model::Call &c) {
+    return c.ended ? 0.5f : 1.f; // a pending send's fade
+}
+
+std::string callStatusText(const Store &st, const model::Call &c) {
+    bool              plural = false;
+    const std::string who    = peopleText(st, c.people, plural);
+    if (!who.empty())
+        return arg(
+            c.ended ? (plural ? tr("%1 were in the call") : tr("%1 was in the call"))
+                    : (plural ? tr("%1 are in the call") : tr("%1 is in the call")),
+            who
+        );
+    // Nobody to show: an ended call says nothing either way; a live one
+    // says nothing only when it never said who's in it (not "known empty").
+    if (c.ended || !c.peopleKnown)
+        return {};
+    return std::string(tr("Waiting for people to join"));
 }
 
 namespace {
@@ -480,8 +519,12 @@ text::AttributedText styled(std::string_view s, Font f, C c, uint32_t linkId = 0
 // botButtonBorder hairline. Pressing it is Backend::pressButton.
 class BotButton final : public ui::Clickable {
 public:
+    // Only what's read again after construction: pressButton needs id/url,
+    // paint needs the style. label is consumed into the child Label below;
+    // blockId/value are the backend's own concern (Backend::pressButton
+    // re-reads them off the message's buttons).
     BotButton(MessageList &list, Ts ts, const model::Button &b)
-        : _list(list), _ts(ts), _id(b.id), _style(b.style) {
+        : _list(list), _ts(ts), _id(b.id), _url(b.url), _style(b.style) {
         setLook({C::None, C::None, C::None, C::None, 4});
         // Padding for the 15-px body: 7 px over a 13-px
         // label's line (two body lines tall), 12 px at the sides.
@@ -498,7 +541,10 @@ public:
             ->setHitTransparent(true);
         onClick = [this] {
             const ui::RectF r = windowRect();
-            _list.pressButton(_ts, _id, {r.x + r.w / 2, r.y});
+            model::Button   b;
+            b.id  = _id;
+            b.url = _url;
+            _list.pressButton(_ts, b, {r.x + r.w / 2, r.y});
         };
     }
     void paint(gfx::Painter &p) override {
@@ -523,8 +569,37 @@ public:
 private:
     MessageList         &_list;
     Ts                   _ts;
-    std::string          _id;
+    std::string          _id, _url;
     model::Button::Style _style;
+};
+
+// Its children painted at `alpha` (as a pending send's row): msga's
+// "inactive" look; it has no greyscale filter.
+class Faded final : public ui::View {
+public:
+    explicit Faded(float alpha) : _alpha(alpha) {}
+    void paint(gfx::Painter &p) override {
+        if (_alpha < 1)
+            p.setOpacity(_alpha);
+    }
+
+private:
+    float _alpha;
+};
+
+// A call block's card: the file chip's frame.
+class CallCard final : public ui::View {
+public:
+    void paint(gfx::Painter &p) override { paintCardFrame(p, bounds()); }
+};
+
+// A call card's shaded section (the meeting id).
+class CallShade final : public ui::View {
+public:
+    void paint(gfx::Painter &p) override {
+        // Inside the card's side borders.
+        p.fillRect({1, 0, width() - 2, height()}, ui::byTheme(0xff1f1f1fU, 0xfff8f8f8U));
+    }
 };
 
 // An attachment card: tells the row it is hovered (the dismiss "×").
@@ -1171,6 +1246,11 @@ uint64_t bodyHash(const model::Message &m, const Store &st) {
 bool MessageRow::bodyHolds(const model::Message &m) const {
     // Anything else a body shows (names, emoji, folded images, expanded
     // cards, settings) moves the list's epoch when it changes.
+    // A live call's card tells its age: rebuilt once that's gone stale,
+    // not on every unrelated reason this row gets rebound.
+    if (m.extra && !m.extra->call.id.empty() && !m.extra->call.ended &&
+        (!_dueAt || base::nowSecs() >= _dueAt))
+        return false;
     return _bodyEpoch == _list.bodyEpoch() && _bodyHash == bodyHash(m, _list.ctx().store) &&
            (m.extra ? _bodyExtras && *_bodyExtras == *m.extra : !_bodyExtras);
 }
@@ -1331,6 +1411,10 @@ void MessageRow::buildContent(ui::View *col, const model::Message &m, bool root)
         o.labels = labels;
         buildBody(ctx, body, m.text, o, this);
     }
+    // A call's card under the text, wherever its block is: Slack draws
+    // Zoom's [call, section] with the passcode note first.
+    if (x && !x->call.id.empty())
+        buildCallCard(body, m);
     buildButtons(col, m, 0);
     buildFilesSection(col, m.files(), root ? m.ts : 0);
     for (size_t i = 0; i < m.attachments().size(); ++i)
@@ -1342,6 +1426,87 @@ void MessageRow::buildContent(ui::View *col, const model::Message &m, bool root)
     }
     if (!m.reactions.empty())
         buildReactions(col, m);
+}
+
+void MessageRow::buildCallCard(ui::View *col, const model::Message &m) {
+    Context           &ctx       = _list.ctx();
+    const Store       &st        = ctx.store;
+    const model::Call &c         = m.extra->call;
+    const int64_t      now       = base::nowSecs();
+    // "Call ▾" over the card, as Slack draws it; it folds the card away (an
+    // image block's title does the same).
+    const bool         collapsed = _list.imageCollapsed(m.ts, -1, -1);
+    auto              *fold      = col->add<ui::Clickable>();
+    fold->style().row().spacing(4).items(Align::Center).alignSelf(Align::Start).margins(0, 4, 0, 2);
+    ui::styledLabel(
+        fold, tr("Call"), ui::pxFont(15 * 0.9f, text::Weight::Regular, ui::themed(C::TextMuted))
+    )
+        ->setHitTransparent(true);
+    fold->add<ui::IconView>(
+            collapsed ? gfx::Icon::ChevronRight : gfx::Icon::ChevronDown, 10, C::TextMuted
+    )
+        ->setHitTransparent(true);
+    fold->onClick = [this, ts = m.ts] { _list.toggleImage(ts, -1, -1); };
+    if (!collapsed) {
+        // Three sections under hairlines, as Slack draws it:
+        // - app icon, name, age
+        // - meeting id, shaded
+        // - who is in it, Join at the right
+        auto *card = col->add<CallCard>();
+        // Slack's 440 px, narrower where the column is (a thin thread panel).
+        card->style().margins(0, 2, 0, 4).alignSelf(Align::Stretch);
+        card->style().maxW = 440;
+        auto *top          = card->add<ui::View>();
+        top->style().row().spacing(10).padding(12, 12).items(Align::Center);
+        if (!c.icon.empty())
+            top->add<CachedImage>(ctx.images, c.icon, ImageCache::Shape::Rounded, 6)
+                ->style()
+                .size(36, 36)
+                .noShrink();
+        auto *head = top->add<ui::View>();
+        head->style().flex(1).spacing(2);
+        head->add<ui::Label>(
+            c.name.empty() ? std::string(tr("Call")) : c.name, Font::BodyBold, C::Text
+        );
+        if (std::string age = callStartedText(c, now); !age.empty())
+            head->add<ui::Label>(std::move(age), Font::Small, C::TextMuted);
+        if (!c.displayId.empty()) {
+            card->add<ui::Separator>(false, C::FileChipBorder);
+            auto *id = card->add<CallShade>();
+            id->style().padding(12, 8);
+            id->add<ui::Label>(arg(tr("Meeting ID: %1"), c.displayId), Font::Small, C::TextMuted);
+        }
+        std::vector<const model::Button *> joins;
+        for (const model::Button &b : m.extra->buttons)
+            if (b.attachment == -1)
+                joins.push_back(&b);
+        const std::string status = callStatusText(st, c);
+        if (!status.empty() || !joins.empty()) {
+            card->add<ui::Separator>(false, C::FileChipBorder);
+            auto *foot = card->add<ui::View>();
+            foot->style().row().spacing(8).padding(12, 10).items(Align::Center);
+            if (!c.people.empty()) {
+                // Who is (or was) in it: their avatars, as the thread
+                // summary's; faded once it has ended, as Slack does.
+                auto *avs = foot->add<Faded>(callAvatarAlpha(c));
+                avs->style().row().spacing(3).noShrink();
+                for (size_t i = 0; i < c.people.size() && i < 5; ++i)
+                    avs->add<AuthorAvatar>(ctx, st.user(c.people[i]).avatar, c.people[i])
+                        ->style()
+                        .size(20, 20);
+            }
+            foot->add<ui::Label>(status, Font::Small, C::TextMuted)->style().flex(1);
+            for (const model::Button *b : joins)
+                foot->add<BotButton>(_list, m.ts, *b);
+        }
+    }
+    // "Started 5 minutes ago" moves on: the row is built again (reuse())
+    // from the next minute.
+    // ponytail: only when the list next binds it; a minute timer if it lags.
+    if (!c.ended && c.startSec > 0) {
+        const int64_t next = now + 60 - (now - c.startSec) % 60;
+        _dueAt             = _dueAt ? std::min(_dueAt, next) : next;
+    }
 }
 
 void MessageRow::buildButtons(ui::View *col, const model::Message &m, int32_t owner) {

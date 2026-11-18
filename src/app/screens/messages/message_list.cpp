@@ -1710,20 +1710,19 @@ void MessageList::showToast(const std::string &text, int ms, ui::PointF at) {
         showClickToast(_ctx, *w, text, ms, at);
 }
 
-void MessageList::pressButton(Ts ts, const std::string &buttonId, ui::PointF at) {
-    // A link button opens its URL instead.
-    if (const model::Message *m = message(ts); m && m->extra)
-        for (const model::Button &b : m->extra->buttons)
-            if (b.id == buttonId && !b.url.empty()) {
-                if (_ctx.openUrl)
-                    _ctx.openUrl(b.url);
-                return;
-            }
+void MessageList::pressButton(Ts ts, const model::Button &button, ui::PointF at) {
+    // A link button opens its URL instead. By the button itself, not its
+    // id: link buttons often have none (legacy ones, a call's Join).
+    if (!button.url.empty()) {
+        if (_ctx.openUrl)
+            _ctx.openUrl(button.url);
+        return;
+    }
     // The agent answers on its own schedule (a new message, this one
     // changing): the toast only confirms the press was taken.
     std::weak_ptr<char> alive = _alive;
     _ctx.backend().pressButton(
-        _conv, ts, buttonId, [this, alive, at](bool ok, const std::string &err) {
+        _conv, ts, button.id, [this, alive, at](bool ok, const std::string &err) {
             if (alive.expired())
                 return;
             if (ok)

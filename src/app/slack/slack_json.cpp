@@ -168,19 +168,85 @@ void textObject(std::string &out, const Value &o) {
         out += mrkdwn::escapeEntities(t);
 }
 
-// Block types whose content `text` already mirrors (most rich_text blocks
-// mirror the fallback text) or that carry nothing renderable here.
+// One place for what each block type is, so a new type is placed once
+// instead of in whichever of these three subsets its handling happens to
+// touch:
+// - mirrorsText: `text` already says what it would (most rich_text blocks
+//   mirror the fallback text), or it carries nothing renderable here
+// - shownElsewhere: drawn some other way (buttons, a call's card, an
+//   image, a file's chip) or has nothing to show as text
+// - structural: toBlocks keeps it as a model::Block, not just mrkdwn text
+struct BlockKind {
+    std::string_view type;
+    bool             mirrorsText, shownElsewhere, structural;
+};
+constexpr BlockKind kBlockKinds[] = {
+    {"rich_text", true, false, false},
+    {"divider", true, true, true},
+    {"actions", true, true, false},
+    {"input", true, true, false},
+    {"image", false, true, true},
+    {"call", false, true, false},
+    {"file", false, true, false},
+    {"header", false, false, true},
+    {"table", false, false, true},
+};
+
 bool mirrorsText(std::string_view type) {
-    return type == "rich_text" || type == "divider" || type == "actions" || type == "input";
+    for (const BlockKind &k : kBlockKinds)
+        if (k.type == type)
+            return k.mirrorsText;
+    return false;
 }
 
 } // namespace
 
 namespace {
 
-// One block's text as mrkdwn (rich_text, section, header, context, table);
-// "" for blocks without text.
-std::string blockMrkdwn(const Value &b) {
+bool shownElsewhere(std::string_view type) {
+    for (const BlockKind &k : kBlockKinds)
+        if (k.type == type)
+            return k.shownElsewhere;
+    return false;
+}
+
+bool isStructuralBlock(std::string_view type) {
+    for (const BlockKind &k : kBlockKinds)
+        if (k.type == type)
+            return k.structural;
+    return false;
+}
+
+// A block type msga doesn't know: never dropped without a trace.
+// - its own text when it has one (a "markdown" block's text, a video's title)
+// - else the message's fallback text (`*fallback`, used once: what Slack
+//   sends for clients that can't draw the blocks)
+// - else a note that it can't be shown
+std::string unknownBlockMrkdwn(const Value &b, std::string_view *fallback) {
+    std::string part;
+    if (b["text"].isString())
+        part = owned(b["text"]);
+    else if (b["text"].isObject())
+        textObject(part, b["text"]);
+    else if (b["title"].isObject())
+        textObject(part, b["title"]);
+    if (!part.empty())
+        return part;
+    if (fallback && !fallback->empty()) {
+        part      = std::string(*fallback);
+        *fallback = {};
+        return part;
+    }
+    // Its type as words: "poll_widget" reads "poll widget".
+    std::string kind(b["type"].str());
+    std::replace(kind.begin(), kind.end(), '_', ' ');
+    return str::concat({"_", i18n::arg(i18n::tr("(A %1 block msga can't show yet)"), kind), "_"});
+}
+
+// One block's text as mrkdwn (rich_text, section, header, context, table;
+// an unknown type's best effort, unknownBlockMrkdwn); "" for blocks without
+// text.
+std::string blockMrkdwn(const Value &b, std::string_view *fallback) {
     const std::string_view type = b["type"].str();
     std::string            part;
     if (type == "rich_text") {
@@ -231,16 +297,36 @@ std::string blockMrkdwn(const Value &b) {
                 part += '\n';
             part += line;
         }
+    } else if (!shownElsewhere(type)) {
+        part = unknownBlockMrkdwn(b, fallback);
     }
     return part;
 }
 
+// The message's fallback is for an unknown block only when no block says it
+// already: a rich_text "hello" next to an unknown block, with text "hello",
+// is "hello" once. Cleared (`*fallback` = {}) when a text block holds it.
+void dropShownFallback(const Value &blocks, std::string_view *fallback) {
+    if (!fallback || fallback->empty())
+        return;
+    for (const Value b : blocks) {
+        const std::string_view t = b["type"].str();
+        if (t != "rich_text" && t != "header" && t != "section" && t != "context" && t != "table")
+            continue;
+        if (blockMrkdwn(b, nullptr).find(*fallback) != std::string::npos) {
+            *fallback = {};
+            return;
+        }
+    }
+}
+
 } // namespace
 
-std::string blocksToMrkdwn(const json::Value &blocks) {
+std::string blocksToMrkdwn(const json::Value &blocks, std::string_view *fallback) {
+    dropShownFallback(blocks, fallback);
     std::string out;
     for (const Value b : blocks) {
-        std::string part = blockMrkdwn(b);
+        std::string part = blockMrkdwn(b, fallback);
         if (part.empty())
             continue;
         if (!out.empty())
@@ -283,13 +369,12 @@ std::string structureMrkdwn(const std::vector<model::Block> &blocks) {
     return out;
 }
 
-std::vector<model::Block> toBlocks(const json::Value &blocks) {
+std::vector<model::Block> toBlocks(const json::Value &blocks, std::string_view *fallback) {
+    dropShownFallback(blocks, fallback);
     // Only where the shape matters: a header, a divider, an image or a table.
     bool structural = false;
-    for (const Value b : blocks) {
-        const std::string_view t = b["type"].str();
-        structural = structural || t == "header" || t == "divider" || t == "image" || t == "table";
-    }
+    for (const Value b : blocks)
+        structural = structural || isStructuralBlock(b["type"].str());
     std::vector<model::Block> out;
     if (!structural)
         return out;
@@ -329,7 +414,7 @@ std::vector<model::Block> toBlocks(const json::Value &blocks) {
             if (x.rows.empty())
                 continue;
         } else {
-            x.text = blockMrkdwn(b);
+            x.text = blockMrkdwn(b, fallback);
             if (x.text.empty())
                 continue;
         }
@@ -503,7 +588,8 @@ model::Button toButton(const Value &el, std::string_view blockId) {
     return b;
 }
 
-// The buttons of a blocks list: an actions block's, a section's accessory.
+// The buttons of a blocks list: an actions block's, a section's accessory,
+// a call's Join.
 void blockButtons(const Value &blocks, std::vector<model::Button> &out) {
     for (const Value b : blocks) {
         const std::string_view type = b["type"].str(), id = b["block_id"].str();
@@ -515,8 +601,52 @@ void blockButtons(const Value &blocks, std::vector<model::Button> &out) {
             (type == "section" || type == "header") && b["accessory"]["type"].str() == "button"
         ) {
             out.push_back(toButton(b["accessory"], id));
+        } else if (type == "call") {
+            // A Calls API call (Zoom's "/zoom", …): Slack's call card has a
+            // Join that opens the call's join_url (no button element), none
+            // once it has ended.
+            // A web link only, as Slack's clients open it: never a local
+            // file or an app's own scheme from a message.
+            const Value            call = b["call"]["v1"];
+            const std::string_view url  = call["join_url"].str();
+            if ((str::startsWith(url, "https://") || str::startsWith(url, "http://")) &&
+                !roomEnded(call)) {
+                model::Button j;
+                j.label      = i18n::tr("Join");
+                j.url        = owned(call["join_url"]);
+                j.style      = model::Button::Style::Primary;
+                j.attachment = -1; // drawn in the call card
+                out.push_back(std::move(j));
+            }
         }
     }
+}
+
+// A call block's call (history's expanded call.v1). Participants are
+// {"slack_id"} objects; ones from outside Slack have none and are left out.
+// ponytail: a bare {call_id} (no v1) would need calls.info.
+model::Call toCall(const Value &b, model::Store &store) {
+    const Value c = b["call"]["v1"];
+    model::Call x;
+    // The id only marks the message as having a call (its card, where the
+    // Join is drawn): never "", or the Join would have nowhere to go.
+    x.id = owned(b["call_id"].str().empty() ? c["id"] : b["call_id"]);
+    if (x.id.empty())
+        x.id = "call";
+    x.name             = owned(c["name"]);
+    x.displayId        = owned(c["display_id"]);
+    x.icon             = firstIcon(c["app_icon_urls"]);
+    // Live: who is in it; ended: everyone who was (active_participants
+    // empties when it ends), as a huddle's room.
+    x.ended            = roomEnded(c);
+    const Value people = c[x.ended ? "all_participants" : "active_participants"];
+    x.peopleKnown      = people.isArray();
+    for (const Value u : people)
+        if (!u["slack_id"].str().empty())
+            x.people.push_back(store.internUser(u["slack_id"].str()));
+    x.startSec = epochSecs(c["date_start"]);
+    x.endSec   = x.ended ? epochSecs(c["date_end"]) : 0;
+    return x;
 }
 
 // An attachment's buttons (its blocks', its legacy actions', which have no
@@ -528,7 +658,8 @@ void attachmentButtons(const Value &a, int32_t index, std::vector<model::Button>
         if (act["type"].str() == "button")
             out.push_back(toButton(act, {}));
     for (size_t i = first; i < out.size(); ++i)
-        out[i].attachment = index;
+        if (out[i].attachment != -1) // a call's Join: stays the card's, not this attachment's
+            out[i].attachment = index;
 }
 
 } // namespace
@@ -670,20 +801,22 @@ model::Attachment toAttachment(const Value &o) {
         for (const Value f : o["files"])
             a.files.push_back(toFile(f));
     }
-    a.blocks      = toBlocks(o["blocks"]);
+    std::string_view fallback = o["fallback"].str();
+    a.blocks                  = toBlocks(o["blocks"], &fallback);
     // Generated previews: app cards, shared-message links, URL unfurls. Bot
     // attachments without unfurl metadata stay standalone content.
-    a.linkPreview = o["is_msg_unfurl"].boolean() || o["is_app_unfurl"].boolean() ||
-                    o["is_unfurl"].boolean() || !o["original_url"].str().empty() ||
-                    !o["from_url"].str().empty();
-    // A blocks-only attachment (its blocks shown as structure, or as
-    // their mrkdwn), else the fallback when the card would otherwise be empty.
-    if (a.text.empty() && a.blocks.empty())
-        a.text = blocksToMrkdwn(o["blocks"]);
+    a.linkPreview             = o["is_msg_unfurl"].boolean() || o["is_app_unfurl"].boolean() ||
+                                o["is_unfurl"].boolean() || !o["original_url"].str().empty() ||
+                                !o["from_url"].str().empty();
     // A card of buttons alone shows them, not the fallback ("[no preview
-    // available]").
+    // available]"): computed first, so an unknown block can't hand the
+    // fallback to blocksToMrkdwn before this guard gets to see it.
     std::vector<model::Button> buttons;
     attachmentButtons(o, 0, buttons);
+    // A blocks-only attachment (its blocks shown as structure, or as
+    // their mrkdwn), else the fallback when the card would otherwise be empty.
+    if (a.text.empty() && a.blocks.empty() && buttons.empty())
+        a.text = blocksToMrkdwn(o["blocks"], &fallback);
     if (a.text.empty() && a.title.empty() && a.pretext.empty() && a.fields.empty() &&
         a.image.empty() && a.blocks.empty() && buttons.empty())
         a.text = owned(o["fallback"]);
@@ -738,18 +871,23 @@ model::Message toMessage(const json::Value &in, model::Store &store) {
     // raw text is kept unless some block says more (or the text is empty).
     const Value blocks = o["blocks"];
     bool        richer = false, rich = false;
+    Value       callBlock;
     for (const Value b : blocks) {
         richer = richer || !mirrorsText(b["type"].str());
+        if (!callBlock.isObject() && b["type"].str() == "call")
+            callBlock = b;
         if (b["type"].str() == "rich_text") {
             rich = true;
             noteLinkedAuthors(b, store);
         }
     }
-    std::vector<model::Block> structure = toBlocks(blocks);
+    // An unknown block without text of its own shows `text`, the fallback.
+    std::string_view          fallback  = o["text"].str();
+    std::vector<model::Block> structure = toBlocks(blocks, &fallback);
     m.text                              = owned(o["text"]);
     if (richer || m.text.empty()) {
         std::string fromBlocks =
-            structure.empty() ? blocksToMrkdwn(blocks) : structureMrkdwn(structure);
+            structure.empty() ? blocksToMrkdwn(blocks, &fallback) : structureMrkdwn(structure);
         if (!fromBlocks.empty())
             m.text = std::move(fromBlocks);
     } else if (rich) {
@@ -763,8 +901,9 @@ model::Message toMessage(const json::Value &in, model::Store &store) {
 
     const std::string_view subtype = o["subtype"].str();
     const bool             bot     = o.has("bot_id");
-    if (!subtype.empty() || bot || o["files"].size() || o["attachments"].size() ||
-        !structure.empty()) {
+    // A call block's card lives in the extras too, whoever posted it.
+    if (!subtype.empty() || bot || callBlock.isObject() || o["files"].size() ||
+        o["attachments"].size() || !structure.empty()) {
         model::MessageExtras &x = m.extras();
         x.subtype               = std::string(subtype);
         if (bot) {
@@ -788,6 +927,8 @@ model::Message toMessage(const json::Value &in, model::Store &store) {
         x.botId  = owned(o["bot_id"]);
         // Buttons: the message's blocks, then each attachment's.
         blockButtons(blocks, x.buttons);
+        if (callBlock.isObject())
+            x.call = toCall(callBlock, store);
         int32_t n = 0;
         for (const Value a : o["attachments"])
             attachmentButtons(a, ++n, x.buttons);
@@ -903,7 +1044,7 @@ void toSections(
 }
 
 std::string firstIcon(const Value &icons) {
-    for (const char *k : {"image_72", "image_48", "image_36"})
+    for (const char *k : {"image_72", "image_64", "image_48", "image_36"})
         if (const std::string_view v = icons[k].str(); !v.empty())
             return std::string(v);
     return {};
