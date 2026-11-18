@@ -1626,14 +1626,16 @@ ui::View *MessageRow::addThumb(
     float              gapAbove,
     bool               file
 ) {
-    Context &ctx = _list.ctx();
+    Context          &ctx = _list.ctx();
+    // Issue #170: a GIF from Slack's picker is GIPHY's .webp.
+    const std::string src = decodableImageUrl(path);
     if (w <= 0 || h <= 0)
-        ctx.images.naturalSize(path, &w, &h);
+        ctx.images.naturalSize(src, &w, &h);
     float       tw = w > 0 ? float(w) : float(maxW), th = h > 0 ? float(h) : float(maxH) * 0.66f;
     const float s = std::min({1.f, float(maxW) / tw, float(maxH) / th});
     tw            = std::floor(tw * s);
     th            = std::floor(th * s);
-    auto *img     = col->add<Thumb>(_list, path, w, h, tw, th, isGifPath(path), _ts, file);
+    auto *img     = col->add<Thumb>(_list, src, w, h, tw, th, isGifPath(src), _ts, file);
     img->style().alignSelf(Align::Start).margins(0, gapAbove, 0, 2);
     return img;
 }

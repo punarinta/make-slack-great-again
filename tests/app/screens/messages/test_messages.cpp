@@ -612,6 +612,26 @@ TEST("grouping: the rules — system lines, bots, authors, GIF paths") {
     // .gif -- still a GIF as far as the thumbnail is concerned.
     CHECK(isGifPath("https://media4.giphy.com/media/x/200w.webp?cid=1&rid=200w.webp&ct=g"));
     CHECK(isGifPath("/x/party.WEBP"));
+
+    // Issue #170: a GIPHY rendition no decoder here reads is fetched as the
+    // .gif at the same path; anything else (and a .gif) as is.
+    const char *webp = "https://media4.giphy.com/media/v1.Y2lk/abc/giphy.webp?cid=1&rid=giphy.webp";
+#ifdef MSGA_GFX_WEBP
+    CHECK_STR(decodableImageUrl(webp), webp);
+#else
+    CHECK_STR(decodableImageUrl(webp), "https://media4.giphy.com/media/v1.Y2lk/abc/giphy.gif");
+#endif
+    CHECK_STR(
+        decodableImageUrl("https://media.giphy.com/media/abc/200w.MP4#t"),
+        "https://media.giphy.com/media/abc/200w.gif"
+    );
+    const char *gif = "https://media2.giphy.com/media/abc/200w.gif?cid=1&rid=200w.gif&ct=g";
+    CHECK_STR(decodableImageUrl(gif), gif);
+    CHECK_STR(decodableImageUrl("https://e.com/a/pic.webp"), "https://e.com/a/pic.webp");
+    CHECK_STR(
+        decodableImageUrl("https://notgiphy.com/media/a.webp"), "https://notgiphy.com/media/a.webp"
+    );
+    CHECK_STR(decodableImageUrl("/home/x/giphy.webp"), "/home/x/giphy.webp");
 }
 
 TEST("users: a presence flip re-binds no row; a name re-binds only the rows showing it") {

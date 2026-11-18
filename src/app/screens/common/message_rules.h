@@ -38,4 +38,9 @@ std::string_view pathExtension(std::string_view path);
 // decodeAnimation sniffs the real bytes -- a still WebP just decodes to one frame
 bool isGifPath(std::string_view path);
 
+// The URL a message's picture is fetched by: a GIPHY media URL for a
+// rendition this build can't decode (the .webp Slack's GIF picker posts,
+// an .mp4) asks for the .gif GIPHY keeps next to it; any other URL as is.
+std::string decodableImageUrl(std::string_view url);
+
 } // namespace screens
