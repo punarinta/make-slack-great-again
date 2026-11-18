@@ -567,10 +567,10 @@ public:
     }
 
 private:
-    MessageList             &_list;
-    Ts                       _ts;
-    std::string              _id, _url;
-    model::Button::Style     _style;
+    MessageList         &_list;
+    Ts                   _ts;
+    std::string          _id, _url;
+    model::Button::Style _style;
 };
 
 // Its children painted at `alpha` (as a pending send's row): msga's
@@ -1453,8 +1453,10 @@ void MessageRow::buildCallCard(ui::View *col, const model::Message &m) {
         // - meeting id, shaded
         // - who is in it, Join at the right
         auto *card = col->add<CallCard>();
-        card->style().width(440).margins(0, 2, 0, 4).alignSelf(Align::Start);
-        auto *top = card->add<ui::View>();
+        // Slack's 440 px, narrower where the column is (a thin thread panel).
+        card->style().margins(0, 2, 0, 4).alignSelf(Align::Stretch);
+        card->style().maxW = 440;
+        auto *top          = card->add<ui::View>();
         top->style().row().spacing(10).padding(12, 12).items(Align::Center);
         if (!c.icon.empty())
             top->add<CachedImage>(ctx.images, c.icon, ImageCache::Shape::Rounded, 6)

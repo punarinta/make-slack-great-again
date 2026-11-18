@@ -487,6 +487,13 @@ TEST("slack: a block type msga doesn't know shows something, never nothing") {
           {"type": "poll_widget"}, {"type": "poll_widget"}]})"),
         "Vote below\nPoll: lunch?\n_(A poll_widget block msga can't show yet)_"
     );
+    // The fallback already said by a text block: once, not twice.
+    CHECK_STR(
+        text(R"({"ts": "1.0", "user": "U1", "text": "hello", "blocks": [
+          {"type": "section", "text": {"type": "mrkdwn", "text": "hello"}},
+          {"type": "poll_widget"}]})"),
+        "hello\n_(A poll_widget block msga can't show yet)_"
+    );
     // No fallback either: the note.
     CHECK_STR(
         text(R"({"ts": "1.0", "user": "U1", "text": "", "blocks": [{"type": "poll_widget"}]})"),
@@ -518,4 +525,22 @@ TEST("slack: a call block posted as a user still gets its card and Join") {
     REQUIRE(m.extra->buttons.size() == 1);
     CHECK_STR(m.extra->buttons[0].url, "https://meet.example/1");
     CHECK(m.extra->buttons[0].attachment == -1);
+    // A join link that is no web link (a local file, an app's scheme): the
+    // card, but no Join to press.
+    for (const char *url : {"file:///etc/passwd", "zoommtg://zoom.us/join?confno=1"}) {
+        json::Document o;
+        REQUIRE(o.parse(
+            str::concat(
+                {R"({"ts": "1.0", "user": "U1", "text": "Call", "blocks": [{"type": "call",
+                  "call_id": "R2", "call": {"v1": {"id": "R2", "join_url": ")",
+                 url,
+                 R"("}}}]})"}
+            ),
+            nullptr
+        ));
+        const model::Message x = slack::mapjson::toMessage(o.root(), store);
+        REQUIRE(x.extra);
+        CHECK_STR(x.extra->call.id, "R2");
+        CHECK(x.extra->buttons.empty());
+    }
 }

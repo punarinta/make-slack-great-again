@@ -572,6 +572,9 @@ TEST("message buttons: a call is drawn as its card, the Join inside it") {
     REQUIRE(card != nullptr);
     CHECK(labelled(card, "Started 5 minutes ago") != nullptr);
     CHECK(labelled(card, "Meeting ID: 878-4151-9687") != nullptr);
+    // Slack's 440 px, never wider than the column it sits in.
+    REQUIRE(card->parent() != nullptr);
+    CHECK(std::abs(card->width() - std::min(440.f, card->parent()->width())) < 1);
     // The status shares the Join's row (status left, Join right).
     ui::View *statusLabel = labelled(card, "Waiting for people to join");
     REQUIRE(statusLabel != nullptr);

@@ -302,9 +302,27 @@ std::string blockMrkdwn(const Value &b, std::string_view *fallback) {
     return part;
 }
 
+// The message's fallback is for an unknown block only when no block says it
+// already: a rich_text "hello" next to an unknown block, with text "hello",
+// is "hello" once. Cleared (`*fallback` = {}) when a text block holds it.
+void dropShownFallback(const Value &blocks, std::string_view *fallback) {
+    if (!fallback || fallback->empty())
+        return;
+    for (const Value b : blocks) {
+        const std::string_view t = b["type"].str();
+        if (t != "rich_text" && t != "header" && t != "section" && t != "context" && t != "table")
+            continue;
+        if (blockMrkdwn(b, nullptr).find(*fallback) != std::string::npos) {
+            *fallback = {};
+            return;
+        }
+    }
+}
+
 } // namespace
 
 std::string blocksToMrkdwn(const json::Value &blocks, std::string_view *fallback) {
+    dropShownFallback(blocks, fallback);
     std::string out;
     for (const Value b : blocks) {
         std::string part = blockMrkdwn(b, fallback);
@@ -351,6 +369,7 @@ std::string structureMrkdwn(const std::vector<model::Block> &blocks) {
 }
 
 std::vector<model::Block> toBlocks(const json::Value &blocks, std::string_view *fallback) {
+    dropShownFallback(blocks, fallback);
     // Only where the shape matters: a header, a divider, an image or a table.
     bool structural = false;
     for (const Value b : blocks)
@@ -585,8 +604,12 @@ void blockButtons(const Value &blocks, std::vector<model::Button> &out) {
             // A Calls API call (Zoom's "/zoom", …): Slack's call card has a
             // Join that opens the call's join_url (no button element), none
             // once it has ended.
-            const Value call = b["call"]["v1"];
-            if (!call["join_url"].str().empty() && !roomEnded(call)) {
+            // A web link only, as Slack's clients open it: never a local
+            // file or an app's own scheme from a message.
+            const Value            call = b["call"]["v1"];
+            const std::string_view url  = call["join_url"].str();
+            if ((str::startsWith(url, "https://") || str::startsWith(url, "http://")) &&
+                !roomEnded(call)) {
                 model::Button j;
                 j.label      = i18n::tr("Join");
                 j.url        = owned(call["join_url"]);
@@ -609,9 +632,9 @@ model::Call toCall(const Value &b, model::Store &store) {
     x.id = owned(b["call_id"].str().empty() ? c["id"] : b["call_id"]);
     if (x.id.empty())
         x.id = "call";
-    x.name      = owned(c["name"]);
-    x.displayId = owned(c["display_id"]);
-    x.icon      = firstIcon(c["app_icon_urls"]);
+    x.name             = owned(c["name"]);
+    x.displayId        = owned(c["display_id"]);
+    x.icon             = firstIcon(c["app_icon_urls"]);
     // Live: who is in it; ended: everyone who was (active_participants
     // empties when it ends), as a huddle's room.
     x.ended            = roomEnded(c);
@@ -879,8 +902,7 @@ model::Message toMessage(const json::Value &in, model::Store &store) {
     const bool             bot     = o.has("bot_id");
     // A call block's card lives in the extras too, whoever posted it.
     if (!subtype.empty() || bot || callBlock.isObject() || o["files"].size() ||
-        o["attachments"].size() ||
-        !structure.empty()) {
+        o["attachments"].size() || !structure.empty()) {
         model::MessageExtras &x = m.extras();
         x.subtype               = std::string(subtype);
         if (bot) {
