@@ -29,7 +29,11 @@ std::string under(const std::string &base, const char *rel) {
 } // namespace
 
 const char *appId() {
-#if defined(MSGA_FREEDESKTOP)
+#if defined(MSGA_FLATPAK)
+    // The Flatpak's: its .desktop file is named by it, and the shell matches
+    // the window (Wayland app_id) and the notifications to that.
+    return "com.nisdos.msga";
+#elif defined(MSGA_FREEDESKTOP)
     return "msga";
 #else
     return "com.nisdos.msga";

@@ -18,15 +18,7 @@ namespace claude {
 
 namespace {
 
-bool isExecutable(const std::string &path) {
-    if (path.empty() || !file::exists(path) || file::isDir(path))
-        return false;
-#ifdef _WIN32
-    return true;
-#else
-    return ::access(path.c_str(), X_OK) == 0;
-#endif
-}
+using base::isExecutable; // on the host in a Flatpak sandbox, as is the CLI
 
 std::string nativeSeparators(std::string path) {
 #ifdef _WIN32

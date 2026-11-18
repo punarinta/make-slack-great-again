@@ -143,18 +143,44 @@ elseif(MSGA_STATIC)
         -Wl,-z,stack-size=8388608)
 endif()
 
+# The Flatpak (Flathub's com.nisdos.msga, packaging/flatpak): its app id is
+# the window's, the notifications' and the launcher's (identity.cpp);
+# Flathub updates it and its launcher comes with it, so neither is msga's to
+# do (below); it builds without the Slack app keys of credentials.cmake (users
+# paste their own); and its data starts afresh in its own ~/.var/app folder,
+# with nothing of an earlier version's to import (MSGA_LEGACY_IMPORT,
+# app/CMakeLists.txt). `cmake --install` lays out /app. The external commands
+# (claude, git, ssh, a browser) run on the host: base/host.h.
+option(MSGA_FLATPAK "Build for the Flatpak package (com.nisdos.msga)" OFF)
+if(MSGA_FLATPAK)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MSGA_PORT)
+        message(FATAL_ERROR "MSGA_FLATPAK is a Linux build")
+    endif()
+    target_compile_definitions(msga_flags INTERFACE MSGA_FLATPAK)
+endif()
+
 # What a distribution's package turns off, its package manager doing both:
 # msga replacing its own binary with the next release (app/update), and, on
 # Linux, writing its own ~/.local/share/applications/msga.desktop on every
 # start (screens/shell/desktop_entry.cpp), which names this build's path.
 # msga.app publishes no BSD builds, so there is nothing to update to there.
-if(CMAKE_SYSTEM_NAME MATCHES "BSD")
+if(CMAKE_SYSTEM_NAME MATCHES "BSD" OR MSGA_FLATPAK)
     set(_self_update_default OFF)
 else()
     set(_self_update_default ON)
 endif()
+if(MSGA_FLATPAK)
+    set(_launcher_default OFF)
+else()
+    set(_launcher_default ON)
+endif()
 option(MSGA_SELF_UPDATE "Check msga.app for new releases and install them" ${_self_update_default})
-option(MSGA_INSTALL_LAUNCHER "Linux: write the user's msga.desktop launcher entry at startup" ON)
+option(MSGA_INSTALL_LAUNCHER "Linux: write the user's msga.desktop launcher entry at startup"
+       ${_launcher_default})
+if(MSGA_FLATPAK AND (MSGA_SELF_UPDATE OR MSGA_INSTALL_LAUNCHER))
+    message(FATAL_ERROR "MSGA_FLATPAK: turn MSGA_SELF_UPDATE and MSGA_INSTALL_LAUNCHER off "
+                        "(Flathub updates the app and installs its launcher)")
+endif()
 # On msga_flags: the updater's UI (the update bar, Settings' update checks)
 # and its tests compile out with it, not only app/update.
 foreach(opt MSGA_SELF_UPDATE MSGA_INSTALL_LAUNCHER)
@@ -249,7 +275,9 @@ endif()
 include("${CMAKE_CURRENT_SOURCE_DIR}/version.cmake")
 
 # The build's Slack app keys (gitignored; see credentials.cmake.example).
-include("${CMAKE_CURRENT_SOURCE_DIR}/credentials.cmake" OPTIONAL)
+if(NOT MSGA_FLATPAK)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/credentials.cmake" OPTIONAL)
+endif()
 
 # Modules add themselves; dependencies only go downwards (see README).
 # MSGA_MODULES narrows the build to a prefix of the stack (e.g. "base;net"
@@ -271,3 +299,21 @@ endif()
 
 # Precompiled standard headers for the test trees (see src/tools/pch.cmake).
 include(src/tools/pch.cmake)
+
+# The Flatpak's /app (MSGA_FLATPAK; packaging/flatpak): the program, its
+# launcher and AppStream metadata, its icon — each named by the app id.
+if(MSGA_FLATPAK)
+    include(GNUInstallDirs)
+    set(_flatpak "${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak")
+    install(TARGETS msga RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES "${_flatpak}/com.nisdos.msga.desktop"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES "${_flatpak}/com.nisdos.msga.metainfo.xml"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/gfx/icon.svg"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+            RENAME com.nisdos.msga.svg)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/gfx/icon_256.png"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+            RENAME com.nisdos.msga.png)
+endif()

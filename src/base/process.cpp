@@ -1,6 +1,7 @@
 #include "base/process.h"
 
 #include "base/file.h"
+#include "base/host.h"
 #include "base/str.h"
 #include "base/time.h"
 
@@ -99,6 +100,20 @@ void markIsolatedStorage() {
 }
 
 std::string findExecutable(std::string_view name) {
+#ifdef MSGA_HOST_EXEC
+    if (host::sandboxed()) {
+        // The host's PATH (its session's), not the sandbox's.
+        const RunResult r = host::sh(
+            "case \"$1\" in */*) [ -f \"$1\" ] && [ -x \"$1\" ] && printf '%s\\n' \"$1\";; "
+            "*) command -v \"$1\";; esac",
+            {std::string(name)}
+        );
+        const std::string_view out(r.output);
+        const std::string_view line = out.substr(0, out.find('\n'));
+        return r.code == 0 && !line.empty() && line.front() == '/' ? std::string(line)
+                                                                   : std::string();
+    }
+#endif
     if (name.find('/') != std::string_view::npos || name.find('\\') != std::string_view::npos)
         return file::exists(name) && !file::isDir(name) ? std::string(name) : std::string();
 #ifdef _WIN32
@@ -124,6 +139,22 @@ std::string findExecutable(std::string_view name) {
         }
     }
     return {};
+}
+
+bool isExecutable(const std::string &path) {
+    if (path.empty())
+        return false;
+#ifdef MSGA_HOST_EXEC
+    if (host::sandboxed())
+        return host::sh("[ -f \"$1\" ] && [ -x \"$1\" ]", {path}).code == 0;
+#endif
+    if (!file::exists(path) || file::isDir(path))
+        return false;
+#if defined(_WIN32) || defined(MSGA_PORT) // a port's spawn says whether it runs
+    return true;
+#else
+    return ::access(path.c_str(), X_OK) == 0;
+#endif
 }
 
 Process::~Process() {
@@ -662,14 +693,59 @@ void initSpawnAttr(posix_spawnattr_t *attr) {
 
 #endif
 
+bool makePipe(int fds[2]) {
+    if (::pipe(fds) != 0)
+        return false;
+    // Only the child's dup2'd copies (0, 1, 2) cross the exec.
+    ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    return true;
+}
+
+void closeFd(int &fd) {
+    if (fd >= 0)
+        ::close(fd);
+    fd = -1;
+}
+
+// In a sandbox, the fd the host command writes its pid on (host::wrap).
+constexpr int kPidFd = 3;
+
+// A pipe for kPidFd: both ends above it, so the child's dup2 onto it is a
+// real one (a dup2 onto itself would leave close-on-exec set).
+bool makePidPipe(int fds[2]) {
+    if (!makePipe(fds))
+        return false;
+    for (int i = 0; i < 2; ++i) {
+        const int high = ::fcntl(fds[i], F_DUPFD_CLOEXEC, kPidFd + 1);
+        if (high < 0) {
+            closeFd(fds[0]);
+            closeFd(fds[1]);
+            return false;
+        }
+        ::close(fds[i]);
+        fds[i] = high;
+    }
+    return true;
+}
+
 } // namespace
 
 bool Process::start(const std::string &exe, const std::vector<std::string> &args) {
-    std::vector<char *> argv = argvOf(exe, args);
-    pid_t               pid  = 0;
+    const bool    onHost     = host::sandboxed(); // Linux only: never the fork path
+    int           pidPipe[2] = {-1, -1};
+    host::Command hostCmd;
+    if (onHost) {
+        if (!makePidPipe(pidPipe))
+            return false;
+        hostCmd = host::wrap(exe, args, {}, {}, kPidFd);
+    }
+    const std::string  &program = onHost ? hostCmd.exe : exe;
+    std::vector<char *> argv    = argvOf(program, onHost ? hostCmd.args : args);
+    pid_t               pid     = 0;
 #ifdef MSGA_SPAWN_BY_FORK
     ForkSpawn s;
-    s.paths      = {exe};
+    s.paths      = {program};
     s.argv       = argv.data();
     s.envp       = environ;
     const int rc = forkSpawn(s, &pid);
@@ -679,16 +755,23 @@ bool Process::start(const std::string &exe, const std::vector<std::string> &args
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
     posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    if (onHost)
+        posix_spawn_file_actions_adddup2(&fa, pidPipe[1], kPidFd);
     posix_spawnattr_t attr;
     initSpawnAttr(&attr);
-    const int rc = posix_spawn(&pid, exe.c_str(), &fa, &attr, argv.data(), environ);
+    const int rc = posix_spawn(&pid, program.c_str(), &fa, &attr, argv.data(), environ);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&attr);
 #endif
-    if (rc != 0)
+    closeFd(pidPipe[1]);
+    if (rc != 0) {
+        closeFd(pidPipe[0]);
         return false;
-    _pid    = pid;
-    _exited = false;
+    }
+    _pid     = pid;
+    _hostPid = onHost ? host::readPid(pidPipe[0], 10'000) : 0;
+    _exited  = false;
+    closeFd(pidPipe[0]);
     return true;
 }
 
@@ -705,6 +788,10 @@ void Process::kill(bool force) {
     if (!running())
         return;
     const int sig = force ? SIGKILL : SIGTERM;
+    // On the host: its group there. flatpak-spawn passes SIGTERM on to the
+    // program alone, and dies of SIGKILL leaving the group running (host.h).
+    if (_hostPid > 0 && host::signal(_hostPid, sig, true) && !force)
+        return;
     // The group the child leads (see start); the child alone if that failed.
     if (::getpgid(pid_t(_pid)) == pid_t(_pid))
         ::kill(-pid_t(_pid), sig);
@@ -715,21 +802,6 @@ void Process::kill(bool force) {
 // ── run() ───────────────────────────────────────────────────────────────────
 
 namespace {
-
-bool makePipe(int fds[2]) {
-    if (::pipe(fds) != 0)
-        return false;
-    // Only the child's dup2'd copies (0, 1, 2) cross the exec.
-    ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
-    ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
-    return true;
-}
-
-void closeFd(int &fd) {
-    if (fd >= 0)
-        ::close(fd);
-    fd = -1;
-}
 
 std::string_view envName(std::string_view kv) {
     return kv.substr(0, kv.find('='));
@@ -805,18 +877,26 @@ std::vector<std::string> mergedEnv(const std::vector<std::string> &overrides) {
 RunResult run(const std::string &exe, const std::vector<std::string> &args, const RunOptions &o) {
     RunResult  r;
     const bool feed       = !o.input.empty();
-    int        outPipe[2] = {-1, -1}, inPipe[2] = {-1, -1};
-    if (!makePipe(outPipe) || (feed && !makePipe(inPipe))) {
+    const bool onHost     = !o.here && host::sandboxed();
+    int        outPipe[2] = {-1, -1}, inPipe[2] = {-1, -1}, pidPipe[2] = {-1, -1};
+    if (!makePipe(outPipe) || (feed && !makePipe(inPipe)) || (onHost && !makePidPipe(pidPipe))) {
         r.output = std::strerror(errno);
         closeFd(outPipe[0]);
         closeFd(outPipe[1]);
+        closeFd(inPipe[0]);
+        closeFd(inPipe[1]);
         return r;
     }
+    // On the host, its folder and environment are flatpak-spawn's options.
+    host::Command hostCmd;
+    if (onHost)
+        hostCmd = host::wrap(exe, args, o.cwd, o.env, kPidFd);
 
-    std::vector<char *>      argv = argvOf(exe, args);
+    const std::string       &program = onHost ? hostCmd.exe : exe;
+    std::vector<char *>      argv    = argvOf(program, onHost ? hostCmd.args : args);
     std::vector<std::string> envStore;
     std::vector<char *>      envp;
-    if (!o.env.empty()) {
+    if (!o.env.empty() && !onHost) {
         envStore = mergedEnv(o.env);
         for (auto &e : envStore)
             envp.push_back(e.data());
@@ -826,7 +906,7 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
     pid_t              pid    = 0;
 #ifdef MSGA_SPAWN_BY_FORK
     ForkSpawn s;
-    s.paths      = searchPaths(exe);
+    s.paths      = searchPaths(program);
     s.argv       = argv.data();
     s.envp       = envArg;
     s.stdio[0]   = feed ? inPipe[0] : -1; // never waits on a prompt
@@ -846,7 +926,9 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
         posix_spawn_file_actions_adddup2(&fa, outPipe[1], 2);
     else
         posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-    if (!o.cwd.empty()) {
+    if (onHost)
+        posix_spawn_file_actions_adddup2(&fa, pidPipe[1], kPidFd);
+    if (!o.cwd.empty() && !onHost) {
 #ifdef __APPLE__
 // Deprecated in macOS 26 for posix_spawn_file_actions_addchdir, which older
 // macOS lacks.
@@ -860,19 +942,25 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
     }
     posix_spawnattr_t attr;
     initSpawnAttr(&attr); // as Process::start
-    const int rc = posix_spawnp(&pid, exe.c_str(), &fa, &attr, argv.data(), envArg);
+    const int rc = posix_spawnp(&pid, program.c_str(), &fa, &attr, argv.data(), envArg);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&attr);
 #endif
     closeFd(outPipe[1]);
     closeFd(inPipe[0]);
+    closeFd(pidPipe[1]);
     if (rc != 0) {
         r.output = std::strerror(rc);
         closeFd(outPipe[0]);
         closeFd(inPipe[1]);
+        closeFd(pidPipe[0]);
         return r;
     }
-    r.started = true;
+    r.started             = true;
+    // Written before the program starts, so ahead of any output of its own.
+    const int     pidWait = o.timeoutMs > 0 ? std::min(o.timeoutMs, 10'000) : 10'000;
+    const int64_t hostPid = onHost ? host::readPid(pidPipe[0], pidWait) : 0;
+    closeFd(pidPipe[0]);
     ::fcntl(outPipe[0], F_SETFL, ::fcntl(outPipe[0], F_GETFL) | O_NONBLOCK);
 
     // A child that exits without reading all its input must not SIGPIPE us:
@@ -928,6 +1016,8 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
     }
     if (!exited) {
         r.timedOut = true;
+        if (hostPid > 0) // its group on the host: flatpak-spawn's death leaves it (host.h)
+            host::signal(hostPid, SIGKILL, true);
         if (::kill(-pid, SIGKILL) != 0) // the group it leads; the child alone if that failed
             ::kill(pid, SIGKILL);
         reap(0);

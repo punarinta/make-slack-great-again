@@ -40,8 +40,10 @@ struct Browser {
 
 std::vector<Browser> candidates() {
     std::vector<Browser> found;
+    // isExecutable: the browser is the host's in a Flatpak sandbox, which
+    // doesn't see the host's /usr (base/host.h).
     auto                 add = [&](std::string exe, const char *name) {
-        if (!exe.empty() && file::exists(exe))
+        if (!exe.empty() && base::isExecutable(exe))
             found.push_back({std::move(exe), name});
     };
 #if defined(_WIN32)

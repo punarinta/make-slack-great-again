@@ -222,7 +222,25 @@ bool parseNotificationClick(std::string_view s, uint64_t *id, std::string *actio
 
 } // namespace
 
+#ifdef MSGA_FLATPAK
+// The sandbox's /tmp is its own, which no host program sees: not the
+// browser signing in to Slack (its throwaway profile), not claude reading a
+// pasted image or a relay's upload (base/host.h). Temporary files go under
+// the app's cache folder instead, whose path is the same on the host.
+void useHostVisibleTemp() {
+    const char *cache = std::getenv("XDG_CACHE_HOME");
+    if (!cache || !*cache)
+        return;
+    const std::string tmp = file::join(cache, "tmp");
+    if (file::makeDirs(tmp))
+        setenv("TMPDIR", tmp.c_str(), 1);
+}
+#endif
+
 int main(int argc, char **argv) {
+#ifdef MSGA_FLATPAK
+    useHostVisibleTemp();
+#endif
     if (argc == 3 && argv[1] == claude::kPermissionHookFlag)
         return claude::runPermissionHook(argv[2]);
     if (argc >= 2 && argv[1] == claude::kStatusFlag)

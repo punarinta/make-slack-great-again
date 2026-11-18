@@ -109,7 +109,11 @@ std::string                readJobState(const Paths &paths, std::string_view job
 void applyWorker(SessionInfo &job, const SessionInfo &worker);
 
 // Whether a process id is alive. A pid file can outlive a crashed session.
-bool isProcessAlive(int64_t pid);
+// In a Flatpak sandbox the processes are the host's (base/host.h), looked at
+// there — as for every lookup below.
+bool                 isProcessAlive(int64_t pid);
+// …those of `pids` that are, at one look (one host command in a sandbox).
+std::vector<int64_t> aliveProcesses(const std::vector<int64_t> &pids);
 
 // Whether a live background worker holds session `sessionId` (its
 // sessions/<pid>.json, kind "bg"; by its job too, see SessionInfo::jobId). After

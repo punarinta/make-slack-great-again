@@ -159,7 +159,13 @@ endforeach()
 
 # The upgrade from earlier versions' data (legacy/legacy.h): delete this block and the
 # directory to drop it.
-option(MSGA_LEGACY_IMPORT "Import the settings and caches of earlier versions" ON)
+# Not in the Flatpak, whose data starts afresh in its own folder.
+if(MSGA_FLATPAK)
+    set(_legacy_default OFF)
+else()
+    set(_legacy_default ON)
+endif()
+option(MSGA_LEGACY_IMPORT "Import the settings and caches of earlier versions" ${_legacy_default})
 if(MSGA_LEGACY_IMPORT)
     add_subdirectory(legacy)
 endif()

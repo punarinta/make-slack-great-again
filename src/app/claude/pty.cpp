@@ -1,5 +1,6 @@
 #include "app/claude/pty.h"
 
+#include "base/host.h"
 #include "base/process.h"
 #include "base/str.h"
 #include "base/thread.h"
@@ -307,15 +308,29 @@ bool Pty::start(
     }
     // Everything the child needs is made before fork(): after it, only
     // async-signal-safe calls until exec.
-    const std::string        slave = slaveName;
-    std::vector<std::string> argStore{program};
-    argStore.insert(argStore.end(), args.begin(), args.end());
+    const std::string        slave  = slaveName;
+    // In a Flatpak sandbox the program runs on the host (base/host.h), and
+    // the terminal must not be ours: the host process makes it its
+    // controlling one (a terminal belongs to one session), so it gets
+    // /dev/tty and the resize signals. Measured 2026-11-18 on Flatpak 1.16.
+    const bool               onHost = base::host::sandboxed();
+    std::vector<std::string> argStore;
+    std::vector<std::string> envStore;
+    if (onHost) {
+        base::host::Command c = base::host::wrap(program, args, cwd, {"TERM=xterm-256color"}, -1);
+        argStore.push_back(std::move(c.exe));
+        argStore.insert(argStore.end(), c.args.begin(), c.args.end());
+        envStore = base::mergedEnv({});
+    } else {
+        argStore.push_back(program);
+        argStore.insert(argStore.end(), args.begin(), args.end());
+        envStore = base::mergedEnv({"TERM=xterm-256color"});
+    }
     std::vector<char *> argv;
     for (auto &a : argStore)
         argv.push_back(a.data());
     argv.push_back(nullptr);
-    std::vector<std::string> envStore = base::mergedEnv({"TERM=xterm-256color"});
-    std::vector<char *>      envp;
+    std::vector<char *> envp;
     for (auto &e : envStore)
         envp.push_back(e.data());
     envp.push_back(nullptr);
@@ -341,11 +356,12 @@ bool Pty::start(
             ::sigaction(sig, &dfl, nullptr);
         ::sigprocmask(SIG_SETMASK, &none, nullptr);
         ::setsid(); // a session of its own, the terminal its controlling one
-        const int s = ::open(slave.c_str(), O_RDWR);
+        const int s = ::open(slave.c_str(), onHost ? O_RDWR | O_NOCTTY : O_RDWR);
         if (s < 0)
             ::_exit(127);
 #ifdef TIOCSCTTY
-        ::ioctl(s, TIOCSCTTY, 0);
+        if (!onHost)
+            ::ioctl(s, TIOCSCTTY, 0);
 #endif
         ::ioctl(s, TIOCSWINSZ, &ws);
         ::dup2(s, 0);
@@ -353,7 +369,7 @@ bool Pty::start(
         ::dup2(s, 2);
         for (long fd = 3; fd < maxFd; ++fd)
             ::close(static_cast<int>(fd));
-        if (!cwd.empty() && ::chdir(cwd.c_str()) != 0)
+        if (!onHost && !cwd.empty() && ::chdir(cwd.c_str()) != 0)
             ::_exit(127);
         ::execve(argStore[0].c_str(), argv.data(), envp.data());
         ::_exit(127);

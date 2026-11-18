@@ -10,6 +10,7 @@
 #include "app/claude/relay_protocol.h"
 #include "app/model/jobs.h"
 #include "base/file.h"
+#include "base/host.h"
 #include "base/log.h"
 #include "base/process.h"
 #include "base/str.h"
@@ -249,7 +250,7 @@ int runRelay(int, char **) {
     LocalHost host(loop, findClaudeExecutable(), Paths::detect(), d.data + "/approvals");
     // The sessions it starts ask their permission questions through it, and
     // report their progress through it (`msga --claude-status` here).
-    host.useHook(base::executablePath());
+    host.useHook(base::host::selfCommand());
     bool        gone = false;
     RelayServer server(loop, host, privateDir(self + "/uploads"), [&](std::string line) {
         if (!gone && !writeAll(line)) {

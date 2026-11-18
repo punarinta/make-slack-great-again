@@ -3,7 +3,7 @@
 // run()). A Process's output goes to the null device, and the child runs in
 // its own session / process group so the whole tree can be signalled —
 // wrappers like /usr/bin/google-chrome start the real browser and do not
-// forward SIGTERM.
+// forward SIGTERM. Inside a Flatpak sandbox they run on the host (host.h).
 #pragma once
 
 #include <cstdint>
@@ -33,8 +33,9 @@ public:
     int     exitStatus() const { return _status; }
 
 private:
-    int64_t _pid    = 0;
-    int     _status = -1;
+    int64_t _pid     = 0;
+    int64_t _hostPid = 0; // in a sandbox: the program's pid on the host (host.h)
+    int     _status  = -1;
 #if defined(_WIN32) || defined(MSGA_PORT)
     void *_handle = nullptr; // process HANDLE / port_proc *
 #endif
@@ -50,6 +51,8 @@ struct RunOptions {
     std::vector<std::string> env;   // "NAME=value" set on top of ours; "NAME=" unsets
     bool                     mergeStderr = true; // stderr into `output`; false = discarded
     int                      timeoutMs   = 0;    // > 0: the group is killed then (timedOut)
+    // In a Flatpak sandbox: run `exe` in the sandbox, not on the host (host.h).
+    bool                     here        = false;
 };
 struct RunResult {
     bool        started  = false; // false: it could not be started at all
@@ -75,7 +78,10 @@ std::vector<std::string> mergedEnv(const std::vector<std::string> &overrides);
 
 // The full path of `name` found on $PATH (Windows: also tries ".exe"); ""
 // when absent. A name containing a separator is checked as is.
+// In a Flatpak sandbox it is looked for on the host (host.h).
 std::string findExecutable(std::string_view name);
+// A file (not a folder) we may execute; on the host in a sandbox.
+bool        isExecutable(const std::string &path);
 // getenv as a string ("" when unset).
 std::string env(const char *name);
 // The user's home directory: $HOME, on Windows %USERPROFILE% with '/'

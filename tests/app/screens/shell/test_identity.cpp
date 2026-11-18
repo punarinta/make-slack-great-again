@@ -47,7 +47,11 @@ TEST("identity: the directories earlier versions used") {
     plat::App        &pa     = app().platform();
     const std::string config = pa.standardDir(plat::StandardDir::Config);
     const std::string data   = pa.standardDir(plat::StandardDir::Data);
+#ifdef MSGA_FLATPAK
+    CHECK_STR(identity::appId(), "com.nisdos.msga"); // the Flatpak's .desktop id
+#else
     CHECK_STR(identity::appId(), "msga");
+#endif
     CHECK_STR(identity::configDir(pa), config + "/msga");
     CHECK_STR(identity::dataDir(pa), data + "/msga/MSGA");
     CHECK_STR(identity::cacheDir(pa), pa.standardDir(plat::StandardDir::Cache) + "/msga/MSGA");

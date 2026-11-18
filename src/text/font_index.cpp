@@ -461,6 +461,13 @@ std::vector<std::string> fontRoots() {
     if (const char *x11 = "/usr/X11R6/lib/X11/fonts";
         std::find(roots.begin(), roots.end(), x11) == roots.end())
         roots.push_back(x11);
+#ifdef __linux__
+    // In a Flatpak sandbox the host's fonts — the system's and the user's —
+    // are mounted here; /usr/share/fonts is the runtime's few. Absent elsewhere.
+    for (const char *host : {"/run/host/fonts", "/run/host/user-fonts"})
+        if (std::find(roots.begin(), roots.end(), host) == roots.end())
+            roots.push_back(host);
+#endif
     return roots;
 }
 

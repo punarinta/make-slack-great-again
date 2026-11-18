@@ -13,14 +13,17 @@
 #include "app/model/store.h"
 #include "app/mrkdwn/mrkdwn.h"
 #include "base/file.h"
+#include "base/host.h"
 #include "base/json.h"
 #include "base/process.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/time.h"
 #include "plat/plat.h"
 #include "support/test.h"
 
 #include <algorithm>
+#include <csignal>
 #include <functional>
 #include <memory>
 #include <string>
@@ -418,6 +421,28 @@ TEST("relay protocol: the mirror takes Claude Code's files only") {
     REQUIRE(dashes != args.end());
     CHECK_STR(*(dashes + 1), "-oProxyCommand=evil");
     CHECK_STR(args.back(), "'/opt/msga dir/msga' --cc-relay");
+    // Not said where: looked for there, a Flatpak install last.
+    const std::string found = RemoteHost::sshArgs("box", "").back();
+    CHECK(found.find("exec msga --cc-relay") != std::string::npos);
+    CHECK(found.find("exec flatpak run com.nisdos.msga --cc-relay") != std::string::npos);
+    CHECK(found.find("flatpak") > found.find("/.local/bin/msga"));
+#ifndef _WIN32
+    {
+        // As the server's shell runs it: no msga, a Flatpak one.
+        const std::string bin  = tempDir("fake-flatpak");
+        const std::string home = tempDir("fake-home");
+        writeFile(
+            bin + "/flatpak", "#!/bin/sh\n[ \"$1\" = info ] && exit 0\necho \"flatpak $*\"\n", 0755
+        );
+        base::RunOptions o;
+        o.env        = {"PATH=" + bin + ":/usr/bin:/bin", "HOME=" + home};
+        const auto r = base::run("/bin/sh", {"-c", found}, o);
+        CHECK(r.code == 0);
+        CHECK_STR(r.output, "flatpak run com.nisdos.msga --cc-relay\n");
+        file::remove(bin + "/flatpak");
+        CHECK_STR(base::run("/bin/sh", {"-c", found}, o).output, "msga is not installed there\n");
+    }
+#endif
     CHECK_STR(hostKey("User@Box:22"), "user_box_22");
 }
 
@@ -695,5 +720,53 @@ TEST("relay: `--cc-relay` as a process of its own, over pipes") {
     base::test::setEnv("PATH", path);
     base::test::unsetEnv("TMPDIR");
     model::waitBackground();
+}
+#endif
+
+#ifdef MSGA_HOST_EXEC
+TEST("relay (sandbox): the channel's program runs on the host, its session ended on close") {
+    // ssh in a Flatpak sandbox is the host's (base/host.h); a ProxyCommand it
+    // started (here a sleep) goes with it when the channel closes.
+    const std::string       dir     = tempDir("sandbox-channel");
+    const std::string       pidFile = dir + "/child.pid";
+    base::test::FakeSandbox box;
+    auto                    ch = processChannel(
+        "/bin/sh",
+        {"-c", "sleep 30 & echo $! > '" + pidFile + "'; while read -r l; do echo \"got $l\"; done"}
+    );
+    base::Mutex              lock;
+    std::vector<std::string> lines;
+    std::string              error;
+    REQUIRE(ch->open(
+        [&](std::string_view l) {
+            base::Lock g(lock);
+            lines.emplace_back(l);
+        },
+        [](std::string) {},
+        &error
+    ));
+    CHECK(box.spawns() >= 1);
+    CHECK(box.lastOptions().find("--forward-fd=3\n") != std::string::npos);
+    ch->send("ping");
+    bool echoed = false;
+    for (int i = 0; i < 300 && !echoed; ++i) {
+        {
+            base::Lock g(lock);
+            echoed = !lines.empty() && lines[0] == "got ping";
+        }
+        if (!echoed)
+            usleep(10000);
+    }
+    CHECK(echoed);
+    std::string pid = readText(pidFile);
+    REQUIRE(!pid.empty());
+    ch->close();
+    bool gone = false;
+    for (int i = 0; i < 200 && !gone; ++i) {
+        gone = ::kill(pid_t(std::stoll(pid)), 0) != 0;
+        if (!gone)
+            usleep(10000);
+    }
+    CHECK(gone);
 }
 #endif

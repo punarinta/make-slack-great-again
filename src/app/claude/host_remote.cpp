@@ -224,7 +224,9 @@ RemoteHost::~RemoteHost() {
 std::vector<std::string>
 RemoteHost::sshArgs(const std::string &destination, const std::string &msga) {
     // msga where it was said to be; else on the PATH a non-interactive shell
-    // has, else where its installer puts it.
+    // has, else where its installer puts it, else a Flatpak install (its
+    // relay reaches the server's claude through flatpak-spawn, base/host.h).
+    const std::string appId = "com.nisdos.msga"; // msga on Flathub
     const std::string command =
         !msga.empty() ? str::concat({shellQuote(msga), " ", kFlag})
                       : str::concat(
@@ -232,6 +234,12 @@ RemoteHost::sshArgs(const std::string &destination, const std::string &msga) {
                              kFlag,
                              "; fi; if [ -x \"$HOME/.local/bin/msga\" ]; then exec "
                              "\"$HOME/.local/bin/msga\" ",
+                             kFlag,
+                             "; fi; if command -v flatpak >/dev/null 2>&1 && flatpak info ",
+                             appId,
+                             " >/dev/null 2>&1; then exec flatpak run ",
+                             appId,
+                             " ",
                              kFlag,
                              "; fi; echo \"msga is not installed there\" >&2; exit 127'"}
                         );

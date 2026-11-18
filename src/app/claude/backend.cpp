@@ -14,6 +14,7 @@
 #include "app/mrkdwn/mrkdwn.h"
 #include "base/crypto.h"
 #include "base/file.h"
+#include "base/host.h"
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/log.h"
@@ -169,7 +170,7 @@ std::unique_ptr<Host> makeHost(plat::App &app, const Credentials &creds) {
     // Sessions msga starts ask their permission questions through it too
     // (approvals.h) — not in tests, whose sessions are fakes.
     if (!base::testProcess())
-        host->useHook(base::executablePath());
+        host->useHook(base::host::selfCommand()); // a host path, also in a Flatpak
     return host;
 }
 

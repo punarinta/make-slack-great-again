@@ -1,6 +1,7 @@
 #include "app/claude/channel.h"
 
 #include "app/claude/relay_protocol.h"
+#include "base/host.h"
 #include "base/process.h"
 #include "base/str.h"
 #include "base/thread.h"
@@ -77,8 +78,9 @@ private:
 #ifdef _WIN32
     HANDLE _process = nullptr, _in = nullptr, _out = nullptr, _errPipe = nullptr;
 #else
-    pid_t _pid = -1;
-    int   _in = -1, _out = -1, _errPipe = -1;
+    pid_t   _pid     = -1;
+    int64_t _hostPid = 0; // in a Flatpak sandbox: the program's pid on the host
+    int     _in = -1, _out = -1, _errPipe = -1;
 #endif
 };
 
@@ -137,11 +139,34 @@ bool ProcessChannel::open(Line onLine, Closed onClosed, std::string *error) {
     }
     for (int fd : {in[1], out[0], err[0]})
         ::fcntl(fd, F_SETFD, FD_CLOEXEC);
+    // In a Flatpak sandbox the program is the host's — ssh with the user's
+    // config, keys and agent (base/host.h) — and says its pid there on fd
+    // kPidFd, by which its session is ended (flatpak-spawn passes a signal on
+    // to it alone, see host.h).
+    constexpr int            kPidFd     = 3;
+    int                      pidPipe[2] = {-1, -1};
+    std::string              exe        = _exe;
+    std::vector<std::string> args       = _args;
+    if (base::host::sandboxed()) {
+        int raw[2];
+        if (::pipe(raw) != 0) {
+            *error = std::string("pipe: ") + std::strerror(errno);
+            return false;
+        }
+        // Above kPidFd, so the child's dup2 onto it is a real one.
+        for (int i = 0; i < 2; ++i) {
+            pidPipe[i] = ::fcntl(raw[i], F_DUPFD_CLOEXEC, kPidFd + 1);
+            ::close(raw[i]);
+        }
+        base::host::Command c = base::host::wrap(_exe, _args, {}, {}, kPidFd);
+        exe                   = std::move(c.exe);
+        args                  = std::move(c.args);
+    }
     // Everything exec needs is made before fork: the child only calls what
     // is safe between fork and exec.
     std::vector<std::string> env = base::mergedEnv({});
-    std::vector<char *>      argv{const_cast<char *>(_exe.c_str())};
-    for (auto &a : _args)
+    std::vector<char *>      argv{exe.data()};
+    for (auto &a : args)
         argv.push_back(a.data());
     argv.push_back(nullptr);
     std::vector<char *> envp;
@@ -160,8 +185,10 @@ bool ProcessChannel::open(Line onLine, Closed onClosed, std::string *error) {
         ::dup2(in[0], 0);
         ::dup2(out[1], 1);
         ::dup2(err[1], 2);
+        if (pidPipe[1] >= 0)
+            ::dup2(pidPipe[1], kPidFd);
         for (int fd : {in[0], in[1], out[0], out[1], err[0], err[1]})
-            if (fd > 2)
+            if (fd > 2 && !(pidPipe[1] >= 0 && fd == kPidFd))
                 ::close(fd);
         ::execve(argv[0], argv.data(), envp.data());
         ::_exit(127);
@@ -169,6 +196,11 @@ bool ProcessChannel::open(Line onLine, Closed onClosed, std::string *error) {
     ::close(in[0]);
     ::close(out[1]);
     ::close(err[1]);
+    if (pidPipe[1] >= 0) {
+        ::close(pidPipe[1]);
+        _hostPid = base::host::readPid(pidPipe[0], 10'000);
+        ::close(pidPipe[0]);
+    }
     _in      = in[1];
     _out     = out[0];
     _errPipe = err[0];
@@ -313,6 +345,8 @@ void ProcessChannel::endProcess() {
         for (int i = 0; i < 40 && ::waitpid(_pid, &status, WNOHANG) == 0; ++i)
             ::usleep(50'000);
         if (::waitpid(_pid, &status, WNOHANG) == 0) {
+            if (_hostPid > 0) // its session on the host: flatpak-spawn's death leaves it
+                base::host::signal(_hostPid, SIGKILL, true);
             ::kill(-_pid, SIGKILL);
             ::waitpid(_pid, &status, 0);
         }
@@ -335,6 +369,8 @@ void ProcessChannel::close() {
     if (_process)
         TerminateProcess(_process, 1);
 #else
+    if (_hostPid > 0) // its whole session on the host: ssh, a ProxyCommand
+        base::host::signal(_hostPid, SIGTERM, true);
     if (_pid > 0)
         ::kill(-_pid, SIGTERM); // its whole session: ssh, a ProxyCommand
 #endif

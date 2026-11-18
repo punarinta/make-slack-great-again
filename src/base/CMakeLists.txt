@@ -11,6 +11,7 @@ add_library(msga_base STATIC
     mime.cpp
     crypto.cpp
     process.cpp
+    host.cpp
     observers.cpp
     old_settings.cpp
     thread.cpp

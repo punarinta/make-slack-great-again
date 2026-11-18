@@ -4,6 +4,7 @@
 #include "app/claude/common.h"
 
 #include "base/file.h"
+#include "base/host.h"
 #include "base/json.h"
 #include "base/process.h"
 #include "base/str.h"
@@ -12,7 +13,11 @@
 
 #include <cstdlib>
 #include <string>
+#include <csignal>
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 using namespace claude;
 
@@ -120,7 +125,8 @@ TEST("roster: roster files parse into sessions") {
     CHECK(statusHasShell("shell"));
 }
 
-TEST("roster: a background worker is paired with its job by job id") {
+namespace {
+void checkWorkerPairing() {
     // A `/clear` sent to a job starts a new session in the same worker: its
     // sessions/<pid>.json names another session, and only its jobId the job
     // (seen with 2.1.282).
@@ -181,6 +187,19 @@ TEST("roster: a background worker is paired with its job by job id") {
     CHECK(stranded.empty());
 #endif
 }
+} // namespace
+
+TEST("roster: a background worker is paired with its job by job id") {
+    checkWorkerPairing();
+}
+
+#ifdef MSGA_HOST_EXEC
+TEST("roster (sandbox): a background worker is paired with its job, looked for on the host") {
+    base::test::FakeSandbox box;
+    checkWorkerPairing();
+    CHECK(box.spawns() > 0);
+}
+#endif
 
 TEST("roster: a background job's suggested reply is offered only while it asks") {
     // Claude Code writes it on a turn that ends on a question, and its own
@@ -282,6 +301,86 @@ TEST("roster: transcripts are found by session id") {
     CHECK_STR(std::string(Paths::transcriptSessionId("/p/-src-app/S1.jsonl")), "S1");
     CHECK_STR(std::string(Paths::transcriptSessionId("/p/x/.hidden")), ".hidden");
 }
+
+#ifdef __linux__
+namespace {
+
+// A command a background session ran and left running: Claude Code's
+// session and job in its environment, a process group of its own, its output
+// in a file of its own (see commandProcessGroup).
+pid_t startSessionCommand(
+    const std::string &sessionId, const std::string &jobDir, const std::string &output
+) {
+    std::string         idVar  = "CLAUDE_CODE_SESSION_ID=" + sessionId;
+    std::string         jobVar = "CLAUDE_JOB_DIR=" + jobDir;
+    std::string         path   = "PATH=/usr/bin:/bin";
+    std::vector<char *> envp{idVar.data(), jobVar.data(), path.data(), nullptr};
+    const pid_t         pid = fork();
+    if (pid == 0) {
+        setsid();
+        const int fd = open(output.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0)
+            _exit(127);
+        dup2(fd, 1);
+        execle("/bin/sleep", "sleep", "30", static_cast<char *>(nullptr), envp.data());
+        _exit(127);
+    }
+    return pid;
+}
+
+// The lookups that find what a session left running, here or on the host.
+// `asOurs`: they're our children, which a lookup here never counts as left
+// over (msga started from that session); one on the host can't tell.
+void checkSessionCommand(bool onHost) {
+    const std::string dir    = tempDir();
+    const std::string sid    = "5e551011-0000-4000-8000-00000000c0de";
+    const std::string output = dir + "/task.output";
+    const pid_t       pid    = startSessionCommand(sid, dir + "/jobs/5e551011", output);
+    REQUIRE(pid > 0);
+    // Its environment is its own once it has exec'd.
+    int64_t group = 0;
+    for (int i = 0; i < 200 && group == 0; ++i) {
+        group = commandProcessGroup(sid, output);
+        if (group == 0)
+            usleep(10000);
+    }
+    CHECK(group == int64_t(pid));
+    CHECK(commandProcessGroup(sid, dir + "/other.output") == 0);
+    CHECK(commandProcessGroup("ffffffff-0000", output) == 0);
+    CHECK(isProcessAlive(pid));
+    const auto alive = aliveProcesses({int64_t(pid), 999999999, 0});
+    REQUIRE(alive.size() == 1);
+    CHECK(alive[0] == int64_t(pid));
+    const auto left = leftoverProcesses(sid, "5e551011");
+    if (onHost) {
+        REQUIRE(left.size() == 1);
+        CHECK(left[0] == int64_t(pid));
+    } else {
+        CHECK(left.empty()); // our child
+    }
+    CHECK(leftoverProcesses(sid, "00000000").empty()); // another job
+    CHECK(signalProcessGroup(group));
+    int status = 0;
+    CHECK(waitpid(pid, &status, 0) == pid);
+    CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM);
+    CHECK_FALSE(isProcessAlive(pid));
+    CHECK(aliveProcesses({int64_t(pid)}).empty());
+}
+
+} // namespace
+
+TEST("roster: a command a session left running is found and stopped") {
+    checkSessionCommand(false);
+}
+
+#ifdef MSGA_HOST_EXEC
+TEST("roster (sandbox): a command a session left running is found and stopped on the host") {
+    base::test::FakeSandbox box;
+    checkSessionCommand(true);
+    CHECK(box.spawns() > 0);
+}
+#endif
+#endif
 
 TEST("roster: process liveness and leftovers") {
     CHECK(isProcessAlive(int64_t(getpid())));

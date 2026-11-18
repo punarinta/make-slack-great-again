@@ -1,5 +1,7 @@
 #include "support/test.h"
 
+#include "base/file.h"
+#include "base/host.h"
 #include "base/process.h"
 
 #include <cstdlib>
@@ -538,5 +540,73 @@ int runSuite(int argc, char **argv) {
     std::printf("%d cases, %d failed, %d failed checks\n", ran, failed, g_failures);
     return failed ? 1 : 0;
 }
+
+#ifndef _WIN32
+namespace {
+
+// flatpak-spawn's options as msga passes them; anything else fails the
+// command, as the real one would. Each call's options go to the log, one a
+// line, then a "--" line. The command runs in place of the script (exec), so
+// it is the pid the caller sees — as the host pid is, there.
+constexpr const char *kFakeSpawn = R"sh(#!/bin/sh
+log=$1; shift
+dir=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --host|--watch-bus|--forward-fd=*) ;;
+    --directory=*) dir=${1#--directory=} ;;
+    --env=*) export "${1#--env=}" ;;
+    --unset-env=*) unset "${1#--unset-env=}" ;;
+    --*) echo "fake flatpak-spawn: unknown option $1" >&2; exit 125 ;;
+    *) break ;;
+  esac
+  printf '%s\n' "$1" >> "$log"
+  shift
+done
+printf -- '--\n' >> "$log"
+if [ -n "$dir" ]; then cd "$dir" || exit 126; fi
+exec "$@"
+)sh";
+
+} // namespace
+
+FakeSandbox::FakeSandbox() {
+    const std::string dir    = makeTempDir("fake-sandbox-");
+    const std::string script = dir + "/flatpak-spawn-impl";
+    _log                     = dir + "/spawns.log";
+    file::writeAtomic(script, kFakeSpawn, 0755, false);
+    // host::wrap passes options only, so the log's path rides in a wrapper.
+    const std::string front = dir + "/flatpak-spawn";
+    file::writeAtomic(
+        front, "#!/bin/sh\nexec '" + script + "' '" + _log + "' \"$@\"\n", 0755, false
+    );
+    file::writeAtomic(_log, "", 0644, false);
+    host::setSpawnerForTest(front);
+}
+
+FakeSandbox::~FakeSandbox() {
+    host::setSpawnerForTest({});
+}
+
+int FakeSandbox::spawns() const {
+    std::string data;
+    file::readAll(_log, &data);
+    int n = 0;
+    for (size_t at = 0; (at = data.find("--\n", at)) != std::string::npos; at += 3)
+        if (at == 0 || data[at - 1] == '\n')
+            ++n;
+    return n;
+}
+
+std::string FakeSandbox::lastOptions() const {
+    std::string data;
+    file::readAll(_log, &data);
+    if (data.size() < 3)
+        return {};
+    data.resize(data.size() - 3); // the last "--\n"
+    const size_t prev = data.rfind("\n--\n");
+    return prev == std::string::npos ? data : data.substr(prev + 4);
+}
+#endif
 
 } // namespace base::test

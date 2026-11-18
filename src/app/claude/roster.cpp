@@ -2,6 +2,7 @@
 #include "app/claude/approvals.h"
 
 #include "base/file.h"
+#include "base/host.h"
 #include "base/json.h"
 #include "base/process.h"
 #include "base/str.h"
@@ -203,42 +204,17 @@ std::string readJobState(const Paths &paths, std::string_view jobId) {
     return readSmallFile(paths.jobDir(jobId) + "/state.json");
 }
 
-bool isProcessAlive(int64_t pid) {
-    if (pid <= 0)
-        return false;
-#ifdef _WIN32
-    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
-    if (!h)
-        return false;
-    DWORD      code  = 0;
-    const bool alive = GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
-    CloseHandle(h);
-    return alive;
-#else
-    return ::kill(pid_t(pid), 0) == 0 || errno == EPERM;
-#endif
-}
-
-std::vector<int64_t>
-liveWorkerPids(const Paths &paths, std::string_view sessionId, std::string_view jobIdOrEmpty) {
-    std::vector<int64_t>   out;
-    const std::string_view jobId = jobIdOr(sessionId, jobIdOrEmpty);
-    for (const std::string &f : jsonFiles(paths.sessionsDir())) {
-        const auto s = parseInteractiveSession(readSmallFile(f));
-        if (s && s->kind == SessionInfo::Kind::Background &&
-            (s->sessionId == sessionId || (!s->jobId.empty() && s->jobId == jobId)) &&
-            isProcessAlive(s->pid))
-            out.push_back(s->pid);
-    }
-    return out;
-}
-
-bool hasLiveWorker(const Paths &paths, std::string_view sessionId, std::string_view jobId) {
-    return !liveWorkerPids(paths, sessionId, jobId).empty();
-}
-
 #ifdef __linux__
 namespace {
+
+// What the process lookups below go by — read from /proc here, or, in a
+// Flatpak sandbox, from the host's (base/host.h): Claude Code runs there, in
+// a process namespace the sandbox can't see.
+struct ProcInfo {
+    int64_t                  pid = 0, ppid = 0, pgid = 0;
+    std::vector<std::string> env, argv; // filled where asked for
+    std::string              fd1;       // where its output goes (env lookups only)
+};
 
 // /proc/<pid>/<file>, read to its end. Not file::readAll: /proc files read
 // as size 0, which a read sized by fstat takes as empty.
@@ -298,28 +274,142 @@ int64_t procPid(std::string_view name) {
     return pid;
 }
 
-int64_t parentPid(int64_t pid) {
-    std::string stat;
-    if (!readProc(pid, "stat", &stat))
-        return 0;
-    // "<pid> (<comm>) <state> <ppid> …" — comm may hold spaces and parentheses.
+// The parent and group from /proc/<pid>/stat's "<pid> (<comm>) <state>
+// <ppid> <pgrp> …" — comm may hold spaces and parentheses.
+void parseStat(std::string_view stat, ProcInfo *p) {
     const size_t close = stat.rfind(')');
-    if (close == std::string::npos)
-        return 0;
+    if (close == std::string_view::npos)
+        return;
     size_t i = close + 2; // past ") "
     while (i < stat.size() && stat[i] != ' ')
         ++i; // the state
-    int64_t ppid = 0;
-    for (++i; i < stat.size() && stat[i] >= '0' && stat[i] <= '9'; ++i)
-        ppid = ppid * 10 + (stat[i] - '0');
-    return ppid;
+    int64_t *fields[] = {&p->ppid, &p->pgid};
+    for (int64_t *f : fields) {
+        *f = 0;
+        for (++i; i < stat.size() && stat[i] >= '0' && stat[i] <= '9'; ++i)
+            *f = *f * 10 + (stat[i] - '0');
+    }
+}
+
+// ── on the host ────────────────────────────────────────────────────────────
+
+// One shell on the host for a lookup: "alive P…" lists the pids still there;
+// "pids P…" those with their stat and argv; "env ENTRY" every process whose
+// environment holds ENTRY, with its output's target and environment as well.
+// One line each: "P pid", "S stat", "F fd1", "E env entry", "A argument" (an
+// entry holding a line break reads as two: never one of those looked for).
+constexpr const char *kHostProcScript = R"sh(mode=$1; shift
+if [ "$mode" = env ]; then
+  set -- $(grep -lzxF -e "$1" /proc/[0-9]*/environ 2>/dev/null | sed 's#^/proc/##; s#/environ$##')
+fi
+for p; do
+  [ -e "/proc/$p/stat" ] || continue
+  echo "P $p"
+  [ "$mode" = alive ] && continue
+  echo "S $(cat "/proc/$p/stat" 2>/dev/null)"
+  if [ "$mode" = env ]; then
+    echo "F $(readlink "/proc/$p/fd/1" 2>/dev/null)"
+    tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | sed 's/^/E /'
+  fi
+  tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | sed 's/^/A /'
+done
+)sh";
+
+std::vector<ProcInfo> hostProcs(const char *mode, const std::vector<std::string> &args) {
+    std::vector<ProcInfo>    out;
+    std::vector<std::string> shArgs{mode};
+    shArgs.insert(shArgs.end(), args.begin(), args.end());
+    const base::RunResult r = base::host::sh(kHostProcScript, shArgs);
+    if (!r.started || r.timedOut)
+        return out;
+    str::Splitter lines(r.output, '\n');
+    for (std::string_view line; lines.next(&line);) {
+        if (line.size() < 2 || line[1] != ' ')
+            continue;
+        const std::string_view v = line.substr(2);
+        if (line[0] == 'P') {
+            out.emplace_back();
+            out.back().pid = procPid(v);
+        } else if (out.empty()) {
+            continue;
+        } else if (line[0] == 'S') {
+            parseStat(v, &out.back());
+        } else if (line[0] == 'F') {
+            out.back().fd1 = std::string(v);
+        } else if (line[0] == 'E') {
+            out.back().env.emplace_back(v);
+        } else if (line[0] == 'A') {
+            out.back().argv.emplace_back(v);
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> pidArgs(const std::vector<int64_t> &pids) {
+    std::vector<std::string> out;
+    for (const int64_t pid : pids)
+        if (pid > 0)
+            out.push_back(str::number(pid));
+    return out;
+}
+
+// ── either ─────────────────────────────────────────────────────────────────
+
+// Processes whose environment holds `entry` exactly, with all of ProcInfo.
+std::vector<ProcInfo> processesWithEnv(const std::string &entry) {
+    if (base::host::sandboxed())
+        return hostProcs("env", {entry});
+    std::vector<ProcInfo>       out;
+    std::vector<file::DirEntry> entries;
+    file::listDir("/proc", &entries);
+    for (const auto &e : entries) {
+        const int64_t pid = e.isDir ? procPid(e.name) : 0;
+        if (pid <= 0)
+            continue;
+        auto env = procStrings(pid, "environ");
+        if (!contains(env, entry))
+            continue;
+        ProcInfo p;
+        p.pid = pid;
+        p.env = std::move(env);
+        std::string stat;
+        if (readProc(pid, "stat", &stat))
+            parseStat(stat, &p);
+        p.argv = procStrings(pid, "cmdline");
+        char          link[4096];
+        const ssize_t n =
+            ::readlink(str::concat({"/proc/", e.name, "/fd/1"}).c_str(), link, sizeof link);
+        if (n > 0)
+            p.fd1.assign(link, size_t(n));
+        out.push_back(std::move(p));
+    }
+    return out;
+}
+
+// `pids` that are still there, with their parent, group and argv.
+std::vector<ProcInfo> processes(const std::vector<int64_t> &pids) {
+    if (base::host::sandboxed())
+        return pids.empty() ? std::vector<ProcInfo>{} : hostProcs("pids", pidArgs(pids));
+    std::vector<ProcInfo> out;
+    for (const int64_t pid : pids) {
+        std::string stat;
+        if (pid <= 0 || !readProc(pid, "stat", &stat))
+            continue;
+        ProcInfo p;
+        p.pid = pid;
+        parseStat(stat, &p);
+        p.argv = procStrings(pid, "cmdline");
+        out.push_back(std::move(p));
+    }
+    return out;
 }
 
 bool descendsFrom(int64_t pid, int64_t ancestor) {
     for (int depth = 0; pid > 1 && depth < 64; ++depth) {
         if (pid == ancestor)
             return true;
-        pid = parentPid(pid);
+        const auto p = processes({pid});
+        pid          = p.empty() ? 0 : p.front().ppid;
     }
     return false;
 }
@@ -327,36 +417,88 @@ bool descendsFrom(int64_t pid, int64_t ancestor) {
 } // namespace
 #endif
 
+std::vector<int64_t> aliveProcesses(const std::vector<int64_t> &pids) {
+    std::vector<int64_t> out;
+#ifdef __linux__
+    if (base::host::sandboxed()) {
+        if (pidArgs(pids).empty())
+            return out;
+        for (const ProcInfo &p : hostProcs("alive", pidArgs(pids)))
+            out.push_back(p.pid);
+        return out;
+    }
+#endif
+    for (const int64_t pid : pids)
+        if (isProcessAlive(pid))
+            out.push_back(pid);
+    return out;
+}
+
+bool isProcessAlive(int64_t pid) {
+    if (pid <= 0)
+        return false;
+#ifdef _WIN32
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
+    if (!h)
+        return false;
+    DWORD      code  = 0;
+    const bool alive = GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
+    CloseHandle(h);
+    return alive;
+#else
+    if (base::host::sandboxed())
+        return !aliveProcesses({pid}).empty();
+    return ::kill(pid_t(pid), 0) == 0 || errno == EPERM;
+#endif
+}
+
+std::vector<int64_t>
+liveWorkerPids(const Paths &paths, std::string_view sessionId, std::string_view jobIdOrEmpty) {
+    std::vector<int64_t>   candidates;
+    const std::string_view jobId = jobIdOr(sessionId, jobIdOrEmpty);
+    for (const std::string &f : jsonFiles(paths.sessionsDir())) {
+        const auto s = parseInteractiveSession(readSmallFile(f));
+        if (s && s->kind == SessionInfo::Kind::Background &&
+            (s->sessionId == sessionId || (!s->jobId.empty() && s->jobId == jobId)))
+            candidates.push_back(s->pid);
+    }
+    return aliveProcesses(candidates); // one look on the host, in a sandbox
+}
+
+bool hasLiveWorker(const Paths &paths, std::string_view sessionId, std::string_view jobId) {
+    return !liveWorkerPids(paths, sessionId, jobId).empty();
+}
+
 std::vector<int64_t> leftoverProcesses(std::string_view sessionId, std::string_view shortId) {
     std::vector<int64_t> out;
 #ifdef __linux__
     if (sessionId.empty() || shortId.empty())
         return out;
-    const std::string           idVar     = str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId});
-    const std::string           jobSuffix = str::concat({"/jobs/", shortId});
-    const int64_t               self      = selfPid();
-    std::vector<file::DirEntry> entries;
-    file::listDir("/proc", &entries);
-    for (const auto &entry : entries) {
-        const int64_t pid = entry.isDir ? procPid(entry.name) : 0;
-        if (pid <= 0 || pid == self)
+    const std::string idVar     = str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId});
+    const std::string jobSuffix = str::concat({"/jobs/", shortId});
+    const bool        onHost    = base::host::sandboxed();
+    // msga started from that very session (a dev run): in a sandbox its host
+    // ancestors can't be told apart, so nothing is taken for left over.
+    if (onHost && base::env("CLAUDE_CODE_SESSION_ID") == sessionId)
+        return out;
+    const int64_t self = selfPid();
+    for (const ProcInfo &p : processesWithEnv(idVar)) {
+        if (!onHost && p.pid == self)
             continue;
-        const auto env    = procStrings(pid, "environ");
-        bool       hasJob = false;
-        for (const auto &v : env)
+        bool hasJob = false;
+        for (const auto &v : p.env)
             if (str::startsWith(v, "CLAUDE_JOB_DIR=") && str::endsWith(v, jobSuffix)) {
                 hasJob = true;
                 break;
             }
-        if (!hasJob || !contains(env, idVar))
+        if (!hasJob)
             continue;
-        const auto argv = procStrings(pid, "cmdline");
-        if (contains(argv, "--bg-spare") || contains(argv, "--bg-pty-host") ||
-            (argv.size() > 1 && argv[1] == "daemon"))
+        if (contains(p.argv, "--bg-spare") || contains(p.argv, "--bg-pty-host") ||
+            (p.argv.size() > 1 && p.argv[1] == "daemon"))
             continue; // Claude Code's own machinery, serving every session
-        if (descendsFrom(pid, self))
+        if (!onHost && descendsFrom(p.pid, self))
             continue; // msga was started from that session (a dev run)
-        out.push_back(pid);
+        out.push_back(p.pid);
     }
 #else
     (void)sessionId;
@@ -369,12 +511,15 @@ std::vector<int64_t>
 strandedWorker(const Paths &paths, std::string_view sessionId, std::string_view jobId) {
     std::vector<int64_t> out;
 #ifdef __linux__
-    for (const int64_t pid : liveWorkerPids(paths, sessionId, jobId)) {
-        out.push_back(pid);
-        const int64_t host = parentPid(pid);
-        if (host > 1 && contains(procStrings(host, "cmdline"), "--bg-pty-host"))
-            out.push_back(host);
+    std::vector<int64_t> parents;
+    for (const ProcInfo &w : processes(liveWorkerPids(paths, sessionId, jobId))) {
+        out.push_back(w.pid);
+        if (w.ppid > 1)
+            parents.push_back(w.ppid);
     }
+    for (const ProcInfo &host : processes(parents))
+        if (contains(host.argv, "--bg-pty-host"))
+            out.push_back(host.pid);
 #else
     (void)paths;
     (void)sessionId;
@@ -388,7 +533,11 @@ void signalProcess(int64_t pid, bool force) {
     (void)pid;
     (void)force;
 #else
-    if (pid > 0)
+    if (pid <= 0)
+        return;
+    if (base::host::sandboxed())
+        base::host::signal(pid, force ? SIGKILL : SIGTERM, false);
+    else
         ::kill(pid_t(pid), force ? SIGKILL : SIGTERM);
 #endif
 }
@@ -397,23 +546,15 @@ int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputP
 #ifdef __linux__
     if (sessionId.empty() || outputPath.empty())
         return 0;
-    const std::string           idVar = str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId});
-    std::vector<file::DirEntry> entries;
-    file::listDir("/proc", &entries);
-    for (const auto &entry : entries) {
-        const int64_t pid = procPid(entry.name);
-        if (pid <= 0 || ::getpgid(pid_t(pid)) != pid_t(pid))
+    const std::string deleted = str::concat({outputPath, " (deleted)"});
+    for (const ProcInfo &p :
+         processesWithEnv(str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId}))) {
+        if (p.pgid != p.pid)
             continue; // only group leaders: a command and what it started
-        char          link[4096];
-        const ssize_t n =
-            ::readlink(str::concat({"/proc/", entry.name, "/fd/1"}).c_str(), link, sizeof link);
         // A worker that went away deleted its commands' files; a command it
         // left running writes on into the deleted one.
-        const std::string_view target(link, n > 0 ? size_t(n) : 0);
-        if (target != outputPath && target != str::concat({outputPath, " (deleted)"}))
-            continue;
-        if (contains(procStrings(pid, "environ"), idVar))
-            return pid;
+        if (p.fd1 == outputPath || p.fd1 == deleted)
+            return p.pid;
     }
 #else
     (void)sessionId;
@@ -427,7 +568,11 @@ bool signalProcessGroup(int64_t group) {
     (void)group;
     return false;
 #else
-    return group > 0 && ::kill(-pid_t(group), SIGTERM) == 0;
+    if (group <= 0)
+        return false;
+    if (base::host::sandboxed())
+        return base::host::signal(group, SIGTERM, true);
+    return ::kill(-pid_t(group), SIGTERM) == 0;
 #endif
 }
 
@@ -488,22 +633,32 @@ scanSessions(const Paths &paths, std::vector<SessionInfo> *live, JobStateCache *
     std::vector<SessionInfo>                     out;
     std::unordered_map<std::string, SessionInfo> workers;      // background workers, by session id
     std::unordered_map<std::string, SessionInfo> workersOfJob; // …and by job, when they name it
-    JobStateCache seen; // what the cache keeps: the files still there
-    for (const std::string &f : jsonFiles(paths.sessionsDir())) {
-        auto s = cachedParse(
-            f, f, parseInteractiveSession, cache ? &cache->bySession : nullptr, seen.bySession
-        );
-        if (!s || !isProcessAlive(s->pid))
+    JobStateCache            seen; // what the cache keeps: the files still there
+    std::vector<SessionInfo> parsed;
+    std::vector<int64_t>     pids;
+    for (const std::string &f : jsonFiles(paths.sessionsDir()))
+        if (auto s = cachedParse(
+                f, f, parseInteractiveSession, cache ? &cache->bySession : nullptr, seen.bySession
+            )) {
+            pids.push_back(s->pid);
+            parsed.push_back(std::move(*s));
+        }
+    // A pid file can outlive a crashed session. One look for them all: on
+    // the host, in a sandbox.
+    const std::vector<int64_t>        alive = aliveProcesses(pids);
+    const std::unordered_set<int64_t> aliveSet(alive.begin(), alive.end());
+    for (SessionInfo &s : parsed) {
+        if (!aliveSet.count(s.pid))
             continue;
         if (live)
-            live->push_back(*s);
-        if (s->kind == SessionInfo::Kind::Background) {
-            if (!s->jobId.empty())
-                workersOfJob[s->jobId] = *s;
-            std::string id = s->sessionId;
-            workers[id]    = std::move(*s);
+            live->push_back(s);
+        if (s.kind == SessionInfo::Kind::Background) {
+            if (!s.jobId.empty())
+                workersOfJob[s.jobId] = s;
+            std::string id = s.sessionId;
+            workers[id]    = std::move(s);
         } else {
-            out.push_back(std::move(*s));
+            out.push_back(std::move(s));
         }
     }
     std::unordered_set<std::string> listed; // the session ids in `out`
