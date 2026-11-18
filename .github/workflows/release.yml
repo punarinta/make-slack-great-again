@@ -64,7 +64,7 @@ jobs:
       publish: ${{ steps.plan.outputs.publish }}
       draft: ${{ steps.plan.outputs.draft }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the previous release tags
       - id: plan
@@ -130,7 +130,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Fonts for the text/UI tests (mounted into the build container) and
       # Xvfb for the smoke launch.
       - name: Install fonts and Xvfb
@@ -140,7 +140,7 @@ jobs:
               fonts-dejavu-core fonts-liberation2 fonts-noto-core fonts-noto-color-emoji fonts-noto-cjk
       - name: Build, test, smoke launch
         run: scripts/release-linux-static.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-linux
           path: |
@@ -148,7 +148,7 @@ jobs:
             dist/msga-linux-x86_64.manifest
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: symbols-linux-${{ needs.prepare.outputs.tag }}
           path: dist/msga-linux-x86_64.debug
@@ -160,14 +160,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Wine and Xvfb
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends wine wine64 xvfb xauth fonts-dejavu-core
       - name: Build, smoke launch under Wine
         run: scripts/release-windows.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |
@@ -175,7 +175,7 @@ jobs:
             dist/msga-windows-x86_64.manifest
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: symbols-windows-${{ needs.prepare.outputs.tag }}
           path: dist/msga-windows-x86_64.debug
@@ -201,15 +201,15 @@ jobs:
           apt-get update -q
           apt-get install -y -q --no-install-recommends ca-certificates git clang lld llvm \
               cmake ninja-build pkgconf libwayland-bin python3 binutils xz-utils zstd
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cache the sysroot
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build-bsd-sysroot/${{ matrix.os }}
           key: bsd-sysroot-${{ matrix.os }}-${{ hashFiles('scripts/bsd-sysroot.py') }}
       - name: Build
         run: scripts/release-bsd.sh ${{ matrix.os }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.os }}
           path: |
@@ -217,26 +217,34 @@ jobs:
             dist/msga-${{ matrix.os }}-x86_64.manifest
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: symbols-${{ matrix.os }}-${{ needs.prepare.outputs.tag }}
           path: dist/msga-${{ matrix.os }}-x86_64.debug
           retention-days: 90
 
   # ── macOS arm64: tests, app bundle, DMG ────────────────────────────────────
+  # The shipped DMG is built on macOS 26; macOS 15 runs the same build and
+  # tests as a check, for users on older systems (msga runs on 14 and later).
   macos:
     needs: prepare
-    runs-on: macos-15
+    runs-on: macos-${{ matrix.os }}
+    name: macos (${{ matrix.os }})
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["26", "15"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install CMake and Ninja
         run: |
           command -v cmake >/dev/null || brew install cmake
           command -v ninja >/dev/null || brew install ninja
       - name: Build, test, DMG
         run: scripts/release-mac.sh
-      - uses: actions/upload-artifact@v4
+      - if: matrix.os == '26'
+        uses: actions/upload-artifact@v7
         with:
           name: release-macos
           path: |
@@ -244,7 +252,8 @@ jobs:
             dist/msga-macos-arm64.manifest
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - if: matrix.os == '26'
+        uses: actions/upload-artifact@v7
         with:
           name: symbols-macos-${{ needs.prepare.outputs.tag }}
           path: dist/msga-macos-arm64.dSYM
@@ -256,11 +265,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install flatpak-builder
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends flatpak flatpak-builder
+          sudo apt-get install -y -q --no-install-recommends flatpak flatpak-builder elfutils
           # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build and lint
@@ -280,8 +289,8 @@ jobs:
       DRAFT: ${{ needs.prepare.outputs.draft }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist

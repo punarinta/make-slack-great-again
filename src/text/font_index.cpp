@@ -10,7 +10,9 @@
 #include <cstdlib>
 #include <cstring>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#elif defined(_WIN32)
 #include "base/winstr.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -41,7 +43,42 @@ struct PathInfo {
     uint64_t size   = 0;
 };
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+bool pathInfo(const std::string &path, PathInfo *out) {
+    port_stat_info st{};
+    st.size = sizeof st;
+    if (port_stat(path.c_str(), 1, &st) != PORT_OK)
+        return false;
+    out->isDir  = st.kind == PORT_KIND_DIR;
+    out->isFile = st.kind == PORT_KIND_FILE;
+    out->mtime  = st.mtime_us * 1000;
+    out->size   = uint64_t(st.bytes);
+    return true;
+}
+
+std::vector<std::string> listNames(const std::string &dir) {
+    std::vector<std::string> names;
+    port_dir                *d = nullptr;
+    if (port_dir_open(dir.c_str(), &d) != PORT_OK)
+        return names;
+    port_dir_entry e{};
+    e.size = sizeof e;
+    while (port_dir_next(d, &e) == 1) {
+        names.emplace_back(e.name);
+        e      = {};
+        e.size = sizeof e;
+    }
+    port_dir_close(d);
+    return names;
+}
+
+// A folder the port names ("" when it has none).
+std::string portPath(int which) {
+    char      buf[1024];
+    const int n = port_path_get(which, buf, sizeof buf);
+    return n > 0 && size_t(n) < sizeof buf ? std::string(buf, size_t(n)) : std::string();
+}
+#elif defined(_WIN32)
 using base::wide;
 
 bool pathInfo(const std::string &path, PathInfo *out) {
@@ -420,7 +457,14 @@ std::vector<std::string> fontRoots() {
                 roots.emplace_back(d);
         return roots;
     }
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    // The fonts that came with the app, then the system's.
+    if (const std::string r = portPath(PORT_PATH_RESOURCES); !r.empty())
+        roots.push_back(r + "/fonts");
+    if (const std::string f = portPath(PORT_PATH_FONTS); !f.empty())
+        roots.push_back(f);
+    return roots;
+#elif defined(_WIN32)
     const std::string win = base::env("WINDIR");
     roots.push_back((win.empty() ? std::string("C:/Windows") : win) + "/Fonts");
     // Per-user installs ("Install for me", Windows 10 1809+).
@@ -518,7 +562,10 @@ void walk(const std::string &dir, int depth, Found &out) {
 // In the app's cache dir (app/identity.h's cacheDir: organization "msga",
 // application "MSGA"), under a name earlier versions never used.
 std::string cachePath() {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    const std::string c = portPath(PORT_PATH_CACHE);
+    return (c.empty() ? portPath(PORT_PATH_TEMP) : c) + "/msga/MSGA/fonts.idx";
+#elif defined(_WIN32)
     const std::string l = base::env("LOCALAPPDATA");
     return (l.empty() ? base::env("TEMP") : l) + "/msga/MSGA/cache/fonts.idx";
 #elif defined(__APPLE__)
@@ -607,7 +654,36 @@ bool cacheValid(const Index &ix, const std::vector<std::string> &roots) {
 
 } // namespace
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+// No mapping a port can be asked for (PEOS has none): the file read whole
+// into memory, which a face keeps while it is in use.
+const uint8_t *mapFile(const char *path, size_t *size) {
+    port_file *f = nullptr;
+    if (port_file_open(path, PORT_O_READ, 0, &f) != PORT_OK)
+        return nullptr;
+    const int64_t n  = port_file_size(f);
+    uint8_t      *p  = n > 0 ? static_cast<uint8_t *>(std::malloc(size_t(n))) : nullptr;
+    int64_t       at = 0;
+    while (p && at < n) {
+        const int64_t r = port_file_pread(f, p + at, size_t(n - at), at);
+        if (r <= 0)
+            break;
+        at += r;
+    }
+    port_file_close(f);
+    if (p && at != n) {
+        std::free(p);
+        p = nullptr;
+    }
+    if (p)
+        *size = size_t(n);
+    return p;
+}
+
+void unmapFile(const uint8_t *p, size_t) {
+    std::free(const_cast<uint8_t *>(p));
+}
+#elif defined(_WIN32)
 const uint8_t *mapFile(const char *path, size_t *size) {
     const HANDLE f = CreateFileW(
         wide(path).c_str(),

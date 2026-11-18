@@ -45,7 +45,7 @@ endif()
 # screens/shell/main.cpp). DEV-ONLY: Debug builds (scripts/build.sh --debug,
 # the test trees), never the release (MinSizeRel). Linux-only: it relies on
 # POSIX per-process timers aimed at a thread via Linux's SIGEV_THREAD_ID.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MSGA_PORT)
     set_property(SOURCE crash/crash_handler.cpp APPEND PROPERTY COMPILE_DEFINITIONS MSGA_HANG_WATCHDOG)
     # timer_create lives in librt on glibc < 2.34; in libc on newer glibc and
     # on musl. Link librt only where it still exists as a separate library.

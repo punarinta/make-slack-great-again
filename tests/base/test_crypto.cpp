@@ -128,7 +128,7 @@ TEST("crypto: base64 and base64url round trips") {
     CHECK(std::memcmp(a, b, sizeof a) != 0);
 }
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__) // /bin/sh: PEOS has no shell to run
 TEST("process: start, run, kill the group") {
     const std::string sh = base::findExecutable("sh");
     REQUIRE(!sh.empty());

@@ -25,12 +25,8 @@ std::string cleaned(std::string_view path) {
 // Paths compared as the file system does: resolved where they exist.
 std::string comparable(std::string_view path) {
 #ifndef _WIN32
-    if (!path.empty())
-        if (char *real = ::realpath(std::string(path).c_str(), nullptr)) {
-            std::string out(real);
-            std::free(real);
-            return out;
-        }
+    if (std::string real = file::realPath(path); !real.empty())
+        return real;
 #endif
     return cleaned(path);
 }

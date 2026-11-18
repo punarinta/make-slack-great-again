@@ -91,6 +91,10 @@ enum {
     PORT_PATH_PICTURES,
     PORT_PATH_EXECUTABLE, /* the running program's file */
     PORT_PATH_CWD,        /* the working directory, for relative paths */
+    /* Minor 1: */
+    PORT_PATH_FONTS,     /* the system's font folder (searched with its subfolders) */
+    PORT_PATH_RESOURCES, /* the read-only files installed with the app: fonts/,
+                          * hunspell/ (dictionaries), sounds/ */
     PORT_PATH_COUNT
 };
 /* Length of the path (buf gets as much as fits, NUL-terminated), or
@@ -164,7 +168,15 @@ void port_dir_close(port_dir *d);
  * Children the core starts: a browser for sign-in, short commands whose
  * output it reads, the claude CLI. PORT_CAP_PROCESS says spawn works at all,
  * PORT_CAP_PROCESS_PIPES that the PIPE flags do, PORT_CAP_PROCESS_KILL that
- * port_proc_kill does, PORT_CAP_PTY that PORT_SPAWN_PTY does. */
+ * port_proc_kill does, PORT_CAP_PTY that PORT_SPAWN_PTY does.
+ *
+ * One port_proc may be used from several threads at once in this way: one
+ * thread per stream reading it (stdout, stderr), one writing stdin, and
+ * port_proc_kill / port_proc_wait / port_proc_resize from any thread; only
+ * port_proc_release waits until no other call is running on it. A
+ * PORT_SPAWN_PTY child's terminal is read as PORT_STDOUT (its stderr goes
+ * there too), written as stdin, and reads 0 once the child's side of it is
+ * closed. */
 enum {
     PORT_SPAWN_STDIN_PIPE   = 1,  /* else the null device */
     PORT_SPAWN_STDOUT_PIPE  = 2,  /* else the null device */
@@ -207,6 +219,18 @@ int64_t port_proc_pid(port_proc *p);
 int     port_proc_resize(port_proc *p, uint16_t cols, uint16_t rows);
 /* Frees the handle and closes our pipe ends; the child keeps running. */
 void    port_proc_release(port_proc *p);
+
+/* Minor 1. Processes the core did not start (the claude CLI's workers, found
+ * through their own files) by the id the OS gave them. 1 when `pid` names a
+ * running process, 0 when none, PORT_E_NOSYS when the port can't tell. */
+int port_pid_alive(int64_t pid);
+enum {
+    PORT_PID_FORCE = 1, /* end it now (SIGKILL), else ask it to end (SIGTERM) */
+    PORT_PID_GROUP = 2  /* the process group `pid` leads */
+};
+/* PORT_OK when the request was delivered; PORT_E_NOSYS without
+ * PORT_CAP_PROCESS_KILL. */
+int port_pid_kill(int64_t pid, uint32_t flags);
 
 /* ── Secrets ───────────────────────────────────────────────────────────────
  * A keychain (PORT_CAP_SECRETS). Keys are the core's own ("msga/workspace/

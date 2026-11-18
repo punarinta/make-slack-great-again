@@ -45,6 +45,9 @@ TEST("crash: crash.log lives in the data directory") {
     CHECK_STR(identity::crashLogPath(*app), file::join(data, "msga/MSGA/crash.log"));
 }
 
+// A port build has no crash handler (crash_handler.cpp: the port's OS keeps
+// its own records).
+#ifndef MSGA_PORT
 TEST("crash: a crash appends a report with its signal and stack to crash.log") {
     file::remove(g_log);
     const pid_t pid = ::fork();
@@ -83,6 +86,7 @@ TEST("crash: abort() is reported too") {
     REQUIRE(file::readAll(g_log, &log));
     CHECK(log.find("signal: SIGABRT\n") != std::string::npos);
 }
+#endif
 
 TEST("watchdog: the startup window is substantially wider than the steady one") {
     if (!watchdogBuilt())

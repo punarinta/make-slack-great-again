@@ -14,6 +14,13 @@ find_package(Python3 COMPONENTS Interpreter QUIET)
 add_library(msga_test STATIC support/test.cpp)
 target_include_directories(msga_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(msga_test PUBLIC msga_base msga_flags)
+# MSGA_TEST_LINES=<label>: a line per case on stdout ("ok <name>" / "FAIL
+# <name>: <check>") and "<label>: N passed, M failed" at the end — for a
+# runner whose output is only a log (scripts/build-peos-basetests.sh).
+set(MSGA_TEST_LINES "" CACHE STRING "Label of per-case result lines (empty: off)")
+if(MSGA_TEST_LINES)
+    target_compile_definitions(msga_test PRIVATE MSGA_TEST_LINES="${MSGA_TEST_LINES}")
+endif()
 
 # msga_add_test(<name> COMMAND <exe> [suite] [group] [TZ] [HOME <dir>]
 #               [ENV <var=value>...] [LABELS <label>...])
@@ -60,3 +67,15 @@ foreach(dir base net gfx text ui app)
         add_subdirectory(${dir})
     endif()
 endforeach()
+
+# ── The port build's system symbols ─────────────────────────────────────────
+# A port build (MSGA_PLATFORM=port) asks the system for nothing outside the
+# port contract but ISO C, the C++ runtime and the compiler's runtime
+# (scripts/port-symbol-audit.sh, scripts/port-allow-iso.txt): the link of msga
+# as Ninja wrote it, after the build.
+if(MSGA_PORT AND CMAKE_GENERATOR MATCHES "Ninja" AND TARGET msga)
+    add_test(NAME port_symbol_audit
+        COMMAND bash ${MSGA_ROOT}/scripts/port-symbol-audit.sh ${CMAKE_BINARY_DIR}
+                ${MSGA_ROOT}/scripts/port-allow-iso.txt)
+    set_tests_properties(port_symbol_audit PROPERTIES LABELS port)
+endif()

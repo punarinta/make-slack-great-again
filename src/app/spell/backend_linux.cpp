@@ -1,5 +1,7 @@
-// Linux: the vendored, trimmed Hunspell (src/third_party/hunspell) over the
-// dictionaries the system's packages installed. The words someone adds live
+// Linux and the BSDs: the vendored, trimmed Hunspell (src/third_party/hunspell)
+// over the dictionaries the system's packages installed. A port build: the
+// same, over the dictionaries installed with the app (PORT_PATH_RESOURCES's
+// hunspell/), with msga's own Unicode tables for case. The words someone adds live
 // in msga's own list (one per line, <dataDir>/spelling/words.txt,
 // app/identity.h) and are added to every dictionary on load.
 #include "app/spell/codepages.h"
@@ -18,14 +20,42 @@
 
 #include <algorithm>
 #include <cstdlib>
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#include "text/unicode.h"
+#else
 #include <locale.h>
 #include <wctype.h>
+#endif
 
 // Unicode case and letter lookups for the trimmed Hunspell
 // (HUNSPELL_HOST_UNICODE in csutil.cxx): the C library's tables are in the
 // binary already, Hunspell's own utf_tbl would add 384 KB. Hunspell asks
 // about UTF-16 units. musl's wctype is Unicode whatever the locale; glibc's
 // "C" locale knows ASCII only, so it is asked in C.UTF-8 (built in since 2.35).
+#if defined(MSGA_PORT)
+// A port's C library may know no Unicode (PEOS's has no wctype.h): msga's
+// case folding (base/utf8.h: Latin, Greek, Cyrillic, Armenian; the scripts
+// whose dictionaries have case) and HarfBuzz's general categories.
+unsigned short hunspell_host_tolower(unsigned short c) {
+    return static_cast<unsigned short>(utf8::foldCase(c));
+}
+unsigned short hunspell_host_toupper(unsigned short c) {
+    if (utf8::isUpper(c))
+        return c;
+    // foldCase's pairs are 1:1, a fixed distance apart: the capital is the
+    // one that folds to c.
+    for (const int d : {32, 80, 48, 1})
+        if (c >= d && utf8::foldCase(uint32_t(c - d)) == c)
+            return static_cast<unsigned short>(c - d);
+    if (c == 0xFF)
+        return 0x178;
+    return c;
+}
+int hunspell_host_isalpha(unsigned short c) {
+    return text::uni::isLetter(c) ? 1 : 0;
+}
+#else
 namespace {
 #if defined(__GLIBC__)
 locale_t utf8Ctype() {
@@ -56,6 +86,7 @@ int hunspell_host_isalpha(unsigned short c) {
 #endif
     return iswalpha(c) ? 1 : 0;
 }
+#endif
 
 namespace spell {
 
@@ -65,8 +96,18 @@ struct DictionaryFiles {
     std::string code, aff, dic;
 };
 
+#if defined(MSGA_PORT)
+// A folder the port names ("" when it has none).
+std::string portPath(int which) {
+    char      buf[1024];
+    const int n = port_path_get(which, buf, sizeof buf);
+    return n > 0 && size_t(n) < sizeof buf ? std::string(buf, size_t(n)) : std::string();
+}
+#endif
+
 // Hunspell's own search order, less the office-suite folders: $DICPATH, the
-// user's data dir, then the system's.
+// user's data dir, then the system's. A port: $DICPATH, then those the app
+// came with.
 std::vector<std::string> dictionaryDirs() {
     std::vector<std::string> dirs;
     const std::string        dicpath = base::env("DICPATH");
@@ -74,6 +115,11 @@ std::vector<std::string> dictionaryDirs() {
     for (std::string_view d; parts.next(&d);)
         if (!d.empty())
             dirs.emplace_back(d);
+#if defined(MSGA_PORT)
+    if (const std::string r = portPath(PORT_PATH_RESOURCES); !r.empty())
+        dirs.push_back(r + "/hunspell");
+    return dirs;
+#endif
     std::string data = base::env("XDG_DATA_HOME");
     if (const std::string home = base::homeDir(); data.empty() && !home.empty())
         data = home + "/.local/share";
@@ -270,6 +316,7 @@ private:
     std::string             _wordsPath;
 };
 
+#if !defined(MSGA_PORT)
 // ID and ID_LIKE of /etc/os-release, lower case: " ubuntu debian".
 std::string osFamily() {
     std::string text, ids;
@@ -285,6 +332,7 @@ std::string osFamily() {
         }
     return ids;
 }
+#endif
 
 } // namespace
 
@@ -309,6 +357,10 @@ std::vector<Language> availableLanguages() {
 }
 
 std::string dictionaryPackageHint(const std::vector<std::string> &preferred) {
+#if defined(MSGA_PORT)
+    (void)preferred; // no package manager behind a port: nothing to name
+    return {};
+#else
     // The system language's package, named the way the distribution does.
     const std::string sys  = preferred.empty() ? std::string() : localeCode(preferred[0]);
     const std::string lang = sys.substr(0, sys.find('_'));
@@ -331,6 +383,7 @@ std::string dictionaryPackageHint(const std::vector<std::string> &preferred) {
     if (has("suse"))
         return str::concat({"myspell-", lang, "_", terr.empty() ? str::asciiUpper(lang) : terr});
     return "hunspell-" + lang;
+#endif
 }
 
 } // namespace detail

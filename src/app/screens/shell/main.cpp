@@ -91,18 +91,19 @@
 #include <ftw.h>
 #include <unistd.h>
 #endif
-#if (defined(__SANITIZE_ADDRESS__) || defined(MSGA_DEV_DIAG)) && !defined(_WIN32)
+#if (defined(__SANITIZE_ADDRESS__) || defined(MSGA_DEV_DIAG)) && !defined(_WIN32) &&               \
+    !defined(MSGA_PORT) // a port OS has no signals
 #include <csignal>
 #endif
 
 namespace {
 
-#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32)
+#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32) && !defined(MSGA_PORT)
 // ASan builds (scripts/run-asan.sh): Ctrl+C / SIGTERM quit the app normally,
 // so LeakSanitizer gets to print its report at exit.
 volatile std::sig_atomic_t gQuitSignal = 0;
 #endif
-#if defined(MSGA_DEV_DIAG) && !defined(_WIN32)
+#if defined(MSGA_DEV_DIAG) && !defined(_WIN32) && !defined(MSGA_PORT)
 // SIGUSR1: print the memory numbers (and run a LeakSanitizer pass) now.
 volatile std::sig_atomic_t gStatsSignal = 0;
 #endif
@@ -736,7 +737,7 @@ int main(int argc, char **argv) {
     // re-arms its deadline every second; if the loop wedges, it fires.
     if (watchdog)
         app->addTimer(1000, true, [] { crash::heartbeat(); });
-#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32)
+#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32) && !defined(MSGA_PORT)
     std::signal(SIGINT, [](int) { gQuitSignal = 1; });
     std::signal(SIGTERM, [](int) { gQuitSignal = 1; });
     app->addTimer(250, true, [&] {
@@ -755,7 +756,7 @@ int main(int argc, char **argv) {
         );
         std::fflush(stderr);
     };
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
     std::signal(SIGUSR1, [](int) { gStatsSignal = 1; });
     app->addTimer(250, true, [&] {
         if (!gStatsSignal)

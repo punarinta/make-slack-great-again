@@ -10,10 +10,6 @@
 
 #include <memory>
 
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
 namespace claude {
 
 namespace {

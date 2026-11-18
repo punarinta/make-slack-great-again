@@ -81,7 +81,7 @@ target_compile_definitions(msga PRIVATE MSGA_VERSION=${MSGA_VERSION}) # the upda
 # Linux: msga's own std::terminate handler in place of libstdc++'s verbose one,
 # which links the C++ demangler into the binary just to print a type name
 # (app/crash/terminate_handler.cpp).
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT)
     target_sources(msga PRIVATE ../../crash/terminate_handler.cpp)
 endif()
 # Leak-hunting diagnostics (app/diag/mem_stats.h): SIGUSR1 prints the memory

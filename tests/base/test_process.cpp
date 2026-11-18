@@ -66,8 +66,8 @@ TEST("process (Windows): output, exit code and environment through cmd.exe") {
     o.mergeStderr = false;
     CHECK_STR(cmd("echo out& echo err 1>&2", o).output, "out\r\n");
 }
-#else
-// The cases below drive /bin/sh: POSIX only.
+#elif !defined(__PEOS__)
+// The cases below drive /bin/sh: POSIX only (PEOS has no shell to run).
 
 TEST("process: run captures stdout and the exit code") {
     const auto r = sh("printf 'one\\ntwo'; exit 3");

@@ -51,7 +51,7 @@ extern "C" {
  * bits, event types). The core refuses a port whose major differs or whose
  * minor is lower than the one it was built against (port_check_abi). */
 #define PORT_ABI_MAJOR 1
-#define PORT_ABI_MINOR 0
+#define PORT_ABI_MINOR 1 /* 1: PORT_PATH_FONTS, PORT_PATH_RESOURCES, port_pid_* */
 #define PORT_ABI_VERSION ((PORT_ABI_MAJOR << 16) | PORT_ABI_MINOR)
 
 /* ── Errors ──────────────────────────────────────────────────────────────── */

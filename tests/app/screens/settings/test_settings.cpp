@@ -1180,7 +1180,9 @@ TEST("settings: System and Storage controls persist at once") {
 #endif
     CHECK(r.presence == 2 && !r.slackSession);
     CHECK_STR(r.giphyKey, "giphy-key");
+#ifndef MSGA_PORT // a port build asks the OS for no memory figure (app/diag/mem_stats.h)
     CHECK(d.find("RAM used: \xE2\x80\x94") == nullptr); // a live number
+#endif
 
     d.showPage(SettingsDialog::Page::Storage);
     pump();

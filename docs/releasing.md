@@ -14,7 +14,8 @@ Nothing runs on `master`. The private dev repo has no CI.
      - Linux static (musl) with tests and an X11 smoke launch
      - Windows (mingw) with a Wine smoke launch
      - FreeBSD and OpenBSD (cross-built)
-     - macOS arm64 with tests and the DMG
+     - macOS arm64 with tests and the DMG, built on macOS 26; the same build and tests run
+       on macOS 15 as a check for older systems
      - a Flatpak build and lint
    - A red check means don't merge. Fix it on `master` and sync again; the PR re-runs by itself.
    - If the version wasn't bumped past the last release, that's a red check too.

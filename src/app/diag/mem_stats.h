@@ -10,7 +10,7 @@
 //   rss      resident memory (includes freed pages malloc keeps).
 //   fds      open file descriptors (Linux) — a socket or file leak.
 //   threads  live threads (Linux, FreeBSD) — a worker never joined.
-// A field the platform can't tell stays -1.
+// A field the platform can't tell stays -1 (all of them in a port build).
 #pragma once
 
 #include <cstdint>

@@ -9,12 +9,15 @@
 #include <sanitizer/lsan_interface.h>
 // In every ASan runtime, but GCC ships no sanitizer/allocator_interface.h.
 extern "C" size_t __sanitizer_get_current_allocated_bytes();
+#elif defined(MSGA_PORT)
+// A port build asks the OS nothing here: the numbers stay unknown.
 #elif defined(__linux__) && defined(__GLIBC__)
 #include <malloc.h>
 #elif defined(__APPLE__)
 #include <malloc/malloc.h>
 #endif
-#if defined(__linux__)
+#if defined(MSGA_PORT)
+#elif defined(__linux__)
 #include <dirent.h>
 #elif defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <sys/types.h>
@@ -30,6 +33,26 @@ extern "C" size_t __sanitizer_get_current_allocated_bytes();
 #endif
 
 namespace diag {
+
+#if defined(MSGA_PORT)
+
+long rssKb() {
+    return -1;
+}
+
+uint64_t privateBytes() {
+    return 0;
+}
+
+MemStats sampleMem() {
+    MemStats m;
+#if defined(__SANITIZE_ADDRESS__)
+    m.heapKb = long(__sanitizer_get_current_allocated_bytes() / 1024);
+#endif
+    return m;
+}
+
+#else
 
 namespace {
 
@@ -161,6 +184,8 @@ MemStats sampleMem() {
 #endif
     return m;
 }
+
+#endif // MSGA_PORT
 
 std::string formatMem(const MemStats &m) {
     std::string out;

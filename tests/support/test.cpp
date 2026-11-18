@@ -14,6 +14,11 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#elif defined(__PEOS__)
+#include "base/crypto.h"
+#include "base/file.h"
+
+#include "port/port.h"
 #else
 #include <csignal>
 #include <ftw.h>
@@ -29,6 +34,10 @@ Case       *g_first = nullptr, *g_last = nullptr;
 Suite      *g_suites     = nullptr;
 int         g_failures   = 0;
 bool        g_caseFailed = false;
+// MSGA_TEST_LINES ("base"): one line per case on stdout, "ok <name>" or
+// "FAIL <name>: <the first failed check>", then "<label>: N passed, M failed"
+// — for a runner whose only output is a log (PEOS's boot components).
+std::string g_firstFailure;
 // The suite the command line named; "" = every suite.
 std::string g_suite;
 } // namespace
@@ -51,6 +60,11 @@ int addSuite(Suite *s) {
 
 bool fail(const char *file, int line, const char *expr) {
     std::fprintf(stderr, "  %s:%d: FAILED: %s\n", file, line, expr);
+    if (g_firstFailure.empty()) {
+        const char *slash = std::strrchr(file, '/');
+        g_firstFailure =
+            std::string(slash ? slash + 1 : file) + ":" + std::to_string(line) + ": " + expr;
+    }
     ++g_failures;
     g_caseFailed = true;
     return false;
@@ -229,6 +243,49 @@ void killProcess(int64_t pid) {
         CloseHandle(h);
     }
 }
+#elif defined(__PEOS__)
+// PEOS: no POSIX layer for these (the core's port does the files), no links
+// to resolve, no way to set a file's time, no processes by id.
+static std::string newTempDir(const char *prefix, const std::string &parent) {
+    std::string base = parent;
+    if (base.empty()) {
+        char      buf[1024];
+        const int n = port_path_get(PORT_PATH_TEMP, buf, sizeof buf);
+        base        = n > 0 && size_t(n) < sizeof buf ? std::string(buf, size_t(n)) : "/tmp";
+    }
+    file::makeDirs(base);
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        const std::string dir = base + "/" + prefix + crypto::randomHex(4);
+        if (port_mkdir(dir.c_str(), 0700) == PORT_OK)
+            return dir;
+    }
+    return {};
+}
+
+void removeTree(const std::string &path) {
+    if (!path.empty())
+        file::removeTree(path);
+}
+
+void setEnv(const char *name, const std::string &value) {
+    port_env_set(name, value.c_str());
+}
+
+void unsetEnv(const char *name) {
+    port_env_set(name, nullptr);
+}
+
+bool setModifiedTime(const std::string &, int64_t) {
+    return false;
+}
+
+std::string realPath(const std::string &path) {
+    return file::realPath(path);
+}
+
+void killProcess(int64_t pid) {
+    port_pid_kill(pid, PORT_PID_FORCE);
+}
 #else
 static std::string newTempDir(const char *prefix, const std::string &parent) {
     if (!parent.empty())
@@ -310,6 +367,8 @@ namespace {
 void makeDir(const std::string &path) {
 #ifdef _WIN32
     CreateDirectoryW(wide(path).c_str(), nullptr);
+#elif defined(__PEOS__)
+    port_mkdir(path.c_str(), 0700);
 #else
     mkdir(path.c_str(), 0700);
 #endif
@@ -323,6 +382,28 @@ void makeDir(const std::string &path) {
     setEnv("MSGA_TEST_ISOLATED", "1");
     return true;
 }();
+
+#ifdef __PEOS__
+// A PEOS component gets no environment from a starter: what ctest sets on
+// Linux is set here, before every other constructor (priority 101: before
+// the suites' globals, built from local times — kAfternoon in test_time).
+// Scratch files go under the component's own data area (/apps/<name>/tmp,
+// the only place its manifest mounts), not /tmp; the zone is the one ctest
+// pins (Europe/Stockholm), as the POSIX rule PEOS's libc takes.
+__attribute__((constructor(101))) void peosTestEnvironment() {
+    if (!std::getenv("TMPDIR")) {
+        char      data[1024];
+        const int n = port_path_get(PORT_PATH_DATA, data, sizeof data);
+        if (n > 0 && size_t(n) < sizeof data) {
+            const std::string tmp = std::string(data, size_t(n)) + "/tmp";
+            port_mkdir(tmp.c_str(), 0700);
+            port_env_set("TMPDIR", tmp.c_str());
+        }
+    }
+    if (!std::getenv("TZ"))
+        port_env_set("TZ", "CET-1CEST,M3.5.0,M10.5.0/3");
+}
+#endif
 
 // Tests must never reach the user's session, however they are started (ctest
 // sets all this too; a direct run of a test binary does not): the headless
@@ -518,12 +599,20 @@ int runSuite(int argc, char **argv) {
         if (!selected(c, filter))
             continue;
         g_caseFailed = false;
+        g_firstFailure.clear();
         c->fn();
         ++ran;
         if (g_caseFailed) {
             ++failed;
             std::fprintf(stderr, "FAIL %s\n", c->name);
         }
+#ifdef MSGA_TEST_LINES
+        if (g_caseFailed)
+            std::printf("FAIL %s: %s\n", c->name, g_firstFailure.c_str());
+        else
+            std::printf("ok %s\n", c->name);
+        std::fflush(stdout);
+#endif
     }
     if (!ran && filter) {
         std::fprintf(
@@ -538,6 +627,10 @@ int runSuite(int argc, char **argv) {
         return 2;
     }
     std::printf("%d cases, %d failed, %d failed checks\n", ran, failed, g_failures);
+#ifdef MSGA_TEST_LINES
+    std::printf("%s: %d passed, %d failed\n", MSGA_TEST_LINES, ran - failed, failed);
+#endif
+    std::fflush(stdout);
     return failed ? 1 : 0;
 }
 

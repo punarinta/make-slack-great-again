@@ -25,6 +25,7 @@ bool isNewline(uint32_t cp);    // mandatory paragraph break
 // Exact (UCD general category), unlike utf8::isWordChar's block approximation
 // that base/ and the mrkdwn parser use without HarfBuzz.
 bool isSelectWordChar(uint32_t cp); // letters, digits, marks, '_' — double-click words
+bool isLetter(uint32_t cp);         // general category L* (Lu, Ll, Lt, Lm, Lo)
 
 // Grapheme cluster boundaries: stateful scan over a code point sequence.
 struct GraphemeScanner {

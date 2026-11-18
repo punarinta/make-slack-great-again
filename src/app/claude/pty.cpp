@@ -9,7 +9,11 @@
 #include <algorithm>
 #include <cstring>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "port/port.h"
+
+#include <atomic>
+#elif defined(_WIN32)
 #include "base/winstr.h"
 
 #include <windows.h>
@@ -26,7 +30,141 @@
 
 namespace claude {
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+
+// The port's pseudo-terminal (PORT_SPAWN_PTY): what the program draws is read
+// on a thread of ours and posted to the loop, as on Windows. Without
+// PORT_CAP_PTY start() fails, and the callers report "not ready" with why.
+struct Pty::Impl {
+    Pty              *q;
+    port_proc        *proc = nullptr;
+    base::Thread      reader;
+    std::atomic<bool> stop{false};
+    bool              running   = false;
+    plat::TimerId     killTimer = 0; // terminate()'s forced end
+
+    explicit Impl(Pty *owner) : q(owner) {}
+    ~Impl() {
+        stop = true;
+        if (proc && running) {
+            port_proc_kill(proc, 1);
+            port_proc_wait(proc, -1, nullptr);
+        }
+        reader.join(); // its read ends with the program's side of the terminal
+        port_proc_release(proc);
+    }
+};
+
+Pty::Pty(plat::App &app)
+    : _app(app), d(std::make_unique<Impl>(this)), _alive(std::make_shared<bool>(true)) {}
+
+Pty::~Pty() {
+    *_alive = false;
+    if (d->killTimer)
+        _app.cancelTimer(d->killTimer);
+}
+
+bool Pty::start(
+    const std::string              &program,
+    const std::vector<std::string> &args,
+    const std::string              &cwd,
+    int                             rows,
+    int                             cols
+) {
+    if (!(port_caps() & PORT_CAP_PTY)) {
+        _error = "no pseudo-terminals on this system";
+        return false;
+    }
+    std::vector<const char *> argv;
+    for (const std::string &a : args)
+        argv.push_back(a.c_str());
+    const char     *env[] = {"TERM=xterm-256color"};
+    port_spawn_desc desc{};
+    desc.size     = sizeof desc;
+    desc.exe      = program.c_str();
+    desc.argv     = argv.data();
+    desc.argc     = argv.size();
+    desc.cwd      = cwd.empty() ? nullptr : cwd.c_str();
+    desc.env      = env;
+    desc.envc     = 1;
+    desc.flags    = PORT_SPAWN_PTY | PORT_SPAWN_NEW_GROUP;
+    desc.pty_cols = uint16_t(std::clamp(cols, 1, 0xFFFF));
+    desc.pty_rows = uint16_t(std::clamp(rows, 1, 0xFFFF));
+    const int rc  = port_proc_spawn(&desc, &d->proc);
+    if (rc != PORT_OK) {
+        d->proc = nullptr;
+        _error  = std::string("can't start ") + program + ": " + port_strerror(rc);
+        return false;
+    }
+    d->running = true;
+
+    plat::App &app   = _app;
+    auto       alive = _alive;
+    Impl      *impl  = d.get();
+    d->reader.start([&app, alive, impl] {
+        char buf[8192];
+        while (!impl->stop) {
+            // A bounded wait, so a destroyed Pty never waits on a silent program.
+            const int64_t n = port_proc_read(impl->proc, PORT_STDOUT, buf, sizeof buf, 250);
+            if (n == PORT_E_TIMEOUT || n == PORT_E_AGAIN)
+                continue;
+            if (n <= 0)
+                break; // its side of the terminal closed: it exited
+            app.post([alive, impl, chunk = std::string(buf, size_t(n))] {
+                if (!*alive || !impl->q->onOutput)
+                    return;
+                auto cb = impl->q->onOutput; // it may destroy us
+                cb(chunk);
+            });
+        }
+        if (impl->stop)
+            return;
+        app.post([alive, impl] {
+            if (!*alive || !impl->running)
+                return;
+            // Closed its terminal yet still running: it goes now.
+            if (port_proc_wait(impl->proc, 0, nullptr) != PORT_OK) {
+                port_proc_kill(impl->proc, 1);
+                port_proc_wait(impl->proc, -1, nullptr);
+            }
+            impl->running = false;
+            if (auto cb = impl->q->onFinished)
+                cb();
+        });
+    });
+    return true;
+}
+
+void Pty::write(std::string_view bytes) {
+    while (d->running && !bytes.empty()) {
+        const int64_t n = port_proc_write(d->proc, bytes.data(), bytes.size(), 1000);
+        if (n > 0)
+            bytes.remove_prefix(size_t(n));
+        else if (n != PORT_E_TIMEOUT && n != PORT_E_AGAIN)
+            return;
+    }
+}
+
+void Pty::terminate() {
+    if (!d->running)
+        return;
+    port_proc_kill(d->proc, 0);
+    // What ignores it goes anyway; onFinished follows from the reader.
+    Impl *impl = d.get();
+    if (d->killTimer)
+        _app.cancelTimer(d->killTimer);
+    d->killTimer = _app.addTimer(2000, false, [impl] {
+        impl->killTimer = 0;
+        if (impl->running)
+            port_proc_kill(impl->proc, 1);
+    });
+}
+
+bool Pty::isRunning() const {
+    return d->running;
+}
+
+#elif defined(_WIN32)
 
 namespace {
 

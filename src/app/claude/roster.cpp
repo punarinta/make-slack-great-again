@@ -6,12 +6,22 @@
 #include "base/json.h"
 #include "base/process.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/time.h"
 
 #include <unordered_map>
 #include <unordered_set>
 
-#ifdef _WIN32
+// Processes by id: Win32, POSIX signals, or the port's (port_pid_*). Their
+// /proc details (who started whom, what a command writes to) are Linux's
+// only: a port build, on whatever OS, goes without.
+#if defined(__linux__) && !defined(MSGA_PORT)
+#define MSGA_ROSTER_PROC 1
+#endif
+
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#elif defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -70,7 +80,7 @@ std::vector<std::string> jsonFiles(const std::string &dir) {
     return out;
 }
 
-#ifdef __linux__
+#ifdef MSGA_ROSTER_PROC
 int64_t selfPid() {
     return int64_t(getpid());
 }
@@ -204,7 +214,7 @@ std::string readJobState(const Paths &paths, std::string_view jobId) {
     return readSmallFile(paths.jobDir(jobId) + "/state.json");
 }
 
-#ifdef __linux__
+#ifdef MSGA_ROSTER_PROC
 namespace {
 
 // What the process lookups below go by — read from /proc here, or, in a
@@ -300,7 +310,15 @@ void parseStat(std::string_view stat, ProcInfo *p) {
 // entry holding a line break reads as two: never one of those looked for).
 constexpr const char *kHostProcScript = R"sh(mode=$1; shift
 if [ "$mode" = env ]; then
-  set -- $(grep -lzxF -e "$1" /proc/[0-9]*/environ 2>/dev/null | sed 's#^/proc/##; s#/environ$##')
+  if grep -z -e x /dev/null >/dev/null 2>&1; [ $? -ne 2 ]; then
+    set -- $(grep -lzxF -e "$1" /proc/[0-9]*/environ 2>/dev/null | sed 's#^/proc/##; s#/environ$##')
+  else # no -z (BusyBox): one file at a time
+    want=$1; shift; set --
+    for f in /proc/[0-9]*/environ; do
+      tr '\0' '\n' < "$f" 2>/dev/null | grep -qxF -e "$want" || continue
+      p=${f#/proc/}; set -- "$@" "${p%/environ}"
+    done
+  fi
 fi
 for p; do
   [ -e "/proc/$p/stat" ] || continue
@@ -419,7 +437,7 @@ bool descendsFrom(int64_t pid, int64_t ancestor) {
 
 std::vector<int64_t> aliveProcesses(const std::vector<int64_t> &pids) {
     std::vector<int64_t> out;
-#ifdef __linux__
+#ifdef MSGA_ROSTER_PROC
     if (base::host::sandboxed()) {
         if (pidArgs(pids).empty())
             return out;
@@ -437,7 +455,11 @@ std::vector<int64_t> aliveProcesses(const std::vector<int64_t> &pids) {
 bool isProcessAlive(int64_t pid) {
     if (pid <= 0)
         return false;
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    // Can't tell: alive, so nothing is taken for ended that still runs.
+    const int alive = port_pid_alive(pid);
+    return alive != 0;
+#elif defined(_WIN32)
     HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
     if (!h)
         return false;
@@ -471,7 +493,7 @@ bool hasLiveWorker(const Paths &paths, std::string_view sessionId, std::string_v
 
 std::vector<int64_t> leftoverProcesses(std::string_view sessionId, std::string_view shortId) {
     std::vector<int64_t> out;
-#ifdef __linux__
+#ifdef MSGA_ROSTER_PROC
     if (sessionId.empty() || shortId.empty())
         return out;
     const std::string idVar     = str::concat({"CLAUDE_CODE_SESSION_ID=", sessionId});
@@ -510,7 +532,7 @@ std::vector<int64_t> leftoverProcesses(std::string_view sessionId, std::string_v
 std::vector<int64_t>
 strandedWorker(const Paths &paths, std::string_view sessionId, std::string_view jobId) {
     std::vector<int64_t> out;
-#ifdef __linux__
+#ifdef MSGA_ROSTER_PROC
     std::vector<int64_t> parents;
     for (const ProcInfo &w : processes(liveWorkerPids(paths, sessionId, jobId))) {
         out.push_back(w.pid);
@@ -529,7 +551,10 @@ strandedWorker(const Paths &paths, std::string_view sessionId, std::string_view 
 }
 
 void signalProcess(int64_t pid, bool force) {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    if (pid > 0)
+        port_pid_kill(pid, force ? PORT_PID_FORCE : 0);
+#elif defined(_WIN32)
     (void)pid;
     (void)force;
 #else
@@ -543,7 +568,7 @@ void signalProcess(int64_t pid, bool force) {
 }
 
 int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputPath) {
-#ifdef __linux__
+#ifdef MSGA_ROSTER_PROC
     if (sessionId.empty() || outputPath.empty())
         return 0;
     const std::string deleted = str::concat({outputPath, " (deleted)"});
@@ -564,7 +589,9 @@ int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputP
 }
 
 bool signalProcessGroup(int64_t group) {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    return group > 0 && port_pid_kill(group, PORT_PID_GROUP) == PORT_OK;
+#elif defined(_WIN32)
     (void)group;
     return false;
 #else
@@ -765,11 +792,7 @@ bool trustedIn(const json::Value &projects, const TrustScope &s) {
 }
 
 void sleepMs(int ms) {
-#ifdef _WIN32
-    ::Sleep(DWORD(ms));
-#else
-    ::usleep(useconds_t(ms) * 1000);
-#endif
+    base::sleepMs(ms);
 }
 
 // Claude Code's own lock on its config: the directory `<config>.lock`
@@ -777,7 +800,10 @@ void sleepMs(int ms) {
 class ConfigLock {
 public:
     explicit ConfigLock(std::string path) : _path(std::move(path)) {
-        for (int i = 0; i < 100; ++i) { // up to ~5 s
+        // Up to 5 s by the clock, not by rounds: on a loaded machine 100 naps
+        // of 50 ms can outlast the 10 s below and break a live holder's lock.
+        const int64_t deadline = base::nowMicros() + 5'000'000;
+        while (base::nowMicros() < deadline) {
             if (makeDir()) {
                 _held = true;
                 return;
@@ -801,7 +827,7 @@ private:
 #ifdef _WIN32
         return ::CreateDirectoryW(base::widePath(_path).c_str(), nullptr) != 0;
 #else
-        return ::mkdir(_path.c_str(), 0777) == 0;
+        return file::makeDir(_path, 0777);
 #endif
     }
     std::string _path;

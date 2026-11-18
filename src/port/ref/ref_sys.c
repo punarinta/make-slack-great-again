@@ -1,5 +1,5 @@
 /* port_sys.h over POSIX: pthreads, clock_gettime, stdio-free file I/O,
- * posix_spawn with pipes, and a 0600 file per secret. */
+ * posix_spawn with pipes or a pseudo-terminal, and a 0600 file per secret. */
 #define _GNU_SOURCE /* pipe2, getrandom; everything else is POSIX.1-2008 */
 #include "ref_internal.h"
 
@@ -15,8 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -265,8 +267,15 @@ int port_path_get(int which, char *buf, size_t cap) {
     }
     case PORT_PATH_CWD:
         return getcwd(path, sizeof path) ? ref_copy_out(path, buf, cap) : ref_errno(errno);
+    case PORT_PATH_FONTS: /* the distribution's; fonts in $HOME are left out */
+        return access("/usr/share/fonts", F_OK) == 0 ? ref_copy_out("/usr/share/fonts", buf, cap)
+                                                     : PORT_E_NOENT;
+    case PORT_PATH_RESOURCES: { /* $MSGA_PORT_REF_RESOURCES: the tests point it somewhere */
+        const char *r = getenv("MSGA_PORT_REF_RESOURCES");
+        return r && *r ? ref_copy_out(r, buf, cap) : PORT_E_NOENT;
+    }
     default:
-        if (which < 0 || which >= PORT_PATH_EXECUTABLE)
+        if (which < 0 || which >= (int)(sizeof names / sizeof *names))
             return PORT_E_INVAL;
         if ((size_t)snprintf(path, sizeof path, "%s/plat-headless", home) >= sizeof path)
             return PORT_E_RANGE;
@@ -464,6 +473,7 @@ void port_dir_close(port_dir *d) {
 struct port_proc {
     pid_t pid;
     int   in, out, err; /* our pipe ends, -1 when none */
+    int   pty;          /* in/out are the terminal's master side (two descriptors) */
     int   exited, code;
 };
 
@@ -510,31 +520,71 @@ static char **mergedEnv(const char *const *env, size_t envc) {
     return out;
 }
 
+/* A pseudo-terminal: its master side (close-on-exec) and the name of the
+ * side the child opens, sized cols x rows. */
+static int openPty(uint16_t cols, uint16_t rows, char *slave, size_t cap) {
+    const int m = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
+    if (m < 0)
+        return ref_errno(errno);
+    const char *name = NULL;
+    if (grantpt(m) != 0 || unlockpt(m) != 0 || !(name = ptsname(m)) || strlen(name) >= cap) {
+        const int rc = name ? PORT_E_RANGE : ref_errno(errno);
+        close(m);
+        return rc;
+    }
+    strcpy(slave, name);
+    struct winsize ws;
+    memset(&ws, 0, sizeof ws);
+    ws.ws_col = cols ? cols : 80;
+    ws.ws_row = rows ? rows : 24;
+    ioctl(m, TIOCSWINSZ, &ws);
+    return m;
+}
+
 int port_proc_spawn(const port_spawn_desc *d, port_proc **out) {
-    if (d->flags & PORT_SPAWN_PTY)
-        return PORT_E_NOSYS;
+    const int pty = (d->flags & PORT_SPAWN_PTY) != 0;
     int in[2] = {-1, -1}, o[2] = {-1, -1}, e[2] = {-1, -1};
     int rc = PORT_OK;
-    if (((d->flags & PORT_SPAWN_STDIN_PIPE) && pipe2(in, O_CLOEXEC) != 0) ||
-        ((d->flags & PORT_SPAWN_STDOUT_PIPE) && pipe2(o, O_CLOEXEC) != 0) ||
-        ((d->flags & PORT_SPAWN_STDERR_PIPE) && pipe2(e, O_CLOEXEC) != 0))
+    char slave[256];
+    if (pty) {
+        /* The terminal is both ends: the master read as stdout, a second
+         * descriptor of it written as stdin. */
+        const int m = openPty(d->pty_cols, d->pty_rows, slave, sizeof slave);
+        if (m < 0)
+            return m;
+        o[0] = m;
+        in[1] = fcntl(m, F_DUPFD_CLOEXEC, 0);
+        if (in[1] < 0)
+            rc = ref_errno(errno);
+    } else if (((d->flags & PORT_SPAWN_STDIN_PIPE) && pipe2(in, O_CLOEXEC) != 0) ||
+               ((d->flags & PORT_SPAWN_STDOUT_PIPE) && pipe2(o, O_CLOEXEC) != 0) ||
+               ((d->flags & PORT_SPAWN_STDERR_PIPE) && pipe2(e, O_CLOEXEC) != 0))
         rc = ref_errno(errno);
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    if (in[0] >= 0)
-        posix_spawn_file_actions_adddup2(&fa, in[0], 0);
-    else
-        posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    if (o[1] >= 0)
-        posix_spawn_file_actions_adddup2(&fa, o[1], 1);
-    else
-        posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    if (e[1] >= 0)
-        posix_spawn_file_actions_adddup2(&fa, e[1], 2);
-    else if ((d->flags & PORT_SPAWN_STDERR_MERGE) && o[1] >= 0)
-        posix_spawn_file_actions_adddup2(&fa, o[1], 2);
-    else
-        posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    if (pty) {
+        /* After setsid (attributes come before file actions), the first
+         * terminal a session leader opens without O_NOCTTY becomes its
+         * controlling one. */
+        posix_spawn_file_actions_addopen(&fa, 0, slave, O_RDWR, 0);
+        posix_spawn_file_actions_adddup2(&fa, 0, 1);
+        posix_spawn_file_actions_adddup2(&fa, 0, 2);
+    } else {
+        if (in[0] >= 0)
+            posix_spawn_file_actions_adddup2(&fa, in[0], 0);
+        else
+            posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+        if (o[1] >= 0)
+            posix_spawn_file_actions_adddup2(&fa, o[1], 1);
+        else
+            posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+        if (e[1] >= 0)
+            posix_spawn_file_actions_adddup2(&fa, e[1], 2);
+        else if ((d->flags & PORT_SPAWN_STDERR_MERGE) && o[1] >= 0)
+            posix_spawn_file_actions_adddup2(&fa, o[1], 2);
+        else
+            posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    }
     if (d->cwd && *d->cwd)
         posix_spawn_file_actions_addchdir_np(&fa, d->cwd);
     /* A clean signal state, and a session of its own so the group can be
@@ -547,7 +597,7 @@ int port_proc_spawn(const port_spawn_desc *d, port_proc **out) {
     posix_spawnattr_setsigmask(&attr, &none);
     posix_spawnattr_setsigdefault(&attr, &all);
     short sf = POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF;
-    if (d->flags & PORT_SPAWN_NEW_GROUP)
+    if ((d->flags & PORT_SPAWN_NEW_GROUP) || pty)
         sf |= POSIX_SPAWN_SETSID;
     posix_spawnattr_setflags(&attr, sf);
 
@@ -584,6 +634,7 @@ int port_proc_spawn(const port_spawn_desc *d, port_proc **out) {
     p->in  = in[1];
     p->out = o[0];
     p->err = e[0];
+    p->pty = pty;
     *out   = p;
     return PORT_OK;
 }
@@ -613,6 +664,8 @@ int64_t port_proc_read(port_proc *p, int stream, void *buf, size_t n, int32_t ti
         const ssize_t r = read(fd, buf, n);
         if (r >= 0)
             return r;
+        if (p->pty && errno == EIO)
+            return 0; /* the child's side of the terminal is closed: it ended */
         if (errno != EINTR)
             return ref_errno(errno);
     }
@@ -703,8 +756,27 @@ int64_t port_proc_pid(port_proc *p) {
 }
 
 int port_proc_resize(port_proc *p, uint16_t cols, uint16_t rows) {
-    (void)p, (void)cols, (void)rows;
-    return PORT_E_NOSYS;
+    if (!p->pty || p->out < 0)
+        return PORT_E_INVAL;
+    struct winsize ws;
+    memset(&ws, 0, sizeof ws);
+    ws.ws_col = cols;
+    ws.ws_row = rows;
+    return ioctl(p->out, TIOCSWINSZ, &ws) == 0 ? PORT_OK : ref_errno(errno);
+}
+
+int port_pid_alive(int64_t pid) {
+    if (pid <= 0)
+        return 0;
+    return kill((pid_t)pid, 0) == 0 || errno == EPERM;
+}
+
+int port_pid_kill(int64_t pid, uint32_t flags) {
+    if (pid <= 0)
+        return PORT_E_INVAL;
+    const int sig = (flags & PORT_PID_FORCE) ? SIGKILL : SIGTERM;
+    return kill((flags & PORT_PID_GROUP) ? -(pid_t)pid : (pid_t)pid, sig) == 0 ? PORT_OK
+                                                                              : ref_errno(errno);
 }
 
 void port_proc_release(port_proc *p) {

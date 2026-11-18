@@ -180,7 +180,7 @@ void checkWorkerPairing() {
     CHECK(readJobState(paths, "").empty());
     // Ours, alive; the pty host check finds none (our parent is no --bg-pty-host).
     const auto stranded = strandedWorker(paths, sid);
-#ifdef __linux__
+#if defined(__linux__) && !defined(MSGA_PORT) // a port build reads no /proc
     REQUIRE(stranded.size() == 1);
     CHECK(stranded[0] == me);
 #else
@@ -302,7 +302,7 @@ TEST("roster: transcripts are found by session id") {
     CHECK_STR(std::string(Paths::transcriptSessionId("/p/x/.hidden")), ".hidden");
 }
 
-#ifdef __linux__
+#if defined(__linux__) && !defined(MSGA_PORT) // a port build reads no /proc
 namespace {
 
 // A command a background session ran and left running: Claude Code's

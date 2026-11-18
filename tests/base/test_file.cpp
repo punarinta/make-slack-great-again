@@ -3,7 +3,10 @@
 
 #include <cstdlib>
 #include <string>
-#include <unistd.h>
+#include <vector>
+#if !defined(_WIN32) && !defined(__PEOS__)
+#include <unistd.h> // symlink
+#endif
 
 static std::string tempDir() {
     const std::string d = base::test::makeTempDir("msga_base_test_");
@@ -26,8 +29,10 @@ TEST("file: atomic write creates parents and replaces content") {
     REQUIRE(file::readAll(path, &got));
     CHECK(got == "not flushed");
     CHECK(file::isDir(file::join(dir, "a/b")));
-    // No temp file left behind.
-    CHECK_FALSE(file::exists(path + ".tmp" + std::to_string(getpid())));
+    // No temp file left behind: the folder holds the file alone.
+    std::vector<file::DirEntry> left;
+    REQUIRE(file::listDir(file::dirName(path), &left));
+    CHECK(left.size() == 1 && left[0].name == "c.json");
     CHECK(file::remove(path));
     CHECK_FALSE(file::readAll(path, &got));
     CHECK(got.empty());
@@ -156,7 +161,7 @@ TEST("file: stat, treeBytes and removeTree, links not followed") {
     CHECK(file::treeBytes(t) == 8);
     CHECK(file::treeBytes(a) == 3);
     CHECK(file::treeBytes(file::join(dir, "missing")) == 0);
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__) // PEOS has no links
     const std::string keep = file::join(dir, "keep/k");
     REQUIRE(file::writeAtomic(keep, "1234567"));
     REQUIRE(::symlink(file::join(dir, "keep").c_str(), file::join(t, "link").c_str()) == 0);
@@ -164,7 +169,7 @@ TEST("file: stat, treeBytes and removeTree, links not followed") {
 #endif
     CHECK(file::removeTree(t));
     CHECK_FALSE(file::exists(t));
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__)
     CHECK(file::exists(keep)); // what the link pointed at is still there
 #endif
     CHECK(file::removeTree(t)); // nothing there: done

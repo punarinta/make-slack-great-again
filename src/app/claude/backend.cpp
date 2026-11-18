@@ -26,7 +26,7 @@
 #include <algorithm>
 #include <cstring>
 #include <utility>
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
 #include <malloc.h>
 #endif
 
@@ -2971,7 +2971,7 @@ void Backend::firstScan(Done done) {
             _connecting = false;
             _started    = true;
             refresh();
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
             // Parsing the whole transcripts peaks at well over 100 MB on the
             // worker, nearly all of it freed by now but kept by that thread's
             // malloc arena; hand the pages back to the system.

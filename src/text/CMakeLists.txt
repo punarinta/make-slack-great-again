@@ -7,7 +7,9 @@
 # the BSDs build trimmed copies (font_libs.cmake). On the BSDs the packaged
 # HarfBuzz drags glib, graphite2 and gettext into every link (and into a
 # cross build's sysroot); the source build needs nothing but a compiler.
-if(APPLE OR WIN32 OR MSGA_STATIC OR CMAKE_SYSTEM_NAME MATCHES "BSD")
+# A port build too: the core reaches the OS only through the port contract,
+# never a system library.
+if(APPLE OR WIN32 OR MSGA_STATIC OR CMAKE_SYSTEM_NAME MATCHES "BSD" OR MSGA_PORT)
     set(_bundled_default ON)
 else()
     set(_bundled_default OFF)

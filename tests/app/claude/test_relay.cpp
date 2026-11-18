@@ -670,6 +670,76 @@ TEST("relay: a relay that speaks another version is refused, and said so") {
 }
 
 #ifndef _WIN32
+// ── The process channel ─────────────────────────────────────────────────────
+
+TEST("relay: a process channel carries lines both ways and the program's last words") {
+    base::Mutex              lock;
+    std::vector<std::string> lines;
+    std::string              why;
+    bool                     closed  = false;
+    auto                     channel = processChannel(
+        "/bin/sh", {"-c", "while read l; do echo \"got $l\"; done; echo 'gone now' >&2"}
+    );
+    std::string error;
+    REQUIRE(channel->open(
+        [&](std::string_view line) {
+            base::Lock l(lock);
+            lines.emplace_back(line);
+        },
+        [&](std::string w) {
+            base::Lock l(lock);
+            why    = std::move(w);
+            closed = true;
+        },
+        &error
+    ));
+    channel->send("one");
+    channel->send("two");
+    const auto got = [&](size_t n) {
+        base::Lock l(lock);
+        return lines.size() >= n;
+    };
+    for (int i = 0; i < 400 && !got(2); ++i)
+        base::sleepMs(10);
+    {
+        base::Lock l(lock);
+        REQUIRE(lines.size() == 2);
+        CHECK_STR(lines[0], "got one");
+        CHECK_STR(lines[1], "got two");
+    }
+    channel->close(); // no callback once it returns
+    base::Lock l(lock);
+    CHECK_FALSE(closed);
+}
+
+TEST("relay: a process channel says why it closed") {
+    base::Mutex lock;
+    std::string why;
+    bool        closed  = false;
+    auto        channel = processChannel("/bin/sh", {"-c", "echo 'ssh: no route' >&2; exit 255"});
+    std::string error;
+    REQUIRE(channel->open(
+        [](std::string_view) {},
+        [&](std::string w) {
+            base::Lock l(lock);
+            why    = std::move(w);
+            closed = true;
+        },
+        &error
+    ));
+    const auto done = [&] {
+        base::Lock l(lock);
+        return closed;
+    };
+    for (int i = 0; i < 400 && !done(); ++i)
+        base::sleepMs(10);
+    base::Lock l(lock);
+    REQUIRE(closed);
+    CHECK_STR(why, "ssh: no route");
+}
+#endif
+
+#if !defined(_WIN32) && !defined(MSGA_PORT) // a port build has no relay mode
 // ── A real relay process ────────────────────────────────────────────────────
 
 TEST("relay: `--cc-relay` as a process of its own, over pipes") {

@@ -11,7 +11,9 @@
 #include <deque>
 #include <utility>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#elif defined(_WIN32)
 #include "base/winstr.h"
 #include <windows.h>
 #else
@@ -75,7 +77,9 @@ private:
     std::atomic<bool>        _closing{false};
     std::string              _err; // stderr's last 4 KB
     base::Mutex              _errLock;
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    port_proc *_proc = nullptr; // its three streams, one thread each (port_sys.h)
+#elif defined(_WIN32)
     HANDLE _process = nullptr, _in = nullptr, _out = nullptr, _errPipe = nullptr;
 #else
     pid_t   _pid     = -1;
@@ -87,7 +91,28 @@ private:
 bool ProcessChannel::open(Line onLine, Closed onClosed, std::string *error) {
     _onLine   = std::move(onLine);
     _onClosed = std::move(onClosed);
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    std::vector<const char *> argv;
+    for (const auto &a : _args)
+        argv.push_back(a.c_str());
+    port_spawn_desc d{};
+    d.size  = sizeof d;
+    d.exe   = _exe.c_str();
+    d.argv  = argv.data();
+    d.argc  = argv.size();
+    // A group of its own, as below: no terminal for ssh to ask on.
+    d.flags = PORT_SPAWN_STDIN_PIPE | PORT_SPAWN_STDOUT_PIPE | PORT_SPAWN_STDERR_PIPE |
+              PORT_SPAWN_NEW_GROUP;
+    if (!(port_caps() & PORT_CAP_PROCESS_PIPES)) {
+        *error = "this system can't talk to a program over pipes";
+        return false;
+    }
+    if (const int rc = port_proc_spawn(&d, &_proc); rc != PORT_OK) {
+        _proc  = nullptr;
+        *error = "can't start " + _exe + ": " + port_strerror(rc);
+        return false;
+    }
+#elif defined(_WIN32)
     SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
     HANDLE              inR = nullptr, outW = nullptr, errW = nullptr;
     if (!CreatePipe(&inR, &_in, &sa, 0) || !CreatePipe(&_out, &outW, &sa, 0) ||
@@ -214,7 +239,11 @@ bool ProcessChannel::open(Line onLine, Closed onClosed, std::string *error) {
 
 bool ProcessChannel::writeBytes(std::string_view s) {
     while (!s.empty()) {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+        const int64_t n = port_proc_write(_proc, s.data(), s.size(), -1);
+        if (n <= 0)
+            return false;
+#elif defined(_WIN32)
         DWORD n = 0;
         if (!WriteFile(_in, s.data(), DWORD(std::min<size_t>(s.size(), 1 << 20)), &n, nullptr))
             return false;
@@ -231,7 +260,10 @@ bool ProcessChannel::writeBytes(std::string_view s) {
 }
 
 int ProcessChannel::readBytes(char *buf, int size) {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    const int64_t n = port_proc_read(_proc, PORT_STDOUT, buf, size_t(size), -1);
+    return n < 0 ? 0 : int(n);
+#elif defined(_WIN32)
     DWORD n = 0;
     return ReadFile(_out, buf, DWORD(size), &n, nullptr) ? int(n) : 0;
 #else
@@ -245,7 +277,7 @@ int ProcessChannel::readBytes(char *buf, int size) {
 }
 
 void ProcessChannel::writeLoop() {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT) // a port's write never raises a signal
     // A relay gone (its pipe closed) is a failed write here, never a SIGPIPE
     // that ends msga: blocked on this thread, which only writes.
     sigset_t pipe;
@@ -270,7 +302,9 @@ void ProcessChannel::writeLoop() {
             break;
     }
     // Its stdin closed: a relay reads that as msga hanging up.
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    port_proc_close_stdin(_proc);
+#elif defined(_WIN32)
     CloseHandle(std::exchange(_in, nullptr));
 #else
     ::close(std::exchange(_in, -1));
@@ -280,7 +314,11 @@ void ProcessChannel::writeLoop() {
 void ProcessChannel::errLoop() {
     char buf[4096];
     for (;;) {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+        const int64_t n = port_proc_read(_proc, PORT_STDERR, buf, sizeof buf, -1);
+        if (n <= 0)
+            break;
+#elif defined(_WIN32)
         DWORD n = 0;
         if (!ReadFile(_errPipe, buf, sizeof buf, &n, nullptr) || n == 0)
             break;
@@ -331,7 +369,13 @@ void ProcessChannel::readLoop() {
 }
 
 void ProcessChannel::endProcess() {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    // Its stdout closed: it is ending (or, a line too long, made to).
+    if (_proc && port_proc_wait(_proc, 2000, nullptr) != PORT_OK) {
+        port_proc_kill(_proc, 1);
+        port_proc_wait(_proc, -1, nullptr);
+    }
+#elif defined(_WIN32)
     if (_process) {
         if (WaitForSingleObject(_process, 2000) != WAIT_OBJECT_0)
             TerminateProcess(_process, 1);
@@ -365,7 +409,10 @@ void ProcessChannel::close() {
     _wake.notifyAll();
     // Ended first: a writer stuck on a full pipe (a relay not reading) then
     // fails instead of holding this up. The relay sees its link go.
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    if (_proc)
+        port_proc_kill(_proc, 0); // its whole group: ssh, a ProxyCommand
+#elif defined(_WIN32)
     if (_process)
         TerminateProcess(_process, 1);
 #else
@@ -376,7 +423,9 @@ void ProcessChannel::close() {
 #endif
     _writer.join();
     _reader.join();
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    port_proc_release(std::exchange(_proc, nullptr));
+#elif defined(_WIN32)
     if (_out)
         CloseHandle(std::exchange(_out, nullptr));
     if (_errPipe)

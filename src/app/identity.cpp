@@ -9,7 +9,7 @@
 #include "base/winstr.h"
 
 #include <windows.h>
-#else
+#elif !defined(MSGA_PORT)
 #include <cstring>
 #include <fcntl.h>
 #include <poll.h>
@@ -69,6 +69,7 @@ std::string cacheDir(plat::App &app) {
 #endif
 }
 
+#if !defined(MSGA_PORT)
 namespace {
 
 // A string as the hand-off carries it: a big-endian byte length, then UTF-16BE.
@@ -103,8 +104,15 @@ std::string homeName() {
 }
 
 } // namespace
+#endif
 
 bool handOffToEarlierVersion(const std::string &url) {
+#if defined(MSGA_PORT)
+    // No earlier version ever ran on a port's OS: second launches are the
+    // port's (plat::App::claimSingleInstance, port_instance_claim).
+    (void)url;
+    return false;
+#else
     const std::string name = "msga-" + homeName();
     const std::string data = url.empty() ? std::string() : utf16BeString(url);
 #ifdef _WIN32
@@ -159,6 +167,7 @@ bool handOffToEarlierVersion(const std::string &url) {
     close(fd);
     return true;
 #endif
+#endif // MSGA_PORT
 }
 
 std::string crashLogPath(plat::App &app) {

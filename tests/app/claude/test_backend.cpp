@@ -1528,7 +1528,7 @@ TEST("backend: a background command whose output goes to a file of its own") {
     REQUIRE(rig.wait([&] { return line() == "linking"; }, 5000));
 }
 
-#ifdef __linux__ // the process is found through /proc
+#if defined(__linux__) && !defined(MSGA_PORT) // the process is found through /proc
 TEST("backend: a background command stopped from msga") {
     FakeClaudeHome    home;
     const std::string output  = home.dir + "/bs1.output";
@@ -2785,7 +2785,7 @@ TEST("backend: no session starts while Claude Code is logged out") {
 
 // ── The backend: sending and managing, through fake CLIs ───────────────────
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(MSGA_PORT) // /proc
 TEST("backend: removing a session deletes it only when msga, or a session of msga's, started it") {
     FakeClaudeHome    home;
     const std::string work = tempDir("work");
@@ -3484,7 +3484,7 @@ TEST("backend: sending runs background sessions: start, then stop + resume per t
     CHECK_STR(cwMate->name, "Copywriter");
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(MSGA_PORT) // /proc
 TEST("backend: Stop cuts a session's turn short and drops what waits") {
     FakeClaudeHome home;
     home.writeSession("busy"); // S1: a terminal's session, working

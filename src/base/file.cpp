@@ -3,6 +3,7 @@
 #include "base/str.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #ifdef _WIN32
@@ -276,6 +277,10 @@ std::string absolute(std::string_view path) {
                                                 : std::string(path);
     return join(cwd, path);
 }
+
+bool isExecutable(std::string_view path) {
+    return exists(path) && !isDir(path);
+}
 #elif !defined(MSGA_PORT)
 namespace {
 bool dotName(const char *n) {
@@ -442,6 +447,32 @@ std::string absolute(std::string_view path) {
     if (!::getcwd(buf, sizeof buf))
         return std::string(path);
     return join(buf, path);
+}
+
+bool isExecutable(std::string_view path) {
+    const std::string p(path);
+    struct stat       st;
+    return ::stat(p.c_str(), &st) == 0 && !S_ISDIR(st.st_mode) && ::access(p.c_str(), X_OK) == 0;
+}
+
+std::string realPath(std::string_view path) {
+    if (path.empty())
+        return {};
+    char *real = ::realpath(std::string(path).c_str(), nullptr);
+    if (!real)
+        return {};
+    std::string out(real);
+    std::free(real);
+    return out;
+}
+
+bool makeDir(std::string_view path, int mode) {
+    return ::mkdir(std::string(path).c_str(), mode_t(mode)) == 0;
+}
+
+bool isRealDir(std::string_view path) {
+    struct stat st;
+    return ::lstat(std::string(path).c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 #endif
 

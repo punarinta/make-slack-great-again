@@ -9,7 +9,9 @@
 
 #include <cstdio>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "base/crypto.h"
+#elif defined(_WIN32)
 #include <process.h>
 #else
 #include <unistd.h>
@@ -161,12 +163,15 @@ int runPermissionHook(std::string_view dir) {
     HookQuestion q;
     if (dir.empty() || !parseHookQuestion(in, &q) || !file::makeDirs(dir))
         return 0;
-#ifdef _WIN32
-    const int64_t pid = _getpid();
+#if defined(MSGA_PORT)
+    // No process ids through the port: random bytes keep two hooks apart.
+    const std::string pid = crypto::randomHex(4);
+#elif defined(_WIN32)
+    const std::string pid = str::number(int64_t(_getpid()));
 #else
-    const int64_t pid = getpid();
+    const std::string pid = str::number(int64_t(getpid()));
 #endif
-    const std::string id = str::concat({str::number(pid), "-", str::number(base::nowMicros())});
+    const std::string id       = str::concat({pid, "-", str::number(base::nowMicros())});
     const std::string question = pathOf(dir, id, ".json");
     const std::string seen     = pathOf(dir, id, ".seen");
     const std::string answer   = pathOf(dir, id, ".answer");

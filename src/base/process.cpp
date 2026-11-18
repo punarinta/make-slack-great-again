@@ -148,13 +148,7 @@ bool isExecutable(const std::string &path) {
     if (host::sandboxed())
         return host::sh("[ -f \"$1\" ] && [ -x \"$1\" ]", {path}).code == 0;
 #endif
-    if (!file::exists(path) || file::isDir(path))
-        return false;
-#if defined(_WIN32) || defined(MSGA_PORT) // a port's spawn says whether it runs
-    return true;
-#else
-    return ::access(path.c_str(), X_OK) == 0;
-#endif
+    return file::isExecutable(path);
 }
 
 Process::~Process() {
@@ -940,9 +934,15 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
 #pragma clang diagnostic pop
 #endif
     }
+    // A relative path with a slash names a file in the child's folder; macOS
+    // before 26 resolves it before the chdir action, in ours: anchor it.
+    std::string spawnPath = program;
+    if (!onHost && !o.cwd.empty() && !program.empty() && program[0] != '/' &&
+        program.find('/') != std::string::npos)
+        spawnPath = o.cwd + "/" + program;
     posix_spawnattr_t attr;
     initSpawnAttr(&attr); // as Process::start
-    const int rc = posix_spawnp(&pid, program.c_str(), &fa, &attr, argv.data(), envArg);
+    const int rc = posix_spawnp(&pid, spawnPath.c_str(), &fa, &attr, argv.data(), envArg);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&attr);
 #endif

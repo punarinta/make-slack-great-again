@@ -98,7 +98,11 @@ TEST("desktop entry: the launcher earlier versions installed") {
 #endif
 }
 
-#if !defined(_WIN32)
+#if defined(MSGA_PORT)
+TEST("identity: no earlier version takes a launch in a port build") {
+    CHECK_FALSE(identity::handOffToEarlierVersion("msga://x"));
+}
+#elif !defined(_WIN32)
 TEST("identity: a running earlier version takes the launch") {
     // No earlier version running: nobody listens, the launch is ours.
     CHECK_FALSE(identity::handOffToEarlierVersion("msga://x"));

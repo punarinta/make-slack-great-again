@@ -654,12 +654,20 @@ TEST("terminal: terminate ends a program, and one that ignores SIGTERM too") {
         CHECK(base::monotonicMs() - t >= 1500); // SIGKILL, 2 s after the SIGTERM
     }
     {
-        // A program that isn't there: the terminal shows nothing and closes.
+        // A program that isn't there: the terminal shows nothing and closes
+        // (a port's spawn may say so at once instead).
         Pty  pty(*app);
-        bool finished  = false;
-        pty.onFinished = [&] { finished = true; };
-        REQUIRE(pty.start("/nonexistent/attach", {}, {}, 24, 80));
-        CHECK(waitFor(*app, [&] { return finished; }));
+        bool finished      = false;
+        pty.onFinished     = [&] { finished = true; };
+        const bool started = pty.start("/nonexistent/attach", {}, {}, 24, 80);
+#ifdef MSGA_PORT
+        if (!started)
+            CHECK_FALSE(pty.errorString().empty());
+        else
+#else
+        REQUIRE(started);
+#endif
+            CHECK(waitFor(*app, [&] { return finished; }));
     }
     {
         // Destroyed while it runs: the program goes, no callback comes after.

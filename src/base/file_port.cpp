@@ -113,6 +113,47 @@ bool isAbsolute(std::string_view p) {
     return !p.empty() && p[0] == '/';
 }
 
+bool isExecutable(std::string_view path) {
+    port_stat_info st;
+    return statPath(path, true, &st) && st.kind == PORT_KIND_FILE && (st.mode & 0111) != 0;
+}
+
+std::string realPath(std::string_view path) {
+    port_stat_info st;
+    if (!statPath(path, true, &st))
+        return {};
+    // No links to read: the absolute path with "." and ".." folded.
+    const std::string        abs = absolute(path);
+    std::vector<std::string> parts;
+    size_t                   at = 0;
+    while (at <= abs.size()) {
+        size_t slash = abs.find('/', at);
+        if (slash == std::string::npos)
+            slash = abs.size();
+        const std::string_view part(abs.data() + at, slash - at);
+        if (part == "..") {
+            if (!parts.empty())
+                parts.pop_back();
+        } else if (!part.empty() && part != ".") {
+            parts.emplace_back(part);
+        }
+        at = slash + 1;
+    }
+    std::string out;
+    for (const std::string &p : parts)
+        out += "/" + p;
+    return out.empty() ? std::string("/") : out;
+}
+
+bool makeDir(std::string_view path, int mode) {
+    return port_mkdir(std::string(path).c_str(), uint32_t(mode)) == PORT_OK;
+}
+
+bool isRealDir(std::string_view path) {
+    port_stat_info st;
+    return statPath(path, false, &st) && st.kind == PORT_KIND_DIR;
+}
+
 std::string absolute(std::string_view path) {
     if (isAbsolute(path))
         return std::string(path);

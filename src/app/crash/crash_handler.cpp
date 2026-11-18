@@ -8,6 +8,29 @@
 
 #include "app/crash/crash_handler.h"
 
+#if defined(MSGA_PORT)
+
+// A port build: no signals, no stack walking, no per-thread timers — a port
+// OS keeps its own crash records (PEOS: the journal and the supervisor's
+// restarts). Neither crash reports nor the hang watchdog.
+namespace crash {
+
+void install(const std::string &) {}
+bool startWatchdog(int) {
+    return false;
+}
+void heartbeat() {}
+int  watchdogStartupGraceMs(int steadyMs) {
+    return steadyMs;
+}
+int watchdogReportCountForTesting() {
+    return 0;
+}
+
+} // namespace crash
+
+#else
+
 #include "base/file.h"
 #include "base/str.h"
 #include "plat/plat.h"
@@ -614,3 +637,5 @@ int watchdogReportCountForTesting() {
 }
 
 } // namespace crash
+
+#endif // MSGA_PORT

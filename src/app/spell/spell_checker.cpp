@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <unordered_map>
 
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
 #include <malloc.h>
 #endif
 
@@ -146,7 +146,7 @@ void Checker::reset() {
     if (_state) {
         _state.reset();
         _backend = nullptr;
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
         // Hunspell holds a dictionary in millions of small blocks; hand the
         // pages back to the system instead of keeping them for reuse.
         malloc_trim(0);

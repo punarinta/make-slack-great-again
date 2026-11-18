@@ -13,13 +13,15 @@ add_library(msga_app_spell STATIC
 target_include_directories(msga_app_spell PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 target_link_libraries(msga_app_spell PUBLIC msga_app_core msga_text plat msga_flags)
 
-if(APPLE)
+# A port build takes the Hunspell branch on any OS (backend_linux.cpp's
+# MSGA_PORT parts: the app's own dictionaries, msga's Unicode tables).
+if(APPLE AND NOT MSGA_PORT)
     enable_language(OBJCXX)
     target_sources(msga_app_spell PRIVATE backend_mac.mm)
     # OBJCXX sources do not get msga_flags' C++-only flags.
     set_source_files_properties(backend_mac.mm PROPERTIES COMPILE_OPTIONS "-fno-exceptions;-fno-rtti")
     target_link_libraries(msga_app_spell PRIVATE "-framework AppKit")
-elseif(WIN32)
+elseif(WIN32 AND NOT MSGA_PORT)
     target_sources(msga_app_spell PRIVATE backend_win.cpp)
     target_link_libraries(msga_app_spell PRIVATE ole32)
 else()
@@ -44,7 +46,9 @@ else()
         PRIVATE HUNSPELL_HOST_UNICODE HUNSPELL_NO_XML HUNSPELL_NO_IOSTREAM)
     target_compile_options(msga_hunspell PRIVATE -w $<$<NOT:$<CONFIG:Debug>>:${MSGA_SIZE_OPT}>
         -fvisibility=hidden -fvisibility-inlines-hidden -ffunction-sections -fdata-sections
-        -fno-exceptions # RTTI stays: AffixMgr builds its trees with dynamic_cast
+        # RTTI stays, here only (a PEOS build too: libc++abi has the type_info
+        # classes): AffixMgr builds its trees with dynamic_cast.
+        -fno-exceptions
         $<$<CONFIG:MinSizeRel>:-fno-asynchronous-unwind-tables -fno-unwind-tables>)
 
     target_sources(msga_app_spell PRIVATE backend_linux.cpp)

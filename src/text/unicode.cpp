@@ -302,6 +302,19 @@ bool isNewline(uint32_t cp) {
            cp == 0x2029;
 }
 
+bool isLetter(uint32_t cp) {
+    switch (category(cp)) {
+    case HB_UNICODE_GENERAL_CATEGORY_LOWERCASE_LETTER:
+    case HB_UNICODE_GENERAL_CATEGORY_MODIFIER_LETTER:
+    case HB_UNICODE_GENERAL_CATEGORY_OTHER_LETTER:
+    case HB_UNICODE_GENERAL_CATEGORY_TITLECASE_LETTER:
+    case HB_UNICODE_GENERAL_CATEGORY_UPPERCASE_LETTER:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool isSelectWordChar(uint32_t cp) {
     if (cp < 0x80)
         return cp == '_' || (cp >= '0' && cp <= '9') || ((cp | 0x20) >= 'a' && (cp | 0x20) <= 'z');

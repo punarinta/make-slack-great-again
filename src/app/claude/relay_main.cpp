@@ -2,7 +2,8 @@
 // backends, which need a display — but a loop of its own, enough for what the
 // Claude Code parts ask of a plat::App: posted closures, timers, readable fds.
 // POSIX only: a Windows machine isn't served (its `claude` sessions, ConPTY
-// included, are reached by running msga there).
+// included, are reached by running msga there), nor is a port build's (a
+// port's OS is not a server's).
 #include "app/claude/relay_server.h"
 
 #include "app/claude/cli.h"
@@ -20,7 +21,7 @@
 
 #include <cstdio>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
 #include <algorithm>
 #include <cerrno>
 #include <csignal>
@@ -33,10 +34,14 @@
 
 namespace claude {
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(MSGA_PORT)
 
 int runRelay(int, char **) {
+#ifdef _WIN32
     std::fprintf(stderr, "msga --cc-relay: not available on Windows\n");
+#else
+    std::fprintf(stderr, "msga --cc-relay: not available on this system\n");
+#endif
     return 2;
 }
 
