@@ -170,6 +170,12 @@ onto the contract per port:
   single-surface path is tested before a real port needs it.
 - **The headers as plain C:** they must build with any C11 compiler at
   `-std=c11 -pedantic`; `src/port/header_check.c` includes all of them.
+- **Nothing beside the contract:** `scripts/port-symbol-audit.sh <build-dir>
+  <allowlist>` lists every symbol the core leaves undefined apart from
+  `port_*` and fails on any the allowlist doesn't name. The reference-port
+  build runs it against `scripts/port-allow-iso.txt` (ISO C and the C++
+  runtime) as a ctest; for a new OS, write an allowlist of what its SDK
+  exports and run the audit on the target build.
 - **On the target**, the same suites, module by module as in section 6.
 
 ## 10. Shipping it
