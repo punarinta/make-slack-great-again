@@ -1,5 +1,5 @@
 // POSIX file primitives (see prim's CMakeLists.txt): base declares them as
-// file::…, plat's Linux pieces call them here. Not on Windows, where base has
+// file::…, plat's freedesktop pieces call them here. Not on Windows, where base has
 // its own wide-path versions. Paths are UTF-8 with '/' separators.
 #pragma once
 
@@ -28,6 +28,16 @@ bool writeAtomic(
 bool isDir(std::string_view path); // follows symlinks
 // mkdir -p. True if the directory exists afterwards.
 bool makeDirs(std::string_view path);
+
+// The running executable's absolute path; "" when the OS won't say. Linux
+// reads /proc/self/exe, FreeBSD and DragonFly ask sysctl. macOS (dyld) and
+// OpenBSD are asked once, before main, so a relative start path still means
+// the directory the process started in: OpenBSD keeps no path for a running
+// image, so there it is argv[0] (from sysctl), resolved against that
+// directory when it has a '/', else searched on $PATH — wrong if the binary
+// has moved since, or if the launcher passed an argv[0] that is not the
+// program's path.
+std::string executablePath();
 
 } // namespace prim::file
 

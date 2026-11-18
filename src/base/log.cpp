@@ -1,18 +1,18 @@
 #include "base/log.h"
 
+#include "base/thread.h"
 #include "base/time.h"
 
 #include <cstdarg>
 #include <cstdio>
-#include <mutex>
 
 namespace base {
 
 namespace {
-LogLevel   g_level  = LogLevel::Info;
-bool       g_stderr = true;
-FILE      *g_file   = nullptr;
-std::mutex g_mutex; // network threads log too; keep lines whole
+LogLevel    g_level  = LogLevel::Info;
+bool        g_stderr = true;
+FILE       *g_file   = nullptr;
+base::Mutex g_mutex; // network threads log too; keep lines whole
 } // namespace
 
 void setLogLevel(LogLevel l) {
@@ -28,7 +28,7 @@ void setLogToStderr(bool on) {
 }
 
 bool setLogFile(const char *path) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    base::Lock lock(g_mutex);
     if (g_file)
         std::fclose(g_file);
     g_file = nullptr;
@@ -65,7 +65,7 @@ void logf(LogLevel l, const char *tag, const char *fmt, ...) {
     );
     const size_t len = n < 0 ? 0 : (size_t(n) < sizeof line ? size_t(n) : sizeof line - 1);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    base::Lock lock(g_mutex);
     if (g_stderr)
         std::fwrite(line, 1, len, stderr);
     if (g_file) {

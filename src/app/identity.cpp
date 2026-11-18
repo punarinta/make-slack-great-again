@@ -29,7 +29,7 @@ std::string under(const std::string &base, const char *rel) {
 } // namespace
 
 const char *appId() {
-#if defined(__linux__)
+#if defined(MSGA_FREEDESKTOP)
     return "msga";
 #else
     return "com.nisdos.msga";
@@ -41,7 +41,7 @@ const char *instanceKey() {
 }
 
 std::string configDir(plat::App &app) {
-#if defined(__linux__)
+#if defined(MSGA_FREEDESKTOP)
     return under(app.standardDir(plat::StandardDir::Config), "msga");
 #else
     return dataDir(app);

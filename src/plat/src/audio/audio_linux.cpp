@@ -1,16 +1,20 @@
-// Linux audio. There is no dependency-free in-process audio path: every sound
-// server needs a shared library that won't link into the static release
-// binary, and the static (musl) build can't dlopen one. So audio goes through the sound server's
-// own command-line tools, present on essentially every desktop:
+// Audio on Linux and the BSDs. There is no dependency-free in-process audio
+// path: every sound server needs a shared library that won't link into the
+// static release binary, and the static (musl) build can't dlopen one. So
+// audio goes through the sound server's own command-line tools, present on
+// essentially every desktop:
 //
 //   playback  source (PCM frames)  ──►  sink (helper reading raw PCM on stdin)
 //             sources: the vendored miniaudio decoders in-process (MP3/WAV/
 //             Vorbis), else `ffmpeg … -f s16le pipe:1` when it is on
 //             PATH (AAC/M4A, WebM/Opus, FLAC, …). Sinks: the first of pw-cat /
-//             paplay / aplay that starts.
-//   capture   pw-record / parecord / arecord writing 16 kHz mono s16le to a pipe
-//   sounds    canberra-gtk-play / pw-play / paplay / ffplay / aplay on a file;
-//             system sounds from the freedesktop sound theme
+//             paplay / aplay / aucat that starts.
+//   capture   pw-record / parecord / arecord / aucat writing 16 kHz mono s16le
+//             to a pipe
+//   sounds    canberra-gtk-play / pw-play / paplay / ffplay / aplay / aucat on
+//             a file; system sounds from the freedesktop sound theme
+// aucat is sndio's: in OpenBSD's base system, a package on FreeBSD (whose
+// desktops otherwise run PulseAudio or PipeWire, and have no ALSA).
 //
 // Players and recorders each run a worker thread that owns the helper
 // processes and multiplexes their pipes with poll(), so the UI thread never
@@ -22,8 +26,8 @@
 // started plus that offset, capped by what has been written.
 #include "audio/audio_internal.h"
 
-#include "linux/files.h"
-#include "linux/process.h"
+#include "freedesktop/files.h"
+#include "freedesktop/process.h"
 #include "plat/plat.h"
 #include "pcm_decoder.h"
 
@@ -215,7 +219,7 @@ int64_t bytesPerFrame(const PcmFormat &f) {
     return 2 * int64_t(f.channels); // s16le
 }
 
-constexpr int    kSinkCount = 3;
+constexpr int    kSinkCount = 4;
 constexpr size_t kFfmpegCap = 1 << 20; // decoded PCM buffered ahead of the sink
 
 // Output helper i for raw s16le in format f: its name, *args its arguments.
@@ -228,9 +232,14 @@ const char *sinkArgs(int i, const PcmFormat &f, std::vector<std::string> *args) 
     case 1:
         *args = {"--raw", "--format=s16le", "--rate=" + rate, "--channels=" + ch};
         return "paplay";
-    default:
+    case 2:
         *args = {"-q", "-t", "raw", "-f", "S16_LE", "-r", rate, "-c", ch, "-"};
         return "aplay";
+    default: {
+        const std::string range = "0:" + std::to_string(f.channels - 1); // first:last channel
+        *args                   = {"-h", "raw", "-e", "s16le", "-r", rate, "-c", range, "-i", "-"};
+        return "aucat";
+    }
     }
 }
 
@@ -833,7 +842,7 @@ void PlayerWorker::post(PlayerEv ev, Failure f) {
 
 // ── Capture ─────────────────────────────────────────────────────────────────
 
-constexpr int    kCaptureCount    = 3;
+constexpr int    kCaptureCount    = 4;
 constexpr int    kLevelIntervalMs = 50;   // onLevel at ~20 Hz
 constexpr int    kFirstDataMs     = 4000; // helper running but silent this long = broken
 constexpr int    kStopGraceMs     = 1000; // helper ignoring SIGTERM this long = SIGKILL
@@ -851,9 +860,12 @@ const char *captureArgs(int i, std::vector<std::string> *args) {
     case 1:
         *args = {"--raw", "--format=s16le", "--rate=" + rate, "--channels=" + ch};
         return "parecord";
-    default:
+    case 2:
         *args = {"-q", "-t", "raw", "-f", "S16_LE", "-r", rate, "-c", ch, "-"};
         return "arecord";
+    default:
+        *args = {"-h", "raw", "-e", "s16le", "-r", rate, "-c", "0:0", "-o", "-"};
+        return "aucat";
     }
 }
 
@@ -1218,6 +1230,7 @@ bool playFile(const std::string &path) {
     return runHelper("pw-play", {path}) || runHelper("paplay", {path}) ||
            runHelper("ffplay", {"-nodisp", "-autoexit", "-loglevel", "quiet", path}) ||
            runHelper("aplay", {"-q", path}) || // WAV only, fine for the bundled chime
+           runHelper("aucat", {"-i", path}) || // WAV too
            runHelper("canberra-gtk-play", {"-f", path});
 }
 

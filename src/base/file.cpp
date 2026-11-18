@@ -14,7 +14,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#else
+#elif !defined(MSGA_PORT) // a port build: file_port.cpp
 #include <cerrno>
 #include <dirent.h>
 #include <fcntl.h>
@@ -276,7 +276,7 @@ std::string absolute(std::string_view path) {
                                                 : std::string(path);
     return join(cwd, path);
 }
-#else
+#elif !defined(MSGA_PORT)
 namespace {
 bool dotName(const char *n) {
     return n[0] == '.' && (!n[1] || (n[1] == '.' && !n[2]));
@@ -317,12 +317,26 @@ bool stat(std::string_view path, Stat *out) {
     struct stat       st;
     if (p.empty() || ::stat(p.c_str(), &st) != 0)
         return false;
-    out->isDir = S_ISDIR(st.st_mode);
-    out->size  = out->isDir ? 0 : int64_t(st.st_size);
+    out->isDir  = S_ISDIR(st.st_mode);
+    out->size   = out->isDir ? 0 : int64_t(st.st_size);
+    out->device = uint64_t(st.st_dev);
+    out->inode  = uint64_t(st.st_ino);
 #ifdef __APPLE__
     out->mtimeMicros = int64_t(st.st_mtimespec.tv_sec) * 1000000 + st.st_mtimespec.tv_nsec / 1000;
     out->birthMicros =
         int64_t(st.st_birthtimespec.tv_sec) * 1000000 + st.st_birthtimespec.tv_nsec / 1000;
+#elif defined(__FreeBSD__)
+    out->mtimeMicros = int64_t(st.st_mtim.tv_sec) * 1000000 + st.st_mtim.tv_nsec / 1000;
+    out->birthMicros =
+        st.st_birthtim.tv_sec > 0 // -1 where the file system keeps none
+            ? int64_t(st.st_birthtim.tv_sec) * 1000000 + st.st_birthtim.tv_nsec / 1000
+            : out->mtimeMicros;
+#elif defined(__OpenBSD__)
+    out->mtimeMicros = int64_t(st.st_mtim.tv_sec) * 1000000 + st.st_mtim.tv_nsec / 1000;
+    out->birthMicros =
+        st.__st_birthtim.tv_sec > 0 // FFS2 keeps one; FFS1 and others give 0
+            ? int64_t(st.__st_birthtim.tv_sec) * 1000000 + st.__st_birthtim.tv_nsec / 1000
+            : out->mtimeMicros;
 #else
     out->mtimeMicros = int64_t(st.st_mtim.tv_sec) * 1000000 + st.st_mtim.tv_nsec / 1000;
     out->birthMicros = out->mtimeMicros;

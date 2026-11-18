@@ -18,6 +18,7 @@
 
 #include "screens/common/context.h"
 #include "screens/shell/avatars.h"
+#include "screens/common/file_dialogs.h"
 #include "ui/ui.h"
 
 #include <functional>
@@ -92,6 +93,20 @@ ui::Popup *showWorkspaceIconDialog(
 );
 
 ui::Popup *showRenameDialog(screens::Context &ctx, ui::Window &w, model::ConvRef conv);
+// A folder on `host` (another machine, where agent sessions run), typed:
+// done(path) on Choose. `title` as the folder dialog's would be.
+ui::Popup *showHostFolderDialog(
+    ui::Window                              &w,
+    const std::string                       &title,
+    const std::string                       &host,
+    const std::string                       &initial,
+    std::function<void(const std::string &)> done
+);
+// A folder for agent sessions: this computer's folder dialog, or typed when
+// the sessions run on another machine (showHostFolderDialog).
+void pickAgentFolder(
+    screens::Context &ctx, ui::Window &w, plat::FileDialogDesc d, screens::PathsDone done
+);
 
 // "Create a section" (id "") / "Rename section": the emoji button and the
 // Name field (80 characters) in one box, a hint, Cancel / Create (Save). A

@@ -456,6 +456,11 @@ std::vector<std::string> fontRoots() {
         if (std::find(roots.begin(), roots.end(), d) == roots.end())
             roots.push_back(d);
     }
+    // The X server's own fonts: on OpenBSD the only ones a base install has
+    // (DejaVu, Spleen, …), outside every XDG data dir.
+    if (const char *x11 = "/usr/X11R6/lib/X11/fonts";
+        std::find(roots.begin(), roots.end(), x11) == roots.end())
+        roots.push_back(x11);
     return roots;
 }
 

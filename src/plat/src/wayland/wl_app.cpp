@@ -2,6 +2,7 @@
 #include "wayland/wl_internal.h"
 
 #include "core/pacing.h"
+#include "freedesktop/files.h"
 
 #include <algorithm>
 #include <chrono>
@@ -37,27 +38,7 @@ const xdg_wm_base_listener kWmBaseListener = {
 // ── shm helpers ─────────────────────────────────────────────────────────────
 
 int createShmFd(size_t bytes) {
-    int fd = memfd_create("plat-shm", MFD_CLOEXEC | MFD_ALLOW_SEALING);
-    if (fd < 0) {
-        // Kernels/libcs without memfd: an unlinked file in the runtime dir.
-        const char *dir = std::getenv("XDG_RUNTIME_DIR");
-        if (!dir)
-            return -1;
-        std::string path = std::string(dir) + "/plat-shm-XXXXXX";
-        fd               = mkostemp(path.data(), O_CLOEXEC);
-        if (fd < 0)
-            return -1;
-        unlink(path.c_str());
-    }
-    int r;
-    do
-        r = ftruncate(fd, off_t(bytes));
-    while (r < 0 && errno == EINTR);
-    if (r < 0) {
-        close(fd);
-        return -1;
-    }
-    return fd;
+    return linux_files::sharedMemoryFd("plat-shm", bytes);
 }
 
 bool allocShmBuffer(wl_shm *shm, int w, int h, uint32_t format, ShmBuffer *out, size_t capacity) {

@@ -66,7 +66,7 @@ std::string closePayload(int code, std::string_view reason = {}) {
 class PosixWs final : public WsConn {
 public:
     PosixWs() {
-        if (pipe2(_wake, O_NONBLOCK | O_CLOEXEC) != 0)
+        if (!wakePipe(_wake))
             _wake[0] = _wake[1] = -1;
     }
     ~PosixWs() override {

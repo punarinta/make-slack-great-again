@@ -4,9 +4,6 @@
 #include "plat/plat.h"
 
 #include <algorithm>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
 
 namespace model {
 
@@ -27,16 +24,16 @@ constexpr int kMaxParked = 4;
 // file work, few enough that a burst (every transcript at launch) doesn't
 // start a thread, and a malloc arena, per task.
 int workerCap() {
-    static const int cap = std::clamp(int(std::thread::hardware_concurrency()), 4, 8);
+    static const int cap = std::clamp(base::hardwareThreads(), 4, 8);
     return cap;
 }
 
 struct Background {
-    std::mutex              mutex;
-    std::condition_variable idle; // running dropped to 0
-    bool                    stopped = false;
-    int                     running = 0; // tasks queued or under way (waitBackground)
-    base::WorkerPool        pool{{.maxWorkers = workerCap(), .maxParked = kMaxParked}};
+    base::Mutex      mutex;
+    base::CondVar    idle; // running dropped to 0
+    bool             stopped = false;
+    int              running = 0; // tasks queued or under way (waitBackground)
+    base::WorkerPool pool{{.maxWorkers = workerCap(), .maxParked = kMaxParked}};
 };
 
 // Never destroyed: a parked worker may still be waiting on it as the
@@ -51,34 +48,34 @@ Background &background() {
 void runInBackground(plat::App &app, std::function<void()> work, std::function<void()> then) {
     Background &b = background();
     {
-        std::lock_guard<std::mutex> lock(b.mutex);
+        base::Lock lock(b.mutex);
         ++b.running;
     }
     b.pool.post([&b, app = &app, work = std::move(work), then = std::move(then)]() mutable {
         if (work)
             work();
         work = nullptr; // what it held goes before waitBackground returns
-        std::lock_guard<std::mutex> lock(b.mutex);
+        base::Lock lock(b.mutex);
         if (!b.stopped)
             app->post([then = std::move(then)] {
                 if (then)
                     then();
             });
         if (--b.running == 0)
-            b.idle.notify_all();
+            b.idle.notifyAll();
         // A dropped then() is released by the pool, outside the lock.
     });
 }
 
 void stopBackground() {
-    Background                 &b = background();
-    std::lock_guard<std::mutex> lock(b.mutex);
+    Background &b = background();
+    base::Lock  lock(b.mutex);
     b.stopped = true;
 }
 
 void waitBackground() {
-    Background                  &b = background();
-    std::unique_lock<std::mutex> lock(b.mutex);
+    Background &b = background();
+    base::Lock  lock(b.mutex);
     b.idle.wait(lock, [&b] { return b.running == 0; });
 }
 

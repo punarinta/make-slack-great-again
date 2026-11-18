@@ -9,7 +9,7 @@
 //            (musl, Windows).
 //   rss      resident memory (includes freed pages malloc keeps).
 //   fds      open file descriptors (Linux) — a socket or file leak.
-//   threads  live threads (Linux) — a worker never joined.
+//   threads  live threads (Linux, FreeBSD) — a worker never joined.
 // A field the platform can't tell stays -1.
 #pragma once
 
@@ -24,12 +24,13 @@ struct MemStats {
 };
 
 MemStats    sampleMem();
-// Resident memory in KB (Linux VmRSS, macOS resident size); -1 elsewhere.
+// Resident memory in KB (Linux VmRSS, macOS resident size, the BSDs'
+// kinfo_proc); -1 elsewhere.
 long        rssKb();
 // The process's private memory, the number each OS's task manager shows
 // (Linux smaps_rollup Private_*, macOS phys_footprint, Windows private
-// bytes); 0 when unknown. Linux walks every mapping for it: call it off the
-// UI thread.
+// bytes; the resident size on the BSDs); 0 when unknown. Linux walks every mapping for it: call it
+// off the UI thread.
 uint64_t    privateBytes();
 // "heap 41234 KB, rss 98765 KB, fds 37, threads 14" (unknown fields left out).
 std::string formatMem(const MemStats &m);

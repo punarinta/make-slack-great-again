@@ -45,7 +45,13 @@ auth::WorkspaceRecord toRecord(const Credentials &creds) {
     rec.id          = kWorkspaceId;
     rec.displayName = "Claude Code";
     json::Writer w;
-    w.beginObject().key("claudePath").value(creds.claudePath).endObject();
+    w.beginObject().key("claudePath").value(creds.claudePath);
+    if (!creds.sshDestination.empty()) {
+        w.key("ssh").value(creds.sshDestination);
+        if (!creds.remoteMsga.empty())
+            w.key("remoteMsga").value(creds.remoteMsga);
+    }
+    w.endObject();
     rec.auth = w.take();
     return rec;
 }
@@ -53,8 +59,14 @@ auth::WorkspaceRecord toRecord(const Credentials &creds) {
 Credentials fromRecord(const auth::WorkspaceRecord &rec) {
     Credentials    c;
     json::Document doc;
-    if (doc.parse(std::string(rec.auth)))
-        c.claudePath = std::string(doc.root()["claudePath"].str());
+    if (doc.parse(std::string(rec.auth))) {
+        c.claudePath     = std::string(doc.root()["claudePath"].str());
+        c.sshDestination = std::string(doc.root()["ssh"].str());
+        c.remoteMsga     = std::string(doc.root()["remoteMsga"].str());
+    }
+    // The CLI that matters then is the server's: the relay finds it there.
+    if (!c.sshDestination.empty())
+        return c;
     // The CLI may have moved (reinstalled, switched installer) since the
     // workspace was added: fall back to looking again.
     if (!isExecutable(c.claudePath))

@@ -95,8 +95,10 @@ add_subdirectory(spell)
 
 # "Import from local Slack": the real importer on Linux (our own SQLite reader
 # + AES-CBC/PBKDF2 over net/base, Secret Service over libdbus), the stub
-# elsewhere. libdbus is already found by plat; reuse it for the v11 key.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+# elsewhere (Slack's desktop app has no BSD build, and a port has none
+# either, so nothing to import there). libdbus is already found by plat;
+# reuse it for the v11 key.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT)
     target_sources(msga_app_slack PRIVATE
         slack/local_import_linux.cpp
         slack/sqlite_reader.cpp)

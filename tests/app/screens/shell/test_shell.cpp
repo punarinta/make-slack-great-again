@@ -260,14 +260,17 @@ TEST("sidebar: the open chat isn't read while the window is in the background") 
 TEST("window: hidden to the tray or minimised, the backend polls as hidden; shown, as shown") {
     Harness h;
     REQUIRE(h.backend.windowVisible);
-    // Minimised (the OS says so: StateChanged), then raised again.
-    h.win->native().minimize();
-    pump();
-    CHECK_FALSE(h.backend.windowVisible);
-    CHECK_FALSE(h.sh->windowVisible());
-    h.sh->restore();
-    pump();
-    CHECK(h.backend.windowVisible);
+    // Minimised (the OS says so: StateChanged), then raised again. A single
+    // surface has no minimise: only the OS hides it.
+    if (app().platform().hasWindows()) {
+        h.win->native().minimize();
+        pump();
+        CHECK_FALSE(h.backend.windowVisible);
+        CHECK_FALSE(h.sh->windowVisible());
+        h.sh->restore();
+        pump();
+        CHECK(h.backend.windowVisible);
+    }
     // To the tray (the window's close while Settings → Use tray is on), then back.
     h.settings.useTray = true;
     REQUIRE(h.sh->hideToTray());
@@ -1600,7 +1603,7 @@ TEST("files: a cancelled dialog attaches nothing") {
     CHECK(h.sh->composer().attachments().empty());
 }
 
-#ifdef __linux__ // the in-app browser exists only on Linux
+#if defined(MSGA_FREEDESKTOP) || defined(MSGA_PORT) // the in-app browser: not on Windows/macOS
 TEST("files: no OS dialog shows the in-app browser, which answers the same way") {
     Harness h;
     Files   f;
@@ -3908,6 +3911,8 @@ TEST("updates: opening chats leaves the update check and its events alone") {
 #endif
 
 TEST("thread panel: a narrow window keeps it inside, a wider one brings the saved width back") {
+    if (!app().platform().hasWindows())
+        return; // it resizes the window: a single surface keeps the size the OS gives
     Harness       h;
     plat::Window &w      = h.win->native();
     const ConvRef design = h.conv("C0DESIGN");
@@ -3929,6 +3934,8 @@ TEST("thread panel: a narrow window keeps it inside, a wider one brings the save
 }
 
 TEST("thread panel: in a narrow window it opens at half and the splitter still moves it") {
+    if (!app().platform().hasWindows())
+        return; // it resizes the window: a single surface keeps the size the OS gives
     Harness       h;
     plat::Window &w      = h.win->native();
     const ConvRef design = h.conv("C0DESIGN");
@@ -3949,6 +3956,8 @@ TEST("thread panel: in a narrow window it opens at half and the splitter still m
 }
 
 TEST("thread panel: dragged well past its widest it takes the whole room, and drags back") {
+    if (!app().platform().hasWindows())
+        return; // it resizes the window: a single surface keeps the size the OS gives
     Harness       h;
     plat::Window &w      = h.win->native();
     const ConvRef design = h.conv("C0DESIGN");
@@ -4062,6 +4071,8 @@ TEST("thread panel: at full width, whatever needs the messages brings them back"
 }
 
 TEST("thread panel: a window too narrow for both covers the messages, a wider one splits again") {
+    if (!app().platform().hasWindows())
+        return; // it resizes the window: a single surface keeps the size the OS gives
     Harness       h;
     plat::Window &w      = h.win->native();
     const ConvRef design = h.conv("C0DESIGN");
@@ -4209,6 +4220,8 @@ TEST("window: full screen drops the title bar strip and puts the header over the
 #endif
 
 TEST("window: fit to screen — shrink to the work area, pull back, refit (issue #45)") {
+    if (!app().platform().hasWindows())
+        return; // it resizes the window: a single surface keeps the size the OS gives
     Harness       h;
     plat::Window &w = h.win->native();
     // Headless: monitor 1 is 1920×1080 with a 1040-high work area at 0,0;

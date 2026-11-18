@@ -466,10 +466,13 @@ std::optional<SessionInfo> cachedParse(
     if (file::stat(path, &st)) {
         e.size        = st.size;
         e.mtimeMicros = st.mtimeMicros;
+        e.device      = st.device;
+        e.inode       = st.inode;
     }
     const auto was = old->find(key);
     if (was != old->end() && e.size >= 0 && was->second.size == e.size &&
-        was->second.mtimeMicros == e.mtimeMicros)
+        was->second.mtimeMicros == e.mtimeMicros && was->second.device == e.device &&
+        was->second.inode == e.inode)
         e.job = std::move(was->second.job);
     else
         e.job = parse(readSmallFile(path));

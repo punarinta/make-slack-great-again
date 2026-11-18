@@ -153,11 +153,12 @@ int64_t commandProcessGroup(std::string_view sessionId, std::string_view outputP
 bool    signalProcessGroup(int64_t group);
 
 // Each job's state.json and each sessions/<pid>.json as parsed when it last
-// changed (size and mtime), so a scan that runs every few seconds reads only
-// the files that did.
+// changed (which file, its size and mtime), so a scan that runs every few
+// seconds reads only the files that did.
 struct JobStateCache {
     struct Entry {
         int64_t                    size = -1, mtimeMicros = -1;
+        uint64_t                   device = 0, inode = 0; // the file itself (file::Stat)
         std::optional<SessionInfo> job; // parseBackgroundJob's / parseInteractiveSession's
     };
     using Files = std::unordered_map<std::string, Entry>;

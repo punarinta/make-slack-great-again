@@ -16,6 +16,11 @@ extern "C" size_t __sanitizer_get_current_allocated_bytes();
 #endif
 #if defined(__linux__)
 #include <dirent.h>
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <sys/user.h> // FreeBSD's kinfo_proc
+#include <unistd.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #elif defined(_WIN32)
@@ -45,6 +50,18 @@ long procStatus(const char *key) {
     }
     return value;
 }
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
+// The kernel's record of this process (no procfs on the BSDs by default).
+bool procInfo(kinfo_proc *kp) {
+    size_t len = sizeof *kp;
+#if defined(__FreeBSD__)
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, int(getpid())};
+    return sysctl(mib, 4, kp, &len, nullptr, 0) == 0 && len == sizeof *kp;
+#else
+    int mib[6] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, int(getpid()), int(sizeof *kp), 1};
+    return sysctl(mib, 6, kp, &len, nullptr, 0) == 0 && len == sizeof *kp;
+#endif
+}
 #endif
 
 } // namespace
@@ -52,6 +69,16 @@ long procStatus(const char *key) {
 long rssKb() {
 #if defined(__linux__)
     return procStatus("VmRSS:");
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
+    kinfo_proc kp{};
+    if (!procInfo(&kp))
+        return -1;
+#if defined(__FreeBSD__)
+    const long pages = long(kp.ki_rssize);
+#else
+    const long pages = long(kp.p_vm_rssize);
+#endif
+    return pages * (sysconf(_SC_PAGESIZE) / 1024);
 #elif defined(__APPLE__)
     mach_task_basic_info_data_t info{};
     mach_msg_type_number_t      count = MACH_TASK_BASIC_INFO_COUNT;
@@ -80,6 +107,12 @@ uint64_t privateBytes() {
             return (clean + dirty) * 1024;
     }
     const long kb = rssKb(); // kernels < 4.14
+    return kb > 0 ? uint64_t(kb) * 1024 : 0;
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
+    // No per-process private/shared split without walking every mapping
+    // (FreeBSD's kinfo_getvmmap needs libutil): the resident size, which
+    // also counts the shared libraries' pages.
+    const long kb = rssKb();
     return kb > 0 ? uint64_t(kb) * 1024 : 0;
 #elif defined(__APPLE__)
     task_vm_info_data_t    info;
@@ -122,6 +155,9 @@ MemStats sampleMem() {
         closedir(d);
         m.fds = n - 1; // the one opendir holds
     }
+#elif defined(__FreeBSD__)
+    if (kinfo_proc kp{}; procInfo(&kp))
+        m.threads = long(kp.ki_numthreads);
 #endif
     return m;
 }

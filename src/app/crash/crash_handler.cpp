@@ -35,9 +35,11 @@
 #include <csignal>
 #include <fcntl.h>
 #include <unistd.h>
-#if defined(__linux__)
-#include <ucontext.h> // macOS: ucontext_t comes with <csignal>
+#if defined(__ELF__)
 #include <sys/mman.h> // mincore
+#ifndef __OpenBSD__   // OpenBSD's ucontext_t is struct sigcontext, in <csignal>
+#include <ucontext.h> // macOS: ucontext_t comes with <csignal>
+#endif
 #endif
 #if defined(MSGA_HANG_WATCHDOG) && defined(__linux__)
 #include <sys/syscall.h> // SYS_gettid
@@ -58,9 +60,9 @@
 #endif
 #endif
 
-#if defined(__linux__)
+#if defined(__ELF__)
 // The executable's ELF header (= its load address) and the end of its code,
-// from the linker (GNU ld and lld both provide them).
+// from the linker (GNU ld and lld both provide them; Linux and the BSDs).
 extern "C" char __ehdr_start[] __attribute__((weak));
 extern "C" char etext[] __attribute__((weak));
 #endif
@@ -178,6 +180,15 @@ void contextRegs(void *uc, const void **pc, const uintptr_t **sp) {
 #elif defined(__linux__) && defined(__aarch64__)
     *pc = reinterpret_cast<const void *>(c->uc_mcontext.pc);
     *sp = reinterpret_cast<const uintptr_t *>(c->uc_mcontext.sp);
+#elif defined(__FreeBSD__) && defined(__x86_64__)
+    *pc = reinterpret_cast<const void *>(c->uc_mcontext.mc_rip);
+    *sp = reinterpret_cast<const uintptr_t *>(c->uc_mcontext.mc_rsp);
+#elif defined(__FreeBSD__) && defined(__aarch64__)
+    *pc = reinterpret_cast<const void *>(c->uc_mcontext.mc_gpregs.gp_elr);
+    *sp = reinterpret_cast<const uintptr_t *>(c->uc_mcontext.mc_gpregs.gp_sp);
+#elif defined(__OpenBSD__) && defined(__x86_64__)
+    *pc = reinterpret_cast<const void *>(c->sc_rip);
+    *sp = reinterpret_cast<const uintptr_t *>(c->sc_rsp);
 #elif defined(__APPLE__) && defined(__aarch64__)
     *pc = reinterpret_cast<const void *>(c->uc_mcontext->__ss.__pc);
     *sp = reinterpret_cast<const uintptr_t *>(c->uc_mcontext->__ss.__sp);
@@ -195,7 +206,7 @@ void contextRegs(void *uc, const void **pc, const uintptr_t **sp) {
 // stack that points into our code — a superset of the real return addresses
 // (stale ones included), resolvable with addr2line like the frames.
 void writeStackScan(int fd, const uintptr_t *sp) {
-#if defined(__linux__)
+#if defined(__ELF__) && !defined(__OpenBSD__) // OpenBSD has no mincore()
     if (!sp || !__ehdr_start || !etext)
         return;
     const auto lo = reinterpret_cast<uintptr_t>(__ehdr_start);
@@ -207,7 +218,11 @@ void writeStackScan(int fd, const uintptr_t *sp) {
     // the handler. mincore() (a plain syscall) fails on an unmapped page.
     const uintptr_t page   = uintptr_t(::sysconf(_SC_PAGESIZE));
     uintptr_t       mapped = 0; // below this address is known to be mapped
-    unsigned char   resident;
+#if defined(__linux__)
+    unsigned char resident;
+#else
+    char resident; // the BSDs' mincore() takes char *
+#endif
     for (int i = 0; i < 2048 && found < kMaxFrames; ++i) {
         const auto addr = reinterpret_cast<uintptr_t>(sp + i);
         if (addr + sizeof(uintptr_t) > mapped) {
@@ -526,7 +541,7 @@ void install(const std::string &logPath) {
 #else
     std::snprintf(gLogPath, sizeof(gLogPath), "%s", logPath.c_str());
 
-#if defined(__linux__)
+#if defined(__ELF__)
     base = __ehdr_start;
 #elif defined(__APPLE__)
     Dl_info di{};

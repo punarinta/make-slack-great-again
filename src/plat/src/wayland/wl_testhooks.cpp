@@ -14,11 +14,12 @@
 // the urgent hint back), so injectGesture/wantsAttention stay false.
 #include "wayland/wl_internal.h"
 
+#include "freedesktop/evdev_codes.h"
+
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <linux/input-event-codes.h>
 #include <poll.h>
 #include <sys/mman.h>
 #include <unistd.h>

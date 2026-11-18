@@ -53,10 +53,20 @@ namespace claude {
 
 class Pty;
 
+// Work on a session's terminal UI under way — typing a message, reading or
+// answering a question — on this machine (AttachInput, AttachAnswer) or on
+// another one (host.h): what the backend keeps a weak handle to.
+class HostTask {
+public:
+    virtual ~HostTask();
+    // Give up before anything is done; false when it's too late for that.
+    virtual bool cancel() { return false; }
+};
+
 // What AttachInput and AttachAnswer share: `attach` run in a hidden terminal
 // whose screen is looked at a moment after output (settle), a deadline per
 // phase (onLimit), and the way it ends (end). Not used on its own.
-class AttachSession {
+class AttachSession : public HostTask {
 public:
     virtual ~AttachSession();
     AttachSession(const AttachSession &)            = delete;
@@ -122,7 +132,7 @@ public:
 
     // Give up before anything is typed: `done` gets NotReady ("cancelled") at
     // once. False when typing has begun — it then goes on to the end.
-    bool cancel();
+    bool cancel() override;
 
     // Whether `text` is a slash command typed as one: a command that runs and
     // hands the prompt box back, no panel kept on screen — "/compact [focus]".

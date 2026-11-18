@@ -71,6 +71,10 @@ struct SettingsDialog::Parts {
     ui::Label     *modeRestart = nullptr, *credStatus = nullptr, *giphyStatus = nullptr;
     ui::View      *sessionBox = nullptr, *appKeysBox = nullptr;
     ui::TextField *credId = nullptr, *credSecret = nullptr, *credXapp = nullptr, *giphy = nullptr;
+    // System → Claude Code
+    ui::View      *ccBox  = nullptr;
+    ui::TextField *ccDest = nullptr, *ccMsga = nullptr;
+    ui::Label     *ccStatus = nullptr;
 
     // AI: the editor's "Test connection" / "Fetch models" (probeAiEditor). A
     // probe's answer counts only for the edit it was started for, and only

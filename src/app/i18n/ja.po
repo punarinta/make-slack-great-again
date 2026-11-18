@@ -92,7 +92,7 @@ msgstr "保存"
 msgid "Choose folder"
 msgstr "フォルダを選択"
 
-#: src/ui/filebrowser.cpp
+#: src/ui/filebrowser.cpp src/app/screens/shell/shell_dialogs.cpp
 msgid "Choose"
 msgstr "選択"
 
@@ -404,14 +404,6 @@ msgstr "回答を送信中です。"
 msgid "Couldn't stop “%1”: its process wasn't found."
 msgstr "「%1」を停止できませんでした：プロセスが見つかりません。"
 
-#: src/app/claude/backend_send.cpp
-msgid "%1 isn't a folder."
-msgstr "%1 はフォルダーではありません。"
-
-#: src/app/claude/backend_send.cpp
-msgid "Claude Code doesn't run background sessions in the home folder. Pick a project folder."
-msgstr "Claude Code はホームフォルダーではバックグラウンドセッションを実行しません。プロジェクトのフォルダーを選んでください。"
-
 #: src/app/claude/cli.cpp
 msgid "Claude Code isn't installed on this computer (msga can't find the claude command). Install it (https://code.claude.com/docs/en/setup), run `claude` once in a terminal to log in, then try again."
 msgstr "このコンピューターには Claude Code がインストールされていません（msga が claude コマンドを見つけられません）。インストール（https://code.claude.com/docs/en/setup）してからターミナルで一度 `claude` を実行してログインし、もう一度お試しください。"
@@ -424,11 +416,43 @@ msgstr "このコンピューターの Claude Code はログインしていま�
 msgid "Claude Code doesn't seem to be set up on this computer: %1 doesn't exist. Run `claude` once in a terminal, then add the workspace again."
 msgstr "このコンピューターでは Claude Code が設定されていないようです（%1 がありません）。ターミナルで一度 `claude` を実行してから、もう一度ワークスペースを追加してください。"
 
+#: src/app/claude/host_local.cpp src/app/claude/host_remote.cpp
+msgid "%1 isn't a folder."
+msgstr "%1 はフォルダーではありません。"
+
+#: src/app/claude/host_local.cpp
+msgid "Claude Code doesn't run background sessions in the home folder. Pick a project folder."
+msgstr "Claude Code はホームフォルダーではバックグラウンドセッションを実行しません。プロジェクトのフォルダーを選んでください。"
+
+#: src/app/claude/host_remote.cpp
+msgid "The connection was closed."
+msgstr "接続が閉じられました。"
+
+#: src/app/claude/host_remote.cpp
+msgid "ssh isn't installed on this computer."
+msgstr "このコンピューターには ssh がインストールされていません。"
+
+#: src/app/claude/host_remote.cpp
+msgid "msga on %1 is a version this one can't work with. Install the same msga version there."
+msgstr "%1 の msga はこの msga と組み合わせて使えないバージョンです。同じバージョンの msga をそちらにインストールしてください。"
+
+#: src/app/claude/host_remote.cpp
+msgid "Couldn't connect to %1: %2"
+msgstr "%1 に接続できませんでした: %2"
+
+#: src/app/claude/host_remote.cpp
+msgid "It stopped answering."
+msgstr "応答がなくなりました。"
+
+#: src/app/claude/host_remote.cpp
+msgid "Lost the connection to %1."
+msgstr "%1 との接続が切れました。"
+
 #: src/app/claude/launcher.cpp
 msgid "Claude Code exited (code %1)."
 msgstr "Claude Code が終了しました（コード %1）。"
 
-#: src/app/claude/launcher.cpp
+#: src/app/claude/launcher.cpp src/app/screens/settings/settings_pages.cpp
 msgid "Claude Code"
 msgstr "Claude Code"
 
@@ -2408,6 +2432,46 @@ msgid "Memory"
 msgstr "メモリ"
 
 #: src/app/screens/settings/settings_pages.cpp
+msgid "Runs on"
+msgstr "実行場所"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "This computer"
+msgstr "このコンピューター"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Another computer over SSH"
+msgstr "SSH で接続する別のコンピューター"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "SSH destination"
+msgstr "SSH の接続先"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "user@server"
+msgstr "user@server"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "msga on the server"
+msgstr "サーバー上の msga"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Optional: its path there"
+msgstr "任意: サーバー上のパス"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "msga runs there as a relay over ssh, which must log in without a password (a key or an agent). Install the same msga version on the server."
+msgstr "msga は ssh 経由でそちらでリレーとして動きます。ssh はパスワードなし (鍵またはエージェント) でログインできる必要があります。サーバーには同じバージョンの msga をインストールしてください。"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Apply"
+msgstr "適用"
+
+#: src/app/screens/settings/settings_pages.cpp
+msgid "Enter the SSH destination first."
+msgstr "先に SSH の接続先を入力してください。"
+
+#: src/app/screens/settings/settings_pages.cpp
 msgid "RAM used: %1"
 msgstr "RAM使用量: %1"
 
@@ -3548,6 +3612,14 @@ msgstr "この名前はmsgaにだけ表示され、Claude Codeは独自の名前
 #: src/app/screens/shell/shell_dialogs.cpp
 msgid "Only you see this name. Leave it empty to show the members' names again."
 msgstr "この名前は自分にだけ表示されます。空にするとメンバーの名前の表示に戻ります。"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "Folder on %1"
+msgstr "%1 のフォルダー"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "/home/you/project"
+msgstr "/home/you/project"
 
 #: src/app/screens/shell/shell_dialogs.cpp
 msgid "Rename section"

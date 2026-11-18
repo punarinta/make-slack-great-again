@@ -60,10 +60,12 @@ public:
 
 private:
     // fresh: from the top (a teammate opened); else the list keeps its scroll.
-    void rebuild(bool fresh = false);
-    void rebuildSoon();
-    void setFolder(const std::string &dir);
-    void chooseFolder();
+    void                                     rebuild(bool fresh = false);
+    void                                     rebuildSoon();
+    void                                     setFolder(const std::string &dir);
+    void                                     chooseFolder();
+    // Whether a path is a folder sessions can start in (another machine's: any absolute one).
+    std::function<bool(const std::string &)> folderCheck() const;
 
     screens::Context         &_ctx;
     Avatars                  &_avatars;

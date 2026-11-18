@@ -8,7 +8,9 @@
 #include <cstdlib>
 #include <cstring>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#elif defined(_WIN32)
 #include "base/winstr.h"
 
 #include <windows.h>
@@ -24,21 +26,46 @@
 #include <cstdio>
 #include <time.h>
 #include <unistd.h>
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
 extern char **environ;
+// OpenBSD's posix_spawn can't say that a start failed: see forkSpawn.
+#ifdef __OpenBSD__
+#define MSGA_SPAWN_BY_FORK 1
+#endif
 #endif
 
 namespace base {
 
+#ifdef MSGA_PORT
+// A port value in a string: the getter returns the full length, so a second
+// call with room enough fetches a long one.
+template <class Get>
+std::string portString(Get get) {
+    std::string out(256, '\0');
+    int         n = get(out.data(), out.size());
+    if (n >= 0 && size_t(n) >= out.size()) {
+        out.resize(size_t(n) + 1);
+        n = get(out.data(), out.size());
+    }
+    out.resize(n > 0 ? size_t(n) : 0);
+    return out;
+}
+
+std::string env(const char *name) {
+    return portString([name](char *buf, size_t cap) { return port_env_get(name, buf, cap); });
+}
+#else
 std::string env(const char *name) {
     const char *v = std::getenv(name);
     return v ? v : "";
 }
+#endif
 
 std::string homeDir() {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    return portString([](char *buf, size_t cap) {
+        return port_path_get(PORT_PATH_HOME, buf, cap);
+    });
+#elif defined(_WIN32)
     std::string home = env("USERPROFILE");
     std::replace(home.begin(), home.end(), '\\', '/');
     return home;
@@ -52,7 +79,7 @@ bool g_testProcess = false;
 }
 
 bool testProcess() {
-    return g_testProcess || std::getenv("MSGA_TEST_ISOLATED");
+    return g_testProcess || !env("MSGA_TEST_ISOLATED").empty();
 }
 
 void markTestProcess() {
@@ -90,7 +117,7 @@ std::string findExecutable(std::string_view name) {
             cand += ".exe";
 #endif
         if (file::exists(cand) && !file::isDir(cand)) {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT) // a port's spawn says whether it runs
             if (::access(cand.c_str(), X_OK) == 0)
 #endif
                 return cand;
@@ -100,7 +127,9 @@ std::string findExecutable(std::string_view name) {
 }
 
 Process::~Process() {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    port_proc_release(static_cast<port_proc *>(_handle));
+#elif defined(_WIN32)
     if (_handle)
         CloseHandle(static_cast<HANDLE>(_handle));
 #endif
@@ -437,7 +466,7 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
     return r;
 }
 
-#else
+#elif !defined(MSGA_PORT) // a port build: process_port.cpp
 
 namespace {
 
@@ -452,16 +481,175 @@ std::vector<char *> argvOf(const std::string &exe, const std::vector<std::string
     return argv;
 }
 
+// Signals a child gets back at their default action: all but those that
+// have none to reset (SIGKILL, SIGSTOP) and SIGTHR, which the BSDs' thread
+// libraries keep for themselves and refuse to change. Only an ignored signal
+// would otherwise survive the exec; a caught one is reset by it anyway.
+sigset_t defaultedSignals() {
+    sigset_t all;
+    sigfillset(&all);
+    sigdelset(&all, SIGKILL);
+    sigdelset(&all, SIGSTOP);
+#ifdef SIGTHR
+    sigdelset(&all, SIGTHR);
+#endif
+    return all;
+}
+
+#ifdef MSGA_SPAWN_BY_FORK
+// OpenBSD starts children with fork and exec. Its posix_spawn reports no
+// failure of the child's setup or exec — the call returns 0, the child exits
+// 127 — and has no chdir action. Here the child writes its errno into a
+// close-on-exec pipe before giving up; an exec that works closes the pipe
+// with nothing written, so the parent knows which of the two happened.
+
+// Both ends close-on-exec and above 0, 1 and 2, which the child's dup2s
+// replace (the app may have been started with one of them closed).
+int errorPipe(int fds[2]) {
+    if (::pipe2(fds, O_CLOEXEC) != 0)
+        return errno;
+    for (int i = 0; i < 2; ++i) {
+        if (fds[i] > 2)
+            continue;
+        const int moved = ::fcntl(fds[i], F_DUPFD_CLOEXEC, 3);
+        const int e     = errno;
+        ::close(fds[i]);
+        fds[i] = moved;
+        if (moved < 0) {
+            if (i == 0 && fds[1] >= 0)
+                ::close(fds[1]);
+            return e;
+        }
+    }
+    return 0;
+}
+
+// Everything the child needs, made before the fork: it may make only
+// async-signal-safe calls (another thread may hold the allocator's lock).
+struct ForkSpawn {
+    std::vector<std::string> paths; // tried in turn, as execvp tries $PATH
+    char *const             *argv     = nullptr;
+    char *const             *envp     = nullptr;
+    int                      stdio[3] = {-1, -1, -1}; // -1: the null device
+    const char              *cwd      = nullptr;      // null: ours
+};
+
+[[noreturn]] void childFail(int errFd, int e) {
+    while (::write(errFd, &e, sizeof e) < 0 && errno == EINTR) {
+    }
+    ::_exit(127);
+}
+
+[[noreturn]] void childRun(const ForkSpawn &s, int errFd) {
+    // The standard descriptors: sources lifted above 2 first, so no dup2
+    // replaces another's source; dup2 onto a new number also drops the
+    // source's close-on-exec.
+    int src[3];
+    for (int fd = 0; fd < 3; ++fd) {
+        src[fd] = s.stdio[fd];
+        if (src[fd] >= 0 && src[fd] < 3 && (src[fd] = ::fcntl(src[fd], F_DUPFD, 3)) < 0)
+            childFail(errFd, errno);
+    }
+    for (int fd = 0; fd < 3; ++fd) {
+        const bool null = src[fd] < 0;
+        const int  from = null ? ::open("/dev/null", fd == 0 ? O_RDONLY : O_WRONLY) : src[fd];
+        if (from < 0 || (from != fd && ::dup2(from, fd) < 0))
+            childFail(errFd, errno);
+        if (null && from != fd)
+            ::close(from);
+    }
+    if (s.cwd && ::chdir(s.cwd) != 0)
+        childFail(errFd, errno);
+    if (::setsid() < 0)
+        childFail(errFd, errno);
+    struct sigaction dfl;
+    std::memset(&dfl, 0, sizeof dfl);
+    dfl.sa_handler           = SIG_DFL;
+    const sigset_t defaulted = defaultedSignals();
+    for (int sig = 1; sig < NSIG; ++sig)
+        if (sigismember(&defaulted, sig))
+            ::sigaction(sig, &dfl, nullptr); // EINVAL for what can't change
+    sigset_t none;
+    sigemptyset(&none);
+    ::sigprocmask(SIG_SETMASK, &none, nullptr);
+    int failure = ENOENT;
+    for (const std::string &path : s.paths) {
+        ::execve(path.c_str(), s.argv, s.envp);
+        // As execvp: a candidate that isn't there (or can't be reached)
+        // passes to the next; one that is there but won't run is the answer.
+        if (errno == EACCES)
+            failure = EACCES;
+        else if (errno != ENOENT && errno != ENOTDIR && errno != ELOOP && errno != ENAMETOOLONG)
+            childFail(errFd, errno);
+    }
+    childFail(errFd, failure);
+}
+
+// 0 and *pid once the child runs its program, else why it couldn't (an
+// errno; the failed child is reaped).
+int forkSpawn(const ForkSpawn &s, pid_t *pid) {
+    int fds[2] = {-1, -1};
+    if (const int e = errorPipe(fds))
+        return e;
+    // Signals stay blocked until the child has reset their actions: none of
+    // ours may run in it.
+    sigset_t all, old;
+    sigfillset(&all);
+    pthread_sigmask(SIG_SETMASK, &all, &old);
+    const pid_t child = ::fork();
+    if (child == 0) {
+        ::close(fds[0]);
+        childRun(s, fds[1]);
+    }
+    const int forkErr = errno;
+    pthread_sigmask(SIG_SETMASK, &old, nullptr);
+    ::close(fds[1]);
+    if (child < 0) {
+        ::close(fds[0]);
+        return forkErr;
+    }
+    int     e = 0;
+    ssize_t n;
+    while ((n = ::read(fds[0], &e, sizeof e)) < 0 && errno == EINTR) {
+    }
+    ::close(fds[0]);
+    if (n == 0) {
+        *pid = child;
+        return 0; // the exec closed the pipe
+    }
+    if (n < 0) // nothing to tell whether it got as far as its program
+        ::kill(child, SIGKILL);
+    int status = 0;
+    while (::waitpid(child, &status, 0) < 0 && errno == EINTR) {
+    }
+    return n == ssize_t(sizeof e) && e != 0 ? e : EIO;
+}
+
+// Where run() looks for `exe`, as posix_spawnp does: a path as it is (from
+// the child's working directory when relative), a bare name on our $PATH.
+std::vector<std::string> searchPaths(const std::string &exe) {
+    if (exe.find('/') != std::string::npos)
+        return {exe};
+    std::vector<std::string> out;
+    const char              *path = std::getenv("PATH");
+    str::Splitter            dirs(path ? path : "/usr/bin:/bin", ':');
+    for (std::string_view d; dirs.next(&d);)
+        out.push_back(d.empty() ? exe : str::concat({d, "/", exe})); // "": the working directory
+    return out;
+}
+
+#else
+
 // A clean signal state — our threads' masks (SIGCHLD blocked) and ignored
 // signals are not the child's business — and a session of its own, so the
 // group can be signalled as a whole (see process.h).
 void initSpawnAttr(posix_spawnattr_t *attr) {
     posix_spawnattr_init(attr);
-    sigset_t none, all;
+    sigset_t none;
     sigemptyset(&none);
-    sigfillset(&all);
+    const sigset_t defaulted = defaultedSignals();
     posix_spawnattr_setsigmask(attr, &none);
-    posix_spawnattr_setsigdefault(attr, &all);
+    posix_spawnattr_setsigdefault(attr, &defaulted);
     short flags = POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF;
 #ifdef POSIX_SPAWN_SETSID
     flags |= POSIX_SPAWN_SETSID;
@@ -472,10 +660,20 @@ void initSpawnAttr(posix_spawnattr_t *attr) {
     posix_spawnattr_setflags(attr, flags);
 }
 
+#endif
+
 } // namespace
 
 bool Process::start(const std::string &exe, const std::vector<std::string> &args) {
-    std::vector<char *>        argv = argvOf(exe, args);
+    std::vector<char *> argv = argvOf(exe, args);
+    pid_t               pid  = 0;
+#ifdef MSGA_SPAWN_BY_FORK
+    ForkSpawn s;
+    s.paths      = {exe};
+    s.argv       = argv.data();
+    s.envp       = environ;
+    const int rc = forkSpawn(s, &pid);
+#else
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
@@ -483,10 +681,10 @@ bool Process::start(const std::string &exe, const std::vector<std::string> &args
     posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
     posix_spawnattr_t attr;
     initSpawnAttr(&attr);
-    pid_t     pid = 0;
-    const int rc  = posix_spawn(&pid, exe.c_str(), &fa, &attr, argv.data(), environ);
+    const int rc = posix_spawn(&pid, exe.c_str(), &fa, &attr, argv.data(), environ);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&attr);
+#endif
     if (rc != 0)
         return false;
     _pid    = pid;
@@ -615,6 +813,28 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
         return r;
     }
 
+    std::vector<char *>      argv = argvOf(exe, args);
+    std::vector<std::string> envStore;
+    std::vector<char *>      envp;
+    if (!o.env.empty()) {
+        envStore = mergedEnv(o.env);
+        for (auto &e : envStore)
+            envp.push_back(e.data());
+        envp.push_back(nullptr);
+    }
+    char *const *const envArg = envp.empty() ? environ : envp.data();
+    pid_t              pid    = 0;
+#ifdef MSGA_SPAWN_BY_FORK
+    ForkSpawn s;
+    s.paths      = searchPaths(exe);
+    s.argv       = argv.data();
+    s.envp       = envArg;
+    s.stdio[0]   = feed ? inPipe[0] : -1; // never waits on a prompt
+    s.stdio[1]   = outPipe[1];
+    s.stdio[2]   = o.mergeStderr ? outPipe[1] : -1;
+    s.cwd        = o.cwd.empty() ? nullptr : o.cwd.c_str();
+    const int rc = forkSpawn(s, &pid);
+#else
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     if (feed)
@@ -633,28 +853,17 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
-        posix_spawn_file_actions_addchdir_np(&fa, o.cwd.c_str());
+        posix_spawn_file_actions_addchdir_np(&fa, o.cwd.c_str()); // FreeBSD: 13.1 on
 #ifdef __APPLE__
 #pragma clang diagnostic pop
 #endif
     }
     posix_spawnattr_t attr;
     initSpawnAttr(&attr); // as Process::start
-    std::vector<char *>      argv = argvOf(exe, args);
-    std::vector<std::string> envStore;
-    std::vector<char *>      envp;
-    if (!o.env.empty()) {
-        envStore = mergedEnv(o.env);
-        for (auto &e : envStore)
-            envp.push_back(e.data());
-        envp.push_back(nullptr);
-    }
-    pid_t     pid = 0;
-    const int rc  = posix_spawnp(
-        &pid, exe.c_str(), &fa, &attr, argv.data(), envp.empty() ? environ : envp.data()
-    );
+    const int rc = posix_spawnp(&pid, exe.c_str(), &fa, &attr, argv.data(), envArg);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&attr);
+#endif
     closeFd(outPipe[1]);
     closeFd(inPipe[0]);
     if (rc != 0) {
@@ -730,9 +939,13 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
 #ifndef F_SETNOSIGPIPE
         if (epipe) {
             // The SIGPIPE the failed write raised is pending on this thread:
-            // taken here, so unblocking does not deliver it.
-            const timespec zero{0, 0};
-            while (sigtimedwait(&pipeSet, nullptr, &zero) == SIGPIPE) {
+            // taken here, so unblocking does not deliver it. sigpending +
+            // sigwait rather than a zero-timeout sigtimedwait, which
+            // OpenBSD lacks: sigwait only runs when one is pending.
+            sigset_t pending;
+            int      sig = 0;
+            while (sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE) &&
+                   sigwait(&pipeSet, &sig) == 0) {
             }
         }
 #endif
@@ -747,7 +960,7 @@ RunResult run(const std::string &exe, const std::vector<std::string> &args, cons
 // ── Restart ─────────────────────────────────────────────────────────────────
 
 std::string executablePath() {
-#ifdef _WIN32
+#if defined(_WIN32)
     std::wstring buf(MAX_PATH, L'\0');
     for (;;) {
         const DWORD n = GetModuleFileNameW(nullptr, buf.data(), DWORD(buf.size()));
@@ -762,19 +975,8 @@ std::string executablePath() {
     std::string out = narrow(buf);
     std::replace(out.begin(), out.end(), '\\', '/');
     return out;
-#elif defined(__APPLE__)
-    uint32_t size = 0;
-    _NSGetExecutablePath(nullptr, &size);
-    std::string out(size, '\0');
-    if (_NSGetExecutablePath(out.data(), &size) != 0)
-        return {};
-    out.resize(std::strlen(out.c_str()));
-    char real[PATH_MAX];
-    return ::realpath(out.c_str(), real) ? std::string(real) : out;
 #else
-    char       buf[4096];
-    const auto n = ::readlink("/proc/self/exe", buf, sizeof buf - 1);
-    return n > 0 ? std::string(buf, size_t(n)) : std::string();
+    return prim::file::executablePath(); // shared with plat; a port's in prim/port_file.cpp
 #endif
 }
 
@@ -788,9 +990,10 @@ void relaunchNow() {
     const std::string exe = executablePath();
     if (exe.empty())
         return;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(MSGA_PORT)
     // Main has returned: the window, the tray and the single-instance pipe
-    // are gone, so the new process becomes the primary instance.
+    // are gone, so the new process becomes the primary instance. (A port has
+    // no exec: a new process there too.)
     Process p;
     p.start(exe, *g_relaunchArgs);
 #else

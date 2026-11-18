@@ -119,7 +119,7 @@ void Backend::startAgentBranch(
         why = removedMessage();
     else if (s->info.sessionId.empty())
         why = tr("Send the session its first message before asking on the side.");
-    else if (_creds.claudePath.empty())
+    else if (!_host->hasCli())
         why = notInstalledMessage();
     if (!why.empty()) {
         post([started = std::move(started), why] {
@@ -385,8 +385,9 @@ void Backend::watchTurn(Tracked &t) {
     result->answerId = ctx.messageKey;
     model::runInBackground(
         _app,
-        [result, ctx] {
-            if (!cachedOutputs(ctx, &result->files)) {
+        [result, ctx, local = _host->isLocal()] {
+            // Another machine's files aren't here to attach.
+            if (local && !cachedOutputs(ctx, &result->files)) {
                 makeOutputs(result->answer, ctx);
                 cachedOutputs(ctx, &result->files);
             }

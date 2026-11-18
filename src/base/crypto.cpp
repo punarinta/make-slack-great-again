@@ -5,14 +5,15 @@
 #include <algorithm>
 #include <cstring>
 
-#if defined(_WIN32)
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#elif defined(_WIN32)
 #include <windows.h>
 #include <bcrypt.h>
 #elif defined(__APPLE__)
 #include <stdlib.h>
 #else
-#include <cerrno>
-#include <sys/random.h>
+#include <unistd.h> // getentropy
 #endif
 
 namespace crypto {
@@ -257,7 +258,9 @@ pbkdf2Sha1(std::string_view password, std::string_view salt, int iterations, siz
 }
 
 bool randomBytes(void *out, size_t n) {
-#if defined(_WIN32)
+#if defined(MSGA_PORT)
+    return port_random(out, n) == PORT_OK;
+#elif defined(_WIN32)
     return BCryptGenRandom(
                nullptr, static_cast<PUCHAR>(out), ULONG(n), BCRYPT_USE_SYSTEM_PREFERRED_RNG
            ) == 0;
@@ -265,16 +268,15 @@ bool randomBytes(void *out, size_t n) {
     arc4random_buf(out, n);
     return true;
 #else
+    // getentropy (POSIX.1-2024; glibc 2.25, musl, the BSDs) rather than
+    // Linux's getrandom: the same kernel source, at most 256 bytes a call.
     auto *p = static_cast<uint8_t *>(out);
     while (n > 0) {
-        const ssize_t got = getrandom(p, n, 0);
-        if (got < 0) {
-            if (errno == EINTR)
-                continue;
+        const size_t chunk = std::min<size_t>(n, 256);
+        if (getentropy(p, chunk) != 0)
             return false;
-        }
-        p += got;
-        n -= size_t(got);
+        p += chunk;
+        n -= chunk;
     }
     return true;
 #endif

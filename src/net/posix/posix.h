@@ -38,7 +38,7 @@ using str::iequals; // ASCII case-insensitive
 // request's Cancel, a WebSocket's send/abort pipe) the wait blocks until the
 // fd, the wake fd or the deadline fires, with no periodic wakeups, so whoever
 // sets `cancel` must also write the wake fd. Without one (the Cancel's
-// eventfd could not be made), waits are cut into ≤250 ms slices so a cancel
+// pipe could not be made), waits are cut into ≤250 ms slices so a cancel
 // flag set from another thread is still seen promptly.
 struct Waiter {
     int64_t                  deadline = 0; // nowMs() value; 0 = none
@@ -47,6 +47,11 @@ struct Waiter {
 };
 
 enum class Wait : uint8_t { Ready, Timeout, Cancelled, Woken };
+// A non-blocking, close-on-exec self-pipe: fds[0] is polled, wakeSignal
+// writes fds[1]. Not Linux's eventfd: OpenBSD has none (and FreeBSD only
+// since 13), and a pipe wakes poll() the same everywhere.
+bool wakePipe(int fds[2]);
+void wakeSignal(int fd);
 // Polls fd for POLLIN/POLLOUT `events`. Returns Woken only with
 // returnOnWake; otherwise a wake just re-checks the cancel flag.
 Wait waitFd(int fd, short events, const Waiter &w, bool returnOnWake = false);

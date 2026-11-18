@@ -39,10 +39,15 @@ extern char **environ;
 #endif
 
 // The posix transport is ours: exact error reasons, no Accept-Encoding,
-// chunk extensions, no DHE. The OS stacks (WinHTTP, NSURLSession) differ.
-#if !defined(_WIN32) && !defined(__APPLE__)
+// chunk extensions, no DHE. The OS stacks (WinHTTP, NSURLSession) differ, and
+// so does a port's (MSGA_PORT: the port contract's transport, whose
+// internals these tests can't see).
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(MSGA_PORT)
 #define NET_TEST_POSIX 1
 #define NET_TEST_OWN_TLS 1 // our CA loading honours SSL_CERT_FILE
+#ifdef __linux__
+#define NET_TEST_PROCFS 1 // per-thread counters from /proc (not on the BSDs)
+#endif
 #include "net/posix/posix.h"
 
 #include <atomic>
@@ -158,6 +163,8 @@ void spawnServer(Server *s) {
             const size_t t12   = out.find("TLS12 ");
             if (t12 != std::string::npos && std::sscanf(out.c_str() + t12, "TLS12 %d", &tls12) == 1)
                 s->tls12Base = "https://localhost:" + std::to_string(tls12);
+#elif defined(MSGA_PORT)
+            s->tlsWhy = "the port's TLS (if any) needn't honour SSL_CERT_FILE";
 #else
             s->tlsWhy = "the OS's TLS ignores SSL_CERT_FILE";
 #endif
@@ -398,6 +405,11 @@ TEST("multipart: fields, a file, the closing boundary") {
 
 #ifdef NET_TEST_POSIX
 namespace {
+#ifdef NET_TEST_PROCFS
+pid_t threadId() {
+    return gettid();
+}
+
 // The voluntary context switches of thread `tid` so far (Linux /proc).
 long voluntarySwitches(pid_t tid) {
     std::ifstream f("/proc/self/task/" + std::to_string(tid) + "/status");
@@ -407,6 +419,15 @@ long voluntarySwitches(pid_t tid) {
             return std::atol(line.c_str() + 24);
     return -1;
 }
+#else
+// Without procfs only the wake half is checked, not the absence of wakeups.
+pid_t threadId() {
+    return 1;
+}
+long voluntarySwitches(pid_t) {
+    return 0;
+}
+#endif
 } // namespace
 
 // An idle WebSocket reader waits with a wake fd and no deadline: it must
@@ -421,7 +442,7 @@ TEST("posix waitFd: a wake-fd wait blocks without periodic wakeups, aborts at on
     std::atomic<int>     result{-1};
     std::atomic<int64_t> returnedAt{0};
     std::thread          t([&] {
-        tid.store(gettid());
+        tid.store(threadId());
         net::detail::Waiter w;
         w.cancel = &cancel;
         w.wakeFd = wake[0];
@@ -986,7 +1007,7 @@ TEST("error: cancel wakes a blocked exchange at once") {
     }
 }
 
-#ifdef NET_TEST_POSIX
+#ifdef NET_TEST_PROCFS
 namespace {
 int threadCount() {
     int  n = 0;
@@ -1006,7 +1027,7 @@ TEST("client: idle workers end; the next request starts one") {
     net::detail::setWorkerIdleMs(150);
     {
         net::Client c(app());
-#ifdef NET_TEST_POSIX
+#ifdef NET_TEST_PROCFS
         const int before = threadCount();
 #endif
         for (int round = 0; round < 2; ++round) {
@@ -1016,10 +1037,8 @@ TEST("client: idle workers end; the next request starts one") {
                     done += r.body == "hello world";
                 });
             REQUIRE(pumpUntil([&] { return done == 3; }));
-#ifdef NET_TEST_POSIX
+#ifdef NET_TEST_PROCFS
             CHECK(threadCount() > before);
-#endif
-#ifdef NET_TEST_POSIX
             // Past the idle time every worker ends (a busy machine may take a while).
             // At most: an earlier test's thread, still winding down when
             // `before` was taken, may end meanwhile.
@@ -1113,6 +1132,12 @@ TEST("tls: a reconnect resumes the session (TLS 1.3 and 1.2)") {
     for (const std::string &base : {srv.tlsBase, srv.tls12Base}) {
         if (base.empty())
             continue;
+#ifdef __OpenBSD__
+        // The test server's Python there is built on LibreSSL, whose TLS 1.3
+        // resumes no session (no tickets, no PSK): only TLS 1.2 is checked.
+        if (base == srv.tlsBase)
+            continue;
+#endif
         const net::Response first = get(base + "/tls-session");
         CHECK_STR(first.error, "");
         const int64_t before = net::detail::tlsResumptions();

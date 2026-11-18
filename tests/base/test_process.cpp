@@ -3,6 +3,7 @@
 #include "support/test.h"
 #include "base/time.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #ifndef _WIN32
@@ -74,6 +75,87 @@ TEST("process: run captures stdout and the exit code") {
     CHECK(r.code == 3);
     CHECK_STR(r.output, "one\ntwo");
     CHECK(sh("true").code == 0);
+    // 127 is a program's own exit too, not a sign that it never started.
+    const auto exited127 = sh("exit 127");
+    CHECK(exited127.started);
+    CHECK(exited127.code == 127);
+}
+
+TEST("process: what can't be started is said, for a Process too") {
+    base::Process p;
+    CHECK_FALSE(p.start("/nonexistent/program", {}));
+    // There, but not a program it may run.
+    const std::string dir = tempDir();
+    REQUIRE(file::writeAtomic(dir + "/data", "#!/bin/sh\nexit 0\n", 0644));
+    const auto r = base::run(dir + "/data", {}, {});
+    CHECK_FALSE(r.started);
+    CHECK_FALSE(r.output.empty());
+    CHECK_FALSE(p.start(dir + "/data", {}));
+    file::remove(dir + "/data");
+    file::remove(dir);
+}
+
+TEST("process: a bad working directory is a launch failure") {
+    base::RunOptions o;
+    o.cwd        = "/nonexistent/msga-working-directory";
+    const auto r = sh("echo should-not-run", o);
+    CHECK_FALSE(r.started);
+    CHECK(r.code == -1);
+    CHECK_FALSE(r.output.empty()); // why, not what the program said
+}
+
+TEST("process: executable paths are relative to the child's working directory") {
+    const std::string dir = tempDir();
+    REQUIRE(file::writeAtomic(dir + "/child", "#!/bin/sh\nprintf relative", 0755));
+    base::RunOptions o;
+    o.cwd        = dir;
+    const auto r = base::run("./child", {}, o);
+    CHECK(r.started);
+    CHECK(r.code == 0);
+    CHECK_STR(r.output, "relative");
+    file::remove(dir + "/child");
+    file::remove(dir);
+}
+
+TEST("process: the executable path stays absolute after a change of directory") {
+    const std::string exe = base::executablePath();
+    REQUIRE(!exe.empty());
+    CHECK(exe.front() == '/');
+    CHECK(file::exists(exe));
+    // A copy of this binary started with a relative argv[0], and one found
+    // on $PATH, each changing directory (and $PATH) before it asks: the
+    // path was taken at its start (OpenBSD keeps none for a running image).
+    const char *const expect = "MSGA_TEST_EXE_EXPECT";
+    if (const std::string want = base::env(expect); !want.empty()) {
+        REQUIRE(::chdir("/") == 0);
+        base::test::setEnv("PATH", "/nonexistent/msga-test-bin");
+        CHECK_STR(base::executablePath(), want);
+        return;
+    }
+    char cwd[4096];
+    REQUIRE(::getcwd(cwd, sizeof cwd) != nullptr);
+    REQUIRE(::chdir("/") == 0);
+    CHECK_STR(base::executablePath(), exe);
+    REQUIRE(::chdir(cwd) == 0);
+    const std::string              name(file::baseName(exe));
+    const std::vector<std::string> args = {
+        "test_process", "process: the executable path stays absolute after a change of directory"
+    };
+    base::RunOptions o;
+    o.cwd               = std::string(file::dirName(exe));
+    o.env               = {std::string(expect) + "=" + exe};
+    const auto relative = base::run("./" + name, args, o);
+    CHECK(relative.code == 0);
+    if (relative.code != 0)
+        std::fprintf(stderr, "%s\n", relative.output.c_str());
+    const std::string path = base::env("PATH");
+    base::test::setEnv("PATH", o.cwd + ":" + path);
+    o.cwd             = "/";
+    const auto onPath = base::run(name, args, o);
+    base::test::setEnv("PATH", path);
+    CHECK(onPath.code == 0);
+    if (onPath.code != 0)
+        std::fprintf(stderr, "%s\n", onPath.output.c_str());
 }
 
 TEST("process: stderr is merged, or discarded") {

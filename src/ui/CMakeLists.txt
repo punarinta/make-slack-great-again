@@ -15,9 +15,10 @@ add_library(msga_ui STATIC
     richtext.cpp
     debug.cpp
 )
-# The in-app file chooser is Linux-only: Windows and macOS always have the
-# OS dialog.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+# The in-app file chooser, for freedesktop systems without a file-chooser
+# portal and for ports without PORT_CAP_FILE_DIALOG: Windows and macOS always
+# have the OS dialog.
+if(MSGA_FREEDESKTOP OR MSGA_PORT)
     target_sources(msga_ui PRIVATE filebrowser.cpp)
 endif()
 target_include_directories(msga_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

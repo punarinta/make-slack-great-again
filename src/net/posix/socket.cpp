@@ -17,7 +17,6 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
-#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -33,21 +32,37 @@ long     tlsRead(TlsConn *c, char *buf, size_t n, short *want, std::string *erro
 long     tlsWrite(TlsConn *c, const char *buf, size_t n, short *want, std::string *error);
 bool     tlsPending(const TlsConn *c);
 
-// An eventfd: readable from set() on, so a waitFd with it as the wake fd
-// returns Cancelled at once (and every later wait sees the flag first).
-Cancel::Cancel() : _os(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)) {}
+// The read end is readable from set() on, so a waitFd with it as the wake
+// fd returns Cancelled at once (and every later wait sees the flag first).
+Cancel::Cancel() {
+    int fds[2];
+    if (wakePipe(fds)) {
+        _os     = fds[0];
+        _osWake = fds[1];
+    }
+}
 
 Cancel::~Cancel() {
     if (_os >= 0)
         ::close(int(_os));
+    if (_osWake >= 0)
+        ::close(_osWake);
 }
 
 void Cancel::set() {
     _flag.store(true, std::memory_order_release);
-    if (_os >= 0) {
-        const uint64_t                 one = 1;
-        [[maybe_unused]] const ssize_t r   = ::write(int(_os), &one, sizeof one);
-    }
+    if (_osWake >= 0)
+        wakeSignal(_osWake);
+}
+
+bool wakePipe(int fds[2]) {
+    return ::pipe2(fds, O_NONBLOCK | O_CLOEXEC) == 0;
+}
+
+void wakeSignal(int fd) {
+    // EAGAIN: the pipe is full of wake bytes already, so the reader wakes.
+    const char                     b = 1;
+    [[maybe_unused]] const ssize_t r = ::write(fd, &b, 1);
 }
 
 Wait waitFd(int fd, short events, const Waiter &w, bool returnOnWake) {
@@ -180,8 +195,9 @@ void appendAddrs(const addrinfo *list, std::vector<Addr> *out) {
 
 // getaddrinfo cannot be interrupted, and a dead resolver can block it for
 // tens of seconds. It runs on its own detached thread so the caller can give
-// up on time; the thread raises `fd` (an eventfd) when the answer is in, so
-// the caller sleeps on it, its cancel fd and the deadline together. Both
+// up on time; the thread writes `wake` (a self-pipe whose read end is `fd`)
+// when the answer is in, so the caller sleeps on `fd`, its cancel fd and the
+// deadline together. Both
 // sides hold a reference; the last one out frees the state (and an answer
 // nobody waits for any more).
 struct Lookup {
@@ -190,6 +206,7 @@ struct Lookup {
     addrinfo        *result = nullptr;
     int              rc     = 0;
     int              fd     = -1;
+    int              wake   = -1;
     std::atomic<int> refs{2};
 
     void release() {
@@ -199,6 +216,8 @@ struct Lookup {
             freeaddrinfo(result);
         if (fd >= 0)
             ::close(fd);
+        if (wake >= 0)
+            ::close(wake);
         delete this;
     }
 };
@@ -214,8 +233,7 @@ void lookupThread(Lookup *lk) {
         lk->rc     = rc;
         lk->result = rc == 0 ? res : nullptr;
     }
-    const uint64_t                 one = 1;
-    [[maybe_unused]] const ssize_t r   = ::write(lk->fd, &one, sizeof one);
+    wakeSignal(lk->wake);
     lk->release();
 }
 
@@ -239,8 +257,10 @@ bool resolve(const Url &url, const Waiter &w, std::vector<Addr> *out, std::strin
     auto *lk = new Lookup;
     lk->host = url.host;
     lk->port = port;
-    lk->fd   = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    if (lk->fd < 0) {
+    if (int fds[2]; wakePipe(fds)) {
+        lk->fd   = fds[0];
+        lk->wake = fds[1];
+    } else {
         *error = sysError("dns", errno);
         delete lk;
         return false;
@@ -248,6 +268,7 @@ bool resolve(const Url &url, const Waiter &w, std::vector<Addr> *out, std::strin
     base::Thread thread;
     if (!thread.start([lk] { lookupThread(lk); }, kThreadStack)) {
         ::close(lk->fd);
+        ::close(lk->wake);
         delete lk;
         *error = "dns: no thread";
         return false;

@@ -10,9 +10,7 @@
 
 #include <string_view>
 
-#if defined(__linux__) && defined(MSGA_INSTALL_LAUNCHER)
-#include <unistd.h>
-
+#if defined(MSGA_FREEDESKTOP) && defined(MSGA_INSTALL_LAUNCHER)
 // gfx/icon_256.png, embedded by CMake.
 extern const unsigned char kMsgaIconPng[];
 extern const unsigned      kMsgaIconPngSize;
@@ -42,7 +40,7 @@ std::string desktopEntry(const std::string &exePath, const std::string &icon) {
 }
 
 // Without MSGA_INSTALL_LAUNCHER the entry comes from a package.
-#if defined(__linux__) && defined(MSGA_INSTALL_LAUNCHER)
+#if defined(MSGA_FREEDESKTOP) && defined(MSGA_INSTALL_LAUNCHER)
 
 namespace {
 
@@ -55,17 +53,11 @@ Write writeIfChanged(const std::string &path, std::string_view bytes) {
     return file::writeAtomic(path, bytes) ? Write::Written : Write::Error;
 }
 
-std::string selfExe() {
-    char          buf[4096];
-    const ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
-    return n > 0 ? std::string(buf, size_t(n)) : std::string();
-}
-
 } // namespace
 
 void installDesktopEntry(plat::App &app) {
     const std::string data = app.standardDir(plat::StandardDir::Data);
-    const std::string exe  = selfExe();
+    const std::string exe  = base::executablePath();
     model::runInBackground(
         app,
         [data, exe] {

@@ -15,7 +15,7 @@
 // Off: the server side, DTLS, renegotiation, early data, debug and error
 // strings, PEM/ASN.1 writing, key generation, every legacy cipher.
 //
-// Randomness comes straight from the kernel (getrandom) through
+// Randomness comes straight from the kernel (crypto::randomBytes) through
 // MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG: no entropy collector, no CTR-DRBG.
 //
 // MSGA_MBEDTLS_COOKIE_CRYPTO (CMake option) adds what decrypting Chromium's

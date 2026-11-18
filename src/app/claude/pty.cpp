@@ -2,6 +2,7 @@
 
 #include "base/process.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "plat/plat.h"
 
 #include <algorithm>
@@ -10,7 +11,6 @@
 #ifdef _WIN32
 #include "base/winstr.h"
 
-#include <thread>
 #include <windows.h>
 #else
 #include <cerrno>
@@ -45,24 +45,22 @@ struct Pty::Impl {
     HANDLE               inWrite = INVALID_HANDLE_VALUE; // our typing → the program
     HANDLE               outRead = INVALID_HANDLE_VALUE; // what it draws → us
     PROCESS_INFORMATION  pi{};
-    std::thread          reader;
-    std::thread          exitWatch;
+    base::Thread         reader;
+    base::Thread         exitWatch;
     bool                 running = false;
 
     explicit Impl(Pty *owner) : q(owner) {}
     ~Impl() {
         if (running)
             TerminateProcess(pi.hProcess, 1);
-        if (exitWatch.joinable())
-            exitWatch.join(); // returns once the process has ended
+        exitWatch.join(); // returns once the process has ended
         // Closing the console flushes the last output: the reader still
         // drains it, then sees the pipe break and ends.
         if (pc && closePc)
             closePc(pc);
         if (inWrite != INVALID_HANDLE_VALUE)
             CloseHandle(inWrite);
-        if (reader.joinable())
-            reader.join();
+        reader.join();
         if (outRead != INVALID_HANDLE_VALUE)
             CloseHandle(outRead);
         if (pi.hProcess)
@@ -164,7 +162,7 @@ bool Pty::start(
     auto       alive = _alive;
     Impl      *impl  = d.get();
     HANDLE     out   = d->outRead;
-    d->reader        = std::thread([&app, alive, impl, out] {
+    d->reader.start([&app, alive, impl, out] {
         char buf[8192];
         for (;;) {
             DWORD n = 0;
@@ -178,8 +176,8 @@ bool Pty::start(
             });
         }
     });
-    HANDLE proc      = d->pi.hProcess;
-    d->exitWatch     = std::thread([&app, alive, impl, proc] {
+    HANDLE proc = d->pi.hProcess;
+    d->exitWatch.start([&app, alive, impl, proc] {
         WaitForSingleObject(proc, INFINITE);
         app.post([alive, impl] {
             if (!*alive || !impl->running)

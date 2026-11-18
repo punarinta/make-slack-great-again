@@ -40,7 +40,7 @@ namespace {
 
 } // namespace
 
-#if !defined(_WIN32) && !defined(__APPLE__)
+#ifdef MSGA_FREEDESKTOP // a port build keeps none of them (no earlier version ran there)
 TEST("identity: the directories earlier versions used") {
     // plat's own directories (the headless backend's in tests) + the
     // organization "msga" and application "MSGA" names under them.
@@ -70,7 +70,7 @@ TEST("desktop entry: the launcher earlier versions installed") {
         shell::desktopEntry("/usr/bin/msga", "msga").find("Exec=/usr/bin/msga %u\n") !=
         std::string::npos
     );
-#ifdef __linux__
+#ifdef MSGA_FREEDESKTOP
     plat::App        &pa   = app().platform();
     const std::string data = pa.standardDir(plat::StandardDir::Data);
     const std::string path = file::join(data, "applications/msga.desktop");

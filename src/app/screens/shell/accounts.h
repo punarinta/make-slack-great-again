@@ -78,6 +78,12 @@ public:
     void importSession();
     void convertToSession();
     int  oauthSlackWorkspaces() const;
+    // Settings → Claude Code → "Runs on": where the Claude Code workspace's
+    // sessions run (false: there's no such workspace) — its SSH destination,
+    // "" for this computer. setClaudeHost saves it with the workspace and
+    // starts the workspace over there.
+    bool claudeHost(std::string *destination, std::string *msga) const;
+    void setClaudeHost(const std::string &destination, const std::string &msga);
 
     auth::WorkspaceStore &store() { return _store; }
     // Agent thread links: every running workspace is handed to them (the

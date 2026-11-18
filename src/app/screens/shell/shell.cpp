@@ -10,6 +10,7 @@
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/time.h"
 #include "gfx/icons_generated.h"
 #include "screens/common/avatar_initial.h"
@@ -60,7 +61,6 @@
 #include <tuple>
 #include <cmath>
 #include <cstring>
-#include <mutex>
 
 using namespace ui;
 using gfx::Icon;
@@ -1127,13 +1127,13 @@ namespace {
 
 // notifications.json writes land in the order they were asked for: a late
 // worker never overwrites a newer file (as settings.cpp does for settings).
-std::mutex                                g_notifiedMutex;
+base::Mutex                               g_notifiedMutex;
 std::unordered_map<std::string, uint64_t> g_notifiedWritten;
 uint64_t                                  g_notifiedAsked = 0; // UI thread
 
 bool writeNotified(const std::string &path, const std::string &text, uint64_t n) {
-    std::lock_guard<std::mutex> lock(g_notifiedMutex);
-    uint64_t                   &done = g_notifiedWritten[path];
+    base::Lock lock(g_notifiedMutex);
+    uint64_t  &done = g_notifiedWritten[path];
     if (n <= done)
         return true;
     done = n;
@@ -3116,6 +3116,16 @@ void Shell::openSettingsAt(uint8_t page) {
     hooks.importSlackSession   = onImportSlackSession;
     hooks.convertToSession     = onConvertToSession;
     hooks.oauthSlackWorkspaces = oauthSlackWorkspaces ? oauthSlackWorkspaces() : 0;
+    if (std::string dest, msga; claudeHost && setClaudeHost && claudeHost(&dest, &msga)) {
+        hooks.claudeHost = [this](std::string *d, std::string *m) {
+            if (!claudeHost || !claudeHost(d, m))
+                *d = *m = {};
+        };
+        hooks.setClaudeHost = [this](const std::string &d, const std::string &m) {
+            if (setClaudeHost)
+                setClaudeHost(d, m);
+        };
+    }
     // The theme's source: the open workspace if it can read the account's
     // Slack theme, else the first running one that can (by key: it may stop
     // while the dialog is open).

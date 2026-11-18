@@ -8,7 +8,7 @@ if(TARGET msga_app_update)
     list(APPEND core_suites update)
     target_link_libraries(msga_app_tests PRIVATE msga_app_update)
 endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT) # the importer is Linux-native
     list(APPEND core_suites local_import)
 endif()
 target_sources(msga_app_tests PRIVATE ../../support/fake_slack_server.cpp)
@@ -21,11 +21,14 @@ foreach(s ${core_suites})
     msga_add_test(core_${s} COMMAND msga_app_tests test_${s} TZ LABELS core)
 endforeach()
 
-if(UNIX)
+if(UNIX AND NOT MSGA_PORT)
     # plat audio through fake helper programs (Linux) / the OS player
-    # without playing anything (macOS). Never the speakers or the mic.
+    # without playing anything (macOS). Never the speakers or the mic. A
+    # port build has the port's audio, not these backends.
     target_sources(msga_app_tests PRIVATE test_audio.cpp)
     msga_add_test(audio_tests COMMAND msga_app_tests test_audio LABELS core)
+endif()
+if(UNIX)
     # Crash handlers and the watchdog are process-wide: the suite installs
     # them in its own BASE_TEST_SUITE_MAIN.
     target_sources(msga_app_tests PRIVATE test_crash.cpp)

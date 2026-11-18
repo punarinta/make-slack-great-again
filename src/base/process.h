@@ -35,8 +35,8 @@ public:
 private:
     int64_t _pid    = 0;
     int     _status = -1;
-#ifdef _WIN32
-    void *_handle = nullptr; // process HANDLE
+#if defined(_WIN32) || defined(MSGA_PORT)
+    void *_handle = nullptr; // process HANDLE / port_proc *
 #endif
     bool _exited = false;
 };

@@ -10,7 +10,9 @@ add_library(msga_net STATIC
 target_include_directories(msga_net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(msga_net PUBLIC msga_base plat msga_flags)
 
-if(WIN32)
+if(MSGA_PORT)
+    include(port/port.cmake)
+elseif(WIN32)
     include(win/win.cmake)
 elseif(APPLE)
     include(mac/mac.cmake)

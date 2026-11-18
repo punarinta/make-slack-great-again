@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build msga (the root CMake project: src/ on src/plat) on Linux or macOS.
+# Build msga (the root CMake project: src/ on src/plat) on Linux, macOS,
+# FreeBSD or OpenBSD (after scripts/configure-bsd.sh).
 # Windows: scripts\build.ps1.
 # Usage:
 #   scripts/build.sh           # MinSizeRel → build/msga

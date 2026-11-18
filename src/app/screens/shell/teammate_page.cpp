@@ -7,6 +7,7 @@
 #include "base/str.h"
 #include "base/time.h"
 #include "screens/shell/recent_folders.h"
+#include "screens/shell/shell_dialogs.h"
 #include "screens/shell/shell_text.h"
 
 #include <algorithm>
@@ -127,7 +128,7 @@ void TeammatePage::open(const model::Backend::AgentRole &mate) {
     const std::string home  = _ctx.app.platform().standardDir(plat::StandardDir::Home);
     const std::string dir   = recent_folders::teammateFolder(_settings, mate.id, home);
     // Moved or deleted since: start in what is left of it, and stop offering it.
-    const auto        isDir = [](const std::string &p) { return file::isDir(p); };
+    const auto        isDir = folderCheck();
     std::string       here  = dir;
     if (!isDir(dir)) {
         here = recent_folders::existingFolder(dir, home, isDir);
@@ -250,7 +251,7 @@ std::vector<MenuItem> TeammatePage::folderMenuItems(std::vector<std::string> *pa
         if (!dir.empty())
             sessions.push_back({dir, model::tsSecs(activityOf(cv))});
     }
-    const auto        isDir   = [](const std::string &p) { return file::isDir(p); };
+    const auto        isDir   = folderCheck();
     auto              choices = recent_folders::rank(_settings.claudeRecentDirs, sessions, isDir);
     // The current one is always there to see (e.g. home, never picked).
     const std::string current = recent_folders::normalized(_folder);
@@ -307,13 +308,24 @@ void TeammatePage::showFolderMenu() {
     });
 }
 
+std::function<bool(const std::string &)> TeammatePage::folderCheck() const {
+    // Another machine's folders can't be looked at from here: any absolute
+    // path may be one (starting a session there says if it isn't).
+    if (!_ctx.backend().agentHost().empty())
+        return [](const std::string &p) { return !p.empty() && p.front() == '/'; };
+    return [](const std::string &p) { return file::isDir(p); };
+}
+
 void TeammatePage::chooseFolder() {
     plat::FileDialogDesc d;
     d.mode                   = plat::FileDialogDesc::Mode::PickFolder;
     d.title                  = i18n::arg(tr("Folder for new sessions with the %1"), _mate.name);
     d.initialDir             = _folder;
     std::weak_ptr<int> alive = _alive;
-    screens::fileDialog(_ctx, std::move(d), [this, alive](std::vector<std::string> paths) {
+    Window            *w     = window();
+    if (!w)
+        return;
+    pickAgentFolder(_ctx, *w, std::move(d), [this, alive](std::vector<std::string> paths) {
         if (!alive.expired() && !paths.empty() && !paths.front().empty())
             pickFolder(paths.front());
     });

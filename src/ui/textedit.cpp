@@ -971,7 +971,7 @@ void TextEdit::pasteText(bool plainText, plat::Selection sel) {
 }
 
 void TextEdit::setPrimarySelection() {
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(MSGA_FREEDESKTOP) || defined(MSGA_PORT) // a port: if it has PORT_CAP_PRIMARY_SELECTION
     if (hasSelection())
         app()->platform().setClipboardText(selectedText(), plat::Selection::Primary);
 #endif
@@ -1277,7 +1277,7 @@ bool TextEdit::onEvent(Event &e) {
     }
     case EventType::PointerDown: {
         if (e.button == plat::Button::Middle) {
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(MSGA_FREEDESKTOP) || defined(MSGA_PORT) // a port: if it has PORT_CAP_PRIMARY_SELECTION
             // The primary selection, as plain text — or, to an owner that
             // takes media (the composer: the middle click attaches like a
             // paste), its files and pictures.

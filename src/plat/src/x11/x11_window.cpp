@@ -1,8 +1,9 @@
 // X11 windows: creation, ICCCM/EWMH properties, state, and present through
-// MIT-SHM (memfd or SysV) with a chunked PutImage fallback for remote servers.
+// MIT-SHM (a memfd/temp file or SysV) with a chunked PutImage fallback for remote servers.
 #include "x11/x11_internal.h"
 
 #include "core/image_util.h"
+#include "freedesktop/files.h"
 
 #include <xcb/shm.h>
 
@@ -710,8 +711,8 @@ bool X11Window::allocBuffer(int w, int h) {
         if (fd) {
             // memfd + fd passing (MIT-SHM 1.2): no SysV ids, works across
             // IPC namespaces (Flatpak, containers).
-            const int mfd = memfd_create("plat-x11", MFD_CLOEXEC);
-            if (mfd >= 0 && ftruncate(mfd, off_t(nb.bytes)) == 0) {
+            const int mfd = linux_files::sharedMemoryFd("plat-x11", nb.bytes);
+            if (mfd >= 0) {
                 mem = mmap(nullptr, nb.bytes, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
                 if (mem == MAP_FAILED)
                     mem = nullptr;

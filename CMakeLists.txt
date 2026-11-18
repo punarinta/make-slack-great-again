@@ -63,8 +63,10 @@ if(MSGA_HAVE_LLD AND NOT APPLE)
 endif()
 # Packed relative relocations (DT_RELR): a PIE's vtable and function-pointer
 # fixups shrink from 24 bytes each (~180 KB of .rela.dyn) to a bitmap of ~5 KB.
-# Needs glibc 2.36 / musl 1.2.4 at run time; a static non-PIE has none anyway.
-if(NOT APPLE AND NOT MINGW)
+# Needs glibc 2.36 / musl 1.2.4 / FreeBSD 14 at run time; a static non-PIE has
+# none anyway. Not on OpenBSD, whose own libraries don't use it: no sign its
+# ld.so takes it.
+if(NOT APPLE AND NOT MINGW AND NOT CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     if(MSGA_HAVE_LLD)
         set(CMAKE_REQUIRED_LINK_OPTIONS -fuse-ld=lld)
     endif()
@@ -145,7 +147,13 @@ endif()
 # msga replacing its own binary with the next release (app/update), and, on
 # Linux, writing its own ~/.local/share/applications/msga.desktop on every
 # start (screens/shell/desktop_entry.cpp), which names this build's path.
-option(MSGA_SELF_UPDATE "Check msga.app for new releases and install them" ON)
+# msga.app publishes no BSD builds, so there is nothing to update to there.
+if(CMAKE_SYSTEM_NAME MATCHES "BSD")
+    set(_self_update_default OFF)
+else()
+    set(_self_update_default ON)
+endif()
+option(MSGA_SELF_UPDATE "Check msga.app for new releases and install them" ${_self_update_default})
 option(MSGA_INSTALL_LAUNCHER "Linux: write the user's msga.desktop launcher entry at startup" ON)
 # On msga_flags: the updater's UI (the update bar, Settings' update checks)
 # and its tests compile out with it, not only app/update.
@@ -184,6 +192,42 @@ if(MSGA_BUILD_TESTS OR MSGA_DEMO)
 else()
     set(PLAT_TEST_HOOKS OFF CACHE BOOL "" FORCE)
 endif()
+# Which OS layer msga runs on. "native": plat's own backends, base's POSIX /
+# Win32 / Cocoa code and net's own transports (every shipped build).
+# "port": the plain-C port contract (src/port, docs/port-contract.md), for
+# an OS whose port is a set of C files compiled by its own C compiler; the
+# core is then built against the contract only. MSGA_PORT_IMPL picks the
+# port (default: the headless POSIX reference port, src/port/ref).
+set(MSGA_PLATFORM "native" CACHE STRING "OS layer: native or port")
+set_property(CACHE MSGA_PLATFORM PROPERTY STRINGS native port)
+if(MSGA_PLATFORM STREQUAL "port")
+    set(MSGA_PORT ON)
+    target_compile_definitions(msga_flags INTERFACE MSGA_PORT)
+    add_subdirectory(src/port port)
+    set(PLAT_PORT ON CACHE BOOL "" FORCE)
+elseif(MSGA_PLATFORM STREQUAL "native")
+    set(MSGA_PORT OFF)
+    set(PLAT_PORT OFF CACHE BOOL "" FORCE)
+else()
+    message(FATAL_ERROR "MSGA_PLATFORM must be native or port, not ${MSGA_PLATFORM}")
+endif()
+
+# MSGA_FREEDESKTOP (a CMake variable and, on msga_flags, a define for the
+# code): Linux and the BSDs, X11/Wayland desktops with the freedesktop.org
+# conventions: XDG dirs, .desktop launchers, xdg-open/xdg-mime, D-Bus
+# services, the primary selection, an in-app file chooser when no portal
+# answers. A define rather than a header macro, so a file can't silently
+# miss it. __linux__ / CMAKE_SYSTEM_NAME "Linux" stay for what only Linux
+# has (/proc, Linux-only syscalls, the Linux release asset). Off in a port
+# build: the port is the platform there, and a port OS keeps none of these
+# conventions (what it has comes through the port's capabilities).
+if(UNIX AND NOT APPLE AND NOT MSGA_PORT)
+    set(MSGA_FREEDESKTOP ON)
+    target_compile_definitions(msga_flags INTERFACE MSGA_FREEDESKTOP)
+else()
+    set(MSGA_FREEDESKTOP OFF)
+endif()
+
 # prim: the primitives plat and base share (plat can't link base). Added
 # here, before plat, so it builds with msga's flags.
 add_subdirectory(src/prim prim EXCLUDE_FROM_ALL)

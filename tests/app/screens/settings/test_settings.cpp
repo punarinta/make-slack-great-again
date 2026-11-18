@@ -936,7 +936,7 @@ TEST("settings: notification level, and the master switch greys out the rest") {
     CHECK(notificationCount() == before + 2);
 }
 
-#ifdef __linux__
+#ifdef MSGA_FREEDESKTOP // plat's freedesktop sound helpers, faked (not in a port build)
 TEST(
     "settings: the sound dropdown lists the chime and the OS's sounds; Test and notifications play "
     "it"
@@ -1311,7 +1311,7 @@ TEST("settings: Test connection and Fetch models ask the server for its models")
     h.ctx.ai = nullptr;
 }
 
-#ifdef __linux__
+#ifdef MSGA_FREEDESKTOP
 TEST("settings: Check spelling lists the dictionaries; the ticked ones are saved") {
     // Two made-up dictionaries on $DICPATH, beside whatever the system has.
     const std::string dir =
@@ -1366,3 +1366,45 @@ TEST("settings: Check spelling lists the dictionaries; the ticked ones are saved
     file::remove(dir);
 }
 #endif
+
+TEST("settings: System → Claude Code says where its sessions run, applied on Apply") {
+    Harness                                          h;
+    std::string                                      dest, msga;
+    std::vector<std::pair<std::string, std::string>> applied;
+    // Only with a Claude Code workspace (the accounts controller's answer).
+    h.sh->claudeHost = [&](std::string *d, std::string *m) {
+        *d = dest;
+        *m = msga;
+        return true;
+    };
+    h.sh->setClaudeHost = [&](const std::string &d, const std::string &m) {
+        applied.emplace_back(d, m);
+        dest = d;
+        msga = m;
+    };
+    SettingsDialog &d = h.open();
+    d.showPage(SettingsDialog::Page::System);
+    pump();
+    REQUIRE(d.find("Runs on") != nullptr);
+    REQUIRE(d.find("This computer") != nullptr);
+    CHECK(d.find("SSH destination") == nullptr); // this computer: no SSH fields
+    h.click(d.find("Another computer over SSH"));
+    auto *field = static_cast<ui::TextField *>(d.find("user@server"));
+    REQUIRE(field != nullptr);
+    CHECK(d.find("SSH destination") != nullptr);
+    h.click(d.find("Apply"));
+    CHECK(applied.empty()); // no destination yet
+    CHECK(d.find("Enter the SSH destination first.") != nullptr);
+    field->setText(" me@box ");
+    h.click(d.find("Apply"));
+    REQUIRE(applied.size() == 1);
+    CHECK_STR(applied[0].first, "me@box");
+    CHECK(applied[0].second.empty());
+    h.click(d.find("Apply"));
+    CHECK(applied.size() == 1);
+    CHECK(d.find("No changes to save.") != nullptr);
+    h.click(d.find("This computer"));
+    h.click(d.find("Apply"));
+    REQUIRE(applied.size() == 2);
+    CHECK(applied[1].first.empty());
+}

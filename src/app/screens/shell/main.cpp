@@ -28,6 +28,8 @@
 #include "app/cache/workspace_cache.h"
 #include "app/claude/approvals.h"
 #include "app/claude/progress.h"
+#include "app/claude/relay_protocol.h"
+#include "app/claude/relay_server.h"
 #include "app/crash/crash_handler.h"
 #include "app/i18n/languages.h"
 #include "app/identity.h"
@@ -82,7 +84,7 @@
 #include <string>
 #include <string_view>
 
-#if defined(MSGA_DEMO) && (defined(__linux__) || defined(__APPLE__))
+#if defined(MSGA_DEMO) && (defined(MSGA_FREEDESKTOP) || defined(__APPLE__))
 #include <cerrno>
 #include <csignal>
 #include <dirent.h>
@@ -116,7 +118,7 @@ volatile std::sig_atomic_t gStatsSignal = 0;
 // - Before the platform starts: it reads all of these on first use.
 // - Keyed by pid, not a fixed name, so parallel demo runs don't collide.
 // - Stale dirs (pid no longer running) are GC'd here, not left to pile up.
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(MSGA_FREEDESKTOP) || defined(__APPLE__)
 bool wipeDir(const std::string &dir) {
     return nftw(
                dir.c_str(),
@@ -146,8 +148,8 @@ void gcStaleDemoState(const std::string &tmp, std::string_view prefix) {
 #endif
 
 bool isolateDemoState(std::string *error) {
-#if !defined(__linux__) && !defined(__APPLE__)
-    *error = "demo mode redirects HOME/XDG_* and is Linux/macOS-only for now";
+#if !defined(MSGA_FREEDESKTOP) && !defined(__APPLE__)
+    *error = "demo mode redirects HOME/XDG_* and is Linux/BSD/macOS-only for now";
     return false;
 #else
     const char                *tmpEnv = std::getenv("TMPDIR");
@@ -187,7 +189,7 @@ bool isolateDemoState(std::string *error) {
 }
 
 std::string demoInstanceKey() {
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(MSGA_FREEDESKTOP) || defined(__APPLE__)
     return str::concat({identity::instanceKey(), "-demo-", str::number(getpid())});
 #else
     return str::concat({identity::instanceKey(), "-demo"});
@@ -225,6 +227,9 @@ int main(int argc, char **argv) {
         return claude::runPermissionHook(argv[2]);
     if (argc >= 2 && argv[1] == claude::kStatusFlag)
         return claude::runStatusCommand(argc, argv);
+    // Headless: serves this machine's Claude Code to an msga elsewhere (over ssh).
+    if (argc >= 2 && argv[1] == claude::relay::kFlag)
+        return claude::runRelay(argc, argv);
 #ifdef MSGA_DEMO
     std::string demo;
 #else
@@ -473,7 +478,7 @@ int main(int argc, char **argv) {
     desc.title   = "MSGA";
     desc.appId   = appId;
     desc.wmClass = "MSGA"; // WM_CLASS res_class: the application name
-#ifdef __linux__
+#ifdef MSGA_FREEDESKTOP
     // The logo for the X11 _NET_WM_ICON, at 16 to 256 px.
     for (int n : {16, 20, 24, 32, 48, 64, 128, 256}) {
         gfx::Bitmap  b(n, n);
@@ -592,6 +597,12 @@ int main(int argc, char **argv) {
         sh.onImportSlackSession = [&acc] { acc.importSession(); };
         sh.onConvertToSession   = [&acc] { acc.convertToSession(); };
         sh.oauthSlackWorkspaces = [&acc] { return acc.oauthSlackWorkspaces(); };
+        sh.claudeHost           = [&acc](std::string *dest, std::string *msga) {
+            return acc.claudeHost(dest, msga);
+        };
+        sh.setClaudeHost = [&acc](const std::string &dest, const std::string &msga) {
+            acc.setClaudeHost(dest, msga);
+        };
         acc.start();
         for (const std::string &u : urls)
             acc.handleUrl(u);

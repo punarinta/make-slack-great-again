@@ -31,6 +31,7 @@
 #pragma once
 
 #include "app/claude/cli.h"
+#include "app/claude/host.h"
 #include "app/claude/launcher.h"
 #include "app/claude/outputs.h"
 #include "app/claude/roles.h"
@@ -52,7 +53,8 @@
 
 namespace plat {
 class App;
-}
+struct DirChange;
+} // namespace plat
 
 namespace claude {
 
@@ -72,6 +74,8 @@ struct Unsent {
 class Backend final : public model::Backend {
 public:
     Backend(model::Store &store, plat::App &app, Credentials creds);
+    // On a host of the caller's (tests: a relay over a pipe).
+    Backend(model::Store &store, plat::App &app, Credentials creds, std::unique_ptr<Host> host);
     ~Backend() override; // stops its timers; no callback runs afterwards
 
     // The conversation open when the workspace was last shown (kNoConv).
@@ -127,6 +131,7 @@ public:
     void
     pressButton(model::ConvRef conv, model::Ts ts, const std::string &buttonId, Done done) override;
     std::string agentSessionBlocker(const std::string &dir) const override;
+    std::string agentHost() const override { return _host->name(); }
     void        startAgentSession(
         const std::string                                       &dir,
         bool                                                     skipPermissionChecks,
@@ -241,7 +246,7 @@ private:
     void                       watchTick();
     void                       watchCheck(); // the look: what changed since the last
     void                       syncWatches();
-    void                       readWatchEvents();
+    void                       dirChanged(const std::string &dir, const plat::DirChange &c);
     std::vector<std::string>   watchedFiles() const;
     // `looked`: findSubagentRuns has just run (the refresh's own look).
     void                       pumpTyping(bool looked = false);
@@ -475,6 +480,8 @@ private:
     void saveProfile() const;
     void reportError(const std::string &message);
 
+    // The host's link changed: said once in the error banner when it's down.
+    void hostStateChanged();
     // Calls fn later on the loop unless this backend is gone by then.
     void post(std::function<void()> fn);
     // A one-shot timer that dies with the backend.
@@ -486,7 +493,10 @@ private:
     // Where the permission hook leaves its questions (approvals.h).
     std::string                                                  _approvalsDir;
     Team                                                         _team;
-    std::unique_ptr<Launcher>                                    _launcher;
+    // The machine the sessions run on (host.h): this one, or one msga reaches
+    // through its relay.
+    std::unique_ptr<Host>                                        _host;
+    std::string                                                  _knownPath; // known-sessions.json
     std::shared_ptr<bool>                                        _alive;
     // By conversation id — the session id, except for a session started with
     // "+": its conversation exists before Claude Code picks the session's id on
@@ -540,14 +550,12 @@ private:
     // What the watcher saw last (path → size + mtime), and when it last looked.
     std::unordered_map<std::string, std::pair<int64_t, int64_t>> _watched;
     int64_t                                                      _watchCheckedMs = 0;
-    // inotify (Linux): its descriptor (-1 = not yet, -2 = none to have), its
-    // watch on the loop (0: no loop to wake, read by watchTick), the folders
-    // watched and the files in them looked at; _watchAll: every one is.
-    int                                                          _inotify        = -1;
-    uint64_t                                                     _inotifyWatch   = 0;
-    std::unordered_map<std::string, int64_t>                     _watchDirs;
+    // The folders watched (plat::App::watchDirectory ids) and the files in
+    // them looked at; _watchAll: every one is; _watchClosed: no new ones.
+    std::unordered_map<std::string, uint64_t>                    _watchDirs;
     std::unordered_set<std::string>                              _watchFiles;
     bool                                                         _watchAll           = false;
+    bool                                                         _watchClosed        = false;
     // Typing into live workers (typeLive): misses in a row, and off until when.
     int                                                          _typeLiveMisses     = 0;
     int64_t                                                      _typeLiveOffUntilMs = 0;

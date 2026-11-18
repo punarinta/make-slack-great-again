@@ -1359,6 +1359,55 @@ Popup *showRenameDialog(screens::Context &ctx, Window &w, ConvRef c) {
     return raw;
 }
 
+Popup *showHostFolderDialog(
+    Window                                  &w,
+    const std::string                       &title,
+    const std::string                       &host,
+    const std::string                       &initial,
+    std::function<void(const std::string &)> done
+) {
+    auto d = std::make_unique<Dialog>(title);
+    styledLabel(
+        d->content(),
+        i18n::arg(tr("Folder on %1"), host),
+        pxFont(15, text::Weight::Bold, color(C::FormText))
+    );
+    auto *field = d->content()->add<TextField>(tr("/home/you/project"), TextField::Size::Normal);
+    field->setText(initial);
+    field->edit().selectAll();
+    auto *choose = Dialog::makeButton(tr("Choose"), V::Primary);
+    d->addButtonRow(choose, Dialog::makeButton(tr("Cancel"), V::Secondary));
+    Dialog *raw     = d.get();
+    // Read the field before accept() closes the dialog.
+    choose->onClick = [raw, field, done = std::move(done)] {
+        std::string path(str::trim(field->text()));
+        if (path.empty())
+            return;
+        raw->accept();
+        done(path);
+    };
+    field->onReturn = choose->onClick;
+    w.showPopup(std::move(d));
+    field->edit().focus();
+    return raw;
+}
+
+void pickAgentFolder(
+    screens::Context &ctx, Window &w, plat::FileDialogDesc d, screens::PathsDone done
+) {
+    // Sessions on another machine work in its folders, which this one's
+    // folder dialog can't show: the path is typed.
+    if (const std::string host = ctx.backend().agentHost(); !host.empty()) {
+        showHostFolderDialog(
+            w, d.title, host, d.initialDir, [done = std::move(done)](const std::string &dir) {
+                done({dir});
+            }
+        );
+        return;
+    }
+    screens::fileDialog(ctx, std::move(d), std::move(done));
+}
+
 Popup *showWorkspaceIconDialog(
     screens::Context                        &ctx,
     Window                                  &w,

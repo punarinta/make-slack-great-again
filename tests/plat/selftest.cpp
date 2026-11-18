@@ -202,6 +202,34 @@ void caseWatchFd() {
 #endif
 }
 
+// App::watchDirectory: a file written into a watched folder is named; the
+// folder going away ends the watch. Linux (inotify) only; elsewhere the
+// default watches nothing and callers look on a timer.
+void caseWatchDirectory() {
+#if !defined(__linux__)
+    skip("directory watches are Linux-only (inotify)");
+#else
+    char tmpl[] = "/tmp/plat-watch-XXXXXX";
+    CHECK(mkdtemp(tmpl) != nullptr);
+    const std::string        dir = tmpl;
+    std::vector<std::string> names;
+    bool                     cameOrWent = false, gone = false;
+    const uint64_t           id = g_app->watchDirectory(dir, [&](const DirChange &c) {
+        if (!c.name.empty())
+            names.emplace_back(c.name);
+        cameOrWent = cameOrWent || c.cameOrWent;
+        gone       = gone || c.gone;
+    });
+    CHECK(id != 0);
+    std::ofstream(dir + "/a.json") << "{}";
+    CHECK(pumpUntil([&] { return cameOrWent && !names.empty(); }, 2000));
+    CHECK(std::find(names.begin(), names.end(), "a.json") != names.end());
+    std::filesystem::remove_all(dir);
+    CHECK(pumpUntil([&] { return gone; }, 2000));
+    g_app->unwatchDirectory(id); // ended already: does nothing
+#endif
+}
+
 void caseClipboard() {
     const std::string text = "plat clipboard ✓ ü 日本";
     g_app->setClipboardText(text);
@@ -1472,6 +1500,7 @@ int main(int argc, char **argv) {
     runCase("50 ms timer fires on time", caseTimer);
     runCase("post() from a thread wakes a blocking pump", casePostFromThread);
     runCase("fd watch reports readability", caseWatchFd);
+    runCase("directory watch names a written file", caseWatchDirectory);
     runCase("clipboard text round-trips (UTF-8)", caseClipboard);
     runCase("pointer motion arrives in logical coords", casePointerMove);
     runCase("click arrives as down/up with click count", caseClick);

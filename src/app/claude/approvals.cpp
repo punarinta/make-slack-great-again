@@ -4,11 +4,10 @@
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/time.h"
 
-#include <chrono>
 #include <cstdio>
-#include <thread>
 
 #ifdef _WIN32
 #include <process.h>
@@ -131,7 +130,7 @@ std::string suggestionLabel(const json::Value &s, std::string_view cwd) {
 }
 
 void pause() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(kPollMs));
+    base::sleepMs(kPollMs);
 }
 
 } // namespace

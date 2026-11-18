@@ -29,7 +29,9 @@ msga_resolve_clang_format() {
     local best="" best_major=0 cand major
     for cand in clang-format clang-format-30 clang-format-29 clang-format-28 \
                 clang-format-27 clang-format-26 clang-format-25 clang-format-24 \
-                clang-format-23 clang-format-22 clang-format-21 clang-format-20; do
+                clang-format-23 clang-format-22 clang-format-21 clang-format-20 \
+                clang-format26 clang-format25 clang-format24 clang-format23 \
+                clang-format22; do # FreeBSD's llvmNN packages: no dash
         command -v "$cand" &>/dev/null || continue
         major=$(msga_clang_format_major "$cand")
         [[ -n "$major" ]] || continue
@@ -48,5 +50,5 @@ msga_resolve_clang_format() {
 # One-line install hint per platform, for error messages.
 msga_clang_format_hint() {
     echo "Need clang-format >= ${MSGA_CLANG_FORMAT_MIN}. Ubuntu/Debian: sudo apt install clang-format-${MSGA_CLANG_FORMAT_MIN} (or https://apt.llvm.org/);"
-    echo "macOS: brew install clang-format; anywhere with Python: pipx install clang-format"
+    echo "macOS: brew install clang-format; FreeBSD: pkg install llvm${MSGA_CLANG_FORMAT_MIN}; anywhere with Python: pipx install clang-format"
 }

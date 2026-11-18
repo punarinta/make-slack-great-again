@@ -84,7 +84,8 @@ std::string outputKey(const TranscriptItem &item, const std::string &agentId);
 
 // How many items two transcripts start with in common (a fork's copy).
 size_t      sharedStart(const std::vector<TranscriptItem> &a, const std::vector<TranscriptItem> &b);
-std::string knownSessionsPath();
+// known-sessions.json: this computer's, or a remote host's ("" = this computer).
+std::string knownSessionsPath(std::string_view host = {});
 std::string profilePath();
 
 // A transcript item as a message: made again only when the item's revision
@@ -215,32 +216,32 @@ struct Backend::Tracked {
         std::string shown;
         Unsent      back; // the composer's, for onUnsent should it fail
     };
-    std::deque<Outgoing>       outbox;
-    std::optional<Outgoing>    flying; // taken from the outbox, prompt not landed yet
+    std::deque<Outgoing>    outbox;
+    std::optional<Outgoing> flying; // taken from the outbox, prompt not landed yet
     // The turn msga started: from launching it until its end is in the transcript.
-    bool                       sending         = false;
-    bool                       launching       = false; // the launcher hasn't reported back yet
-    bool                       stopRequested   = false; // "Stop" while launching: once it has
-    bool                       stopping        = false; // `claude stop` under way
-    int64_t                    sendStartedMs   = 0;
-    bool                       promptLanded    = false;
-    int64_t                    promptLandedMs  = 0;
+    bool                    sending         = false;
+    bool                    launching       = false; // the launcher hasn't reported back yet
+    bool                    stopRequested   = false; // "Stop" while launching: once it has
+    bool                    stopping        = false; // `claude stop` under way
+    int64_t                 sendStartedMs   = 0;
+    bool                    promptLanded    = false;
+    int64_t                 promptLandedMs  = 0;
     // The message on its way was typed into the live worker (typeLive):
     // Claude Code holds it now, and a turn under way takes it at its next
     // step — however long that is — so it isn't given up on while it works.
-    bool                       handedOver      = false;
-    int64_t                    typeLiveAfterMs = 0; // not typed live before this (kTypeRetryMs)
-    Done                       inFlight;            // a /btw's done(), until its root lands
-    Unsent                     inFlightBack;        // its question, for onUnsent
+    bool                    handedOver      = false;
+    int64_t                 typeLiveAfterMs = 0; // not typed live before this (kTypeRetryMs)
+    Done                    inFlight;            // a /btw's done(), until its root lands
+    Unsent                  inFlightBack;        // its question, for onUnsent
     // typeLive's, while it runs. Weak: an AttachInput holds itself until
     // `attach` has exited (a moment after its done ran), and its done can
     // run from inside the call that starts it (nothing to type, no terminal)
     // or from cancel() — set only when it's still under way after the call,
     // dropped by its done, so a live handle means "typing now".
-    std::weak_ptr<AttachInput> typing;
+    std::weak_ptr<HostTask> typing;
     // The permission question it waits on (awaitsApproval), as read off its
     // screen: the `needs` it was read for, and the options it offers.
-    std::string                approvalNeeds;
+    std::string             approvalNeeds;
     std::vector<PermissionQuestion::Option> approvalOptions;
     int                                     approvalReads       = 0;
     int64_t                                 approvalReadAfterMs = 0; // next try, after a failed one
@@ -250,7 +251,7 @@ struct Backend::Tracked {
     // (kept once answered), and what the hook prints for each option.
     std::string                             hookQuestion;
     std::vector<std::string>                hookAnswers;
-    std::weak_ptr<AttachAnswer>             answering; // reading or answering it (as `typing`)
+    std::weak_ptr<HostTask>                 answering; // reading or answering it (as `typing`)
     // A session branched off another (a /btw, or `--fork-session` anywhere):
     // shown as a thread in its parent rather than in the list (detectForks).
     std::string forkOf;          // the parent's conversation id; "" = a session of its own

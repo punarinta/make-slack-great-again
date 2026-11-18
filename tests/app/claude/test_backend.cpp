@@ -4209,6 +4209,89 @@ TEST("backend: an agent branch runs without tools, answers each turn, and keeps 
     CHECK(rig->errors.empty());
 }
 
+TEST("backend: a message in flight is delivered when its session turns out to be a thread") {
+    // After a restart a branch is a thread only once its parent's transcript
+    // has been read (detectForks). Here that happens in the very refresh
+    // that reads the branch's new prompt: the thread's list starts afresh
+    // with the prompt already in it, and the message must still count as
+    // delivered. (An msga that can't tell the transcripts' ages got here on
+    // every restart: on OpenBSD it ordered a family by mtime.)
+    FakeClaudeHome    home;
+    const std::string work = tempDir("work");
+    file::makeDirs(home.dir + "/jobs");
+    file::makeDirs(home.dir + "/projects/-fake");
+    home.trust(work);
+    writeFile(work + "/claude-real", kBranchCli, 0755);
+    // The branch's next turn waits for the go-ahead before Claude Code
+    // writes its prompt.
+    const std::string              cli    = writeCli(work, R"SH(#!/bin/sh
+case "$*" in *"next turn"*)
+  : > "$CLAUDE_CONFIG_DIR/waiting"
+  while [ ! -f "$CLAUDE_CONFIG_DIR/go" ]; do sleep 0.02; done ;;
+esac
+exec "$(dirname "$0")/claude-real" "$@"
+)SH");
+    const std::vector<std::string> denied = {"Bash"};
+
+    auto          rig  = std::make_unique<Rig>(Credentials{cli});
+    const ConvRef conv = rig->start(work);
+    REQUIRE(conv != kNoConv);
+    rig->load(conv);
+    rig->send(conv, "first");
+    REQUIRE(rig->wait([&] { return rig->answered(conv, "answer: first"); }));
+    const std::string session = rig->store.conversation(conv).id;
+    const std::string sPath =
+        home.dir + "/projects/-fake/abcdef11-0000-4000-8000-000000000001.jsonl";
+    rig->pump(300);
+    std::optional<model::Backend::AgentBranch> branch;
+    TurnLog                                    first;
+    rig->backend->startAgentBranch(
+        session,
+        "what is up",
+        {},
+        denied,
+        [&](model::Backend::AgentBranch b, const std::string &) { branch = std::move(b); },
+        first.fn()
+    );
+    REQUIRE(rig->wait([&] { return first.done(); }));
+    REQUIRE(branch.has_value());
+    TurnLog second;
+    rig->backend->continueAgentBranch(branch->id, "and more", {}, second.fn());
+    REQUIRE(rig->wait([&] { return second.done(); }));
+    rig->pump(300);
+    rig.reset();
+
+    // Restarted with the parent's transcript away: the branch is a session
+    // of its own for now.
+    REQUIRE(std::rename(sPath.c_str(), (sPath + ".away").c_str()) == 0);
+    rig = std::make_unique<Rig>(Credentials{cli});
+    TurnLog next;
+    rig->backend->continueAgentBranch(branch->id, "next turn", {}, next.fn());
+    REQUIRE(rig->wait([&] { return file::exists(home.dir + "/waiting"); }));
+    // Both on disk before msga looks again: the parent back, and the
+    // branch's prompt written.
+    REQUIRE(std::rename((sPath + ".away").c_str(), sPath.c_str()) == 0);
+    writeFile(home.dir + "/go", "");
+    const auto landed = [&] {
+        std::vector<file::DirEntry> all;
+        file::listDir(home.dir + "/projects/-fake", &all);
+        for (const auto &e : all)
+            if (e.name != file::baseName(sPath) &&
+                contains(readText(home.dir + "/projects/-fake/" + e.name), "\"next turn\""))
+                return true;
+        return false;
+    };
+    for (int i = 0; i < 500 && !landed(); ++i)
+        ::usleep(10'000);
+    REQUIRE(landed());
+    REQUIRE(rig->wait([&] { return next.done(); }));
+    CHECK_STR(next.updates.back().error, "");
+    CHECK_STR(next.updates.back().answer, "answer: next turn");
+    // A thread under its session again, never a session in the list.
+    CHECK(rig->listedCount() == 1);
+    CHECK(rig->errors.empty());
+}
+
 TEST("backend: a tool call's name says what an agent turn is doing") {
     using Phase = model::Backend::AgentPhase;
     CHECK(toolPhase("Read") == Phase::Reading);
