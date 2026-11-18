@@ -142,6 +142,10 @@ On Linux you can also cross-build for FreeBSD and OpenBSD (amd64), for example t
 
 For the source layout and the size rules, see [src/README.md](https://github.com/punarinta/make-slack-great-again/blob/master/src/README.md).
 
+## Porting to another OS
+
+msga needs little from an operating system: a surface to draw into, input events, TLS networking, threads, files and a clock. A new OS implements one small C interface for those and gets the rest of the app as it is. **[Porting msga anywhere](https://github.com/punarinta/make-slack-great-again/blob/master/docs/PORT_ANYWHERE.md)** lists what to provide and the steps.
+
 ## License
 
 msga is free software under the [GNU General Public License v3.0 or later](https://github.com/punarinta/make-slack-great-again/blob/master/LICENSE). The third-party code it uses is listed in [THIRD_PARTY_LICENSES](https://github.com/punarinta/make-slack-great-again/blob/master/THIRD_PARTY_LICENSES).
