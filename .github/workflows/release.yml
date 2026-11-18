@@ -1,0 +1,375 @@
+# The release pipeline: build and test every platform, then publish.
+#
+# Runs only on the public repo (punarinta/make-slack-great-again), where the
+# standard runners are free; the private dev repo carries this file only to
+# sync it (scripts/sync-to-public.sh) and never runs it.
+#
+#   PR into `release`      build + test everything, publish nothing
+#   push to `release`      (= merging that PR) build + test, then publish:
+#                          GitHub Release (binaries + manifests), Homebrew cask,
+#                          Flathub update PR
+#   Run workflow (manual)  mode "build": the PR checks on any branch;
+#                          mode "draft": also a DRAFT release (invisible to the
+#                          public, no tag until published), the cask on the
+#                          tap's `ci-test` branch, no Flathub — the safe
+#                          end-to-end test
+#
+# msga.app/download/* redirects to the newest release here (website/msga.app.conf),
+# so a release needs no site deploy. See docs/releasing.md.
+#
+# Secrets (Settings → Secrets and variables → Actions), both optional — the
+# step is skipped without its token:
+#   HOMEBREW_TAP_TOKEN  fine-grained PAT, punarinta/homebrew-msga, Contents: write
+#   FLATHUB_TOKEN       PAT with write access to flathub/com.nisdos.msga
+# Variable (optional): FLATHUB_AUTOMERGE=true merges the Flathub PR by itself
+# once Flathub's test build passes.
+
+name: Release
+
+on:
+  pull_request:
+    branches: [release]
+  push:
+    branches: [release]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "build = build and test only; draft = also a draft release + cask on the tap's ci-test branch"
+        type: choice
+        options: [build, draft]
+        default: build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Commits the pipeline makes elsewhere (the Homebrew tap, the Flathub repo).
+  GIT_AUTHOR_NAME: Vladimir Osipov
+  GIT_AUTHOR_EMAIL: vladimir.g.osipov@gmail.com
+  GIT_COMMITTER_NAME: Vladimir Osipov
+  GIT_COMMITTER_EMAIL: vladimir.g.osipov@gmail.com
+
+jobs:
+  # ── What this run is: version, tag, whether it publishes ───────────────────
+  prepare:
+    if: github.repository == 'punarinta/make-slack-great-again'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      publish: ${{ steps.plan.outputs.publish }}
+      draft: ${{ steps.plan.outputs.draft }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the previous release tags
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 'MSGA_VERSION' version.cmake | grep -oE '[0-9]+' | head -1)"
+          [[ -n "$version" ]] || { echo "::error::no MSGA_VERSION in version.cmake"; exit 1; }
+
+          # Release tags are dates (2026-11-18; a second release that day
+          # 2026-11-18-2): Flathub's update checker matches ^[\d-]+$.
+          prev_tag="$(git tag --list '20[0-9][0-9]-*' --sort=-creatordate | head -1)"
+          prev_version=0
+          if [[ -n "$prev_tag" ]]; then
+              prev_version="$(git show "${prev_tag}:version.cmake" 2>/dev/null |
+                  grep -m1 'MSGA_VERSION' | grep -oE '[0-9]+' | head -1 || echo 0)"
+          fi
+
+          case "$EVENT" in
+              push) publish=true; draft=false ;;
+              workflow_dispatch) if [[ "$MODE" == draft ]]; then publish=true; draft=true;
+                                 else publish=false; draft=false; fi ;;
+              *) publish=false; draft=false ;;
+          esac
+
+          # A release must carry a new version: the in-app updater only
+          # offers a higher one. A PR shows this as a red check before merging;
+          # manual runs only warn.
+          if (( version <= prev_version )); then
+              msg="MSGA_VERSION is ${version}, the last release (${prev_tag}) was ${prev_version}: bump version.cmake"
+              if [[ "$EVENT" == workflow_dispatch ]]; then
+                  echo "::warning::${msg}"
+              else
+                  echo "::error::${msg}"; exit 1
+              fi
+          fi
+
+          day="$(date -u +%F)"
+          tag="$day"; n=2
+          while git rev-parse -q --verify "refs/tags/${tag}" >/dev/null ||
+                gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
+              tag="${day}-${n}"; n=$((n + 1))
+          done
+
+          {
+              echo "version=${version}"
+              echo "tag=${tag}"
+              echo "publish=${publish}"
+              echo "draft=${draft}"
+          } >>"$GITHUB_OUTPUT"
+          {
+              echo "### msga ${version} → ${tag}"
+              echo "Previous release: ${prev_tag:-none} (version ${prev_version})"
+              echo "Publishes: ${publish}$([[ $draft == true ]] && echo ' (draft)')"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # ── Linux: static musl binary, tests on musl, X11 smoke launch ─────────────
+  linux:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      # Fonts for the text/UI tests (mounted into the build container) and
+      # Xvfb for the smoke launch.
+      - name: Install fonts and Xvfb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends xvfb xauth \
+              fonts-dejavu-core fonts-liberation2 fonts-noto-core fonts-noto-color-emoji fonts-noto-cjk
+      - name: Build, test, smoke launch
+        run: scripts/release-linux-static.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            dist/msga-linux-x86_64
+            dist/msga-linux-x86_64.manifest
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symbols-linux-${{ needs.prepare.outputs.tag }}
+          path: dist/msga-linux-x86_64.debug
+          retention-days: 90
+
+  # ── Windows: mingw cross-build in Docker, Wine smoke launch ────────────────
+  windows:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Wine and Xvfb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends wine wine64 xvfb xauth fonts-dejavu-core
+      - name: Build, smoke launch under Wine
+        run: scripts/release-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            dist/msga-windows-x86_64.exe
+            dist/msga-windows-x86_64.manifest
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symbols-windows-${{ needs.prepare.outputs.tag }}
+          path: dist/msga-windows-x86_64.debug
+          retention-days: 90
+
+  # ── FreeBSD / OpenBSD: cross-built against a downloaded sysroot ────────────
+  # In Ubuntu 26.04 for the same clang/lld as the dev machines (24.04's
+  # clang 18 is older than what the code is built with).
+  bsd:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [freebsd, openbsd]
+    steps:
+      - name: Install the cross toolchain
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends ca-certificates git clang lld llvm \
+              cmake ninja-build pkgconf libwayland-bin python3 binutils xz-utils zstd
+      - uses: actions/checkout@v4
+      - name: Cache the sysroot
+        uses: actions/cache@v4
+        with:
+          path: build-bsd-sysroot/${{ matrix.os }}
+          key: bsd-sysroot-${{ matrix.os }}-${{ hashFiles('scripts/bsd-sysroot.py') }}
+      - name: Build
+        run: scripts/release-bsd.sh ${{ matrix.os }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            dist/msga-${{ matrix.os }}-x86_64.tar.gz
+            dist/msga-${{ matrix.os }}-x86_64.manifest
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symbols-${{ matrix.os }}-${{ needs.prepare.outputs.tag }}
+          path: dist/msga-${{ matrix.os }}-x86_64.debug
+          retention-days: 90
+
+  # ── macOS arm64: tests, app bundle, DMG ────────────────────────────────────
+  macos:
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CMake and Ninja
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          command -v ninja >/dev/null || brew install ninja
+      - name: Build, test, DMG
+        run: scripts/release-mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            dist/msga-macos-arm64.dmg
+            dist/msga-macos-arm64.manifest
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symbols-macos-${{ needs.prepare.outputs.tag }}
+          path: dist/msga-macos-arm64.dSYM
+          retention-days: 90
+
+  # ── Flatpak: the Flathub manifest builds (from this checkout) and lints ────
+  flatpak:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends flatpak flatpak-builder
+          # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build and lint
+        run: packaging/flatpak/build-local.sh --lint
+
+  # ── Publish: only after every build and test passed ────────────────────────
+  publish:
+    needs: [prepare, linux, windows, bsd, macos, flatpak]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      DRAFT: ${{ needs.prepare.outputs.draft }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      # Each manifest must describe the binary next to it: this version and
+      # its actual hash (the in-app updater and the cask both trust it).
+      - name: Check the artifacts
+        run: |
+          set -euo pipefail
+          assets=(msga-linux-x86_64 msga-windows-x86_64.exe msga-macos-arm64.dmg
+                  msga-freebsd-x86_64.tar.gz msga-openbsd-x86_64.tar.gz)
+          for a in "${assets[@]}"; do
+              stem="${a%.tar.gz}"; [[ "$stem" != "$a" ]] || stem="${a%.*}"
+              m="dist/${stem}.manifest"
+              [[ -f "dist/$a" && -f "$m" ]] || { echo "::error::missing dist/$a or $m"; exit 1; }
+              v="$(jq -r .version "$m")"; s="$(jq -r .sha256 "$m")"
+              [[ "$v" == "$VERSION" ]] || { echo "::error::$m is version $v, not $VERSION"; exit 1; }
+              [[ "$s" == "$(sha256sum "dist/$a" | cut -d' ' -f1)" ]] ||
+                  { echo "::error::dist/$a does not match the sha256 in $m"; exit 1; }
+          done
+          ls -l dist
+
+      # Notes: the description of the merged PR (master → release), so they
+      # are written where the release is reviewed; edit them on GitHub later
+      # if needed.
+      - name: GitHub Release
+        run: |
+          set -euo pipefail
+          body=""
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+              body="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                  --jq '[.[] | select(.base.ref == "release")][0].body // ""' 2>/dev/null || true)"
+          fi
+          [[ -n "$body" ]] || body="msga ${VERSION}"
+          printf '%s\n' "$body" >notes.md
+          flags=(--title "$TAG" --notes-file notes.md --target "$GITHUB_SHA")
+          if [[ "$DRAFT" == true ]]; then flags+=(--draft); else flags+=(--latest); fi
+          gh release create "$TAG" "${flags[@]}" dist/*
+          echo "Release: $(gh release view "$TAG" --json url --jq .url)" >>"$GITHUB_STEP_SUMMARY"
+
+      # The cask is rendered from packaging/homebrew/msga.rb.in. A draft run
+      # pushes it to the tap's ci-test branch, which brew never reads.
+      - name: Homebrew cask
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TOKEN" ]]; then
+              echo "::warning::no HOMEBREW_TAP_TOKEN secret: cask not updated"; exit 0
+          fi
+          branch=master; [[ "$DRAFT" == true ]] && branch=ci-test
+          git clone -q "https://x-access-token:${TOKEN}@github.com/punarinta/homebrew-msga.git" tap
+          git -C tap checkout -q -B "$branch"
+          sha="$(jq -r .sha256 dist/msga-macos-arm64.manifest)"
+          sed -e "s/@VERSION@/${VERSION}/g" -e "s/@TAG@/${TAG}/g" -e "s/@SHA256@/${sha}/g" \
+              packaging/homebrew/msga.rb.in >tap/Casks/msga.rb
+          if git -C tap diff --quiet; then echo "Cask already current."; exit 0; fi
+          git -C tap commit -q -am "msga ${VERSION}"
+          git -C tap push -q --force-with-lease origin "$branch"
+          echo "Cask: msga ${VERSION} on homebrew-msga/${branch}" >>"$GITHUB_STEP_SUMMARY"
+
+      # Flathub builds the Flatpak itself, from the tag just created: the
+      # pipeline opens the version-bump PR on flathub/com.nisdos.msga.
+      - name: Flathub update
+        if: needs.prepare.outputs.draft != 'true'
+        env:
+          TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+          AUTOMERGE: ${{ vars.FLATHUB_AUTOMERGE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TOKEN" ]]; then
+              echo "::warning::no FLATHUB_TOKEN secret: Flathub not updated"; exit 0
+          fi
+          export GH_TOKEN="$TOKEN"
+          git clone -q "https://x-access-token:${TOKEN}@github.com/flathub/com.nisdos.msga.git" flathub
+          branch="msga-${TAG}"
+          git -C flathub checkout -q -b "$branch"
+          sed -e "s/^\(\s*tag: \).*/\1${TAG}/" -e "s/^\(\s*commit: \).*/\1${GITHUB_SHA}/" \
+              packaging/flatpak/com.nisdos.msga.yml >flathub/com.nisdos.msga.yml
+          if git -C flathub diff --quiet; then echo "Flathub manifest already current."; exit 0; fi
+          git -C flathub commit -q -am "msga ${VERSION} (${TAG})"
+          git -C flathub push -q origin "$branch"
+          url="$(gh pr create -R flathub/com.nisdos.msga --head "$branch" \
+              --title "msga ${VERSION} (${TAG})" \
+              --body "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}")"
+          echo "Flathub PR: ${url}" >>"$GITHUB_STEP_SUMMARY"
+          if [[ "$AUTOMERGE" == true ]]; then
+              gh pr merge "$url" --auto --merge ||
+                  echo "::warning::auto-merge not available on the Flathub repo: merge ${url} by hand"
+          fi

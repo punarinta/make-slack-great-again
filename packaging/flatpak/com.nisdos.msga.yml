@@ -1,0 +1,54 @@
+# The Flatpak of msga, as Flathub builds it (flathub/com.nisdos.msga holds a
+# copy). Local builds: packaging/flatpak/build-local.sh, which swaps the git
+# source for this checkout.
+id: com.nisdos.msga
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: msga
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Sounds, the audio player, voice input.
+  - --socket=pulseaudio
+  # Claude Code runs on the host — its CLI, git, ssh to a relay, the
+  # browser for the Slack sign-in — through flatpak-spawn --host
+  # (src/base/host.h): the processes are the host's, so is their file system.
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=host
+  # …and its /tmp, which `host` leaves out: Claude Code writes its background
+  # commands' output there (/tmp/claude-<uid>/…), which msga follows.
+  - --filesystem=/tmp
+  # The tray icon (StatusNotifierItem), notifications with sender avatars.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # "Import from local Slack": the Slack desktop app's key in the keyring.
+  - --talk-name=org.freedesktop.secrets
+  # Reconnecting after a suspend (PrepareForSleep).
+  - --system-talk-name=org.freedesktop.login1
+
+modules:
+  - name: msga
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=MinSizeRel
+      - -DMSGA_FLATPAK=ON
+      - -DMSGA_SIZE_MAP=OFF
+      # mbedTLS comes as a source below: nothing is downloaded while building.
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_MSGA_MBEDTLS=/run/build/msga/mbedtls
+    sources:
+      - type: git
+        url: https://github.com/punarinta/make-slack-great-again.git
+        tag: TAG # set on each release
+        commit: COMMIT
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d-]+)$
+      - type: archive
+        url: https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2
+        sha256: a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
+        dest: mbedtls

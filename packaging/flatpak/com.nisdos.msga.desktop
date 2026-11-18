@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=MSGA
+GenericName=Slack client
+Comment=Fast native Slack client
+Exec=msga %u
+Icon=com.nisdos.msga
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+Keywords=Slack;chat;messaging;Claude;
+StartupNotify=true
+StartupWMClass=com.nisdos.msga
+MimeType=x-scheme-handler/msga;
