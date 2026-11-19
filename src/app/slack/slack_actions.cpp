@@ -848,6 +848,7 @@ struct SlackBackend::Write {
         addParam(form, "channel", b.convId(conv));
         addParam(form, "ts", model::formatTs(ts));
         addParam(form, "text", text);
+        addParam(form, "parse", "none"); // as edit(): mrkdwn, not "client"
         if (!blocks.empty())
             addParam(form, "blocks", blocks);
         if (!metadata.empty())
@@ -1276,6 +1277,10 @@ void SlackBackend::editBlocks(ConvRef conv, Ts ts, std::string text, std::string
     addParam(form, "channel", convId(conv));
     addParam(form, "ts", model::formatTs(ts));
     addParam(form, "text", text);
+    // chat.update parses as "client" unless told otherwise, unlike
+    // chat.postMessage: <url|label> would come back escaped, brackets and
+    // all, as typed text (issue #173).
+    addParam(form, "parse", "none");
     // Text without blocks makes chat.update drop the message's blocks, which
     // is right for a plain edit and why a list travels again here.
     if (!blocks.empty())
