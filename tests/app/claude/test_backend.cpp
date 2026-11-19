@@ -3287,8 +3287,18 @@ TEST("backend: sending runs background sessions: start, then stop + resume per t
     CHECK(rig.store.conversation(conv).member);
     CHECK(rig.store.conversation(conv).readOnly.empty());
     rig.load(conv);
+    // Generous: each turn is a few shell processes, slow on a loaded CI
+    // runner. On a miss, what the fake Claude Code was asked to do.
     const auto answered = [&](ConvRef c, std::string_view text) {
-        return rig.wait([&] { return rig.answered(c, text); }, 8000);
+        if (rig.wait([&] { return rig.answered(c, text); }, 20000))
+            return true;
+        std::printf(
+            "  no \"%.*s\"; calls.log:\n%s\n",
+            int(text.size()),
+            text.data(),
+            home.text("calls.log").c_str()
+        );
+        return false;
     };
 
     bool ok1 = false, ok2 = false, ok3 = false;
