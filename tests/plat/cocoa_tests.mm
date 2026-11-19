@@ -335,17 +335,17 @@ void caseFullScreenParksTheToolbar() {
         std::unique_ptr<Window> win = app->createWindow(
             {.title = "plat full screen", .size = {480, 320}, .decorations = Decorations::Custom}
         );
-        auto                   &cw  = static_cast<cocoa::CocoaWindow &>(*win);
-        NSWindow               *w   = cw.window;
-        id<NSWindowDelegate>    d   = (id<NSWindowDelegate>)cw.delegate;
-        NSToolbar              *bar = w.toolbar;
-        const double            h0  = win->titleBarHeight();
+        auto                &cw  = static_cast<cocoa::CocoaWindow &>(*win);
+        NSWindow            *w   = cw.window;
+        id<NSWindowDelegate> d   = (id<NSWindowDelegate>)cw.delegate;
+        NSToolbar           *bar = w.toolbar;
+        const double         h0  = win->titleBarHeight();
         CHECK(bar != nil);
         CHECK(h0 > 0);
         auto note = [&](NSNotificationName name) {
             return [NSNotification notificationWithName:name object:w];
         };
-        auto windowed = [&] { return w.toolbar == bar && win->titleBarHeight() == h0; };
+        auto windowed      = [&] { return w.toolbar == bar && win->titleBarHeight() == h0; };
         // The optional ones: a delegate without them fails the case, not the run.
         auto failedToEnter = [&] {
             const bool has = [d respondsToSelector:@selector(windowDidFailToEnterFullScreen:)];
@@ -417,14 +417,15 @@ void caseFullScreenLeavesSystemDecorationsAlone() {
             skip("no window-server session: " + err);
             return;
         }
-        std::unique_ptr<Window> win = app->createWindow({.title = "plat system", .size = {320, 240}});
-        auto                   &cw  = static_cast<cocoa::CocoaWindow &>(*win);
-        NSWindow               *w   = cw.window;
-        id<NSWindowDelegate>    d   = (id<NSWindowDelegate>)cw.delegate;
+        std::unique_ptr<Window> win =
+            app->createWindow({.title = "plat system", .size = {320, 240}});
+        auto                &cw = static_cast<cocoa::CocoaWindow &>(*win);
+        NSWindow            *w  = cw.window;
+        id<NSWindowDelegate> d  = (id<NSWindowDelegate>)cw.delegate;
         CHECK(w.toolbar == nil);
-        [d windowWillEnterFullScreen:[NSNotification
-                                         notificationWithName:NSWindowWillEnterFullScreenNotification
-                                                       object:w]];
+        [d windowWillEnterFullScreen:
+                [NSNotification notificationWithName:NSWindowWillEnterFullScreenNotification
+                                              object:w]];
         if ([d respondsToSelector:@selector(windowDidFailToEnterFullScreen:)])
             [d windowDidFailToEnterFullScreen:w];
         CHECK(w.toolbar == nil);
@@ -461,16 +462,16 @@ void caseWindowMenuHasOneFullScreenEntry() {
         CHECK(shown == 1);
 
         auto press = [&](NSEventModifierFlags mods) {
-            NSEvent *e = [NSEvent keyEventWithType:NSEventTypeKeyDown
-                                          location:NSZeroPoint
-                                     modifierFlags:mods
-                                         timestamp:0
-                                      windowNumber:w.windowNumber
-                                           context:nil
-                                        characters:@"f"
-                       charactersIgnoringModifiers:@"f"
-                                         isARepeat:NO
-                                           keyCode:3];
+            NSEvent   *e       = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                                  location:NSZeroPoint
+                                             modifierFlags:mods
+                                                 timestamp:0
+                                              windowNumber:w.windowNumber
+                                                   context:nil
+                                                characters:@"f"
+                               charactersIgnoringModifiers:@"f"
+                                                 isARepeat:NO
+                                                   keyCode:3];
             const bool handled = [NSApp.mainMenu performKeyEquivalent:e];
             // However the transition ends, end up windowed for the next one.
             pumpRunLoop(1.5);
@@ -494,10 +495,16 @@ int main() {
     runCase("a TIFF-only picture is offered and read as PNG", caseTiffOnlyPictureReadsAsPng);
     runCase("partial presents keep every frame", casePartialPresentsKeepEveryFrame);
     runCase("drop target: types while hovering, data once on drop", caseDropTargetEvents);
-    runCase("full screen parks the title-bar toolbar and always puts it back",
-            caseFullScreenParksTheToolbar);
-    runCase("full screen leaves a system title bar alone", caseFullScreenLeavesSystemDecorationsAlone);
-    runCase("the Window menu has one full-screen entry and both shortcuts",
-            caseWindowMenuHasOneFullScreenEntry);
+    runCase(
+        "full screen parks the title-bar toolbar and always puts it back",
+        caseFullScreenParksTheToolbar
+    );
+    runCase(
+        "full screen leaves a system title bar alone", caseFullScreenLeavesSystemDecorationsAlone
+    );
+    runCase(
+        "the Window menu has one full-screen entry and both shortcuts",
+        caseWindowMenuHasOneFullScreenEntry
+    );
     return summary();
 }
