@@ -29,7 +29,7 @@
 #include <string>
 #include <thread>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__) // PEOS: no child processes, no rusage
 #include <csignal>
 #include <sys/resource.h>
 #include <spawn.h>
@@ -56,6 +56,21 @@ extern char **environ;
 #include <fstream>
 #include <poll.h>
 #include <thread>
+#endif
+
+#ifdef __PEOS__
+#include "port/port.h"
+
+// The QEMU runner (scripts/peos-qemu-nettests.py) forwards 10.0.2.100:8099
+// (slirp guestfwd) to server.py on the host; a component has no
+// environment to be told so.
+__attribute__((constructor(102))) static void peosNetTestUrl() {
+    if (!std::getenv("NET_TEST_URL"))
+        port_env_set("NET_TEST_URL", "http://10.0.2.100:8099");
+#ifdef MSGA_PEOS_NET_LIVE // the live cases too (a machine with a way out)
+    port_env_set("MSGA_NET_LIVE", "1");
+#endif
+}
 #endif
 
 namespace {
@@ -101,7 +116,7 @@ struct Server {
     int         port = 0;
 };
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__) // PEOS: no child processes, no rusage
 pid_t g_serverPid   = -1;
 int   g_serverStdin = -1;
 
@@ -185,7 +200,7 @@ const Server &server() {
                 out.base.pop_back();
             out.tlsWhy = "NET_TEST_URL is set";
         } else {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__) // PEOS: no child processes, no rusage
             spawnServer(&out);
 #endif
         }
@@ -489,8 +504,19 @@ TEST("posix waitFd: a wake-fd wait blocks without periodic wakeups, aborts at on
 }
 #endif
 
+// A port may not know one ("0 when unknown": PEOS has no app listening
+// sockets on 127.0.0.1); then a port nothing listens on stands in below.
+int refusedPort() {
+    const int p = net::freeLoopbackPort();
+    return p > 0 ? p : 9; // discard: no service on a test machine
+}
+
 TEST("loopback port") {
     const int p = net::freeLoopbackPort();
+#ifdef MSGA_PORT
+    if (p == 0)
+        return skip("loopback port", "the port does not know one");
+#endif
     CHECK(p > 1024 && p < 65536);
 }
 
@@ -911,9 +937,8 @@ TEST("error: dns") {
 }
 
 TEST("error: connection refused") {
-    const int port = net::freeLoopbackPort();
-    REQUIRE(port > 0);
-    const net::Response r = get("http://127.0.0.1:" + std::to_string(port) + "/");
+    const int           port = refusedPort();
+    const net::Response r    = get("http://127.0.0.1:" + std::to_string(port) + "/");
     CHECK(r.status == 0);
     if (!CHECK(startsWith(r.error, "connect")))
         std::fprintf(stderr, "    error: %s\n", r.error.c_str());
@@ -1005,6 +1030,64 @@ TEST("error: cancel wakes a blocked exchange at once") {
         if (!CHECK(returned.load() - at < 100))
             std::fprintf(stderr, "    took %lld ms\n", (long long)(returned.load() - at));
     }
+}
+
+// A cancelled exchange gives its connection up: more hanging requests,
+// cancelled one after another, than a transport keeps connections to one
+// origin (PEOS's http_client: 12), and the next request to that origin
+// (the same kind: the same pool) is still answered at once. A transport
+// that only abandoned them would keep each slot until its answer came.
+TEST("error: cancel frees the connection for the next request") {
+    NEED_SERVER();
+    net::Url slow;
+    REQUIRE(slow.parse(srv.base + "/slow?ms=8000"));
+    for (int i = 0; i < 16; ++i) {
+        net::detail::Cancel  cancel;
+        net::Request         req;
+        net::Response        resp;
+        std::atomic<int64_t> returned{0};
+        req.url = slow.str();
+        base::Thread t;
+        REQUIRE(t.start([&] {
+            net::detail::perform(slow, req, resp, cancel, {});
+            returned.store(msNow());
+        }));
+        pumpFor(80); // connected, the request sent, waiting for the head
+        const int64_t at = msNow();
+        cancel.set();
+        t.join();
+        CHECK_STR(resp.error, "cancelled");
+        if (!CHECK(returned.load() - at < 250))
+            std::fprintf(stderr, "    #%d took %lld ms\n", i, (long long)(returned.load() - at));
+    }
+    net::Url plain;
+    REQUIRE(plain.parse(srv.base + "/plain"));
+    net::detail::Cancel cancel;
+    net::Request        req;
+    net::Response       resp;
+    req.url         = plain.str();
+    const int64_t t = msNow();
+    net::detail::perform(plain, req, resp, cancel, {});
+    const int64_t took = msNow() - t;
+    CHECK_STR(resp.error, "");
+    CHECK_STR(resp.body, "hello world");
+    if (!CHECK(took < 1500))
+        std::fprintf(stderr, "    the next request took %lld ms\n", (long long)took);
+}
+
+// The time limit is the whole exchange's, not each wait's: a body that
+// keeps coming, a piece every 300 ms, still ends at the limit.
+TEST("error: timeout covers a body that keeps coming") {
+    NEED_SERVER();
+    net::Request req;
+    req.url            = srv.base + "/big?n=4000&ms=6000"; // 20 pieces over 6 s
+    req.timeoutMs      = 700;
+    const int64_t t    = msNow();
+    net::Response r    = fetch(req);
+    const int64_t took = msNow() - t;
+    CHECK_STR(r.error, "timeout");
+    if (!CHECK(took < 2500))
+        std::fprintf(stderr, "    took %lld ms\n", (long long)took);
 }
 
 #ifdef NET_TEST_PROCFS
@@ -1353,7 +1436,7 @@ TEST("ws: failures before open") {
     }
     {
         WsProbe p;
-        CHECK_FALSE(p.open("ws://127.0.0.1:" + std::to_string(net::freeLoopbackPort()) + "/"));
+        CHECK_FALSE(p.open("ws://127.0.0.1:" + std::to_string(refusedPort()) + "/"));
         CHECK(p.code == 0);
         CHECK(startsWith(p.reason, "connect"));
     }
@@ -1491,6 +1574,24 @@ TEST("live: wss echo") {
     CHECK(p.code == 1000);
 }
 
+#ifdef __PEOS__
+// The keychain through port_secret_* (peos_secret.c). The test machine has
+// no keychain store (made on the trusted layer with a passphrase): every
+// call must answer at once, never hang on a prompt, and say "absent".
+TEST("peos: secrets without a keychain store") {
+    const int64_t t = msNow();
+    char          buf[16];
+    size_t        len = 0;
+    CHECK(port_secret_read("msga/workspace/T0/auth", buf, sizeof buf, &len) == PORT_E_NOENT);
+    CHECK(port_secret_write("plain-key", "v", 1) != PORT_OK);
+    CHECK(port_secret_remove("msga/workspace/T0/auth") == PORT_OK);
+    CHECK(port_secret_write("k", nullptr, 0) == PORT_OK); // empty: a remove
+    char big[300] = {};
+    CHECK(port_secret_write("k", big, sizeof big) == PORT_E_RANGE);
+    CHECK(msNow() - t < 10000);
+}
+#endif
+
 // NET_PROBE_URL=<url>: fetch it and print the outcome (for poking at a
 // server by hand: `msga_net_tests probe`).
 TEST("probe: NET_PROBE_URL") {
@@ -1506,7 +1607,7 @@ TEST("probe: NET_PROBE_URL") {
         r.error.c_str(),
         r.body.size()
     );
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PEOS__) // PEOS: no child processes, no rusage
     rusage ru{};
     getrusage(RUSAGE_SELF, &ru);
     std::fprintf(stderr, "  peak RSS %ld KB\n", ru.ru_maxrss);
