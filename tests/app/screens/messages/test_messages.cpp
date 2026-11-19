@@ -1103,7 +1103,12 @@ TEST("actions: one-click reactions go in my skin tone and find mine under any to
     pump(4);
     // The message the toolbar is on (the hover, whichever row it found).
     REQUIRE(e.list->toolbarRow() != nullptr);
-    const Ts  ts  = e.list->toolbarRow()->ts();
+    const Ts ts = e.list->toolbarRow()->ts();
+    // Which row that is depends on the day (the fixture is relative to now,
+    // dividers move): start it with none of mine.
+    for (const model::Reaction r : e.store.findMessage(design, ts)->reactions)
+        if (e.store.reactedByMe(r))
+            e.store.setReaction(design, ts, r.name, e.store.me, false);
     ui::View *bar = e.list->quickReactionBar();
     REQUIRE(bar->visible());
     REQUIRE(bar->childCount() == 3);
