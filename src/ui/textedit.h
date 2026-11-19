@@ -63,6 +63,12 @@ public:
     // A link that is a raw Slack token ("<@U…>", "<#C…|name>", a GIF's
     // "<url|label>"): drawn as a pill on the link background, not as a link.
     static bool pillLink(std::string_view url);
+    // The link covering byte `offset`: its URL, and its byte range in text().
+    // False when that byte is in no link.
+    bool        linkAt(uint32_t offset, std::string_view *url, uint32_t *from, uint32_t *to) const;
+    // Where a byte range is drawn, in window coordinates (the first line it
+    // touches): what an owner anchors a chip to.
+    RectF       rangeRect(uint32_t from, uint32_t to) const;
 
     // ── Behaviour ───────────────────────────────────────────────────────────
     void setPlaceholder(std::string s);
@@ -85,9 +91,17 @@ public:
     // Every KeyDown first: return true to consume (mention popup navigation,
     // Up in an empty composer to edit the last message, …).
     std::function<bool(const Event &)> onKey;
-    std::function<void()>              onChange;          // text or formats changed
-    std::function<void()>              onSelectionChange; // caret/selection moved
-    std::function<void(bool focused)>  onFocusChange;
+    // The pointer over a plain link (a pill never), or off one: `url` empty.
+    struct LinkHover {
+        std::string url;
+        uint32_t    from = 0, to = 0; // its byte range in text()
+        RectF       rect;             // its first line, window coordinates
+    };
+
+    std::function<void()>                  onChange;          // text or formats changed
+    std::function<void()>                  onSelectionChange; // caret/selection moved
+    std::function<void(bool focused)>      onFocusChange;
+    std::function<void(const LinkHover &)> onLinkHover; // the chip the composer shows
     // Before a paste inserts text: the clipboard's MIME types (plat's
     // normalised names) and which clipboard (Primary: a middle click on
     // Linux). Return true when the owner takes the paste (files, a picture:
@@ -146,7 +160,7 @@ public:
     void        layout() override;
     void        paint(gfx::Painter &p) override;
     bool        onEvent(Event &e) override;
-    uint8_t     cursorAt(PointF) const override { return uint8_t(plat::Cursor::IBeam); }
+    uint8_t     cursorAt(PointF) const override; // a hand over links
     void        styleChanged() override;
     void        windowChanged() override;
     std::string accessibleName() const override { return _placeholder; }
@@ -175,6 +189,8 @@ private:
     void     moveTo(uint32_t caret, bool extend);
     void     contentChanged();
     void     selectionChanged();
+    void     updateLinkHover(PointF local);
+    void     clearLinkHover();
     void     ensureCaretVisible();
     void     updateIme();
     void     startBlink();
@@ -262,8 +278,10 @@ private:
     bool                          _typingSet = false, _caretOn = true, _dragging = false;
     bool                          _caretTyped = false; // the caret last moved by an edit
     bool                          _masked = false, _plainPaste = false;
-    bool                          _pasting    = false; // a paste's text is going in
-    bool                          _parasDirty = true;  // a layout to build or tops to place
+    bool                          _pasting   = false; // a paste's text is going in
+    bool                          _hoverLink = false; // the pointer is on a plain link
+    uint32_t                      _hoverFrom = 0, _hoverTo = 0;
+    bool                          _parasDirty = true; // a layout to build or tops to place
     bool                          _wavesValid = false;
     C                             _linkBg     = C::None;
 };

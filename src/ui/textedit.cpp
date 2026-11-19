@@ -843,8 +843,88 @@ void TextEdit::setLink(std::string url) {
     replace(a, b, same, nf.data(), 0, EditKind::Format);
 }
 
+// ── Links the pointer is on ────────────────────────────────────────────────
+
+void TextEdit::updateLinkHover(PointF local) {
+    std::string_view url;
+    uint32_t         from = 0, to = 0;
+    // A pill (a mention, a channel, a GIF) is no link to open or edit.
+    const bool       link = linkAt(hitOffset(local), &url, &from, &to) && !pillLink(url);
+    if (link == _hoverLink && from == _hoverFrom && to == _hoverTo)
+        return;
+    _hoverLink = link;
+    _hoverFrom = link ? from : 0;
+    _hoverTo   = link ? to : 0;
+    if (onLinkHover) {
+        LinkHover h;
+        if (link) {
+            h.url  = std::string(url);
+            h.from = from;
+            h.to   = to;
+            h.rect = rangeRect(from, to);
+        }
+        onLinkHover(h);
+    }
+}
+
+uint8_t TextEdit::cursorAt(PointF) const {
+    return _hoverLink ? uint8_t(plat::Cursor::Hand) : uint8_t(plat::Cursor::IBeam);
+}
+
+void TextEdit::clearLinkHover() {
+    if (!_hoverLink)
+        return;
+    _hoverLink = false;
+    _hoverFrom = _hoverTo = 0;
+    if (onLinkHover)
+        onLinkHover(LinkHover{});
+}
+
 bool TextEdit::pillLink(std::string_view url) {
     return !url.empty() && (url[0] == '<' || url[0] == '@' || url[0] == '#' || url[0] == '!');
+}
+
+bool TextEdit::linkAt(uint32_t offset, std::string_view *url, uint32_t *from, uint32_t *to) const {
+    if (_links.empty()) // the common case: no runs to walk
+        return false;
+    for (const Run &r : runs()) {
+        if (r.link.empty() || offset < r.start || offset >= r.end)
+            continue;
+        if (url)
+            *url = r.link;
+        if (from)
+            *from = r.start;
+        if (to)
+            *to = r.end;
+        return true;
+    }
+    return false;
+}
+
+RectF TextEdit::rangeRect(uint32_t from, uint32_t to) const {
+    const_cast<TextEdit *>(this)->currentLayout();
+    const Style             &s = currentStyle();
+    const std::vector<RectF> lines =
+        docSelectionRects(toDisplay(std::min(from, to)), toDisplay(std::max(from, to)));
+    RectF r;
+    if (lines.empty()) {
+        r = docCaretRect(toDisplay(std::min(from, to)));
+    } else { // the first line the range touches, all of it
+        r = lines.front();
+        for (size_t i = 1; i < lines.size() && lines[i].y == r.y; ++i) {
+            const float right = std::max(r.x + r.w, lines[i].x + lines[i].w);
+            r.x               = std::min(r.x, lines[i].x);
+            r.w               = right - r.x;
+        }
+    }
+    r.x += s.pad.l;
+    r.y += s.pad.t - _scrollY;
+    if (r.h <= 0)
+        r.h = lineHeight();
+    if (!window()) // not shown: local is all there is
+        return r;
+    const PointF o = mapToWindow({r.x, r.y});
+    return {o.x, o.y, r.w, r.h};
 }
 
 void TextEdit::setPlaceholder(std::string s) {
@@ -1329,8 +1409,10 @@ bool TextEdit::onEvent(Event &e) {
         return true;
     }
     case EventType::PointerMove:
-        if (!_dragging)
+        if (!_dragging) {
+            updateLinkHover(e.pos);
             return false;
+        }
         {
             const uint32_t o = hitOffset(e.pos);
             if (_selMode == 0) {
@@ -1358,6 +1440,9 @@ bool TextEdit::onEvent(Event &e) {
         _dragging = false;
         setPrimarySelection();
         return true;
+    case EventType::PointerLeave:
+        clearLinkHover();
+        return false;
     case EventType::Scroll: {
         const Style &s = currentStyle();
         currentLayout();

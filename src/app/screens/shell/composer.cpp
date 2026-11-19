@@ -579,7 +579,8 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
         // edit: nothing below cares, and linkify() must not see itself.
         if (_linkifying)
             return;
-        linkify(); // a typed or pasted URL is a link here too
+        closeLinkChip(); // the text moved under it
+        linkify();       // a typed or pasted URL is a link here too
         finishSmiley();
         typing();
         refreshLook();
@@ -591,14 +592,24 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
     _edit->onSelectionChange = [this] {
         if (_linkifying) // linkify() walks the text: not the user's caret
             return;
+        closeLinkChip(); // the caret went elsewhere
         updatePickList();
     };
     _edit->onPasteMedia = [this](const std::vector<std::string> &m, plat::Selection sel) {
         return pasteMedia(m, sel);
     };
-    _edit->onFocusChange = [this](bool) { refreshLook(); };
+    _edit->onFocusChange = [this](bool on) {
+        // The chip's buttons take the focus off the editor for the click that
+        // is coming: that is no reason to close it.
+        Window *w       = window();
+        View   *focused = w ? w->focusView() : nullptr;
+        if (!on && !(_linkChip && focused && _linkChip->isAncestorOf(focused)))
+            closeLinkChip();
+        refreshLook();
+    };
+    _edit->onLinkHover = [this](const TextEdit::LinkHover &h) { linkHovered(h); };
     // Enter is the table's (SendMessage/NewLine), not TextEdit's onSubmit.
-    _edit->onKey         = [this](const Event &e) {
+    _edit->onKey       = [this](const Event &e) {
         // Push-to-talk: letting go of the voice shortcut's key after holding
         // it stops the recording; a quick tap leaves it running (toggle).
         // Auto-repeat releases are the key still being held.
@@ -694,6 +705,7 @@ Composer::~Composer() {
     }
     stashNow();
     withdrawUndo();
+    closeLinkChip();
     spell::Checker::instance().unobserve(_spellObserver);
     _ctx.app.cancelTimer(_spellTimer);
 }
@@ -1303,6 +1315,7 @@ void Composer::setTarget(model::ConvRef conv, model::Ts thread) {
     stashNow();
     if (_pick)
         _pick->close();
+    closeLinkChip();
     resetPromptHistory();
     if (_historySearch)
         _historySearch->dismiss();
@@ -2121,6 +2134,129 @@ void Composer::linkify() {
     _linkifying = false;
     if (changed)
         _edit->setSelection(caret, caret);
+}
+
+void Composer::linkHovered(const TextEdit::LinkHover &h) {
+    if (h.url.empty()) { // off the link: the chip's own leave decides
+        if (_linkChip)
+            armLinkChipClose();
+        return;
+    }
+    _ctx.app.cancelTimer(_linkChipTimer); // the pointer is back on it
+    _linkChipTimer = 0;
+    if (_linkChip && _linkChipUrl == h.url && _linkChipFrom == h.from && _linkChipTo == h.to) {
+        _linkChip->setAnchor(h.rect, Popup::Place::Below);
+        return;
+    }
+    openLinkChip(h);
+}
+
+void Composer::openLinkChip(const TextEdit::LinkHover &h) {
+    Window *w = window();
+    if (!w)
+        return;
+    closeLinkChip();
+    _linkChipUrl            = h.url;
+    _linkChipFrom           = h.from;
+    _linkChipTo             = h.to;
+    const uint32_t     from = h.from, to = h.to;
+    std::weak_ptr<int> alive = _alive;
+    _linkChip                = showLinkChip(
+        *w,
+        h.rect,
+        h.url,
+        [this, alive, from, to] { // Edit
+            if (alive.expired())
+                return;
+            editLink(from, to);
+        },
+        [this, alive, from, to] { // Unlink
+            if (alive.expired())
+                return;
+            unlinkLink(from, to);
+        },
+        [this] { // the pointer came back: the close was too eager
+            _ctx.app.cancelTimer(_linkChipTimer);
+            _linkChipTimer = 0;
+        },
+        [this] { // off the chip; the link's own leave may have said so already
+            armLinkChipClose();
+        }
+    );
+    _linkChip->onClosed = [this] {
+        _linkChip = nullptr;
+        _ctx.app.cancelTimer(_linkChipTimer);
+        _linkChipTimer = 0;
+    };
+}
+
+void Composer::closeLinkChip() {
+    _ctx.app.cancelTimer(_linkChipTimer);
+    _linkChipTimer = 0;
+    if (_linkChip) {
+        LinkChip *c = _linkChip;
+        _linkChip   = nullptr;
+        c->onClosed = nullptr;
+        c->close();
+    }
+    _linkChipUrl.clear();
+    _linkChipFrom = _linkChipTo = 0;
+}
+
+void Composer::armLinkChipClose() {
+    _ctx.app.cancelTimer(_linkChipTimer);
+    _linkChipTimer = _ctx.app.addTimer(200, false, [this] {
+        _linkChipTimer = 0;
+        // Over the chip itself it stays; the chip says when the pointer leaves.
+        Window *w      = window();
+        if (_linkChip && w && _linkChip->windowRect().contains(w->pointerPos()))
+            return;
+        closeLinkChip();
+    });
+}
+
+void Composer::editLink(uint32_t from, uint32_t to) {
+    Window *w = window();
+    if (!w)
+        return;
+    std::string_view url;
+    uint32_t         a = from, b = to;
+    if (!_edit->linkAt(from, &url, &a, &b))
+        return;
+    const std::string target(url);
+    // The label is the text over the link; the URL its own when they match.
+    const std::string label = _edit->text().substr(a, b - a);
+    closeLinkChip();
+    std::weak_ptr<int> alive = _alive;
+    showLinkPopup(
+        *w,
+        _edit->rangeRect(a, b),
+        label == target ? std::string() : label,
+        [this, alive, a, b](const std::string &u, const std::string &l) {
+            if (alive.expired())
+                return;
+            placeLink(a, b, u, l);
+            _edit->focus();
+        },
+        target
+    );
+}
+
+void Composer::unlinkLink(uint32_t from, uint32_t to) {
+    std::string_view url;
+    uint32_t         a = from, b = to;
+    if (!_edit->linkAt(from, &url, &a, &b))
+        return;
+    closeLinkChip();
+    const uint32_t caret = _edit->caret(), anchor = _edit->anchor();
+    _edit->setSelection(a, b);
+    // The link goes; the text, a bare URL again, stays as it is (linkify()
+    // would tie it right back).
+    _linkifying = true;
+    _edit->setLink({});
+    _linkifying = false;
+    _edit->setSelection(anchor, caret);
+    _edit->focus();
 }
 
 void Composer::openSchedule() {

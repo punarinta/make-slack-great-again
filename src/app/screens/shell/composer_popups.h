@@ -96,6 +96,38 @@ ui::Popup *showLinkPopup(
     std::string                                                           url = {}
 );
 
+// The chip a link under the pointer carries: the URL, Edit and Unlink.
+// Non-modal (the editor keeps the keyboard). It keeps itself open while the
+// pointer moves between it and the link, and closes once it leaves both
+// (onLeave; onEnter: the pointer came back), so the two don't blink apart.
+class LinkChip final : public ui::Popup {
+public:
+    LinkChip(
+        std::string           url,
+        std::function<void()> onEdit,
+        std::function<void()> onUnlink,
+        std::function<void()> onEnter,
+        std::function<void()> onLeave
+    );
+    bool onEvent(ui::Event &e) override;
+
+private:
+    std::function<void()> _enter, _leave;
+};
+
+// Shows `url`'s chip beside `anchor` (the link's first line). The chip is the
+// caller's to close; the callbacks say the pointer came back (onEnter) or
+// went (onLeave) so the owner can keep or close it.
+LinkChip *showLinkChip(
+    ui::Window           &w,
+    ui::RectF             anchor,
+    std::string           url,
+    std::function<void()> onEdit,
+    std::function<void()> onUnlink,
+    std::function<void()> onEnter,
+    std::function<void()> onLeave
+);
+
 // "Send at" a local date and time (an hour from now), Cancel / Schedule.
 ui::Popup *showSchedulePopup(ui::Window &w, ui::RectF anchor, std::function<void(int64_t)> done);
 

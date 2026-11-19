@@ -162,8 +162,22 @@ TEST("textedit: copy puts text and html on the clipboard; paste keeps formats") 
     CHECK_STR(t.edit->text(), "");
 }
 
-TEST("textedit: pillLink tells a pill from a link") {
+TEST("textedit: linkAt reads the link over a byte, pillLink tells a pill") {
     EditWin t;
+    t.edit->setText("hi @Ada see https://x.test");
+    t.edit->setSelection(0, 7);
+    t.edit->setLink("@U0ADA"); // a mention's raw token
+    t.edit->setSelection(12, 26);
+    t.edit->setLink("https://x.test");
+    std::string_view url;
+    uint32_t         from = 0, to = 0;
+    CHECK(t.edit->linkAt(3, &url, &from, &to));
+    CHECK_STR(url, "@U0ADA");
+    CHECK(from == 0 && to == 7);
+    CHECK(t.edit->linkAt(13, &url, &from, &to));
+    CHECK_STR(url, "https://x.test");
+    CHECK(from == 12 && to == 26);
+    CHECK_FALSE(t.edit->linkAt(9, &url, &from, &to)); // the gap
     CHECK(ui::TextEdit::pillLink("@U0ADA"));
     CHECK(ui::TextEdit::pillLink("<#C0ENG|eng>"));
     CHECK(ui::TextEdit::pillLink("<https://x.test/g.gif|GIF \xC2\xB7 cat>")); // a GIF pill

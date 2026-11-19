@@ -219,6 +219,14 @@ ui::Button *namedButton(ui::View *v, std::string_view name) {
     return found.size() == 1 ? static_cast<ui::Button *>(found[0]) : nullptr;
 }
 
+// The window point in the middle of the caret's line at `offset`.
+plat::Point pointAt(TextEdit &edit, uint32_t offset) {
+    edit.setSelection(offset, offset);
+    const ui::RectF  r = edit.caretRect();
+    const ui::PointF w = edit.mapToWindow({r.x + 2, r.y + r.h / 2});
+    return {w.x, w.y};
+}
+
 } // namespace
 
 TEST("composer: a typed URL is a link once its word ends") {
@@ -288,6 +296,71 @@ TEST("composer: the Link button makes a link, not a token") {
     CHECK_STR(linkAt(edit, 4), "https://x.test/docs");
     CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/docs|the docs>");
     CHECK(edit.caret() == edit.text().size());
+}
+
+TEST("composer: a chip on a link unlinks it, keeping the text") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p now");
+    pump();
+    REQUIRE(linkAt(edit, 6) == "https://x.test/p");
+    REQUIRE(app().platform().testHooks()->injectPointerMove(h.win->native(), pointAt(edit, 8)));
+    pump();
+    shell::LinkChip *chip = h.sh->composer().linkChip();
+    REQUIRE(chip != nullptr);
+    // Onto the chip itself: it stays (the pointer moving off the link has to
+    // cross the gap between them), and a click on Unlink lands.
+    ui::Button *unlink = namedButton(chip, "Unlink");
+    REQUIRE(unlink != nullptr);
+    const ui::RectF  r     = unlink->windowRect();
+    plat::TestHooks *hooks = app().platform().testHooks();
+    hooks->injectPointerMove(h.win->native(), {r.x + r.w / 2, r.y + r.h / 2});
+    pump(20);
+    CHECK(h.sh->composer().linkChip() == chip);
+    hooks->injectButton(h.win->native(), plat::Button::Left, true);
+    hooks->injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    CHECK(h.sh->composer().linkChip() == nullptr);
+    CHECK(linkAt(edit, 6).empty());
+    CHECK_STR(edit.text(), "see https://x.test/p now");
+    // Off the link (no pointer on it any more) nothing comes back.
+    pump();
+    CHECK(h.sh->composer().linkChip() == nullptr);
+}
+
+TEST("composer: the chip's Edit changes a link's URL, keeping its label") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see the docs");
+    edit.setSelection(4, 12);
+    edit.setLink("https://x.test/docs");
+    pump();
+    REQUIRE(app().platform().testHooks()->injectPointerMove(h.win->native(), pointAt(edit, 5)));
+    pump();
+    shell::LinkChip *chip = h.sh->composer().linkChip();
+    REQUIRE(chip != nullptr);
+    ui::Button *editBtn = namedButton(chip, "Edit");
+    REQUIRE(editBtn != nullptr);
+    editBtn->onClick(); // closes the chip, opens the popup
+    pump();
+    CHECK(h.sh->composer().linkChip() == nullptr);
+    ui::Popup *popup = h.win->topPopup();
+    REQUIRE(popup != nullptr);
+    std::vector<TextEdit *> fields;
+    findTextEdits(popup, &fields);
+    REQUIRE(fields.size() == 2);
+    CHECK_STR(fields[0]->text(), "https://x.test/docs"); // the URL, to replace
+    CHECK_STR(fields[1]->text(), "the docs");
+    fields[0]->setText("https://y.test/plan");
+    ui::Button *insert = namedButton(popup, "Insert");
+    REQUIRE(insert != nullptr);
+    insert->onClick();
+    pump();
+    CHECK_STR(edit.text(), "see the docs");
+    CHECK_STR(linkAt(edit, 4), "https://y.test/plan");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://y.test/plan|the docs>");
 }
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────

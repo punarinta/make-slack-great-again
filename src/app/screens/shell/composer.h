@@ -8,7 +8,8 @@
 // from the popups are pills that show "@Name" / "#name" / "GIF · title" and
 // send their raw token. A link is a link in the editor too: a typed or pasted
 // URL and a selection the Link button is given both make one (blue,
-// underlined, "<url|label>" on the way out, never a token in the text).
+// underlined, "<url|label>" on the way out, never a token in the text), and a
+// chip on hover edits or unlinks it.
 //
 // Draft invariant (the composer draft stash): whatever is typed — text and
 // attached files — is stashed per (conversation, thread) on EVERY path that
@@ -197,7 +198,8 @@ public:
     void      openGif();
     void      openLinkPopup();
     void      openSchedule();
-    PickList *pickList() const { return _pick; } // the open @ / # / : list
+    PickList *pickList() const { return _pick; }     // the open @ / # / : list
+    LinkChip *linkChip() const { return _linkChip; } // the hovered link's chip
     // Re-reads the trigger before the caret: opens, filters or closes the pick list.
     void      updatePickList();
     // Tests: user labels folded into the @ filter's cache so far (each one
@@ -304,6 +306,14 @@ private:
     // link before the message is sent (as Slack's does). Skipped while a link
     // change of the owner's is in flight.
     void linkify();
+    // The pointer on a link, off one (``url`` empty), or the chip's Edit /
+    // Unlink: the chip's lifecycle is the composer's.
+    void linkHovered(const ui::TextEdit::LinkHover &h);
+    void editLink(uint32_t from, uint32_t to);
+    void unlinkLink(uint32_t from, uint32_t to);
+    void openLinkChip(const ui::TextEdit::LinkHover &h);
+    void closeLinkChip();
+    void armLinkChipClose(); // in a moment, unless the pointer is on the chip
     void pick(const PickList::Item &it);
     void typing();
     void finishSmiley();                // a smiley the word just ended becomes its emoji
@@ -420,6 +430,12 @@ private:
     bool                     _active        = false; // something to send
     bool                     _inPick        = false; // updatePickList probing the caret
     plat::TimerId            _spellTimer    = 0;
+    // The chip of the link under the pointer, its link, and the timer that
+    // closes it once the pointer is off both it and the link.
+    LinkChip                *_linkChip      = nullptr;
+    plat::TimerId            _linkChipTimer = 0;
+    std::string              _linkChipUrl;
+    uint32_t                 _linkChipFrom = 0, _linkChipTo = 0;
     bool                     _linkifying    = false; // a link change that is no edit
     uint32_t                 _spellSeq      = 0;     // the newest check; older answers are dropped
     uint32_t                 _spellObserver = 0;

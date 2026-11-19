@@ -435,6 +435,79 @@ Popup *showLinkPopup(
     return p;
 }
 
+// ── The link chip ───────────────────────────────────────────────────────────
+
+namespace {
+
+// A URL as much as the chip shows: 56 code points, then an ellipsis.
+std::string chipUrl(std::string url) {
+    constexpr size_t kMax = 56;
+    if (utf8::countCodePoints(url) <= kMax)
+        return url;
+    return url.substr(0, utf8::prefixBytes(url, kMax)) + "\xE2\x80\xA6";
+}
+
+} // namespace
+
+LinkChip::LinkChip(
+    std::string           url,
+    std::function<void()> onEdit,
+    std::function<void()> onUnlink,
+    std::function<void()> onEnter,
+    std::function<void()> onLeave
+)
+    : _enter(std::move(onEnter)), _leave(std::move(onLeave)) {
+    setModal(false); // the editor keeps the keyboard
+    setCard(false);
+    card(this, 6);
+    style().padding(8).spacing(8);
+    auto *row = add<View>();
+    row->style().row().spacing(8).items(Align::Center);
+    row->add<Label>(chipUrl(std::move(url)), Font::Small, C::FormTextMuted);
+    auto *edit    = row->add<Button>(tr("Edit"), Button::Kind::Secondary, Button::Form::Small);
+    edit->onClick = [this, onEdit] {
+        close();
+        if (onEdit)
+            onEdit();
+    };
+    auto *unlink    = row->add<Button>(tr("Unlink"), Button::Kind::Secondary, Button::Form::Small);
+    unlink->onClick = [this, onUnlink] {
+        close();
+        if (onUnlink)
+            onUnlink();
+    };
+}
+
+bool LinkChip::onEvent(Event &e) {
+    if (e.type == EventType::PointerEnter && _enter) {
+        _enter();
+    } else if (e.type == EventType::PointerLeave && _leave) {
+        _leave();
+    }
+    return Popup::onEvent(e);
+}
+
+LinkChip *showLinkChip(
+    Window               &w,
+    RectF                 anchor,
+    std::string           url,
+    std::function<void()> onEdit,
+    std::function<void()> onUnlink,
+    std::function<void()> onEnter,
+    std::function<void()> onLeave
+) {
+    auto *c = new LinkChip(
+        std::move(url),
+        std::move(onEdit),
+        std::move(onUnlink),
+        std::move(onEnter),
+        std::move(onLeave)
+    );
+    c->setAnchor(anchor, Popup::Place::Below);
+    w.showPopup(std::unique_ptr<Popup>(c));
+    return c;
+}
+
 // ── Schedule popup ──────────────────────────────────────────────────────────
 
 Popup *showSchedulePopup(Window &w, RectF anchor, std::function<void(int64_t)> done) {
