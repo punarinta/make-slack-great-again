@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <mutex>
 
 namespace net {
 
@@ -167,7 +166,7 @@ struct Client::Impl : std::enable_shared_from_this<Client::Impl> {
 
     // Shared with the workers. The queue is ours, not the pool's, so that
     // cancel() can take a request out: a worker takes the oldest per task.
-    std::mutex       mutex;
+    base::Mutex      mutex;
     std::vector<Job> queue;
     bool             stopping = false;
     base::WorkerPool pool;
@@ -258,7 +257,7 @@ void Client::Impl::forget(Pending *p) {
 void Client::Impl::runNext() {
     Job job;
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        base::Lock lock(mutex);
         if (stopping || queue.empty())
             return; // cancelled meanwhile: its task has nothing to do
         job = std::move(queue.front());
@@ -366,7 +365,7 @@ void Client::Impl::run(Job &job) {
 void Client::Impl::report(RequestId id, int64_t received, int64_t total) {
     std::weak_ptr<Impl> weak = weak_from_this();
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        base::Lock lock(mutex);
         if (stopping)
             return;
     }
@@ -386,7 +385,7 @@ void Client::Impl::report(RequestId id, int64_t received, int64_t total) {
 void Client::Impl::deliver(RequestId id, Response resp) {
     std::weak_ptr<Impl> weak = weak_from_this();
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        base::Lock lock(mutex);
         if (stopping)
             return; // the destructor is waiting for us; nothing to deliver to
     }
@@ -419,7 +418,7 @@ Client::Client(plat::App &app) : _impl(std::make_shared<Impl>(app)) {
 
 Client::~Client() {
     {
-        std::lock_guard<std::mutex> lock(_impl->mutex);
+        base::Lock lock(_impl->mutex);
         _impl->stopping = true;
         for (auto &p : _impl->pending)
             p.flag->set();
@@ -441,7 +440,7 @@ RequestId Client::send(Request req, std::function<void(Response)> done) {
     d.pending.push_back({id, std::move(done), flag, std::move(req.onProgress)});
     req.onProgress = nullptr;
     {
-        std::lock_guard<std::mutex> lock(d.mutex);
+        base::Lock lock(d.mutex);
         d.queue.push_back({id, std::move(req), flag, progress});
     }
     Impl *raw = &d; // the destructor joins every worker before Impl goes
@@ -459,7 +458,7 @@ void Client::cancel(RequestId id) {
     Impl::Pending gone = std::move(*p);
     d.forget(p);
     // Still queued: it goes now (run() would skip it anyway).
-    std::lock_guard<std::mutex> lock(d.mutex);
+    base::Lock lock(d.mutex);
     for (auto q = d.queue.begin(); q != d.queue.end(); ++q)
         if (q->id == id) {
             d.queue.erase(q);

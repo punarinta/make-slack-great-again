@@ -664,7 +664,8 @@ TEST("slack cache: mutes set here before Slack's list was read stay, and only he
         CHECK(e.c("C1").muted);
         const int gets = count("users.prefs.get");
         e.be->setMuted(e.conv("C1"), false);
-        REQUIRE(pumpUntil([&] { return count("users.prefs.get") == gets + 1; }, 3000));
+        // The unmute's read (another of the connect's own may land too).
+        REQUIRE(pumpUntil([&] { return count("users.prefs.get") > gets; }, 5000));
         fakeslack::pumpFor(150);
         CHECK(!e.c("C1").muted);
         CHECK(count("users.prefs.set") == 0);

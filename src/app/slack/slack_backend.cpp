@@ -63,6 +63,8 @@ constexpr int64_t     kSavedGapMs             = 5 * 60'000; // kRemindersRefresh
 constexpr int64_t     kScheduledGapMs         = 5 * 60'000; // ones scheduled elsewhere
 constexpr int64_t     kScheduledSentSlackMs   = 15'000;     // re-list this long after one is due
 constexpr int64_t     kUsersRefreshGapMs      = 24 * 60 * 60'000;
+// Ended statuses (status_expiration): no request, only the Store's clock.
+constexpr int64_t     kStatusSweepGapMs       = 30'000;
 // A VIP list edited in another client (no realtime event reaches a session
 // workspace): rarely changed, so slower than stars and sections.
 constexpr int64_t     kVipsGapMs              = 15 * 60'000;
@@ -81,6 +83,12 @@ constexpr const char *kSubThreadReplies = "10";
 // Lost connections and gateway pages: 10 tries back off 0, 1, 2 … 60 s, about
 // four minutes in all (bounded, so a long outage surfaces as an error).
 constexpr int         kMaxUserReprobes = 20, kMaxTransientRetries = 6, kMaxTransportRetries = 10;
+// Slack Connect DM partners: no user_change ever reaches us for them, and
+// calendar statuses switch on the hour and half hour. Their profiles are read
+// again a minute past each (wall clock), up to this many per pass (the
+// longest unread first) on their own budget.
+constexpr int         kMaxPartnerReprobes = 50;
+constexpr int64_t     kReprobeSlotSecs = 30 * 60, kReprobeSlotLagSecs = 60;
 constexpr const char *kHistoryLimit            = "50";
 constexpr int64_t     kRateLimitNoticeGapMs    = 15'000;
 // A reminder more than a week overdue is marked fired without a
@@ -290,7 +298,9 @@ struct SlackBackend::Read {
     void fetchUserIfNeeded(UserRef u);
     void fetchMissingDmUsers();
     void resolveAuthors(const std::vector<model::Message> &page);
-    void reprobeOffRoster();
+    // `partners`: the half-hourly pass, DM partners too (see
+    // kMaxPartnerReprobes); otherwise only the daily refresh.
+    void reprobeOffRoster(bool partners = false);
     void requestPresence(UserRef u, bool background);
     void pollDmPresence();
     void refreshSelfPresence(std::function<void()> then = {});
@@ -354,7 +364,9 @@ struct SlackBackend::Read {
     Ts              openThread = 0;
     int64_t         lastRoster = 0, lastCounts = 0, lastThreads = 0, lastFg = 0, lastBg = 0;
     int64_t         lastPresence = 0, lastSelf = 0, lastStarred = 0, lastSaved = 0, lastUsers = 0;
-    bool            visible = true; // the window shows (setWindowVisible)
+    int64_t         lastStatusSweep = 0;
+    bool            visible         = true; // the window shows (setWindowVisible)
+    int64_t         reprobeSlot     = -1;   // the half hour of the last partner re-probe
     // By ConvRef (0: none yet): the newest ts a poll saw (baselineOf), and
     // the revision of the last poll that landed.
     std::vector<Ts> pollBaseline;
@@ -1650,23 +1662,37 @@ void SlackBackend::Read::resolveAuthors(const std::vector<model::Message> &page)
     }
 }
 
-// Users known only through users.info get a
-// daily refresh, oldest first, capped per pass, on the paced lane.
-void SlackBackend::Read::reprobeOffRoster() {
-    const int64_t                                t = now();
-    std::vector<std::pair<int64_t, std::string>> due;
+// Users known only through users.info (Slack Connect peers are never in
+// users.list) get a daily refresh, oldest first, capped per pass, on the
+// paced lane; DM partners among them, with `partners`, a half-hourly one on
+// a budget of their own.
+void SlackBackend::Read::reprobeOffRoster(bool partners) {
+    const int64_t                   t = now();
+    std::unordered_set<std::string> dmPeers;
+    if (partners)
+        for (ConvRef r = 0; r < s.conversationCount(); ++r) {
+            const model::Conversation &c = s.conversation(r);
+            if (c.kind == model::ConvKind::Dm && c.dmUser != kNoUser && c.dmUser != s.me)
+                dmPeers.insert(s.user(c.dmUser).id);
+        }
+    std::vector<std::pair<int64_t, std::string>> due, peers;
     for (const std::string &id : offRoster) {
         if (!hasUserIdPrefix(id) || mapjson::isSlackSystemUser(id) || pendingUsers.count(id))
             continue;
         const auto    it   = probedAt.find(id);
         const int64_t last = it == probedAt.end() ? 0 : it->second;
-        if (it != probedAt.end() && t - last < kUsersRefreshGapMs)
-            continue;
-        due.emplace_back(last, id);
+        if (dmPeers.count(id))
+            peers.emplace_back(last, id);
+        else if (it == probedAt.end() || t - last >= kUsersRefreshGapMs)
+            due.emplace_back(last, id);
     }
     std::sort(due.begin(), due.end());
     if (due.size() > size_t(kMaxUserReprobes))
         due.resize(kMaxUserReprobes);
+    std::sort(peers.begin(), peers.end());
+    if (peers.size() > size_t(kMaxPartnerReprobes))
+        peers.resize(kMaxPartnerReprobes);
+    due.insert(due.end(), peers.begin(), peers.end());
     if (!due.empty())
         extrasChanged();
     for (const auto &[last, id] : due) {
@@ -1730,6 +1756,15 @@ void SlackBackend::Read::pollDmPresence() {
     std::sort(dms.begin(), dms.end(), [](const auto &a, const auto &b) {
         return a.first > b.first;
     });
+    // Partners users.getPresence won't answer for (Slack Connect): the
+    // presence link streams theirs (session workspaces holding it).
+    std::vector<std::string> subs;
+    for (const auto &[ts, ref] : dms) {
+        const model::User &u = s.user(ref);
+        if (!u.bot && (offRoster.count(u.id) || presenceUnavailable.count(u.id)))
+            subs.push_back(u.id);
+    }
+    b.subscribePresence(std::move(subs));
     const size_t n = dms.size(), hot = std::min<size_t>(kPresenceHot, n);
     for (size_t i = 0; i < hot; ++i)
         requestPresence(dms[i].second, true);
@@ -2728,6 +2763,23 @@ void SlackBackend::Read::tick() {
         // without it nobody gets a name, so again at the roster cadence.
         lastUsers = t;
         loadUsers([](const std::string &) {});
+    }
+    // (2c) Statuses whose end passed: Slack clears them silently for anyone
+    // whose user_change never reaches us (Slack Connect).
+    if (t - lastStatusSweep >= kStatusSweepGapMs) {
+        lastStatusSweep = t;
+        s.clearEndedStatuses(b.nowSecs());
+    }
+    // (2d) Calendar statuses switch on the hour and half hour, and Slack
+    // Connect partners' never reach us: a minute past, their profiles are
+    // read again. Not at launch (the first slot only marks the time), and
+    // not while the window is hidden (a slot missed then runs when shown).
+    if (const int64_t slot = (b.nowSecs() - kReprobeSlotLagSecs) / kReprobeSlotSecs;
+        reprobeSlot < 0) {
+        reprobeSlot = slot;
+    } else if (visible && usersLoaded && slot != reprobeSlot) {
+        reprobeSlot = slot;
+        reprobeOffRoster(true);
     }
     if (t - lastSaved >= kSavedGapMs)
         refreshSaved();
@@ -4036,7 +4088,7 @@ model::Backend::SelfPresence SlackBackend::selfPresence() const {
 }
 
 int64_t SlackBackend::nowSecs() const {
-    return base::nowSecs();
+    return _nowSecsForTest ? _nowSecsForTest : base::nowSecs();
 }
 
 } // namespace slack

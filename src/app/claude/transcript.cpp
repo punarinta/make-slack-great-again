@@ -8,12 +8,12 @@
 #include "base/file.h"
 #include "base/json.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/time.h"
 #include "base/utf8.h"
 
 #include <algorithm>
 #include <functional>
-#include <mutex>
 #include <utility>
 
 namespace claude {
@@ -1482,7 +1482,7 @@ struct FolderHistory {
     bool                      read = false; // the whole file was read once
 };
 struct HistoryCache {
-    std::mutex                 lock;
+    base::Mutex                lock;
     std::string                path, pasteDir;
     std::vector<FolderHistory> folders; // the one asked for last, last
 };
@@ -1509,12 +1509,10 @@ bool historyFor(
     file::Stat st;
     if (!file::stat(historyPath, &st))
         return !loadedOnly; // no file: nothing to wait for either way
-    const std::string            dir   = cleanPath(project);
-    HistoryCache                &cache = historyCache();
-    std::unique_lock<std::mutex> hold(cache.lock, std::defer_lock);
-    if (!loadedOnly)
-        hold.lock();
-    else if (!hold.try_lock())
+    const std::string dir   = cleanPath(project);
+    HistoryCache     &cache = historyCache();
+    base::Lock        hold(cache.lock, /*onlyIfFree=*/loadedOnly);
+    if (!hold.held())
         return false;
     if (cache.path != historyPath || cache.pasteDir != pasteDir) {
         if (loadedOnly)

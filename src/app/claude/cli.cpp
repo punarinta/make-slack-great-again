@@ -3,6 +3,7 @@
 #include "app/claude/launcher.h"
 #include "app/claude/roster.h"
 #include "base/file.h"
+#include "base/host.h"
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/process.h"
@@ -10,23 +11,11 @@
 
 #include <memory>
 
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
 namespace claude {
 
 namespace {
 
-bool isExecutable(const std::string &path) {
-    if (path.empty() || !file::exists(path) || file::isDir(path))
-        return false;
-#ifdef _WIN32
-    return true;
-#else
-    return ::access(path.c_str(), X_OK) == 0;
-#endif
-}
+using base::isExecutable; // on the host in a Flatpak sandbox, as is the CLI
 
 std::string nativeSeparators(std::string path) {
 #ifdef _WIN32
@@ -45,7 +34,13 @@ auth::WorkspaceRecord toRecord(const Credentials &creds) {
     rec.id          = kWorkspaceId;
     rec.displayName = "Claude Code";
     json::Writer w;
-    w.beginObject().key("claudePath").value(creds.claudePath).endObject();
+    w.beginObject().key("claudePath").value(creds.claudePath);
+    if (!creds.sshDestination.empty()) {
+        w.key("ssh").value(creds.sshDestination);
+        if (!creds.remoteMsga.empty())
+            w.key("remoteMsga").value(creds.remoteMsga);
+    }
+    w.endObject();
     rec.auth = w.take();
     return rec;
 }
@@ -53,8 +48,14 @@ auth::WorkspaceRecord toRecord(const Credentials &creds) {
 Credentials fromRecord(const auth::WorkspaceRecord &rec) {
     Credentials    c;
     json::Document doc;
-    if (doc.parse(std::string(rec.auth)))
-        c.claudePath = std::string(doc.root()["claudePath"].str());
+    if (doc.parse(std::string(rec.auth))) {
+        c.claudePath     = std::string(doc.root()["claudePath"].str());
+        c.sshDestination = std::string(doc.root()["ssh"].str());
+        c.remoteMsga     = std::string(doc.root()["remoteMsga"].str());
+    }
+    // The CLI that matters then is the server's: the relay finds it there.
+    if (!c.sshDestination.empty())
+        return c;
     // The CLI may have moved (reinstalled, switched installer) since the
     // workspace was added: fall back to looking again.
     if (!isExecutable(c.claudePath))
@@ -63,6 +64,10 @@ Credentials fromRecord(const auth::WorkspaceRecord &rec) {
 }
 
 std::string findClaudeExecutable() {
+    // Seen through the host's files it might be found, but it could only be
+    // run in the sandbox, where it doesn't work.
+    if (base::host::hostAccessRevoked())
+        return {};
 #ifdef _WIN32
     const char *const names[] = {"claude.exe", "claude.cmd"};
 #else
@@ -98,6 +103,14 @@ std::string findClaudeExecutable() {
 }
 
 std::string notInstalledMessage() {
+    if (base::host::hostAccessRevoked()) // the Flatpak, its host access taken away
+        return i18n::tr(
+            "Claude Code runs on your computer, outside msga's sandbox, and this Flatpak's "
+            "access to it is turned off. Allow \"org.freedesktop.Flatpak\" and \"All system "
+            "files\" for msga in Flatseal (or run `flatpak override --user "
+            "--talk-name=org.freedesktop.Flatpak --filesystem=host com.nisdos.msga`), then "
+            "restart msga."
+        );
     return i18n::tr(
         "Claude Code isn't installed on this computer (msga can't find the claude command). "
         "Install it (https://code.claude.com/docs/en/setup), run `claude` once in a terminal "

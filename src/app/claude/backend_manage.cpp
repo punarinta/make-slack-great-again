@@ -16,9 +16,9 @@
 #include "base/json.h"
 #include "base/log.h"
 #include "base/str.h"
+#include "base/thread.h"
 
 #include <algorithm>
-#include <mutex>
 #include <utility>
 
 namespace claude {
@@ -76,7 +76,7 @@ void Backend::hideSession(const std::string &convId, const std::shared_ptr<Clean
     endWatch(t, tr("The session was removed from msga."));
     // A message being typed is taken back once the session is gone, so its
     // done (run at once by cancel) finds nothing to put back.
-    const std::weak_ptr<AttachInput> typing = std::exchange(t.typing, {});
+    const std::weak_ptr<HostTask> typing = std::exchange(t.typing, {});
     if (!t.info.sessionId.empty()) {
         std::string transcript = t.transcriptPath;
         if (transcript.empty())
@@ -138,7 +138,7 @@ struct BackgroundedScan {
     int64_t                  size = 0;
     std::vector<std::string> ids;
 };
-std::mutex                                        gScansLock;
+base::Mutex                                       gScansLock;
 std::unordered_map<std::string, BackgroundedScan> gScans; // by file
 
 // gScansLock held.
@@ -218,7 +218,7 @@ bool startedByMsga(
             continue;
         bool named;
         {
-            const std::lock_guard<std::mutex> hold(gScansLock);
+            const base::Lock hold(gScansLock);
             named = transcriptNames(
                 c.transcript.empty() ? paths.findTranscript(c.sessionId) : c.transcript, shortId
             );
@@ -317,7 +317,7 @@ std::string Backend::noteStopped(const std::string &sessionId) {
 
 void Backend::stopRemoved(const std::string &sessionId, const std::string &cwd) {
     hide(sessionId).stopping = true;
-    _launcher->stop(sessionId, cwd, [this, alive = _alive, sessionId] {
+    _host->stop(sessionId, cwd, [this, alive = _alive, sessionId] {
         if (*alive)
             noteStopped(sessionId);
     });
@@ -378,10 +378,10 @@ void Backend::removeOwned(
     std::string from            = cwd;
     for (const auto &ref : refs)
         if (pathWithin(from, ref.path))
-            from = file::isDir(ref.origin) ? ref.origin : std::string(file::dirName(ref.path));
-    if (!file::isDir(from))
-        from = base::env("HOME");
-    _launcher->remove(
+            from = _host->isDir(ref.origin) ? ref.origin : std::string(file::dirName(ref.path));
+    if (!_host->isDir(from))
+        from = _host->isLocal() ? base::env("HOME") : std::string(); // the relay's own folder
+    _host->remove(
         sessionId, jobId, from, [alive = _alive, sessionId, stopped](std::string refusal) mutable {
             if (!*alive)
                 return;
@@ -412,61 +412,51 @@ void Backend::release(const std::shared_ptr<Cleanup> &cleanup) {
     }
     if (refs.empty())
         return;
-    reapWorktrees(
-        _app,
-        refs,
-        [paths = _paths](const std::string &path) { return worktreeInUse(paths, path); },
-        [this, alive = _alive, refs](std::vector<std::string> notDeleted) {
-            if (!*alive)
-                return;
-            for (const auto &ref : refs)
-                _reaping.erase(cleanPath(ref.path));
-            if (notDeleted.empty())
-                return;
-            std::string list;
-            for (const auto &p : notDeleted)
-                list += (list.empty() ? "" : ", ") + p;
-            LOG_WARN("claude", "worktrees not deleted: %s", list.c_str());
-            reportError(i18n::arg(tr("Couldn't delete the session's worktree: %1"), list));
-        }
-    );
+    _host->reapWorktrees(refs, [this, alive = _alive, refs](std::vector<std::string> notDeleted) {
+        if (!*alive)
+            return;
+        for (const auto &ref : refs)
+            _reaping.erase(cleanPath(ref.path));
+        if (notDeleted.empty())
+            return;
+        std::string list;
+        for (const auto &p : notDeleted)
+            list += (list.empty() ? "" : ", ") + p;
+        LOG_WARN("claude", "worktrees not deleted: %s", list.c_str());
+        reportError(i18n::arg(tr("Couldn't delete the session's worktree: %1"), list));
+    });
 }
 
 // ── Finding sessions ────────────────────────────────────────────────────────
 
 void Backend::findAgentSessions(std::function<void(std::vector<FoundSession>)> done) {
-    auto entries = std::make_shared<std::vector<CatalogEntry>>();
-    model::runInBackground(
-        _app,
-        [entries, dir = _paths.projectsDir()] { *entries = scanCatalog(dir); },
-        [this, alive = _alive, entries, done] {
-            if (!*alive)
-                return;
-            std::vector<FoundSession> out;
-            for (const CatalogEntry &e : *entries) {
-                FoundSession f;
-                f.id             = e.sessionId;
-                f.title          = e.title;
-                f.folder         = e.cwd;
-                const Role &mate = _team.resolve(e.role, e.roleName);
-                f.role           = mate.id;
-                f.avatar         = mate.avatar;
-                f.firstPrompt    = e.firstPrompt;
-                f.lastPrompt     = e.lastPrompt;
-                f.lastActiveMs   = e.modifiedMs;
-                if (const Tracked *t = find(convIdFor(e.sessionId))) {
-                    // A /btw branch is found in its parent.
-                    const Tracked *shown = asThread(*t) ? find(t->forkOf) : t;
-                    f.listed             = shown ? shown->ref : kNoConv;
-                    if (!asThread(*t))
-                        f.title = shownTitle(*t);
-                }
-                out.push_back(std::move(f));
+    _host->catalog([this, alive = _alive, done](std::vector<CatalogEntry> entries) {
+        if (!*alive)
+            return;
+        std::vector<FoundSession> out;
+        for (const CatalogEntry &e : entries) {
+            FoundSession f;
+            f.id             = e.sessionId;
+            f.title          = e.title;
+            f.folder         = e.cwd;
+            const Role &mate = _team.resolve(e.role, e.roleName);
+            f.role           = mate.id;
+            f.avatar         = mate.avatar;
+            f.firstPrompt    = e.firstPrompt;
+            f.lastPrompt     = e.lastPrompt;
+            f.lastActiveMs   = e.modifiedMs;
+            if (const Tracked *t = find(convIdFor(e.sessionId))) {
+                // A /btw branch is found in its parent.
+                const Tracked *shown = asThread(*t) ? find(t->forkOf) : t;
+                f.listed             = shown ? shown->ref : kNoConv;
+                if (!asThread(*t))
+                    f.title = shownTitle(*t);
             }
-            if (done)
-                done(std::move(out));
+            out.push_back(std::move(f));
         }
-    );
+        if (done)
+            done(std::move(out));
+    });
 }
 
 model::ConvRef Backend::addFoundSession(const std::string &sessionId) {
@@ -474,9 +464,8 @@ model::ConvRef Backend::addFoundSession(const std::string &sessionId) {
         const Tracked *shown = asThread(*t) ? find(t->forkOf) : t;
         return shown ? shown->ref : kNoConv;
     }
-    const std::string transcript = _paths.findTranscript(sessionId);
-    CatalogEntry      e;
-    if (transcript.empty() || !readCatalogEntry(transcript, e))
+    CatalogEntry e;
+    if (!_host->catalogEntry(sessionId, &e))
         return kNoConv;
     _hidden.erase(sessionId); // asked for by name: "Remove from msga" is undone
     std::unordered_set<std::string> listedBefore;
@@ -485,7 +474,7 @@ model::ConvRef Backend::addFoundSession(const std::string &sessionId) {
             listedBefore.insert(id);
 
     Tracked   &t      = ensureTracked(sessionId);
-    const auto roster = scanSessions(_paths);
+    const auto roster = _host->scan(nullptr);
     const auto live   = std::find_if(roster.begin(), roster.end(), [&](const SessionInfo &s) {
         return s.sessionId == sessionId;
     });
@@ -655,9 +644,9 @@ Backend::CommandList *Backend::commandList(ConvRef conv) {
     CommandList      &list = _commands[cwd];
     if (!list.rev)
         list.rev = ++_commandsRev;
-    if (!_creds.claudePath.empty() && !list.loading && nowMs() >= list.fetchedMs) {
+    if (!!_host->hasCli() && !list.loading && nowMs() >= list.fetchedMs) {
         list.loading = true;
-        _launcher->listCommands(
+        _host->listCommands(
             cwd, [this, alive = _alive, cwd](std::vector<SlashCommand> commands, Account account) {
                 if (!*alive)
                     return;
@@ -890,38 +879,42 @@ void Backend::remove(ConvRef conv, Ts ts) {
         TranscriptParser parser;
         int64_t          offset = -1;
     };
-    auto job    = std::make_shared<Job>();
-    job->convId = t->convId;
-    job->path   = t->transcriptPath;
-    job->uuid   = item->uuid;
-    t->parsing  = true;
-    model::runInBackground(
-        _app,
-        [job] {
-            job->ok = removeFromTranscript(job->path, job->uuid, &job->error);
-            if (job->ok)
-                job->offset = feedTranscript(job->path, job->parser);
-        },
-        [this, alive = _alive, job] {
-            if (!*alive)
-                return;
-            Tracked *t = find(job->convId);
-            if (!t)
-                return;
-            t->parsing = false;
-            if (!job->ok) {
-                LOG_WARN("claude", "delete failed: %s", job->error.c_str());
-                reportError(job->error);
-            } else {
-                t->restart(std::move(job->parser), std::max<int64_t>(job->offset, 0));
-            }
-            tail(*t);
-            sync(*t);
-            syncMeta(*t);
-            for (auto &then : std::exchange(t->afterParse, {}))
-                then();
+    auto job           = std::make_shared<Job>();
+    job->convId        = t->convId;
+    job->path          = t->transcriptPath;
+    job->uuid          = item->uuid;
+    t->parsing         = true;
+    const auto settled = [this, alive = _alive, job] {
+        if (!*alive)
+            return;
+        Tracked *t = find(job->convId);
+        if (!t)
+            return;
+        t->parsing = false;
+        if (!job->ok) {
+            LOG_WARN("claude", "delete failed: %s", job->error.c_str());
+            reportError(job->error);
+        } else {
+            t->restart(std::move(job->parser), std::max<int64_t>(job->offset, 0));
         }
-    );
+        tail(*t);
+        sync(*t);
+        syncMeta(*t);
+        for (auto &then : std::exchange(t->afterParse, {}))
+            then();
+    };
+    // Rewritten where it lives (the host), then the copy read here afresh.
+    _host->deleteRecord(job->path, job->uuid, [this, job, settled](bool ok, std::string error) {
+        job->ok    = ok;
+        job->error = std::move(error);
+        if (!ok) {
+            settled();
+            return;
+        }
+        model::runInBackground(
+            _app, [job] { job->offset = feedTranscript(job->path, job->parser); }, settled
+        );
+    });
 }
 
 // ── Reactions ───────────────────────────────────────────────────────────────

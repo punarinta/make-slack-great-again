@@ -547,9 +547,13 @@ TEST("visited: opening a conversation is saved; the stamps keep it listed after 
     pump();
     CHECK_FALSE(clear->enabled());
     CHECK(h.sh->sidebar().visited().count("D0SAM") == 0);
-    const shell::Settings after = shell::Settings::load(path);
-    for (const auto &[id, at] : after.visitedAt)
-        CHECK(id != "D0SAM");
+    // The file follows off the UI thread.
+    CHECK(until([&] {
+        for (const auto &[id, at] : shell::Settings::load(path).visitedAt)
+            if (id == "D0SAM")
+                return false;
+        return true;
+    }));
     file::remove(path);
     file::remove(dir);
 }

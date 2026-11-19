@@ -7,8 +7,8 @@
 #include "core/backends.h"
 #include "core/input.h"
 #include "core/transfer.h"
-#include "linux/posix_app.h"
-#include "linux/xkb_keyboard.h"
+#include "freedesktop/posix_app.h"
+#include "freedesktop/xkb_keyboard.h"
 #ifdef PLAT_TEST_HOOKS
 #include "plat/testing.h"
 #endif

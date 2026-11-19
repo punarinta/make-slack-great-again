@@ -3,7 +3,7 @@
 // clipboard and XDND in x11_selection.cpp.
 #include "x11/x11_internal.h"
 #include "core/pacing.h"
-#include "linux/cursor_names.h"
+#include "freedesktop/cursor_names.h"
 #include "prim/utf8.h"
 
 #include <xcb/randr.h>
@@ -1016,6 +1016,8 @@ void X11App::handleKey(xcb_key_press_event_t *e, bool down) {
     auto r               = _kbd.key(code, down, false);
     if (!_kbd.hasKeymap())
         r.mods = pointerMods(e->state);
+    if (debugEnabled() && down)
+        std::fprintf(stderr, "plat/x11: key %u -> %s\n", unsigned(code), keyName(r.key));
     Event k{
         .type     = down ? EventType::KeyDown : EventType::KeyUp,
         .key      = r.key,
@@ -1132,7 +1134,7 @@ xcb_cursor_t X11App::cursor(Cursor c) {
         return _cursors[i] = cur;
     }
 
-    // Theme names (linux/cursor_names), then the core cursor-font glyph
+    // Theme names (freedesktop/cursor_names), then the core cursor-font glyph
     // (X11/cursorfont.h) for servers or setups with no theme at all.
     static constexpr uint16_t kGlyphs[] = {
         68, 152, 60, 150, 150, 34, 0, 52, 58, 52, 108, 116, 14, 12

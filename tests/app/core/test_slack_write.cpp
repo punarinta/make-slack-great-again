@@ -359,6 +359,9 @@ TEST("slack write: edit, delete and react update the Store and send the right pa
     CHECK_STR(up["channel"].str(), "C1");
     CHECK(up["ts"].str() == model::formatTs(e.old));
     CHECK_STR(up["text"].str(), "second");
+    // Its text is mrkdwn, as chat.postMessage's is: chat.update's own
+    // default ("client") would escape a <url|label> into literal brackets.
+    CHECK_STR(up["parse"].str(), "none");
     json::Value ra = log.get("reactions.add")["form"];
     CHECK_STR(ra["channel"].str(), "C1");
     CHECK(ra["timestamp"].str() == model::formatTs(e.old));
@@ -985,6 +988,7 @@ TEST("slack write: status, profile and photo") {
     REQUIRE(pumpUntil([&] { return st.called; }));
     CHECK(st.ok);
     CHECK(e.store.user(e.me).statusEmoji == "palm_tree" && e.store.user(e.me).statusText == "Away");
+    CHECK(e.store.user(e.me).statusExpiry == 1900000000);
     model::Backend::MyProfile p;
     bool                      loaded = false;
     e.be->loadMyProfile([&](model::Backend::MyProfile x) {

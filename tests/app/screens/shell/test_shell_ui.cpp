@@ -2080,7 +2080,7 @@ TEST("composer: files copied in a file manager are attached, other URIs paste as
     CHECK(c.attachments().size() == 1);
 }
 
-#if defined(__linux__)
+#if defined(MSGA_FREEDESKTOP)
 TEST("composer: a middle click attaches the primary selection's picture or files") {
     // A middle click inserts the primary selection like a paste.
     Harness           h;

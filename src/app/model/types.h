@@ -45,19 +45,23 @@ struct User {
     std::string avatar;      // local path or URL
     std::string statusEmoji; // shortcode without colons
     std::string statusText;
-    int32_t     tzOffset    = 0; // seconds east of UTC
-    bool        hasTz       = false;
-    bool        active      = false; // presence
-    bool        bot         = false;
-    bool        admin       = false;
-    bool        owner       = false;
-    bool        dnd         = false;
+    // When the status ends (epoch secs, 0 = never). The service clears it
+    // then but tells nobody outside the user's own org (Slack Connect):
+    // Store::clearEndedStatuses drops it here.
+    int64_t     statusExpiry = 0;
+    int32_t     tzOffset     = 0; // seconds east of UTC
+    bool        hasTz        = false;
+    bool        active       = false; // presence
+    bool        bot          = false;
+    bool        admin        = false;
+    bool        owner        = false;
+    bool        dnd          = false;
     // Interned from a reference (mention, reaction) before the roster knew
     // them; a later addUser() fills the record in place.
-    bool        placeholder = false;
+    bool        placeholder  = false;
     // Agent sessions: there, yet not reachable from here (a terminal drives
     // it, or it waits on an approval) — the yellow dot.
-    bool        unavailable = false;
+    bool        unavailable  = false;
     // Deactivated, or a Slack Connect stranger (conversations.open rejects
     // them): never offered as someone to message (Find a channel's People).
     bool        deleted = false, stranger = false;

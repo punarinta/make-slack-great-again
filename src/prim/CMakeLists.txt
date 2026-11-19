@@ -8,7 +8,11 @@ add_library(prim STATIC
     utf8.cpp
     hash.cpp
 )
-if(WIN32)
+if(MSGA_PORT)
+    # The file primitives over the port contract (src/port).
+    target_sources(prim PRIVATE port_file.cpp)
+    target_link_libraries(prim PUBLIC msga_port)
+elseif(WIN32)
     target_sources(prim PRIVATE winstr.cpp)
 else()
     target_sources(prim PRIVATE posix_file.cpp)

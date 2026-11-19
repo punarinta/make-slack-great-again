@@ -280,6 +280,7 @@ TEST("slack links: a token that refuses metadata posts unmarked, then never trie
     });
     REQUIRE(pumpUntil([&] { return edited; }));
     CHECK(!Log().get("chat.update")["form"].has("metadata"));
+    CHECK_STR(Log().get("chat.update")["form"]["parse"].str(), "none"); // mrkdwn, as posted
 }
 
 TEST("slack links: a refused post fails with Slack's reason and ts 0") {

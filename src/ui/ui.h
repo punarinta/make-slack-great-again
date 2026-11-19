@@ -70,7 +70,7 @@
 //   controls.h  CheckBox, Radio, Dropdown, SpinBox, TextField, Button::Form,
 //               SectionList, Dialog (modal overlay)
 //   textedit.h  TextEdit (rich composer, undo, clipboard html, IME, grows to N lines)
-//   filebrowser.h  FileBrowser (in-app file chooser where the OS has none; Linux only)
+//   filebrowser.h  FileBrowser (in-app file chooser where the OS has none; Linux, BSDs, ports)
 //
 // ── Accessibility ───────────────────────────────────────────────────────────
 // Not bridged yet. Every view carries role() and accessibleName() so an
@@ -78,7 +78,7 @@
 #pragma once
 
 #include "ui/controls.h"
-#ifdef __linux__
+#if defined(MSGA_FREEDESKTOP) || defined(MSGA_PORT)
 #include "ui/filebrowser.h"
 #endif
 #include "ui/scroll.h"

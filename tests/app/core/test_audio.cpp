@@ -117,8 +117,8 @@ TEST("audio: wavFromPcm16 writes a plain 44-byte RIFF/WAVE header") {
     CHECK(chime.substr(0, 44) == plat::audio::wavFromPcm16(chimePcm(), 16000, 1).substr(0, 44));
 }
 
-#if defined(__linux__)
-// Linux: audio is the sound server's CLI helpers, faked here.
+#if defined(MSGA_FREEDESKTOP)
+// Linux and the BSDs: audio is the sound server's CLI helpers, faked here.
 
 TEST("audio: the player decodes in-process and pipes the PCM to pw-cat") {
     Scratch s;
@@ -231,6 +231,36 @@ TEST("audio: a sink that dies hands over to the next helper") {
     CHECK(s.read("pcm") == chimePcm());
 }
 
+TEST("audio: sndio's aucat plays and records when nothing else is there") {
+    Scratch s;
+    s.helper("aucat", "echo \"$@\" > '" + s.path("args") + "'\ncat > '" + s.path("pcm") + "'");
+    auto        p = plat::audio::Player::create(app());
+    PlayerProbe probe;
+    probe.attach(*p);
+    p->load(chimePath());
+    REQUIRE(pumpUntil([&] { return probe.loaded || probe.failed; }, 5000));
+    REQUIRE(probe.loaded);
+    p->play();
+    REQUIRE(pumpUntil([&] { return probe.ended || probe.failed; }, 5000));
+    CHECK(probe.ended);
+    CHECK_STR(s.read("args"), "-h raw -e s16le -r 16000 -c 0:0 -i -\n");
+    CHECK(s.read("pcm") == chimePcm());
+
+    s.helper(
+        "aucat",
+        "echo \"$@\" > '" + s.path("args") +
+            "'\ndd if=/dev/zero bs=3200 count=1 2>/dev/null; exec sleep 30"
+    );
+    auto r       = plat::audio::Recorder::create(app());
+    bool started = false;
+    r->onStarted = [&] { started = true; };
+    r->start();
+    REQUIRE(pumpUntil([&] { return started; }, 5000));
+    CHECK_STR(s.read("args"), "-h raw -e s16le -r 16000 -c 0:0 -o -\n");
+    r->cancel();
+    CHECK_FALSE(r->isRecording());
+}
+
 TEST("audio: pause holds the position, seek moves it, stop drops the media") {
     Scratch s;
     // A slow sink: reads nothing for a while, so playback stays in progress.
@@ -321,7 +351,7 @@ TEST("audio: other formats decode through ffmpeg, its banner giving the duration
         "ffmpeg",
         "echo \"$@\" > '" + s.path("ffargs") +
             "'\necho '  Duration: 00:00:01.50, start: 0.000000, bitrate: 64 kb/s' >&2\n"
-            "head -c 48000 /dev/zero"
+            "dd if=/dev/zero bs=48000 count=1 2>/dev/null" // OpenBSD's head has no -c
     );
     s.helper("pw-cat", "cat > '" + s.path("pcm") + "'");
     const std::string m4a = s.path("clip.m4a");
@@ -418,7 +448,7 @@ TEST("audio: no capture helper at all, and cancel stops a recording silently") {
         REQUIRE(pumpUntil([&] { return failed; }, 5000));
         CHECK(f.code == Error::NoCaptureTool);
     }
-    s.helper("parecord", "head -c 3200 /dev/zero; exec sleep 30");
+    s.helper("parecord", "dd if=/dev/zero bs=3200 count=1 2>/dev/null; exec sleep 30");
     auto r       = plat::audio::Recorder::create(app());
     bool started = false, other = false;
     r->onStarted  = [&] { started = true; };

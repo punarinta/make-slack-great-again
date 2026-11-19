@@ -99,6 +99,10 @@ public:
     // Settings → System → Slack connection (the accounts controller's).
     std::function<void()> onImportSlackSession, onConvertToSession;
     std::function<int()>  oauthSlackWorkspaces;
+    // Settings → System → Claude Code → "Runs on" (the accounts controller's;
+    // see SettingsDialog::Hooks).
+    std::function<bool(std::string *destination, std::string *msga)>             claudeHost;
+    std::function<void(const std::string &destination, const std::string &msga)> setClaudeHost;
     // Every running workspace: the accounts
     // controller attaches each signed-in workspace's Store and Backend while
     // it runs, open or in the background. Its new messages notify (the title

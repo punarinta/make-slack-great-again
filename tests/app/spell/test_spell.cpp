@@ -320,9 +320,9 @@ TEST("spell checker: configure with no such dictionary stays inactive; off frees
     CHECK(!c.active());
 }
 
-// ── Hunspell (Linux) ────────────────────────────────────────────────────────
+// ── Hunspell (Linux, BSDs) ────────────────────────────────────────────────────────
 
-#if defined(__linux__)
+#if defined(MSGA_FREEDESKTOP)
 
 namespace {
 

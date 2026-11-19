@@ -361,7 +361,13 @@ struct Event {
     double      dx = 0, dy = 0;  // Scroll: logical pixels when precise, else notches (+y = down)
     bool        precise = false; // Scroll from a touchpad/high-res wheel; one wheel line = 100/3 px
     Key         key     = Key::Unknown;
-    uint32_t    scancode = 0; // Linux: evdev code; Windows: scan code; macOS: virtual keycode
+    // Windows: scan code; macOS: virtual keycode; Wayland and X11 (Linux, the
+    // BSDs): the XKB keycode - 8, which is the evdev code under an evdev
+    // keymap: always on Wayland, and on X11 with the evdev/libinput drivers
+    // (Linux; FreeBSD's default). X11 on OpenBSD (wscons) or on FreeBSD's
+    // legacy kbd driver uses "xfree86" keycodes: the same for letters, digits
+    // and F1-F12, not for navigation or keypad keys.
+    uint32_t    scancode = 0;
     uint32_t    mods     = 0;
     bool        repeat   = false;
     std::string text; // TextInput / TextPreedit / Drop(text) — UTF-8
@@ -679,6 +685,15 @@ struct SystemSettings {
 
 enum FdEvents : uint32_t { FdRead = 1, FdWrite = 2 };
 
+// One change in a watched directory (App::watchDirectory).
+struct DirChange {
+    // The entry's name; empty when the OS doesn't say (events were lost, or
+    // it merges them): then anything in the directory may have changed.
+    std::string_view name;
+    bool             cameOrWent = false; // created, deleted or renamed (else written to)
+    bool             gone       = false; // the directory itself went: this watch has ended
+};
+
 class App {
 public:
     // Picks the backend: $PLAT_BACKEND (wayland | x11 | headless — the last
@@ -686,9 +701,16 @@ public:
     // else Wayland when $WAYLAND_DISPLAY is present, else X11 on Linux; the
     // native one on Windows/macOS. Returns null (and fills *error) on failure.
     static std::unique_ptr<App> create(std::string *error = nullptr);
-    virtual ~App() = default;
+    App();
+    virtual ~App(); // out of line: _dirWatchState's type is plat's own
 
     virtual const char *backendName() const = 0;
+
+    // False on a single-surface system (a port without PORT_CAP_WINDOWS):
+    // every window fills the one surface the OS gives, the last one shown
+    // is on it, and size, position, minimise and maximise requests do
+    // nothing.
+    virtual bool hasWindows() const { return true; }
 
     void setEventHandler(std::function<void(const Event &)> fn) { _handler = std::move(fn); }
 
@@ -713,6 +735,17 @@ public:
     // layer plugs into.
     virtual uint64_t watchFd(int fd, uint32_t events, std::function<void(uint32_t)> fn) = 0;
     virtual void     unwatchFd(uint64_t id)                                             = 0;
+
+    // Calls fn on the loop thread soon after something in the directory
+    // `path` changes: an entry added, removed, renamed or written to (not in
+    // its subdirectories). 0 = not watched here, and the caller looks on a
+    // timer instead. The default watches through inotify on Linux (read via
+    // watchFd, or on a timer of its own where watchFd has no fds), nothing
+    // elsewhere; a port build asks the port (port_watch_dir), which may merge
+    // changes and not name them. Unwatching an ended watch does nothing.
+    virtual uint64_t
+                 watchDirectory(std::string_view path, std::function<void(const DirChange &)> fn);
+    virtual void unwatchDirectory(uint64_t id);
 
     // Clipboard. Setting is synchronous; reading is asynchronous because on
     // Wayland and X11 the data lives in another process. The callback always
@@ -805,7 +838,7 @@ public:
     // empty vector when cancelled or when no dialog could be shown. Never
     // re-entrant; Win32/macOS may run a modal loop in which timers keep firing.
     // On Linux without a FileChooser portal this runs zenity/kdialog when
-    // installed ($PLAT_FILE_DIALOG_FALLBACK, see linux/file_dialog.h).
+    // installed ($PLAT_FILE_DIALOG_FALLBACK, see freedesktop/file_dialog.h).
     virtual void
     showFileDialog(const FileDialogDesc &d, std::function<void(std::vector<std::string>)> cb) {
         post([cb = std::move(cb)] { cb({}); });
@@ -845,8 +878,11 @@ protected:
     }
 
 private:
+    struct DirWatches; // the default watchDirectory's (core/dir_watch.cpp)
+
     std::function<void(const Event &)> _handler;
     AppInfo                            _info;
+    std::unique_ptr<DirWatches>        _dirWatchState;
 };
 
 } // namespace plat

@@ -14,6 +14,7 @@
 #include "app/mrkdwn/mrkdwn.h"
 #include "base/crypto.h"
 #include "base/file.h"
+#include "base/host.h"
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/log.h"
@@ -25,12 +26,8 @@
 #include <algorithm>
 #include <cstring>
 #include <utility>
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
 #include <malloc.h>
-#endif
-#if defined(__linux__)
-#include <sys/inotify.h>
-#include <unistd.h>
 #endif
 
 namespace claude {
@@ -127,8 +124,10 @@ size_t sharedStart(const std::vector<TranscriptItem> &a, const std::vector<Trans
     return n;
 }
 
-std::string knownSessionsPath() {
-    return dirs().data + "/known-sessions.json";
+std::string knownSessionsPath(std::string_view host) {
+    if (host.empty())
+        return dirs().data + "/known-sessions.json";
+    return str::concat({dirs().data, "/known-sessions-", hostKey(host), ".json"});
 }
 
 std::string profilePath() {
@@ -138,19 +137,50 @@ std::string profilePath() {
 // ── Construction ────────────────────────────────────────────────────────────
 
 Backend::Backend(model::Store &store, plat::App &app, Credentials creds)
-    : model::Backend(store), _app(app), _creds(std::move(creds)), _paths(Paths::detect()),
-      _approvalsDir(dirs().data + "/approvals"), _team(dirs().data + "/team"),
-      _alive(std::make_shared<bool>(true)) {
-    _launcher = std::make_unique<Launcher>(_app, _creds.claudePath, _paths);
-    // Sessions msga starts ask their permission questions through it too
-    // (approvals.h) — not in tests, whose sessions are fakes.
-    if (const std::string exe = base::executablePath();
-        !exe.empty() && !base::testProcess() && file::makeDirs(_approvalsDir)) {
-        _launcher->setStartSettings(permissionHookSettings(exe, _approvalsDir));
-        _launcher->setPromptNote(progressNote(exe));
-    }
+    : Backend(store, app, creds, makeHost(app, creds)) {}
+
+Backend::Backend(model::Store &store, plat::App &app, Credentials creds, std::unique_ptr<Host> host)
+    : model::Backend(store), _app(app), _creds(std::move(creds)), _team(dirs().data + "/team"),
+      _host(std::move(host)), _alive(std::make_shared<bool>(true)) {
+    _paths           = _host->paths();
+    // The permission hook's folder is watched for this computer's sessions
+    // only: a remote host brings its questions itself.
+    _approvalsDir    = _host->approvalsDir();
+    // Each host's sessions are remembered apart: switching hosts and back
+    // forgets none of them.
+    _knownPath       = knownSessionsPath(_host->name());
+    _host->onChanged = [this, alive = _alive] {
+        if (*alive)
+            scheduleRefresh();
+    };
+    _host->onState = [this, alive = _alive] {
+        if (*alive)
+            hostStateChanged();
+    };
     loadKnown();
     loadProfile();
+}
+
+std::unique_ptr<Host> makeHost(plat::App &app, const Credentials &creds) {
+    if (!creds.sshDestination.empty())
+        return makeRemoteHost(app, creds.sshDestination, creds.remoteMsga);
+    auto host = std::make_unique<LocalHost>(
+        app, creds.claudePath, Paths::detect(), dirs().data + "/approvals"
+    );
+    // Sessions msga starts ask their permission questions through it too
+    // (approvals.h) — not in tests, whose sessions are fakes.
+    if (!base::testProcess())
+        host->useHook(base::host::selfCommand()); // a host path, also in a Flatpak
+    return host;
+}
+
+void Backend::hostStateChanged() {
+    const HostState s = _host->state();
+    if (s.link == HostState::Link::Down && !s.error.empty())
+        reportError(s.error);
+    // Up again: what happened meanwhile is read now; down: no dots, as
+    // nothing is known to run.
+    scheduleRefresh();
 }
 
 Backend::~Backend() {
@@ -168,20 +198,16 @@ void Backend::close() {
         *t = 0;
     }
     _oneShots.cancelAll();
-    if (_inotifyWatch)
-        _app.unwatchFd(std::exchange(_inotifyWatch, 0));
-#if defined(__linux__)
-    if (_inotify >= 0)
-        ::close(_inotify);
-#endif
-    _inotify = -2;
+    for (const auto &[dir, id] : std::exchange(_watchDirs, {}))
+        _app.unwatchDirectory(id);
+    _watchClosed = true;
     for (auto &[id, t] : _sessions) {
         if (const auto typing = std::exchange(t->typing, {}).lock())
             typing->cancel(); // its done finds the backend gone
         t->answering.reset();
         // Without msga, a question it holds is the dialog's again.
         if (!t->hookQuestion.empty() && !t->approvalAnswered)
-            answerHookQuestion(_approvalsDir, t->hookQuestion, {});
+            _host->answerQuestion(t->hookQuestion, {});
     }
 }
 
@@ -213,7 +239,7 @@ Backend::Capabilities Backend::capabilities() const {
 
 void Backend::loadKnown() {
     json::Document doc;
-    if (!doc.parseFile(knownSessionsPath()))
+    if (!doc.parseFile(_knownPath))
         return;
     const json::Value root = doc.root();
     for (const json::Value o : root["sessions"]) {
@@ -276,7 +302,8 @@ void Backend::saveKnown() {
     // gone. Hundreds of them, a few stats each: looked at once an hour, not
     // on every save.
     constexpr int64_t kPruneMs = 60 * 60'000;
-    if (_prunedMs == 0 || nowMs() - _prunedMs >= kPruneMs) {
+    // Not while a remote host catches up: its mirror lacks what it hasn't sent yet.
+    if (_host->settled() && (_prunedMs == 0 || nowMs() - _prunedMs >= kPruneMs)) {
         _prunedMs        = nowMs();
         const auto jobOf = [this](const std::string &sid) {
             return file::exists(_paths.jobsDir() + "/" + sid.substr(0, 8));
@@ -373,7 +400,7 @@ void Backend::saveKnown() {
     const uint64_t h = crypto::fnv1a(w.str());
     if (h == _savedHash)
         return;
-    if (file::writeAtomic(knownSessionsPath(), w.str(), 0600))
+    if (file::writeAtomic(_knownPath, w.str(), 0600))
         _savedHash = h;
 }
 
@@ -548,8 +575,7 @@ std::string Backend::teammateNames(std::string_view text) const {
 }
 
 bool Backend::readOnly(const Tracked &t) const {
-    return (t.info.running && t.info.kind == SessionInfo::Kind::Interactive) ||
-           _creds.claudePath.empty();
+    return (t.info.running && t.info.kind == SessionInfo::Kind::Interactive) || !_host->hasCli();
 }
 
 std::string Backend::readOnlyReason(const Tracked &t) const {
@@ -564,7 +590,7 @@ std::string Backend::readOnlyReason(const Tracked &t) const {
             "here."
         );
     }
-    if (_creds.claudePath.empty())
+    if (!_host->hasCli())
         return notInstalledMessage();
     return {};
 }
@@ -1046,8 +1072,10 @@ void Backend::attachOutputs(
     const std::string                 &agentId
 ) {
     const TranscriptItem &item = items[i];
-    // Most answers name no file: nothing to look for, nothing to read.
-    if (item.kind != TranscriptItem::Kind::AssistantText || !mayNameFiles(item.text))
+    // Most answers name no file: nothing to look for, nothing to read. Nor
+    // are the files another machine's answers name here.
+    if (item.kind != TranscriptItem::Kind::AssistantText || !mayNameFiles(item.text) ||
+        !_host->isLocal())
         return;
     OutputContext ctx;
     ctx.convId     = convId;
@@ -1694,8 +1722,7 @@ int64_t Backend::bornMicros(const std::string &path) {
     const auto it = _born.find(path);
     if (it != _born.end())
         return it->second;
-    file::Stat    st;
-    const int64_t born = file::stat(path, &st) ? st.birthMicros : 0;
+    const int64_t born = _host->bornMicros(path);
     _born.emplace(path, born);
     return born;
 }
@@ -1867,14 +1894,20 @@ void Backend::sync(Tracked &t) {
     };
     take();
     // The message on its way is delivered once its prompt is in the
-    // transcript: msga's copy of it goes in the same breath.
-    if (t.flying && t.announcedInit && std::any_of(now.begin(), now.end(), [&](const auto &n) {
-            return n.second.mine && !t.announced.count(n.first) && !isOutgoingCopy(t, n.first);
+    // transcript: msga's copy of it goes in the same breath. Known by its
+    // time, not by being news: a session that turns out to be a thread (its
+    // parent found after a restart) starts its list afresh with the prompt
+    // in it. Only a prompt read after the copy was made is timed after it
+    // (enqueue reserves its ts), so no older one is taken for it.
+    bool sawOwnPrompt = false;
+    if (t.flying && std::any_of(now.begin(), now.end(), [&](const auto &n) {
+            return n.second.mine && n.first > t.flying->ts && !t.announced.count(n.first) &&
+                   !isOutgoingCopy(t, n.first);
         })) {
         t.flying.reset();
+        sawOwnPrompt = true;
         take();
     }
-    bool            sawOwnPrompt = false;
     std::vector<Ts> fresh; // news in a list the Store doesn't hold
     if (!t.announcedInit) {
         // First look at this session: its history is served by loadHistory,
@@ -2113,7 +2146,20 @@ void Backend::refresh() {
 void Backend::refreshScan() {
     ++_scanGen; // a transcript not found is looked for again from here on
     // Only the jobs whose state.json changed are read again.
-    auto                            scanned = scanSessions(_paths, nullptr, &_jobStates);
+    auto scanned = _host->scan(&_jobStates);
+    {
+        // The host keeps what the backend follows in reach (a remote one's
+        // mirror): the sessions known, and those removed from msga, whose
+        // growth may bring them back.
+        std::vector<std::string> ids;
+        ids.reserve(_sessions.size() + _hidden.size());
+        for (const auto &[id, tp] : _sessions)
+            if (!tp->info.sessionId.empty())
+                ids.push_back(tp->info.sessionId);
+        for (const auto &[sid, h] : _hidden)
+            ids.push_back(sid);
+        _host->follow(ids);
+    }
     // A "+" session being started shows up in the roster a moment before the
     // launcher reports its id — don't list it twice meanwhile.
     std::unordered_set<std::string> startingIn;
@@ -2202,6 +2248,10 @@ void Backend::refreshScan() {
         // Kept exactly as long as Claude Code keeps the session: a background
         // job whose state dir is gone was removed (`claude rm`); any other
         // session lives on in its transcript until Claude Code cleans that up.
+        // A host not all there yet (a remote one, connecting) tells nothing
+        // about what's gone.
+        if (!_host->settled())
+            continue;
         const bool jobGone = t.info.kind == SessionInfo::Kind::Background;
         if (jobGone || (!t.transcriptPath.empty() && !file::exists(t.transcriptPath)) ||
             (t.transcriptPath.empty() && lookForTranscript(t).empty()))
@@ -2454,11 +2504,9 @@ struct TailLine {
     std::string line, ratio;
     float       progress = -1;
 };
-bool readTailLine(const std::string &path, int64_t size, TailLine *out) {
+bool readTailLine(Host &host, const std::string &path, int64_t size, TailLine *out) {
     std::string tail;
-    if (size <= 0 || !file::readRange(
-                         path, std::max<int64_t>(0, size - int64_t(kOutputTail)), kOutputTail, &tail
-                     ))
+    if (size <= 0 || !host.readTail(path, size, kOutputTail, &tail))
         return false;
     out->line     = lastOutputLine(tail);
     out->progress = progressInLine(out->line, &out->ratio);
@@ -2471,14 +2519,9 @@ bool readTailLine(const std::string &path, int64_t size, TailLine *out) {
 void Backend::lookForOrphan(
     const Tracked &t, const std::string &taskId, const std::string &output
 ) {
-    auto gone = std::make_shared<bool>(false);
-    model::runInBackground(
-        _app,
-        [gone, sessionId = t.info.sessionId, output] {
-            *gone = commandProcessGroup(sessionId, output) == 0;
-        },
-        [this, alive = _alive, gone, convId = t.convId, taskId] {
-            if (!*alive || !*gone)
+    _host->commandGone(
+        t.info.sessionId, output, [this, alive = _alive, convId = t.convId, taskId](bool gone) {
+            if (!*alive || !gone)
                 return;
             if (Tracked *t = find(convId)) {
                 t->orphansGone.insert(taskId);
@@ -2544,7 +2587,7 @@ bool Backend::pumpJobs(Tracked &t) {
         // command files) and no notification will come. It may run on,
         // orphaned (and can be stopped from here); one that doesn't has
         // ended — looked for now and then, as that walks over /proc.
-        const int64_t size = file::size(c.outputPath);
+        const int64_t size = _host->fileSize(c.outputPath);
         if (size < 0 && now - c.startedAt / 1000 > kOrphanGraceMs) {
             int64_t &looked = t.orphanLookedMs[c.taskId];
             if (now - looked >= kOrphanLookMs) {
@@ -2570,7 +2613,7 @@ bool Backend::pumpJobs(Tracked &t) {
         if (!readNow && !fresh)
             continue;
         TailLine   own;
-        const bool read    = readTailLine(c.outputPath, size, &own);
+        const bool read    = readTailLine(*_host, c.outputPath, size, &own);
         const bool ownLine = read && !own.line.empty();
         if (read) {
             j.line     = std::move(own.line);
@@ -2585,17 +2628,18 @@ bool Backend::pumpJobs(Tracked &t) {
             int64_t bestMicros = 0;
             bool    bestTells  = false;
             for (const std::string &path : redirectTargets(c.command, jobDir, t.info.cwd)) {
-                file::Stat st;
-                TailLine   tl;
-                if (!file::stat(path, &st) || st.isDir ||
-                    st.mtimeMicros / 1000 < j.startedMs - 2000 || !readTailLine(path, st.size, &tl))
+                int64_t  size = 0, mtimeMicros = 0;
+                TailLine tl;
+                if (!_host->statFile(path, &size, &mtimeMicros) ||
+                    mtimeMicros / 1000 < j.startedMs - 2000 ||
+                    !readTailLine(*_host, path, size, &tl))
                     continue;
                 const bool tells = tl.progress >= 0;
                 if (tl.line.empty() || (bestTells && !tells) ||
-                    (bestTells == tells && st.mtimeMicros < bestMicros))
+                    (bestTells == tells && mtimeMicros < bestMicros))
                     continue;
                 bestTells  = tells;
-                bestMicros = st.mtimeMicros;
+                bestMicros = mtimeMicros;
                 j.line     = std::move(tl.line);
                 j.ratio    = std::move(tl.ratio);
                 j.progress = tl.progress;
@@ -2709,11 +2753,12 @@ bool Backend::pumpJobs(Tracked &t) {
 
 // File watching: the roster dirs (sessions come and go), every live
 // session's state file (status changes) and live transcripts (new messages).
-// What changed schedules a refresh. On Linux the folders holding them are
-// watched (inotify): a change wakes the loop, and the look below runs only
-// as a slow safety sweep. Elsewhere — and while a folder can't be watched
-// (one not there yet) — it is all by looking, faster while something works,
-// so a streamed answer shows as it comes.
+// What changed schedules a refresh. Where the platform watches folders
+// (plat::App::watchDirectory: inotify on Linux, a port's port_watch_dir) the
+// folders holding them are watched: a change wakes the loop, and the look
+// below runs only as a slow safety sweep. Elsewhere — and while a folder
+// can't be watched (one not there yet) — it is all by looking, faster while
+// something works, so a streamed answer shows as it comes.
 
 namespace {
 // The sweep while every folder is watched.
@@ -2786,15 +2831,12 @@ void Backend::watchTick() {
     // The questions msga holds for their hooks: it is still here.
     for (const auto &[id, tp] : _sessions)
         if (!tp->hookQuestion.empty() && !tp->approvalAnswered)
-            takeHookQuestion(_approvalsDir, tp->hookQuestion);
-    // Watched, with no loop to wake (a headless app): what it says is read here.
-    if (_watchAll && !_inotifyWatch)
-        readWatchEvents();
+            _host->takeQuestion(tp->hookQuestion);
     if (!_watchAll || nowMs() - _watchCheckedMs >= kWatchSweepMs) {
         _watchCheckedMs = nowMs();
         watchCheck();
     }
-    const int next = _watchAll && _inotifyWatch ? kWatchSweepMs : anyBusy ? 400 : 1200;
+    const int next = _watchAll ? kWatchSweepMs : anyBusy ? 400 : 1200;
     _watchTimer    = _app.addTimer(next, false, [this, alive = _alive] {
         if (!*alive)
             return;
@@ -2806,22 +2848,12 @@ void Backend::watchTick() {
 // The folders of what watchCheck looks at, watched: those no longer of
 // interest dropped, new ones added (_watchAll: all of them are).
 void Backend::syncWatches() {
-#if defined(__linux__)
-    if (_inotify == -1) {
-        _inotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-        if (_inotify < 0) {
-            _inotify = -2; // never: looked at instead
-            return;
-        }
-        _inotifyWatch = _app.watchFd(_inotify, plat::FdRead, [this, alive = _alive](uint32_t) {
-            if (*alive)
-                readWatchEvents();
-        });
-    }
-    if (_inotify < 0)
+    if (_watchClosed)
         return;
     std::vector<std::string> files = watchedFiles();
-    std::vector<std::string> dirs{_paths.sessionsDir(), _paths.jobsDir(), _approvalsDir};
+    std::vector<std::string> dirs{_paths.sessionsDir(), _paths.jobsDir()};
+    if (!_approvalsDir.empty())
+        dirs.push_back(_approvalsDir);
     for (const std::string &f : files)
         if (const std::string d(file::dirName(f));
             std::find(dirs.begin(), dirs.end(), d) == dirs.end())
@@ -2829,76 +2861,45 @@ void Backend::syncWatches() {
     _watchFiles = {files.begin(), files.end()};
     for (auto it = _watchDirs.begin(); it != _watchDirs.end();)
         if (std::find(dirs.begin(), dirs.end(), it->first) == dirs.end()) {
-            inotify_rm_watch(_inotify, int(it->second));
+            _app.unwatchDirectory(it->second);
             it = _watchDirs.erase(it);
         } else {
             ++it;
         }
-    constexpr uint32_t kMask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB |
-                               IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF;
-    bool               all = true, added = false;
+    bool all = true, added = false;
     for (const std::string &d : dirs) {
         if (_watchDirs.count(d))
             continue;
-        const int wd = inotify_add_watch(_inotify, d.c_str(), kMask);
-        if (wd < 0) {
-            all = false; // not there (yet): looked at instead
+        const uint64_t id =
+            _app.watchDirectory(d, [this, alive = _alive, d](const plat::DirChange &c) {
+                if (*alive)
+                    dirChanged(d, c);
+            });
+        if (!id) {
+            all = false; // not there (yet), or nothing watches: looked at instead
             continue;
         }
-        _watchDirs[d] = wd;
+        _watchDirs[d] = id;
         added         = true;
     }
     // What a new folder had written before it was watched isn't missed.
     if (added && _watchAll)
         scheduleRefresh();
     _watchAll = all;
-#endif
 }
 
-// What inotify says: a change to anything watchCheck looks at schedules a
+// What the watch says: a change to anything watchCheck looks at schedules a
 // refresh, as a look that saw it would.
-void Backend::readWatchEvents() {
-#if defined(__linux__)
-    if (_inotify < 0)
-        return;
-    alignas(inotify_event) char buf[4096];
-    bool                        changed = false;
-    for (;;) {
-        const ssize_t n = ::read(_inotify, buf, sizeof buf);
-        if (n <= 0)
-            break;
-        for (ssize_t at = 0; at < n;) {
-            const auto *e = reinterpret_cast<const inotify_event *>(buf + at);
-            at += ssize_t(sizeof(inotify_event) + e->len);
-            if (changed)
-                continue;
-            if (e->mask & (IN_Q_OVERFLOW | IN_IGNORED)) {
-                // Events lost, or a folder gone (watched again once it's
-                // back): whatever changed, a refresh finds.
-                if (e->mask & IN_IGNORED)
-                    std::erase_if(_watchDirs, [&](const auto &w) { return w.second == e->wd; });
-                changed = true;
-                continue;
-            }
-            const auto dir = std::find_if(_watchDirs.begin(), _watchDirs.end(), [&](const auto &w) {
-                return w.second == e->wd;
-            });
-            if (dir == _watchDirs.end())
-                continue;
-            const std::string_view name = e->len ? std::string_view(e->name) : std::string_view();
-            constexpr uint32_t     kCameOrWent =
-                IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF;
-            if (dir->first == _paths.sessionsDir() ||
-                (dir->first == _paths.jobsDir() && (e->mask & kCameOrWent)) ||
-                (dir->first == _approvalsDir && (e->mask & kCameOrWent) &&
-                 str::endsWith(name, ".json")) ||
-                (!name.empty() && _watchFiles.count(str::concat({dir->first, "/", name}))))
-                changed = true;
-        }
-    }
-    if (changed)
+void Backend::dirChanged(const std::string &dir, const plat::DirChange &c) {
+    if (c.gone) // watched again once it's back
+        _watchDirs.erase(dir);
+    // Events lost, a folder gone, or a platform that doesn't say what
+    // changed: whatever it was, a refresh finds.
+    if (c.gone || c.name.empty() || dir == _paths.sessionsDir() ||
+        (dir == _paths.jobsDir() && c.cameOrWent) ||
+        (dir == _approvalsDir && c.cameOrWent && str::endsWith(c.name, ".json")) ||
+        _watchFiles.count(str::concat({dir, "/", c.name})))
         scheduleRefresh();
-#endif
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -2940,8 +2941,8 @@ void Backend::firstScan(Done done) {
             job->want.push_back({tp->info.sessionId, tp->transcriptPath});
     model::runInBackground(
         _app,
-        [job, paths = _paths] {
-            for (const SessionInfo &s : scanSessions(paths))
+        [job, paths = _paths, scan = _host->scanner()] {
+            for (const SessionInfo &s : scan())
                 job->want.push_back({s.sessionId, s.transcriptPath});
             std::unordered_set<std::string> read;
             for (const Want &w : job->want) {
@@ -2970,7 +2971,7 @@ void Backend::firstScan(Done done) {
             _connecting = false;
             _started    = true;
             refresh();
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
             // Parsing the whole transcripts peaks at well over 100 MB on the
             // worker, nearly all of it freed by now but kept by that thread's
             // malloc arena; hand the pages back to the system.

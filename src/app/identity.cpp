@@ -9,7 +9,7 @@
 #include "base/winstr.h"
 
 #include <windows.h>
-#else
+#elif !defined(MSGA_PORT)
 #include <cstring>
 #include <fcntl.h>
 #include <poll.h>
@@ -29,7 +29,11 @@ std::string under(const std::string &base, const char *rel) {
 } // namespace
 
 const char *appId() {
-#if defined(__linux__)
+#if defined(MSGA_FLATPAK)
+    // The Flatpak's: its .desktop file is named by it, and the shell matches
+    // the window (Wayland app_id) and the notifications to that.
+    return "com.nisdos.msga";
+#elif defined(MSGA_FREEDESKTOP)
     return "msga";
 #else
     return "com.nisdos.msga";
@@ -41,7 +45,7 @@ const char *instanceKey() {
 }
 
 std::string configDir(plat::App &app) {
-#if defined(__linux__)
+#if defined(MSGA_FREEDESKTOP)
     return under(app.standardDir(plat::StandardDir::Config), "msga");
 #else
     return dataDir(app);
@@ -65,6 +69,7 @@ std::string cacheDir(plat::App &app) {
 #endif
 }
 
+#if !defined(MSGA_PORT)
 namespace {
 
 // A string as the hand-off carries it: a big-endian byte length, then UTF-16BE.
@@ -99,8 +104,15 @@ std::string homeName() {
 }
 
 } // namespace
+#endif
 
 bool handOffToEarlierVersion(const std::string &url) {
+#if defined(MSGA_PORT)
+    // No earlier version ever ran on a port's OS: second launches are the
+    // port's (plat::App::claimSingleInstance, port_instance_claim).
+    (void)url;
+    return false;
+#else
     const std::string name = "msga-" + homeName();
     const std::string data = url.empty() ? std::string() : utf16BeString(url);
 #ifdef _WIN32
@@ -155,6 +167,7 @@ bool handOffToEarlierVersion(const std::string &url) {
     close(fd);
     return true;
 #endif
+#endif // MSGA_PORT
 }
 
 std::string crashLogPath(plat::App &app) {

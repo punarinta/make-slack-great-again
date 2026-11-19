@@ -17,6 +17,7 @@
 #include "screens/shell/recent_folders.h"
 #include "screens/shell/session_dialogs.h"
 #include "screens/shell/shell.h"
+#include "screens/shell/shell_dialogs.h"
 #include "screens/shell/teammate_page.h"
 #include "screens/shell/typing_indicator.h"
 
@@ -109,8 +110,11 @@ void Shell::startAgentSession(bool skipPermissionChecks) {
                        ? _ctx.app.platform().standardDir(plat::StandardDir::Home)
                        : _settings.claudeLastDir;
     std::weak_ptr<int> alive = _agentAlive;
-    screens::fileDialog(
-        _ctx, std::move(d), [this, alive, skipPermissionChecks](std::vector<std::string> paths) {
+    pickAgentFolder(
+        _ctx,
+        _win,
+        std::move(d),
+        [this, alive, skipPermissionChecks](std::vector<std::string> paths) {
             if (alive.expired() || paths.empty() || paths.front().empty())
                 return;
             const std::string dir   = paths.front();

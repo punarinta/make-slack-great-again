@@ -26,14 +26,6 @@
 #include <cstring>
 #include <ctime>
 
-#if defined(__APPLE__)
-#include <mach/mach.h>
-#elif defined(_WIN32)
-#define PSAPI_VERSION 2
-#include <windows.h>
-#include <psapi.h>
-#endif
-
 using namespace ui;
 using i18n::arg;
 using i18n::tr;
@@ -94,42 +86,6 @@ const shell::AiProvider *activeProvider(const shell::Settings &s) {
 // TLS: the key travels in plain text (checked on the normalized URL).
 bool cleartextRemote(std::string_view url) {
     return llm::isCleartextRemote(llm::normalizeOpenAiBaseUrl(url));
-}
-
-// The process's private memory, the number each OS's task manager shows; 0
-// when unknown.
-uint64_t privateBytes() {
-#if defined(__linux__)
-    if (FILE *f = std::fopen("/proc/self/smaps_rollup", "r")) {
-        char               line[256];
-        unsigned long long clean = 0, dirty = 0, kb = 0;
-        while (std::fgets(line, sizeof line, f)) {
-            if (std::sscanf(line, "Private_Clean: %llu", &kb) == 1)
-                clean = kb;
-            else if (std::sscanf(line, "Private_Dirty: %llu", &kb) == 1)
-                dirty = kb;
-        }
-        std::fclose(f);
-        if (clean + dirty)
-            return (clean + dirty) * 1024;
-    }
-    const long kb = diag::rssKb(); // kernels < 4.14
-    return kb > 0 ? uint64_t(kb) * 1024 : 0;
-#elif defined(__APPLE__)
-    task_vm_info_data_t    info;
-    mach_msg_type_number_t n = TASK_VM_INFO_COUNT;
-    if (task_info(mach_task_self(), TASK_VM_INFO, task_info_t(&info), &n) != KERN_SUCCESS)
-        return 0;
-    return info.phys_footprint;
-#elif defined(_WIN32)
-    PROCESS_MEMORY_COUNTERS_EX pmc{};
-    if (!GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS *)&pmc, sizeof pmc))
-        return 0;
-    // PagefileUsage is the same commit charge; Wine fills only that one.
-    return pmc.PrivateUsage ? pmc.PrivateUsage : pmc.PagefileUsage;
-#else
-    return 0;
-#endif
 }
 
 // "412.3 MB", "1.2 GB"; a dash when unknown.
@@ -929,6 +885,9 @@ void SettingsDialog::buildSystem() {
         _p->appKeysBox->setVisible(!_s.slackSession);
     }
 
+    if (_hooks.claudeHost && _hooks.setClaudeHost)
+        buildClaudeHost();
+
     heading(_content, tr("GIF picker"));
     caption(
         _content,
@@ -966,9 +925,55 @@ void SettingsDialog::buildSystem() {
     _ramTimer = _ctx.app.addTimer(5000, true, [this] { refreshRam(); });
 }
 
+// Where the Claude Code workspace's sessions run: here, or on a server msga
+// reaches over SSH (its relay there, docs/claude-remote-relay.md).
+void SettingsDialog::buildClaudeHost() {
+    std::string dest, msga;
+    _hooks.claudeHost(&dest, &msga);
+    heading(_content, tr("Claude Code"));
+    auto *box = group(_content, 4);
+    body(box, tr("Runs on"));
+    auto *rg = box->add<RadioGroup>(
+        strs({tr("This computer"), tr("Another computer over SSH")}), dest.empty() ? 0 : 1
+    );
+    _p->ccBox  = group(box, 4);
+    _p->ccDest = fieldRow(_p->ccBox, tr("SSH destination"), tr("user@server"));
+    _p->ccDest->setText(dest);
+    _p->ccMsga = fieldRow(_p->ccBox, tr("msga on the server"), tr("Optional: its path there"));
+    _p->ccMsga->setText(msga);
+    caption(
+        _p->ccBox,
+        tr("msga runs there as a relay over ssh, which must log in without a password (a key "
+           "or an agent). Install the same msga version on the server.")
+    );
+    _p->ccBox->setVisible(!dest.empty());
+    rg->onChange = [this](int i) { _p->ccBox->setVisible(i == 1); };
+    _p->ccStatus = caption(box, {});
+    _p->ccStatus->setVisible(false);
+    auto *apply    = button(box, tr("Apply"), Button::Kind::Primary);
+    apply->onClick = [this, rg] {
+        const bool        ssh = rg->selected() == 1;
+        const std::string d   = ssh ? std::string(str::trim(_p->ccDest->text())) : std::string();
+        const std::string m   = ssh ? std::string(str::trim(_p->ccMsga->text())) : std::string();
+        _p->ccStatus->setVisible(true);
+        if (ssh && d.empty()) {
+            _p->ccStatus->setText(tr("Enter the SSH destination first."));
+            return;
+        }
+        std::string oldDest, oldMsga;
+        _hooks.claudeHost(&oldDest, &oldMsga);
+        if (d == oldDest && m == oldMsga) {
+            _p->ccStatus->setText(tr("No changes to save."));
+            return;
+        }
+        _hooks.setClaudeHost(d, m);
+        _p->ccStatus->setText(tr("Saved. Restarting\xE2\x80\xA6"));
+    };
+}
+
 void SettingsDialog::refreshRam() {
     if (_p->ramLabel)
-        _p->ramLabel->setText(arg(tr("RAM used: %1"), formatRam(privateBytes())));
+        _p->ramLabel->setText(arg(tr("RAM used: %1"), formatRam(diag::privateBytes())));
 }
 
 // ── About ───────────────────────────────────────────────────────────────────

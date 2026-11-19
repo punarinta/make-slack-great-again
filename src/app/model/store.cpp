@@ -234,6 +234,23 @@ void Store::usersChanged(UserRef u) {
     emit({ChangeKind::Users});
 }
 
+bool Store::clearEndedStatuses(int64_t nowSecs) {
+    bool any = false;
+    for (size_t i = 0; i < _users.size(); ++i) {
+        User &u = _users[i];
+        if (u.statusExpiry == 0 || u.statusExpiry > nowSecs)
+            continue;
+        u.statusEmoji.clear();
+        u.statusText.clear();
+        u.statusExpiry = 0;
+        _touchedUsers.push_back(UserRef(i));
+        any = true;
+    }
+    if (any)
+        emit({ChangeKind::Users});
+    return any;
+}
+
 namespace {
 
 uint64_t mixHash(uint64_t h, std::string_view v) {
@@ -288,6 +305,7 @@ void Store::noteUserRevisions() {
         };
         h = mixHash(h, std::string_view(flags, sizeof flags));
         h = mixHash(h, std::string_view(reinterpret_cast<const char *>(&u.tzOffset), 4));
+        h = mixHash(h, std::string_view(reinterpret_cast<const char *>(&u.statusExpiry), 8));
         h |= 1; // never 0: a new slot always differs
         if (h != _profileHash[i]) {
             _profileHash[i] = h;

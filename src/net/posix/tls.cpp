@@ -132,18 +132,21 @@ bool readFile(std::string_view path, std::string *out) {
 }
 
 // $SSL_CERT_FILE, then where the distributions put their bundle, then every
-// *.pem / *.crt of a certificate directory.
+// *.pem / *.crt of a certificate directory ($SSL_CERT_DIR or /etc/ssl/certs,
+// then FreeBSD 14's base trust store, which /etc/ssl/certs only links to by
+// hash names).
 void loadSystemCas(CaStore *store) {
     std::string text;
     const char *env = std::getenv("SSL_CERT_FILE");
     if (env && *env && readFile(env, &text))
         store->addPem(text);
     static const char *const kBundles[] = {
-        "/etc/ssl/certs/ca-certificates.crt", // Debian, Ubuntu, Arch, Gentoo, Alpine
-        "/etc/pki/tls/certs/ca-bundle.crt",   // Fedora, RHEL
-        "/etc/ssl/ca-bundle.pem",             // openSUSE
-        "/etc/pki/tls/cacert.pem",            // OpenELEC
-        "/etc/ssl/cert.pem",                  // Alpine, BSDs
+        "/etc/ssl/certs/ca-certificates.crt",     // Debian, Ubuntu, Arch, Gentoo, Alpine
+        "/etc/pki/tls/certs/ca-bundle.crt",       // Fedora, RHEL
+        "/etc/ssl/ca-bundle.pem",                 // openSUSE
+        "/etc/pki/tls/cacert.pem",                // OpenELEC
+        "/etc/ssl/cert.pem",                      // Alpine, OpenBSD, FreeBSD 15
+        "/usr/local/share/certs/ca-root-nss.crt", // FreeBSD's ca_root_nss package
     };
     for (const char *path : kBundles) {
         if (!store->entries.empty())
@@ -154,18 +157,22 @@ void loadSystemCas(CaStore *store) {
     if (!store->entries.empty())
         return;
     const char *dirEnv = std::getenv("SSL_CERT_DIR");
-    const char *dir    = dirEnv && *dirEnv ? dirEnv : "/etc/ssl/certs";
-    DIR        *d      = opendir(dir);
-    if (!d)
-        return;
-    while (const dirent *e = readdir(d)) {
-        const std::string_view name = e->d_name;
-        if (!str::endsWith(name, ".pem") && !str::endsWith(name, ".crt"))
+    for (const char *dir :
+         {dirEnv && *dirEnv ? dirEnv : "/etc/ssl/certs", "/usr/share/certs/trusted"}) {
+        if (!store->entries.empty())
+            return;
+        DIR *d = opendir(dir);
+        if (!d)
             continue;
-        if (readFile(str::concat({dir, "/", name}), &text))
-            store->addPem(text);
+        while (const dirent *e = readdir(d)) {
+            const std::string_view name = e->d_name;
+            if (!str::endsWith(name, ".pem") && !str::endsWith(name, ".crt"))
+                continue;
+            if (readFile(str::concat({dir, "/", name}), &text))
+                store->addPem(text);
+        }
+        closedir(d);
     }
-    closedir(d);
 }
 
 struct Shared {

@@ -1,8 +1,10 @@
 #include "base/file.h"
+#include "base/host.h"
 #include "base/process.h"
 #include "support/test.h"
 #include "base/time.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #ifndef _WIN32
@@ -64,8 +66,8 @@ TEST("process (Windows): output, exit code and environment through cmd.exe") {
     o.mergeStderr = false;
     CHECK_STR(cmd("echo out& echo err 1>&2", o).output, "out\r\n");
 }
-#else
-// The cases below drive /bin/sh: POSIX only.
+#elif !defined(__PEOS__)
+// The cases below drive /bin/sh: POSIX only (PEOS has no shell to run).
 
 TEST("process: run captures stdout and the exit code") {
     const auto r = sh("printf 'one\\ntwo'; exit 3");
@@ -74,6 +76,87 @@ TEST("process: run captures stdout and the exit code") {
     CHECK(r.code == 3);
     CHECK_STR(r.output, "one\ntwo");
     CHECK(sh("true").code == 0);
+    // 127 is a program's own exit too, not a sign that it never started.
+    const auto exited127 = sh("exit 127");
+    CHECK(exited127.started);
+    CHECK(exited127.code == 127);
+}
+
+TEST("process: what can't be started is said, for a Process too") {
+    base::Process p;
+    CHECK_FALSE(p.start("/nonexistent/program", {}));
+    // There, but not a program it may run.
+    const std::string dir = tempDir();
+    REQUIRE(file::writeAtomic(dir + "/data", "#!/bin/sh\nexit 0\n", 0644));
+    const auto r = base::run(dir + "/data", {}, {});
+    CHECK_FALSE(r.started);
+    CHECK_FALSE(r.output.empty());
+    CHECK_FALSE(p.start(dir + "/data", {}));
+    file::remove(dir + "/data");
+    file::remove(dir);
+}
+
+TEST("process: a bad working directory is a launch failure") {
+    base::RunOptions o;
+    o.cwd        = "/nonexistent/msga-working-directory";
+    const auto r = sh("echo should-not-run", o);
+    CHECK_FALSE(r.started);
+    CHECK(r.code == -1);
+    CHECK_FALSE(r.output.empty()); // why, not what the program said
+}
+
+TEST("process: executable paths are relative to the child's working directory") {
+    const std::string dir = tempDir();
+    REQUIRE(file::writeAtomic(dir + "/child", "#!/bin/sh\nprintf relative", 0755));
+    base::RunOptions o;
+    o.cwd        = dir;
+    const auto r = base::run("./child", {}, o);
+    CHECK(r.started);
+    CHECK(r.code == 0);
+    CHECK_STR(r.output, "relative");
+    file::remove(dir + "/child");
+    file::remove(dir);
+}
+
+TEST("process: the executable path stays absolute after a change of directory") {
+    const std::string exe = base::executablePath();
+    REQUIRE(!exe.empty());
+    CHECK(exe.front() == '/');
+    CHECK(file::exists(exe));
+    // A copy of this binary started with a relative argv[0], and one found
+    // on $PATH, each changing directory (and $PATH) before it asks: the
+    // path was taken at its start (OpenBSD keeps none for a running image).
+    const char *const expect = "MSGA_TEST_EXE_EXPECT";
+    if (const std::string want = base::env(expect); !want.empty()) {
+        REQUIRE(::chdir("/") == 0);
+        base::test::setEnv("PATH", "/nonexistent/msga-test-bin");
+        CHECK_STR(base::executablePath(), want);
+        return;
+    }
+    char cwd[4096];
+    REQUIRE(::getcwd(cwd, sizeof cwd) != nullptr);
+    REQUIRE(::chdir("/") == 0);
+    CHECK_STR(base::executablePath(), exe);
+    REQUIRE(::chdir(cwd) == 0);
+    const std::string              name(file::baseName(exe));
+    const std::vector<std::string> args = {
+        "test_process", "process: the executable path stays absolute after a change of directory"
+    };
+    base::RunOptions o;
+    o.cwd               = std::string(file::dirName(exe));
+    o.env               = {std::string(expect) + "=" + exe};
+    const auto relative = base::run("./" + name, args, o);
+    CHECK(relative.code == 0);
+    if (relative.code != 0)
+        std::fprintf(stderr, "%s\n", relative.output.c_str());
+    const std::string path = base::env("PATH");
+    base::test::setEnv("PATH", o.cwd + ":" + path);
+    o.cwd             = "/";
+    const auto onPath = base::run(name, args, o);
+    base::test::setEnv("PATH", path);
+    CHECK(onPath.code == 0);
+    if (onPath.code != 0)
+        std::fprintf(stderr, "%s\n", onPath.output.c_str());
 }
 
 TEST("process: stderr is merged, or discarded") {
@@ -174,6 +257,171 @@ TEST("process: a background process holding the output does not keep run() waiti
 TEST("process: an exit by signal is 128 + the signal") {
     CHECK(sh("kill -TERM $$").code == 128 + 15);
 }
+
+#ifdef MSGA_HOST_EXEC // Flatpak: Linux, not a port
+// ── in a Flatpak sandbox: on the host, through flatpak-spawn (base/host.h) ──
+
+TEST("process (sandbox): run goes through flatpak-spawn, its folder and environment options") {
+    const std::string       dir = tempDir();
+    base::test::FakeSandbox box;
+    CHECK(base::host::sandboxed());
+    base::RunOptions o;
+    o.cwd = dir;
+    o.env = {"MSGA_RUN_TEST_A=1", "MSGA_RUN_TEST_UNSET="};
+    base::test::setEnv("MSGA_RUN_TEST_UNSET", "was set");
+    const std::string real = sh("cd " + dir + " && pwd -P").output;
+    const auto        r = sh("pwd -P; echo \"$MSGA_RUN_TEST_A|${MSGA_RUN_TEST_UNSET-unset}\"", o);
+    base::test::unsetEnv("MSGA_RUN_TEST_UNSET");
+    CHECK(r.started);
+    CHECK(r.code == 0);
+    CHECK_STR(r.output, real + "1|unset\n");
+    // The options the real flatpak-spawn takes, the pid shell's fd forwarded.
+    const std::string opts = box.lastOptions();
+    CHECK_STR(
+        opts,
+        "--host\n--watch-bus\n--directory=" + dir +
+            "\n--env=MSGA_RUN_TEST_A=1\n--unset-env=MSGA_RUN_TEST_UNSET\n--forward-fd=3\n"
+    );
+    // No folder given: the home folder, which the host has too (the sandbox's
+    // own may not be there).
+    sh("true");
+    CHECK(box.lastOptions().find("--directory=" + base::homeDir() + "\n") != std::string::npos);
+    // Here, all the same, when asked for.
+    const int        before = box.spawns();
+    base::RunOptions here;
+    here.here = true;
+    CHECK(sh("true", here).code == 0);
+    CHECK(box.spawns() == before);
+    file::remove(dir);
+}
+
+TEST("process (sandbox): a timeout kills the whole group on the host") {
+    const std::string       dir     = tempDir();
+    const std::string       pidFile = dir + "/child.pid";
+    base::test::FakeSandbox box;
+    base::RunOptions        o;
+    o.timeoutMs  = 500;
+    const auto r = sh("sleep 30 & echo $! > " + pidFile + "; echo started; wait", o);
+    CHECK(r.timedOut);
+    CHECK_STR(r.output, "started\n");
+    std::string pid;
+    REQUIRE(file::readAll(pidFile, &pid));
+    bool gone = false;
+    for (int i = 0; i < 100 && !gone; ++i) {
+        gone = sh("ps -o stat= -p " + pid + " | grep -qv Z").code != 0;
+        if (!gone)
+            usleep(20000);
+    }
+    CHECK(gone);
+    file::remove(pidFile);
+    file::remove(dir);
+}
+
+TEST("process (sandbox): Process signals its group on the host") {
+    const std::string       dir     = tempDir();
+    const std::string       pidFile = dir + "/child.pid";
+    base::test::FakeSandbox box;
+    base::Process           p;
+    REQUIRE(p.start("/bin/sh", {"-c", "sleep 30 & echo $! > " + pidFile + "; wait"}));
+    std::string pid;
+    for (int i = 0; i < 200 && pid.empty(); ++i) {
+        file::readAll(pidFile, &pid);
+        if (pid.empty())
+            usleep(10000);
+    }
+    REQUIRE(!pid.empty());
+    CHECK(p.running());
+    p.kill(false); // SIGTERM to the group: the shell and its sleep
+    bool gone = false;
+    for (int i = 0; i < 200 && !gone; ++i) {
+        gone = !p.running() && sh("ps -o stat= -p " + pid + " | grep -qv Z").code != 0;
+        if (!gone)
+            usleep(10000);
+    }
+    CHECK(gone);
+    file::remove(pidFile);
+    file::remove(dir);
+}
+
+TEST("process (sandbox): host access needs both flatpak-spawn and the host's files") {
+    // As a Flatpak writes it (both granted), and with either taken away by an
+    // override, which leaves it out of the file.
+    const std::string both = "[Application]\nname=com.nisdos.msga\n\n[Context]\n"
+                             "shared=network;ipc;\nfilesystems=/tmp;host;\n\n"
+                             "[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n"
+                             "org.freedesktop.Notifications=talk\n";
+    CHECK(base::host::hostAccessFrom(both));
+    CHECK_FALSE(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=/tmp;\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n"
+        )
+    );
+    CHECK_FALSE(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=host;\n[Session Bus "
+            "Policy]\norg.freedesktop.Notifications=talk\n"
+        )
+    );
+    // Read-only, or just the OS's or /etc's folders, isn't enough.
+    CHECK_FALSE(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=host:ro;host-os;\n[Session Bus Policy]\n"
+            "org.freedesktop.Flatpak=talk\n"
+        )
+    );
+    CHECK(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=xdg-download;host:rw\n[Session Bus Policy]\n"
+            "org.freedesktop.Flatpak=talk\n"
+        )
+    );
+    // The key in another section doesn't count.
+    CHECK_FALSE(
+        base::host::hostAccessFrom("[Instance]\nfilesystems=host;\norg.freedesktop.Flatpak=talk\n")
+    );
+    CHECK_FALSE(base::host::hostAccessFrom(""));
+    // Outside any Flatpak (this test): nothing was taken away.
+    CHECK_FALSE(base::host::hostAccessRevoked());
+}
+
+TEST("process (sandbox): the host reaches us through the installation's exported launcher") {
+    const char *info = "[Application]\nname=com.nisdos.msga\nruntime=runtime/x/25.08\n\n"
+                       "[Instance]\ninstance-id=1\n"
+                       "app-path=/var/lib/flatpak/app/com.nisdos.msga/x86_64/stable/abc/files\n"
+                       "runtime-path=/var/lib/flatpak/runtime/x/files\n";
+    CHECK_STR(base::host::exportedLauncher(info), "/var/lib/flatpak/exports/bin/com.nisdos.msga");
+    CHECK_STR(
+        base::host::exportedLauncher(
+            "[Application]\nname=com.nisdos.msga\n[Instance]\n"
+            "app-path=/home/u/.local/share/flatpak/app/com.nisdos.msga/x86_64/master/d/files\n"
+        ),
+        "/home/u/.local/share/flatpak/exports/bin/com.nisdos.msga"
+    );
+    // flatpak-builder --run: a build directory, nothing exported.
+    CHECK(
+        base::host::exportedLauncher(
+            "[Application]\nname=com.nisdos.msga\n[Instance]\napp-path=/src/build/app/files\n"
+        )
+            .empty()
+    );
+    CHECK(base::host::exportedLauncher("[Runtime]\nname=org.gnome.Platform\n").empty());
+    // Not in a sandbox: our own path.
+    CHECK_STR(base::host::selfCommand(), base::executablePath());
+}
+
+TEST("process (sandbox): executables are looked for on the host") {
+    base::test::FakeSandbox box;
+    const std::string       found = base::findExecutable("sh");
+    CHECK(!found.empty() && found.front() == '/');
+    CHECK(box.spawns() == 1);
+    CHECK(base::isExecutable(found));
+    CHECK_STR(base::findExecutable(found), found);
+    CHECK(base::findExecutable("msga-no-such-program").empty());
+    CHECK_FALSE(base::isExecutable("/nonexistent/program"));
+    CHECK_FALSE(base::isExecutable(base::homeDir())); // a folder
+    CHECK(box.spawns() == 6);
+}
+#endif
 #endif
 
 TEST("process: homeDir") {

@@ -7,7 +7,9 @@
 #include <cstdio>
 #include <ctime>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "port/port.h"
+#elif defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -19,6 +21,7 @@ namespace base {
 namespace {
 bool g_use24h = false;
 
+#ifndef MSGA_PORT // a port's localTime needs no tm
 CivilTime fromTm(const std::tm &tm, int offset) {
     CivilTime c;
     c.year      = tm.tm_year + 1900;
@@ -31,10 +34,13 @@ CivilTime fromTm(const std::tm &tm, int offset) {
     c.utcOffset = offset;
     return c;
 }
+#endif
 } // namespace
 
 int64_t nowMicros() {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    return port_time_wall_us();
+#elif defined(_WIN32)
     FILETIME ft;
     GetSystemTimePreciseAsFileTime(&ft);
     const int64_t t100ns = (int64_t(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
@@ -51,7 +57,9 @@ int64_t nowSecs() {
 }
 
 int64_t monotonicMs() {
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+    return port_time_monotonic_ns() / 1000000;
+#elif defined(_WIN32)
     return int64_t(GetTickCount64());
 #else
     timespec ts;
@@ -60,6 +68,35 @@ int64_t monotonicMs() {
 #endif
 }
 
+int64_t monotonicUs() {
+#if defined(MSGA_PORT)
+    return port_time_monotonic_ns() / 1000;
+#elif defined(_WIN32)
+    static const int64_t freq = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return int64_t(f.QuadPart);
+    }();
+    LARGE_INTEGER c;
+    QueryPerformanceCounter(&c);
+    return int64_t(c.QuadPart / freq * 1000000 + c.QuadPart % freq * 1000000 / freq);
+#else
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return int64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
+#endif
+}
+
+#ifdef MSGA_PORT
+// The port knows the zone's offset at an instant; the rest is the proleptic
+// Gregorian arithmetic below, so no C library time zone code (and no tm).
+CivilTime localTime(int64_t secs) {
+    const int offset = port_time_local_offset(secs);
+    CivilTime c      = utcTime(secs + offset);
+    c.utcOffset      = offset;
+    return c;
+}
+#else
 CivilTime localTime(int64_t secs) {
     const std::time_t t = std::time_t(secs);
     std::tm           tm{};
@@ -73,6 +110,7 @@ CivilTime localTime(int64_t secs) {
     return fromTm(tm, int(tm.tm_gmtoff));
 #endif
 }
+#endif
 
 CivilTime utcTime(int64_t secs) {
     CivilTime c;
@@ -88,6 +126,20 @@ CivilTime utcTime(int64_t secs) {
 }
 
 int64_t fromLocal(int year, int month, int day, int hour, int minute, int second) {
+#ifdef MSGA_PORT
+    // Out-of-range fields normalise as mktime's do: months into years here,
+    // days, hours, minutes and seconds by plain addition.
+    int64_t       m = int64_t(month) - 1;
+    const int64_t y = year + (m >= 0 ? m / 12 : (m - 11) / 12);
+    m -= (y - year) * 12;
+    const int64_t local = (daysFromCivil(int(y), int(m + 1), 1) + day - 1) * 86400 +
+                          int64_t(hour) * 3600 + int64_t(minute) * 60 + second;
+    // The offset in effect at the answer, not at the wall-clock time read as
+    // UTC: a second round settles it (inside a DST gap it lands on the later
+    // offset, as mktime with tm_isdst = -1 does).
+    const int64_t guess = local - port_time_local_offset(local);
+    return local - port_time_local_offset(guess);
+#else
     std::tm tm{};
     tm.tm_year  = year - 1900;
     tm.tm_mon   = month - 1;
@@ -97,6 +149,7 @@ int64_t fromLocal(int year, int month, int day, int hour, int minute, int second
     tm.tm_sec   = second;
     tm.tm_isdst = -1; // let the OS decide whether DST applies on that date
     return int64_t(std::mktime(&tm));
+#endif
 }
 
 // Howard Hinnant's days_from_civil / civil_from_days.

@@ -49,9 +49,9 @@ target_include_directories(msga_screens_shell PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 if(MSGA_SELF_UPDATE)
     target_sources(msga_screens_shell PRIVATE update_bar.cpp)
 endif()
-# Linux: the logo the launcher entry names (desktop_entry.cpp), as the old
-# app's :/icon.png — gfx/icon_256.png as a byte array.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+# Linux and the BSDs: the logo the launcher entry names (desktop_entry.cpp),
+# gfx/icon_256.png as a byte array.
+if(MSGA_FREEDESKTOP)
     get_filename_component(_png "${CMAKE_CURRENT_SOURCE_DIR}/../../../../gfx/icon_256.png" ABSOLUTE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_png}")
     file(READ "${_png}" _hex HEX)
@@ -81,7 +81,7 @@ target_compile_definitions(msga PRIVATE MSGA_VERSION=${MSGA_VERSION}) # the upda
 # Linux: msga's own std::terminate handler in place of libstdc++'s verbose one,
 # which links the C++ demangler into the binary just to print a type name
 # (app/crash/terminate_handler.cpp).
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT)
     target_sources(msga PRIVATE ../../crash/terminate_handler.cpp)
 endif()
 # Leak-hunting diagnostics (app/diag/mem_stats.h): SIGUSR1 prints the memory

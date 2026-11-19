@@ -66,7 +66,13 @@ public:
         // prefs): done(iaTheme, legacyValues, error).
         using SlackThemeDone =
             std::function<void(std::string iaTheme, std::string legacy, std::string error)>;
-        std::function<void(SlackThemeDone)> fetchSlackTheme;
+        std::function<void(SlackThemeDone)>                              fetchSlackTheme;
+        // System → Claude Code → "Runs on" (shown only when both are set: a
+        // Claude Code workspace exists). claudeHost: its SSH destination (""
+        // = this computer) and msga's path there; setClaudeHost saves a new
+        // one and starts the workspace over on it.
+        std::function<void(std::string *destination, std::string *msga)> claudeHost;
+        std::function<void(const std::string &destination, const std::string &msga)> setClaudeHost;
     };
 
     SettingsDialog(
@@ -110,6 +116,7 @@ private:
     void buildAi();
     void buildStorage();
     void buildSystem();
+    void buildClaudeHost(); // System → Claude Code: where its sessions run
     void buildAbout();
 
     // Appearance.

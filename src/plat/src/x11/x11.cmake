@@ -14,5 +14,6 @@ target_sources(plat PRIVATE
     src/x11/x11_xinput.cpp
     src/x11/x11_monitors.cpp
 )
+plat_link_by_name(PkgConfig::PLAT_X11_DEPS)
 target_link_libraries(plat PUBLIC PkgConfig::PLAT_X11_DEPS)
 target_compile_definitions(plat PUBLIC PLAT_HAS_X11)

@@ -34,8 +34,8 @@ namespace identity {
 
 inline constexpr const char *kName      = "MSGA"; // the application name
 inline constexpr const char *kUrlScheme = "msga";
-// Linux: the desktop entry / Wayland app_id / WM_CLASS instance; elsewhere
-// the bundle id / AUMID.
+// Linux: the desktop entry / Wayland app_id / WM_CLASS instance ("msga";
+// the Flatpak's "com.nisdos.msga"); elsewhere the bundle id / AUMID.
 const char                  *appId();
 // The single-instance channel's name (plat::App::claimSingleInstance).
 const char                  *instanceKey();

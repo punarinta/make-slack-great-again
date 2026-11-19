@@ -179,6 +179,27 @@ struct Env {
     ConvRef conv(const char *id) const { return store.findConversation(id); }
 };
 
+// The newest open RTM socket's id ("" if none).
+std::string openRtm() {
+    json::Document d;
+    d.parse(ctl("GET", "/_ctl/ws").body, nullptr);
+    std::string id;
+    for (json::Value c : d.root())
+        if (c["open"].boolean() && c["conn"].str().substr(0, 4) == "rtm-")
+            id = std::string(c["conn"].str());
+    return id;
+}
+
+// ws:rtm frames whose text contains `needle`.
+int rtmFrames(std::string_view needle) {
+    const Log l;
+    int       n = 0;
+    for (json::Value r : l.doc.root())
+        n += r["method"].str() == "ws:rtm" &&
+             r["form"]["text"].str().find(needle) != std::string_view::npos;
+    return n;
+}
+
 bool haveServer() {
     if (!fakeslack::server().empty())
         return true;
@@ -275,6 +296,9 @@ TEST("slack realtime: edits, deletions, reactions, presence, users and marks") {
     if (!haveServer())
         return;
     Env e;
+    // The presence poll agrees with the pushed presence_change below: on a
+    // slow machine its answer can land after the event and win.
+    set(R"({"users.getPresence": {"ok": true, "presence": "active", "online": true}})");
     REQUIRE(e.connect());
     REQUIRE(e.live());
     const ConvRef c  = e.conv("C1");
@@ -867,6 +891,49 @@ TEST("slack realtime: the presence link reconnects without pongs and idles while
     CHECK_FALSE(rtm->connected());
     e.be->noteUserActivity();
     REQUIRE(pumpUntil([&] { return e.be->presenceLink() == Link::Active; }));
+}
+
+TEST("slack realtime: the presence link streams Slack Connect partners' presence") {
+    if (!haveServer())
+        return;
+    // UEXT is a Slack Connect DM partner: not in users.list, and
+    // users.getPresence answers user_not_found for them.
+    Env e(true, false, {}, R"({
+     "users.conversations": {"ok": true, "channels": [
+         {"id": "C1", "name": "general", "is_channel": true, "is_member": true},
+         {"id": "D1", "is_im": true, "user": "UMIRA"},
+         {"id": "D2", "is_im": true, "user": "UEXT"}],
+       "response_metadata": {"next_cursor": ""}},
+     "users.info?user=UEXT": {"ok": true, "user": {"id": "UEXT", "name": "ext",
+         "profile": {"real_name": "Ext Partner"}}},
+     "users.getPresence?user=UEXT": {"ok": false, "error": "user_not_found"}
+    })");
+    REQUIRE(e.connect());
+    e.be->setPresenceMode(Mode::WhileRunning);
+    REQUIRE(pumpUntil([&] { return e.be->presenceLink() == Link::Active; }));
+    // The full set, the external partner only (Mira answers getPresence).
+    REQUIRE(pumpUntil([&] { return rtmFrames(R"("presence_sub")") > 0; }, 5000));
+    CHECK(rtmFrames(R"({"type":"presence_sub","ids":["UEXT"]})") == 1);
+    // Their presence_change, single and batched.
+    const model::UserRef ext = e.store.findUser("UEXT");
+    REQUIRE(ext != model::kNoUser);
+    CHECK_FALSE(e.store.user(ext).active);
+    auto send = [](const std::string &frame) {
+        std::string body = R"({"conn":")" + openRtm() + R"(","text":)";
+        json::escapeString(body, frame);
+        body += '}';
+        ctl("POST", "/_ctl/ws/send", std::move(body));
+    };
+    send(R"({"type":"presence_change","user":"UEXT","presence":"active"})");
+    REQUIRE(pumpUntil([&] { return e.store.user(ext).active; }));
+    send(R"({"type":"presence_change","users":["UEXT"],"presence":"away"})");
+    REQUIRE(pumpUntil([&] { return !e.store.user(ext).active; }));
+    // Unchanged set: not re-sent per presence round.
+    pumpFor(1500);
+    CHECK(rtmFrames(R"("presence_sub")") == 1);
+    // A new socket subscribes to nobody: the set goes again after its hello.
+    ctl("POST", "/_ctl/ws/close", R"({"conn":")" + openRtm() + R"(","code":1001})");
+    REQUIRE(pumpUntil([&] { return rtmFrames(R"("presence_sub")") == 2; }, 5000));
 }
 
 TEST("slack realtime: rtm.connect refusing the token makes the link unavailable") {

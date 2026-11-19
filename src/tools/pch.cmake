@@ -98,8 +98,10 @@ endforeach()
 # built at another optimisation level (blend.cpp is -O2), and through a PCH
 # Clang drops libstdc++'s namespace visibility from the out-of-namespace
 # __gnu_cxx::__verbose_terminate_handler definition (it came out HIDDEN).
-set_source_files_properties("${CMAKE_SOURCE_DIR}/src/gfx/blend.cpp"
-    TARGET_DIRECTORY msga_gfx PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+if(TARGET msga_gfx) # MSGA_MODULES may stop below gfx
+    set_source_files_properties("${CMAKE_SOURCE_DIR}/src/gfx/blend.cpp"
+        TARGET_DIRECTORY msga_gfx PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+endif()
 if(TARGET msga AND EXISTS "${CMAKE_SOURCE_DIR}/src/app/crash/terminate_handler.cpp")
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/app/crash/terminate_handler.cpp"
         TARGET_DIRECTORY msga PROPERTIES SKIP_PRECOMPILE_HEADERS ON)

@@ -456,6 +456,9 @@ model::User toUser(const json::Value &o) {
     u.owner       = o["is_owner"].boolean() || o["is_primary_owner"].boolean();
     u.deleted     = o["deleted"].boolean();
     u.stranger    = o["is_stranger"].boolean();
+    // Only while there is a status: Slack may leave a stale expiry behind.
+    if (!u.statusText.empty() || !u.statusEmoji.empty())
+        u.statusExpiry = epochSecs(p["status_expiration"]);
     return u;
 }
 

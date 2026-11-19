@@ -32,7 +32,7 @@ std::array<uint8_t, 20> hmacSha1(std::string_view key, std::string_view data);
 std::string
 pbkdf2Sha1(std::string_view password, std::string_view salt, int iterations, size_t len);
 
-// From the OS's CSPRNG (getrandom / arc4random / BCryptGenRandom). False
+// From the OS's CSPRNG (getentropy / arc4random / BCryptGenRandom). False
 // only if the OS refused, which callers treat as fatal for that operation.
 bool randomBytes(void *out, size_t n);
 

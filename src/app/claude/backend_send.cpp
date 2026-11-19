@@ -124,28 +124,14 @@ void Backend::sendNext(ConvRef conv) {
 void Backend::uploadFiles(
     std::vector<std::string> files, std::function<void(std::vector<std::string>, std::string)> then
 ) {
-    struct Job {
-        std::vector<std::string> files, copies;
-        std::string              failed; // the file that couldn't be read
-    };
-    auto job   = std::make_shared<Job>();
-    job->files = std::move(files);
-    model::runInBackground(
-        _app,
-        [job] {
-            for (const std::string &path : job->files) {
-                std::string copy = cacheUpload(path);
-                if (copy.empty()) {
-                    job->failed = path;
-                    job->copies.clear();
-                    return;
-                }
-                job->copies.push_back(std::move(copy));
-            }
-        },
-        [alive = _alive, job, then = std::move(then)] {
+    // Copied where Claude Code reads them: msga's cache here, or a folder on
+    // the remote host.
+    _host->upload(
+        std::move(files),
+        [alive = _alive,
+         then  = std::move(then)](std::vector<std::string> copies, std::string failed) {
             if (*alive)
-                then(std::move(job->copies), std::move(job->failed));
+                then(std::move(copies), std::move(failed));
         }
     );
 }
@@ -208,7 +194,7 @@ void Backend::sendText(ConvRef conv, std::string raw, Ts threadTs, Done done, Un
             reason = tr("Type your question after /btw.");
         else if (t->info.sessionId.empty())
             reason = tr("Send the session its first message before asking on the side.");
-        else if (_creds.claudePath.empty())
+        else if (!_host->hasCli())
             reason = readOnlyReason(*t);
         if (reason.empty()) {
             ForkOptions opts;
@@ -331,7 +317,7 @@ void Backend::whenLoggedIn(std::function<void(bool)> then) {
     _loginWaiters.push_back(std::move(then));
     if (std::exchange(_loginChecking, true))
         return; // on its way
-    _launcher->checkLogin([this, alive = _alive](Login login) {
+    _host->checkLogin([this, alive = _alive](Login login) {
         if (!*alive)
             return;
         _loginChecking  = false;
@@ -388,7 +374,7 @@ void Backend::typeLive(Tracked &t) {
     // Its done may run before sendLive returns (nothing to type, no terminal):
     // then the handle is a finished one, and `t` may be gone by then too.
     const auto        ran    = std::make_shared<bool>(false);
-    const auto        handle = _launcher->sendLive(
+    const auto        handle = _host->sendLive(
         t.info.sessionId,
         t.info.cwd,
         next.text,
@@ -501,19 +487,14 @@ void Backend::readApproval(Tracked &t) {
     if (!t.approvalOptions.empty() || t.approvalAnswered || nowMs() < t.approvalReadAfterMs)
         return;
     ++t.approvalReads;
-    const std::string        convId = t.convId;
-    const std::string        needs  = t.info.needs;
-    std::string              program;
-    std::vector<std::string> argv;
-    _launcher->attachCommand(t.info.sessionId, program, argv);
-    // Its done may run before choose() returns (`attach` didn't start).
-    const auto ran = std::make_shared<bool>(false);
-    const auto handle = AttachAnswer::choose( // option 0: the question only read
-        _app,
-        program,
-        argv,
+    const std::string convId = t.convId;
+    const std::string needs  = t.info.needs;
+    // Its done may run before answer() returns (`attach` didn't start).
+    const auto        ran    = std::make_shared<bool>(false);
+    const auto        handle = _host->answer( // option 0: the question only read
+        t.info.sessionId,
         t.info.cwd,
-        [needs](const PermissionQuestion &q) { return questionIsFor(needs, q); },
+        needs,
         0,
         {},
         [this, alive = _alive, ran, convId, needs](
@@ -554,7 +535,7 @@ void Backend::readApproval(Tracked &t) {
 bool Backend::hookApproval(Tracked &t) {
     if (!t.info.permissionHook)
         return false;
-    for (HookQuestion &q : pendingHookQuestions(_approvalsDir)) {
+    for (HookQuestion &q : _host->pendingQuestions()) {
         if (q.sessionId != t.info.sessionId)
             continue;
         if (q.id != t.hookQuestion) { // a new one (perhaps asking just what the last did)
@@ -568,7 +549,7 @@ bool Backend::hookApproval(Tracked &t) {
             }
             sync(t); // the buttons
         }
-        takeHookQuestion(_approvalsDir, q.id);
+        _host->takeQuestion(q.id);
         return true;
     }
     if (!t.hookQuestion.empty()) {
@@ -605,9 +586,7 @@ void Backend::pressButton(ConvRef conv, Ts, const std::string &buttonId, Done do
     if (!t->hookQuestion.empty()) {
         // Asked through the hook: its answer is left for it.
         if (t->approvalAnswered || number < 1 || number > int(t->hookAnswers.size()) ||
-            !answerHookQuestion(
-                _approvalsDir, t->hookQuestion, t->hookAnswers[size_t(number - 1)]
-            )) {
+            !_host->answerQuestion(t->hookQuestion, t->hookAnswers[size_t(number - 1)])) {
             scheduleRefresh();
             return fail(tr("Claude isn't waiting for that approval any more."));
         }
@@ -625,20 +604,15 @@ void Backend::pressButton(ConvRef conv, Ts, const std::string &buttonId, Done do
     for (const auto &o : t->approvalOptions)
         if (o.number == number)
             label = o.label;
-    const std::string        convId = t->convId;
-    const std::string        needs  = t->info.needs;
-    std::string              program;
-    std::vector<std::string> argv;
-    _launcher->attachCommand(t->info.sessionId, program, argv);
-    // Its done may run before choose() returns (`attach` didn't start); the
+    const std::string convId = t->convId;
+    const std::string needs  = t->info.needs;
+    // Its done may run before answer() returns (`attach` didn't start); the
     // caller's done never runs from inside this call (model::Backend).
-    const auto ran    = std::make_shared<bool>(false);
-    const auto handle = AttachAnswer::choose(
-        _app,
-        program,
-        argv,
+    const auto        ran    = std::make_shared<bool>(false);
+    const auto        handle = _host->answer(
+        t->info.sessionId,
         t->info.cwd,
-        [needs](const PermissionQuestion &q) { return questionIsFor(needs, q); },
+        needs,
         number,
         label,
         [this, alive = _alive, ran, convId, done](
@@ -772,7 +746,7 @@ void Backend::dispatch(Tracked &t) {
         // way (adoptCopy), the original's worker stopped.
         const std::string folder = file::absolute(cwd);
         _forkingIn.insert(folder); // the copy mustn't flash up in the list meanwhile
-        _launcher->fork(
+        _host->fork(
             t.info.sessionId,
             cwd,
             t.flying->text,
@@ -784,7 +758,7 @@ void Backend::dispatch(Tracked &t) {
             t.deniedTools
         );
     } else if (t.info.sessionId.empty()) {
-        _launcher->start(
+        _host->start(
             t.info.cwd,
             t.flying->text,
             t.skipPermissionChecks,
@@ -796,7 +770,7 @@ void Backend::dispatch(Tracked &t) {
         const bool background = t.info.kind == SessionInfo::Kind::Background;
         // A background session's worker idles on after a turn; it has to be
         // stopped before the session can be resumed (see Launcher).
-        _launcher->resume(
+        _host->resume(
             t.info.sessionId,
             t.info.cwd,
             t.flying->text,
@@ -828,55 +802,40 @@ void Backend::adoptCopy(Tracked &t, const std::string &copyId) {
 }
 
 bool Backend::canStopJob(ConvRef conv, const std::string &jobId) const {
-#ifdef __linux__ // the process is found through /proc (commandProcessGroup)
     const Tracked *t = findRef(conv);
-    if (!t || t->info.sessionId.empty() || !t->jobOutputs.count(jobId))
+    if (!_host->canStopCommands() || !t || t->info.sessionId.empty() || !t->jobOutputs.count(jobId))
         return false;
     const auto j = t->jobs.find(jobId);
     return j != t->jobs.end() && j->second.state == model::BackgroundJob::State::Running;
-#else
-    (void)conv;
-    (void)jobId;
-    return false;
-#endif
 }
 
 void Backend::stopJob(ConvRef conv, const std::string &jobId) {
     Tracked *t = findRef(conv);
     if (!canStopJob(conv, jobId) || !t)
         return;
-    // Found and signalled on a worker (a walk over /proc); the process group
-    // goes, as Claude Code's own stop ends it, and Claude Code tells the session.
+    // The process group goes, as Claude Code's own stop ends it, and Claude
+    // Code tells the session.
     const std::string sessionId = t->info.sessionId, output = t->jobOutputs[jobId];
-    const auto        found   = t->jobs.find(jobId);
-    const std::string name    = found != t->jobs.end() ? found->second.name : jobId;
-    auto              stopped = std::make_shared<bool>(false);
-    model::runInBackground(
-        _app,
-        [sessionId, output, stopped] {
-            const int64_t group = commandProcessGroup(sessionId, output);
-            *stopped            = group > 0 && signalProcessGroup(group);
-        },
-        [this, alive = _alive, conv, jobId, name, stopped] {
-            if (!*alive)
-                return;
-            if (!*stopped) {
-                reportError(
-                    i18n::arg(
-                        tr("Couldn't stop \xE2\x80\x9C%1\xE2\x80\x9D: its process wasn't found."),
-                        name
-                    )
-                );
-                return;
-            }
-            // Gone now: no notification may follow (a command its worker
-            // left behind is nobody's), so it ends here.
-            if (Tracked *t = findRef(conv)) {
-                t->userStopped.insert(jobId);
-                pumpTyping();
-            }
+    const auto        found = t->jobs.find(jobId);
+    const std::string name  = found != t->jobs.end() ? found->second.name : jobId;
+    _host->stopCommand(sessionId, output, [this, alive = _alive, conv, jobId, name](bool stopped) {
+        if (!*alive)
+            return;
+        if (!stopped) {
+            reportError(
+                i18n::arg(
+                    tr("Couldn't stop \xE2\x80\x9C%1\xE2\x80\x9D: its process wasn't found."), name
+                )
+            );
+            return;
         }
-    );
+        // Gone now: no notification may follow (a command its worker
+        // left behind is nobody's), so it ends here.
+        if (Tracked *t = findRef(conv)) {
+            t->userStopped.insert(jobId);
+            pumpTyping();
+        }
+    });
 }
 
 bool Backend::canStopSession(ConvRef conv) const {
@@ -928,7 +887,7 @@ void Backend::stopWorker(Tracked &t) {
     // it shows from there.
     t.flying.reset();
     const std::string convId = t.convId;
-    _launcher->stop(t.info.sessionId, t.info.cwd, [this, alive = _alive, convId] {
+    _host->stop(t.info.sessionId, t.info.cwd, [this, alive = _alive, convId] {
         if (!*alive)
             return;
         if (Tracked *t = find(convId))
@@ -967,7 +926,7 @@ void Backend::launchFork(
     const std::string folder     = file::absolute(cwd);
     _forkingIn.insert(folder); // the branch mustn't flash up in the list meanwhile
     std::vector<std::string> denied = opts.deniedTools; // opts moves into the callback
-    _launcher->fork(
+    _host->fork(
         parent.info.sessionId,
         cwd,
         question,
@@ -1034,19 +993,9 @@ void Backend::launchFork(
 // ── New sessions ────────────────────────────────────────────────────────────
 
 std::string Backend::cannotStartIn(const std::string &dir) const {
-    if (_creds.claudePath.empty())
+    if (!_host->hasCli())
         return notInstalledMessage();
-    if (!file::isDir(dir))
-        return i18n::arg(tr("%1 isn't a folder."), dir);
-    // Background sessions refuse a folder Claude Code hasn't trusted. The
-    // launcher trusts the picked one, but Claude Code never saves trust for
-    // the home folder: say so now rather than on the first message.
-    if (!canTrustFolder(dir))
-        return tr(
-            "Claude Code doesn't run background sessions in the home folder. Pick a "
-            "project folder."
-        );
-    return {};
+    return _host->folderProblem(dir);
 }
 
 std::string Backend::agentSessionBlocker(const std::string &dir) const {

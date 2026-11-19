@@ -147,6 +147,9 @@ public:
     }
     virtual void        removeAgentRole(const std::string &id) { (void)id; }
     virtual void        restoreAgentRole(const std::string &id) { (void)id; }
+    // The machine agent sessions run on when it isn't this one ("" = this
+    // one): their folders are that machine's, typed rather than picked here.
+    virtual std::string agentHost() const { return {}; }
     // Why no session can be started in `dir` ("" = it can).
     virtual std::string agentSessionBlocker(const std::string &dir) const {
         (void)dir;

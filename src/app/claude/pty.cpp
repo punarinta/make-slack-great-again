@@ -1,16 +1,21 @@
 #include "app/claude/pty.h"
 
+#include "base/host.h"
 #include "base/process.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "plat/plat.h"
 
 #include <algorithm>
 #include <cstring>
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+#include "port/port.h"
+
+#include <atomic>
+#elif defined(_WIN32)
 #include "base/winstr.h"
 
-#include <thread>
 #include <windows.h>
 #else
 #include <cerrno>
@@ -25,7 +30,141 @@
 
 namespace claude {
 
-#ifdef _WIN32
+#if defined(MSGA_PORT)
+
+// The port's pseudo-terminal (PORT_SPAWN_PTY): what the program draws is read
+// on a thread of ours and posted to the loop, as on Windows. Without
+// PORT_CAP_PTY start() fails, and the callers report "not ready" with why.
+struct Pty::Impl {
+    Pty              *q;
+    port_proc        *proc = nullptr;
+    base::Thread      reader;
+    std::atomic<bool> stop{false};
+    bool              running   = false;
+    plat::TimerId     killTimer = 0; // terminate()'s forced end
+
+    explicit Impl(Pty *owner) : q(owner) {}
+    ~Impl() {
+        stop = true;
+        if (proc && running) {
+            port_proc_kill(proc, 1);
+            port_proc_wait(proc, -1, nullptr);
+        }
+        reader.join(); // its read ends with the program's side of the terminal
+        port_proc_release(proc);
+    }
+};
+
+Pty::Pty(plat::App &app)
+    : _app(app), d(std::make_unique<Impl>(this)), _alive(std::make_shared<bool>(true)) {}
+
+Pty::~Pty() {
+    *_alive = false;
+    if (d->killTimer)
+        _app.cancelTimer(d->killTimer);
+}
+
+bool Pty::start(
+    const std::string              &program,
+    const std::vector<std::string> &args,
+    const std::string              &cwd,
+    int                             rows,
+    int                             cols
+) {
+    if (!(port_caps() & PORT_CAP_PTY)) {
+        _error = "no pseudo-terminals on this system";
+        return false;
+    }
+    std::vector<const char *> argv;
+    for (const std::string &a : args)
+        argv.push_back(a.c_str());
+    const char     *env[] = {"TERM=xterm-256color"};
+    port_spawn_desc desc{};
+    desc.size     = sizeof desc;
+    desc.exe      = program.c_str();
+    desc.argv     = argv.data();
+    desc.argc     = argv.size();
+    desc.cwd      = cwd.empty() ? nullptr : cwd.c_str();
+    desc.env      = env;
+    desc.envc     = 1;
+    desc.flags    = PORT_SPAWN_PTY | PORT_SPAWN_NEW_GROUP;
+    desc.pty_cols = uint16_t(std::clamp(cols, 1, 0xFFFF));
+    desc.pty_rows = uint16_t(std::clamp(rows, 1, 0xFFFF));
+    const int rc  = port_proc_spawn(&desc, &d->proc);
+    if (rc != PORT_OK) {
+        d->proc = nullptr;
+        _error  = std::string("can't start ") + program + ": " + port_strerror(rc);
+        return false;
+    }
+    d->running = true;
+
+    plat::App &app   = _app;
+    auto       alive = _alive;
+    Impl      *impl  = d.get();
+    d->reader.start([&app, alive, impl] {
+        char buf[8192];
+        while (!impl->stop) {
+            // A bounded wait, so a destroyed Pty never waits on a silent program.
+            const int64_t n = port_proc_read(impl->proc, PORT_STDOUT, buf, sizeof buf, 250);
+            if (n == PORT_E_TIMEOUT || n == PORT_E_AGAIN)
+                continue;
+            if (n <= 0)
+                break; // its side of the terminal closed: it exited
+            app.post([alive, impl, chunk = std::string(buf, size_t(n))] {
+                if (!*alive || !impl->q->onOutput)
+                    return;
+                auto cb = impl->q->onOutput; // it may destroy us
+                cb(chunk);
+            });
+        }
+        if (impl->stop)
+            return;
+        app.post([alive, impl] {
+            if (!*alive || !impl->running)
+                return;
+            // Closed its terminal yet still running: it goes now.
+            if (port_proc_wait(impl->proc, 0, nullptr) != PORT_OK) {
+                port_proc_kill(impl->proc, 1);
+                port_proc_wait(impl->proc, -1, nullptr);
+            }
+            impl->running = false;
+            if (auto cb = impl->q->onFinished)
+                cb();
+        });
+    });
+    return true;
+}
+
+void Pty::write(std::string_view bytes) {
+    while (d->running && !bytes.empty()) {
+        const int64_t n = port_proc_write(d->proc, bytes.data(), bytes.size(), 1000);
+        if (n > 0)
+            bytes.remove_prefix(size_t(n));
+        else if (n != PORT_E_TIMEOUT && n != PORT_E_AGAIN)
+            return;
+    }
+}
+
+void Pty::terminate() {
+    if (!d->running)
+        return;
+    port_proc_kill(d->proc, 0);
+    // What ignores it goes anyway; onFinished follows from the reader.
+    Impl *impl = d.get();
+    if (d->killTimer)
+        _app.cancelTimer(d->killTimer);
+    d->killTimer = _app.addTimer(2000, false, [impl] {
+        impl->killTimer = 0;
+        if (impl->running)
+            port_proc_kill(impl->proc, 1);
+    });
+}
+
+bool Pty::isRunning() const {
+    return d->running;
+}
+
+#elif defined(_WIN32)
 
 namespace {
 
@@ -45,24 +184,22 @@ struct Pty::Impl {
     HANDLE               inWrite = INVALID_HANDLE_VALUE; // our typing → the program
     HANDLE               outRead = INVALID_HANDLE_VALUE; // what it draws → us
     PROCESS_INFORMATION  pi{};
-    std::thread          reader;
-    std::thread          exitWatch;
+    base::Thread         reader;
+    base::Thread         exitWatch;
     bool                 running = false;
 
     explicit Impl(Pty *owner) : q(owner) {}
     ~Impl() {
         if (running)
             TerminateProcess(pi.hProcess, 1);
-        if (exitWatch.joinable())
-            exitWatch.join(); // returns once the process has ended
+        exitWatch.join(); // returns once the process has ended
         // Closing the console flushes the last output: the reader still
         // drains it, then sees the pipe break and ends.
         if (pc && closePc)
             closePc(pc);
         if (inWrite != INVALID_HANDLE_VALUE)
             CloseHandle(inWrite);
-        if (reader.joinable())
-            reader.join();
+        reader.join();
         if (outRead != INVALID_HANDLE_VALUE)
             CloseHandle(outRead);
         if (pi.hProcess)
@@ -164,7 +301,7 @@ bool Pty::start(
     auto       alive = _alive;
     Impl      *impl  = d.get();
     HANDLE     out   = d->outRead;
-    d->reader        = std::thread([&app, alive, impl, out] {
+    d->reader.start([&app, alive, impl, out] {
         char buf[8192];
         for (;;) {
             DWORD n = 0;
@@ -178,8 +315,8 @@ bool Pty::start(
             });
         }
     });
-    HANDLE proc      = d->pi.hProcess;
-    d->exitWatch     = std::thread([&app, alive, impl, proc] {
+    HANDLE proc = d->pi.hProcess;
+    d->exitWatch.start([&app, alive, impl, proc] {
         WaitForSingleObject(proc, INFINITE);
         app.post([alive, impl] {
             if (!*alive || !impl->running)
@@ -309,15 +446,29 @@ bool Pty::start(
     }
     // Everything the child needs is made before fork(): after it, only
     // async-signal-safe calls until exec.
-    const std::string        slave = slaveName;
-    std::vector<std::string> argStore{program};
-    argStore.insert(argStore.end(), args.begin(), args.end());
+    const std::string        slave  = slaveName;
+    // In a Flatpak sandbox the program runs on the host (base/host.h), and
+    // the terminal must not be ours: the host process makes it its
+    // controlling one (a terminal belongs to one session), so it gets
+    // /dev/tty and the resize signals. Measured 2026-11-18 on Flatpak 1.16.
+    const bool               onHost = base::host::sandboxed();
+    std::vector<std::string> argStore;
+    std::vector<std::string> envStore;
+    if (onHost) {
+        base::host::Command c = base::host::wrap(program, args, cwd, {"TERM=xterm-256color"}, -1);
+        argStore.push_back(std::move(c.exe));
+        argStore.insert(argStore.end(), c.args.begin(), c.args.end());
+        envStore = base::mergedEnv({});
+    } else {
+        argStore.push_back(program);
+        argStore.insert(argStore.end(), args.begin(), args.end());
+        envStore = base::mergedEnv({"TERM=xterm-256color"});
+    }
     std::vector<char *> argv;
     for (auto &a : argStore)
         argv.push_back(a.data());
     argv.push_back(nullptr);
-    std::vector<std::string> envStore = base::mergedEnv({"TERM=xterm-256color"});
-    std::vector<char *>      envp;
+    std::vector<char *> envp;
     for (auto &e : envStore)
         envp.push_back(e.data());
     envp.push_back(nullptr);
@@ -343,11 +494,12 @@ bool Pty::start(
             ::sigaction(sig, &dfl, nullptr);
         ::sigprocmask(SIG_SETMASK, &none, nullptr);
         ::setsid(); // a session of its own, the terminal its controlling one
-        const int s = ::open(slave.c_str(), O_RDWR);
+        const int s = ::open(slave.c_str(), onHost ? O_RDWR | O_NOCTTY : O_RDWR);
         if (s < 0)
             ::_exit(127);
 #ifdef TIOCSCTTY
-        ::ioctl(s, TIOCSCTTY, 0);
+        if (!onHost)
+            ::ioctl(s, TIOCSCTTY, 0);
 #endif
         ::ioctl(s, TIOCSWINSZ, &ws);
         ::dup2(s, 0);
@@ -355,7 +507,7 @@ bool Pty::start(
         ::dup2(s, 2);
         for (long fd = 3; fd < maxFd; ++fd)
             ::close(static_cast<int>(fd));
-        if (!cwd.empty() && ::chdir(cwd.c_str()) != 0)
+        if (!onHost && !cwd.empty() && ::chdir(cwd.c_str()) != 0)
             ::_exit(127);
         ::execve(argStore[0].c_str(), argv.data(), envp.data());
         ::_exit(127);

@@ -623,6 +623,43 @@ bool isUrlChar(char c) {
     return u > ' ' && c != '<' && c != '>' && c != '"' && c != '\'' && c != '`';
 }
 
+// The bare http(s) URLs of `text`, stopping at a byte `covered` marks (the
+// ones a token of the text already owns; empty: nothing stops them).
+std::vector<BareUrl> scanBareUrls(std::string_view text, const std::string &covered) {
+    const auto           at = [&covered](size_t i) { return !covered.empty() && covered[i]; };
+    std::vector<BareUrl> out;
+    const size_t         n = text.size();
+    for (size_t i = 0; i + 8 < n; ++i) {
+        size_t scheme = 0;
+        if (text.compare(i, 8, "https://") == 0)
+            scheme = 8;
+        else if (text.compare(i, 7, "http://") == 0)
+            scheme = 7;
+        if (!scheme || at(i))
+            continue;
+        size_t j = i + scheme;
+        while (j < n && isUrlChar(text[j]) && !at(j))
+            ++j;
+        // Sentence punctuation after a URL isn't part of it, nor is a ")"
+        // closing a parenthesis the URL sits in.
+        std::string_view url(text.data() + i, j - i);
+        while (!url.empty()) {
+            const char c = url.back();
+            if (std::string_view(".,;:!?*_~").find(c) != std::string_view::npos ||
+                (c == ')' &&
+                 std::count(url.begin(), url.end(), '(') < std::count(url.begin(), url.end(), ')')))
+                url.remove_suffix(1);
+            else
+                break;
+        }
+        if (url.size() <= scheme) // the scheme alone
+            continue;
+        out.push_back({uint32_t(i), uint32_t(i + url.size())});
+        i += url.size() - 1;
+    }
+    return out;
+}
+
 // Bare http(s) URLs in the output text become Link entities — where the text
 // is not already a token (links, mentions, emoji) or a code block. Inside
 // inline `code` they are linked too.
@@ -644,38 +681,17 @@ void linkifyBareUrls(Rich &r) {
                 covered[k] = 1;
         }
     }
-    bool         added = false;
-    const size_t n     = r.text.size();
-    for (size_t i = 0; i + 8 < n; ++i) {
-        size_t scheme = 0;
-        if (r.text.compare(i, 8, "https://") == 0)
-            scheme = 8;
-        else if (r.text.compare(i, 7, "http://") == 0)
-            scheme = 7;
-        if (!scheme || covered[i])
-            continue;
-        size_t j = i + scheme;
-        while (j < n && isUrlChar(r.text[j]) && !covered[j])
-            ++j;
-        // Sentence punctuation after a URL isn't part of it, nor is a ")"
-        // closing a parenthesis the URL sits in.
-        std::string_view url(r.text.data() + i, j - i);
-        while (!url.empty()) {
-            const char c = url.back();
-            if (std::string_view(".,;:!?*_~").find(c) != std::string_view::npos ||
-                (c == ')' &&
-                 std::count(url.begin(), url.end(), '(') < std::count(url.begin(), url.end(), ')')))
-                url.remove_suffix(1);
-            else
-                break;
-        }
-        if (url.size() <= scheme) // the scheme alone
-            continue;
+    bool added = false;
+    for (const BareUrl &u : scanBareUrls(r.text, covered)) {
         r.entities.push_back(
-            Entity{Kind::Link, uint32_t(i), uint32_t(url.size()), std::string(url)}
+            Entity{
+                Kind::Link,
+                u.from,
+                u.to - u.from,
+                std::string(std::string_view(r.text).substr(u.from, u.to - u.from))
+            }
         );
         added = true;
-        i += url.size() - 1;
     }
     if (!added)
         return;
@@ -697,6 +713,10 @@ void linkifyBareUrls(Rich &r) {
 bool looksLikeUrl(std::string_view s) {
     return s.find("://") != std::string_view::npos || startsWith(s, "mailto:") ||
            startsWith(s, "tel:");
+}
+
+std::vector<BareUrl> bareUrls(std::string_view text) {
+    return scanBareUrls(text, {});
 }
 
 // "js", "c++", "objective-c": one identifier-ish word, as the fence info

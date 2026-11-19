@@ -1,5 +1,6 @@
 #include "app/screens/common/message_rules.h"
 
+#include "app/mrkdwn/link_labels.h"
 #include "base/file.h"
 #include "base/str.h"
 
@@ -63,6 +64,22 @@ bool isGifPath(std::string_view path) {
     // decodeAnimation sniffs the real bytes
     // a still WebP just decodes to one frame
     return str::iequals(ext, "gif") || str::iequals(ext, "webp");
+}
+
+std::string decodableImageUrl(std::string_view url) {
+    const std::string_view path = url.substr(0, url.find_first_of("?#"));
+    const std::string_view ext  = file::extension(path);
+    // An animated WebP decodes only with libwebp built in (MSGA_GFX_WEBP);
+    // an MP4 never does. GIPHY serves every rendition (200w, giphy, …) as
+    // .gif at the same path, whatever the query; its cid/rid only count views.
+#ifdef MSGA_GFX_WEBP
+    const bool undecodable = str::iequals(ext, "mp4");
+#else
+    const bool undecodable = str::iequals(ext, "webp") || str::iequals(ext, "mp4");
+#endif
+    if (!undecodable || !mrkdwn::isGiphyMediaUrl(url))
+        return std::string(url);
+    return str::concat({path.substr(0, path.size() - ext.size()), "gif"});
 }
 
 } // namespace screens

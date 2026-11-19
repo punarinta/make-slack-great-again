@@ -62,7 +62,8 @@ struct Index {
 bool loadIndex(Index *out, std::string *error);
 
 // The whole file mapped read-only; null when it cannot be opened or is empty.
+// A port's system faces (PORT_CAP2_FONTS) are "port-font:<name>" paths.
 const uint8_t *mapFile(const char *path, size_t *size);
-void           unmapFile(const uint8_t *p, size_t size);
+void           unmapFile(const char *path, const uint8_t *p, size_t size);
 
 } // namespace text::fonts

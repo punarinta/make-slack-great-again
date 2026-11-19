@@ -6,6 +6,7 @@
 //   posix/  our own HTTP/1.1 + WebSocket over sockets + mbedTLS (Linux)
 //   win/    WinHTTP (HTTP and its WebSocket API), the OS's TLS
 //   mac/    NSURLSession (data tasks, NSURLSessionWebSocketTask), the OS's TLS
+//   port/   the C port contract (src/port, port_net.h): the port's sockets and TLS
 #pragma once
 
 #include "net/net.h"
@@ -30,11 +31,11 @@ inline constexpr size_t kThreadStack = 256 * 1024;
 
 // A request's cancel flag plus an OS object that set() signals, so a
 // transport blocked on the request wakes at once instead of polling the
-// flag: an eventfd (POSIX), a manual-reset event (Windows), a dispatch
-// semaphore that the exchange also waits on for its answer (macOS). Made
-// on the UI thread with the request, set there by Client::cancel or the
-// Client's destructor. If the OS object can't be made, waits fall back to
-// looking at the flag every 250 ms.
+// flag: a self-pipe (POSIX), a manual-reset event (Windows), a dispatch
+// semaphore that the exchange also waits on for its answer (macOS), a
+// port_cancel (a port build). Made on the UI thread with the request, set
+// there by Client::cancel or the Client's destructor. If the OS object
+// can't be made, waits fall back to looking at the flag every 250 ms.
 class Cancel {
 public:
     Cancel();
@@ -45,13 +46,16 @@ public:
     void                     set(); // any thread; idempotent
     bool                     isSet() const { return _flag.load(std::memory_order_acquire); }
     const std::atomic<bool> &flag() const { return _flag; }
-    // The OS object: an fd (-1: none), a HANDLE (0: none) or a
-    // dispatch_semaphore_t.
+    // The OS object: an fd to poll (-1: none), a HANDLE (0: none), a
+    // dispatch_semaphore_t or a port_cancel * (0: none).
     intptr_t                 os() const { return _os; }
 
 private:
     std::atomic<bool> _flag{false};
     intptr_t          _os = -1;
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(MSGA_PORT)
+    int _osWake = -1; // the self-pipe's write end (_os is its read end)
+#endif
 };
 
 // One HTTP exchange — no redirect following, no cookie handling, no

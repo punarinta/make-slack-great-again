@@ -8,10 +8,10 @@
 #include "base/log.h"
 #include "base/secret.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/time.h"
 
 #include <algorithm>
-#include <mutex>
 #include <unordered_map>
 
 // MSGA_GIPHY_KEY comes from credentials.cmake (screens/settings/CMakeLists.txt);
@@ -447,13 +447,13 @@ namespace {
 // The settings writes, numbered as they are asked for (UI thread): per
 // path the number of the newest one on disk, so a write overtaken by a
 // newer one is skipped.
-std::mutex                                g_writeMutex;
+base::Mutex                               g_writeMutex;
 std::unordered_map<std::string, uint64_t> g_written;
 uint64_t                                  g_asked = 0;
 
 bool writeSettings(const std::string &path, const std::string &text, uint64_t n) {
-    std::lock_guard<std::mutex> lock(g_writeMutex);
-    uint64_t                   &done = g_written[path];
+    base::Lock lock(g_writeMutex);
+    uint64_t  &done = g_written[path];
     if (n <= done)
         return true;
     done = n;

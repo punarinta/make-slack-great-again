@@ -28,6 +28,8 @@
 #include "app/cache/workspace_cache.h"
 #include "app/claude/approvals.h"
 #include "app/claude/progress.h"
+#include "app/claude/relay_protocol.h"
+#include "app/claude/relay_server.h"
 #include "app/crash/crash_handler.h"
 #include "app/i18n/languages.h"
 #include "app/identity.h"
@@ -82,25 +84,26 @@
 #include <string>
 #include <string_view>
 
-#if defined(MSGA_DEMO) && (defined(__linux__) || defined(__APPLE__))
+#if defined(MSGA_DEMO) && (defined(MSGA_FREEDESKTOP) || defined(__APPLE__))
 #include <cerrno>
 #include <csignal>
 #include <dirent.h>
 #include <ftw.h>
 #include <unistd.h>
 #endif
-#if (defined(__SANITIZE_ADDRESS__) || defined(MSGA_DEV_DIAG)) && !defined(_WIN32)
+#if (defined(__SANITIZE_ADDRESS__) || defined(MSGA_DEV_DIAG)) && !defined(_WIN32) &&               \
+    !defined(MSGA_PORT) // a port OS has no signals
 #include <csignal>
 #endif
 
 namespace {
 
-#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32)
+#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32) && !defined(MSGA_PORT)
 // ASan builds (scripts/run-asan.sh): Ctrl+C / SIGTERM quit the app normally,
 // so LeakSanitizer gets to print its report at exit.
 volatile std::sig_atomic_t gQuitSignal = 0;
 #endif
-#if defined(MSGA_DEV_DIAG) && !defined(_WIN32)
+#if defined(MSGA_DEV_DIAG) && !defined(_WIN32) && !defined(MSGA_PORT)
 // SIGUSR1: print the memory numbers (and run a LeakSanitizer pass) now.
 volatile std::sig_atomic_t gStatsSignal = 0;
 #endif
@@ -116,7 +119,7 @@ volatile std::sig_atomic_t gStatsSignal = 0;
 // - Before the platform starts: it reads all of these on first use.
 // - Keyed by pid, not a fixed name, so parallel demo runs don't collide.
 // - Stale dirs (pid no longer running) are GC'd here, not left to pile up.
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(MSGA_FREEDESKTOP) || defined(__APPLE__)
 bool wipeDir(const std::string &dir) {
     return nftw(
                dir.c_str(),
@@ -146,8 +149,8 @@ void gcStaleDemoState(const std::string &tmp, std::string_view prefix) {
 #endif
 
 bool isolateDemoState(std::string *error) {
-#if !defined(__linux__) && !defined(__APPLE__)
-    *error = "demo mode redirects HOME/XDG_* and is Linux/macOS-only for now";
+#if !defined(MSGA_FREEDESKTOP) && !defined(__APPLE__)
+    *error = "demo mode redirects HOME/XDG_* and is Linux/BSD/macOS-only for now";
     return false;
 #else
     const char                *tmpEnv = std::getenv("TMPDIR");
@@ -187,7 +190,7 @@ bool isolateDemoState(std::string *error) {
 }
 
 std::string demoInstanceKey() {
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(MSGA_FREEDESKTOP) || defined(__APPLE__)
     return str::concat({identity::instanceKey(), "-demo-", str::number(getpid())});
 #else
     return str::concat({identity::instanceKey(), "-demo"});
@@ -220,11 +223,32 @@ bool parseNotificationClick(std::string_view s, uint64_t *id, std::string *actio
 
 } // namespace
 
+#ifdef MSGA_FLATPAK
+// The sandbox's /tmp is its own, which no host program sees: not the
+// browser signing in to Slack (its throwaway profile), not claude reading a
+// pasted image or a relay's upload (base/host.h). Temporary files go under
+// the app's cache folder instead, whose path is the same on the host.
+void useHostVisibleTemp() {
+    const char *cache = std::getenv("XDG_CACHE_HOME");
+    if (!cache || !*cache)
+        return;
+    const std::string tmp = file::join(cache, "tmp");
+    if (file::makeDirs(tmp))
+        setenv("TMPDIR", tmp.c_str(), 1);
+}
+#endif
+
 int main(int argc, char **argv) {
+#ifdef MSGA_FLATPAK
+    useHostVisibleTemp();
+#endif
     if (argc == 3 && argv[1] == claude::kPermissionHookFlag)
         return claude::runPermissionHook(argv[2]);
     if (argc >= 2 && argv[1] == claude::kStatusFlag)
         return claude::runStatusCommand(argc, argv);
+    // Headless: serves this machine's Claude Code to an msga elsewhere (over ssh).
+    if (argc >= 2 && argv[1] == claude::relay::kFlag)
+        return claude::runRelay(argc, argv);
 #ifdef MSGA_DEMO
     std::string demo;
 #else
@@ -324,14 +348,16 @@ int main(int argc, char **argv) {
     std::vector<std::string>   args(argv + 1, argv + argc);
     // macOS: a click on one of our notifications sometimes starts a fresh
     // process instead of waking the running msga, and only this process's
-    // delegate gets the click. Catch it before the single-instance check and
-    // carry it along: to the running msga as an argument only this produces
-    // (never a msga:// URL, which any web page can launch us with), or to
-    // ourselves once the Store is up. Only on a launch Notification Center
-    // made, so a normal start never waits.
+    // delegate gets the click. A port whose OS starts the app for a click on
+    // a notification it left behind (launchedFromNotification) the same.
+    // Catch it before the single-instance check and carry it along: to the
+    // running msga as an argument only this produces (never a msga:// URL,
+    // which any web page can launch us with), or to ourselves once the Store
+    // is up. Only on a launch the notification made, so a normal start never
+    // waits.
     std::optional<plat::Event> clicked;
     std::vector<plat::Event>   missedEvents; // replayed once the real onEvent exists, below
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(MSGA_PORT)
     if (demo.empty() && pa.launchedFromNotification()) {
         app->onEvent = [&](const plat::Event &e) {
             if (e.type == plat::EventType::NotificationActivated && !clicked)
@@ -473,7 +499,7 @@ int main(int argc, char **argv) {
     desc.title   = "MSGA";
     desc.appId   = appId;
     desc.wmClass = "MSGA"; // WM_CLASS res_class: the application name
-#ifdef __linux__
+#ifdef MSGA_FREEDESKTOP
     // The logo for the X11 _NET_WM_ICON, at 16 to 256 px.
     for (int n : {16, 20, 24, 32, 48, 64, 128, 256}) {
         gfx::Bitmap  b(n, n);
@@ -592,6 +618,12 @@ int main(int argc, char **argv) {
         sh.onImportSlackSession = [&acc] { acc.importSession(); };
         sh.onConvertToSession   = [&acc] { acc.convertToSession(); };
         sh.oauthSlackWorkspaces = [&acc] { return acc.oauthSlackWorkspaces(); };
+        sh.claudeHost           = [&acc](std::string *dest, std::string *msga) {
+            return acc.claudeHost(dest, msga);
+        };
+        sh.setClaudeHost = [&acc](const std::string &dest, const std::string &msga) {
+            acc.setClaudeHost(dest, msga);
+        };
         acc.start();
         for (const std::string &u : urls)
             acc.handleUrl(u);
@@ -707,7 +739,7 @@ int main(int argc, char **argv) {
     // re-arms its deadline every second; if the loop wedges, it fires.
     if (watchdog)
         app->addTimer(1000, true, [] { crash::heartbeat(); });
-#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32)
+#if defined(__SANITIZE_ADDRESS__) && !defined(_WIN32) && !defined(MSGA_PORT)
     std::signal(SIGINT, [](int) { gQuitSignal = 1; });
     std::signal(SIGTERM, [](int) { gQuitSignal = 1; });
     app->addTimer(250, true, [&] {
@@ -726,7 +758,7 @@ int main(int argc, char **argv) {
         );
         std::fflush(stderr);
     };
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
     std::signal(SIGUSR1, [](int) { gStatsSignal = 1; });
     app->addTimer(250, true, [&] {
         if (!gStatsSignal)

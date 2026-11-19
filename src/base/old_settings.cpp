@@ -7,13 +7,13 @@
 #include "base/file.h"
 #include "base/process.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "base/utf8.h"
 
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT) // a port OS never ran an earlier version
 #include <cerrno>
 #include <ctime>
 #include <fcntl.h>
@@ -602,7 +602,7 @@ std::string iniPath(std::string_view app) {
 
 namespace {
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
 // Earlier versions sync the file under a lock file "<file>.lock" (pid, app
 // name, host) and may be running, so take the same lock around a rewrite. A
 // lock whose process is gone, or older than 30 s (stale), is broken.
@@ -653,7 +653,7 @@ bool rewrite(std::string_view key, const std::string *value, std::string_view ap
     const std::string path = iniPath(app);
     if (path.empty())
         return false;
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
     IniLock lock(path);
 #endif
     std::string text;
@@ -666,7 +666,7 @@ bool rewrite(std::string_view key, const std::string *value, std::string_view ap
     // Keep the file's permissions (earlier versions wrote it 0644 & ~umask); a new one
     // holds credentials, so owner-only.
     int mode = 0600;
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
     struct stat st{};
     if (existed && ::stat(path.c_str(), &st) == 0)
         mode = int(st.st_mode & 0777);
@@ -685,14 +685,14 @@ Map iniLoad(std::string_view app) {
 // get() is asked for one key after another (the importer at start-up): the
 // file is read each time, but parsed again only when its bytes changed.
 Value iniGet(std::string_view key, std::string_view app) {
-    static std::mutex  mutex;
+    static base::Mutex mutex;
     static std::string lastPath, lastText;
     static Map         lastMap;
     std::string        text;
     const std::string  path = iniPath(app);
     if (path.empty() || !file::readAll(path, &text))
         return {};
-    std::lock_guard<std::mutex> lock(mutex);
+    base::Lock lock(mutex);
     if (path != lastPath || text != lastText) {
         lastMap  = parseIni(text);
         lastPath = path;

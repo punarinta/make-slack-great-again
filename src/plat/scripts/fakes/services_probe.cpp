@@ -11,7 +11,7 @@
 //    bus and the fakes, blocking; the address must carry no guid).
 //  - with $PLAT_PROBE_NO_SERVICES set (nothing on the buses): a file dialog
 //    answers {} at once and networkOnline() stays unknown; nothing else runs.
-// Built by src/linux/services.cmake, run by plat-selftest-linux-services.sh.
+// Built by src/freedesktop/services.cmake, run by plat-selftest-linux-services.sh.
 #include "plat/plat.h"
 #include "plat/testing.h"
 

@@ -40,14 +40,18 @@ namespace {
 
 } // namespace
 
-#if !defined(_WIN32) && !defined(__APPLE__)
+#ifdef MSGA_FREEDESKTOP // a port build keeps none of them (no earlier version ran there)
 TEST("identity: the directories earlier versions used") {
     // plat's own directories (the headless backend's in tests) + the
     // organization "msga" and application "MSGA" names under them.
     plat::App        &pa     = app().platform();
     const std::string config = pa.standardDir(plat::StandardDir::Config);
     const std::string data   = pa.standardDir(plat::StandardDir::Data);
+#ifdef MSGA_FLATPAK
+    CHECK_STR(identity::appId(), "com.nisdos.msga"); // the Flatpak's .desktop id
+#else
     CHECK_STR(identity::appId(), "msga");
+#endif
     CHECK_STR(identity::configDir(pa), config + "/msga");
     CHECK_STR(identity::dataDir(pa), data + "/msga/MSGA");
     CHECK_STR(identity::cacheDir(pa), pa.standardDir(plat::StandardDir::Cache) + "/msga/MSGA");
@@ -70,7 +74,7 @@ TEST("desktop entry: the launcher earlier versions installed") {
         shell::desktopEntry("/usr/bin/msga", "msga").find("Exec=/usr/bin/msga %u\n") !=
         std::string::npos
     );
-#ifdef __linux__
+#ifdef MSGA_FREEDESKTOP
     plat::App        &pa   = app().platform();
     const std::string data = pa.standardDir(plat::StandardDir::Data);
     const std::string path = file::join(data, "applications/msga.desktop");
@@ -94,7 +98,11 @@ TEST("desktop entry: the launcher earlier versions installed") {
 #endif
 }
 
-#if !defined(_WIN32)
+#if defined(MSGA_PORT)
+TEST("identity: no earlier version takes a launch in a port build") {
+    CHECK_FALSE(identity::handOffToEarlierVersion("msga://x"));
+}
+#elif !defined(_WIN32)
 TEST("identity: a running earlier version takes the launch") {
     // No earlier version running: nobody listens, the launch is ours.
     CHECK_FALSE(identity::handOffToEarlierVersion("msga://x"));

@@ -137,7 +137,7 @@ void buildMainMenu() {
     [m addItemWithTitle:[@"Quit " stringByAppendingString:name]
                  action:@selector(terminate:)
           keyEquivalent:@"q"];
-    appItem.submenu = m;
+    appItem.submenu     = m;
     // The standard Window menu: its shortcuts are the only way back out of
     // full screen without the pointer (AppKit lists the windows under them).
     NSMenuItem *winItem = [NSMenuItem new];
@@ -145,9 +145,9 @@ void buildMainMenu() {
     NSMenu *w = [[NSMenu alloc] initWithTitle:@"Window"];
     [w addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
     [w addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
-    NSMenuItem *full = [w addItemWithTitle:@"Toggle full screen"
-                                    action:@selector(toggleFullScreen:)
-                             keyEquivalent:@"f"];
+    NSMenuItem *full               = [w addItemWithTitle:@"Toggle full screen"
+                                                  action:@selector(toggleFullScreen:)
+                                           keyEquivalent:@"f"];
     full.keyEquivalentModifierMask = NSEventModifierFlagControl | NSEventModifierFlagCommand;
     winItem.submenu                = w;
     NSApp.mainMenu                 = bar;

@@ -19,6 +19,8 @@ int64_t nowMicros(); // UTC
 int64_t nowSecs();
 // Monotonic milliseconds (timeouts, animation): never jumps with the wall clock.
 int64_t monotonicMs();
+// The same clock in microseconds (frame timing, animation).
+int64_t monotonicUs();
 
 struct CivilTime {
     int year = 1970, month = 1, day = 1; // month 1-12

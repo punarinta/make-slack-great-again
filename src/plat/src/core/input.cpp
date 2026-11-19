@@ -1,7 +1,11 @@
 #include "core/input.h"
 
-#include <chrono>
 #include <cmath>
+#if defined(PLAT_PORT)
+#include "port/port_sys.h"
+#else
+#include <chrono>
+#endif
 
 namespace plat::core {
 
@@ -58,8 +62,12 @@ Key keyFromAscii(uint32_t c) {
 }
 
 uint32_t monotonicMs() {
+#if defined(PLAT_PORT) // the port's clock, as every other in a port build
+    return uint32_t(port_time_monotonic_ns() / 1000000);
+#else
     using namespace std::chrono;
     return uint32_t(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+#endif
 }
 
 } // namespace plat::core

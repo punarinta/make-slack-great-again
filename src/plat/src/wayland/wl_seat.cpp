@@ -1,14 +1,14 @@
 // Wayland seat: pointer (buttons, hit test, scroll frames), keyboard (xkb
 // keymap fd, client-side repeat), text-input-v3 and cursors.
 #include "wayland/wl_internal.h"
-#include "linux/cursor_names.h"
+#include "freedesktop/cursor_names.h"
+#include "freedesktop/evdev_codes.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <linux/input-event-codes.h>
 #include <sys/mman.h>
 #include <unistd.h>
 

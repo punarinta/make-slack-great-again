@@ -98,6 +98,12 @@ std::unique_ptr<App> App::create(std::string *error) {
         return forced && std::strcmp(forced, name) == 0;
     };
 
+#if defined(PLAT_PORT)
+    // A port build has one backend; $PLAT_BACKEND (the tests' "headless")
+    // has nothing to choose between.
+    (void)is;
+    return createPortApp(error);
+#else
 #ifdef PLAT_TEST_HOOKS
     if (is("headless"))
         return createHeadlessApp(error);
@@ -130,6 +136,7 @@ std::unique_ptr<App> App::create(std::string *error) {
     if (error)
         *error = why.empty() ? "no usable backend" : why;
     return nullptr;
+#endif
 #endif
 }
 

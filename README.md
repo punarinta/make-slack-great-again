@@ -6,9 +6,9 @@ A fast native Slack client built in C++, on its own platform, network and graphi
 
 msga is a Slack client first and foremost. Channels, DMs, threads, reactions, files and notifications all work the way you expect from Slack, in a window that starts instantly and needs a fraction of the memory of the official app. As a side feature, msga can also show your Claude Code sessions in the same workspace rail, each one as a direct message.
 
-Everything below the UI is msga's own code: a thin OS layer for windows, input and desktop services (Wayland and X11 on Linux, AppKit on macOS, Win32 on Windows), an HTTP and WebSocket client (WinHTTP on Windows, NSURLSession on macOS, msga's own client over Mbed TLS on Linux), and a CPU renderer with FreeType and HarfBuzz for text. The first goal is a small binary that uses few resources.
+Everything below the UI is msga's own code: a thin OS layer for windows, input and desktop services (Wayland and X11 on Linux and the BSDs, AppKit on macOS, Win32 on Windows), an HTTP and WebSocket client (WinHTTP on Windows, NSURLSession on macOS, msga's own client over Mbed TLS on Linux and the BSDs), and a CPU renderer with FreeType and HarfBuzz for text. The first goal is a small binary that uses few resources.
 
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20FreeBSD%20%7C%20OpenBSD-blue)
 ![C++](https://img.shields.io/badge/language-C%2B%2B20-00599C?logo=cplusplus&logoColor=white)
 ![Release](https://img.shields.io/github/v/release/punarinta/make-slack-great-again)
 
@@ -21,8 +21,12 @@ Everything below the UI is msga's own code: a thin OS layer for windows, input a
 [![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](https://msga.app/download/msga-linux-x86_64)
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-arm64.dmg)
 [![Windows](https://img.shields.io/badge/Windows-x86__64-0078D4?logo=windows&logoColor=white)](https://msga.app/download/msga-windows-x86_64.exe)
+[![FreeBSD](https://img.shields.io/badge/FreeBSD-x86__64-AB2B28?logo=freebsd&logoColor=white)](https://msga.app/download/msga-freebsd-x86_64.tar.gz)
+[![OpenBSD](https://img.shields.io/badge/OpenBSD-x86__64-F2CA30?logo=openbsd&logoColor=black)](https://msga.app/download/msga-openbsd-x86_64.tar.gz)
 
-Each download is a single self-contained file. The Linux binary is fully static and runs on any x86_64 distribution, on Wayland or X11. The macOS app needs macOS 14 or later. msga checks for updates itself. On Linux and Windows it swaps in the new version for the next start; on macOS it downloads the new DMG for you to open.
+The Linux, macOS and Windows downloads are each a single self-contained file. The Linux binary is fully static and runs on any x86_64 distribution, on Wayland or X11. The macOS app needs macOS 14 or later. msga checks for updates itself. On Linux and Windows it swaps in the new version for the next start; on macOS it downloads the new DMG for you to open.
+
+The FreeBSD and OpenBSD downloads are a `.tar.gz` with the binary, its icon, a `.desktop` file and a `README.txt` naming the few packages to install first (`pkg install` / `pkg_add`). The FreeBSD build runs on FreeBSD 14; the OpenBSD build is for OpenBSD 7.9, as each OpenBSD release renumbers its libraries. On the BSDs msga doesn't update itself: download the new archive.
 
 On macOS you can also install with Homebrew: `brew install --cask punarinta/msga/msga`. msga isn't notarized by Apple, so on first launch open System Settings → Privacy & Security and click "Open Anyway".
 
@@ -74,10 +78,12 @@ The configure scripts install and check everything a build needs:
 ```sh
 ./scripts/configure-linux.sh    # for Linux (Debian/Ubuntu, apt)
 ./scripts/configure-mac.sh      # for macOS (Xcode command line tools + Homebrew)
+sh scripts/configure-bsd.sh     # for FreeBSD and OpenBSD (pkg / pkg_add)
 ```
 
 - **Linux:** installs the compiler and build tools plus the development packages of FreeType, HarfBuzz, xkbcommon, Wayland, XCB and D-Bus. On other distributions, install the equivalents (the script lists them when apt isn't there). Add `--release` to also install what the release scripts use: Docker (checked, not installed), Xvfb and Wine.
 - **macOS:** only cmake, ninja and clang-format come from Homebrew. The app links nothing but the system frameworks, and msga's CMake builds FreeType and HarfBuzz itself.
+- **FreeBSD and OpenBSD:** a plain `sh` script, so it runs before bash is installed. It uses the base system's clang and lld, and installs cmake, ninja, git, Python 3, bash and the development packages of xkbcommon, Wayland, XCB and D-Bus (on OpenBSD, XCB comes from the X11 sets, which must be installed), plus the Noto Sans font. On FreeBSD it also adds DejaVu fonts, the en_US Hunspell dictionary, sndio for the notification sound and an LLVM package for clang-format. msga's CMake builds FreeType and HarfBuzz itself. Run it as root, or as a user with doas or sudo. FreeBSD 14 and OpenBSD 7.9 are built and tested natively.
 
 On Windows, run the PowerShell script from an **elevated** (Administrator) terminal. It uses winget to install Git and LLVM (for clang-format), and installs MSYS2 to `C:\msys64` (or `$env:MSYS2_ROOT`) with its mingw64 GCC, CMake, Ninja and Python:
 
@@ -101,7 +107,7 @@ powershell -ExecutionPolicy Bypass -File scripts\configure-windows.ps1
 
 ```sh
 ./scripts/build.sh
-./build/msga                            # for Linux
+./build/msga                            # for Linux, FreeBSD and OpenBSD
 ./build/msga.app/Contents/MacOS/msga    # for macOS
 ```
 
@@ -128,11 +134,17 @@ Both build scripts take the same options:
 
 `--test` stays on in that build directory once you've used it.
 
+On Linux you can also cross-build for FreeBSD and OpenBSD (amd64), for example to check that a change still compiles there: `scripts/build-bsd-cross.sh freebsd` (or `openbsd`) fetches a sysroot once and builds into `build-freebsd/`. See [src/README.md](https://github.com/punarinta/make-slack-great-again/blob/master/src/README.md) for the details.
+
 ### Step 4. Release builds (optional)
 
 `scripts/release.sh` (Linux, macOS) and `scripts\release.ps1` (Windows) make a stripped release-flags build for the machine you're on, always from a clean configure with no tests. They write to `build-release/` and print the per-module size report. `release.ps1` links the exe fully static, like the shipped one.
 
 For the source layout and the size rules, see [src/README.md](https://github.com/punarinta/make-slack-great-again/blob/master/src/README.md).
+
+## Porting to another OS
+
+msga needs little from an operating system: a surface to draw into, input events, TLS networking, threads, files and a clock. A new OS implements one small C interface for those and gets the rest of the app as it is. **[Porting msga anywhere](https://github.com/punarinta/make-slack-great-again/blob/master/docs/PORT_ANYWHERE.md)** lists what to provide and the steps.
 
 ## License
 

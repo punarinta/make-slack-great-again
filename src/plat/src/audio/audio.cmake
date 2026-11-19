@@ -1,6 +1,7 @@
 # Audio (include/plat/audio.h): playback, microphone capture and notification
 # sounds, with what each OS ships — no new shared libraries anywhere.
-#   Linux:   the sound server's CLI helpers (pw-cat/pw-record/…) over pipes,
+#   Linux, BSDs: the sound server's CLI helpers (pw-cat/pw-record/…, sndio's
+#            aucat) over pipes,
 #            plus the vendored miniaudio decoders (src/third_party/miniaudio,
 #            public domain / MIT-0; decoding only, device I/O compiled out).
 #   Windows: MFPlay (Media Foundation) + waveIn/PlaySound (winmm).

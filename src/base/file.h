@@ -63,14 +63,35 @@ bool    copy(std::string_view from, std::string_view to);
 // Sets the modification time to now (LRU disk caches stamp "last used").
 bool    touch(std::string_view path);
 
+// A regular file this user may run (POSIX access(X_OK); Windows: any file;
+// a port: its permission bits, which a port without them sets to 0755).
+bool isExecutable(std::string_view path);
+
+#ifndef _WIN32
+// The path with its links resolved, as the file system names it (realpath);
+// "" when nothing is there. A port, which can't read links, gives the
+// absolute path with "." and ".." folded.
+std::string realPath(std::string_view path);
+// One directory (not its parents) with POSIX permissions `mode`. False when
+// something is there already or it can't be made.
+bool        makeDir(std::string_view path, int mode);
+// A directory that is not a link to one (lstat): a walk that must never
+// leave a tree asks this.
+bool        isRealDir(std::string_view path);
+#endif
+
 // What the file system says about a path (links followed).
 struct Stat {
-    int64_t size        = 0; // bytes; 0 for a directory
-    int64_t mtimeMicros = 0; // last modification, unix microseconds
-    // Creation, where the file system keeps it (Windows, macOS, Linux statx);
-    // else mtimeMicros.
-    int64_t birthMicros = 0;
-    bool    isDir       = false;
+    int64_t  size        = 0; // bytes; 0 for a directory
+    int64_t  mtimeMicros = 0; // last modification, unix microseconds
+    // Creation, where the file system keeps it (Windows, macOS, Linux statx,
+    // FreeBSD, OpenBSD's FFS2); else mtimeMicros.
+    int64_t  birthMicros = 0;
+    bool     isDir       = false;
+    // Which file it is (POSIX st_dev, st_ino): a file replaced by another of
+    // the same size within the clock's resolution still differs here. 0
+    // where the system doesn't say (Windows, a port).
+    uint64_t device = 0, inode = 0;
 };
 // False (*out untouched) when the path is missing or can't be looked at.
 bool stat(std::string_view path, Stat *out);

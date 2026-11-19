@@ -71,8 +71,25 @@ kept beside it): `scripts/release-linux-static.sh` (static musl binary, Docker),
 `scripts/release-windows.sh` (static `.exe`, cross-compiled in Docker),
 `scripts/release-mac.sh` on a Mac or `scripts/release-mac-remote.sh` from Linux
 (DMG), then `scripts/publish-release.sh`. `scripts/release.sh` is the local
-release-flags build with the size report. macOS, Windows and the static Linux
-build compile FreeType and HarfBuzz themselves (`text/font_libs.cmake`).
+release-flags build with the size report. macOS, Windows, the static Linux
+build and the BSDs compile FreeType and HarfBuzz themselves
+(`text/font_libs.cmake`).
+
+FreeBSD and OpenBSD (amd64) cross-build from Linux with the host's clang +
+lld: `scripts/build-bsd-cross.sh freebsd|openbsd [--release]` fetches a
+sysroot once (`scripts/bsd-sysroot.py` → `build-bsd-sysroot/`) and builds
+into `build-<os>/` with `plat/cmake/bsd-clang.cmake`. On a BSD itself,
+`sh scripts/configure-bsd.sh` installs the packages and `scripts/build.sh`
+builds natively with the base clang and lld. `scripts/release-bsd.sh
+freebsd|openbsd` cross-builds the release into
+`dist/msga-<os>-x86_64.tar.gz` (the binary, its icons, a
+`.desktop` file and a README naming the runtime packages; `.manifest` and
+`.debug` beside it), which `publish-release.sh --only freebsd|openbsd` uploads. Code that differs by
+desktop family tests `MSGA_FREEDESKTOP` (Linux and the BSDs: XDG, X11/Wayland,
+D-Bus); `__linux__` is only for what Linux alone has. A new OS without any of
+these backends implements the C port contract instead (`-DMSGA_PLATFORM=port`,
+`../docs/port-contract.md`); `../docs/portability.md` ties the two together
+with the Claude Code relay.
 
 The fake backend (`app/fake/`) is opt-in: `-DMSGA_BUILD_TESTS=ON` builds the
 test suites on it (on `../tests/assets/fixture.json`). Without it nothing of

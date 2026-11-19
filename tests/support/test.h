@@ -102,6 +102,27 @@ void        killProcess(int64_t pid);
 // on Windows); the path is taken as already percent-encoded.
 std::string fileUri(const std::string &path);
 
+#ifndef _WIN32
+// While it lives, the process acts as one in a Flatpak sandbox (base/host.h):
+// a stand-in flatpak-spawn takes the real one's options and runs the command
+// here — so the commands, the host-side scripts and their plumbing are what
+// a sandbox gets, only on this machine.
+class FakeSandbox {
+public:
+    FakeSandbox();
+    ~FakeSandbox();
+    FakeSandbox(const FakeSandbox &)            = delete;
+    FakeSandbox &operator=(const FakeSandbox &) = delete;
+    // How many commands went through it so far, and the last one's options
+    // (each on a line, up to the command).
+    int          spawns() const;
+    std::string  lastOptions() const;
+
+private:
+    std::string _log;
+};
+#endif
+
 } // namespace base::test
 
 #define BASE_TEST_CAT2(a, b) a##b

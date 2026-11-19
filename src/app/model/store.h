@@ -113,6 +113,9 @@ public:
     // The same after changing only user u in place: only u is re-hashed
     // (see userRevision).
     void        usersChanged(UserRef u);
+    // Clears every status whose expiry is at or before nowSecs (notifying
+    // each user changed); true when any was.
+    bool        clearEndedStatuses(int64_t nowSecs);
     // What a Users change changed, for observers that only care about part
     // of it. Each counter only grows; every Users emit refreshes them first.
     //   profileRevision: any user's profile (all but presence/DND) changed

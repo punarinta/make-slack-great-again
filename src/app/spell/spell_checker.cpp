@@ -2,13 +2,13 @@
 #include "app/spell/spell_internal.h"
 
 #include "app/model/jobs.h"
+#include "base/thread.h"
 #include "plat/plat.h"
 
 #include <algorithm>
-#include <mutex>
 #include <unordered_map>
 
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
 #include <malloc.h>
 #endif
 
@@ -58,7 +58,7 @@ void workerOrPost(
 // everything in it is used under `m`; a worker that outlives a configure()
 // keeps its own (old) State alive and its answer is dropped by the caller.
 struct Checker::State {
-    std::mutex                            m;
+    base::Mutex                           m;
     std::unique_ptr<Backend>              backend;
     std::unordered_map<std::string, bool> misspelled; // word → answer cache
     std::vector<std::string>              ignored;
@@ -146,7 +146,7 @@ void Checker::reset() {
     if (_state) {
         _state.reset();
         _backend = nullptr;
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(MSGA_PORT) // a port build reaches no libc extension
         // Hunspell holds a dictionary in millions of small blocks; hand the
         // pages back to the system instead of keeping them for reuse.
         malloc_trim(0);
@@ -201,7 +201,7 @@ void Checker::check(
             *_app,
             [st, t, words, bad, excluded = std::move(excluded)] {
                 *words = checkableWords(*t, excluded);
-                std::lock_guard<std::mutex> lock(st->m);
+                base::Lock lock(st->m);
                 for (const Span &w : *words)
                     if (st->isMisspelled(std::string_view(*t).substr(w.start, w.length)))
                         bad->push_back(w);
@@ -221,7 +221,7 @@ void Checker::check(
             auto step = std::make_shared<std::function<void()>>();
             *step     = [app, st, t, words, bad, next, step, done = std::move(done)] {
                 {
-                    std::lock_guard<std::mutex> lock(st->m);
+                    base::Lock lock(st->m);
                     st->checkSlice(*t, *words, next.get(), bad.get());
                 }
                 if (*next < words->size()) {
@@ -250,7 +250,7 @@ void Checker::suggest(
     auto st  = _state;
     auto out = std::make_shared<std::vector<std::string>>();
     auto run = [st, out, w = normalized(word), max] {
-        std::lock_guard<std::mutex> lock(st->m);
+        base::Lock lock(st->m);
         if (w != st->suggestedFor || max > st->suggestedMax) {
             st->suggestions  = st->backend->suggest(w, max);
             st->suggestedFor = w;
@@ -270,7 +270,7 @@ void Checker::addToDictionary(const std::string &word) {
         return;
     auto st  = _state;
     auto run = [st, w = normalized(word)] {
-        std::lock_guard<std::mutex> lock(st->m);
+        base::Lock lock(st->m);
         st->backend->addToDictionary(w); // Linux appends to msga's word list
         st->misspelled.clear();          // "msga" also makes "Msga" right
         st->suggestedFor.clear();
@@ -286,7 +286,7 @@ void Checker::addToDictionary(const std::string &word) {
 
 void Checker::ignore(const std::string &word) {
     if (_state) {
-        std::lock_guard<std::mutex> lock(_state->m);
+        base::Lock lock(_state->m);
         _state->ignored.push_back(normalized(word));
     }
     changed();

@@ -14,9 +14,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # library clean under both so that choice stays open.
 option(PLAT_NO_EXCEPTIONS "Build plat with -fno-exceptions -fno-rtti" OFF)
 
+# PLAT_PORT: the one backend is the port adapter (src/port/), over the C
+# port contract (src/port/include/port, docs/port-contract.md): no native
+# backend, no OS headers. The embedding project supplies the msga_port
+# target (the contract and the port's C code).
+option(PLAT_PORT "Build plat on the C port contract instead of the native backends" OFF)
+
 add_library(plat STATIC
     src/core/common.cpp
-    src/core/loop_core.cpp
+    src/core/dir_watch.cpp
     src/core/transfer.cpp
     src/core/input.cpp
     src/core/image_util.cpp
@@ -48,11 +54,21 @@ endif()
 option(PLAT_TEST_HOOKS "Compile plat's TestHooks and headless backend (test builds only)" ON)
 if(PLAT_TEST_HOOKS)
     target_compile_definitions(plat PRIVATE PLAT_TEST_HOOKS)
-    target_sources(plat PRIVATE src/headless/headless.cpp)
+    if(NOT PLAT_PORT) # a port's test hooks are the port's (port_test.h)
+        target_sources(plat PRIVATE src/headless/headless.cpp)
+    endif()
 endif()
 
-find_package(Threads REQUIRED)
-target_link_libraries(plat PUBLIC Threads::Threads)
+if(PLAT_PORT)
+    # The loop, timers and threads are the port's: no LoopCore here.
+    target_sources(plat PRIVATE src/port/port_app.cpp src/port/port_audio.cpp)
+    target_compile_definitions(plat PUBLIC PLAT_PORT MSGA_PORT)
+    target_link_libraries(plat PUBLIC msga_port)
+else()
+    target_sources(plat PRIVATE src/core/loop_core.cpp)
+    find_package(Threads REQUIRED)
+    target_link_libraries(plat PUBLIC Threads::Threads)
+endif()
 
 # The string, UTF-8 and hash primitives plat shares with the app's base
 # library (src/prim; an embedding project may have added it already).
@@ -61,31 +77,60 @@ if(NOT TARGET prim)
 endif()
 target_link_libraries(plat PUBLIC prim)
 
-if(UNIX)
+if(UNIX AND NOT PLAT_PORT)
     target_sources(plat PRIVATE src/posix/posix_loop.cpp)
 endif()
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT PLAT_PORT)
     # Child processes and file helpers for the desktop tools, XDG dirs and audio.
-    target_sources(plat PRIVATE src/linux/process.cpp src/linux/files.cpp)
+    target_sources(plat PRIVATE src/freedesktop/process.cpp src/freedesktop/files.cpp)
 endif()
+
+# Many of OpenBSD's shared libraries carry no DT_SONAME, so the linker
+# records whatever path it was handed as the dependency, and pkg_check_modules
+# hands it absolute ones (a cross build's sysroot path would end up in the
+# binary). Turns a pkg-config target's libraries into -L/-l:<file> pairs
+# there: found by name, a library without a soname is recorded as its file
+# name (libxcb-cursor.so.0.0), as OpenBSD's own linker does.
+function(plat_link_by_name target)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+        return()
+    endif()
+    get_target_property(_libs ${target} INTERFACE_LINK_LIBRARIES)
+    set(_out)
+    foreach(_lib IN LISTS _libs)
+        if(_lib MATCHES "^(.*)/(lib[^/]+\\.so(\\.[0-9]+)*)$")
+            list(APPEND _out "-L${CMAKE_MATCH_1}" "-l:${CMAKE_MATCH_2}")
+        else()
+            list(APPEND _out "${_lib}")
+        endif()
+    endforeach()
+    set_target_properties(${target} PROPERTIES INTERFACE_LINK_LIBRARIES "${_out}")
+endfunction()
 
 # Each backend owns its own fragment, which adds sources and dependencies to
 # the `plat` target and defines PLAT_HAS_<BACKEND> when it builds.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD")
+# src/freedesktop: what X11 and Wayland share on any freedesktop.org desktop
+# (Linux and the BSDs): xkb keymaps, the single-instance socket, XDG dirs,
+# cursor themes, child processes, the D-Bus services. Nothing in it is
+# Linux-only beyond a few #ifs (the peer-credential call, memfd).
+if(PLAT_PORT)
+    # The port adapter above is the only backend.
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD")
     option(PLAT_WAYLAND "Build the Wayland backend" ON)
     option(PLAT_X11 "Build the X11 backend" ON)
     if(PLAT_WAYLAND OR PLAT_X11)
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(PLAT_XKB REQUIRED IMPORTED_TARGET xkbcommon)
-        target_sources(plat PRIVATE src/linux/xkb_keyboard.cpp src/linux/instance.cpp src/linux/xdg_dirs.cpp
-            src/linux/cursor_names.cpp src/linux/posix_app.cpp)
+        target_sources(plat PRIVATE src/freedesktop/xkb_keyboard.cpp src/freedesktop/instance.cpp
+            src/freedesktop/xdg_dirs.cpp src/freedesktop/cursor_names.cpp src/freedesktop/posix_app.cpp)
         # D-Bus desktop services (tray, notifications, badge, portal) shared by
-        # both Linux backends; src/linux/services.cmake replaces the stub.
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/linux/services.cmake")
-            include(src/linux/services.cmake)
+        # both backends; src/freedesktop/services.cmake replaces the stub.
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/freedesktop/services.cmake")
+            include(src/freedesktop/services.cmake)
         else()
-            target_sources(plat PRIVATE src/linux/services_stub.cpp)
+            target_sources(plat PRIVATE src/freedesktop/services_stub.cpp)
         endif()
+        plat_link_by_name(PkgConfig::PLAT_XKB)
         target_link_libraries(plat PUBLIC PkgConfig::PLAT_XKB)
         set(PLAT_LINUX_INPUT ON)
     endif()
@@ -105,7 +150,11 @@ elseif(APPLE)
     endif()
 endif()
 
-include(src/audio/audio.cmake)
+if(NOT PLAT_PORT) # the port's audio: src/port/port_audio.cpp
+    include(src/audio/audio.cmake)
+else()
+    target_sources(plat PRIVATE src/audio/audio_common.cpp)
+endif()
 
 # ── Tests ───────────────────────────────────────────────────────────────────
 # Tests and selftest. Off when plat is embedded in another project

@@ -151,6 +151,13 @@ SlackBackend::Live::Live(SlackBackend &b) : b(b), s(b.store()) {
                 this->b.refreshSelfPresence(nullptr);
             });
         };
+        rtm->onPresence = [this](const std::string &id, bool active) {
+            const UserRef r = s.findUser(id);
+            if (r == kNoUser || s.user(r).active == active)
+                return;
+            s.user(r).active = active;
+            s.usersChanged(r);
+        };
     }
     // Proactive refresh: a periodic wall-clock check (a timer that long would
     // sleep through a suspend), retrying transient failures by itself. The
@@ -640,6 +647,11 @@ void SlackBackend::setPresenceMode(PresenceMode mode) {
 
 model::Backend::PresenceLink SlackBackend::presenceLink() const {
     return _live->rtm ? _live->rtm->state() : PresenceLink::Off;
+}
+
+void SlackBackend::subscribePresence(std::vector<std::string> ids) {
+    if (_live->rtm)
+        _live->rtm->setPresenceSubs(std::move(ids));
 }
 
 RtmPresence *SlackBackend::presenceLinkForTest() const {

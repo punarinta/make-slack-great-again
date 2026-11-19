@@ -2,11 +2,11 @@
 // DnD), the layout pass and damage-driven painting. App: the singleton that
 // owns the plat app and the theme.
 #include "base/str.h"
+#include "base/time.h"
 #include "ui/view.h"
 #include "ui/widgets.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1395,8 +1395,7 @@ void App::cancelTimer(plat::TimerId id) {
 }
 
 double App::nowMs() const {
-    using namespace std::chrono;
-    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
+    return double(base::monotonicUs()) / 1000.0;
 }
 
 void App::addWindow(Window *w) {

@@ -711,6 +711,35 @@ int Accounts::oauthSlackWorkspaces() const {
     return n;
 }
 
+bool Accounts::claudeHost(std::string *destination, std::string *msga) const {
+    for (const auto &r : _store.all())
+        if (r.service == claude::kService) {
+            const claude::Credentials c = claude::fromRecord(r);
+            *destination                = c.sshDestination;
+            *msga                       = c.remoteMsga;
+            return true;
+        }
+    return false;
+}
+
+void Accounts::setClaudeHost(const std::string &destination, const std::string &msga) {
+    for (const auto &r : _store.all()) {
+        if (r.service != claude::kService)
+            continue;
+        claude::Credentials c = claude::fromRecord(r);
+        c.sshDestination      = destination;
+        c.remoteMsga          = destination.empty() ? std::string() : msga;
+        if (destination.empty())
+            c.claudePath = claude::findClaudeExecutable(); // this computer's again
+        auth::WorkspaceRecord rec = r;
+        rec.auth                  = claude::toRecord(c).auth;
+        const std::string key     = rec.key();
+        _store.save(std::move(rec));
+        restart(key); // the backend starts over on its new host
+        return;
+    }
+}
+
 void Accounts::convertToSession() {
     if (_migration)
         return;

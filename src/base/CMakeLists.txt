@@ -11,6 +11,7 @@ add_library(msga_base STATIC
     mime.cpp
     crypto.cpp
     process.cpp
+    host.cpp
     observers.cpp
     old_settings.cpp
     thread.cpp
@@ -18,7 +19,12 @@ add_library(msga_base STATIC
 # The keychain (secret.h): macOS has one; elsewhere the settings store of
 # earlier versions holds the credentials, as it always did (old_settings.h: an INI file on
 # Linux, the registry on Windows).
-if(APPLE)
+if(MSGA_PORT)
+    # A port (src/port): files, children and secrets through its C contract;
+    # file.cpp and process.cpp keep their OS-neutral halves.
+    target_sources(msga_base PRIVATE file_port.cpp process_port.cpp secret_port.cpp)
+    target_link_libraries(msga_base PUBLIC msga_port)
+elseif(APPLE)
     # Objective-C++ only by file type (it uses the C API); OBJCXX sources do
     # not get msga_flags' C++-only -fno-exceptions/-fno-rtti, hence repeated.
     enable_language(OBJCXX)
@@ -35,7 +41,9 @@ target_link_libraries(msga_base PUBLIC msga_flags prim)
 # json.cpp stays -Os: measured on an 8.5 MB Slack-shaped array, -O2 parses at
 # 1010 MB/s vs 633 MB/s but doubles the object (27.5 KB vs 13.6 KB). A 1 MB
 # payload is ~1.6 ms at -Os; that is not worth 14 KB.
-if(WIN32)
+if(MSGA_PORT)
+    # Threads are the port's (base/thread.cpp).
+elseif(WIN32)
     target_link_libraries(msga_base PUBLIC kernel32 advapi32 bcrypt)
 else()
     find_package(Threads REQUIRED)

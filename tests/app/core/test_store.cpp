@@ -340,6 +340,35 @@ TEST("store: usersChanged(u) re-hashes only that user") {
     CHECK(s.userRevision(ra) == p1);
 }
 
+TEST("store: ended statuses are cleared, lasting and future ones stay") {
+    Store s;
+    User  ended, later, forever;
+    ended.id = "UA", later.id = "UB", forever.id = "UC";
+    for (User *u : {&ended, &later, &forever}) {
+        u->statusEmoji = "calendar";
+        u->statusText  = "In a meeting";
+    }
+    ended.statusExpiry = 1000;
+    later.statusExpiry = 2000;
+    const UserRef ra = s.addUser(ended), rb = s.addUser(later), rc = s.addUser(forever);
+    s.usersChanged();
+    int users = 0;
+    s.observe(Store::kAnyConv, [&](const Change &ch) { users += ch.kind == ChangeKind::Users; });
+    const uint64_t p0 = s.profileRevision();
+    CHECK(!s.clearEndedStatuses(999));
+    CHECK(users == 0);
+    CHECK(s.clearEndedStatuses(1000));
+    CHECK(users == 1);
+    CHECK(s.user(ra).statusText.empty() && s.user(ra).statusEmoji.empty());
+    CHECK(s.user(ra).statusExpiry == 0);
+    CHECK(s.userRevision(ra) > p0);
+    CHECK(s.user(rb).statusText == "In a meeting" && s.userRevision(rb) == p0);
+    CHECK(!s.clearEndedStatuses(1999));
+    CHECK(s.clearEndedStatuses(5000));
+    CHECK(s.user(rb).statusText.empty());
+    CHECK(s.user(rc).statusText == "In a meeting"); // 0: never ends
+}
+
 TEST("store: textChangesSince lists changed channels, emoji and groups") {
     Store                          s;
     const uint64_t                 t0 = s.textRevision();

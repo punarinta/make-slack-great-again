@@ -45,7 +45,7 @@ endif()
 # screens/shell/main.cpp). DEV-ONLY: Debug builds (scripts/build.sh --debug,
 # the test trees), never the release (MinSizeRel). Linux-only: it relies on
 # POSIX per-process timers aimed at a thread via Linux's SIGEV_THREAD_ID.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MSGA_PORT)
     set_property(SOURCE crash/crash_handler.cpp APPEND PROPERTY COMPILE_DEFINITIONS MSGA_HANG_WATCHDOG)
     # timer_create lives in librt on glibc < 2.34; in libc on newer glibc and
     # on musl. Link librt only where it still exists as a separate library.
@@ -95,8 +95,11 @@ add_subdirectory(spell)
 
 # "Import from local Slack": the real importer on Linux (our own SQLite reader
 # + AES-CBC/PBKDF2 over net/base, Secret Service over libdbus), the stub
-# elsewhere. libdbus is already found by plat; reuse it for the v11 key.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+# elsewhere (Slack's desktop app has no BSD build, and a port has none
+# either, so nothing to import there). libdbus is already found by plat;
+# reuse it for the v11 key. Not in the Flatpak: it gets no keyring access
+# (org.freedesktop.secrets) just for this, so the button is hidden there.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT AND NOT MSGA_FLATPAK)
     target_sources(msga_app_slack PRIVATE
         slack/local_import_linux.cpp
         slack/sqlite_reader.cpp)
@@ -157,7 +160,13 @@ endforeach()
 
 # The upgrade from earlier versions' data (legacy/legacy.h): delete this block and the
 # directory to drop it.
-option(MSGA_LEGACY_IMPORT "Import the settings and caches of earlier versions" ON)
+# Not in the Flatpak, whose data starts afresh in its own folder.
+if(MSGA_FLATPAK)
+    set(_legacy_default OFF)
+else()
+    set(_legacy_default ON)
+endif()
+option(MSGA_LEGACY_IMPORT "Import the settings and caches of earlier versions" ${_legacy_default})
 if(MSGA_LEGACY_IMPORT)
     add_subdirectory(legacy)
 endif()

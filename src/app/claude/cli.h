@@ -24,6 +24,11 @@ inline constexpr const char *kWorkspaceId = "local";
 
 struct Credentials {
     std::string claudePath; // the `claude` executable; empty = not found (read-only use)
+    // "Runs on": "" = this computer, else the SSH destination ("user@box",
+    // a Host alias) whose Claude Code sessions msga drives through its relay
+    // (host.h), with msga there at `remoteMsga` ("" = on its PATH).
+    std::string sshDestination;
+    std::string remoteMsga;
     bool        operator==(const Credentials &) const = default;
 };
 

@@ -12,10 +12,8 @@
 #include <algorithm>
 #include <cstdlib>
 
-#ifndef _WIN32
-#include <climits>
-#include <sys/stat.h>
-#include <unistd.h>
+#if !defined(_WIN32) && !defined(MSGA_PORT)
+#include <sys/stat.h> // chmod
 #endif
 
 namespace slack {
@@ -40,8 +38,10 @@ struct Browser {
 
 std::vector<Browser> candidates() {
     std::vector<Browser> found;
+    // isExecutable: the browser is the host's in a Flatpak sandbox, which
+    // doesn't see the host's /usr (base/host.h).
     auto                 add = [&](std::string exe, const char *name) {
-        if (!exe.empty() && file::exists(exe))
+        if (!exe.empty() && base::isExecutable(exe))
             found.push_back({std::move(exe), name});
     };
 #if defined(_WIN32)
@@ -97,8 +97,9 @@ bool sandboxed(const std::string &exe) {
     (void)exe;
     return false;
 #else
-    char        buf[PATH_MAX];
-    std::string real = ::realpath(exe.c_str(), buf) ? std::string(buf) : exe;
+    std::string real = file::realPath(exe);
+    if (real.empty())
+        real = exe;
     return str::startsWith(exe, "/snap/") || str::startsWith(real, "/snap/") ||
            real.find("/flatpak/") != std::string::npos;
 #endif
@@ -138,7 +139,7 @@ std::string makeProfileDir(plat::App &app) {
         if (file::makeDirs(dir))
             return dir;
 #else
-        if (::mkdir(dir.c_str(), 0700) == 0)
+        if (file::makeDir(dir, 0700))
             return dir;
 #endif
     }
@@ -151,13 +152,12 @@ bool ownProfile(std::string_view path) {
                kProfilePrefix;
 }
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT) // a port has no permission bits to set
 // Chromium leaves read-only directories behind, inside which nothing can be
 // unlinked: owner rwx on the profile's own directories first. lstat: a link
 // is never followed out of the profile.
 void makeWritable(const std::string &dir) {
-    struct stat st;
-    if (::lstat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode))
+    if (!file::isRealDir(dir))
         return;
     ::chmod(dir.c_str(), 0700);
     std::vector<file::DirEntry> entries;
@@ -171,7 +171,7 @@ void makeWritable(const std::string &dir) {
 // Removes a tree (file::removeTree clears Windows' read-only attribute
 // itself).
 void removeTree(const std::string &path) {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(MSGA_PORT)
     makeWritable(path);
 #endif
     file::removeTree(path);

@@ -6,7 +6,10 @@
 
 namespace plat {
 
-#if defined(PLAT_TEST_HOOKS)
+#if defined(PLAT_PORT)
+// The one backend of a port build (src/plat/src/port): the C port contract.
+std::unique_ptr<App> createPortApp(std::string *error);
+#elif defined(PLAT_TEST_HOOKS)
 std::unique_ptr<App> createHeadlessApp(std::string *error);
 #endif
 #if defined(PLAT_HAS_WAYLAND)

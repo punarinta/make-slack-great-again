@@ -421,3 +421,20 @@ TEST("focus: hiding or removing the focused field's ancestor drops its focus and
     w.frame();
     CHECK(w.w->focusView() == nullptr);
 }
+
+// The unread count the shell sets (App::setBadgeCount) reaches the platform:
+// a dock or launcher badge, on a port its tray item's count (PORT_CAP_BADGE),
+// read back through the test hooks where the backend can.
+TEST("platform: the badge count reaches the platform") {
+    plat::App &p = app().platform();
+    p.setBadgeCount(7);
+    if (hooks().badgeCount() < 0) { // not readable here; the call didn't crash
+        p.setBadgeCount(0);
+        return;
+    }
+    CHECK(hooks().badgeCount() == 7);
+    p.setBadgeCount(150); // more than the 99 a tray draws: the count, all the same
+    CHECK(hooks().badgeCount() == 150);
+    p.setBadgeCount(0);
+    CHECK(hooks().badgeCount() == 0);
+}

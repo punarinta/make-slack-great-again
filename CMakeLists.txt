@@ -63,8 +63,10 @@ if(MSGA_HAVE_LLD AND NOT APPLE)
 endif()
 # Packed relative relocations (DT_RELR): a PIE's vtable and function-pointer
 # fixups shrink from 24 bytes each (~180 KB of .rela.dyn) to a bitmap of ~5 KB.
-# Needs glibc 2.36 / musl 1.2.4 at run time; a static non-PIE has none anyway.
-if(NOT APPLE AND NOT MINGW)
+# Needs glibc 2.36 / musl 1.2.4 / FreeBSD 14 at run time; a static non-PIE has
+# none anyway. Not on OpenBSD, whose own libraries don't use it: no sign its
+# ld.so takes it.
+if(NOT APPLE AND NOT MINGW AND NOT CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     if(MSGA_HAVE_LLD)
         set(CMAKE_REQUIRED_LINK_OPTIONS -fuse-ld=lld)
     endif()
@@ -141,12 +143,45 @@ elseif(MSGA_STATIC)
         -Wl,-z,stack-size=8388608)
 endif()
 
+# The Flatpak (Flathub's com.nisdos.msga, packaging/flatpak): its app id is
+# the window's, the notifications' and the launcher's (identity.cpp);
+# Flathub updates it and its launcher comes with it, so neither is msga's to
+# do (below); it builds without the Slack app keys of credentials.cmake (users
+# paste their own); and its data starts afresh in its own ~/.var/app folder,
+# with nothing of an earlier version's to import (MSGA_LEGACY_IMPORT,
+# app/CMakeLists.txt). `cmake --install` lays out /app. The external commands
+# (claude, git, ssh, a browser) run on the host: base/host.h.
+option(MSGA_FLATPAK "Build for the Flatpak package (com.nisdos.msga)" OFF)
+if(MSGA_FLATPAK)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MSGA_PLATFORM STREQUAL "port")
+        message(FATAL_ERROR "MSGA_FLATPAK is a Linux build")
+    endif()
+    target_compile_definitions(msga_flags INTERFACE MSGA_FLATPAK)
+endif()
+
 # What a distribution's package turns off, its package manager doing both:
 # msga replacing its own binary with the next release (app/update), and, on
 # Linux, writing its own ~/.local/share/applications/msga.desktop on every
 # start (screens/shell/desktop_entry.cpp), which names this build's path.
-option(MSGA_SELF_UPDATE "Check msga.app for new releases and install them" ON)
-option(MSGA_INSTALL_LAUNCHER "Linux: write the user's msga.desktop launcher entry at startup" ON)
+# msga.app publishes no BSD builds, so there is nothing to update to there,
+# nor port builds (an OS behind the port contract installs its own way).
+if(CMAKE_SYSTEM_NAME MATCHES "BSD" OR MSGA_PLATFORM STREQUAL "port" OR MSGA_FLATPAK)
+    set(_self_update_default OFF)
+else()
+    set(_self_update_default ON)
+endif()
+if(MSGA_FLATPAK)
+    set(_launcher_default OFF)
+else()
+    set(_launcher_default ON)
+endif()
+option(MSGA_SELF_UPDATE "Check msga.app for new releases and install them" ${_self_update_default})
+option(MSGA_INSTALL_LAUNCHER "Linux: write the user's msga.desktop launcher entry at startup"
+       ${_launcher_default})
+if(MSGA_FLATPAK AND (MSGA_SELF_UPDATE OR MSGA_INSTALL_LAUNCHER))
+    message(FATAL_ERROR "MSGA_FLATPAK: turn MSGA_SELF_UPDATE and MSGA_INSTALL_LAUNCHER off "
+                        "(Flathub updates the app and installs its launcher)")
+endif()
 # On msga_flags: the updater's UI (the update bar, Settings' update checks)
 # and its tests compile out with it, not only app/update.
 foreach(opt MSGA_SELF_UPDATE MSGA_INSTALL_LAUNCHER)
@@ -184,6 +219,42 @@ if(MSGA_BUILD_TESTS OR MSGA_DEMO)
 else()
     set(PLAT_TEST_HOOKS OFF CACHE BOOL "" FORCE)
 endif()
+# Which OS layer msga runs on. "native": plat's own backends, base's POSIX /
+# Win32 / Cocoa code and net's own transports (every shipped build).
+# "port": the plain-C port contract (src/port, docs/port-contract.md), for
+# an OS whose port is a set of C files compiled by its own C compiler; the
+# core is then built against the contract only. MSGA_PORT_IMPL picks the
+# port (default: the headless POSIX reference port, src/port/ref).
+set(MSGA_PLATFORM "native" CACHE STRING "OS layer: native or port")
+set_property(CACHE MSGA_PLATFORM PROPERTY STRINGS native port)
+if(MSGA_PLATFORM STREQUAL "port")
+    set(MSGA_PORT ON)
+    target_compile_definitions(msga_flags INTERFACE MSGA_PORT)
+    add_subdirectory(src/port port)
+    set(PLAT_PORT ON CACHE BOOL "" FORCE)
+elseif(MSGA_PLATFORM STREQUAL "native")
+    set(MSGA_PORT OFF)
+    set(PLAT_PORT OFF CACHE BOOL "" FORCE)
+else()
+    message(FATAL_ERROR "MSGA_PLATFORM must be native or port, not ${MSGA_PLATFORM}")
+endif()
+
+# MSGA_FREEDESKTOP (a CMake variable and, on msga_flags, a define for the
+# code): Linux and the BSDs, X11/Wayland desktops with the freedesktop.org
+# conventions: XDG dirs, .desktop launchers, xdg-open/xdg-mime, D-Bus
+# services, the primary selection, an in-app file chooser when no portal
+# answers. A define rather than a header macro, so a file can't silently
+# miss it. __linux__ / CMAKE_SYSTEM_NAME "Linux" stay for what only Linux
+# has (/proc, Linux-only syscalls, the Linux release asset). Off in a port
+# build: the port is the platform there, and a port OS keeps none of these
+# conventions (what it has comes through the port's capabilities).
+if(UNIX AND NOT APPLE AND NOT MSGA_PORT)
+    set(MSGA_FREEDESKTOP ON)
+    target_compile_definitions(msga_flags INTERFACE MSGA_FREEDESKTOP)
+else()
+    set(MSGA_FREEDESKTOP OFF)
+endif()
+
 # prim: the primitives plat and base share (plat can't link base). Added
 # here, before plat, so it builds with msga's flags.
 add_subdirectory(src/prim prim EXCLUDE_FROM_ALL)
@@ -205,7 +276,9 @@ endif()
 include("${CMAKE_CURRENT_SOURCE_DIR}/version.cmake")
 
 # The build's Slack app keys (gitignored; see credentials.cmake.example).
-include("${CMAKE_CURRENT_SOURCE_DIR}/credentials.cmake" OPTIONAL)
+if(NOT MSGA_FLATPAK)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/credentials.cmake" OPTIONAL)
+endif()
 
 # Modules add themselves; dependencies only go downwards (see README).
 # MSGA_MODULES narrows the build to a prefix of the stack (e.g. "base;net"
@@ -227,3 +300,21 @@ endif()
 
 # Precompiled standard headers for the test trees (see src/tools/pch.cmake).
 include(src/tools/pch.cmake)
+
+# The Flatpak's /app (MSGA_FLATPAK; packaging/flatpak): the program, its
+# launcher and AppStream metadata, its icon — each named by the app id.
+if(MSGA_FLATPAK)
+    include(GNUInstallDirs)
+    set(_flatpak "${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak")
+    install(TARGETS msga RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES "${_flatpak}/com.nisdos.msga.desktop"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES "${_flatpak}/com.nisdos.msga.metainfo.xml"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/gfx/icon.svg"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+            RENAME com.nisdos.msga.svg)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/gfx/icon_256.png"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+            RENAME com.nisdos.msga.png)
+endif()

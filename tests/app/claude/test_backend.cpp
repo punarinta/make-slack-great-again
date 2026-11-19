@@ -1528,7 +1528,7 @@ TEST("backend: a background command whose output goes to a file of its own") {
     REQUIRE(rig.wait([&] { return line() == "linking"; }, 5000));
 }
 
-#ifdef __linux__ // the process is found through /proc
+#if defined(__linux__) && !defined(MSGA_PORT) // the process is found through /proc
 TEST("backend: a background command stopped from msga") {
     FakeClaudeHome    home;
     const std::string output  = home.dir + "/bs1.output";
@@ -2785,7 +2785,7 @@ TEST("backend: no session starts while Claude Code is logged out") {
 
 // ── The backend: sending and managing, through fake CLIs ───────────────────
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(MSGA_PORT) // /proc
 TEST("backend: removing a session deletes it only when msga, or a session of msga's, started it") {
     FakeClaudeHome    home;
     const std::string work = tempDir("work");
@@ -3287,8 +3287,18 @@ TEST("backend: sending runs background sessions: start, then stop + resume per t
     CHECK(rig.store.conversation(conv).member);
     CHECK(rig.store.conversation(conv).readOnly.empty());
     rig.load(conv);
+    // Generous: each turn is a few shell processes, slow on a loaded CI
+    // runner. On a miss, what the fake Claude Code was asked to do.
     const auto answered = [&](ConvRef c, std::string_view text) {
-        return rig.wait([&] { return rig.answered(c, text); }, 8000);
+        if (rig.wait([&] { return rig.answered(c, text); }, 20000))
+            return true;
+        std::printf(
+            "  no \"%.*s\"; calls.log:\n%s\n",
+            int(text.size()),
+            text.data(),
+            home.text("calls.log").c_str()
+        );
+        return false;
     };
 
     bool ok1 = false, ok2 = false, ok3 = false;
@@ -3484,7 +3494,7 @@ TEST("backend: sending runs background sessions: start, then stop + resume per t
     CHECK_STR(cwMate->name, "Copywriter");
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(MSGA_PORT) // /proc
 TEST("backend: Stop cuts a session's turn short and drops what waits") {
     FakeClaudeHome home;
     home.writeSession("busy"); // S1: a terminal's session, working
@@ -4206,6 +4216,89 @@ TEST("backend: an agent branch runs without tools, answers each turn, and keeps 
     CHECK(withFile->root != branch->root); // a thread of its own
     CHECK(contains(home.text("calls.log"), flags + "@" + uploadsDir() + "/"));
     CHECK(contains(home.text("calls.log"), "/notes.txt read this\n"));
+    CHECK(rig->errors.empty());
+}
+
+TEST("backend: a message in flight is delivered when its session turns out to be a thread") {
+    // After a restart a branch is a thread only once its parent's transcript
+    // has been read (detectForks). Here that happens in the very refresh
+    // that reads the branch's new prompt: the thread's list starts afresh
+    // with the prompt already in it, and the message must still count as
+    // delivered. (An msga that can't tell the transcripts' ages got here on
+    // every restart: on OpenBSD it ordered a family by mtime.)
+    FakeClaudeHome    home;
+    const std::string work = tempDir("work");
+    file::makeDirs(home.dir + "/jobs");
+    file::makeDirs(home.dir + "/projects/-fake");
+    home.trust(work);
+    writeFile(work + "/claude-real", kBranchCli, 0755);
+    // The branch's next turn waits for the go-ahead before Claude Code
+    // writes its prompt.
+    const std::string              cli    = writeCli(work, R"SH(#!/bin/sh
+case "$*" in *"next turn"*)
+  : > "$CLAUDE_CONFIG_DIR/waiting"
+  while [ ! -f "$CLAUDE_CONFIG_DIR/go" ]; do sleep 0.02; done ;;
+esac
+exec "$(dirname "$0")/claude-real" "$@"
+)SH");
+    const std::vector<std::string> denied = {"Bash"};
+
+    auto          rig  = std::make_unique<Rig>(Credentials{cli});
+    const ConvRef conv = rig->start(work);
+    REQUIRE(conv != kNoConv);
+    rig->load(conv);
+    rig->send(conv, "first");
+    REQUIRE(rig->wait([&] { return rig->answered(conv, "answer: first"); }));
+    const std::string session = rig->store.conversation(conv).id;
+    const std::string sPath =
+        home.dir + "/projects/-fake/abcdef11-0000-4000-8000-000000000001.jsonl";
+    rig->pump(300);
+    std::optional<model::Backend::AgentBranch> branch;
+    TurnLog                                    first;
+    rig->backend->startAgentBranch(
+        session,
+        "what is up",
+        {},
+        denied,
+        [&](model::Backend::AgentBranch b, const std::string &) { branch = std::move(b); },
+        first.fn()
+    );
+    REQUIRE(rig->wait([&] { return first.done(); }));
+    REQUIRE(branch.has_value());
+    TurnLog second;
+    rig->backend->continueAgentBranch(branch->id, "and more", {}, second.fn());
+    REQUIRE(rig->wait([&] { return second.done(); }));
+    rig->pump(300);
+    rig.reset();
+
+    // Restarted with the parent's transcript away: the branch is a session
+    // of its own for now.
+    REQUIRE(std::rename(sPath.c_str(), (sPath + ".away").c_str()) == 0);
+    rig = std::make_unique<Rig>(Credentials{cli});
+    TurnLog next;
+    rig->backend->continueAgentBranch(branch->id, "next turn", {}, next.fn());
+    REQUIRE(rig->wait([&] { return file::exists(home.dir + "/waiting"); }));
+    // Both on disk before msga looks again: the parent back, and the
+    // branch's prompt written.
+    REQUIRE(std::rename((sPath + ".away").c_str(), sPath.c_str()) == 0);
+    writeFile(home.dir + "/go", "");
+    const auto landed = [&] {
+        std::vector<file::DirEntry> all;
+        file::listDir(home.dir + "/projects/-fake", &all);
+        for (const auto &e : all)
+            if (e.name != file::baseName(sPath) &&
+                contains(readText(home.dir + "/projects/-fake/" + e.name), "\"next turn\""))
+                return true;
+        return false;
+    };
+    for (int i = 0; i < 500 && !landed(); ++i)
+        ::usleep(10'000);
+    REQUIRE(landed());
+    REQUIRE(rig->wait([&] { return next.done(); }));
+    CHECK_STR(next.updates.back().error, "");
+    CHECK_STR(next.updates.back().answer, "answer: next turn");
+    // A thread under its session again, never a session in the list.
+    CHECK(rig->listedCount() == 1);
     CHECK(rig->errors.empty());
 }
 

@@ -5,8 +5,6 @@
 #include "net/transport.h"
 #include "plat/plat.h"
 
-#include <mutex>
-
 namespace net {
 
 struct WebSocket::Impl : std::enable_shared_from_this<WebSocket::Impl> {
@@ -17,7 +15,7 @@ struct WebSocket::Impl : std::enable_shared_from_this<WebSocket::Impl> {
     bool       open  = false;   // UI thread
     uint64_t   epoch = 0;       // UI thread: bumps per open(), stale events are dropped
 
-    std::mutex                      mutex; // guards conn against the destructor
+    base::Mutex                     mutex; // guards conn against the destructor
     std::unique_ptr<detail::WsConn> conn;
     base::Thread                    reader;
 
@@ -55,12 +53,12 @@ struct WebSocket::Impl : std::enable_shared_from_this<WebSocket::Impl> {
     }
     void stop() {
         {
-            std::lock_guard<std::mutex> lock(mutex);
+            base::Lock lock(mutex);
             if (conn)
                 conn->abort();
         }
         reader.join();
-        std::lock_guard<std::mutex> lock(mutex);
+        base::Lock lock(mutex);
         conn.reset();
     }
 };
@@ -85,7 +83,7 @@ void WebSocket::open(std::string url, std::vector<Header> headers, int timeoutMs
         return;
     }
     {
-        std::lock_guard<std::mutex> lock(d.mutex);
+        base::Lock lock(d.mutex);
         d.conn = detail::makeWsConn();
     }
     detail::WsConn *conn = d.conn.get();
@@ -118,7 +116,7 @@ void WebSocket::sendText(std::string_view text) {
     Impl &d = *_impl;
     if (!d.open)
         return;
-    std::lock_guard<std::mutex> lock(d.mutex);
+    base::Lock lock(d.mutex);
     if (d.conn)
         d.conn->send(text, true);
 }
@@ -127,13 +125,13 @@ bool WebSocket::ping(std::string_view payload) {
     Impl &d = *_impl;
     if (!d.open)
         return false;
-    std::lock_guard<std::mutex> lock(d.mutex);
+    base::Lock lock(d.mutex);
     return d.conn && d.conn->ping(payload);
 }
 
 void WebSocket::close(int code) {
-    Impl                       &d = *_impl;
-    std::lock_guard<std::mutex> lock(d.mutex);
+    Impl      &d = *_impl;
+    base::Lock lock(d.mutex);
     if (d.conn)
         d.conn->close(code);
 }

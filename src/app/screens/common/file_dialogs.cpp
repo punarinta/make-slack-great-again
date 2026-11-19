@@ -16,7 +16,7 @@ std::string &lastOpenDir() {
     return dir;
 }
 
-#ifdef __linux__
+#if defined(MSGA_FREEDESKTOP) || defined(MSGA_PORT) // the in-app chooser
 bool forceBuiltin() {
     const char *v = std::getenv("MSGA_FILE_DIALOG");
     return v && std::strcmp(v, "builtin") == 0;
@@ -45,7 +45,7 @@ PathsDone firstOnly(PathDone done) {
 
 void fileDialog(Context &ctx, plat::FileDialogDesc d, PathsDone done) {
     d.parent = ctx.window ? &ctx.window->native() : nullptr;
-#ifdef __linux__
+#if defined(MSGA_FREEDESKTOP) || defined(MSGA_PORT) // the in-app chooser
     if (forceBuiltin()) {
         builtin(ctx, d, std::move(done));
         return;

@@ -12,6 +12,8 @@
 
 namespace claude {
 
+HostTask::~HostTask() = default;
+
 namespace {
 
 // The terminal msga attaches with: wide, so a long first line of the message

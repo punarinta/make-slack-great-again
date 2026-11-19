@@ -1,6 +1,8 @@
 #include "harness.h"
 
 #include <cmath>
+#include <functional>
+#include <string>
 
 using namespace uitest;
 using ui::Align;
@@ -233,7 +235,19 @@ TEST("layout: per-view footprint stays small") {
         sizeof(ui::VirtualList)
     );
     CHECK(sizeof(ui::View) <= 192);
-    CHECK(sizeof(ui::Label) <= sizeof(ui::View) + 112);
+    // A Label's own fields: its text, onLink, and 48 bytes of the rest. Spelt
+    // in the standard library's sizes and alignment, as they differ: libc++
+    // (the BSDs, macOS) has a 24-byte string but a 48-byte, 16-aligned
+    // std::function, which also pads the View part and the end to 16.
+    const auto   roundUp = [](size_t n, size_t a) { return (n + a - 1) / a * a; };
+    const size_t align   = alignof(ui::Label);
+    CHECK(
+        sizeof(ui::Label) <= roundUp(
+                                 roundUp(sizeof(ui::View), align) + sizeof(std::string) +
+                                     sizeof(std::function<void(uint32_t)>) + 48,
+                                 align
+                             )
+    );
 }
 
 namespace plat::testing_internal {

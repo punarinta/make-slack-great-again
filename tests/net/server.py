@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Local HTTP + WebSocket server for msga_net_tests (python3 stdlib only).
 
-    server.py [--tls] [--port N] [--host 127.0.0.1]
+    server.py [--tls [--tls-cert <cert.pem> <key.pem> <ca.pem>]] [--port N] [--host 127.0.0.1]
 
 Prints, one per line, then serves until stdin closes (or it is killed):
     PORT <n>                  plain HTTP / ws:// server
     TLS <n> <ca-bundle>       with --tls and an `openssl` binary: HTTPS / wss://
                               with a fresh self-signed cert for "localhost" (no
                               IP SAN); <ca-bundle> = that cert + the system CAs
+                              (--tls-cert: that certificate and key, and the
+                              CA that signed it as <ca-bundle>)
     TLS none <why>            --tls asked, but no cert could be made
     TLS12 <n>                 with TLS: the same, capped at TLS 1.2
     READY
@@ -360,8 +362,12 @@ def main():
 
     tmp = None
     if '--tls' in args:
-        tmp = tempfile.mkdtemp(prefix='next-net-tls-')
-        files, why = make_cert(tmp)
+        if '--tls-cert' in args:  # a test PKI's certificate (PEOS's runner)
+            at = args.index('--tls-cert')
+            files, why = (args[at + 2], args[at + 1], args[at + 3]), None
+        else:
+            tmp = tempfile.mkdtemp(prefix='next-net-tls-')
+            files, why = make_cert(tmp)
         if files:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(files[1], files[0])

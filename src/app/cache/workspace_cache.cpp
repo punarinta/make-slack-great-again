@@ -6,12 +6,12 @@
 #include "base/crypto.h"
 #include "base/log.h"
 #include "base/str.h"
+#include "base/thread.h"
 #include "plat/plat.h"
 
 #include <atomic>
 #include <initializer_list>
 #include <memory>
-#include <mutex>
 
 namespace cache {
 
@@ -33,8 +33,8 @@ int                   g_slowDelayMs = WorkspaceCache::kSlowDelayMs;
 // write under way on a worker (it would bring the directory back), and two
 // writes of one file never cross. Never destroyed: a worker may still hold
 // it as the process exits.
-std::mutex &diskMutex() {
-    static std::mutex *m = new std::mutex;
+base::Mutex &diskMutex() {
+    static base::Mutex *m = new base::Mutex;
     return *m;
 }
 
@@ -247,6 +247,7 @@ void fields(IO &io, model::User &u) {
     io.flags({&u.hasTz, &u.active, &u.bot, &u.admin, &u.owner, &u.deleted, &u.stranger});
     io.str(u.realName);
     io.str(u.profileName);
+    io.num(u.statusExpiry);
 }
 
 void fields(IO &io, model::Reaction &r) {
@@ -470,18 +471,18 @@ struct WorkspaceCache::Disk {
     };
     std::string              dir;
     uint32_t                 clearGen = 0;
-    std::mutex               mutex; // the members below (never held while writing)
+    base::Mutex              mutex; // the members below (never held while writing)
     std::vector<File>        queue; // oldest first; one entry per file
     std::vector<std::string> failed;
     bool                     draining = false; // a worker is asked to drain
 
     // Writes the queue out, oldest first.
     void drain() {
-        std::lock_guard<std::mutex> io(diskMutex());
+        base::Lock io(diskMutex());
         for (;;) {
             File f;
             {
-                std::lock_guard<std::mutex> lock(mutex);
+                base::Lock lock(mutex);
                 if (queue.empty()) {
                     draining = false;
                     return;
@@ -493,7 +494,7 @@ struct WorkspaceCache::Disk {
                 continue; // Clear cache ran since: nothing more
             if (!file::writeAtomic(file::join(dir, f.name), f.data, 0600, false)) {
                 LOG_WARN("cache", "can't write %s/%s", dir.c_str(), f.name.c_str());
-                std::lock_guard<std::mutex> lock(mutex);
+                base::Lock lock(mutex);
                 failed.push_back(std::move(f.name));
             }
         }
@@ -535,7 +536,7 @@ int64_t WorkspaceCache::diskBytes(plat::App &app) {
 
 void WorkspaceCache::clearAll(plat::App &app) {
     ++g_clearGen;
-    std::lock_guard<std::mutex> io(diskMutex());
+    base::Lock io(diskMutex());
     if (const std::string r = root(app); !r.empty())
         file::removeTree(r);
 }
@@ -557,7 +558,7 @@ void WorkspaceCache::clearAllAsync(plat::App &app, std::function<void()> done) {
     model::runInBackground(
         app,
         [r = root(app)] {
-            std::lock_guard<std::mutex> io(diskMutex());
+            base::Lock io(diskMutex());
             if (!r.empty())
                 file::removeTree(r);
         },
@@ -566,7 +567,7 @@ void WorkspaceCache::clearAllAsync(plat::App &app, std::function<void()> done) {
 }
 
 void WorkspaceCache::remove(plat::App &app, std::string_view key) {
-    std::lock_guard<std::mutex> io(diskMutex());
+    base::Lock io(diskMutex());
     if (const std::string d = dirFor(app, key); !d.empty())
         file::removeTree(d);
 }
@@ -872,8 +873,8 @@ void WorkspaceCache::write(const char *name, std::string data) {
     _written[name] = h;
     Disk &d        = *_disk;
     {
-        std::lock_guard<std::mutex> lock(d.mutex);
-        bool                        queued = false;
+        base::Lock lock(d.mutex);
+        bool       queued = false;
         for (Disk::File &f : d.queue)
             if (f.name == name) { // still waiting: the newer bytes instead
                 f.data = std::move(data);
@@ -912,8 +913,8 @@ void WorkspaceCache::writePending() {
         return;
     {
         // A write that failed is tried again with the next bytes, same or not.
-        Disk                       &d = *_disk;
-        std::lock_guard<std::mutex> lock(d.mutex);
+        Disk      &d = *_disk;
+        base::Lock lock(d.mutex);
         for (const std::string &name : d.failed)
             _written.erase(name);
         d.failed.clear();
