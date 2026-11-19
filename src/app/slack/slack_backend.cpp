@@ -63,6 +63,8 @@ constexpr int64_t     kSavedGapMs             = 5 * 60'000; // kRemindersRefresh
 constexpr int64_t     kScheduledGapMs         = 5 * 60'000; // ones scheduled elsewhere
 constexpr int64_t     kScheduledSentSlackMs   = 15'000;     // re-list this long after one is due
 constexpr int64_t     kUsersRefreshGapMs      = 24 * 60 * 60'000;
+// Ended statuses (status_expiration): no request, only the Store's clock.
+constexpr int64_t     kStatusSweepGapMs       = 30'000;
 // A VIP list edited in another client (no realtime event reaches a session
 // workspace): rarely changed, so slower than stars and sections.
 constexpr int64_t     kVipsGapMs              = 15 * 60'000;
@@ -354,7 +356,8 @@ struct SlackBackend::Read {
     Ts              openThread = 0;
     int64_t         lastRoster = 0, lastCounts = 0, lastThreads = 0, lastFg = 0, lastBg = 0;
     int64_t         lastPresence = 0, lastSelf = 0, lastStarred = 0, lastSaved = 0, lastUsers = 0;
-    bool            visible = true; // the window shows (setWindowVisible)
+    int64_t         lastStatusSweep = 0;
+    bool            visible         = true; // the window shows (setWindowVisible)
     // By ConvRef (0: none yet): the newest ts a poll saw (baselineOf), and
     // the revision of the last poll that landed.
     std::vector<Ts> pollBaseline;
@@ -2728,6 +2731,12 @@ void SlackBackend::Read::tick() {
         // without it nobody gets a name, so again at the roster cadence.
         lastUsers = t;
         loadUsers([](const std::string &) {});
+    }
+    // (2c) Statuses whose end passed: Slack clears them silently for anyone
+    // whose user_change never reaches us (Slack Connect).
+    if (t - lastStatusSweep >= kStatusSweepGapMs) {
+        lastStatusSweep = t;
+        s.clearEndedStatuses(b.nowSecs());
     }
     if (t - lastSaved >= kSavedGapMs)
         refreshSaved();

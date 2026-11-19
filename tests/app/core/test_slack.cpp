@@ -361,6 +361,22 @@ TEST("slack json: Slackbot and the Slack notifier are apps despite is_bot=false"
     CHECK(!slack::mapjson::toUser(doc.root()).bot);
 }
 
+TEST("slack json: a status keeps its expiry; none without a status") {
+    json::Document doc;
+    REQUIRE(doc.parse(R"({"id": "U1", "profile": {"status_text": "In a meeting",
+      "status_emoji": ":calendar:", "status_expiration": 1900000000}})"));
+    model::User u = slack::mapjson::toUser(doc.root());
+    CHECK(u.statusText == "In a meeting" && u.statusEmoji == "calendar");
+    CHECK(u.statusExpiry == 1900000000);
+    REQUIRE(doc.parse(R"({"id": "U1", "profile": {"status_text": "", "status_emoji": "",
+      "status_expiration": 1900000000}})"));
+    CHECK(slack::mapjson::toUser(doc.root()).statusExpiry == 0);
+    REQUIRE(
+        doc.parse(R"({"id": "U1", "profile": {"status_text": "Away", "status_expiration": 0}})")
+    );
+    CHECK(slack::mapjson::toUser(doc.root()).statusExpiry == 0);
+}
+
 TEST("slack json: a message_mention names the linked message's author for its chip") {
     model::Store   store;
     json::Document doc;

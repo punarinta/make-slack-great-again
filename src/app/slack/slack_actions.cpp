@@ -2081,9 +2081,10 @@ void SlackBackend::setStatus(std::string emoji, std::string text, int64_t expiry
         .endObject();
     _write->setProfile(
         p,
-        [emoji = std::move(emoji), text = std::move(text)](model::User &u) {
-            u.statusEmoji = emoji;
-            u.statusText  = text;
+        [emoji = std::move(emoji), text = std::move(text), expiry](model::User &u) {
+            u.statusEmoji  = emoji;
+            u.statusText   = text;
+            u.statusExpiry = text.empty() && emoji.empty() ? 0 : expiry;
         },
         std::move(done)
     );

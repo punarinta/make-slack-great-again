@@ -553,12 +553,13 @@ void FakeBackend::setPresence(bool, Done done) {
     });
 }
 
-void FakeBackend::setStatus(std::string emoji, std::string text, int64_t, Done done) {
-    later(kReadLatencyMs, [this, emoji = std::move(emoji), text = std::move(text), done] {
+void FakeBackend::setStatus(std::string emoji, std::string text, int64_t expiry, Done done) {
+    later(kReadLatencyMs, [this, emoji = std::move(emoji), text = std::move(text), expiry, done] {
         if (_store.me != model::kNoUser) {
             model::User &u = _store.user(_store.me);
             u.statusEmoji  = emoji;
             u.statusText   = text;
+            u.statusExpiry = text.empty() && emoji.empty() ? 0 : expiry;
             _store.usersChanged();
         }
         if (done)

@@ -985,6 +985,7 @@ TEST("slack write: status, profile and photo") {
     REQUIRE(pumpUntil([&] { return st.called; }));
     CHECK(st.ok);
     CHECK(e.store.user(e.me).statusEmoji == "palm_tree" && e.store.user(e.me).statusText == "Away");
+    CHECK(e.store.user(e.me).statusExpiry == 1900000000);
     model::Backend::MyProfile p;
     bool                      loaded = false;
     e.be->loadMyProfile([&](model::Backend::MyProfile x) {
