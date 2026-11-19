@@ -25,7 +25,10 @@ Nothing runs on `master`. The private dev repo has no CI.
    - a GitHub Release tagged with the date (`2026-11-18`; a second one that day is
      `2026-11-18-2`), with all binaries and their `.manifest` files
    - the Homebrew cask in `punarinta/homebrew-msga`, rendered from `packaging/homebrew/msga.rb.in`
-   - a version-bump PR on `flathub/com.nisdos.msga`, which Flathub then builds from the tag
+   - msga's own Flatpak repository, signed, at `https://msga.app/flatpak/` (job `flatpak-site`,
+     a GitHub Pages site at `flatpak.msga.app` that nginx proxies). Users install with
+     `flatpak install --user https://msga.app/flatpak/com.nisdos.msga.flatpakref`, then
+     `flatpak update` follows the releases.
 
 Debug symbols (`.debug`, `.dSYM`) are kept as workflow artifacts named `symbols-<os>-<tag>`
 for 90 days. They're never release assets.
@@ -46,8 +49,7 @@ Set these in the mirror under Settings → Secrets and variables → Actions:
 | Name | Kind | What | Without it |
 |---|---|---|---|
 | `HOMEBREW_TAP_TOKEN` | secret | fine-grained PAT: `punarinta/homebrew-msga` only, Contents read/write | cask not updated (warning) |
-| `FLATHUB_TOKEN` | secret | PAT with write access to `flathub/com.nisdos.msga` | Flathub not updated (warning) |
-| `FLATHUB_AUTOMERGE` | variable | `true`: auto-merge the Flathub PR once its test build passes | merge the Flathub PR by hand |
+| `FLATPAK_SIGNING_KEY` | secret | the armored secret GPG key that signs the Flatpak repository | repository not published (warning) |
 
 No app keys are involved. Builds carry no Slack or GIPHY credentials; users add their own.
 
@@ -57,9 +59,23 @@ Actions → Release → **Run workflow** on any branch:
 - **build**: the PR checks only. Nothing is published.
 - **draft**: also creates a **draft** release. Drafts are invisible to the public and have no tag
   until published, so `latest` and msga.app are untouched. The cask goes to the tap's `ci-test`
-  branch, which `brew` never reads. Flathub is skipped. Delete the draft and the `ci-test` branch
+  branch, which `brew` never reads. The Flatpak repository isn't published. Delete the draft and the `ci-test` branch
   afterwards.
 
 ## Cost
 
 Standard GitHub-hosted runners are free for public repos, macOS included.
+
+## The Flatpak repository
+
+msga publishes its own Flatpak repository instead of going through Flathub, whose policy wants a
+hand-written manifest and no AI-assisted packaging. `packaging/flatpak/publish-repo.sh` turns the
+CI's Flatpak build into the site: the app on the `stable` branch, commits and summary signed with
+`FLATPAK_SIGNING_KEY`, static deltas, `com.nisdos.msga.flatpakref` and `msga.flatpakrepo`. The
+runtime comes from Flathub (`RuntimeRepo`).
+
+**Run workflow**, mode **flatpak**, republishes it from the latest release tag without a new
+release (e.g. after changing the key or the site).
+
+The signing key never changes in normal use: users' remotes carry its public part, so a new key
+means everyone re-adds the repository. Keep the backup of its secret part safe.
