@@ -84,16 +84,22 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
-          version="$(grep -m1 'MSGA_VERSION' version.cmake | grep -oE '[0-9]+' | head -1)"
-          [[ -n "$version" ]] || { echo "::error::no MSGA_VERSION in version.cmake"; exit 1; }
+          source_version="$(grep -m1 'MSGA_VERSION' version.cmake | grep -oE '[0-9]+' | head -1)"
+          [[ -n "$source_version" ]] || { echo "::error::no MSGA_VERSION in version.cmake"; exit 1; }
 
           # Release tags are dates (2026-11-18; a second release that day
-          # 2026-11-18-2): Flathub's update checker matches ^[\d-]+$.
+          # 2026-11-18-2).
           prev_tag="$(git tag --list '20[0-9][0-9]-*' --sort=-creatordate | head -1)"
+          # The version that release shipped: its manifest says (the builds
+          # get theirs from here, not from the tag's version.cmake); releases
+          # from before this workflow have none, their version.cmake does.
           prev_version=0
           if [[ -n "$prev_tag" ]]; then
-              prev_version="$(git show "${prev_tag}:version.cmake" 2>/dev/null |
-                  grep -m1 'MSGA_VERSION' | grep -oE '[0-9]+' | head -1 || echo 0)"
+              prev_version="$(gh release download "$prev_tag" -R "$GITHUB_REPOSITORY" \
+                  -p msga-linux-x86_64.manifest -O - 2>/dev/null | jq -r '.version // empty' || true)"
+              [[ "$prev_version" =~ ^[0-9]+$ ]] || prev_version="$(git show "${prev_tag}:version.cmake" 2>/dev/null |
+                  grep -m1 'MSGA_VERSION' | grep -oE '[0-9]+' | head -1 || true)"
+              [[ "$prev_version" =~ ^[0-9]+$ ]] || prev_version=0
           fi
 
           only_flatpak=false; ref=""
@@ -110,16 +116,22 @@ jobs:
               *) publish=false; draft=false ;;
           esac
 
-          # A release must carry a new version: the in-app updater only
-          # offers a higher one. A PR shows this as a red check before merging;
-          # manual runs only warn.
-          if (( version <= prev_version )); then
-              msg="MSGA_VERSION is ${version}, the last release (${prev_tag}) was ${prev_version}: bump version.cmake"
-              if [[ "$EVENT" == workflow_dispatch ]]; then
-                  echo "::warning::${msg}"
-              else
-                  echo "::error::${msg}"; exit 1
-              fi
+          # The version is never typed: the last release's + 1 (the in-app
+          # updater only offers a higher one), written into version.cmake by
+          # every build job, and back onto master once released. The flatpak
+          # mode rebuilds the last release itself. Without any release yet,
+          # version.cmake's.
+          if [[ "$only_flatpak" == true ]]; then
+              version="$prev_version"
+          elif (( prev_version > 0 )); then
+              version=$((prev_version + 1))
+          else
+              version="$source_version"
+          fi
+          # master normally says the last release (written back after it);
+          # anything else is worth a note, never a failure.
+          if [[ "$source_version" != "$version" && "$source_version" != "$prev_version" ]]; then
+              echo "::notice::version.cmake says ${source_version}; this build is ${version} (last release ${prev_tag:-none}: ${prev_version})"
           fi
 
           day="$(date -u +%F)"
@@ -202,6 +214,8 @@ jobs:
           sudo apt-get update -q
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends xvfb xauth \
               fonts-dejavu-core fonts-liberation2 fonts-noto-core fonts-noto-color-emoji fonts-noto-cjk
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, test, smoke launch
         run: scripts/release-linux-static.sh
       - uses: actions/upload-artifact@v7
@@ -231,6 +245,8 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends wine wine64 xvfb xauth fonts-dejavu-core
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, smoke launch under Wine
         run: scripts/release-windows.sh
       - uses: actions/upload-artifact@v7
@@ -269,6 +285,8 @@ jobs:
           apt-get install -y -q --no-install-recommends ca-certificates git clang lld llvm \
               cmake ninja-build pkgconf libwayland-bin python3 binutils xz-utils zstd
       - uses: actions/checkout@v7
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Cache the sysroot
         uses: actions/cache@v6
         with:
@@ -309,6 +327,8 @@ jobs:
         run: |
           command -v cmake >/dev/null || brew install cmake
           command -v ninja >/dev/null || brew install ninja
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, test, DMG
         run: scripts/release-mac.sh
       - if: matrix.os == '26'
@@ -351,6 +371,15 @@ jobs:
       # A runner has no login session: no session bus (the Builder app asks
       # the host's flatpak to install runtimes over it: a private one for the
       # build) and no XDG_RUNTIME_DIR (where flatpak keeps its instances).
+      - name: Set the release version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          perl -pi -e "s/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${VERSION})/" version.cmake
+          m=packaging/flatpak/com.nisdos.msga.metainfo.xml
+          grep -q "<release version=\"${VERSION}\"" "$m" ||
+              perl -0pi -e "s|<releases>\n|<releases>\n    <release version=\"${VERSION}\" date=\"$(date -u +%F)\"/>\n|" "$m"
+          grep -m2 'release version' "$m"
       - name: Build and lint
         run: |
           export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -460,6 +489,20 @@ jobs:
           git -C tap commit -q -am "msga ${VERSION}"
           git -C tap push -q --force-with-lease origin "$branch"
           echo "Cask: msga ${VERSION} on homebrew-msga/${branch}" >>"$GITHUB_STEP_SUMMARY"
+
+      # The source on master says the version just released: builds from it
+      # (and the next release's checks) agree with what users have.
+      - name: Version on master
+        if: needs.prepare.outputs.draft != 'true'
+        run: |
+          set -euo pipefail
+          git fetch -q origin master
+          git checkout -q -B master origin/master
+          perl -pi -e "s/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${VERSION})/" version.cmake
+          if git diff --quiet; then echo "master already says ${VERSION}."; exit 0; fi
+          git commit -q -m "version ${VERSION}" -- version.cmake
+          git push -q origin master
+          echo "master: version ${VERSION}" >>"$GITHUB_STEP_SUMMARY"
 
   # ── msga's own Flatpak repository: signed, on GitHub Pages ─────────────────
   # After a published release (or in the flatpak mode): the Flatpak job's repo

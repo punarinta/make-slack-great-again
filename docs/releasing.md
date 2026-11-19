@@ -6,7 +6,7 @@ Nothing runs on `master`. The private dev repo has no CI.
 
 ## The flow
 
-1. Bump `MSGA_VERSION` in `version.cmake`, sync the mirror (`scripts/sync-to-public.sh`) and
+1. Sync the mirror (`scripts/sync-to-public.sh`) and
    commit to the mirror's `master` as usual.
 2. On GitHub, open a pull request from `master` into `release`. **Its description becomes the
    release notes.**
@@ -18,7 +18,6 @@ Nothing runs on `master`. The private dev repo has no CI.
        on macOS 15 as a check for older systems
      - a Flatpak build and lint
    - A red check means don't merge. Fix it on `master` and sync again; the PR re-runs by itself.
-   - If the version wasn't bumped past the last release, that's a red check too.
 3. Merge the PR (a merge commit). If nothing landed on `master` since the PR's checks, the
    release is the exact code the PR tested: its binaries are published at once, no builds run
    again. Otherwise the builds run on `release` first. Either way, it then publishes:
@@ -79,3 +78,12 @@ release (e.g. after changing the key or the site).
 
 The signing key never changes in normal use: users' remotes carry its public part, so a new key
 means everyone re-adds the repository. Keep the backup of its secret part safe.
+
+## Versions
+
+Nobody types a version. Each run takes the last release's version (from its `.manifest`) and adds
+one; every build writes that into `version.cmake` before compiling, the Flatpak's metainfo gets a
+matching `<release>`, and once the release is out the publish job commits the number to `master`
+(`version N`). `sync-to-public.sh` doesn't copy `version.cmake`, so the dev repo's value never
+overwrites it; there it only names local builds. The **flatpak** mode rebuilds the last release
+under its own version.
