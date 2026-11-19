@@ -58,11 +58,15 @@ jobs:
   prepare:
     if: github.repository == 'punarinta/make-slack-great-again'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read # the PR runs and their artifacts (reuse below)
     outputs:
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
       publish: ${{ steps.plan.outputs.publish }}
       draft: ${{ steps.plan.outputs.draft }}
+      reuse: ${{ steps.reuse.outputs.run }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -124,9 +128,51 @@ jobs:
               echo "Publishes: ${publish}$([[ $draft == true ]] && echo ' (draft)')"
           } >>"$GITHUB_STEP_SUMMARY"
 
+      # A PR run notes the source tree it built and tested (GitHub's preview
+      # merge into `release`), so that the merge can publish its binaries.
+      - name: Record the tested tree
+        if: github.event_name == 'pull_request'
+        run: git rev-parse 'HEAD^{tree}' >tested-tree.txt
+      - if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tested-tree
+          path: tested-tree.txt
+          retention-days: 7 # as long as the release-* artifacts
+
+      # Publishing: a successful PR run that tested exactly this tree (nothing
+      # landed on master between its checks and the merge) already built and
+      # tested every platform — its release-* artifacts are published and the
+      # builds below are skipped. Otherwise they run as usual.
+      - id: reuse
+        name: Find a PR run that tested this tree
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          want="release-freebsd release-linux release-macos release-openbsd release-windows"
+          runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow release.yml --event pull_request \
+              --status success -L 20 --json databaseId --jq '.[].databaseId')"
+          for id in $runs; do
+              d="$(mktemp -d)"
+              gh run download "$id" -R "$GITHUB_REPOSITORY" -n tested-tree -D "$d" >/dev/null 2>&1 || continue
+              [[ "$(cat "$d/tested-tree.txt" 2>/dev/null)" == "$tree" ]] || continue
+              have="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/artifacts?per_page=100" \
+                  --jq '[.artifacts[] | select(.expired | not) | .name | select(startswith("release-"))] | unique | join(" ")')"
+              if [[ "$have" == "$want" ]]; then
+                  echo "run=${id}" >>"$GITHUB_OUTPUT"
+                  echo "Reusing the binaries of PR run ${id} (same tree ${tree:0:12}); its symbols-* artifacts are there too." >>"$GITHUB_STEP_SUMMARY"
+                  exit 0
+              fi
+          done
+          echo "No PR run tested this exact tree (${tree:0:12}): building it here." >>"$GITHUB_STEP_SUMMARY"
+
   # ── Linux: static musl binary, tests on musl, X11 smoke launch ─────────────
   linux:
     needs: prepare
+    if: needs.prepare.outputs.reuse == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -158,6 +204,7 @@ jobs:
   # ── Windows: mingw cross-build in Docker, Wine smoke launch ────────────────
   windows:
     needs: prepare
+    if: needs.prepare.outputs.reuse == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -188,6 +235,7 @@ jobs:
   # clang 18 is older than what the code is built with).
   bsd:
     needs: prepare
+    if: needs.prepare.outputs.reuse == ''
     runs-on: ubuntu-24.04
     container: ubuntu:26.04
     timeout-minutes: 90
@@ -230,6 +278,7 @@ jobs:
   # tests as a check, for users on older systems (msga runs on 14 and later).
   macos:
     needs: prepare
+    if: needs.prepare.outputs.reuse == ''
     runs-on: macos-${{ matrix.os }}
     name: macos (${{ matrix.os }})
     timeout-minutes: 120
@@ -264,6 +313,7 @@ jobs:
   # ── Flatpak: the Flathub manifest builds (from this checkout) and lints ────
   flatpak:
     needs: prepare
+    if: needs.prepare.outputs.reuse == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -293,11 +343,16 @@ jobs:
   # ── Publish: only after every build and test passed ────────────────────────
   publish:
     needs: [prepare, linux, windows, bsd, macos, flatpak]
-    if: needs.prepare.outputs.publish == 'true'
+    # Built here (every build succeeded) or reused from a PR run (all skipped).
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      needs.prepare.outputs.publish == 'true' &&
+      (needs.prepare.outputs.reuse != '' || !contains(needs.*.result, 'failure'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
+      actions: read # a PR run's artifacts
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
@@ -305,11 +360,20 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - if: needs.prepare.outputs.reuse == ''
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
           merge-multiple: true
+      - if: needs.prepare.outputs.reuse != ''
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+          run-id: ${{ needs.prepare.outputs.reuse }}
+          github-token: ${{ github.token }}
 
       # Each manifest must describe the binary next to it: this version and
       # its actual hash (the in-app updater and the cask both trust it).

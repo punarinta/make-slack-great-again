@@ -19,7 +19,9 @@ Nothing runs on `master`. The private dev repo has no CI.
      - a Flatpak build and lint
    - A red check means don't merge. Fix it on `master` and sync again; the PR re-runs by itself.
    - If the version wasn't bumped past the last release, that's a red check too.
-3. Merge the PR. The same builds run again on `release`, then publish:
+3. Merge the PR (a merge commit). If nothing landed on `master` since the PR's checks, the
+   release is the exact code the PR tested: its binaries are published at once, no builds run
+   again. Otherwise the builds run on `release` first. Either way, it then publishes:
    - a GitHub Release tagged with the date (`2026-11-18`; a second one that day is
      `2026-11-18-2`), with all binaries and their `.manifest` files
    - the Homebrew cask in `punarinta/homebrew-msga`, rendered from `packaging/homebrew/msga.rb.in`
