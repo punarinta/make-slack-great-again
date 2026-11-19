@@ -275,6 +275,9 @@ TEST("slack realtime: edits, deletions, reactions, presence, users and marks") {
     if (!haveServer())
         return;
     Env e;
+    // The presence poll agrees with the pushed presence_change below: on a
+    // slow machine its answer can land after the event and win.
+    set(R"({"users.getPresence": {"ok": true, "presence": "active", "online": true}})");
     REQUIRE(e.connect());
     REQUIRE(e.live());
     const ConvRef c  = e.conv("C1");
