@@ -343,6 +343,47 @@ TEST("process (sandbox): Process signals its group on the host") {
     file::remove(dir);
 }
 
+TEST("process (sandbox): host access needs both flatpak-spawn and the host's files") {
+    // As a Flatpak writes it (both granted), and with either taken away by an
+    // override, which leaves it out of the file.
+    const std::string both = "[Application]\nname=com.nisdos.msga\n\n[Context]\n"
+                             "shared=network;ipc;\nfilesystems=/tmp;host;\n\n"
+                             "[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n"
+                             "org.freedesktop.Notifications=talk\n";
+    CHECK(base::host::hostAccessFrom(both));
+    CHECK_FALSE(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=/tmp;\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n"
+        )
+    );
+    CHECK_FALSE(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=host;\n[Session Bus "
+            "Policy]\norg.freedesktop.Notifications=talk\n"
+        )
+    );
+    // Read-only, or just the OS's or /etc's folders, isn't enough.
+    CHECK_FALSE(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=host:ro;host-os;\n[Session Bus Policy]\n"
+            "org.freedesktop.Flatpak=talk\n"
+        )
+    );
+    CHECK(
+        base::host::hostAccessFrom(
+            "[Context]\nfilesystems=xdg-download;host:rw\n[Session Bus Policy]\n"
+            "org.freedesktop.Flatpak=talk\n"
+        )
+    );
+    // The key in another section doesn't count.
+    CHECK_FALSE(
+        base::host::hostAccessFrom("[Instance]\nfilesystems=host;\norg.freedesktop.Flatpak=talk\n")
+    );
+    CHECK_FALSE(base::host::hostAccessFrom(""));
+    // Outside any Flatpak (this test): nothing was taken away.
+    CHECK_FALSE(base::host::hostAccessRevoked());
+}
+
 TEST("process (sandbox): the host reaches us through the installation's exported launcher") {
     const char *info = "[Application]\nname=com.nisdos.msga\nruntime=runtime/x/25.08\n\n"
                        "[Instance]\ninstance-id=1\n"

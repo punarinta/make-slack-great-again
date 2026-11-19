@@ -17,6 +17,8 @@ finish-args:
   # Claude Code runs on the host — its CLI, git, ssh to a relay, the
   # browser for the Slack sign-in — through flatpak-spawn --host
   # (src/base/host.h): the processes are the host's, so is their file system.
+  # Both may be revoked (flatpak override, Flatseal): msga then runs nothing
+  # on the host, and Claude Code and the browser sign-in say they're off.
   - --talk-name=org.freedesktop.Flatpak
   - --filesystem=host
   # …and its /tmp, which `host` leaves out: Claude Code writes its background
@@ -25,8 +27,6 @@ finish-args:
   # The tray icon (StatusNotifierItem), notifications with sender avatars.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
-  # "Import from local Slack": the Slack desktop app's key in the keyring.
-  - --talk-name=org.freedesktop.secrets
   # Reconnecting after a suspend (PrepareForSleep).
   - --system-talk-name=org.freedesktop.login1
 

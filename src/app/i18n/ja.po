@@ -405,6 +405,10 @@ msgid "Couldn't stop “%1”: its process wasn't found."
 msgstr "「%1」を停止できませんでした：プロセスが見つかりません。"
 
 #: src/app/claude/cli.cpp
+msgid "Claude Code runs on your computer, outside msga's sandbox, and this Flatpak's access to it is turned off. Allow \"org.freedesktop.Flatpak\" and \"All system files\" for msga in Flatseal (or run `flatpak override --user --talk-name=org.freedesktop.Flatpak --filesystem=host com.nisdos.msga`), then restart msga."
+msgstr "Claude Code は msga のサンドボックスの外、このコンピューター上で動作しますが、この Flatpak からのアクセスはオフになっています。Flatseal で msga に「org.freedesktop.Flatpak」と「All system files」を許可して（または `flatpak override --user --talk-name=org.freedesktop.Flatpak --filesystem=host com.nisdos.msga` を実行して）、msga を再起動してください。"
+
+#: src/app/claude/cli.cpp
 msgid "Claude Code isn't installed on this computer (msga can't find the claude command). Install it (https://code.claude.com/docs/en/setup), run `claude` once in a terminal to log in, then try again."
 msgstr "このコンピューターには Claude Code がインストールされていません（msga が claude コマンドを見つけられません）。インストール（https://code.claude.com/docs/en/setup）してからターミナルで一度 `claude` を実行してログインし、もう一度お試しください。"
 

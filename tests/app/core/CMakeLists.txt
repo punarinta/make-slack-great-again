@@ -8,7 +8,8 @@ if(TARGET msga_app_update)
     list(APPEND core_suites update)
     target_link_libraries(msga_app_tests PRIVATE msga_app_update)
 endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT) # the importer is Linux-native
+# The importer is Linux-native, and left out of the Flatpak (src/app/CMakeLists.txt).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT MSGA_PORT AND NOT MSGA_FLATPAK)
     list(APPEND core_suites local_import)
 endif()
 target_sources(msga_app_tests PRIVATE ../../support/fake_slack_server.cpp)

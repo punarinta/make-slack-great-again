@@ -67,11 +67,15 @@ grep -q 'type: dir' "$MANIFEST" || { echo "build-local.sh: no git source to repl
     --state-dir="$WORK/state" --repo="$WORK/repo" \
     "$WORK/app" "$MANIFEST"
 
+# Lint errors fail the build (warnings don't). lint-exceptions.json excuses
+# only what a local build can't satisfy: Flathub's own build mirrors the
+# screenshots, which a local repo never has.
 if [ "$LINT" = 1 ]; then
     builder_app
-    flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
-        manifest "$HERE/com.nisdos.msga.yml" || true
-    flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo "$WORK/repo" || true
+    LINTER=(flatpak run --command=flatpak-builder-lint org.flatpak.Builder
+        --exceptions --user-exceptions "$HERE/lint-exceptions.json")
+    "${LINTER[@]}" manifest "$HERE/com.nisdos.msga.yml"
+    "${LINTER[@]}" repo "$WORK/repo"
 fi
 if [ "$RUN" = 1 ]; then
     flatpak run com.nisdos.msga

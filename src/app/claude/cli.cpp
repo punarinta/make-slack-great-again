@@ -3,6 +3,7 @@
 #include "app/claude/launcher.h"
 #include "app/claude/roster.h"
 #include "base/file.h"
+#include "base/host.h"
 #include "base/i18n.h"
 #include "base/json.h"
 #include "base/process.h"
@@ -63,6 +64,10 @@ Credentials fromRecord(const auth::WorkspaceRecord &rec) {
 }
 
 std::string findClaudeExecutable() {
+    // Seen through the host's files it might be found, but it could only be
+    // run in the sandbox, where it doesn't work.
+    if (base::host::hostAccessRevoked())
+        return {};
 #ifdef _WIN32
     const char *const names[] = {"claude.exe", "claude.cmd"};
 #else
@@ -98,6 +103,14 @@ std::string findClaudeExecutable() {
 }
 
 std::string notInstalledMessage() {
+    if (base::host::hostAccessRevoked()) // the Flatpak, its host access taken away
+        return i18n::tr(
+            "Claude Code runs on your computer, outside msga's sandbox, and this Flatpak's "
+            "access to it is turned off. Allow \"org.freedesktop.Flatpak\" and \"All system "
+            "files\" for msga in Flatseal (or run `flatpak override --user "
+            "--talk-name=org.freedesktop.Flatpak --filesystem=host com.nisdos.msga`), then "
+            "restart msga."
+        );
     return i18n::tr(
         "Claude Code isn't installed on this computer (msga can't find the claude command). "
         "Install it (https://code.claude.com/docs/en/setup), run `claude` once in a terminal "

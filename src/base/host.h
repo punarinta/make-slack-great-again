@@ -28,8 +28,19 @@ struct RunResult;
 
 namespace base::host {
 
-// Running in a Flatpak sandbox (/.flatpak-info), or a test standing in for one.
+// Running in a Flatpak sandbox (/.flatpak-info) that may run programs on the
+// host, or a test standing in for one: what everything here is for.
 bool sandboxed();
+
+// In a Flatpak sandbox the user has taken the host away from (flatpak
+// override, Flatseal): programs then run in the sandbox, where there is no
+// claude, git or browser, and the features that need them say so.
+bool hostAccessRevoked();
+
+// Whether a /.flatpak-info grants what running on the host takes: talking to
+// org.freedesktop.Flatpak (flatpak-spawn --host) and the host's files
+// (Claude Code's sessions and projects). A user override shows here too.
+bool hostAccessFrom(std::string_view flatpakInfo);
 
 // Tests: `spawner` plays flatpak-spawn — it gets the same options and runs the
 // command (here, on this machine) — and sandboxed() is true; "" ends it.

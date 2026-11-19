@@ -20,13 +20,29 @@ namespace {
 
 std::string g_testSpawner; // set by tests only, before they spawn anything
 
+// 0: not in a Flatpak, 1: in one with host access, 2: in one without. Read
+// once: permissions are fixed for the life of the sandbox.
+int flatpakState() {
+    static const int state = [] {
+        if (::access("/.flatpak-info", F_OK) != 0)
+            return 0;
+        std::string info;
+        file::readAll("/.flatpak-info", &info);
+        return hostAccessFrom(info) ? 1 : 2;
+    }();
+    return state;
+}
+
 } // namespace
 
 bool sandboxed() {
     if (!g_testSpawner.empty())
         return true;
-    static const bool inFlatpak = ::access("/.flatpak-info", F_OK) == 0;
-    return inFlatpak;
+    return flatpakState() == 1;
+}
+
+bool hostAccessRevoked() {
+    return g_testSpawner.empty() && flatpakState() == 2;
 }
 
 void setSpawnerForTest(std::string spawner) {
@@ -162,6 +178,10 @@ bool sandboxed() {
     return false;
 }
 
+bool hostAccessRevoked() {
+    return false;
+}
+
 void setSpawnerForTest(std::string) {}
 
 Command wrap(
@@ -192,6 +212,34 @@ std::string selfCommand() {
 }
 
 #endif
+
+bool hostAccessFrom(std::string_view flatpakInfo) {
+    // [Context] filesystems=…;host;… and [Session Bus Policy]
+    // org.freedesktop.Flatpak=talk; an override that takes either away
+    // leaves it out of the file.
+    std::string   section;
+    bool          files = false, spawn = false;
+    str::Splitter lines(flatpakInfo, '\n');
+    for (std::string_view line; lines.next(&line);) {
+        line = str::trim(line);
+        if (!line.empty() && line.front() == '[') {
+            section = std::string(line);
+            continue;
+        }
+        const size_t eq = line.find('=');
+        if (eq == std::string_view::npos)
+            continue;
+        const std::string_view key = line.substr(0, eq), value = line.substr(eq + 1);
+        if (section == "[Context]" && key == "filesystems") {
+            str::Splitter fs(value, ';');
+            for (std::string_view f; fs.next(&f);)
+                files = files || f == "host" || f == "host:rw";
+        } else if (section == "[Session Bus Policy]" && key == "org.freedesktop.Flatpak") {
+            spawn = value == "talk" || value == "own";
+        }
+    }
+    return files && spawn;
+}
 
 std::string exportedLauncher(std::string_view flatpakInfo) {
     // An ini file: the keys looked for under their sections.
