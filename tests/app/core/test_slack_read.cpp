@@ -1392,8 +1392,9 @@ TEST("slack read: a local Names choice ignores Slack's answer until switched bac
     e.be->setNamesMode(model::Backend::NamesMode::Service);
     REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 3000));
     CHECK_STR(e.user("UMEG").displayName, "Meg");
-    // The second ask goes out on the paced lane, maybe after the switch shows.
-    CHECK(pumpUntil([] { return Log().count("users.prefs.get") == 2; }, 3000));
+    // Switched back, Slack is asked again: on the paced lane, maybe after the
+    // switch shows, and a periodic re-read may land in between too.
+    CHECK(pumpUntil([] { return Log().count("users.prefs.get") >= 2; }, 5000));
 }
 
 TEST("slack read: app-key workspaces sweep DM activity instead of client.counts") {
