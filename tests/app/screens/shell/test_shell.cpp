@@ -327,6 +327,11 @@ TEST("composer: a chip on a link unlinks it, keeping the text") {
     // Off the link (no pointer on it any more) nothing comes back.
     pump();
     CHECK(h.sh->composer().linkChip() == nullptr);
+    // Nor does typing on: an unlinked URL is not linked again.
+    edit.setSelection(24, 24);
+    edit.insertText(" more");
+    CHECK(linkAt(edit, 6).empty());
+    CHECK_STR(h.sh->composer().mrkdwn(), "see https://x.test/p now more");
 }
 
 TEST("composer: the chip's Edit changes a link's URL, keeping its label") {
@@ -361,6 +366,75 @@ TEST("composer: the chip's Edit changes a link's URL, keeping its label") {
     CHECK_STR(edit.text(), "see the docs");
     CHECK_STR(linkAt(edit, 4), "https://y.test/plan");
     CHECK_STR(h.sh->composer().mrkdwn(), "see <https://y.test/plan|the docs>");
+}
+
+TEST("composer: a linked URL edited inside links what it now says") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p now");
+    pump();
+    REQUIRE(linkAt(edit, 6) == "https://x.test/p");
+    edit.setSelection(19, 19); // typed into: before the "p"
+    edit.insertText("q");
+    edit.setSelection(25, 25); // the caret leaves it
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/qp> now");
+    edit.setSelection(19, 20); // a letter taken out
+    edit.insertText("");
+    edit.setSelection(24, 24);
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/p> now");
+}
+
+TEST("composer: the caret leaving a typed URL links it, keeping the selection") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p");
+    CHECK(linkAt(edit, 6).empty());
+    edit.setSelection(3, 0); // Shift+Home, say
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+    CHECK(edit.anchor() == 3);
+    CHECK(edit.caret() == 0);
+}
+
+TEST("composer: a typed URL with a '|' in it stays text") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    // As a link it would go out as <https://x.test/a|b>: a link labelled "b".
+    edit.insertText("a https://x.test/a|b now");
+    CHECK(linkAt(edit, 4).empty());
+    CHECK_STR(h.sh->composer().mrkdwn(), "a https://x.test/a|b now");
+}
+
+TEST("composer: the chip's Edit on a bare link shows the new URL") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p now");
+    pump();
+    REQUIRE(app().platform().testHooks()->injectPointerMove(h.win->native(), pointAt(edit, 8)));
+    pump();
+    shell::LinkChip *chip = h.sh->composer().linkChip();
+    REQUIRE(chip != nullptr);
+    ui::Button *editBtn = namedButton(chip, "Edit");
+    REQUIRE(editBtn != nullptr);
+    editBtn->onClick();
+    pump();
+    ui::Popup *popup = h.win->topPopup();
+    REQUIRE(popup != nullptr);
+    std::vector<TextEdit *> fields;
+    findTextEdits(popup, &fields);
+    REQUIRE(fields.size() == 2);
+    CHECK_STR(fields[1]->text(), "https://x.test/p"); // the text is the URL
+    fields[0]->setText("https://y.test/q");
+    ui::Button *insert = namedButton(popup, "Insert");
+    REQUIRE(insert != nullptr);
+    insert->onClick();
+    pump();
+    // The text was the old URL and left alone: it becomes the new one.
+    CHECK_STR(edit.text(), "see https://y.test/q now");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://y.test/q> now");
 }
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────

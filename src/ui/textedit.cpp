@@ -846,6 +846,8 @@ void TextEdit::setLink(std::string url) {
 // ── Links the pointer is on ────────────────────────────────────────────────
 
 void TextEdit::updateLinkHover(PointF local) {
+    if (_links.empty() && !_hoverLink) // no link to be on: skip the hit test
+        return;
     std::string_view url;
     uint32_t         from = 0, to = 0;
     // A pill (a mention, a channel, a GIF) is no link to open or edit.

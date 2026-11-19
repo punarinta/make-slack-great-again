@@ -435,6 +435,7 @@ private:
     LinkChip                *_linkChip      = nullptr;
     plat::TimerId            _linkChipTimer = 0;
     std::string              _linkChipUrl;
+    std::vector<std::string> _unlinked; // URLs the chip unlinked: linkify() leaves them plain
     uint32_t                 _linkChipFrom = 0, _linkChipTo = 0;
     bool                     _linkifying    = false; // a link change that is no edit
     uint32_t                 _spellSeq      = 0;     // the newest check; older answers are dropped

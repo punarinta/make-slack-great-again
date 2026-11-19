@@ -593,6 +593,7 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
         if (_linkifying) // linkify() walks the text: not the user's caret
             return;
         closeLinkChip(); // the caret went elsewhere
+        linkify();       // and left the URL it was in: the word ended
         updatePickList();
     };
     _edit->onPasteMedia = [this](const std::vector<std::string> &m, plat::Selection sel) {
@@ -2068,10 +2069,11 @@ void Composer::openLinkPopup() {
         *w,
         lb,
         isUrl ? std::string() : selected,
-        [this, alive, a, c](const std::string &url, const std::string &label) {
+        [this, alive, a, c, isUrl, selected](const std::string &url, const std::string &label) {
             if (alive.expired())
                 return;
-            placeLink(a, c, url, label);
+            // A selected URL whose text was left alone shows the new one.
+            placeLink(a, c, url, isUrl && label == selected ? std::string() : label);
             _edit->focus();
         },
         isUrl ? selected : std::string()
@@ -2102,8 +2104,10 @@ void Composer::linkify() {
         return;
     // A copy: the loop moves the selection and the formats under it.
     const std::string text = _edit->text();
-    if (text.find("://") == std::string::npos)
+    if (text.find("://") == std::string::npos) {
+        _unlinked.clear(); // no URL left to keep plain
         return;
+    }
     const std::vector<mrkdwn::BareUrl> urls = mrkdwn::bareUrls(text);
     if (urls.empty())
         return;
@@ -2112,28 +2116,39 @@ void Composer::linkify() {
     // it (a space, a click elsewhere). A pasted one is linked at once.
     const bool                       pasted  = _edit->inPaste();
     const uint32_t                   caret   = _edit->caret();
+    const uint32_t                   anchor  = _edit->anchor();
     bool                             changed = false;
     _linkifying                              = true;
     for (const mrkdwn::BareUrl &u : urls) {
         if (!pasted && caret > u.from && caret <= u.to)
             continue; // the URL is the word the caret is in
+        const std::string url = text.substr(u.from, u.to - u.from);
+        // A '|' would split "<url>" into a URL and a label on the way out;
+        // and a URL the chip unlinked stays plain.
+        if (url.find('|') != std::string::npos ||
+            std::find(_unlinked.begin(), _unlinked.end(), url) != _unlinked.end())
+            continue;
         bool skip = false;
         for (const TextEdit::Run &r : runs) {
             if (u.from >= r.end || u.to <= r.start)
                 continue;
-            // Already a link (ours, or a pill's), or code, which is no link.
-            if (r.format & TextEdit::Code || (!r.link.empty() && r.end >= u.to))
+            // Code is no link and a pill no URL. A link over all of it is one
+            // already, unless it is over just the URL and to another one: the
+            // URL was edited, and a link over part of it was typed into.
+            if (r.format & TextEdit::Code || TextEdit::pillLink(r.link) ||
+                (!r.link.empty() && r.start <= u.from && r.end >= u.to &&
+                 (r.link == url || r.start < u.from || r.end > u.to)))
                 skip = true;
         }
         if (skip)
             continue;
         _edit->setSelection(u.from, u.to);
-        _edit->setLink(text.substr(u.from, u.to - u.from));
+        _edit->setLink(url);
         changed = true;
     }
-    _linkifying = false;
     if (changed)
-        _edit->setSelection(caret, caret);
+        _edit->setSelection(anchor, caret);
+    _linkifying = false;
 }
 
 void Composer::linkHovered(const TextEdit::LinkHover &h) {
@@ -2232,10 +2247,13 @@ void Composer::editLink(uint32_t from, uint32_t to) {
         *w,
         _edit->rangeRect(a, b),
         label == target ? std::string() : label,
-        [this, alive, a, b](const std::string &u, const std::string &l) {
+        [this, alive, a, b, target, bare = label == target](
+            const std::string &u, const std::string &l
+        ) {
             if (alive.expired())
                 return;
-            placeLink(a, b, u, l);
+            // A bare link whose text was left alone shows its new URL.
+            placeLink(a, b, u, bare && l == target ? std::string() : l);
             _edit->focus();
         },
         target
@@ -2248,6 +2266,7 @@ void Composer::unlinkLink(uint32_t from, uint32_t to) {
     if (!_edit->linkAt(from, &url, &a, &b))
         return;
     closeLinkChip();
+    _unlinked.push_back(_edit->text().substr(a, b - a));
     const uint32_t caret = _edit->caret(), anchor = _edit->anchor();
     _edit->setSelection(a, b);
     // The link goes; the text, a bare URL again, stays as it is (linkify()
