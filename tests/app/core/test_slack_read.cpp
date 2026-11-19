@@ -587,6 +587,39 @@ TEST("slack read: a failed author lookup is not re-asked on every poll") {
     CHECK(e.user("UGONE").placeholder);
 }
 
+TEST("slack read: Slack Connect DM partners are re-read a minute past each half hour") {
+    if (!haveServer())
+        return;
+    Env           e;
+    // A wall clock 2 min into a half hour: no pass at launch.
+    const int64_t slot = 1'800'000'000 / 1800 * 1800;
+    e.be->setNowSecsForTest(slot + 120);
+    REQUIRE(e.connect());
+    REQUIRE(pumpUntil([&] { return !e.user("UEXT").placeholder; }, 3000));
+    fakeslack::pumpFor(300);
+    CHECK(Log().count("users.info", "user", "UEXT") == 1);
+    // A meeting starts at the half hour; the pass a minute past reads it.
+    set(R"({"users.info?user=UEXT": {"ok": true, "user": {"id": "UEXT", "name": "ext",
+        "profile": {"real_name": "Ext Partner", "status_emoji": ":spiral_calendar_pad:",
+                    "status_text": "In a meeting"}}}})");
+    e.be->setNowSecsForTest(slot + 1800 + 30);
+    fakeslack::pumpFor(300);
+    CHECK(Log().count("users.info", "user", "UEXT") == 1); // not before the minute
+    e.be->setNowSecsForTest(slot + 1800 + 61);
+    REQUIRE(pumpUntil([&] { return e.user("UEXT").statusText == "In a meeting"; }, 3000));
+    fakeslack::pumpFor(300);
+    Log l;
+    CHECK(l.count("users.info", "user", "UEXT") == 2);  // once per half hour
+    CHECK(l.count("users.info", "user", "UMIRA") == 0); // users.list brings her
+    // Hidden, the window skips the pass; shown, the missed one runs.
+    e.be->setWindowVisible(false);
+    e.be->setNowSecsForTest(slot + 3600 + 61);
+    fakeslack::pumpFor(300);
+    CHECK(Log().count("users.info", "user", "UEXT") == 2);
+    e.be->setWindowVisible(true);
+    REQUIRE(pumpUntil([&] { return Log().count("users.info", "user", "UEXT") == 3; }, 3000));
+}
+
 TEST("slack read: a background call already queued is not queued twice") {
     if (!haveServer())
         return;

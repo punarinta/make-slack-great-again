@@ -9,7 +9,13 @@
 // wss URL it returns carries no auth: the handshake MUST send the `d` cookie,
 // or Slack answers {"type":"error",…invalid_auth} and drops the socket ~5 s
 // later. Frames on the socket (every conversation's events) are ignored —
-// delivery stays with the polling; only hello, pong and error are read.
+// delivery stays with the polling; only hello, pong, error and presence_change
+// are read.
+//
+// Presence of people users.getPresence won't answer for (Slack Connect: it
+// says user_not_found) comes only over a socket: `presence_sub` with the full
+// set of ids (as the web client sends it; re-sent after every hello) makes
+// Slack stream their presence_change.
 // Slack pongs RTM pings (unlike Socket Mode), so two missed pongs are a real
 // liveness signal (it also catches a laptop-sleep gap). Input is forwarded
 // as `tickle` frames, the official client's way of resetting auto-away.
@@ -22,6 +28,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace plat {
 class App;
@@ -49,8 +56,13 @@ public:
     // Real input: WhileUsing re-arms the idle clock and brings an idle link
     // back; both holding modes send a (throttled) tickle.
     void noteActivity();
+    // Who to stream presence_change for (user ids; the whole set, replacing
+    // the last). Sent at once while active, and again after each reconnect.
+    void setPresenceSubs(std::vector<std::string> ids);
 
-    std::function<void(Link)> onStateChanged;
+    std::function<void(Link)>                             onStateChanged;
+    // A presence_change for a subscribed user (or any Slack volunteers).
+    std::function<void(const std::string &, bool active)> onPresence;
 
     // ── Test seams ──────────────────────────────────────────────────────────
     struct Timing {
@@ -76,6 +88,8 @@ private:
     void onText(const std::string &text);
     void sendPing();
     void sendTickle(bool force);
+    void sendPresenceSub();
+    void onPresenceChange(const json::Value &frame);
     void onIdle();
     void setState(Link s);
     void stopTimer(uint64_t &id);
@@ -83,6 +97,7 @@ private:
     plat::App                      &_app;
     Connect                         _connect;
     std::string                     _cookie;
+    std::vector<std::string>        _subs; // sorted, unique
     Timing                          _t;
     Mode                            _mode  = Mode::Native;
     Link                            _state = Link::Off;

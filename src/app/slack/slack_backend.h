@@ -243,6 +243,8 @@ public:
     void                                     noteUserActivity() override;
     void                                     setWindowVisible(bool visible) override;
     RtmPresence                             *presenceLinkForTest() const; // null: OAuth
+    // The wall clock nowSecs() reads (0: the real one).
+    void setNowSecsForTest(int64_t secs) { _nowSecsForTest = secs; }
     // readCall, for the tests of the lanes.
     void readCallForTest(std::string method, std::string form, ApiDone done, bool background) {
         readCall(std::move(method), std::move(form), std::move(done), background);
@@ -281,6 +283,9 @@ public:
     // Re-poll my presence snapshot (users.getPresence: manual_away, online…);
     // `then` runs once it answered (not after ~SlackBackend).
     void               refreshSelfPresence(std::function<void()> then);
+    // Users whose presence only the presence link can bring (Slack Connect:
+    // users.getPresence answers user_not_found); no-op without the link.
+    void               subscribePresence(std::vector<std::string> ids);
 
     plat::App                   &app() { return _app; }
     net::Client                 &client() { return _client; }
@@ -402,7 +407,8 @@ private:
     std::unique_ptr<net::Client>       _transfers;
     net::Client                       &transfers();
     std::vector<std::shared_ptr<Done>> _downloads; // downloadFile's, until answered
-    bool                               _authLost = false;
+    bool                               _authLost       = false;
+    int64_t                            _nowSecsForTest = 0;
     // The viewer's muted conversations, from users.prefs.get /
     // client.userBoot's muted_channels (the web client's own list; the
     // conversation object carries no per-user mute). _mutedKnown once Slack
