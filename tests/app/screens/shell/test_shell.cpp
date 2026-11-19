@@ -183,6 +183,62 @@ TEST("composer: a TextEdit's formatting survives the trip") {
     CHECK_STR(r.text, "Ship it today, see the plan");
 }
 
+// ── Links in the composer ───────────────────────────────────────────────────
+
+namespace {
+
+// The URL of the link covering `offset`; empty when it is in none.
+std::string linkAt(const TextEdit &edit, uint32_t offset) {
+    for (const TextEdit::Run &r : edit.runs())
+        if (!r.link.empty() && offset >= r.start && offset < r.end)
+            return std::string(r.link);
+    return {};
+}
+
+} // namespace
+
+TEST("composer: a typed URL is a link once its word ends") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    pump();
+    edit.insertText("see https://x.test/p");
+    // The word the caret is in is still being typed: no link yet.
+    CHECK(linkAt(edit, 6).empty());
+    edit.insertText(" now"); // the space ends it
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+    CHECK(linkAt(edit, 0).empty());
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/p> now");
+    // Undo takes the link back with the word it came with, redo brings both.
+    edit.undo();
+    CHECK(linkAt(edit, 6).empty());
+    edit.redo();
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+}
+
+TEST("composer: a pasted URL is a link at once") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    pump();
+    app().platform().setClipboardText("https://x.test/p");
+    plat::TestHooks *hooks = app().platform().testHooks();
+    const uint32_t   pm    = plat::primaryMod();
+    auto             hold  = [&](bool down) {
+        if (pm & plat::ModCtrl)
+            hooks->injectKey(h.win->native(), plat::Key::ControlLeft, down);
+        if (pm & plat::ModSuper)
+            hooks->injectKey(h.win->native(), plat::Key::SuperLeft, down);
+    };
+    hold(true);
+    hooks->injectKey(h.win->native(), plat::Key::V, true);
+    hooks->injectKey(h.win->native(), plat::Key::V, false);
+    hold(false);
+    pump();
+    CHECK_STR(edit.text(), "https://x.test/p");
+    // Pasted, it is a link even though the caret is still in its word.
+    CHECK_STR(linkAt(edit, 3), "https://x.test/p");
+}
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 TEST("sidebar: unread is bold with a badge, and markRead clears it") {

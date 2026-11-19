@@ -57,9 +57,12 @@ public:
     // ── Formatting ──────────────────────────────────────────────────────────
     // With a selection: toggles the format over it (undoable). Without one:
     // toggles the format of what is typed next.
-    void toggleFormat(Format f);
-    bool formatActive(Format f) const; // for toolbar button state
-    void setLink(std::string url);     // on the selection; empty removes links
+    void        toggleFormat(Format f);
+    bool        formatActive(Format f) const; // for toolbar button state
+    void        setLink(std::string url);     // on the selection; empty removes links
+    // A link that is a raw Slack token ("<@U…>", "<#C…|name>", a GIF's
+    // "<url|label>"): drawn as a pill on the link background, not as a link.
+    static bool pillLink(std::string_view url);
 
     // ── Behaviour ───────────────────────────────────────────────────────────
     void setPlaceholder(std::string s);
@@ -119,6 +122,10 @@ public:
     void                                                   runStandardItem(int id);
     // Ids the standard items use: an owner's own start here.
     static constexpr int                                   kFirstOwnerMenuId = 100;
+
+    // True while a paste's text goes in (onChange sees it): a pasted URL is
+    // linked at once, a typed one when its word ends.
+    bool inPaste() const { return _pasting; }
 
     bool undo();
     bool redo();
@@ -255,7 +262,8 @@ private:
     bool                          _typingSet = false, _caretOn = true, _dragging = false;
     bool                          _caretTyped = false; // the caret last moved by an edit
     bool                          _masked = false, _plainPaste = false;
-    bool                          _parasDirty = true; // a layout to build or tops to place
+    bool                          _pasting    = false; // a paste's text is going in
+    bool                          _parasDirty = true;  // a layout to build or tops to place
     bool                          _wavesValid = false;
     C                             _linkBg     = C::None;
 };

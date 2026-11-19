@@ -71,9 +71,17 @@ std::string escapeEntities(std::string_view s);
 // A URL with a scheme that is linked ("://", mailto:, tel:): what tells a
 // <url|label> token from a literal "<word>" (here and in markdown.cpp).
 bool        looksLikeUrl(std::string_view s);
+// The bare http(s) URLs in plain text — the ones the parser links — as byte
+// ranges [from, to): a scheme and the word after it, the sentence punctuation
+// Slack leaves out trimmed off. The composer links what is typed or pasted
+// with this, so a URL reads as a link before it is sent.
+struct BareUrl {
+    uint32_t from = 0, to = 0;
+};
+std::vector<BareUrl> bareUrls(std::string_view text);
 // A code fence's info string that is a language name ("js", "c++",
 // "objective-c"): ^[A-Za-z][A-Za-z0-9_+#.-]{0,29}$.
-bool        isLanguageHint(std::string_view info);
+bool                 isLanguageHint(std::string_view info);
 
 // Slack renders a single quote level; deeper '>' stays literal text. It also
 // keeps pathological input ("> > > > …") from building deep layouts.

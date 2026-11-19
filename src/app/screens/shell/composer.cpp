@@ -575,6 +575,11 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
     _edit->setPlainPaste(true);                // pasted rich text arrives as plain
     _edit->setLinkBackground(C::AccentSubtle); // mention / channel / GIF pills
     _edit->onChange = [this] {
+        // A link change of ours (linkify, a link placed or taken away) is no
+        // edit: nothing below cares, and linkify() must not see itself.
+        if (_linkifying)
+            return;
+        linkify(); // a typed or pasted URL is a link here too
         finishSmiley();
         typing();
         refreshLook();
@@ -583,8 +588,12 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
     };
     _edit->onContextMenu     = [this](uint32_t offset, PointF at) { return spellMenu(offset, at); };
     _spellObserver           = spell::Checker::instance().observe([this] { respell(); });
-    _edit->onSelectionChange = [this] { updatePickList(); };
-    _edit->onPasteMedia      = [this](const std::vector<std::string> &m, plat::Selection sel) {
+    _edit->onSelectionChange = [this] {
+        if (_linkifying) // linkify() walks the text: not the user's caret
+            return;
+        updatePickList();
+    };
+    _edit->onPasteMedia = [this](const std::vector<std::string> &m, plat::Selection sel) {
         return pasteMedia(m, sel);
     };
     _edit->onFocusChange = [this](bool) { refreshLook(); };
@@ -2054,6 +2063,45 @@ void Composer::openLinkPopup() {
             _edit->focus();
         }
     );
+}
+
+void Composer::linkify() {
+    if (_linkifying)
+        return;
+    // A copy: the loop moves the selection and the formats under it.
+    const std::string text = _edit->text();
+    if (text.find("://") == std::string::npos)
+        return;
+    const std::vector<mrkdwn::BareUrl> urls = mrkdwn::bareUrls(text);
+    if (urls.empty())
+        return;
+    const std::vector<TextEdit::Run> runs    = _edit->runs();
+    // A word still being typed is not a URL yet: it ends when the caret leaves
+    // it (a space, a click elsewhere). A pasted one is linked at once.
+    const bool                       pasted  = _edit->inPaste();
+    const uint32_t                   caret   = _edit->caret();
+    bool                             changed = false;
+    _linkifying                              = true;
+    for (const mrkdwn::BareUrl &u : urls) {
+        if (!pasted && caret > u.from && caret <= u.to)
+            continue; // the URL is the word the caret is in
+        bool skip = false;
+        for (const TextEdit::Run &r : runs) {
+            if (u.from >= r.end || u.to <= r.start)
+                continue;
+            // Already a link (ours, or a pill's), or code, which is no link.
+            if (r.format & TextEdit::Code || (!r.link.empty() && r.end >= u.to))
+                skip = true;
+        }
+        if (skip)
+            continue;
+        _edit->setSelection(u.from, u.to);
+        _edit->setLink(text.substr(u.from, u.to - u.from));
+        changed = true;
+    }
+    _linkifying = false;
+    if (changed)
+        _edit->setSelection(caret, caret);
 }
 
 void Composer::openSchedule() {

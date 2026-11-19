@@ -3,10 +3,11 @@
 // attachment chips, the editor and the bottom bar (attach, emoji, GIF,
 // mention … voice, send + schedule).
 //
-// The editor is plain text: the toolbar and the format keys
-// type Slack's markers ("*bold*", "> quote", "```"), and a link is typed as
-// <url|label>. Mentions, channels and GIFs picked from the popups are pills
-// that show "@Name" / "#name" / "GIF · title" and send their raw token.
+// The editor is plain text: the toolbar and the format keys type Slack's
+// markers ("*bold*", "> quote", "```"). Mentions, channels and GIFs picked
+// from the popups are pills that show "@Name" / "#name" / "GIF · title" and
+// send their raw token. A typed or pasted URL is a link in the editor too
+// (blue, underlined, "<url|label>" on the way out, never a token in the text).
 //
 // Draft invariant (the composer draft stash): whatever is typed — text and
 // attached files — is stashed per (conversation, thread) on EVERY path that
@@ -293,6 +294,10 @@ private:
     void wrapCodeBlock();
     void wrapInline(std::string_view marker);
     void insertPill(uint32_t from, uint32_t to, const std::string &display, const std::string &raw);
+    // Links the bare URLs typed or pasted into the editor, so one reads as a
+    // link before the message is sent (as Slack's does). Skipped while a link
+    // change of the owner's is in flight.
+    void linkify();
     void pick(const PickList::Item &it);
     void typing();
     void finishSmiley();                // a smiley the word just ended becomes its emoji
@@ -409,7 +414,8 @@ private:
     bool                     _active        = false; // something to send
     bool                     _inPick        = false; // updatePickList probing the caret
     plat::TimerId            _spellTimer    = 0;
-    uint32_t                 _spellSeq      = 0; // the newest check; older answers are dropped
+    bool                     _linkifying    = false; // a link change that is no edit
+    uint32_t                 _spellSeq      = 0;     // the newest check; older answers are dropped
     uint32_t                 _spellObserver = 0;
     VoiceStrip              *_voiceStrip    = nullptr;
     uint32_t                 _voiceObserver = 0, _providersObserver = 0;

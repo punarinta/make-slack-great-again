@@ -225,9 +225,14 @@ std::unique_ptr<text::Layout> TextEdit::buildPara(const Para &p, float w) const 
             st.background = color(C::CodeBg);
         }
         if (f & kLinkMask) {
-            st.color = color(C::Link);
-            if (_linkBg != C::None) // pills: mentions in the composer
-                st.background = color(_linkBg);
+            st.color       = color(C::Link);
+            const size_t i = f >> 8;
+            if (i && i <= _links.size() && pillLink(_links[i - 1])) {
+                if (_linkBg != C::None) // pills: mentions in the composer
+                    st.background = color(_linkBg);
+            } else {
+                st.underline = true; // a URL reads as one: blue and underlined
+            }
         }
         return st;
     };
@@ -838,6 +843,10 @@ void TextEdit::setLink(std::string url) {
     replace(a, b, same, nf.data(), 0, EditKind::Format);
 }
 
+bool TextEdit::pillLink(std::string_view url) {
+    return !url.empty() && (url[0] == '<' || url[0] == '@' || url[0] == '#' || url[0] == '!');
+}
+
 void TextEdit::setPlaceholder(std::string s) {
     _placeholder = std::move(s);
     _placeholderLayout.reset();
@@ -946,8 +955,11 @@ void TextEdit::pasteText(bool plainText, plat::Selection sel) {
         app()->platform().requestClipboard(
             "text/plain;charset=utf-8",
             [this, alive](std::optional<std::string> t) {
-                if (!alive.expired() && t && !t->empty())
-                    insertText(*t);
+                if (alive.expired() || !t || t->empty())
+                    return;
+                _pasting = true; // the owner links a pasted URL at once
+                insertText(*t);
+                _pasting = false;
             },
             sel
         );
@@ -961,9 +973,11 @@ void TextEdit::pasteText(bool plainText, plat::Selection sel) {
         [this, alive, pastePlain](std::optional<std::string> h) {
             if (alive.expired())
                 return;
-            if (h && !h->empty())
+            if (h && !h->empty()) {
+                _pasting = true;
                 insertHtml(*h);
-            else
+                _pasting = false;
+            } else
                 pastePlain();
         },
         sel

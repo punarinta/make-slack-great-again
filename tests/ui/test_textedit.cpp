@@ -162,6 +162,27 @@ TEST("textedit: copy puts text and html on the clipboard; paste keeps formats") 
     CHECK_STR(t.edit->text(), "");
 }
 
+TEST("textedit: pillLink tells a pill from a link") {
+    EditWin t;
+    CHECK(ui::TextEdit::pillLink("@U0ADA"));
+    CHECK(ui::TextEdit::pillLink("<#C0ENG|eng>"));
+    CHECK(ui::TextEdit::pillLink("<https://x.test/g.gif|GIF \xC2\xB7 cat>")); // a GIF pill
+    CHECK_FALSE(ui::TextEdit::pillLink("https://x.test"));
+    CHECK_FALSE(ui::TextEdit::pillLink({}));
+}
+
+TEST("textedit: a paste is marked as one while its text goes in") {
+    EditWin t;
+    app().platform().setClipboardText("pasted");
+    bool sawPaste    = false;
+    t.edit->onChange = [&] { sawPaste = sawPaste || t.edit->inPaste(); };
+    t.chord(t.primary, K::V);
+    t.frame();
+    CHECK_STR(t.edit->text(), "pasted");
+    CHECK(sawPaste); // the owner links a pasted URL at once
+    CHECK_FALSE(t.edit->inPaste());
+}
+
 TEST("textedit: IME preedit shows inline, commit replaces it") {
     EditWin t;
     t.type("ab");
