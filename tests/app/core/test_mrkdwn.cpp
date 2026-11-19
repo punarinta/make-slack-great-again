@@ -548,6 +548,26 @@ TEST("mrkdwn: bare URLs become links, trimmed of sentence punctuation") {
     CHECK(r.entities[1].kind == Kind::Link);
 }
 
+TEST("mrkdwn: bareUrls finds the URLs a parser would link, for the composer") {
+    const std::string text = "a https://x.test/p?q=1, then http://y.test/(b) and mailto: no";
+    const auto        r    = mrkdwn::bareUrls(text);
+    REQUIRE(r.size() == 2); // http(s) only: a mailto: is no bare link
+    CHECK_STR(text.substr(r[0].from, r[0].to - r[0].from), "https://x.test/p?q=1");
+    CHECK_STR(text.substr(r[1].from, r[1].to - r[1].from), "http://y.test/(b)");
+    // The same ranges the parser links: one source of truth for both.
+    const Rich parsed = mrkdwn::parse(text);
+    REQUIRE(parsed.entities.size() == 2);
+    for (size_t i = 0; i < r.size(); ++i) {
+        CHECK(parsed.entities[i].start == r[i].from);
+        CHECK(parsed.entities[i].start + parsed.entities[i].length == r[i].to);
+    }
+    // A trailing period, a closing parenthesis without one, and a bare scheme.
+    CHECK(mrkdwn::bareUrls("see https://x.test.").front().to == 4 + 14);
+    CHECK(mrkdwn::bareUrls("https://x.test)").front().to == 14);
+    CHECK(mrkdwn::bareUrls("just https:// here").empty());
+    CHECK(mrkdwn::bareUrls("nothing").empty());
+}
+
 TEST("mrkdwn: crafted input stays bounded") {
     std::string s;
     for (int i = 0; i < 200; ++i)

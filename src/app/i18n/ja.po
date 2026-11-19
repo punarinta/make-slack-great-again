@@ -2105,7 +2105,7 @@ msgstr "AIプロバイダーを使って、「えー」などのつなぎ言葉�
 msgid "Connect"
 msgstr "接続"
 
-#: src/app/screens/settings/settings_pages.cpp
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/composer_popups.cpp
 msgid "Edit"
 msgstr "編集"
 
@@ -2895,6 +2895,10 @@ msgstr "表示テキスト"
 #: src/app/screens/shell/composer_popups.cpp
 msgid "Insert"
 msgstr "挿入"
+
+#: src/app/screens/shell/composer_popups.cpp
+msgid "Unlink"
+msgstr "リンクを解除"
 
 #: src/app/screens/shell/composer_popups.cpp
 msgid "Send at"

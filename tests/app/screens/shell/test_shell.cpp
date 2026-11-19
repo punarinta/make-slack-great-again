@@ -183,6 +183,260 @@ TEST("composer: a TextEdit's formatting survives the trip") {
     CHECK_STR(r.text, "Ship it today, see the plan");
 }
 
+// ── Links in the composer ───────────────────────────────────────────────────
+
+namespace {
+
+// The URL of the link covering `offset`; empty when it is in none.
+std::string linkAt(const TextEdit &edit, uint32_t offset) {
+    for (const TextEdit::Run &r : edit.runs())
+        if (!r.link.empty() && offset >= r.start && offset < r.end)
+            return std::string(r.link);
+    return {};
+}
+
+// Every view whose accessible name has `needle` in it, depth first.
+void findNamed(ui::View *v, std::string_view needle, std::vector<ui::View *> *out) {
+    if (v->accessibleName().find(needle) != std::string::npos)
+        out->push_back(v);
+    for (size_t i = 0; i < v->childCount(); ++i)
+        findNamed(v->child(i), needle, out);
+}
+
+// The text inputs under v, in tree order (a popup's fields). A TextField owns
+// one and is one itself: the leaf is the TextEdit.
+void findTextEdits(ui::View *v, std::vector<TextEdit *> *out) {
+    if (v->role() == ui::Role::TextInput && v->childCount() == 0)
+        out->push_back(static_cast<TextEdit *>(v));
+    for (size_t i = 0; i < v->childCount(); ++i)
+        findTextEdits(v->child(i), out);
+}
+
+// The one button `name` names; null when there is none or several.
+ui::Button *namedButton(ui::View *v, std::string_view name) {
+    std::vector<ui::View *> found;
+    findNamed(v, name, &found);
+    return found.size() == 1 ? static_cast<ui::Button *>(found[0]) : nullptr;
+}
+
+// The window point in the middle of the caret's line at `offset`.
+plat::Point pointAt(TextEdit &edit, uint32_t offset) {
+    edit.setSelection(offset, offset);
+    const ui::RectF  r = edit.caretRect();
+    const ui::PointF w = edit.mapToWindow({r.x + 2, r.y + r.h / 2});
+    return {w.x, w.y};
+}
+
+} // namespace
+
+TEST("composer: a typed URL is a link once its word ends") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    pump();
+    edit.insertText("see https://x.test/p");
+    // The word the caret is in is still being typed: no link yet.
+    CHECK(linkAt(edit, 6).empty());
+    edit.insertText(" now"); // the space ends it
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+    CHECK(linkAt(edit, 0).empty());
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/p> now");
+    // Undo takes the link back with the word it came with, redo brings both.
+    edit.undo();
+    CHECK(linkAt(edit, 6).empty());
+    edit.redo();
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+}
+
+TEST("composer: a pasted URL is a link at once") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    pump();
+    app().platform().setClipboardText("https://x.test/p");
+    plat::TestHooks *hooks = app().platform().testHooks();
+    const uint32_t   pm    = plat::primaryMod();
+    auto             hold  = [&](bool down) {
+        if (pm & plat::ModCtrl)
+            hooks->injectKey(h.win->native(), plat::Key::ControlLeft, down);
+        if (pm & plat::ModSuper)
+            hooks->injectKey(h.win->native(), plat::Key::SuperLeft, down);
+    };
+    hold(true);
+    hooks->injectKey(h.win->native(), plat::Key::V, true);
+    hooks->injectKey(h.win->native(), plat::Key::V, false);
+    hold(false);
+    pump();
+    CHECK_STR(edit.text(), "https://x.test/p");
+    // Pasted, it is a link even though the caret is still in its word.
+    CHECK_STR(linkAt(edit, 3), "https://x.test/p");
+}
+
+TEST("composer: the Link button makes a link, not a token") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see the docs");
+    edit.setSelection(4, 12); // "the docs"
+    pump();
+    h.sh->composer().openLinkPopup();
+    pump();
+    ui::Popup *popup = h.win->topPopup();
+    REQUIRE(popup != nullptr);
+    std::vector<TextEdit *> fields;
+    findTextEdits(popup, &fields);
+    REQUIRE(fields.size() == 2);              // URL, then Display text
+    CHECK_STR(fields[1]->text(), "the docs"); // the selection is the label
+    fields[0]->setText("https://x.test/docs");
+    ui::Button *insert = namedButton(popup, "Insert");
+    REQUIRE(insert != nullptr);
+    insert->onClick();
+    pump();
+    // The label, as a link — never "<url|label>" as literal text.
+    CHECK_STR(edit.text(), "see the docs");
+    CHECK_STR(linkAt(edit, 4), "https://x.test/docs");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/docs|the docs>");
+    CHECK(edit.caret() == edit.text().size());
+}
+
+TEST("composer: a chip on a link unlinks it, keeping the text") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p now");
+    pump();
+    REQUIRE(linkAt(edit, 6) == "https://x.test/p");
+    REQUIRE(app().platform().testHooks()->injectPointerMove(h.win->native(), pointAt(edit, 8)));
+    pump();
+    shell::LinkChip *chip = h.sh->composer().linkChip();
+    REQUIRE(chip != nullptr);
+    // Onto the chip itself: it stays (the pointer moving off the link has to
+    // cross the gap between them), and a click on Unlink lands.
+    ui::Button *unlink = namedButton(chip, "Unlink");
+    REQUIRE(unlink != nullptr);
+    const ui::RectF  r     = unlink->windowRect();
+    plat::TestHooks *hooks = app().platform().testHooks();
+    hooks->injectPointerMove(h.win->native(), {r.x + r.w / 2, r.y + r.h / 2});
+    pump(20);
+    CHECK(h.sh->composer().linkChip() == chip);
+    hooks->injectButton(h.win->native(), plat::Button::Left, true);
+    hooks->injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    CHECK(h.sh->composer().linkChip() == nullptr);
+    CHECK(linkAt(edit, 6).empty());
+    CHECK_STR(edit.text(), "see https://x.test/p now");
+    // Off the link (no pointer on it any more) nothing comes back.
+    pump();
+    CHECK(h.sh->composer().linkChip() == nullptr);
+    // Nor does typing on: an unlinked URL is not linked again.
+    edit.setSelection(24, 24);
+    edit.insertText(" more");
+    CHECK(linkAt(edit, 6).empty());
+    CHECK_STR(h.sh->composer().mrkdwn(), "see https://x.test/p now more");
+}
+
+TEST("composer: the chip's Edit changes a link's URL, keeping its label") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see the docs");
+    edit.setSelection(4, 12);
+    edit.setLink("https://x.test/docs");
+    pump();
+    REQUIRE(app().platform().testHooks()->injectPointerMove(h.win->native(), pointAt(edit, 5)));
+    pump();
+    shell::LinkChip *chip = h.sh->composer().linkChip();
+    REQUIRE(chip != nullptr);
+    ui::Button *editBtn = namedButton(chip, "Edit");
+    REQUIRE(editBtn != nullptr);
+    editBtn->onClick(); // closes the chip, opens the popup
+    pump();
+    CHECK(h.sh->composer().linkChip() == nullptr);
+    ui::Popup *popup = h.win->topPopup();
+    REQUIRE(popup != nullptr);
+    std::vector<TextEdit *> fields;
+    findTextEdits(popup, &fields);
+    REQUIRE(fields.size() == 2);
+    CHECK_STR(fields[0]->text(), "https://x.test/docs"); // the URL, to replace
+    CHECK_STR(fields[1]->text(), "the docs");
+    fields[0]->setText("https://y.test/plan");
+    ui::Button *insert = namedButton(popup, "Insert");
+    REQUIRE(insert != nullptr);
+    insert->onClick();
+    pump();
+    CHECK_STR(edit.text(), "see the docs");
+    CHECK_STR(linkAt(edit, 4), "https://y.test/plan");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://y.test/plan|the docs>");
+}
+
+TEST("composer: a linked URL edited inside links what it now says") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p now");
+    pump();
+    REQUIRE(linkAt(edit, 6) == "https://x.test/p");
+    edit.setSelection(19, 19); // typed into: before the "p"
+    edit.insertText("q");
+    edit.setSelection(25, 25); // the caret leaves it
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/qp> now");
+    edit.setSelection(19, 20); // a letter taken out
+    edit.insertText("");
+    edit.setSelection(24, 24);
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/p> now");
+}
+
+TEST("composer: the caret leaving a typed URL links it, keeping the selection") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p");
+    CHECK(linkAt(edit, 6).empty());
+    edit.setSelection(3, 0); // Shift+Home, say
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+    CHECK(edit.anchor() == 3);
+    CHECK(edit.caret() == 0);
+}
+
+TEST("composer: a typed URL with a '|' in it stays text") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    // As a link it would go out as <https://x.test/a|b>: a link labelled "b".
+    edit.insertText("a https://x.test/a|b now");
+    CHECK(linkAt(edit, 4).empty());
+    CHECK_STR(h.sh->composer().mrkdwn(), "a https://x.test/a|b now");
+}
+
+TEST("composer: the chip's Edit on a bare link shows the new URL") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see https://x.test/p now");
+    pump();
+    REQUIRE(app().platform().testHooks()->injectPointerMove(h.win->native(), pointAt(edit, 8)));
+    pump();
+    shell::LinkChip *chip = h.sh->composer().linkChip();
+    REQUIRE(chip != nullptr);
+    ui::Button *editBtn = namedButton(chip, "Edit");
+    REQUIRE(editBtn != nullptr);
+    editBtn->onClick();
+    pump();
+    ui::Popup *popup = h.win->topPopup();
+    REQUIRE(popup != nullptr);
+    std::vector<TextEdit *> fields;
+    findTextEdits(popup, &fields);
+    REQUIRE(fields.size() == 2);
+    CHECK_STR(fields[1]->text(), "https://x.test/p"); // the text is the URL
+    fields[0]->setText("https://y.test/q");
+    ui::Button *insert = namedButton(popup, "Insert");
+    REQUIRE(insert != nullptr);
+    insert->onClick();
+    pump();
+    // The text was the old URL and left alone: it becomes the new one.
+    CHECK_STR(edit.text(), "see https://y.test/q now");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://y.test/q> now");
+}
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 TEST("sidebar: unread is bold with a badge, and markRead clears it") {
