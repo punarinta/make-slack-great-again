@@ -51,7 +51,7 @@ extern "C" {
  * bits, event types). The core refuses a port whose major differs or whose
  * minor is lower than the one it was built against (port_check_abi). */
 #define PORT_ABI_MAJOR 1
-#define PORT_ABI_MINOR 1 /* 1: PORT_PATH_FONTS, PORT_PATH_RESOURCES, port_pid_* */
+#define PORT_ABI_MINOR 2 /* 1: PORT_PATH_FONTS, PORT_PATH_RESOURCES, port_pid_*; 2: port_font_* */
 #define PORT_ABI_VERSION ((PORT_ABI_MAJOR << 16) | PORT_ABI_MINOR)
 
 /* ── Errors ──────────────────────────────────────────────────────────────── */
@@ -136,6 +136,7 @@ const char *port_strerror(int err);
 #define PORT_CAP2_AUDIO_SOUNDS (1u << 2)
 #define PORT_CAP2_ATOMIC_RENAME (1u << 3) /* port_rename replaces atomically */
 #define PORT_CAP2_FILE_WATCH (1u << 4)    /* port_watch_dir */
+#define PORT_CAP2_FONTS (1u << 5)         /* port_font_info / port_font_data (minor 2) */
 
 /* What port_init reports. */
 typedef struct port_info {

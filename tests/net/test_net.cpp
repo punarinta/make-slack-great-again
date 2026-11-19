@@ -67,6 +67,24 @@ extern char **environ;
 __attribute__((constructor(102))) static void peosNetTestUrl() {
     if (!std::getenv("NET_TEST_URL"))
         port_env_set("NET_TEST_URL", "http://10.0.2.100:8099");
+    // Its TLS server, when the runner made one: the URLs a line each (by its
+    // name, the same at TLS 1.2, by an address the certificate doesn't
+    // name) in tls-test and the test CA in test-ca.pem, in the data area;
+    // SSL_CERT_FILE is what the port's test build trusts besides the
+    // system's roots (personal-os LIBNETWORK.md 2).
+    char line[3][160] = {};
+    if (FILE *f = std::fopen("/apps/msganet/tls-test", "r")) {
+        for (auto &l : line)
+            if (std::fgets(l, sizeof l, f))
+                l[std::strcspn(l, "\r\n")] = 0;
+        std::fclose(f);
+    }
+    if (line[0][0]) {
+        port_env_set("NET_TEST_TLS_URL", line[0]);
+        port_env_set("NET_TEST_TLS12_URL", line[1]);
+        port_env_set("NET_TEST_TLS_IP_URL", line[2]);
+        port_env_set("SSL_CERT_FILE", "/apps/msganet/test-ca.pem");
+    }
 #ifdef MSGA_PEOS_NET_LIVE // the live cases too (a machine with a way out)
     port_env_set("MSGA_NET_LIVE", "1");
 #endif
@@ -111,6 +129,7 @@ struct Server {
     std::string base;      // "http://127.0.0.1:port"
     std::string tlsBase;   // "https://localhost:port", empty when not available
     std::string tls12Base; // the same, capped at TLS 1.2
+    std::string tlsIpBase; // the TLS server by an address its certificate doesn't name
     std::string tlsWhy;    // why not
     std::string host;      // of base
     int         port = 0;
@@ -174,6 +193,7 @@ void spawnServer(Server *s) {
             // Before the first TLS connection: the CA store loads once.
             base::test::setEnv("SSL_CERT_FILE", bundle);
             s->tlsBase         = "https://localhost:" + std::to_string(tlsPort);
+            s->tlsIpBase       = "https://127.0.0.1:" + std::to_string(tlsPort);
             int          tls12 = 0;
             const size_t t12   = out.find("TLS12 ");
             if (t12 != std::string::npos && std::sscanf(out.c_str() + t12, "TLS12 %d", &tls12) == 1)
@@ -198,7 +218,17 @@ const Server &server() {
             out.base = url;
             while (!out.base.empty() && out.base.back() == '/')
                 out.base.pop_back();
-            out.tlsWhy = "NET_TEST_URL is set";
+            // A TLS server of its own too, with the CA in SSL_CERT_FILE
+            // (the port's test build trusts it, PEOS's runner).
+            if (const char *tls = std::getenv("NET_TEST_TLS_URL"); tls && *tls) {
+                out.tlsBase = tls;
+                if (const char *ip = std::getenv("NET_TEST_TLS_IP_URL"))
+                    out.tlsIpBase = ip;
+                if (const char *t12 = std::getenv("NET_TEST_TLS12_URL"))
+                    out.tls12Base = t12;
+            } else {
+                out.tlsWhy = "NET_TEST_URL is set";
+            }
         } else {
 #if !defined(_WIN32) && !defined(__PEOS__) // PEOS: no child processes, no rusage
             spawnServer(&out);
@@ -1175,14 +1205,19 @@ TEST("tls: local server, hostname checked") {
         REQUIRE(pumpUntil([&] { return !b.empty(); }));
         CHECK_STR(b, a);
     }
-    // The certificate names "localhost" only.
-    net::Url u;
-    REQUIRE(u.parse(srv.tlsBase));
-    r = get("https://127.0.0.1:" + std::to_string(u.port) + "/plain");
-    CHECK(r.status == 0);
-    CHECK_STR(r.error, "tls: hostname mismatch");
+    // The certificate names the server's host name only, not its address.
+    if (!srv.tlsIpBase.empty()) {
+        r = get(srv.tlsIpBase + "/plain");
+        CHECK(r.status == 0);
+#ifdef NET_TEST_POSIX
+        CHECK_STR(r.error, "tls: hostname mismatch");
+#else // a port's transport says it its own way
+        if (!CHECK(startsWith(r.error, "tls")))
+            std::fprintf(stderr, "    %s\n", r.error.c_str());
+#endif
+    }
     // A server that is not TLS at all.
-    r = get("https://127.0.0.1:" + std::to_string(srv.port) + "/plain");
+    r = get("https://" + srv.host + ":" + std::to_string(srv.port) + "/plain");
     CHECK(startsWith(r.error, "tls"));
 }
 

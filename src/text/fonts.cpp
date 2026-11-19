@@ -479,9 +479,9 @@ void shutdown() {
     }
     if (g->ft)
         FT_Done_FreeType(g->ft);
-    for (const FileMap &m : g->maps)
-        if (m.p)
-            unmapFile(m.p, m.n);
+    for (size_t i = 0; i < g->maps.size(); ++i)
+        if (const FileMap &m = g->maps[i]; m.p)
+            unmapFile(g->ix.str(g->ix.files[i].path), m.p, m.n);
     delete g;
     g = nullptr;
 }

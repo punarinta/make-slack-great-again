@@ -348,14 +348,16 @@ int main(int argc, char **argv) {
     std::vector<std::string>   args(argv + 1, argv + argc);
     // macOS: a click on one of our notifications sometimes starts a fresh
     // process instead of waking the running msga, and only this process's
-    // delegate gets the click. Catch it before the single-instance check and
-    // carry it along: to the running msga as an argument only this produces
-    // (never a msga:// URL, which any web page can launch us with), or to
-    // ourselves once the Store is up. Only on a launch Notification Center
-    // made, so a normal start never waits.
+    // delegate gets the click. A port whose OS starts the app for a click on
+    // a notification it left behind (launchedFromNotification) the same.
+    // Catch it before the single-instance check and carry it along: to the
+    // running msga as an argument only this produces (never a msga:// URL,
+    // which any web page can launch us with), or to ourselves once the Store
+    // is up. Only on a launch the notification made, so a normal start never
+    // waits.
     std::optional<plat::Event> clicked;
     std::vector<plat::Event>   missedEvents; // replayed once the real onEvent exists, below
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(MSGA_PORT)
     if (demo.empty() && pa.launchedFromNotification()) {
         app->onEvent = [&](const plat::Event &e) {
             if (e.type == plat::EventType::NotificationActivated && !clicked)

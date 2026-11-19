@@ -542,23 +542,25 @@ static int openPty(uint16_t cols, uint16_t rows, char *slave, size_t cap) {
 }
 
 int port_proc_spawn(const port_spawn_desc *d, port_proc **out) {
-    const int pty = (d->flags & PORT_SPAWN_PTY) != 0;
-    int in[2] = {-1, -1}, o[2] = {-1, -1}, e[2] = {-1, -1};
-    int rc = PORT_OK;
-    char slave[256];
+    const int pty   = (d->flags & PORT_SPAWN_PTY) != 0;
+    int       in[2] = {-1, -1}, o[2] = {-1, -1}, e[2] = {-1, -1};
+    int       rc = PORT_OK;
+    char      slave[256];
     if (pty) {
         /* The terminal is both ends: the master read as stdout, a second
          * descriptor of it written as stdin. */
         const int m = openPty(d->pty_cols, d->pty_rows, slave, sizeof slave);
         if (m < 0)
             return m;
-        o[0] = m;
+        o[0]  = m;
         in[1] = fcntl(m, F_DUPFD_CLOEXEC, 0);
         if (in[1] < 0)
             rc = ref_errno(errno);
-    } else if (((d->flags & PORT_SPAWN_STDIN_PIPE) && pipe2(in, O_CLOEXEC) != 0) ||
-               ((d->flags & PORT_SPAWN_STDOUT_PIPE) && pipe2(o, O_CLOEXEC) != 0) ||
-               ((d->flags & PORT_SPAWN_STDERR_PIPE) && pipe2(e, O_CLOEXEC) != 0))
+    } else if (
+        ((d->flags & PORT_SPAWN_STDIN_PIPE) && pipe2(in, O_CLOEXEC) != 0) ||
+        ((d->flags & PORT_SPAWN_STDOUT_PIPE) && pipe2(o, O_CLOEXEC) != 0) ||
+        ((d->flags & PORT_SPAWN_STDERR_PIPE) && pipe2(e, O_CLOEXEC) != 0)
+    )
         rc = ref_errno(errno);
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
@@ -776,7 +778,7 @@ int port_pid_kill(int64_t pid, uint32_t flags) {
         return PORT_E_INVAL;
     const int sig = (flags & PORT_PID_FORCE) ? SIGKILL : SIGTERM;
     return kill((flags & PORT_PID_GROUP) ? -(pid_t)pid : (pid_t)pid, sig) == 0 ? PORT_OK
-                                                                              : ref_errno(errno);
+                                                                               : ref_errno(errno);
 }
 
 void port_proc_release(port_proc *p) {
@@ -860,4 +862,20 @@ int port_secret_remove(const char *key) {
     if (rc != PORT_OK)
         return rc;
     return unlink(path) == 0 || errno == ENOENT ? PORT_OK : ref_errno(errno);
+}
+
+/* ── System font faces: none (no PORT_CAP2_FONTS); the core reads the
+ * folders of PORT_PATH_FONTS ─────────────────────────────────────────── */
+
+int port_font_info(uint32_t index, port_font *out) {
+    (void)index;
+    (void)out;
+    return PORT_E_NOSYS;
+}
+
+int port_font_data(const char *name, const void **data, size_t *size) {
+    (void)name;
+    (void)data;
+    (void)size;
+    return PORT_E_NOSYS;
 }

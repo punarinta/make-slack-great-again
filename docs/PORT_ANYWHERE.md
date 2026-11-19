@@ -149,7 +149,7 @@ onto the contract per port:
 | self-update (replacing the running binary) | off: `-DMSGA_SELF_UPDATE=OFF`; a new version is a new download |
 | a desktop launcher entry | off: `-DMSGA_INSTALL_LAUNCHER=OFF`, or the OS's own way |
 | crash reports | the OS's own fault handling, or off |
-| fonts | msga reads font files itself; give it the OS's font folder through the paths API |
+| fonts | msga reads font files itself; give it the OS's font folder through the paths API, or, where the OS hands out faces by name instead of as files, list them and hand over each face's bytes (`port_font_info`, `port_font_data`, `PORT_CAP2_FONTS`) |
 | spell-check dictionaries | Hunspell files from a folder the paths API names |
 | memory statistics in Settings | a value from the OS, or none |
 | importing a session from Slack's desktop app | off (it only exists where that app does) |

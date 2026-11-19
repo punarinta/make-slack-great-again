@@ -43,8 +43,57 @@ struct PathInfo {
     uint64_t size   = 0;
 };
 
+// The faces a port hands out by name (PORT_CAP2_FONTS): one root of their
+// own, kPortFaces, whose "files" are kPortFaces + name. The root's mtime
+// is a hash of every face's stamp, a face's its stamp, so the cache is
+// checked as for a folder: a face that changes is indexed again.
+constexpr std::string_view kPortFaces = "port-font:";
+
+[[maybe_unused]] bool isPortFace(std::string_view path) {
+    return path.substr(0, kPortFaces.size()) == kPortFaces;
+}
+
 #if defined(MSGA_PORT)
+struct PortFace {
+    std::string name;
+    int64_t     stamp;
+};
+
+std::vector<PortFace> portFaces() {
+    std::vector<PortFace> faces;
+    if (!(port_caps2() & PORT_CAP2_FONTS))
+        return faces;
+    for (uint32_t i = 0;; ++i) {
+        port_font f{};
+        f.size = sizeof f;
+        if (port_font_info(i, &f) != PORT_OK)
+            break;
+        f.name[sizeof f.name - 1] = 0;
+        // 0 (unknown): this run's clock, so such a face is indexed on every start.
+        const uint64_t stamp      = f.stamp ? f.stamp : uint64_t(port_time_monotonic_ns()) + i + 1;
+        faces.push_back({f.name, int64_t(stamp & INT64_MAX)});
+    }
+    return faces;
+}
+
+bool portFacesInfo(PathInfo *out) {
+    const auto faces = portFaces();
+    if (faces.empty())
+        return false;
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (const PortFace &f : faces) {
+        for (char c : f.name)
+            h = (h ^ uint8_t(c)) * 0x100000001b3ull;
+        h = (h ^ uint64_t(f.stamp)) * 0x100000001b3ull;
+    }
+    out->isDir = true;
+    out->mtime = int64_t(h & INT64_MAX);
+    return true;
+}
+
 bool pathInfo(const std::string &path, PathInfo *out) {
+    if (path == kPortFaces)
+        return portFacesInfo(out);
     port_stat_info st{};
     st.size = sizeof st;
     if (port_stat(path.c_str(), 1, &st) != PORT_OK)
@@ -423,11 +472,12 @@ void parseFace(
     ix.faces.push_back(f);
 }
 
-void parseFile(const char *path, uint32_t fileIdx, Index &ix, Pool &pool) {
+// False when the file couldn't be read.
+bool parseFile(const char *path, uint32_t fileIdx, Index &ix, Pool &pool) {
     size_t         n = 0;
     const uint8_t *m = mapFile(path, &n);
     if (!m)
-        return;
+        return false;
     const Buf file{m, n};
     if (file.u32(0) == tag("ttcf")) {
         const uint32_t n = std::min<uint32_t>(file.u32(8), 256);
@@ -438,7 +488,8 @@ void parseFile(const char *path, uint32_t fileIdx, Index &ix, Pool &pool) {
         if (v == 0x00010000 || v == tag("OTTO") || v == tag("true"))
             parseFace(file, 0, 0, fileIdx, ix, pool);
     }
-    unmapFile(m, n);
+    unmapFile(path, m, n);
+    return true;
 }
 
 // ── Directory walk + cache ───────────────────────────────────────────────────
@@ -458,9 +509,12 @@ std::vector<std::string> fontRoots() {
         return roots;
     }
 #if defined(MSGA_PORT)
-    // The fonts that came with the app, then the system's.
+    // The fonts that came with the app, then the system's: those the port
+    // hands out by name (PORT_CAP2_FONTS), its font folder.
     if (const std::string r = portPath(PORT_PATH_RESOURCES); !r.empty())
         roots.push_back(r + "/fonts");
+    if (port_caps2() & PORT_CAP2_FONTS)
+        roots.emplace_back(kPortFaces);
     if (const std::string f = portPath(PORT_PATH_FONTS); !f.empty())
         roots.push_back(f);
     return roots;
@@ -543,6 +597,13 @@ void walk(const std::string &dir, int depth, Found &out) {
     if (depth > 8 || !pathInfo(dir, &pi) || !pi.isDir)
         return;
     out.dirs.push_back({dir, pi.mtime});
+#if defined(MSGA_PORT)
+    if (dir == kPortFaces) {
+        for (const PortFace &f : portFaces())
+            out.files.push_back({std::string(kPortFaces) + f.name, f.stamp, 0});
+        return;
+    }
+#endif
     std::vector<std::string> subdirs;
     for (const std::string &name : listNames(dir)) {
         if (name[0] == '.')
@@ -656,8 +717,17 @@ bool cacheValid(const Index &ix, const std::vector<std::string> &roots) {
 
 #if defined(MSGA_PORT)
 // No mapping a port can be asked for (PEOS has none): the file read whole
-// into memory, which a face keeps while it is in use.
+// into memory, which a face keeps while it is in use. A face the port hands
+// out (kPortFaces) is its own read-only bytes, kept by the port.
 const uint8_t *mapFile(const char *path, size_t *size) {
+    if (isPortFace(path)) {
+        const void *data = nullptr;
+        size_t      n    = 0;
+        if (port_font_data(path + kPortFaces.size(), &data, &n) != PORT_OK || !data || !n)
+            return nullptr;
+        *size = n;
+        return static_cast<const uint8_t *>(data);
+    }
     port_file *f = nullptr;
     if (port_file_open(path, PORT_O_READ, 0, &f) != PORT_OK)
         return nullptr;
@@ -680,8 +750,9 @@ const uint8_t *mapFile(const char *path, size_t *size) {
     return p;
 }
 
-void unmapFile(const uint8_t *p, size_t) {
-    std::free(const_cast<uint8_t *>(p));
+void unmapFile(const char *path, const uint8_t *p, size_t) {
+    if (!isPortFace(path)) // a port's face stays the port's
+        std::free(const_cast<uint8_t *>(p));
 }
 #elif defined(_WIN32)
 const uint8_t *mapFile(const char *path, size_t *size) {
@@ -710,7 +781,7 @@ const uint8_t *mapFile(const char *path, size_t *size) {
     return static_cast<const uint8_t *>(p);
 }
 
-void unmapFile(const uint8_t *p, size_t) {
+void unmapFile(const char *, const uint8_t *p, size_t) {
     UnmapViewOfFile(p);
 }
 #else
@@ -729,7 +800,7 @@ const uint8_t *mapFile(const char *path, size_t *size) {
     return static_cast<const uint8_t *>(p);
 }
 
-void unmapFile(const uint8_t *p, size_t size) {
+void unmapFile(const char *, const uint8_t *p, size_t size) {
     munmap(const_cast<uint8_t *>(p), size);
 }
 #endif
@@ -816,8 +887,14 @@ bool loadIndex(Index *out, std::string *error) {
                 }
             }
         }
-        if (!reused)
-            parseFile(f.path.c_str(), fileIdx, ix, pool);
+        if (!reused && !parseFile(f.path.c_str(), fileIdx, ix, pool) && isPortFace(f.path)) {
+            // A face the port couldn't give now (PORT_E_AGAIN): read again
+            // on the next start, not taken as one without glyphs.
+            ix.files.back().mtime = INT64_MIN;
+            for (DirRec &d : ix.dirs)
+                if (isPortFace(ix.str(d.path)))
+                    d.mtime = INT64_MIN;
+        }
     }
     if (ix.faces.size() > 0xFFFE)
         ix.faces.resize(0xFFFE); // FontKey carries 16 bits of face index

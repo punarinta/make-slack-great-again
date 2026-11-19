@@ -246,6 +246,33 @@ int port_secret_read(const char *key, void *buf, size_t cap, size_t *len);
 int port_secret_write(const char *key, const void *data, size_t len);
 int port_secret_remove(const char *key); /* PORT_OK also when absent */
 
+/* ── System font faces (PORT_CAP2_FONTS; contract minor 2) ──────────────────
+ * Faces an OS hands out by name instead of as files in a folder (PEOS: its
+ * fonts service). The core indexes them beside the files of PORT_PATH_FONTS
+ * and PORT_PATH_RESOURCES/fonts and draws with them as with those files.
+ * Without the capability both functions answer PORT_E_NOSYS. Any thread. */
+typedef struct port_font {
+    uint32_t size;
+    char     name[32];   /* the port's name for it: what port_font_data takes */
+    char     family[64]; /* as the font names itself (the core reads its own) */
+    char     style[32];
+    uint16_t weight; /* CSS's scale: 400 regular, 700 bold */
+    uint8_t  italic, color;
+    /* Changes whenever the face's bytes may have changed (the core keeps an
+     * index of each face's coverage between runs); 0 = unknown: indexed
+     * again on every start. */
+    uint64_t stamp;
+} port_font;
+/* The index-th face (0, 1, ...): PORT_OK, or PORT_E_NOENT past the last.
+ * The order is fixed for a run. */
+int port_font_info(uint32_t index, port_font *out);
+/* The face's whole file (TrueType or OpenType, possibly a collection),
+ * read-only: *data stays valid until port_shutdown (the port may share it
+ * with other programs and never frees it earlier). PORT_E_NOENT for a name
+ * port_font_info didn't give; PORT_E_AGAIN when the face can't be had now but
+ * may be later (ask again on the next start). */
+int port_font_data(const char *name, const void **data, size_t *size);
+
 #ifdef __cplusplus
 }
 #endif
