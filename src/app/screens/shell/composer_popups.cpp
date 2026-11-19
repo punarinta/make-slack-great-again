@@ -394,7 +394,8 @@ Popup *showLinkPopup(
     Window                                                       &w,
     RectF                                                         anchor,
     std::string                                                   selected,
-    std::function<void(const std::string &, const std::string &)> done
+    std::function<void(const std::string &, const std::string &)> done,
+    std::string                                                   url0
 ) {
     Popup *p = framedPopup();
     p->style().width(12 + 280 + 12); // the fields' 280 px minimum, the margins
@@ -402,6 +403,12 @@ Popup *showLinkPopup(
     TextEdit *url = field(p, "https://", 280);
     p->add<Label>(tr("Display text"), Font::Small, C::FormTextMuted);
     TextEdit *text = field(p, "", 280);
+    // Editing a link: its URL shows, its text is the label. A new one: the
+    // selection, or the URL typed in place of it, is the label.
+    if (!url0.empty())
+        url->setText(url0);
+    if (selected.empty() || selected == url0)
+        selected = url0;
     text->setText(selected);
     auto *row = p->add<View>();
     row->style().row().spacing(8).justifyContent(Justify::End);

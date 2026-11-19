@@ -2043,26 +2043,45 @@ void Composer::openLinkPopup() {
     Window *w = window();
     if (!w)
         return;
-    const uint32_t     a     = std::min(_edit->anchor(), _edit->caret());
-    const uint32_t     c     = std::max(_edit->anchor(), _edit->caret());
+    const uint32_t     a        = std::min(_edit->anchor(), _edit->caret());
+    const uint32_t     c        = std::max(_edit->anchor(), _edit->caret());
     // Below the Link button (the key opens it a quarter along the toolbar).
-    const RectF        lb    = _tools[4]->windowRect();
-    std::weak_ptr<int> alive = _alive;
+    const RectF        lb       = _tools[4]->windowRect();
+    std::weak_ptr<int> alive    = _alive;
+    // A selection that is already a URL is the URL, not the text.
+    const std::string  selected = _edit->selectedText();
+    const bool         isUrl    = !selected.empty() && mrkdwn::looksLikeUrl(selected);
     showLinkPopup(
         *w,
         lb,
-        _edit->selectedText(),
+        isUrl ? std::string() : selected,
         [this, alive, a, c](const std::string &url, const std::string &label) {
             if (alive.expired())
                 return;
-            _edit->setSelection(a, c);
-            _edit->insertText(
-                label.empty() || label == url ? str::concat({"<", url, ">"})
-                                              : str::concat({"<", url, "|", label, ">"})
-            );
+            placeLink(a, c, url, label);
             _edit->focus();
-        }
+        },
+        isUrl ? selected : std::string()
     );
+}
+
+// ── Links ───────────────────────────────────────────────────────────────────
+
+void Composer::placeLink(
+    uint32_t from, uint32_t to, const std::string &url, const std::string &label
+) {
+    const std::string display = label.empty() || label == url ? url : label;
+    _edit->setSelection(from, to);
+    _edit->insertText(display);
+    // Where the insert left the caret: a smiley label came in as its emoji.
+    const uint32_t end = std::max(from, _edit->caret());
+    // The link itself, not the text of it: the editor shows the label in blue
+    // and mrkdwn() writes "<url>" / "<url|label>" on the way out.
+    _linkifying        = true; // the text under it is a URL: linkify() would redo it
+    _edit->setSelection(from, end);
+    _edit->setLink(url);
+    _linkifying = false;
+    _edit->setSelection(end, end);
 }
 
 void Composer::linkify() {

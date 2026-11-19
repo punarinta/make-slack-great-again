@@ -195,6 +195,30 @@ std::string linkAt(const TextEdit &edit, uint32_t offset) {
     return {};
 }
 
+// Every view whose accessible name has `needle` in it, depth first.
+void findNamed(ui::View *v, std::string_view needle, std::vector<ui::View *> *out) {
+    if (v->accessibleName().find(needle) != std::string::npos)
+        out->push_back(v);
+    for (size_t i = 0; i < v->childCount(); ++i)
+        findNamed(v->child(i), needle, out);
+}
+
+// The text inputs under v, in tree order (a popup's fields). A TextField owns
+// one and is one itself: the leaf is the TextEdit.
+void findTextEdits(ui::View *v, std::vector<TextEdit *> *out) {
+    if (v->role() == ui::Role::TextInput && v->childCount() == 0)
+        out->push_back(static_cast<TextEdit *>(v));
+    for (size_t i = 0; i < v->childCount(); ++i)
+        findTextEdits(v->child(i), out);
+}
+
+// The one button `name` names; null when there is none or several.
+ui::Button *namedButton(ui::View *v, std::string_view name) {
+    std::vector<ui::View *> found;
+    findNamed(v, name, &found);
+    return found.size() == 1 ? static_cast<ui::Button *>(found[0]) : nullptr;
+}
+
 } // namespace
 
 TEST("composer: a typed URL is a link once its word ends") {
@@ -237,6 +261,33 @@ TEST("composer: a pasted URL is a link at once") {
     CHECK_STR(edit.text(), "https://x.test/p");
     // Pasted, it is a link even though the caret is still in its word.
     CHECK_STR(linkAt(edit, 3), "https://x.test/p");
+}
+
+TEST("composer: the Link button makes a link, not a token") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    edit.focus();
+    edit.insertText("see the docs");
+    edit.setSelection(4, 12); // "the docs"
+    pump();
+    h.sh->composer().openLinkPopup();
+    pump();
+    ui::Popup *popup = h.win->topPopup();
+    REQUIRE(popup != nullptr);
+    std::vector<TextEdit *> fields;
+    findTextEdits(popup, &fields);
+    REQUIRE(fields.size() == 2);              // URL, then Display text
+    CHECK_STR(fields[1]->text(), "the docs"); // the selection is the label
+    fields[0]->setText("https://x.test/docs");
+    ui::Button *insert = namedButton(popup, "Insert");
+    REQUIRE(insert != nullptr);
+    insert->onClick();
+    pump();
+    // The label, as a link — never "<url|label>" as literal text.
+    CHECK_STR(edit.text(), "see the docs");
+    CHECK_STR(linkAt(edit, 4), "https://x.test/docs");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/docs|the docs>");
+    CHECK(edit.caret() == edit.text().size());
 }
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────

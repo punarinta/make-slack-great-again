@@ -6,8 +6,9 @@
 // The editor is plain text: the toolbar and the format keys type Slack's
 // markers ("*bold*", "> quote", "```"). Mentions, channels and GIFs picked
 // from the popups are pills that show "@Name" / "#name" / "GIF · title" and
-// send their raw token. A typed or pasted URL is a link in the editor too
-// (blue, underlined, "<url|label>" on the way out, never a token in the text).
+// send their raw token. A link is a link in the editor too: a typed or pasted
+// URL and a selection the Link button is given both make one (blue,
+// underlined, "<url|label>" on the way out, never a token in the text).
 //
 // Draft invariant (the composer draft stash): whatever is typed — text and
 // attached files — is stashed per (conversation, thread) on EVERY path that
@@ -294,6 +295,11 @@ private:
     void wrapCodeBlock();
     void wrapInline(std::string_view marker);
     void insertPill(uint32_t from, uint32_t to, const std::string &display, const std::string &raw);
+    // Puts a link over [from, to): `label` (the URL's own text when it is
+    // empty or the URL) made into a link to `url` — what the Link popup and
+    // the link chip's Edit do. The raw "<url|label>" token never reaches the
+    // editor: it is an outgoing form only.
+    void placeLink(uint32_t from, uint32_t to, const std::string &url, const std::string &label);
     // Links the bare URLs typed or pasted into the editor, so one reads as a
     // link before the message is sent (as Slack's does). Skipped while a link
     // change of the owner's is in flight.

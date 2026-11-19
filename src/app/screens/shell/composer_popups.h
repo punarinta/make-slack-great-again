@@ -85,12 +85,15 @@ private:
     bool                         _wide   = false;
 };
 
-// URL + Display text, Insert / Cancel; done(url, label) on Insert.
+// URL + Display text, Insert / Cancel; done(url, label) on Insert. `url`
+// prefills the first field (editing a link), and the Display text with nothing
+// to show starts as the URL's label text.
 ui::Popup *showLinkPopup(
     ui::Window                                                           &w,
     ui::RectF                                                             anchor,
     std::string                                                           selected,
-    std::function<void(const std::string &url, const std::string &label)> done
+    std::function<void(const std::string &url, const std::string &label)> done,
+    std::string                                                           url = {}
 );
 
 // "Send at" a local date and time (an hour from now), Cancel / Schedule.
