@@ -194,7 +194,18 @@ std::string executablePath() {
 #else
     char          buf[PATH_MAX];
     const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof buf - 1);
-    return n > 0 ? std::string(buf, size_t(n)) : std::string();
+    if (n <= 0)
+        return {};
+    std::string                path(buf, size_t(n));
+    // Once the binary is replaced on disk (an applied update renames the new
+    // one over it), the kernel names the running image "<path> (deleted)":
+    // the path itself is where the new binary now is.
+    constexpr std::string_view deleted = " (deleted)";
+    if (path.size() > deleted.size() &&
+        path.compare(path.size() - deleted.size(), deleted.size(), deleted) == 0 &&
+        ::access(path.c_str(), F_OK) != 0)
+        path.resize(path.size() - deleted.size());
+    return path;
 #endif
 }
 

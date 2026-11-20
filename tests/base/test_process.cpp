@@ -159,6 +159,39 @@ TEST("process: the executable path stays absolute after a change of directory") 
         std::fprintf(stderr, "%s\n", onPath.output.c_str());
 }
 
+#ifdef __linux__
+TEST("process: the executable path survives the binary being replaced") {
+    // An applied update renames the new binary over the running one; the
+    // kernel then names the running image "<path> (deleted)", and the
+    // restart must still find <path> (issue #179).
+    const char *const expect = "MSGA_TEST_EXE_REPLACED";
+    if (const std::string want = base::env(expect); !want.empty()) {
+        std::string bytes;
+        REQUIRE(file::readAll(want, &bytes));
+        REQUIRE(file::writeAtomic(want, bytes, 0755)); // a new inode at the same path
+        CHECK_STR(base::executablePath(), want);
+        CHECK_STR(base::host::selfCommand(), want);
+        return;
+    }
+    const std::string exe = base::executablePath();
+    std::string       bytes;
+    REQUIRE(file::readAll(exe, &bytes));
+    const std::string dir  = tempDir();
+    const std::string copy = dir + "/test_process";
+    REQUIRE(file::writeAtomic(copy, bytes, 0755));
+    base::RunOptions o;
+    o.env        = {std::string(expect) + "=" + copy};
+    const auto r = base::run(
+        copy, {"test_process", "process: the executable path survives the binary being replaced"}, o
+    );
+    CHECK(r.code == 0);
+    if (r.code != 0)
+        std::fprintf(stderr, "%s\n", r.output.c_str());
+    file::remove(copy);
+    file::remove(dir);
+}
+#endif
+
 TEST("process: stderr is merged, or discarded") {
     CHECK_STR(sh("echo out; echo err >&2").output, "out\nerr\n");
     base::RunOptions o;

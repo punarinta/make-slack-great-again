@@ -30,7 +30,8 @@ bool isDir(std::string_view path); // follows symlinks
 bool makeDirs(std::string_view path);
 
 // The running executable's absolute path; "" when the OS won't say. Linux
-// reads /proc/self/exe, FreeBSD and DragonFly ask sysctl. macOS (dyld) and
+// reads /proc/self/exe (without the " (deleted)" it gets once the binary is
+// replaced on disk), FreeBSD and DragonFly ask sysctl. macOS (dyld) and
 // OpenBSD are asked once, before main, so a relative start path still means
 // the directory the process started in: OpenBSD keeps no path for a running
 // image, so there it is argv[0] (from sysctl), resolved against that
