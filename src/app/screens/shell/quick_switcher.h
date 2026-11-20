@@ -42,6 +42,13 @@ struct QuickSwitchName {
 };
 std::vector<QuickSwitchName>
 quickSwitchNames(const model::Store &store, const std::vector<model::ConvRef> &order);
+// One name's score against `q` (fuzzyQuery(query)); std::nullopt if it
+// doesn't match at all. Issue #60: fuzzy, not substring ("xdg" lands on
+// #xd-general). Issue #61: a group DM is named after its members, so a
+// person matches every group they're in as well as their DM -- the groups,
+// often more recent, buried it; half a consecutive match's score pulls them
+// back behind.
+std::optional<double> quickSwitchScore(const QuickSwitchName &n, const std::vector<uint32_t> &q);
 // quickSwitchFilter over prepared names (parallel to `order`): the same result.
 std::vector<model::ConvRef> quickSwitchFilter(
     std::string_view                    query,

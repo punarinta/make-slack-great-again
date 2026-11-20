@@ -13,6 +13,7 @@
 #include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/message_dialogs.h"
 #include "app/screens/messages/image_cache.h"
+#include "app/screens/messages/message_list_model.h"
 #include "app/screens/messages/rich.h"
 #include "app/screens/messages/rows.h"
 #include "app/screens/messages/summary.h"
@@ -361,28 +362,7 @@ public:
     }
     float estimateHeight(int i) const override {
         const Item &it = _l._items[size_t(i)];
-        switch (it.kind) {
-        case Kind::Day:
-            return 32;
-        case Kind::Divider:
-            return 36;
-        case Kind::System:
-            return 32;
-        default:
-            break;
-        }
-        float                 h = it.grouped ? 27 : 58;
-        const model::Message *m = _l.message(it.ts);
-        if (m) {
-            for (const model::File &f : m->files())
-                h += f.isImage() ? 260 : 66;
-            h += float(m->attachments().size()) * 90;
-            if (!m->reactions.empty())
-                h += 30;
-            if (m->replyCount)
-                h += 36;
-        }
-        return h;
+        return estimateItemHeight(it, _l.message(it.ts));
     }
 
 private:
@@ -717,19 +697,7 @@ MessageList::~MessageList() {
 }
 
 const model::Message *MessageList::message(Ts ts) const {
-    if (_conv == model::kNoConv)
-        return nullptr;
-    const model::Store &st = _ctx.store();
-    if (_root && ts != _root)
-        if (const std::vector<model::Message> *r = st.replies(_conv, _root)) {
-            const auto it =
-                std::lower_bound(r->begin(), r->end(), ts, [](const model::Message &m, Ts t) {
-                    return m.ts < t;
-                });
-            if (it != r->end() && it->ts == ts)
-                return &*it;
-        }
-    return st.findMessage(_conv, ts);
+    return messageListLookup(_ctx.store(), _conv, _root, ts);
 }
 
 void MessageList::subscribe() {
@@ -966,20 +934,7 @@ std::string MessageList::stateText() const {
 }
 
 bool MessageList::groupingHolds(size_t i) const {
-    const auto at = [this](size_t j) -> const model::Message * {
-        return j < _items.size() &&
-                       (_items[j].kind == Kind::Message || _items[j].kind == Kind::System)
-                   ? message(_items[j].ts)
-                   : nullptr;
-    };
-    const model::Message *m = at(i);
-    if (!m || isSystem(*m) != (_items[i].kind == Kind::System))
-        return false;
-    const model::Message *prev = i > 0 ? at(i - 1) : nullptr;
-    if ((prev && groupable(*prev, *m)) != _items[i].grouped)
-        return false;
-    const model::Message *next = at(i + 1);
-    return !next || groupable(*m, *next) == _items[i + 1].grouped;
+    return screens::groupingHolds(_items, i, _ctx.store(), _conv, _root);
 }
 
 int MessageList::itemIndex(Ts ts) const {
@@ -1886,11 +1841,8 @@ std::vector<ui::MenuItem> MessageList::menuItems(Ts ts) const {
     // moves, and a thread only opens where one exists (a subagent run or a
     // /btw branch) — "Reply in thread" where it takes replies.
     const bool   agent     = _ctx.backend().isAgentSession(_conv);
-    // Deletable: my own messages, or any as a workspace admin — any
-    // at all in an agent session (deleteAnyMessage) — and only when the
-    // backend can take this one now (not while the session is working).
-    const bool   canDelete = (agent || mine || (st.me != model::kNoUser && st.user(st.me).admin)) &&
-                             _ctx.backend().canDeleteMessage(_conv, ts);
+    const bool   canDelete =
+        screens::canDeleteMessage(st, *m, agent, _ctx.backend().canDeleteMessage(_conv, ts));
     if (_root == 0 && !m->isReply()) {
         if (!agent)
             addItem(items, kReply);
@@ -1978,10 +1930,7 @@ std::vector<ui::MenuItem> MessageList::fileMenuItems(Ts ts, const std::string &p
     addItem(items, image ? kCopyImageLink : kCopyFileLink);
     if (image)
         addItem(items, kCopyImage);
-    const Store &st = _ctx.store;
-    const bool   canDelete =
-        m && (m->user == st.me || (st.me != model::kNoUser && st.user(st.me).admin));
-    if (f && canDelete && !f->id.empty() && fileAt(m, path)) {
+    if (f && canDeleteFile(_ctx.store, *m) && !f->id.empty() && fileAt(m, path)) {
         ui::addMenuSeparator(items);
         addItem(items, kDeleteFile).label = image ? tr("Delete image…") : tr("Delete file…");
     }
@@ -2734,8 +2683,9 @@ bool MessageList::attachmentHidden(const model::Message &m, size_t index) const 
 }
 
 bool MessageList::removesPreviewServerSide(const model::Message &m) const {
-    return !m.pending && _ctx.backend().capabilities().removePreview &&
-           _ctx.store().me != model::kNoUser && m.user == _ctx.store().me;
+    return screens::removesPreviewServerSide(
+        _ctx.store(), m, _ctx.backend().capabilities().removePreview
+    );
 }
 
 void MessageList::dismissAttachment(Ts ts, size_t index) {

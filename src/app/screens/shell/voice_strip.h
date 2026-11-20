@@ -81,7 +81,7 @@ private:
 
 // `thread` 0: the conversation's top-level messages; else that thread's.
 llm::VoiceContext buildVoiceContext(
-    screens::Context &ctx, model::ConvRef conv, model::Ts thread, int maxMessages = 30
+    const model::Store &store, model::ConvRef conv, model::Ts thread, int maxMessages = 30
 );
 
 } // namespace shell

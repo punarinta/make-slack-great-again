@@ -12,6 +12,7 @@
 #include "screens/shell/header.h"
 #include "screens/shell/shell.h"
 #include "screens/shell/shell_dialogs.h"
+#include "screens/shell/shell_notify_model.h"
 #include "screens/shell/standin.h"
 
 #include <algorithm>
@@ -337,20 +338,20 @@ void Shell::huddleChanged(model::Store &st, const std::string &key, ConvRef conv
     if (_notifiedHuddles.count(tag))
         return;
     model::Backend &be = backendFor(st);
-    if (!_settings.notifications || !_settings.notifyHuddles || st.workspaceMuted ||
-        !be.capabilities().huddles)
-        return;
-    const model::NotifyLevel level = effectiveLevel(c);
-    if (!c.member || c.muted || level == model::NotifyLevel::Nothing)
-        return;
-    const auto &ps = c.huddleParticipants;
-    if (st.me != kNoUser && std::find(ps.begin(), ps.end(), st.me) != ps.end())
-        return;
-    if (!c.isDirect() && level != model::NotifyLevel::All)
+    if (!shouldNotifyHuddleStart(
+            c,
+            effectiveLevel(c),
+            _settings.notifications,
+            _settings.notifyHuddles,
+            st.workspaceMuted,
+            be.capabilities().huddles,
+            st.me
+        ))
         return;
     _notifiedHuddles.insert(tag);
     if (&st == &_ctx.store() && _signedIn && reading() && conv == _current)
         return; // the banner says it
+    const auto           &ps      = c.huddleParticipants;
     const model::UserRef starter = ps.empty() ? kNoUser : ps.front();
     const std::string    name    = personName(st, starter);
     plat::Notification   n;

@@ -133,6 +133,24 @@ TEST("fuzzy: subsequences match, in order, any case") {
     CHECK_FALSE(fuzzyScore("a", "").has_value());
 }
 
+TEST("quick switcher: a group DM's score is half a match behind its member's own name") {
+    // Issue #61: a group is named after its members, so a query matching a
+    // person also matches every group they're in -- often more recent,
+    // burying the person's own DM. Half a consecutive match pulls it back.
+    const shell::QuickSwitchName dm{shell::FuzzyText("Mira Okafor"), false, {}};
+    const shell::QuickSwitchName group{shell::FuzzyText("Mira Okafor, Jonas Weber"), true, {}};
+    const std::vector<uint32_t>  q = shell::fuzzyQuery("mira");
+    const std::optional<double>  dmScore    = shell::quickSwitchScore(dm, q);
+    const std::optional<double>  groupScore = shell::quickSwitchScore(group, q);
+    REQUIRE(dmScore.has_value());
+    REQUIRE(groupScore.has_value());
+    CHECK(*dmScore > *groupScore);
+    CHECK(*dmScore - *groupScore == 0.5);
+
+    // No name yet (not fetched): not something to offer, whatever the query.
+    CHECK_FALSE(shell::quickSwitchScore({}, q).has_value());
+}
+
 TEST("fuzzy: a substring beats a scattered match, word starts beat the middle") {
     // Consecutive characters outrank any boundary bonus.
     CHECK(*fuzzyScore("gen", "general") > *fuzzyScore("gen", "green-lane"));

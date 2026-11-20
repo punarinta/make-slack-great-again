@@ -7,6 +7,7 @@ add_library(msga_screens_messages STATIC
     rows.cpp
     audio_card.cpp
     message_list.cpp
+    message_list_model.cpp
     thread_panel.cpp
     thread_export.cpp
     emoji_picker.cpp
