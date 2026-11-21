@@ -37,6 +37,12 @@ struct AiReply {
     std::string text;
 };
 
+// A conversation's bookmarks ("bookmarks": [{title, link, emoji}]).
+struct Bookmarks {
+    model::ConvRef               conv = model::kNoConv;
+    std::vector<model::Bookmark> items;
+};
+
 struct Canvas {
     model::ConvRef conv = model::kNoConv;
     std::string    htmlPath; // absolute; the inner HTML of Slack's quip-canvas-content
@@ -52,6 +58,7 @@ struct Fixture {
     std::vector<AiReply>   aiReplies;
     std::string            aiDefault;
     std::vector<Canvas>    canvases;
+    std::vector<Bookmarks> bookmarks;
 };
 
 // Loads `path` (a directory holding fixture.json, or a .json file) into

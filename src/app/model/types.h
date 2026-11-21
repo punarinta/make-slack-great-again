@@ -327,6 +327,25 @@ struct Typing {
     int64_t sinceMs = 0;
 };
 
+// A conversation's bookmark (the header's Bookmarks tab): a link the
+// conversation keeps, with its title. Kept out of the Store: the shell asks
+// for them as a conversation opens.
+struct Bookmark {
+    std::string id;
+    std::string title; // "" = the link is the title
+    std::string link;
+    std::string emoji;   // ":rocket:" or ""
+    std::string iconUrl; // the site's icon, or ""
+    bool        operator==(const Bookmark &) const = default;
+};
+
+// A file shared in a conversation (the header's Files tab).
+struct SharedFile {
+    File    file;
+    UserRef user    = kNoUser; // who shared it
+    int64_t created = 0;       // epoch secs
+};
+
 // A long job an agent session runs on the side: a command it started in the
 // background, or a job it reports on itself (`msga --claude-status`). Shown
 // in the conversation header while it runs, and briefly once it ended.

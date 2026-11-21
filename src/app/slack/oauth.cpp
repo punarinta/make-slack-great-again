@@ -28,7 +28,7 @@ const char *OAuthFlow::userScopes() {
            "users.profile:read,search:read,chat:write,reactions:write,files:write,stars:read,"
            "stars:write,channels:write,groups:write,mpim:write,im:write,users:write,"
            "users.profile:write,dnd:write,dnd:read,pins:write,canvases:read,canvases:write,"
-           "usergroups:read";
+           "usergroups:read,bookmarks:read";
 }
 
 OAuthFlow::OAuthFlow(plat::App &app, net::Client &client, AppConfig config)

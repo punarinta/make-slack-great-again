@@ -60,7 +60,8 @@ void showLinkMenu(Context &ctx, ui::Window &w, ui::PointF at, const std::string 
 // The file viewer: the picture (an image, a PDF's
 // page) on the viewer backdrop under a bar with the name and Download,
 // Forward, Open in browser, More actions and Close; Escape or a click on the
-// backdrop closes it. `list` gets the actions (null: Close only).
+// backdrop closes it. `list` gets the actions (null: Open in browser and
+// Close only — the Files tab's).
 ui::Popup *
 showFileViewer(Context &ctx, ui::Window &w, MessageList *list, Ts ts, const model::File &f);
 

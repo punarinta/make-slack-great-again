@@ -380,6 +380,8 @@ public:
         bool zenMode          = false; // the footer's zen toggle (hides tool cards)
         bool slashCommands    = false; // the composer's "/" list (commands())
         bool canvases         = false; // the header's canvas tab (the canvas calls)
+        bool bookmarks        = false; // the header's Bookmarks tab (loadBookmarks)
+        bool sharedFiles      = false; // the header's Files tab (loadConversationFiles)
         bool fileUpload       = false; // Forward re-uploads a message's files (else: links)
         bool removePreview    = false; // deleteAttachment: a link preview's "Remove preview"
         bool sidebarTheme     = false; // loadSidebarTheme: Settings' "Use my Slack theme"
@@ -598,6 +600,27 @@ public:
         if (done)
             done(false, "not_supported");
     }
+
+    // ── Bookmarks and files ────────────────────────────────────────────────
+    // The conversation's bookmarks, in its order (links only: no pins or
+    // workflows). ok = false: the list couldn't be read (the tab keeps what
+    // it showed).
+    using BookmarksDone = std::function<void(bool ok, std::vector<Bookmark> bookmarks)>;
+    virtual void loadBookmarks(ConvRef conv, BookmarksDone done) {
+        (void)conv;
+        if (done)
+            done(true, {});
+    }
+    // One page of the files shared in the conversation, newest first (page
+    // 1 first). nextPage 0 = the last page; error "" on success.
+    struct FilesPage {
+        std::vector<SharedFile> files;
+        int                     nextPage = 0;
+        std::string             error;
+    };
+    // Default, for backends whose Store holds everything: the files of the
+    // Store's messages and replies, newest first, in one page.
+    virtual void loadConversationFiles(ConvRef conv, int page, std::function<void(FilesPage)> done);
 
     // One message by ts — top-level, a thread root or a reply — as a copy, for
     // what the loaded history may not hold (the Saved messages page's

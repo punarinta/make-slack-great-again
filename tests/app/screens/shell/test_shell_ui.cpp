@@ -11,9 +11,11 @@
 #include "base/str.h"
 #include "support/test.h"
 #include "base/time.h"
+#include "gfx/icons_generated.h"
 #include "plat/testing.h"
 #include "screens/common/user_search.h"
 #include "screens/shell/canvas_page.h"
+#include "screens/shell/files_page.h"
 #include "screens/shell/composer.h"
 #include "screens/shell/composer_popups.h"
 #include "screens/shell/gif_search.h"
@@ -787,6 +789,117 @@ TEST("tabs: the canvas's title, or \"Add canvas\"") {
     pump();
     CHECK_STR(h.sh->tabs().tabText(1), "Add canvas");
     CHECK(h.sh->tabs().tab(1)->visible());
+}
+
+TEST("tabs: Files where the service lists them; Bookmarks while there are any") {
+    Harness          h;
+    shell::ConvTabs &tabs = h.sh->tabs();
+    CHECK_STR(tabs.tabText(shell::ConvTabs::kFiles), "Files");
+    CHECK(tabs.tab(shell::ConvTabs::kFiles)->visible());
+    CHECK_STR(tabs.tabText(shell::ConvTabs::kBookmarks), "Bookmarks");
+    REQUIRE(until([&] { return tabs.tab(shell::ConvTabs::kBookmarks)->visible(); }));
+    const std::vector<ui::MenuItem> items = h.sh->bookmarkItems();
+    REQUIRE(items.size() == 2);
+    CHECK_STR(items[0].label, "\xF0\x9F\x8E\xA8 Atlas 2.0 in Figma"); // :art:
+    CHECK_STR(items[0].hint, "figma.com");
+    CHECK_STR(items[1].label, "https://docs.lumen.studio/atlas?tab=1"); // no title
+    CHECK_STR(items[1].hint, "docs.lumen.studio");
+    CHECK(items[1].icon == uint16_t(gfx::Icon::Link));
+    // The tab opens a menu of them; it doesn't become the active tab.
+    tabs.tab(shell::ConvTabs::kBookmarks)->onClick();
+    pump();
+    CHECK(tabs.active() == shell::ConvTabs::kMessages);
+    REQUIRE(h.win->topPopup() != nullptr);
+    h.win->topPopup()->close();
+    pump();
+    std::string opened;
+    h.ctx.openUrl = [&](const std::string &u) { opened = u; };
+    h.sh->openBookmark(0);
+    CHECK_STR(opened, "https://www.figma.com/file/atlas");
+    // Too narrow for every tab's text: Files and Bookmarks keep their icons.
+    CHECK_FALSE(tabs.compact());
+    CHECK_STR(tabs.tab(shell::ConvTabs::kFiles)->tooltip(), "");
+    const ui::RectF wide = tabs.frame();
+    tabs.setFrame({wide.x, wide.y, 420, wide.h});
+    tabs.layout();
+    CHECK(tabs.compact());
+    CHECK_STR(tabs.tab(shell::ConvTabs::kFiles)->tooltip(), "Files");
+    CHECK_STR(tabs.tab(shell::ConvTabs::kBookmarks)->tooltip(), "Bookmarks");
+    tabs.setFrame(wide);
+    tabs.layout();
+    CHECK_FALSE(tabs.compact());
+    // A conversation without bookmarks has no such tab.
+    h.sh->open(h.conv("C0ENG"));
+    pump();
+    CHECK_FALSE(tabs.tab(shell::ConvTabs::kBookmarks)->visible());
+    CHECK(tabs.tab(shell::ConvTabs::kFiles)->visible());
+    // Back: known already, shown at once.
+    h.sh->open(h.conv("C0DESIGN"));
+    CHECK(tabs.tab(shell::ConvTabs::kBookmarks)->visible());
+}
+
+TEST("files: the tab lists the conversation's files newest first; a click opens one") {
+    Harness       h;
+    const ConvRef general = h.conv("C0GENERAL");
+    h.sh->open(general);
+    pump();
+    std::string opened;
+    h.ctx.openUrl = [&](const std::string &u) { opened = u; };
+    h.sh->tabs().tab(shell::ConvTabs::kFiles)->onClick();
+    shell::FilesPage &fp = h.sh->filesPage();
+    CHECK(fp.visible());
+    CHECK(h.sh->tabs().active() == shell::ConvTabs::kFiles);
+    CHECK_FALSE(h.sh->composer().visible());
+    REQUIRE(until([&] { return fp.rowCount() >= 2; }));
+    // The CSV came 45 minutes after the dashboard picture.
+    size_t csv = fp.rowCount(), png = fp.rowCount();
+    for (size_t i = 0; i < fp.rowCount(); ++i) {
+        if (fp.file(i).name == "signups-week-37.csv")
+            csv = i;
+        if (fp.file(i).name == "atlas-dashboard.png")
+            png = i;
+    }
+    REQUIRE(csv < png);
+    REQUIRE(png < fp.rowCount());
+    CHECK(fp.rowText(csv).rfind("signups-week-37.csv\n", 0) == 0);
+    CHECK(fp.rowText(csv).find(" \xC2\xB7 ") != std::string::npos);
+    fp.activate(csv); // no preview: the file itself (the demo's local copy)
+    CHECK(opened.find("signups-week-37.csv") != std::string::npos);
+#ifdef MSGA_HAVE_MESSAGES
+    opened.clear();
+    fp.activate(png); // a picture: the file viewer
+    pump();
+    CHECK(h.win->topPopup() != nullptr);
+    CHECK(opened.empty());
+    h.win->topPopup()->close();
+    pump();
+#endif
+    // Back to Messages.
+    h.sh->showTab(shell::ConvTabs::kMessages);
+    CHECK_FALSE(fp.visible());
+    CHECK(h.sh->composer().visible());
+    // A conversation where nothing was shared says so.
+    ConvRef none = model::kNoConv;
+    for (ConvRef c = 0; c < h.store.conversationCount() && none == model::kNoConv; ++c) {
+        const auto &cv = h.store.conversation(c);
+        if (cv.kind != model::ConvKind::Channel)
+            continue;
+        bool files = false;
+        for (const auto &m : cv.messages)
+            files = files || !m.files().empty();
+        for (const auto &t : cv.threads)
+            for (const auto &m : t.replies)
+                files = files || !m.files().empty();
+        if (!files)
+            none = c;
+    }
+    REQUIRE(none != model::kNoConv);
+    h.sh->open(none);
+    pump();
+    h.sh->showTab(shell::ConvTabs::kFiles);
+    REQUIRE(until([&] { return !fp.loading(); }));
+    CHECK(fp.rowCount() == 0);
+    CHECK_STR(fp.statusText(), "No files have been shared here yet.");
 }
 
 // The canvas tab: the fixture's canvas as editable

@@ -1162,6 +1162,89 @@ TEST("slack write: canvases — look-up, meta, content, create, edit one change 
     CHECK_STR(Log().get("conversations.canvases.create")["form"]["channel_id"].str(), "C1");
 }
 
+TEST("slack: bookmarks are the links in rank order; a failed list says so") {
+    if (!haveServer())
+        return;
+    Env e;
+    script("bookmarks.list", R"([{"ok":true,"bookmarks":[
+        {"id":"Bk1","type":"pinned_message","title":null,"link":"","emoji":null,"rank":"5"},
+        {"id":"Bk2","type":"link","title":"Retro","link":"https://miro.com/b","emoji":null,
+         "icon_url":"https://miro.com/i.png","rank":"u","parent_id":null},
+        {"id":"Bk3","type":"link","title":"Test env &amp; more","link":"https://app.asana.com/0/1",
+         "emoji":":rocket:","icon_url":null,"rank":"G","parent_id":"Bk9"},
+        {"id":"Bk4","type":"shortcut","title":"Give a Shoutout!",
+         "link":"https://slack.com/shortcuts/Ft1/x","rank":"g"}]},
+        {"ok":false,"error":"missing_scope"}])");
+    bool                         called = false, ok = false;
+    std::vector<model::Bookmark> got;
+    e.be->loadBookmarks(e.general, [&](bool k, std::vector<model::Bookmark> b) {
+        called = true, ok = k, got = std::move(b);
+    });
+    REQUIRE(pumpUntil([&] { return called; }));
+    CHECK(ok);
+    REQUIRE(got.size() == 2); // no pins marker, no workflow
+    CHECK_STR(got[0].id, "Bk3");
+    CHECK_STR(got[0].title, "Test env & more");
+    CHECK_STR(got[0].emoji, ":rocket:");
+    CHECK_STR(got[1].title, "Retro");
+    CHECK_STR(got[1].link, "https://miro.com/b");
+    CHECK_STR(got[1].iconUrl, "https://miro.com/i.png");
+    CHECK_STR(Log().get("bookmarks.list")["form"]["channel_id"].str(), "C1");
+    // An older OAuth token without bookmarks:read.
+    called = false;
+    e.be->loadBookmarks(e.general, [&](bool k, std::vector<model::Bookmark> b) {
+        called = true, ok = k, got = std::move(b);
+    });
+    REQUIRE(pumpUntil([&] { return called; }));
+    CHECK_FALSE(ok);
+    CHECK(got.empty());
+}
+
+TEST("slack: a conversation's files come a page at a time, newest first") {
+    if (!haveServer())
+        return;
+    Env e;
+    script("files.list", R"([{"ok":true,"files":[
+        {"id":"F1","name":"a.png","mimetype":"image/png","pretty_type":"PNG","user":"UMIRA",
+         "created":1700000000,"size":10,"url_private":"https://f/a","thumb_360":"https://t/a",
+         "original_w":10,"original_h":10,"permalink":"https://p/a"},
+        {"id":"F2","name":"b.pdf","mimetype":"application/pdf","pretty_type":"PDF","user":"UME",
+         "created":1700000100,"size":2048,"url_private":"https://f/b","permalink":"https://p/b"}],
+        "paging":{"count":50,"total":3,"page":1,"pages":2}},
+        {"ok":true,"files":[{"id":"F0","name":"c.txt","user":"UNEW","created":1600000000}],
+         "paging":{"count":50,"total":3,"page":2,"pages":2}}])");
+    model::Backend::FilesPage page;
+    bool                      called = false;
+    e.be->loadConversationFiles(e.general, 1, [&](model::Backend::FilesPage p) {
+        called = true, page = std::move(p);
+    });
+    REQUIRE(pumpUntil([&] { return called; }));
+    CHECK_STR(page.error, "");
+    REQUIRE(page.files.size() == 2);
+    CHECK_STR(page.files[0].file.id, "F2"); // the newer first
+    CHECK(page.files[0].user == e.me);
+    CHECK(page.files[0].created == 1700000100);
+    CHECK_STR(page.files[0].file.permalink, "https://p/b");
+    CHECK(page.files[1].user == e.mira);
+    CHECK_STR(page.files[1].file.path, "https://t/a"); // an image shows its thumb
+    CHECK(page.nextPage == 2);
+    {
+        Log log;
+        CHECK_STR(log.get("files.list")["form"]["channel"].str(), "C1");
+        CHECK_STR(log.get("files.list")["form"]["page"].str(), "1");
+    }
+    called = false;
+    e.be->loadConversationFiles(e.general, 2, [&](model::Backend::FilesPage p) {
+        called = true, page = std::move(p);
+    });
+    REQUIRE(pumpUntil([&] { return called; }));
+    REQUIRE(page.files.size() == 1);
+    CHECK_STR(page.files[0].file.id, "F0");
+    CHECK(page.files[0].user != model::kNoUser); // someone the roster doesn't have yet
+    CHECK(page.nextPage == 0);
+    CHECK_STR(Log().get("files.list", 1)["form"]["page"].str(), "2");
+}
+
 TEST("slack write: downloadFile fetches with the workspace's credentials, writes off-thread") {
     if (!haveServer())
         return;

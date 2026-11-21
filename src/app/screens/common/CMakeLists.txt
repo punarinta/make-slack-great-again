@@ -11,6 +11,7 @@ add_library(msga_screens_common STATIC
     tag_badge.cpp
     user_search.cpp
     downloads.cpp
+    file_badge.cpp
     file_dialogs.cpp
     icon_button.cpp
     loading_indicator.cpp

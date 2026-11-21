@@ -10,6 +10,7 @@ add_library(msga_screens_shell STATIC
     composer.cpp
     composer_popups.cpp
     context_menus.cpp
+    files_page.cpp
     fuzzy_match.cpp
     gif_search.cpp
     header.cpp

@@ -186,7 +186,7 @@ public:
         button(
             gfx::Icon::ExternalLink,
             N_("Open in browser"),
-            actions && !(f.permalink.empty() && f.path.empty())
+            (actions || !list) && !(f.permalink.empty() && f.path.empty())
         )
             ->onClick = [this] {
             if (_ctx.openUrl)

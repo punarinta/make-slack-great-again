@@ -104,6 +104,7 @@ Scroll down to **User Token Scopes** and add the following:
 
 | Scope | Purpose |
 |---|---|
+| `bookmarks:read` | Show a channel's bookmarks (the header's Bookmarks tab) |
 | `canvases:read` | Read canvas files (`files.info` gates canvas files behind this) |
 | `canvases:write` | Create, edit and delete canvases |
 | `channels:history` | Read messages in public channels |

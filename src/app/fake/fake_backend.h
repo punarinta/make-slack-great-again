@@ -110,6 +110,8 @@ public:
     void    searchGifs(std::string query, std::function<void(std::vector<Gif>)> done) override;
     // Canvases in memory: the fixture's HTML until an edit, then the saved
     // markdown rendered back to the HTML Slack would serve.
+    // The fixture's bookmarks; the files come from the Store (the default).
+    void    loadBookmarks(model::ConvRef conv, BookmarksDone done) override;
     void    loadCanvasMeta(const std::string &fileId, CanvasMetaDone done) override;
     void    loadCanvasContent(const std::string &fileId, CanvasHtmlDone done) override;
     void

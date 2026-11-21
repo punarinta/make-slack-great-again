@@ -2248,6 +2248,71 @@ void SlackBackend::search(std::string query, std::function<void(std::vector<Sear
         });
 }
 
+// ── Bookmarks and files ─────────────────────────────────────────────────────
+
+void SlackBackend::loadBookmarks(ConvRef conv, BookmarksDone done) {
+    const std::string &id = convId(conv);
+    if (id.empty()) {
+        if (done)
+            done(false, {});
+        return;
+    }
+    api("bookmarks.list",
+        net::formEncode({{"channel_id", id}}),
+        [done = std::move(done)](const json::Document &doc, const std::string &err) {
+            if (err == "cancelled")
+                return;
+            if (!err.empty()) {
+                // missing_scope: an OAuth token from before bookmarks:read.
+                LOG_WARN("slack", "bookmarks.list: %s", err.c_str());
+                if (done)
+                    done(false, {});
+                return;
+            }
+            if (done)
+                done(true, mapjson::toBookmarks(doc.root()["bookmarks"]));
+        });
+}
+
+void SlackBackend::loadConversationFiles(
+    ConvRef conv, int page, std::function<void(FilesPage)> done
+) {
+    const std::string &id = convId(conv);
+    if (id.empty()) {
+        if (done)
+            done({{}, 0, "channel_not_found"});
+        return;
+    }
+    page = std::max(page, 1);
+    api("files.list",
+        net::formEncode({{"channel", id}, {"count", "50"}, {"page", str::number(page)}}),
+        [this, page, done = std::move(done)](const json::Document &doc, const std::string &err) {
+            if (err == "cancelled")
+                return;
+            FilesPage out;
+            if (!err.empty()) {
+                LOG_WARN("slack", "files.list: %s", err.c_str());
+                out.error = err;
+            } else {
+                for (json::Value f : doc.root()["files"])
+                    out.files.push_back(mapjson::toSharedFile(f, _store));
+                // Newest first: the pages are, the files within one not always.
+                std::stable_sort(
+                    out.files.begin(),
+                    out.files.end(),
+                    [](const model::SharedFile &a, const model::SharedFile &b) {
+                        return a.created > b.created;
+                    }
+                );
+                const json::Value paging = doc.root()["paging"];
+                if (page < paging["pages"].integer())
+                    out.nextPage = page + 1;
+            }
+            if (done)
+                done(std::move(out));
+        });
+}
+
 // ── Channel canvases ────────────────────────────────────────────────────────
 // The canvas calls. The Store follows each answer: the
 // conversation's canvasId / canvasTitle, which the header's tab shows.
