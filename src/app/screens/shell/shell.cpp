@@ -2934,8 +2934,7 @@ void Shell::updateAttention() {
     }
     const model::Store      &open     = _ctx.store();
     const model::NotifyLevel fallback = defaultLevel();
-    int                      n        = 0;
-    bool                     unread   = false;
+    std::vector<Attention>   unmuted;
     bool                     attached = false;
     for (const auto &r : _running) {
         if (r->store == &open) {
@@ -2948,26 +2947,23 @@ void Shell::updateAttention() {
         }
         if (RailTile *t = _wsStack->find(r->key))
             t->setDot(r->att.dot());
-        if (!r->store->workspaceMuted) {
-            n += r->att.important;
-            unread = unread || r->att.unread;
-        }
+        if (!r->store->workspaceMuted)
+            unmuted.push_back(r->att);
     }
     if (!attached && _signedIn) { // the demo, tests: the open Store alone
         const Attention a = workspaceAttention(open, fallback, _ctx.backend().nowSecs());
         if (RailTile *t = _wsStack->find(_activeKey))
             t->setDot(a.dot());
-        if (!open.workspaceMuted) {
-            n += a.important;
-            unread = unread || a.unread;
-        }
+        if (!open.workspaceMuted)
+            unmuted.push_back(a);
     }
-    unread = unread || n > 0;
+    const Attention sum = sumAttention(unmuted);
+    const int       n   = sum.important;
     if (n != _lastBadge)
         _ctx.app.platform().setBadgeCount(n);
-    const int tray = n > 0 ? 2 : unread ? 1 : 0;
+    const int tray = sum.dot();
     if (n != _lastBadge || tray != _lastTray)
-        refreshTrayIcon(n, unread);
+        refreshTrayIcon(n, sum.unread || n > 0);
     _lastBadge = n;
     _lastTray  = tray;
 }

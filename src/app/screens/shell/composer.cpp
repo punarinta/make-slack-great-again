@@ -988,7 +988,7 @@ bool Composer::toggleVoiceInput() {
         return vi.stateOf(p.get()) == llm::VoiceInput::State::Idle;
     });
     _voiceJobs.push_back(std::make_unique<VoiceJob>(VoiceJob{_drafts.scope(), _key}));
-    vi.start(_voiceJobs.back().get(), buildVoiceContext(_ctx, _key.conv, _key.thread));
+    vi.start(_voiceJobs.back().get(), buildVoiceContext(_ctx.store(), _key.conv, _key.thread));
     // Keeps Escape (cancel) and the shortcut (stop) within reach.
     _edit->focus();
     return true;

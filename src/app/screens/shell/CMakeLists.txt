@@ -31,9 +31,11 @@ add_library(msga_screens_shell STATIC
     shell_agents.cpp
     shell_links.cpp
     shell_notify.cpp
+    shell_notify_model.cpp
     shell_text.cpp
     sidebar.cpp
     sidebar_footer.cpp
+    sidebar_model.cpp
     teammate_page.cpp
     overview_page.cpp
     saved_page.cpp
