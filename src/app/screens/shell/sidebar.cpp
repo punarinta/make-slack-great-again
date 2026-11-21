@@ -937,7 +937,10 @@ bool Sidebar::paintsUnread(const model::Conversation &c) const {
 
 int Sidebar::redCount(const model::Conversation &c) const {
     return sidebarRedCount(
-        c, _filters.defaultLevel, _ctx.backend().capabilities().agentSessions, _ctx.backend().nowSecs()
+        c,
+        _filters.defaultLevel,
+        _ctx.backend().capabilities().agentSessions,
+        _ctx.backend().nowSecs()
     );
 }
 

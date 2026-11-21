@@ -139,7 +139,7 @@ TEST("quick switcher: a group DM's score is half a match behind its member's own
     // burying the person's own DM. Half a consecutive match pulls it back.
     const shell::QuickSwitchName dm{shell::FuzzyText("Mira Okafor"), false, {}};
     const shell::QuickSwitchName group{shell::FuzzyText("Mira Okafor, Jonas Weber"), true, {}};
-    const std::vector<uint32_t>  q = shell::fuzzyQuery("mira");
+    const std::vector<uint32_t>  q          = shell::fuzzyQuery("mira");
     const std::optional<double>  dmScore    = shell::quickSwitchScore(dm, q);
     const std::optional<double>  groupScore = shell::quickSwitchScore(group, q);
     REQUIRE(dmScore.has_value());

@@ -398,26 +398,26 @@ TEST("sidebar_model: sumAttention — important adds, unread ORs, empty is quiet
 }
 
 TEST("sidebar_model: redCount — muted/stale are 0, a DM's unread vs. a channel's mentions") {
-    Store       s;
+    Store         s;
     const int64_t now = 1'000'000;
 
-    ConvRef muted                = addChannel(s, "C1", false, 5);
-    s.conversation(muted).muted  = true;
+    ConvRef muted               = addChannel(s, "C1", false, 5);
+    s.conversation(muted).muted = true;
     CHECK(sidebarRedCount(s.conversation(muted), NotifyLevel::All, false, now) == 0);
 
-    ConvRef stale               = addChannel(s, "C2", false, 5);
+    ConvRef stale                = addChannel(s, "C2", false, 5);
     s.conversation(stale).latest = Ts(now - kMaxNotifyAgeSecs - 1);
     CHECK(sidebarRedCount(s.conversation(stale), NotifyLevel::All, false, now) == 0);
 
-    UserRef u  = s.addUser({});
-    ConvRef dm = addDm(s, "D1", u, 7);
+    UserRef u                   = s.addUser({});
+    ConvRef dm                  = addDm(s, "D1", u, 7);
     s.conversation(dm).mentions = 2;
     // Not an agent session: a DM's badge is every unread message.
     CHECK(sidebarRedCount(s.conversation(dm), NotifyLevel::All, false, now) == 7);
     // An agent session only counts what needs me -- its mentions.
     CHECK(sidebarRedCount(s.conversation(dm), NotifyLevel::All, true, now) == 2);
 
-    ConvRef chan                 = addChannel(s, "C3", false, 9);
+    ConvRef chan                  = addChannel(s, "C3", false, 9);
     s.conversation(chan).mentions = 3;
     CHECK(sidebarRedCount(s.conversation(chan), NotifyLevel::All, false, now) == 3);
 }

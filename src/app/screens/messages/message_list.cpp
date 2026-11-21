@@ -1835,12 +1835,12 @@ std::vector<ui::MenuItem> MessageList::menuItems(Ts ts) const {
     const model::Message     *m = message(ts);
     if (!m || m->pending)
         return items;
-    const Store &st        = _ctx.store;
-    const bool   mine      = m->user == st.me && m->user != model::kNoUser;
+    const Store &st    = _ctx.store;
+    const bool   mine  = m->user == st.me && m->user != model::kNoUser;
     // Agent sessions (Claude Code): no permalinks, pins, reminders, edits or
     // moves, and a thread only opens where one exists (a subagent run or a
     // /btw branch) — "Reply in thread" where it takes replies.
-    const bool   agent     = _ctx.backend().isAgentSession(_conv);
+    const bool   agent = _ctx.backend().isAgentSession(_conv);
     const bool   canDelete =
         screens::canDeleteMessage(st, *m, agent, _ctx.backend().canDeleteMessage(_conv, ts));
     if (_root == 0 && !m->isReply()) {

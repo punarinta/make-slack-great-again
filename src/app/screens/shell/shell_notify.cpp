@@ -351,7 +351,7 @@ void Shell::huddleChanged(model::Store &st, const std::string &key, ConvRef conv
     _notifiedHuddles.insert(tag);
     if (&st == &_ctx.store() && _signedIn && reading() && conv == _current)
         return; // the banner says it
-    const auto           &ps      = c.huddleParticipants;
+    const auto          &ps      = c.huddleParticipants;
     const model::UserRef starter = ps.empty() ? kNoUser : ps.front();
     const std::string    name    = personName(st, starter);
     plat::Notification   n;

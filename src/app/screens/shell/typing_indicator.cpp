@@ -95,10 +95,10 @@ TypingState typingStateOf(const model::Store &store, model::ConvRef conv, model:
 }
 
 void TypingIndicator::refresh() {
-    const TypingState   state    = typingStateOf(_ctx.store(), _conv, _thread);
-    const auto          &who      = state.who;
-    const int64_t        since    = state.since;
-    const bool           thinking = state.thinking;
+    const TypingState state    = typingStateOf(_ctx.store(), _conv, _thread);
+    const auto       &who      = state.who;
+    const int64_t     since    = state.since;
+    const bool        thinking = state.thinking;
     // A timer ticks the "thinking" clocks every second.
     if (thinking && !_tick)
         _tick = _ctx.app.addTimer(1000, true, [this] { refresh(); });

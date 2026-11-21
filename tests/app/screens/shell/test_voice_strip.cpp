@@ -83,15 +83,15 @@ TEST("voice_strip: buildVoiceContext -- a DM names its peer, a channel names its
 }
 
 TEST("voice_strip: buildVoiceContext -- a group DM names its members, not itself") {
-    Store   s;
-    UserRef me  = s.me = s.addUser({.id = "ME", .name = "me"});
-    UserRef u1  = s.addUser({.id = "U1", .name = "mira"});
-    UserRef u2  = s.addUser({.id = "U2", .name = "jonas"});
+    Store        s;
+    UserRef      me = s.me = s.addUser({.id = "ME", .name = "me"});
+    UserRef      u1        = s.addUser({.id = "U1", .name = "mira"});
+    UserRef      u2        = s.addUser({.id = "U2", .name = "jonas"});
     Conversation c;
-    c.id      = "G1";
-    c.kind    = ConvKind::Group;
-    c.member  = true;
-    c.members = {me, u1, u2};
+    c.id          = "G1";
+    c.kind        = ConvKind::Group;
+    c.member      = true;
+    c.members     = {me, u1, u2};
     ConvRef group = s.addConversation(std::move(c));
 
     const llm::VoiceContext ctx = buildVoiceContext(s, group, 0, 30);
@@ -102,7 +102,7 @@ TEST("voice_strip: buildVoiceContext -- a group DM names its members, not itself
 }
 
 TEST("voice_strip: buildVoiceContext -- an unknown conversation is empty, not a crash") {
-    Store                    s;
+    Store                   s;
     const llm::VoiceContext ctx = buildVoiceContext(s, ConvRef(999), 0, 30);
     CHECK(ctx.recentMessages.empty());
     CHECK(ctx.conversationName.empty());

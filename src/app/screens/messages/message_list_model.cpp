@@ -14,10 +14,11 @@ messageListLookup(const model::Store &store, model::ConvRef conv, model::Ts root
         return nullptr;
     if (root && ts != root)
         if (const std::vector<model::Message> *r = store.replies(conv, root)) {
-            const auto it =
-                std::lower_bound(r->begin(), r->end(), ts, [](const model::Message &m, model::Ts t) {
+            const auto it = std::lower_bound(
+                r->begin(), r->end(), ts, [](const model::Message &m, model::Ts t) {
                     return m.ts < t;
-                });
+                }
+            );
             if (it != r->end() && it->ts == ts)
                 return &*it;
         }
@@ -50,10 +51,10 @@ float estimateItemHeight(const MessageList::Item &it, const model::Message *m) {
 
 bool groupingHolds(
     const std::vector<MessageList::Item> &items,
-    size_t                                 i,
-    const model::Store                    &store,
-    model::ConvRef                         conv,
-    model::Ts                              root
+    size_t                                i,
+    const model::Store                   &store,
+    model::ConvRef                        conv,
+    model::Ts                             root
 ) {
     const auto at = [&](size_t j) -> const model::Message * {
         return j < items.size() && (items[j].kind == Kind::Message || items[j].kind == Kind::System)

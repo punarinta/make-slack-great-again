@@ -24,10 +24,10 @@ float estimateItemHeight(const MessageList::Item &it, const model::Message *m);
 // an Update needn't rebuild the item list.
 bool groupingHolds(
     const std::vector<MessageList::Item> &items,
-    size_t                                 i,
-    const model::Store                    &store,
-    model::ConvRef                         conv,
-    model::Ts                              root
+    size_t                                i,
+    const model::Store                   &store,
+    model::ConvRef                        conv,
+    model::Ts                             root
 );
 
 // "Delete message" (chat.delete; Backend::remove in an agent session):

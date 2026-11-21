@@ -29,8 +29,8 @@ ConvRef addDm(Store &s, UserRef peer) {
 } // namespace
 
 TEST("shell_notify_model: shouldNotifyHuddleStart -- Settings, workspace and backend gates") {
-    Store s;
-    ConvRef c = addChannel(s);
+    Store       s;
+    ConvRef     c  = addChannel(s);
     const auto &cv = s.conversation(c);
 
     CHECK(!shouldNotifyHuddleStart(cv, NotifyLevel::All, false, true, false, true, kNoUser));
@@ -41,9 +41,11 @@ TEST("shell_notify_model: shouldNotifyHuddleStart -- Settings, workspace and bac
 }
 
 TEST("shell_notify_model: shouldNotifyHuddleStart -- not a member, muted, or Nothing") {
-    Store s;
+    Store   s;
     ConvRef left = addChannel(s, false);
-    CHECK(!shouldNotifyHuddleStart(s.conversation(left), NotifyLevel::All, true, true, false, true, kNoUser));
+    CHECK(!shouldNotifyHuddleStart(
+        s.conversation(left), NotifyLevel::All, true, true, false, true, kNoUser
+    ));
 
     ConvRef nothing = addChannel(s);
     CHECK(!shouldNotifyHuddleStart(
@@ -53,17 +55,21 @@ TEST("shell_notify_model: shouldNotifyHuddleStart -- not a member, muted, or Not
 
 TEST("shell_notify_model: shouldNotifyHuddleStart -- never for a huddle I'm already in") {
     Store   s;
-    ConvRef c  = addChannel(s);
-    User meUser;
-    meUser.id  = "U1";
-    UserRef me = s.addUser(meUser);
+    ConvRef c = addChannel(s);
+    User    meUser;
+    meUser.id                            = "U1";
+    UserRef me                           = s.addUser(meUser);
     s.conversation(c).huddleParticipants = {me};
-    CHECK(!shouldNotifyHuddleStart(s.conversation(c), NotifyLevel::All, true, true, false, true, me));
+    CHECK(
+        !shouldNotifyHuddleStart(s.conversation(c), NotifyLevel::All, true, true, false, true, me)
+    );
     // Someone else's huddle, I'm not in it: still notifies.
     User otherUser;
     otherUser.id  = "U2";
     UserRef other = s.addUser(otherUser);
-    CHECK(shouldNotifyHuddleStart(s.conversation(c), NotifyLevel::All, true, true, false, true, other));
+    CHECK(
+        shouldNotifyHuddleStart(s.conversation(c), NotifyLevel::All, true, true, false, true, other)
+    );
 }
 
 TEST("shell_notify_model: shouldNotifyHuddleStart -- a channel only on \"All new posts\"") {
@@ -72,7 +78,9 @@ TEST("shell_notify_model: shouldNotifyHuddleStart -- a channel only on \"All new
     CHECK(!shouldNotifyHuddleStart(
         s.conversation(chan), NotifyLevel::Mentions, true, true, false, true, kNoUser
     ));
-    CHECK(shouldNotifyHuddleStart(s.conversation(chan), NotifyLevel::All, true, true, false, true, kNoUser));
+    CHECK(shouldNotifyHuddleStart(
+        s.conversation(chan), NotifyLevel::All, true, true, false, true, kNoUser
+    ));
 
     // A DM notifies regardless of level, once past the filters above.
     UserRef peer = s.addUser({});

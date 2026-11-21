@@ -40,7 +40,7 @@ TEST("message_list_model: messageListLookup reads thread replies in thread mode"
     Store   s;
     ConvRef c = addChannel(s, "C1");
     s.addMessage(c, plainMessage(100)); // the root
-    Message reply = plainMessage(150);
+    Message reply  = plainMessage(150);
     reply.threadTs = 100;
     s.addMessage(c, std::move(reply));
     // The root itself, in thread mode, comes from the conversation's own messages.
@@ -120,8 +120,8 @@ TEST("message_list_model: groupingHolds matches neighbours by the author/time wi
 }
 
 TEST("message_list_model: groupingHolds is false for an item whose message isn't loaded") {
-    Store                           s;
-    ConvRef                         c = addChannel(s, "C1");
+    Store                          s;
+    ConvRef                        c     = addChannel(s, "C1");
     std::vector<MessageList::Item> items = {{999, 0, Kind::Message, false}};
     CHECK_FALSE(groupingHolds(items, 0, s, c, 0));
 }
@@ -145,7 +145,7 @@ struct People {
 } // namespace
 
 TEST("message_list_model: canDeleteMessage — own, admin's, agent session's; backend gates all") {
-    People         p;
+    People        p;
     const Message own = plainMessage(100, p.me), theirs = plainMessage(200, p.other);
     CHECK(canDeleteMessage(p.s, own, false, true));
     CHECK_FALSE(canDeleteMessage(p.s, theirs, false, true));
@@ -185,7 +185,7 @@ TEST("message_list_model: file and message delete agree on authorship outside ag
             CHECK(canDeleteFile(p.s, m) == canDeleteMessage(p.s, m, false, true));
         }
     }
-    Store s; // and signed out
+    Store         s; // and signed out
     const Message anon = plainMessage(100, kNoUser);
     CHECK(canDeleteFile(s, anon) == canDeleteMessage(s, anon, false, true));
 }
