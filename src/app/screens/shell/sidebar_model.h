@@ -74,6 +74,16 @@ SidebarKind sidebarClassify(
     bool                vipsCapability,
     bool                externalSectionEnabled
 );
+// drafted: it has an unsent draft (buildSidebarLists finds them all in one
+// pass, not a draft lookup per conversation).
+SidebarKind sidebarClassify(
+    model::ConvRef      ref,
+    const model::Store &store,
+    model::NotifyLevel  defaultLevel,
+    bool                vipsCapability,
+    bool                externalSectionEnabled,
+    bool                drafted
+);
 
 // The rebuild-vs-refresh call on a Meta change: under unreads-only a row
 // comes or goes when its bold state flips.

@@ -98,10 +98,28 @@ SidebarKind sidebarClassify(
     bool                vipsCapability,
     bool                externalSectionEnabled
 ) {
+    return sidebarClassify(
+        ref,
+        store,
+        defaultLevel,
+        vipsCapability,
+        externalSectionEnabled,
+        store.draft(ref, 0) != nullptr
+    );
+}
+
+SidebarKind sidebarClassify(
+    ConvRef             ref,
+    const model::Store &store,
+    model::NotifyLevel  defaultLevel,
+    bool                vipsCapability,
+    bool                externalSectionEnabled,
+    bool                drafted
+) {
     const auto &c = store.conversation(ref);
     if (vipsCapability && sidebarIsVip(c, store, defaultLevel))
         return SidebarKind::Vip;
-    if (store.draft(ref, 0) != nullptr)
+    if (drafted)
         return SidebarKind::Drafts;
     if (c.starred)
         return SidebarKind::Starred;
@@ -165,12 +183,18 @@ SidebarLists buildSidebarLists(
             c, store, selected, agentSessions, nowSecs, filters.relevantDays, visited
         );
     };
+    // The conversations with an unsent draft, for sidebarClassify() (one
+    // pass, not a draft lookup per conversation).
+    std::vector<char> drafted(store.conversationCount(), 0);
+    for (const model::Store::Draft &d : store.drafts())
+        if (d.thread == 0 && d.conv < drafted.size())
+            drafted[d.conv] = 1;
     for (ConvRef c = 0; c < store.conversationCount(); ++c) {
         const auto &cv = store.conversation(c);
         if (!cv.member || deadDm(store, cv) || (c < inCustom.size() && inCustom[c]))
             continue; // left channels, closed or dead DMs, or already in a custom section
         switch (sidebarClassify(
-            c, store, filters.defaultLevel, vipsCapability, filters.externalSection
+            c, store, filters.defaultLevel, vipsCapability, filters.externalSection, drafted[c]
         )) {
         case SidebarKind::Drafts:
             out.drafts.push_back(c); // a draft is never hidden by the filters
@@ -201,10 +225,8 @@ SidebarLists buildSidebarLists(
         case SidebarKind::Channels:
             if (relevantAt(c) && listed(c))
                 out.channels.push_back(c);
-            else
-                out.hiddenChannels.push_back(
-                    c
-                ); // a channel only: a DM that drops just isn't listed
+            else // a channel only: a DM that drops just isn't listed
+                out.hiddenChannels.push_back(c);
             break;
         }
     }

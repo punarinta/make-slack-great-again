@@ -349,6 +349,7 @@ TEST("sidebar_model: buildSidebarLists — Drafts is never hidden; Starred's own
     ConvRef drafted = addChannel(s, "C1", true); // starred too: a draft still wins
     s.setDraft(drafted, 0, "hello", {});
     ConvRef starredRead = addChannel(s, "C2", true); // starred, no unread
+    s.setDraft(starredRead, 1, "a reply", {});       // a thread's draft doesn't count
 
     SidebarListFilters f;
     f.unreadsOnly = true;
