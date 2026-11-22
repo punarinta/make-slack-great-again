@@ -135,6 +135,7 @@ WlWindow::WlWindow(WlApp *a, const WindowDesc &d)
         if (agree)
             _scale = first;
     }
+    _announcedScale = _scale; // what the app reads right after createWindow
     createRole();
 }
 
@@ -247,7 +248,7 @@ void WlWindow::setSize(Size s) {
         return;
     _size = s;
     if (_configured) {
-        emitEvent({.type = EventType::Resized});
+        emitResized();
         _frameWanted = true;
     }
 }
@@ -560,8 +561,10 @@ void WlWindow::onConfigure(uint32_t serial) {
     _configured        = true;
     const bool resized = s.w != _size.w || s.h != _size.h;
     _size              = s;
-    if (resized)
-        emitEvent({.type = EventType::Resized});
+    // A scale learnt while unconfigured was not announced yet: it goes out
+    // now, or the app keeps laying out for the old one.
+    if (resized || _scale != _announcedScale)
+        emitResized();
     if (stateChanged)
         emitEvent({.type = EventType::StateChanged});
     _frameWanted = true; // a Frame follows every configure
@@ -638,12 +641,18 @@ void WlWindow::updateScale() {
     if (s == _scale)
         return;
     _scale = s;
+    // Unconfigured, the first configure announces it (onConfigure).
     if (_configured) {
-        emitEvent({.type = EventType::Resized});
+        emitResized();
         _frameWanted = true;
     }
     if (app->_pointerFocus == this)
         app->applyCursor(true); // re-rasterise the theme cursor at the new scale
+}
+
+void WlWindow::emitResized() {
+    _announcedScale = _scale;
+    emitEvent({.type = EventType::Resized});
 }
 
 // ── present ─────────────────────────────────────────────────────────────────
