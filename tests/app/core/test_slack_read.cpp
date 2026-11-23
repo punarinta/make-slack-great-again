@@ -284,7 +284,12 @@ TEST("slack read: history pages arrive oldest first, hasMoreBefore follows has_m
          "files": [{"id": "F1", "name": "cat.png", "mimetype": "image/png", "pretty_type": "PNG",
                     "url_private": "https://files/cat.png", "thumb_360": "https://files/cat360.png",
                     "thumb_720": "https://files/cat720.png", "original_w": 1600, "original_h": 900,
-                    "size": 12345}],
+                    "size": 12345},
+                   {"id": "F2", "name": "Terms", "mimetype": "application/vnd.google-apps.document",
+                    "pretty_type": "Google Docs", "is_external": true, "external_type": "gdrive",
+                    "external_url": "https://docs.google.com/document/d/X/edit",
+                    "url_private": "https://docs.google.com/document/d/X/edit",
+                    "permalink": "https://t.slack.com/files/UMIRA/F2/terms", "size": 273}],
          "attachments": [{"from_url": "https://news/x", "title": "News", "service_name": "News",
                           "color": "3FCB8E", "text": "story", "thumb_url": "https://news/t.png",
                           "thumb_width": 80, "thumb_height": 60}]}]},
@@ -302,9 +307,15 @@ TEST("slack read: history pages arrive oldest first, hasMoreBefore follows has_m
     CHECK(pic.replyUsers.size() == 1 && pic.replyUsers[0] == e.store.findUser("UJONAS"));
     REQUIRE(pic.reactions.size() == 1);
     CHECK(pic.reactions[0].count == 3 && pic.reactions[0].users.size() == 2);
-    REQUIRE(pic.files().size() == 1);
+    REQUIRE(pic.files().size() == 2);
     CHECK_STR(pic.files()[0].path, "https://files/cat720.png");
     CHECK(pic.files()[0].isImage() && pic.files()[0].width == 1600);
+    CHECK(pic.files()[0].external.empty());
+    CHECK_STR(pic.files()[0].webUrl(), "https://files/cat720.png"); // no permalink: the file
+    // A Google Doc opens in Google Docs, not on its Slack page.
+    CHECK_STR(pic.files()[1].external, "https://docs.google.com/document/d/X/edit");
+    CHECK_STR(pic.files()[1].webUrl(), "https://docs.google.com/document/d/X/edit");
+    CHECK_STR(pic.files()[1].permalink, "https://t.slack.com/files/UMIRA/F2/terms");
     REQUIRE(pic.attachments().size() == 1);
     CHECK(pic.attachments()[0].linkPreview);
     CHECK_STR(pic.attachments()[0].color, "#3FCB8E");

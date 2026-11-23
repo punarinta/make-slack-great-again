@@ -737,6 +737,9 @@ File toFile(const Value &o) {
     f.original   = owned(o["url_private_download"]);
     if (f.original.empty())
         f.original = f.path;
+    // A Google Doc (Dropbox, Box…) shared into Slack: its page there.
+    if (o["is_external"].boolean())
+        f.external = owned(o["external_url"]);
     if (str::startsWith(f.mime, "image/") && f.mime != "image/gif")
         for (const char *key : kThumbs)
             if (const std::string_view t = o[key].str(); !t.empty()) {

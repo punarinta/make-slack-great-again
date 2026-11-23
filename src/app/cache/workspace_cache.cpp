@@ -273,6 +273,7 @@ void fields(IO &io, model::File &f) {
     io.str(f.thumb);
     io.str(f.title);
     io.str(f.transcriptVtt);
+    io.str(f.external);
 }
 
 void fields(IO &io, model::AttachmentField &f) {

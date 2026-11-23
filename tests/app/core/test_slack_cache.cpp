@@ -51,7 +51,9 @@ const char *kWorkspace = R"({
      {"type": "message", "ts": "1700000002.000000", "user": "UME", "text": "second"},
      {"type": "message", "ts": "1700000001.000000", "user": "UMIRA", "text": "first",
       "files": [{"id": "F1", "name": "cat.png", "mimetype": "image/png",
-                 "url_private": "https://files/cat.png", "original_w": 16, "original_h": 9}]}]}
+                 "url_private": "https://files/cat.png", "original_w": 16, "original_h": 9},
+                {"id": "F2", "name": "Terms", "pretty_type": "Google Docs", "is_external": true,
+                 "external_url": "https://docs.google.com/document/d/X/edit"}]}]}
 })";
 
 int count(std::string_view method) {
@@ -193,8 +195,9 @@ TEST("slack cache: a cold start writes it, a warm start shows it before the netw
     REQUIRE(general.messages.size() == 3);
     CHECK(!general.hasMoreBefore); // the cache held the whole history
     CHECK_STR(general.messages[0].text, "first");
-    REQUIRE(general.messages[0].files().size() == 1);
+    REQUIRE(general.messages[0].files().size() == 2);
     CHECK_STR(general.messages[0].files()[0].path, "https://files/cat.png");
+    CHECK_STR(general.messages[0].files()[1].external, "https://docs.google.com/document/d/X/edit");
     REQUIRE(general.messages[2].reactions.size() == 1);
     CHECK(general.messages[2].reactions[0].users[0] == e.store.me);
     CHECK(general.messages[1].user == e.store.me);

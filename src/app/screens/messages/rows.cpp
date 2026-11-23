@@ -1663,12 +1663,13 @@ void MessageRow::buildFile(ui::View *col, const model::File &f, Ts ts) {
     chip->style().alignSelf(Align::Start).margins(0, 6, 0, 0);
     const model::File file = f;
     // A chip click: an HTML file renders in the browser (fetched to a
-    // local copy), anything else opens its Slack page (else the file).
+    // local copy), a Google Doc opens in Google Docs, anything else opens
+    // its Slack page (else the file).
     chip->onClick          = [this, file] {
         if (file.isHtml() && !file.path.empty())
             _list.openHtmlFile(file);
         else if (_list.ctx().openUrl) {
-            const std::string &url = file.permalink.empty() ? file.path : file.permalink;
+            const std::string &url = file.webUrl();
             if (!url.empty())
                 _list.ctx().openUrl(fileUrl(url));
         }

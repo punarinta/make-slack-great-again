@@ -186,11 +186,11 @@ public:
         button(
             gfx::Icon::ExternalLink,
             N_("Open in browser"),
-            (actions || !list) && !(f.permalink.empty() && f.path.empty())
+            (actions || !list) && !f.webUrl().empty()
         )
             ->onClick = [this] {
             if (_ctx.openUrl)
-                _ctx.openUrl(fileUrl(_file.permalink.empty() ? _file.path : _file.permalink));
+                _ctx.openUrl(fileUrl(_file.webUrl()));
         };
         auto *more    = button(gfx::Icon::MoreHorizontal, N_("More actions"), actions);
         more->onClick = [this, more] {

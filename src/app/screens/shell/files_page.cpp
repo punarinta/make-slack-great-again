@@ -263,7 +263,7 @@ void FilesPage::activate(size_t i) {
         return;
     }
 #endif
-    const std::string &where = f.permalink.empty() ? f.path : f.permalink;
+    const std::string &where = f.webUrl();
     if (_ctx.openUrl && !where.empty())
         _ctx.openUrl(screens::fileUrl(where));
 }
