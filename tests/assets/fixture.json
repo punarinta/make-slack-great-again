@@ -20,7 +20,9 @@
   "conversations": [
     { "id": "C0GENERAL",  "kind": "channel", "name": "general",      "topic": "Company-wide announcements and the occasional cat", "memberCount": 24, "starred": true },
     { "id": "C0DESIGN",   "kind": "channel", "name": "design",       "topic": "Crits, Figma links and the Atlas 2.0 design system", "memberCount": 9,  "starred": true,
-      "canvas": { "title": "Design crit — week 38", "html": "canvases/design-crit.html" } },
+      "canvas": { "title": "Design crit — week 38", "html": "canvases/design-crit.html" },
+      "bookmarks": [ { "title": "Atlas 2.0 in Figma", "link": "https://www.figma.com/file/atlas", "emoji": ":art:" },
+                     { "title": "", "link": "https://docs.lumen.studio/atlas?tab=1" } ] },
     { "id": "C0ENG",      "kind": "channel", "name": "engineering",  "topic": "Backend, frontend, infra. Incidents go to #releases", "memberCount": 12, "unread": 3, "mentions": 1 },
     { "id": "C0RELEASES", "kind": "channel", "name": "releases",     "topic": "Deploy notices from Deploybot · humans welcome",      "memberCount": 14, "unread": 1 },
     { "id": "G0LAUNCH",   "kind": "private", "name": "launch-atlas", "topic": "Atlas 2.0 launch war room — 2 Oct",                  "memberCount": 6 },

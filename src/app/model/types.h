@@ -113,6 +113,9 @@ struct File {
     // A canvas's display title (Slack: the file's title, emoji and mentions
     // kept); "" = the name.
     std::string title;
+    // A file kept elsewhere (a Google Doc, a Dropbox file): its own page
+    // there, which opening it goes to instead of the permalink. "" = none.
+    std::string external;
     int64_t     size  = 0;
     int32_t     width = 0, height = 0; // images, thumb
     int64_t     durationMs = 0;        // audio / video
@@ -127,6 +130,11 @@ struct File {
     bool isHtml() const;
     const std::string &source() const { return original.empty() ? path : original; }
     bool               operator==(const File &) const;
+    // What opening the file in the browser goes to: its page where it is
+    // kept, else its Slack page, else the content.
+    const std::string &webUrl() const {
+        return !external.empty() ? external : !permalink.empty() ? permalink : path;
+    }
 };
 
 struct AttachmentField {
@@ -325,6 +333,25 @@ struct Typing {
     // An agent at work: "thinking (1m 5s)" counted from here (epoch ms);
     // 0 = plain typing.
     int64_t sinceMs = 0;
+};
+
+// A conversation's bookmark (the header's Bookmarks tab): a link the
+// conversation keeps, with its title. Kept out of the Store: the shell asks
+// for them as a conversation opens.
+struct Bookmark {
+    std::string id;
+    std::string title; // "" = the link is the title
+    std::string link;
+    std::string emoji;   // ":rocket:" or ""
+    std::string iconUrl; // the site's icon, or ""
+    bool        operator==(const Bookmark &) const = default;
+};
+
+// A file shared in a conversation (the header's Files tab).
+struct SharedFile {
+    File    file;
+    UserRef user    = kNoUser; // who shared it
+    int64_t created = 0;       // epoch secs
 };
 
 // A long job an agent session runs on the side: a command it started in the

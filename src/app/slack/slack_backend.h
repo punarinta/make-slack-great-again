@@ -167,6 +167,10 @@ public:
     void markThreadRead(model::ConvRef conv, model::Ts root, model::Ts ts) override;
     bool canMarkThreadUnread(model::ConvRef conv, model::Ts root) const override;
     void markThreadUnread(model::ConvRef conv, model::Ts root, model::Ts ts) override;
+    void loadBookmarks(model::ConvRef conv, BookmarksDone done) override;
+    void loadConversationFiles(
+        model::ConvRef conv, int page, std::function<void(FilesPage)> done
+    ) override;
     void loadChannelCanvas(model::ConvRef conv, std::function<void(std::string)> done) override;
     void loadCanvasMeta(const std::string &fileId, CanvasMetaDone done) override;
     void loadCanvasContent(const std::string &fileId, CanvasHtmlDone done) override;

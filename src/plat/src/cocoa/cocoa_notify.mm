@@ -310,6 +310,29 @@ bool CocoaApp::notify(uint64_t id, const Notification &n) {
     }
 }
 
+// The Dock may hide an app's badge until the user allowed it badges in
+// the app's notification settings, and an app that never asked has none.
+// The badge is often the first thing to need that (no notification sent
+// yet, or desktop notifications off in the app), so the first badge asks,
+// with the same prompt notify() shows; once asked, it's the user's call in
+// System Settings.
+void CocoaApp::askBadgePermission() {
+    if (_badgeAsked || !setUpNotifications())
+        return;
+    _badgeAsked = true;
+    @autoreleasepool {
+        UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+        [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *s) {
+          if (s.authorizationStatus == UNAuthorizationStatusNotDetermined)
+              [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert |
+                                                      UNAuthorizationOptionSound |
+                                                      UNAuthorizationOptionBadge
+                                    completionHandler:^(BOOL, NSError *) {
+                                    }];
+        }];
+    }
+}
+
 // By its request identifier: with a scope that names one from an earlier run
 // too (still in Notification Center). The delegate hears nothing of it. One
 // still on its way to the center (notify() is asynchronous) is removed again

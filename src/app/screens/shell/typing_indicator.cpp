@@ -80,18 +80,25 @@ void TypingIndicator::setTarget(model::ConvRef conv, model::Ts thread) {
     refresh();
 }
 
-void TypingIndicator::refresh() {
-    std::vector<model::UserRef> who;
-    int64_t                     since    = 0;
-    bool                        thinking = true;
-    if (_conv != model::kNoConv)
-        for (const model::Typing &t : _ctx.store().typing(_conv))
-            if (t.thread == _thread) {
-                who.push_back(t.user);
-                since = t.sinceMs;
-                thinking &= t.sinceMs > 0;
+TypingState typingStateOf(const model::Store &store, model::ConvRef conv, model::Ts thread) {
+    TypingState out;
+    out.thinking = true;
+    if (conv != model::kNoConv)
+        for (const model::Typing &t : store.typing(conv))
+            if (t.thread == thread) {
+                out.who.push_back(t.user);
+                out.since = t.sinceMs;
+                out.thinking &= t.sinceMs > 0;
             }
-    thinking = thinking && !who.empty();
+    out.thinking = out.thinking && !out.who.empty();
+    return out;
+}
+
+void TypingIndicator::refresh() {
+    const TypingState state    = typingStateOf(_ctx.store(), _conv, _thread);
+    const auto       &who      = state.who;
+    const int64_t     since    = state.since;
+    const bool        thinking = state.thinking;
     // A timer ticks the "thinking" clocks every second.
     if (thinking && !_tick)
         _tick = _ctx.app.addTimer(1000, true, [this] { refresh(); });

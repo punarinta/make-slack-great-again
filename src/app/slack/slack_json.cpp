@@ -737,6 +737,9 @@ File toFile(const Value &o) {
     f.original   = owned(o["url_private_download"]);
     if (f.original.empty())
         f.original = f.path;
+    // A Google Doc (Dropbox, Box…) shared into Slack: its page there.
+    if (o["is_external"].boolean())
+        f.external = owned(o["external_url"]);
     if (str::startsWith(f.mime, "image/") && f.mime != "image/gif")
         for (const char *key : kThumbs)
             if (const std::string_view t = o[key].str(); !t.empty()) {
@@ -844,6 +847,45 @@ void noteLinkedAuthors(const Value &v, model::Store &store, int depth = 0) {
 }
 
 } // namespace
+
+model::SharedFile toSharedFile(const json::Value &f, model::Store &store) {
+    model::SharedFile s;
+    s.file    = toFile(f);
+    s.user    = f.has("user") ? store.internUser(f["user"].str()) : model::kNoUser;
+    s.created = f["created"].integer(f["timestamp"].integer());
+    return s;
+}
+
+std::vector<model::Bookmark> toBookmarks(const json::Value &list) {
+    struct Ranked {
+        std::string     rank;
+        model::Bookmark b;
+    };
+    std::vector<Ranked> ranked;
+    for (const Value o : list) {
+        // Links only: the pins marker and workflows (shortcut) have tabs of
+        // their own in Slack. A bookmark inside a folder (parent_id) is
+        // listed too; the folders themselves are not in the answer.
+        if (o["type"].str() != "link" || o["link"].str().empty())
+            continue;
+        model::Bookmark b;
+        b.id      = owned(o["id"]);
+        b.title   = mrkdwn::decodeEntities(o["title"].str());
+        b.link    = owned(o["link"]);
+        b.emoji   = owned(o["emoji"]);
+        b.iconUrl = owned(o["icon_url"]);
+        ranked.push_back({owned(o["rank"]), std::move(b)});
+    }
+    // Slack's order: rank, a string compared bytewise.
+    std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked &a, const Ranked &b) {
+        return a.rank < b.rank;
+    });
+    std::vector<model::Bookmark> out;
+    out.reserve(ranked.size());
+    for (Ranked &r : ranked)
+        out.push_back(std::move(r.b));
+    return out;
+}
 
 model::Message toMessage(const json::Value &in, model::Store &store) {
     const Value    o = in["subtype"].str() == "message_changed" ? in["message"] : in;

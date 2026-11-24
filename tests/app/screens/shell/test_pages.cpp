@@ -13,6 +13,7 @@
 #include "base/time.h"
 #include "screens/settings/settings_dialog.h"
 #include "screens/shell/fuzzy_match.h"
+#include "screens/shell/header.h"
 #include "screens/shell/quick_switcher.h"
 #include "screens/shell/saved_page.h"
 #include "screens/shell/shell.h"
@@ -131,6 +132,24 @@ TEST("fuzzy: subsequences match, in order, any case") {
     CHECK_FALSE(fuzzyScore("generals", "general").has_value());
     CHECK(*fuzzyScore("", "anything") == 0.0);
     CHECK_FALSE(fuzzyScore("a", "").has_value());
+}
+
+TEST("quick switcher: a group DM's score is half a match behind its member's own name") {
+    // Issue #61: a group is named after its members, so a query matching a
+    // person also matches every group they're in -- often more recent,
+    // burying the person's own DM. Half a consecutive match pulls it back.
+    const shell::QuickSwitchName dm{shell::FuzzyText("Mira Okafor"), false, {}};
+    const shell::QuickSwitchName group{shell::FuzzyText("Mira Okafor, Jonas Weber"), true, {}};
+    const std::vector<uint32_t>  q          = shell::fuzzyQuery("mira");
+    const std::optional<double>  dmScore    = shell::quickSwitchScore(dm, q);
+    const std::optional<double>  groupScore = shell::quickSwitchScore(group, q);
+    REQUIRE(dmScore.has_value());
+    REQUIRE(groupScore.has_value());
+    CHECK(*dmScore > *groupScore);
+    CHECK(*dmScore - *groupScore == 0.5);
+
+    // No name yet (not fetched): not something to offer, whatever the query.
+    CHECK_FALSE(shell::quickSwitchScore({}, q).has_value());
 }
 
 TEST("fuzzy: a substring beats a scattered match, word starts beat the middle") {
@@ -942,6 +961,9 @@ TEST("pages: hovering sidebar rows reshapes no text") {
         app().platform().testHooks()->injectPointerMove(h.win->native(), {sb.right() + 300, 400});
         app().pump(0);
     };
+    // The fixture's bookmarks arrive a fake round trip after the open and add
+    // the header's Bookmarks tab: on a slow machine that lands mid-sweep.
+    REQUIRE(until([&] { return h.sh->tabs().tab(shell::ConvTabs::kBookmarks)->visible(); }));
     sweep(); // anything shaped lazily on a first hover (none expected) is done
     const size_t n0 = text::layoutBuilds();
     sweep();

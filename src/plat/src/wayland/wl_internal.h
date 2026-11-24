@@ -191,6 +191,7 @@ public:
 
 private:
     void updateScale();
+    void emitResized(); // tells the app the size/scale it now has
     void createRole();
     void destroyRole();
     void pruneBuffers();
@@ -217,6 +218,11 @@ private:
     Size                  _viewportSize{0, 0};
     int                   _bufferScaleSet = 1;
     double                _scale          = 1.0;
+    // The scale the app last learnt: at creation, then from each Resized.
+    // A scale that arrives before the first configure (mutter sends it on
+    // the initial commit) goes out with that configure, even when the size
+    // stays the same (issue #182: text laid out at 1x on a 1.75x canvas).
+    double                _announcedScale = 1.0;
     uint32_t              _fractional120  = 0;
     int                   _preferredScale = 0;
     std::vector<Output *> _outputs; // outputs the surface is on, entry order

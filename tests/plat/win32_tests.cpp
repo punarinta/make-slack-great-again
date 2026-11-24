@@ -771,7 +771,7 @@ void caseImageHelpers() {
     CHECK(png.size() > 8 && png.compare(0, 8, "\x89PNG\r\n\x1a\n") == 0);
     // Badge: transparent corners, red disc, white glyph pixels; "9+" past nine.
     for (int n : {7, 12}) {
-        const Image b = badgeImage(n, 16);
+        const Image b = badgeImage(n, false, 16);
         CHECK(b.width == 16 && b.pixels[0] == 0);
         int white = 0, red = 0;
         for (uint32_t p : b.pixels) {
@@ -780,8 +780,15 @@ void caseImageHelpers() {
         }
         CHECK(white >= 8 && red >= 60);
     }
-    CHECK(badgeImage(12, 16).pixels != badgeImage(9, 16).pixels);
+    CHECK(badgeImage(12, false, 16).pixels != badgeImage(9, false, 16).pixels);
+    // The dot: the disc with white in its middle, nothing without it.
+    const Image d = badgeImage(0, true, 16);
+    CHECK(
+        d.pixels[0] == 0 && d.pixels[8 * 16 + 8] == 0xffffffff && d.pixels[8 * 16 + 2] == 0xffd93025
+    );
+    CHECK(badgeImage(0, false, 16).pixels[8 * 16 + 8] == 0);
     g_app->setBadgeCount(3); // overlay on the taskbar button; not readable back
+    g_app->setBadgeCount(0, true);
     g_app->setBadgeCount(0);
 }
 

@@ -355,11 +355,24 @@ bool loadFixture(
                 c.canvasTitle = "Canvas";
             c.canvasId = str::concat({"FCANVAS", c.id});
         }
+        std::vector<model::Bookmark> bookmarks;
+        for (const json::Value b : o["bookmarks"]) {
+            model::Bookmark x;
+            x.id    = str::concat({"Bk", c.id, "-", str::number(int64_t(bookmarks.size()) + 1)});
+            x.title = owned(b["title"]);
+            x.link  = owned(b["link"]);
+            x.emoji = owned(b["emoji"]);
+            if (x.link.empty())
+                return fail(str::concat({"conversation ", c.id, ": a bookmark needs a \"link\""}));
+            bookmarks.push_back(std::move(x));
+        }
         if (store.findConversation(c.id) != kNoConv)
             return fail(str::concat({"conversation ", c.id, " is listed twice"}));
         const ConvRef ref = store.addConversation(std::move(c));
         if (!canvasHtml.empty())
             fx->canvases.push_back(Canvas{ref, std::move(canvasHtml)});
+        if (!bookmarks.empty())
+            fx->bookmarks.push_back(Bookmarks{ref, std::move(bookmarks)});
     }
 
     // ── messages ──

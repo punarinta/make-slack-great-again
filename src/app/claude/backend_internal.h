@@ -221,6 +221,9 @@ struct Backend::Tracked {
     // The turn msga started: from launching it until its end is in the transcript.
     bool                    sending         = false;
     bool                    launching       = false; // the launcher hasn't reported back yet
+    // A resume being launched: should Claude Code start a copy instead, the
+    // copy is in the roster before the launcher says it is this session's.
+    bool                    resuming        = false;
     bool                    stopRequested   = false; // "Stop" while launching: once it has
     bool                    stopping        = false; // `claude stop` under way
     int64_t                 sendStartedMs   = 0;

@@ -4069,6 +4069,8 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.presence         = true;                 // polled users.getPresence
     c.selfStatus       = true;
     c.canvases         = true;
+    c.bookmarks        = true;                 // bookmarks.list
+    c.sharedFiles      = true;                 // files.list?channel=
     c.fileUpload       = true;                 // files.getUploadURLExternal
     c.removePreview    = _creds.sessionAuth(); // chat.deleteAttachment: internal, xoxc only
     c.slashCommands    = true;                 // the built-ins, commands.list, chat.command

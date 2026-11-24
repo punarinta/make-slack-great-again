@@ -537,11 +537,24 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     c.activityView     = true;
     c.messageReminders = true;
     c.canvases         = true;
+    c.bookmarks        = true;
+    c.sharedFiles      = true;
     c.fileUpload       = true;
     c.customSections   = true; // this run only
     c.vips             = true;
     c.groupDms         = true;
     return c;
+}
+
+void FakeBackend::loadBookmarks(ConvRef conv, BookmarksDone done) {
+    std::vector<model::Bookmark> items;
+    for (const Bookmarks &b : _fx.bookmarks)
+        if (b.conv == conv)
+            items = b.items;
+    later(kReadLatencyMs, [done = std::move(done), items = std::move(items)]() mutable {
+        if (done)
+            done(true, std::move(items));
+    });
 }
 
 void FakeBackend::setPresence(bool, Done done) {

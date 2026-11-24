@@ -11,6 +11,17 @@
 
 namespace shell {
 
+// Who's typing in `conv`'s `thread` right now, and whether every one of
+// them is an agent at work rather than a person mid-sentence (Typing::
+// sinceMs > 0 for all of them) -- "thinking" only if there's anyone to
+// think; `since` is whichever row's, for the single-agent "(1m 5s)" clock.
+struct TypingState {
+    std::vector<model::UserRef> who;
+    int64_t                     since    = 0;
+    bool                        thinking = false;
+};
+TypingState typingStateOf(const model::Store &store, model::ConvRef conv, model::Ts thread);
+
 class TypingIndicator : public ui::View {
 public:
     explicit TypingIndicator(screens::Context &ctx);

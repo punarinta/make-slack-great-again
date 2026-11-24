@@ -1627,6 +1627,38 @@ TEST("attention: the rail, tray and badge count unread DMs, mentions and chats")
     CHECK_FALSE(shell::workspaceAttention(h.store, NotifyLevel::All, now + 40 * 86400).unread);
 }
 
+TEST("attention: the app icon badge, DMs and mentions only or all unread") {
+    Harness          h;
+    plat::TestHooks *hooks = app().platform().testHooks();
+    REQUIRE(hooks != nullptr);
+    // Unread changes are recounted after a 50 ms settle (Shell::attentionSoon).
+    auto settles = [](const std::function<bool()> &done) {
+        for (int i = 0; i < 400 && !done(); ++i)
+            app().pump(5);
+        return done();
+    };
+    CHECK(settles([&] { return hooks->badgeCount() == 3; })); // the fixture's DMs and mentions
+    CHECK_FALSE(hooks->badgeDot());
+    // Read every DM and mention: other channels stay unread.
+    for (ConvRef c = 0; c < h.store.conversationCount(); ++c) {
+        const model::Conversation &cv = h.store.conversation(c);
+        if (cv.unread && (cv.isDirect() || cv.mentions))
+            h.backend.markRead(c, cv.latest);
+    }
+    CHECK(settles([&] { return hooks->badgeCount() == 0; }));
+    CHECK_FALSE(hooks->badgeDot()); // "Direct messages and mentions only", the default
+    h.settings.badgeLevel = 0;      // Settings → "All unread messages"
+    h.sh->applySettings();
+    CHECK(settles([&] { return hooks->badgeDot(); }));
+    CHECK(hooks->badgeCount() == 0);
+    // Everything read: nothing at all.
+    for (ConvRef c = 0; c < h.store.conversationCount(); ++c)
+        if (h.store.conversation(c).unread)
+            h.backend.markRead(c, h.store.conversation(c).latest);
+    CHECK(settles([&] { return !hooks->badgeDot(); }));
+    CHECK(hooks->badgeCount() == 0);
+}
+
 TEST("menus: a sidebar row's menu works from the keyboard") {
     Harness h;
     h.sh->menus().showChat(h.conv("C0ENG"), {100, 100});
@@ -3329,11 +3361,13 @@ TEST("activity page: the entry is bright while the feed has unread items; a fail
     CHECK(page.itemCount() == 0);
 }
 
-TEST("activity page: the conversation tabs still read Messages | canvas") {
+TEST("activity page: the conversation tabs still read Messages | canvas | Files | Bookmarks") {
     Harness          h;
     shell::ConvTabs &tabs = h.sh->tabs();
-    CHECK(tabs.tabCount() == 2);
+    CHECK(tabs.tabCount() == 4);
     CHECK_STR(tabs.tabText(0), "Messages");
+    CHECK_STR(tabs.tabText(2), "Files");
+    CHECK_STR(tabs.tabText(3), "Bookmarks");
     tabs.setCanvas(true, true, "Plan");
     CHECK_STR(tabs.tabText(1), "Plan");
     tabs.setCanvas(true, false, {});

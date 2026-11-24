@@ -2161,10 +2161,12 @@ void Backend::refreshScan() {
         _host->follow(ids);
     }
     // A "+" session being started shows up in the roster a moment before the
-    // launcher reports its id — don't list it twice meanwhile.
+    // launcher reports its id — don't list it twice meanwhile. So does a copy
+    // Claude Code starts in place of a resume: listed on its own first, it
+    // would be a second chat (and this one its thread) until adoptCopy.
     std::unordered_set<std::string> startingIn;
     for (const auto &[id, t] : _sessions)
-        if (t->sending && t->info.sessionId.empty())
+        if (t->sending && (t->info.sessionId.empty() || t->resuming))
             startingIn.insert(file::absolute(t->info.cwd));
     for (const auto &f : _forkingIn)
         startingIn.insert(f);                  // likewise a /btw branch being launched
@@ -2259,7 +2261,9 @@ void Backend::refreshScan() {
     }
     for (const auto &id : dropped) {
         Tracked &t = *_sessions[id];
-        _convOf.erase(t.info.sessionId);
+        // The session may be another chat's by now (adoptCopy): that mapping stays.
+        if (convIdFor(t.info.sessionId) == id)
+            _convOf.erase(t.info.sessionId);
         if (t.ref != kNoConv)
             _store.updateConversation(t.ref, [](model::Conversation &c) { c.member = false; });
         for (auto it = _shown.begin(); it != _shown.end();)

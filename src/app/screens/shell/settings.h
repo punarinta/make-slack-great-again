@@ -101,6 +101,9 @@ struct Settings {
     // ── Notifications ───────────────────────────────────────────────────────
     bool        notifications = true;
     int         notifyLevel   = 0; // 0 all new messages, 1 DMs and mentions only
+    // The app icon badge (Dock, taskbar, launcher): 0 all unread messages (a
+    // dot when there is no DM or mention to count), 1 DMs and mentions only.
+    int         badgeLevel    = 1;
     bool        notifyHuddles = true, boldMentionsOnly = true, notifySound = true;
     std::string soundId = "bundled:notify";
 

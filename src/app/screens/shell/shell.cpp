@@ -18,6 +18,7 @@
 #include "screens/common/remote_images.h"
 #include "screens/settings/settings_dialog.h"
 #include "screens/shell/canvas_page.h"
+#include "screens/shell/files_page.h"
 #include "screens/shell/canvas_viewer.h"
 #include "screens/shell/channel_dialogs.h"
 #include "screens/shell/context_menus.h"
@@ -1587,7 +1588,8 @@ void Shell::buildMain(View *parent) {
 #endif
     _header->onSearch     = [this] { openSearch(); };
     _tabs                 = _mainPane->add<ConvTabs>();
-    _tabs->onSelect       = [this](int tab) { showCanvas(tab == 1); };
+    _tabs->onSelect       = [this](int tab) { showTab(tab); };
+    _tabs->onBookmarks    = [this] { showBookmarksMenu(); };
     // The huddle banner: under the tabs, over the messages.
     _huddleBanner         = _mainPane->add<HuddleBanner>();
     _huddleBanner->onJoin = [this] {
@@ -1661,6 +1663,8 @@ void Shell::buildMain(View *parent) {
         if (_current != kNoConv)
             _tabs->setCanvas(true, true, title);
     };
+    _files = stack->add<FilesPage>(_ctx);
+    _files->setVisible(false);
     buildTeammatePage(stack); // an agent workspace's teammate page (shell_agents.cpp)
     buildActivityPage(stack);
     buildThreadsPage(stack);
@@ -1764,6 +1768,7 @@ void Shell::setWaiting(bool on) {
         _composer->setVisible(false);
         _typing->setVisible(false);
         _canvas->setVisible(false);
+        _files->setVisible(false);
         _welcome->setVisible(false);
         _messages->setVisible(true);
     } else if (_current == kNoConv) {
@@ -1963,6 +1968,7 @@ void Shell::open(ConvRef conv) {
         c.kind == model::ConvKind::Dm && c.dmUser != model::kNoUser)
         _ctx.backend().requestPresence(c.dmUser);
     lookUpCanvas(conv);
+    lookUpBookmarks(conv);
     _ctx.backend().setActiveConversation(conv, 0);
 #ifdef MSGA_HAVE_MESSAGES
     // The list loads history and marks read once the newest message shows.
@@ -2005,6 +2011,7 @@ void Shell::leaveWorkspace() {
     _sidebar->select(kNoConv);
     showCanvas(false);
     _canvas->clear();
+    _files->clear();
 #ifdef MSGA_HAVE_MESSAGES
     static_cast<screens::MessageList *>(_messages)->clear();
 #else
@@ -2404,6 +2411,7 @@ void Shell::leaveConversationChrome(bool keepComposer) {
     _welcome->setVisible(false);
     _canvas->flushPendingSave();
     _canvas->setVisible(false);
+    _files->setVisible(false);
     _typing->setTarget(kNoConv, 0);
     _typing->setVisible(false);
     _ctx.backend().setActiveConversation(kNoConv, 0);
@@ -2533,20 +2541,29 @@ Composer *Shell::threadComposer() {
     return _thread ? _thread->composer : nullptr;
 }
 
-// The tabs: Messages, or the canvas page (the conversation's canvas, or
-// "Add canvas": a blank page the first save turns into one).
+// The tabs: Messages, the canvas page (the conversation's canvas, or
+// "Add canvas": a blank page the first save turns into one) or the files.
 void Shell::showCanvas(bool on) {
-    showMessageArea(); // both tabs live where the messages are
-    on = on && _current != kNoConv;
-    if (!on)
+    showTab(on ? ConvTabs::kCanvas : ConvTabs::kMessages);
+}
+
+void Shell::showTab(int tab) {
+    showMessageArea(); // the tabs live where the messages are
+    if (_current == kNoConv || (tab != ConvTabs::kCanvas && tab != ConvTabs::kFiles))
+        tab = ConvTabs::kMessages;
+    if (tab != ConvTabs::kCanvas)
         _canvas->flushPendingSave(); // on every tab / conversation switch
-    _canvas->setVisible(on);
-    _messages->setVisible(!on && _current != kNoConv);
-    _composer->setVisible(!on);
-    _typing->setVisible(!on && !_typing->text().empty());
-    _tabs->setActive(on ? 1 : 0);
-    if (on)
+    const bool messages = tab == ConvTabs::kMessages;
+    _canvas->setVisible(tab == ConvTabs::kCanvas);
+    _files->setVisible(tab == ConvTabs::kFiles);
+    _messages->setVisible(messages && _current != kNoConv);
+    _composer->setVisible(messages);
+    _typing->setVisible(messages && !_typing->text().empty());
+    _tabs->setActive(tab);
+    if (tab == ConvTabs::kCanvas)
         _canvas->open(_current);
+    else if (tab == ConvTabs::kFiles)
+        _files->open(_current);
 }
 
 // While the open conversation (its header on
@@ -2568,11 +2585,112 @@ void Shell::updateHeader() {
     // Canvases on every conversation but an app's DM (the tab is hidden for
     // bots, whose canvases are app-owned), where the service has them.
     const bool app = c.kind == model::ConvKind::Dm && _ctx.store().user(c.dmUser).bot;
+    const model::Backend::Capabilities caps = _ctx.backend().capabilities();
     _tabs->setCanvas(
-        _ctx.backend().capabilities().canvases && !app,
-        !c.canvasId.empty() || !c.canvasTitle.empty(),
-        c.canvasTitle
+        caps.canvases && !app, !c.canvasId.empty() || !c.canvasTitle.empty(), c.canvasTitle
     );
+    _tabs->setFiles(caps.sharedFiles && !app);
+    _tabs->setBookmarks(caps.bookmarks && !bookmarks().empty());
+}
+
+// ── Bookmarks ───────────────────────────────────────────────────────────────
+
+std::string Shell::bookmarkKey(ConvRef conv) const {
+    const model::Store &st = _ctx.store();
+    if (conv >= st.conversationCount())
+        return {};
+    return str::concat({st.workspaceId, "/", st.conversation(conv).id});
+}
+
+const std::vector<model::Bookmark> &Shell::bookmarks() const {
+    static const std::vector<model::Bookmark> kNone;
+    if (_current == kNoConv)
+        return kNone;
+    const auto it = _bookmarks.find(bookmarkKey(_current));
+    return it == _bookmarks.end() ? kNone : it->second.items;
+}
+
+// Read as a conversation opens; again only once they are 5 minutes old, so
+// going back and forth between conversations asks nothing.
+void Shell::lookUpBookmarks(ConvRef conv) {
+    const auto &c   = _ctx.store().conversation(conv);
+    const bool  app = c.kind == model::ConvKind::Dm && _ctx.store().user(c.dmUser).bot;
+    if (!_ctx.backend().capabilities().bookmarks || app)
+        return;
+    const std::string key = bookmarkKey(conv);
+    const int64_t     now = base::nowSecs();
+    if (const auto it = _bookmarks.find(key); it != _bookmarks.end() && now - it->second.at < 300)
+        return;
+    _bookmarks[key].at       = now; // asked: not again while this one runs
+    // The backend can outlive this shell (a test's restart): the answer
+    // checks it is still here.
+    std::weak_ptr<char> life = _life;
+    _ctx.backend().loadBookmarks(
+        conv, [this, life, key](bool ok, std::vector<model::Bookmark> items) {
+            if (life.expired())
+                return;
+            if (!ok) {
+                _bookmarks[key].at = 0; // unknown: ask again on the next open
+                return;
+            }
+            _bookmarks[key].items = std::move(items);
+            if (_current != kNoConv && bookmarkKey(_current) == key)
+                updateHeader();
+        }
+    );
+}
+
+namespace {
+
+// "https://www.figma.com/file/…" → "figma.com".
+std::string linkHost(std::string_view link) {
+    if (const size_t s = link.find("://"); s != std::string_view::npos)
+        link.remove_prefix(s + 3);
+    link = link.substr(0, link.find_first_of("/?#"));
+    if (link.starts_with("www."))
+        link.remove_prefix(4);
+    return std::string(link);
+}
+
+} // namespace
+
+std::vector<ui::MenuItem> Shell::bookmarkItems() const {
+    std::vector<ui::MenuItem> items;
+    const auto               &list = bookmarks();
+    for (size_t i = 0; i < list.size(); ++i) {
+        const model::Bookmark &b = list[i];
+        ui::MenuItem           m;
+        m.id                   = int(i) + 1;
+        std::string      title = b.title.empty() ? b.link : b.title;
+        std::string_view name  = b.emoji;
+        if (name.size() > 2 && name.front() == ':' && name.back() == ':')
+            name = name.substr(1, name.size() - 2);
+        if (const std::string e = emoji::toUnicode(name); !e.empty())
+            title = str::concat({e, " ", title});
+        else
+            m.icon = uint16_t(Icon::Link);
+        m.label = std::move(title);
+        m.hint  = linkHost(b.link);
+        items.push_back(std::move(m));
+    }
+    return items;
+}
+
+void Shell::openBookmark(size_t i) {
+    const auto &list = bookmarks();
+    if (i < list.size() && _ctx.openUrl)
+        _ctx.openUrl(list[i].link);
+}
+
+void Shell::showBookmarksMenu() {
+    std::vector<ui::MenuItem> items = bookmarkItems();
+    if (items.empty())
+        return;
+    const RectF r = _tabs->tab(ConvTabs::kBookmarks)->windowRect();
+    Menu::popupAt(_win, {r.x, r.y + r.h + 2}, std::move(items), [this](int id) {
+        if (id > 0)
+            openBookmark(size_t(id - 1));
+    });
 }
 
 // The roster may not say whether a channel has a
@@ -2925,8 +3043,8 @@ void Shell::handleAppEvent(const plat::Event &e) {
 }
 
 // Unread badges and the tray icon: each workspace's own dot on
-// its rail tile; the launcher badge and the tray dot sum every workspace
-// except the muted ones (their tiles still show).
+// its rail tile; the app icon badge (Dock, taskbar, launcher) and the tray
+// dot sum every workspace except the muted ones (their tiles still show).
 void Shell::updateAttention() {
     if (_attentionTimer) {
         _ctx.app.cancelTimer(_attentionTimer);
@@ -2934,8 +3052,8 @@ void Shell::updateAttention() {
     }
     const model::Store      &open     = _ctx.store();
     const model::NotifyLevel fallback = defaultLevel();
-    int                      n        = 0;
-    bool                     unread   = false;
+    const bool               bold     = _settings.boldMentionsOnly;
+    std::vector<Attention>   unmuted;
     bool                     attached = false;
     for (const auto &r : _running) {
         if (r->store == &open) {
@@ -2943,32 +3061,30 @@ void Shell::updateAttention() {
             r->dirty = true; // the open one is recounted on every call, as before
         }
         if (r->dirty) {
-            r->att   = workspaceAttention(*r->store, fallback, r->backend->nowSecs());
+            r->att   = workspaceAttention(*r->store, fallback, r->backend->nowSecs(), bold);
             r->dirty = false;
         }
         if (RailTile *t = _wsStack->find(r->key))
             t->setDot(r->att.dot());
-        if (!r->store->workspaceMuted) {
-            n += r->att.important;
-            unread = unread || r->att.unread;
-        }
+        if (!r->store->workspaceMuted)
+            unmuted.push_back(r->att);
     }
     if (!attached && _signedIn) { // the demo, tests: the open Store alone
-        const Attention a = workspaceAttention(open, fallback, _ctx.backend().nowSecs());
+        const Attention a = workspaceAttention(open, fallback, _ctx.backend().nowSecs(), bold);
         if (RailTile *t = _wsStack->find(_activeKey))
             t->setDot(a.dot());
-        if (!open.workspaceMuted) {
-            n += a.important;
-            unread = unread || a.unread;
-        }
+        if (!open.workspaceMuted)
+            unmuted.push_back(a);
     }
-    unread = unread || n > 0;
-    if (n != _lastBadge)
-        _ctx.app.platform().setBadgeCount(n);
-    const int tray = n > 0 ? 2 : unread ? 1 : 0;
-    if (n != _lastBadge || tray != _lastTray)
-        refreshTrayIcon(n, unread);
-    _lastBadge = n;
+    const Attention sum   = sumAttention(unmuted);
+    const int       n     = sum.important;
+    const AppBadge  badge = appBadge(sum, _settings.badgeLevel == 0);
+    if (badge != _lastBadge)
+        _ctx.app.platform().setBadgeCount(badge.count, badge.dot);
+    const int tray = sum.dot();
+    if (n != _lastBadge.count || tray != _lastTray)
+        refreshTrayIcon(n, sum.unread || n > 0);
+    _lastBadge = badge;
     _lastTray  = tray;
 }
 

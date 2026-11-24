@@ -7,22 +7,26 @@
 #   PR into `release`      build + test everything, publish nothing
 #   push to `release`      (= merging that PR) build + test, then publish:
 #                          GitHub Release (binaries + manifests), Homebrew cask,
-#                          Flathub update PR
+#                          msga's own Flatpak repository (msga.app/flatpak)
 #   Run workflow (manual)  mode "build": the PR checks on any branch;
 #                          mode "draft": also a DRAFT release (invisible to the
 #                          public, no tag until published), the cask on the
-#                          tap's `ci-test` branch, no Flathub — the safe
-#                          end-to-end test
+#                          tap's `ci-test` branch, no Flatpak repository — the
+#                          safe end-to-end test;
+#                          mode "flatpak": the Flatpak repository again, built
+#                          from the latest release tag (no new release)
 #
 # msga.app/download/* redirects to the newest release here (website/msga.app.conf),
 # so a release needs no site deploy. See docs/releasing.md.
 #
 # Secrets (Settings → Secrets and variables → Actions), both optional — the
-# step is skipped without its token:
-#   HOMEBREW_TAP_TOKEN  fine-grained PAT, punarinta/homebrew-msga, Contents: write
-#   FLATHUB_TOKEN       PAT with write access to flathub/com.nisdos.msga
-# Variable (optional): FLATHUB_AUTOMERGE=true merges the Flathub PR by itself
-# once Flathub's test build passes.
+# step is skipped without its secret:
+#   HOMEBREW_TAP_TOKEN    fine-grained PAT, punarinta/homebrew-msga, Contents: write
+#   FLATPAK_SIGNING_KEY   the armored secret GPG key that signs the Flatpak repo
+# The Flatpak repository is a GitHub Pages site of this repo (deployed by the
+# flatpak-site job; msga.app/flatpak/ proxies to it). Flathub isn't fed from
+# here: its policy wants a manifest written by hand, and its own update
+# checker then follows the release tags.
 
 name: Release
 
@@ -34,9 +38,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "build = build and test only; draft = also a draft release + cask on the tap's ci-test branch"
+        description: "build = build and test only; draft = also a draft release + cask on the tap's ci-test branch; flatpak = publish the Flatpak repository from the latest release tag"
         type: choice
-        options: [build, draft]
+        options: [build, draft, flatpak]
         default: build
 
 permissions:
@@ -58,11 +62,17 @@ jobs:
   prepare:
     if: github.repository == 'punarinta/make-slack-great-again'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read # the PR runs and their artifacts (reuse below)
     outputs:
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
       publish: ${{ steps.plan.outputs.publish }}
       draft: ${{ steps.plan.outputs.draft }}
+      reuse: ${{ steps.reuse.outputs.run }}
+      only_flatpak: ${{ steps.plan.outputs.only_flatpak }}
+      ref: ${{ steps.plan.outputs.ref }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -74,35 +84,54 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
-          version="$(grep -m1 'MSGA_VERSION' version.cmake | grep -oE '[0-9]+' | head -1)"
-          [[ -n "$version" ]] || { echo "::error::no MSGA_VERSION in version.cmake"; exit 1; }
+          source_version="$(grep -m1 'MSGA_VERSION' version.cmake | grep -oE '[0-9]+' | head -1)"
+          [[ -n "$source_version" ]] || { echo "::error::no MSGA_VERSION in version.cmake"; exit 1; }
 
           # Release tags are dates (2026-11-18; a second release that day
-          # 2026-11-18-2): Flathub's update checker matches ^[\d-]+$.
+          # 2026-11-18-2).
           prev_tag="$(git tag --list '20[0-9][0-9]-*' --sort=-creatordate | head -1)"
+          # The version that release shipped: its manifest says (the builds
+          # get theirs from here, not from the tag's version.cmake); releases
+          # from before this workflow have none, their version.cmake does.
           prev_version=0
           if [[ -n "$prev_tag" ]]; then
-              prev_version="$(git show "${prev_tag}:version.cmake" 2>/dev/null |
-                  grep -m1 'MSGA_VERSION' | grep -oE '[0-9]+' | head -1 || echo 0)"
+              prev_version="$(gh release download "$prev_tag" -R "$GITHUB_REPOSITORY" \
+                  -p msga-linux-x86_64.manifest -O - 2>/dev/null | jq -r '.version // empty' || true)"
+              [[ "$prev_version" =~ ^[0-9]+$ ]] || prev_version="$(git show "${prev_tag}:version.cmake" 2>/dev/null |
+                  grep -m1 'MSGA_VERSION' | grep -oE '[0-9]+' | head -1 || true)"
+              [[ "$prev_version" =~ ^[0-9]+$ ]] || prev_version=0
           fi
 
+          only_flatpak=false; ref=""
           case "$EVENT" in
               push) publish=true; draft=false ;;
-              workflow_dispatch) if [[ "$MODE" == draft ]]; then publish=true; draft=true;
-                                 else publish=false; draft=false; fi ;;
+              workflow_dispatch)
+                  case "$MODE" in
+                      draft) publish=true; draft=true ;;
+                      flatpak) # the latest release, as it was tagged
+                          publish=false; draft=false; only_flatpak=true; ref="$prev_tag"
+                          [[ -n "$ref" ]] || { echo "::error::no release tag to build the Flatpak from"; exit 1; } ;;
+                      *) publish=false; draft=false ;;
+                  esac ;;
               *) publish=false; draft=false ;;
           esac
 
-          # A release must carry a new version: the in-app updater only
-          # offers a higher one. A PR shows this as a red check before merging;
-          # manual runs only warn.
-          if (( version <= prev_version )); then
-              msg="MSGA_VERSION is ${version}, the last release (${prev_tag}) was ${prev_version}: bump version.cmake"
-              if [[ "$EVENT" == workflow_dispatch ]]; then
-                  echo "::warning::${msg}"
-              else
-                  echo "::error::${msg}"; exit 1
-              fi
+          # The version is never typed: the last release's + 1 (the in-app
+          # updater only offers a higher one), written into version.cmake by
+          # every build job, and back onto master once released. The flatpak
+          # mode rebuilds the last release itself. Without any release yet,
+          # version.cmake's.
+          if [[ "$only_flatpak" == true ]]; then
+              version="$prev_version"
+          elif (( prev_version > 0 )); then
+              version=$((prev_version + 1))
+          else
+              version="$source_version"
+          fi
+          # master normally says the last release (written back after it);
+          # anything else is worth a note, never a failure.
+          if [[ "$source_version" != "$version" && "$source_version" != "$prev_version" ]]; then
+              echo "::notice::version.cmake says ${source_version}; this build is ${version} (last release ${prev_tag:-none}: ${prev_version})"
           fi
 
           day="$(date -u +%F)"
@@ -117,6 +146,8 @@ jobs:
               echo "tag=${tag}"
               echo "publish=${publish}"
               echo "draft=${draft}"
+              echo "only_flatpak=${only_flatpak}"
+              echo "ref=${ref}"
           } >>"$GITHUB_OUTPUT"
           {
               echo "### msga ${version} → ${tag}"
@@ -124,9 +155,53 @@ jobs:
               echo "Publishes: ${publish}$([[ $draft == true ]] && echo ' (draft)')"
           } >>"$GITHUB_STEP_SUMMARY"
 
+      # A PR run notes the source tree it built and tested (GitHub's preview
+      # merge into `release`), so that the merge can publish its binaries.
+      - name: Record the tested tree
+        if: github.event_name == 'pull_request'
+        run: git rev-parse 'HEAD^{tree}' >tested-tree.txt
+      - if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tested-tree
+          path: tested-tree.txt
+          retention-days: 7 # as long as the release-* artifacts
+
+      # Publishing: a successful PR run that tested exactly this tree (nothing
+      # landed on master between its checks and the merge) already built and
+      # tested every platform — its release-* artifacts are published and the
+      # builds below are skipped. Otherwise they run as usual.
+      - id: reuse
+        name: Find a PR run that tested this tree
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          want="release-freebsd release-linux release-macos release-openbsd release-windows"
+          runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow release.yml --event pull_request \
+              --status success -L 20 --json databaseId --jq '.[].databaseId')"
+          for id in $runs; do
+              d="$(mktemp -d)"
+              gh run download "$id" -R "$GITHUB_REPOSITORY" -n tested-tree -D "$d" >/dev/null 2>&1 || continue
+              [[ "$(cat "$d/tested-tree.txt" 2>/dev/null)" == "$tree" ]] || continue
+              have="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/artifacts?per_page=100" \
+                  --jq '[.artifacts[] | select(.expired | not) | .name | select(startswith("release-"))] | unique | join(" ")')"
+              flatpak="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/artifacts?per_page=100" \
+                  --jq '[.artifacts[] | select(.expired | not) | select(.name == "flatpak-repo")] | length')"
+              if [[ "$have" == "$want" && "$flatpak" -gt 0 ]]; then
+                  echo "run=${id}" >>"$GITHUB_OUTPUT"
+                  echo "Reusing the binaries of PR run ${id} (same tree ${tree:0:12}); its symbols-* artifacts are there too." >>"$GITHUB_STEP_SUMMARY"
+                  exit 0
+              fi
+          done
+          echo "No PR run tested this exact tree (${tree:0:12}): building it here." >>"$GITHUB_STEP_SUMMARY"
+
   # ── Linux: static musl binary, tests on musl, X11 smoke launch ─────────────
   linux:
     needs: prepare
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -139,6 +214,8 @@ jobs:
           sudo apt-get update -q
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends xvfb xauth \
               fonts-dejavu-core fonts-liberation2 fonts-noto-core fonts-noto-color-emoji fonts-noto-cjk
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, test, smoke launch
         run: scripts/release-linux-static.sh
       - uses: actions/upload-artifact@v7
@@ -158,6 +235,7 @@ jobs:
   # ── Windows: mingw cross-build in Docker, Wine smoke launch ────────────────
   windows:
     needs: prepare
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -167,6 +245,8 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends wine wine64 xvfb xauth fonts-dejavu-core
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, smoke launch under Wine
         run: scripts/release-windows.sh
       - uses: actions/upload-artifact@v7
@@ -188,6 +268,7 @@ jobs:
   # clang 18 is older than what the code is built with).
   bsd:
     needs: prepare
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
     runs-on: ubuntu-24.04
     container: ubuntu:26.04
     timeout-minutes: 90
@@ -204,6 +285,8 @@ jobs:
           apt-get install -y -q --no-install-recommends ca-certificates git clang lld llvm \
               cmake ninja-build pkgconf libwayland-bin python3 binutils xz-utils zstd
       - uses: actions/checkout@v7
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Cache the sysroot
         uses: actions/cache@v6
         with:
@@ -230,6 +313,7 @@ jobs:
   # tests as a check, for users on older systems (msga runs on 14 and later).
   macos:
     needs: prepare
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
     runs-on: macos-${{ matrix.os }}
     name: macos (${{ matrix.os }})
     timeout-minutes: 120
@@ -243,6 +327,8 @@ jobs:
         run: |
           command -v cmake >/dev/null || brew install cmake
           command -v ninja >/dev/null || brew install ninja
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, test, DMG
         run: scripts/release-mac.sh
       - if: matrix.os == '26'
@@ -261,13 +347,16 @@ jobs:
           path: dist/msga-macos-arm64.dSYM
           retention-days: 90
 
-  # ── Flatpak: the Flathub manifest builds (from this checkout) and lints ────
+  # ── Flatpak: builds (from this checkout) and lints; the repo is kept ──────
   flatpak:
     needs: prepare
+    if: needs.prepare.outputs.reuse == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }} # the release tag in the flatpak mode
       # Only flatpak itself: build-local.sh then builds with Flathub's own
       # org.flatpak.Builder app (current flatpak-builder, appstream, eu-strip,
       # the linter), as Flathub does. Ubuntu 24.04's flatpak-builder and
@@ -282,6 +371,15 @@ jobs:
       # A runner has no login session: no session bus (the Builder app asks
       # the host's flatpak to install runtimes over it: a private one for the
       # build) and no XDG_RUNTIME_DIR (where flatpak keeps its instances).
+      - name: Set the release version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          perl -pi -e "s/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${VERSION})/" version.cmake
+          m=packaging/flatpak/com.nisdos.msga.metainfo.xml
+          grep -q "<release version=\"${VERSION}\"" "$m" ||
+              perl -0pi -e "s|<releases>\n|<releases>\n    <release version=\"${VERSION}\" date=\"$(date -u +%F)\"/>\n|" "$m"
+          grep -m2 'release version' "$m"
       - name: Build and lint
         run: |
           export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -289,15 +387,30 @@ jobs:
           sudo chown "$(id -u):$(id -g)" "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
           dbus-run-session -- packaging/flatpak/build-local.sh --lint
+      # flatpak-builder's repo, for the flatpak-site job (one file: an
+      # artifact keeps no file modes).
+      - name: Keep the repo
+        run: tar -C build-flatpak -cf flatpak-repo.tar repo
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-repo
+          path: flatpak-repo.tar
+          if-no-files-found: error
+          retention-days: 7
 
   # ── Publish: only after every build and test passed ────────────────────────
   publish:
     needs: [prepare, linux, windows, bsd, macos, flatpak]
-    if: needs.prepare.outputs.publish == 'true'
+    # Built here (every build succeeded) or reused from a PR run (all skipped).
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      needs.prepare.outputs.publish == 'true' &&
+      (needs.prepare.outputs.reuse != '' || !contains(needs.*.result, 'failure'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
+      actions: read # a PR run's artifacts
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
@@ -305,11 +418,20 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - if: needs.prepare.outputs.reuse == ''
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
           merge-multiple: true
+      - if: needs.prepare.outputs.reuse != ''
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+          run-id: ${{ needs.prepare.outputs.reuse }}
+          github-token: ${{ github.token }}
 
       # Each manifest must describe the binary next to it: this version and
       # its actual hash (the in-app updater and the cask both trust it).
@@ -368,32 +490,90 @@ jobs:
           git -C tap push -q --force-with-lease origin "$branch"
           echo "Cask: msga ${VERSION} on homebrew-msga/${branch}" >>"$GITHUB_STEP_SUMMARY"
 
-      # Flathub builds the Flatpak itself, from the tag just created: the
-      # pipeline opens the version-bump PR on flathub/com.nisdos.msga.
-      - name: Flathub update
+      # The source on master says the version just released: builds from it
+      # (and the next release's checks) agree with what users have.
+      - name: Version on master
         if: needs.prepare.outputs.draft != 'true'
-        env:
-          TOKEN: ${{ secrets.FLATHUB_TOKEN }}
-          AUTOMERGE: ${{ vars.FLATHUB_AUTOMERGE }}
         run: |
           set -euo pipefail
-          if [[ -z "$TOKEN" ]]; then
-              echo "::warning::no FLATHUB_TOKEN secret: Flathub not updated"; exit 0
+          git fetch -q origin master
+          git checkout -q -B master origin/master
+          perl -pi -e "s/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${VERSION})/" version.cmake
+          if git diff --quiet; then echo "master already says ${VERSION}."; exit 0; fi
+          git commit -q -m "version ${VERSION}" -- version.cmake
+          git push -q origin master
+          echo "master: version ${VERSION}" >>"$GITHUB_STEP_SUMMARY"
+
+  # ── msga's own Flatpak repository: signed, on GitHub Pages ─────────────────
+  # After a published release (or in the flatpak mode): the Flatpak job's repo
+  # (or the reused PR run's), the app on the `stable` branch, signed with
+  # FLATPAK_SIGNING_KEY; packaging/flatpak/publish-repo.sh makes the site and
+  # the .flatpakrepo/.flatpakref users start from. Served at msga.app/flatpak/
+  # (website/msga.app.conf proxies it).
+  flatpak-site:
+    needs: [prepare, flatpak, publish]
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      ((needs.prepare.outputs.only_flatpak == 'true' && needs.flatpak.result == 'success') ||
+       (needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.draft != 'true' &&
+        needs.publish.result == 'success'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read # a reused PR run's artifact
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      SIGNING_KEY: ${{ secrets.FLATPAK_SIGNING_KEY }}
+    steps:
+      - name: Check the signing key
+        id: key
+        run: |
+          if [[ -z "$SIGNING_KEY" ]]; then
+              echo "::warning::no FLATPAK_SIGNING_KEY secret: the Flatpak repository isn't published"
+              echo "ok=false" >>"$GITHUB_OUTPUT"
+          else
+              echo "ok=true" >>"$GITHUB_OUTPUT"
           fi
-          export GH_TOKEN="$TOKEN"
-          git clone -q "https://x-access-token:${TOKEN}@github.com/flathub/com.nisdos.msga.git" flathub
-          branch="msga-${TAG}"
-          git -C flathub checkout -q -b "$branch"
-          sed -e "s/^\(\s*tag: \).*/\1${TAG}/" -e "s/^\(\s*commit: \).*/\1${GITHUB_SHA}/" \
-              packaging/flatpak/com.nisdos.msga.yml >flathub/com.nisdos.msga.yml
-          if git -C flathub diff --quiet; then echo "Flathub manifest already current."; exit 0; fi
-          git -C flathub commit -q -am "msga ${VERSION} (${TAG})"
-          git -C flathub push -q origin "$branch"
-          url="$(gh pr create -R flathub/com.nisdos.msga --head "$branch" \
-              --title "msga ${VERSION} (${TAG})" \
-              --body "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}")"
-          echo "Flathub PR: ${url}" >>"$GITHUB_STEP_SUMMARY"
-          if [[ "$AUTOMERGE" == true ]]; then
-              gh pr merge "$url" --auto --merge ||
-                  echo "::warning::auto-merge not available on the Flathub repo: merge ${url} by hand"
-          fi
+      # This workflow's own commit: publish-repo.sh (a release tag built in the
+      # flatpak mode may predate it).
+      - if: steps.key.outputs.ok == 'true'
+        uses: actions/checkout@v7
+      - if: steps.key.outputs.ok == 'true' && needs.prepare.outputs.reuse == ''
+        uses: actions/download-artifact@v8
+        with:
+          name: flatpak-repo
+      - if: steps.key.outputs.ok == 'true' && needs.prepare.outputs.reuse != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: flatpak-repo
+          run-id: ${{ needs.prepare.outputs.reuse }}
+          github-token: ${{ github.token }}
+      - name: Install flatpak and ostree
+        if: steps.key.outputs.ok == 'true'
+        timeout-minutes: 45
+        run: |
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends flatpak ostree
+      - name: Sign and make the site
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          set -euo pipefail
+          export GPG_HOMEDIR="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GPG_HOMEDIR"
+          printf '%s\n' "$SIGNING_KEY" | gpg --homedir "$GPG_HOMEDIR" --batch --import
+          export GPG_KEY_ID="$(gpg --homedir "$GPG_HOMEDIR" --list-secret-keys --with-colons |
+              awk -F: '/^fpr/ { print $10; exit }')"
+          mkdir src-repo && tar -C src-repo -xf flatpak-repo.tar
+          packaging/flatpak/publish-repo.sh src-repo/repo site https://msga.app/flatpak
+      - if: steps.key.outputs.ok == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deploy
+        if: steps.key.outputs.ok == 'true'
+        uses: actions/deploy-pages@v5

@@ -60,6 +60,32 @@ void Backend::search(std::string, std::function<void(std::vector<SearchHit>)> do
         done({});
 }
 
+void Backend::loadConversationFiles(ConvRef conv, int page, std::function<void(FilesPage)> done) {
+    FilesPage out;
+    if (conv < _store.conversationCount() && page <= 1) {
+        const Conversation &c    = _store.conversation(conv);
+        const auto          take = [&out](const Message &m) {
+            if (m.pending)
+                return;
+            for (const File &f : m.files())
+                out.files.push_back({f, m.user, tsSecs(m.ts)});
+        };
+        for (const Message &m : c.messages)
+            take(m);
+        for (const Thread &t : c.threads)
+            for (const Message &m : t.replies)
+                if (m.ts != t.root) // the root is among the messages
+                    take(m);
+        std::stable_sort(
+            out.files.begin(), out.files.end(), [](const SharedFile &a, const SharedFile &b) {
+                return a.created > b.created;
+            }
+        );
+    }
+    if (done)
+        done(std::move(out));
+}
+
 // ── Sidebar sections, kept in this client ──────────────────────────────────
 
 void Backend::createSection(std::string name, std::string emoji, ConvRef first) {

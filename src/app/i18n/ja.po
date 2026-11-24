@@ -838,7 +838,7 @@ msgstr "%1 · %2による文字起こし"
 msgid "Transcript (auto-generated)"
 msgstr "文字起こし（自動生成）"
 
-#: src/app/screens/messages/audio_card.cpp
+#: src/app/screens/messages/audio_card.cpp src/app/screens/shell/files_page.cpp
 msgid "Loading…"
 msgstr "読み込み中…"
 
@@ -1327,7 +1327,7 @@ msgstr "%1が通話に参加しています"
 msgid "Waiting for people to join"
 msgstr "参加者を待っています"
 
-#: src/app/screens/messages/rows.cpp src/app/screens/shell/canvas_viewer.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/canvas_viewer.cpp src/app/screens/shell/files_page.cpp
 msgid "Canvas"
 msgstr "canvas"
 
@@ -1956,6 +1956,14 @@ msgstr "サウンド:"
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Test"
 msgstr "テスト"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "App icon badge"
+msgstr "アプリアイコンのバッジ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "All unread messages"
+msgstr "すべての未読メッセージ"
 
 #: src/app/screens/settings/settings_dialog.cpp
 msgid "Sample notifications"
@@ -3098,6 +3106,14 @@ msgstr "%1からログアウト"
 msgid "Sort"
 msgstr "並べ替え"
 
+#: src/app/screens/shell/files_page.cpp
+msgid "Couldn't load the files."
+msgstr "ファイルを読み込めませんでした。"
+
+#: src/app/screens/shell/files_page.cpp
+msgid "No files have been shared here yet."
+msgstr "ここではまだファイルが共有されていません。"
+
 #: src/app/screens/shell/gif_search.cpp
 msgid "GIPHY rate limit reached. Try again shortly."
 msgstr "GIPHYのレート制限に達しました。しばらくしてからもう一度お試しください。"
@@ -3182,6 +3198,14 @@ msgstr "メッセージ"
 #: src/app/screens/shell/header.cpp
 msgid "Add canvas"
 msgstr "canvasを追加"
+
+#: src/app/screens/shell/header.cpp
+msgid "Files"
+msgstr "ファイル"
+
+#: src/app/screens/shell/header.cpp
+msgid "Bookmarks"
+msgstr "ブックマーク"
 
 #: src/app/screens/shell/header.cpp
 msgid "Untitled"

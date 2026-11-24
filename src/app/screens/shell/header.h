@@ -108,13 +108,24 @@ protected:
     bool                         _accent = false;
 };
 
-// The conversation tabs: Messages, then the canvas.
+// The conversation tabs: Messages, the canvas, Files, then Bookmarks.
 class ConvTabs : public TabStrip {
 public:
+    enum : int { kMessages = 0, kCanvas = 1, kFiles = 2, kBookmarks = 3 };
     ConvTabs();
     // hasCanvas: the second tab names the canvas (title, "Untitled"), else
-    // offers "Add canvas"; visible = false leaves only Messages.
-    void setCanvas(bool visible, bool hasCanvas, std::string title);
+    // offers "Add canvas"; visible = false hides it.
+    void                  setCanvas(bool visible, bool hasCanvas, std::string title);
+    // The files shared in the conversation (where the service lists them).
+    void                  setFiles(bool visible);
+    // Shown while the conversation has bookmarks. A click doesn't switch
+    // tabs: it calls onBookmarks (the shell's menu of them under the tab).
+    void                  setBookmarks(bool visible);
+    std::function<void()> onBookmarks;
+    // Files and Bookmarks as icons alone (the strip is too narrow for all).
+    bool                  compact() const;
+
+    void layout() override;
 };
 
 } // namespace shell

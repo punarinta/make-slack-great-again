@@ -1,1 +1,1 @@
-set(MSGA_VERSION 47)   # increment on each public release
+set(MSGA_VERSION 47)   # releases set their own (CI: the last release plus one); this is for local builds

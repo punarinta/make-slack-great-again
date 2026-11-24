@@ -714,6 +714,7 @@ void Backend::dispatch(Tracked &t) {
                 return;
             }
             t->launching = false;
+            t->resuming  = false;
             if (sessionId.empty()) {
                 t->sending       = false;
                 t->stopRequested = false;
@@ -768,6 +769,7 @@ void Backend::dispatch(Tracked &t) {
         );
     } else {
         const bool background = t.info.kind == SessionInfo::Kind::Background;
+        t.resuming            = true;
         // A background session's worker idles on after a turn; it has to be
         // stopped before the session can be resumed (see Launcher).
         _host->resume(

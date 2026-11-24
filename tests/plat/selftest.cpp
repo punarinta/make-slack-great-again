@@ -44,8 +44,13 @@ constexpr uint32_t kRight   = 0xff2040d0;
 std::unique_ptr<App>    g_app;
 std::unique_ptr<Window> g_win;
 std::vector<Event>      g_events;
-int                     g_frames    = 0;
-bool                    g_skipPaint = false; // Frames present nothing, ask for another
+int                     g_frames          = 0;
+bool                    g_skipPaint       = false; // Frames present nothing, ask for another
+// The scale the app last learnt for g_win: at creation, then from each
+// Resized. A Frame painted at another scale means a scale change went
+// unreported (issue #182: a HiDPI Wayland window kept 1x text).
+double                  g_seenScale       = 0;
+int                     g_staleScaleFrame = 0;
 
 bool pumpUntil(const std::function<bool()> &pred, int ms) {
     const auto end = Clock::now() + std::chrono::milliseconds(ms);
@@ -70,7 +75,9 @@ void paint(Window &w) {
         w.requestFrame(); // from inside the Frame, as an animating app does
         return;
     }
-    Canvas    c    = w.beginPaint();
+    Canvas c = w.beginPaint();
+    if (&w == g_win.get() && c.scale != g_seenScale && !g_staleScaleFrame)
+        g_staleScaleFrame = g_frames + 1;
     const int capH = int(std::lround(30 * c.scale));
     for (int y = 0; y < c.height; ++y) {
         uint32_t *row = c.pixels + size_t(y) * c.stride;
@@ -104,6 +111,11 @@ void caseFirstFrame() {
     const double s = g_win->scale();
     CHECK(s >= 0.5 && s <= 4.0);
     std::printf("    size %dx%d scale %.3f\n", g_win->size().w, g_win->size().h, s);
+    // Every scale the window paints at was announced (creation or Resized).
+    if (g_staleScaleFrame)
+        std::printf("    frame %d painted at a scale never announced\n", g_staleScaleFrame);
+    CHECK(g_staleScaleFrame == 0);
+    CHECK(g_seenScale == s);
 }
 
 // An app that asks for a frame from every Frame but presents nothing (no
@@ -770,9 +782,17 @@ void caseBadge() {
         return;
     }
     CHECK(seen == 7);
+    CHECK(!hooks()->badgeDot()); // a count wins over the dot
     g_app->setBadgeCount(0);
     pumpFor(100);
     CHECK(hooks()->badgeCount() == 0);
+    // The dot reads as a count of 0; only some OSes show it (not launchers).
+    g_app->setBadgeCount(0, true);
+    pumpFor(100);
+    CHECK(hooks()->badgeCount() == 0);
+    g_app->setBadgeCount(0);
+    pumpFor(100);
+    CHECK(!hooks()->badgeDot());
 }
 
 void caseTray() {
@@ -1479,6 +1499,8 @@ int main(int argc, char **argv) {
     std::printf("# backend: %s\n", g_app->backendName());
     g_app->setEventHandler([](const Event &e) {
         g_events.push_back(e);
+        if (e.type == EventType::Resized && e.window && e.window == g_win.get())
+            g_seenScale = e.window->scale();
         if (e.type == EventType::Frame && e.window)
             paint(*e.window);
     });
@@ -1492,6 +1514,7 @@ int main(int argc, char **argv) {
         std::printf("FAIL create window\n");
         return 1;
     }
+    g_seenScale = g_win->scale();
     g_win->setHitTest([](Point p) { return p.y < 30 ? HitArea::Caption : HitArea::Client; });
 
     runCase("window maps and gets a first Frame", caseFirstFrame);

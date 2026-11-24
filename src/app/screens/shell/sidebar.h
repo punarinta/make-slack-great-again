@@ -30,6 +30,7 @@
 
 #include "screens/common/context.h"
 #include "screens/shell/avatars.h"
+#include "screens/shell/sidebar_model.h"
 #include "ui/ui.h"
 
 #include <functional>
@@ -40,32 +41,6 @@
 #include <vector>
 
 namespace shell {
-
-// The notification window: a message older than this never notifies, and a
-// conversation idle for longer neither badges nor counts.
-inline constexpr int64_t kMaxNotifyAgeSecs = 30 * 86400; // 30 days
-
-// A workspace's share of the tray dot, the launcher badge and its rail
-// tile's dot: `important` = unread direct
-// messages + mentions (an agent workspace: only what needs you, its
-// answers), `unread` = other unread activity in channels on "All new posts"
-// (`fallback`: the global level). Muted, "Nothing", left and closed
-// conversations, and ones idle past the notification window, count for
-// neither.
-struct Attention {
-    int  important = 0;
-    bool unread    = false;
-    int  dot() const { return important > 0 ? 2 : unread ? 1 : 0; } // 0, 1 blue, 2 red
-    bool operator==(const Attention &) const = default;
-};
-Attention
-workspaceAttention(const model::Store &store, model::NotifyLevel fallback, int64_t nowSecs);
-
-// The liveness filter, shared by the sidebar and the
-// quick switcher: a DM outlives its peer (the service never prunes it), so
-// one whose peer was deactivated or never resolves to a name is not listed.
-// A peer not loaded yet (a placeholder) is let through.
-bool deadDm(const model::Store &store, const model::Conversation &c);
 
 // How a section orders its rows: as listed (the service's order, a custom
 // section's own), by name, or most recent activity first; unreads on top
@@ -265,7 +240,6 @@ private:
     // The section kind this conversation belongs in. Shared by rebuild() and
     // the Meta-event flip check so they can't disagree.
     Kind               classify(model::ConvRef ref) const;
-    Kind               classify(model::ConvRef ref, bool drafted) const;
     bool               misplaced(model::ConvRef ref) const; // its row would move
     bool               relevant(model::ConvRef c) const;
     void               applyCollapse(SectionHeader *h);

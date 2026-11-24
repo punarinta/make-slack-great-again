@@ -73,6 +73,7 @@ const struct {
     {"names", &Settings::names, 0, 2},
     {"quickReactions", &Settings::quickReactions, 0, 2},
     {"notifyLevel", &Settings::notifyLevel, 0, 1},
+    {"badgeLevel", &Settings::badgeLevel, 0, 1},
     {"cacheLimitMb", &Settings::cacheLimitMb, 50, 10240},
     {"presence", &Settings::presence, 0, 2},
     {"emojiSkinTone", &Settings::emojiSkinTone, 0, 6},

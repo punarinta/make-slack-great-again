@@ -219,9 +219,8 @@ void addUnique(std::vector<std::string> &v, const std::string &s, size_t cap = S
 } // namespace
 
 llm::VoiceContext
-buildVoiceContext(screens::Context &ctx, model::ConvRef conv, model::Ts thread, int maxMessages) {
-    llm::VoiceContext   out;
-    const model::Store &st = ctx.store();
+buildVoiceContext(const model::Store &st, model::ConvRef conv, model::Ts thread, int maxMessages) {
+    llm::VoiceContext out;
     if (conv >= st.conversationCount())
         return out;
     const model::Conversation &c     = st.conversation(conv);
@@ -240,7 +239,7 @@ buildVoiceContext(screens::Context &ctx, model::ConvRef conv, model::Ts thread, 
             const model::Message &m = *it;
             if (m.pending || !isConversational(m))
                 continue;
-            std::string text(str::trim(screens::plainText(ctx.store(), m.text)));
+            std::string text(str::trim(screens::plainText(st, m.text)));
             if (text.empty())
                 continue;
             text = utf8::ellipsize(text, kMaxMessageChars);
