@@ -68,6 +68,8 @@ public:
 
     // Launcher/taskbar/Dock badge as the OS shows it; -1 if unreadable.
     virtual int  badgeCount() { return -1; }
+    // The badge shows setBadgeCount's dot (a count of 0); false if unreadable.
+    virtual bool badgeDot() { return false; }
     // Whether the window is currently flagged as wanting attention.
     virtual bool wantsAttention(Window &w, bool *out) { return false; }
 

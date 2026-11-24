@@ -493,7 +493,7 @@ public:
     }
     void withdrawNotification(uint64_t id) override { port_notify_withdraw(_app, id); }
     bool launchedFromNotification() override { return port_launched_from_notification(_app); }
-    void setBadgeCount(int count) override { port_set_badge(_app, count); }
+    void setBadgeCount(int count, bool) override { port_set_badge(_app, count); } // a count only
 
     std::vector<Monitor> monitors() const override {
         port_monitor buf[16];

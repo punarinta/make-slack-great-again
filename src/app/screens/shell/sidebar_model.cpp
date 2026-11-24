@@ -243,7 +243,9 @@ SidebarLists buildSidebarLists(
     return out;
 }
 
-Attention workspaceAttention(const model::Store &st, model::NotifyLevel fallback, int64_t nowSecs) {
+Attention workspaceAttention(
+    const model::Store &st, model::NotifyLevel fallback, int64_t nowSecs, bool highlightMentionsOnly
+) {
     Attention a;
     for (ConvRef c = 0; c < st.conversationCount(); ++c) {
         const auto &cv = st.conversation(c);
@@ -252,6 +254,7 @@ Attention workspaceAttention(const model::Store &st, model::NotifyLevel fallback
         const model::NotifyLevel level = cv.effectiveNotify(fallback);
         if (level == model::NotifyLevel::Nothing)
             continue;
+        a.anyUnread = a.anyUnread || sidebarPaintsUnread(cv, fallback, highlightMentionsOnly);
         if (st.answersAreMentions) // an agent session: only what needs you
             a.important += int(cv.mentions);
         else if (cv.isDirect())
@@ -268,9 +271,14 @@ Attention sumAttention(const std::vector<Attention> &atts) {
     Attention sum;
     for (const Attention &a : atts) {
         sum.important += a.important;
-        sum.unread = sum.unread || a.unread;
+        sum.unread    = sum.unread || a.unread;
+        sum.anyUnread = sum.anyUnread || a.anyUnread;
     }
     return sum;
+}
+
+AppBadge appBadge(const Attention &sum, bool allUnread) {
+    return {sum.important, sum.important == 0 && allUnread && sum.anyUnread};
 }
 
 } // namespace shell

@@ -1958,6 +1958,14 @@ msgid "Test"
 msgstr "テスト"
 
 #: src/app/screens/settings/settings_dialog.cpp
+msgid "App icon badge"
+msgstr "アプリアイコンのバッジ"
+
+#: src/app/screens/settings/settings_dialog.cpp
+msgid "All unread messages"
+msgstr "すべての未読メッセージ"
+
+#: src/app/screens/settings/settings_dialog.cpp
 msgid "Sample notifications"
 msgstr "通知のサンプル"
 

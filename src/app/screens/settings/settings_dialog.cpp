@@ -1153,6 +1153,15 @@ void SettingsDialog::buildNotifications() {
                 sounds::play(_ctx.app.platform(), _p->soundIds[i]);
         };
 
+    // The Dock / taskbar / launcher badge: not a notification, so the
+    // master switch leaves it enabled.
+    heading(_content, tr("App icon badge"));
+    radios(
+        _content,
+        {tr("All unread messages"), tr("Direct messages and mentions only")},
+        &d.badgeLevel
+    );
+
     heading(_content, tr("Sample notifications"));
     auto *sr = row(_content);
     _p->sample =
@@ -1212,6 +1221,7 @@ void SettingsDialog::saveNotifications() {
     for (bool shell::Settings::*f : kNotifyBools)
         _s.*f = _draft.*f;
     _s.notifyLevel = _draft.notifyLevel;
+    _s.badgeLevel  = _draft.badgeLevel;
     _s.soundId     = _draft.soundId;
     changed();
     close();

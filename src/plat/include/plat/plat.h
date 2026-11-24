@@ -801,7 +801,10 @@ public:
     virtual bool launchedFromNotification() { return false; }
 
     // Unread count on the Dock icon / taskbar button / launcher entry; 0 clears.
-    virtual void setBadgeCount(int count) {}
+    // `dot` with a count of 0: unread activity without a number (the Dock's
+    // "•", a plain disc on the taskbar); launcher entries have nothing for
+    // it and stay clear. A count > 0 always wins.
+    virtual void setBadgeCount(int count, bool dot = false) {}
 
     // ── Monitors ────────────────────────────────────────────────────────────
     virtual std::vector<Monitor> monitors() const { return {}; }

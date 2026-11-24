@@ -285,9 +285,9 @@ void drawGlyph(Image &img, int glyph, int x0, int y0, int s, uint32_t argb) {
 }
 } // namespace
 
-Image badgeImage(int count, int size) {
+Image badgeImage(int count, bool dot, int size) {
     Image img{size, size, std::vector<uint32_t>(size_t(size) * size, 0)};
-    if (count <= 0 || size <= 0)
+    if ((count <= 0 && !dot) || size <= 0)
         return img;
     // The disc, anti-aliased by 4×4 supersampling; premultiplied red.
     const double r = size / 2.0;
@@ -305,8 +305,31 @@ Image badgeImage(int count, int size) {
                 (a << 24) | ((0xd9 * a / 255) << 16) | ((0x30 * a / 255) << 8) | (0x25 * a / 255);
         }
     const uint32_t white = 0xffffffff;
-    const int      s     = std::max(1, int(size * 0.625 / 5)); // digit height ≈ 5/8 of the disc
-    const int      digit = std::min(count, 9);
+    if (count <= 0) {
+        // The dot: white over the (opaque there) red, a third of the disc
+        // across, anti-aliased the same way.
+        const double d = r / 3;
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                int in = 0;
+                for (int sy = 0; sy < 4; ++sy)
+                    for (int sx = 0; sx < 4; ++sx) {
+                        const double dx = x + (sx + 0.5) / 4 - r, dy = y + (sy + 0.5) / 4 - r;
+                        in += dx * dx + dy * dy <= d * d;
+                    }
+                if (!in)
+                    continue;
+                uint32_t &px = img.pixels[size_t(y) * size + x];
+                auto      ch = [&](int shift) {
+                    const uint32_t c = (px >> shift) & 0xff;
+                    return (c + (255 - c) * uint32_t(in) / 16) << shift;
+                };
+                px = (px & 0xff000000U) | ch(16) | ch(8) | ch(0);
+            }
+        return img;
+    }
+    const int s     = std::max(1, int(size * 0.625 / 5)); // digit height ≈ 5/8 of the disc
+    const int digit = std::min(count, 9);
     if (count <= 9) {
         drawGlyph(img, digit, (size - 3 * s) / 2, (size - 5 * s) / 2, s, white);
     } else {

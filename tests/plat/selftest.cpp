@@ -782,9 +782,17 @@ void caseBadge() {
         return;
     }
     CHECK(seen == 7);
+    CHECK(!hooks()->badgeDot()); // a count wins over the dot
     g_app->setBadgeCount(0);
     pumpFor(100);
     CHECK(hooks()->badgeCount() == 0);
+    // The dot reads as a count of 0; only some OSes show it (not launchers).
+    g_app->setBadgeCount(0, true);
+    pumpFor(100);
+    CHECK(hooks()->badgeCount() == 0);
+    g_app->setBadgeCount(0);
+    pumpFor(100);
+    CHECK(!hooks()->badgeDot());
 }
 
 void caseTray() {

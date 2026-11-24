@@ -141,20 +141,37 @@ SidebarLists buildSidebarLists(
 // The workspace's share of the tray dot, launcher badge and rail tile dot.
 // - `important`: unread DMs + mentions (agent workspace: only its answers, what needs you)
 // - `unread`: other unread activity in "All new posts" channels (`fallback`: the global level)
-// - muted, "Nothing", left, closed, and idle past kMaxNotifyAgeSecs count for neither
+// - `anyUnread`: some conversation the sidebar paints unread (sidebarPaintsUnread,
+//   `highlightMentionsOnly` as there): the app icon badge's dot, "All unread messages"
+// - muted, "Nothing", left, closed, and idle past kMaxNotifyAgeSecs count for none
 struct Attention {
     int  important = 0;
     bool unread    = false;
+    bool anyUnread = false;
     int  dot() const { return important > 0 ? 2 : unread ? 1 : 0; } // 0, 1 blue, 2 red
     bool operator==(const Attention &) const = default;
 };
-Attention
-workspaceAttention(const model::Store &store, model::NotifyLevel fallback, int64_t nowSecs);
+Attention workspaceAttention(
+    const model::Store &store,
+    model::NotifyLevel  fallback,
+    int64_t             nowSecs,
+    bool                highlightMentionsOnly = true
+);
 
 // The launcher badge and tray dot's share across every open workspace: each
 // workspace's own dot is its own Attention, this is just their sum -- a
 // muted workspace still shows its tile's dot, but doesn't count toward
 // these (the caller excludes it, so it's not in `atts`).
 Attention sumAttention(const std::vector<Attention> &atts);
+
+// The app icon badge (Dock, taskbar, launcher) for the sum of the
+// workspaces: DMs + mentions as the number; with "All unread messages"
+// (`allUnread`), other unread conversations show as a dot when there is no number.
+struct AppBadge {
+    int  count                              = 0;
+    bool dot                                = false;
+    bool operator==(const AppBadge &) const = default;
+};
+AppBadge appBadge(const Attention &sum, bool allUnread);
 
 } // namespace shell

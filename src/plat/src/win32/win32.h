@@ -201,8 +201,9 @@ std::string bmpFileToPng(std::string_view bmp);
 void        bindWic();
 void        releaseWic();
 // The taskbar overlay: a red disc with the count ("9+" past nine) drawn by
-// a tiny built-in bitmap font, since plat has no text rendering.
-Image       badgeImage(int count, int size);
+// a tiny built-in bitmap font, since plat has no text rendering; with a
+// count of 0 and `dot`, the disc with a white dot in its middle.
+Image       badgeImage(int count, bool dot, int size);
 bool        writeFile(const std::wstring &path, std::string_view bytes);
 // fitImage for a slot of `size` physical pixels at `scale` physical/logical:
 // candidates of equal pixel size are tie-broken by the Image::scale closest
@@ -455,7 +456,7 @@ public:
     bool                  notificationsAvailable() const override;
     bool                  notify(uint64_t id, const Notification &n) override;
     void                  withdrawNotification(uint64_t id) override;
-    void                  setBadgeCount(int count) override;
+    void                  setBadgeCount(int count, bool dot) override;
 
     bool darkMode() const override;
     int  doubleClickMs() const override { return int(GetDoubleClickTime()); }

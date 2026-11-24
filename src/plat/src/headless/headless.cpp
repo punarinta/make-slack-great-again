@@ -256,7 +256,10 @@ public:
     }
     // Gone from the "server": a probe no longer finds it.
     void withdrawNotification(uint64_t id) override { notifications.erase(id); }
-    void setBadgeCount(int n) override { badge = n; }
+    void setBadgeCount(int n, bool dot) override {
+        badge    = n;
+        dotBadge = n <= 0 && dot;
+    }
 
     // ── Round 3 ─────────────────────────────────────────────────────────────
     // Two fake monitors side by side, the second HiDPI.
@@ -518,6 +521,7 @@ public:
     uint64_t maxNotificationId() const override { return maxNotifyId; }
     size_t   notificationCount() const override { return notifications.size(); }
     int      badgeCount() override { return badge; }
+    bool     badgeDot() override { return dotBadge; }
     bool     wantsAttention(Window &w, bool *out) override {
         *out = static_cast<HeadlessWindow &>(w).attention;
         return true;
@@ -535,6 +539,7 @@ public:
     std::map<uint64_t, Notification> notifications;
     uint64_t                         maxNotifyId = 0; // withdrawn ones too
     int                              badge       = 0;
+    bool                             dotBadge    = false;
 
 private:
     Event dropEvent(EventType t, Point p, bool withData) {

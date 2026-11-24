@@ -398,6 +398,37 @@ TEST("sidebar_model: sumAttention — important adds, unread ORs, empty is quiet
     CHECK(onlyUnread.dot() == 1); // no mentions anywhere, but one workspace has unread
 }
 
+TEST("sidebar_model: appBadge — DMs and mentions count; the dot only for \"All unread\"") {
+    Store   s;
+    ConvRef quiet                = addChannel(s, "C1");
+    s.conversation(quiet).unread = 4;
+    s.conversation(quiet).notify = NotifyLevel::Mentions; // mentions only, no mention
+
+    // Not on the tray's blue dot (a mentions-only channel), but bold in the
+    // sidebar by default, so "All unread messages" dots the app icon.
+    Attention att = workspaceAttention(s, NotifyLevel::All, 1'000'000);
+    CHECK(att.important == 0 && !att.unread && att.anyUnread);
+    CHECK(appBadge(att, false) == (AppBadge{0, false})); // "DMs and mentions only"
+    CHECK(appBadge(att, true) == (AppBadge{0, true}));
+    // The sidebar doesn't highlight it: neither does the badge.
+    CHECK_FALSE(workspaceAttention(s, NotifyLevel::All, 1'000'000, false).anyUnread);
+    // Muted counts for nothing.
+    s.conversation(quiet).muted = true;
+    CHECK_FALSE(workspaceAttention(s, NotifyLevel::All, 1'000'000).anyUnread);
+    s.conversation(quiet).muted = false;
+
+    // A mention: the number wins over the dot.
+    s.conversation(quiet).mentions = 1;
+    att                            = workspaceAttention(s, NotifyLevel::All, 1'000'000);
+    CHECK(appBadge(att, true) == (AppBadge{1, false}));
+    CHECK(appBadge(att, false) == (AppBadge{1, false}));
+
+    // Summed across workspaces, like the tray's.
+    const Attention sum = sumAttention({{0, false, false}, {0, false, true}});
+    CHECK(sum.anyUnread && appBadge(sum, true).dot);
+    CHECK_FALSE(appBadge(sumAttention({}), true).dot);
+}
+
 TEST("sidebar_model: redCount — muted/stale are 0, a DM's unread vs. a channel's mentions") {
     Store         s;
     const int64_t now = 1'000'000;
