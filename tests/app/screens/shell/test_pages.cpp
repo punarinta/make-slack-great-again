@@ -13,6 +13,7 @@
 #include "base/time.h"
 #include "screens/settings/settings_dialog.h"
 #include "screens/shell/fuzzy_match.h"
+#include "screens/shell/header.h"
 #include "screens/shell/quick_switcher.h"
 #include "screens/shell/saved_page.h"
 #include "screens/shell/shell.h"
@@ -960,6 +961,9 @@ TEST("pages: hovering sidebar rows reshapes no text") {
         app().platform().testHooks()->injectPointerMove(h.win->native(), {sb.right() + 300, 400});
         app().pump(0);
     };
+    // The fixture's bookmarks arrive a fake round trip after the open and add
+    // the header's Bookmarks tab: on a slow machine that lands mid-sweep.
+    REQUIRE(until([&] { return h.sh->tabs().tab(shell::ConvTabs::kBookmarks)->visible(); }));
     sweep(); // anything shaped lazily on a first hover (none expected) is done
     const size_t n0 = text::layoutBuilds();
     sweep();
