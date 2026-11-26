@@ -459,6 +459,46 @@ private:
     bool _plus;
 };
 
+// A status as the official client shows it over the emoji: "🤖 AI Workshop"
+// (the shortcode when there is no text; no glyph for a custom emoji), then,
+// when it ends: "Until 23:30" today, "Until Nov 28, 10:00" later.
+std::string statusTip(const model::Store &store, const model::User &u, int64_t now) {
+    if (u.statusEmoji.empty() && u.statusText.empty())
+        return {};
+    std::string tip = u.statusText.empty() ? str::concat({":", u.statusEmoji, ":"}) : u.statusText;
+    if (!u.statusEmoji.empty()) {
+        const std::string glyph = store.emojiFor(u.statusEmoji).unicode;
+        if (!glyph.empty())
+            tip = str::concat({glyph, " ", tip});
+    }
+    if (u.statusExpiry <= now) // never ends (0), or ended and not swept yet
+        return tip;
+    const base::CivilTime e = base::localTime(u.statusExpiry), n = base::localTime(now);
+    const bool            today = e.year == n.year && e.month == n.month && e.day == n.day;
+    return str::concat(
+        {tip,
+         "\n",
+         i18n::arg(
+             tr("Until %1"),
+             today ? base::formatTime(u.statusExpiry) : base::formatDateTime(u.statusExpiry)
+         )}
+    );
+}
+
+// The status emoji after a DM's name (a glyph or a custom emoji's image): its
+// own hover target, so resting on it shows the status (statusTip), read when
+// shown, so a status text changed since the row was built is current.
+class StatusEmoji final : public View {
+public:
+    explicit StatusEmoji(std::function<std::string()> tip) : _tip(std::move(tip)) {
+        style().row().items(Align::Center).margins(4, 0, 0, 0).noShrink();
+    }
+    std::string tooltip() const override { return _tip(); }
+
+private:
+    std::function<std::string()> _tip;
+};
+
 // The sidebar's huddle pill: the first participant's avatar, then an
 // accent pill (headphones, the participant count) — a click joins instead
 // of opening the conversation. kHuddlePad / kHuddleIcon / kHuddleGap.
@@ -546,14 +586,24 @@ public:
                     .margins(6, 0, 0, 0);
             if (!u.statusEmoji.empty()) {
                 const model::Store::EmojiGlyph g = store.emojiFor(u.statusEmoji);
-                if (!g.unicode.empty()) {
-                    auto *s = add<Label>(g.unicode, Font::Body);
-                    s->style().margins(4, 0, 0, 0).noShrink();
-                } else if (!g.image.empty()) {
-                    auto *s = add<Image>();
-                    s->style().size(15, 15).margins(4, 0, 0, 0).noShrink();
-                    s->setFit(Image::Fit::Contain);
-                    s->setBitmap(sb._avatars.get(g.image, 30));
+                if (g.resolved()) {
+                    auto *s = add<StatusEmoji>([this] {
+                        const auto &st = sidebar._ctx.store();
+                        return statusTip(
+                            st,
+                            st.user(st.conversation(conv).dmUser),
+                            sidebar._ctx.backend().nowSecs()
+                        );
+                    });
+                    if (!g.unicode.empty()) {
+                        s->add<Label>(g.unicode, Font::Body)->setHitTransparent(true);
+                    } else {
+                        auto *i = s->add<Image>();
+                        i->style().size(15, 15);
+                        i->setFit(Image::Fit::Contain);
+                        i->setBitmap(sb._avatars.get(g.image, 30));
+                        i->setHitTransparent(true);
+                    }
                 }
             }
             if (cv.dmUser == store.me && store.me != model::kNoUser) {

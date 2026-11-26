@@ -609,6 +609,58 @@ TEST("sidebar: a presence flip restyles rows in place; a roster-shape change reb
     CHECK_FALSE(sb.rowState(mira).exists);
 }
 
+TEST("sidebar: hovering a DM's status emoji shows the status and when it ends") {
+    Harness       h;
+    auto         &sb   = h.sh->sidebar();
+    const ConvRef mira = h.conv("D0MIRA");
+    const UserRef peer = h.store.conversation(mira).dmUser;
+    const int64_t now  = h.backend.nowSecs();
+    auto         &u    = h.store.user(peer);
+    u.statusEmoji      = "palm_tree";
+    u.statusText       = "Vacation";
+    u.statusExpiry     = 0;
+    h.store.usersChanged();
+    pump();
+    // The emoji is the only view in the row with a tooltip of its own (the
+    // row's is its truncated name, none here).
+    const auto tip = [&]() -> std::string {
+        const ui::View *row = sb.rowView(mira);
+        if (!row)
+            return "(no row)";
+        std::function<std::string(const ui::View &)> find = [&](const ui::View &v) {
+            for (size_t i = 0; i < v.childCount(); ++i) {
+                const ui::View &c = *v.child(i);
+                std::string     t = c.tooltip();
+                if (t.empty())
+                    t = find(c);
+                if (!t.empty())
+                    return t;
+            }
+            return std::string();
+        };
+        return find(*row);
+    };
+    const std::string palm = "\xF0\x9F\x8C\xB4";
+    CHECK_STR(tip(), palm + " Vacation"); // no end: one line
+
+    // Read when shown: a new text (no rebuild for it) is current.
+    u.statusText            = "Out for lunch";
+    const base::CivilTime n = base::localTime(now);
+    u.statusExpiry          = base::fromLocal(n.year, n.month, n.day + 2, 10, 0);
+    h.store.usersChanged();
+    pump();
+    CHECK_STR(tip(), palm + " Out for lunch\nUntil " + base::formatDateTime(u.statusExpiry));
+    const int64_t tonight = base::fromLocal(n.year, n.month, n.day, 23, 59);
+    if (tonight > now) { // today: the time only
+        u.statusExpiry = tonight;
+        CHECK_STR(tip(), palm + " Out for lunch\nUntil " + base::formatTime(tonight));
+    }
+    // Emoji only: its shortcode stands for the text.
+    u.statusText   = "";
+    u.statusExpiry = 0;
+    CHECK_STR(tip(), palm + " :palm_tree:");
+}
+
 TEST("sidebar: under unreads-only a Meta rebuilds only when a row's unread state flips") {
     Harness       h;
     auto         &sb  = h.sh->sidebar();

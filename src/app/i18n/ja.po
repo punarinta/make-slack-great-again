@@ -3753,6 +3753,10 @@ msgstr "セッションを追加"
 msgid "Open a direct message"
 msgstr "ダイレクトメッセージを開く"
 
+#: src/app/screens/shell/sidebar.cpp
+msgid "Until %1"
+msgstr "%1まで"
+
 #: src/app/screens/shell/sidebar.cpp src/app/screens/shell/threads_page.cpp
 msgid "you"
 msgstr "自分"
