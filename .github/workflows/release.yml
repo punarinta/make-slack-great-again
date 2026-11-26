@@ -15,6 +15,10 @@
 #                          safe end-to-end test;
 #                          mode "flatpak": the Flatpak repository again, built
 #                          from the latest release tag (no new release)
+#                          mode "backfill": the macOS x86_64 DMG, built from the
+#                          latest release tag as that release, added to it
+#                          (with the cask for both Macs) — for a release
+#                          published before the Intel build existed
 #
 # msga.app/download/* redirects to the newest release here (website/msga.app.conf),
 # so a release needs no site deploy. See docs/releasing.md.
@@ -38,9 +42,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "build = build and test only; draft = also a draft release + cask on the tap's ci-test branch; flatpak = publish the Flatpak repository from the latest release tag"
+        description: "build = build and test only; draft = also a draft release + cask on the tap's ci-test branch; flatpak = publish the Flatpak repository from the latest release tag; backfill = add the macOS Intel DMG to the latest release (built from its tag)"
         type: choice
-        options: [build, draft, flatpak]
+        options: [build, draft, flatpak, backfill]
         default: build
 
 permissions:
@@ -72,6 +76,8 @@ jobs:
       draft: ${{ steps.plan.outputs.draft }}
       reuse: ${{ steps.reuse.outputs.run }}
       only_flatpak: ${{ steps.plan.outputs.only_flatpak }}
+      backfill: ${{ steps.plan.outputs.backfill }}
+      backfill_build: ${{ steps.plan.outputs.backfill_build }}
       ref: ${{ steps.plan.outputs.ref }}
     steps:
       - uses: actions/checkout@v7
@@ -102,7 +108,7 @@ jobs:
               [[ "$prev_version" =~ ^[0-9]+$ ]] || prev_version=0
           fi
 
-          only_flatpak=false; ref=""
+          only_flatpak=false; backfill=false; backfill_build=true; ref=""
           case "$EVENT" in
               push) publish=true; draft=false ;;
               workflow_dispatch)
@@ -111,6 +117,16 @@ jobs:
                       flatpak) # the latest release, as it was tagged
                           publish=false; draft=false; only_flatpak=true; ref="$prev_tag"
                           [[ -n "$ref" ]] || { echo "::error::no release tag to build the Flatpak from"; exit 1; } ;;
+                      backfill) # the latest release gets the Mac it lacks
+                          publish=false; draft=false; backfill=true; ref="$prev_tag"
+                          [[ -n "$ref" ]] || { echo "::error::no release to backfill"; exit 1; }
+                          # Already there (a run that failed after adding it): the
+                          # DMG stays as it is, the cask is rendered again.
+                          if gh release view "$ref" -R "$GITHUB_REPOSITORY" --json assets \
+                                  --jq '.assets[].name' | grep -qx msga-macos-x86_64.dmg; then
+                              backfill_build=false
+                              echo "::notice::release $ref already has msga-macos-x86_64.dmg: only the cask is rendered"
+                          fi ;;
                       *) publish=false; draft=false ;;
                   esac ;;
               *) publish=false; draft=false ;;
@@ -119,9 +135,9 @@ jobs:
           # The version is never typed: the last release's + 1 (the in-app
           # updater only offers a higher one), written into version.cmake by
           # every build job, and back onto master once released. The flatpak
-          # mode rebuilds the last release itself. Without any release yet,
-          # version.cmake's.
-          if [[ "$only_flatpak" == true ]]; then
+          # and backfill modes rebuild the last release itself. Without any
+          # release yet, version.cmake's.
+          if [[ "$only_flatpak" == true || "$backfill" == true ]]; then
               version="$prev_version"
           elif (( prev_version > 0 )); then
               version=$((prev_version + 1))
@@ -140,6 +156,8 @@ jobs:
                 gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
               tag="${day}-${n}"; n=$((n + 1))
           done
+          # The backfill mode adds to the latest release.
+          if [[ "$backfill" == true ]]; then tag="$prev_tag"; fi
 
           {
               echo "version=${version}"
@@ -147,12 +165,15 @@ jobs:
               echo "publish=${publish}"
               echo "draft=${draft}"
               echo "only_flatpak=${only_flatpak}"
+              echo "backfill=${backfill}"
+              echo "backfill_build=${backfill_build}"
               echo "ref=${ref}"
           } >>"$GITHUB_OUTPUT"
           {
               echo "### msga ${version} → ${tag}"
               echo "Previous release: ${prev_tag:-none} (version ${prev_version})"
               echo "Publishes: ${publish}$([[ $draft == true ]] && echo ' (draft)')"
+              if [[ "$backfill" == true ]]; then echo "Backfill: the macOS x86_64 DMG, added to $prev_tag"; fi
           } >>"$GITHUB_STEP_SUMMARY"
 
       # A PR run notes the source tree it built and tested (GitHub's preview
@@ -179,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           tree="$(git rev-parse 'HEAD^{tree}')"
-          want="release-freebsd release-linux release-macos release-openbsd release-windows"
+          want="release-freebsd release-linux release-macos release-macos-x86_64 release-openbsd release-windows"
           runs="$(gh run list -R "$GITHUB_REPOSITORY" --workflow release.yml --event pull_request \
               --status success -L 20 --json databaseId --jq '.[].databaseId')"
           for id in $runs; do
@@ -201,7 +222,7 @@ jobs:
   # ── Linux: static musl binary, tests on musl, X11 smoke launch ─────────────
   linux:
     needs: prepare
-    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true' && needs.prepare.outputs.backfill != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -235,7 +256,7 @@ jobs:
   # ── Windows: mingw cross-build in Docker, Wine smoke launch ────────────────
   windows:
     needs: prepare
-    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true' && needs.prepare.outputs.backfill != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -268,7 +289,7 @@ jobs:
   # clang 18 is older than what the code is built with).
   bsd:
     needs: prepare
-    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true' && needs.prepare.outputs.backfill != 'true'
     runs-on: ubuntu-24.04
     container: ubuntu:26.04
     timeout-minutes: 90
@@ -308,19 +329,28 @@ jobs:
           path: dist/msga-${{ matrix.os }}-x86_64.debug
           retention-days: 90
 
-  # ── macOS arm64: tests, app bundle, DMG ────────────────────────────────────
-  # The shipped DMG is built on macOS 26; macOS 15 runs the same build and
-  # tests as a check, for users on older systems (msga runs on 14 and later).
+  # ── macOS arm64 + x86_64: tests, app bundle, DMG ───────────────────────────
+  # The arm64 DMG is built on macOS 26; macOS 15 runs the same build and tests
+  # as a check, for users on older systems (msga runs on 14 and later). The
+  # x86_64 DMG (Intel Macs, issue #187) is built and tested natively on
+  # macos-15-intel, GitHub's last Intel image: it is available "until August
+  # 2027" (actions/runner-images#13045). After that the x86_64 build has to be
+  # cross-compiled on arm64 (CMAKE_OSX_ARCHITECTURES=x86_64, tests in Rosetta).
   macos:
     needs: prepare
-    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true'
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.only_flatpak != 'true' && needs.prepare.outputs.backfill != 'true'
     runs-on: macos-${{ matrix.os }}
     name: macos (${{ matrix.os }})
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        os: ["26", "15"]
+        # ship / symbols: the artifacts of this runner's DMG and dSYM ("" = a
+        # check only).
+        include:
+          - { os: "26", ship: release-macos, symbols: symbols-macos }
+          - { os: "15", ship: "", symbols: "" }
+          - { os: "15-intel", ship: release-macos-x86_64, symbols: symbols-macos-x86_64 }
     steps:
       - uses: actions/checkout@v7
       - name: Install CMake and Ninja
@@ -331,26 +361,37 @@ jobs:
         run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
       - name: Build, test, DMG
         run: scripts/release-mac.sh
-      - if: matrix.os == '26'
+      # release-mac.sh names everything after the runner's CPU (uname -m).
+      - name: Check the CPU
+        if: matrix.ship != ''
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          want=arm64; [[ "${{ matrix.ship }}" == release-macos-x86_64 ]] && want=x86_64
+          [[ "$arch" == "$want" ]] || { echo "::error::built on $arch, expected $want"; exit 1; }
+          lipo -archs build-release-mac/msga.app/Contents/MacOS/msga | grep -qx "$want" ||
+              { echo "::error::msga is not a $want binary"; exit 1; }
+          echo "arch=$arch" >>"$GITHUB_ENV"
+      - if: matrix.ship != ''
         uses: actions/upload-artifact@v7
         with:
-          name: release-macos
+          name: ${{ matrix.ship }}
           path: |
-            dist/msga-macos-arm64.dmg
-            dist/msga-macos-arm64.manifest
+            dist/msga-macos-${{ env.arch }}.dmg
+            dist/msga-macos-${{ env.arch }}.manifest
           if-no-files-found: error
           retention-days: 7
-      - if: matrix.os == '26'
+      - if: matrix.ship != ''
         uses: actions/upload-artifact@v7
         with:
-          name: symbols-macos-${{ needs.prepare.outputs.tag }}
-          path: dist/msga-macos-arm64.dSYM
+          name: ${{ matrix.symbols }}-${{ needs.prepare.outputs.tag }}
+          path: dist/msga-macos-${{ env.arch }}.dSYM
           retention-days: 90
 
   # ── Flatpak: builds (from this checkout) and lints; the repo is kept ──────
   flatpak:
     needs: prepare
-    if: needs.prepare.outputs.reuse == ''
+    if: needs.prepare.outputs.reuse == '' && needs.prepare.outputs.backfill != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -438,7 +479,7 @@ jobs:
       - name: Check the artifacts
         run: |
           set -euo pipefail
-          assets=(msga-linux-x86_64 msga-windows-x86_64.exe msga-macos-arm64.dmg
+          assets=(msga-linux-x86_64 msga-windows-x86_64.exe msga-macos-arm64.dmg msga-macos-x86_64.dmg
                   msga-freebsd-x86_64.tar.gz msga-openbsd-x86_64.tar.gz)
           for a in "${assets[@]}"; do
               stem="${a%.tar.gz}"; [[ "$stem" != "$a" ]] || stem="${a%.*}"
@@ -480,14 +521,8 @@ jobs:
               echo "::warning::no HOMEBREW_TAP_TOKEN secret: cask not updated"; exit 0
           fi
           branch=master; [[ "$DRAFT" == true ]] && branch=ci-test
-          git clone -q "https://x-access-token:${TOKEN}@github.com/punarinta/homebrew-msga.git" tap
-          git -C tap checkout -q -B "$branch"
-          sha="$(jq -r .sha256 dist/msga-macos-arm64.manifest)"
-          sed -e "s/@VERSION@/${VERSION}/g" -e "s/@TAG@/${TAG}/g" -e "s/@SHA256@/${sha}/g" \
-              packaging/homebrew/msga.rb.in >tap/Casks/msga.rb
-          if git -C tap diff --quiet; then echo "Cask already current."; exit 0; fi
-          git -C tap commit -q -am "msga ${VERSION}"
-          git -C tap push -q --force-with-lease origin "$branch"
+          packaging/homebrew/push-cask.sh "$VERSION" "$TAG" \
+              dist/msga-macos-arm64.manifest dist/msga-macos-x86_64.manifest "$branch"
           echo "Cask: msga ${VERSION} on homebrew-msga/${branch}" >>"$GITHUB_STEP_SUMMARY"
 
       # The source on master says the version just released: builds from it
@@ -503,6 +538,118 @@ jobs:
           git commit -q -m "version ${VERSION}" -- version.cmake
           git push -q origin master
           echo "master: version ${VERSION}" >>"$GITHUB_STEP_SUMMARY"
+
+  # ── Backfill: the macOS x86_64 DMG for a release published without it ─────
+  # Built from the release's tag, as that release's version, on the same
+  # Intel runner as the macos job. The tag predates the Intel entry in the
+  # updater's asset map, so those files (and their test) come from this
+  # workflow's commit, checked to change nothing but x86_64 lines; without it
+  # the build could never update itself.
+  backfill-build:
+    needs: prepare
+    if: needs.prepare.outputs.backfill == 'true' && needs.prepare.outputs.backfill_build == 'true'
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0 # this workflow's commit too
+      # Test files don't ship: the asset map's test, and the test server
+      # (its certificate is valid with the Intel image's OpenSSL 1.1.1).
+      - name: The updater's asset map and test fixes from this commit
+        run: |
+          set -euo pipefail
+          files=(src/app/update/updater.cpp tests/app/core/test_update.cpp)
+          git checkout "$GITHUB_SHA" -- "${files[@]}"
+          git diff --cached -U0 -- "${files[@]}"
+          other="$(git diff --cached -U0 -- "${files[@]}" | grep -E '^[-+][^-+]' | grep -v 'x86_64' || true)"
+          [[ -z "$other" ]] || { echo "::error::the asset map changed more than x86_64 lines since the release:"; echo "$other"; exit 1; }
+          grep -q '"msga-macos-x86_64.dmg"' src/app/update/updater.cpp
+          git checkout "$GITHUB_SHA" -- tests/net/server.py
+          git diff --cached --stat
+      - name: Install CMake and Ninja
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          command -v ninja >/dev/null || brew install ninja
+      - name: Set the release version
+        run: perl -pi -e 's/set\(MSGA_VERSION \d+\)/set(MSGA_VERSION ${{ needs.prepare.outputs.version }})/' version.cmake
+      - name: Build, test, DMG
+        run: scripts/release-mac.sh
+      - name: Check the CPU
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == x86_64 ]] || { echo "::error::built on $(uname -m)"; exit 1; }
+          lipo -archs build-release-mac/msga.app/Contents/MacOS/msga | grep -qx x86_64 ||
+              { echo "::error::msga is not an x86_64 binary"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-macos-x86_64
+          path: |
+            dist/msga-macos-x86_64.dmg
+            dist/msga-macos-x86_64.manifest
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: symbols-macos-x86_64-${{ needs.prepare.outputs.tag }}
+          path: dist/msga-macos-x86_64.dSYM
+          retention-days: 90
+
+  # Adds the DMG to the release (never replacing an asset) and renders the
+  # cask for both Macs, the arm64 hash from the release's own manifest. When
+  # the release already has the DMG, the build is skipped and its own copy is
+  # checked and used for the cask.
+  backfill-publish:
+    needs: [prepare, backfill-build]
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      needs.prepare.outputs.backfill == 'true' && needs.backfill-build.result != 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - if: needs.prepare.outputs.backfill_build == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: release-macos-x86_64
+          path: dist
+      - if: needs.prepare.outputs.backfill_build != 'true'
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'msga-macos-x86_64.*' -D dist
+      - name: Check the artifact
+        run: |
+          set -euo pipefail
+          m=dist/msga-macos-x86_64.manifest
+          v="$(jq -r .version "$m")"; s="$(jq -r .sha256 "$m")"
+          [[ "$v" == "$VERSION" ]] || { echo "::error::$m is version $v, not $VERSION"; exit 1; }
+          [[ "$s" == "$(sha256sum dist/msga-macos-x86_64.dmg | cut -d' ' -f1)" ]] ||
+              { echo "::error::the DMG does not match the sha256 in $m"; exit 1; }
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p msga-macos-arm64.manifest -D release
+          [[ "$(jq -r .version release/msga-macos-arm64.manifest)" == "$VERSION" ]] ||
+              { echo "::error::release $TAG's arm64 manifest is not version $VERSION"; exit 1; }
+      - name: Add to the release
+        if: needs.prepare.outputs.backfill_build == 'true'
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" dist/msga-macos-x86_64.dmg dist/msga-macos-x86_64.manifest
+          echo "Release $TAG: msga-macos-x86_64.dmg added" >>"$GITHUB_STEP_SUMMARY"
+      - name: Homebrew cask
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TOKEN" ]]; then
+              echo "::warning::no HOMEBREW_TAP_TOKEN secret: cask not updated"; exit 0
+          fi
+          packaging/homebrew/push-cask.sh "$VERSION" "$TAG" \
+              release/msga-macos-arm64.manifest dist/msga-macos-x86_64.manifest master "msga ${VERSION}: Intel Macs too"
+          echo "Cask: msga ${VERSION} for both Macs on homebrew-msga/master" >>"$GITHUB_STEP_SUMMARY"
 
   # ── msga's own Flatpak repository: signed, on GitHub Pages ─────────────────
   # After a published release (or in the flatpak mode): the Flatpak job's repo

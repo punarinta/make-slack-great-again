@@ -333,10 +333,17 @@ def make_cert(tmp):
     if not openssl:
         return None, 'no openssl'
     key, crt = os.path.join(tmp, 'key.pem'), os.path.join(tmp, 'cert.pem')
-    r = subprocess.run([openssl, 'req', '-x509', '-newkey', 'ec', '-pkeyopt',
+    # Its own config, not the system's: OpenSSL 1.1.1 (the `openssl` on
+    # GitHub's macOS images) adds the default config's extensions to -addext
+    # ones, and a certificate with two Basic Constraints is invalid — newer
+    # OpenSSL 3 refuses to load it (X509V3: INVALID_CERTIFICATE).
+    cfg = os.path.join(tmp, 'req.cnf')
+    with open(cfg, 'w') as f:
+        f.write('[req]\nprompt = no\ndistinguished_name = dn\nx509_extensions = ext\n'
+                '[dn]\nCN = localhost\n'
+                '[ext]\nsubjectAltName = DNS:localhost\nbasicConstraints = critical,CA:TRUE\n')
+    r = subprocess.run([openssl, 'req', '-x509', '-config', cfg, '-newkey', 'ec', '-pkeyopt',
                         'ec_paramgen_curve:prime256v1', '-nodes', '-days', '2',
-                        '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost',
-                        '-addext', 'basicConstraints=critical,CA:TRUE',
                         '-keyout', key, '-out', crt],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if r.returncode != 0:

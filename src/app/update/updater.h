@@ -42,7 +42,7 @@ struct Manifest {
 bool        parseManifest(std::string_view json, Manifest *out);
 // msga's release asset for an OS / CPU ("linux"/"windows"/"macos",
 // "x86_64"/"arm64"): "msga-linux-x86_64", "msga-windows-x86_64.exe",
-// "msga-macos-arm64.dmg"; "" where no release is built.
+// "msga-macos-arm64.dmg", "msga-macos-x86_64.dmg"; "" where no release is built.
 std::string assetFor(std::string_view os, std::string_view arch);
 std::string asset(); // this build's
 // An asset's manifest, as the release scripts publish it: the asset's name

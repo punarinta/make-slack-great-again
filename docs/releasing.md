@@ -16,6 +16,9 @@ Nothing runs on `master`. The private dev repo has no CI.
      - FreeBSD and OpenBSD (cross-built)
      - macOS arm64 with tests and the DMG, built on macOS 26; the same build and tests run
        on macOS 15 as a check for older systems
+     - macOS x86_64 (Intel Macs) with tests and its own DMG, built on `macos-15-intel`.
+       GitHub keeps that runner "until August 2027" (actions/runner-images#13045); after
+       that the Intel build has to be cross-compiled on an arm64 runner
      - a Flatpak build and lint
    - A red check means don't merge. Fix it on `master` and sync again; the PR re-runs by itself.
 3. Merge the PR (a merge commit). If nothing landed on `master` since the PR's checks, the
@@ -30,7 +33,7 @@ Nothing runs on `master`. The private dev repo has no CI.
      `flatpak update` follows the releases.
 
 Debug symbols (`.debug`, `.dSYM`) are kept as workflow artifacts named `symbols-<os>-<tag>`
-for 90 days. They're never release assets.
+(`symbols-macos-x86_64-<tag>` for the Intel Mac build) for 90 days. They're never release assets.
 
 ## msga.app downloads
 
@@ -60,6 +63,19 @@ Actions → Release → **Run workflow** on any branch:
   until published, so `latest` and msga.app are untouched. The cask goes to the tap's `ci-test`
   branch, which `brew` never reads. The Flatpak repository isn't published. Delete the draft and the `ci-test` branch
   afterwards.
+
+## Adding the Intel Mac to a published release
+
+**Run workflow**, mode **backfill**, builds the macOS x86_64 DMG from the latest release's tag, as
+that release's version, on `macos-15-intel` with the full tests. It then adds the DMG and its
+manifest to that release and renders the cask for both Macs. Nothing else in the release changes,
+and an asset that's already there is never replaced: on a release that has the DMG, the run only
+checks it and renders the cask again.
+The tag predates the Intel entry in the updater's asset map, so `src/app/update/updater.cpp` and its
+test come from the run's own commit; the job fails if they differ from the tag in more than
+x86_64 lines. `tests/net/server.py` comes from there too (its test certificate, fixed for the Intel
+image's OpenSSL 1.1.1); test files never ship. The mode exists for release 48, published before
+the Intel build; every release since builds the Intel DMG itself.
 
 ## Cost
 
