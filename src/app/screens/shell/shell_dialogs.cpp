@@ -166,8 +166,13 @@ public:
 
     void paint(gfx::Painter &p) override {
         const RectF b = bounds();
-        p.fillRoundRect(b, 4, 0xffffffffU); // literal white, also in dark mode
-        p.strokeRoundRect(b, 4, 1, ui::color(_edit->focused() ? C::Accent : C::FormDividerStrong));
+        // The theme's field, as the comment box under it: the text and the
+        // caret wear the theme's colours, so a fixed white field would leave
+        // them unreadable in dark mode.
+        p.fillRoundRect(b, 4, ui::color(C::FormBg));
+        p.strokeRoundRect(
+            b, 4, 1, ui::color(_edit->focused() ? C::FieldBorderFocus : C::FieldBorder)
+        );
         if (_chip->visible()) { // the chip: accent.subtleBg, radius 12
             const RectF c = _chip->frame(), l = _chipLabel->frame();
             p.fillRoundRect({c.x + l.x, c.y + l.y, l.w, l.h}, 12, ui::color(C::AccentSubtle));

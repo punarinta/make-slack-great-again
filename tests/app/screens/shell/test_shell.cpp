@@ -2307,6 +2307,44 @@ TEST("forward: a person with many group DMs and no DM yet is still pickable") {
                   .messages.empty());
 }
 
+TEST("forward: the picker's field follows the theme, so its text stays readable") {
+    Harness       h;
+    const ConvRef design = h.conv("C0DESIGN");
+    const Ts      ts     = h.store.conversation(design).messages.back().ts;
+    for (const ui::ThemeMode m : {ui::ThemeMode::Dark, ui::ThemeMode::Light}) {
+        app().setThemeMode(m);
+        h.ctx.forwardMessage(design, ts, {});
+        pump();
+        auto *dlg = static_cast<ui::Dialog *>(h.win->topPopup());
+        REQUIRE(dlg != nullptr);
+        std::function<ui::View *(ui::View *, std::string_view)> byName =
+            [&](ui::View *v, std::string_view n) -> ui::View * {
+            if (v->accessibleName() == n)
+                return v;
+            for (size_t i = 0; i < v->childCount(); ++i)
+                if (ui::View *f = byName(v->child(i), n))
+                    return f;
+            return nullptr;
+        };
+        auto *field = byName(dlg, "Search channels and people\xE2\x80\xA6");
+        REQUIRE(field != nullptr);
+        ui::View       *box = field->parent(); // the field around the editor
+        const float     sc  = h.win->scale();
+        const ui::RectF r   = box->windowRect();
+        uint32_t        px  = 0;
+        REQUIRE(
+            hooks().readPixel(h.win->native(), int((r.x + r.w / 2) * sc), int((r.y + 3) * sc), &px)
+        );
+        // The form's field colour, as the comment box below it: the theme's
+        // text and caret sit on it, so a fixed white would hide them in dark
+        // mode (and a fixed dark one in light mode).
+        CHECK(px == ui::color(ui::C::FormBg));
+        dlg->reject();
+        pump();
+    }
+    app().setThemeMode(ui::ThemeMode::System);
+}
+
 TEST("forward: Escape with the picker's list open closes both") {
     Harness       h;
     const ConvRef design = h.conv("C0DESIGN");
