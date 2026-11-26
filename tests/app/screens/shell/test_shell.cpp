@@ -2204,6 +2204,57 @@ TEST("forward: a person with many group DMs is still pickable as themselves") {
                   .messages.empty());
 }
 
+TEST("forward: a person with many group DMs and no DM yet is still pickable") {
+    Harness     h;
+    model::User nora;
+    nora.id          = "U0NORA";
+    nora.name        = "nora";
+    nora.displayName = "Nora Voss";
+    h.store.addUser(std::move(nora));
+    for (int i = 0; i < 8; ++i) {
+        model::Conversation g;
+        g.id      = "G0NORA" + std::to_string(i);
+        g.kind    = ConvKind::Group;
+        g.members = {h.store.me, h.store.findUser("U0NORA"), h.store.findUser("U0MIRA")};
+        h.store.addConversation(std::move(g));
+    }
+    h.store.usersChanged();
+    const ConvRef design = h.conv("C0DESIGN");
+    h.ctx.forwardMessage(design, h.store.conversation(design).messages.back().ts, {});
+    pump();
+    auto *dlg = static_cast<ui::Dialog *>(h.win->topPopup());
+    REQUIRE(dlg != nullptr);
+    std::function<ui::View *(ui::View *, std::string_view)> byName =
+        [&](ui::View *v, std::string_view n) -> ui::View * {
+        if (v->accessibleName() == n)
+            return v;
+        for (size_t i = 0; i < v->childCount(); ++i)
+            if (ui::View *f = byName(v->child(i), n))
+                return f;
+        return nullptr;
+    };
+    auto *fwd = static_cast<ui::Clickable *>(byName(dlg, "Forward"));
+    REQUIRE(fwd != nullptr);
+    typeInto(*h.win, "@nora");       // the groups match too
+    press(*h.win, plat::Key::Enter); // the first match: picked
+    CHECK(fwd->enabled());
+    fwd->activate();
+    // A DM with her is opened for it, and gets the message.
+    const auto sent = [&] {
+        const ConvRef c = h.store.findConversation("DU0NORA");
+        return c != kNoConv && !h.store.conversation(c).messages.empty();
+    };
+    const double end = app().nowMs() + 3000;
+    while (!sent() && app().nowMs() < end)
+        app().pump(2);
+    const ConvRef noraDm = h.store.findConversation("DU0NORA");
+    REQUIRE(noraDm != kNoConv);
+    CHECK(h.store.conversation(noraDm).messages.size() == 1);
+    for (int i = 0; i < 8; ++i)
+        CHECK(h.store.conversation(h.store.findConversation("G0NORA" + std::to_string(i)))
+                  .messages.empty());
+}
+
 TEST("forward: Escape with the picker's list open closes both") {
     Harness       h;
     const ConvRef design = h.conv("C0DESIGN");
