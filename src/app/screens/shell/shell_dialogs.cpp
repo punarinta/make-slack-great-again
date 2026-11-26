@@ -6,6 +6,7 @@
 #include "app/model/jobs.h"
 #include "app/screens/common/downloads.h"
 #include "app/screens/common/file_dialogs.h"
+#include "app/screens/common/message_rules.h"
 #include "app/screens/common/message_text.h"
 #include "app/screens/common/remote_images.h"
 #include "app/screens/common/avatar_initial.h"
@@ -468,6 +469,45 @@ contextFor(const screens::Context &base, model::Store &store, model::Backend &ba
     return c;
 }
 
+// A message as a forward shows it: its text as one blockquote under a line
+// naming who wrote it and where, every line quoted (an empty one stays a bare
+// ">") so the marks hold together as one quote in the target. `text` is the
+// message's own mrkdwn, portable already when another workspace takes it.
+// Only a public channel is named: a private channel's name, or who is in a
+// DM or group DM, is not for the forward's readers. The names are escaped,
+// so a "<!channel>" in one stays words.
+std::string quotedForward(
+    const model::Store &st, ConvRef from, const model::Message &m, std::string_view text
+) {
+    const std::string who   = mrkdwn::escapeEntities(screens::authorName(st, m));
+    const std::string name  = st.conversation(from).kind == ConvKind::Channel
+                                  ? mrkdwn::escapeEntities(st.displayName(from))
+                                  : std::string();
+    // A quote line: the text, or "" for a blank one — which must still be a
+    // quote line, or the quote would end there.
+    const auto        quote = [](std::string_view line) {
+        return line.empty() ? std::string(">") : str::concat({"> ", line});
+    };
+    std::string out;
+    const auto  add = [&out, &quote](std::string_view line) {
+        if (!out.empty())
+            out += '\n';
+        out += quote(line);
+    };
+    if (!who.empty()) { // no author to name (nothing to attribute): the text alone
+        const std::string named = str::concat({"*", who, "*"});
+        add(name.empty() ? i18n::arg(tr("%1 wrote:"), named)
+                         : i18n::arg(tr("%1 wrote in #%2:"), named, name));
+    }
+    for (size_t at = 0; at < text.size();) {
+        const size_t nl  = text.find('\n', at);
+        const size_t end = nl == std::string_view::npos ? text.size() : nl;
+        add(text.substr(at, end - at));
+        at = end + 1;
+    }
+    return out;
+}
+
 class ForwardDialog final : public Dialog {
 public:
     ForwardDialog(
@@ -604,28 +644,36 @@ private:
         if (!t || !m)
             return;
         const ForwardWorkspace &to   = _workspaces[size_t(_target)];
-        // No attribution header: the text is re-posted as mine — verbatim in
+        // As a quote naming its author and conversation — the text verbatim in
         // its own workspace, else as portable mrkdwn (mentions and channels
-        // become the words they read as here) — after
-        // the comment on its own line.
+        // become the words they read as here) — with the comment above it, so
+        // the target reads a forward as one and not as something I wrote.
         const bool              same = to.store == &_src->store();
         const std::string       comment(str::trim(mrkdwn::convertOutgoing(_composer->mrkdwn())));
-        const std::string       fwd     = !_onlyFile.empty() ? std::string()
-                                          : same ? m->text
-                                                 : portableMrkdwn(_src->store(), m->text);
-        const std::string       full    = comment.empty() ? fwd
-                                          : fwd.empty()   ? comment
-                                                          : str::concat({comment, "\n", fwd});
+        std::string             body;
+        if (_onlyFile.empty()) // a file forward carries the file, not the text
+            body = same ? m->text : portableMrkdwn(_src->store(), m->text);
+        // A message of files only is attributed too (the files follow; one
+        // without a source goes nowhere, so it is no reason for a header).
+        bool hasFiles = false;
+        for (const model::File &f : m->files())
+            hasFiles = hasFiles || !f.source().empty();
+        const bool        quote = _onlyFile.empty() && (!body.empty() || hasFiles);
+        const std::string quoted =
+            quote ? quotedForward(_src->store(), _conv, *m, body) : std::string();
+        const std::string full    = comment.empty()  ? quoted
+                                    : quoted.empty() ? comment
+                                                     : str::concat({comment, "\n\n", quoted});
         // Into the pick — a DM may be opened first — once the files are
         // here, unless that workspace went meanwhile; downloaded copies go
         // when the send is over.
-        auto                    deliver = [to,
-                                           conv    = t->conv,
-                                           person  = t->person,
-                                           role    = t->role,
-                                           ws      = to.store->workspaceId,
-                                           prefill = _prefillTeammate,
-                                           onError = _onError](std::string text, ForwardFiles ff) {
+        auto              deliver = [to,
+                                     conv    = t->conv,
+                                     person  = t->person,
+                                     role    = t->role,
+                                     ws      = to.store->workspaceId,
+                                     prefill = _prefillTeammate,
+                                     onError = _onError](std::string text, ForwardFiles ff) {
             auto cleanup = [temps = ff.temps] {
                 for (const std::string &t : temps)
                     screens::removeTempDownload(t);

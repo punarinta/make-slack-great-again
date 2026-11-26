@@ -3557,6 +3557,14 @@ msgid "Search channels and people…"
 msgstr "チャンネルやメンバーを検索…"
 
 #: src/app/screens/shell/shell_dialogs.cpp
+msgid "%1 wrote:"
+msgstr "%1 が書き込みました:"
+
+#: src/app/screens/shell/shell_dialogs.cpp
+msgid "%1 wrote in #%2:"
+msgstr "%1 が #%2 に書き込みました:"
+
+#: src/app/screens/shell/shell_dialogs.cpp
 msgid "Forward this message"
 msgstr "このメッセージを転送"
 
