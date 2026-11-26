@@ -550,7 +550,9 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           fetch-depth: 0 # this workflow's commit too
-      - name: The updater's asset map from this commit
+      # Test files don't ship: the asset map's test, and the test server
+      # (its certificate is valid with the Intel image's OpenSSL 1.1.1).
+      - name: The updater's asset map and test fixes from this commit
         run: |
           set -euo pipefail
           files=(src/app/update/updater.cpp tests/app/core/test_update.cpp)
@@ -559,6 +561,8 @@ jobs:
           other="$(git diff --cached -U0 -- "${files[@]}" | grep -E '^[-+][^-+]' | grep -v 'x86_64' || true)"
           [[ -z "$other" ]] || { echo "::error::the asset map changed more than x86_64 lines since the release:"; echo "$other"; exit 1; }
           grep -q '"msga-macos-x86_64.dmg"' src/app/update/updater.cpp
+          git checkout "$GITHUB_SHA" -- tests/net/server.py
+          git diff --cached --stat
       - name: Install CMake and Ninja
         run: |
           command -v cmake >/dev/null || brew install cmake

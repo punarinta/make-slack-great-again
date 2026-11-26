@@ -72,8 +72,9 @@ manifest to that release and renders the cask for both Macs. Nothing else in the
 and an asset that's already there is never replaced: the run refuses a release that has the DMG.
 The tag predates the Intel entry in the updater's asset map, so `src/app/update/updater.cpp` and its
 test come from the run's own commit; the job fails if they differ from the tag in more than
-x86_64 lines. It exists for release 48, published before the Intel build; every release since
-builds the Intel DMG itself.
+x86_64 lines. `tests/net/server.py` comes from there too (its test certificate, fixed for the Intel
+image's OpenSSL 1.1.1); test files never ship. The mode exists for release 48, published before
+the Intel build; every release since builds the Intel DMG itself.
 
 ## Cost
 
