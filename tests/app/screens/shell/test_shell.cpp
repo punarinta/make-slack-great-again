@@ -2339,6 +2339,19 @@ TEST("forward: the picker's field follows the theme, so its text stays readable"
         // text and caret sit on it, so a fixed white would hide them in dark
         // mode (and a fixed dark one in light mode).
         CHECK(px == ui::color(ui::C::FormBg));
+        // Its list too: the rows' text is the theme's.
+        typeInto(*h.win, "#");
+        pump();
+        ui::View *list = h.win->topPopup();
+        REQUIRE(list != nullptr);
+        REQUIRE(list != dlg);
+        const ui::RectF lr = list->windowRect();
+        REQUIRE(
+            hooks().readPixel(
+                h.win->native(), int((lr.x + lr.w - 6) * sc), int((lr.y + lr.h / 2) * sc), &px
+            )
+        );
+        CHECK(px == ui::color(ui::C::FormBg));
         dlg->reject();
         pump();
     }
