@@ -2120,7 +2120,14 @@ void Composer::linkify() {
     bool                             changed = false;
     _linkifying                              = true;
     for (const mrkdwn::BareUrl &u : urls) {
-        if (!pasted && caret > u.from && caret <= u.to)
+        // The word, not the URL: a URL leaves out trailing punctuation, so
+        // "https://x." typed so far is "https://x" for now, not a URL whose
+        // word has ended.
+        size_t wordEnd = u.to;
+        while (wordEnd < text.size() && text[wordEnd] != ' ' && text[wordEnd] != '\n' &&
+               text[wordEnd] != '\t')
+            ++wordEnd;
+        if (!pasted && caret > u.from && caret <= wordEnd)
             continue; // the URL is the word the caret is in
         const std::string url = text.substr(u.from, u.to - u.from);
         // A '|' would split "<url>" into a URL and a label on the way out;

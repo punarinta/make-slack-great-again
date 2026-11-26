@@ -669,6 +669,10 @@ void Tour::run(const TourStep &step, Done done) {
         View *v = findName(step.arg, in);
         if (!v)
             v = findText(step.arg, in);
+        if (!v) // a tooltip that goes on ("🎨 In Figma\nUntil 18:30")
+            v = find(in ? in : &_win.root(), [&](View *x) {
+                return x->tooltip().find(step.arg) != std::string::npos;
+            });
         if (!v) {
             std::fprintf(stderr, "tour: nothing named \"%s\"\n", step.arg.c_str());
             done();

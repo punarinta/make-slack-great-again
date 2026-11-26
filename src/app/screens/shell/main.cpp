@@ -461,7 +461,10 @@ int main(int argc, char **argv) {
     } else if (!demo.empty()) {
         demoBackend.emplace(store, pa);
         demoBackend->setFixture(demo, 0);
-        backend = &*demoBackend;
+        backend                 = &*demoBackend;
+        // The message toolbar's one-click reactions (off by default), so the
+        // recording shows them. The state is fresh per run (isolateDemoState).
+        settings.quickReactions = 1;
     }
     const bool demoMode = demoBackend || demoClaude;
 #else

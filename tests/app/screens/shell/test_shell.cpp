@@ -247,6 +247,20 @@ TEST("composer: a typed URL is a link once its word ends") {
     CHECK_STR(linkAt(edit, 6), "https://x.test/p");
 }
 
+TEST("composer: a URL typed a key at a time is linked whole") {
+    Harness h;
+    auto   &edit = h.sh->composer().edit();
+    pump();
+    // Its "." ends "https://x" as a URL for a moment (trailing punctuation),
+    // but not the word: nothing is linked until the word ends.
+    for (const char c : std::string_view("see https://x.test/p"))
+        edit.insertText(std::string(1, c));
+    CHECK(linkAt(edit, 6).empty());
+    edit.insertText(" now");
+    CHECK_STR(linkAt(edit, 6), "https://x.test/p");
+    CHECK_STR(h.sh->composer().mrkdwn(), "see <https://x.test/p> now");
+}
+
 TEST("composer: a pasted URL is a link at once") {
     Harness h;
     auto   &edit = h.sh->composer().edit();

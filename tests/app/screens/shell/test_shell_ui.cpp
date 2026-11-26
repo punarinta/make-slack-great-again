@@ -923,6 +923,62 @@ TEST("canvas: the channel's canvas loads as a title over its markdown body") {
     CHECK(md.find("## Decisions\n\n- **Proposal B") != std::string::npos);
 }
 
+TEST("canvas: reads formatted until clicked into, then edits its markdown there") {
+    Harness h;
+    h.sh->showCanvas(true);
+    shell::CanvasPage &cp = h.sh->canvasPage();
+    REQUIRE(until([&] { return !cp.body().empty(); }));
+    pump();
+    CHECK_FALSE(cp.editing());
+    CHECK(cp.reader().visible());
+    CHECK_FALSE(cp.body().visible());
+    // The reading view's text: headings, list items and table cells
+    // without their markdown.
+    std::vector<ui::View *>         texts;
+    std::function<void(ui::View *)> walk = [&](ui::View *v) {
+        if (v->role() == ui::Role::Text)
+            texts.push_back(v);
+        for (size_t i = 0; i < v->childCount(); ++i)
+            walk(v->child(i));
+    };
+    walk(&cp.reader());
+    auto find = [&](std::string_view s) -> ui::View * {
+        for (ui::View *v : texts)
+            if (v->accessibleName() == s)
+                return v;
+        return nullptr;
+    };
+    ui::View *heading = find("Decisions");
+    REQUIRE(heading != nullptr);
+    CHECK(find("Drop-off today") != nullptr);
+    CHECK(find("under 15%") != nullptr);
+    CHECK(find("\xE2\x80\xA2") != nullptr); // a bullet
+    for (ui::View *v : texts) {
+        CHECK(v->accessibleName().find("## ") != 0);
+        CHECK(v->accessibleName().find('|') == std::string::npos);
+        CHECK(v->accessibleName().find("- ") != 0);
+    }
+    // A click on the heading edits the text there: its line, past "## ".
+    plat::TestHooks *hk = app().platform().testHooks();
+    const ui::RectF  r  = heading->windowRect();
+    hk->injectPointerMove(h.win->native(), {r.x + 2, r.y + r.h / 2});
+    hk->injectButton(h.win->native(), plat::Button::Left, true);
+    hk->injectButton(h.win->native(), plat::Button::Left, false);
+    pump();
+    CHECK(cp.editing());
+    CHECK(cp.body().visible());
+    CHECK_FALSE(cp.reader().visible());
+    CHECK(cp.body().focused());
+    CHECK(cp.body().caret() == cp.body().text().find("## Decisions") + 3);
+    // Escape reads again, the text unchanged.
+    hk->injectKey(h.win->native(), plat::Key::Escape, true);
+    hk->injectKey(h.win->native(), plat::Key::Escape, false);
+    pump();
+    CHECK_FALSE(cp.editing());
+    CHECK(cp.reader().visible());
+    CHECK(cp.body().text().find("## Decisions\n- Proposal B ships.") != std::string::npos);
+}
+
 TEST("canvas: \"Add canvas\" creates it on the first save, then the tab names it") {
     Harness       h;
     const ConvRef eng = h.conv("C0ENG");
