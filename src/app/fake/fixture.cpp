@@ -280,6 +280,11 @@ bool loadFixture(
         u.avatar      = assetPath(fx->dir, o["avatar"].str());
         u.statusEmoji = owned(o["status"]["emoji"]);
         u.statusText  = owned(o["status"]["text"]);
+        // When it ends, as a time spec ("+2h", "18:30"): the sidebar's
+        // status tooltip then reads "Until …".
+        if (const std::string until = owned(o["status"]["until"]);
+            !until.empty() && !parseTimeSpec(until, now, -1, &u.statusExpiry))
+            return fail(str::concat({"user ", u.id, ": bad status until ", until}));
         if (o.has("tz")) {
             if (!tzOffsetSeconds(o["tz"].str(), &u.tzOffset))
                 return fail(str::concat({"user ", u.id, ": bad tz ", o["tz"].str()}));
