@@ -77,6 +77,7 @@ jobs:
       reuse: ${{ steps.reuse.outputs.run }}
       only_flatpak: ${{ steps.plan.outputs.only_flatpak }}
       backfill: ${{ steps.plan.outputs.backfill }}
+      backfill_build: ${{ steps.plan.outputs.backfill_build }}
       ref: ${{ steps.plan.outputs.ref }}
     steps:
       - uses: actions/checkout@v7
@@ -107,7 +108,7 @@ jobs:
               [[ "$prev_version" =~ ^[0-9]+$ ]] || prev_version=0
           fi
 
-          only_flatpak=false; backfill=false; ref=""
+          only_flatpak=false; backfill=false; backfill_build=true; ref=""
           case "$EVENT" in
               push) publish=true; draft=false ;;
               workflow_dispatch)
@@ -119,9 +120,12 @@ jobs:
                       backfill) # the latest release gets the Mac it lacks
                           publish=false; draft=false; backfill=true; ref="$prev_tag"
                           [[ -n "$ref" ]] || { echo "::error::no release to backfill"; exit 1; }
+                          # Already there (a run that failed after adding it): the
+                          # DMG stays as it is, the cask is rendered again.
                           if gh release view "$ref" -R "$GITHUB_REPOSITORY" --json assets \
                                   --jq '.assets[].name' | grep -qx msga-macos-x86_64.dmg; then
-                              echo "::error::release $ref already has msga-macos-x86_64.dmg"; exit 1
+                              backfill_build=false
+                              echo "::notice::release $ref already has msga-macos-x86_64.dmg: only the cask is rendered"
                           fi ;;
                       *) publish=false; draft=false ;;
                   esac ;;
@@ -162,6 +166,7 @@ jobs:
               echo "draft=${draft}"
               echo "only_flatpak=${only_flatpak}"
               echo "backfill=${backfill}"
+              echo "backfill_build=${backfill_build}"
               echo "ref=${ref}"
           } >>"$GITHUB_OUTPUT"
           {
@@ -542,7 +547,7 @@ jobs:
   # the build could never update itself.
   backfill-build:
     needs: prepare
-    if: needs.prepare.outputs.backfill == 'true'
+    if: needs.prepare.outputs.backfill == 'true' && needs.prepare.outputs.backfill_build == 'true'
     runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
@@ -592,10 +597,14 @@ jobs:
           retention-days: 90
 
   # Adds the DMG to the release (never replacing an asset) and renders the
-  # cask for both Macs, the arm64 hash from the release's own manifest.
+  # cask for both Macs, the arm64 hash from the release's own manifest. When
+  # the release already has the DMG, the build is skipped and its own copy is
+  # checked and used for the cask.
   backfill-publish:
     needs: [prepare, backfill-build]
-    if: needs.prepare.outputs.backfill == 'true'
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      needs.prepare.outputs.backfill == 'true' && needs.backfill-build.result != 'failure'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -606,10 +615,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - if: needs.prepare.outputs.backfill_build == 'true'
+        uses: actions/download-artifact@v8
         with:
           name: release-macos-x86_64
           path: dist
+      - if: needs.prepare.outputs.backfill_build != 'true'
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'msga-macos-x86_64.*' -D dist
       - name: Check the artifact
         run: |
           set -euo pipefail
@@ -622,6 +634,7 @@ jobs:
           [[ "$(jq -r .version release/msga-macos-arm64.manifest)" == "$VERSION" ]] ||
               { echo "::error::release $TAG's arm64 manifest is not version $VERSION"; exit 1; }
       - name: Add to the release
+        if: needs.prepare.outputs.backfill_build == 'true'
         run: |
           set -euo pipefail
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" dist/msga-macos-x86_64.dmg dist/msga-macos-x86_64.manifest

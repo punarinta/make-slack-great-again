@@ -69,7 +69,8 @@ Actions → Release → **Run workflow** on any branch:
 **Run workflow**, mode **backfill**, builds the macOS x86_64 DMG from the latest release's tag, as
 that release's version, on `macos-15-intel` with the full tests. It then adds the DMG and its
 manifest to that release and renders the cask for both Macs. Nothing else in the release changes,
-and an asset that's already there is never replaced: the run refuses a release that has the DMG.
+and an asset that's already there is never replaced: on a release that has the DMG, the run only
+checks it and renders the cask again.
 The tag predates the Intel entry in the updater's asset map, so `src/app/update/updater.cpp` and its
 test come from the run's own commit; the job fails if they differ from the tag in more than
 x86_64 lines. `tests/net/server.py` comes from there too (its test certificate, fixed for the Intel
