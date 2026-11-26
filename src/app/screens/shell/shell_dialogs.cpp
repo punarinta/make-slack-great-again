@@ -243,6 +243,17 @@ private:
             return fq.empty() || utf8::containsFoldedNeedle(s, fq);
         };
         std::vector<bool> hasDm(st.userCount(), false); // people with a DM
+        // Ranked, then listed in that order: a DM with whom the name is the
+        // whole label beats a group DM or channel that merely has the name in
+        // it (the roster lists group DMs before DMs, so a person sharing a lot
+        // of group DMs would otherwise push their own DM out of sight), and a
+        // label that starts with the query beats one that holds it.
+        struct Hit {
+            int         rank;
+            ConvRef     conv;
+            std::string label;
+        };
+        std::vector<Hit> hits;
         for (ConvRef c = 0; c < st.conversationCount(); ++c) {
             const auto &cv = st.conversation(c);
             if (cv.kind == ConvKind::Dm && cv.dmUser < hasDm.size())
@@ -253,9 +264,18 @@ private:
             if ((chans && direct) || (people && !direct))
                 continue;
             const std::string name = st.displayName(c);
-            if (match(name))
-                out.push_back({c, kNoUser, direct ? name : "#" + name});
+            if (!match(name))
+                continue;
+            const int rank = (cv.kind == ConvKind::Dm ? 0 : 2) +
+                             (str::startsWith(utf8::foldCase(name), fq) ? 0 : 1);
+            hits.push_back({rank, c, direct ? name : "#" + name});
         }
+        // Stable: within a rank the workspace's order stands.
+        std::stable_sort(hits.begin(), hits.end(), [](const Hit &a, const Hit &b) {
+            return a.rank < b.rank;
+        });
+        for (Hit &h : hits)
+            out.push_back({h.conv, kNoUser, std::move(h.label)});
         // An agent workspace's teammates:
         // writing to one starts a session with it.
         if (!chans && _ctx.backend().capabilities().agentSessions)
