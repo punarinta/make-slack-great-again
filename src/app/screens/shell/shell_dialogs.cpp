@@ -467,14 +467,19 @@ contextFor(const screens::Context &base, model::Store &store, model::Backend &ba
 // naming who wrote it and where, every line quoted (an empty one stays a bare
 // ">") so the marks hold together as one quote in the target. `text` is the
 // message's own mrkdwn, portable already when another workspace takes it.
+// Only a public channel is named: a private channel's name, or who is in a
+// DM or group DM, is not for the forward's readers. The names are escaped,
+// so a "<!channel>" in one stays words.
 std::string quotedForward(
     const model::Store &st, ConvRef from, const model::Message &m, std::string_view text
 ) {
-    const std::string_view who   = screens::authorName(st, m);
-    const std::string      name  = st.displayName(from);
+    const std::string who   = mrkdwn::escapeEntities(screens::authorName(st, m));
+    const std::string name  = st.conversation(from).kind == ConvKind::Channel
+                                  ? mrkdwn::escapeEntities(st.displayName(from))
+                                  : std::string();
     // A quote line: the text, or "" for a blank one — which must still be a
     // quote line, or the quote would end there.
-    const auto             quote = [](std::string_view line) {
+    const auto        quote = [](std::string_view line) {
         return line.empty() ? std::string(">") : str::concat({"> ", line});
     };
     std::string out;
@@ -485,9 +490,8 @@ std::string quotedForward(
     };
     if (!who.empty()) { // no author to name (nothing to attribute): the text alone
         const std::string named = str::concat({"*", who, "*"});
-        add(name.empty()                       ? i18n::arg(tr("%1 wrote:"), named)
-            : st.conversation(from).isDirect() ? i18n::arg(tr("%1 wrote in %2:"), named, name)
-                                               : i18n::arg(tr("%1 wrote in #%2:"), named, name));
+        add(name.empty() ? i18n::arg(tr("%1 wrote:"), named)
+                         : i18n::arg(tr("%1 wrote in #%2:"), named, name));
     }
     for (size_t at = 0; at < text.size();) {
         const size_t nl  = text.find('\n', at);
@@ -643,8 +647,14 @@ private:
         std::string             body;
         if (_onlyFile.empty()) // a file forward carries the file, not the text
             body = same ? m->text : portableMrkdwn(_src->store(), m->text);
+        // A message of files only is attributed too (the files follow; one
+        // without a source goes nowhere, so it is no reason for a header).
+        bool hasFiles = false;
+        for (const model::File &f : m->files())
+            hasFiles = hasFiles || !f.source().empty();
+        const bool        quote = _onlyFile.empty() && (!body.empty() || hasFiles);
         const std::string quoted =
-            body.empty() ? std::string() : quotedForward(_src->store(), _conv, *m, body);
+            quote ? quotedForward(_src->store(), _conv, *m, body) : std::string();
         const std::string full    = comment.empty()  ? quoted
                                     : quoted.empty() ? comment
                                                      : str::concat({comment, "\n\n", quoted});
