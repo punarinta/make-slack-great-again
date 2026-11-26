@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The macOS release, on a Mac: msga.app in a DMG → dist/msga-macos-arm64.dmg
+# The macOS release, on a Mac: msga.app in a DMG → dist/msga-macos-<arch>.dmg
 # (+ .manifest, + .dSYM). From Linux, scripts/release-mac-remote.sh runs this
 # on the Mac build host and brings the artifacts back.
 #

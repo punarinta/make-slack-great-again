@@ -224,6 +224,8 @@ std::string assetFor(std::string_view os, std::string_view arch) {
         return "msga-windows-x86_64.exe";
     if (os == "macos" && arch == "arm64")
         return "msga-macos-arm64.dmg";
+    if (os == "macos" && arch == "x86_64")
+        return "msga-macos-x86_64.dmg";
     return {};
 }
 

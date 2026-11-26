@@ -20,11 +20,12 @@ Everything below the UI is msga's own code: a thin OS layer for windows, input a
 
 [![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](https://msga.app/download/msga-linux-x86_64)
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-arm64.dmg)
+[![macOS Intel](https://img.shields.io/badge/macOS-Intel-000000?logo=apple&logoColor=white)](https://msga.app/download/msga-macos-x86_64.dmg)
 [![Windows](https://img.shields.io/badge/Windows-x86__64-0078D4?logo=windows&logoColor=white)](https://msga.app/download/msga-windows-x86_64.exe)
 [![FreeBSD](https://img.shields.io/badge/FreeBSD-x86__64-AB2B28?logo=freebsd&logoColor=white)](https://msga.app/download/msga-freebsd-x86_64.tar.gz)
 [![OpenBSD](https://img.shields.io/badge/OpenBSD-x86__64-F2CA30?logo=openbsd&logoColor=black)](https://msga.app/download/msga-openbsd-x86_64.tar.gz)
 
-The Linux, macOS and Windows downloads are each a single self-contained file. The Linux binary is fully static and runs on any x86_64 distribution, on Wayland or X11. The macOS app needs macOS 14 or later. msga checks for updates itself. On Linux and Windows it swaps in the new version for the next start; on macOS it downloads the new DMG for you to open.
+The Linux, macOS and Windows downloads are each a single self-contained file. The Linux binary is fully static and runs on any x86_64 distribution, on Wayland or X11. The macOS app comes for Apple Silicon and for Intel Macs and needs macOS 14 or later. msga checks for updates itself. On Linux and Windows it swaps in the new version for the next start; on macOS it downloads the new DMG for you to open.
 
 The FreeBSD and OpenBSD downloads are a `.tar.gz` with the binary, its icon, a `.desktop` file and a `README.txt` naming the few packages to install first (`pkg install` / `pkg_add`). The FreeBSD build runs on FreeBSD 14; the OpenBSD build is for OpenBSD 7.9, as each OpenBSD release renumbers its libraries. On the BSDs msga doesn't update itself: download the new archive.
 
