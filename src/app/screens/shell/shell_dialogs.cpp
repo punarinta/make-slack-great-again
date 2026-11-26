@@ -54,9 +54,10 @@ struct Target {
 
 class ConvSelector;
 
-// The drop-down under the field: literal white, a divider.strong border,
-// radius 4; rows padded 6/12, hover surface.highlight, the current row
-// accent.subtleBg with replyLink text; at most 6 rows (200 px) tall.
+// The drop-down under the field: the field's form colours (the theme's, as
+// the field), a divider.strong border, radius 4; rows padded 6/12, hover
+// surface.highlight, the current row accent.subtleBg with replyLink text; at
+// most 6 rows (200 px) tall.
 class PickerList final : public Popup {
 public:
     PickerList(ConvSelector &owner, std::vector<Target> items)
@@ -75,7 +76,7 @@ public:
     }
     void paint(gfx::Painter &p) override {
         const RectF b = bounds();
-        p.fillRoundRect(b, 4, 0xffffffffU);
+        p.fillRoundRect(b, 4, ui::color(C::FormBg));
         p.save();
         p.clipRoundRect(b, 4);
         const float k = windowScale();
@@ -90,7 +91,7 @@ public:
                 p.fillRect({1, y, b.w - 2, rowH()}, ui::color(C::FormHighlight));
             // Shaped once per row (again for another width, scale or colour),
             // not on every paint (each hover move repaints).
-            const Color fg = cur ? ui::color(C::ReplyLink) : 0xff1d1c1dU;
+            const Color fg = ui::color(cur ? C::ReplyLink : C::FormText);
             if (_lines.size() != _items.size() || _linesW != b.w || _linesScale != k) {
                 _lines.clear();
                 _lines.resize(_items.size());
@@ -166,8 +167,13 @@ public:
 
     void paint(gfx::Painter &p) override {
         const RectF b = bounds();
-        p.fillRoundRect(b, 4, 0xffffffffU); // literal white, also in dark mode
-        p.strokeRoundRect(b, 4, 1, ui::color(_edit->focused() ? C::Accent : C::FormDividerStrong));
+        // The theme's field, as the comment box under it: the text and the
+        // caret wear the theme's colours, so a fixed white field would leave
+        // them unreadable in dark mode.
+        p.fillRoundRect(b, 4, ui::color(C::FormBg));
+        p.strokeRoundRect(
+            b, 4, 1, ui::color(_edit->focused() ? C::FieldBorderFocus : C::FieldBorder)
+        );
         if (_chip->visible()) { // the chip: accent.subtleBg, radius 12
             const RectF c = _chip->frame(), l = _chipLabel->frame();
             p.fillRoundRect({c.x + l.x, c.y + l.y, l.w, l.h}, 12, ui::color(C::AccentSubtle));
@@ -178,10 +184,10 @@ public:
         if (!_chip->visible())
             return;
         // The chip: accent.subtleBg, replyLink bold text, radius 12, padding 2/8,
-        // then the flat "×" (#666, #333 on hover).
+        // then the flat "×" (form text muted, form text on hover).
         const RectF c  = _chip->frame();
         const RectF x  = _x->frame();
-        const Color xc = _x->hovered() ? 0xff333333U : 0xff666666U;
+        const Color xc = ui::color(_x->hovered() ? C::FormText : C::FormTextMuted);
         const float cx = c.x + x.x + 9, cy = c.y + x.y + 9;
         p.drawLine({cx - 4, cy - 4}, {cx + 4, cy + 4}, 1.3f, xc);
         p.drawLine({cx + 4, cy - 4}, {cx - 4, cy + 4}, 1.3f, xc);
