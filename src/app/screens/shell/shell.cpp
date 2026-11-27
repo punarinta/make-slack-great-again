@@ -42,6 +42,7 @@
 #include "screens/shell/standin.h"
 #include "screens/shell/status_dialog.h"
 #include "screens/shell/typing_indicator.h"
+#include "screens/shell/workflow_form.h"
 #ifdef MSGA_SELF_UPDATE
 #include "screens/shell/update_bar.h"
 #endif
@@ -1306,6 +1307,9 @@ void Shell::applyComposerAccess() {
         _composerSuggestion = suggestion;
         _composer->setSuggestion(suggestion);
     }
+    // Featured workflows: the bar in the composer's place (their titles as
+    // looked up, where known).
+    _composer->setFeaturedWorkflows(conversationWorkflows().featured);
     // Unlocked, the placeholder names the chat: a rename goes in too.
     const std::string &reason = _ctx.store().conversation(_current).readOnly;
     if (reason == _composerLock && !reason.empty())
@@ -1590,6 +1594,7 @@ void Shell::buildMain(View *parent) {
     _tabs                 = _mainPane->add<ConvTabs>();
     _tabs->onSelect       = [this](int tab) { showTab(tab); };
     _tabs->onBookmarks    = [this] { showBookmarksMenu(); };
+    _tabs->onWorkflows    = [this] { showWorkflowsMenu(); };
     // The huddle banner: under the tabs, over the messages.
     _huddleBanner         = _mainPane->add<HuddleBanner>();
     _huddleBanner->onJoin = [this] {
@@ -1674,11 +1679,12 @@ void Shell::buildMain(View *parent) {
     _typing     = area->add<TypingIndicator>(_ctx);
     _composer   = area->add<Composer>(_ctx, _drafts);
     _composer->setEnabled(false); // until a conversation is open
-    _search           = areaHost->add<MessageSearch>(_ctx);
+    _composer->onStartWorkflow = [this](const std::string &trigger) { startWorkflow(trigger); };
+    _search                    = areaHost->add<MessageSearch>(_ctx);
     // A result: the conversation opened the usual way, then the
     // jump (it waits for the first page if that is still loading).
-    _search->onResult = [this](ConvRef conv, Ts ts) { jumpToMessage(conv, ts, 0); };
-    _search->onHidden = [this] {
+    _search->onResult          = [this](ConvRef conv, Ts ts) { jumpToMessage(conv, ts, 0); };
+    _search->onHidden          = [this] {
         if (_current != kNoConv)
             _composer->edit().focus();
     };
@@ -2590,7 +2596,13 @@ void Shell::updateHeader() {
         caps.canvases && !app, !c.canvasId.empty() || !c.canvasTitle.empty(), c.canvasTitle
     );
     _tabs->setFiles(caps.sharedFiles && !app);
-    _tabs->setBookmarks(caps.bookmarks && !bookmarks().empty());
+    const auto &marks = bookmarks();
+    _tabs->setBookmarks(
+        caps.bookmarks && std::any_of(marks.begin(), marks.end(), [](const model::Bookmark &b) {
+            return b.workflow.empty();
+        })
+    );
+    _tabs->setWorkflows(caps.workflows && !conversationWorkflows().empty());
 }
 
 // ── Bookmarks ───────────────────────────────────────────────────────────────
@@ -2633,6 +2645,7 @@ void Shell::lookUpBookmarks(ConvRef conv) {
                 _bookmarks[key].at = 0; // unknown: ask again on the next open
                 return;
             }
+            lookUpWorkflowTitles(items);
             _bookmarks[key].items = std::move(items);
             if (_current != kNoConv && bookmarkKey(_current) == key)
                 updateHeader();
@@ -2659,7 +2672,9 @@ std::vector<ui::MenuItem> Shell::bookmarkItems() const {
     const auto               &list = bookmarks();
     for (size_t i = 0; i < list.size(); ++i) {
         const model::Bookmark &b = list[i];
-        ui::MenuItem           m;
+        if (!b.workflow.empty()) // the Workflows tab's
+            continue;
+        ui::MenuItem m;
         m.id                   = int(i) + 1;
         std::string      title = b.title.empty() ? b.link : b.title;
         std::string_view name  = b.emoji;
@@ -2690,6 +2705,156 @@ void Shell::showBookmarksMenu() {
     Menu::popupAt(_win, {r.x, r.y + r.h + 2}, std::move(items), [this](int id) {
         if (id > 0)
             openBookmark(size_t(id - 1));
+    });
+}
+
+// ── Workflows ───────────────────────────────────────────────────────────────
+
+Shell::ConvWorkflows Shell::conversationWorkflows() const {
+    ConvWorkflows out;
+    if (_current == kNoConv || _current >= _ctx.store().conversationCount() ||
+        !_ctx.backend().capabilities().workflows)
+        return out;
+    const std::string ws    = _ctx.store().workspaceId;
+    auto              named = [&](model::WorkflowLink w) {
+        if (const auto it = _workflowInfo.find(ws + "/" + w.trigger);
+            it != _workflowInfo.end() && !it->second.title.empty()) {
+            w.title       = it->second.title;
+            w.description = it->second.description;
+        }
+        return w;
+    };
+    for (const model::WorkflowLink &w : _ctx.store().conversation(_current).featuredWorkflows)
+        out.featured.push_back(named(w));
+    for (const model::Bookmark &b : bookmarks()) {
+        if (b.workflow.empty())
+            continue;
+        const auto seen = [&](const std::vector<model::WorkflowLink> &l) {
+            return std::any_of(l.begin(), l.end(), [&](const model::WorkflowLink &w) {
+                return w.trigger == b.workflow;
+            });
+        };
+        if (!seen(out.featured) && !seen(out.bookmarked))
+            out.bookmarked.push_back(named({b.workflow, b.title, {}}));
+    }
+    return out;
+}
+
+std::vector<ui::MenuItem> Shell::workflowItems() const {
+    const ConvWorkflows       wf = conversationWorkflows();
+    std::vector<ui::MenuItem> items;
+    int                       id = 0;
+    auto part = [&](const char *heading, const std::vector<model::WorkflowLink> &list) {
+        if (list.empty())
+            return;
+        ui::MenuItem h;
+        h.header = true;
+        h.label  = tr(heading);
+        items.push_back(std::move(h));
+        for (const model::WorkflowLink &w : list) {
+            ui::MenuItem m;
+            m.id      = ++id;
+            m.icon    = uint16_t(Icon::Play);
+            m.label   = w.title.empty() ? std::string(tr("Workflow")) : w.title;
+            m.hint    = w.description;
+            m.enabled = !_workflowStarting;
+            items.push_back(std::move(m));
+        }
+    };
+    part(N_("Featured"), wf.featured);
+    part(N_("Bookmarked"), wf.bookmarked);
+    return items;
+}
+
+void Shell::showWorkflowsMenu() {
+    std::vector<ui::MenuItem> items = workflowItems();
+    if (items.empty())
+        return;
+    // The triggers in the items' order (ids count from 1).
+    const ConvWorkflows      wf = conversationWorkflows();
+    std::vector<std::string> triggers;
+    for (const auto *l : {&wf.featured, &wf.bookmarked})
+        for (const model::WorkflowLink &w : *l)
+            triggers.push_back(w.trigger);
+    const RectF r = _tabs->tab(ConvTabs::kWorkflows)->windowRect();
+    Menu::popupAt(_win, {r.x, r.y + r.h + 2}, std::move(items), [this, triggers](int id) {
+        if (id > 0 && size_t(id) <= triggers.size())
+            startWorkflow(triggers[size_t(id - 1)]);
+    });
+}
+
+// A bookmark keeps the title it had when it was made: the workflows' titles
+// (and descriptions, the menu's hints) as they are now, once per workspace.
+void Shell::lookUpWorkflowTitles(const std::vector<model::Bookmark> &items) {
+    if (!_ctx.backend().capabilities().workflows)
+        return;
+    const std::string   ws   = _ctx.store().workspaceId;
+    std::weak_ptr<char> life = _life;
+    for (const model::Bookmark &b : items) {
+        if (b.workflow.empty())
+            continue;
+        const std::string key = ws + "/" + b.workflow;
+        if (_workflowInfo.count(key))
+            continue;
+        _workflowInfo[key] = {b.workflow, {}, {}}; // asked: not again
+        _ctx.backend().lookUpWorkflow(b.workflow, [this, life, key](model::WorkflowLink w) {
+            if (life.expired())
+                return;
+            if (w.title.empty()) {
+                _workflowInfo.erase(key); // unknown: ask again another time
+                return;
+            }
+            _workflowInfo[key] = std::move(w);
+            applyComposerAccess(); // the bar's names too
+        });
+    }
+    // The featured ones' descriptions.
+    if (_current != kNoConv && _current < _ctx.store().conversationCount())
+        for (const model::WorkflowLink &w : _ctx.store().conversation(_current).featuredWorkflows) {
+            const std::string key = ws + "/" + w.trigger;
+            if (_workflowInfo.count(key))
+                continue;
+            _workflowInfo[key] = {w.trigger, {}, {}};
+            _ctx.backend().lookUpWorkflow(w.trigger, [this, life, key](model::WorkflowLink x) {
+                if (life.expired())
+                    return;
+                if (x.title.empty())
+                    _workflowInfo.erase(key);
+                else
+                    _workflowInfo[key] = std::move(x);
+            });
+        }
+}
+
+void Shell::startWorkflow(const std::string &trigger) {
+    if (_workflowStarting || _current == kNoConv || trigger.empty())
+        return;
+    _workflowStarting = true;
+    _composer->setWorkflowBusy(true);
+    model::Backend     *be   = &_ctx.backend();
+    std::weak_ptr<char> life = _life;
+    be->startWorkflow(_current, trigger, [this, life, be](model::Form form, std::string error) {
+        if (life.expired())
+            return;
+        _workflowStarting = false;
+        _composer->setWorkflowBusy(false);
+        if (!error.empty()) {
+            showError(
+                error == "no_connection"
+                    ? std::string(
+                          tr("The workflow couldn't start: Slack didn't answer. Try again.")
+                      )
+                    : i18n::arg(tr("The workflow couldn't start (%1)."), error)
+            );
+            return;
+        }
+        if (form.id.empty())
+            return;                  // it ran without asking anything
+        if (be != &_ctx.backend()) { // another workspace is shown now
+            be->closeForm(form);
+            return;
+        }
+        showWorkflowForm(_ctx, _win, std::move(form), nullptr);
     });
 }
 

@@ -36,6 +36,67 @@ RtmPresence::~RtmPresence() {
     onStateChanged = nullptr;
     teardown();
     stopTimer(_idleTimer);
+    for (Waiter &w : _waiters) // never answered: their owner goes too
+        stopTimer(w.timer);
+    _waiters.clear();
+}
+
+void RtmPresence::hold() {
+    if (++_holds > 1 || (_mode != Mode::Native && _state != Link::Idle))
+        return; // the mode keeps it up already (or will)
+    if (_unavailable)
+        return;
+    if (_state == Link::Idle || _state == Link::Off)
+        setState(Link::Connecting);
+    ensureHolding();
+}
+
+void RtmPresence::release() {
+    if (_holds == 0 || --_holds > 0)
+        return;
+    if (_mode == Mode::Native) {
+        teardown();
+        setState(Link::Off);
+        settleWaiters(false);
+    } else if (_mode == Mode::WhileUsing && !_idleTimer) {
+        onIdle(); // the idle time ran out while it was held
+    }
+}
+
+void RtmPresence::whenActive(int timeoutMs, std::function<void(bool)> done) {
+    if (!done)
+        return;
+    if (_state == Link::Active && connected()) {
+        done(true);
+        return;
+    }
+    if (!holding() || _unavailable) {
+        done(false);
+        return;
+    }
+    Waiter w;
+    w.key   = ++_nextWaiter;
+    w.done  = std::move(done);
+    w.timer = _app.addTimer(timeoutMs, false, [this, key = w.key] {
+        for (size_t i = 0; i < _waiters.size(); ++i)
+            if (_waiters[i].key == key) {
+                auto fn = std::move(_waiters[i].done);
+                _waiters.erase(_waiters.begin() + long(i));
+                fn(false);
+                return;
+            }
+    });
+    _waiters.push_back(std::move(w));
+}
+
+void RtmPresence::settleWaiters(bool up) {
+    std::vector<Waiter> ws = std::move(_waiters);
+    _waiters.clear();
+    for (Waiter &w : ws) {
+        stopTimer(w.timer);
+        if (w.done)
+            w.done(up);
+    }
 }
 
 void RtmPresence::stopTimer(uint64_t &id) {
@@ -161,6 +222,7 @@ void RtmPresence::openAndConnect() {
                 );
                 _unavailable = true;
                 setState(Link::Unavailable);
+                settleWaiters(false);
                 return;
             }
             LOG_INFO("slack", "RtmPresence: rtm.connect failed — %s", err.c_str());
@@ -236,11 +298,13 @@ void RtmPresence::onClosed(int code, const std::string &reason) {
 
 void RtmPresence::onText(const std::string &text) {
     // The socket carries every event of the workspace; only hello, pong,
-    // error and presence_change are ours, and a frame without one of the
-    // words is none of them (no parse for the rest).
+    // error, presence_change, view_opened and workflow_execution_outcome_changed
+    // are ours, and a frame without one of the words is none of them (no
+    // parse for the rest).
     const std::string_view t(text);
     if (t.find("hello") == t.npos && t.find("pong") == t.npos && t.find("error") == t.npos &&
-        t.find("presence_change") == t.npos)
+        t.find("presence_change") == t.npos && t.find("\"view_opened\"") == t.npos &&
+        t.find("\"workflow_execution_outcome_changed\"") == t.npos)
         return;
     json::Document doc;
     if (!doc.parse(std::string_view(text), nullptr))
@@ -253,8 +317,15 @@ void RtmPresence::onText(const std::string &text) {
             stopTimer(_tickleTimer);
             _tickleTimer = _app.addTimer(_t.alwaysTickleMs, true, [this] { sendTickle(true); });
         }
-        sendTickle(true);  // active at once, not at the first input
-        sendPresenceSub(); // a new socket subscribes to nobody
+        if (_mode != Mode::Native)
+            sendTickle(true); // active at once, not at the first input
+        sendPresenceSub();    // a new socket subscribes to nobody
+        settleWaiters(true);
+        return;
+    }
+    if (type == "view_opened" || type == "workflow_execution_outcome_changed") {
+        if (auto fn = onWorkflow) // a handler may replace it
+            fn(doc.root());
         return;
     }
     if (type == "presence_change") {
@@ -294,8 +365,8 @@ void RtmPresence::sendPing() {
 }
 
 void RtmPresence::sendTickle(bool force) {
-    if (_state != Link::Active || !connected())
-        return;
+    if (_state != Link::Active || !connected() || _mode == Mode::Native)
+        return; // Native: up only for a hold, never "active" on purpose
     const int64_t now = base::monotonicMs();
     if (!force && _lastTickle && now - _lastTickle < _t.tickleGapMs)
         return;
@@ -322,8 +393,8 @@ void RtmPresence::onPresenceChange(const json::Value &frame) {
 }
 
 void RtmPresence::onIdle() {
-    if (_mode != Mode::WhileUsing)
-        return;
+    if (_mode != Mode::WhileUsing || _holds > 0)
+        return; // held: release() drops it once the hold ends
     LOG_INFO("slack", "RtmPresence: no input for %d s — dropping the link", _t.idleMs / 1000);
     teardown();
     setState(Link::Idle);

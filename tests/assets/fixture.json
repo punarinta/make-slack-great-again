@@ -136,6 +136,16 @@
     ]
   },
 
+  "workflows": [
+    { "trigger": "Ft0SHIP", "title": "Ship a release", "description": "Ask for a release",
+      "author": "U0DEPLOY",
+      "form": { "title": "Ship a release", "submit": "Submit", "close": "Close", "fields": [
+        { "kind": "text", "label": "Version", "placeholder": "e.g. 2.4.1" },
+        { "kind": "paragraph", "label": "Notes", "optional": true },
+        { "kind": "checkboxes", "label": "Checks", "options": ["Tests pass", "Changelog updated"] } ] } },
+    { "trigger": "Ft0PING", "title": "Ping the team", "author": "U0DEPLOY" }
+  ],
+
   "autoReplies": [
     { "conv": "D0MIRA",   "user": "U0MIRA",  "afterMs": 1500, "typingMs": 2200, "text": "Amazing, thank you! I'll drop it into the Figment doc :sparkles:" },
     { "conv": "D0MIRA",   "user": "U0MIRA",  "afterMs": 1200, "typingMs": 1800, "text": "Keeping the illustration then. Recap goes out at 16:00." },

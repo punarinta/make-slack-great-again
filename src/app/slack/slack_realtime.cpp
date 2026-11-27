@@ -151,6 +151,7 @@ SlackBackend::Live::Live(SlackBackend &b) : b(b), s(b.store()) {
                 this->b.refreshSelfPresence(nullptr);
             });
         };
+        rtm->onWorkflow = [this](const json::Value &frame) { this->b.workflowFrame(frame); };
         rtm->onPresence = [this](const std::string &id, bool active) {
             const UserRef r = s.findUser(id);
             if (r == kNoUser || s.user(r).active == active)
@@ -656,6 +657,10 @@ void SlackBackend::subscribePresence(std::vector<std::string> ids) {
 
 RtmPresence *SlackBackend::presenceLinkForTest() const {
     return _live->rtm.get();
+}
+
+RtmPresence *SlackBackend::rtmLink() const {
+    return _live ? _live->rtm.get() : nullptr;
 }
 
 void SlackBackend::noteUserActivity() {

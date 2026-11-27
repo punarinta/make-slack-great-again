@@ -18,6 +18,8 @@
 #include "screens/shell/saved_page.h"
 #include "screens/shell/shell.h"
 #include "screens/shell/shell_dialogs.h"
+#include "screens/shell/workflow_form.h"
+#include "screens/shell/composer.h"
 #ifdef MSGA_SELF_UPDATE
 #include "screens/shell/update_bar.h"
 #endif
@@ -968,4 +970,132 @@ TEST("pages: hovering sidebar rows reshapes no text") {
     const size_t n0 = text::layoutBuilds();
     sweep();
     CHECK(text::layoutBuilds() == n0);
+}
+
+// ── Workflows ───────────────────────────────────────────────────────────────
+
+TEST("workflow form: required, numbers and minimum lengths are checked before sending") {
+    using K = model::FormField::Kind;
+    model::Form f;
+    auto        field = [&](K k, bool optional) {
+        model::FormField x;
+        x.kind     = k;
+        x.optional = optional;
+        x.label    = "x";
+        f.fields.push_back(x);
+        return &f.fields.back();
+    };
+    field(K::Text, false);
+    field(K::Paragraph, true)->minLength = 3;
+    field(K::Number, true);
+    field(K::People, false);
+    field(K::Note, false);
+    field(K::Unsupported, true);
+    std::vector<model::FormAnswer> a(f.fields.size());
+    a[0].text = "   "; // spaces only: empty
+    auto p    = shell::formProblems(f, a);
+    CHECK_STR(p[0], "Please fill in this field.");
+    CHECK(p[1].empty() && p[2].empty()); // optional and empty: fine
+    CHECK_STR(p[3], "Please fill in this field.");
+    CHECK(p[4].empty() && p[5].empty());
+    a[0].text = "ok";
+    a[1].text = "ab";
+    a[2].text = "1.5";
+    a[3].ids  = {"U0MIRA"};
+    p         = shell::formProblems(f, a);
+    CHECK(p[0].empty());
+    CHECK_STR(p[1], "Please enter at least 3 characters.");
+    CHECK_STR(p[2], "Please enter a whole number.");
+    CHECK(p[3].empty());
+    f.fields[2].decimal = true;
+    a[1].text           = "abc";
+    p                   = shell::formProblems(f, a);
+    CHECK(p[1].empty() && p[2].empty());
+    CHECK_FALSE(shell::formNeedsSlack(f));
+    f.fields[5].optional = false;
+    CHECK(shell::formNeedsSlack(f));
+}
+
+namespace {
+
+bool postedBy(const Store &st, ConvRef c, const char *user, std::string_view text) {
+    for (const Message &m : st.conversation(c).messages)
+        if (m.user == st.findUser(user) && m.text.find(text) != std::string::npos)
+            return true;
+    return false;
+}
+
+} // namespace
+
+TEST("workflows: the featured bar, the Workflows tab, a form checked, sent and posted") {
+    Harness       h;
+    const ConvRef rel = h.conv("C0RELEASES");
+    REQUIRE(h.backend.capabilities().workflows);
+    h.store.updateConversation(rel, [](Conversation &c) {
+        c.featuredWorkflows = {{"Ft0SHIP", "Ship a release", {}}};
+    });
+    h.sh->open(rel);
+    pump();
+    shell::Composer &comp = h.sh->composer();
+    REQUIRE(until([&] { return comp.workflowBarShown(); }));
+    CHECK(h.sh->tabs().tab(shell::ConvTabs::kWorkflows)->visible());
+    CHECK(findIn(comp.workflowBar(), "Ship a release") != nullptr);
+    CHECK(findIn(comp.workflowBar(), "Send a message") != nullptr);
+    // "Send a message": the editor, the strip above it; × back to the bar.
+    comp.showEditor(true);
+    pump();
+    CHECK_FALSE(comp.workflowBarShown());
+    CHECK(comp.workflowStrip()->visible());
+    comp.showEditor(false);
+    pump();
+    CHECK(comp.workflowBarShown());
+    // A conversation without featured workflows has its editor, no tab.
+    h.sh->open(h.conv("C0ENG"));
+    pump();
+    CHECK_FALSE(comp.workflowBarShown());
+    CHECK_FALSE(h.sh->tabs().tab(shell::ConvTabs::kWorkflows)->visible());
+    h.sh->open(rel);
+    pump();
+    CHECK(comp.workflowBarShown()); // the bar again: "Send a message" wasn't chosen here
+
+    // The tab's menu.
+    const auto items = h.sh->workflowItems();
+    REQUIRE(items.size() == 2);
+    CHECK(items[0].header);
+    CHECK_STR(items[0].label, "Featured");
+    CHECK_STR(items[1].label, "Ship a release");
+
+    // Started: its form.
+    h.sh->startWorkflow("Ft0SHIP");
+    CHECK(h.sh->workflowStarting());
+    ui::Popup *d = nullptr;
+    REQUIRE(until([&] {
+        d = h.win->topPopup();
+        return d && findIn(d, "Submit");
+    }));
+    CHECK_FALSE(h.sh->workflowStarting());
+    auto *submit = static_cast<ui::Button *>(findIn(d, "Submit"));
+    REQUIRE(submit);
+    // Nothing filled in: the required fields say so, nothing goes.
+    submit->onClick();
+    pump();
+    CHECK(findIn(d, "Please fill in this field.") != nullptr);
+    pump(20);
+    CHECK_FALSE(postedBy(h.store, rel, "U0DEPLOY", "Version"));
+    // Filled in: sent, posted, closed.
+    auto *version = static_cast<ui::TextField *>(findIn(d, "e.g. 2.4.1")); // its placeholder
+    REQUIRE(version);
+    version->setText("2.4.1");
+    auto *check = static_cast<ui::CheckBox *>(findIn(d, "Tests pass"));
+    REQUIRE(check);
+    check->setChecked(true);
+    submit->onClick();
+    REQUIRE(until([&] { return postedBy(h.store, rel, "U0DEPLOY", "2.4.1"); }));
+    CHECK(postedBy(h.store, rel, "U0DEPLOY", "*Checks*\nTests pass"));
+    REQUIRE(until([&] { return h.win->topPopup() != d; }));
+
+    // One without a form just runs.
+    h.sh->startWorkflow("Ft0PING");
+    REQUIRE(until([&] { return postedBy(h.store, rel, "U0DEPLOY", "Ping the team"); }));
+    CHECK(h.win->topPopup() == nullptr);
 }

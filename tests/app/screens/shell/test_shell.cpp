@@ -3735,13 +3735,17 @@ TEST("activity page: the entry is bright while the feed has unread items; a fail
     CHECK(page.itemCount() == 0);
 }
 
-TEST("activity page: the conversation tabs still read Messages | canvas | Files | Bookmarks") {
+TEST(
+    "activity page: the conversation tabs still read Messages | canvas | Files | Bookmarks | "
+    "Workflows"
+) {
     Harness          h;
     shell::ConvTabs &tabs = h.sh->tabs();
-    CHECK(tabs.tabCount() == 4);
+    CHECK(tabs.tabCount() == 5);
     CHECK_STR(tabs.tabText(0), "Messages");
     CHECK_STR(tabs.tabText(2), "Files");
     CHECK_STR(tabs.tabText(3), "Bookmarks");
+    CHECK_STR(tabs.tabText(4), "Workflows");
     tabs.setCanvas(true, true, "Plan");
     CHECK_STR(tabs.tabText(1), "Plan");
     tabs.setCanvas(true, false, {});

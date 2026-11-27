@@ -112,8 +112,21 @@ public:
     // markdown rendered back to the HTML Slack would serve.
     // The fixture's bookmarks; the files come from the Store (the default).
     void    loadBookmarks(model::ConvRef conv, BookmarksDone done) override;
-    void    loadCanvasMeta(const std::string &fileId, CanvasMetaDone done) override;
-    void    loadCanvasContent(const std::string &fileId, CanvasHtmlDone done) override;
+    // The fixture's workflows: a start shows its form a moment later (none:
+    // it posts that it ran); a submit posts the answers as its author in the
+    // conversation it started from.
+    void    lookUpWorkflow(
+        const std::string &trigger, std::function<void(model::WorkflowLink)> done
+    ) override;
+    void startWorkflow(model::ConvRef conv, const std::string &trigger, FormDone done) override;
+    void submitForm(
+        const model::Form              &form,
+        std::vector<model::FormAnswer>  answers,
+        std::function<void(FormResult)> done
+    ) override;
+    void closeForm(const model::Form &form) override;
+    void loadCanvasMeta(const std::string &fileId, CanvasMetaDone done) override;
+    void loadCanvasContent(const std::string &fileId, CanvasHtmlDone done) override;
     void
     createChannelCanvas(model::ConvRef conv, std::string markdown, CanvasCreated done) override;
     void
@@ -152,10 +165,12 @@ private:
     // The conversation whose canvas `fileId` is (kNoConv: none).
     model::ConvRef canvasConv(std::string_view fileId) const;
 
-    plat::App           &_app;
-    std::string          _path;
-    int64_t              _now = 0;
-    Fixture              _fx;
+    plat::App                                          &_app;
+    std::string                                         _path;
+    int64_t                                             _now = 0;
+    Fixture                                             _fx;
+    // Open forms (by id): the conversation each workflow started from.
+    std::vector<std::pair<std::string, model::ConvRef>> _openForms;
     std::string          _replyUsed;    // a byte per _fx.autoReplies entry: 1 = posted
     model::OneShotTimers _timers{_app}; // they capture this
     model::Ts            _lastTs = 0;

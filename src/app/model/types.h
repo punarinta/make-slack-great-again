@@ -285,34 +285,47 @@ struct Thread {
 
 // A new metadata field also goes into store.cpp's sameMeta (addConversation
 // emits Meta only when one of them changed).
+// A workflow a conversation offers (Slack's Workflow Builder). The featured
+// ones (Conversation::featuredWorkflows) take the composer's place as start
+// buttons; they and the bookmarked ones list under the header's Workflows tab.
+struct WorkflowLink {
+    std::string trigger; // what starts it ("Ft0…")
+    std::string title;
+    std::string description; // "" while not looked up (Backend::lookUpWorkflow)
+    bool        operator==(const WorkflowLink &) const = default;
+};
+
 struct Conversation {
-    std::string          id;
-    std::string          name; // channel name without '#'; DMs: the peer's handle
-    std::string          topic;
-    ConvKind             kind   = ConvKind::Channel;
-    UserRef              dmUser = kNoUser; // Dm peer
-    std::vector<UserRef> members;          // Group participants (me included)
-    uint32_t             memberCount = 0;
-    uint32_t             unread      = 0; // top-level messages after lastRead, not mine
-    uint32_t             mentions    = 0; // of those, the ones that mention me
-    Ts                   lastRead    = 0;
-    Ts                   latest      = 0;
-    bool                 starred     = false;
-    bool                 muted       = false;
-    bool                 member      = true;  // channels: joined; DMs: open (not closed)
-    bool                 extShared   = false; // a Slack Connect channel, shared with another org
-    NotifyLevel          notify      = NotifyLevel::Default;
-    std::string          canvasTitle; // non-empty: the channel has a canvas
-    std::string          canvasId;    // its file ("F0123"); "" while unknown or none
-    std::string          localName;   // "Name conversation…": only this client shows it
+    std::string               id;
+    std::string               name; // channel name without '#'; DMs: the peer's handle
+    std::string               topic;
+    ConvKind                  kind   = ConvKind::Channel;
+    UserRef                   dmUser = kNoUser; // Dm peer
+    std::vector<UserRef>      members;          // Group participants (me included)
+    uint32_t                  memberCount = 0;
+    uint32_t                  unread      = 0; // top-level messages after lastRead, not mine
+    uint32_t                  mentions    = 0; // of those, the ones that mention me
+    Ts                        lastRead    = 0;
+    Ts                        latest      = 0;
+    bool                      starred     = false;
+    bool                      muted       = false;
+    bool                      member      = true; // channels: joined; DMs: open (not closed)
+    bool                      extShared = false; // a Slack Connect channel, shared with another org
+    NotifyLevel               notify    = NotifyLevel::Default;
+    std::string               canvasTitle; // non-empty: the channel has a canvas
+    std::string               canvasId;    // its file ("F0123"); "" while unknown or none
+    std::string               localName;   // "Name conversation…": only this client shows it
+    // Workflows started from buttons in the composer's place (Slack's
+    // featured workflows), in the service's order.
+    std::vector<WorkflowLink> featuredWorkflows;
     // Why nobody can write here ("This session is running in a terminal…"):
     // the composer shows it instead of taking text. "" = writable.
-    std::string          readOnly;
+    std::string               readOnly;
     // A live huddle (Capabilities::huddles): its link (Slack's huddle_link,
     // "" = unknown) and who is in it (or only its host before anyone joined).
-    bool                 huddleActive = false;
-    std::string          huddleLink;
-    std::vector<UserRef> huddleParticipants;
+    bool                      huddleActive = false;
+    std::string               huddleLink;
+    std::vector<UserRef>      huddleParticipants;
 
     std::vector<Message> messages;             // top-level, oldest first, unique ts
     std::vector<Thread>  threads;              // loaded threads, any order
@@ -344,7 +357,69 @@ struct Bookmark {
     std::string link;
     std::string emoji;   // ":rocket:" or ""
     std::string iconUrl; // the site's icon, or ""
+    // A bookmarked workflow (Slack's shortcut bookmarks): what starts it
+    // ("Ft0…"). Listed under the header's Workflows tab, not Bookmarks.
+    std::string workflow;
     bool        operator==(const Bookmark &) const = default;
+};
+
+// What a form field holds: typed in, picked, or chosen.
+struct FormAnswer {
+    // Text, Paragraph and Number: as typed; Date "2026-11-27"; Time "14:05";
+    // DateTime the epoch seconds as digits. "" = none.
+    std::string              text;
+    std::vector<std::string> ids;    // People / Channels: user or conversation ids
+    std::vector<uint32_t>    chosen; // Checkboxes / Radio / Select: option indexes
+    bool                     empty() const { return text.empty() && ids.empty() && chosen.empty(); }
+    bool                     operator==(const FormAnswer &) const = default;
+};
+
+// One part of a form a service shows (a Slack modal: a workflow's "Collect
+// info in a form" step): a field to fill in, or text between the fields.
+struct FormField {
+    enum class Kind : uint8_t {
+        Text,      // one line (also an email or URL field)
+        Paragraph, // several lines
+        Number,
+        People,     // one or several people
+        Channels,   // one or several conversations
+        Checkboxes, // any number of the options
+        Radio,      // one of the options, all shown
+        Select,     // one (multi: several) of the options, from a list
+        Date,
+        Time,
+        DateTime,
+        Note,       // no input: `label` is text to read (mrkdwn)
+        Unsupported // an input this app can't fill in (a file upload, …)
+    };
+    struct Option {
+        std::string text; // shown
+        std::string raw;  // the service's option, JSON, given back as it came
+        bool        operator==(const Option &) const = default;
+    };
+    Kind                kind = Kind::Unsupported;
+    // The service's names for it (Slack: block_id, action_id, the element's
+    // type): what the answer goes back under.
+    std::string         blockId, actionId, type;
+    std::string         label, hint, placeholder;
+    bool                optional  = false;
+    bool                multi     = false;            // People, Channels, Select: several
+    bool                decimal   = false;            // Number: a fraction is allowed
+    int32_t             minLength = 0, maxLength = 0; // Text, Paragraph; 0 = no limit
+    std::vector<Option> options;
+    FormAnswer          initial; // filled in already
+    bool                operator==(const FormField &) const = default;
+};
+
+// A form, open until submitted or closed (Backend::submitForm / closeForm).
+struct Form {
+    std::string            id;                   // the service's (a Slack view id); "" = no form
+    std::string            title, submit, close; // submit/close: the buttons' labels
+    std::vector<FormField> fields;
+    // Where the conversation it was started from can be opened in the
+    // service's own app (a field it can't fill in): "" = nowhere.
+    std::string            fallbackUrl;
+    bool                   operator==(const Form &) const = default;
 };
 
 // A file shared in a conversation (the header's Files tab).

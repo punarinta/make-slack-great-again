@@ -998,7 +998,7 @@ msgstr "ブラウザで開く"
 msgid "More actions"
 msgstr "その他の操作"
 
-#: src/app/screens/messages/message_list.cpp src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/canvas_viewer.cpp src/app/screens/shell/session_status_dialog.cpp src/app/screens/shell/shell.cpp
+#: src/app/screens/messages/message_list.cpp src/app/screens/settings/settings_dialog.cpp src/app/screens/shell/canvas_viewer.cpp src/app/screens/shell/composer.cpp src/app/screens/shell/session_status_dialog.cpp src/app/screens/shell/shell.cpp src/app/screens/shell/workflow_form.cpp
 msgid "Close"
 msgstr "閉じる"
 
@@ -2121,7 +2121,7 @@ msgstr "編集"
 msgid "Disconnect"
 msgstr "切断"
 
-#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/session_dialogs.cpp
+#: src/app/screens/settings/settings_pages.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/session_dialogs.cpp src/app/screens/shell/workflow_form.cpp
 msgid "Remove"
 msgstr "削除"
 
@@ -2760,6 +2760,10 @@ msgstr "メッセージを送信しました"
 msgid "Undo"
 msgstr "取り消す"
 
+#: src/app/screens/shell/composer.cpp
+msgid "Send a message"
+msgstr "メッセージを送信"
+
 #: src/app/screens/shell/composer.cpp src/app/screens/shell/shortcuts.cpp
 msgid "Bold"
 msgstr "太字"
@@ -2839,6 +2843,10 @@ msgstr "停止して文字起こし"
 #: src/app/screens/shell/composer.cpp src/app/screens/shell/shell_agents.cpp
 msgid "Message %1"
 msgstr "%1へのメッセージ"
+
+#: src/app/screens/shell/composer.cpp src/app/screens/shell/shell.cpp src/app/screens/shell/workflow_form.cpp
+msgid "Workflow"
+msgstr "ワークフロー"
 
 #: src/app/screens/shell/composer.cpp src/app/screens/shell/threads_page.cpp
 msgid "Reply in thread…"
@@ -3208,6 +3216,10 @@ msgid "Bookmarks"
 msgstr "ブックマーク"
 
 #: src/app/screens/shell/header.cpp
+msgid "Workflows"
+msgstr "ワークフロー"
+
+#: src/app/screens/shell/header.cpp
 msgid "Untitled"
 msgstr "無題"
 
@@ -3527,6 +3539,22 @@ msgstr "セッションの期限が切れました。クリックして再度サ
 #: src/app/screens/shell/shell.cpp
 msgid "Your %1 session has expired. Click to sign in again."
 msgstr "%1 のセッションの期限が切れました。クリックして再度サインインしてください。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Featured"
+msgstr "おすすめ"
+
+#: src/app/screens/shell/shell.cpp
+msgid "Bookmarked"
+msgstr "ブックマーク済み"
+
+#: src/app/screens/shell/shell.cpp
+msgid "The workflow couldn't start: Slack didn't answer. Try again."
+msgstr "ワークフローを開始できませんでした：Slack から応答がありません。もう一度お試しください。"
+
+#: src/app/screens/shell/shell.cpp
+msgid "The workflow couldn't start (%1)."
+msgstr "ワークフローを開始できませんでした（%1）。"
 
 #: src/app/screens/shell/shell.cpp
 msgid "Reset window size"
@@ -4257,6 +4285,74 @@ msgstr "文字起こし中…"
 #: src/app/screens/shell/voice_strip.cpp
 msgid "Cleaning up…"
 msgstr "整えています…"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please fill in this field."
+msgstr "この項目を入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please enter a number."
+msgstr "数値を入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please enter a whole number."
+msgstr "整数を入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Please enter at least %1 characters."
+msgstr "%1 文字以上入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose people"
+msgstr "メンバーを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose someone"
+msgstr "メンバーを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose channels"
+msgstr "チャンネルを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose a channel"
+msgstr "チャンネルを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "This form has a field msga can't fill in. Start the workflow in Slack to finish it there."
+msgstr "このフォームには msga で入力できない項目があります。Slack でワークフローを開始して入力してください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "(optional)"
+msgstr "（任意）"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Open in Slack"
+msgstr "Slack で開く"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Submit"
+msgstr "送信"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Choose an option"
+msgstr "オプションを選択"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Give a value"
+msgstr "値を指定"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "This field can only be filled in in Slack."
+msgstr "この項目は Slack でのみ入力できます。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "Switch back to the workspace this form came from to send it."
+msgstr "送信するには、このフォームのワークスペースに戻ってください。"
+
+#: src/app/screens/shell/workflow_form.cpp
+msgid "The form couldn't be sent (%1)."
+msgstr "フォームを送信できませんでした（%1）。"
 
 #: src/app/slack/browser_login.cpp
 msgid "Opening %1…"

@@ -192,6 +192,26 @@ public:
     pressButton(model::ConvRef conv, model::Ts ts, const std::string &buttonId, Done done) override;
     void loadSidebarTheme(std::function<void(SidebarTheme, std::string)> done) override;
 
+    // ── Workflows (slack_workflows.cpp) ─────────────────────────────────────
+    // Session tokens only (the methods are the web client's). A start:
+    // workflows.triggers.info for the trigger's link (once per trigger),
+    // the presence link held up, workflows.triggers.trip with a client
+    // token, then the form as the link's view_opened frame with that token;
+    // a run that ends (workflow_execution_outcome_changed) or nothing within
+    // kFormWaitMs means no form. Forms: views.submit (never retried; the
+    // next step's form comes in its answer) and views.close.
+    static constexpr int kFormWaitMs = 15'000;
+    void                 lookUpWorkflow(
+        const std::string &trigger, std::function<void(model::WorkflowLink)> done
+    ) override;
+    void startWorkflow(model::ConvRef conv, const std::string &trigger, FormDone done) override;
+    void submitForm(
+        const model::Form              &form,
+        std::vector<model::FormAnswer>  answers,
+        std::function<void(FormResult)> done
+    ) override;
+    void closeForm(const model::Form &form) override;
+
     // ── Agent thread links ──────────────────────────────────────────────────
     // Posts (slack_actions.cpp): chat.postMessage / chat.update with message
     // metadata {event_type: kAgentReplyEvent}; a token that refuses metadata
@@ -301,8 +321,15 @@ public:
     struct Read;  // slack_backend.cpp
     struct Write; // slack_actions.cpp
     struct Live;  // slack_realtime.cpp
+    struct Flows; // slack_workflows.cpp
 
 private:
+    static Flows *newFlows(SlackBackend &b); // slack_workflows.cpp
+    static void   deleteFlows(Flows *f);
+    // A frame of the presence link's for the workflows (RtmPresence::onWorkflow).
+    void          workflowFrame(const json::Value &frame);
+    // The presence link (null: an OAuth token), slack_realtime.cpp.
+    RtmPresence  *rtmLink() const;
     static Read  *newRead(SlackBackend &b); // slack_backend.cpp
     static void   deleteRead(Read *r);
     static Write *newWrite(SlackBackend &b); // slack_actions.cpp
@@ -454,10 +481,12 @@ private:
     Read                              *_read  = nullptr;
     Write                             *_write = nullptr;
     Live                              *_live  = nullptr;
+    Flows                             *_flows = nullptr;
 
     friend struct Read;
     friend struct Write;
     friend struct Live;
+    friend struct Flows;
 };
 
 } // namespace slack

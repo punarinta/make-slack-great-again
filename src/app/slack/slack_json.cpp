@@ -546,6 +546,15 @@ model::Conversation toConversation(const json::Value &o, model::Store &store) {
             c.canvasId = std::string(tab["data"]["file_id"].str());
     if (!c.canvasId.empty())
         c.canvasTitle = "Canvas";
+    // Featured workflows: [{workflow_trigger_id, title}], the composer's
+    // start buttons. Not in conversations.list (no properties there).
+    for (const Value w : props["channel_workflows"]) {
+        model::WorkflowLink l;
+        l.trigger = owned(w["workflow_trigger_id"]);
+        l.title   = mrkdwn::decodeEntities(w["title"].str());
+        if (!l.trigger.empty())
+            c.featuredWorkflows.push_back(std::move(l));
+    }
     // conversations.info's room (the list has none: Read::carryLocal keeps it).
     if (HuddleRoom h; toHuddleRoom(o["room"], store, h)) {
         c.huddleActive       = h.active;
@@ -863,10 +872,12 @@ std::vector<model::Bookmark> toBookmarks(const json::Value &list) {
     };
     std::vector<Ranked> ranked;
     for (const Value o : list) {
-        // Links only: the pins marker and workflows (shortcut) have tabs of
-        // their own in Slack. A bookmark inside a folder (parent_id) is
-        // listed too; the folders themselves are not in the answer.
-        if (o["type"].str() != "link" || o["link"].str().empty())
+        // Links and workflows (shortcut, `workflow` set): the pins marker
+        // has a tab of its own in Slack. A bookmark inside a folder
+        // (parent_id) is listed too; the folders themselves are not in the
+        // answer.
+        const std::string_view type = o["type"].str();
+        if ((type != "link" && type != "shortcut") || o["link"].str().empty())
             continue;
         model::Bookmark b;
         b.id      = owned(o["id"]);
@@ -874,6 +885,13 @@ std::vector<model::Bookmark> toBookmarks(const json::Value &list) {
         b.link    = owned(o["link"]);
         b.emoji   = owned(o["emoji"]);
         b.iconUrl = owned(o["icon_url"]);
+        if (type == "shortcut") {
+            b.workflow = owned(o["shortcut_id"]);
+            if (b.workflow.empty()) // "https://slack.com/shortcuts/Ft0…/<hash>"
+                b.workflow = workflowTriggerOf(b.link);
+            if (b.workflow.empty())
+                continue;
+        }
         ranked.push_back({owned(o["rank"]), std::move(b)});
     }
     // Slack's order: rank, a string compared bytewise.
@@ -1251,6 +1269,322 @@ int activityUnread(const Value &resp) {
         types = comma == std::string_view::npos ? std::string_view() : types.substr(comma + 1);
     }
     return n;
+}
+
+// ── Workflows and forms ─────────────────────────────────────────────────────
+
+std::string workflowTriggerOf(std::string_view link) {
+    constexpr std::string_view kPrefix = "https://slack.com/shortcuts/";
+    if (!link.starts_with(kPrefix))
+        return {};
+    link.remove_prefix(kPrefix.size());
+    const std::string_view id = link.substr(0, link.find('/'));
+    return id.starts_with("Ft") ? std::string(id) : std::string();
+}
+
+namespace {
+
+using Field = model::FormField;
+using FKind = model::FormField::Kind;
+
+// A text object's words: plain_text / mrkdwn {text}, or a rich_text's text
+// runs joined (Workflow Builder gives dropdown options as rich_text).
+void appendText(const Value &v, std::string &out) {
+    if (v.isString()) {
+        out += v.str();
+        return;
+    }
+    const std::string_view type = v["type"].str();
+    if (type == "text" || type == "plain_text" || type == "mrkdwn") {
+        out += v["text"].str();
+        return;
+    }
+    if (type == "emoji") {
+        out += str::concat({":", v["name"].str(), ":"});
+        return;
+    }
+    if (type == "link") {
+        out += v.has("text") ? v["text"].str() : v["url"].str();
+        return;
+    }
+    for (const Value e : v["elements"])
+        appendText(e, out);
+}
+
+std::string textOf(const Value &v) {
+    std::string out;
+    appendText(v, out);
+    return mrkdwn::decodeEntities(out);
+}
+
+// What a select element offers: its options, or its groups' flattened.
+void readOptions(const Value &el, Field &f) {
+    auto add = [&](const Value &o) { f.options.push_back({textOf(o["text"]), json::write(o)}); };
+    for (const Value o : el["options"])
+        add(o);
+    for (const Value g : el["option_groups"])
+        for (const Value o : g["options"])
+            add(o);
+}
+
+// An initial option (or several) by its value: the index of the one offered.
+void chooseInitial(const Value &chosen, Field &f) {
+    auto pick = [&](const Value &o) {
+        const std::string_view v = o["value"].str();
+        for (size_t i = 0; i < f.options.size(); ++i) {
+            json::Document d;
+            if (d.parse(std::string_view(f.options[i].raw), nullptr) &&
+                d.root()["value"].str() == v) {
+                f.initial.chosen.push_back(uint32_t(i));
+                return;
+            }
+        }
+    };
+    if (chosen.isArray())
+        for (const Value o : chosen)
+            pick(o);
+    else if (chosen.isObject())
+        pick(chosen);
+}
+
+std::vector<std::string> stringList(const Value &list) {
+    std::vector<std::string> out;
+    for (const Value s : list)
+        if (!s.str().empty())
+            out.emplace_back(s.str());
+    return out;
+}
+
+// A conversations select that lists people only (filter include ["im"]).
+bool peopleOnly(const Value &el) {
+    const Value include = el["filter"]["include"];
+    if (!include.isArray() || include.size() == 0)
+        return false;
+    for (const Value t : include)
+        if (t.str() != "im")
+            return false;
+    return true;
+}
+
+// An input block's element as a field.
+void readElement(const Value &el, Field &f) {
+    const std::string_view type = el["type"].str();
+    f.type                      = std::string(type);
+    f.actionId                  = owned(el["action_id"]);
+    f.placeholder               = textOf(el["placeholder"]);
+    if (type == "plain_text_input" || type == "email_text_input" || type == "url_text_input" ||
+        type == "rich_text_input") {
+        f.kind =
+            type == "rich_text_input" || el["multiline"].boolean() ? FKind::Paragraph : FKind::Text;
+        f.minLength = int32_t(el["min_length"].integer());
+        f.maxLength = int32_t(el["max_length"].integer());
+        f.initial.text =
+            type == "rich_text_input" ? textOf(el["initial_value"]) : owned(el["initial_value"]);
+    } else if (type == "number_input") {
+        f.kind         = FKind::Number;
+        f.decimal      = el["is_decimal_allowed"].boolean();
+        f.initial.text = owned(el["initial_value"]);
+    } else if (type == "checkboxes" || type == "radio_buttons") {
+        f.kind = type == "checkboxes" ? FKind::Checkboxes : FKind::Radio;
+        readOptions(el, f);
+        chooseInitial(el[type == "checkboxes" ? "initial_options" : "initial_option"], f);
+    } else if (type == "static_select" || type == "multi_static_select") {
+        f.kind  = FKind::Select;
+        f.multi = type == "multi_static_select";
+        readOptions(el, f);
+        chooseInitial(el[f.multi ? "initial_options" : "initial_option"], f);
+    } else if (type == "users_select" || type == "multi_users_select") {
+        f.kind  = FKind::People;
+        f.multi = type == "multi_users_select";
+        if (f.multi)
+            f.initial.ids = stringList(el["initial_users"]);
+        else if (el.has("initial_user"))
+            f.initial.ids.push_back(owned(el["initial_user"]));
+    } else if (
+        type == "conversations_select" || type == "multi_conversations_select" ||
+        type == "channels_select" || type == "multi_channels_select"
+    ) {
+        const bool conv = type.ends_with("conversations_select");
+        f.kind          = conv && peopleOnly(el) ? FKind::People : FKind::Channels;
+        f.multi         = type.starts_with("multi_");
+        const char *one = conv ? "initial_conversation" : "initial_channel";
+        const char *all = conv ? "initial_conversations" : "initial_channels";
+        if (f.multi)
+            f.initial.ids = stringList(el[all]);
+        else if (el.has(one))
+            f.initial.ids.push_back(owned(el[one]));
+    } else if (type == "datepicker") {
+        f.kind         = FKind::Date;
+        f.initial.text = owned(el["initial_date"]);
+    } else if (type == "timepicker") {
+        f.kind         = FKind::Time;
+        f.initial.text = owned(el["initial_time"]);
+    } else if (type == "datetimepicker") {
+        f.kind = FKind::DateTime;
+        if (const int64_t t = el["initial_date_time"].integer(); t > 0)
+            f.initial.text = std::to_string(t);
+    } else {
+        f.kind = FKind::Unsupported; // file_input, external selects, …
+    }
+    std::erase(f.initial.ids, std::string());
+}
+
+// Text between the fields (section, header, context): a Note, or false.
+bool readNote(const Value &b, Field &f) {
+    const std::string_view type = b["type"].str();
+    std::string            text;
+    if (type == "section" || type == "header") {
+        text = type == "header" ? str::concat({"*", textOf(b["text"]), "*"})
+                                : std::string(b["text"]["text"].str());
+        for (const Value fl : b["fields"]) {
+            if (!text.empty())
+                text += '\n';
+            text += fl["text"].str();
+        }
+    } else if (type == "context") {
+        for (const Value e : b["elements"])
+            if (e.has("text")) {
+                if (!text.empty())
+                    text += ' ';
+                text += e["text"].str();
+            }
+    }
+    if (text.empty())
+        return false;
+    f.kind    = FKind::Note;
+    f.blockId = owned(b["block_id"]);
+    f.label   = std::move(text);
+    f.type    = std::string(type);
+    return true;
+}
+
+} // namespace
+
+model::Form toForm(const Value &view) {
+    model::Form form;
+    form.id     = owned(view["id"]);
+    form.title  = textOf(view["title"]);
+    form.submit = textOf(view["submit"]);
+    form.close  = textOf(view["close"]);
+    for (const Value b : view["blocks"]) {
+        Field f;
+        if (b["type"].str() == "input") {
+            f.blockId  = owned(b["block_id"]);
+            f.label    = textOf(b["label"]);
+            f.hint     = textOf(b["hint"]);
+            f.optional = b["optional"].boolean();
+            readElement(b["element"], f);
+            form.fields.push_back(std::move(f));
+        } else if (readNote(b, f)) {
+            form.fields.push_back(std::move(f));
+        }
+    }
+    return form;
+}
+
+namespace {
+
+// One option given back as it came; null when it no longer parses.
+void writeOption(json::Writer &w, const Field &f, uint32_t i) {
+    json::Document d;
+    if (i < f.options.size() && d.parse(std::string_view(f.options[i].raw), nullptr))
+        w.value(d.root());
+    else
+        w.null();
+}
+
+void writeIds(json::Writer &w, const std::vector<std::string> &ids) {
+    w.beginArray();
+    for (const std::string &id : ids)
+        w.value(id);
+    w.endArray();
+}
+
+// "value": the text, or null when nothing is typed (as Slack's own client).
+void writeText(json::Writer &w, const char *key, const std::string &text) {
+    w.key(key);
+    if (text.empty())
+        w.null();
+    else
+        w.value(text);
+}
+
+} // namespace
+
+std::string formState(const model::Form &form, const std::vector<model::FormAnswer> &answers) {
+    static const model::FormAnswer kNone;
+    json::Writer                   w;
+    w.beginObject().key("values").beginObject();
+    for (size_t i = 0; i < form.fields.size(); ++i) {
+        const Field &f = form.fields[i];
+        if (f.kind == FKind::Note || f.kind == FKind::Unsupported || f.blockId.empty() ||
+            f.actionId.empty())
+            continue;
+        const model::FormAnswer &a = i < answers.size() ? answers[i] : kNone;
+        w.key(f.blockId).beginObject().key(f.actionId).beginObject().key("type").value(f.type);
+        const std::string_view t = f.type;
+        if (t == "rich_text_input") {
+            // The typed text as one rich_text section (Slack's own shape).
+            w.key("rich_text_value").beginObject().key("type").value("rich_text");
+            w.key("elements").beginArray();
+            if (!a.text.empty()) {
+                w.beginObject().key("type").value("rich_text_section").key("elements").beginArray();
+                w.beginObject().key("type").value("text").key("text").value(a.text).endObject();
+                w.endArray().endObject();
+            }
+            w.endArray().endObject();
+        } else if (f.kind == FKind::Text || f.kind == FKind::Paragraph || f.kind == FKind::Number) {
+            writeText(w, "value", a.text);
+        } else if (f.kind == FKind::Checkboxes || (f.kind == FKind::Select && f.multi)) {
+            w.key("selected_options").beginArray();
+            for (uint32_t c : a.chosen)
+                writeOption(w, f, c);
+            w.endArray();
+        } else if (f.kind == FKind::Radio || f.kind == FKind::Select) {
+            w.key("selected_option");
+            if (a.chosen.empty())
+                w.null();
+            else
+                writeOption(w, f, a.chosen.front());
+        } else if (f.kind == FKind::People || f.kind == FKind::Channels) {
+            // The element's own key: selected_user(s), _conversation(s), _channel(s).
+            const std::string noun = t.find("users") != std::string_view::npos ? "user"
+                                     : t.find("conversations") != std::string_view::npos
+                                         ? "conversation"
+                                         : "channel";
+            if (f.multi) {
+                w.key(str::concat({"selected_", noun, "s"}));
+                writeIds(w, a.ids);
+            } else {
+                w.key(str::concat({"selected_", noun}));
+                if (a.ids.empty())
+                    w.null();
+                else
+                    w.value(a.ids.front());
+            }
+        } else if (f.kind == FKind::Date) {
+            writeText(w, "selected_date", a.text);
+        } else if (f.kind == FKind::Time) {
+            writeText(w, "selected_time", a.text);
+        } else if (f.kind == FKind::DateTime) {
+            w.key("selected_date_time");
+            if (a.text.empty())
+                w.null();
+            else
+                w.value(int64_t(std::strtoll(a.text.c_str(), nullptr, 10)));
+        }
+        w.endObject().endObject();
+    }
+    w.endObject().endObject();
+    return w.take();
+}
+
+std::vector<std::string> formErrors(const model::Form &form, const Value &errors) {
+    std::vector<std::string> out(form.fields.size());
+    for (size_t i = 0; i < form.fields.size(); ++i)
+        if (!form.fields[i].blockId.empty())
+            out[i] = owned(errors[form.fields[i].blockId]);
+    return out;
 }
 
 } // namespace slack::mapjson

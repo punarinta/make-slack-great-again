@@ -518,6 +518,38 @@ Composer::Composer(screens::Context &ctx, DraftStash &drafts) : _ctx(ctx), _draf
     box->style().padding(1); // the contents sit inside the 1-px border
     _box = box;
 
+    // ── Featured workflows ──────────────────────────────────────────────────
+    // The bar, in the box's place: [▶ name] … then "Send a message" at the
+    // end, in a box of the editor's look.
+    _wfBar = add<View>();
+    _wfBar->setBackground(C::FormBg, 8);
+    _wfBar->setBorder(C::FieldBorder);
+    _wfBar->style().row().padding(12, 10, 12, 10).spacing(8).items(Align::Center);
+    _wfBarButtons = _wfBar->add<View>();
+    _wfBarButtons->style().row().spacing(8).items(Align::Center).flex(1);
+    _wfBarButtons->setClipChildren(true); // more than fit: the rest stays in the Workflows tab
+    auto *write = _wfBar->add<Button>(tr("Send a message"), Button::Kind::Ghost);
+    write->setIcon(Icon::MessageCircle);
+    write->setIconSize(16);
+    write->style().noShrink();
+    write->onClick = [this] {
+        showEditor(true);
+        _edit->focus();
+    };
+    _wfBar->setVisible(false);
+    // The strip, atop the editor once "Send a message" was chosen: the same
+    // buttons (outlined), and × back to the bar.
+    _wfStrip = box->add<View>();
+    _wfStrip->style().row().padding(10, 6, 8, 6).spacing(8).items(Align::Center);
+    _wfStripButtons = _wfStrip->add<View>();
+    _wfStripButtons->style().row().spacing(8).items(Align::Center).flex(1);
+    _wfStripButtons->setClipChildren(true);
+    auto *back = _wfStrip->add<GlyphButton>(Icon::X, 24, 14, C::ComposerIcon, tr("Close"));
+    back->setLook({C::None, C::FormHighlightStrong, C::FormHighlightStrong, C::None, 3});
+    back->setFocusable(false);
+    back->onClick = [this] { showEditor(false); };
+    _wfStrip->setVisible(false);
+
     // ── Formatting toolbar ──────────────────────────────────────────────────
     auto *toolbar = box->add<View>();
     toolbar->style().row().height(32).padding(8, 2, 8, 2).spacing(4).items(Align::Center);
@@ -1251,6 +1283,88 @@ void Composer::refreshPlaceholder() {
         refreshLook();
 }
 
+// ── Featured workflows ──────────────────────────────────────────────────────
+
+std::string Composer::writingKey() const {
+    if (_key.conv == model::kNoConv || _key.conv >= _ctx.store().conversationCount())
+        return {};
+    return str::concat({_drafts.scope(), "/", _ctx.store().conversation(_key.conv).id});
+}
+
+void Composer::setFeaturedWorkflows(std::vector<model::WorkflowLink> list) {
+    if (_key.thread || !_ctx.backend().capabilities().workflows)
+        list.clear(); // threads and services without workflows: the editor only
+    if (list == _featured)
+        return;
+    _featured = std::move(list);
+    rebuildWorkflowButtons();
+    applyWorkflowMode();
+}
+
+bool Composer::workflowBarShown() const {
+    return _wfBar->visible();
+}
+
+void Composer::showEditor(bool on) {
+    const std::string key = writingKey();
+    if (key.empty())
+        return;
+    const auto it = std::find(_writingIn.begin(), _writingIn.end(), key);
+    if (on && it == _writingIn.end())
+        _writingIn.push_back(key);
+    else if (!on && it != _writingIn.end())
+        _writingIn.erase(it);
+    applyWorkflowMode();
+}
+
+void Composer::setWorkflowBusy(bool busy) {
+    if (busy == _wfBusy)
+        return;
+    _wfBusy = busy;
+    for (View *row : {_wfBarButtons, _wfStripButtons})
+        for (size_t i = 0; i < row->childCount(); ++i)
+            row->child(i)->setEnabled(!busy);
+}
+
+void Composer::rebuildWorkflowButtons() {
+    for (View *row : {_wfBarButtons, _wfStripButtons}) {
+        row->clearChildren();
+        const bool bar = row == _wfBarButtons;
+        for (const model::WorkflowLink &w : _featured) {
+            auto *b = row->add<Button>(
+                w.title.empty() ? std::string(tr("Workflow")) : w.title,
+                bar ? Button::Kind::Primary : Button::Kind::Secondary
+            );
+            b->setIcon(Icon::Play);
+            b->setIconSize(14);
+            b->setEnabled(!_wfBusy);
+            b->onClick = [this, trigger = w.trigger] {
+                if (!_wfBusy && onStartWorkflow)
+                    onStartWorkflow(trigger);
+            };
+        }
+    }
+}
+
+// The bar while the conversation has featured workflows and "Send a message"
+// wasn't chosen there (nor is anything typed: a draft opens on the editor).
+void Composer::applyWorkflowMode() {
+    const std::string key     = writingKey();
+    const bool        hasText = !_edit->empty() || !_files.empty();
+    if (hasText && !key.empty() &&
+        std::find(_writingIn.begin(), _writingIn.end(), key) == _writingIn.end())
+        _writingIn.push_back(key);
+    const bool writing =
+        !key.empty() && std::find(_writingIn.begin(), _writingIn.end(), key) != _writingIn.end();
+    const bool bar = !_featured.empty() && !writing;
+    _wfBar->setVisible(bar);
+    _box->setVisible(!bar);
+    // The hidden editor can't take the focus (nor typing) while the bar shows.
+    _box->setEnabled(!bar);
+    _wfStrip->setVisible(!_featured.empty() && writing);
+    update();
+}
+
 bool Composer::acceptSuggestion() {
     if (_suggestion.empty() || _editTs || !_edit->empty())
         return false;
@@ -1328,6 +1442,10 @@ void Composer::setTarget(model::ConvRef conv, model::Ts thread) {
         _edit->insertHtml(html);
     _files = _drafts.files(next);
     rebuildChips();
+    // The new conversation's workflows come from the shell (applyComposerAccess).
+    _featured.clear();
+    _wfBusy = false;
+    applyWorkflowMode();
     // Back where a dictation is still finishing (the strip shows it), or one
     // failed after we left (the strip says why).
     for (auto it = _voiceErrors.begin(); it != _voiceErrors.end(); ++it)

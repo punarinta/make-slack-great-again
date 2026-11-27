@@ -395,6 +395,18 @@ void fields(IO &io, model::Conversation &c) {
     io.str(c.canvasTitle);
     io.str(c.localName);
     io.str(c.canvasId);
+    // Featured workflows: [trigger, title] each (their descriptions are
+    // looked up again).
+    const size_t n = io.open(c.featuredWorkflows.size());
+    if (io.reading())
+        c.featuredWorkflows.resize(n);
+    for (model::WorkflowLink &w : c.featuredWorkflows) {
+        io.open(2);
+        io.str(w.trigger);
+        io.str(w.title);
+        io.close();
+    }
+    io.close();
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────

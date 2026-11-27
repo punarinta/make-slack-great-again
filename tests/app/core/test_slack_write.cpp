@@ -1162,7 +1162,7 @@ TEST("slack write: canvases — look-up, meta, content, create, edit one change 
     CHECK_STR(Log().get("conversations.canvases.create")["form"]["channel_id"].str(), "C1");
 }
 
-TEST("slack: bookmarks are the links in rank order; a failed list says so") {
+TEST("slack: bookmarks are the links and workflows in rank order; a failed list says so") {
     if (!haveServer())
         return;
     Env e;
@@ -1182,13 +1182,17 @@ TEST("slack: bookmarks are the links in rank order; a failed list says so") {
     });
     REQUIRE(pumpUntil([&] { return called; }));
     CHECK(ok);
-    REQUIRE(got.size() == 2); // no pins marker, no workflow
+    REQUIRE(got.size() == 3); // no pins marker
     CHECK_STR(got[0].id, "Bk3");
     CHECK_STR(got[0].title, "Test env & more");
     CHECK_STR(got[0].emoji, ":rocket:");
-    CHECK_STR(got[1].title, "Retro");
-    CHECK_STR(got[1].link, "https://miro.com/b");
-    CHECK_STR(got[1].iconUrl, "https://miro.com/i.png");
+    CHECK(got[0].workflow.empty());
+    // The workflow, its trigger read from the link.
+    CHECK_STR(got[1].id, "Bk4");
+    CHECK_STR(got[1].workflow, "Ft1");
+    CHECK_STR(got[2].title, "Retro");
+    CHECK_STR(got[2].link, "https://miro.com/b");
+    CHECK_STR(got[2].iconUrl, "https://miro.com/i.png");
     CHECK_STR(Log().get("bookmarks.list")["form"]["channel_id"].str(), "C1");
     // An older OAuth token without bookmarks:read.
     called = false;

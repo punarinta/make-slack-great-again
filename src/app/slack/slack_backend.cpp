@@ -1356,6 +1356,8 @@ void SlackBackend::Read::carryLocal(
         fresh.canvasTitle = old.canvasTitle;
         fresh.canvasId    = old.canvasId;
     }
+    if (fresh.featuredWorkflows.empty()) // the same: conversations.info decides
+        fresh.featuredWorkflows = old.featuredWorkflows;
     if (fresh.memberCount == 0)
         fresh.memberCount = old.memberCount;
     // The list carries no room: a live huddle stays until its end is seen
@@ -4078,6 +4080,7 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.customSections   = _creds.sessionAuth(); // users.channelSections.*: xoxc only
     c.vips             = _creds.sessionAuth(); // users.prefs.get's vip_users: xoxc only
     c.groupDms         = true;                 // conversations.open with several users
+    c.workflows        = _creds.sessionAuth(); // workflows.triggers.trip + the RTM link: xoxc only
     return c;
 }
 

@@ -108,10 +108,11 @@ protected:
     bool                         _accent = false;
 };
 
-// The conversation tabs: Messages, the canvas, Files, then Bookmarks.
+// The conversation tabs: Messages, the canvas, Files, Bookmarks, then
+// Workflows.
 class ConvTabs : public TabStrip {
 public:
-    enum : int { kMessages = 0, kCanvas = 1, kFiles = 2, kBookmarks = 3 };
+    enum : int { kMessages = 0, kCanvas = 1, kFiles = 2, kBookmarks = 3, kWorkflows = 4 };
     ConvTabs();
     // hasCanvas: the second tab names the canvas (title, "Untitled"), else
     // offers "Add canvas"; visible = false hides it.
@@ -122,7 +123,12 @@ public:
     // tabs: it calls onBookmarks (the shell's menu of them under the tab).
     void                  setBookmarks(bool visible);
     std::function<void()> onBookmarks;
-    // Files and Bookmarks as icons alone (the strip is too narrow for all).
+    // Shown while the conversation offers workflows (featured or
+    // bookmarked). A click calls onWorkflows (the shell's menu of them).
+    void                  setWorkflows(bool visible);
+    std::function<void()> onWorkflows;
+    // Files, Bookmarks and Workflows as icons alone (the strip is too
+    // narrow for all).
     bool                  compact() const;
 
     void layout() override;

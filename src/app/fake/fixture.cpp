@@ -20,7 +20,67 @@ using model::kNoUser;
 using model::Ts;
 using model::UserRef;
 
+const Workflow *Fixture::workflow(const std::string &trigger) const {
+    for (const Workflow &w : workflows)
+        if (w.link.trigger == trigger)
+            return &w;
+    return nullptr;
+}
+
 namespace {
+
+// A workflow's form as the fixture writes it (see Workflow in fixture.h).
+bool toForm(const json::Value &o, const std::string &trigger, model::Form *out, std::string *err) {
+    using K = model::FormField::Kind;
+    static const struct {
+        const char *name;
+        K           kind;
+    } kKinds[] = {
+        {"text", K::Text},
+        {"paragraph", K::Paragraph},
+        {"number", K::Number},
+        {"people", K::People},
+        {"channels", K::Channels},
+        {"checkboxes", K::Checkboxes},
+        {"radio", K::Radio},
+        {"select", K::Select},
+        {"date", K::Date},
+        {"time", K::Time},
+        {"datetime", K::DateTime},
+        {"note", K::Note},
+    };
+    model::Form f;
+    f.id     = str::concat({"VDEMO", trigger});
+    f.title  = json::owned(o["title"]);
+    f.submit = json::owned(o["submit"]);
+    f.close  = json::owned(o["close"]);
+    for (const json::Value x : o["fields"]) {
+        model::FormField       fld;
+        const std::string_view kind  = x["kind"].str();
+        bool                   known = false;
+        for (const auto &k : kKinds)
+            if (kind == k.name) {
+                fld.kind = k.kind;
+                known    = true;
+            }
+        if (!known) {
+            *err = str::concat({"unknown field kind \"", kind, "\""});
+            return false;
+        }
+        fld.blockId     = str::concat({"b", str::number(int64_t(f.fields.size()))});
+        fld.actionId    = "a";
+        fld.label       = json::owned(x["label"]);
+        fld.hint        = json::owned(x["hint"]);
+        fld.placeholder = json::owned(x["placeholder"]);
+        fld.optional    = x["optional"].boolean();
+        fld.multi       = x["multi"].boolean();
+        for (const json::Value t : x["options"])
+            fld.options.push_back({std::string(t.str()), {}});
+        f.fields.push_back(std::move(fld));
+    }
+    *out = std::move(f);
+    return true;
+}
 
 using json::BoolField;
 using json::owned;
@@ -298,6 +358,25 @@ bool loadFixture(
     if (store.me == kNoUser)
         return fail(str::concat({"\"me\" (", meId, ") is not in users"}));
 
+    // ── workflows ──
+    for (json::Value o : root["workflows"]) {
+        Workflow w;
+        w.link.trigger     = owned(o["trigger"]);
+        w.link.title       = owned(o["title"]);
+        w.link.description = owned(o["description"]);
+        w.author           = owned(o["author"]);
+        if (w.link.trigger.empty() || w.link.title.empty())
+            return fail("every workflow needs a \"trigger\" and a \"title\"");
+        if (w.author.empty() || store.findUser(w.author) == kNoUser)
+            return fail(str::concat({"workflow ", w.link.trigger, ": unknown \"author\""}));
+        if (o.has("form")) {
+            std::string err;
+            if (!toForm(o["form"], w.link.trigger, &w.form, &err))
+                return fail(str::concat({"workflow ", w.link.trigger, ": ", err}));
+        }
+        fx->workflows.push_back(std::move(w));
+    }
+
     // ── conversations ──
     for (json::Value o : root["conversations"]) {
         const std::string   kind = o.has("kind") ? owned(o["kind"]) : "channel";
@@ -360,13 +439,32 @@ bool loadFixture(
                 c.canvasTitle = "Canvas";
             c.canvasId = str::concat({"FCANVAS", c.id});
         }
+        for (const json::Value t : o["featuredWorkflows"]) {
+            const Workflow *w = fx->workflow(std::string(t.str()));
+            if (!w)
+                return fail(
+                    str::concat({"conversation ", c.id, ": unknown featured workflow ", t.str()})
+                );
+            c.featuredWorkflows.push_back({w->link.trigger, w->link.title, {}});
+        }
         std::vector<model::Bookmark> bookmarks;
         for (const json::Value b : o["bookmarks"]) {
             model::Bookmark x;
-            x.id    = str::concat({"Bk", c.id, "-", str::number(int64_t(bookmarks.size()) + 1)});
-            x.title = owned(b["title"]);
-            x.link  = owned(b["link"]);
-            x.emoji = owned(b["emoji"]);
+            x.id       = str::concat({"Bk", c.id, "-", str::number(int64_t(bookmarks.size()) + 1)});
+            x.title    = owned(b["title"]);
+            x.link     = owned(b["link"]);
+            x.emoji    = owned(b["emoji"]);
+            x.workflow = owned(b["workflow"]);
+            if (!x.workflow.empty()) { // a bookmarked workflow: its link and title
+                const Workflow *w = fx->workflow(x.workflow);
+                if (!w)
+                    return fail(
+                        str::concat({"conversation ", c.id, ": unknown workflow ", x.workflow})
+                    );
+                if (x.title.empty())
+                    x.title = w->link.title;
+                x.link = str::concat({"https://slack.com/shortcuts/", x.workflow, "/demo"});
+            }
             if (x.link.empty())
                 return fail(str::concat({"conversation ", c.id, ": a bookmark needs a \"link\""}));
             bookmarks.push_back(std::move(x));

@@ -543,6 +543,7 @@ FakeBackend::Capabilities FakeBackend::capabilities() const {
     c.customSections   = true; // this run only
     c.vips             = true;
     c.groupDms         = true;
+    c.workflows        = !_fx.workflows.empty(); // the fixture's
     return c;
 }
 
@@ -555,6 +556,88 @@ void FakeBackend::loadBookmarks(ConvRef conv, BookmarksDone done) {
         if (done)
             done(true, std::move(items));
     });
+}
+
+void FakeBackend::lookUpWorkflow(
+    const std::string &trigger, std::function<void(model::WorkflowLink)> done
+) {
+    const Workflow     *w = _fx.workflow(trigger);
+    model::WorkflowLink l = w ? w->link : model::WorkflowLink{trigger, {}, {}};
+    later(kReadLatencyMs, [done = std::move(done), l = std::move(l)]() mutable {
+        if (done)
+            done(std::move(l));
+    });
+}
+
+void FakeBackend::startWorkflow(ConvRef conv, const std::string &trigger, FormDone done) {
+    const Workflow *w = _fx.workflow(trigger);
+    later(kReadLatencyMs * 2, [this, conv, w, trigger, done = std::move(done)] {
+        if (!w) {
+            if (done)
+                done({}, "trigger_not_found");
+            return;
+        }
+        if (w->form.id.empty()) { // nothing to ask: it ran
+            postAs(conv, _store.findUser(w->author), "_" + w->link.title + "_ ran.");
+            if (done)
+                done({}, {});
+            return;
+        }
+        model::Form f = w->form;
+        f.fallbackUrl = _store.conversationLink(conv);
+        std::erase_if(_openForms, [&](const auto &o) { return o.first == f.id; });
+        _openForms.push_back({f.id, conv});
+        if (done)
+            done(std::move(f), {});
+    });
+}
+
+void FakeBackend::submitForm(
+    const model::Form              &form,
+    std::vector<model::FormAnswer>  answers,
+    std::function<void(FormResult)> done
+) {
+    ConvRef     conv = model::kNoConv;
+    std::string by;
+    for (const auto &o : _openForms)
+        if (o.first == form.id)
+            conv = o.second;
+    for (const Workflow &w : _fx.workflows)
+        if (w.form.id == form.id)
+            by = w.author;
+    std::erase_if(_openForms, [&](const auto &o) { return o.first == form.id; });
+    // What Slack's "send a message" step does with the answers: each field's
+    // label in bold, its answer under it.
+    std::string text;
+    using K = model::FormField::Kind;
+    for (size_t i = 0; i < form.fields.size() && i < answers.size(); ++i) {
+        const model::FormField  &f = form.fields[i];
+        const model::FormAnswer &a = answers[i];
+        if (f.kind == K::Note || f.kind == K::Unsupported)
+            continue;
+        std::string value = a.text;
+        for (const std::string &id : a.ids)
+            value +=
+                str::concat({value.empty() ? "" : " ", f.kind == K::People ? "<@" : "<#", id, ">"});
+        for (uint32_t c : a.chosen)
+            if (c < f.options.size())
+                value += str::concat({value.empty() ? "" : ", ", f.options[c].text});
+        text += str::concat({text.empty() ? "" : "\n", "*", f.label, "*\n", value});
+    }
+    later(kReadLatencyMs * 2, [this, conv, by, text = std::move(text), done = std::move(done)] {
+        if (conv == model::kNoConv) {
+            if (done)
+                done({{}, {}, "not_found"});
+            return;
+        }
+        postAs(conv, _store.findUser(by), text);
+        if (done)
+            done({});
+    });
+}
+
+void FakeBackend::closeForm(const model::Form &form) {
+    std::erase_if(_openForms, [&](const auto &o) { return o.first == form.id; });
 }
 
 void FakeBackend::setPresence(bool, Done done) {

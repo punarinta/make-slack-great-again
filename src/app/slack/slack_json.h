@@ -55,9 +55,27 @@ model::Conversation          toConversation(const json::Value &c, model::Store &
 model::Message               toMessage(const json::Value &m, model::Store &store);
 // A files.list file: the file, who shared it and when.
 model::SharedFile            toSharedFile(const json::Value &f, model::Store &store);
-// bookmarks.list's "bookmarks": the links, in Slack's order (rank); pins
-// and workflows are left out.
+// bookmarks.list's "bookmarks": the links and workflows (Bookmark::workflow
+// set), in Slack's order (rank); the pins marker is left out.
 std::vector<model::Bookmark> toBookmarks(const json::Value &list);
+
+// ── Workflows and forms ─────────────────────────────────────────────────────
+// "https://slack.com/shortcuts/Ft0…/<hash>" → "Ft0…"; "" for any other link.
+std::string workflowTriggerOf(std::string_view link);
+// A view (view_opened's, or the next one views.submit answers with): the
+// modal as a form. Input blocks are fields; section, header and context
+// blocks are Notes; an input this app can't fill in is Unsupported.
+// Options keep their JSON (Workflow Builder gives their text as rich_text):
+// the answer gives them back as they came.
+model::Form toForm(const json::Value &view);
+// views.submit's `state`: {"values":{block_id:{action_id:{type, …}}}}, the
+// answer of form.fields[i] at answers[i] (missing: empty). Empty fields
+// go as null / [] (Slack's own client does the same); Notes and
+// Unsupported fields not at all.
+std::string formState(const model::Form &form, const std::vector<model::FormAnswer> &answers);
+// views.submit's response_action "errors": {block_id: message} → one per
+// field ("" = fine).
+std::vector<std::string> formErrors(const model::Form &form, const json::Value &errors);
 
 // Block Kit → mrkdwn (rich_text, section, header, context, table). Image
 // blocks are not text (see toBlocks). An unknown type falls back per

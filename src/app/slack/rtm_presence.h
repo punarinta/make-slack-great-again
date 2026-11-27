@@ -19,6 +19,12 @@
 // Slack pongs RTM pings (unlike Socket Mode), so two missed pongs are a real
 // liveness signal (it also catches a laptop-sleep gap). Input is forwarded
 // as `tickle` frames, the official client's way of resetting auto-away.
+//
+// The socket is also the only way a form reaches a client: a workflow started
+// with workflows.triggers.trip (or an app) opens its modal as a
+// `view_opened` frame, nowhere else. A start holds the link (hold/release)
+// for as long as it waits — up whatever the mode, even Native or idle —
+// and onWorkflow hears the frame (and how the run goes on).
 #pragma once
 
 #include "app/model/backend.h"
@@ -60,9 +66,23 @@ public:
     // the last). Sent at once while active, and again after each reconnect.
     void setPresenceSubs(std::vector<std::string> ids);
 
+    // Holds the link up while any hold is out, whatever the mode (Native,
+    // an idle WhileUsing); releasing the last one goes back to what the mode
+    // says. No tickles while only a hold keeps it.
+    void hold();
+    void release();
+    int  holds() const { return _holds; }
+    // done(true) once the link is up (hello came), now if it is; false when
+    // it can't be (unavailable, nothing holds it) or not within timeoutMs.
+    // Never after the destructor.
+    void whenActive(int timeoutMs, std::function<void(bool up)> done);
+
     std::function<void(Link)>                             onStateChanged;
     // A presence_change for a subscribed user (or any Slack volunteers).
     std::function<void(const std::string &, bool active)> onPresence;
+    // A view_opened frame (a form a workflow or app opened) or a
+    // workflow_execution_outcome_changed one (how a run stands), whole.
+    std::function<void(const json::Value &frame)>         onWorkflow;
 
     // ── Test seams ──────────────────────────────────────────────────────────
     struct Timing {
@@ -77,7 +97,8 @@ public:
     bool connected() const;
 
 private:
-    bool holding() const { return _mode != Mode::Native; }
+    bool holding() const { return _mode != Mode::Native || _holds > 0; }
+    void settleWaiters(bool up);
     void ensureHolding();
     void openAndConnect();
     void connectWs(const std::string &url);
@@ -113,7 +134,14 @@ private:
     int64_t                         _lastTickle = 0;
     uint64_t                        _pingTimer = 0, _tickleTimer = 0, _idleTimer = 0;
     uint64_t                        _reconnectTimer = 0;
-    std::shared_ptr<bool>           _alive;
+    int                             _holds          = 0;
+    struct Waiter {
+        uint64_t                  key = 0, timer = 0; // key: its timer finds it by
+        std::function<void(bool)> done;
+    };
+    std::vector<Waiter>   _waiters; // whenActive's
+    uint64_t              _nextWaiter = 0;
+    std::shared_ptr<bool> _alive;
 };
 
 } // namespace slack

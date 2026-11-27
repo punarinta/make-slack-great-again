@@ -97,16 +97,17 @@ enum class Icon : uint16_t {
     WcMinimize,
     WcRestore,
     X,
+    Zap,
     Tray,
     Logo,
 };
-constexpr int kIconCount = 92;
+constexpr int kIconCount = 93;
 
 // Path data for drawIcon() (format: src/tools/icons.py).
 namespace iconData {
 constexpr int kUnit = 32; // quanta per viewBox unit
-extern const uint8_t  kData[8899];
-extern const uint16_t kOffsets[93];
+extern const uint8_t  kData[9012];
+extern const uint16_t kOffsets[94];
 } // namespace iconData
 
 } // namespace gfx

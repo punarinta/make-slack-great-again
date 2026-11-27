@@ -166,6 +166,25 @@ public:
     // follows, unless locked or fixed.
     void               refreshPlaceholder();
 
+    // ── Featured workflows ──────────────────────────────────────────────────
+    // A channel's featured workflows (Conversation::featuredWorkflows):
+    // while it has any, the composer is a bar of their ▶ start buttons with
+    // "Send a message" at its end. That shows the editor, the buttons in a
+    // strip above the toolbar and a × there going back to the bar — kept per
+    // conversation while the app runs. A conversation with a draft opens on
+    // the editor; a thread's composer never has the bar.
+    void setFeaturedWorkflows(std::vector<model::WorkflowLink> list);
+    bool workflowBarShown() const;
+    // "Send a message" (true) or the strip's × (false).
+    void showEditor(bool on);
+    // While a start waits for its form: the buttons hold (no second start).
+    void setWorkflowBusy(bool busy);
+    // A ▶ pressed: the workflow's trigger.
+    std::function<void(const std::string &trigger)> onStartWorkflow;
+    // The bar's and the strip's buttons (tests).
+    ui::View                                       *workflowBar() const { return _wfBar; }
+    ui::View                                       *workflowStrip() const { return _wfStrip; }
+
     // ── Agent sessions ──────────────────────────────────────────────────────
     // The prompt history source (newest first): ↑ / ↓ from an empty
     // editor step through it, Ctrl+R searches it. Unset: no history.
@@ -414,27 +433,38 @@ private:
         std::string path, preview;
         int64_t     size = 0;
     };
-    std::vector<ChipInfo>    _chipInfo;
-    std::string              _shownPlaceholder; // what the editor was last given
-    std::shared_ptr<int>     _alive      = std::make_shared<int>(0); // guards dialog callbacks
-    double                   _lastTyping = -1e9;
+    std::vector<ChipInfo>            _chipInfo;
+    // Featured workflows: the bar (in the box's place), the strip (atop the
+    // box), the list both show, and the conversations ("<scope>/<id>") where
+    // "Send a message" was chosen.
+    ui::View                        *_wfBar = nullptr, *_wfStrip = nullptr;
+    ui::View                        *_wfBarButtons = nullptr, *_wfStripButtons = nullptr;
+    std::vector<model::WorkflowLink> _featured;
+    std::vector<std::string>         _writingIn;
+    bool                             _wfBusy = false;
+    std::string                      writingKey() const;
+    void                             rebuildWorkflowButtons();
+    void                             applyWorkflowMode();
+    std::string                      _shownPlaceholder; // what the editor was last given
+    std::shared_ptr<int>             _alive = std::make_shared<int>(0); // guards dialog callbacks
+    double                           _lastTyping = -1e9;
     // The undo-send offer (the pill above the box, 5 s): the sent message,
     // what the editor held, the pill, its timer.
-    model::Ts                _undoTs     = 0;
-    std::string              _undoHtml;
-    std::vector<std::string> _undoFiles;
-    ui::Popup               *_undoPill    = nullptr;
-    plat::TimerId            _undoTimer   = 0;
-    int                      _composition = -1;
-    bool                     _dropHover = false, _threadMode = false, _focusedLook = false;
-    bool                     _active        = false; // something to send
-    bool                     _inPick        = false; // updatePickList probing the caret
-    plat::TimerId            _spellTimer    = 0;
+    model::Ts                        _undoTs     = 0;
+    std::string                      _undoHtml;
+    std::vector<std::string>         _undoFiles;
+    ui::Popup                       *_undoPill    = nullptr;
+    plat::TimerId                    _undoTimer   = 0;
+    int                              _composition = -1;
+    bool                             _dropHover = false, _threadMode = false, _focusedLook = false;
+    bool                             _active        = false; // something to send
+    bool                             _inPick        = false; // updatePickList probing the caret
+    plat::TimerId                    _spellTimer    = 0;
     // The chip of the link under the pointer, its link, and the timer that
     // closes it once the pointer is off both it and the link.
-    LinkChip                *_linkChip      = nullptr;
-    plat::TimerId            _linkChipTimer = 0;
-    std::string              _linkChipUrl;
+    LinkChip                        *_linkChip      = nullptr;
+    plat::TimerId                    _linkChipTimer = 0;
+    std::string                      _linkChipUrl;
     std::vector<std::string> _unlinked; // URLs the chip unlinked: linkify() leaves them plain
     uint32_t                 _linkChipFrom = 0, _linkChipTo = 0;
     bool                     _linkifying    = false; // a link change that is no edit

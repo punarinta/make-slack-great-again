@@ -678,12 +678,22 @@ ConvTabs::ConvTabs() {
     addTab(Icon::StickyNotePlus, tr("Add canvas"));
     addTab(Icon::Paperclip, tr("Files"));
     addTab(Icon::Bookmark, tr("Bookmarks"));
+    addTab(Icon::Zap, tr("Workflows"));
     _tabs[kFiles]->setVisible(false);
     _tabs[kBookmarks]->setVisible(false);
+    _tabs[kWorkflows]->setVisible(false);
     _tabs[kBookmarks]->onClick = [this] {
         if (onBookmarks)
             onBookmarks();
     };
+    _tabs[kWorkflows]->onClick = [this] {
+        if (onWorkflows)
+            onWorkflows();
+    };
+}
+
+void ConvTabs::setWorkflows(bool visible) {
+    _tabs[kWorkflows]->setVisible(visible);
 }
 
 void ConvTabs::setFiles(bool visible) {
@@ -697,14 +707,14 @@ void ConvTabs::setBookmarks(bool visible) {
 }
 
 void ConvTabs::layout() {
-    // Too narrow for every tab with its text: Files and Bookmarks show their
-    // icons alone.
+    // Too narrow for every tab with its text: Files, Bookmarks and Workflows
+    // show their icons alone.
     float need = 16;
     for (View *v : _tabs)
         if (v->visible())
             need += static_cast<Tab *>(v)->full + 4;
     const bool compact = need > width();
-    for (int i : {kFiles, kBookmarks})
+    for (int i : {kFiles, kBookmarks, kWorkflows})
         static_cast<Tab *>(_tabs[size_t(i)])->setCompact(compact);
     TabStrip::layout();
 }

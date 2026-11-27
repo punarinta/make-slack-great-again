@@ -2364,8 +2364,16 @@ void SlackBackend::loadChannelCanvas(ConvRef conv, std::function<void(std::strin
                 return;
             std::string fileId;
             if (err.empty()) {
-                fileId = mapjson::toConversation(doc.root()["channel"], _store).canvasId;
+                model::Conversation info = mapjson::toConversation(doc.root()["channel"], _store);
+                fileId                   = info.canvasId;
                 setCanvas(_store, conv, fileId, {});
+                // The featured workflows as they are now: this answer decides
+                // (the roster's merges keep the last ones; they can't tell).
+                if (conv < _store.conversationCount() &&
+                    _store.conversation(conv).featuredWorkflows != info.featuredWorkflows)
+                    _store.updateConversation(conv, [&](model::Conversation &x) {
+                        x.featuredWorkflows = std::move(info.featuredWorkflows);
+                    });
             } else {
                 // Unknown: keep what the Store has.
                 LOG_WARN("slack", "conversations.info (canvas): %s", err.c_str());

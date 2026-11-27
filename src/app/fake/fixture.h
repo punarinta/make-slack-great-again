@@ -48,6 +48,20 @@ struct Canvas {
     std::string    htmlPath; // absolute; the inner HTML of Slack's quip-canvas-content
 };
 
+// A workflow ("workflows": [{trigger, title, description, author, form}]),
+// featured by a conversation ("featuredWorkflows": [trigger]) or bookmarked
+// ({"workflow": trigger} in its "bookmarks"). Its form, in the model's terms:
+// {title, submit, close, fields: [{kind, label, hint, placeholder,
+// optional, multi, options: [text]}]}, kind one of text, paragraph,
+// number, people, channels, checkboxes, radio, select, date, time,
+// datetime, note. Submitted, `author` posts the answers where it started.
+// No form: it just posts that it ran.
+struct Workflow {
+    model::WorkflowLink link;
+    std::string         author; // a user id
+    model::Form         form;   // id "" = none
+};
+
 // What the fixture holds beyond the Store's data.
 struct Fixture {
     std::string            dir;    // absolute; asset paths resolve against it
@@ -59,6 +73,8 @@ struct Fixture {
     std::string            aiDefault;
     std::vector<Canvas>    canvases;
     std::vector<Bookmarks> bookmarks;
+    std::vector<Workflow>  workflows;
+    const Workflow        *workflow(const std::string &trigger) const;
 };
 
 // Loads `path` (a directory holding fixture.json, or a .json file) into

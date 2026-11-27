@@ -388,6 +388,7 @@ public:
         bool customSections   = false; // the sidebar's own sections (createSection…)
         bool vips             = false; // the sidebar's "VIP unreads" section
         bool groupDms         = false; // People's "New group DM" (openDmGroup)
+        bool workflows        = false; // featured/bookmarked workflows start (startWorkflow)
     };
     virtual Capabilities capabilities() const { return {}; }
 
@@ -602,15 +603,61 @@ public:
     }
 
     // ── Bookmarks and files ────────────────────────────────────────────────
-    // The conversation's bookmarks, in its order (links only: no pins or
-    // workflows). ok = false: the list couldn't be read (the tab keeps what
-    // it showed).
+    // The conversation's bookmarks, in its order: links, and bookmarked
+    // workflows (Bookmark::workflow set; the Workflows tab's), no pins.
+    // ok = false: the list couldn't be read (the tab keeps what it showed).
     using BookmarksDone = std::function<void(bool ok, std::vector<Bookmark> bookmarks)>;
     virtual void loadBookmarks(ConvRef conv, BookmarksDone done) {
         (void)conv;
         if (done)
             done(true, {});
     }
+
+    // ── Workflows and their forms (Capabilities::workflows) ───────────────
+    // A conversation's featured workflows are Conversation::featuredWorkflows
+    // (refreshed by loadChannelCanvas's look as it opens); its bookmarked ones
+    // come with loadBookmarks.
+    //
+    // A workflow's title and description, as it is now (a bookmark keeps
+    // the title it had when bookmarked). done never runs after the backend
+    // is gone; an empty title: unknown.
+    virtual void
+    lookUpWorkflow(const std::string &trigger, std::function<void(WorkflowLink)> done) {
+        if (done)
+            done({trigger, {}, {}});
+    }
+    // Starts a workflow from `conv`. done(form, "") when it opens a form to
+    // fill in (show it; then submitForm or closeForm); done({}, "") when it
+    // runs without one; done({}, error) when it didn't start (error says
+    // why, for the banner).
+    using FormDone = std::function<void(Form form, std::string error)>;
+    virtual void startWorkflow(ConvRef conv, const std::string &trigger, FormDone done) {
+        (void)conv, (void)trigger;
+        if (done)
+            done({}, "not_supported");
+    }
+    // What a submit came to: the form's next step (next.id set: show it in
+    // place of this one), the fields the service refused (one message per
+    // field, "" = fine; the form stays), a failure (error), or none of these:
+    // done, the form goes.
+    struct FormResult {
+        Form                     next;
+        std::vector<std::string> fieldErrors;
+        std::string              error;
+    };
+    // The answers, one per form field (FormField order). Sent once, never
+    // retried: a repeat would run the workflow's next step twice. The
+    // required fields are the caller's to check: the service takes an empty
+    // one (and posts it).
+    virtual void submitForm(
+        const Form &form, std::vector<FormAnswer> answers, std::function<void(FormResult)> done
+    ) {
+        (void)form, (void)answers;
+        if (done)
+            done({{}, {}, "not_supported"});
+    }
+    // The form is dismissed (Close, ×, Escape): the workflow stops waiting.
+    virtual void closeForm(const Form &form) { (void)form; }
     // One page of the files shared in the conversation, newest first (page
     // 1 first). nextPage 0 = the last page; error "" on success.
     struct FilesPage {

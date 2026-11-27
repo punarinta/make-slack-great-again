@@ -381,6 +381,7 @@ auto metaOf(const Conversation &c) {
         c.canvasTitle,
         c.canvasId,
         c.localName,
+        c.featuredWorkflows,
         c.readOnly,
         c.huddleActive,
         c.huddleLink,
