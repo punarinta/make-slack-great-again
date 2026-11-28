@@ -3735,39 +3735,39 @@ msgstr "会話にジャンプ"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 1st workspace"
-msgstr ""
+msgstr "1番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 2nd workspace"
-msgstr ""
+msgstr "2番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 3rd workspace"
-msgstr ""
+msgstr "3番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 4th workspace"
-msgstr ""
+msgstr "4番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 5th workspace"
-msgstr ""
+msgstr "5番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 6th workspace"
-msgstr ""
+msgstr "6番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 7th workspace"
-msgstr ""
+msgstr "7番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 8th workspace"
-msgstr ""
+msgstr "8番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "Switch to 9th workspace"
-msgstr ""
+msgstr "9番目のワークスペースに切り替え"
 
 #: src/app/screens/shell/shortcuts.cpp
 msgid "New line in message"
