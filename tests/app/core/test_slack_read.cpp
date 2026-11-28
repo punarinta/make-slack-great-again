@@ -5,6 +5,7 @@
 // JSON mappers. Nothing here talks to the real Slack. Delays are compressed
 // (MSGA_SLACK_TEST_SPEEDUP) so the 5 s poll runs every 50 ms.
 #include "app/slack/slack_backend.h"
+#include "app/slack/session.h"
 #include "app/slack/slack_json.h"
 #include "support/fake_slack_server.h"
 #include "base/json.h"
@@ -904,6 +905,121 @@ TEST("slack read: Enterprise Grid lists through client.userBoot + im.list") {
     CHECK_STR(Log().get("im.list")["form"]["get_read_state"].str(), "true");
 }
 
+TEST("slack read: on Grid users.list is one page, the rest is looked up on the paced lane") {
+    if (!haveServer())
+        return;
+    for (bool grid : {false, true}) {
+        Env e;
+        // A DM partner only the second page names.
+        set(R"({"users.list?cursor=p2": {"ok": true, "members": [
+                  {"id": "UBOT", "name": "deploybot", "is_bot": true, "profile": {}},
+                  {"id": "ULATE", "name": "late", "profile": {"real_name": "Late Larsen"}}],
+                "response_metadata": {"next_cursor": ""}},
+                "users.info?user=ULATE": {"ok": true, "user": {"id": "ULATE", "name": "late",
+                  "profile": {"real_name": "Late Larsen"}}},
+                "users.conversations?cursor=c2": {"ok": true, "channels": [
+                  {"id": "D3", "is_im": true, "user": "ULATE"}],
+                "response_metadata": {"next_cursor": ""}}})");
+        if (grid)
+            set(R"({"auth.test": {"ok": true, "user_id": "UME", "team_id": "T1", "team": "Lumen",
+                                  "url": "https://lumen.slack.com/", "enterprise_id": "E1"}})");
+        REQUIRE(e.connect());
+        REQUIRE(pumpUntil([&] { return e.user("ULATE").displayName == "Late Larsen"; }, 3000));
+        CHECK_STR(e.user("UMIRA").displayName, "Mira Okafor"); // the first page
+        Log l;
+        CHECK(l.count("users.list") == (grid ? 1 : 2));
+        CHECK_STR(l.get("users.list")["form"]["limit"].str(), grid ? "1000" : "200");
+        // Off Grid the whole list named the partner: no lookup.
+        CHECK(l.count("users.info", "user", "ULATE") == (grid ? 1 : 0));
+        if (grid) // the partial list takes nobody off the roster
+            CHECK(e.store.findUser("UBOT") == model::kNoUser);
+    }
+}
+
+TEST("slack read: a lookup waiting on the paced lane goes at once when it is wanted on screen") {
+    if (!haveServer())
+        return;
+    Env e(nullptr);
+    e.addChannel("C1");
+    model::User ghost;
+    ghost.id          = "UGHOST";
+    ghost.placeholder = true;
+    const auto ref    = e.store.addUser(ghost);
+    set(R"({"users.info?user=UGHOST": {"ok": true, "user": {"id": "UGHOST", "name": "ghost",
+              "profile": {"real_name": "Gus Ghost"}}},
+            "conversations.history": {"ok": true, "has_more": false, "messages": [],
+                                      "__delay": 0.4}})");
+    // A slow interactive call holds the paced lane; a sweep queues the lookup.
+    bool slow = false;
+    e.be->readCallForTest(
+        "conversations.history",
+        "channel=C1",
+        [&](const json::Document &, const std::string &) { slow = true; },
+        false
+    );
+    e.be->resolveUserForTest(ref, true);
+    fakeslack::pumpFor(100);
+    CHECK(Log().count("users.info") == 0); // still queued
+    e.be->resolveUser(ref);                // on screen: now
+    REQUIRE(pumpUntil([&] { return e.user("UGHOST").displayName == "Gus Ghost"; }, 3000));
+    CHECK(!slow); // ahead of the call that holds the lane
+    REQUIRE(pumpUntil([&] { return slow; }, 3000));
+    fakeslack::pumpFor(200); // the lane moves again: the queued one drops
+    CHECK(Log().count("users.info", "user", "UGHOST") == 1);
+}
+
+TEST("slack read: signing in at a Grid org's address adds the org's workspaces") {
+    if (!haveServer())
+        return;
+    for (bool fallback : {false, true}) {
+        Env               e(nullptr);
+        const std::string base = fakeslack::server();
+        const std::string list =
+            R"({"ok": true, ")" + std::string(fallback ? "teams" : "workspaces") +
+            R"(": [{"id": "E1", "name": "Acme", "url": ")" + base +
+            R"(/boot/org/"}, {"id": "T9", "name": "Eng", "domain": "eng", "url": ")" + base +
+            R"(/boot/eng/", "icon": {"image_88": "https://a/eng.png"}}]})";
+        set(
+            R"({"boot/org": {"__raw": "<script>{\"api_token\":\"xoxc-org\"}</script>"},
+                "boot/eng": {"__raw": "{\"api_token\":\"xoxc-eng\",\"enterprise_api_token\":\"xoxc-org\"}"}})"
+        );
+        if (fallback) {
+            set(R"({"client.userBoot": {"ok": true, "workspaces": []}})");
+            set(R"({"auth.teams.list": )" + list + "}");
+        } else {
+            set(R"({"client.userBoot": )" + list + "}");
+        }
+        // The org, the workspace, then the org token the workspace's page carries.
+        const std::string org = R"({"ok": true, "team_id": "E1", "team": "Acme",
+              "enterprise_id": "E1", "url": ")" +
+                                base + R"(/boot/org/"})";
+        script(
+            "auth.test",
+            "[" + org + R"(, {"ok": true, "team_id": "T9", "team": "Eng", "enterprise_id": "E1",
+              "url": ")" +
+                base + R"(/boot/eng/"}, )" + org + "]"
+        );
+        slack::TokenDeriver             deriver(e.client);
+        std::vector<slack::Credentials> valid;
+        bool                            done = false;
+        deriver.run("xoxd-c", {{.workspaceUrl = base + "/boot/org"}}, [&](auto v, std::string) {
+            valid = std::move(v);
+            done  = true;
+        });
+        REQUIRE(pumpUntil([&] { return done; }, 5000));
+        REQUIRE(valid.size() == 1); // the workspace, the org folded into it
+        CHECK_STR(valid[0].teamId, "T9");
+        CHECK_STR(valid[0].token, "xoxc-eng");
+        CHECK_STR(valid[0].orgToken, "xoxc-org");
+        CHECK_STR(valid[0].iconUrl, "https://a/eng.png");
+        Log l;
+        CHECK(l.count("client.userBoot") == 1);
+        CHECK(l.count("auth.teams.list") == (fallback ? 1 : 0));
+        CHECK_STR(l.get("client.userBoot")["auth"].str(), "Bearer xoxc-org");
+        CHECK(l.count("boot") == 2); // the org's page, then the workspace's
+    }
+}
+
 TEST("slack read: the Names preference — override × workspace default, as Slack decides") {
     using namespace slack::mapjson;
     const auto prefs = [](const char *text) {
@@ -1399,6 +1515,8 @@ TEST("slack read: a local Names choice ignores Slack's answer until switched bac
     // users.prefs.get still fires once per connect for VIP, but its
     // Names-specific result (the override) is ignored while not in Service.
     REQUIRE(pumpUntil([] { return Log().count("users.prefs.get") == 1; }, 3000));
+    // Its answer lands too (a switch while it is on its way asks no second time).
+    fakeslack::pumpFor(200);
     CHECK_STR(e.user("UMEG").displayName, "Meg Ryan");
     e.be->setNamesMode(model::Backend::NamesMode::Service);
     REQUIRE(pumpUntil([&] { return !e.store.realNames(); }, 3000));

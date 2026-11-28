@@ -173,11 +173,12 @@ struct SlackBackend::Read {
     // ── Plumbing ────────────────────────────────────────────────────────────
     enum class Lane : uint8_t { Normal, Background };
     struct Call {
-        std::string method, form;
-        ApiDone     done;
-        int         attempt = 0;
-        Lane        lane    = Lane::Normal;
-        bool        quiet   = false; // a 429 waits without the banner
+        std::string           method, form;
+        ApiDone               done;
+        int                   attempt = 0;
+        Lane                  lane    = Lane::Normal;
+        bool                  quiet   = false; // a 429 waits without the banner
+        std::function<bool()> stale;           // see call()
     };
     model::OneShotTimers                     timers{b._app}; // pending one-shots
     plat::TimerId                            tickTimer = 0;
@@ -195,11 +196,14 @@ struct SlackBackend::Read {
     int64_t now() const { return base::monotonicMs() * speed; }
     void    later(int64_t ms, std::function<void()> fn);
     void    call(
-        std::string method,
-        std::string form,
-        ApiDone     done,
-        Lane        lane  = Lane::Normal,
-        bool        quiet = false
+        std::string           method,
+        std::string           form,
+        ApiDone               done,
+        Lane                  lane  = Lane::Normal,
+        bool                  quiet = false,
+        // Background only: asked when the call's turn comes; true drops it
+        // (done hears "cancelled") without spending the lane's slot.
+        std::function<bool()> stale = nullptr
     );
     void issue(Call c);
     void pumpPaced();
@@ -295,7 +299,11 @@ struct SlackBackend::Read {
     size_t                                   presenceIdx = 0;
     std::vector<int64_t> awayProbeAt; // by UserRef: now() of the last away-author probe
 
-    void fetchUserIfNeeded(UserRef u);
+    // Lookups queued on the paced lane, not issued yet: an interactive ask
+    // for one of them goes out at once and the queued one drops.
+    std::unordered_set<std::string> slowLookups;
+
+    void fetchUserIfNeeded(UserRef u, Lane lane = Lane::Normal);
     void fetchMissingDmUsers();
     void resolveAuthors(const std::vector<model::Message> &page);
     // `partners`: the half-hourly pass, DM partners too (see
@@ -507,9 +515,14 @@ void SlackBackend::Read::later(int64_t ms, std::function<void()> fn) {
 }
 
 void SlackBackend::Read::call(
-    std::string method, std::string form, ApiDone done, Lane lane, bool quiet
+    std::string           method,
+    std::string           form,
+    ApiDone               done,
+    Lane                  lane,
+    bool                  quiet,
+    std::function<bool()> stale
 ) {
-    Call c{std::move(method), std::move(form), std::move(done), 0, lane, quiet};
+    Call c{std::move(method), std::move(form), std::move(done), 0, lane, quiet, std::move(stale)};
     if (lane == Lane::Normal) {
         ++normalPending;
         issue(std::move(c));
@@ -545,7 +558,16 @@ void SlackBackend::Read::call(
 void SlackBackend::Read::pumpPaced() {
     // Interactive work first: the lane only moves while no Normal call is
     // outstanding (one merely cooling down on a 429 still holds it).
-    if (pacedBusy || paced.empty() || normalPending > 0)
+    if (pacedBusy || normalPending > 0)
+        return;
+    while (!paced.empty() && paced.front().stale && paced.front().stale()) {
+        pacedByKey.erase(str::concat({paced.front().method, "\n", paced.front().form}));
+        Call dropped = std::move(paced.front());
+        paced.pop_front();
+        if (dropped.done)
+            dropped.done(json::Document(), "cancelled");
+    }
+    if (paced.empty())
         return;
     pacedBusy = true;
     pacedByKey.erase(str::concat({paced.front().method, "\n", paced.front().form}));
@@ -857,11 +879,17 @@ void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done
     // Each page lands as it comes (a big org's roster takes many pages, and
     // one that gives up keeps the pages before it); who is off the roster is
     // only known once the last page is in.
-    auto seen    = std::make_shared<std::unordered_set<std::string>>();
-    usersLoading = true;
+    // On Grid users.list is the whole org's directory, not the workspace's:
+    // walking all of it got the session revoked within seconds (issue #139).
+    // One page there, a partial roster (nobody is taken off it); the people
+    // it misses are looked up on the paced lane (fetchMissingDmUsers,
+    // resolveAuthors).
+    const bool grid = b._grid;
+    auto       seen = std::make_shared<std::unordered_set<std::string>>();
+    usersLoading    = true;
     paginate(
         "users.list",
-        teamForm({{"limit", "200"}}),
+        teamForm({{"limit", grid ? "1000" : "200"}}),
         "members",
         [this, seen](const json::Value &arr) {
             std::vector<model::User> page;
@@ -874,12 +902,22 @@ void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done
             }
             mergeUsers(std::move(page));
         },
-        [this, seen, done = std::move(done)](const std::string &err) {
-            usersLoading = false;
+        [this, seen, grid, done = std::move(done)](std::string err) {
+            usersLoading       = false;
+            const bool partial = grid && err == "page_limit";
+            if (partial) {
+                err.clear();
+                // Those the page brought need no daily users.info of their own.
+                for (const std::string &id : *seen) {
+                    offRoster.erase(id);
+                    probedAt.erase(id);
+                }
+            }
             if (!err.empty()) {
                 LOG_WARN("slack", "users.list: %s", err.c_str());
             } else {
-                noteOffRoster(*seen);
+                if (!partial)
+                    noteOffRoster(*seen);
                 usersLoaded = true;
                 usersAt     = base::nowSecs();
                 extrasChanged();
@@ -889,7 +927,7 @@ void SlackBackend::Read::loadUsers(std::function<void(const std::string &)> done
             }
             done(err);
         },
-        0,
+        grid ? 1 : 0,
         lane,
         true // a throttled page just waits it out: no banner
     );
@@ -1581,27 +1619,48 @@ void SlackBackend::Read::loadCommands() {
 // ── Users ───────────────────────────────────────────────────────────────────
 
 // users.info for someone users.list never lists (Slack Connect peers, USLACK,
-// deactivated accounts).
-void SlackBackend::Read::fetchUserIfNeeded(UserRef ref) {
+// deactivated accounts; on Grid, everyone past its one page). A sweep asks
+// on the paced lane (Lane::Background): hundreds of lookups at once got a
+// Grid session revoked about 30 calls in (issue #139).
+void SlackBackend::Read::fetchUserIfNeeded(UserRef ref, Lane lane) {
     if (ref == kNoUser || !s.user(ref).placeholder)
         return;
-    const std::string id = s.user(ref).id;
+    const std::string id   = s.user(ref).id;
+    const bool        bot  = id.size() > 1 && id[0] == 'B';
+    const bool        slow = lane == Lane::Background;
     // No isSlackSystemUser skip: users.list omits USLACK and USLACKBOT, and
     // this one users.info is what names them ("Slack", its logo). Once
     // resolved they are no longer placeholders, so they are never re-asked.
-    if (pendingUsers.count(id))
-        return;
-    if (const auto it = lookupRetryAt.find(id); it != lookupRetryAt.end() && now() < it->second)
-        return;
-    const bool bot = id.size() > 1 && id[0] == 'B';
-    if (!bot && !hasUserIdPrefix(id))
-        return;
-    pendingUsers.insert(id);
+    if (pendingUsers.count(id)) {
+        // Still waiting on the paced lane and now wanted on screen: asked
+        // at once, the queued one drops.
+        if (slow || !slowLookups.erase(id))
+            return;
+    } else {
+        if (const auto it = lookupRetryAt.find(id); it != lookupRetryAt.end() && now() < it->second)
+            return;
+        if (!bot && !hasUserIdPrefix(id))
+            return;
+        pendingUsers.insert(id);
+        if (slow)
+            slowLookups.insert(id);
+    }
+    // Dropped from the paced lane when taken over or resolved another way
+    // (a users.list page, an interactive lookup) before its turn.
+    std::function<bool()> stale;
+    if (slow)
+        stale = [this, id] {
+            const UserRef r = s.findUser(id);
+            return !slowLookups.count(id) || r == kNoUser || !s.user(r).placeholder;
+        };
     // A bot id (a bot post without a profile) resolves through bots.info.
     call(
         bot ? "bots.info" : "users.info",
         net::formEncode({{bot ? "bot" : "user", id}}),
-        [this, id, bot](const json::Document &doc, const std::string &err) {
+        [this, id, bot, slow](const json::Document &doc, const std::string &err) {
+            // Taken over by an interactive lookup: that one answers.
+            if (slow && !slowLookups.erase(id))
+                return;
             pendingUsers.erase(id);
             // A lost connection or a cancel says nothing about the id: the
             // next page asks again. Anything else waits out the backoff.
@@ -1632,21 +1691,34 @@ void SlackBackend::Read::fetchUserIfNeeded(UserRef ref) {
                 extrasChanged();
             }
             s.usersChanged(b.mergeUser(std::move(u)));
-        }
+        },
+        lane,
+        false,
+        std::move(stale)
     );
 }
 
+// DM partners and group DM members the roster lacks, on the paced lane: the
+// most recently active DMs first, then the group DMs.
 void SlackBackend::Read::fetchMissingDmUsers() {
     if (!usersLoaded)
         return; // every peer would look missing; the users load calls again
+    std::vector<std::pair<Ts, UserRef>> dms;
+    std::vector<UserRef>                members;
     for (ConvRef r = 0; r < s.conversationCount(); ++r) {
         const model::Conversation &c = s.conversation(r);
         if (c.kind == model::ConvKind::Dm)
-            fetchUserIfNeeded(c.dmUser);
+            dms.emplace_back(c.latest, c.dmUser);
         else if (c.kind == model::ConvKind::Group)
-            for (UserRef u : std::vector<UserRef>(c.members))
-                fetchUserIfNeeded(u);
+            members.insert(members.end(), c.members.begin(), c.members.end());
     }
+    std::stable_sort(dms.begin(), dms.end(), [](const auto &a, const auto &b) {
+        return a.first > b.first;
+    });
+    for (const auto &[latest, u] : dms)
+        fetchUserIfNeeded(u, Lane::Background);
+    for (UserRef u : members)
+        fetchUserIfNeeded(u, Lane::Background);
 }
 
 // Authors the roster doesn't know.
@@ -2290,6 +2362,10 @@ bool SlackBackend::canFollowThread(ConvRef c, Ts root) const {
 
 void SlackBackend::resolveUser(UserRef u) {
     _read->fetchUserIfNeeded(u);
+}
+
+void SlackBackend::resolveUserForTest(UserRef u, bool background) {
+    _read->fetchUserIfNeeded(u, background ? Read::Lane::Background : Read::Lane::Normal);
 }
 
 void SlackBackend::requestPresence(UserRef u) {

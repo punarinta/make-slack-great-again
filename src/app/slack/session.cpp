@@ -5,6 +5,7 @@
 
 #include "app/slack/web_api.h"
 #include "base/json.h"
+#include "base/log.h"
 #include "base/str.h"
 
 #include <memory>
@@ -36,6 +37,7 @@ bool infraSubdomain(std::string_view sub) {
         "slack",
         "join",
         "signin",
+        "enterprise", // <org>.enterprise.slack.com: the org, never a workspace
     };
     for (const char *i : kInfra)
         if (sub == i)
@@ -50,16 +52,18 @@ std::string iconOf(const json::Value &icon) {
     return std::string(u);
 }
 
+// A Grid org's own credential (E…), not one of its workspaces.
+bool isOrg(const Credentials &c) {
+    return !c.enterpriseId.empty() && !c.token.empty() &&
+           (c.teamId == c.enterpriseId || str::startsWith(c.teamId, "E"));
+}
+
 } // namespace
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 // Links orgs to workspaces if they are in the same 'grid' and discard the org
 void linkOrgTokens(std::vector<Credentials> &creds) {
-    const auto isOrg = [](const Credentials &c) {
-        return !c.enterpriseId.empty() && !c.token.empty() &&
-               (c.teamId == c.enterpriseId || str::startsWith(c.teamId, "E"));
-    };
     constexpr std::string_view kMark = "___";
     // Creds is assumed to be a small collection
     // so quadratic complexity is fine
@@ -226,6 +230,7 @@ void TokenDeriver::run(std::string cookie, std::vector<TeamSession> candidates, 
     _queue   = std::move(candidates);
     _index   = 0;
     _valid.clear();
+    _expanded.clear();
     _lastError.clear();
     _done = std::move(done);
     next();
@@ -233,6 +238,8 @@ void TokenDeriver::run(std::string cookie, std::vector<TeamSession> candidates, 
 
 void TokenDeriver::next() {
     if (_index >= _queue.size()) {
+        if (expandOrg())
+            return;
         _pending = 0;
         linkOrgTokens(_valid);
         Done d = std::move(_done);
@@ -245,6 +252,90 @@ void TokenDeriver::next() {
         validate(cand, cand.token);
     else
         derive(cand);
+}
+
+// Grid: a sign-in at the org's own address (<org>.enterprise.slack.com)
+// finds the org (E…) but none of its workspaces, and the org stored as a
+// workspace sends every workspace call in the org's context (users.list
+// pages through the whole org directory) until Slack signs the session
+// out. client.userBoot, the web client's boot call, lists the org's
+// workspaces the user is in (auth.teams.list, the documented one, refuses
+// session tokens: the fallback); they join the queue, and linkOrgTokens
+// then folds the org into them. Once per org. true: a request went out.
+bool TokenDeriver::expandOrg() {
+    for (const Credentials &org : _valid) {
+        if (!isOrg(org) || std::ranges::find(_expanded, org.enterpriseId) != _expanded.end())
+            continue;
+        const bool hasWorkspace = std::ranges::any_of(_valid, [&](const Credentials &c) {
+            return !isOrg(c) && c.enterpriseId == org.enterpriseId;
+        });
+        if (hasWorkspace)
+            continue;
+        _expanded.push_back(org.enterpriseId);
+        listOrgWorkspaces(org, false);
+        return true;
+    }
+    return false;
+}
+
+void TokenDeriver::listOrgWorkspaces(const Credentials &org, bool fallback) {
+    const Auth a{org.token, _cookie, hostApiBase(org.workspaceUrl)};
+    _pending = apiCall(
+        _client,
+        a,
+        fallback ? "auth.teams.list" : "client.userBoot",
+        {},
+        [this, org, fallback](const json::Document &doc, const std::string &err) {
+            const size_t added =
+                err.empty() ? queueWorkspaces(doc.root()[fallback ? "teams" : "workspaces"]) : 0;
+            if (added == 0 && !fallback) {
+                listOrgWorkspaces(org, true);
+                return;
+            }
+            if (added == 0)
+                LOG_WARN(
+                    "slack",
+                    "org %s lists no workspaces (%s): kept as it is",
+                    org.enterpriseId.c_str(),
+                    err.empty() ? "none" : err.c_str()
+                );
+            else
+                LOG_INFO(
+                    "slack", "org %s: %zu workspace(s) to sign in", org.enterpriseId.c_str(), added
+                );
+            next();
+        }
+    );
+}
+
+// client.userBoot's workspaces / auth.teams.list's teams ({id, name, url or
+// domain, icon}) not queued yet: derived from their own hosts.
+size_t TokenDeriver::queueWorkspaces(const json::Value &teams) {
+    size_t added = 0;
+    for (const json::Value t : teams) {
+        TeamSession s;
+        s.teamId = std::string(t["id"].str());
+        if (str::startsWith(s.teamId, "E"))
+            continue; // the org itself
+        std::string url(t["url"].str());
+        if (url.empty() && !t["domain"].str().empty())
+            url = str::concat({"https://", t["domain"].str(), ".slack.com"});
+        while (!url.empty() && url.back() == '/')
+            url.pop_back();
+        if (url.empty())
+            continue;
+        const bool queued = std::ranges::any_of(_queue, [&](const TeamSession &q) {
+            return q.workspaceUrl == url || (!s.teamId.empty() && q.teamId == s.teamId);
+        });
+        if (queued)
+            continue;
+        s.workspaceUrl = std::move(url);
+        s.teamName     = std::string(t["name"].str());
+        s.iconUrl      = iconOf(t["icon"]);
+        _queue.push_back(std::move(s));
+        ++added;
+    }
+    return added;
 }
 
 void TokenDeriver::fail(std::string why) {
