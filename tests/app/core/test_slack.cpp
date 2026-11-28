@@ -307,7 +307,8 @@ TEST("slack: localConfig_v2 and host harvesting") {
          "lumen.slack.com",
          "https://Lumen.slack.com/ssb/redirect",
          "https://acme-corp.slack.com/x",
-         "api.slack.com"}
+         "api.slack.com",
+         "https://acme.enterprise.slack.com/"} // a Grid org's host, not a workspace
     );
     REQUIRE(hosts.size() == 2);
     CHECK(hosts[0].workspaceUrl == "https://lumen.slack.com");

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "app/slack/credentials.h"
+#include "base/json.h"
 #include "net/net.h"
 
 #include <functional>
@@ -41,17 +42,21 @@ public:
     void run(std::string cookie, std::vector<TeamSession> candidates, Done done);
 
 private:
-    void next();
-    void derive(const TeamSession &cand);
-    void validate(const TeamSession &cand, std::string token);
-    void fetchIcon(Credentials c);
-    void fail(std::string why);
+    void   next();
+    void   derive(const TeamSession &cand);
+    void   validate(const TeamSession &cand, std::string token);
+    void   fetchIcon(Credentials c);
+    void   fail(std::string why);
+    bool   expandOrg();
+    void   listOrgWorkspaces(const Credentials &org, bool fallback);
+    size_t queueWorkspaces(const json::Value &teams);
 
     net::Client             &_client;
     std::string              _cookie;
     std::vector<TeamSession> _queue;
     size_t                   _index = 0;
     std::vector<Credentials> _valid;
+    std::vector<std::string> _expanded; // orgs (enterprise ids) asked for their workspaces
     std::string              _lastError;
     Done                     _done;
     net::RequestId           _pending = 0;

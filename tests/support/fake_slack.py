@@ -40,6 +40,10 @@ it. Nothing here ever reaches the real Slack.
                             a canvas's HTML for .../canvas; .../<name>.bin: bytes
                             0..255 four times; .../missing: a 404; else the bytes
                             "bytes of <last path segment>"
+    GET  /boot/<name>       a workspace's boot page (the session sign-in scrapes
+                            its token): the table's "boot/<name>" answer, e.g.
+                            {"__raw": "...\"api_token\":\"xoxc-1\"..."}; logged
+                            as method "boot"
     GET  /update/<v>/<sha>.manifest  the updater's manifest: {"version": v,
                             "sha256": sha} (sha "-" = none)
 
@@ -341,6 +345,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/_ctl/log':
             with lock:
                 self.send_json(state['log'])
+        elif self.path.startswith('/boot/'):  # a workspace's boot page: the table's "boot/<name>"
+            with lock:
+                state['log'].append({'method': 'boot', 'form': {'path': self.path},
+                                     'auth': '', 'cookie': self.headers.get('Cookie', ''),
+                                     'ctype': '', 'len': 0})
+                answers = state['table'].get(self.path[1:].split('?')[0].rstrip('/'))
+            if answers:
+                self.send_json(answers[0])
+            else:
+                self.send_json({'ok': False, 'error': 'not_found'}, 404)
         elif self.path.startswith('/update/'):  # /update/<version>/<sha256>.manifest
             version, sha = self.path[len('/update/'):].rsplit('.', 1)[0].split('/', 1)
             self.send_json({'version': int(version), 'updatedAt': '2026-10-01T00:00:00Z',
