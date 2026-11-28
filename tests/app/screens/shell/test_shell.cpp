@@ -3225,6 +3225,25 @@ TEST("workspace rail: Cmd/Ctrl+1..9 switch to the Nth workspace on the rail") {
     chord(plat::Key::Num1); // the 1st tile is now the Claude one
     REQUIRE(switched.size() == 1);
     CHECK_STR(switched[0], kClaudeKey);
+
+    // Not under a dialog (the quick switcher here) nor under Settings.
+    switched.clear();
+    h.sh->showQuickSwitcher();
+    pump();
+    REQUIRE(h.sh->quickSwitcher());
+    chord(plat::Key::Num1);
+    CHECK(switched.empty());
+    h.sh->quickSwitcher()->close();
+    pump();
+    h.sh->openSettings();
+    pump();
+    REQUIRE(h.sh->settingsDialog());
+    chord(plat::Key::Num1);
+    CHECK(switched.empty());
+    h.sh->settingsDialog()->close();
+    pump();
+    chord(plat::Key::Num1);
+    CHECK(switched.size() == 1);
 }
 
 TEST("workspace rail: a background workspace's menu acts on it") {

@@ -1909,10 +1909,10 @@ void Shell::notifySessionExpired(const std::string &workspace) {
     if (!_hidden || !pa.notificationsAvailable())
         return;
     plat::Notification n;
-    n.title     = tr("Session expired");
-    n.body      = workspace.empty()
-                      ? std::string(tr("Your session has expired. Click to sign in again."))
-                      : i18n::arg(tr("Your %1 session has expired. Click to sign in again."), workspace);
+    n.title = tr("Session expired");
+    n.body = workspace.empty()
+                 ? std::string(tr("Your session has expired. Click to sign in again."))
+                 : i18n::arg(tr("Your %1 session has expired. Click to sign in again."), workspace);
     n.timeoutMs = 10000;
     n.silent    = sounds::kSilentNotifications;
     notificationImage({workspaceIconPath()}, [this, n = std::move(n)](plat::Image img) mutable {
@@ -3702,6 +3702,10 @@ void Shell::showWorkspaceMenu(const std::string &key, PointF at) {
 }
 
 void Shell::switchToWorkspaceIndex(size_t i) {
+    // Not under a dialog or Settings: they cover the rail, so a click could
+    // not switch either.
+    if (topDialog() || _settingsDlg)
+        return;
     // Rail order, so a drag-reordered rail switches as it reads top to bottom.
     const std::vector<std::string> keys = railOrder();
     if (i >= keys.size())
