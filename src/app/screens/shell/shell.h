@@ -434,6 +434,10 @@ private:
     // A workspace's tray item is kTrayWorkspace + its index on the rail.
     enum : uint32_t { kTraySettings = 1, kTrayResetSize, kTrayQuit, kTrayWorkspace = 100 };
     void          showWorkspaceMenu(const std::string &key, ui::PointF at);
+    // Switch to the i-th workspace on the rail (0-based), as Cmd/Ctrl+1..9 do;
+    // a no-op when the rail has no such tile or it is already open, and
+    // under a dialog or Settings.
+    void          switchToWorkspaceIndex(size_t i);
     void          refreshRail(); // the tiles' names, icons and active state
     // Settings::showRail, the rail forced on while the sidebar is hidden.
     void          updateRailVisible();

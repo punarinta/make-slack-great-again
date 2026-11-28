@@ -1065,6 +1065,11 @@ Shell::Shell(
     shortcuts::install(win, Id::CloseThread, [this] { closeThreadOnEscape(); });
     shortcuts::install(win, Id::SearchMessages, [this] { openSearch(); });
     shortcuts::install(win, Id::QuickSwitch, [this] { showQuickSwitcher(); });
+    // Cmd/Ctrl+1..9: jump to the Nth workspace on the rail, like Slack.
+    for (size_t i = 0; i < 9; ++i)
+        shortcuts::install(win, Id(size_t(Id::SwitchWorkspace1) + i), [this, i] {
+            switchToWorkspaceIndex(i);
+        });
     win.keyFilter = [this](const Event &e) {
         noteActivity();
         if (removeIdleSession(e))
@@ -3694,6 +3699,20 @@ void Shell::showWorkspaceMenu(const std::string &key, PointF at) {
             w.muted = x.muted;
         }
     _menus->showWorkspace(w, at);
+}
+
+void Shell::switchToWorkspaceIndex(size_t i) {
+    // Not under a dialog or Settings: they cover the rail, so a click could
+    // not switch either.
+    if (topDialog() || _settingsDlg)
+        return;
+    // Rail order, so a drag-reordered rail switches as it reads top to bottom.
+    const std::vector<std::string> keys = railOrder();
+    if (i >= keys.size())
+        return;
+    const std::string &key = keys[i];
+    if (key != _activeKey && onSwitchWorkspace)
+        onSwitchWorkspace(key);
 }
 
 void Shell::showProfile(model::UserRef u, RectF anchor) {
