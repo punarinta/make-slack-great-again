@@ -33,6 +33,16 @@ enum class Id : uint8_t {
     SearchMessages,
     QuickSwitch,
     OpenSettings,
+    // Cmd/Ctrl+1..9: jump to the Nth workspace on the rail, like Slack.
+    SwitchWorkspace1,
+    SwitchWorkspace2,
+    SwitchWorkspace3,
+    SwitchWorkspace4,
+    SwitchWorkspace5,
+    SwitchWorkspace6,
+    SwitchWorkspace7,
+    SwitchWorkspace8,
+    SwitchWorkspace9,
     // ── Composer scope ──────────────────────────────────────────────────────
     Bold,
     Italic,

@@ -125,8 +125,8 @@ public:
     std::vector<LiveWorkspace> liveWorkspaces() const;
     // A message reminder went off in workspace `key` (Backend::onReminderDue).
     void                       notifyReminderDue(
-        const std::string &key, model::Store &store, model::ConvRef conv, model::Ts ts
-    );
+                              const std::string &key, model::Store &store, model::ConvRef conv, model::Ts ts
+                          );
     // "Session expired", when the window is hidden.
     void notifySessionExpired(const std::string &workspace);
     // Workspace `key`'s slash commands changed (Backend::onCommandsChanged):
@@ -267,8 +267,8 @@ public:
     // NotificationActivated handling, also reachable via main.cpp's
     // single-instance hand-off (another process received the click).
     void           activateNotification(
-        uint64_t id, const std::string &action = {}, const std::string &token = {}
-    );
+                  uint64_t id, const std::string &action = {}, const std::string &token = {}
+              );
 
     // The Settings dialog (the rail's gear, the tray menu); a second call
     // while it is open does nothing.
@@ -382,12 +382,12 @@ private:
     // New messages, huddles, reminders (shell_notify.cpp).
     void        messagesArrived(model::Store &st, const std::string &key, const model::Change &ch);
     void        maybeNotify(
-        model::Store         &st,
-        const std::string    &key,
-        model::ConvRef        conv,
-        const model::Message &m,
-        bool                  allowDefer
-    );
+               model::Store         &st,
+               const std::string    &key,
+               model::ConvRef        conv,
+               const model::Message &m,
+               bool                  allowDefer
+           );
     void notifyWhenUsersResolve(
         model::Store                   *st,
         const std::string              &key,
@@ -434,6 +434,9 @@ private:
     // A workspace's tray item is kTrayWorkspace + its index on the rail.
     enum : uint32_t { kTraySettings = 1, kTrayResetSize, kTrayQuit, kTrayWorkspace = 100 };
     void          showWorkspaceMenu(const std::string &key, ui::PointF at);
+    // Switch to the i-th workspace on the rail (0-based), as Cmd/Ctrl+1..9 do;
+    // a no-op when the rail has no such tile or it is already open.
+    void          switchToWorkspaceIndex(size_t i);
     void          refreshRail(); // the tiles' names, icons and active state
     // Settings::showRail, the rail forced on while the sidebar is hidden.
     void          updateRailVisible();

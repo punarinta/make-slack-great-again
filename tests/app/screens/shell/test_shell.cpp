@@ -3182,6 +3182,51 @@ TEST("workspace rail: dragging a tile reorders the rail, without a click") {
     CHECK(switched.empty());
 }
 
+TEST("workspace rail: Cmd/Ctrl+1..9 switch to the Nth workspace on the rail") {
+    Harness h;
+    twoWorkspaces(h);
+    std::vector<std::string> switched;
+    h.sh->onSwitchWorkspace = [&](const std::string &k) { switched.push_back(k); };
+
+    auto           *hooks = app().platform().testHooks();
+    const plat::Key mod =
+        plat::primaryMod() == plat::ModSuper ? plat::Key::SuperLeft : plat::Key::ControlLeft;
+    auto chord = [&](plat::Key k) {
+        hooks->injectKey(h.win->native(), mod, true);
+        hooks->injectKey(h.win->native(), k, true);
+        hooks->injectKey(h.win->native(), k, false);
+        hooks->injectKey(h.win->native(), mod, false);
+        pump();
+    };
+
+    // Cmd/Ctrl+1 is the open one: nothing happens.
+    chord(plat::Key::Num1);
+    CHECK(switched.empty());
+    // Cmd/Ctrl+2 switches to the second tile.
+    chord(plat::Key::Num2);
+    REQUIRE(switched.size() == 1);
+    CHECK_STR(switched[0], kClaudeKey);
+    // A digit past the rail is a no-op.
+    chord(plat::Key::Num3);
+    CHECK(switched.size() == 1);
+
+    // After a reorder the digits follow the rail's new order.
+    h.sh->onReorderWorkspaces = [&](const std::vector<std::string> &) {};
+    const ui::PointF from     = centre(h.sh->workspaceTile(kSlackKey));
+    moveTo(h, from);
+    button(h, plat::Button::Left, true);
+    for (int dy = 6; dy <= 60; dy += 6)
+        moveTo(h, {from.x, from.y + float(dy)});
+    button(h, plat::Button::Left, false);
+    REQUIRE(h.sh->railOrder() == std::vector<std::string>({kClaudeKey, kSlackKey}));
+    switched.clear();
+    chord(plat::Key::Num2); // the slack workspace is still open, now the 2nd tile
+    CHECK(switched.empty());
+    chord(plat::Key::Num1); // the 1st tile is now the Claude one
+    REQUIRE(switched.size() == 1);
+    CHECK_STR(switched[0], kClaudeKey);
+}
+
 TEST("workspace rail: a background workspace's menu acts on it") {
     Harness       h;
     shell::Menus &m = h.sh->menus();

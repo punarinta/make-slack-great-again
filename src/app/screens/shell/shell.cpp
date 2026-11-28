@@ -1065,6 +1065,11 @@ Shell::Shell(
     shortcuts::install(win, Id::CloseThread, [this] { closeThreadOnEscape(); });
     shortcuts::install(win, Id::SearchMessages, [this] { openSearch(); });
     shortcuts::install(win, Id::QuickSwitch, [this] { showQuickSwitcher(); });
+    // Cmd/Ctrl+1..9: jump to the Nth workspace on the rail, like Slack.
+    for (size_t i = 0; i < 9; ++i)
+        shortcuts::install(win, Id(size_t(Id::SwitchWorkspace1) + i), [this, i] {
+            switchToWorkspaceIndex(i);
+        });
     win.keyFilter = [this](const Event &e) {
         noteActivity();
         if (removeIdleSession(e))
@@ -1904,10 +1909,10 @@ void Shell::notifySessionExpired(const std::string &workspace) {
     if (!_hidden || !pa.notificationsAvailable())
         return;
     plat::Notification n;
-    n.title = tr("Session expired");
-    n.body = workspace.empty()
-                 ? std::string(tr("Your session has expired. Click to sign in again."))
-                 : i18n::arg(tr("Your %1 session has expired. Click to sign in again."), workspace);
+    n.title     = tr("Session expired");
+    n.body      = workspace.empty()
+                      ? std::string(tr("Your session has expired. Click to sign in again."))
+                      : i18n::arg(tr("Your %1 session has expired. Click to sign in again."), workspace);
     n.timeoutMs = 10000;
     n.silent    = sounds::kSilentNotifications;
     notificationImage({workspaceIconPath()}, [this, n = std::move(n)](plat::Image img) mutable {
@@ -3694,6 +3699,16 @@ void Shell::showWorkspaceMenu(const std::string &key, PointF at) {
             w.muted = x.muted;
         }
     _menus->showWorkspace(w, at);
+}
+
+void Shell::switchToWorkspaceIndex(size_t i) {
+    // Rail order, so a drag-reordered rail switches as it reads top to bottom.
+    const std::vector<std::string> keys = railOrder();
+    if (i >= keys.size())
+        return;
+    const std::string &key = keys[i];
+    if (key != _activeKey && onSwitchWorkspace)
+        onSwitchWorkspace(key);
 }
 
 void Shell::showProfile(model::UserRef u, RectF anchor) {
